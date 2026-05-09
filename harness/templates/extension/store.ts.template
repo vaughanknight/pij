@@ -47,6 +47,25 @@ export class {{ClassName}}Store {
 
 	constructor(private readonly append: AppendFn) {}
 
+	// Pattern P7 guards — narrow `unknown` data structurally instead of
+	// asserting it. Malformed replay entries are silently ignored.
+	private isItemData(data: unknown): data is Item {
+		return (
+			typeof data === "object" &&
+			data !== null &&
+			typeof (data as { id?: unknown }).id === "string" &&
+			typeof (data as { createdAt?: unknown }).createdAt === "number"
+		);
+	}
+
+	private isDeleteData(data: unknown): data is { id: string } {
+		return (
+			typeof data === "object" &&
+			data !== null &&
+			typeof (data as { id?: unknown }).id === "string"
+		);
+	}
+
 	rehydrate(entries: Iterable<ReplayableEntry>): void {
 		this.items = [];
 		for (const entry of entries) {
@@ -56,10 +75,11 @@ export class {{ClassName}}Store {
 					this.items = [];
 					break;
 				case ENTRY_ITEM:
-					this.items.push(entry.data as Item);
+					if (this.isItemData(entry.data)) this.items.push(entry.data);
 					break;
 				case ENTRY_DELETE: {
-					const { id } = entry.data as { id: string };
+					if (!this.isDeleteData(entry.data)) break;
+					const { id } = entry.data;
 					this.items = this.items.filter((n) => n.id !== id);
 					break;
 				}

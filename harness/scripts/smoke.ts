@@ -66,7 +66,16 @@ async function runScenario(scenario: SmokeScenario): Promise<void> {
 function findScenarios(filter?: string): string[] {
 	const root = join(PIJ_ROOT, ".pi", "extensions");
 	const found: string[] = [];
-	for (const entry of readdirSync(root)) {
+	let entries: string[];
+	try {
+		entries = readdirSync(root);
+	} catch {
+		// .pi/extensions/ may be missing on a true fresh clone (git
+		// doesn't preserve empty dirs). Treat as no scenarios — same
+		// behaviour as an empty directory. Companion finding F014/F007.
+		return found;
+	}
+	for (const entry of entries) {
 		if (filter && entry !== filter) continue;
 		const file = join(root, entry, "smoke.ts");
 		try {

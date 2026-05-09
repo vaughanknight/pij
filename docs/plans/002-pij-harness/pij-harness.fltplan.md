@@ -76,7 +76,7 @@ compaction survival; R-1: pi version drift). Six small phases, each
 **Total**: 36 tasks. Phase 5 may run in parallel with Phases 2–4 (docs/ledgers don't depend on templates compiling).
 
 After Phase 6 ships → run `npm run new -- scratch` and start the velocity
-test for **extension #2** (target <30 min, per AC-15 / OQ-1).
+test for **extension #2** (compounding hypothesis vs v1 baseline; provisional ≤ 50% of v1 equivalent path, per AC-15 / OQ-1).
 
 ---
 

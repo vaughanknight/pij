@@ -59,8 +59,9 @@ gates; we measure and compare against the v1 baseline).
 ## Hard failures (stop work, file a difficulty)
 
 - `npm install` fails → check Node ≥ 20, network, package-lock integrity.
-- `npm run typecheck` fails → P6 (`.js` extensions) or P7 (structural
-  types) is the most common cause.
+- `npm run typecheck` fails → P6 (structural entry types — no `as` at
+  the boundary) or P7 (`.js` extension on relative imports) is the most
+  common cause. Numbering matches AGENTS.md / workshop 003.
 - `npm run lint` fails → run `npm run format` and re-check.
 - `npm test` fails → the store layer (P2/P8). Tests target `store.ts`,
   not the pi-side wiring.

@@ -51,8 +51,8 @@ Requires `tmux` and `pi` on PATH.
 ## When something hurts
 
 1. Open `docs/difficulties.md`, append a row (D-NNN).
-2. If the fix is <30 min, **encode it now** (template, lint rule, helper).
-   Do not just document it.
+2. If the fix is small/surgical (fits the current task scope), **encode
+   it now** (template, lint rule, helper). Do not just document it.
 3. Otherwise, file a `stretch:` row and link the difficulty.
 
 ## Where things are
