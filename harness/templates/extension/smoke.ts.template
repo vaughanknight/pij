@@ -1,0 +1,16 @@
+// Smoke scenario for {{name}}. Runs via `npm run smoke -- {{name}}`.
+//
+// Each step sends keystrokes into a tmux session running pi (autoload from
+// pij root) and (optionally) checks that captured output matches a regex.
+
+export default {
+	name: "{{name}}",
+	steps: [
+		{
+			send: "/{{name}}",
+			expect: /not implemented/,
+			delay: 1500,
+		},
+		// TODO: add real steps once /{{name}} is implemented
+	],
+};

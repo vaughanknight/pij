@@ -2,6 +2,8 @@
 agents/*/runs/
 agents/*/state/
 session-store.db
+session-store.db-shm
+session-store.db-wal
 session-state/
 
 # Local agent / tooling state

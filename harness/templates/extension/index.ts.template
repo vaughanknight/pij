@@ -1,0 +1,55 @@
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+
+import { {{ClassName}}Store } from "./store.js";
+
+export default function (pi: ExtensionAPI) {
+	const store = new {{ClassName}}Store(
+		(customType, data) => pi.appendEntry(customType, data),
+	);
+
+	function refreshStatus(ctx: ExtensionContext): void {
+		const n = store.count();
+		ctx.ui.setStatus(
+			"{{name}}",
+			n === 0 ? "" : `{{name}}: ${n}`,
+		);
+	}
+
+	// Pattern P10: one handler for session_start, all reasons.
+	pi.on("session_start", async (_event, ctx) => {
+		store.rehydrate(ctx.sessionManager.getEntries());
+		refreshStatus(ctx);
+	});
+
+	pi.registerCommand("{{name}}", {
+		description: "TODO: describe {{name}}",
+		handler: async (
+			args: string,
+			ctx: ExtensionCommandContext,
+		): Promise<void> => {
+			// TODO: implement /{{name}}
+			ctx.ui.notify(`{{name}}: not implemented (got: ${args})`, "info");
+		},
+	});
+
+	// Optional starter tool — delete or expand.
+	pi.registerTool({
+		name: "{{name}}_ping",
+		label: "{{ClassName}} ping",
+		description: "TODO: describe what {{name}}_ping does",
+		parameters: Type.Object({
+			message: Type.String({ description: "Message to echo" }),
+		}),
+		async execute(_id, params, _signal, _onUpdate, _ctx) {
+			return {
+				content: [{ type: "text", text: `pong: ${params.message}` }],
+				details: {},
+			};
+		},
+	});
+}
