@@ -8,8 +8,8 @@
 			"!.pi/git",
 			"!.pi/npm",
 			"!**/*.template",
-			"!agents/**",
-			"!docs/plans/**"
+			"!agents",
+			"!docs/plans"
 		]
 	},
 	"formatter": {

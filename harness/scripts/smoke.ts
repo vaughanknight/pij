@@ -49,8 +49,7 @@ async function runScenario(scenario: SmokeScenario): Promise<void> {
 
 		if (step.expect != null) {
 			const out = tmux("capture-pane", "-t", SESSION, "-p");
-			const re =
-				step.expect instanceof RegExp ? step.expect : new RegExp(step.expect);
+			const re = step.expect instanceof RegExp ? step.expect : new RegExp(step.expect);
 			if (!re.test(out)) {
 				tmuxSafe("kill-session", "-t", SESSION);
 				const tail = out.slice(-800);
