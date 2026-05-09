@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1",
+  "slug": "code-review-companion",
+  "source": {
+    "type": "local",
+    "localPath": "/Users/jordanknight/substrate/minih/agents/code-review-companion",
+    "resolvedAt": "2026-05-09T05:11:08.206Z"
+  },
+  "installedAt": "2026-05-09T05:11:08.208Z",
+  "manifestVersion": "0.1.0",
+  "fileChecksums": {
+    "prompt.md": "sha256:60d4e88734cfc06e1fae097e25e425bf1fbb5fa84b731540dc42b863f6ef9168",
+    "instructions.md": "sha256:0d824321527a01a7ccc952e6fd72788310dbfa7484d2f12e28b07ed8d00fe222",
+    "input-schema.json": "sha256:9bf13bd7bc3adf0619f99f3d9bdbc0a1bb23a0bf9750316bf5dc60a04377455a",
+    "output-schema.json": "sha256:553c6980d7ba180df64a94ca6eb20807fecdda64123e7a10c1a2c2ab2a2b4624",
+    "agent.json": "sha256:febf0e41257b87704ca7428e37e1077e8f7423ec486a4031b4570c5574e0c4bd"
+  },
+  "lockedDefault": "restricted",
+  "lockedDefaultRecordedAt": "2026-05-09T05:11:08.208Z",
+  "lockedDefaultReason": "minih-default"
+}

@@ -1,3 +1,13 @@
+# minih runtime artifacts (per-run + global session state)
+agents/*/runs/
+agents/*/state/
+session-store.db
+session-state/
+
+# Local agent / tooling state
+.chainglass/
+.fs2/graph.pickle
+
 # Logs
 logs
 *.log
