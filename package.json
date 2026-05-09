@@ -1,0 +1,50 @@
+{
+	"name": "pij",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Engineering harness for building pi extensions.",
+	"keywords": [
+		"pi-package"
+	],
+	"pi": {
+		"extensions": [
+			"./.pi/extensions"
+		],
+		"skills": [
+			"./.pi/skills"
+		],
+		"prompts": [
+			"./.pi/prompts"
+		],
+		"themes": [
+			"./.pi/themes"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "biome check .",
+		"format": "biome check --write .",
+		"new": "tsx harness/scripts/new-extension.ts",
+		"smoke": "tsx harness/scripts/smoke.ts",
+		"self-check": "npm run typecheck && npm run lint && npm run test && npm run smoke"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"@earendil-works/pi-ai": "*",
+		"typebox": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.0",
+		"@types/node": "^22.0.0",
+		"tsx": "^4.20.0",
+		"typescript": "^5.9.0",
+		"vitest": "^2.0.0"
+	},
+	"engines": {
+		"node": ">=20"
+	}
+}
