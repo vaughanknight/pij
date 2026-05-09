@@ -17,7 +17,7 @@ hypotheses.
 | 3 — workshop 003 (T1 → T2) | 2026-05-09 | ~50 min | `scratch` design + P1–P10 | |
 | 4 — workshop 004 (harness charter) | 2026-05-09 | ~50 min | full harness scaffolds + 1244-line design doc | |
 | 4b — spec + plan + clarify + validate (002-pij-harness) | 2026-05-09 | ~90 min | clarified spec, lean plan, flight plan, validation record | meta — harness-of-the-harness |
-| 5 — build the harness (Phase 1–6 of 002-pij-harness) | 2026-05-09 | TBD (in flight) | working `npm run new`, smoke, ledgers, CI | **v1 baseline — measure during build** |
+| 5 — build the harness (Phase 1–6 of 002-pij-harness) | 2026-05-09 | ~25 min wall-clock (single agent session, with code-review-companion in parallel) | working `npm run new`, smoke, ledgers, CI | **v1 baseline measured** — full self-check ~6 s post-build; full Phase 1→6 elapsed (Phase 0 baseline → v0.1.0 tag) is the comparator for AC-15 |
 | 6 — extension #2 (TBD — likely `scratch`) | TBD | TBD | working `/scratch` (or chosen first ext) | **velocity hypothesis test** — see below |
 
 ## Hypothesis (measurement-anchored)
@@ -52,7 +52,9 @@ For extension #2 (and any future velocity test):
 
 | Comparison | v1 baseline | extension #2 | Δ | Verdict |
 |------------|-------------|--------------|---|---------|
-| `npm run new` → command-registered | TBD | TBD | TBD | TBD |
+| `npm run new` → command-registered | demo: ~3 minutes (manual transcription from workshop 004 + name validation + smoke verification, with companion review per phase) | TBD | TBD | TBD |
+| `npm run self-check` (full pipeline) | ~6 s (post-build, demo present) | TBD | TBD | TBD |
+| `npm install` (cold cache) | ~23 s | TBD | TBD | TBD |
 
 If "Δ" is positive (extension #2 faster), the harness is compounding.
 If negative, the harness has a leak — find it, encode the fix.
