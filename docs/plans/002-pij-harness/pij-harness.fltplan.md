@@ -1,10 +1,10 @@
 # pij Harness — Flight Plan
 
 **Plan**: 002-pij-harness
-**Status**: Ready (plan generated 2026-05-09)
+**Status**: ✈️ **Landed** (v0.1.0 tagged 2026-05-09; CI green; demo torn down)
 **Mode**: Simple (testing overridden to Hybrid)
 **Updated**: 2026-05-09
-**Plan**: [pij-harness-plan.md](./pij-harness-plan.md) — 36 tasks across 6 phases
+**Plan**: [pij-harness-plan.md](./pij-harness-plan.md) — 36 tasks across 6 phases (executed in 7 commits Phase 0–Phase 6)
 
 ---
 
