@@ -18,7 +18,7 @@ hypotheses.
 | 4 — workshop 004 (harness charter) | 2026-05-09 | ~50 min | full harness scaffolds + 1244-line design doc | |
 | 4b — spec + plan + clarify + validate (002-pij-harness) | 2026-05-09 | ~90 min | clarified spec, lean plan, flight plan, validation record | meta — harness-of-the-harness |
 | 5 — build the harness (Phase 1–6 of 002-pij-harness) | 2026-05-09 | ~25 min wall-clock (single agent session, with code-review-companion in parallel) | working `npm run new`, smoke, ledgers, CI | **v1 baseline measured** — full self-check ~6 s post-build; full Phase 1→6 elapsed (Phase 0 baseline → v0.1.0 tag) is the comparator for AC-15 |
-| 6 — extension #2 (TBD — likely `scratch`) | TBD | TBD | working `/scratch` (or chosen first ext) | **velocity hypothesis test** — see below |
+| 6 — extension #2 (`scratch`) | 2026-05-10 | T0 = `2026-05-10T01:25:47Z` (sha `a9df8f5`); T1 = user-confirmed working post `/reload` (manual dogfood, exact T1 not stamped — order of minutes from T0 to first agent commit `bda8e92`, plus user-side dogfood latency) | working `/scratch` (commands + tools + status + persistence); 21/21 store tests pass; smoke scenario for D-005 shipped but not yet executed | **First real-extension data point.** No ratio claimed (per spec clarify Q3 / harness AC-15 decoupled to ext #3). D-005 + D-006 still evidence-pending; D-018 + D-019 surfaced and mitigated. |
 
 ## Hypothesis (measurement-anchored)
 
@@ -50,11 +50,20 @@ For extension #2 (and any future velocity test):
 
 ## Compounding evidence (filled retroactively)
 
-| Comparison | v1 baseline | extension #2 | Δ | Verdict |
-|------------|-------------|--------------|---|---------|
-| `npm run new` → command-registered | demo: ~3 minutes (manual transcription from workshop 004 + name validation + smoke verification, with companion review per phase) | TBD | TBD | TBD |
-| `npm run self-check` (full pipeline) | ~6 s (post-build, demo present) | TBD | TBD | TBD |
-| `npm install` (cold cache) | ~23 s | TBD | TBD | TBD |
+| Comparison | v1 baseline | extension #2 (scratch) | Δ | Verdict |
+|------------|-------------|------------------------|---|---------|
+| `npm run new` → command-registered | demo: ~3 minutes (manual transcription from workshop 004 + name validation + smoke verification, with companion review per phase) | not measured discretely (mixed agent-authoring + user-verification path); see row 6 | n/a | **deferred to ext #3** per spec clarify Q3 |
+| `npm run self-check` (full pipeline) | ~6 s (post-build, demo present) | TBD (re-measure post-scratch) | TBD | TBD |
+| `npm install` (cold cache) | ~23 s | unchanged (no peerDep additions) | ~0 | OK |
 
-If "Δ" is positive (extension #2 faster), the harness is compounding.
-If negative, the harness has a leak — find it, encode the fix.
+**AC-15 status**: ratio decision **deferred to extension #3 retrospective**
+(per spec 003-scratch clarify Q3). Scratch produced the first real-extension
+data point; ratios need ≥2. Ext #3 will normalize the entry shape and
+compute the comparison cleanly.
+
+**Workshop 003 vs reality drift surfaced during scratch build**:
+- D-018: `notify` level enum (`"success"` rejected; mapped to `"info"`)
+- D-019: `list({limit:0})` latent bug (`slice(-0)` returns full array)
+
+Both encoded surgically in scratch's files; workshop 003 / 004 backfill
+will propagate to templates if the patterns repeat.

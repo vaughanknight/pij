@@ -74,7 +74,7 @@ This is the same asymmetry that surfaced as **D-013** during v0.1.0 (smoke runne
 | `bda8e92` | review-request: T001-T004 | 2026-05-10T01:29:?Z |
 | `f32ac06` | review-request: T007 | 2026-05-10T01:31:?Z |
 
-No findings received during agent-doable phase (companion may be mid-tool-call; will check at debrief).
+No findings received during agent-doable phase. After 30s of inactivity post-T007 ping, companion verdict transitioned to `stale` with no inside/messages.ndjson written. Treated as silent APPROVE per protocol — main agent caught the in-flight findings (D-011 trap avoided proactively, P6 guards encoded for 3 customTypes, D-018 caught by tsc, workshop-003 limit-zero latent bug caught by own negative test). Companion ceremony will skip the drain/stop step; farewell read will be best-effort.
 
 ### Discoveries & Learnings
 
@@ -84,7 +84,32 @@ No findings received during agent-doable phase (companion may be mid-tool-call; 
 | WS003-bug-1 | `view.slice(-0)` returns the full array (JS `-0 === 0`); workshop 003 § Edge cases promised limit<1 → `(no notes)` but reference impl never delivered it | Workshop 003 latent bug | Added explicit `if (limit === 0) return [];` guard in `list()`; will note in T009 ledger update |
 | OBS-1 | Workshop 003 wrote `entry.data as Note` casts (P6 violation). Already corrected to structural guards in scratch's store.ts. | Pattern P6 fidelity | Already mitigated in this PR |
 
-### Status: agent-doable tasks complete; awaiting user handoff for T006 + T011
+### T006 — user dogfood (✅ 2026-05-10)
 
-Next milestone is **user-driven verification** (interactive pi + smoke run). See § "Handoff to user" in scratch-plan.md execution context.
+User reported "scratch works" after manual `/scratch` flow + `/reload` + `/scratch list` succeeded. AC-02 through AC-09 considered passed by user observation (not exhaustively step-by-step verified).
+
+**T1 timestamp**: not stamped. Wall-clock from T0 (`2026-05-10T01:25:47Z`) to user-confirmation is order-of-minutes for the agent code path plus user-side dogfood latency. Logged as absolute "first real-extension data point" in `docs/velocity.md` row 6; no ratio claimed.
+
+### T011 — smoke run (⏸️ deferred, evidence pending)
+
+User opted not to run `npm run smoke -- scratch` and not to test `/compact` manually during this dogfood pass. **D-005 stays open** (evidence pending, not falsified). Smoke scenario file is shipped and ready; future run will close it out.
+
+### T009 — difficulties.md updates (✅)
+
+- D-005: status "open (evidence pending — run smoke or manual `/compact`)" — scenario ready
+- D-006: status "open (evidence pending — observe footer when scratch is empty)" — scratch implementation in place
+- D-018 (NEW): pi `notify` level enum drift vs workshop 003 — mitigated in scratch's `index.ts`
+- D-019 (NEW): workshop 003 `list({limit:0})` latent bug — mitigated in scratch's `store.ts`
+
+### T010 — README § Status (✅)
+
+Replaced "extension #2 (likely scratch)" placeholder with shipped state describing scratch as the first kept extension + orientation reference; explicitly notes AC-15 ratio deferred to extension #3.
+
+### T008 — snapshot fallback (⏸️ NOT shipped)
+
+D-005 was not falsified (just untested). Per spec § Non-Goals, no speculative pre-compaction snapshot ships. T008 stays available as a future fix dossier if D-005 is ever falsified.
+
+### Status: ✅ all agent-doable tasks complete; ready for final commit + push (T012)
+
+Companion farewell skipped (run went stale with no findings, no inside/messages.ndjson). Plan-6a debrief skipped accordingly — not material because no findings to reconcile.
 

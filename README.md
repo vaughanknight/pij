@@ -53,10 +53,19 @@ or `pi install <git-url>` is the recommended path.
 
 ## Status
 
-v0.1.0 — first ship. The throwaway `demo` extension is generated during
-the build to validate the harness end-to-end, then removed before the
-tag. Extension #2 (the real first one — likely `scratch`) is the
-velocity-hypothesis test (see `docs/velocity.md`).
+v0.1.0 — harness shipped (throwaway `demo` extension validated the path
+end-to-end, then was torn down).
+
+**v0.2 (current main)** — `scratch` is the first **kept** extension, the
+orientation reference, and the first real-extension data point in
+`docs/velocity.md`. Slash commands (`/scratch list|add|del|clear`),
+LLM tools (`scratch_save`, `scratch_list`), status line, append-only
+session persistence — see `.pi/extensions/scratch/`. The compounding
+ratio (harness AC-15) is **deferred to extension #3** so it has ≥2
+real-extension data points to compare. D-005 (does `customType` survive
+`/compact`?) has a smoke scenario shipped at
+`.pi/extensions/scratch/smoke.ts`; run `npm run smoke -- scratch` or
+manually `/compact` in pi to resolve it.
 
 ## License
 

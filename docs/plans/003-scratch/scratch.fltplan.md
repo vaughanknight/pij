@@ -1,7 +1,7 @@
 # scratch — Flight Plan
 
 **Plan**: 003-scratch
-**Status**: ⏸️ **In flight — awaiting user dogfood** (2026-05-10; agent code path complete; 2 commits on main; T006 + T011 + D-005 verification pending)
+**Status**: ✈️ **Landed** (2026-05-10; scratch shipped as first kept extension; D-005 + D-006 evidence-pending but unblocked; AC-15 ratio deferred to ext #3)
 **Mode**: Simple
 **Updated**: 2026-05-10
 **Spec**: [scratch-spec.md](./scratch-spec.md)
@@ -35,7 +35,7 @@ mental model.
 | Clarification | ✅ Run 2026-05-10 (3 questions; all rubber-stamped at Recommended; Mocks/Docs/Domain/Harness inline-resolved) |
 | Plan / phases | ✅ Generated 2026-05-10 — [`scratch-plan.md`](./scratch-plan.md) — 12 tasks (T001–T012; T008 conditional) |
 | Validation | ✅ Done 2026-05-10 — plan-4 READY (0 HIGH); validate-v2 PASS (1 HIGH + 2 load-bearing MEDIUMs fixed; 1 MEDIUM + 6 LOWs deferred) |
-| Implementation | ⏸️ Agent code complete (T001-T005, T007 — commits `bda8e92`, `f32ac06`); awaiting user runtime verification (T006, T011, D-005) |
+| Implementation | ✅ Done 2026-05-10 — agent code commits `bda8e92` + `f32ac06`; user T006 dogfood ✓ ("scratch works"); T011 smoke deferred (evidence pending); ledger commit landed final |
 
 ---
 
