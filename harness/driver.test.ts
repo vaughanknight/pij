@@ -118,3 +118,129 @@ describe("driver/tmux primitives", () => {
 		expect(targetStr({ session: "s", window: 1, pane: 2 })).toBe("s:1.2");
 	});
 });
+
+// ─── Session (PR-01..PR-09, IA-02/IA-04/IA-08) ─────────────────────────────
+
+describe("driver/session", () => {
+	it("Session.run() routes risky payloads to paste (workshop D6)", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		// list-panes (assertAlive) → alive; capture-pane → prompt with expected match
+		execMock.mockImplementation((file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			calls.push([file, ...argv]);
+			if (argv[0] === "list-panes") return "%5\t12345\tbash\t0\t200\t50\n";
+			if (argv[0] === "capture-pane") return "> matched-output\n> ";
+			return "";
+		});
+		const { Session } = await import("./driver/session.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		const result = await session.run("echo `bad`", /matched-output/, { timeoutMs: 1000 });
+		expect(result).toMatch(/matched-output/);
+		// `\`` triggers RISKY_PAYLOAD_RE → paste path (set-buffer + paste-buffer), not type (send-keys -l).
+		const cmds = calls.map((c) => c[1]);
+		expect(cmds).toContain("set-buffer");
+		expect(cmds).toContain("paste-buffer");
+		expect(cmds).toContain("send-keys"); // for Enter press
+	});
+
+	it("Session.run() throws DriverAssertionError when expect never matches", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation((file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			calls.push([file, ...argv]);
+			if (argv[0] === "list-panes") return "%5\t12345\tbash\t0\t200\t50\n";
+			if (argv[0] === "capture-pane") return "> never-the-match\n> ";
+			return "";
+		});
+		const { Session } = await import("./driver/session.js");
+		const { DriverAssertionError } = await import("./driver/errors.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		await expect(
+			session.run("noop", /WILL-NEVER-MATCH/, { timeoutMs: 500 }),
+		).rejects.toBeInstanceOf(DriverAssertionError);
+	});
+
+	it("Session.execute('sleep') resolves after the duration", async () => {
+		const { Session } = await import("./driver/session.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		const t0 = Date.now();
+		await session.execute({ kind: "sleep", ms: 60 });
+		expect(Date.now() - t0).toBeGreaterThanOrEqual(50);
+	});
+
+	it("Session.execute('capture') stores named pane in capturedNamed()", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation((file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			calls.push([file, ...argv]);
+			if (argv[0] === "capture-pane") return "POST-COMPACT-PANE\n";
+			return "";
+		});
+		const { Session } = await import("./driver/session.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		await session.execute({ kind: "capture", name: "post-compact" });
+		expect(session.capturedNamed()).toEqual({ "post-compact": "POST-COMPACT-PANE\n" });
+	});
+
+	it("Session.waitIdle() returns when output-stable + prompt + no spinner (PR-07)", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		// Return the SAME idle pane every time — output-stable + prompt + context%, no spinner.
+		execMock.mockImplementation((file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			calls.push([file, ...argv]);
+			if (argv[0] === "capture-pane") return "stuff happened\n50.0%/200K context\n> ";
+			return "";
+		});
+		const { Session } = await import("./driver/session.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		const pane = await session.waitIdle({ quietMs: 10, timeoutMs: 500 });
+		expect(pane).toMatch(/> $/);
+	});
+
+	it("Session.waitIdle() throws DriverIdleTimeoutError on spinner that never clears", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation((file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			calls.push([file, ...argv]);
+			if (argv[0] === "capture-pane") return "stuff\n50%/ ctx\n⠋ thinking\n> ";
+			return "";
+		});
+		const { Session } = await import("./driver/session.js");
+		const { DriverIdleTimeoutError } = await import("./driver/errors.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		await expect(session.waitIdle({ quietMs: 5, timeoutMs: 100 })).rejects.toBeInstanceOf(
+			DriverIdleTimeoutError,
+		);
+	});
+
+	it("Session.execute('type') with non-risky text uses send-keys -l + Enter", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation((file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			calls.push([file, ...argv]);
+			return "";
+		});
+		const { Session } = await import("./driver/session.js");
+		const session = Session.fromTarget({ session: "s", paneId: "%5" });
+		await session.execute({ kind: "type", text: "/scratch list", press: "Enter" });
+		const cmds = calls.map((c) => c[1]);
+		// send-keys -l for the text, then send-keys Enter — no set-buffer.
+		expect(cmds).toContain("send-keys");
+		expect(cmds).not.toContain("set-buffer");
+		// First send-keys must carry -l for literal mode.
+		const literal = calls.find((c) => c[1] === "send-keys" && c.includes("-l"));
+		expect(literal).toBeTruthy();
+	});
+});

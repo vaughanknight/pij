@@ -1,11 +1,27 @@
 // harness/driver/session.ts
 //
-// T002 ships ONLY the public type surface (Step, WaitIdleOpts) — these
-// are referenced by errors.ts at type-import time. T003 fills in the
-// Session class implementation (start / waitIdle / run / execute /
-// teardown / capturedNamed) and the matching unit tests.
+// High-level Session class — the ergonomic wrapper most callers use.
+// Wraps a Target with state-aware methods. Transcribed from workshop 001
+// § Module: session.ts. Encodes PR-01/PR-02/PR-04/PR-07 (pi rendering
+// surface) and closes IA-02/IA-04/IA-08 (smoke brittleness).
 
-import type { Key } from "./tmux.js";
+import { DriverAssertionError, DriverIdleTimeoutError } from "./errors.js";
+import {
+	assertAlive,
+	type BootOpts,
+	boot,
+	capture,
+	type Key,
+	paste,
+	press,
+	record as recordPane,
+	type Target,
+	targetStr,
+	teardown,
+	type as typeText,
+} from "./tmux.js";
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // ─── Step types (IA-03) ─────────────────────────────────────────────────────
 
@@ -32,4 +48,192 @@ export interface WaitIdleOpts {
 	timeoutMs?: number;
 	/** Capture window in lines. Default 50. */
 	scrollback?: number;
+}
+
+export const DEFAULT_PROMPT_RE = /^>\s/m;
+export const DEFAULT_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
+export const DEFAULT_CONTEXT_RE = /\d+(\.\d+)?%\//;
+
+const RISKY_PAYLOAD_RE = /[\n"`$;]|^-/; // workshop 001 D6: auto-route to paste()
+
+// ─── Session class ──────────────────────────────────────────────────────────
+
+export class Session {
+	private readonly target: Target;
+	private readonly priorSteps: Step[] = [];
+	private readonly captures: Record<string, string> = {};
+	private recorder?: { stop: () => void };
+
+	private constructor(target: Target) {
+		this.target = target;
+	}
+
+	/** Boot a new tmux session running `cmd`. */
+	static async start(opts: BootOpts & { recordPath?: string }): Promise<Session> {
+		const target = boot(opts);
+		const s = new Session(target);
+		if (opts.recordPath) s.recorder = recordPane(target, opts.recordPath);
+		return s;
+	}
+
+	/** Test-only escape hatch: wrap an existing Target without booting. */
+	static fromTarget(target: Target): Session {
+		return new Session(target);
+	}
+
+	get id(): string {
+		return targetStr(this.target);
+	}
+
+	/** Wait until pi is idle: output-stable + prompt visible + no spinner (PR-07). */
+	async waitIdle(opts: WaitIdleOpts = {}): Promise<string> {
+		const promptRe = opts.promptRe ?? DEFAULT_PROMPT_RE;
+		const spinnerRe = opts.spinnerRe ?? DEFAULT_SPINNER_RE;
+		const contextRe = opts.contextRe ?? DEFAULT_CONTEXT_RE;
+		const quietMs = opts.quietMs ?? 250;
+		const timeoutMs = opts.timeoutMs ?? 5000;
+		const scrollback = opts.scrollback ?? 50;
+
+		const deadline = Date.now() + timeoutMs;
+		let last = "";
+		let stable = "";
+
+		while (Date.now() < deadline) {
+			const now = capture(this.target, { scrollback, join: true });
+			if (now === last && now !== "") {
+				const last3 = now.split("\n").slice(-3).join("\n");
+				const lines = now.split("\n");
+				const lastNonEmpty = [...lines].reverse().find((l) => l.trim() !== "") ?? "";
+				if (contextRe.test(now) && promptRe.test(lastNonEmpty) && !spinnerRe.test(last3)) {
+					return now;
+				}
+				stable = now;
+			}
+			last = now;
+			await sleep(quietMs);
+		}
+		throw new DriverIdleTimeoutError(this.target, stable || last, timeoutMs);
+	}
+
+	/** Type-then-confirm — the atomic primitive (TC-12). Auto-routes risky payloads. */
+	async run(
+		input: string,
+		expect: RegExp,
+		opts: { timeoutMs?: number; press?: Key } = {},
+	): Promise<string> {
+		const t0 = Date.now();
+		const pressKey = opts.press ?? "Enter";
+		const timeout = opts.timeoutMs ?? 5000;
+		const step: Step = {
+			kind: "type",
+			text: input,
+			press: pressKey,
+			expect,
+			expectTimeoutMs: timeout,
+		};
+
+		assertAlive(this.target);
+
+		if (RISKY_PAYLOAD_RE.test(input)) paste(this.target, input);
+		else typeText(this.target, input);
+		press(this.target, pressKey);
+
+		const deadline = t0 + timeout;
+		let pane = "";
+		while (Date.now() < deadline) {
+			pane = capture(this.target, { scrollback: 2000, join: true });
+			if (expect.test(pane)) {
+				this.priorSteps.push(step);
+				return pane;
+			}
+			await sleep(150);
+		}
+		throw this.assertionFailure(step, expect, pane, t0);
+	}
+
+	/** Execute one Step. Adapter between scenario JSON and the underlying primitives. */
+	async execute(step: Step): Promise<void> {
+		const t0 = Date.now();
+		switch (step.kind) {
+			case "type": {
+				if (RISKY_PAYLOAD_RE.test(step.text)) paste(this.target, step.text);
+				else typeText(this.target, step.text);
+				if (step.press) press(this.target, step.press);
+				if (step.expect)
+					await this.expectMatch(step, step.expect, step.expectTimeoutMs ?? 5000, t0);
+				break;
+			}
+			case "press": {
+				press(this.target, step.key, step.n);
+				if (step.expect)
+					await this.expectMatch(step, step.expect, step.expectTimeoutMs ?? 5000, t0);
+				break;
+			}
+			case "paste": {
+				paste(this.target, step.data);
+				if (step.expect)
+					await this.expectMatch(step, step.expect, step.expectTimeoutMs ?? 5000, t0);
+				break;
+			}
+			case "wait": {
+				await this.waitIdle({
+					quietMs: step.quietMs,
+					promptRe: step.signal,
+					timeoutMs: step.timeoutMs,
+				});
+				break;
+			}
+			case "sleep": {
+				await sleep(step.ms);
+				break;
+			}
+			case "capture": {
+				this.captures[step.name] = capture(this.target, { scrollback: 2000, join: true });
+				break;
+			}
+		}
+		this.priorSteps.push(step);
+	}
+
+	capturedNamed(): Record<string, string> {
+		return { ...this.captures };
+	}
+
+	teardown(): void {
+		this.recorder?.stop();
+		teardown(this.target);
+	}
+
+	// ─── private ──────────────────────────────────────────────────────────────
+
+	private async expectMatch(step: Step, re: RegExp, timeoutMs: number, t0: number): Promise<void> {
+		const deadline = t0 + timeoutMs;
+		let pane = "";
+		while (Date.now() < deadline) {
+			pane = capture(this.target, { scrollback: 2000, join: true });
+			if (re.test(pane)) return;
+			await sleep(150);
+		}
+		throw this.assertionFailure(step, re, pane, t0);
+	}
+
+	private assertionFailure(
+		step: Step,
+		expected: RegExp,
+		actual: string,
+		t0: number,
+	): DriverAssertionError {
+		const scrollback = capture(this.target, { scrollback: 5000, join: true });
+		const status = scrollback.split("\n").slice(-3).join("\n");
+		return new DriverAssertionError({
+			target: this.target,
+			step,
+			expected,
+			actual,
+			scrollback,
+			status,
+			priorSteps: [...this.priorSteps],
+			durationMs: Date.now() - t0,
+		});
+	}
 }
