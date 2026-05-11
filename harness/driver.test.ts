@@ -1,0 +1,120 @@
+// harness/driver.test.ts
+//
+// Unit tests for the Driver SDK. Mock node:child_process so we can assert
+// the argv arrays the SDK emits without a live tmux. Per spec Clarify Q3,
+// node:child_process is the targeted-mock carve-out: argv IS the unit
+// under test.
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { calls } = vi.hoisted(() => ({ calls: [] as string[][] }));
+
+vi.mock("node:child_process", () => ({
+	execFileSync: vi.fn((file: string, args: string[]) => {
+		calls.push([file, ...args]);
+		if (args[0] === "display-message") return "%5\n";
+		if (args[0] === "list-panes") return "%5\t12345\tpi\t0\t200\t50\n";
+		if (args[0] === "capture-pane") return "> \n";
+		return "";
+	}),
+}));
+
+beforeEach(() => {
+	calls.length = 0;
+});
+
+afterEach(() => {
+	vi.resetModules();
+});
+
+// ─── tmux primitives (TC-01..TC-12) ─────────────────────────────────────────
+
+describe("driver/tmux primitives", () => {
+	it("type() uses send-keys -l for literal mode (TC-02)", async () => {
+		const { type } = await import("./driver/tmux.js");
+		type({ session: "s", paneId: "%5" }, "/scratch list");
+		expect(calls.at(-1)).toEqual(["tmux", "send-keys", "-t", "%5", "-l", "/scratch list"]);
+	});
+
+	it("press() uses send-keys without -l (TC-02)", async () => {
+		const { press } = await import("./driver/tmux.js");
+		press({ session: "s", paneId: "%5" }, "Enter");
+		expect(calls.at(-1)).toEqual(["tmux", "send-keys", "-t", "%5", "Enter"]);
+	});
+
+	it("press() accepts a repeat count (-N)", async () => {
+		const { press } = await import("./driver/tmux.js");
+		press({ session: "s", paneId: "%5" }, "Down", 3);
+		expect(calls.at(-1)).toEqual(["tmux", "send-keys", "-t", "%5", "-N", "3", "Down"]);
+	});
+
+	it("paste() uses set-buffer + paste-buffer (TC-03)", async () => {
+		const { paste } = await import("./driver/tmux.js");
+		paste({ session: "s", paneId: "%5" }, "weird `$payload`");
+		const setBuf = calls.at(-2);
+		const pasteBuf = calls.at(-1);
+		expect(setBuf?.[1]).toBe("set-buffer");
+		expect(setBuf).toContain("weird `$payload`");
+		expect(pasteBuf?.[1]).toBe("paste-buffer");
+		expect(pasteBuf).toContain("%5");
+	});
+
+	it("capture() defaults to -p -J (TC-04)", async () => {
+		const { capture } = await import("./driver/tmux.js");
+		capture({ session: "s", paneId: "%5" });
+		expect(calls.at(-1)).toEqual(["tmux", "capture-pane", "-t", "%5", "-p", "-J"]);
+	});
+
+	it("capture() with scrollback adds -S/-E (TC-04)", async () => {
+		const { capture } = await import("./driver/tmux.js");
+		capture({ session: "s", paneId: "%5" }, { scrollback: 2000 });
+		const last = calls.at(-1);
+		expect(last).toContain("-S");
+		expect(last).toContain("-2000");
+		expect(last).toContain("-E");
+	});
+
+	it("boot() kills prior session, captures pane_id (TC-08, TC-09)", async () => {
+		const { boot } = await import("./driver/tmux.js");
+		const t = boot({ session: "s", cwd: "/tmp", cmd: "bash" });
+		expect(t.paneId).toBe("%5");
+		const cmds = calls.map((c) => c[1]);
+		expect(cmds).toContain("kill-session");
+		expect(cmds).toContain("new-session");
+		expect(cmds).toContain("display-message");
+		// Geometry defaults to 200×50 (TC-09).
+		const newSession = calls.find((c) => c[1] === "new-session");
+		expect(newSession).toContain("200");
+		expect(newSession).toContain("50");
+	});
+
+	it("inspect() parses tab-separated list-panes output (TC-11)", async () => {
+		const { inspect } = await import("./driver/tmux.js");
+		const info = inspect({ session: "s", paneId: "%5" });
+		expect(info.paneId).toBe("%5");
+		expect(info.pid).toBe(12345);
+		expect(info.cmd).toBe("pi");
+		expect(info.dead).toBe(false);
+		expect(info.cols).toBe(200);
+		expect(info.rows).toBe(50);
+	});
+
+	it("hasSession() returns true on success, false on throw", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementationOnce(() => {
+			throw new Error("no such session");
+		});
+		const { hasSession } = await import("./driver/tmux.js");
+		expect(hasSession("missing")).toBe(false);
+		expect(hasSession("present")).toBe(true);
+	});
+
+	it("targetStr() prefers paneId (%N) over session:window.pane (TC-08)", async () => {
+		const { targetStr } = await import("./driver/tmux.js");
+		expect(targetStr({ session: "s", paneId: "%7" })).toBe("%7");
+		expect(targetStr({ session: "s" })).toBe("s:0.0");
+		expect(targetStr({ session: "s", window: 1, pane: 2 })).toBe("s:1.2");
+	});
+});
