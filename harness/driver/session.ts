@@ -50,7 +50,18 @@ export interface WaitIdleOpts {
 	scrollback?: number;
 }
 
-export const DEFAULT_PROMPT_RE = /^>\s/m;
+// Pi-ready signal. Two patterns are accepted:
+//   - Legacy `> ` prompt at line start (pre-TUI pi, kept for safety)
+//   - Modern pi TUI footer: "<model-id> • <tier>" — pi v0.74 always
+//     ends its status footer with e.g. "gpt-5.5 • medium" or
+//     "claude-opus • high". The `•` bullet is unique to pi's footer
+//     (it is not used in pi's banner, slash output, or extension UI).
+// The check is against the LAST non-empty line, so a match here means
+// "pi has finished rendering and the bottom line is the status footer".
+// PR-01 in the research dossier captured the legacy `>` shape; the
+// bullet alternative was discovered during T005 manual verification
+// (pi v0.74.0 capture had no `>` glyph anywhere on screen).
+export const DEFAULT_PROMPT_RE = /^>\s|\s•\s\w/;
 export const DEFAULT_SPINNER_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
 export const DEFAULT_CONTEXT_RE = /\d+(\.\d+)?%\//;
 

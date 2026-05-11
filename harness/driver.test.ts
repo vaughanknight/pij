@@ -188,6 +188,14 @@ describe("driver/session", () => {
 		expect(session.capturedNamed()).toEqual({ "post-compact": "POST-COMPACT-PANE\n" });
 	});
 
+	it("DEFAULT_PROMPT_RE matches both legacy '> ' and pi v0.74 TUI footer", async () => {
+		const { DEFAULT_PROMPT_RE } = await import("./driver/session.js");
+		expect(DEFAULT_PROMPT_RE.test("> ")).toBe(true); // legacy pi
+		expect(DEFAULT_PROMPT_RE.test("gpt-5.5 • medium")).toBe(true); // pi v0.74 TUI footer
+		expect(DEFAULT_PROMPT_RE.test("claude-opus • high")).toBe(true);
+		expect(DEFAULT_PROMPT_RE.test("random banner text")).toBe(false);
+	});
+
 	it("Session.waitIdle() returns when output-stable + prompt + no spinner (PR-07)", async () => {
 		vi.resetModules();
 		const cp = await import("node:child_process");
