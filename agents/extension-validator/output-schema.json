@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Extension Validator Farewell Envelope",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["extension", "results", "summary", "retrospective"],
+  "properties": {
+    "extension": {
+      "type": "string",
+      "description": "The extension name that was validated (echo of input.extensionName)."
+    },
+    "results": {
+      "type": "array",
+      "description": "One RunReport per scenario executed, in execution order. Mirrors harness/driver/index.ts RunReport interface verbatim.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["scenario", "ok", "durationMs", "executedSteps", "captures", "summary"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "executedSteps": { "type": "integer", "minimum": 0 },
+          "captures": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["passed", "failed", "durationMs"],
+            "properties": {
+              "passed": { "type": "integer", "minimum": 0 },
+              "failed": { "type": "integer", "minimum": 0 },
+              "durationMs": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "failure": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "assertion-failed",
+                  "boot-failed",
+                  "idle-timeout",
+                  "pane-dead",
+                  "preflight-failed",
+                  "other"
+                ]
+              },
+              "message": { "type": "string" },
+              "expected": { "type": "string" },
+              "actual": { "type": "string" },
+              "scrollback": { "type": "string" },
+              "status": { "type": "string" },
+              "priorSteps": { "type": "array" },
+              "durationMs": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["passed", "failed", "durationMs"],
+      "description": "Aggregate across all scenarios in `results`. `passed` and `failed` count step-level outcomes (sum of per-scenario summary fields); `durationMs` is the total wall-clock of all scenario runs.",
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "retrospective": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["magicWand", "magicWandTarget"],
+      "description": "One magic-wand wish per run plus optional difficulty entries the curator promotes to docs/difficulties.md. magicWandTarget mirrors minih's convention: 'project' (pij harness improvement), 'minih' (coordination loop), 'pi' (pi binary itself), or 'coordination' (validator pack design).",
+      "properties": {
+        "magicWand": {
+          "type": "string",
+          "minLength": 10,
+          "description": "If you could wave a wand and change ONE thing about this validation run, what would it be? Specific is better than abstract. Example: 'I wish runScenario could attach a transcript to RunReport.captures by default so my retro could quote the failure context without re-running.'"
+        },
+        "magicWandTarget": {
+          "type": "string",
+          "enum": ["project", "minih", "pi", "coordination"]
+        },
+        "difficulties": {
+          "type": "array",
+          "description": "Friction observations worth promoting to docs/difficulties.md as MH-NNN rows. Curator (human) decides which land.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["category", "description", "severity"],
+            "properties": {
+              "category": {
+                "type": "string",
+                "enum": [
+                  "driver-sdk",
+                  "scenario-author",
+                  "pi-rendering",
+                  "tmux",
+                  "minih-coordination",
+                  "harness-doc",
+                  "other"
+                ]
+              },
+              "description": { "type": "string", "minLength": 10 },
+              "workaround": { "type": "string" },
+              "severity": {
+                "type": "string",
+                "enum": ["high", "medium", "low"]
+              }
+            }
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "sessionMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "startedAt": { "type": "string" },
+        "endedAt": { "type": "string" },
+        "tmuxVersion": { "type": "string" },
+        "piVersion": { "type": "string" }
+      }
+    }
+  }
+}

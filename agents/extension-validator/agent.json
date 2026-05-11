@@ -1,0 +1,28 @@
+{
+  "$schema": "https://minih.dev/schemas/agent-manifest.json",
+  "name": "extension-validator",
+  "version": "0.1.0",
+  "description": "One-shot pilot for pi extensions. Boots once, drives a given extension's smoke scenario(s) through the Driver SDK (harness/driver/run.ts) against real pi inside tmux, and writes a farewell envelope with the RunReport per scenario plus a magic-wand retrospective. Validates that customType entries survive /compact, status pills render correctly, and the extension's commands behave end-to-end without human input.",
+  "author": "pij",
+  "tags": ["pi-extensions", "smoke", "validator", "harness", "magic-wand"],
+  "minihVersion": ">=0.3.0",
+  "type": "minih-agent",
+  "files": [
+    {
+      "path": "prompt.md",
+      "description": "Identity, run loop, scenario discovery, Driver-SDK invocation protocol, RunReport aggregation, magic-wand retrospective. Frontmatter declares permissions: trusted, coordination: optional, timeout: 1800 (30m)."
+    },
+    {
+      "path": "instructions.md",
+      "description": "Per-scenario validation checklist (boot, run scenarios, aggregate results), evidence required per assertion outcome, when to record a magic-wand wish, when to flag a difficulty candidate."
+    },
+    {
+      "path": "input-schema.json",
+      "description": "JSON schema for the validator input: extensionName (required), optional scenarios override array, piBinary, tmuxSession prefix, cwd."
+    },
+    {
+      "path": "output-schema.json",
+      "description": "JSON schema for the farewell envelope: { extension, results: RunReport[], summary: { passed, failed, durationMs }, retrospective: { magicWand, magicWandTarget, difficulties[]? }, sessionMetadata }. The results[] shape mirrors RunReport from harness/driver/index.ts verbatim."
+    }
+  ]
+}

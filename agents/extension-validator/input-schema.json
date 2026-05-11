@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Extension Validator Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["extensionName"],
+  "properties": {
+    "extensionName": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Name of the pi extension to validate. The validator will look for `.pi/extensions/<extensionName>/smoke.ts` by default. Must be lowercase kebab-case (pi extension name convention)."
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "steps"],
+        "properties": {
+          "name": { "type": "string" },
+          "cwd": { "type": "string" },
+          "cmd": { "type": "string" },
+          "cols": { "type": "integer", "minimum": 40, "maximum": 500 },
+          "rows": { "type": "integer", "minimum": 10, "maximum": 200 },
+          "bootReadyTimeoutMs": { "type": "integer", "minimum": 1000 },
+          "steps": { "type": "array" }
+        }
+      },
+      "description": "Optional override — inline Scenario JSON objects (matching harness/driver Scenario shape) to run instead of discovering smoke.ts on disk. Regex fields use the { source: string, flags?: string } wire shape; the Driver SDK hydrates them automatically."
+    },
+    "piBinary": {
+      "type": "string",
+      "default": "pi",
+      "description": "Path or name of the pi binary on PATH. Defaults to `pi`."
+    },
+    "tmuxSession": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9-]+$",
+      "description": "Optional prefix override for the tmux session name. Defaults to `pij-<scenario.name>-<pid>` per Driver SDK convention."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Working directory for pi. Defaults to MINIH_PROJECT_ROOT (the pij repo root)."
+    }
+  }
+}
