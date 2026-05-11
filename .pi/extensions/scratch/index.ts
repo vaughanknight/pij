@@ -95,7 +95,12 @@ export default function (pi: ExtensionAPI) {
 
 	function refreshStatus(ctx: ExtensionContext): void {
 		const n = store.count();
-		ctx.ui.setStatus("scratch", n === 0 ? "" : `scratch: ${n} note${n === 1 ? "" : "s"}`);
+		// D-006: passing `""` STORES an empty string (renders an empty
+		// pill); only `undefined` calls `delete` and clears the pill.
+		// Confirmed by reading pi-mono `footer-data-provider.ts:132-138`
+		// during plan 004 research. Pre-T009 this was `n === 0 ? "" : ...`
+		// which left a stale empty pill visible.
+		ctx.ui.setStatus("scratch", n === 0 ? undefined : `scratch: ${n} note${n === 1 ? "" : "s"}`);
 	}
 
 	// Pattern P10: one handler for session_start, all reasons
