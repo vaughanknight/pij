@@ -223,7 +223,7 @@ describe("driver/session", () => {
 		);
 	});
 
-	it("Session.execute('type') with non-risky text uses send-keys -l + Enter", async () => {
+	it("Session.execute('type') uses send-keys -l + Enter for non-risky text", async () => {
 		vi.resetModules();
 		const cp = await import("node:child_process");
 		const execMock = vi.mocked(cp.execFileSync);
@@ -242,5 +242,106 @@ describe("driver/session", () => {
 		// First send-keys must carry -l for literal mode.
 		const literal = calls.find((c) => c[1] === "send-keys" && c.includes("-l"));
 		expect(literal).toBeTruthy();
+	});
+});
+
+// ─── Orchestrator (index.ts: runScenario, preflight, isScenario, hydrate) ───
+
+describe("driver/index orchestrator", () => {
+	it("isScenario() accepts well-formed scenario, rejects malformed", async () => {
+		const { isScenario } = await import("./driver/index.js");
+		expect(isScenario({ name: "x", steps: [] })).toBe(true);
+		expect(isScenario({ name: 0, steps: [] })).toBe(false);
+		expect(isScenario({ steps: [] })).toBe(false);
+		expect(isScenario(null)).toBe(false);
+		expect(isScenario(undefined)).toBe(false);
+		expect(isScenario("scenario")).toBe(false);
+	});
+
+	it("hydrateScenario() converts { source, flags } JSON-regex → native RegExp", async () => {
+		const { hydrateScenario } = await import("./driver/index.js");
+		const wireRegex = { source: "saved \\[#1\\]", flags: "i" } as unknown as RegExp;
+		const wired = hydrateScenario({
+			name: "test",
+			steps: [
+				{ kind: "type", text: "noop", expect: wireRegex },
+				{ kind: "wait", signal: wireRegex },
+			],
+		});
+		const typeStep = wired.steps[0];
+		const waitStep = wired.steps[1];
+		expect(typeStep?.kind).toBe("type");
+		if (typeStep?.kind === "type") {
+			expect(typeStep.expect).toBeInstanceOf(RegExp);
+			expect(typeStep.expect?.source).toBe("saved \\[#1\\]");
+			expect(typeStep.expect?.flags).toBe("i");
+		}
+		if (waitStep?.kind === "wait") {
+			expect(waitStep.signal).toBeInstanceOf(RegExp);
+		}
+	});
+
+	it("hydrateScenario() leaves native RegExp untouched (round-trip)", async () => {
+		const { hydrateScenario } = await import("./driver/index.js");
+		const nativeRe = /pure-native/;
+		const wired = hydrateScenario({
+			name: "test",
+			steps: [{ kind: "type", text: "noop", expect: nativeRe }],
+		});
+		const step = wired.steps[0];
+		if (step?.kind === "type") {
+			expect(step.expect).toBe(nativeRe);
+		}
+	});
+
+	it("preflight() reports missing binaries when execFileSync throws", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation(() => {
+			throw new Error("ENOENT");
+		});
+		const { preflight } = await import("./driver/index.js");
+		const result = preflight();
+		expect(result.ok).toBe(false);
+		expect(result.missing).toEqual(["tmux", "pi"]);
+		expect(result.tmuxVersion).toBeUndefined();
+	});
+
+	it("preflight() reports ok when both binaries respond", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation((_file: string, args: readonly string[] | undefined) => {
+			const argv = Array.from(args ?? []);
+			if (argv[0] === "-V") return "tmux 3.3a\n";
+			if (argv[0] === "--version") return "pi 1.2.3\n";
+			return "";
+		});
+		const { preflight } = await import("./driver/index.js");
+		const result = preflight();
+		expect(result.ok).toBe(true);
+		expect(result.tmuxVersion).toBe("tmux 3.3a");
+		expect(result.piVersion).toBe("pi 1.2.3");
+		expect(result.missing).toEqual([]);
+	});
+
+	it("runScenario() short-circuits with preflight-failed when binaries missing", async () => {
+		vi.resetModules();
+		const cp = await import("node:child_process");
+		const execMock = vi.mocked(cp.execFileSync);
+		execMock.mockImplementation(() => {
+			throw new Error("ENOENT");
+		});
+		const { runScenario } = await import("./driver/index.js");
+		const report = await runScenario({ name: "preflight-fail", steps: [] });
+		expect(report.ok).toBe(false);
+		expect(report.failure).toMatchObject({ kind: "preflight-failed" });
+		expect(report.executedSteps).toBe(0);
+		expect(report.summary).toEqual({
+			passed: 0,
+			failed: 0,
+			durationMs: expect.any(Number),
+		});
 	});
 });
