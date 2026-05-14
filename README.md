@@ -40,8 +40,11 @@ Three paths work today (no npm publish yet):
 # Path 1 — clone the harness, run pi from inside (uses project autoload)
 git clone https://github.com/AI-Substrate/pij.git && cd pij && npm install && pi
 
-# Path 2 — clone, then symlink one extension into your user scope
-ln -s "$PWD/.pi/extensions/<name>" ~/.pi/extensions/<name>
+# Path 2 — clone, then symlink every extension into your user scope so they
+# autoload from any cwd. Idempotent; refuses to clobber non-symlinks.
+npm run link              # all extensions
+npm run link -- scratch   # just one
+npm run link -- --remove  # remove pij-owned symlinks
 
 # Path 3 — let pi install directly from git (reads pij's pi.extensions manifest)
 pi install https://github.com/AI-Substrate/pij.git

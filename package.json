@@ -29,6 +29,7 @@
 		"format": "biome check --write .",
 		"new": "tsx harness/scripts/new-extension.ts",
 		"smoke": "tsx harness/scripts/smoke.ts",
+		"link": "tsx harness/scripts/link-global.ts",
 		"self-check": "npm run typecheck && npm run lint && npm run test && npm run smoke"
 	},
 	"peerDependencies": {
