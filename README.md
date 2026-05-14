@@ -43,7 +43,7 @@ git clone https://github.com/AI-Substrate/pij.git && cd pij && npm install && pi
 # Path 2 — clone, then symlink every extension into your user scope so they
 # autoload from any cwd. Idempotent; refuses to clobber non-symlinks.
 npm run link              # all extensions
-npm run link -- scratch   # just one
+npm run link -- <name>    # just one
 npm run link -- --remove  # remove pij-owned symlinks
 
 # Path 3 — let pi install directly from git (reads pij's pi.extensions manifest)
@@ -59,16 +59,17 @@ or `pi install <git-url>` is the recommended path.
 v0.1.0 — harness shipped (throwaway `demo` extension validated the path
 end-to-end, then was torn down).
 
-**v0.2 (current main)** — `scratch` is the first **kept** extension, the
-orientation reference, and the first real-extension data point in
-`docs/velocity.md`. Slash commands (`/scratch list|add|del|clear`),
-LLM tools (`scratch_save`, `scratch_list`), status line, append-only
-session persistence — see `.pi/extensions/scratch/`. The compounding
-ratio (harness AC-15) is **deferred to extension #3** so it has ≥2
-real-extension data points to compare. D-005 (does `customType` survive
-`/compact`?) has a smoke scenario shipped at
-`.pi/extensions/scratch/smoke.ts`; run `npm run smoke -- scratch` or
-manually `/compact` in pi to resolve it.
+**v0.2** — `scratch` was built as the first real-extension data point in
+`docs/velocity.md`; it has since been retired so the repo stays focused on
+the harness.
+
+**v0.3 (current main)** — Driver SDK (`harness/driver/`) gives typed
+`Scenario`/`Step`/`Session` smoke primitives over tmux; `npm run smoke`
+is a thin adapter. `extension-validator` agent pack at
+`agents/extension-validator/` drives the SDK for autonomous validation.
+`npm run link` symlinks pij extensions into `~/.pi/extensions/` for
+cross-cwd use. `npm run pkg` + `.pi/packages.yaml` manage third-party
+pi extensions (enable/disable; disable runs `pi remove`).
 
 ## License
 
