@@ -1,0 +1,6 @@
+{
+	"packages": [
+		"https://github.com/nicobailon/pi-mcp-adapter.git",
+		"git:https://github.com/hasit/pi-community-themes@v0.3.0"
+	]
+}

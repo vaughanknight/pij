@@ -1,0 +1,16 @@
+# pij third-party pi-extension manifest — source of truth.
+# Edit here, then `npm run pkg sync` (or use `pkg add/enable/disable`).
+# .pi/settings.json#packages is generated from this; do not hand-edit it.
+#
+# Each entry:
+#   source:  npm:<name>[@version] | https://github.com/.../repo.git | ./local/path
+#   enabled: true → installed by pi on boot; false → removed via `pi remove` on sync
+#   note:    optional reminder of why this is here
+
+packages:
+  - source: https://github.com/nicobailon/pi-mcp-adapter.git
+    enabled: true
+    note: MCP bridge
+  - source: git:https://github.com/hasit/pi-community-themes@v0.3.0
+    enabled: true
+    note: Community pi themes
