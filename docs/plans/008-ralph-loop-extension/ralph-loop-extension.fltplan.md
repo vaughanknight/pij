@@ -1,6 +1,6 @@
 # Flight Plan — Ralph Loop pi extension
 
-**Status**: Workshops complete (4/4) — awaiting `/plan-3-v2-architect`
+**Status**: Plan ready — awaiting `/plan-4-complete-the-plan` validation
 **Plan dir**: `docs/plans/008-ralph-loop-extension/`
 **Spec**: `ralph-loop-extension-spec.md`
 **Research**: `research-dossier.md` (516 lines) + `external-research/ralph-loop-provenance.md` (371 lines, 27+ verified citations)
@@ -25,7 +25,9 @@ The first pi extension in pij that runs **autonomously for multiple iterations**
 | Spec | ✅ Drafted |
 | Clarify | ✅ Complete (8/8 questions; Q1=Simple, Q5=domain-extract-first, Q6=Shape C, Q8=minih harness) |
 | Workshops (4/4) | ✅ Complete (stop-conditions / SDK lifecycle / plan format / compact-survival) |
-| Architect (plan-3) | ⏳ Next |
+| Plan (plan-3) | ✅ Drafted (`ralph-loop-extension-plan.md`, 33 tasks, Simple Mode + Phase 0 prerequisite) |
+| Readiness gate (plan-4) | ⏳ Next |
+| Architect (plan-3) | done |
 | Implement (plan-6) | — |
 | Code review (plan-7) | — |
 
@@ -44,4 +46,4 @@ The first pi extension in pij that runs **autonomously for multiple iterations**
 
 ## Next steps
 
-Run **/plan-3-v2-architect** against `ralph-loop-extension-spec.md`. Workshops 001–004 are the design contract; architect translates them to phases + tasks.
+Run **/plan-4-complete-the-plan** to gate readiness. Then `/plan-6-v2-implement-phase` once READY (Simple Mode skips plan-5).
