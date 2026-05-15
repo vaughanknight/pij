@@ -1,0 +1,42 @@
+# Domain Map
+
+```mermaid
+flowchart LR
+    SWS[session-work-state\ncontracts: session DB semantics, schema, reset]
+    ATI[agent-tooling-interface\ncontracts: sql tool, /sql command, result UX]
+    H[extension-authoring-harness\ncontracts: generator, smoke, self-check, feedback, pkg vet/audit]
+    PI[pi runtime\ncontracts: extension lifecycle, tools, commands]
+    V[vetter pipeline\ncontracts: Verdict, Finding, Vetter; vetted: schema]
+    RL[agentic-loops\ncontracts: StopReason, IterationRunner, PlanModel]
+
+    ATI -->|uses current-session store contract| SWS
+    ATI -->|registers tool/command/lifecycle handlers| PI
+    SWS -->|derives identity from session manager via wiring| PI
+    ATI -->|validated by smoke/self-check| H
+    SWS -->|validated by store tests/self-check| H
+    V -->|sub-capability of| H
+    V -->|scans markdown + tool descriptions| ATI
+    RL -->|registers /ralph command + tools + session_start| PI
+    RL -->|validated by store tests/smoke/self-check| H
+```
+
+## Health Summary
+
+| Relationship | Status | Notes |
+|--------------|--------|-------|
+| `agent-tooling-interface` → `session-work-state` | healthy | UI/tool layer consumes structured store results; store remains pi-free. |
+| `agent-tooling-interface` → `pi runtime` | healthy | Wiring owns pi APIs and presentation. |
+| `session-work-state` → `pi runtime` | indirect | Store does not import pi; `index.ts` passes plain session/location data. |
+| `session-work-state` / `agent-tooling-interface` → `extension-authoring-harness` | healthy | Harness provides generator, tests, smoke, self-check, ledgers, and retro loop. |
+| `agentic-loops` → `pi runtime` | healthy | Wiring owns pi APIs (`appendEntry`, `setStatus`, `notify`, `registerCommand`, `registerTool`, `sessionManager.getEntries()`). Store remains pi-free (P2). |
+| `agentic-loops` → pi-sdk `createAgentSession` | observed-only | External dependency (not a pij domain). Lifecycle ownership documented in workshop 002 § Resource ownership; F-02 risk class. |
+| `agentic-loops` → `extension-authoring-harness` | healthy | Harness provides Driver SDK (`Scenario`/`Step`/`Session`), `compactAndAssert()` (AC-12 gift a), `FakeIterationRunner` test util. |
+| AC-05 (`/compact` durability of `customType`) | **unverified** | Blocks D-005 closure. T024 smoke is the gate; if A1/A2 fails, escalate to pi-mono per workshop 004 § Upstream escalation. |
+
+## History
+
+| Date | Change |
+|------|--------|
+| 2026-05-15 | Added Plan 006 session SQL domains and their harness/pi relationships. |
+| 2026-05-15 | Plan 009 — added vetter pipeline as a sub-capability of `extension-authoring-harness` with a consume edge to `agent-tooling-interface` (scans its surfaces). Pipeline contracts (`Verdict`, `Finding`, `Vetter`, `vetted:` schema) live in `harness/scripts/vetters/`. |
+| 2026-05-15 | Plan 008 — added `agentic-loops` node (`RL`); two outbound edges (to `pi runtime` for wiring; to `extension-authoring-harness` for tests/smoke). No cross-domain edge to existing pij domains in v1. AC-05 `/compact` durability listed as unverified in Health Summary until T024 lands. |

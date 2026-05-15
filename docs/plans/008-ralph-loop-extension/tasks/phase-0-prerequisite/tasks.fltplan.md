@@ -3,7 +3,7 @@
 **Plan**: [`../../ralph-loop-extension-plan.md`](../../ralph-loop-extension-plan.md)
 **Phase**: Phase 0: Prerequisite — Domain extraction + harness health
 **Generated**: 2026-05-15
-**Status**: Ready for takeoff
+**Status**: Landed
 
 ---
 
@@ -57,7 +57,7 @@ stateDiagram-v2
     S3 --> S4
     S4 --> [*]
 
-    class S1,S2,S3,S4 pending
+    class S1,S2,S3,S4 done
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -68,10 +68,10 @@ stateDiagram-v2
 
 <!-- Updated by /plan-6-v2 during implementation: [ ] → [~] → [x] -->
 
-- [ ] **Stage 1: Add `agentic-loops` to registry + map** — modify (not create) `registry.md` + `domain-map.md` (`docs/domains/registry.md` — modify; `docs/domains/domain-map.md` — modify)
-- [ ] **Stage 2: Write `agentic-loops/domain.md`** — full domain definition with StopReason verbatim as headline contract (`docs/domains/agentic-loops/domain.md` — new file)
-- [ ] **Stage 3: Healthcheck minih + companion** — verify D-025 workaround alive; boot/brief companion for Plan 008 (no file change; writes to `execution.log.md`)
-- [ ] **Stage 4: Scaffold ralph-loop + stamp T0** — `npm run new -- ralph-loop`; capture ISO-8601 T0 into velocity log (`docs/velocity.md` — append; `.pi/extensions/ralph-loop/*` — new scaffold)
+- [x] **Stage 1: Add `agentic-loops` to registry + map** — modify (not create) `registry.md` + `domain-map.md` (`docs/domains/registry.md` — modify; `docs/domains/domain-map.md` — modify)
+- [x] **Stage 2: Write `agentic-loops/domain.md`** — full domain definition with StopReason verbatim as headline contract (`docs/domains/agentic-loops/domain.md` — new file)
+- [x] **Stage 3: Healthcheck minih + companion** — verify D-025 workaround alive; boot/brief companion for Plan 008 (no file change; writes to `execution.log.md`)
+- [x] **Stage 4: Scaffold ralph-loop + stamp T0** — `npm run new -- ralph-loop`; capture ISO-8601 T0 into velocity log (`docs/velocity.md` — append; `.pi/extensions/ralph-loop/*` — new scaffold)
 
 ---
 
@@ -134,11 +134,11 @@ flowchart LR
 
 ## Checklist
 
-- [ ] T001: Modify `docs/domains/registry.md` — add `agentic-loops` row + History entry
-- [ ] T002: Modify `docs/domains/domain-map.md` — add `agentic-loops` node + Health Summary + History
-- [ ] T003: Create `docs/domains/agentic-loops/domain.md` — full domain doc with StopReason verbatim
-- [ ] T004: Healthcheck D-025 workaround + boot/brief companion run for Plan 008
-- [ ] T005: `npm run new -- ralph-loop` + stamp T0 in `docs/velocity.md`
+- [x] T001: Modify `docs/domains/registry.md` — add `agentic-loops` row + History entry
+- [x] T002: Modify `docs/domains/domain-map.md` — add `agentic-loops` node + Health Summary + History
+- [x] T003: Create `docs/domains/agentic-loops/domain.md` — full domain doc with StopReason verbatim
+- [x] T004: Healthcheck D-025 workaround + boot/brief companion run for Plan 008
+- [x] T005: `npm run new -- ralph-loop` + stamp T0 in `docs/velocity.md`
 
 ---
 
