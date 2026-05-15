@@ -635,6 +635,7 @@ export class RalphLoopStore {
 		runId: string,
 		planSnapshot: string,
 		signal: AbortSignal,
+		postIterationPlanSnapshot?: () => string | Promise<string>,
 	): Promise<{ stopReason: StopReason | null; record: IterationRecord | null }> {
 		const run = this.requireRun(runId);
 		const planModel = parseMarkdownPlan(planSnapshot, run.planPath);
@@ -690,11 +691,28 @@ export class RalphLoopStore {
 
 		const record = this.recordIteration(runId, result);
 
+		// F005 fix: post-evaluation must see the plan AS IT IS NOW. The agent may
+		// have edited the plan file during the iteration (e.g. checking off the
+		// final unchecked task without emitting the sigil). If the caller supplied
+		// a post-iteration snapshot fetcher, use it; otherwise fall back to the
+		// pre-iteration snapshot (callers without filesystem access — e.g. tests
+		// driving via FakeIterationRunner — simulate plan mutation via this hook).
+		let postPlanModel = planModel;
+		if (postIterationPlanSnapshot) {
+			try {
+				const freshSnapshot = await postIterationPlanSnapshot();
+				postPlanModel = parseMarkdownPlan(freshSnapshot, run.planPath);
+			} catch {
+				// Re-read failure (e.g. plan deleted) is non-fatal here — the next
+				// pre-iter evaluator will pick up ENOENT and end the run cleanly.
+			}
+		}
+
 		const postState: RunStateSnapshot = {
 			iteration: nextIter,
 			cancelRequested: run.cancelRequested,
 			midIteration: false,
-			planModel,
+			planModel: postPlanModel,
 			lastIterationOutput: result.output,
 			iterationLog: run.iterations,
 			spentUsd: this.spentUsd(run),

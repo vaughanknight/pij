@@ -214,6 +214,12 @@ export default function (pi: ExtensionAPI) {
 					handle.runId,
 					plan.content,
 					controller.signal,
+					// F005 fix: re-read plan AFTER the runner returns so post-evaluator
+					// sees any task-checkbox edits the agent made during the iteration.
+					() => {
+						const fresh = readPlan(planPath);
+						return fresh.ok ? fresh.content : plan.content;
+					},
 				);
 				refreshStatus(ctx);
 				if (stopReason !== null) {
@@ -388,7 +394,16 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			const toolSignal = signal ?? new AbortController().signal;
-			const result = await store.runOneIteration(params.runId, plan.content, toolSignal);
+			const result = await store.runOneIteration(
+				params.runId,
+				plan.content,
+				toolSignal,
+				// F005: re-read plan after the runner so post-eval is current
+				() => {
+					const fresh = readPlan(run.planPath);
+					return fresh.ok ? fresh.content : plan.content;
+				},
+			);
 			return {
 				content: [
 					{

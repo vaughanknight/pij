@@ -688,6 +688,104 @@ describe("RalphLoopStore lifecycle (T014.T)", () => {
 	});
 });
 
+// ─── F005 regression — post-evaluator sees the POST-iteration plan ──────────
+
+describe("runOneIteration F005 regression: post-iter plan re-read", () => {
+	it("plan-exhausted is detected when agent checks off the FINAL task without sigil (maxIterations=1)", async () => {
+		const rec = makeRecorder();
+		const runner: IterationRunner = {
+			async runIteration(input) {
+				// Agent claims to have done the task but does NOT emit the sigil.
+				return {
+					output: "checked off task X without sigil",
+					taskTitle: "X",
+					taskFingerprint: taskFingerprint("X"),
+					costUsd: null,
+					durationMs: 50,
+					verdict: "ok",
+				};
+			},
+		};
+		const store = new RalphLoopStore(rec.append, runner);
+		const { runId } = store.startRun("/p", {
+			...DEFAULT_CONFIG,
+			maxIterations: 1,
+		});
+
+		// Simulate plan mutation: pre = `- [ ] X` (1 undone), post = `- [x] X` (all done).
+		const preSnapshot = "- [ ] X\n";
+		const postSnapshot = "- [x] X\n";
+
+		const r = await store.runOneIteration(
+			runId,
+			preSnapshot,
+			new AbortController().signal,
+			async () => postSnapshot,
+		);
+
+		expect(r.record?.iteration).toBe(1);
+		expect(r.stopReason?.kind).toBe("complete");
+		if (r.stopReason?.kind === "complete") {
+			expect(r.stopReason.reason).toBe("plan_exhausted");
+		}
+	});
+
+	it("without the re-read hook, post-evaluator falls back to pre-snapshot (legacy behaviour preserved)", async () => {
+		const rec = makeRecorder();
+		const runner: IterationRunner = {
+			async runIteration() {
+				return {
+					output: "completed silently",
+					taskTitle: "X",
+					taskFingerprint: taskFingerprint("X"),
+					costUsd: null,
+					durationMs: 50,
+					verdict: "ok",
+				};
+			},
+		};
+		const store = new RalphLoopStore(rec.append, runner);
+		const { runId } = store.startRun("/p", {
+			...DEFAULT_CONFIG,
+			maxIterations: 1,
+		});
+
+		// Without postIterationPlanSnapshot, the pre-snapshot (1 undone) is reused.
+		const r = await store.runOneIteration(runId, "- [ ] X\n", new AbortController().signal);
+		expect(r.stopReason?.kind).toBe("max_iterations");
+	});
+
+	it("re-read closure throws → post-evaluator falls back to pre-snapshot, no crash", async () => {
+		const rec = makeRecorder();
+		const runner: IterationRunner = {
+			async runIteration() {
+				return {
+					output: "finished",
+					taskTitle: "Y",
+					taskFingerprint: taskFingerprint("Y"),
+					costUsd: null,
+					durationMs: 1,
+					verdict: "ok",
+				};
+			},
+		};
+		const store = new RalphLoopStore(rec.append, runner);
+		const { runId } = store.startRun("/p", { ...DEFAULT_CONFIG, maxIterations: 3 });
+		const r = await store.runOneIteration(
+			runId,
+			"- [ ] Y\n",
+			new AbortController().signal,
+			async () => {
+				throw new Error("plan file deleted mid-iteration");
+			},
+		);
+		expect(r.record?.iteration).toBe(1);
+		// Post-eval falls back to pre-snapshot (still 1 undone) and the run
+		// continues (no stop reason because iter < cap and plan not exhausted).
+		expect(r.stopReason).toBeNull();
+	});
+});
+
 // ─── T015.T — Replay determinism ────────────────────────────────────────────
 
 function entriesFromRecorder(rec: ReturnType<typeof makeRecorder>): ReplayableEntry[] {
