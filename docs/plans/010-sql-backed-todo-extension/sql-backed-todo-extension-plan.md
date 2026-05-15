@@ -27,12 +27,12 @@ flowchart LR
     classDef completed fill:#E8F5E9,stroke:#43A047,color:#000
     classDef blocked fill:#FFEBEE,stroke:#E53935,color:#000
 
-    T001[T001 Scaffold]:::completed --> T002[T002 Bind params]:::completed --> T003[T003 Todo store]:::completed --> T004[T004 Store tests]:::completed --> T005[T005 Command/tool]:::completed --> T006[T006 Overlay/status]:::completed --> T007[T007 Smoke]:::completed --> T008[T008 Docs]:::completed --> T009[T009 Domains]:::pending --> T010[T010 Ledgers]:::pending --> T011[T011 Validation]:::pending
+    T001[T001 Scaffold]:::completed --> T002[T002 Bind params]:::completed --> T003[T003 Todo store]:::completed --> T004[T004 Store tests]:::completed --> T005[T005 Command/tool]:::completed --> T006[T006 Overlay/status]:::completed --> T007[T007 Smoke]:::completed --> T008[T008 Docs]:::completed --> T009[T009 Domains]:::completed --> T010[T010 Ledgers]:::pending --> T011[T011 Validation]:::pending
 
     FSQL[session-sql store]:::completed
     FTODO[todo extension files]:::completed
     FDOCS[docs and ledgers]:::completed
-    FDOMAINS[domain records]:::pending
+    FDOMAINS[domain records]:::completed
 
     T002 --> FSQL
     T003 --> FTODO
@@ -66,6 +66,9 @@ flowchart LR
 | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/smoke.ts` | `extension-authoring-harness` | internal | Deterministic TUI smoke proving `/todo`, overlay, `/sql`, and reload behavior. |
 | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/store.ts` | `session-work-state` | contract | Extend the reusable store contract with safe parameter binding for first-party consumers. |
 | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/store.test.ts` | `session-work-state` | internal | Regression coverage for the extended store contract. |
+| `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/index.ts` | `agent-tooling-interface` | contract | Existing `/sql` command/tool wiring required for SQL agreement smoke in a clean checkout. |
+| `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/smoke.ts` | `extension-authoring-harness` | internal | Existing session-sql smoke scenario kept available alongside todo smoke. |
+| `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/AGENTS.md` | `agent-tooling-interface` | internal | Extension-local session-sql guidance committed as a todo prerequisite. |
 | `/Users/jordanknight/pi-hacking/pij/README.md` | `agent-tooling-interface` | cross-domain | Quick-start docs connecting `/todo` and `/sql`. |
 | `/Users/jordanknight/pi-hacking/pij/docs/how/todo.md` | `agent-tooling-interface` | internal | Detailed user/agent guide for SQL-backed todos. |
 | `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md` | `session-work-state` | contract | Document todo as a first-party consumer of the store/default schema contract. |
@@ -106,7 +109,7 @@ flowchart LR
 | [x] | T006 | Implement overlay, status signal, and configurable key matching. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/index.ts`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/store.ts` | `/todo overlay` renders current todos via `ctx.ui.custom` overlay; status shows `todo: N open`; zero open clears with `undefined`; overlay keys use named defaults rather than inline literals. | Finding 03/04; global shortcut is optional unless conflict-safe. |
 | [x] | T007 | Add deterministic smoke scenario. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/smoke.ts` | `npm run smoke -- todo` drives empty list, add, list, `/sql` agreement, overlay anchor, reload, and post-reload list. | Use current Driver SDK `Scenario` / `Step` union shape. |
 | [x] | T008 | Add extension-local guidance and user docs. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/AGENTS.md`, `/Users/jordanknight/pi-hacking/pij/README.md`, `/Users/jordanknight/pi-hacking/pij/docs/how/todo.md` | README has quick start; how-to has command/tool/status/dependency/overlay/SQL examples; AGENTS documents extension-local constraints. | Hybrid docs from clarification. |
-| [ ] | T009 | Update domain records for the todo consumer and store contract. | `session-work-state` / `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/domain-map.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/registry.md` | Domain docs mention todo source locations, contracts, and relationship to `SessionSqlStore`; map/history reflects todo as an additional UX consumer. | Finding 01/02/06. |
+| [x] | T009 | Update domain records for the todo consumer and store contract. | `session-work-state` / `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/domain-map.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/registry.md` | Domain docs mention todo source locations, contracts, and relationship to `SessionSqlStore`; map/history reflects todo as an additional UX consumer. | Finding 01/02/06. |
 | [ ] | T010 | Capture execution evidence, velocity, and difficulties. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/010-sql-backed-todo-extension/execution.log.md`, `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md`, `/Users/jordanknight/pi-hacking/pij/docs/velocity.md` | Execution log records task progress and validation outputs; difficulties are logged with workarounds/encoded fixes if encountered; velocity has phase row. | Harness is the product. |
 | [ ] | T011 | Run full validation. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/package.json`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/` | `npm run typecheck`, `npm test`, `npm run lint`, `npm run smoke -- todo`, and `npm run self-check` pass or any pre-existing unrelated failure is documented. | Include known Biome schema info only if still non-failing. |
 
@@ -144,6 +147,7 @@ flowchart LR
 | D010-008 | T006 | `ctrl+t` is reserved by core thinking/tool filters, so the workshop's example shortcut would conflict. | Use a named default `ctrl+shift+y` for global open-overlay registration and keep all overlay keys in `DEFAULT_TODO_KEYBINDINGS`. |
 | D010-009 | T007 | Smoke matched the `/reload` notification before pi was fully idle, so the immediate post-reload `/todo list` assertion raced. | Add an explicit Driver SDK `wait` step after `/reload` before issuing the post-reload command. |
 | D010-010 | T008 | Todo docs need to explain both routine UX and raw SQL agreement, otherwise users may treat `/todo` as a second store. | README and `docs/how/todo.md` explicitly position `todo` as an ergonomic layer over `session-sql`. |
+| D010-011 | T009 | The implementation touched session-sql wiring as a clean-checkout prerequisite for todo's `/sql` agreement smoke, so the plan manifest needed to include those files too. | Added session-sql index/smoke/AGENTS rows to the Plan 010 Domain Manifest. |
 
 ### Risks
 

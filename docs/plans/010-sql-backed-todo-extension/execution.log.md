@@ -129,6 +129,20 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Added README quick-start for SQL-backed todos.
   - Added `docs/how/todo.md` covering commands, model tool actions, statuses, dependencies, overlay keys, SQL agreement, session semantics, and validation.
   - `npm run smoke -- todo` passed after docs changes.
+- **Commit**: `a678b85` (`docs: add sql-backed todo guide`)
+- **Companion ping**: `review-request: T008 a678b85` sent at 2026-05-15T07:19:28Z.
+
+### T009 — Update domain records
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Updated `session-work-state` source locations, concepts, contracts, composition, dependents, boundaries, and history for `TodoSqlStore` and bound parameters.
+  - Updated `agent-tooling-interface` purpose, source locations, concepts, contracts, composition, dependencies, boundaries, and history for `todo` UX.
+  - Updated domain map labels, edges, health summary, and history.
+  - Updated registry history to record Plan 010 as an extension of existing domains rather than a new domain.
+  - Updated Plan 010 Domain Manifest to include session-sql wiring files committed as `/sql` agreement prerequisites.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation
