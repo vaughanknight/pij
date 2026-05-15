@@ -173,7 +173,10 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - `npm run smoke -- todo` passed.
   - `npm run smoke -- ralph-loop` passed after ralph-loop smoke robustness fixes.
   - `npm run self-check` passed: typecheck, lint, tests, all smoke scenarios, package audit, and snapshot check.
-- **Companion ping**: pending commit SHA.
+- **Commit**: `a9d554d` (`test: validate sql-backed todo extension`)
+- **Companion ping**: `review-request: T011 a9d554d` sent at 2026-05-15T07:40:27Z; companion had already completed with `exitReason=idle_budget`, so no live review occurred for this final validation commit.
+- **Follow-up fix commit**: `22ebd1f` (`fix: address todo companion findings`) resolved F003/F005/F006/F007 after reading the farewell/inbox messages.
+- **Trace ping**: `review-request: companion-fixes 22ebd1f` sent after companion completion for durable trace only.
 
 ## Companion Findings Reconciliation
 
