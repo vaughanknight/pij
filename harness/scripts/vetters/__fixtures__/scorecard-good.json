@@ -1,0 +1,10 @@
+{
+	"date": "2026-05-01",
+	"repo": { "name": "github.com/example/healthy-project" },
+	"score": 8.4,
+	"checks": [
+		{ "name": "Code-Review", "score": 9, "reason": "all PRs reviewed" },
+		{ "name": "Maintained", "score": 10, "reason": "active commits" },
+		{ "name": "License", "score": 10, "reason": "MIT detected" }
+	]
+}

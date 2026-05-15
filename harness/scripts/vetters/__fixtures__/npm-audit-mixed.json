@@ -1,0 +1,20 @@
+{
+	"auditReportVersion": 2,
+	"vulnerabilities": {
+		"axios": {
+			"severity": "moderate",
+			"via": [{ "title": "axios CSRF vulnerability", "source": 1234 }],
+			"nodes": ["node_modules/axios"]
+		},
+		"lodash": {
+			"severity": "high",
+			"via": [{ "title": "prototype pollution in lodash", "source": 5678 }],
+			"nodes": ["node_modules/lodash"]
+		},
+		"left-pad": {
+			"severity": "critical",
+			"via": [{ "title": "arbitrary code exec in left-pad", "source": 9999 }],
+			"nodes": ["node_modules/left-pad"]
+		}
+	}
+}

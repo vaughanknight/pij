@@ -1,0 +1,11 @@
+{
+	"date": "2026-05-01",
+	"repo": { "name": "github.com/example/weak-project" },
+	"score": 2.1,
+	"checks": [
+		{ "name": "Code-Review", "score": 0, "reason": "no PR reviews" },
+		{ "name": "Branch-Protection", "score": 1, "reason": "main not protected" },
+		{ "name": "Token-Permissions", "score": 0, "reason": "workflows have write-all" },
+		{ "name": "Maintained", "score": 8 }
+	]
+}

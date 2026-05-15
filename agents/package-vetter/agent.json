@@ -1,0 +1,32 @@
+{
+	"$schema": "https://minih.dev/schemas/agent-manifest.json",
+	"name": "package-vetter",
+	"version": "0.1.0",
+	"description": "One-shot supply-chain vetter for an installed pi extension. Reads the package tree, applies workshop-001 rule taxonomy as a rubric (R-01..R-07), and emits a Verdict-shaped JSON report. Used by pij's pkg vet / pkg audit pipeline.",
+	"author": "pij",
+	"tags": ["pi-extensions", "supply-chain", "vetter", "harness", "prompt-injection"],
+	"minihVersion": ">=0.3.0",
+	"type": "minih-agent",
+	"files": [
+		{
+			"path": "prompt.md",
+			"description": "Identity, run loop, rubric application protocol, Verdict emission. Frontmatter declares permissions: read-only filesystem, no network, no write."
+		},
+		{
+			"path": "briefing.md",
+			"description": "Workshop-001 § Rule taxonomy verbatim — R-01..R-07 with intent, examples-that-fire, examples-that-don't, severity, FP-mitigation. The agent's hard rubric."
+		},
+		{
+			"path": "instructions.md",
+			"description": "Per-file scan checklist, severity ladder application, context-aware downgrade rules (fenced code, defensive doc), aggregation."
+		},
+		{
+			"path": "input-schema.json",
+			"description": "JSON schema for input: packagePath (required), source (optional, for provenance in Verdict)."
+		},
+		{
+			"path": "output-schema.json",
+			"description": "JSON schema for the Verdict envelope: { vetter, score, level, findings[], scannedFiles, durationMs, agentRubric }. Mirrors harness/scripts/vetters/types.ts Verdict shape verbatim."
+		}
+	]
+}

@@ -1,0 +1,41 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Package Vetter Verdict",
+	"description": "Mirrors harness/scripts/vetters/types.ts Verdict shape verbatim. The vetter field MUST equal 'agent' for output from this pack.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["vetter", "score", "level", "findings", "scannedFiles", "durationMs"],
+	"properties": {
+		"vetter": { "const": "agent" },
+		"score": { "type": "integer", "minimum": 0, "maximum": 100 },
+		"level": { "enum": ["ok", "warn", "fail"] },
+		"findings": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["rule", "msg", "severity"],
+				"properties": {
+					"rule": {
+						"type": "string",
+						"description": "Stable id: R-01..R-07 from briefing.md, or vetter:meta / vetter:bad-input"
+					},
+					"msg": { "type": "string", "maxLength": 500 },
+					"severity": { "enum": ["info", "warn", "fail"] },
+					"file": { "type": "string", "description": "Path relative to packagePath" },
+					"line": { "type": "integer", "minimum": 1 },
+					"col": { "type": "integer", "minimum": 1 },
+					"snippet": { "type": "string", "maxLength": 200 },
+					"context": { "enum": ["fenced-code", "defensive-doc", "carve-out"] }
+				}
+			}
+		},
+		"scannedFiles": { "type": "integer", "minimum": 0 },
+		"durationMs": { "type": "integer", "minimum": 0 },
+		"agentRubric": {
+			"type": "string",
+			"pattern": "^[0-9a-f]{64}$",
+			"description": "SHA-256 hex of briefing.md content for rubric versioning"
+		}
+	}
+}

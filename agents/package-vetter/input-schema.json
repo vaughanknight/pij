@@ -1,0 +1,18 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Package Vetter Input",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["packagePath"],
+	"properties": {
+		"packagePath": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Absolute filesystem path to the installed pi extension's package directory (e.g. ~/.pi/agent/git/github.com/ghoseb/pi-askuserquestion). The agent walks this tree and scans per briefing.md § Scope priority order."
+		},
+		"source": {
+			"type": "string",
+			"description": "Optional original manifest source string (e.g. 'npm:pi-lean-ctx' or 'git:github.com/owner/repo'). Recorded in findings for provenance; not used for scan logic."
+		}
+	}
+}
