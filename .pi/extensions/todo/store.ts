@@ -15,10 +15,12 @@ export const DEFAULT_TODO_LIMIT = 50;
 export const MAX_TODO_LIMIT = 200;
 
 export const DEFAULT_TODO_KEYBINDINGS = {
-	openOverlay: ["ctrl+t"],
+	openOverlay: ["ctrl+shift+y"],
 	closeOverlay: ["escape", "q"],
 	refresh: ["r"],
 	markDone: ["d"],
+	selectPrevious: ["up"],
+	selectNext: ["down"],
 } as const;
 
 export type TodoErrorCode =

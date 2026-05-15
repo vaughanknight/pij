@@ -88,6 +88,21 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Added one `session_start` handler, session shutdown close, SQL-backed status refresh, and clear confirmation.
   - `npm test -- .pi/extensions/todo/store.test.ts` passed: 14 tests.
   - `npm run typecheck` passed.
+- **Commit**: `441584b` (`feat: wire sql-backed todo command and tool`)
+- **Companion ping**: `review-request: T005 441584b` sent at 2026-05-15T07:10:01Z.
+
+### T006 — Implement overlay, status signal, and configurable key matching
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Added a minimal focusable `ctx.ui.custom(..., { overlay: true })` todo overlay with refresh, close, selection, and mark-done handling.
+  - Footer status shows `todo: N open` and clears with `undefined` at zero open.
+  - Overlay/global shortcut keys live in `DEFAULT_TODO_KEYBINDINGS`; grep confirms key literals are only in the constants block.
+  - Avoided `ctrl+t` because core keybindings reserve it; default open overlay shortcut is `ctrl+shift+y`.
+  - `npm test -- .pi/extensions/todo/store.test.ts` passed: 14 tests.
+  - `npm run typecheck` is blocked by unrelated `.pi/extensions/ralph-loop/index.ts` diagnostics introduced outside this task; todo diagnostics are clear and this is tracked for T011.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation

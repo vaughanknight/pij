@@ -3,10 +3,13 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { matchesKey, truncateToWidth, type Component, type KeyId } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import { defaultRootDir, locationForSession, SessionSqlStore } from "../session-sql/store.js";
 import {
+	DEFAULT_TODO_KEYBINDINGS,
+	formatTodoRow,
 	parseTodoCommand,
 	TODO_LIST_VIEWS,
 	TODO_STATUSES,
@@ -101,6 +104,99 @@ function detailsFromResult<T>(action: string, result: TodoActionResult<T>): Todo
 	return details;
 }
 
+function matchesAny(data: string, keys: readonly string[]): boolean {
+	return keys.some((key) => matchesKey(data, key as KeyId));
+}
+
+class TodoOverlay implements Component {
+	private rows: TodoViewRow[] = [];
+	private selectedIndex = 0;
+	private statusLine: string | undefined;
+
+	constructor(
+		private readonly loadRows: () => TodoStoreResult<TodoViewRow[]>,
+		private readonly markDone: (id: number) => TodoStoreResult<TodoViewRow>,
+		private readonly requestRender: () => void,
+		private readonly refreshStatus: () => void,
+		private readonly done: (result: "closed") => void,
+	) {
+		this.refreshRows();
+	}
+
+	render(width: number): string[] {
+		const safeWidth = Math.max(24, width);
+		const lines = [`todo: ${this.rows.length} open`];
+		if (this.rows.length === 0) {
+			lines.push("todo: no open todos", "Tip: /todo add <title>");
+		} else {
+			for (const [index, row] of this.rows.entries()) {
+				const prefix = index === this.selectedIndex ? "› " : "  ";
+				lines.push(`${prefix}${formatTodoRow(row)}`);
+			}
+		}
+		if (this.statusLine) lines.push(this.statusLine);
+		lines.push(this.helpText());
+		return lines.map((line) => truncateToWidth(line, safeWidth));
+	}
+
+	handleInput(data: string): void {
+		if (matchesAny(data, DEFAULT_TODO_KEYBINDINGS.closeOverlay)) {
+			this.done("closed");
+			return;
+		}
+		if (matchesAny(data, DEFAULT_TODO_KEYBINDINGS.refresh)) {
+			this.statusLine = "todo: refreshed";
+			this.refreshRows();
+			this.requestRender();
+			return;
+		}
+		if (matchesAny(data, DEFAULT_TODO_KEYBINDINGS.selectPrevious)) {
+			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+			this.requestRender();
+			return;
+		}
+		if (matchesAny(data, DEFAULT_TODO_KEYBINDINGS.selectNext)) {
+			this.selectedIndex = Math.min(Math.max(0, this.rows.length - 1), this.selectedIndex + 1);
+			this.requestRender();
+			return;
+		}
+		if (matchesAny(data, DEFAULT_TODO_KEYBINDINGS.markDone)) {
+			const selected = this.rows[this.selectedIndex];
+			if (!selected) return;
+			const result = this.markDone(selected.id);
+			this.statusLine = result.message;
+			this.refreshRows();
+			this.refreshStatus();
+			this.requestRender();
+		}
+	}
+
+	invalidate(): void {
+		this.refreshRows();
+	}
+
+	private refreshRows(): void {
+		const result = this.loadRows();
+		if (!result.ok) {
+			this.rows = [];
+			this.statusLine = result.message;
+			this.selectedIndex = 0;
+			return;
+		}
+		this.rows = result.value;
+		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.rows.length - 1));
+	}
+
+	private helpText(): string {
+		return [
+			`${DEFAULT_TODO_KEYBINDINGS.selectPrevious.join("/")}/${DEFAULT_TODO_KEYBINDINGS.selectNext.join("/")} select`,
+			`${DEFAULT_TODO_KEYBINDINGS.markDone.join("/")} done`,
+			`${DEFAULT_TODO_KEYBINDINGS.refresh.join("/")} refresh`,
+			`${DEFAULT_TODO_KEYBINDINGS.closeOverlay.join("/")} close`,
+		].join(" • ");
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	const sqlStore = new SessionSqlStore();
 	const todoStore = new TodoSqlStore(sqlStore);
@@ -126,6 +222,31 @@ export default function (pi: ExtensionAPI) {
 
 	function notifyResult<T>(ctx: ExtensionCommandContext, result: TodoStoreResult<T>): void {
 		ctx.ui.notify(result.message, result.ok ? "info" : "error");
+		refreshStatus(ctx);
+	}
+
+	async function openTodoOverlay(ctx: ExtensionContext): Promise<void> {
+		ensureOpen(ctx);
+		await ctx.ui.custom<"closed">(
+			(tui, _theme, _keybindings, done) =>
+				new TodoOverlay(
+					() => todoStore.list(),
+					(id) => todoStore.done(id),
+					() => tui.requestRender(),
+					() => refreshStatus(ctx),
+					done,
+				),
+			{
+				overlay: true,
+				overlayOptions: {
+					width: "70%",
+					minWidth: 40,
+					maxHeight: "80%",
+					anchor: "center",
+					margin: 2,
+				},
+			},
+		);
 		refreshStatus(ctx);
 	}
 
@@ -163,8 +284,7 @@ export default function (pi: ExtensionAPI) {
 				notifyResult(ctx, todoStore.next({ limit: parsed.limit }));
 				return;
 			case "overlay":
-				ctx.ui.notify("todo: overlay will open here", "info");
-				refreshStatus(ctx);
+				await openTodoOverlay(ctx);
 				return;
 			case "clear": {
 				const confirmed = await ctx.ui.confirm(
@@ -207,6 +327,16 @@ export default function (pi: ExtensionAPI) {
 			await runParsedCommand(parsed.value, ctx);
 		},
 	});
+
+	const [openOverlayShortcut] = DEFAULT_TODO_KEYBINDINGS.openOverlay;
+	if (openOverlayShortcut) {
+		pi.registerShortcut(openOverlayShortcut as KeyId, {
+			description: "Open SQL-backed todo overlay",
+			handler: async (ctx: ExtensionContext): Promise<void> => {
+				await openTodoOverlay(ctx);
+			},
+		});
+	}
 
 	pi.registerTool({
 		name: "todo",
