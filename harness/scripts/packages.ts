@@ -22,6 +22,7 @@ import { type Document, parseDocument, type YAMLMap, type YAMLSeq } from "yaml";
 import { agentVetter } from "./vetters/agent.js";
 import { aggregate, runPipeline } from "./vetters/aggregate.js";
 import { buildUnmanifestedVerdict } from "./vetters/audit-unmanifested.js";
+import { refreshVettedBlock } from "./vetters/audit-writeback.js";
 import { githubTrustVetter } from "./vetters/github-trust.js";
 import { lockfileLintVetter } from "./vetters/lockfile-lint.js";
 import { npmAuditVetter } from "./vetters/npm-audit.js";
@@ -93,7 +94,10 @@ function entries(doc: Document): Entry[] {
 }
 
 function writeDoc(doc: Document): void {
-	writeFileSync(YAML_PATH, doc.toString());
+	// FX001-3: lineWidth: 0 disables YAML folded-scalar wrapping so long
+	// strings (the `install:` shell command, override reasons) keep their
+	// authored single-line shape across cmdAudit refresh write-backs.
+	writeFileSync(YAML_PATH, doc.toString({ lineWidth: 0 }));
 }
 
 function readSettings(): Record<string, unknown> {
@@ -424,13 +428,16 @@ async function cmdVet(args: string[]): Promise<void> {
 
 async function cmdAudit(args: string[]): Promise<void> {
 	const json = args.includes("--json");
-	const list = entries(readDoc()).filter((e) => e.enabled);
+	const doc = readDoc();
+	const list = entries(doc).filter((e) => e.enabled);
+	const seq = doc.get("packages") as YAMLSeq;
 	const results: Array<{
 		source: string;
 		verdict: Verdict;
 		effective: Verdict["level"];
 		override?: Overrides;
 	}> = [];
+	let refreshedCount = 0;
 	for (const e of list) {
 		const verdict = await vetSource(e.source);
 		// FX001-1: per-finding override scope. cmdAudit downgrades warn→ok only
@@ -458,6 +465,20 @@ async function cmdAudit(args: string[]): Promise<void> {
 				console.log(`  ↳ override present but accepts no rules (rules:[]); warn not downgraded`);
 			}
 		}
+		// FX001-3: refresh write-back. Gated on RAW verdict.level === "ok"
+		// (NOT effective via override — overrides must age out, otherwise we
+		// re-create F004 through a different door). Skip on --json for CI
+		// determinism.
+		if (!json && verdict.level === "ok") {
+			const idx = findIndex(doc, e.source);
+			if (idx !== -1) {
+				const item = seq.get(idx) as YAMLMap;
+				const vetted = (item.get("vetted") as YAMLMap | null) ?? null;
+				if (vetted && refreshVettedBlock(vetted, verdict)) {
+					refreshedCount++;
+				}
+			}
+		}
 	}
 
 	// FX001-2: cross-check pi list output against manifest. Unmanifested
@@ -483,6 +504,14 @@ async function cmdAudit(args: string[]): Promise<void> {
 
 	if (json) {
 		console.log(JSON.stringify({ results, unmanifestedProjectInstalls: unmanifested }, null, 2));
+	}
+
+	// FX001-3: persist refresh write-backs (if any). One write per cmdAudit run.
+	if (refreshedCount > 0) {
+		writeDoc(doc);
+		if (!json) {
+			console.log(`\n✓ refreshed vetted.date for ${refreshedCount} entry/entries`);
+		}
 	}
 
 	const worst = results.reduce<Verdict["level"]>(
