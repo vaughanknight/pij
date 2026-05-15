@@ -6,7 +6,7 @@
 **Phase**: Phase 1: Store, full UX, validation, docs, domains  
 **Parent Task**: T006 — Implement overlay, status signal, and configurable key matching  
 **Source Workshop**: [006-claude-code-style-below-editor-todo-strip.md](../../workshops/006-claude-code-style-below-editor-todo-strip.md)  
-**Mode Note**: Plan 010 originally used Simple mode and did not have a `tasks/phase-*` dossier. This subtask uses the completed Plan 010 implementation table as parent context and creates the phase task directory for follow-up tracked work.
+**Mode Note**: Plan 010 originally used Simple mode and did not have a `tasks/phase-*` dossier. This subtask uses the completed Plan 010 implementation table as parent context and creates the phase task directory for follow-up tracked work. A lightweight parent compatibility index now exists at [`tasks.md`](./tasks.md).
 
 ---
 
@@ -240,3 +240,59 @@ When this subtask is complete:
 4. If `session-sql:changed` becomes a durable cross-extension contract, update `agent-tooling-interface` and `session-work-state` domain docs.
 5. Run final validation and record output in the execution log.
 6. Summarize whether widget smoke was fully automated or partially covered by unit/manual evidence.
+
+---
+
+## Validation Record (2026-05-15)
+
+### Validation Thesis
+
+**Raison d'être**: This subtask dossier exists to turn the user request for a Claude Code-style task list under the editor into implementation-ready follow-up work for the completed SQL-backed todo extension.
+
+**Value claim**: Future implementation and review should be cheaper, safer, and clearer because widget placement, row cap, recency ordering, in-flight/completed rendering, paging policy, source-of-truth rules, and validation evidence are explicit before coding.
+
+**Artifact promise**: Implementation agents can build ST001-ST005 without re-resolving the UX contract, domain ownership, or validation path; reviewers can check the work against concrete files, tasks, and acceptance criteria.
+
+**Intended beneficiaries**: Implementation agents, code-review companion, human operator, todo-extension maintainers, and future agents extending Plan 010.
+
+**Proof target**: Implementation.
+
+**Evidence standard**: Source-code/API match for `setWidget` and existing todo contracts, upstream spec/workshop alignment, complete 7-column task table, downstream-consumable phase/subtask files, domain constraints, diagrams, and validation matrix.
+
+**Thesis source**: User request (“it shows a list of tasks, shows which one is in flight, and if completed they get struck out” plus “last four or so”), Workshop 006 value thesis, and spec summary: “make structured session work visible and easy to operate.”
+
+**Thesis verdict**: Advanced after fixes.
+
+**Main thesis risk**: Widget smoke observability may be weaker than unit-level rendering proof if Driver pane capture cannot reliably see below-editor widgets.
+
+---
+
+| Agent | Lenses Covered | Thesis Axes Covered | Issues | Verdict |
+|-------|----------------|---------------------|--------|---------|
+| Source Truth Validator | Source-code/API match, domain boundaries, technical constraints | Implementation Readiness, Safety to Change | 0 | PASS |
+| Cross-Reference Validator | Plan/workshop alignment, task dependency chain, concept documentation | Downstream Usefulness, Review Compression | 0 | PASS |
+| Completeness Validator | Missing prerequisites, validation path, hidden assumptions, edge cases | Evidence Sufficiency, Agent Readiness | 1 HIGH fixed | PASS after fix |
+| Thesis + Forward-Compatibility Validator | Thesis Alignment, Forward-Compatibility, outcome alignment | User Experience, Contract Integrity | 0 open | PASS |
+
+### Issues Fixed During Validation
+
+| Severity | Location | Issue | Fix |
+|----------|----------|-------|-----|
+| HIGH | `tasks/phase-1-store-full-ux-validation-docs-domains/` | The subtask folder lacked a parent `tasks.md`, even though subtask-mode consumers expect a parent phase task context and parent-task notes. | Added `tasks.md` compatibility index with parent `T006-FU1`, linked `ST-001`, and updated this dossier's Mode Note to point to it. |
+
+### Forward-Compatibility Matrix
+
+| Consumer | Requirement | Failure Mode | Verdict | Evidence |
+|----------|-------------|--------------|---------|----------|
+| `/plan-6-v2-implement-phase` subtask implementation | Needs a phase folder with parent context, subtask dossier, task table, flight plan, execution log, and implementation-ready files. | test boundary | ✅ | This dossier has ST001-ST005; `.fltplan.md` and `.log.md` exist; validation added `tasks.md` parent compatibility index. |
+| `code-review-companion` / plan-7 review | Needs explicit domain constraints, hazards, and concrete changed paths to review. | contract drift | ✅ | Pre-Implementation Check, Domain Constraints, and ST task paths identify `store.ts`, `index.ts`, tests, smoke, docs, and optional session-sql event surface. |
+| Plan 010 maintainers | Need discoverable follow-up registration without rewriting completed Simple-mode history. | lifecycle ownership | ✅ | Root plan has `## Subtasks` row for `ST-001`; new phase folder is explicitly marked as follow-up compatibility context. |
+| Todo-extension implementation files | Need public contracts for widget projection and UI rendering without exposing private implementation guesses. | shape mismatch | ✅ | ST001 names snapshot fields (`hidden`, `page`, `pageCount`); ST002 names below-editor rendering and refresh obligations while leaving SQL/query internals private to implementation. |
+
+**Thesis alignment**: Value claim advanced at Implementation proof level after adding the parent compatibility index; main remaining risk is whether below-editor widget rendering can be fully smoke-observed or must rely on unit/manual evidence.
+
+**Outcome alignment**: The artifact advances the spec outcome “make structured session work visible and easy to operate” by defining the exact follow-up work needed to make current-session todos visible under the editor while preserving SQL-backed source-of-truth constraints.
+
+**Standalone?**: No — downstream `/plan-6-v2-implement-phase`, review companion, Plan 010 maintainers, and todo implementation files consume this dossier.
+
+Overall: VALIDATED WITH FIXES
