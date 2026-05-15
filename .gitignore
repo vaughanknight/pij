@@ -1,6 +1,8 @@
 # minih runtime artifacts (per-run + global session state)
 agents/*/runs/
-agents/*/state/
+agents/*/state/*
+!agents/*/state/*.schema.json
+!agents/*/state/.gitkeep
 session-store.db
 session-store.db-shm
 session-store.db-wal
@@ -9,6 +11,19 @@ session-state/
 # Local agent / tooling state
 .chainglass/
 .fs2/graph.pickle
+
+# Pi install artifacts (third-party extension code; analog of node_modules)
+.pi/git/
+.pi/npm/
+.pi/agent/
+
+# MCP server config (contains secrets — env-expand at runtime)
+.mcp.json
+
+# Untracked local notes / scratch
+scratch/
+context.md
+research.md
 
 # Logs
 logs

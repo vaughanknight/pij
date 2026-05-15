@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code Review Companion Inside State",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status", "data", "updatedAt", "updatedBy"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["idle", "reading", "reviewing", "reporting", "blocked", "stopping"]
+    },
+    "data": { "type": "object", "additionalProperties": true },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedBy": { "type": "string", "enum": ["inside"] }
+  }
+}
