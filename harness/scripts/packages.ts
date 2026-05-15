@@ -21,6 +21,7 @@ import { createInterface } from "node:readline/promises";
 import { type Document, parseDocument, type YAMLMap, type YAMLSeq } from "yaml";
 import { agentVetter } from "./vetters/agent.js";
 import { aggregate, runPipeline } from "./vetters/aggregate.js";
+import { buildUnmanifestedVerdict } from "./vetters/audit-unmanifested.js";
 import { githubTrustVetter } from "./vetters/github-trust.js";
 import { lockfileLintVetter } from "./vetters/lockfile-lint.js";
 import { npmAuditVetter } from "./vetters/npm-audit.js";
@@ -459,15 +460,25 @@ async function cmdAudit(args: string[]): Promise<void> {
 		}
 	}
 
-	// Cross-check pi list output against manifest for unmanifested entries
+	// FX001-2: cross-check pi list output against manifest. Unmanifested
+	// project-scope installs are converted into a synthetic vetter:audit
+	// Verdict so they participate in the worst-level aggregate (closes F002).
 	const installed = piList();
 	const manifestSources = new Set(list.map((e) => e.source));
 	const unmanifested = installed
 		.filter((p) => p.scope === "project" && !manifestSources.has(p.source))
 		.map((p) => p.source);
-	if (unmanifested.length && !json) {
-		console.log("\n⚠ installed-but-unmanifested (project scope):");
-		for (const s of unmanifested) console.log(`  - ${s}`);
+	if (unmanifested.length) {
+		const auditVerdict = buildUnmanifestedVerdict(unmanifested);
+		results.push({
+			source: "<audit:unmanifested>",
+			verdict: auditVerdict,
+			effective: auditVerdict.level,
+		});
+		if (!json) {
+			console.log("\n=== <audit:unmanifested> ===");
+			printVerdict(auditVerdict);
+		}
 	}
 
 	if (json) {
