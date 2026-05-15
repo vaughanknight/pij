@@ -240,7 +240,7 @@ STOP
 - [ ] Implement C (later)
 ```
 
-Parses to 3 tasks (all undone). `stopMarker = { lineNumber: 5, raw: "STOP" }`. The store ends the run with `manual_stop` on the FIRST iteration (before picking a task).
+Parses to 3 tasks (all undone). `stopMarker = { lineNumber: 5, raw: "STOP" }`. The store ends the run **pre-iteration 1** via `evaluateStopPre` (workshop 001 § Evaluation order, pre/post split) with `StopReason.manual_stop`. No iteration executes; `iteration` in the StopReason carries 1 (the would-have-been-next index).
 
 ### Example 5 — Mixed: complete via plan-exhaustion + warning
 
@@ -251,7 +251,7 @@ Parses to 3 tasks (all undone). `stopMarker = { lineNumber: 5, raw: "STOP" }`. T
 - [ ] 
 ```
 
-Parses to 1 task (1 done), 1 warning ("line 4: empty title; not consumed as a task"). `nextUndoneTask` returns `null` → run ends with `complete` on first iteration.
+Parses to 1 task (1 done), 1 warning ("line 4: empty title; not consumed as a task"). `nextUndoneTask` returns `null` → store ends the run **pre-iteration 1** via `evaluateStopPre` with `StopReason.complete{ reason: "plan_exhausted", iteration: 1 }`. No iteration executes (the work was already done before Ralph was invoked). Workshop 001's pre/post evaluator split (resolution of companion review F001) is the canonical contract for this case.
 
 ---
 

@@ -112,7 +112,7 @@ They should be able to:
 ```ts
 // .pi/extensions/ralph-loop/store.ts
 export type StopReason =
-  | { kind: "complete"; sigilSeenAtIteration: number }
+  | { kind: "complete"; reason: "sigil" | "plan_exhausted"; iteration: number }
   | { kind: "max_iterations"; limit: number; reached: number }
   | { kind: "budget_usd"; limitUsd: number; spentUsd: number }
   | { kind: "budget_wallclock"; limitMs: number; elapsedMs: number }
@@ -126,6 +126,8 @@ Why this shape:
 
 - **Discriminator is `kind`** (not `reason` or `type`) — keeps it distinct from pi's own `entry.type` discriminator (P6 boundary discipline) and from the `customType` field.
 - **Every case carries the evidence that made it fire** — defenses against "why did Ralph stop?" forensics and is exactly what the run-summary notification needs.
+- **`complete.reason` is the v1.1 addition** that resolves cross-workshop drift caught by companion review F001: `"sigil"` (the agent emitted `<promise>COMPLETE</promise>`) vs `"plan_exhausted"` (no remaining undone tasks; the work is genuinely done, no agent output needed). Single `kind: "complete"` keeps the closed taxonomy at 8 cases per AC-04; the `reason` field is the forensic discriminator.
+- **`complete.iteration` semantics**: for `reason: "sigil"` this is the iteration that produced the sigil. For `reason: "plan_exhausted"` this is the iteration whose POST-evaluator detected exhaustion (0 if pre-evaluator fires before any iteration; ≥1 if exhaustion is detected after an iteration that completed all remaining tasks).
 - **`unverified` is the v1 escape hatch** when we want to stop but can't cleanly classify (e.g., cost accounting is unavailable per spec assumption #4). It is **never** silent — it is recorded with a cause string.
 
 ## State machine
@@ -179,28 +181,63 @@ Per-extension defaults override built-ins via `settings.json#extensions.ralph-lo
 
 ## Evaluation order
 
-Evaluated **after every iteration**, in strict order. **First match wins** (selected above).
+The evaluator runs **twice per iteration** to honour both pre-iteration terminal states (STOP marker in plan; plan exhausted; user cancel between iterations) and post-iteration caps (max iters, budgets, spinning, sigil). **First match wins** within each pass.
 
 ```ts
-function evaluateStop(state: RunState): StopReason | null {
-  // 1. User cancel takes priority over everything except already-resolved completion.
+// Pre-iteration: check terminal states BEFORE spinning up the next agent session.
+// Returns null when the loop should proceed to runIteration().
+function evaluateStopPre(state: RunState): StopReason | null {
+  // 1. User cancel between iterations—honour intent before doing more work.
   if (state.cancelRequested) {
-    return { kind: "user_cancel", at: state.midIteration ? "mid_iteration" : "iteration_boundary", iteration: state.iteration };
+    return { kind: "user_cancel", at: "iteration_boundary", iteration: state.iteration };
   }
-  // 2. Completion sigil — if the agent emitted <promise>COMPLETE</promise>, honor it.
-  if (state.lastIterationOutput.includes(COMPLETION_SIGIL)) {
-    return { kind: "complete", sigilSeenAtIteration: state.iteration };
-  }
-  // 3. Manual STOP in plan file — explicit user override.
-  const stopLine = findStopMarker(state.planFileContent);
+  // 2. Manual STOP marker in plan file (explicit user override).
+  const stopLine = findStopMarker(state.planSnapshot);
   if (stopLine) {
     return { kind: "manual_stop", line: stopLine, iteration: state.iteration };
   }
-  // 4. Iteration cap.
+  // 3. Plan exhausted (no undone tasks remain).
+  const next = nextUndoneTask(state.planModel);
+  if (next === null) {
+    return { kind: "complete", reason: "plan_exhausted", iteration: state.iteration };
+  }
+  // 4. Iteration cap reached BEFORE running the next iteration
+  //    (state.iteration is the 1-based index we'd be about to run).
+  if (state.iteration > state.config.maxIterations) {
+    return { kind: "max_iterations", limit: state.config.maxIterations, reached: state.iteration - 1 };
+  }
+  // 5. Budget caps (wallclock + USD) checked pre-iteration too — don't start an
+  //    iteration we'll just have to abort after.
+  if (state.config.maxUsd !== null && state.spentUsd >= state.config.maxUsd) {
+    return { kind: "budget_usd", limitUsd: state.config.maxUsd, spentUsd: state.spentUsd };
+  }
+  if (state.elapsedMs >= state.config.maxWallClockMs) {
+    return { kind: "budget_wallclock", limitMs: state.config.maxWallClockMs, elapsedMs: state.elapsedMs };
+  }
+  return null; // proceed to runIteration
+}
+
+// Post-iteration: classify the outcome of the iteration that just ran.
+// All cases are reachable AFTER an iteration has executed and an IterationRecord exists.
+function evaluateStopPost(state: RunState): StopReason | null {
+  // 1. User cancel during the iteration—honour first.
+  if (state.cancelRequested) {
+    return { kind: "user_cancel", at: state.midIteration ? "mid_iteration" : "iteration_boundary", iteration: state.iteration };
+  }
+  // 2. Completion sigil emitted by the agent.
+  if (state.lastIterationOutput.includes(COMPLETION_SIGIL)) {
+    return { kind: "complete", reason: "sigil", iteration: state.iteration };
+  }
+  // 3. Plan exhausted as a result of THIS iteration finishing every remaining task.
+  const next = nextUndoneTask(state.planModel);
+  if (next === null) {
+    return { kind: "complete", reason: "plan_exhausted", iteration: state.iteration };
+  }
+  // 4. Iteration cap (post-check; the iteration that just ran was the last allowed).
   if (state.iteration >= state.config.maxIterations) {
     return { kind: "max_iterations", limit: state.config.maxIterations, reached: state.iteration };
   }
-  // 5. Cost cap (only if cost is known and cap is set).
+  // 5. Cost cap.
   if (state.config.maxUsd !== null && state.spentUsd >= state.config.maxUsd) {
     return { kind: "budget_usd", limitUsd: state.config.maxUsd, spentUsd: state.spentUsd };
   }
@@ -208,21 +245,22 @@ function evaluateStop(state: RunState): StopReason | null {
   if (state.elapsedMs >= state.config.maxWallClockMs) {
     return { kind: "budget_wallclock", limitMs: state.config.maxWallClockMs, elapsedMs: state.elapsedMs };
   }
-  // 7. Spinning.
+  // 7. Spinning detection (most expensive; evaluated last).
   const spin = detectSpinning(state.iterationLog, state.config.spinningN);
   if (spin) return spin;
-  // 8. Unverified path — if we know we should stop but can't classify (cost unknown + agent doesn't progress + no other cap hit), return null and let next iteration try; only flip to `unverified` when an outer guard fires.
+  // 8. Unverified path — only flipped on by outer guard; not here.
   return null;
 }
 ```
 
-Why this ordering:
+Why a pre/post split (resolution of companion review F001):
 
-1. **`user_cancel` first** — user intent overrides everything. Even if cost cap and sigil both fired this iteration, the user's choice to cancel is the most explicit signal.
-2. **`complete` before `manual_stop`** — if the agent declares done, that's the strongest signal; `manual_stop` is for users overriding the agent.
-3. **`manual_stop` before caps** — explicit user `STOP` is also explicit user intent.
-4. **Caps in increasing-cost-to-evaluate order**: iteration count (fast), USD (cached), wall-clock (cheap), spinning (requires log scan).
-5. **`spinning` last** — most expensive to detect; want every other terminator to win first.
+- The original draft of this workshop had a single `evaluateStop()` that ran only post-iteration. Workshop 003 § Examples 4 and 5 (STOP marker; all-done plan) said these stop on iteration 1 "before picking a task" — which contradicted the post-only evaluator. The pre/post split lets the implementation honour both contracts cleanly without running a wasted iteration when the terminal state is already true.
+- Pre-iteration cases that can fire at `iteration === 1`: `manual_stop`, `complete.plan_exhausted`, `user_cancel.iteration_boundary`. All produce `iteration: 0` semantically (no iteration ran) — represented in code as the iteration counter that *would have* been the next index.
+- Post-iteration cases require an `IterationRecord`: `complete.sigil`, `max_iterations`, `budget_*`, `spinning`, `user_cancel.mid_iteration`, `unverified` (forensic only).
+- The same `StopReason.kind` (e.g., `manual_stop`, `user_cancel`) can fire either pre or post depending on when the trigger arrives — the union shape doesn't change.
+
+Evaluation priority within each pass keeps the user-intent precedence intact: cancel → explicit done (manual stop or plan exhausted or sigil) → caps → spinning.
 
 ---
 
@@ -269,16 +307,17 @@ Notes:
 
 ## Decision table — every StopReason
 
-| `kind` | Fires when | Default cap | Configurable | Companion concern? |
-|--------|------------|-------------|--------------|--------------------|
-| `complete` | Agent output contains `<promise>COMPLETE</promise>` | n/a (event-driven) | no | review: was completion genuine or hallucinated? Check that tests passed in the final iteration. |
-| `max_iterations` | iteration counter ≥ `maxIterations` | 10 | yes | review: did the run plateau or genuinely run out? |
-| `budget_usd` | spent ≥ `maxUsd` AND `maxUsd !== null` | OFF | yes | review: cost forensics row in retro |
-| `budget_wallclock` | `Date.now() - runStartedAt ≥ maxWallClockMs` | 30 min | yes | review: progress-per-minute trend |
-| `spinning` | last `spinningN` iterations share a fingerprint | N=3 | yes | review: is the prompt giving the agent enough leverage to escape the task? |
-| `manual_stop` | plan file contains `STOP` on its own line | n/a | yes (override the line) | review: was the override premature? |
-| `user_cancel` | user pressed Ctrl-C or invoked `/ralph stop` | n/a | no | review: minimal — log the cancel context |
-| `unverified` | outer guard fired without a classifying cause | n/a | no | **critical** — the unverified path is a bug surface; companion should flag every occurrence |
+| `kind` | When/where it fires | Default cap | Configurable | Companion concern? |
+|--------|---------------------|-------------|--------------|--------------------|
+| `complete` (`reason: "sigil"`) | Post-iter: agent output contains `<promise>COMPLETE</promise>` | n/a (event-driven) | no | review: was completion genuine or hallucinated? Check that tests passed in the final iteration. |
+| `complete` (`reason: "plan_exhausted"`) | Pre-iter (iteration would-be-1 and plan has 0 undone) OR post-iter (last iteration finished the last task) | n/a (event-driven) | no | review: no remaining work in plan file; agent didn't have to do anything OR the last iteration cleared the queue |
+| `max_iterations` | Post-iter: iteration counter ≥ `maxIterations` | 10 | yes | review: did the run plateau or genuinely run out? |
+| `budget_usd` | Pre or post: spent ≥ `maxUsd` AND `maxUsd !== null` | OFF | yes | review: cost forensics row in retro |
+| `budget_wallclock` | Pre or post: `Date.now() - runStartedAt ≥ maxWallClockMs` | 30 min | yes | review: progress-per-minute trend |
+| `spinning` | Post-iter only: last `spinningN` iterations share a fingerprint | N=3 | yes | review: is the prompt giving the agent enough leverage to escape the task? |
+| `manual_stop` | Pre or post: plan file contains `STOP` on its own line | n/a | yes (override the line) | review: was the override premature? |
+| `user_cancel` | Pre (`iteration_boundary`) or post (`mid_iteration`): user pressed Ctrl-C or invoked `/ralph stop` | n/a | no | review: minimal — log the cancel context |
+| `unverified` | Outer-guard fallback (rare; not the standard paths) | n/a | no | **critical** — the unverified path is a bug surface; companion should flag every occurrence |
 
 ---
 
@@ -313,11 +352,11 @@ Documented in `docs/how/ralph-loop.md` § "Why did Ralph stop?" so users underst
 
 This workshop reaches Implementation Ready when:
 
-- [ ] `StopReason` tagged union compiles with `exhaustiveCheck()` in store.ts.
-- [ ] `evaluateStop()` matches § Evaluation order in implementation.
+- [ ] `StopReason` tagged union compiles with `exhaustiveCheck()` in store.ts (single `kind: "complete"` carrying `reason: "sigil" | "plan_exhausted"`).
+- [ ] `evaluateStopPre()` and `evaluateStopPost()` both match § Evaluation order in implementation.
 - [ ] `detectSpinning()` matches § Spinning detection — 12-hex SHA-1 of trimmed lowercase title; pure last-N check.
-- [ ] One vitest case per `StopReason` `kind` in `store.test.ts` (≥8 tests).
-- [ ] Tie-breaking matrix has ≥3 dedicated tests (sigil-vs-cancel, manual-vs-budget, spinning-vs-max).
+- [ ] One vitest case per `StopReason` `kind` in `store.test.ts` (≥8 tests) plus dedicated `complete.reason` coverage (≥2 tests for sigil vs plan_exhausted).
+- [ ] Tie-breaking matrix has ≥3 dedicated tests (sigil-vs-cancel, manual-vs-budget, spinning-vs-max) PLUS ≥2 pre-evaluator tests (STOP-on-iter-1, plan-exhausted-on-iter-1).
 - [ ] Default values table is copied into `store.ts` § P5 constants.
 - [ ] `unverified` firing in a real run gets a difficulty ledger row; the cause string is the row's title.
 

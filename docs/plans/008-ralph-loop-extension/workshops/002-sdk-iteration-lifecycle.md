@@ -119,21 +119,27 @@ sequenceDiagram
     Cmd->>Store: startRun({ planPath, config })
     Store->>Pi: appendEntry("ralph-loop:run-start", ...)
     Store->>Pi: setStatus("ralph-loop", "iter 0/N")
-    loop until evaluateStop() !== null
-        Store->>Runner: runIteration({ plan, history, signal })
-        Runner->>SDK: createAgentSession({ model, extensions, ... })
-        SDK-->>Runner: { session, dispose }
-        Runner->>Session: session.on("message_end", capture)
-        Runner->>Session: session.on("entries_appended", capture)
-        Runner->>Session: session.run(prompt) [awaits]
-        Note over Session: agent edits files,<br/>runs tests,<br/>emits messages
-        Session-->>Runner: result { lastMessage, usage }
-        Runner->>Session: detach listeners
-        Runner->>SDK: dispose() [finally]
-        Runner-->>Store: IterationResult { output, costUsd, taskFingerprint, ... }
-        Store->>Pi: appendEntry("ralph-loop:iteration", ...) [P9 — BEFORE mutate]
-        Store->>Pi: setStatus("ralph-loop", "iter N+1/M")
-        Store->>Store: evaluateStop()
+    loop until evaluateStopPre or evaluateStopPost returns non-null
+        Store->>Store: evaluateStopPre(state) [pre-iter terminal check]
+        alt pre-iter stop fires (e.g. STOP marker, plan exhausted, cancel)
+            Store->>Pi: appendEntry("ralph-loop:run-end", { stopReason, ... })
+            Store-->>Cmd: break loop
+        else continue
+            Store->>Runner: runIteration({ plan, history, signal })
+            Runner->>SDK: createAgentSession({ model, extensions, ... })
+            SDK-->>Runner: { session, dispose }
+            Runner->>Session: session.on("message_end", capture)
+            Runner->>Session: session.on("entries_appended", capture)
+            Runner->>Session: session.run(prompt) [awaits]
+            Note over Session: agent edits files,<br/>runs tests,<br/>emits messages
+            Session-->>Runner: result { lastMessage, usage }
+            Runner->>Session: detach listeners
+            Runner->>SDK: dispose() [finally]
+            Runner-->>Store: IterationResult { output, costUsd, taskFingerprint, ... }
+            Store->>Pi: appendEntry("ralph-loop:iteration", ...) [P9 — BEFORE mutate]
+            Store->>Pi: setStatus("ralph-loop", "iter N+1/M")
+            Store->>Store: evaluateStopPost(state) [post-iter classification]
+        end
     end
     Store->>Pi: appendEntry("ralph-loop:run-end", { stopReason, ... })
     Store->>Pi: notify("ralph-loop: stopped — <reason>", "info")
@@ -142,6 +148,7 @@ sequenceDiagram
 
 Notes on the sequence:
 
+- `evaluateStopPre` runs at the top of each iteration, BEFORE `createAgentSession`. This is the resolution of companion review F001 (workshop 001 § Evaluation order pre/post split). Pre-iteration terminal states are: STOP marker found, plan exhausted, user cancel between iterations, caps already hit.
 - `appendEntry("ralph-loop:run-start", ...)` happens **before** `setStatus` and **before** the first iteration (P9 — persist before mutate).
 - `dispose()` is in a `try/finally` so it runs even if `session.run()` throws.
 - The status pill clear at the end uses `undefined` (D-006).
