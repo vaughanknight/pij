@@ -41,9 +41,30 @@ This domain owns the vocabulary, contracts, and discipline that any "iterate unt
 
 ## Contracts
 
+### Headline: the `StopReason` tagged union (verbatim source-of-truth)
+
+This is the contract Phase 1 `store.ts` MUST implement character-for-character. Companion review F001 (HIGH) caught the prior version which only summarised the kinds without embedding the field shapes. Lifted verbatim from [`workshops/001-stop-condition-catalog.md` § StopReason tagged union](../../plans/008-ralph-loop-extension/workshops/001-stop-condition-catalog.md):
+
+```ts
+// .pi/extensions/ralph-loop/store.ts
+export type StopReason =
+  | { kind: "complete"; reason: "sigil" | "plan_exhausted"; iteration: number }
+  | { kind: "max_iterations"; limit: number; reached: number }
+  | { kind: "budget_usd"; limitUsd: number; spentUsd: number }
+  | { kind: "budget_wallclock"; limitMs: number; elapsedMs: number }
+  | { kind: "spinning"; n: number; taskFingerprint: string; iterations: readonly number[] }
+  | { kind: "manual_stop"; line: string; iteration: number }     // STOP token found in plan file
+  | { kind: "user_cancel"; at: "iteration_boundary" | "mid_iteration"; iteration: number }
+  | { kind: "unverified"; cause: "cost_unavailable" | "sigil_missing" | "session_error"; detail: string };
+```
+
+Discriminator is `kind` (P6 boundary discipline). Every case carries the evidence that fired it. `complete.reason` resolves cross-workshop drift caught during plan-3 companion review (F001).
+
+### Contracts at a glance
+
 | Contract | Consumer | Shape / Guarantee |
 |----------|----------|-------------------|
-| `StopReason` tagged union | All loop consumers (store, wiring, smoke, docs) | 8 kinds, closed taxonomy, exhaustively switched. Each carries the evidence that fired it. See workshop 001 § StopReason tagged union for the canonical declaration. |
+| `StopReason` tagged union | All loop consumers (store, wiring, smoke, docs) | 8 kinds, closed taxonomy, exhaustively switched. Each carries the evidence that fired it. See **§ Contracts — Headline** above for the verbatim TypeScript definition (Phase 1 T008 implements against this block character-for-character). |
 | `IterationRunner` interface | Wiring layer (`index.ts`) consumes; `RalphLoopStore` ctor injects | `runIteration({ plan: PlanModel, history: IterationRecord[], signal: AbortSignal }): Promise<IterationResult>`. Implementations own SDK lifecycle. |
 | `PlanModel` types | Store; wiring; docs | Pure data model from `parseMarkdownPlan`. Workshop 003 § Data model is the source. |
 | `appendEntry` ordering (P9) | Store consumers | Every state mutation is preceded by an `appendEntry` with a stable `customType` (`ralph-loop:run-start`, `ralph-loop:iteration`, `ralph-loop:run-end`). |

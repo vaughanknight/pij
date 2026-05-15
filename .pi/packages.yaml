@@ -3,14 +3,54 @@
 # .pi/settings.json#packages is generated from this; do not hand-edit it.
 #
 # Each entry:
-#   source:  npm:<name>[@version] | https://github.com/.../repo.git | ./local/path
-#   enabled: true → installed by pi on boot; false → removed via `pi remove` on sync
-#   note:    optional reminder of why this is here
+#   source:   npm:<name>[@version] | https://github.com/.../repo.git | ./local/path
+#   enabled:  true → installed by pi on boot; false → removed via `pi remove` on sync
+#   note:     optional reminder of why this is here
+#   requires: optional { bin, install } — bootstrap checks `<bin> --version`;
+#             if missing, runs the shell command in `install` first
+#   vetted:   recorded by `npm run pkg vet` / `pkg audit` (Plan 009).
+#             Shape: { date: ISO8601, score: 0-100, overrides?: string, agentRubric?: sha256-hex }
+#             `pkg bootstrap` refuses entries with missing or stale (>30d) vetted.date
+#             unless --unsafe (which requires a non-empty reason in `overrides`).
 
 packages:
   - source: https://github.com/nicobailon/pi-mcp-adapter.git
     enabled: true
     note: MCP bridge
+    vetted:
+      date: 2026-05-15T16:25:00Z
+      score: 100
   - source: git:https://github.com/hasit/pi-community-themes@v0.3.0
     enabled: true
     note: Community pi themes
+    vetted:
+      date: 2026-05-15T16:25:00Z
+      score: 100
+  - source: npm:pi-lean-ctx
+    enabled: true
+    note: 60-90% token compression on bash/read/grep/find/ls
+    requires:
+      bin: lean-ctx
+      # pi-lean-ctx's resolveBinary() searches ~/.cargo/bin, ~/.local/bin,
+      # /usr/local/bin, then PATH. Brew on Apple Silicon installs to
+      # /opt/homebrew/bin which isn't searched — symlink into ~/.local/bin.
+      install: brew tap yvgude/lean-ctx && brew install lean-ctx && mkdir -p ~/.local/bin && ln -sf "$(brew --prefix)/bin/lean-ctx" ~/.local/bin/lean-ctx
+    vetted:
+      date: 2026-05-15T16:25:00Z
+      score: 100
+  - source: git:github.com/ghoseb/pi-askuserquestion
+    enabled: true
+    note: batched AskUserQuestion modal
+    vetted:
+      date: 2026-05-15T16:25:00Z
+      score: 98
+      # warn-level finding: no LICENSE file. We noted this in plan 009 research
+      # (the author shipped the repo without a LICENSE). Consuming the published
+      # repo via `pi install` is fine; redistribution would not be. Accepted
+      # with explicit reason per T005 contingency rules.
+      # FX001-1: typed override — only the named rule is auto-downgraded; any
+      # new unrelated warn (e.g. a fresh npm-audit:high CVE) still fails audit.
+      overrides:
+        rules:
+          - github-trust:no-license
+        reason: no-LICENSE on upstream; install-only use, not redistribution; flagged in research-dossier.md
