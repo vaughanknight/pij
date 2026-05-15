@@ -274,9 +274,15 @@ export interface CompactAssertOpts {
 	compactTimeoutMs?: number;
 	/** Whether to also run /reload and re-assert after. Default: true. */
 	includeReloadCheck?: boolean;
-	/** Wall-clock to allow /reload to complete. Default: 30_000. */
+	/** Wall-clock to allow `/reload` to complete. Default: 30_000. */
 	reloadTimeoutMs?: number;
-	/** Regex that signals the JSON envelope has been printed by the status command. Default: `/\}\s*$/m`. */
+	/** Wall-clock to allow each status command to render. Default: 5_000. */
+	statusTimeoutMs?: number;
+	/**
+	 * @deprecated Pre-F004 helper option. The freshness gate now ignores this
+	 * field and uses pre/post pane snapshots to require new JSON. Retained for
+	 * source compatibility with early adopters; will be removed in v2.
+	 */
 	jsonReadyRe?: RegExp;
 }
 
@@ -303,13 +309,13 @@ export async function compactAndAssert(
 	const compactTimeoutMs = opts.compactTimeoutMs ?? 30_000;
 	const includeReloadCheck = opts.includeReloadCheck ?? true;
 	const reloadTimeoutMs = opts.reloadTimeoutMs ?? 30_000;
-	const jsonReadyRe = opts.jsonReadyRe ?? /\}\s*$/m;
+	const statusTimeoutMs = opts.statusTimeoutMs ?? 5_000;
 
-	const pre = await runStatusAndCapture(session, opts.statusCommand, jsonReadyRe);
+	const pre = await runStatusAndCapture(session, opts.statusCommand, statusTimeoutMs);
 
 	await session.execute({ kind: "type", text: "/compact", press: "Enter" });
 	await session.waitIdle({ timeoutMs: compactTimeoutMs });
-	const postCompact = await runStatusAndCapture(session, opts.statusCommand, jsonReadyRe);
+	const postCompact = await runStatusAndCapture(session, opts.statusCommand, statusTimeoutMs);
 
 	const divergences: CompactAssertDivergence[] = [
 		...compareFields(pre, postCompact, fields, "compact"),
@@ -319,7 +325,7 @@ export async function compactAndAssert(
 	if (includeReloadCheck) {
 		await session.execute({ kind: "type", text: "/reload", press: "Enter" });
 		await session.waitIdle({ timeoutMs: reloadTimeoutMs });
-		postReload = await runStatusAndCapture(session, opts.statusCommand, jsonReadyRe);
+		postReload = await runStatusAndCapture(session, opts.statusCommand, statusTimeoutMs);
 		divergences.push(...compareFields(pre, postReload, fields, "reload"));
 	}
 
@@ -335,19 +341,36 @@ export async function compactAndAssert(
 async function runStatusAndCapture(
 	session: Session,
 	statusCommand: string,
-	jsonReadyRe: RegExp,
+	timeoutMs: number,
 ): Promise<Record<string, unknown>> {
-	const pane = await session.run(statusCommand, jsonReadyRe);
-	return extractLatestJsonObject(pane);
+	// F004 mitigation: snapshot the pane BEFORE sending the status command;
+	// after the command settles, require a NEW JSON object whose start index
+	// is past the baseline length. Without this, stale pre-compact JSON in
+	// scrollback can satisfy a naive `session.run(cmd, /\}\s*$/m)` match and
+	// the helper would falsely green-light AC-05.
+	const before = session.snapshot();
+	await session.execute({ kind: "type", text: statusCommand, press: "Enter" });
+	await session.waitIdle({ timeoutMs });
+	const after = session.snapshot();
+	const fresh = extractFreshJsonObject(before, after);
+	if (fresh === null) {
+		throw new Error(
+			`compactAndAssert: status command ${JSON.stringify(
+				statusCommand,
+			)} did not emit a fresh JSON envelope (no parseable {...} object appears past the common prefix shared with the pre-command pane snapshot)`,
+		);
+	}
+	return fresh;
 }
 
 /**
- * Find every balanced `{...}` block in `pane`, parse from the LAST one back
- * to the first, and return the first that parses to a non-array object.
- * Returns `{}` if none parse. Intentionally permissive about preceding chrome.
+ * Find every balanced `{...}` block in `pane` and return them with their
+ * start/end positions. String-literal aware. Exported for unit tests.
  */
-export function extractLatestJsonObject(pane: string): Record<string, unknown> {
-	const matches: string[] = [];
+export function findJsonBlocks(
+	pane: string,
+): { readonly text: string; readonly start: number; readonly end: number }[] {
+	const out: { text: string; start: number; end: number }[] = [];
 	let depth = 0;
 	let start = -1;
 	let inString = false;
@@ -370,7 +393,7 @@ export function extractLatestJsonObject(pane: string): Record<string, unknown> {
 		} else if (c === "}") {
 			depth--;
 			if (depth === 0 && start >= 0) {
-				matches.push(pane.substring(start, i + 1));
+				out.push({ text: pane.substring(start, i + 1), start, end: i + 1 });
 				start = -1;
 			} else if (depth < 0) {
 				depth = 0;
@@ -378,11 +401,21 @@ export function extractLatestJsonObject(pane: string): Record<string, unknown> {
 			}
 		}
 	}
+	return out;
+}
+
+/**
+ * Find every balanced `{...}` block in `pane`, parse from the LAST one back
+ * to the first, and return the first that parses to a non-array object.
+ * Returns `{}` if none parse. Intentionally permissive about preceding chrome.
+ */
+export function extractLatestJsonObject(pane: string): Record<string, unknown> {
+	const matches = findJsonBlocks(pane);
 	for (let i = matches.length - 1; i >= 0; i--) {
 		const raw = matches[i];
 		if (raw === undefined) continue;
 		try {
-			const obj = JSON.parse(raw) as unknown;
+			const obj = JSON.parse(raw.text) as unknown;
 			if (obj && typeof obj === "object" && !Array.isArray(obj)) {
 				return obj as Record<string, unknown>;
 			}
@@ -391,6 +424,47 @@ export function extractLatestJsonObject(pane: string): Record<string, unknown> {
 		}
 	}
 	return {};
+}
+
+/**
+ * Find a JSON object that appears in `after` STRICTLY past the longest common
+ * prefix shared with `before`. Returns `null` when no fresh object exists —
+ * callers should treat that as a status-command failure rather than a silent
+ * `{}` pass. F004 mitigation.
+ *
+ * Why common-prefix and not byte-length: pi's TUI may re-render its footer/
+ * prompt at different positions across snapshots; treating those as fresh
+ * would re-introduce the staleness false-pass. The shared prefix is the
+ * portion guaranteed to be the same in both snapshots; only content past it
+ * could possibly be new output.
+ */
+export function extractFreshJsonObject(
+	before: string,
+	after: string,
+): Record<string, unknown> | null {
+	const prefixLen = commonPrefixLength(before, after);
+	const matches = findJsonBlocks(after);
+	for (let i = matches.length - 1; i >= 0; i--) {
+		const m = matches[i];
+		if (m === undefined) continue;
+		if (m.start < prefixLen) break;
+		try {
+			const obj = JSON.parse(m.text) as unknown;
+			if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+				return obj as Record<string, unknown>;
+			}
+		} catch {
+			// try previous fresh block
+		}
+	}
+	return null;
+}
+
+function commonPrefixLength(a: string, b: string): number {
+	const max = Math.min(a.length, b.length);
+	let i = 0;
+	while (i < max && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+	return i;
 }
 
 /** Pure function: compare a set of top-level fields between two parsed status envelopes. */

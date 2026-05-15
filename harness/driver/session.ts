@@ -114,8 +114,14 @@ export class Session {
 			if (now === last && now !== "") {
 				const last3 = now.split("\n").slice(-3).join("\n");
 				const lines = now.split("\n");
-				const lastNonEmpty = [...lines].reverse().find((l) => l.trim() !== "") ?? "";
-				if (contextRe.test(now) && promptRe.test(lastNonEmpty) && !spinnerRe.test(last3)) {
+				const promptVisible = lines
+					.filter((line) => line.trim() !== "")
+					.slice(-5)
+					.some((line) => {
+						promptRe.lastIndex = 0;
+						return promptRe.test(line);
+					});
+				if (contextRe.test(now) && promptVisible && !spinnerRe.test(last3)) {
 					return now;
 				}
 				stable = now;
@@ -208,6 +214,15 @@ export class Session {
 
 	capturedNamed(): Record<string, string> {
 		return { ...this.captures };
+	}
+
+	/**
+	 * Capture the current pane content as a string (full scrollback by default).
+	 * Used by helpers that need a baseline snapshot before sending a command
+	 * (e.g. `compactAndAssert`'s freshness gate — F004 mitigation).
+	 */
+	snapshot(scrollback: number = 2000): string {
+		return capture(this.target, { scrollback, join: true });
 	}
 
 	teardown(): void {

@@ -6,10 +6,14 @@
 //   (c) opt-in reload check → postReload set only when includeReloadCheck: true (default)
 //                              and absent when false
 //   (d) compactTimeoutMs / reloadTimeoutMs honoured (waitIdle invoked with passed value)
+//   (e) F004 mitigation: stale JSON in scrollback does NOT cause a false pass —
+//                         the helper throws when no FRESH JSON envelope is emitted.
 //
-// Pure helpers (extractLatestJsonObject, compareFields) cover most of the
-// surface area without a tmux mock; one targeted end-to-end test exercises
-// the full session.run + waitIdle plumbing using a scripted tmux mock.
+// Pure helpers (extractLatestJsonObject, extractFreshJsonObject, compareFields)
+// cover most of the surface area without a tmux mock. End-to-end tests use a
+// scripted tmux mock where each scripted pane is a strict EXTENSION of the
+// prior one (simulating real tmux scrollback semantics: append-only after
+// rendering settles).
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,7 +32,7 @@ vi.mock("node:child_process", () => ({
 			return paneScript[paneCursor.value] ?? "";
 		}
 		// send-keys with Enter advances to the next scripted pane (each
-		// session.run sends one Enter after the text payload).
+		// session.execute({press:"Enter"}) sends one Enter after the text).
 		if (args[0] === "send-keys" && args.includes("Enter")) {
 			paneCursor.value = Math.min(paneCursor.value + 1, paneScript.length - 1);
 		}
@@ -42,9 +46,26 @@ beforeEach(() => {
 	paneCursor.value = 0;
 });
 
-/** Build a pane string that satisfies waitIdle's defaults (prompt + context + no spinner). */
-function pane(...lines: string[]): string {
-	return [...lines, "claude-sonnet-4.5 • medium · 12.3%/100%", "> "].join("\n");
+const FOOTER = "claude-sonnet-4.5 • medium · 12.3%/100%";
+
+/** Footer + prompt suffix that satisfies waitIdle's defaults. */
+function withChrome(body: string): string {
+	return `${body}\n${FOOTER}\n> `;
+}
+
+/**
+ * Build a chain of pane snapshots where each one is a strict EXTENSION of
+ * the previous. Mirrors tmux append-only scrollback. `bodies[i]` is the new
+ * body emitted at step i.
+ */
+function appendChain(bodies: string[]): string[] {
+	const out: string[] = [];
+	let accumulated = "";
+	for (const body of bodies) {
+		accumulated = accumulated ? `${accumulated}\n${body}` : body;
+		out.push(withChrome(accumulated));
+	}
+	return out;
 }
 
 describe("driver/compactAndAssert: pure helpers", () => {
@@ -76,6 +97,36 @@ describe("driver/compactAndAssert: pure helpers", () => {
 			note: "contains } literal",
 			iterations: 5,
 		});
+	});
+
+	it("findJsonBlocks reports positions for every balanced block", async () => {
+		const { findJsonBlocks } = await import("./index.js");
+		const sample = 'pre {"a":1} mid {"b":2} tail';
+		const blocks = findJsonBlocks(sample);
+		expect(blocks.map((b) => b.text)).toEqual(['{"a":1}', '{"b":2}']);
+		expect(blocks[0]?.start).toBe(4);
+		expect(blocks[1]?.start).toBe(16);
+	});
+
+	it("extractFreshJsonObject returns the LATEST JSON past the common prefix", async () => {
+		const { extractFreshJsonObject } = await import("./index.js");
+		const before = 'header {"old":1}';
+		const after = `${before} divider {"fresh":2}`;
+		expect(extractFreshJsonObject(before, after)).toEqual({ fresh: 2 });
+	});
+
+	it("extractFreshJsonObject returns null when no JSON appears past baseline (F004)", async () => {
+		const { extractFreshJsonObject } = await import("./index.js");
+		const before = 'header {"only":1}';
+		const after = `${before} no new json here`;
+		expect(extractFreshJsonObject(before, after)).toBeNull();
+	});
+
+	it("extractFreshJsonObject treats identical-content same-position JSON as stale", async () => {
+		const { extractFreshJsonObject } = await import("./index.js");
+		const before = '{"iters":3}';
+		const after = before; // pane never advanced
+		expect(extractFreshJsonObject(before, after)).toBeNull();
 	});
 
 	it("compareFields returns [] when fields match (case a)", async () => {
@@ -143,15 +194,23 @@ describe("driver/compactAndAssert: pure helpers", () => {
 	});
 });
 
-describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
+describe("driver/compactAndAssert: end-to-end (scripted tmux mock with append-only scrollback)", () => {
 	it("case (a): pre + postCompact + postReload all match → ok: true, no divergences", async () => {
+		// Each step appends a new body to the prior pane. mimics tmux scrollback.
 		paneScript.push(
-			pane("ralph-loop loaded"), // 0: boot idle
-			pane('{"iterations":3,"lastTaskTitle":"impl X","runActive":true}'), // 1: pre status
-			pane("compact complete"), // 2: post-compact idle (waitIdle)
-			pane('{"iterations":3,"lastTaskTitle":"impl X","runActive":true}'), // 3: post-compact status
-			pane("reload complete"), // 4: post-reload idle (waitIdle)
-			pane('{"iterations":3,"lastTaskTitle":"impl X","runActive":true}'), // 5: post-reload status
+			...appendChain([
+				"ralph-loop loaded",
+				// step 1: pre status emits JSON
+				'>>> /ralph status --json\n{"iterations":3,"lastTaskTitle":"impl X","runActive":true}',
+				// step 2: /compact echoes + idle
+				">>> /compact\ncompact complete",
+				// step 3: post-compact status emits FRESH JSON (same values, but freshly written)
+				'>>> /ralph status --json\n{"iterations":3,"lastTaskTitle":"impl X","runActive":true}',
+				// step 4: /reload echoes + idle
+				">>> /reload\nreload complete",
+				// step 5: post-reload status emits another FRESH JSON
+				'>>> /ralph status --json\n{"iterations":3,"lastTaskTitle":"impl X","runActive":true}',
+			]),
 		);
 
 		const { Session, compactAndAssert } = await import("./index.js");
@@ -163,6 +222,7 @@ describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
 			fields: ["iterations", "lastTaskTitle"],
 			compactTimeoutMs: 1_000,
 			reloadTimeoutMs: 1_000,
+			statusTimeoutMs: 1_000,
 		});
 
 		expect(r.ok).toBe(true);
@@ -172,14 +232,17 @@ describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
 		expect(r.postReload).toMatchObject({ iterations: 3, lastTaskTitle: "impl X" });
 	});
 
-	it("case (b): postCompact diverges → ok: false, divergences[phase=compact]", async () => {
+	it("case (b): postCompact diverges (D-005 confirmed shape) → ok: false, phase=compact", async () => {
 		paneScript.push(
-			pane("ralph-loop loaded"),
-			pane('{"iterations":5,"lastTaskTitle":"impl X","runActive":true}'),
-			pane("compact complete"),
-			pane('{"iterations":0,"lastTaskTitle":null,"runActive":false}'), // ALL DROPPED → D-005 confirmed shape
-			pane("reload complete"),
-			pane('{"iterations":0,"lastTaskTitle":null,"runActive":false}'),
+			...appendChain([
+				"ralph-loop loaded",
+				'>>> /ralph status --json\n{"iterations":5,"lastTaskTitle":"impl X","runActive":true}',
+				">>> /compact\ncompact complete",
+				// Iterations dropped to 0 — D-005 confirmed shape.
+				'>>> /ralph status --json\n{"iterations":0,"lastTaskTitle":null,"runActive":false}',
+				">>> /reload\nreload complete",
+				'>>> /ralph status --json\n{"iterations":0,"lastTaskTitle":null,"runActive":false}',
+			]),
 		);
 
 		const { Session, compactAndAssert } = await import("./index.js");
@@ -191,10 +254,10 @@ describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
 			fields: ["iterations", "lastTaskTitle"],
 			compactTimeoutMs: 1_000,
 			reloadTimeoutMs: 1_000,
+			statusTimeoutMs: 1_000,
 		});
 
 		expect(r.ok).toBe(false);
-		expect(r.divergences.length).toBeGreaterThanOrEqual(1);
 		const compactDivs = r.divergences.filter((d) => d.phase === "compact");
 		expect(compactDivs).toContainEqual({
 			field: "iterations",
@@ -206,10 +269,12 @@ describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
 
 	it("case (c): includeReloadCheck=false omits postReload entirely", async () => {
 		paneScript.push(
-			pane("ralph-loop loaded"),
-			pane('{"iterations":3}'),
-			pane("compact complete"),
-			pane('{"iterations":3}'),
+			...appendChain([
+				"ralph-loop loaded",
+				'>>> /ralph status --json\n{"iterations":3}',
+				">>> /compact\ncompact complete",
+				'>>> /ralph status --json\n{"iterations":3}',
+			]),
 		);
 
 		const { Session, compactAndAssert } = await import("./index.js");
@@ -220,6 +285,7 @@ describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
 			statusCommand: "/ralph status --json",
 			fields: ["iterations"],
 			compactTimeoutMs: 1_000,
+			statusTimeoutMs: 1_000,
 			includeReloadCheck: false,
 		});
 
@@ -233,31 +299,90 @@ describe("driver/compactAndAssert: end-to-end (scripted tmux mock)", () => {
 		expect(sentReload).toBe(false);
 	});
 
-	it("case (d): timeouts plumb through (small compactTimeoutMs accepted on idle-pane)", async () => {
+	it("case (d): timeouts plumb through (small compact/reload/status timeouts accepted on idle)", async () => {
 		paneScript.push(
-			pane("ralph-loop loaded"),
-			pane('{"iterations":1}'),
-			pane("compact complete"),
-			pane('{"iterations":1}'),
-			pane("reload complete"),
-			pane('{"iterations":1}'),
+			...appendChain([
+				"ralph-loop loaded",
+				'>>> /ralph status --json\n{"iterations":1}',
+				">>> /compact\ncompact complete",
+				'>>> /ralph status --json\n{"iterations":1}',
+				">>> /reload\nreload complete",
+				'>>> /ralph status --json\n{"iterations":1}',
+			]),
 		);
 
 		const { Session, compactAndAssert } = await import("./index.js");
 		const session = Session.fromTarget({ session: "test", paneId: "%5" });
 		await session.waitIdle({ timeoutMs: 1_000 });
 
-		// Even with very short timeouts, an idle pane resolves quickly and
-		// the call completes — proving the option propagates without
-		// triggering DriverIdleTimeoutError. (A real /compact-stuck timeout
-		// is exercised by the smoke against a live pi, not by unit tests.)
+		// Custom (small) timeouts accepted on an idle pane.
 		const r = await compactAndAssert(session, {
 			statusCommand: "/ralph status --json",
 			fields: ["iterations"],
 			compactTimeoutMs: 800,
 			reloadTimeoutMs: 800,
+			statusTimeoutMs: 800,
 		});
 
 		expect(r.ok).toBe(true);
+	});
+
+	it("case (e) — F004 regression: stale pre JSON in scrollback does NOT pass when post emits no fresh JSON", async () => {
+		// Pre status emits {iterations:5}; /compact runs; but the post-status
+		// command produces NO new JSON (simulating ralph-loop's status failing
+		// to render after compact). The old impl would have matched the stale
+		// {iterations:5} in scrollback and falsely returned ok:true. The fixed
+		// impl throws because no fresh JSON appears past the baseline.
+		paneScript.push(
+			...appendChain([
+				"ralph-loop loaded",
+				'>>> /ralph status --json\n{"iterations":5,"runActive":true}',
+				">>> /compact\ncompact complete",
+				// Status command echoed but NO new JSON envelope rendered.
+				">>> /ralph status --json\n(error: ralph-loop store hydration timed out)",
+			]),
+		);
+
+		const { Session, compactAndAssert } = await import("./index.js");
+		const session = Session.fromTarget({ session: "test", paneId: "%5" });
+		await session.waitIdle({ timeoutMs: 1_000 });
+
+		await expect(
+			compactAndAssert(session, {
+				statusCommand: "/ralph status --json",
+				fields: ["iterations"],
+				compactTimeoutMs: 800,
+				reloadTimeoutMs: 800,
+				statusTimeoutMs: 800,
+				includeReloadCheck: false,
+			}),
+		).rejects.toThrow(/did not emit a fresh JSON envelope/);
+	});
+
+	it("case (e2) — F004 regression: malformed post JSON also throws (no silent {} pass)", async () => {
+		paneScript.push(
+			...appendChain([
+				"ralph-loop loaded",
+				'>>> /ralph status --json\n{"iterations":5}',
+				">>> /compact\ncompact complete",
+				// Malformed JSON in fresh region.
+				'>>> /ralph status --json\n{"iterations": malformed,',
+			]),
+		);
+
+		const { Session, compactAndAssert } = await import("./index.js");
+		const session = Session.fromTarget({ session: "test", paneId: "%5" });
+		await session.waitIdle({ timeoutMs: 1_000 });
+
+		await expect(
+			compactAndAssert(session, {
+				statusCommand: "/ralph status --json",
+				fields: ["iterations"],
+				compactTimeoutMs: 800,
+				reloadTimeoutMs: 800,
+				statusTimeoutMs: 800,
+				includeReloadCheck: false,
+			}),
+		).rejects.toThrow(/did not emit a fresh JSON envelope/);
 	});
 });
