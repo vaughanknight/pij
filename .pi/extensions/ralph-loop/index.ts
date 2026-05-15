@@ -22,10 +22,12 @@
 import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionContext,
+import {
+	createAgentSession,
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+	type ExtensionContext,
+	SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -91,17 +93,39 @@ function buildRunner(_pi: ExtensionAPI, cwd: string): IterationRunner {
 	if (process.env[FAKE_RUNNER_ENV] === "1") {
 		return new FakeIterationRunnerForSmoke();
 	}
-	// Real path: lazily-bound factory using pi-coding-agent. Importing inline
-	// here would violate AGENTS.md (no top-level await import); the factory
-	// declares its own structural shape and the wiring constructs it once.
-	const factory: AgentSessionFactory = async (_input) => {
-		// In v1 we do NOT spin up nested pi sessions automatically — the SDK
-		// path is exercised by smoke via FakeIterationRunnerForSmoke. The real
-		// nested-session integration is tracked as a follow-up (see RUNBOOK +
-		// docs/how/ralph-loop.md § Troubleshooting "no real SDK session yet").
-		throw new Error(
-			"ralph-loop: real SDK runner not wired in v1. Set PIJ_RALPH_FAKE_RUNNER=1 to run with the fake-runner shim, or call ralph_iterate directly with externally-provided IterationResults.",
+	// Real path: each iteration spawns a FRESH agent session (workshop 002
+	// § Per-iteration sequence). The session is in-memory (no persistent JSONL
+	// for the inner sessions) so the outer pi session's history is preserved
+	// untouched while each iteration gets a clean context.
+	//
+	// Caveat: the inner session ALSO loads ralph-loop via DefaultResourceLoader.
+	// That's structurally fine — the inner store sees no prior entries, so its
+	// session_start handler is a no-op. The inner agent shouldn't invoke
+	// `/ralph start` because the default prompt template constrains it to one
+	// task from the plan file. We trust the prompt; future hardening would pass
+	// a custom ResourceLoader that excludes ralph-loop.
+	const factory: AgentSessionFactory = async (input) => {
+		const { session } = await createAgentSession({
+			cwd,
+			sessionManager: SessionManager.inMemory(),
+		});
+
+		// Forward AbortSignal to the inner session if the outer cancels.
+		if (input.signal.aborted) {
+			session.dispose();
+			throw new Error("ralph-loop: aborted before inner session start");
+		}
+		input.signal.addEventListener(
+			"abort",
+			() => {
+				void session.abort().catch(() => {
+					/* best-effort */
+				});
+			},
+			{ once: true },
 		);
+
+		return session;
 	};
 	return new SdkIterationRunner({ factory, cwd });
 }
