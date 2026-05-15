@@ -103,6 +103,18 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Avoided `ctrl+t` because core keybindings reserve it; default open overlay shortcut is `ctrl+shift+y`.
   - `npm test -- .pi/extensions/todo/store.test.ts` passed: 14 tests.
   - `npm run typecheck` is blocked by unrelated `.pi/extensions/ralph-loop/index.ts` diagnostics introduced outside this task; todo diagnostics are clear and this is tracked for T011.
+- **Commit**: `c3a62cf` (`feat: add todo overlay and status`)
+- **Companion ping**: `review-request: T006 c3a62cf` sent at 2026-05-15T07:13:36Z.
+
+### T007 — Add deterministic smoke scenario
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Replaced scaffold smoke with a Driver SDK scenario covering start cleanup through `/sql`, `/todo` empty, add, list, `/sql` agreement, overlay anchor, close overlay, `/reload`, wait-idle, and post-reload list.
+  - First smoke attempt failed because `/reload` matched before idle; added explicit `wait` after `/reload`.
+  - `npm run smoke -- todo` passed.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation

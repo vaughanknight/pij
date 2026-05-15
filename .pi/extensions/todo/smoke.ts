@@ -1,22 +1,77 @@
 // Smoke scenario for todo. Runs via `npm run smoke -- todo`.
 //
-// Steps drive pi through the Driver SDK's current discriminated-union Step
-// shape. Keep smoke deterministic: prefer slash commands over model tool
-// selection.
+// Keep smoke deterministic: prefer slash commands over model tool selection.
 
 import type { Scenario } from "../../../harness/driver/index.js";
 
+const smokeTitle = `Smoke todo ${Date.now()}`;
+const smokeTitleRe = new RegExp(smokeTitle);
+const oneOpenRe = new RegExp(`todo: 1 open[\\s\\S]*${smokeTitle}`);
+
 const scenario: Scenario = {
 	name: "todo",
+	bootReadyTimeoutMs: 30_000,
 	steps: [
+		{
+			kind: "type",
+			text: "/sql DELETE FROM todos",
+			press: "Enter",
+			expect: /sql: ok/,
+			expectTimeoutMs: 5000,
+		},
 		{
 			kind: "type",
 			text: "/todo",
 			press: "Enter",
-			expect: /not implemented/,
+			expect: /todo: no open todos/,
 			expectTimeoutMs: 5000,
 		},
-		// TODO: add real steps once /todo is implemented.
+		{
+			kind: "type",
+			text: `/todo add ${smokeTitle}`,
+			press: "Enter",
+			expect: new RegExp(`todo: added #[0-9]+ pending . ${smokeTitle}`),
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: "/todo list",
+			press: "Enter",
+			expect: oneOpenRe,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: `/sql SELECT title FROM todos WHERE title = '${smokeTitle}'`,
+			press: "Enter",
+			expect: smokeTitleRe,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: "/todo overlay",
+			press: "Enter",
+			expect: oneOpenRe,
+			expectTimeoutMs: 5000,
+		},
+		{ kind: "press", key: "q" },
+		{ kind: "sleep", ms: 300 },
+		{
+			kind: "type",
+			text: "/reload",
+			press: "Enter",
+			expect: /reload|Reload/i,
+			expectTimeoutMs: 15_000,
+		},
+		{ kind: "wait", timeoutMs: 15_000 },
+		{
+			kind: "type",
+			text: "/todo list",
+			press: "Enter",
+			expect: oneOpenRe,
+			expectTimeoutMs: 10_000,
+		},
+		{ kind: "capture", name: "final" },
 	],
 };
 
