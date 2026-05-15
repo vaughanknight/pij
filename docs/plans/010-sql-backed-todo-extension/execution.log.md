@@ -143,6 +143,18 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Updated domain map labels, edges, health summary, and history.
   - Updated registry history to record Plan 010 as an extension of existing domains rather than a new domain.
   - Updated Plan 010 Domain Manifest to include session-sql wiring files committed as `/sql` agreement prerequisites.
+- **Commit**: `fdb7a95` (`docs: record sql-backed todo domains`)
+- **Companion ping**: `review-request: T009 fdb7a95` sent at 2026-05-15T07:22:16Z.
+
+### T010 — Capture execution evidence, velocity, and difficulties
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Added `docs/difficulties.md` D-027 for companion ping SHA drift in concurrent worktrees.
+  - Added `docs/difficulties.md` D-028 for post-`/reload` smoke race; local encoded fix is the explicit wait in todo smoke.
+  - Added `docs/velocity.md` row for extension #5 (`todo`) with T0 and pending final-validation T1.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation
