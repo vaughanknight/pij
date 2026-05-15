@@ -31,6 +31,7 @@ Boot/Interact/Observe contract, see
 | Velocity log | `docs/velocity.md` |
 | Workshops + research | `docs/plans/001-pi-extensions/` |
 | Spec + plan for v0.1.0 | `docs/plans/002-pij-harness/` |
+| Custom / unlisted pi models | `RUNBOOK.md` § "Custom / unlisted pi models" (+ `D-020`) |
 
 ## Using extensions on another machine
 
