@@ -36,43 +36,51 @@ const TodoStatusParameter = Type.Union([
 	Type.Literal("blocked"),
 	Type.Literal("done"),
 ]);
-const TodoToolParameters = Type.Union([
-	Type.Object({
-		action: Type.Literal("list"),
-		view: Type.Optional(TodoViewParameter),
-		limit: Type.Optional(Type.Number({ description: "Maximum rows to return." })),
-	}),
-	Type.Object({
-		action: Type.Literal("add"),
-		title: Type.String({ description: "Todo title." }),
-		description: Type.Optional(Type.String({ description: "Optional todo description." })),
-		priority: Type.Optional(
-			Type.Number({ description: "Optional integer priority; higher sorts first." }),
-		),
-	}),
-	Type.Object({ action: Type.Literal("done"), id: Type.Number({ description: "Todo id." }) }),
-	Type.Object({
-		action: Type.Literal("status"),
-		id: Type.Number({ description: "Todo id." }),
-		status: TodoStatusParameter,
-		reason: Type.Optional(Type.String({ description: "Optional status reason." })),
-	}),
-	Type.Object({
-		action: Type.Literal("block"),
-		id: Type.Number({ description: "Todo id." }),
-		reason: Type.Optional(Type.String({ description: "Optional blocked reason." })),
-	}),
-	Type.Object({
-		action: Type.Literal("next"),
-		limit: Type.Optional(Type.Number({ description: "Maximum ready rows to return." })),
-	}),
-	Type.Object({
-		action: Type.Literal("dep"),
-		id: Type.Number({ description: "Todo id being blocked." }),
-		dependsOn: Type.Number({ description: "Prerequisite todo id." }),
-	}),
-	Type.Object({ action: Type.Literal("clear"), confirm: Type.Literal(true) }),
-]);
+// FX002: Model providers require `type: "object"` at the root of every tool
+// schema. The discriminated-union form `Type.Union([Type.Object(...), ...])`
+// compiles to a top-level `anyOf` with no `type` — provider 400-rejects it.
+// Flattened to a single object; `action` is the discriminator; variant-
+// specific fields are optional, validated at runtime in the switch below.
+const TodoToolParameters = Type.Object({
+	action: Type.Union(
+		[
+			Type.Literal("list"),
+			Type.Literal("add"),
+			Type.Literal("done"),
+			Type.Literal("status"),
+			Type.Literal("block"),
+			Type.Literal("next"),
+			Type.Literal("dep"),
+			Type.Literal("clear"),
+		],
+		{
+			description:
+				"What to do. list/next read; add/done/status/block/dep mutate; clear wipes (requires confirm=true).",
+		},
+	),
+	view: Type.Optional(
+		Type.Union([...TodoViewParameter.anyOf], {
+			description: "[list] Which slice: open (default) | all | done | blocked.",
+		}),
+	),
+	limit: Type.Optional(Type.Number({ description: "[list,next] Maximum rows to return." })),
+	title: Type.Optional(Type.String({ description: "[add] Todo title." })),
+	description: Type.Optional(Type.String({ description: "[add] Optional todo description." })),
+	priority: Type.Optional(
+		Type.Number({ description: "[add] Optional priority; higher sorts first." }),
+	),
+	id: Type.Optional(Type.Number({ description: "[done,status,block,dep] Todo id." })),
+	status: Type.Optional(
+		Type.Union([...TodoStatusParameter.anyOf], {
+			description: "[status] pending | in_progress | blocked | done.",
+		}),
+	),
+	reason: Type.Optional(Type.String({ description: "[status,block] Optional reason." })),
+	dependsOn: Type.Optional(Type.Number({ description: "[dep] Prerequisite todo id." })),
+	confirm: Type.Optional(
+		Type.Literal(true, { description: "[clear] Must be true to wipe todos." }),
+	),
+});
 
 interface TodoToolDetails {
 	action: string;
