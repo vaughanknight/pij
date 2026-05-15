@@ -1,7 +1,15 @@
-# pij — Agent Harness Contract (BIO loop)
+# pij — Engineering Harness Contract (BIO loop)
 
 > The Boot / Interact / Observe contract any agent can use to validate
 > work on pij autonomously, without reading the full RUNBOOK or AGENTS.md.
+
+> **Scope**: this doc covers the **engineering** harness — the substrate
+> layer (`npm install`, `pi`, `npm run self-check`, tmux smoke). The
+> **agent** harness (minih companion-mode review) is documented separately
+> at [`agent-harness.md`](agent-harness.md). Both layers are required for
+> a fully-validated plan-6 build; removing either weakens the proof. See
+> [`agent-harness.md` § Layering](agent-harness.md#layering--agent-harness-vs-engineering-harness)
+> for the contract split.
 
 **Maturity**: L2 — auto boot via npm; deterministic observe via
 `npm run self-check`; tmux-driven interact for end-to-end smoke.

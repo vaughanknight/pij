@@ -70,6 +70,8 @@ semantics, overlay keys, and `/todo` + `/sql` agreement scenarios.
 | Workshops + research | `docs/plans/001-pi-extensions/` |
 | Spec + plan for v0.1.0 | `docs/plans/002-pij-harness/` |
 | Custom / unlisted pi models | `RUNBOOK.md` § "Custom / unlisted pi models" (+ `D-020`) |
+| Ralph Loop extension | `.pi/extensions/ralph-loop/` + [`docs/how/ralph-loop.md`](docs/how/ralph-loop.md) (RUNBOOK § "How to start a Ralph Loop") |
+| Agent harness (companion mode) | [`docs/project-rules/agent-harness.md`](docs/project-rules/agent-harness.md) (RUNBOOK § "Companion mode (minih)") |
 
 ## Using extensions on another machine
 
