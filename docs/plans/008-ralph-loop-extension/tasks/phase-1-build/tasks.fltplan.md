@@ -3,7 +3,7 @@
 **Plan**: [`../../ralph-loop-extension-plan.md`](../../ralph-loop-extension-plan.md)
 **Phase**: Phase 1: The build (5 sub-phases: 1.A Driver SDK helper / 1.B Store layer / 1.C Wiring / 1.D Smoke + AC-05 / 1.E Docs + gifts + velocity)
 **Generated**: 2026-05-15
-**Status**: Ready for takeoff (after Phase 0 lands)
+**Status**: Landed (2026-05-15T07:45:57Z)
 
 ---
 
@@ -61,7 +61,7 @@ stateDiagram-v2
     S1D --> S1E
     S1E --> [*]
 
-    class S1A,S1B,S1C,S1D,S1E pending
+    class S1A,S1B,S1C,S1D,S1E done
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -72,11 +72,11 @@ stateDiagram-v2
 
 <!-- Updated by /plan-6-v2 during implementation: [ ] → [~] → [x] -->
 
-- [ ] **Stage 1.A: Driver SDK helper** — Add `compactAndAssert()` + its test. AC-12 gift (a). (`harness/driver/index.ts`, `harness/driver/compact-assert.test.ts` — new)
-- [ ] **Stage 1.B: Store layer TDD** — Types → parseMarkdownPlan → nextUndoneTask → taskFingerprint → detectSpinning → evaluateStopPre/Post → RalphLoopStore → replay guards. Tests interleaved per task. (`.pi/extensions/ralph-loop/store.ts`, `store.test.ts`)
-- [ ] **Stage 1.C: Wiring** — `SdkIterationRunner` (with leak-detection test) → `/ralph` command → tools → P10 `session_start` → status pill. (`.pi/extensions/ralph-loop/index.ts`, `runner.test.ts` — new)
-- [ ] **Stage 1.D: Smoke + AC-05 gate** — `FakeIterationRunner` → fixture plan → 8-step `/compact`-survival smoke → interpret + escalate-if-needed. (`harness/test-utils.ts`, `.pi/extensions/ralph-loop/{fixture-plan.md,smoke.ts}`, `docs/difficulties.md`)
-- [ ] **Stage 1.E: Docs + harness gifts + velocity** — Per-ext `AGENTS.md` → `docs/how/ralph-loop.md` → RUNBOOK → README → `agent-harness.md` (AC-12 b) → update `harness.md` → T1 stamp + Δ → final companion drain + retro harvest + AC-10 grep. (multiple files)
+- [x] **Stage 1.A: Driver SDK helper** — Add `compactAndAssert()` + its test. AC-12 gift (a). (`harness/driver/index.ts`, `harness/driver/compact-assert.test.ts` — new)
+- [x] **Stage 1.B: Store layer TDD** — Types → parseMarkdownPlan → nextUndoneTask → taskFingerprint → detectSpinning → evaluateStopPre/Post → RalphLoopStore → replay guards. Tests interleaved per task. (`.pi/extensions/ralph-loop/store.ts`, `store.test.ts`)
+- [x] **Stage 1.C: Wiring** — `SdkIterationRunner` (with leak-detection test) → `/ralph` command → tools → P10 `session_start` → status pill. (`.pi/extensions/ralph-loop/index.ts`, `runner.test.ts` — new)
+- [x] **Stage 1.D: Smoke + AC-05 gate** — `FakeIterationRunner` → fixture plan → 8-step `/compact`-survival smoke → interpret + escalate-if-needed. (`harness/test-utils.ts`, `.pi/extensions/ralph-loop/{fixture-plan.md,smoke.ts}`, `docs/difficulties.md`)
+- [x] **Stage 1.E: Docs + harness gifts + velocity** — Per-ext `AGENTS.md` → `docs/how/ralph-loop.md` → RUNBOOK → README → `agent-harness.md` (AC-12 b) → update `harness.md` → T1 stamp + Δ → final companion drain + retro harvest + AC-10 grep. (multiple files)
 
 ---
 
