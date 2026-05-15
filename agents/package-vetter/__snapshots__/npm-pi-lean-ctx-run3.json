@@ -1,0 +1,56 @@
+{
+  "summary": "Scanned the pi-lean-ctx package at /Users/jordanknight/pi-hacking/pij/.pi/npm/node_modules/pi-lean-ctx using the package-vetter rubric. The package exists and contains README.md, package.json, and three TypeScript extension files; the scan found two R-07 tool-description smuggling warnings where registered tool descriptions include imperative LLM-facing tool-use directions, plus one meta note about dynamic MCP tool descriptions being relayed into Pi tool registrations outside the current string-literal-only rule scope.",
+  "retrospective": {
+    "workedWell": "The run folder exposed the output schema clearly, and the package was small enough to inspect deterministically with direct file reads and range reads.",
+    "confusing": "The prompt said briefing.md was in the agent pack run directory, but the file was not present there; I had to resolve it from the parent agents/package-vetter directory. The scan scope also required reading package.json for pi extension references even though package.json is not itself listed as a content-scan target.",
+    "magicWand": "Have minih copy or symlink briefing.md into each package-vetter run directory and expose a single MINIH_BRIEFING_PATH variable alongside MINIH_OUTPUT_PATH.",
+    "magicWandTarget": "minih",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "No peer coordination was used for this one-shot scan."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "config",
+        "description": "briefing.md was not present in the run directory even though the run-loop instructions said to read it there.",
+        "workaround": "Resolved and read /Users/jordanknight/pi-hacking/pij/agents/package-vetter/briefing.md instead.",
+        "severity": "degrading"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 80,
+  "level": "warn",
+  "findings": [
+    {
+      "rule": "R-07",
+      "msg": "tool description imperative: 'IMPORTANT: Do NOT use ctx_shell to read files (cat/head/tail) — use ctx_read instead.'",
+      "severity": "warn",
+      "file": "extensions/index.ts",
+      "line": 322,
+      "snippet": "Output is auto-compressed by lean-ctx. IMPORTANT: Do NOT use ctx_shell to read files (cat/head/tail) — use ctx_read instead. Do NOT use ctx_shell for grep/find/ls"
+    },
+    {
+      "rule": "R-07",
+      "msg": "tool description imperative: 'ALWAYS use ctx_read instead of cat/head/tail via ctx_shell.'",
+      "severity": "warn",
+      "file": "extensions/index.ts",
+      "line": 365,
+      "snippet": "description: \"Read file contents. ALWAYS use ctx_read instead of cat/head/tail via ctx_shell. \" + \"Auto-selects mode"
+    },
+    {
+      "rule": "vetter:meta",
+      "msg": "dynamic MCP tool descriptions are passed through to pi.registerTool; current R-07 scope covers string literals only, so human review may want a rule for dynamic prompt-surface relays.",
+      "severity": "info",
+      "file": "extensions/mcp-bridge.ts",
+      "line": 163,
+      "snippet": "description: tool.description ?? `lean-ctx MCP tool: ${tool.name}`, promptSnippet: tool.description ?? tool.name"
+    }
+  ],
+  "scannedFiles": 5,
+  "durationMs": 18000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

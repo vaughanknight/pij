@@ -195,7 +195,26 @@ Single phase (Simple Mode); 6 inline tasks.
 - Agent skipped by default in `self-check` (`PIJ_VET_SKIP_AGENT=1`) for determinism and to keep CI offline-friendly. Live agent runs are opt-in via clearing the env var.
 - `pkg audit` respects `vetted.overrides` only for `warn` (downgrades to `ok`); `fail` is never auto-downgraded — `--unsafe` is the only path to install a failing package, and that records its own override.
 - `pkg add` installs eagerly then vets, rolling back the install on `fail` without `--unsafe`. Cleaner UX than clone-to-tmp + vet + install dance.
-- Agent positive-corpus snapshot regression (AC-05a/b live runs) deferred — pack + corpus are committed and runnable via `minih run agents/package-vetter --input '{...}'`; populating `__snapshots__/` is a manual first-run step.
+- Agent positive-corpus snapshot regression (AC-05a/b live runs) deferred at Plan 009 landing; **closed by FX001-4** — committed via `npm run snapshots:refresh -- --corpus-only` and `npm run snapshots:refresh -- --pkg-only`. The historical command form (`minih run ... --input '{...}'`) referenced here is obsolete; the current adapter uses `minih run package-vetter -p packagePath=<path> -p source=<src>`.
 - pi-askuserquestion warn (no LICENSE) is a **true positive** from the new pipeline — exactly the kind of signal the vetter exists to surface.
 
 **Status**: Landed. Self-check green. Plan 009 complete.
+
+### Fix FX001 — Audit-gate hardening — Complete (2026-05-15)
+
+**What was done**: Closed 4 HIGH findings from a `code-review` minih agent run (`agents/code-review/runs/2026-05-15T16-35-28-225Z-409b`) that audited the Plan 009 landing. The fix landed in 5 sub-commits via companion-mode `/plan-6`. The gate's correctness gaps — over-broad overrides masking new findings, unmanifested installs ungated at audit time, audit not refreshing stale dates, AC-05 detection/stability evidence missing — are now closed with tests + committed snapshots.
+
+**Sub-commits** (linear, each preceded by a companion-mode review-request):
+
+- `eb1dc51` (FX001-1): typed `{ rules, reason }` `vetted.overrides`; single `parseOverrides()` reader; legacy free-text form parses fail-safe with a one-line deprecation warning. **Closes F004** — a new unrelated warn alongside an accepted-rule warn no longer downgrades.
+- `ee86023` (FX001-2): synthetic `Verdict{vetter:"audit"}` for unmanifested project-scope installs, JSON `results` row uses `source:"<audit:unmanifested>"`. **Closes F002** — unmanifested installs now gate `pkg audit`'s exit code.
+- `0f9fa3b` (FX001-3): `cmdAudit` write-back persists refreshed `vetted.date`/`score`/`agentRubric` when RAW `verdict.level === "ok"` (not `effective === "ok"` via override). In-place `YAMLMap.set()` + `lineWidth: 0` preserve comments + folded scalars. **Closes F001** + guards against F004-via-write-back (override entries age out).
+- `b77de98` (FX001-4 infra): `snapshot-refresh.ts` + `snapshot-check.ts` + `agent.live.test.ts`; adapter rewritten for current minih CLI (`-p key=value` + `last-run`-based report path); `output-schema.json` `additionalProperties: true`.
+- _(this commit)_ FX001-4 evidence + FX001-5 docs: 7 corpus + 12 raw package + 4 median snapshots; `.pi/packages.yaml` schema header + `RUNBOOK.md` § "Vetting third-party extensions" document the new `overrides.rules` shape; Plan Validation Record extended with the post-impl close-out.
+
+**Discoveries**:
+
+- The Plan 009 agent adapter targeted an outdated minih CLI surface (`--input <json>`); current minih is `-p key=value` with report in `runs/<id>/output/report.json`. This bug was invisible because every test path set `PIJ_VET_SKIP_AGENT=1`.
+- `agents/package-vetter/output-schema.json` had `additionalProperties: false`, which conflicts with minih's system-required `summary` + `retrospective` envelope. The schema flip + the adapter now reading the canonical report.json regardless of run exit code makes the live path robust.
+
+**Status**: FX001 closed. AC-04/AC-05/AC-10/AC-11 confidence flipped per the Validation Record's post-impl coverageMap table. Companion-mode reviews silent for all 5 sub-commits (silence = no findings per protocol).

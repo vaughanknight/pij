@@ -37,12 +37,12 @@ Evidence: typecheck clean; lint clean; all 16 new tests pass; total suite 66 pas
 
 Positive corpus at `corpus/positive/`: 7 files (`r01-override.md` through `r07-tool-desc-smuggle.ts`), one per rule category, each containing concrete attack patterns at the expected severity. The R-06 file uses real zero-width and RTL-override codepoints. Snapshot directory at `__snapshots__/` is empty — populated on first live agent run.
 
-Adapter at `harness/scripts/vetters/agent.ts` exports `vetWithAgent(packagePath, source)` and `agentVetter: Vetter`. Spawns `minih run agents/package-vetter --input '{packagePath, source}'`, parses stdout JSON, recomputes level/score for safety. `PIJ_VET_SKIP_AGENT=1` short-circuits to an `ok` Verdict with a `vetter:meta` info finding — the production skip path for determinism in `self-check` and CI.
+Adapter at `harness/scripts/vetters/agent.ts` exports `vetWithAgent(packagePath, source)` and `agentVetter: Vetter`. _Note: this paragraph documents the historical Plan-009-landing shape; the adapter was rewritten in FX001-4 — see the FX001 log for the current spawn pattern._ Originally spawned `minih run agents/package-vetter --input '{...}'`. `PIJ_VET_SKIP_AGENT=1` short-circuits to an `ok` Verdict with a `vetter:meta` info finding — the production skip path for determinism in `self-check` and CI.
 
 3 contract tests added at `agent.test.ts` (skip-path, alias check, bad-input handling). Live agent runs are opt-in by unsetting the env var.
 
 Discoveries:
-- **Agent invocation pattern**: `minih run <pack-path> --input <json>` is the standard shape (mirrors `agents/extension-validator/`). The adapter is a thin spawnSync wrapper.
+- **Agent invocation pattern** (Plan-009-landing form, since superseded): `minih run <pack-path> --input <json>`. **FX001-4 discovery**: current minih CLI uses `minih run <slug> -p key=value` with output in `runs/<id>/output/report.json`; this paragraph is preserved for historical context but is **not the current contract**. See FX001-4 in `fixes/FX001-audit-gate-hardening.md`.
 - **Output discipline matters**: agent prompt is explicit that stdout = exactly one JSON object. Diagnostics go to stderr. This makes parsing trivial and robust.
 
 Evidence: typecheck clean; lint clean; 3 new agent-adapter tests pass; total suite 69 passing.
@@ -129,6 +129,22 @@ Exit 0. Plan landed.
 
 ## Outstanding items
 
-- **AC-05 live agent snapshots**: agent pack is runnable via `minih run agents/package-vetter --input '{"packagePath": "...", "source": "..."}'`. First snapshot generation is a manual step — populate `agents/package-vetter/__snapshots__/<pkg>.json` per package after running once and reviewing the Verdict.
-- **Detection corpus run**: agent should be run against each of the 7 corpus files in `agents/package-vetter/corpus/positive/` to verify it classifies them at the intended severity per the rubric. This validates AC-05a (≥6/7 categories detected).
-- **Plan-7 code review**: recommended next step per Simple Mode plan-6 → plan-7 chain.
+- ~~**AC-05 live agent snapshots**~~: ✅ closed by [FX001-4](./fixes/FX001-audit-gate-hardening.md). `agents/package-vetter/__snapshots__/` now carries 7 corpus snapshots + 12 raw package runs + 4 medians.
+- ~~**Detection corpus run**~~: ✅ closed by FX001-4. Full results: 7/7 corpus files classified at the intended severity (R-01 through R-07 all detected as `fail`). AC-05a exceeded its ≥6/7 target.
+- ~~**Plan-7 code review**~~: ✅ ran via `agents/code-review` minih agent — surfaced 4 HIGH findings (F001-F004); all addressed by [FX001](./fixes/FX001-audit-gate-hardening.md).
+- ~~**Adapter live path**~~: ✅ closed by FX001-4. The Plan 009 adapter used an outdated minih CLI signature (`--input <json>` — silently failing); rewritten to `-p key=value` + `last-run`-based report read. Also `output-schema.json` `additionalProperties: false` was conflicting with minih's system envelope — flipped to `true`.
+
+## Post-implementation FX001 close-out (2026-05-15)
+
+A `code-review` minih agent audit of the Plan 009 landing surfaced 4 HIGH correctness gaps:
+
+| Finding | Fix sub-task | Commit |
+|---------|--------------|--------|
+| F001: `pkg audit` never refreshes stale `vetted.date` | FX001-3 | `0f9fa3b` |
+| F002: Unmanifested installs detected but not gating exit | FX001-2 | `ee86023` |
+| F003: AC-05 evidence deferred (agent never run against corpus) | FX001-4 | _(this commit)_ |
+| F004: `vetted.overrides` mask all warns on the entry (over-broad) | FX001-1 | `eb1dc51` |
+
+Plus FX001-5 (docs + plan close-out) — `.pi/packages.yaml` schema-header + `RUNBOOK.md` document the new `overrides.rules` shape; `harness.md`/this log/Plan Validation Record extended.
+
+All 5 sub-commits pinged the `code-review-companion` per commit-boundary protocol; companion was silent (no findings) for FX001-1..3. FX001-4 + FX001-5 are bundled for the final review-request.

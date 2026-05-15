@@ -1,0 +1,64 @@
+{
+  "summary": "Scanned the pi-askuserquestion package prompt surfaces according to the package-vetter rubric. The package has no SKILL.md, AGENTS.md, CLAUDE.md, or prompt templates; package.json references src/index.ts, whose registered tool description contains model-directed imperative phrasing, producing warn-level R-07 findings and an overall warn verdict.",
+  "retrospective": {
+    "workedWell": "The run folder provided the schemas and prompt clearly, and the package manifest made the active extension entry point easy to identify.",
+    "confusing": "The required output combines the vetter verdict schema with minih retrospective fields, so the report needs both sets of fields even though the vetter prompt emphasizes emitting only the verdict envelope.",
+    "magicWand": "Add a package-vetter helper command such as `npm run vetter:scan -- <packagePath> --output <path>` that resolves scope, hashes briefing.md, applies R-01..R-07, and emits the merged minih-compatible JSON skeleton.",
+    "magicWandTarget": "project",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "Coordination was disabled for this one-shot vetter run."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "knowledge",
+        "description": "The scan scope distinguishes package.json referenced files from general TypeScript files, while R-07 narrows TypeScript scanning to registerTool or defineExtension string literals; this required conservative interpretation.",
+        "workaround": "Read package.json and src/index.ts as the manifest-referenced prompt surface, and limited TypeScript findings to the registerTool description string.",
+        "severity": "annoying"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 60,
+  "level": "warn",
+  "findings": [
+    {
+      "rule": "R-07",
+      "msg": "tool-description imperative: 'Use this tool to:'",
+      "severity": "warn",
+      "file": "src/index.ts",
+      "line": 12,
+      "snippet": "Ask the user 1–4 clarifying questions before proceeding.\nUse this tool to:\n1. Clarify ambiguous instructions"
+    },
+    {
+      "rule": "R-07",
+      "msg": "tool-description imperative: 'Each question must have 2–4 options.'",
+      "severity": "warn",
+      "file": "src/index.ts",
+      "line": 17,
+      "snippet": "Each question must have 2–4 options. Users can always select \"Other\" to type a free-text answer"
+    },
+    {
+      "rule": "R-07",
+      "msg": "tool-description imperative: 'do not include an \"Other\" option yourself'",
+      "severity": "warn",
+      "file": "src/index.ts",
+      "line": 17,
+      "snippet": "Users can always select \"Other\" to type a free-text answer, so do not include an \"Other\" option yourself."
+    },
+    {
+      "rule": "R-07",
+      "msg": "tool-description imperative: 'Always use this tool instead of asking questions in plain text'",
+      "severity": "warn",
+      "file": "src/index.ts",
+      "line": 22,
+      "snippet": "Always use this tool instead of asking questions in plain text — it provides a structured, interactive UI."
+    }
+  ],
+  "scannedFiles": 3,
+  "durationMs": 118000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

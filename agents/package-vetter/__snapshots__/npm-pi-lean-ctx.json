@@ -1,0 +1,98 @@
+{
+  "source": "npm:pi-lean-ctx",
+  "medianRunIdx": 1,
+  "driftMaxFindings": 2,
+  "verdict": {
+    "summary": "Scanned pi-lean-ctx scoped package files under the package-vetter rubric: package metadata, README, and the TypeScript extension surfaces. I found two R-07 tool-description smuggling warnings where registered tool descriptions give imperative model-facing tool-use instructions; no override, role-hijack, system-token, exfiltration, authority-appeal, or encoded-smuggle findings were observed.",
+    "retrospective": {
+      "workedWell": "The package was small and the relevant files were easy to enumerate from package.json#pi.extensions plus the README and TypeScript extension files.",
+      "confusing": "R-07 is somewhat ambiguous for benign replacement-tool guidance: descriptions like 'ALWAYS use ctx_read instead of cat/head/tail' are model-facing imperatives, but they also describe the intended safe/efficient use of replacement tools.",
+      "magicWand": "Add a package-vetter helper command that prints the exact scoped file list and extracts registerTool/defineExtension description strings with line spans, so agents can scan the intended prompt-bearing text without manually distinguishing code from tool metadata.",
+      "magicWandTarget": "project",
+      "coordination": {
+        "peerUpdatesSent": 0,
+        "unresolvedPeerRequests": 0,
+        "statePublished": false,
+        "notes": "No peer coordination was used for this one-shot scan."
+      },
+      "difficulties": [
+        {
+          "id": "MH-001",
+          "category": "knowledge",
+          "description": "The scope distinction between package.json-referenced extension files and generic TypeScript files required judgment: referenced extension files are code, but the rubric mainly treats TypeScript as in-scope only for registerTool/defineExtension descriptions.",
+          "workaround": "Read the extension files but only recorded findings against prompt-bearing registerTool descriptions, documenting the ambiguity in the retrospective.",
+          "severity": "annoying"
+        }
+      ]
+    },
+    "vetter": "agent",
+    "score": 80,
+    "level": "warn",
+    "findings": [
+      {
+        "rule": "R-07",
+        "msg": "tool description imperative: 'Do NOT use ctx_shell to read files (cat/head/tail) - use ctx_read instead'",
+        "severity": "warn",
+        "file": "extensions/index.ts",
+        "line": 321,
+        "snippet": "Output is auto-compressed by lean-ctx. IMPORTANT: Do NOT use ctx_shell to read files (cat/head/tail) - use ctx_read instead. Do NOT use ctx_shell for grep/find/ls"
+      },
+      {
+        "rule": "R-07",
+        "msg": "tool description imperative: 'ALWAYS use ctx_read instead of cat/head/tail via ctx_shell'",
+        "severity": "warn",
+        "file": "extensions/index.ts",
+        "line": 365,
+        "snippet": "description: \"Read file contents. ALWAYS use ctx_read instead of cat/head/tail via ctx_shell. \""
+      },
+      {
+        "rule": "vetter:meta",
+        "msg": "R-07 ambiguity: benign replacement-tool descriptions intentionally instruct tool choice, but still match imperative-to-LLM shape.",
+        "severity": "info",
+        "file": "extensions/index.ts",
+        "line": 321,
+        "snippet": "ctx_shell and ctx_read descriptions tell the model not to use shell file-reading and to prefer ctx_read."
+      }
+    ],
+    "scannedFiles": 5,
+    "durationMs": 90000,
+    "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+  },
+  "runs": [
+    {
+      "idx": 1,
+      "level": "warn",
+      "score": 80,
+      "findingCount": 3,
+      "rules": [
+        "R-07",
+        "R-07",
+        "vetter:meta"
+      ]
+    },
+    {
+      "idx": 2,
+      "level": "warn",
+      "score": 80,
+      "findingCount": 4,
+      "rules": [
+        "R-07",
+        "R-07",
+        "R-04",
+        "R-04"
+      ]
+    },
+    {
+      "idx": 3,
+      "level": "warn",
+      "score": 80,
+      "findingCount": 3,
+      "rules": [
+        "R-07",
+        "R-07",
+        "vetter:meta"
+      ]
+    }
+  ],
+  "generatedAt": "2026-05-15T07:52:32.620Z"
+}

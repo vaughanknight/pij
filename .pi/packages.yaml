@@ -9,22 +9,38 @@
 #   requires: optional { bin, install } — bootstrap checks `<bin> --version`;
 #             if missing, runs the shell command in `install` first
 #   vetted:   recorded by `npm run pkg vet` / `pkg audit` (Plan 009).
-#             Shape: { date: ISO8601, score: 0-100, overrides?: string, agentRubric?: sha256-hex }
+#             Shape: { date: ISO8601, score: 0-100, overrides?: Overrides, agentRubric?: sha256-hex }
 #             `pkg bootstrap` refuses entries with missing or stale (>30d) vetted.date
-#             unless --unsafe (which requires a non-empty reason in `overrides`).
+#             unless --unsafe (which requires a non-empty reason in `overrides.reason`).
+#
+#   overrides (FX001-1): typed { rules: string[]; reason: string }. `rules`
+#             enumerates which Finding.rule slugs the override accepts as
+#             warn→ok. A new unrelated warn still fails audit. `fail` is
+#             never auto-downgraded by override. Worked example:
+#
+#               vetted:
+#                 date: 2026-05-15T16:25:00Z
+#                 score: 98
+#                 overrides:
+#                   rules:
+#                     - github-trust:no-license     # specific rule(s) accepted
+#                   reason: install-only use; flagged in research-dossier.md
+#
+#             Legacy free-text `overrides: "<reason>"` parses fail-safe
+#             (rules:[]) and prints a one-line deprecation warning.
 
 packages:
   - source: https://github.com/nicobailon/pi-mcp-adapter.git
     enabled: true
     note: MCP bridge
     vetted:
-      date: 2026-05-15T16:25:00Z
+      date: 2026-05-15T07:58:34.132Z
       score: 100
   - source: git:https://github.com/hasit/pi-community-themes@v0.3.0
     enabled: true
     note: Community pi themes
     vetted:
-      date: 2026-05-15T16:25:00Z
+      date: 2026-05-15T07:58:37.001Z
       score: 100
   - source: npm:pi-lean-ctx
     enabled: true
@@ -36,7 +52,7 @@ packages:
       # /opt/homebrew/bin which isn't searched — symlink into ~/.local/bin.
       install: brew tap yvgude/lean-ctx && brew install lean-ctx && mkdir -p ~/.local/bin && ln -sf "$(brew --prefix)/bin/lean-ctx" ~/.local/bin/lean-ctx
     vetted:
-      date: 2026-05-15T16:25:00Z
+      date: 2026-05-15T07:58:37.692Z
       score: 100
   - source: git:github.com/ghoseb/pi-askuserquestion
     enabled: true

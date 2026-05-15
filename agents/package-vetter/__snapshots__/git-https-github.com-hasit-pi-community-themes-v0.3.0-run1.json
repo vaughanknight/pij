@@ -1,0 +1,31 @@
+{
+  "summary": "Scanned the pi-community-themes package at git:https://github.com/hasit/pi-community-themes@v0.3.0 using the package-vetter rubric. The in-scope files were the package theme JSON files referenced by package.json#pi.themes plus README.md and CHANGELOG.md; no prompt-injection, exfiltration, encoded-smuggle, role-hijack, authority-appeal, system-prompt-smuggle, or tool-description-smuggling patterns were found.",
+  "retrospective": {
+    "workedWell": "The package is small and theme-focused, and the rubric priority order made the in-scope files straightforward to identify from package.json#pi.themes.",
+    "confusing": "The package-vetter output contract combines the vetter verdict fields with the minih run retrospective fields, so the final report needs both shapes in one JSON object.",
+    "magicWand": "Add a single `minih vetter scan --package <path> --briefing <path> --out <path>` helper that resolves package.json#pi references, applies the standard skip rules, and emits the combined verdict/retrospective scaffold.",
+    "magicWandTarget": "minih",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "No peer coordination was needed for this one-shot package scan."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "debug",
+        "description": "A first glob attempt used the wrong parameter name and returned files from the run folder instead of the package theme directory.",
+        "workaround": "Used scoped read-only filesystem commands and ripgrep searches against the explicit package paths.",
+        "severity": "annoying"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 100,
+  "level": "ok",
+  "findings": [],
+  "scannedFiles": 18,
+  "durationMs": 72000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

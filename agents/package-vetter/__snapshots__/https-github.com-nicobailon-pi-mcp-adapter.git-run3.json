@@ -1,0 +1,47 @@
+{
+  "summary": "Scanned the pi-mcp-adapter package at /Users/jordanknight/pi-hacking/pij/.pi/git/github.com/nicobailon/pi-mcp-adapter against the package-vetter R-01..R-07 rubric. The package has no SKILL.md, AGENTS.md, CLAUDE.md, or prompt templates; the manifest points to index.ts, and the static tool descriptions, README.md, CHANGELOG.md, and example MCP tool descriptions did not trigger fail or warn rules. I recorded one informational vetter meta finding because runtime MCP tool/resource descriptions are forwarded into Pi tool descriptions/prompt snippets, which is a meaningful injection surface but not a static rule violation by itself.",
+  "vetter": "agent",
+  "score": 100,
+  "level": "ok",
+  "findings": [
+    {
+      "rule": "vetter:meta",
+      "msg": "runtime tool-description surface: MCP metadata descriptions are passed to Pi registerTool description/promptSnippet; static R-07 cannot judge untrusted server-provided text",
+      "severity": "info",
+      "file": "index.ts",
+      "line": 73,
+      "snippet": "description: spec.description || \"(no description)\", promptSnippet: truncateAtWord(spec.description, 100)"
+    }
+  ],
+  "scannedFiles": 8,
+  "durationMs": 152000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720",
+  "retrospective": {
+    "workedWell": "The run folder contained the schema, prompt, and checklist, and the package tree was already installed locally, so the scan could be completed with read-only filesystem inspection and a single output file write.",
+    "confusing": "The instructions combine the package-vetter stdout-only contract with the minih system report contract requiring summary and retrospective fields in the same JSON file. The schema allows additional properties, but the dual contract still required careful reconciliation.",
+    "magicWand": "Add a dedicated package-vetter helper command such as `npm run vetter:scan -- <packagePath> --output <file>` that resolves scoped files, extracts only prompt-visible strings, applies fenced/defensive context, computes scannedFiles/duration/checksum, and emits the merged minih-compatible JSON envelope.",
+    "magicWandTarget": "project",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "Coordination was disabled for this run."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "knowledge",
+        "description": "The rubric says to scan TS/JS only for string literals passed to registerTool or defineExtension, but this package also forwards runtime MCP metadata into registered Pi tool descriptions, which is prompt-visible yet not a static string literal.",
+        "workaround": "Recorded the dynamic prompt-visible surface as an informational vetter:meta finding instead of inventing a new R-rule or escalating it as a static violation.",
+        "severity": "degrading"
+      },
+      {
+        "id": "MH-002",
+        "category": "data",
+        "description": "Broad recursive searches over all TS/JS files produced very large output because the package includes bundled JavaScript and many description-like strings outside the narrow rubric scope.",
+        "workaround": "Narrowed inspection to manifest-referenced files, registerTool/defineExtension call sites, relevant helper files, and README/CHANGELOG documentation.",
+        "severity": "annoying"
+      }
+    ]
+  }
+}

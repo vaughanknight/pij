@@ -1,0 +1,31 @@
+{
+  "summary": "Scanned the pi-community-themes package at git:https://github.com/hasit/pi-community-themes@v0.3.0 using the package-vetter rubric. The in-scope package surfaces were README.md, CHANGELOG.md, and the 16 JSON theme files referenced through package.json#pi.themes; no SKILL.md, AGENTS.md, CLAUDE.md, prompt templates, or JavaScript/TypeScript tool-description surfaces were present. No R-01..R-07 prompt-injection, exfiltration, encoded-smuggle, or tool-description findings were identified.",
+  "vetter": "agent",
+  "score": 100,
+  "level": "ok",
+  "findings": [],
+  "scannedFiles": 18,
+  "durationMs": 153005,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720",
+  "retrospective": {
+    "workedWell": "The package was small and theme-focused, so the rubric scope narrowed cleanly to README.md, CHANGELOG.md, and the manifest-referenced themes directory. The schema allowed minih's required system fields to coexist with the vetter verdict fields.",
+    "confusing": "The vetter identity says stdout must contain exactly one JSON verdict, while this run's outer instructions require writing the report to a file and adding summary/retrospective fields. The output schema permits extra fields, but the handoff still requires careful reconciliation.",
+    "magicWand": "Add a `minih vetter-scope --package <path>` helper that prints the resolved in-scope file list from package.json#pi.* before scanning, including whether each file counts toward scannedFiles.",
+    "magicWandTarget": "minih",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "Coordination was disabled for this one-shot vetter run."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "coordination",
+        "description": "The prompt combined the package-vetter stdout-only contract with minih's file-output and retrospective contract, creating ambiguity about the final envelope shape.",
+        "workaround": "Wrote one JSON object to the required report path that includes both the vetter verdict fields and minih's summary/retrospective fields, relying on additionalProperties:true in output-schema.json.",
+        "severity": "annoying"
+      }
+    ]
+  }
+}

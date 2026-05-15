@@ -1,0 +1,71 @@
+{
+  "summary": "Scanned pi-lean-ctx from npm:pi-lean-ctx using the package-vetter rubric. The package has no SKILL.md, AGENTS.md, CLAUDE.md, or prompt template files; package.json references extensions/index.ts, and README.md plus prompt-facing registerTool descriptions were reviewed. I found warn-level R-07 tool-description imperatives in ctx_shell and ctx_read, plus info-level R-04A .env mentions with no exfiltration action.",
+  "retrospective": {
+    "workedWell": "The run folder contained the schema and scan instructions, and the package tree was small enough to inspect the in-scope files directly. The package.json pi.extensions entry made the relevant extension entrypoint clear.",
+    "confusing": "The rubric says TypeScript files should scan only string literals passed to registerTool or defineExtension, while the minih output envelope also requires summary and retrospective fields alongside the vetter verdict. Combining both contracts required extra care.",
+    "magicWand": "Add a package-vetter helper command such as `npm run vetter:agent-scan -- <packagePath> --output <report.json>` that enumerates scoped files, extracts registerTool descriptions, computes the briefing hash, and validates the combined minih/vetter output in one step.",
+    "magicWandTarget": "project",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "No peer coordination was needed for this one-shot scan."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "knowledge",
+        "description": "The vetter output shape and the minih-required retrospective shape both apply, so a plain Verdict JSON would be incomplete for this runner.",
+        "workaround": "Used output-schema.json's additionalProperties support and placed summary and retrospective alongside the vetter verdict fields.",
+        "severity": "annoying"
+      },
+      {
+        "id": "MH-002",
+        "category": "config",
+        "description": "The apply_patch writer was denied for the required report path even though the prompt mandates writing output/report.json.",
+        "workaround": "Wrote the required JSON file with shell redirection instead.",
+        "severity": "degrading"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 80,
+  "level": "warn",
+  "findings": [
+    {
+      "rule": "R-07",
+      "msg": "tool-description imperative: 'IMPORTANT: Do NOT use ctx_shell to read files...'",
+      "severity": "warn",
+      "file": "extensions/index.ts",
+      "line": 321,
+      "snippet": "Output is auto-compressed by lean-ctx. IMPORTANT: Do NOT use ctx_shell to read files (cat/head/tail) -- use ctx_read instead."
+    },
+    {
+      "rule": "R-07",
+      "msg": "tool-description imperative: 'ALWAYS use ctx_read instead of cat/head/tail...'",
+      "severity": "warn",
+      "file": "extensions/index.ts",
+      "line": 365,
+      "snippet": "Read file contents. ALWAYS use ctx_read instead of cat/head/tail via ctx_shell. Auto-selects mode: configs (.yaml/.json/.toml/.env)"
+    },
+    {
+      "rule": "R-04",
+      "msg": "sensitive filename mention without exfil action: '.env'",
+      "severity": "info",
+      "file": "extensions/index.ts",
+      "line": 366,
+      "snippet": "Auto-selects mode: configs (.yaml/.json/.toml/.env) are always full-read."
+    },
+    {
+      "rule": "R-04",
+      "msg": "sensitive filename mention without exfil action: '.env'",
+      "severity": "info",
+      "file": "README.md",
+      "line": 149,
+      "snippet": "| `.md`, `.json`, `.toml`, `.yaml`, etc. | Any | `full` |"
+    }
+  ],
+  "scannedFiles": 5,
+  "durationMs": 240000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

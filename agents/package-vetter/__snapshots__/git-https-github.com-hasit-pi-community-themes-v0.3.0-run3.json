@@ -1,0 +1,31 @@
+{
+  "summary": "Scanned the pi-community-themes package at git:https://github.com/hasit/pi-community-themes@v0.3.0 using the package-vetter rubric. The package contains theme JSON files plus README and CHANGELOG documentation, with no in-scope skill, agent, prompt, tool-description, or executable prompt content; no R-01 through R-07 findings were identified.",
+  "retrospective": {
+    "workedWell": "The package layout was simple, the manifest clearly exposed the themes directory through package.json#pi.themes, and the rubric/schema files were available in the run workspace.",
+    "confusing": "The rubric requires reading package.json to discover referenced files, but it is slightly ambiguous whether package.json itself should count as a scanned file when it is only used as manifest metadata.",
+    "magicWand": "Add a package-vetter helper command such as `npm run vetter:scope -- <packagePath>` that prints the exact in-scope file list and whether manifest files count toward scannedFiles.",
+    "magicWandTarget": "project",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "Coordination was disabled for this one-shot scan."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "knowledge",
+        "description": "The scannedFiles definition was ambiguous for package.json because it must be read to resolve package.json#pi.themes but is not itself listed as scan content.",
+        "workaround": "Counted only the files actually scanned for rule findings: the 16 referenced theme JSON files plus README.md and CHANGELOG.md.",
+        "severity": "annoying"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 100,
+  "level": "ok",
+  "findings": [],
+  "scannedFiles": 18,
+  "durationMs": 42000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

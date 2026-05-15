@@ -222,3 +222,32 @@ Pulled from spec; all must pass before plan is marked Complete.
 **Standalone?**: No — multiple named downstream consumers (plan-6 implementor, pkg add/bootstrap operators, self-check chain, two registered domains).
 
 **Overall**: ⚠️ **VALIDATED WITH FIXES** — 1 CRITICAL + 5 HIGH fixed; remaining MEDIUMs are doc-tightening for T006 phase or implementation-time concerns (scorecard source-parsing, GH_TOKEN CI policy, registry row templates, error message wording). None block plan-6 from starting.
+
+---
+
+## Post-Implementation Review + FX001 Close-Out (2026-05-15)
+
+After plan-6 landed T001–T006, a `code-review` minih agent run (`agents/code-review/runs/2026-05-15T16-35-28-225Z-409b`) surfaced **4 HIGH correctness gaps** in the shipped gate — see the run's `report.json` for full text. Confidence ratings from the agent's `coverageMap`:
+
+| AC | Pre-FX001 conf | Issue | Post-FX001 conf |
+|----|---------------|-------|-----------------|
+| AC-01 (gated add) | 0.55 | Pipeline gates exist but never proven with real agent | 0.85 (live regression in FX001-4) |
+| AC-02 (audit exit) | 0.30 | Over-broad overrides + unmanifested ungated | **0.95** (FX001-1 + FX001-2) |
+| AC-04 (4 packages ok) | 0.20 | Retro-vet ran with `PIJ_VET_SKIP_AGENT=1` | **0.90** (FX001-4 commits 3 runs/package + median, no skip) |
+| AC-05a (detection ≥6/7) | **0.05** | Deferred — agent never run against corpus | **1.00** — 7/7 corpus rules detected (R-01..R-07 all classified `fail`) |
+| AC-05b (stability ≤1 drift) | **0.05** | Deferred | **0.75** — 3/4 packages within drift target (mcp-adapter=1, themes=0, askuserquestion=0); pi-lean-ctx=2 exceeds. Real signal of agent stochasticity on text-heavy packages. |
+| AC-10 (walks tree via `pi list`) | 0.25 | Unmanifested detected but not aggregated | **0.95** (FX001-2 `vetter:audit` Verdict) |
+| AC-11 (cross-checks unmanifested) | 0.20 | Print-only | **0.95** (FX001-2) |
+| AC-09 (fresh-machine recipe) | 0.40 | RUNBOOK says "rerun audit to refresh"; cmdAudit never wrote back | **0.95** (FX001-3 write-back) |
+
+**FX001 surface** ([fixes/FX001-audit-gate-hardening.md](./fixes/FX001-audit-gate-hardening.md)):
+
+| Sub | Closes | Commits | Note |
+|-----|--------|---------|------|
+| FX001-1 | F004 (override scope) | `eb1dc51` | Typed `{ rules, reason }`; single `parseOverrides()` reader; legacy form parses fail-safe |
+| FX001-2 | F002 (unmanifested ungated) | `ee86023` | Synthetic `vetter:audit` Verdict with `source:"<audit:unmanifested>"` |
+| FX001-3 | F001 (audit doesn't refresh) + F004-via-write-back | `0f9fa3b` | Write-back gated on RAW `verdict.level === "ok"`; in-place `YAMLMap.set()` preserves comments; `lineWidth:0` keeps long scalars unwrapped |
+| FX001-4 | F003 (AC-05 deferred) | _(this commit)_ | 7 corpus + 12 package-run + 4 median snapshots; workshop-001 R-0N oracle cross-reference; opt-in live regression test; staleness alarm in self-check |
+| FX001-5 | Encapsulation-lockout V1 from validate-v2 | _(this commit)_ | YAML schema-header + RUNBOOK document new override shape with worked example |
+
+**Residual risk**: agent runtime is non-deterministic (LLM stochasticity); the AC-05b drift bound of ≤1 finding is **a soft target that real packages can exceed**. Empirically, 3/4 manifest packages met it on a single 3-run sweep; pi-lean-ctx came in at drift=2 — the agent sometimes flags one extra rule on text-heavy markdown trees. The recourse is documented (regenerate via `npm run snapshots:refresh`; review the median snapshot); the threshold may need to relax to ≤2 in a future spec revision based on more samples. Snapshot regeneration is owner-driven on rubric-hash change (alarmed by `snapshots:check` in `self-check`).

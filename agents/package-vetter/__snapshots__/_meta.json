@@ -1,6 +1,6 @@
 {
   "briefingSha": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720",
-  "regeneratedAt": "2026-05-15T07:34:27.679Z",
+  "regeneratedAt": "2026-05-15T07:57:53.071Z",
   "snapshots": [
     "corpus-r01-override.json",
     "corpus-r02-role-hijack.json",
@@ -8,6 +8,22 @@
     "corpus-r04-exfil.json",
     "corpus-r05-authority-appeal.json",
     "corpus-r06-zero-width.json",
-    "corpus-r07-tool-desc-smuggle.json"
+    "corpus-r07-tool-desc-smuggle.json",
+    "git-github.com-ghoseb-pi-askuserquestion-run1.json",
+    "git-github.com-ghoseb-pi-askuserquestion-run2.json",
+    "git-github.com-ghoseb-pi-askuserquestion-run3.json",
+    "git-github.com-ghoseb-pi-askuserquestion.json",
+    "git-https-github.com-hasit-pi-community-themes-v0.3.0-run1.json",
+    "git-https-github.com-hasit-pi-community-themes-v0.3.0-run2.json",
+    "git-https-github.com-hasit-pi-community-themes-v0.3.0-run3.json",
+    "git-https-github.com-hasit-pi-community-themes-v0.3.0.json",
+    "https-github.com-nicobailon-pi-mcp-adapter.git-run1.json",
+    "https-github.com-nicobailon-pi-mcp-adapter.git-run2.json",
+    "https-github.com-nicobailon-pi-mcp-adapter.git-run3.json",
+    "https-github.com-nicobailon-pi-mcp-adapter.git.json",
+    "npm-pi-lean-ctx-run1.json",
+    "npm-pi-lean-ctx-run2.json",
+    "npm-pi-lean-ctx-run3.json",
+    "npm-pi-lean-ctx.json"
   ]
 }
