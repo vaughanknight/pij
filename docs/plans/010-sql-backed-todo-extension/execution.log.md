@@ -74,6 +74,20 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Expanded `.pi/extensions/todo/store.test.ts` to 14 tests covering SQL agreement both directions, empty SQL-created titles, all statuses, list filters, clear, dependency-ready behavior, in-progress/priority ordering, duplicate/self/missing dependencies, limit zero, persistence reopen, and parser errors.
   - `npm test -- .pi/extensions/todo/store.test.ts` passed: 14 tests.
   - `npm test -- .pi/extensions/session-sql/store.test.ts .pi/extensions/todo/store.test.ts` passed: 39 tests.
+- **Commit**: `5c2b950` (`test: cover sql-backed todo store`)
+- **Companion ping**: `review-request: T004 5c2b950` sent at 2026-05-15T07:06:04Z.
+
+### T005 — Wire `/todo` command and `todo` model tool
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Replaced temporary `todo_ping` wiring with a single model-facing `todo` tool over add/list/done/status/block/next/dep/clear actions.
+  - Wired `/todo` command parsing for list/add/done/status/block/dep/next/clear/help and a placeholder overlay branch for T006.
+  - Added one `session_start` handler, session shutdown close, SQL-backed status refresh, and clear confirmation.
+  - `npm test -- .pi/extensions/todo/store.test.ts` passed: 14 tests.
+  - `npm run typecheck` passed.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation
