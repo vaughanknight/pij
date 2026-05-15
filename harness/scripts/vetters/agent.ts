@@ -7,12 +7,35 @@
 // or CI where live LLM calls aren't desired.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { deriveLevel, deriveScore, type Verdict, type Vetter } from "./types.js";
 
 const PIJ_ROOT = resolve(import.meta.dirname, "..", "..", "..");
 const AGENT_PACK = resolve(PIJ_ROOT, "agents", "package-vetter");
+const RUNS_DIR = resolve(AGENT_PACK, "runs");
+
+// FX001-4 / companion F002 fix: identify the run we just spawned by diffing
+// the runs/ directory listing across the spawn. `minih last-run` returns the
+// most-recent-by-mtime run agnostic of which process produced it — a parallel
+// run from anywhere (companion, user, CI step) would race. Returns null when
+// no new dir is present.
+function newRunDirSince(snapshotBefore: Set<string>): string | null {
+	if (!existsSync(RUNS_DIR)) return null;
+	const after = readdirSync(RUNS_DIR);
+	const newDirs = after.filter((d) => !snapshotBefore.has(d));
+	if (newDirs.length === 0) return null;
+	// More than one new dir is unexpected (we serialise calls) — pick the
+	// alphabetically-last (timestamped runIds sort chronologically).
+	newDirs.sort();
+	const newest = newDirs.at(-1);
+	return newest ? resolve(RUNS_DIR, newest) : null;
+}
+
+function snapshotRuns(): Set<string> {
+	if (!existsSync(RUNS_DIR)) return new Set();
+	return new Set(readdirSync(RUNS_DIR));
+}
 
 function skipVerdict(reason: string, durationMs: number): Verdict {
 	return {
@@ -72,7 +95,12 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 	// minih run uses `-p key=value` repeatables for input. Slug resolved
 	// relative to cwd's agents/ dir, so we cwd into PIJ_ROOT. Stdout of
 	// `minih run` is a streaming/pretty envelope — the canonical Verdict
-	// lives in the run's output/report.json, addressable via `minih last-run`.
+	// lives in the run's output/report.json.
+	//
+	// FX001-4 / companion F002 fix: identify the report by diffing the runs/
+	// directory listing across the spawn. `minih last-run` would race against
+	// any parallel `minih run` from elsewhere.
+	const before = snapshotRuns();
 	const runResult = spawnSync(
 		"minih",
 		["run", "package-vetter", "-p", `packagePath=${packagePath}`, "-p", `source=${source}`],
@@ -86,20 +114,9 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 
 	// The report.json is the canonical Verdict regardless of minih's exit code
 	// (transient validation conflicts can flag the run as degraded even when
-	// the agent's output is correct). We always try the last-run path first and
-	// fall back to the run-error only when no report exists.
-	const lastRun = spawnSync("minih", ["last-run", "package-vetter"], {
-		encoding: "utf8",
-		cwd: PIJ_ROOT,
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-	let reportPath = "";
-	try {
-		const env = JSON.parse(lastRun.stdout) as { data?: { reportPath?: string } };
-		reportPath = env.data?.reportPath ?? "";
-	} catch {
-		reportPath = "";
-	}
+	// the agent's output is correct).
+	const runDir = newRunDirSince(before);
+	const reportPath = runDir ? resolve(runDir, "output", "report.json") : "";
 	if (!reportPath || !existsSync(reportPath)) {
 		if (runResult.error || runResult.status !== 0) {
 			return {
@@ -124,7 +141,9 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 			findings: [
 				{
 					rule: "vetter:meta",
-					msg: `agent ran but report.json not found via last-run`,
+					msg: runDir
+						? `agent run dir ${runDir} produced no output/report.json`
+						: `agent ran but no new runs/ subdirectory appeared — minih run failed before producing a run dir`,
 					severity: "warn",
 				},
 			],

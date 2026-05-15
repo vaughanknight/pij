@@ -1,7 +1,8 @@
 // Adapter contract tests — these don't make live LLM calls. The skip
 // path (PIJ_VET_SKIP_AGENT=1) is the testable surface for vitest. End-
-// to-end agent runs happen in T005 retro-vet and via manual
-// `minih run agents/package-vetter --input '{...}'`.
+// to-end agent runs happen via `agent.live.test.ts` (PIJ_VET_LIVE=1) and
+// `npm run snapshots:refresh` (FX001-4). The current CLI is
+// `minih run package-vetter -p packagePath=<path> -p source=<src>`.
 
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

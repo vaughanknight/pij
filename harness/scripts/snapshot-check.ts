@@ -27,7 +27,7 @@ function main(): void {
 	const currentSha = sha256(BRIEFING);
 	if (!existsSync(META)) {
 		console.log(
-			`⚠ snapshot-check: no _meta.json at ${META} — run \`npm run pkg snapshots:refresh\` to generate AC-05 evidence`,
+			`⚠ snapshot-check: no _meta.json at ${META} — run \`npm run snapshots:refresh\` to generate AC-05 evidence`,
 		);
 		return;
 	}
@@ -42,7 +42,7 @@ function main(): void {
 		return;
 	}
 	console.log(
-		`⚠ snapshot-check: briefing.md has changed since snapshots were generated\n  · current SHA: ${currentSha.slice(0, 12)}...\n  · snapshot SHA: ${(meta.briefingSha ?? "<missing>").slice(0, 12)}...\n  · regenerated: ${meta.regeneratedAt ?? "<unknown>"}\n  · run \`npm run pkg snapshots:refresh\` to refresh AC-05 evidence`,
+		`⚠ snapshot-check: briefing.md has changed since snapshots were generated\n  · current SHA: ${currentSha.slice(0, 12)}...\n  · snapshot SHA: ${(meta.briefingSha ?? "<missing>").slice(0, 12)}...\n  · regenerated: ${meta.regeneratedAt ?? "<unknown>"}\n  · run \`npm run snapshots:refresh\` to refresh AC-05 evidence`,
 	);
 }
 

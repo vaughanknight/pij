@@ -10,6 +10,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 |------|------|
 | `.pi/extensions/session-sql/index.ts` | Pi wiring for lifecycle, `sql` tool, `/sql` command, and formatting. |
 | `.pi/extensions/session-sql/smoke.ts` | Deterministic command smoke. |
+| `.pi/extensions/session-sql/AGENTS.md` | Extension-local session SQL tool/command guidance. |
 | `.pi/extensions/todo/index.ts` | Pi wiring for lifecycle, `/todo` command, `todo` tool, overlay, status signal, and shortcut registration. |
 | `.pi/extensions/todo/smoke.ts` | Deterministic todo command/overlay/SQL agreement smoke. |
 | `.pi/extensions/todo/AGENTS.md` | Extension-local implementation and validation guidance. |

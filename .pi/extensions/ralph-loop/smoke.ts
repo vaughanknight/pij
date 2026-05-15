@@ -34,18 +34,11 @@ import { join } from "node:path";
 import type { Scenario } from "../../../harness/driver/index.js";
 
 const PIJ_ROOT = join(import.meta.dirname, "..", "..", "..");
-const FIXTURE_PLAN = join(
-	PIJ_ROOT,
-	".pi",
-	"extensions",
-	"ralph-loop",
-	"fixture-plan.md",
-);
+const FIXTURE_PLAN = join(PIJ_ROOT, ".pi", "extensions", "ralph-loop", "fixture-plan.md");
 
 // FakeIterationRunner now cycles through plan tasks, so after 3 iterations
 // the pane shows "iterations":3 + lastTaskTitle:"Task three".
-const STATUS_AFTER_RUN_RE =
-	/"iterations"\s*:\s*3[\s\S]*?"lastTaskTitle"\s*:\s*"Task three"/;
+const STATUS_AFTER_RUN_RE = /"iterations"\s*:\s*3[\s\S]*?"lastTaskTitle"\s*:\s*"Task three"/;
 export const STATUS_LOOSE_MATCH = /"iterations"\s*:\s*3/;
 
 // Accept either a real compaction completion OR pi's "Nothing to compact"

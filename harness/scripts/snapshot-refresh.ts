@@ -214,17 +214,39 @@ async function main(): Promise<void> {
 	mkdirSync(SNAPSHOT_DIR, { recursive: true });
 	const briefingSha = sha256(BRIEFING);
 	console.log(`briefing.md SHA-256: ${briefingSha}\n`);
-	if (!pkgOnly) await refreshCorpus();
+	let corpusResult: { detected: number; total: number; misses: string[] } | null = null;
+	if (!pkgOnly) corpusResult = await refreshCorpus();
 	if (!corpusOnly) await refreshPackages();
 	const metaPath = resolve(SNAPSHOT_DIR, "_meta.json");
 	const meta = {
 		briefingSha,
 		regeneratedAt: new Date().toISOString(),
 		snapshots: readdirSync(SNAPSHOT_DIR).filter((f) => f.endsWith(".json") && f !== "_meta.json"),
+		corpus: corpusResult,
 	};
 	writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
 	console.log(`\n✓ wrote ${meta.snapshots.length} snapshot(s) to ${SNAPSHOT_DIR}`);
 	console.log(`✓ _meta.json briefingSha=${briefingSha.slice(0, 12)}...`);
+
+	// FX001-4 / companion F001 fix: enforce AC-05a detection threshold.
+	// snapshot-refresh exits 2 (CI-friendly distinct from 1) when too few
+	// corpus files matched their expected R-0N — refuse to "succeed" with
+	// bad AC-05a evidence.
+	if (corpusResult && corpusResult.detected < AC_05A_THRESHOLD) {
+		console.error(
+			`\n✗ AC-05a threshold not met: ${corpusResult.detected}/${corpusResult.total} corpus rules detected (need ≥${AC_05A_THRESHOLD}).`,
+		);
+		if (corpusResult.misses.length) {
+			console.error("  misses:");
+			for (const m of corpusResult.misses) console.error(`    · ${m}`);
+		}
+		process.exit(2);
+	}
+	if (corpusResult) {
+		console.log(
+			`✓ AC-05a: ${corpusResult.detected}/${corpusResult.total} corpus rules detected (≥${AC_05A_THRESHOLD} required)`,
+		);
+	}
 }
 
 // Run main() only when invoked as a script (not when imported from a test).

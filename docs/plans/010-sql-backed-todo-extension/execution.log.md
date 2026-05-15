@@ -179,4 +179,10 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
 
 | Finding | ackOf | Severity | Disposition | Notes |
 |---------|-------|----------|-------------|-------|
-| _none yet_ | — | — | — | — |
+| F001 | `review-request: T002 5a22e02` | HIGH | resolved | Initial ping used unrelated concurrent `HEAD`; corrected ping `review-request: T002 42d86fd` was approved. Logged as D-027. |
+| F002 | `review-request: T003 90c0e26` | MEDIUM | resolved | Stale generated todo smoke was replaced by the full `/todo` + `/sql` smoke in T007. |
+| F003 | `review-request: T005 441584b` | MEDIUM | resolved | Tightened the model-facing `todo` tool schema to a TypeBox discriminated union of action-specific objects. |
+| F004 | `review-request: T007 c3d3f06` | MEDIUM | accepted/mitigated | Session-sql wiring was staged as a clean-checkout prerequisite for `/sql` agreement; plan manifest and execution log now call this out explicitly. |
+| F005 | `review-request: T008 a678b85` | LOW | resolved | Added/staged `docs/how/session-sql.md` rather than leaving the README link broken. |
+| F006 | `review-request: T009 fdb7a95` | MEDIUM | resolved | Added/staged `docs/how/session-sql.md` and added `.pi/extensions/session-sql/AGENTS.md` to the agent-tooling-interface domain source table. |
+| F007 | `review-request: T010 f6b2219` | MEDIUM | resolved | Replaced the stale `_none yet_` reconciliation table with this finding disposition table. |

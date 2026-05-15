@@ -23,8 +23,56 @@ import {
 } from "./store.js";
 
 const STATUS_KEY = "todo";
-const TODO_ACTIONS = ["list", "add", "done", "status", "block", "next", "dep", "clear"] as const;
-type TodoToolAction = (typeof TODO_ACTIONS)[number];
+
+const TodoViewParameter = Type.Union([
+	Type.Literal("open"),
+	Type.Literal("all"),
+	Type.Literal("done"),
+	Type.Literal("blocked"),
+]);
+const TodoStatusParameter = Type.Union([
+	Type.Literal("pending"),
+	Type.Literal("in_progress"),
+	Type.Literal("blocked"),
+	Type.Literal("done"),
+]);
+const TodoToolParameters = Type.Union([
+	Type.Object({
+		action: Type.Literal("list"),
+		view: Type.Optional(TodoViewParameter),
+		limit: Type.Optional(Type.Number({ description: "Maximum rows to return." })),
+	}),
+	Type.Object({
+		action: Type.Literal("add"),
+		title: Type.String({ description: "Todo title." }),
+		description: Type.Optional(Type.String({ description: "Optional todo description." })),
+		priority: Type.Optional(
+			Type.Number({ description: "Optional integer priority; higher sorts first." }),
+		),
+	}),
+	Type.Object({ action: Type.Literal("done"), id: Type.Number({ description: "Todo id." }) }),
+	Type.Object({
+		action: Type.Literal("status"),
+		id: Type.Number({ description: "Todo id." }),
+		status: TodoStatusParameter,
+		reason: Type.Optional(Type.String({ description: "Optional status reason." })),
+	}),
+	Type.Object({
+		action: Type.Literal("block"),
+		id: Type.Number({ description: "Todo id." }),
+		reason: Type.Optional(Type.String({ description: "Optional blocked reason." })),
+	}),
+	Type.Object({
+		action: Type.Literal("next"),
+		limit: Type.Optional(Type.Number({ description: "Maximum ready rows to return." })),
+	}),
+	Type.Object({
+		action: Type.Literal("dep"),
+		id: Type.Number({ description: "Todo id being blocked." }),
+		dependsOn: Type.Number({ description: "Prerequisite todo id." }),
+	}),
+	Type.Object({ action: Type.Literal("clear"), confirm: Type.Literal(true) }),
+]);
 
 interface TodoToolDetails {
 	action: string;
@@ -41,10 +89,6 @@ type TodoActionResult<T> = TodoStoreResult<T> | { ok: false; code: string; messa
 
 function localError<T>(code: string, message: string): TodoActionResult<T> {
 	return { ok: false, code, message };
-}
-
-function isTodoToolAction(value: string): value is TodoToolAction {
-	return TODO_ACTIONS.includes(value as TodoToolAction);
 }
 
 function isTodoListView(value: string): value is TodoListView {
@@ -354,42 +398,11 @@ export default function (pi: ExtensionAPI) {
 			"Use sql only when you need custom inspection/repair beyond the routine todo actions.",
 			"Do not call action=clear unless the human explicitly requested destructive cleanup and confirm=true is set.",
 		],
-		parameters: Type.Object({
-			action: Type.String({
-				description: "Action: list, add, done, status, block, next, dep, or clear.",
-			}),
-			view: Type.Optional(Type.String({ description: "List view: open, all, done, or blocked." })),
-			title: Type.Optional(Type.String({ description: "Todo title for action=add." })),
-			description: Type.Optional(
-				Type.String({ description: "Optional description for action=add." }),
-			),
-			priority: Type.Optional(
-				Type.Number({ description: "Optional integer priority; higher sorts first." }),
-			),
-			id: Type.Optional(Type.Number({ description: "Todo id for done/status/block/dep." })),
-			status: Type.Optional(
-				Type.String({ description: "Canonical status: pending, in_progress, blocked, or done." }),
-			),
-			reason: Type.Optional(Type.String({ description: "Optional reason for status/block." })),
-			dependsOn: Type.Optional(
-				Type.Number({ description: "Prerequisite todo id for action=dep." }),
-			),
-			limit: Type.Optional(Type.Number({ description: "Maximum rows for list/next." })),
-			confirm: Type.Optional(Type.Boolean({ description: "Must be true for action=clear." })),
-		}),
+		parameters: TodoToolParameters,
 		executionMode: "sequential",
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			ensureOpen(ctx);
-			const actionText = params.action.trim();
-			if (!isTodoToolAction(actionText)) {
-				const result = localError("TODO_BAD_ACTION", `todo error: unknown action ${actionText}`);
-				return {
-					content: [{ type: "text", text: result.message }],
-					details: detailsFromResult(actionText, result),
-				};
-			}
-
-			const action = actionText;
+			const action = params.action;
 			let result: TodoActionResult<unknown>;
 			switch (action) {
 				case "list": {
