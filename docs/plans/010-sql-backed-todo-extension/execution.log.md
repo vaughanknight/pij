@@ -33,6 +33,19 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - `npm run smoke -- session-sql` passed as the pre-phase interact check.
   - `npm run new -- todo` created `.pi/extensions/todo/{index,store,store.test,smoke}.ts`.
   - `npm test -- .pi/extensions/todo/store.test.ts` passed: 3 tests.
+- **Commit**: `fdb930a` (`feat: scaffold sql-backed todo plan`)
+- **Companion ping**: `review-request: T001 fdb930a` sent at 2026-05-15T06:55:00Z.
+
+### T002 — Extend `SessionSqlStore` with safe bind parameters
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Added `SqlBindValue`, named/positional bind option types, and single-statement bind execution helpers to `SessionSqlStore`.
+  - Bound multi-statement batches now return a tagged sqlite error instead of falling through to unbound `db.exec()`.
+  - `npm test -- .pi/extensions/session-sql/store.test.ts` passed: 25 tests.
+  - `npm run typecheck` passed.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation

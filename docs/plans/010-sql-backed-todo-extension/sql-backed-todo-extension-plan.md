@@ -27,9 +27,9 @@ flowchart LR
     classDef completed fill:#E8F5E9,stroke:#43A047,color:#000
     classDef blocked fill:#FFEBEE,stroke:#E53935,color:#000
 
-    T001[T001 Scaffold]:::completed --> T002[T002 Bind params]:::pending --> T003[T003 Todo store]:::pending --> T004[T004 Store tests]:::pending --> T005[T005 Command/tool]:::pending --> T006[T006 Overlay/status]:::pending --> T007[T007 Smoke]:::pending --> T008[T008 Docs]:::pending --> T009[T009 Domains]:::pending --> T010[T010 Ledgers]:::pending --> T011[T011 Validation]:::pending
+    T001[T001 Scaffold]:::completed --> T002[T002 Bind params]:::completed --> T003[T003 Todo store]:::pending --> T004[T004 Store tests]:::pending --> T005[T005 Command/tool]:::pending --> T006[T006 Overlay/status]:::pending --> T007[T007 Smoke]:::pending --> T008[T008 Docs]:::pending --> T009[T009 Domains]:::pending --> T010[T010 Ledgers]:::pending --> T011[T011 Validation]:::pending
 
-    FSQL[session-sql store]:::pending
+    FSQL[session-sql store]:::completed
     FTODO[todo extension files]:::completed
     FDOCS[docs and ledgers]:::pending
     FDOMAINS[domain records]:::pending
@@ -99,7 +99,7 @@ flowchart LR
 | Status | ID | Task | Domain | Path(s) | Done When | Notes |
 |--------|----|------|--------|---------|-----------|-------|
 | [x] | T001 | Pre-flight harness check and scaffold `todo` with the generator. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/` | `npm run new -- todo` has created T2 layout, pre-existing harness state is known, and generated files are ready to replace. | Use generator; do not hand-roll boilerplate. |
-| [ ] | T002 | Extend `SessionSqlStore` with safe bind-parameter support for first-party consumers. | `session-work-state` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/store.ts`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/store.test.ts` | Store supports bound positional/named parameters without breaking existing `/sql`; regression tests cover select, mutation, returning rows, and prior multi-statement behavior. | Finding 02. Use typed bind values; no `any`. |
+| [x] | T002 | Extend `SessionSqlStore` with safe bind-parameter support for first-party consumers. | `session-work-state` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/store.ts`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/store.test.ts` | Store supports bound positional/named parameters without breaking existing `/sql`; regression tests cover select, mutation, returning rows, and prior multi-statement behavior. | Finding 02. Use typed bind values; no `any`. |
 | [ ] | T003 | Implement pi-free `TodoSqlStore`, types, constants, command parser helpers, and formatters. | `session-work-state` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/store.ts` | Store imports no pi APIs, wraps `SessionSqlStore`, exposes tagged-union results, and implements add/list/status/block/done/dep/next/counts/clear. | Use `todos` and `todo_deps` only; include `DEFAULT_TODO_KEYBINDINGS` if overlay matching lives in store. |
 | [ ] | T004 | Add store tests for data contract and dependency semantics. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/store.test.ts` | Tests cover workshop matrices: SQL agreement both directions, invalid SQL-created rows, statuses, priority ordering, deps, duplicate/self/missing deps, limit zero, clear, and persistence reopen. | Avoid mocks; use temp SQLite/session locations. |
 | [ ] | T005 | Wire `/todo` command and `todo` model tool. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/index.ts` | `/todo` supports list/add/done/status/block/dep/next/clear/overlay/help; `todo` tool supports matching action enum; clear confirms through UI; outputs use workshop anchors. | Use `StringEnum` for action/status enums when needed. |
@@ -136,6 +136,7 @@ flowchart LR
 |----|------|-----------|--------|
 | D010-001 | T001 | Pre-phase harness validation passed before implementation; existing known Biome schema info and Node SQLite warning are non-failing. | Proceed with implementation and keep final validation evidence explicit. |
 | D010-002 | T001 | The generated extension scaffold is event-log based and intentionally disposable for this plan's SQL-backed store shape. | Keep the generator-created T2 layout, then replace store semantics in T003 rather than hand-rolling files. |
+| D010-003 | T002 | `node:sqlite` supports positional and named binding on prepared statements, but multi-statement batches cannot be safely parameterized through `db.exec()`. | Support bind params only for single prepared statements and return a tagged sqlite error for bound multi-statement batches. |
 
 ### Risks
 
