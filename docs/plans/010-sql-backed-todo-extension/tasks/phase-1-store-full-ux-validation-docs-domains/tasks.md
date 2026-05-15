@@ -15,7 +15,7 @@ Plan 010 is complete. This phase folder tracks approved follow-up work against t
 
 | Status | ID | Task | Domain | Path(s) | Done When | Notes |
 |--------|----|------|--------|---------|-----------|-------|
-| [ ] | T006-FU1 | Implement Claude Code-style below-editor todo strip as a follow-up to parent T006 overlay/status/key matching. | `session-work-state` / `agent-tooling-interface` / `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/010-sql-backed-todo-extension/tasks/phase-1-store-full-ux-validation-docs-domains/001-subtask-claude-code-style-below-editor-todo-strip.md` | Subtask ST001-ST005 are implemented, validated, documented, and logged. | Subtask dossier: [001-subtask-claude-code-style-below-editor-todo-strip.md](./001-subtask-claude-code-style-below-editor-todo-strip.md). |
+| [~] | T006-FU1 | Implement Claude Code-style below-editor todo strip as a follow-up to parent T006 overlay/status/key matching. | `session-work-state` / `agent-tooling-interface` / `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/010-sql-backed-todo-extension/tasks/phase-1-store-full-ux-validation-docs-domains/001-subtask-claude-code-style-below-editor-todo-strip.md` | Subtask ST001-ST005 are implemented, validated, documented, and logged. | Subtask dossier: [001-subtask-claude-code-style-below-editor-todo-strip.md](./001-subtask-claude-code-style-below-editor-todo-strip.md). |
 
 ## Subtasks
 

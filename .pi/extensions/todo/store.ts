@@ -13,9 +13,20 @@ export type TodoListView = (typeof TODO_LIST_VIEWS)[number];
 
 export const DEFAULT_TODO_LIMIT = 50;
 export const MAX_TODO_LIMIT = 200;
+export const DEFAULT_TODO_WIDGET_ROWS = 4;
+export const TODO_WIDGET_KEY = "todo-strip";
+
+export const DEFAULT_TODO_WIDGET_OPTIONS = {
+	enabled: true,
+	placement: "belowEditor",
+	maxRows: DEFAULT_TODO_WIDGET_ROWS,
+	includeCompletedWhileOpen: true,
+} as const;
 
 export const DEFAULT_TODO_KEYBINDINGS = {
 	openOverlay: ["ctrl+shift+y"],
+	widgetNextPage: [],
+	widgetPreviousPage: [],
 	closeOverlay: ["escape", "q"],
 	refresh: ["r"],
 	markDone: ["d"],
@@ -55,6 +66,25 @@ export interface TodoCounts {
 	done: number;
 	blocked: number;
 	total: number;
+}
+
+export interface TodoWidgetOptions {
+	maxRows?: number;
+	page?: number;
+	includeCompletedWhileOpen?: boolean;
+}
+
+export interface TodoWidgetSnapshot {
+	total: number;
+	open: number;
+	done: number;
+	blocked: number;
+	inProgress: number;
+	rows: TodoViewRow[];
+	hidden: number;
+	page: number;
+	pageCount: number;
+	maxRows: number;
 }
 
 export interface AddTodoInput {
@@ -147,6 +177,18 @@ function normalizeLimit(limit: number | undefined): number {
 	if (!Number.isFinite(limit)) return DEFAULT_TODO_LIMIT;
 	if (limit <= 0) return 0;
 	return Math.min(Math.floor(limit), MAX_TODO_LIMIT);
+}
+
+function normalizeWidgetRows(maxRows: number | undefined): number {
+	if (maxRows === undefined || !Number.isFinite(maxRows)) return DEFAULT_TODO_WIDGET_ROWS;
+	if (maxRows <= 0) return DEFAULT_TODO_WIDGET_ROWS;
+	return Math.min(Math.floor(maxRows), MAX_TODO_LIMIT);
+}
+
+function normalizeWidgetPage(page: number | undefined, pageCount: number): number {
+	if (pageCount <= 0) return 0;
+	if (page === undefined || !Number.isFinite(page)) return 0;
+	return Math.min(Math.max(Math.floor(page), 0), pageCount - 1);
 }
 
 function sqlError<T>(result: Extract<SqlResult, { ok: false }>): TodoStoreResult<T> {
@@ -501,6 +543,70 @@ FROM todos`),
 			total: integerOrZero(row.total),
 		};
 		return todoOk(counts, `todo: ${counts.open} open, ${counts.done} done, ${counts.total} total`);
+	}
+
+	widgetSnapshot(input: TodoWidgetOptions = {}): TodoStoreResult<TodoWidgetSnapshot> {
+		const counts = this.counts();
+		if (!counts.ok) return counts;
+
+		const maxRows = normalizeWidgetRows(input.maxRows);
+		if (counts.value.open === 0) {
+			return todoOk(
+				{
+					...counts.value,
+					inProgress: 0,
+					rows: [],
+					hidden: 0,
+					page: 0,
+					pageCount: 0,
+					maxRows,
+				},
+				"todo widget: hidden",
+			);
+		}
+
+		const includeDone = (input.includeCompletedWhileOpen ?? true) ? 1 : 0;
+		const totalRows = rowsFromSql(
+			this.sql.execute(
+				`SELECT
+  COUNT(*) AS total,
+  COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) AS in_progress
+FROM todos
+WHERE status != 'done' OR (:includeDone = 1 AND status = 'done')`,
+				{ params: { includeDone } },
+			),
+		);
+		if (!totalRows.ok) return totalRows;
+		const [totalRow] = totalRows.value;
+		const rowCount = integerOrZero(totalRow?.total);
+		const inProgress = integerOrZero(totalRow?.in_progress);
+		const pageCount = rowCount === 0 ? 0 : Math.ceil(rowCount / maxRows);
+		const page = normalizeWidgetPage(input.page, pageCount);
+		const offset = page * maxRows;
+		const rows = this.rowsWithDeps(
+			`${TODO_ROW_SELECT}
+WHERE status != 'done' OR (:includeDone = 1 AND status = 'done')
+ORDER BY
+  CASE status WHEN 'in_progress' THEN 0 WHEN 'pending' THEN 1 WHEN 'blocked' THEN 1 ELSE 2 END,
+  updated_at DESC,
+  priority DESC,
+  id DESC
+LIMIT :limit OFFSET :offset`,
+			{ includeDone, limit: maxRows, offset },
+		);
+		if (!rows.ok) return rows;
+		return todoOk(
+			{
+				...counts.value,
+				inProgress,
+				rows: rows.value,
+				hidden: Math.max(0, rowCount - offset - rows.value.length),
+				page,
+				pageCount,
+				maxRows,
+			},
+			"todo widget: ok",
+		);
 	}
 
 	clear(): TodoStoreResult<TodoClearResult> {

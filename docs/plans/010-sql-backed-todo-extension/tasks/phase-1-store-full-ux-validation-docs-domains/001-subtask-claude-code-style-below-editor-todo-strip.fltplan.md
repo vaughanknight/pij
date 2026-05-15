@@ -5,7 +5,7 @@
 **Phase**: Phase 1: Store, full UX, validation, docs, domains  
 **Parent Task**: T006 — Overlay/status/key matching  
 **Generated**: 2026-05-15  
-**Status**: Ready
+**Status**: Active
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## Stages
 
-- [ ] **Stage 1: Projection contract** — Add widget snapshot types/constants and recent-activity query in `todo/store.ts`.
+- [x] **Stage 1: Projection contract** — Add widget snapshot types/constants and recent-activity query in `todo/store.ts`.
 - [ ] **Stage 2: Widget surface** — Render and refresh `todo-strip` below the editor in `todo/index.ts`.
 - [ ] **Stage 3: Sync path** — Decide and implement/document raw `/sql` synchronization (`session-sql:changed` or fallback).
 - [ ] **Stage 4: Validation** — Add store/render tests and todo smoke anchors if observable.
