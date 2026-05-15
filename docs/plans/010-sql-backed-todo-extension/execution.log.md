@@ -62,6 +62,18 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - `ctx_grep` confirmed `.pi/extensions/todo/store.ts` imports no pi APIs.
   - `npm test -- .pi/extensions/todo/store.test.ts` passed: 4 tests.
   - `npm run typecheck` no longer reports todo store diagnostics, but remains blocked by non-todo harness/package errors in `harness/driver/index.ts` and `harness/scripts/packages.ts`; this is tracked for T011.
+- **Commit**: `90c0e26` (`feat: implement sql-backed todo store`)
+- **Companion ping**: `review-request: T003 90c0e26` sent at 2026-05-15T07:03:54Z.
+
+### T004 — Add store tests for data contract and dependency semantics
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Expanded `.pi/extensions/todo/store.test.ts` to 14 tests covering SQL agreement both directions, empty SQL-created titles, all statuses, list filters, clear, dependency-ready behavior, in-progress/priority ordering, duplicate/self/missing dependencies, limit zero, persistence reopen, and parser errors.
+  - `npm test -- .pi/extensions/todo/store.test.ts` passed: 14 tests.
+  - `npm test -- .pi/extensions/session-sql/store.test.ts .pi/extensions/todo/store.test.ts` passed: 39 tests.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation
