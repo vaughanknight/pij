@@ -132,7 +132,7 @@ flowchart LR
     classDef done fill:#E8F5E9,stroke:#43A047,color:#000
     classDef blocked fill:#FFEBEE,stroke:#E53935,color:#000
 
-    S001[T001 Scaffold]:::done --> S002[T002 Bind params]:::done --> S003[T003 Todo store]:::done --> S004[T004 Store tests]:::done --> S005[T005 Command/tool]:::done --> S006[T006 Overlay/status]:::done --> S007[T007 Smoke]:::done --> S008[T008 Docs]:::pending --> S009[T009 Domains]:::pending --> S010[T010 Ledgers]:::pending --> S011[T011 Validation]:::pending
+    S001[T001 Scaffold]:::done --> S002[T002 Bind params]:::done --> S003[T003 Todo store]:::done --> S004[T004 Store tests]:::done --> S005[T005 Command/tool]:::done --> S006[T006 Overlay/status]:::done --> S007[T007 Smoke]:::done --> S008[T008 Docs]:::done --> S009[T009 Domains]:::pending --> S010[T010 Ledgers]:::pending --> S011[T011 Validation]:::pending
 ```
 
 ## Stages
@@ -146,7 +146,7 @@ flowchart LR
 | [x] | T005 | Command/tool wiring | `/todo` and model `todo` action tool wired to the shared SQL-backed store; typecheck passed. |
 | [x] | T006 | Overlay/status/key matching | Minimal `ctx.ui.custom` overlay, footer status clearing, and named key defaults implemented. |
 | [x] | T007 | Smoke | `npm run smoke -- todo` passed across empty/add/list/SQL/overlay/reload path. |
-| [ ] | T008 | Docs | Pending. |
+| [x] | T008 | Docs | README quick-start, detailed `docs/how/todo.md`, and todo AGENTS guidance added; smoke still passes. |
 | [ ] | T009 | Domain records | Pending. |
 | [ ] | T010 | Ledgers | Pending. |
 | [ ] | T011 | Full validation | Pending. |
@@ -160,7 +160,7 @@ flowchart LR
 - [x] T005 — Command/tool wiring
 - [x] T006 — Overlay/status/key matching
 - [x] T007 — Smoke
-- [ ] T008 — Docs
+- [x] T008 — Docs
 - [ ] T009 — Domain records
 - [ ] T010 — Ledgers
 - [ ] T011 — Full validation
@@ -178,7 +178,7 @@ flowchart LR
 | T005 — Command/tool wiring | agent-tooling-interface | [x] `/todo` and `todo` tool share action semantics. |
 | T006 — Overlay/status/key matching | agent-tooling-interface | [x] Minimal overlay, open-count status, configurable key defaults. |
 | T007 — Smoke | extension-authoring-harness | [x] `/todo`, overlay, `/sql`, reload path passes. |
-| T008 — Docs | agent-tooling-interface | README quick-start and `docs/how/todo.md` exist. |
+| T008 — Docs | agent-tooling-interface | [x] README quick-start and `docs/how/todo.md` exist. |
 | T009 — Domain records | session-work-state / agent-tooling-interface | Domain docs/map identify todo as SQL-backed UX consumer. |
 | T010 — Ledgers | extension-authoring-harness | Execution, difficulty, and velocity records updated. |
 | T011 — Full validation | extension-authoring-harness | Typecheck, lint, tests, smoke, self-check pass. |

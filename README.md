@@ -19,6 +19,44 @@ and the pattern library, see [`AGENTS.md`](./AGENTS.md). For the
 Boot/Interact/Observe contract, see
 [`docs/project-rules/harness.md`](./docs/project-rules/harness.md).
 
+## session-sql
+
+`session-sql` is a pi extension that gives the current pi session a private
+SQLite scratch DB for structured agent work. Use `/sql status`, `/sql schema`,
+and `/sql <query>` in pi; the model-facing tool is named `sql`. DB files live
+under `~/.pi/db/session-sql/`, not in the repo.
+
+```bash
+npm run smoke -- session-sql
+```
+
+See [`docs/how/session-sql.md`](./docs/how/session-sql.md) for custom table
+recipes, persistence/fork semantics, native SQLite extension loading, and
+troubleshooting.
+
+## SQL-backed todos
+
+`todo` is the product-friendly layer over the same session SQL DB. Use `/todo`
+for routine current-session work tracking and `/sql` for raw inspection.
+
+```text
+/todo add Write tests
+/todo next
+/todo done 1
+/sql SELECT id, title, status FROM todos;
+```
+
+The model-facing tool is named `todo`. It supports list/add/status/done/block,
+dependency, next-ready, and confirmed clear actions. The overlay opens with
+`/todo overlay` and uses configurable defaults in `DEFAULT_TODO_KEYBINDINGS`.
+
+```bash
+npm run smoke -- todo
+```
+
+See [`docs/how/todo.md`](./docs/how/todo.md) for command examples, dependency
+semantics, overlay keys, and `/todo` + `/sql` agreement scenarios.
+
 ## Where things are
 
 | What | Where |
@@ -71,6 +109,10 @@ is a thin adapter. `extension-validator` agent pack at
 `npm run link` symlinks pij extensions into `~/.pi/extensions/` for
 cross-cwd use. `npm run pkg` + `.pi/packages.yaml` manage third-party
 pi extensions (enable/disable; disable runs `pi remove`).
+
+**v0.4 (in progress)** — `session-sql` adds a per-session SQLite workbench
+with a generic `sql` tool and `/sql` command for structured current-session
+state. `todo` adds a first-party task UX over the same SQL-backed work state.
 
 ## License
 

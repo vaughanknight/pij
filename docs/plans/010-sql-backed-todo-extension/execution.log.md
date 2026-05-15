@@ -115,6 +115,20 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Replaced scaffold smoke with a Driver SDK scenario covering start cleanup through `/sql`, `/todo` empty, add, list, `/sql` agreement, overlay anchor, close overlay, `/reload`, wait-idle, and post-reload list.
   - First smoke attempt failed because `/reload` matched before idle; added explicit `wait` after `/reload`.
   - `npm run smoke -- todo` passed.
+- **Commit**: `c3d3f06` (`test: add todo smoke scenario`)
+- **Companion ping**: `review-request: T007 c3d3f06` sent at 2026-05-15T07:16:59Z.
+- **Staging note**: also staged session-sql wiring/smoke/AGENTS files because the todo smoke's `/sql` agreement path requires the `session-sql` extension to be present in a clean checkout.
+
+### T008 — Add extension-local guidance and user docs
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Replaced generated `.pi/extensions/todo/AGENTS.md` with SQL-backed todo boundaries and validation guidance.
+  - Added README quick-start for SQL-backed todos.
+  - Added `docs/how/todo.md` covering commands, model tool actions, statuses, dependencies, overlay keys, SQL agreement, session semantics, and validation.
+  - `npm run smoke -- todo` passed after docs changes.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation
