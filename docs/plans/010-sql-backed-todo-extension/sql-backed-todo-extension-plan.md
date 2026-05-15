@@ -219,3 +219,9 @@ Simple Mode implementation can start with:
 **Standalone?**: No — downstream `/plan-6-v2-implement-phase`, implementation files, Plan-4 review, and reviewer acceptance all consume this plan.
 
 Overall: VALIDATED
+
+## Subtasks
+
+| ID | Created | Parent | Summary | Domain(s) | Status | Dossier |
+|----|---------|--------|---------|-----------|--------|---------|
+| ST-001 | 2026-05-15 | T006 | Claude Code-style below-editor todo strip | `session-work-state`, `agent-tooling-interface`, `extension-authoring-harness` | Proposed | [tasks/phase-1-store-full-ux-validation-docs-domains/001-subtask-claude-code-style-below-editor-todo-strip.md](./tasks/phase-1-store-full-ux-validation-docs-domains/001-subtask-claude-code-style-below-editor-todo-strip.md) |
