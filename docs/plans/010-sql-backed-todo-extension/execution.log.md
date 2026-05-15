@@ -46,6 +46,22 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Bound multi-statement batches now return a tagged sqlite error instead of falling through to unbound `db.exec()`.
   - `npm test -- .pi/extensions/session-sql/store.test.ts` passed: 25 tests.
   - `npm run typecheck` passed.
+- **Commit**: `42d86fd` (`feat: add session sql bind parameters`)
+- **Companion ping**: `review-request: T002 42d86fd` sent at 2026-05-15T06:58:17Z.
+- **Ping note**: an initial T002 ping accidentally referenced current `HEAD` (`5a22e02`) after unrelated concurrent work advanced the branch; a corrected ping for `42d86fd` was sent immediately.
+
+### T003 — Implement `TodoSqlStore` and helpers
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Replaced generated event-log store with pi-free `TodoSqlStore` over `SessionSqlStore`.
+  - Added todo status/view types, tagged-union results, command parser helpers, compact formatters, counts, clear, dependency, and next-ready semantics.
+  - Added `DEFAULT_TODO_KEYBINDINGS` named constants for later overlay/key matching.
+  - `ctx_grep` confirmed `.pi/extensions/todo/store.ts` imports no pi APIs.
+  - `npm test -- .pi/extensions/todo/store.test.ts` passed: 4 tests.
+  - `npm run typecheck` no longer reports todo store diagnostics, but remains blocked by non-todo harness/package errors in `harness/driver/index.ts` and `harness/scripts/packages.ts`; this is tracked for T011.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation

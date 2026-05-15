@@ -132,7 +132,7 @@ flowchart LR
     classDef done fill:#E8F5E9,stroke:#43A047,color:#000
     classDef blocked fill:#FFEBEE,stroke:#E53935,color:#000
 
-    S001[T001 Scaffold]:::done --> S002[T002 Bind params]:::done --> S003[T003 Todo store]:::pending --> S004[T004 Store tests]:::pending --> S005[T005 Command/tool]:::pending --> S006[T006 Overlay/status]:::pending --> S007[T007 Smoke]:::pending --> S008[T008 Docs]:::pending --> S009[T009 Domains]:::pending --> S010[T010 Ledgers]:::pending --> S011[T011 Validation]:::pending
+    S001[T001 Scaffold]:::done --> S002[T002 Bind params]:::done --> S003[T003 Todo store]:::done --> S004[T004 Store tests]:::pending --> S005[T005 Command/tool]:::pending --> S006[T006 Overlay/status]:::pending --> S007[T007 Smoke]:::pending --> S008[T008 Docs]:::pending --> S009[T009 Domains]:::pending --> S010[T010 Ledgers]:::pending --> S011[T011 Validation]:::pending
 ```
 
 ## Stages
@@ -141,7 +141,7 @@ flowchart LR
 |--------|------|-------|----------|
 | [x] | T001 | Pre-flight + scaffold | Harness healthy; `npm run new -- todo` created T2 layout; scaffold store test passed. |
 | [x] | T002 | Parameter binding contract | `SessionSqlStore` supports typed positional/named bind params; scoped tests and typecheck passed. |
-| [ ] | T003 | Todo store/parser/formatters | Pending. |
+| [x] | T003 | Todo store/parser/formatters | SQL-backed store, parser, formatters, and keybinding constants implemented; scoped store tests passed. |
 | [ ] | T004 | Store tests | Pending. |
 | [ ] | T005 | Command/tool wiring | Pending. |
 | [ ] | T006 | Overlay/status/key matching | Pending. |
@@ -155,7 +155,7 @@ flowchart LR
 
 - [x] T001 — Pre-flight + scaffold
 - [x] T002 — Parameter binding contract
-- [ ] T003 — Todo store/parser/formatters
+- [x] T003 — Todo store/parser/formatters
 - [ ] T004 — Store tests
 - [ ] T005 — Command/tool wiring
 - [ ] T006 — Overlay/status/key matching
@@ -173,7 +173,7 @@ flowchart LR
 |------|--------|-----------|
 | T001 — Pre-flight + scaffold | extension-authoring-harness | [x] `todo` T2 layout exists from generator. |
 | T002 — Parameter binding contract | session-work-state | [x] `SessionSqlStore` supports safe bound values with regressions. |
-| T003 — Todo store/parser/formatters | session-work-state | Pi-free store implements actions over `todos`/`todo_deps`. |
+| T003 — Todo store/parser/formatters | session-work-state | [x] Pi-free store implements actions over `todos`/`todo_deps`. |
 | T004 — Store tests | extension-authoring-harness | Real temp SQLite tests cover data and dependency matrices. |
 | T005 — Command/tool wiring | agent-tooling-interface | `/todo` and `todo` tool share action semantics. |
 | T006 — Overlay/status/key matching | agent-tooling-interface | Minimal overlay, open-count status, configurable key defaults. |
