@@ -7,7 +7,7 @@
 // or CI where live LLM calls aren't desired.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { deriveLevel, deriveScore, type Verdict, type Vetter } from "./types.js";
 
@@ -69,14 +69,54 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 		};
 	}
 
-	const input = JSON.stringify({ packagePath, source });
-	const result = spawnSync("minih", ["run", AGENT_PACK, "--input", input], {
+	// minih run uses `-p key=value` repeatables for input. Slug resolved
+	// relative to cwd's agents/ dir, so we cwd into PIJ_ROOT. Stdout of
+	// `minih run` is a streaming/pretty envelope — the canonical Verdict
+	// lives in the run's output/report.json, addressable via `minih last-run`.
+	const runResult = spawnSync(
+		"minih",
+		["run", "package-vetter", "-p", `packagePath=${packagePath}`, "-p", `source=${source}`],
+		{
+			encoding: "utf8",
+			timeout: 600_000,
+			cwd: PIJ_ROOT,
+			stdio: ["ignore", "pipe", "pipe"],
+		},
+	);
+
+	// The report.json is the canonical Verdict regardless of minih's exit code
+	// (transient validation conflicts can flag the run as degraded even when
+	// the agent's output is correct). We always try the last-run path first and
+	// fall back to the run-error only when no report exists.
+	const lastRun = spawnSync("minih", ["last-run", "package-vetter"], {
 		encoding: "utf8",
-		timeout: 600_000,
+		cwd: PIJ_ROOT,
 		stdio: ["ignore", "pipe", "pipe"],
 	});
-
-	if (result.error || result.status !== 0) {
+	let reportPath = "";
+	try {
+		const env = JSON.parse(lastRun.stdout) as { data?: { reportPath?: string } };
+		reportPath = env.data?.reportPath ?? "";
+	} catch {
+		reportPath = "";
+	}
+	if (!reportPath || !existsSync(reportPath)) {
+		if (runResult.error || runResult.status !== 0) {
+			return {
+				vetter: "agent",
+				score: 0,
+				level: "warn",
+				findings: [
+					{
+						rule: "vetter:meta",
+						msg: `agent invocation failed (exit ${runResult.status}): ${(runResult.stderr ?? "").toString().slice(0, 200)}`,
+						severity: "warn",
+					},
+				],
+				scannedFiles: 0,
+				durationMs: Date.now() - start,
+			};
+		}
 		return {
 			vetter: "agent",
 			score: 0,
@@ -84,7 +124,7 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 			findings: [
 				{
 					rule: "vetter:meta",
-					msg: `agent invocation failed (exit ${result.status}): ${(result.stderr ?? "").toString().slice(0, 200)}`,
+					msg: `agent ran but report.json not found via last-run`,
 					severity: "warn",
 				},
 			],
@@ -92,10 +132,9 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 			durationMs: Date.now() - start,
 		};
 	}
-
 	let parsed: Verdict;
 	try {
-		parsed = JSON.parse(result.stdout) as Verdict;
+		parsed = JSON.parse(readFileSync(reportPath, "utf8")) as Verdict;
 	} catch (err) {
 		return {
 			vetter: "agent",
@@ -104,7 +143,7 @@ export async function vet(packagePath: string, source: string): Promise<Verdict>
 			findings: [
 				{
 					rule: "vetter:meta",
-					msg: `agent stdout not valid JSON: ${(err as Error).message.slice(0, 160)}`,
+					msg: `report.json not valid JSON: ${(err as Error).message.slice(0, 160)}`,
 					severity: "warn",
 				},
 			],

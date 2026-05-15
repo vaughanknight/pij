@@ -30,12 +30,15 @@
 		"new": "tsx harness/scripts/new-extension.ts",
 		"smoke": "tsx harness/scripts/smoke.ts",
 		"link": "tsx harness/scripts/link-global.ts",
-		"self-check": "npm run typecheck && npm run lint && npm run test && npm run smoke"
+		"pkg": "tsx harness/scripts/packages.ts",
+		"snapshots:refresh": "tsx harness/scripts/snapshot-refresh.ts",
+		"snapshots:check": "tsx harness/scripts/snapshot-check.ts",
+		"self-check": "npm run typecheck && npm run lint && npm run test && npm run smoke && PIJ_VET_SKIP_AGENT=1 npm run pkg audit && npm run snapshots:check"
 	},
 	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
 		"@earendil-works/pi-coding-agent": "*",
 		"@earendil-works/pi-tui": "*",
-		"@earendil-works/pi-ai": "*",
 		"typebox": "*"
 	},
 	"devDependencies": {
@@ -43,9 +46,10 @@
 		"@types/node": "^22.0.0",
 		"tsx": "^4.20.0",
 		"typescript": "^5.9.0",
-		"vitest": "^2.0.0"
+		"vitest": "^2.0.0",
+		"yaml": "^2.9.0"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": ">=24"
 	}
 }

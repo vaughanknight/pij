@@ -1,9 +1,9 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"title": "Package Vetter Verdict",
-	"description": "Mirrors harness/scripts/vetters/types.ts Verdict shape verbatim. The vetter field MUST equal 'agent' for output from this pack.",
+	"description": "Mirrors harness/scripts/vetters/types.ts Verdict shape verbatim. The vetter field MUST equal 'agent' for output from this pack. additionalProperties:true so minih's system-required `summary` and `retrospective` fields coexist with the Verdict shape (FX001-4 discovery).",
 	"type": "object",
-	"additionalProperties": false,
+	"additionalProperties": true,
 	"required": ["vetter", "score", "level", "findings", "scannedFiles", "durationMs"],
 	"properties": {
 		"vetter": { "const": "agent" },
