@@ -32,8 +32,7 @@
 		"link": "tsx harness/scripts/link-global.ts",
 		"pkg": "tsx harness/scripts/packages.ts",
 		"snapshots:refresh": "tsx harness/scripts/snapshot-refresh.ts",
-		"snapshots:check": "tsx harness/scripts/snapshot-check.ts",
-		"self-check": "npm run typecheck && npm run lint && npm run test && npm run smoke && PIJ_VET_SKIP_AGENT=1 npm run pkg audit && npm run snapshots:check"
+		"snapshots:check": "tsx harness/scripts/snapshot-check.ts"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": "*",

