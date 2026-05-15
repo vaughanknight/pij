@@ -3,23 +3,23 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, type Component, type KeyId } from "@earendil-works/pi-tui";
+import { type Component, type KeyId, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import { defaultRootDir, locationForSession, SessionSqlStore } from "../session-sql/store.js";
 import {
 	DEFAULT_TODO_KEYBINDINGS,
 	formatTodoRow,
+	type ParsedTodoCommand,
 	parseTodoCommand,
 	TODO_LIST_VIEWS,
 	TODO_STATUSES,
-	TodoSqlStore,
-	todoHelpText,
-	type ParsedTodoCommand,
 	type TodoListView,
+	TodoSqlStore,
 	type TodoStatus,
 	type TodoStoreResult,
 	type TodoViewRow,
+	todoHelpText,
 } from "./store.js";
 
 const STATUS_KEY = "todo";
@@ -217,7 +217,10 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.setStatus(STATUS_KEY, "todo: error");
 			return;
 		}
-		ctx.ui.setStatus(STATUS_KEY, counts.value.open === 0 ? undefined : `todo: ${counts.value.open} open`);
+		ctx.ui.setStatus(
+			STATUS_KEY,
+			counts.value.open === 0 ? undefined : `todo: ${counts.value.open} open`,
+		);
 	}
 
 	function notifyResult<T>(ctx: ExtensionCommandContext, result: TodoStoreResult<T>): void {
@@ -357,14 +360,20 @@ export default function (pi: ExtensionAPI) {
 			}),
 			view: Type.Optional(Type.String({ description: "List view: open, all, done, or blocked." })),
 			title: Type.Optional(Type.String({ description: "Todo title for action=add." })),
-			description: Type.Optional(Type.String({ description: "Optional description for action=add." })),
-			priority: Type.Optional(Type.Number({ description: "Optional integer priority; higher sorts first." })),
+			description: Type.Optional(
+				Type.String({ description: "Optional description for action=add." }),
+			),
+			priority: Type.Optional(
+				Type.Number({ description: "Optional integer priority; higher sorts first." }),
+			),
 			id: Type.Optional(Type.Number({ description: "Todo id for done/status/block/dep." })),
 			status: Type.Optional(
 				Type.String({ description: "Canonical status: pending, in_progress, blocked, or done." }),
 			),
 			reason: Type.Optional(Type.String({ description: "Optional reason for status/block." })),
-			dependsOn: Type.Optional(Type.Number({ description: "Prerequisite todo id for action=dep." })),
+			dependsOn: Type.Optional(
+				Type.Number({ description: "Prerequisite todo id for action=dep." }),
+			),
 			limit: Type.Optional(Type.Number({ description: "Maximum rows for list/next." })),
 			confirm: Type.Optional(Type.Boolean({ description: "Must be true for action=clear." })),
 		}),
@@ -374,7 +383,10 @@ export default function (pi: ExtensionAPI) {
 			const actionText = params.action.trim();
 			if (!isTodoToolAction(actionText)) {
 				const result = localError("TODO_BAD_ACTION", `todo error: unknown action ${actionText}`);
-				return { content: [{ type: "text", text: result.message }], details: detailsFromResult(actionText, result) };
+				return {
+					content: [{ type: "text", text: result.message }],
+					details: detailsFromResult(actionText, result),
+				};
 			}
 
 			const action = actionText;
@@ -400,11 +412,12 @@ export default function (pi: ExtensionAPI) {
 				case "status": {
 					const id = requiredId(params.id);
 					const status = parseToolStatus(params.status);
-					result = id.ok && status.ok
-						? todoStore.setStatus({ id: id.value, status: status.value, reason: params.reason })
-						: !id.ok
-							? id
-							: status;
+					result =
+						id.ok && status.ok
+							? todoStore.setStatus({ id: id.value, status: status.value, reason: params.reason })
+							: !id.ok
+								? id
+								: status;
 					break;
 				}
 				case "block": {
@@ -418,17 +431,19 @@ export default function (pi: ExtensionAPI) {
 				case "dep": {
 					const id = requiredId(params.id);
 					const dependsOn = requiredId(params.dependsOn);
-					result = id.ok && dependsOn.ok
-						? todoStore.addDependency({ id: id.value, dependsOn: dependsOn.value })
-						: !id.ok
-							? id
-							: dependsOn;
+					result =
+						id.ok && dependsOn.ok
+							? todoStore.addDependency({ id: id.value, dependsOn: dependsOn.value })
+							: !id.ok
+								? id
+								: dependsOn;
 					break;
 				}
 				case "clear":
-					result = params.confirm === true
-						? todoStore.clear()
-						: localError("TODO_CLEAR_CONFIRM", "todo error: clear requires confirmation");
+					result =
+						params.confirm === true
+							? todoStore.clear()
+							: localError("TODO_CLEAR_CONFIRM", "todo error: clear requires confirmation");
 					break;
 			}
 

@@ -4,7 +4,7 @@
 **Plan Version**: 1.0.0  
 **Created**: 2026-05-15  
 **Spec**: [sql-backed-todo-extension-spec.md](./sql-backed-todo-extension-spec.md)  
-**Status**: DRAFT
+**Status**: COMPLETE
 
 ## Summary
 
@@ -27,7 +27,7 @@ flowchart LR
     classDef completed fill:#E8F5E9,stroke:#43A047,color:#000
     classDef blocked fill:#FFEBEE,stroke:#E53935,color:#000
 
-    T001[T001 Scaffold]:::completed --> T002[T002 Bind params]:::completed --> T003[T003 Todo store]:::completed --> T004[T004 Store tests]:::completed --> T005[T005 Command/tool]:::completed --> T006[T006 Overlay/status]:::completed --> T007[T007 Smoke]:::completed --> T008[T008 Docs]:::completed --> T009[T009 Domains]:::completed --> T010[T010 Ledgers]:::completed --> T011[T011 Validation]:::pending
+    T001[T001 Scaffold]:::completed --> T002[T002 Bind params]:::completed --> T003[T003 Todo store]:::completed --> T004[T004 Store tests]:::completed --> T005[T005 Command/tool]:::completed --> T006[T006 Overlay/status]:::completed --> T007[T007 Smoke]:::completed --> T008[T008 Docs]:::completed --> T009[T009 Domains]:::completed --> T010[T010 Ledgers]:::completed --> T011[T011 Validation]:::completed
 
     FSQL[session-sql store]:::completed
     FTODO[todo extension files]:::completed
@@ -111,7 +111,7 @@ flowchart LR
 | [x] | T008 | Add extension-local guidance and user docs. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/AGENTS.md`, `/Users/jordanknight/pi-hacking/pij/README.md`, `/Users/jordanknight/pi-hacking/pij/docs/how/todo.md` | README has quick start; how-to has command/tool/status/dependency/overlay/SQL examples; AGENTS documents extension-local constraints. | Hybrid docs from clarification. |
 | [x] | T009 | Update domain records for the todo consumer and store contract. | `session-work-state` / `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/domain-map.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/registry.md` | Domain docs mention todo source locations, contracts, and relationship to `SessionSqlStore`; map/history reflects todo as an additional UX consumer. | Finding 01/02/06. |
 | [x] | T010 | Capture execution evidence, velocity, and difficulties. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/010-sql-backed-todo-extension/execution.log.md`, `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md`, `/Users/jordanknight/pi-hacking/pij/docs/velocity.md` | Execution log records task progress and validation outputs; difficulties are logged with workarounds/encoded fixes if encountered; velocity has phase row. | Harness is the product. |
-| [ ] | T011 | Run full validation. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/package.json`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/` | `npm run typecheck`, `npm test`, `npm run lint`, `npm run smoke -- todo`, and `npm run self-check` pass or any pre-existing unrelated failure is documented. | Include known Biome schema info only if still non-failing. |
+| [x] | T011 | Run full validation. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/package.json`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/` | `npm run typecheck`, `npm test`, `npm run lint`, `npm run smoke -- todo`, and `npm run self-check` pass or any pre-existing unrelated failure is documented. | Include known Biome schema info only if still non-failing. |
 
 ### Acceptance Criteria
 

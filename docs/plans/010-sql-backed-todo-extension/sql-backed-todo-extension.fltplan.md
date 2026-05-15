@@ -5,7 +5,7 @@
 **Dossier**: [research-dossier.md](./research-dossier.md)  
 **Workshops**: [001 command/tool](./workshops/001-todo-command-and-model-action-contract.md), [002 dependencies](./workshops/002-dependency-aware-next-ready-semantics.md), [003 data](./workshops/003-sql-backed-todo-data-contract.md), [004 UX](./workshops/004-full-todo-ux-scope.md), [005 domains](./workshops/005-cross-domain-contract-review.md)  
 **Generated**: 2026-05-15  
-**Status**: Ready  
+**Status**: Landed  
 **Mode**: Simple  
 **Complexity**: CS-3 (medium)
 
@@ -105,8 +105,8 @@ flowchart LR
     S --> C[Clarify]:::done
     C --> W[Workshop]:::done
     W --> P[Plan]:::done
-    P --> I[Implement]:::active
-    I --> V[Validate]:::ready
+    P --> I[Implement]:::done
+    I --> V[Validate]:::done
 ```
 
 **Legend**: green = done | yellow = active | grey = not started
@@ -119,7 +119,7 @@ Simple mode selected; one implementation phase.
 
 | Phase | Title | Tasks | CS | Status |
 |-------|-------|-------|----|--------|
-| 1 | Store, full UX, validation, docs, domains | 11 | CS-3 | In progress |
+| 1 | Store, full UX, validation, docs, domains | 11 | CS-3 | Landed |
 
 ---
 
@@ -132,7 +132,7 @@ flowchart LR
     classDef done fill:#E8F5E9,stroke:#43A047,color:#000
     classDef blocked fill:#FFEBEE,stroke:#E53935,color:#000
 
-    S001[T001 Scaffold]:::done --> S002[T002 Bind params]:::done --> S003[T003 Todo store]:::done --> S004[T004 Store tests]:::done --> S005[T005 Command/tool]:::done --> S006[T006 Overlay/status]:::done --> S007[T007 Smoke]:::done --> S008[T008 Docs]:::done --> S009[T009 Domains]:::done --> S010[T010 Ledgers]:::done --> S011[T011 Validation]:::pending
+    S001[T001 Scaffold]:::done --> S002[T002 Bind params]:::done --> S003[T003 Todo store]:::done --> S004[T004 Store tests]:::done --> S005[T005 Command/tool]:::done --> S006[T006 Overlay/status]:::done --> S007[T007 Smoke]:::done --> S008[T008 Docs]:::done --> S009[T009 Domains]:::done --> S010[T010 Ledgers]:::done --> S011[T011 Validation]:::done
 ```
 
 ## Stages
@@ -149,7 +149,7 @@ flowchart LR
 | [x] | T008 | Docs | README quick-start, detailed `docs/how/todo.md`, and todo AGENTS guidance added; smoke still passes. |
 | [x] | T009 | Domain records | Domain docs/map/registry identify todo as SQL-backed UX consumer and `TodoSqlStore` as session-work-state contract. |
 | [x] | T010 | Ledgers | Execution log, D-027/D-028 difficulties, and velocity todo row updated. |
-| [ ] | T011 | Full validation | Pending. |
+| [x] | T011 | Full validation | `npm run self-check` passed; known Biome schema version info remained non-failing. |
 
 ## Checklist
 
@@ -163,7 +163,7 @@ flowchart LR
 - [x] T008 — Docs
 - [x] T009 — Domain records
 - [x] T010 — Ledgers
-- [ ] T011 — Full validation
+- [x] T011 — Full validation
 
 ---
 
@@ -181,7 +181,7 @@ flowchart LR
 | T008 — Docs | agent-tooling-interface | [x] README quick-start and `docs/how/todo.md` exist. |
 | T009 — Domain records | session-work-state / agent-tooling-interface | [x] Domain docs/map identify todo as SQL-backed UX consumer. |
 | T010 — Ledgers | extension-authoring-harness | [x] Execution, difficulty, and velocity records updated. |
-| T011 — Full validation | extension-authoring-harness | Typecheck, lint, tests, smoke, self-check pass. |
+| T011 — Full validation | extension-authoring-harness | [x] Typecheck, lint, tests, smoke, self-check pass. |
 
 ## Acceptance Criteria Snapshot
 
@@ -231,3 +231,7 @@ Created five workshop references covering command/tool contract, dependency-awar
 ### 2026-05-15 — Architecture complete
 
 Generated a Simple-mode implementation plan with 11 tasks. Key architecture decision: extend `SessionSqlStore` with safe bind-parameter support before building `TodoSqlStore`, so the todo UX reuses session SQL without unsafe interpolation or duplicate persistence.
+
+### 2026-05-15 — Implementation landed
+
+Completed all 11 Simple-mode tasks. `todo` now provides `TodoSqlStore`, `/todo`, the model-facing `todo` tool, minimal overlay/status UX, docs, domain records, and deterministic smoke. Final validation passed through `npm run self-check`.

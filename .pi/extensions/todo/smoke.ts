@@ -54,7 +54,7 @@ const scenario: Scenario = {
 			expect: oneOpenRe,
 			expectTimeoutMs: 5000,
 		},
-		{ kind: "press", key: "q" },
+		{ kind: "type", text: "q" },
 		{ kind: "sleep", ms: 300 },
 		{
 			kind: "type",

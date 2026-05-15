@@ -1,0 +1,48 @@
+{
+  "summary": "Scanned the pi-mcp-adapter package at /Users/jordanknight/pi-hacking/pij/.pi/git/github.com/nicobailon/pi-mcp-adapter using the package-vetter rubric. No SKILL.md, AGENTS.md, CLAUDE.md, or prompt template files were present; the scoped scan covered the package extension entrypoint, prompt-exposed tool descriptions, README.md, CHANGELOG.md, and an example MCP server with registerTool descriptions. The package is a warn because the generated MCP proxy tool description includes an instruction-like directive about how the model should call non-MCP tools, and I also recorded a meta finding that externally supplied MCP tool descriptions are forwarded into Pi tool descriptions without a rubric rule that classifies dynamic prompt-surface content.",
+  "retrospective": {
+    "workedWell": "The run folder included the schema and scan checklist, and the package tree was local, so the scan could be completed with read-only filesystem inspection and no network or install steps.",
+    "confusing": "The rubric says TypeScript and JavaScript scanning is limited to string literals passed to registerTool or defineExtension, but this package builds one prompt-exposed tool description through a helper and forwards dynamic MCP metadata as direct tool descriptions. I treated those as in scope because they enter the same prompt surface.",
+    "magicWand": "Add a package-vetter helper command such as `npm run vetter:list-scope -- <packagePath>` that prints the exact files and extracted tool-description strings the harness expects an agent to scan.",
+    "magicWandTarget": "project",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "No peer coordination was used for this one-shot scan."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "knowledge",
+        "description": "The scope boundary for generated or dynamic tool descriptions was ambiguous: the prompt says to scan string literals passed to registerTool, while this package exposes descriptions assembled in a helper and descriptions copied from MCP server metadata.",
+        "workaround": "Scanned the generated helper text as R-07 and recorded the dynamic-description case as vetter:meta info rather than inventing a new rule.",
+        "severity": "degrading"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 90,
+  "level": "warn",
+  "findings": [
+    {
+      "rule": "R-07",
+      "msg": "tool-description directive: 'Non-MCP Pi tools should be called directly, not through mcp'",
+      "severity": "warn",
+      "file": "direct-tools.ts",
+      "line": 211,
+      "snippet": "MCP gateway - connect to MCP servers and call their tools. Non-MCP Pi tools should be called directly, not through mcp."
+    },
+    {
+      "rule": "vetter:meta",
+      "msg": "dynamic prompt surface: MCP tool/resource descriptions are forwarded into Pi direct-tool descriptions without a specific R-## rule for untrusted metadata",
+      "severity": "info",
+      "file": "direct-tools.ts",
+      "line": 146,
+      "snippet": "description: tool.description ?? \"\","
+    }
+  ],
+  "scannedFiles": 5,
+  "durationMs": 27900,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

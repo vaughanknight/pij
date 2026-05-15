@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	locationForSession,
 	memoryLocation,
-	SessionSqlStore,
 	type SessionSqlLocation,
+	SessionSqlStore,
 	type SqlResult,
 	type StoreOpenResult,
 } from "../session-sql/store.js";
@@ -70,9 +70,11 @@ describe("TodoSqlStore", () => {
 		expect(added.status).toBe("pending");
 		expect(store.list().message).toContain("todo: 1 open");
 
-		const raw = expectSqlRows(sql.execute("SELECT title, status, priority FROM todos WHERE id = ?", {
-			params: [added.id],
-		}));
+		const raw = expectSqlRows(
+			sql.execute("SELECT title, status, priority FROM todos WHERE id = ?", {
+				params: [added.id],
+			}),
+		);
 		expect(raw).toEqual([{ title: "Write store", status: "pending", priority: 2 }]);
 	});
 
@@ -199,13 +201,21 @@ describe("TodoSqlStore", () => {
 
 describe("parseTodoCommand", () => {
 	it("parses core slash command arguments", () => {
-		expect(parseTodoCommand("")).toEqual({ ok: true, value: { action: "list", view: "open" }, message: "" });
+		expect(parseTodoCommand("")).toEqual({
+			ok: true,
+			value: { action: "list", view: "open" },
+			message: "",
+		});
 		expect(parseTodoCommand("add Write docs")).toEqual({
 			ok: true,
 			value: { action: "add", title: "Write docs" },
 			message: "",
 		});
-		expect(parseTodoCommand("done #4")).toEqual({ ok: true, value: { action: "done", id: 4 }, message: "" });
+		expect(parseTodoCommand("done #4")).toEqual({
+			ok: true,
+			value: { action: "done", id: 4 },
+			message: "",
+		});
 		expect(parseTodoCommand("status 4 blocked waiting")).toEqual({
 			ok: true,
 			value: { action: "status", id: 4, status: "blocked", reason: "waiting" },
@@ -217,6 +227,9 @@ describe("parseTodoCommand", () => {
 		expect(parseTodoCommand("add   ")).toMatchObject({ ok: false, code: "TODO_EMPTY_TITLE" });
 		expect(parseTodoCommand("done nope")).toMatchObject({ ok: false, code: "TODO_BAD_ID" });
 		expect(parseTodoCommand("list weird")).toMatchObject({ ok: false, code: "TODO_BAD_VIEW" });
-		expect(parseTodoCommand("status 1 weird")).toMatchObject({ ok: false, code: "TODO_BAD_STATUS" });
+		expect(parseTodoCommand("status 1 weird")).toMatchObject({
+			ok: false,
+			code: "TODO_BAD_STATUS",
+		});
 	});
 });

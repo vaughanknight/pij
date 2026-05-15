@@ -1,6 +1,27 @@
 import { defineConfig } from "vitest/config";
 
+const NODE_SQLITE_SHIM = "\0node-sqlite-shim";
+
 export default defineConfig({
+	plugins: [
+		{
+			name: "node-sqlite-shim",
+			enforce: "pre",
+			resolveId(id: string) {
+				if (id === "node:sqlite" || id === "sqlite") return NODE_SQLITE_SHIM;
+				return undefined;
+			},
+			load(id: string) {
+				if (id !== NODE_SQLITE_SHIM) return undefined;
+				return [
+					"import { createRequire } from 'node:module';",
+					"const require = createRequire(import.meta.url);",
+					"const sqlite = require('node:sqlite');",
+					"export const DatabaseSync = sqlite.DatabaseSync;",
+				].join("\n");
+			},
+		},
+	],
 	test: {
 		include: [".pi/extensions/**/*.test.ts", "harness/**/*.test.ts"],
 		exclude: ["node_modules", ".pi/git", ".pi/npm"],

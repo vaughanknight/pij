@@ -1,0 +1,65 @@
+{
+  "file": "r06-zero-width.md",
+  "expectedRule": "R-06",
+  "detected": [
+    {
+      "rule": "R-06",
+      "severity": "fail"
+    },
+    {
+      "rule": "R-06",
+      "severity": "fail"
+    }
+  ],
+  "expectedRuleDetected": true,
+  "verdict": {
+    "summary": "Scanned the supplied corpus package file r06-zero-width.md against the package-vetter rubric and found hidden zero-width / RTL override characters in instruction text, producing an R-06 fail verdict.",
+    "retrospective": {
+      "workedWell": "The run folder included the schema, instructions, and output path, and the package corpus was small enough to inspect directly without needing extra tooling.",
+      "confusing": "The package file was named r06-zero-width.md, which is not one of the normal package-vetter scope globs, but the input source identified it as the corpus target and the file itself was clearly a positive R-06 test.",
+      "magicWand": "Add an explicit corpusMode or targetFiles field to the package-vetter input so agents know whether to scan the supplied corpus file even when it falls outside normal package scope globs.",
+      "magicWandTarget": "minih",
+      "coordination": {
+        "peerUpdatesSent": 0,
+        "unresolvedPeerRequests": 0,
+        "statePublished": false,
+        "notes": "No peer coordination was used for this one-shot package scan."
+      },
+      "difficulties": [
+        {
+          "id": "MH-001",
+          "category": "knowledge",
+          "description": "The supplied corpus target did not match the briefing's normal extension-file scope patterns, creating ambiguity about whether to report an empty package or scan the explicit source file.",
+          "workaround": "Used the input source and corpus filename as the authoritative target and documented the ambiguity in the retrospective.",
+          "severity": "degrading"
+        }
+      ]
+    },
+    "vetter": "agent",
+    "score": 40,
+    "level": "fail",
+    "findings": [
+      {
+        "rule": "R-06",
+        "msg": "zero-width / RTL character detected: U+200B in 'hello​world'",
+        "severity": "fail",
+        "file": "r06-zero-width.md",
+        "line": 7,
+        "snippet": "contains zero-width characters: hello​world (between hello and world is a U+200B). Also ‮reversed"
+      },
+      {
+        "rule": "R-06",
+        "msg": "zero-width / RTL character detected: U+202E RTL override before 'reversed text'",
+        "severity": "fail",
+        "file": "r06-zero-width.md",
+        "line": 7,
+        "snippet": "and world is a U+200B). Also ‮reversed text via RTL override here‬."
+      }
+    ],
+    "scannedFiles": 1,
+    "durationMs": 1,
+    "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+  },
+  "generatedAt": "2026-05-15T07:33:26.578Z",
+  "generatedInMs": 55641
+}

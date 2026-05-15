@@ -1,0 +1,13 @@
+{
+  "briefingSha": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720",
+  "regeneratedAt": "2026-05-15T07:34:27.679Z",
+  "snapshots": [
+    "corpus-r01-override.json",
+    "corpus-r02-role-hijack.json",
+    "corpus-r03-chat-template-smuggle.json",
+    "corpus-r04-exfil.json",
+    "corpus-r05-authority-appeal.json",
+    "corpus-r06-zero-width.json",
+    "corpus-r07-tool-desc-smuggle.json"
+  ]
+}

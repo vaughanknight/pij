@@ -55,9 +55,7 @@ export interface AgentSessionFactoryInput {
  * implementation wraps `createAgentSession()` from `@earendil-works/pi-coding-agent`;
  * tests inject a tracking factory to verify dispose-call accounting.
  */
-export type AgentSessionFactory = (
-	input: AgentSessionFactoryInput,
-) => Promise<AgentSessionLike>;
+export type AgentSessionFactory = (input: AgentSessionFactoryInput) => Promise<AgentSessionLike>;
 
 export interface SdkIterationRunnerOpts {
 	readonly factory: AgentSessionFactory;
@@ -200,7 +198,7 @@ function defaultPromptBuilder(input: IterationInput): string {
 /** Pluck the first unchecked task title from the plan; fall back to "(unspecified)". */
 function extractTaskTitle(input: IterationInput, _lastMessage: string): string {
 	const m = /-\s+\[ \]\s+(.+?)\s*$/m.exec(input.planSnapshot);
-	if (m && m[1]) return m[1].trim();
+	if (m?.[1]) return m[1].trim();
 	return "(unspecified)";
 }
 

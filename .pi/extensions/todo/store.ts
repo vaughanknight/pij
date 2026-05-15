@@ -161,7 +161,9 @@ function rowsFromSql(result: SqlResult): TodoStoreResult<Record<string, unknown>
 	return todoOk(result.rows, "");
 }
 
-function changeFromSql(result: SqlResult): TodoStoreResult<Extract<SqlResult, { ok: true; kind: "change" }>> {
+function changeFromSql(
+	result: SqlResult,
+): TodoStoreResult<Extract<SqlResult, { ok: true; kind: "change" }>> {
 	if (!result.ok) return sqlError(result);
 	if (result.kind !== "change") {
 		return todoError("TODO_SQL_ERROR", "todo error: storage unavailable: expected change result");
@@ -326,8 +328,10 @@ RETURNING id, title, description, status, priority, created_at, updated_at`,
 		if (!inserted.ok) return inserted;
 		const rows = this.normalizeRows(inserted.value);
 		if (!rows.ok) return rows;
-		return this.singleRowResult(rows.value, () => "todo error: id not found", (row) =>
-			`todo: added #${row.id} pending — ${rowTitle(row)}`,
+		return this.singleRowResult(
+			rows.value,
+			() => "todo error: id not found",
+			(row) => `todo: added #${row.id} pending — ${rowTitle(row)}`,
 		);
 	}
 
@@ -352,7 +356,8 @@ LIMIT :limit`,
 
 	get(id: number): TodoStoreResult<TodoViewRow> {
 		const validId = positiveInt(id);
-		if (validId === undefined) return todoError("TODO_BAD_ID", "todo error: id must be a positive integer");
+		if (validId === undefined)
+			return todoError("TODO_BAD_ID", "todo error: id must be a positive integer");
 		const rows = this.rowsWithDeps(`${TODO_ROW_SELECT} WHERE id = :id`, { id: validId });
 		if (!rows.ok) return rows;
 		return this.singleRowResult(
@@ -364,7 +369,8 @@ LIMIT :limit`,
 
 	setStatus(input: SetTodoStatusInput): TodoStoreResult<TodoViewRow> {
 		const validId = positiveInt(input.id);
-		if (validId === undefined) return todoError("TODO_BAD_ID", "todo error: id must be a positive integer");
+		if (validId === undefined)
+			return todoError("TODO_BAD_ID", "todo error: id must be a positive integer");
 		if (!isTodoStatus(input.status)) {
 			return todoError("TODO_BAD_STATUS", `todo error: unknown status ${String(input.status)}`);
 		}
@@ -411,7 +417,10 @@ RETURNING id, title, description, status, priority, created_at, updated_at`,
 			return todoError("TODO_SELF_DEP", "todo error: todo cannot depend on itself");
 		}
 		const todo = this.get(id);
-		if (!todo.ok) return todo.code === "TODO_NOT_FOUND" ? todoError("TODO_NOT_FOUND", `todo error: id #${id} not found`) : todo;
+		if (!todo.ok)
+			return todo.code === "TODO_NOT_FOUND"
+				? todoError("TODO_NOT_FOUND", `todo error: id #${id} not found`)
+				: todo;
 		const dependency = this.get(dependsOn);
 		if (!dependency.ok) {
 			return dependency.code === "TODO_NOT_FOUND"
@@ -419,9 +428,12 @@ RETURNING id, title, description, status, priority, created_at, updated_at`,
 				: dependency;
 		}
 		const existing = rowsFromSql(
-			this.sql.execute("SELECT 1 AS present FROM todo_deps WHERE todo_id = :id AND depends_on = :dependsOn", {
-				params: { id, dependsOn },
-			}),
+			this.sql.execute(
+				"SELECT 1 AS present FROM todo_deps WHERE todo_id = :id AND depends_on = :dependsOn",
+				{
+					params: { id, dependsOn },
+				},
+			),
 		);
 		if (!existing.ok) return existing;
 		if (existing.value.length > 0) {

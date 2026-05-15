@@ -22,11 +22,7 @@ import {
 	type AgentSessionLike,
 	SdkIterationRunner,
 } from "./runner.js";
-import {
-	DEFAULT_CONFIG,
-	type IterationInput,
-	type IterationRunner,
-} from "./store.js";
+import { DEFAULT_CONFIG, type IterationInput, type IterationRunner } from "./store.js";
 
 class TrackingSession implements AgentSessionLike {
 	disposeCalls = 0;
@@ -40,12 +36,14 @@ class TrackingSession implements AgentSessionLike {
 	rejectPrompt: Error | null;
 	costPerIteration: number;
 
-	constructor(opts: {
-		autoEnd?: boolean;
-		autoEndMessage?: string;
-		rejectPrompt?: Error | null;
-		costPerIteration?: number;
-	} = {}) {
+	constructor(
+		opts: {
+			autoEnd?: boolean;
+			autoEndMessage?: string;
+			rejectPrompt?: Error | null;
+			costPerIteration?: number;
+		} = {},
+	) {
 		this.autoEnd = opts.autoEnd ?? true;
 		this.autoEndMessage = opts.autoEndMessage ?? "tracking-session lastMessage";
 		this.rejectPrompt = opts.rejectPrompt ?? null;
@@ -100,9 +98,7 @@ function makeInput(
 	return {
 		runId: overrides.runId ?? "r-test",
 		planPath: overrides.planPath ?? "/PLAN.md",
-		planSnapshot:
-			overrides.planSnapshot ??
-			"- [ ] do work\n- [ ] another\n- [ ] third\n",
+		planSnapshot: overrides.planSnapshot ?? "- [ ] do work\n- [ ] another\n- [ ] third\n",
 		history: overrides.history ?? [],
 		iteration: overrides.iteration ?? 1,
 		signal,
@@ -230,7 +226,7 @@ describe("SdkIterationRunner leak detection (T017.T)", () => {
 	});
 
 	it("WeakRef probe (gc-dependent, runs only with --expose-gc) — no AgentSession refs survive across 10 iterations", async () => {
-		// @ts-ignore — globalThis.gc is exposed only with `node --expose-gc`.
+		// @ts-expect-error — globalThis.gc is exposed only with `node --expose-gc`.
 		const gc = (globalThis as { gc?: () => void }).gc;
 		if (typeof gc !== "function") {
 			// Skip silently; the dispose-counter assertions above cover the leak

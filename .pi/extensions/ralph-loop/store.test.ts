@@ -14,37 +14,36 @@
 //   T015.T — Replay determinism + idempotency + cross-reason (≥4)
 
 import { describe, expect, it, vi } from "vitest";
-
+import { makeRecorder } from "../../../harness/test-utils.js";
 import {
+	type AppendFn,
 	COMPLETION_SIGIL,
 	DEFAULT_CONFIG,
+	detectSpinning,
 	ENTRY_ITERATION,
 	ENTRY_RUN_END,
 	ENTRY_RUN_START,
-	type AppendFn,
+	evaluateStopPost,
+	evaluateStopPre,
+	exhaustiveCheck,
 	type IterationInput,
 	type IterationRecord,
 	type IterationResult,
 	type IterationRunner,
-	type PlanModel,
-	type RalphLoopConfig,
-	type ReplayableEntry,
-	RalphLoopStore,
-	type RunStateSnapshot,
-	type StopReason,
-	detectSpinning,
-	evaluateStopPost,
-	evaluateStopPre,
-	exhaustiveCheck,
 	isIterationData,
 	isRunEndData,
 	isRunStartData,
 	nextUndoneTask,
 	outputDigest,
+	type PlanModel,
 	parseMarkdownPlan,
+	type RalphLoopConfig,
+	RalphLoopStore,
+	type ReplayableEntry,
+	type RunStateSnapshot,
+	type StopReason,
 	taskFingerprint,
 } from "./store.js";
-import { makeRecorder } from "../../../harness/test-utils.js";
 
 // ─── T008.T — Type contracts ────────────────────────────────────────────────
 
@@ -74,13 +73,13 @@ describe("StopReason exhaustiveCheck (T008.T)", () => {
 					return exhaustiveCheck(r);
 			}
 		}
-		expect(describeStop({ kind: "complete", reason: "sigil", iteration: 3 })).toBe("complete:sigil@3");
-		expect(
-			describeStop({ kind: "complete", reason: "plan_exhausted", iteration: 5 }),
-		).toBe("complete:plan_exhausted@5");
-		expect(describeStop({ kind: "manual_stop", line: "STOP", iteration: 1 })).toBe(
-			"manual:STOP@1",
+		expect(describeStop({ kind: "complete", reason: "sigil", iteration: 3 })).toBe(
+			"complete:sigil@3",
 		);
+		expect(describeStop({ kind: "complete", reason: "plan_exhausted", iteration: 5 })).toBe(
+			"complete:plan_exhausted@5",
+		);
+		expect(describeStop({ kind: "manual_stop", line: "STOP", iteration: 1 })).toBe("manual:STOP@1");
 	});
 
 	it("isRunStartData accepts valid replay data and rejects malformed", () => {
@@ -202,9 +201,7 @@ STOP
 - [ ] 
 `;
 		const plan = parseMarkdownPlan(text, "/PLAN.md");
-		expect(plan.tasks).toEqual([
-			{ kind: "done", title: "All of it", lineNumber: 3 },
-		]);
+		expect(plan.tasks).toEqual([{ kind: "done", title: "All of it", lineNumber: 3 }]);
 		expect(plan.warnings).toEqual([
 			{ lineNumber: 4, message: "empty task title; not consumed as a task" },
 		]);
@@ -353,11 +350,7 @@ describe("detectSpinning (T012.T)", () => {
 	});
 
 	it("returns null when the tail has mixed fingerprints", () => {
-		const log = [
-			fakeRecord(1, "aaa"),
-			fakeRecord(2, "bbb"),
-			fakeRecord(3, "ccc"),
-		];
+		const log = [fakeRecord(1, "aaa"), fakeRecord(2, "bbb"), fakeRecord(3, "ccc")];
 		expect(detectSpinning(log, 3)).toBeNull();
 	});
 
@@ -436,9 +429,7 @@ describe("evaluateStopPre (T013.T)", () => {
 	});
 
 	it("budget_usd pre-iter: spent over the cap", () => {
-		const r = evaluateStopPre(
-			baseState({ spentUsd: 6, config: { ...DEFAULT_CONFIG, maxUsd: 5 } }),
-		);
+		const r = evaluateStopPre(baseState({ spentUsd: 6, config: { ...DEFAULT_CONFIG, maxUsd: 5 } }));
 		expect(r?.kind).toBe("budget_usd");
 	});
 
@@ -455,9 +446,7 @@ describe("evaluateStopPre (T013.T)", () => {
 
 	it("cancel beats every other stop reason", () => {
 		const plan = parseMarkdownPlan("- [x] done\nSTOP\n", "/p");
-		const r = evaluateStopPre(
-			baseState({ planModel: plan, cancelRequested: true, iteration: 2 }),
-		);
+		const r = evaluateStopPre(baseState({ planModel: plan, cancelRequested: true, iteration: 2 }));
 		expect(r?.kind).toBe("user_cancel");
 	});
 });
@@ -536,11 +525,7 @@ describe("evaluateStopPost (T013.T)", () => {
 	});
 
 	it("tie-break: spinning vs max_iterations → max_iterations wins (spinning evaluated last)", () => {
-		const log = [
-			fakeRecord(1, "bbb"),
-			fakeRecord(2, "bbb"),
-			fakeRecord(3, "bbb"),
-		];
+		const log = [fakeRecord(1, "bbb"), fakeRecord(2, "bbb"), fakeRecord(3, "bbb")];
 		const r = evaluateStopPost(
 			baseState({
 				iteration: 3,
@@ -645,11 +630,7 @@ describe("RalphLoopStore lifecycle (T014.T)", () => {
 		const runner = new StubRunner([]);
 		const store = new RalphLoopStore(rec.append, runner);
 		const { runId } = store.startRun("/p");
-		const result = await store.runOneIteration(
-			runId,
-			"- [x] done\n",
-			new AbortController().signal,
-		);
+		const result = await store.runOneIteration(runId, "- [x] done\n", new AbortController().signal);
 		expect(result.stopReason?.kind).toBe("complete");
 		expect(runner.calls).toEqual([]); // runner not invoked
 	});
@@ -694,7 +675,7 @@ describe("runOneIteration F005 regression: post-iter plan re-read", () => {
 	it("plan-exhausted is detected when agent checks off the FINAL task without sigil (maxIterations=1)", async () => {
 		const rec = makeRecorder();
 		const runner: IterationRunner = {
-			async runIteration(input) {
+			async runIteration(_input) {
 				// Agent claims to have done the task but does NOT emit the sigil.
 				return {
 					output: "checked off task X without sigil",
@@ -834,7 +815,11 @@ describe("RalphLoopStore replay (T015.T)", () => {
 		const corrupt: ReplayableEntry[] = [
 			...good,
 			{ type: "custom", customType: ENTRY_ITERATION, data: { malformed: true } },
-			{ type: "custom", customType: ENTRY_RUN_END, data: { runId: handle.runId, endedAt: 1, stopReason: { kind: "bogus" } } },
+			{
+				type: "custom",
+				customType: ENTRY_RUN_END,
+				data: { runId: handle.runId, endedAt: 1, stopReason: { kind: "bogus" } },
+			},
 		];
 		const fresh = new RalphLoopStore(rec.append, runner);
 		fresh.rehydrate(corrupt);

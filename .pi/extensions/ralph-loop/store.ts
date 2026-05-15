@@ -210,11 +210,7 @@ export function isIterationData(data: unknown): data is IterationRecord & {
 export function isRunEndData(data: unknown): data is RunEndData {
 	if (!data || typeof data !== "object") return false;
 	const d = data as Record<string, unknown>;
-	return (
-		typeof d.runId === "string" &&
-		typeof d.endedAt === "number" &&
-		isStopReason(d.stopReason)
-	);
+	return typeof d.runId === "string" && typeof d.endedAt === "number" && isStopReason(d.stopReason);
 }
 
 function isRalphLoopConfig(data: unknown): data is RalphLoopConfig {
@@ -235,8 +231,7 @@ function isStopReason(data: unknown): data is StopReason {
 	switch (d.kind) {
 		case "complete":
 			return (
-				(d.reason === "sigil" || d.reason === "plan_exhausted") &&
-				typeof d.iteration === "number"
+				(d.reason === "sigil" || d.reason === "plan_exhausted") && typeof d.iteration === "number"
 			);
 		case "max_iterations":
 			return typeof d.limit === "number" && typeof d.reached === "number";
@@ -309,13 +304,13 @@ export function parseMarkdownPlan(text: string, path: string): PlanModel {
 		}
 
 		const undone = UNDONE_TASK_RE.exec(raw);
-		if (undone && undone[1]) {
+		if (undone?.[1]) {
 			tasks.push({ kind: "undone", title: undone[1].trim(), lineNumber });
 			continue;
 		}
 
 		const done = DONE_TASK_RE.exec(raw);
-		if (done && done[1]) {
+		if (done?.[1]) {
 			tasks.push({ kind: "done", title: done[1].trim(), lineNumber });
 			continue;
 		}

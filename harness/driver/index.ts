@@ -374,12 +374,12 @@ export function findJsonBlocks(
 	let depth = 0;
 	let start = -1;
 	let inString = false;
-	let escape = false;
+	let escaped = false;
 	for (let i = 0; i < pane.length; i++) {
 		const c = pane.charAt(i);
 		if (inString) {
-			if (escape) escape = false;
-			else if (c === "\\") escape = true;
+			if (escaped) escaped = false;
+			else if (c === "\\") escaped = true;
 			else if (c === '"') inString = false;
 			continue;
 		}
@@ -497,10 +497,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 		if (ak.length !== bk.length) return false;
 		if (!ak.every((k, i) => k === bk[i])) return false;
 		return ak.every((k) =>
-			deepEqual(
-				(a as Record<string, unknown>)[k],
-				(b as Record<string, unknown>)[k],
-			),
+			deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
 		);
 	}
 	return false;

@@ -148,22 +148,13 @@ describe("driver/compactAndAssert: pure helpers", () => {
 			["iterations", "lastTaskTitle"],
 			"compact",
 		);
-		expect(result).toEqual([
-			{ field: "iterations", pre: 3, post: 0, phase: "compact" },
-		]);
+		expect(result).toEqual([{ field: "iterations", pre: 3, post: 0, phase: "compact" }]);
 	});
 
 	it("compareFields treats missing field on one side as divergent", async () => {
 		const { compareFields } = await import("./index.js");
-		const result = compareFields(
-			{ iterations: 3 },
-			{},
-			["iterations"],
-			"reload",
-		);
-		expect(result).toEqual([
-			{ field: "iterations", pre: 3, post: undefined, phase: "reload" },
-		]);
+		const result = compareFields({ iterations: 3 }, {}, ["iterations"], "reload");
+		expect(result).toEqual([{ field: "iterations", pre: 3, post: undefined, phase: "reload" }]);
 	});
 
 	it("compareFields recurses into arrays + nested objects via deep equality", async () => {

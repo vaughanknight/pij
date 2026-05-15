@@ -1,0 +1,40 @@
+{
+  "summary": "Scanned the in-scope prompt surfaces for https://github.com/nicobailon/pi-mcp-adapter.git at the installed package path: the package manifest reference, referenced extension entrypoint/tool-description construction, registerTool description literals, README.md, and CHANGELOG.md. I found no R-01..R-07 prompt-injection findings; the package verdict is ok with one informational vetter meta note about runtime MCP-provided tool descriptions being outside the current static R-07 literal scope.",
+  "retrospective": {
+    "workedWell": "The run folder included the schema and checklist, and the package tree was already installed locally, so the scan could stay read-only except for writing the final report.",
+    "confusing": "R-07 explicitly scopes static string literals passed to registerTool, but this package also registers descriptions sourced from cached MCP server metadata at runtime; that is relevant prompt surface but not clearly classified by the static package rubric.",
+    "magicWand": "Add a package-vetter helper command such as `npm run vetter:scope -- <packagePath>` that prints the exact in-scope file list and extracted registerTool/defineExtension description strings before manual rule review.",
+    "magicWandTarget": "project",
+    "coordination": {
+      "peerUpdatesSent": 0,
+      "unresolvedPeerRequests": 0,
+      "statePublished": false,
+      "notes": "Coordination was disabled for this one-shot vetter run."
+    },
+    "difficulties": [
+      {
+        "id": "MH-001",
+        "category": "knowledge",
+        "description": "The boundary between static package-owned tool descriptions and runtime MCP-provided tool descriptions required interpretation.",
+        "workaround": "Applied R-07 only to static/literal package-controlled descriptions and recorded the runtime pass-through concern as a vetter:meta info finding.",
+        "severity": "annoying"
+      }
+    ]
+  },
+  "vetter": "agent",
+  "score": 100,
+  "level": "ok",
+  "findings": [
+    {
+      "rule": "vetter:meta",
+      "msg": "R-07 scope ambiguity: runtime MCP tool descriptions are registered directly from cache; static literals scanned cleanly.",
+      "severity": "info",
+      "file": "index.ts",
+      "line": 73,
+      "snippet": "description: spec.description || \"(no description)\""
+    }
+  ],
+  "scannedFiles": 5,
+  "durationMs": 180000,
+  "agentRubric": "cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720"
+}

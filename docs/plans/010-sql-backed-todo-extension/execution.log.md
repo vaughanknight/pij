@@ -155,6 +155,24 @@ Briefing sent at 2026-05-15T06:52:24Z with hazards: SQL source of truth, safe bi
   - Added `docs/difficulties.md` D-027 for companion ping SHA drift in concurrent worktrees.
   - Added `docs/difficulties.md` D-028 for post-`/reload` smoke race; local encoded fix is the explicit wait in todo smoke.
   - Added `docs/velocity.md` row for extension #5 (`todo`) with T0 and pending final-validation T1.
+- **Commit**: `f6b2219` (`docs: log todo implementation lessons`)
+- **Companion ping**: `review-request: T010 f6b2219` sent at 2026-05-15T07:24:59Z.
+
+### T011 — Run full validation
+
+- **Started**: 2026-05-15
+- **Completed**: 2026-05-15
+- **Status**: completed
+- **Evidence**:
+  - Fixed todo smoke key typing (`q` as typed text instead of Driver SDK `Key`).
+  - Fixed validation blockers surfaced by full repo checks: `snapshot-refresh` noUncheckedIndexedAccess issues, `harness/driver/index.ts` `escape` shadowing, and in-flight ralph-loop lint/smoke drift so `npm run self-check` could validate every local scenario.
+  - `npm run typecheck` passed.
+  - `npm test` passed: 16 files passed / 2 skipped; 218 tests passed / 4 skipped.
+  - `npm run lint` passed with only the known Biome schema-version info.
+  - `npm run smoke -- session-sql` passed.
+  - `npm run smoke -- todo` passed.
+  - `npm run smoke -- ralph-loop` passed after ralph-loop smoke robustness fixes.
+  - `npm run self-check` passed: typecheck, lint, tests, all smoke scenarios, package audit, and snapshot check.
 - **Companion ping**: pending commit SHA.
 
 ## Companion Findings Reconciliation

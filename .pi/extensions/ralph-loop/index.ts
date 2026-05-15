@@ -29,20 +29,16 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import {
-	type AgentSessionFactory,
-	type AgentSessionLike,
-	SdkIterationRunner,
-} from "./runner.js";
+import { type AgentSessionFactory, SdkIterationRunner } from "./runner.js";
 import {
 	DEFAULT_CONFIG,
+	exhaustiveCheck,
 	type IterationInput,
 	type IterationResult,
 	type IterationRunner,
-	RalphLoopStore,
 	type RalphLoopConfig,
+	RalphLoopStore,
 	type StopReason,
-	exhaustiveCheck,
 	taskFingerprint,
 } from "./store.js";
 
@@ -120,8 +116,14 @@ class FakeIterationRunnerForSmoke implements IterationRunner {
 	private nextIter = 0;
 	async runIteration(input: IterationInput): Promise<IterationResult> {
 		this.nextIter++;
-		const titleMatch = /-\s+\[ \]\s+(.+?)\s*$/m.exec(input.planSnapshot);
-		const taskTitle = titleMatch?.[1]?.trim() ?? `fake-task-${this.nextIter}`;
+		const allUndone = Array.from(input.planSnapshot.matchAll(/-\s+\[ \]\s+(.+?)\s*$/gm)).map(
+			(m) => m[1]?.trim() ?? "",
+		);
+		const taskTitle =
+			allUndone.length > 0
+				? (allUndone[Math.min(this.nextIter - 1, allUndone.length - 1)] ??
+					`fake-task-${this.nextIter}`)
+				: `fake-task-${this.nextIter}`;
 		return {
 			output:
 				this.nextIter >= 3
@@ -148,17 +150,11 @@ interface RalphStatusJson {
 	readonly spentUsd: number;
 }
 
-function buildStatusJson(
-	store: RalphLoopStore,
-	active: ActiveRun | null,
-): RalphStatusJson {
+function buildStatusJson(store: RalphLoopStore, active: ActiveRun | null): RalphStatusJson {
 	const runs = store.listRuns();
 	const latest = runs[0];
 	const last = latest?.iterations.at(-1);
-	const spentUsd = (latest?.iterations ?? []).reduce(
-		(sum, r) => sum + (r.costUsd ?? 0),
-		0,
-	);
+	const spentUsd = (latest?.iterations ?? []).reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
 	return Object.freeze({
 		runId: latest?.runId ?? null,
 		planPath: latest?.planPath ?? null,
@@ -175,10 +171,7 @@ function buildStatusJson(
 export default function (pi: ExtensionAPI) {
 	const cwd = process.cwd();
 	const runner = buildRunner(pi, cwd);
-	const store = new RalphLoopStore(
-		(customType, data) => pi.appendEntry(customType, data),
-		runner,
-	);
+	const store = new RalphLoopStore((customType, data) => pi.appendEntry(customType, data), runner);
 	let activeRun: ActiveRun | null = null;
 
 	function refreshStatus(ctx: ExtensionContext | ExtensionCommandContext): void {
@@ -194,7 +187,11 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	async function runLoop(planPath: string, config: RalphLoopConfig, ctx: ExtensionCommandContext): Promise<void> {
+	async function runLoop(
+		planPath: string,
+		config: RalphLoopConfig,
+		ctx: ExtensionCommandContext,
+	): Promise<void> {
 		const handle = store.startRun(planPath, config);
 		const controller = new AbortController();
 		activeRun = { runId: handle.runId, planPath, controller, loopPromise: Promise.resolve() };
@@ -256,7 +253,8 @@ export default function (pi: ExtensionAPI) {
 	// ─── Command surface (T018) ───────────────────────────────────────────────
 
 	pi.registerCommand("ralph", {
-		description: "Drive a Ralph Loop against a markdown plan file. /ralph start <path> | stop | status [--json] | plan",
+		description:
+			"Drive a Ralph Loop against a markdown plan file. /ralph start <path> | stop | status [--json] | plan",
 		handler: async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
 			const trimmed = args.trim();
 			const [verb, ...rest] = trimmed.split(/\s+/);
@@ -294,18 +292,12 @@ export default function (pi: ExtensionAPI) {
 					}
 					activeRun.controller.abort();
 					store.cancel(activeRun.runId);
-					ctx.ui.notify(
-						`ralph-loop: cancel requested for ${activeRun.runId}`,
-						"info",
-					);
+					ctx.ui.notify(`ralph-loop: cancel requested for ${activeRun.runId}`, "info");
 					return;
 				}
 				case "start": {
 					if (activeRun) {
-						ctx.ui.notify(
-							"ralph-loop: a run is already active; /ralph stop first",
-							"warning",
-						);
+						ctx.ui.notify("ralph-loop: a run is already active; /ralph stop first", "warning");
 						return;
 					}
 					const planArg = rest[0];
@@ -319,10 +311,7 @@ export default function (pi: ExtensionAPI) {
 					const planPath = resolvePath(cwd, planArg);
 					const planRead = readPlan(planPath);
 					if (!planRead.ok) {
-						ctx.ui.notify(
-							`ralph-loop: cannot read plan ${planPath}: ${planRead.reason}`,
-							"error",
-						);
+						ctx.ui.notify(`ralph-loop: cannot read plan ${planPath}: ${planRead.reason}`, "error");
 						return;
 					}
 					const config = parseConfigFlags(rest.slice(1));

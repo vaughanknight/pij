@@ -8,9 +8,13 @@
 //   <source-slug>.json             — median per package (modal finding-set, tie by run idx)
 //
 // Usage:
-//   npm run pkg snapshots:refresh                  # refresh everything (~20+ min)
-//   npm run pkg snapshots:refresh --corpus-only    # 7 corpus runs
-//   npm run pkg snapshots:refresh --pkg-only       # 4 packages × 3 runs
+//   npm run snapshots:refresh                     # refresh everything (~20+ min)
+//   npm run snapshots:refresh -- --corpus-only    # 7 corpus runs
+//   npm run snapshots:refresh -- --pkg-only       # 4 packages × 3 runs
+//
+// Exits non-zero (companion F001 fix) when fewer than AC-05A_THRESHOLD corpus
+// files have their expected R-0N rule detected — won't silently "succeed"
+// with bad AC-05a evidence.
 
 import { createHash } from "node:crypto";
 import {
@@ -61,6 +65,7 @@ function expectedRuleFor(corpusFile: string): string | null {
 // Median = the run whose finding-set is the modal set across N runs; tie-break
 // = lowest run index. "Finding-set" = sorted set of rule slugs (severity-aware).
 function chooseMedian(runs: Verdict[]): { idx: number; verdict: Verdict; drift: number } {
+	if (runs.length === 0) throw new Error("chooseMedian requires at least one run");
 	const keys = runs.map((v) =>
 		v.findings
 			.map((f) => `${f.rule}:${f.severity}`)
@@ -73,7 +78,7 @@ function chooseMedian(runs: Verdict[]): { idx: number; verdict: Verdict; drift: 
 		ix.push(i);
 		tally.set(k, ix);
 	});
-	let bestKey = keys[0];
+	let bestKey = keys[0] ?? "";
 	let bestCount = 0;
 	for (const [k, ix] of tally.entries()) {
 		if (ix.length > bestCount) {
@@ -81,7 +86,7 @@ function chooseMedian(runs: Verdict[]): { idx: number; verdict: Verdict; drift: 
 			bestKey = k;
 		}
 	}
-	const idx = (tally.get(bestKey) ?? [0])[0];
+	const idx = tally.get(bestKey)?.[0] ?? 0;
 	// Drift = max symmetric-difference size between any pair of runs' finding sets.
 	const sets = runs.map((v) => new Set(v.findings.map((f) => `${f.rule}:${f.severity}`)));
 	let maxDrift = 0;
@@ -89,20 +94,29 @@ function chooseMedian(runs: Verdict[]): { idx: number; verdict: Verdict; drift: 
 		for (let j = i + 1; j < sets.length; j++) {
 			const a = sets[i];
 			const b = sets[j];
+			if (!a || !b) continue;
 			let sym = 0;
 			for (const x of a) if (!b.has(x)) sym++;
 			for (const x of b) if (!a.has(x)) sym++;
 			if (sym > maxDrift) maxDrift = sym;
 		}
 	}
-	return { idx, verdict: runs[idx], drift: maxDrift };
+	const verdict = runs[idx];
+	if (!verdict) throw new Error(`median run index ${idx} is out of bounds`);
+	return { idx, verdict, drift: maxDrift };
 }
 
-async function refreshCorpus(): Promise<void> {
+// AC-05a threshold: ≥6/7 corpus files must have their expected R-0N detected.
+// Surface mismatches as a hard exit (companion F001 fix).
+const AC_05A_THRESHOLD = 6;
+
+async function refreshCorpus(): Promise<{ detected: number; total: number; misses: string[] }> {
 	const corpusFiles = readdirSync(CORPUS_DIR)
 		.filter((f) => /^r0\d-/.test(f))
 		.sort();
 	console.log(`[corpus] ${corpusFiles.length} files`);
+	const misses: string[] = [];
+	let detected = 0;
 	for (const file of corpusFiles) {
 		const expected = expectedRuleFor(file);
 		const tmp = stageCorpusFile(file);
@@ -128,10 +142,13 @@ async function refreshCorpus(): Promise<void> {
 			console.log(
 				`    → ${expected ? (snapshot.expectedRuleDetected ? "✓" : "✗") : "?"} ${verdict.level} score=${verdict.score} (${elapsed}ms)`,
 			);
+			if (snapshot.expectedRuleDetected) detected++;
+			else if (expected) misses.push(`${file} (expected ${expected})`);
 		} finally {
 			rmSync(tmp, { recursive: true, force: true });
 		}
 	}
+	return { detected, total: corpusFiles.length, misses };
 }
 
 async function refreshPackages(runsPerPackage = 3): Promise<void> {
@@ -218,4 +235,3 @@ if (isMainModule) {
 		process.exit(1);
 	});
 }
-
