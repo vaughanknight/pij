@@ -244,3 +244,190 @@ function toFailureReport(err: unknown): RunReport["failure"] {
 	}
 	return { kind: "other", message: err instanceof Error ? err.message : String(err) };
 }
+
+// ─── compactAndAssert (AC-12 gift; workshop 004 § Helper utilities) ───────
+//
+// Drive pi through `/compact` (and optionally `/reload`), capture the
+// extension's status JSON before/after, and report any divergences. The
+// canonical use-case is Plan 008 AC-05: prove that `customType` entries
+// appended by an extension survive context compaction. Reusable across
+// every future event-sourced extension.
+//
+// Design choices:
+// - Pure `compareFields()` is exported separately so unit tests cover
+//   the diff logic without needing a tmux mock.
+// - `extractLatestJsonObject()` finds the last balanced `{...}` block in
+//   pane scrollback and returns the parsed object. It is intentionally
+//   permissive about pi's chrome around the JSON envelope.
+// - JSON envelope must be EMITTED by the extension's status command
+//   (Plan 008: `/ralph status --json`). Helper does not enrich it.
+// - When divergences are found we DO NOT throw — callers compose this
+//   into a smoke step that decides the failure shape (workshop 004
+//   § Failure interpretation). `ok: false + divergences[]` is the wire.
+
+export interface CompactAssertOpts {
+	/** Status command to run before and after /compact (must emit JSON in pane). */
+	statusCommand: string;
+	/** Field paths in the parsed JSON to compare for equality. Default: ["iterations"]. */
+	fields?: readonly string[];
+	/** Wall-clock to allow /compact to complete. Default: 30_000. */
+	compactTimeoutMs?: number;
+	/** Whether to also run /reload and re-assert after. Default: true. */
+	includeReloadCheck?: boolean;
+	/** Wall-clock to allow /reload to complete. Default: 30_000. */
+	reloadTimeoutMs?: number;
+	/** Regex that signals the JSON envelope has been printed by the status command. Default: `/\}\s*$/m`. */
+	jsonReadyRe?: RegExp;
+}
+
+export interface CompactAssertDivergence {
+	field: string;
+	pre: unknown;
+	post: unknown;
+	phase: "compact" | "reload";
+}
+
+export interface CompactAssertResult {
+	ok: boolean;
+	pre: Record<string, unknown>;
+	postCompact: Record<string, unknown>;
+	postReload?: Record<string, unknown>;
+	divergences: CompactAssertDivergence[];
+}
+
+export async function compactAndAssert(
+	session: Session,
+	opts: CompactAssertOpts,
+): Promise<CompactAssertResult> {
+	const fields = opts.fields ?? ["iterations"];
+	const compactTimeoutMs = opts.compactTimeoutMs ?? 30_000;
+	const includeReloadCheck = opts.includeReloadCheck ?? true;
+	const reloadTimeoutMs = opts.reloadTimeoutMs ?? 30_000;
+	const jsonReadyRe = opts.jsonReadyRe ?? /\}\s*$/m;
+
+	const pre = await runStatusAndCapture(session, opts.statusCommand, jsonReadyRe);
+
+	await session.execute({ kind: "type", text: "/compact", press: "Enter" });
+	await session.waitIdle({ timeoutMs: compactTimeoutMs });
+	const postCompact = await runStatusAndCapture(session, opts.statusCommand, jsonReadyRe);
+
+	const divergences: CompactAssertDivergence[] = [
+		...compareFields(pre, postCompact, fields, "compact"),
+	];
+
+	let postReload: Record<string, unknown> | undefined;
+	if (includeReloadCheck) {
+		await session.execute({ kind: "type", text: "/reload", press: "Enter" });
+		await session.waitIdle({ timeoutMs: reloadTimeoutMs });
+		postReload = await runStatusAndCapture(session, opts.statusCommand, jsonReadyRe);
+		divergences.push(...compareFields(pre, postReload, fields, "reload"));
+	}
+
+	return {
+		ok: divergences.length === 0,
+		pre,
+		postCompact,
+		postReload,
+		divergences,
+	};
+}
+
+async function runStatusAndCapture(
+	session: Session,
+	statusCommand: string,
+	jsonReadyRe: RegExp,
+): Promise<Record<string, unknown>> {
+	const pane = await session.run(statusCommand, jsonReadyRe);
+	return extractLatestJsonObject(pane);
+}
+
+/**
+ * Find every balanced `{...}` block in `pane`, parse from the LAST one back
+ * to the first, and return the first that parses to a non-array object.
+ * Returns `{}` if none parse. Intentionally permissive about preceding chrome.
+ */
+export function extractLatestJsonObject(pane: string): Record<string, unknown> {
+	const matches: string[] = [];
+	let depth = 0;
+	let start = -1;
+	let inString = false;
+	let escape = false;
+	for (let i = 0; i < pane.length; i++) {
+		const c = pane.charAt(i);
+		if (inString) {
+			if (escape) escape = false;
+			else if (c === "\\") escape = true;
+			else if (c === '"') inString = false;
+			continue;
+		}
+		if (c === '"') {
+			inString = true;
+			continue;
+		}
+		if (c === "{") {
+			if (depth === 0) start = i;
+			depth++;
+		} else if (c === "}") {
+			depth--;
+			if (depth === 0 && start >= 0) {
+				matches.push(pane.substring(start, i + 1));
+				start = -1;
+			} else if (depth < 0) {
+				depth = 0;
+				start = -1;
+			}
+		}
+	}
+	for (let i = matches.length - 1; i >= 0; i--) {
+		const raw = matches[i];
+		if (raw === undefined) continue;
+		try {
+			const obj = JSON.parse(raw) as unknown;
+			if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+				return obj as Record<string, unknown>;
+			}
+		} catch {
+			// try next
+		}
+	}
+	return {};
+}
+
+/** Pure function: compare a set of top-level fields between two parsed status envelopes. */
+export function compareFields(
+	pre: Record<string, unknown>,
+	post: Record<string, unknown>,
+	fields: readonly string[],
+	phase: CompactAssertDivergence["phase"],
+): CompactAssertDivergence[] {
+	const out: CompactAssertDivergence[] = [];
+	for (const field of fields) {
+		if (!deepEqual(pre[field], post[field])) {
+			out.push({ field, pre: pre[field], post: post[field], phase });
+		}
+	}
+	return out;
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== typeof b) return false;
+	if (a === null || b === null) return a === b;
+	if (Array.isArray(a) && Array.isArray(b)) {
+		if (a.length !== b.length) return false;
+		return a.every((v, i) => deepEqual(v, b[i]));
+	}
+	if (typeof a === "object" && typeof b === "object") {
+		const ak = Object.keys(a as object).sort();
+		const bk = Object.keys(b as object).sort();
+		if (ak.length !== bk.length) return false;
+		if (!ak.every((k, i) => k === bk[i])) return false;
+		return ak.every((k) =>
+			deepEqual(
+				(a as Record<string, unknown>)[k],
+				(b as Record<string, unknown>)[k],
+			),
+		);
+	}
+	return false;
+}
