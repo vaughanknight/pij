@@ -68,6 +68,10 @@ function isCompletedOrReportReady(run: MinihRunSummary): boolean {
 	return run.status.liveness === "completed" || run.report.state === "ready";
 }
 
+function inlineText(text: string): string {
+	return text.replace(/\r?\n/g, " ↵ ");
+}
+
 function statusSummary(run: MinihRunSummary): string {
 	return [
 		`live:${run.status.liveness}`,
@@ -158,7 +162,7 @@ export function renderPaneSnapshot(
 	if (snapshot.items.length === 0) lines.push("  (empty)");
 	for (const item of snapshot.items) {
 		const timestamp = item.timestamp ? `${item.timestamp} ` : "";
-		lines.push(`  - ${timestamp}[${item.type}] ${item.text}`);
+		lines.push(`  - ${timestamp}[${item.type}] ${inlineText(item.text)}`);
 	}
 	return lines;
 }
@@ -169,7 +173,7 @@ export function renderReportSummary(report: MinihReportSummary, focused: MinihMo
 		`reportState:${report.state} findings:${report.findingsCount} bytes:${report.bytes} truncated:${report.truncated}`,
 	);
 	if (report.path) lines.push(`path:${report.path}`);
-	if (report.summary && report.summary.length > 0) lines.push(`summary:${report.summary}`);
+	if (report.summary && report.summary.length > 0) lines.push(`summary:${inlineText(report.summary)}`);
 	if (!report.summary && report.state === "none") lines.push("  (no report yet)");
 	return lines;
 }
@@ -178,7 +182,7 @@ export function renderDiagnosticsSummary(diagnostics: readonly MinihDiagnostic[]
 	if (diagnostics.length === 0) return ["Diagnostics summary: none"];
 	return [
 		`Diagnostics summary: ${diagnostics.length}`,
-		...diagnostics.map((item) => `${item.severity}:${item.code}:${item.message}`),
+		...diagnostics.map((item) => `${item.severity}:${item.code}:${inlineText(item.message)}`),
 	];
 }
 
