@@ -14,7 +14,7 @@ import {
 } from "./minih-adapter.js";
 import { MemoryMinihWorkbenchPersistence } from "./persistence.js";
 import {
-	isPhase1ForbiddenAction,
+	isForbiddenWorkbenchAction,
 	MINIH_COMMAND_NAME,
 	MINIH_STATUS_KEY,
 	type MinihAdapterResult,
@@ -23,7 +23,7 @@ import {
 	type MinihModalPane,
 	type MinihRunRef,
 	openModalForRun,
-	phase1NoWriteResult,
+	readOnlyNoWriteResult,
 } from "./store.js";
 import {
 	formatInventoryText,
@@ -134,8 +134,6 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(toolText(result), "error");
 			return;
 		}
-		setSelectedPointer(run);
-		ctx.ui.setStatus(MINIH_STATUS_KEY, `minih: viewing ${run.slug}/${run.runId}`);
 		const state = {
 			...openModalForRun(run, defaultModalState()),
 			focusedPane: options.focusedPane ?? "transcript",
@@ -144,6 +142,8 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(renderWidthSafeModalView(result.value, 120, { state }).join("\n"), "info");
 			return;
 		}
+		setSelectedPointer(run);
+		ctx.ui.setStatus(MINIH_STATUS_KEY, `minih: viewing ${run.slug}/${run.runId}`);
 		let component: MinihRunModalComponent | undefined;
 		let feed: MinihReadOnlyFeedHandle | undefined;
 		let closed = false;
@@ -273,8 +273,8 @@ export default function (pi: ExtensionAPI) {
 			const tokens = commandTokens(args);
 			const positional = withoutFlags(tokens);
 			const [verb, slug, runId] = positional;
-			if (verb && isPhase1ForbiddenAction(verb)) {
-				ctx.ui.notify(toolText(phase1NoWriteResult(verb)), "warning");
+			if (verb && isForbiddenWorkbenchAction(verb)) {
+				ctx.ui.notify(toolText(readOnlyNoWriteResult(verb)), "warning");
 				return;
 			}
 			if (!verb || verb === "list") {

@@ -20,7 +20,7 @@ import {
 	openModalForRun,
 	pageFocusedPane,
 	pageModalPane,
-	phase1NoWriteResult,
+	readOnlyNoWriteResult,
 	projectInventory,
 	resolveSelectedRun,
 	sortRunSummaries,
@@ -277,8 +277,8 @@ describe("minih-workbench store contracts", () => {
 		expect(back.transcriptCursor.offset).toBe(80);
 	});
 
-	it("makes Phase 1 write/control attempts explicit errors", () => {
-		const result = phase1NoWriteResult("send");
+	it("makes Phase 2 write/control attempts explicit errors", () => {
+		const result = readOnlyNoWriteResult("send");
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.message).toContain("read-only");
 	});

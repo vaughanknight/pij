@@ -67,7 +67,7 @@ export const DEFAULT_MINIH_WORKBENCH_KEYBINDINGS: MinihWorkbenchKeybindings = {
 	[MINIH_WORKBENCH_ACTIONS.pageReportDown]: ["end"],
 };
 
-export const PHASE_1_FORBIDDEN_ACTIONS = [
+export const FORBIDDEN_WORKBENCH_ACTIONS = [
 	"send",
 	"stop",
 	"control",
@@ -76,7 +76,7 @@ export const PHASE_1_FORBIDDEN_ACTIONS = [
 	"install",
 ] as const;
 
-export type Phase1ForbiddenAction = (typeof PHASE_1_FORBIDDEN_ACTIONS)[number];
+export type ForbiddenWorkbenchAction = (typeof FORBIDDEN_WORKBENCH_ACTIONS)[number];
 
 export const MINIH_RUN_KINDS = ["coordinated", "standalone", "unknown"] as const;
 export type MinihRunKind = (typeof MINIH_RUN_KINDS)[number];
@@ -581,11 +581,11 @@ export function projectInventory(
 	};
 }
 
-export function isPhase1ForbiddenAction(action: string): action is Phase1ForbiddenAction {
-	return PHASE_1_FORBIDDEN_ACTIONS.includes(action as Phase1ForbiddenAction);
+export function isForbiddenWorkbenchAction(action: string): action is ForbiddenWorkbenchAction {
+	return FORBIDDEN_WORKBENCH_ACTIONS.includes(action as ForbiddenWorkbenchAction);
 }
 
-export function phase1NoWriteResult(action: string): MinihAdapterResult<never> {
+export function readOnlyNoWriteResult(action: string): MinihAdapterResult<never> {
 	return minihError(
 		"MINIH_BAD_ARTIFACT",
 		`minih-workbench phase 2 is read-only; '${action}' is not available`,
