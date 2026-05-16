@@ -46,5 +46,13 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Created `docs/domains/agent-workbench/domain.md` with Purpose, Source Locations, Concepts, Contracts, Composition, Dependencies, Boundary Owns/Excludes, and History.
 - **Validation**: Documentation-only task; code validation deferred to implementation tasks and final self-check.
+- **Commit**: `cd46ae5`
+- **Companion**: Sent `review-request: T001 cd46ae5` as message `01KRQEHXP8V9732FQWG54V6TPJ`. Companion ack `01KRQEJ6X7Q1STX107W6CF215J`; no findings as of pre-T002 skim.
+
+### T002 — Register `agent-workbench` in domain registry and map
+
+- **Status**: complete
+- **Evidence**: Added `agent-workbench` row to `docs/domains/registry.md`; added `AW` and `MH` nodes plus one-way edges/health notes/history in `docs/domains/domain-map.md`.
+- **Validation**: Documentation-only task; code validation deferred to implementation tasks and final self-check.
 - **Companion**: Review request to be sent after commit.
 

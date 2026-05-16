@@ -115,7 +115,7 @@ flowchart TD
 
     subgraph Phase["Phase 1: Minih inventory + artifact adapter"]
         T001["T001: Create agent-workbench domain"]:::completed
-        T002["T002: Update registry/map"]:::pending
+        T002["T002: Update registry/map"]:::completed
         T003["T003: Scaffold minih-workbench"]:::pending
         T004["T004: Extension rules"]:::pending
         T005["T005: Store contracts"]:::pending
@@ -132,8 +132,8 @@ flowchart TD
 
     subgraph Files["Primary files"]
         F1["docs/domains/agent-workbench/domain.md"]:::completed
-        F2["docs/domains/registry.md"]:::pending
-        F3["docs/domains/domain-map.md"]:::pending
+        F2["docs/domains/registry.md"]:::completed
+        F3["docs/domains/domain-map.md"]:::completed
         F4[".pi/extensions/minih-workbench/store.ts"]:::pending
         F5[".pi/extensions/minih-workbench/persistence.ts"]:::pending
         F6["minih-dependency-decision.md"]:::pending
@@ -165,7 +165,7 @@ flowchart TD
 | Status | ID | Task | Domain | Path(s) | Done When | Notes |
 |--------|-----|------|--------|---------|-----------|-------|
 | [x] | T001 | Create the `agent-workbench` domain document. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-workbench/domain.md` | Domain doc exists with Purpose, Source Locations, Concepts, Contracts, Composition, Dependencies, Boundary Owns/Excludes, and History; it states Minih artifacts remain upstream-owned and Phase 1 is read-only. | Plan Finding 01. Include contracts for run summary, modal state, adapter result, persistence facade, and Phase 3 placeholders without implementing Phase 3. |
-| [ ] | T002 | Register `agent-workbench` in domain registry and map. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/docs/domains/registry.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/domain-map.md` | Registry has an `agent-workbench` row; domain map has an `AW` node and one-way consume/use edges to Pi runtime, Minih artifacts, `agent-tooling-interface`, `session-work-state`, `agentic-loops`, and `extension-authoring-harness`; no circular business-domain dependency is introduced. | Preserve existing history. Edge to `agentic-loops` is vocabulary-only; no lifecycle ownership transfer. |
+| [x] | T002 | Register `agent-workbench` in domain registry and map. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/docs/domains/registry.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/domain-map.md` | Registry has an `agent-workbench` row; domain map has an `AW` node and one-way consume/use edges to Pi runtime, Minih artifacts, `agent-tooling-interface`, `session-work-state`, `agentic-loops`, and `extension-authoring-harness`; no circular business-domain dependency is introduced. | Preserve existing history. Edge to `agentic-loops` is vocabulary-only; no lifecycle ownership transfer. |
 | [ ] | T003 | Scaffold the `minih-workbench` extension from the harness generator. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/` | `just new minih-workbench` has created the extension; generated files compile before customization; no hand-rolled T2 boilerplate. | Plan Finding 05; AGENTS.md requires generator use for new extensions. |
 | [ ] | T004 | Add extension-local implementation rules. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/AGENTS.md` | File states Minih source-of-truth, read-only Phase 1, no ANSI parsing from `minih view/attach`, no write/send/stop/push in Phase 1, no hardcoded keybindings, Pi-free store, and fixture-first validation. | Mirrors plan/spec safety contract for future agents. |
 | [ ] | T005 | Define Pi-free store contracts and constants. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.ts` | `store.ts` exports structural types and pure helpers for `MinihRunSummary`, `MinihRunKind`, status axes, diagnostics, `MinihModalState`, bounded pane snapshots, `MinihViewSnapshot`, adapter tagged results, default page/byte limits, and placeholder action identifiers needed by later UI work; imports nothing from Pi packages; no `any`. | Plan Finding 02 and validation fix. Default keybinding maps belong to Phase 2; only placeholder action identifiers are allowed here. |
