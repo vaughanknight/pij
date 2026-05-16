@@ -4,10 +4,15 @@
 
 import type { Scenario } from "../../../harness/driver/index.js";
 
-const smokeTitle = `Smoke todo ${Date.now()}`;
+const smokeSeed = Date.now();
+const smokeTitle = `Smoke todo ${smokeSeed}`;
+const smokeDoneTitle = `Smoke done ${smokeSeed}`;
+const smokeDeleteTitle = `Smoke delete ${smokeSeed}`;
+const smokeDeleteId = 1_000_000 + (smokeSeed % 1_000_000);
 const smokeTitleRe = new RegExp(smokeTitle);
 const oneOpenRe = new RegExp(`todo: 1 open[\\s\\S]*${smokeTitle}`);
 const widgetInFlightRe = new RegExp(`Todos 0/1 done[\\s\\S]*1 in flight[\\s\\S]*${smokeTitle}`);
+const deletedRe = new RegExp(`todo: deleted #${smokeDeleteId}[\\s\\S]*${smokeDeleteTitle}`);
 
 const scenario: Scenario = {
 	name: "todo",
@@ -53,6 +58,41 @@ const scenario: Scenario = {
 			text: `/sql SELECT title FROM todos WHERE title = '${smokeTitle}'`,
 			press: "Enter",
 			expect: smokeTitleRe,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: `/sql INSERT INTO todos(title, status, priority) VALUES ('${smokeDoneTitle}', 'done', 0)`,
+			press: "Enter",
+			expect: /sql: ok/,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: "/todo prune done",
+			press: "Enter",
+			expect: /todo: pruned 1 done todos/,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: `/sql INSERT INTO todos(id, title, status, priority) VALUES (${smokeDeleteId}, '${smokeDeleteTitle}', 'pending', 0)`,
+			press: "Enter",
+			expect: /sql: ok/,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: `/todo delete ${smokeDeleteId}`,
+			press: "Enter",
+			expect: deletedRe,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: "/todo list",
+			press: "Enter",
+			expect: oneOpenRe,
 			expectTimeoutMs: 5000,
 		},
 		{

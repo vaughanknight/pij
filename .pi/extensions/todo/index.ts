@@ -51,6 +51,8 @@ const TodoToolParameters = Type.Object({
 			Type.Literal("list"),
 			Type.Literal("add"),
 			Type.Literal("done"),
+			Type.Literal("delete"),
+			Type.Literal("prune"),
 			Type.Literal("status"),
 			Type.Literal("block"),
 			Type.Literal("next"),
@@ -59,7 +61,7 @@ const TodoToolParameters = Type.Object({
 		],
 		{
 			description:
-				"What to do. list/next read; add/done/status/block/dep mutate; clear wipes (requires confirm=true).",
+				"What to do. list/next read; add/done/status/block/dep/delete/prune mutate; clear wipes (requires confirm=true).",
 		},
 	),
 	view: Type.Optional(
@@ -73,13 +75,16 @@ const TodoToolParameters = Type.Object({
 	priority: Type.Optional(
 		Type.Number({ description: "[add] Optional priority; higher sorts first." }),
 	),
-	id: Type.Optional(Type.Number({ description: "[done,status,block,dep] Todo id." })),
+	id: Type.Optional(Type.Number({ description: "[done,status,block,dep,delete] Todo id." })),
 	status: Type.Optional(
 		Type.Union([...TodoStatusParameter.anyOf], {
 			description: "[status] pending | in_progress | blocked | done.",
 		}),
 	),
 	reason: Type.Optional(Type.String({ description: "[status,block] Optional reason." })),
+	target: Type.Optional(
+		Type.Literal("done", { description: "[prune] Target slice; only done is supported." }),
+	),
 	dependsOn: Type.Optional(Type.Number({ description: "[dep] Prerequisite todo id." })),
 	confirm: Type.Optional(
 		Type.Literal(true, { description: "[clear] Must be true to wipe todos." }),
@@ -95,6 +100,7 @@ interface TodoToolDetails {
 	changed?: TodoViewRow;
 	counts?: unknown;
 	dependency?: unknown;
+	cleanup?: unknown;
 }
 
 type TodoActionResult<T> = TodoStoreResult<T> | { ok: false; code: string; message: string };
@@ -151,6 +157,8 @@ function detailsFromResult<T>(action: string, result: TodoActionResult<T>): Todo
 			details.todos = result.value.todos.filter(isTodoViewRow);
 		} else if ("open" in result.value || "total" in result.value) {
 			details.counts = result.value;
+		} else if ("cleared" in result.value || "pruned" in result.value) {
+			details.cleanup = result.value;
 		} else if ("dependsOn" in result.value) {
 			details.dependency = result.value;
 		} else if (isTodoViewRow(result.value)) {
@@ -448,6 +456,9 @@ export default function (pi: ExtensionAPI) {
 			case "done":
 				notifyResult(ctx, todoStore.done(parsed.id), { resetWidgetPage: true });
 				return;
+			case "delete":
+				notifyResult(ctx, todoStore.delete(parsed.id), { resetWidgetPage: true });
+				return;
 			case "status":
 				notifyResult(
 					ctx,
@@ -468,6 +479,9 @@ export default function (pi: ExtensionAPI) {
 				return;
 			case "overlay":
 				await openTodoOverlay(ctx);
+				return;
+			case "prune":
+				notifyResult(ctx, todoStore.pruneDone(), { resetWidgetPage: true });
 				return;
 			case "clear": {
 				const confirmed = await ctx.ui.confirm(
@@ -560,11 +574,12 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Manage the current pi session's SQL-backed todo list. Use this for routine task tracking; use sql only for custom queries or repair.",
 		promptSnippet:
-			"todo: manage the current session's SQL-backed todo list with add/list/status/done/dep/next actions.",
+			"todo: manage the current session's SQL-backed todo list with add/list/status/done/delete/prune/dep/next actions.",
 		promptGuidelines: [
 			"Use todo for multi-step work, dependencies, and progress that the human should be able to inspect.",
 			"Use action=list or action=next before choosing the next item when a todo plan already exists.",
 			"Use sql only when you need custom inspection/repair beyond the routine todo actions.",
+			"Prefer action=done plus action=prune target=done for tidying completed work; use action=delete only for precise item removal.",
 			"Do not call action=clear unless the human explicitly requested destructive cleanup and confirm=true is set.",
 		],
 		parameters: TodoToolParameters,
@@ -589,6 +604,11 @@ export default function (pi: ExtensionAPI) {
 				case "done": {
 					const id = requiredId(params.id);
 					result = id.ok ? todoStore.done(id.value) : id;
+					break;
+				}
+				case "delete": {
+					const id = requiredId(params.id);
+					result = id.ok ? todoStore.delete(id.value) : id;
 					break;
 				}
 				case "status": {
@@ -621,6 +641,12 @@ export default function (pi: ExtensionAPI) {
 								: dependsOn;
 					break;
 				}
+				case "prune":
+					result =
+						params.target === "done"
+							? todoStore.pruneDone()
+							: localError("TODO_BAD_PRUNE_TARGET", "todo error: prune only supports done");
+					break;
 				case "clear":
 					result =
 						params.confirm === true

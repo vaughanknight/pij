@@ -29,7 +29,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | Result presentation | Convert structured store results into compact readable text. | Stable success/error/truncation phrases, compact row previews. |
 | Agent use guidance | Teach when to use SQL and how to create custom tables. | Prompt guidelines include triggers and table recipes beyond default todos. |
 | Deterministic smoke | Validate the real pi TUI path without model tool selection. | Driver SDK scenarios exercise `/sql`, `/todo`, overlay anchors, and `/reload`. |
-| Todo command and tool UX | Routine task actions are available without raw SQL. | `/todo` and the `todo` tool share add/list/status/block/done/dep/next/clear semantics. |
+| Todo command and tool UX | Routine task actions are available without raw SQL. | `/todo` and the `todo` tool share add/list/status/block/done/delete/prune/dep/next/clear semantics. |
 | Todo overlay, strip, and status | Current-session work is visible during live TUI use. | `/todo overlay` renders SQL-backed open todos; below-editor `todo-strip` shows a compact recent-activity window; footer status shows `todo: N open` and clears at zero. |
 
 ## Contracts
@@ -40,8 +40,8 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | `/sql` command | Human/operator/smoke | Status/schema/query/reset command surface with stable output phrases. |
 | Prompt guidelines | LLM agent | Encourages proactive SQL use for tasks, files, tests, findings, research, decisions, and batches. |
 | Smoke scenario | extension-authoring-harness | Uses current Driver SDK `Step` shape and avoids model-dependent tool calls. |
-| `todo` tool | LLM agent | Manages SQL-backed current-session todos through action payloads; destructive clear requires `confirm: true`. |
-| `/todo` command | Human/operator/smoke | List/add/status/block/done/dep/next/overlay/clear command surface with stable output phrases. |
+| `todo` tool | LLM agent | Manages SQL-backed current-session todos through action payloads; targeted delete/prune cleanup is supported, while destructive clear requires `confirm: true`. |
+| `/todo` command | Human/operator/smoke | List/add/status/block/done/delete/prune/dep/next/overlay/clear command surface with stable output phrases. |
 | Todo overlay/status/widget | Human/operator | Minimal overlay through `ctx.ui.custom`, compact below-editor strip through `ctx.ui.setWidget`, and footer status through `ctx.ui.setStatus`. |
 
 ## Composition
@@ -53,7 +53,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | Command registration | implemented | `index.ts` registers `/sql`. |
 | Documentation | implemented | README quick-start plus `docs/how/session-sql.md` and `docs/how/todo.md`. |
 | Todo wiring | implemented | `todo/index.ts` registers lifecycle, command, model tool, status, overlay, below-editor strip, and shortcuts. |
-| Todo smoke | implemented | `todo/smoke.ts` proves empty/add/list/SQL agreement/below-editor strip/overlay/reload path. |
+| Todo smoke | implemented | `todo/smoke.ts` proves empty/add/list/delete/prune/SQL agreement/below-editor strip/overlay/reload path. |
 
 ## Dependencies
 
@@ -97,3 +97,4 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | 006-generic-sqlite-session-tool | Implemented `sql` tool, `/sql` command, result formatting, smoke scenario, and user/agent docs. | 2026-05-15 |
 | 010-sql-backed-todo-extension | Added `todo` tool, `/todo` command, minimal overlay, open-count status signal, deterministic smoke, and docs over the shared session SQL work state. | 2026-05-15 |
 | 010-sql-backed-todo-extension/ST-001 | Added the compact below-editor `todo-strip` widget and `session-sql:changed` refresh path. | 2026-05-16 |
+| 010-sql-backed-todo-extension/follow-up | Added `/todo delete <id>`, `/todo prune done`, and matching model tool actions for tidying completed or unwanted rows. | 2026-05-16 |

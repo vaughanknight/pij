@@ -22,6 +22,8 @@ SQL-backed current-session todo UX for humans and agents.
 
 - Empty: `todo: no open todos`
 - Add: `todo: added #N pending — <title>`
+- Delete: `todo: deleted #N — <title>`
+- Prune completed: `todo: pruned N done todos`
 - List: `todo: N open`
 - Next empty with blockers: `todo: no ready todos`
 - SQL agreement: `/sql SELECT * FROM todos;`

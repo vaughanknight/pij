@@ -125,6 +125,40 @@ describe("TodoSqlStore", () => {
 		expect(expectSqlRows(sql.execute("SELECT * FROM todo_deps"))).toEqual([]);
 	});
 
+	it("deletes one todo by id and cascades dependency edges", () => {
+		const { store } = makeStore();
+		const prerequisite = expectTodoOk(store.add({ title: "Prerequisite" }));
+		const dependent = expectTodoOk(store.add({ title: "Dependent" }));
+		expectTodoOk(store.addDependency({ id: dependent.id, dependsOn: prerequisite.id }));
+
+		const deleted = expectTodoOk(store.delete(prerequisite.id));
+		expect(deleted.id).toBe(prerequisite.id);
+		expect(store.delete(99)).toMatchObject({
+			ok: false,
+			code: "TODO_NOT_FOUND",
+			message: "todo error: id #99 not found",
+		});
+		expect(store.delete(0)).toMatchObject({ ok: false, code: "TODO_BAD_ID" });
+
+		const [remaining] = expectTodoOk(store.list({ view: "all" }));
+		expect(remaining?.id).toBe(dependent.id);
+		expect(remaining?.dependencyIds).toEqual([]);
+	});
+
+	it("prunes done todos without deleting open work", () => {
+		const { sql, store } = makeStore();
+		const open = expectTodoOk(store.add({ title: "Open" }));
+		const done = expectTodoOk(store.add({ title: "Done" }));
+		expectTodoOk(store.done(done.id));
+		expectTodoOk(store.addDependency({ id: done.id, dependsOn: open.id }));
+
+		const pruned = expectTodoOk(store.pruneDone());
+		expect(pruned.pruned).toBe(1);
+		expect(expectTodoOk(store.list({ view: "all" })).map((todo) => todo.id)).toEqual([open.id]);
+		expect(expectTodoOk(store.counts())).toEqual({ open: 1, done: 0, blocked: 0, total: 1 });
+		expect(expectSqlRows(sql.execute("SELECT * FROM todo_deps"))).toEqual([]);
+	});
+
 	it("orders next-ready todos by active status, priority, age, then id", () => {
 		const { store } = makeStore();
 		const highPriority = expectTodoOk(store.add({ title: "High priority", priority: 10 }));
@@ -289,6 +323,16 @@ describe("parseTodoCommand", () => {
 			value: { action: "done", id: 4 },
 			message: "",
 		});
+		expect(parseTodoCommand("delete #4")).toEqual({
+			ok: true,
+			value: { action: "delete", id: 4 },
+			message: "",
+		});
+		expect(parseTodoCommand("prune done")).toEqual({
+			ok: true,
+			value: { action: "prune", target: "done" },
+			message: "",
+		});
 		expect(parseTodoCommand("status 4 blocked waiting")).toEqual({
 			ok: true,
 			value: { action: "status", id: 4, status: "blocked", reason: "waiting" },
@@ -300,6 +344,10 @@ describe("parseTodoCommand", () => {
 		expect(parseTodoCommand("add   ")).toMatchObject({ ok: false, code: "TODO_EMPTY_TITLE" });
 		expect(parseTodoCommand("done nope")).toMatchObject({ ok: false, code: "TODO_BAD_ID" });
 		expect(parseTodoCommand("list weird")).toMatchObject({ ok: false, code: "TODO_BAD_VIEW" });
+		expect(parseTodoCommand("prune pending")).toMatchObject({
+			ok: false,
+			code: "TODO_BAD_PRUNE_TARGET",
+		});
 		expect(parseTodoCommand("status 1 weird")).toMatchObject({
 			ok: false,
 			code: "TODO_BAD_STATUS",

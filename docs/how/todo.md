@@ -26,6 +26,8 @@ Todos are stored in the same session-scoped SQLite DB as `session-sql`:
 | `/todo list [open|all|done|blocked] [limit]` | List todos by view. |
 | `/todo add <title>` | Add a pending todo. |
 | `/todo done <id>` | Mark a todo done. |
+| `/todo delete <id>` | Delete one todo row by id; dependency edges are removed by SQLite cascade. |
+| `/todo prune done` | Delete completed todos while leaving open work intact. |
 | `/todo status <id> <pending|in_progress|blocked|done> [reason]` | Set lifecycle status. |
 | `/todo block <id> [reason]` | Mark blocked; reason becomes the description. |
 | `/todo dep <id> <depends_on_id>` | Add a dependency edge. |
@@ -42,13 +44,15 @@ Actions:
 - `list` — `{ action: "list", view?: "open" | "all" | "done" | "blocked", limit?: number }`
 - `add` — `{ action: "add", title: string, description?: string, priority?: number }`
 - `done` — `{ action: "done", id: number }`
+- `delete` — `{ action: "delete", id: number }`
+- `prune` — `{ action: "prune", target: "done" }`
 - `status` — `{ action: "status", id: number, status: "pending" | "in_progress" | "blocked" | "done", reason?: string }`
 - `block` — `{ action: "block", id: number, reason?: string }`
 - `next` — `{ action: "next", limit?: number }`
 - `dep` — `{ action: "dep", id: number, dependsOn: number }`
 - `clear` — `{ action: "clear", confirm: true }`
 
-`clear` intentionally requires `confirm: true` so routine model use cannot accidentally delete work.
+Use `done` first for completed work, then `prune` with `target: "done"` when the completed list should be physically tidied. Use `delete` only for precise item removal. `clear` intentionally requires `confirm: true` so routine model use cannot accidentally delete all work.
 
 ## Status and ordering
 
@@ -157,7 +161,7 @@ A supported row added through `/sql` is visible through `/todo`:
 /todo list all
 ```
 
-Use `/sql schema` to inspect the canonical tables. Use `/todo clear` to delete todo rows only, and `/sql reset` to reset the full session SQL DB.
+Use `/sql schema` to inspect the canonical tables. Use `/todo delete <id>` to remove one row, `/todo prune done` to delete completed rows, `/todo clear` to delete all todo rows only, and `/sql reset` to reset the full session SQL DB.
 
 ## Session semantics
 

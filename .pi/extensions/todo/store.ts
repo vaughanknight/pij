@@ -51,6 +51,7 @@ export type TodoErrorCode =
 	| "TODO_NOT_FOUND"
 	| "TODO_BAD_STATUS"
 	| "TODO_BAD_VIEW"
+	| "TODO_BAD_PRUNE_TARGET"
 	| "TODO_SELF_DEP"
 	| "TODO_DEP_EXISTS"
 	| "TODO_CLEAR_CONFIRM"
@@ -135,16 +136,22 @@ export interface TodoClearResult {
 	cleared: number;
 }
 
+export interface TodoPruneResult {
+	pruned: number;
+}
+
 export type ParsedTodoCommand =
 	| { action: "help" }
 	| { action: "list"; view?: TodoListView; limit?: number }
 	| { action: "add"; title: string }
 	| { action: "done"; id: number }
+	| { action: "delete"; id: number }
 	| { action: "status"; id: number; status: TodoStatus; reason?: string }
 	| { action: "block"; id: number; reason?: string }
 	| { action: "dep"; id: number; dependsOn: number }
 	| { action: "next"; limit?: number }
 	| { action: "overlay" }
+	| { action: "prune"; target: "done" }
 	| { action: "clear" };
 
 const TODO_ROW_SELECT =
@@ -309,6 +316,13 @@ export function parseTodoCommand(args: string): TodoStoreResult<ParsedTodoComman
 			if (!id.ok) return id;
 			return todoOk({ action: "done", id: id.value }, "");
 		}
+		case "delete":
+		case "remove":
+		case "rm": {
+			const id = parseIdToken(rest[0]);
+			if (!id.ok) return id;
+			return todoOk({ action: "delete", id: id.value }, "");
+		}
 		case "status": {
 			const id = parseIdToken(rest[0]);
 			if (!id.ok) return id;
@@ -339,6 +353,11 @@ export function parseTodoCommand(args: string): TodoStoreResult<ParsedTodoComman
 		}
 		case "overlay":
 			return todoOk({ action: "overlay" }, "");
+		case "prune":
+			if (rest[0] !== "done") {
+				return todoError("TODO_BAD_PRUNE_TARGET", "todo error: prune only supports done");
+			}
+			return todoOk({ action: "prune", target: "done" }, "");
 		case "clear":
 			return todoOk({ action: "clear" }, "");
 		default:
@@ -352,6 +371,8 @@ export function todoHelpText(): string {
   /todo list [open|all|done|blocked]
   /todo add <title>
   /todo done <id>
+  /todo delete <id>
+  /todo prune done
   /todo status <id> <pending|in_progress|blocked|done>
   /todo block <id> [reason]
   /todo dep <id> <depends_on_id>
@@ -454,6 +475,28 @@ RETURNING id, title, description, status, priority, created_at, updated_at`,
 
 	done(id: number): TodoStoreResult<TodoViewRow> {
 		return this.setStatus({ id, status: "done" });
+	}
+
+	delete(id: number): TodoStoreResult<TodoViewRow> {
+		const validId = positiveInt(id);
+		if (validId === undefined)
+			return todoError("TODO_BAD_ID", "todo error: id must be a positive integer");
+		const result = rowsFromSql(
+			this.sql.execute(
+				`DELETE FROM todos
+WHERE id = :id
+RETURNING id, title, description, status, priority, created_at, updated_at`,
+				{ params: { id: validId } },
+			),
+		);
+		if (!result.ok) return result;
+		const rows = this.normalizeRows(result.value);
+		if (!rows.ok) return rows;
+		return this.singleRowResult(
+			rows.value,
+			() => `todo error: id #${validId} not found`,
+			(row) => `todo: deleted #${row.id} — ${rowTitle(row)}`,
+		);
 	}
 
 	block(id: number, reason?: string): TodoStoreResult<TodoViewRow> {
@@ -618,6 +661,13 @@ LIMIT :limit OFFSET :offset`,
 			},
 			"todo widget: ok",
 		);
+	}
+
+	pruneDone(): TodoStoreResult<TodoPruneResult> {
+		const deleted = changeFromSql(this.sql.execute("DELETE FROM todos WHERE status = 'done'"));
+		if (!deleted.ok) return deleted;
+		const pruned = integerOrZero(deleted.value.changes);
+		return todoOk({ pruned }, `todo: pruned ${pruned} done todos`);
 	}
 
 	clear(): TodoStoreResult<TodoClearResult> {
