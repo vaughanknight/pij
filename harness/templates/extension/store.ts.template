@@ -33,7 +33,6 @@ export type AppendFn = (customType: string, data: unknown) => void;
 
 // Pattern P4: tagged-union returns over throws.
 type AddResult = { ok: true; item: Item } | { ok: false; reason: "too_long" };
-type DeleteResult = { ok: true; item: Item } | { ok: false; reason: "out_of_range" };
 
 export function newId(
 	now: number = Date.now(),

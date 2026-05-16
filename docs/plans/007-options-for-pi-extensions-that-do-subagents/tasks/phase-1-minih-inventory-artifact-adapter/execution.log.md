@@ -63,5 +63,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Ran `just new minih-workbench`; generator created `.pi/extensions/minih-workbench/{AGENTS.md,index.ts,smoke.ts,store.test.ts,store.ts}`.
 - **Validation**: `just typecheck` passed against the generated scaffold before customization.
-- **Companion**: Review request to be sent after commit.
+- **Commit**: `ca96f2e`
+- **Companion**: Sent `review-request: T003 ca96f2e` as message `01KRQEYH6Y714TVNS8DX3FX3KS`.
+- **Discovery**: Generator scaffold initially failed `just lint` due unused starter `DeleteResult`; removed it in generated file and encoded the template fix in `harness/templates/extension/store.ts.template` (D-031 follow-up commit pending).
 

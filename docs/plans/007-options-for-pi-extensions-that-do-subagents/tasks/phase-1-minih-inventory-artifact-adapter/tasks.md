@@ -268,6 +268,7 @@ _Populated during implementation by plan-6._
 
 | Date | Task | Type | Discovery | Resolution | References |
 |------|------|------|-----------|------------|------------|
+| 2026-05-16 | T003 | gotcha | `just new minih-workbench` generated an unused starter `DeleteResult` alias that made Biome fail before commit. | Removed the alias in generated `store.ts` and encoded the fix in `harness/templates/extension/store.ts.template`; logged D-031. | `docs/difficulties.md#D-031` |
 
 **Types**: `gotcha` | `research-needed` | `unexpected-behavior` | `workaround` | `decision` | `debt` | `insight`
 
