@@ -16,9 +16,11 @@ import {
 	MINIH_COMMAND_NAME,
 	MINIH_STATUS_KEY,
 	type MinihAdapterResult,
+	type MinihInventorySnapshot,
+	type MinihRunRef,
 	phase1NoWriteResult,
 } from "./store.js";
-import { formatInventoryText } from "./ui.js";
+import { formatInventoryText, MinihRunListComponent } from "./ui.js";
 
 interface RootOptions {
 	rootDir?: string;
@@ -60,17 +62,65 @@ function withoutFlags(tokens: readonly string[]): string[] {
 
 function helpText(): string {
 	return `minih-workbench read-only commands:
+  /minih
+  /minih list
   /minih status --json
   /minih status <slug> <runId> --json
   /minih report <slug> <runId> --json
 
 Tools: minih_runs_list, minih_run_status, minih_read_report
-Phase 1 is read-only: no send, stop, composer, push, launch, or install.`;
+Phase 2 is read-only: no send, stop, composer, push, launch, or install.`;
 }
 
 export default function (pi: ExtensionAPI) {
 	function clearStatus(ctx: ExtensionContext): void {
 		ctx.ui.setStatus(MINIH_STATUS_KEY, undefined);
+	}
+
+	async function loadInventory(): Promise<MinihAdapterResult<MinihInventorySnapshot>> {
+		return listMinihRuns({ rootDir: configuredRoot() });
+	}
+
+	async function openRunList(ctx: ExtensionCommandContext): Promise<void> {
+		const initial = await loadInventory();
+		if (!initial.ok) {
+			ctx.ui.notify(toolText(initial), "error");
+			return;
+		}
+		if (!ctx.hasUI) {
+			ctx.ui.notify(formatInventoryText(initial.value), "info");
+			return;
+		}
+		let component: MinihRunListComponent | undefined;
+		const selected = await ctx.ui.custom<MinihRunRef | "closed">(
+			(tui, _theme, _keybindings, done) => {
+				component = new MinihRunListComponent(initial.value, {
+					onOpenRun: (run) => done(run),
+					onClose: () => done("closed"),
+					onRefresh: () => {
+						void loadInventory().then((result) => {
+							if (result.ok) component?.updateSnapshot(result.value, "minih: refreshed");
+							else component?.updateSnapshot(initial.value, `minih: ${result.message}`);
+						});
+					},
+					requestRender: () => tui.requestRender(),
+				});
+				return component;
+			},
+			{
+				overlay: true,
+				overlayOptions: {
+					width: "90%",
+					minWidth: 60,
+					maxHeight: "85%",
+					anchor: "center",
+					margin: 1,
+				},
+			},
+		);
+		if (selected !== "closed") {
+			ctx.ui.notify(`minih: selected ${selected.slug}/${selected.runId}; modal lands in T006`, "info");
+		}
 	}
 
 	// Pattern P10: one handler for session_start, all reasons.
@@ -92,7 +142,11 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(toolText(phase1NoWriteResult(verb)), "warning");
 				return;
 			}
-			if (!verb || verb === "help" || verb === "--help" || verb === "-h") {
+			if (!verb || verb === "list") {
+				await openRunList(ctx);
+				return;
+			}
+			if (verb === "help" || verb === "--help" || verb === "-h") {
 				ctx.ui.notify(helpText(), "info");
 				return;
 			}

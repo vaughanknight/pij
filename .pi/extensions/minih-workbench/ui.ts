@@ -1,6 +1,7 @@
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { type Component, type KeyId, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 
 import {
+	clampListSelection,
 	DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
 	MINIH_MODAL_PANES,
 	MINIH_WORKBENCH_ACTIONS,
@@ -10,9 +11,12 @@ import {
 	type MinihModalState,
 	type MinihPaneSnapshot,
 	type MinihReportSummary,
+	type MinihRunRef,
 	type MinihRunSummary,
 	type MinihViewSnapshot,
 	type MinihWorkbenchKeybindings,
+	moveListSelection,
+	resolveSelectedRun,
 } from "./store.js";
 
 export const MINIH_DISABLED_COMPOSER_REASON =
@@ -28,6 +32,21 @@ export interface MinihModalRenderOptions {
 	state: MinihModalState;
 	keybindings?: MinihWorkbenchKeybindings;
 	showHelp?: boolean;
+}
+
+export interface MinihRunListCallbacks {
+	onOpenRun(run: MinihRunRef): void;
+	onClose(): void;
+	onRefresh(): void;
+	requestRender(): void;
+}
+
+function matchesAction(
+	data: string,
+	keybindings: MinihWorkbenchKeybindings,
+	action: keyof typeof DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+): boolean {
+	return keybindings[action].some((key) => matchesKey(data, key as KeyId));
 }
 
 function keys(
@@ -219,6 +238,74 @@ export function renderWidthSafeInventoryList(
 	options: MinihListRenderOptions = {},
 ): string[] {
 	return widthSafeLines(renderInventoryList(snapshot, options), width);
+}
+
+export class MinihRunListComponent implements Component {
+	private selectedIndex = 0;
+	private snapshot: MinihInventorySnapshot;
+	private statusLine: string | undefined;
+
+	constructor(
+		snapshot: MinihInventorySnapshot,
+		private readonly callbacks: MinihRunListCallbacks,
+		private readonly keybindings: MinihWorkbenchKeybindings = DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+	) {
+		this.snapshot = snapshot;
+		this.selectedIndex = clampListSelection(snapshot.runs, 0);
+	}
+
+	updateSnapshot(snapshot: MinihInventorySnapshot, statusLine?: string): void {
+		this.snapshot = snapshot;
+		this.statusLine = statusLine;
+		this.selectedIndex = clampListSelection(snapshot.runs, this.selectedIndex);
+		this.callbacks.requestRender();
+	}
+
+	render(width: number): string[] {
+		const lines = renderWidthSafeInventoryList(this.snapshot, width, {
+			selectedIndex: this.selectedIndex,
+			keybindings: this.keybindings,
+		});
+		if (this.statusLine) return widthSafeLines([...lines, this.statusLine], width);
+		return lines;
+	}
+
+	handleInput(data: string): void {
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.closeView)) {
+			this.callbacks.onClose();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.refresh)) {
+			this.statusLine = "minih: refreshing";
+			this.callbacks.onRefresh();
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.selectPrevious)) {
+			this.selectedIndex = moveListSelection({
+				runs: this.snapshot.runs,
+				selectedIndex: this.selectedIndex,
+				delta: -1,
+			});
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.selectNext)) {
+			this.selectedIndex = moveListSelection({
+				runs: this.snapshot.runs,
+				selectedIndex: this.selectedIndex,
+				delta: 1,
+			});
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.openRun)) {
+			const selected = resolveSelectedRun(this.snapshot.runs, this.selectedIndex);
+			if (selected) this.callbacks.onOpenRun(selected);
+		}
+	}
+
+	invalidate(): void {}
 }
 
 export function renderWidthSafeModalView(
