@@ -127,6 +127,39 @@ describe("minih-workbench store contracts", () => {
 		]);
 	});
 
+	it("enforces completed/report-ready inventory limit independently", () => {
+		const inventory = projectInventory(
+			[
+				summary({ slug: "active", runId: "1" }),
+				summary({
+					slug: "done-a",
+					runId: "2",
+					status: {
+						liveness: "completed",
+						terminal: "completed",
+						inside: "complete",
+						outside: "unavailable",
+						attention: "none",
+					},
+				}),
+				summary({
+					slug: "done-b",
+					runId: "3",
+					status: {
+						liveness: "completed",
+						terminal: "completed",
+						inside: "complete",
+						outside: "unavailable",
+						attention: "none",
+					},
+				}),
+			],
+			{ activeLimit: 10, completedLimit: 1 },
+		);
+		expect(inventory.runs).toHaveLength(2);
+		expect(inventory.runs.filter((run) => run.status.liveness === "completed")).toHaveLength(1);
+	});
+
 	it("bounds pane snapshots with truncation markers", () => {
 		const pane = makePaneSnapshot(
 			[

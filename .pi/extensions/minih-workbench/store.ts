@@ -382,11 +382,14 @@ export function projectInventory(
 		.slice(0, activeLimit)) {
 		addRun(run);
 	}
+	let completedAdded = 0;
 	for (const run of sorted.filter(
 		(item) => item.status.liveness === "completed" || item.report.state === "ready",
 	)) {
-		if (selectedKeys.size >= activeLimit + completedLimit) break;
+		if (completedAdded >= completedLimit) break;
+		const before = selectedKeys.size;
 		addRun(run);
+		if (selectedKeys.size > before) completedAdded += 1;
 	}
 	const uniqueTotal = new Set(sorted.map((run) => keyForRun(run))).size;
 	return {

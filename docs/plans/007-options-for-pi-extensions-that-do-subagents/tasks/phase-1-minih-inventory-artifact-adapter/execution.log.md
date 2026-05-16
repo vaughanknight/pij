@@ -45,6 +45,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F005 | LOW | `01KRQF1E3001W6JZAV400HPB63` | T002-fix | Fixed in `c7d9e40`; verification request `01KRQF543HP5TFS21D20J9QCTZ` | F002/F003 rows still said pending even after `75d94e4`; dispositions now reference the fix commit. |
 | F006 | LOW | `01KRQF543HP5TFS21D20J9QCTZ` | finding-log-fix | Fixed in `0ea92c2`; verified by summary `01KRQF7GD7YW4NFWKKYDGECX3E` | F004/F005 rows still said pending; final log commit corrected them. |
 | F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in `2aff4e1`; verification request `01KRQFP654X49S5Z75R3QSPB8T` | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
+| F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in follow-up commit pending | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
 
 ## Task entries
 
@@ -103,5 +104,6 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Added `minih-dependency-decision.md` deciding Phase 1 uses local Minih artifact/JSON contracts plus deterministic fixtures; no new package dependency; no package manifest edits.
 - **Validation**: Documentation-only task; `just lint` required before commit.
-- **Companion**: Review request to be sent after commit.
+- **Commit**: `ce6532d`
+- **Companion**: Sent `review-request: T007 ce6532d` as message `01KRQFRBTWHM854GWZ9A40FP98`.
 
