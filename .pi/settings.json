@@ -1,6 +1,9 @@
 {
 	"packages": [
 		"https://github.com/nicobailon/pi-mcp-adapter.git",
-		"git:https://github.com/hasit/pi-community-themes@v0.3.0"
+		"git:https://github.com/hasit/pi-community-themes@v0.3.0",
+		"npm:pi-lean-ctx",
+		"git:github.com/ghoseb/pi-askuserquestion",
+		"npm:pi-subagents"
 	]
 }

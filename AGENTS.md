@@ -94,13 +94,32 @@ Third-party pi extensions run with **full user privileges** and load `SKILL.md` 
 - **Vetted entries go stale at 30 days**. `pkg bootstrap` on a fresh clone refuses stale entries unless `--unsafe`. Refresh via `npm run pkg audit`.
 - **Known gap**: pi's session-start auto-install reads `.pi/settings.json#packages[]` directly and bypasses the gate. A pi-side enforcement hook is deferred (Plan 009 OQ-A); for now, never hand-edit `settings.json`.
 
-**Workflow for adding a package**:
+**Workflow for adding a package** (the only supported path):
 
-1. `npm run pkg add <source>` — runs vet, refuses on `fail`, prompts for reason on `--unsafe`.
-2. Review the `vetted:` block written to `.pi/packages.yaml`.
-3. Commit the manifest change.
+1. **Run the gate**: `just pkg add <source> [note words...]`
+   - `<source>` formats: `npm:<name>` (e.g. `npm:pi-subagents`), `git:<host>/<owner>/<repo>[@ref]` (e.g. `git:github.com/foo/bar@v1.0.0`), or `https://<url>.git`.
+   - Everything after `<source>` is the human-readable `note` on the entry.
+   - The gate runs every vetter in order: `npm-audit` → `lockfile-lint` → `github-trust` → `scorecard` → `package-vetter` (live minih agent). It refuses on **any** `fail` and prompts for a reason on `--unsafe` (warns only — `fail` is never auto-downgradeable).
+2. **Read the verdict**:
+   - `ok` (score=100) → vetted block + manifest entry written; you're done.
+   - `warn` (score<100) → review each finding. If acceptable, retry with `--unsafe "<reason>"` to record an override scoped to specific rules (`vetted.overrides.rules: [<rule-slug>]`).
+   - `fail` → do **not** override. Either pick a different source or escalate.
+3. **Review the diff** in `.pi/packages.yaml` (the new `vetted:` block) and `.pi/settings.json` (auto-regenerated `packages[]` list).
+4. **Commit** the manifest change with a conventional commit (`chore(pkg): add <source>`).
 
-When `pkg audit` reports `warn` on an existing entry and the user wants to accept it, add a `vetted.overrides: "<reason>"` line in the yaml. `audit` will then treat that entry as `ok` (warn-only; `fail` is never auto-downgraded).
+If `pkg audit` later flips an existing entry to `warn` and the user wants to accept it, add a `vetted.overrides` block with **explicit rule slugs** (never a bare string):
+
+```yaml
+vetted:
+  overrides:
+    rules:
+      - github-trust:no-license
+    reason: no-LICENSE on upstream; install-only use
+```
+
+Overrides only mask the rules listed — any **new** warn finding still fails the audit. `fail` is never auto-downgraded.
+
+**Common pitfall — module on disk but pi can't see it**: if `pi install <pkg>` ran outside `just pkg add`, the npm module lives under `.pi/npm/node_modules/` but isn't in `packages.yaml`, so pi won't auto-load it on session start. Fix by running `just pkg add <source>` to register + vet it properly.
 
 ## Voice input — phonetic interpretation
 

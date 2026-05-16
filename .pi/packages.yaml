@@ -34,13 +34,13 @@ packages:
     enabled: true
     note: MCP bridge
     vetted:
-      date: 2026-05-15T23:54:02.247Z
+      date: 2026-05-16T00:05:32.823Z
       score: 100
   - source: git:https://github.com/hasit/pi-community-themes@v0.3.0
     enabled: true
     note: Community pi themes
     vetted:
-      date: 2026-05-15T23:54:04.940Z
+      date: 2026-05-16T00:05:35.723Z
       score: 100
   - source: npm:pi-lean-ctx
     enabled: true
@@ -52,7 +52,7 @@ packages:
       # /opt/homebrew/bin which isn't searched — symlink into ~/.local/bin.
       install: brew tap yvgude/lean-ctx && brew install lean-ctx && mkdir -p ~/.local/bin && ln -sf "$(brew --prefix)/bin/lean-ctx" ~/.local/bin/lean-ctx
     vetted:
-      date: 2026-05-15T23:54:05.639Z
+      date: 2026-05-16T00:05:36.404Z
       score: 100
   - source: git:github.com/ghoseb/pi-askuserquestion
     enabled: true
@@ -70,3 +70,10 @@ packages:
         rules:
           - github-trust:no-license
         reason: no-LICENSE on upstream; install-only use, not redistribution; flagged in research-dossier.md
+  - source: npm:pi-subagents
+    enabled: true
+    note: subagent delegation extension per plan 007
+    vetted:
+      date: 2026-05-16T00:05:40.292Z
+      score: 100
+      agentRubric: cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720
