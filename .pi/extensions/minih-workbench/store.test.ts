@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	classifyAttention,
 	clampListSelection,
+	classifyAttention,
 	closeModalSafely,
 	cycleFocusedPane,
 	DEFAULT_ACTIVE_RUN_LIMIT,
@@ -12,16 +12,16 @@ import {
 	diagnostic,
 	MINIH_MODAL_PANES,
 	MINIH_WORKBENCH_ACTIONS,
-	moveListSelection,
 	type MinihRunSummary,
 	makePaneSnapshot,
 	minihError,
 	minihOk,
+	moveListSelection,
 	openModalForRun,
 	pageFocusedPane,
 	pageModalPane,
-	readOnlyNoWriteResult,
 	projectInventory,
+	readOnlyNoWriteResult,
 	resolveSelectedRun,
 	sortRunSummaries,
 } from "./store.js";
@@ -66,9 +66,7 @@ describe("minih-workbench store contracts", () => {
 		expect(DEFAULT_ACTIVE_RUN_LIMIT).toBeGreaterThan(0);
 		expect(DEFAULT_COMPLETED_RUN_LIMIT).toBeGreaterThan(0);
 		expect(MINIH_WORKBENCH_ACTIONS.openRun).toBe("minih.openRun");
-		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.openRun]).toContain(
-			"enter",
-		);
+		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.openRun]).toContain("enter");
 		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.closeView]).toContain(
 			"escape",
 		);

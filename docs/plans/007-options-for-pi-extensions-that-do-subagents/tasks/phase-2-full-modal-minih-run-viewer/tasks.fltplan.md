@@ -3,7 +3,7 @@
 **Plan**: [../../agent-workbench-plan.md](../../agent-workbench-plan.md)  
 **Phase**: Phase 2: Full modal Minih run viewer  
 **Generated**: 2026-05-16  
-**Status**: Ready for takeoff
+**Status**: Landed
 
 ---
 
@@ -66,8 +66,7 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1,S2,S3,S4,S5,S6,S7 done
-    class S8 pending
+    class S1,S2,S3,S4,S5,S6,S7,S8 done
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -85,7 +84,7 @@ stateDiagram-v2
 - [x] **Stage 5: Add lazy feed lifecycle** — create read-only feed manager with fake timers/readers, diagnostics, bounded polling fallback, coalescing, and explicit dispose (`feed.ts`).
 - [x] **Stage 6: Wire commands/lifecycle** — connect `/minih`, `/minih list`, `/minih view`, `/minih report`, session_start reconciliation, and session_shutdown cleanup (`index.ts`).
 - [x] **Stage 7: Validate UI/feed behavior** — add targeted UI/feed tests and deterministic Driver SDK modal smoke (`ui.test.ts`, `feed.test.ts`, `smoke.ts`).
-- [ ] **Stage 8: Land evidence and handoff** — update execution log, extension `AGENTS.md`, domain docs, flight status, velocity/difficulty records, and Phase 3 handoff notes (`execution.log.md`, domain docs).
+- [x] **Stage 8: Land evidence and handoff** — update execution log, extension `AGENTS.md`, domain docs, flight status, velocity/difficulty records, and Phase 3 handoff notes (`execution.log.md`, domain docs).
 
 ---
 
@@ -136,18 +135,18 @@ flowchart LR
 
 ## Acceptance Criteria
 
-- [ ] `store.ts` exports Minih Workbench default keybinding constants and pure list/modal state helpers without importing Pi runtime packages.
-- [ ] New or modified Minih Workbench files use top-level standard imports / `import type`; no inline or dynamic imports are introduced.
-- [ ] `/minih` opens a Pi-native keyboard-selectable run list in interactive mode while `/minih status --json` remains unchanged.
-- [ ] Active/stale runs render first and bounded recent completed/report-ready rows render in a distinct section.
-- [ ] Up/Down selection and Enter-open behavior are deterministic and use injected/default keybindings, not hardcoded key checks.
-- [ ] A selected run opens in a full-area Pi-native modal without sending any Minih message or control.
-- [ ] Modal panes show transcript, tool activity, coordination/inside/outside status, liveness, attention, output/report state, diagnostics, and disabled/absent composer reason.
-- [ ] Pane focus and scrollback are visible and independent from the main Pi conversation.
-- [ ] `Esc` closes only the list/modal and releases feed handles; it never sends stop/control/kill or writes to Minih artifacts.
-- [ ] Watcher/feed lifecycle is lazy, fixture/fake-feed testable, diagnostic on failure with bounded polling fallback, coalesced, and safe after dispose/reload/shutdown.
-- [ ] Driver SDK smoke proves `/minih`, list selection, modal open, pane scroll/focus or page movement, report/diagnostic view, Esc close, and reload cleanup over fixtures/fake feeds.
-- [ ] Phase 2 execution log records targeted tests, `npm run smoke -- minih-workbench`, `just typecheck` or stronger, final `just self-check`, agent harness health, and companion farewell if used.
+- [x] `store.ts` exports Minih Workbench default keybinding constants and pure list/modal state helpers without importing Pi runtime packages.
+- [x] New or modified Minih Workbench files use top-level standard imports / `import type`; no inline or dynamic imports are introduced.
+- [x] `/minih` opens a Pi-native keyboard-selectable run list in interactive mode while `/minih status --json` remains unchanged.
+- [x] Active/stale runs render first and bounded recent completed/report-ready rows render in a distinct section.
+- [x] Up/Down selection and Enter-open behavior are deterministic and use injected/default keybindings, not hardcoded key checks.
+- [x] A selected run opens in a full-area Pi-native modal without sending any Minih message or control.
+- [x] Modal panes show transcript, tool activity, coordination/inside/outside status, liveness, attention, output/report state, diagnostics, and disabled/absent composer reason.
+- [x] Pane focus and scrollback are visible and independent from the main Pi conversation.
+- [x] `Esc` closes only the list/modal and releases feed handles; it never sends stop/control/kill or writes to Minih artifacts.
+- [x] Watcher/feed lifecycle is lazy, fixture/fake-feed testable, diagnostic on failure with bounded polling fallback, coalesced, and safe after dispose/reload/shutdown.
+- [x] Driver SDK smoke proves `/minih`, list selection, modal open, pane scroll/focus or page movement, report/diagnostic view, Esc close, and reload cleanup over fixtures/fake feeds.
+- [x] Phase 2 execution log records targeted tests, `npm run smoke -- minih-workbench`, `just typecheck` or stronger, final `just self-check`, agent harness health, and companion farewell if used.
 
 ## Goals & Non-Goals
 
@@ -181,4 +180,4 @@ flowchart LR
 - [x] T009: Reconcile lifecycle and session state without auto-opening UI.
 - [x] T010: Add targeted UI/feed tests.
 - [x] T011: Expand deterministic Driver SDK smoke for read-only modal flows.
-- [ ] T012: Record Phase 2 evidence and update domain/handoff docs.
+- [x] T012: Record Phase 2 evidence and update domain/handoff docs.

@@ -353,7 +353,8 @@ export function closeModalSafely(state: MinihModalState): MinihSafeCloseResult {
 
 export function cycleFocusedPane(state: MinihModalState, delta: number): MinihModalState {
 	const current = MINIH_MODAL_PANES.indexOf(state.focusedPane);
-	const next = ((current + Math.trunc(delta)) % MINIH_MODAL_PANES.length) + MINIH_MODAL_PANES.length;
+	const next =
+		((current + Math.trunc(delta)) % MINIH_MODAL_PANES.length) + MINIH_MODAL_PANES.length;
 	const focusedPane = MINIH_MODAL_PANES[next % MINIH_MODAL_PANES.length] ?? "transcript";
 	return { ...state, focusedPane };
 }

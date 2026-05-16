@@ -14,11 +14,11 @@ import {
 } from "./minih-adapter.js";
 import { MemoryMinihWorkbenchPersistence } from "./persistence.js";
 import {
+	defaultModalState,
 	isForbiddenWorkbenchAction,
 	MINIH_COMMAND_NAME,
 	MINIH_STATUS_KEY,
 	type MinihAdapterResult,
-	defaultModalState,
 	type MinihInventorySnapshot,
 	type MinihModalPane,
 	type MinihRunRef,
@@ -171,7 +171,8 @@ export default function (pi: ExtensionAPI) {
 							if (!closed) component?.updateView(snapshot, "minih: refreshed");
 						},
 						onDiagnostics: (diagnostics) => {
-							if (!closed) component?.updateView(result.value, `minih: ${diagnostics.length} diagnostics`);
+							if (!closed)
+								component?.updateView(result.value, `minih: ${diagnostics.length} diagnostics`);
 						},
 					}),
 				);
@@ -230,7 +231,11 @@ export default function (pi: ExtensionAPI) {
 							if (!closed) component?.updateSnapshot(snapshot, "minih: refreshed");
 						},
 						onDiagnostics: (diagnostics) => {
-							if (!closed) component?.updateSnapshot(initial.value, `minih: ${diagnostics.length} diagnostics`);
+							if (!closed)
+								component?.updateSnapshot(
+									initial.value,
+									`minih: ${diagnostics.length} diagnostics`,
+								);
 						},
 					}),
 				);

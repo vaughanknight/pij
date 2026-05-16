@@ -1,6 +1,6 @@
 # minih-workbench
 
-Pi-native Minih Workbench extension. Phase 1 is a read-only artifact inventory and adapter foundation.
+Pi-native Minih Workbench extension. Phase 2 has landed: the extension provides read-only Minih inventory, native run-list UI, full-area modal viewing, lazy feed refresh, and deterministic modal smoke over fixture artifacts.
 
 ## Source of truth
 
@@ -9,10 +9,11 @@ Pi-native Minih Workbench extension. Phase 1 is a read-only artifact inventory a
 - All Minih artifact/CLI/helper access goes through `minih-adapter.ts`.
 - Never parse ANSI output from `minih view`, `minih attach`, or Minih's Ink human UI.
 
-## Phase 1 boundary
+## Phase 2 boundary
 
 - Read-only only: no composer, no `send`, no `stop`, no control messages, no push-context delivery, no arbitrary Minih launch/install flows.
-- `/minih status --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report` are pull surfaces only.
+- `/minih`, `/minih list`, `/minih view <slug> <runId>`, and `/minih report <slug> <runId>` may open native Pi UI, but they must not write to Minih artifacts or control Minih runs.
+- `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report` are pull surfaces only.
 - Phase 3 placeholders are allowed as inert types/constants/facade methods; do not implement side effects early.
 
 ## Layout and imports
@@ -24,17 +25,20 @@ Pi-native Minih Workbench extension. Phase 1 is a read-only artifact inventory a
 - No `any`; use structural types at boundaries and tagged-union results over throws.
 - Constants live in `store.ts` next to the data they constrain.
 
-## UI and keybindings
+## UI, feed, and keybindings
 
-- Phase 1 does not implement the full modal viewer.
-- Future UI code must use named actions/default keybinding constants rather than hardcoded key checks.
-- `Esc` is close/detach only in future modal work; it must never stop or kill a Minih run.
+- Phase 2 UI code uses native Pi TUI components only; never embed Minih Ink or parse ANSI output.
+- UI code must use named actions/default keybinding constants from `store.ts` rather than hardcoded key checks.
+- List/modal feeds start only while the UI is open, use injected readers/timers where practical, coalesce refreshes, and ignore callbacks after dispose.
+- Watcher failures become diagnostics and fall back to bounded/disposable polling.
+- `Esc` is close/detach only; it must never stop, kill, control, message, or push context from a Minih run.
 
 ## Fixtures and validation
 
 - Tests use deterministic fixture run directories under `fixtures/`; routine validation must not require live Minih/Copilot.
 - Fixture coverage should include active, stale/dead, completed/report-ready, malformed/missing, permission-like, coordinated, non-coordinated, and large transcript/tool-output cases.
-- Adapter/store tests prove bounded payloads, visible truncation markers, separated status axes, report-ready projection, and no-write Phase 1 invariant.
+- Adapter/store/feed/UI tests prove bounded payloads, visible truncation markers, separated status axes, report-ready projection, list/modal focus/scroll state, feed disposal, and no-write Phase 2 invariant.
+- Driver SDK smoke proves `/minih` list → Enter modal → pane focus → Esc close → report pane → reload cleanup over fixtures.
 - Before reporting complete: `just self-check` from the repo root.
 
 ## Package/dependency policy
@@ -45,8 +49,8 @@ Pi-native Minih Workbench extension. Phase 1 is a read-only artifact inventory a
 
 ## Companion review watchlist
 
-- Scope creep into modal/send/stop/push before their phases.
+- Scope creep into send/stop/push before Phase 3.
 - Direct filesystem reads in `index.ts`/`ui.ts` instead of `minih-adapter.ts`.
 - Unbounded raw reports, tool output, paths, or environment values in tool/command responses.
 - Collapsing liveness, terminal result, inside status, outside status, attention, and UI focus into one ambiguous status.
-- Watchers or expensive polling before Phase 2.
+- Watchers or expensive/global always-on polling outside an open list/modal lifecycle.

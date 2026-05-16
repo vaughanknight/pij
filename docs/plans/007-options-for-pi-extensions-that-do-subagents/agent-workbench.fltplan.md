@@ -5,7 +5,7 @@
 **Dossier**: [research-dossier.md](./research-dossier.md) + `/tmp/pij-minih-flowspace-v3/research-dossier.md`  
 **Workshops**: [001 Pi-native Agent Workbench UX](./workshops/001-pi-native-agent-workbench-ux.md) — Minih-only full modal viewer first  
 **Generated**: 2026-05-16  
-**Status**: Phase 1 landed — ready for Phase 2 task dossier  
+**Status**: Phase 2 landed — ready for Phase 3 task dossier
 **Mode**: Full, max 3 implementation phases  
 **Complexity**: CS-5 (epic)
 
@@ -69,7 +69,7 @@ flowchart LR
     classDef active fill:#FFF3E0,stroke:#FB8C00,color:#000
     classDef pending fill:#ECEFF1,stroke:#607D8B,color:#000
 
-    R[Research]:::done --> W[Workshop]:::done --> S[Spec]:::done --> C[Clarify]:::done --> A[Architect]:::done --> P4[Plan-4 Review]:::done --> T[Phase Tasks]:::done --> I[Phase 1 Implement]:::done --> V[Phase 1 Validate]:::done
+    R[Research]:::done --> W[Workshop]:::done --> S[Spec]:::done --> C[Clarify]:::done --> A[Architect]:::done --> P4[Plan-4 Review]:::done --> T[Phase Tasks]:::done --> I[Phase 1 Implement]:::done --> V[Phase 1 Validate]:::done --> P2T[Phase 2 Tasks]:::done --> P2I[Phase 2 Implement]:::done --> P2V[Phase 2 Validate]:::done
 ```
 
 ---
@@ -137,9 +137,9 @@ flowchart LR
 
 ## Next Steps
 
-1. Run `/plan-5-v2-phase-tasks-and-brief` for Phase 2 using [agent-workbench-plan.md](./agent-workbench-plan.md).
-2. Preserve Phase 1 exported contracts: `store.ts`, `minih-adapter.ts`, `persistence.ts`, fixtures, `/minih status --json`, and read-only tools.
-3. Keep Phase 2 read-only: native list/modal viewer before Phase 3 interaction/push.
+1. Run `/plan-5-v2-phase-tasks-and-brief` for Phase 3 using [agent-workbench-plan.md](./agent-workbench-plan.md).
+2. Preserve Phase 2 exported contracts: `DEFAULT_MINIH_WORKBENCH_KEYBINDINGS`, pure list/modal state helpers, `MinihRunListComponent`, `MinihRunModalComponent`, `MinihReadOnlyFeed`, `/minih` list/view/report UI flows, canonical `/minih status --json`, and read-only tools.
+3. Keep Phase 3 gated: typed send, confirmed stop/report controls, and push-context delivery require capability checks, persistence-before-side-effect, redaction/truncation, and duplicate suppression.
 4. Run plan-4/validate again only if the plan contract changes materially.
 
 ---
@@ -169,3 +169,7 @@ Ran plan-4 readiness review: no HIGH findings. Folded mechanical MEDIUM findings
 ### 2026-05-16 — Phase 1 landed
 
 Implemented Phase 1 with code-review-companion in Power-On-Mode. Created the `agent-workbench` domain and registered it, scaffolded `.pi/extensions/minih-workbench`, added Pi-free store contracts, a persistence facade, dependency decision, deterministic Minih fixture roots, read-only artifact adapter, `/minih status --json`, `minih_runs_list`, `minih_run_status`, `minih_read_report`, store/adapter tests, and deterministic smoke. Final `just self-check` passed. Phase 2 can now consume the read-only contracts to build the native list/modal viewer.
+
+### 2026-05-16 — Phase 2 landed
+
+Implemented the read-only Pi-native Minih Workbench viewer with code-review-companion in Power-On-Mode. Added default keybinding contracts, pure list/modal state helpers, native run-list and full modal components, read-only feed lifecycle with bounded fallback polling, `/minih` list/view/report UI wiring, lifecycle cleanup without auto-open, targeted store/feed/UI tests, and Driver SDK smoke for list → modal → pane focus → Esc close → report pane → reload. Final self-check passed. Phase 3 can now add gated send/stop/report controls and push-context delivery on top of stable read-only UI/feed contracts.

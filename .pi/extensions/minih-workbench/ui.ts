@@ -219,7 +219,10 @@ export function renderDiagnosticsSummary(diagnostics: readonly MinihDiagnostic[]
 	];
 }
 
-function activePaneSnapshot(view: MinihViewSnapshot, pane: MinihModalPane): MinihPaneSnapshot | undefined {
+function activePaneSnapshot(
+	view: MinihViewSnapshot,
+	pane: MinihModalPane,
+): MinihPaneSnapshot | undefined {
 	switch (pane) {
 		case "transcript":
 			return view.transcript;
@@ -248,7 +251,8 @@ export function renderModalView(
 		`Focused pane: ${focusedPane}`,
 	];
 	for (const pane of MINIH_MODAL_PANES) {
-		if (pane === "report") lines.push(...renderReportSummary(view.report, focusedPane, options.state.reportCursor));
+		if (pane === "report")
+			lines.push(...renderReportSummary(view.report, focusedPane, options.state.reportCursor));
 		else {
 			const snapshot = activePaneSnapshot(view, pane);
 			if (snapshot) lines.push(...renderPaneSnapshot(pane, snapshot, focusedPane));

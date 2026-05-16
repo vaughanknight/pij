@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, and read-only Minih Workbench pull surfaces. This domain makes structured work state and external agent-run state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
+Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, and Minih Workbench read-only pull plus native list/modal surfaces. This domain makes structured work state and external agent-run state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
 
 ## Source Locations
 
@@ -14,9 +14,9 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | `.pi/extensions/todo/index.ts` | Pi wiring for lifecycle, `/todo` command, `todo` tool, overlay, status signal, and shortcut registration. |
 | `.pi/extensions/todo/smoke.ts` | Deterministic todo command/overlay/SQL agreement smoke. |
 | `.pi/extensions/todo/AGENTS.md` | Extension-local implementation and validation guidance. |
-| `.pi/extensions/minih-workbench/index.ts` | Pi wiring for `/minih status --json`, read-only status/report commands, model tools, and lifecycle status cleanup. |
-| `.pi/extensions/minih-workbench/ui.ts` | Read-only text formatting for Minih inventory rows until the Phase 2 native list/modal UI lands. |
-| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Minih Workbench command smoke over fixture artifacts. |
+| `.pi/extensions/minih-workbench/index.ts` | Pi wiring for `/minih`, `/minih list`, `/minih view`, `/minih report`, read-only status/report JSON commands, model tools, feed lifecycle, and lifecycle cleanup. |
+| `.pi/extensions/minih-workbench/ui.ts` | Native Pi run-list and full modal components plus width-safe read-only render helpers for Minih inventory/view panes. |
+| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Minih Workbench list/modal/report/reload smoke over fixture artifacts. |
 | `docs/how/session-sql.md` | Detailed user/agent guide. |
 | `docs/how/todo.md` | Detailed SQL-backed todo user/agent guide. |
 | `README.md` | Quick-start mention. |
@@ -34,7 +34,8 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Deterministic smoke | Validate the real pi TUI path without model tool selection. | Driver SDK scenarios exercise `/sql`, `/todo`, overlay anchors, and `/reload`. |
 | Todo command and tool UX | Routine task actions are available without raw SQL. | `/todo` and the `todo` tool share add/list/status/block/done/delete/prune/dep/next/clear semantics. |
 | Todo overlay, strip, and status | Current-session work is visible during live TUI use. | `/todo overlay` renders SQL-backed open todos; below-editor `todo-strip` shows a compact recent-activity window; footer status shows `todo: N open` and clears at zero. |
-| Minih Workbench read-only pull UX | Minih run state is inspectable from Pi without opening the future modal or writing to Minih. | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report`. |
+| Minih Workbench native list/modal UX | Minih run state is inspectable from Pi through read-only native TUI without writing to Minih. | `/minih` and `/minih list` open a keyboard-selectable run list; `/minih view <slug> <runId>` opens transcript/tool/status/coordination/report/diagnostic panes; `/minih report <slug> <runId>` opens the report-focused modal; `Esc` only closes UI. |
+| Minih Workbench read-only pull UX | Minih run state is inspectable from Pi without opening the modal or writing to Minih. | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report`. |
 
 ## Contracts
 
@@ -47,7 +48,8 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | `todo` tool | LLM agent | Manages SQL-backed current-session todos through action payloads; targeted delete/prune cleanup is supported, while destructive clear requires `confirm: true`. |
 | `/todo` command | Human/operator/smoke | List/add/status/block/done/delete/prune/dep/next/overlay/clear command surface with stable output phrases. |
 | Todo overlay/status/widget | Human/operator | Minimal overlay through `ctx.ui.custom`, compact below-editor strip through `ctx.ui.setWidget`, and footer status through `ctx.ui.setStatus`. |
-| `/minih` read-only command | Human/operator/smoke | Canonical `/minih status --json` plus status/report subcommands over fixture or configured Minih artifact roots. |
+| `/minih` native UI command | Human/operator/smoke | `/minih`/`list` opens the read-only run-list overlay; `view`/`report` open full-area read-only modal panes; `Esc` closes only Pi UI. |
+| `/minih` read-only pull command | Human/operator/smoke | Canonical `/minih status --json` plus status/report JSON subcommands over fixture or configured Minih artifact roots. |
 | Minih read-only tools | LLM agent | `minih_runs_list`, `minih_run_status`, and `minih_read_report` return deterministic bounded JSON envelopes and expose no send/stop/push capabilities. |
 
 ## Composition
@@ -60,7 +62,8 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Documentation | implemented | README quick-start plus `docs/how/session-sql.md` and `docs/how/todo.md`. |
 | Todo wiring | implemented | `todo/index.ts` registers lifecycle, command, model tool, status, overlay, below-editor strip, and shortcuts. |
 | Todo smoke | implemented | `todo/smoke.ts` proves empty/add/list/delete/prune/SQL agreement/below-editor strip/overlay/reload path. |
-| Minih Workbench read-only wiring | implemented in Plan 007 Phase 1 | `minih-workbench/index.ts` registers canonical `/minih` read-only commands and model tools over the agent-workbench adapter contracts. |
+| Minih Workbench read-only pull wiring | implemented in Plan 007 Phase 1 | `minih-workbench/index.ts` registers canonical `/minih` read-only JSON commands and model tools over the agent-workbench adapter contracts. |
+| Minih Workbench native list/modal wiring | implemented in Plan 007 Phase 2 | `minih-workbench/index.ts` wires `/minih` list/view/report UI, lazy feed handles, selected-run pointer cleanup, and status lifecycle. |
 
 ## Dependencies
 
@@ -85,7 +88,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 - Result/error/truncation text.
 - Status/schema presentation.
 - Todo command/tool/overlay/below-editor strip/status presentation.
-- Minih Workbench read-only `/minih` command, model tools, and formatting presentation.
+- Minih Workbench read-only `/minih` command, native list/modal/report UI, model tools, and formatting presentation.
 - Deterministic smoke scenario.
 - Operator documentation and agent use recipes.
 
@@ -108,3 +111,4 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | 010-sql-backed-todo-extension/ST-001 | Added the compact below-editor `todo-strip` widget and `session-sql:changed` refresh path. | 2026-05-16 |
 | 010-sql-backed-todo-extension/follow-up | Added `/todo delete <id>`, `/todo prune done`, and matching model tool actions for tidying completed or unwanted rows. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 1 | Added read-only Minih Workbench pull UX: `/minih status --json`, run status/report commands, `minih_runs_list`, `minih_run_status`, `minih_read_report`, and fixture-backed smoke. | 2026-05-16 |
+| 007-options-for-pi-extensions-that-do-subagents / Phase 2 | Added native read-only `/minih` run-list, full modal run/report viewer, feed lifecycle cleanup, and deterministic Driver SDK modal smoke. | 2026-05-16 |

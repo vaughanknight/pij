@@ -3,7 +3,7 @@
 **Plan**: [`../../agent-workbench-plan.md`](../../agent-workbench-plan.md)  
 **Spec**: [`../../agent-workbench-spec.md`](../../agent-workbench-spec.md)  
 **Phase**: Phase 2: Full modal Minih run viewer  
-**Status**: Proposed  
+**Status**: Landed
 **Complexity**: CS-5
 
 ---
@@ -150,7 +150,7 @@ flowchart TD
         T009["T009: Lifecycle reconciliation"]:::completed
         T010["T010: UI/feed tests"]:::completed
         T011["T011: Modal smoke"]:::completed
-        T012["T012: Evidence + domain updates"]:::pending
+        T012["T012: Evidence + domain updates"]:::completed
         T001 --> T002 --> T003 --> T004 --> T005 --> T006 --> T007 --> T008 --> T009 --> T010 --> T011 --> T012
     end
 
@@ -161,8 +161,8 @@ flowchart TD
         F4["index.ts"]:::completed
         F5["*.test.ts"]:::completed
         F6["smoke.ts"]:::completed
-        F7["domain docs"]:::pending
-        F8["execution.log.md"]:::pending
+        F7["domain docs"]:::completed
+        F8["execution.log.md"]:::completed
     end
 
     T001 -.-> F1
@@ -197,7 +197,7 @@ flowchart TD
 | [x] | T009 | Reconcile lifecycle and session state without auto-opening UI. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/index.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/persistence.ts` | Exactly one `session_start` handler covers startup/reload/new/resume/fork, clears/reconciles stale UI handles and selected pointers without auto-opening UI; `session_shutdown` disposes list/modal feed handles and clears statuses/widgets; reload recreates handles safely only on next explicit `/minih` action. | Plan task 2.5 and P10. Esc releases modal watcher; it never sends stop/control/kill. |
 | [x] | T010 | Add targeted UI/feed tests. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/feed.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/minih-adapter.test.ts` | Tests prove stable list/modal render anchors, width-safe rendering, selected/focused pane markers, disabled composer reason, feed coalescing, watcher failure diagnostics with bounded polling fallback, callbacks-after-dispose ignored, and fake-feed reload/close behavior. | If component tests are impractical, capture the gap in `execution.log.md` and cover the behavior with store/feed tests plus smoke. |
 | [x] | T011 | Expand deterministic Driver SDK smoke for read-only modal flows. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/smoke.ts`; `/Users/jordanknight/pi-hacking/pij/harness/driver/` only if a proven minimal helper gap exists | Smoke proves `/minih`, list render, Up/Down selection, Enter modal open, transcript/tool/diagnostic/report/status anchors, pane focus or page scroll, Esc close with no control/write, stale/malformed diagnostics, report-ready view, watcher-failure fallback if exposed through a deterministic fake, and `/reload` cleanup/reopen behavior over fixtures/fake feeds. | Plan task 2.6. Use existing Driver SDK `type`, `press`, `wait`, and `capture` first; no live Minih/Copilot. |
-| [ ] | T012 | Record Phase 2 evidence and update domain/handoff docs. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-2-full-modal-minih-run-viewer/execution.log.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-2-full-modal-minih-run-viewer/tasks.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-2-full-modal-minih-run-viewer/tasks.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/agent-workbench.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/AGENTS.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-workbench/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/velocity.md`; `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md` if needed | Execution log records pre-phase harness health, companion run/farewell if used, targeted tests, `npm run smoke -- minih-workbench`, `just typecheck` or stronger, final `just self-check`, and any new difficulties/retros; extension `AGENTS.md`, domain docs, and plan flight status reflect Phase 2 landed; Phase 3 handoff lists exported UI/feed/read-only contracts and non-exports. | Full `docs/how/agent-workbench.md` can wait for Phase 3 unless implementation discovers user-facing ambiguity that should be documented immediately. |
+| [x] | T012 | Record Phase 2 evidence and update domain/handoff docs. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-2-full-modal-minih-run-viewer/execution.log.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-2-full-modal-minih-run-viewer/tasks.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-2-full-modal-minih-run-viewer/tasks.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/agent-workbench.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/AGENTS.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-workbench/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/velocity.md`; `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md` if needed | Execution log records pre-phase harness health, companion run/farewell if used, targeted tests, `npm run smoke -- minih-workbench`, `just typecheck` or stronger, final `just self-check`, and any new difficulties/retros; extension `AGENTS.md`, domain docs, and plan flight status reflect Phase 2 landed; Phase 3 handoff lists exported UI/feed/read-only contracts and non-exports. | Full `docs/how/agent-workbench.md` can wait for Phase 3 unless implementation discovers user-facing ambiguity that should be documented immediately. |
 
 ---
 
@@ -311,6 +311,9 @@ _Populated during implementation by plan-6._
 
 | Date | Task | Type | Discovery | Resolution | References |
 |------|------|------|-----------|------------|------------|
+| 2026-05-16 | T004/T010 | gotcha | Width-safe render helpers must normalize or split embedded newlines before returning TUI lines; otherwise a single pane item can become multiple physical lines. | Normalized pane/diagnostic text and cursor-windowed report summaries; added UI tests. | Companion F001; commits `4c847ac`, `0ff2828` |
+| 2026-05-16 | T005/T010 | gotcha | A test titled as keybinding-injection coverage can still pass on hardcoded/default keys if it does not inject a non-default map. | Updated UI tests to use custom list/modal key maps and assert default raw keys do not act. | Companion F006; commit `15ed2c4` |
+| 2026-05-16 | T005/T007/T009 | decision | Async UI refreshes need explicit close/dispose guards before the broader feed lifecycle lands. | Added closed/superseded component guards, then centralized feed handles and lifecycle cleanup. | Companion F002; commits `28103e6`, `58db25c`, `f299c98` |
 
 **Types**: `gotcha` | `research-needed` | `unexpected-behavior` | `workaround` | `decision` | `debt` | `insight`
 

@@ -50,7 +50,8 @@
 | F004 | MEDIUM | `01KRQS3T7Q95KSKC78H0EZNNE3` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Renamed Phase 1-specific no-write symbols to phase-neutral read-only contracts and updated task note/tests. |
 | F005 | MEDIUM | `01KRQS784XVAY9TT8MEX1EDNW8` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Moved selected/status marking after non-UI fallback return so text fallback leaves no modal state. |
 | F006 | MEDIUM | `01KRQSFM9E9MX891009VSF391H` | Fixed; companion approved via `01KRQSK72HWA6SZK6Z6DJ0KY0X` | `15ed2c4` | UI tests now inject non-default list/modal key maps and assert default raw keys do not act. |
-| F007 | MEDIUM | `01KRQSPZEDXHGCSD5KTJHYBG36` | Fixing inline before T012 commit | pending | Escape-close smoke used generic model/severity words that could already exist in scrollback. |
+| F007 | MEDIUM | `01KRQSPZEDXHGCSD5KTJHYBG36` | Fixed; companion approved via `01KRQT63YCBZ6H3713C5EVQ6GV` | `c76b8ef` | Removed generic post-Escape regexes; subsequent slash-command success after close-settle proves input was released. |
+| F008 | LOW | `01KRQT597KXAEZ400FEM2XZEHM` | Fixed in T012 working tree; will land in final evidence commit | pending | Reconciled stale F007 row after the fix commit was reviewed. |
 
 ---
 
