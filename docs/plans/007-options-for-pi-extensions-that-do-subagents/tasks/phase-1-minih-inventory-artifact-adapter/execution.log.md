@@ -80,3 +80,10 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Commit**: `9ad242a`
 - **Companion**: Sent `review-request: T004 9ad242a` as message `01KRQF3T783TDMYVGX8MC7SD93`.
 
+### T005 — Define Pi-free store contracts and constants
+
+- **Status**: complete
+- **Evidence**: Replaced generated store with Pi-free Minih Workbench contracts for run summaries, kind/status axes, diagnostics, modal/view snapshots, adapter tagged results, bounded panes, inventory projection, Phase 1 no-write guard, and placeholder action identifiers. Adjusted placeholder `index.ts`/`store.test.ts` imports to keep the repo typecheckable until T010/T011 expand them.
+- **Validation**: `just typecheck`; `npx vitest run .pi/extensions/minih-workbench/store.test.ts`; `just lint` all passed after formatting.
+- **Companion**: Review request to be sent after commit.
+

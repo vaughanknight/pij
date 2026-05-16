@@ -3,45 +3,29 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 
-import { MinihWorkbenchStore } from "./store.js";
+import { MINIH_COMMAND_NAME, MINIH_STATUS_KEY, WORKBENCH_NAME } from "./store.js";
 
 export default function (pi: ExtensionAPI) {
-	const store = new MinihWorkbenchStore((customType, data) => pi.appendEntry(customType, data));
-
-	function refreshStatus(ctx: ExtensionContext): void {
-		const n = store.count();
-		ctx.ui.setStatus("minih-workbench", n === 0 ? undefined : `minih-workbench: ${n}`);
+	function clearStatus(ctx: ExtensionContext): void {
+		ctx.ui.setStatus(MINIH_STATUS_KEY, undefined);
 	}
 
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
-		store.rehydrate(ctx.sessionManager.getEntries());
-		refreshStatus(ctx);
+		clearStatus(ctx);
 	});
 
-	pi.registerCommand("minih-workbench", {
-		description: "TODO: describe minih-workbench",
+	pi.on("session_shutdown", async (_event, ctx) => {
+		clearStatus(ctx);
+	});
+
+	pi.registerCommand(MINIH_COMMAND_NAME, {
+		description: "Inspect Minih runs through the Pi-native Minih Workbench",
 		handler: async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
-			// TODO: implement /minih-workbench
-			ctx.ui.notify(`minih-workbench: not implemented (got: ${args})`, "info");
-		},
-	});
-
-	// Optional starter tool — delete or expand.
-	pi.registerTool({
-		name: "minih-workbench_ping",
-		label: "MinihWorkbench ping",
-		description: "TODO: describe what minih-workbench_ping does",
-		parameters: Type.Object({
-			message: Type.String({ description: "Message to echo" }),
-		}),
-		async execute(_id, params, _signal, _onUpdate, _ctx) {
-			return {
-				content: [{ type: "text", text: `pong: ${params.message}` }],
-				details: {},
-			};
+			const suffix = args.trim().length > 0 ? ` (got: ${args.trim()})` : "";
+			ctx.ui.notify(`${WORKBENCH_NAME}: adapter wiring lands in Phase 1 T010${suffix}`, "info");
+			clearStatus(ctx);
 		},
 	});
 }

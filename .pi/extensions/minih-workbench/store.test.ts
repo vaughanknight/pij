@@ -1,51 +1,128 @@
 import { describe, expect, it } from "vitest";
 
-import { makeRecorder } from "../../../harness/test-utils.js";
-import { ENTRY_DELETE, ENTRY_ITEM, MinihWorkbenchStore, type ReplayableEntry } from "./store.js";
+import {
+	classifyAttention,
+	defaultModalState,
+	diagnostic,
+	type MinihRunSummary,
+	makePaneSnapshot,
+	phase1NoWriteResult,
+	projectInventory,
+	sortRunSummaries,
+} from "./store.js";
 
-function makeStore() {
-	const { append, calls } = makeRecorder();
-	const store = new MinihWorkbenchStore(append);
-	return { store, calls };
+function summary(
+	input: Partial<MinihRunSummary> & Pick<MinihRunSummary, "slug" | "runId">,
+): MinihRunSummary {
+	return {
+		slug: input.slug,
+		runId: input.runId,
+		kind: input.kind ?? "unknown",
+		runPath: input.runPath ?? `/tmp/${input.slug}/${input.runId}`,
+		startedAt: input.startedAt,
+		updatedAt: input.updatedAt,
+		completedAt: input.completedAt,
+		status: input.status ?? {
+			liveness: "active",
+			terminal: "running",
+			inside: "running",
+			outside: "available",
+			attention: "none",
+		},
+		report: input.report ?? {
+			state: "none",
+			findingsCount: 0,
+			bytes: 0,
+			truncated: false,
+		},
+		diagnostics: input.diagnostics ?? [],
+		materialEventCount: input.materialEventCount ?? 0,
+		hasInbox: input.hasInbox ?? false,
+		hasState: input.hasState ?? false,
+	};
 }
 
-describe("MinihWorkbenchStore", () => {
-	it("starts empty", () => {
-		const { store } = makeStore();
-		expect(store.count()).toBe(0);
+describe("minih-workbench store contracts", () => {
+	it("starts with a closed modal state", () => {
+		expect(defaultModalState()).toMatchObject({ open: false, focusedPane: "transcript" });
 	});
 
-	it("rehydrates items from a session entry log", () => {
-		const { store } = makeStore();
-		const entries: ReplayableEntry[] = [
-			{
-				type: "custom",
-				customType: ENTRY_ITEM,
-				data: { id: "1", createdAt: 1 },
-			},
-		];
-		store.rehydrate(entries);
-		expect(store.count()).toBe(1);
+	it("sorts active and stale runs before completed runs", () => {
+		const runs = sortRunSummaries([
+			summary({
+				slug: "done",
+				runId: "3",
+				status: {
+					liveness: "completed",
+					terminal: "completed",
+					inside: "complete",
+					outside: "unavailable",
+					attention: "none",
+				},
+			}),
+			summary({
+				slug: "stale",
+				runId: "2",
+				status: {
+					liveness: "stale",
+					terminal: "running",
+					inside: "running",
+					outside: "waiting",
+					attention: "needs_attention",
+				},
+			}),
+			summary({ slug: "active", runId: "1" }),
+		]);
+		expect(runs.map((run) => run.slug)).toEqual(["active", "stale", "done"]);
 	});
 
-	// Negative case: malformed replay data must NOT mutate state (P7).
-	it("ignores replay entries whose data is not a valid Item", () => {
-		const { store } = makeStore();
-		const malformed: ReplayableEntry[] = [
-			{
-				type: "custom",
-				customType: ENTRY_ITEM,
-				data: { wrongShape: true },
-			},
-			{
-				type: "custom",
-				customType: ENTRY_DELETE,
-				data: null,
-			},
-		];
-		store.rehydrate(malformed);
-		expect(store.count()).toBe(0);
+	it("projects active plus bounded completed/report-ready inventory", () => {
+		const inventory = projectInventory(
+			[
+				summary({ slug: "active", runId: "1" }),
+				summary({
+					slug: "done",
+					runId: "2",
+					status: {
+						liveness: "completed",
+						terminal: "completed",
+						inside: "complete",
+						outside: "unavailable",
+						attention: "none",
+					},
+					report: { state: "ready", findingsCount: 1, bytes: 100, truncated: false },
+				}),
+			],
+			{ activeLimit: 10, completedLimit: 1 },
+		);
+		expect(inventory.runs.map((run) => run.slug)).toEqual(["active", "done"]);
+		expect(inventory.completedCount).toBe(1);
 	});
 
-	// TODO: more tests as the store grows
+	it("bounds pane snapshots with truncation markers", () => {
+		const pane = makePaneSnapshot(
+			[
+				{ id: "1", type: "message", text: "abcdef" },
+				{ id: "2", type: "message", text: "ghijkl" },
+			],
+			{ limit: 2, maxBytes: 10 },
+		);
+		expect(pane.truncatedBytes).toBe(true);
+		expect(pane.items.at(-1)?.text).toContain("[truncated]");
+	});
+
+	it("keeps attention classification separate from terminal status", () => {
+		expect(
+			classifyAttention({
+				status: { liveness: "active", inside: "running" },
+				diagnostics: [diagnostic("warning", "STALE_PEER", "peer is slow")],
+			}),
+		).toBe("needs_attention");
+	});
+
+	it("makes Phase 1 write/control attempts explicit errors", () => {
+		const result = phase1NoWriteResult("send");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.message).toContain("read-only");
+	});
 });
