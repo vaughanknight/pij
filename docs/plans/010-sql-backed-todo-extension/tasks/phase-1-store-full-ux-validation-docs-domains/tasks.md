@@ -1,7 +1,7 @@
 # Phase 1 Follow-up Tasks: Store, full UX, validation, docs, domains
 
 **Created**: 2026-05-15  
-**Status**: Proposed  
+**Status**: Complete  
 **Plan**: [../../sql-backed-todo-extension-plan.md](../../sql-backed-todo-extension-plan.md)  
 **Purpose**: Compatibility index for Plan 010 follow-up subtasks. The original Plan 010 implementation ran in Simple mode from the root plan task table, so no phase-level `tasks.md` existed when Subtask 001 was created.
 
