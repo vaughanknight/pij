@@ -30,7 +30,8 @@
 | T003 | complete | `5371cb0` | `npx vitest run .pi/extensions/minih-workbench/store.test.ts` ✅ 15 tests | `01KRQR66ZFZ7K7TYEH9S8WJHFD` | Expanded store coverage for default keybindings, selection bounds/wrap, selected-run modal open, safe close, pane focus cycling, and independent pane paging. |
 | T004 | complete | `4fc6a41` | `npx tsc --noEmit` ✅ | `01KRQR969YPM0AMK8QDYHZD2SR` | Replaced text-only UI helpers with width-safe inventory/modal render primitives, stable anchors, status axes, diagnostics/report sections, pane indicators, and disabled composer reason. |
 | T005 | complete | `d472fac` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRCZEE63JPJAC7W2H0JFB9` | Added `MinihRunListComponent` with injected keybindings and wired `/minih`/`/minih list` to an interactive overlay with non-UI text fallback; Enter selects a run for the upcoming modal task. |
-| T006 | complete | pending | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | pending | Added `MinihRunModalComponent`, `/minih view <slug> <runId>`, list-to-modal open flow, full-area overlay rendering, pane focus/page handling, non-UI modal text fallback, and safe Esc close. |
+| T006 | complete | `135acec` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRNR62EYRCEWWM3CQ710XH` | Added `MinihRunModalComponent`, `/minih view <slug> <runId>`, list-to-modal open flow, full-area overlay rendering, pane focus/page handling, non-UI modal text fallback, and safe Esc close. |
+| T007 | complete | pending | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | pending | Added Pi-free `feed.ts` read-only feed manager with injected readers/timers, coalesced refresh, watcher-failure diagnostics, bounded fallback polling, dispose guards, and list/modal feed integration with shutdown cleanup. |
 
 ---
 

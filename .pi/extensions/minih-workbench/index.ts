@@ -5,6 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+import { createInventoryFeed, createRunFeed, type MinihReadOnlyFeedHandle } from "./feed.js";
 import {
 	defaultFixtureRoot,
 	listMinihRuns,
@@ -80,6 +81,24 @@ Phase 2 is read-only: no send, stop, composer, push, launch, or install.`;
 }
 
 export default function (pi: ExtensionAPI) {
+	const activeFeeds = new Set<MinihReadOnlyFeedHandle>();
+
+	function disposeActiveFeeds(): void {
+		for (const feed of activeFeeds) feed.dispose();
+		activeFeeds.clear();
+	}
+
+	function trackFeed(feed: MinihReadOnlyFeedHandle): MinihReadOnlyFeedHandle {
+		activeFeeds.add(feed);
+		return feed;
+	}
+
+	function releaseFeed(feed: MinihReadOnlyFeedHandle | undefined): void {
+		if (!feed) return;
+		feed.dispose();
+		activeFeeds.delete(feed);
+	}
+
 	function clearStatus(ctx: ExtensionContext): void {
 		ctx.ui.setStatus(MINIH_STATUS_KEY, undefined);
 	}
@@ -104,6 +123,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		let component: MinihRunModalComponent | undefined;
+		let feed: MinihReadOnlyFeedHandle | undefined;
 		let closed = false;
 		await ctx.ui.custom<"closed">(
 			(tui, _theme, _keybindings, done) => {
@@ -117,6 +137,23 @@ export default function (pi: ExtensionAPI) {
 						if (!closed) tui.requestRender();
 					},
 				});
+				feed = trackFeed(
+					createRunFeed({
+						read: () =>
+							readMinihRunStatus({
+								rootDir: configuredRoot(),
+								slug: run.slug,
+								runId: run.runId,
+							}),
+						onSnapshot: (snapshot) => {
+							if (!closed) component?.updateView(snapshot, "minih: refreshed");
+						},
+						onDiagnostics: (diagnostics) => {
+							if (!closed) component?.updateView(result.value, `minih: ${diagnostics.length} diagnostics`);
+						},
+					}),
+				);
+				feed.start();
 				return component;
 			},
 			{
@@ -131,6 +168,7 @@ export default function (pi: ExtensionAPI) {
 			},
 		);
 		closed = true;
+		releaseFeed(feed);
 		component = undefined;
 	}
 
@@ -145,6 +183,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		let component: MinihRunListComponent | undefined;
+		let feed: MinihReadOnlyFeedHandle | undefined;
 		let closed = false;
 		const selected = await ctx.ui.custom<MinihRunRef | "closed">(
 			(tui, _theme, _keybindings, done) => {
@@ -155,17 +194,23 @@ export default function (pi: ExtensionAPI) {
 				component = new MinihRunListComponent(initial.value, {
 					onOpenRun: (run) => finish(run),
 					onClose: () => finish("closed"),
-					onRefresh: () => {
-						const activeComponent = component;
-						if (!activeComponent) return;
-						void loadInventory().then((result) => {
-							if (closed || activeComponent !== component) return;
-							if (result.ok) activeComponent.updateSnapshot(result.value, "minih: refreshed");
-							else activeComponent.updateSnapshot(initial.value, `minih: ${result.message}`);
-						});
+					onRefresh: () => feed?.refresh(),
+					requestRender: () => {
+						if (!closed) tui.requestRender();
 					},
-					requestRender: () => tui.requestRender(),
 				});
+				feed = trackFeed(
+					createInventoryFeed({
+						read: loadInventory,
+						onSnapshot: (snapshot) => {
+							if (!closed) component?.updateSnapshot(snapshot, "minih: refreshed");
+						},
+						onDiagnostics: (diagnostics) => {
+							if (!closed) component?.updateSnapshot(initial.value, `minih: ${diagnostics.length} diagnostics`);
+						},
+					}),
+				);
+				feed.start();
 				return component;
 			},
 			{
@@ -180,16 +225,19 @@ export default function (pi: ExtensionAPI) {
 			},
 		);
 		closed = true;
+		releaseFeed(feed);
 		component = undefined;
 		if (selected !== "closed") await openRunModal(ctx, selected);
 	}
 
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
+		disposeActiveFeeds();
 		clearStatus(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		disposeActiveFeeds();
 		clearStatus(ctx);
 	});
 

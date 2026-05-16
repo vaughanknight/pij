@@ -66,8 +66,8 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1,S2,S3,S4 done
-    class S5,S6,S7,S8 pending
+    class S1,S2,S3,S4,S5 done
+    class S6,S7,S8 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -82,7 +82,7 @@ stateDiagram-v2
 - [x] **Stage 2: Prove pure behavior** — expand store tests for keybindings, selection, pane focus, cursor paging, and safe close (`store.test.ts`).
 - [x] **Stage 3: Build native list UI** — implement width-safe run-list rendering and keyboard selection (`ui.ts`, `index.ts`).
 - [x] **Stage 4: Build full modal UI** — implement header, transcript/tools/coordination/report/diagnostics panes, disabled composer reason, focus and scroll indicators (`ui.ts`).
-- [ ] **Stage 5: Add lazy feed lifecycle** — create read-only feed manager with fake timers/readers, diagnostics, bounded polling fallback, coalescing, and explicit dispose (`feed.ts`).
+- [x] **Stage 5: Add lazy feed lifecycle** — create read-only feed manager with fake timers/readers, diagnostics, bounded polling fallback, coalescing, and explicit dispose (`feed.ts`).
 - [ ] **Stage 6: Wire commands/lifecycle** — connect `/minih`, `/minih list`, `/minih view`, `/minih report`, session_start reconciliation, and session_shutdown cleanup (`index.ts`).
 - [ ] **Stage 7: Validate UI/feed behavior** — add targeted UI/feed tests and deterministic Driver SDK modal smoke (`ui.test.ts`, `feed.test.ts`, `smoke.ts`).
 - [ ] **Stage 8: Land evidence and handoff** — update execution log, extension `AGENTS.md`, domain docs, flight status, velocity/difficulty records, and Phase 3 handoff notes (`execution.log.md`, domain docs).
@@ -176,7 +176,7 @@ flowchart LR
 - [x] T004: Build UI rendering primitives and stable text anchors.
 - [x] T005: Implement the keyboard-selectable Minih run-list component.
 - [x] T006: Implement the full-area read-only modal viewer component.
-- [ ] T007: Add lazy read-only feed/watch lifecycle with fake-feed support.
+- [x] T007: Add lazy read-only feed/watch lifecycle with fake-feed support.
 - [ ] T008: Wire `/minih` list/view/report commands to the native UI while preserving pull contracts.
 - [ ] T009: Reconcile lifecycle and session state without auto-opening UI.
 - [ ] T010: Add targeted UI/feed tests.
