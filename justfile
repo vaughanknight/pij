@@ -12,6 +12,53 @@
 default:
     @just --list
 
+# --- bootstrap ---
+#
+# `just install` is THE single command to set up pij on a fresh machine
+# after `git clone`. Idempotent — safe to re-run any time pi's state
+# drifts (after pi self-update, after switching machines, etc.).
+#
+# What it does:
+#   1. Install repo dependencies (`npm ci`)
+#   2. Verify the global `pi` binary is present (fail loudly if not)
+#   3. Sync user-personal prefs to the pi global agent dir:
+#        .pi/APPEND_SYSTEM.md  → ~/.pi/agent/APPEND_SYSTEM.md
+#        .pi/mcp.json          → ~/.pi/agent/mcp.json
+#   4. Symlink pij's local extensions into ~/.pi/agent/extensions/
+#   5. Install every vetted package from .pi/packages.yaml globally
+#      via `pi install` (uses cmdBootstrap; refuses stale entries)
+#   6. Run pi-doctor as a final verification
+#
+# After install, `pi` from ANY cwd on this machine gets the same
+# extensions, MCP servers, voice-input prefs, response-mode prefs,
+# and global packages that pij configures.
+
+install:
+    @echo "=== 1/6 npm dependencies ==="
+    npm ci
+    @echo
+    @echo "=== 2/6 verify pi binary ==="
+    @command -v pi >/dev/null 2>&1 || { echo "❌ pi not found. Install: npm install -g @earendil-works/pi-coding-agent"; exit 1; }
+    @pi --version | head -1
+    @mkdir -p ~/.pi/agent
+    @echo
+    @echo "=== 3/6 sync global pi prefs ==="
+    cp .pi/APPEND_SYSTEM.md ~/.pi/agent/APPEND_SYSTEM.md
+    @echo "  → ~/.pi/agent/APPEND_SYSTEM.md"
+    cp .pi/mcp.json ~/.pi/agent/mcp.json
+    @echo "  → ~/.pi/agent/mcp.json"
+    @echo
+    @echo "=== 4/6 link pij extensions globally ==="
+    just link
+    @echo
+    @echo "=== 5/6 install vetted packages globally ==="
+    just pkg bootstrap
+    @echo
+    @echo "=== 6/6 pi-doctor ==="
+    just pi-doctor
+    @echo
+    @echo "✓ install complete. pi is set up on this machine."
+
 # --- atomic checks (thin wrappers over npm scripts) ---
 
 typecheck:

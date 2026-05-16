@@ -51,6 +51,12 @@
 > lists every recipe. Run individual npm scripts (`npm run typecheck`
 > etc.) only for IDE/tooling integration — agents drive `just`.
 
+0. **Fresh clone / new machine: `just install`** — single-command
+   bootstrap. Installs deps, syncs `.pi/APPEND_SYSTEM.md` + `.pi/mcp.json`
+   to `~/.pi/agent/`, symlinks local extensions globally, installs every
+   vetted manifest package, then runs `just pi-doctor` to verify. Re-run
+   any time pi's global state drifts (after `pi update`, after switching
+   machines).
 1. New extension: **`just new <name>`** — never hand-roll the T2
    boilerplate.
 2. Iterate: `pi` from pij root + `/reload`. Type-check in another tab
@@ -88,12 +94,20 @@
   `.pi/packages.yaml` (source of truth) → `.pi/settings.json#packages`
   (generated). Subcommands: `list` / `add <src> [note...]` / `enable <s>`
   / `disable <s>` (runs `pi remove`) / `sync`.
-- **MCP server config** lives globally at `~/.pi/agent/mcp.json` (read by
-  `pi-mcp-adapter`). pij does **not** keep a project-local `.mcp.json` —
-  the configured servers (perplexity, flowspace/`fs2`) are shared across
-  every pi session. Per-project overrides would go in `.pi/mcp.json` if
-  ever needed. Config holds env-var **references** (`${PERPLEXITY_API_KEY}`),
-  never plaintext secrets — the actual key lives in `~/.zshenv` / shell env.
+- **Global pi prefs and MCP config** are checked into pij as the
+  source of truth — `just install` syncs them out to the global
+  agent dir on every run:
+    - `.pi/APPEND_SYSTEM.md` → `~/.pi/agent/APPEND_SYSTEM.md`
+      (voice-input rules, response-mode prefs, SQL prefs, etc. —
+      personal, applies to every pi session on the machine).
+    - `.pi/mcp.json` → `~/.pi/agent/mcp.json` (perplexity + flowspace/`fs2`
+      MCP servers). Config holds env-var references like
+      `${PERPLEXITY_API_KEY}`, never plaintext secrets — the actual key
+      lives in `~/.zshenv`.
+  Per-project pi-specific MCP overrides would still go in `.pi/mcp.json`
+  (which is what pij has — and `just install` reuses that file as the
+  global template). Don't edit `~/.pi/agent/*` by hand; edit `.pi/*` here
+  and re-run `just install`.
 - **`agents/extension-validator/`** — minih agent pack that drives the
   Driver SDK to validate extensions; used in plan-004 pilot flow.
 
