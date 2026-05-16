@@ -40,8 +40,10 @@ const scenario: Scenario = {
 		{
 			kind: "press",
 			key: "Escape",
-			expect: /gpt|claude|gemini|medium|high/,
-			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "sleep",
+			ms: 300,
 		},
 		{
 			kind: "type",
@@ -53,8 +55,10 @@ const scenario: Scenario = {
 		{
 			kind: "press",
 			key: "Escape",
-			expect: /gpt|claude|gemini|medium|high/,
-			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "sleep",
+			ms: 300,
 		},
 		{
 			kind: "type",

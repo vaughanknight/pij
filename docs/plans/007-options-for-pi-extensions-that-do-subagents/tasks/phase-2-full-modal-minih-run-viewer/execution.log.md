@@ -35,7 +35,8 @@
 | T008 | complete | `122eb2c` | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 17 tests; `npm run smoke -- minih-workbench` ✅ | `01KRQS3T7Q95KSKC78H0EZNNE3` | Wired `/minih view` and `/minih report` native modal flows, preserved `/minih report ... --json` and `/minih status --json`, and updated forbidden Phase 3 verb warnings to Phase 2 read-only wording. |
 | T009 | complete | `f299c98` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQS784XVAY9TT8MEX1EDNW8` | Added session-scoped selected-run pointer reconciliation through the persistence facade, status cleanup, and feed/pointer disposal on one `session_start` handler plus `session_shutdown` without auto-opening UI. |
 | T010 | complete | `a6ab438` | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/feed.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 22 tests | `01KRQSFM9E9MX891009VSF391H` | Added `feed.test.ts` for coalescing, watcher-failure diagnostics/bounded fallback, and callbacks-after-dispose; expanded `ui.test.ts` for list selection/open, modal anchors/focus/Esc, multiline width safety, and report paging. |
-| T011 | complete | pending | `npm run smoke -- minih-workbench` ✅ | pending | Expanded Driver SDK smoke to prove `/minih status --json`, list render, Enter modal, pane focus, Esc close, report-pane modal, `/reload`, and post-reload status over deterministic fixtures. |
+| T011 | complete | `caf9882` | `npm run smoke -- minih-workbench` ✅ | `01KRQSPZEDXHGCSD5KTJHYBG36` | Expanded Driver SDK smoke to prove `/minih status --json`, list render, Enter modal, pane focus, Esc close, report-pane modal, `/reload`, and post-reload status over deterministic fixtures. |
+| T012 | complete | pending | `just self-check` ✅ | pending | Updated extension rules, domain docs, plan-level flight plan, task/flight status, velocity evidence, and Phase 3 handoff notes. |
 
 ---
 
@@ -48,7 +49,40 @@
 | F003 | MEDIUM | `01KRQRNR62EYRCEWWM3CQ710XH` | Fixed; companion approved via `01KRQRY6W3FAQY172A8RP0APBD` | `0ff2828` | Report rendering now windows summary lines with `reportCursor`; UI test proves report page-down changes visible content. |
 | F004 | MEDIUM | `01KRQS3T7Q95KSKC78H0EZNNE3` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Renamed Phase 1-specific no-write symbols to phase-neutral read-only contracts and updated task note/tests. |
 | F005 | MEDIUM | `01KRQS784XVAY9TT8MEX1EDNW8` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Moved selected/status marking after non-UI fallback return so text fallback leaves no modal state. |
-| F006 | MEDIUM | `01KRQSFM9E9MX891009VSF391H` | Fixed; verification requested via `01KRQSJHD6CWJ5P0DNZW444QZT` | `15ed2c4` | UI tests now inject non-default list/modal key maps and assert default raw keys do not act. |
+| F006 | MEDIUM | `01KRQSFM9E9MX891009VSF391H` | Fixed; companion approved via `01KRQSK72HWA6SZK6Z6DJ0KY0X` | `15ed2c4` | UI tests now inject non-default list/modal key maps and assert default raw keys do not act. |
+| F007 | MEDIUM | `01KRQSPZEDXHGCSD5KTJHYBG36` | Fixing inline before T012 commit | pending | Escape-close smoke used generic model/severity words that could already exist in scrollback. |
+
+---
+
+## Final Validation Evidence
+
+| Command | Result | Notes |
+|---------|--------|-------|
+| `npx tsc --noEmit` | ✅ pass | Run during T001/T002/T004/T005/T006/T007/T008/T009/T010 and included in final `just self-check`. |
+| `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/feed.test.ts .pi/extensions/minih-workbench/ui.test.ts` | ✅ pass | 22 focused Minih Workbench tests. |
+| `npm run smoke -- minih-workbench` | ✅ pass | Proves status JSON, list, Enter modal, pane focus, Esc close, report modal, reload, and post-reload status. |
+| `just self-check` | ✅ pass | Typecheck → lint → full test suite → all smoke → package audit with `PIJ_VET_SKIP_AGENT=1` → snapshots-check. |
+| `minih doctor` | ⚠️ degraded, 0 errors | Same known warnings as pre-phase; did not block companion use. |
+
+---
+
+## Phase 3 Handoff
+
+### Exported contracts to preserve
+
+- `DEFAULT_MINIH_WORKBENCH_KEYBINDINGS`, `MINIH_WORKBENCH_ACTIONS`, and injected keybinding consumption in `ui.ts`.
+- Pure list/modal helpers in `store.ts`: selection bounds, modal open/close, pane focus, pane cursor paging, report cursor support, and `readOnlyNoWriteResult()`.
+- `MinihRunListComponent` and `MinihRunModalComponent` as read-only native Pi UI surfaces.
+- `MinihReadOnlyFeed` / `createInventoryFeed` / `createRunFeed` for lazy, disposable, coalesced, diagnostics-producing read-only refresh.
+- Canonical pull surfaces: `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, `minih_read_report`.
+- Operator flows: `/minih`, `/minih list`, `/minih view <slug> <runId>`, `/minih report <slug> <runId>`, and safe `Esc` close.
+
+### Non-exports / do not assume
+
+- No composer/send/stop/push implementation exists yet.
+- No Minih write wrapper exists yet.
+- No durable session-SQL-backed selected pointer/cursor implementation exists yet; Phase 2 uses the facade/in-memory behavior only.
+- No live Minih/Copilot validation is part of routine self-check.
 
 ---
 
