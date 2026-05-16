@@ -49,7 +49,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F009 | LOW | `01KRQFT2233DSY9R77W8GAA19Y` | T005-fix2 | Fixed in `47766c0` | F008 row still said pending in the first fix commit; T008 commit carried the corrected disposition. |
 | F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in `b76aa37`; verification request `01KRQGBY1VK6G7P6D829S1RAEN` | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
 | F011 | LOW | `01KRQGBY1VK6G7P6D829S1RAEN` | T009-fix | Fixed in `dfc1d3f` | F010 row still said pending in the fix commit; T012 log update corrected it. |
-| F012 | LOW | `01KRQGEKMSEECP7E8KPFMHMJW4` | T011 | Fixed in `5964333` | T011 fixed F011's underlying complaint but did not include an F011 reconciliation row; current log records it. |
+| F012 | LOW | `01KRQGEKMSEECP7E8KPFMHMJW4` | T011 | Fixed in evidence commit `0d745b1` | T011 fixed F011's underlying complaint but did not include an F011 reconciliation row; current log records it. |
 
 ## Task entries
 
@@ -162,6 +162,6 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
   - Final `just self-check` passed: typecheck → lint → test → smoke (`minih-workbench`, `ralph-loop`, `session-sql`, `todo`) → package audit with `PIJ_VET_SKIP_AGENT=1` → snapshots-check.
   - `minih doctor --json` at phase start: degraded with 0 errors; `code-review-companion` prompt-state-vocabulary-drift passed; warnings only.
   - Dependency decision: no new package added; no package-manifest hand edits for Minih Workbench.
-- **Commit**: `5964333`
+- **Commit**: evidence commit `0d745b1`; follow-up log SHA correction committed separately.
 - **Companion**: Final review request to be sent after commit.
 
