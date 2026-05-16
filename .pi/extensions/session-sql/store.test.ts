@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { looksMutatingSql } from "./index.js";
 import {
 	locationForSession,
 	MAX_QUERY_BYTES,
@@ -57,6 +58,21 @@ describe("session SQL path helpers", () => {
 		expect(location.sessionId).toBe("abc/def");
 		expect(location.rootDir).toBe(root);
 		expect(location.dbPath).toBe(join(root, "abc_def.sqlite"));
+	});
+});
+
+describe("session SQL changed-event classifier", () => {
+	it("does not classify read-only SELECT statements as changed", () => {
+		expect(looksMutatingSql("SELECT * FROM todos")).toBe(false);
+		expect(looksMutatingSql("WITH recent AS (SELECT * FROM todos) SELECT * FROM recent")).toBe(
+			false,
+		);
+	});
+
+	it("classifies mutating SQL, including INSERT RETURNING, as changed", () => {
+		expect(looksMutatingSql("INSERT INTO todos(title) VALUES ('x') RETURNING id")).toBe(true);
+		expect(looksMutatingSql("UPDATE todos SET status = 'done' WHERE id = 1")).toBe(true);
+		expect(looksMutatingSql("SELECT 1; DELETE FROM todos WHERE id = 1")).toBe(true);
 	});
 });
 

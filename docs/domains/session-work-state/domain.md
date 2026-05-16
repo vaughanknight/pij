@@ -24,7 +24,7 @@ Own session-scoped structured state used by an agent while solving the current t
 | Resume persistence | Same-session data survives reload, process exit, and later resume while files remain. | Reopen by same session ID returns prior rows. |
 | New/fork independence | New and forked sessions do not inherit parent rows. | New session ID maps to a fresh DB plus defaults. |
 | Trusted SQL execution | SQL is trusted local-agent capability, not a sandbox. | Unrestricted SQL, 200-row returned preview cap, native extension loading when supported. |
-| SQL-backed todo state | Routine todo operations are a typed view over the default work schema. | `TodoSqlStore` uses only `todos` and `todo_deps`, shares `/sql` visibility, and never creates duplicate storage. |
+| SQL-backed todo state | Routine todo operations and compact widget projections are typed views over the default work schema. | `TodoSqlStore` uses only `todos` and `todo_deps`, shares `/sql` visibility, exposes `widgetSnapshot()` for recent-activity display, and never creates duplicate storage. |
 | Dependency-aware readiness | Ready work is derived from status plus dependency edges. | `next` returns `in_progress`/`pending` rows whose dependencies are all `done`, ordered deterministically. |
 
 ## Contracts
@@ -35,7 +35,7 @@ Own session-scoped structured state used by an agent while solving the current t
 | `SessionSqlLocation` | `agent-tooling-interface` | Plain data object with session ID, root dir, and DB path; no pi imports. |
 | Default schema | Agents and `/sql schema` | Versioned schema with metadata, todos, and dependency edges. |
 | Result caps | Agent/tool UX | Returned previews cap at 200 rows and mark truncation. |
-| `TodoSqlStore` | `agent-tooling-interface` | Pi-free todo add/list/status/block/done/dependency/next/counts/clear operations over the default schema with tagged-union results. |
+| `TodoSqlStore` | `agent-tooling-interface` | Pi-free todo add/list/status/block/done/dependency/next/counts/clear/widgetSnapshot operations over the default schema with tagged-union results. |
 
 ## Composition
 
@@ -44,7 +44,8 @@ Own session-scoped structured state used by an agent while solving the current t
 | Session SQL store | implemented | Implemented in `.pi/extensions/session-sql/store.ts`. |
 | Store tests | implemented | Use real temporary SQLite/filesystem fixtures in `.pi/extensions/session-sql/store.test.ts`. |
 | Todo SQL store | implemented | `TodoSqlStore` in `.pi/extensions/todo/store.ts` consumes `SessionSqlStore` and the default todo/dependency schema. |
-| Todo store tests | implemented | `.pi/extensions/todo/store.test.ts` covers SQL agreement, statuses, dependencies, clear, limits, and persistence. |
+| Todo widget projection | implemented | `TodoSqlStore.widgetSnapshot()` returns a compact recent-activity projection for the agent-tooling-interface widget without adding storage. |
+| Todo store tests | implemented | `.pi/extensions/todo/store.test.ts` covers SQL agreement, statuses, dependencies, clear, limits, widget projection, and persistence. |
 
 ## Dependencies
 
@@ -67,7 +68,7 @@ Own session-scoped structured state used by an agent while solving the current t
 - Session identity semantics.
 - DB path and persistence expectations.
 - Default schema and schema version.
-- Todo/dependency state semantics over the default schema.
+- Todo/dependency state semantics and recent-activity widget projection over the default schema.
 - Reset behavior.
 - New/fork independence.
 - Output caps as store-level result limits.
@@ -88,3 +89,4 @@ Own session-scoped structured state used by an agent while solving the current t
 | 006-generic-sqlite-session-tool | Domain created for session-local SQLite work state. | 2026-05-15 |
 | 006-generic-sqlite-session-tool | Implemented `SessionSqlStore`, default schema, execution caps, reset, and native extension loading support. | 2026-05-15 |
 | 010-sql-backed-todo-extension | Added `TodoSqlStore` as a pi-free typed consumer of the default `todos` / `todo_deps` schema and extended `SessionSqlStore` with bound-parameter support. | 2026-05-15 |
+| 010-sql-backed-todo-extension/ST-001 | Added `TodoSqlStore.widgetSnapshot()` for compact below-editor recent-activity display without new storage. | 2026-05-16 |

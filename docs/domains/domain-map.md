@@ -2,8 +2,8 @@
 
 ```mermaid
 flowchart LR
-    SWS[session-work-state\ncontracts: session DB semantics, schema, reset, TodoSqlStore]
-    ATI[agent-tooling-interface\ncontracts: sql tool, /sql command, todo tool, /todo, overlay/status UX]
+    SWS[session-work-state\ncontracts: session DB semantics, schema, reset, TodoSqlStore/widgetSnapshot]
+    ATI[agent-tooling-interface\ncontracts: sql tool, /sql command, todo tool, /todo, overlay/status/strip UX]
     H[extension-authoring-harness\ncontracts: generator, smoke, self-check, feedback, pkg vet/audit]
     PI[pi runtime\ncontracts: extension lifecycle, tools, commands]
     V[vetter pipeline\ncontracts: Verdict, Finding, Vetter; vetted: schema]
@@ -24,7 +24,7 @@ flowchart LR
 
 | Relationship | Status | Notes |
 |--------------|--------|-------|
-| `agent-tooling-interface` → `session-work-state` | healthy | UI/tool layer consumes `SessionSqlStore` and `TodoSqlStore`; stores remain pi-free and SQL-backed. |
+| `agent-tooling-interface` → `session-work-state` | healthy | UI/tool/strip layer consumes `SessionSqlStore` and `TodoSqlStore.widgetSnapshot`; stores remain pi-free and SQL-backed. |
 | `agent-tooling-interface` → `pi runtime` | healthy | Wiring owns pi APIs and presentation. |
 | `session-work-state` → `pi runtime` | indirect | Store does not import pi; `index.ts` passes plain session/location data. |
 | `session-work-state` / `agent-tooling-interface` → `extension-authoring-harness` | healthy | Harness provides generator, store tests, `/todo` + `/sql` smoke, self-check, ledgers, and retro loop. |
@@ -41,3 +41,4 @@ flowchart LR
 | 2026-05-15 | Plan 009 — added vetter pipeline as a sub-capability of `extension-authoring-harness` with a consume edge to `agent-tooling-interface` (scans its surfaces). Pipeline contracts (`Verdict`, `Finding`, `Vetter`, `vetted:` schema) live in `harness/scripts/vetters/`. |
 | 2026-05-15 | Plan 008 — added `agentic-loops` node (`RL`); two outbound edges (to `pi runtime` for wiring; to `extension-authoring-harness` for tests/smoke). No cross-domain edge to existing pij domains in v1. AC-05 `/compact` durability listed as unverified in Health Summary until T024 lands. |
 | 2026-05-15 | Plan 010 — extended `session-work-state` with `TodoSqlStore` over the default `todos` / `todo_deps` schema and extended `agent-tooling-interface` with `todo` tool, `/todo`, overlay/status UX, docs, and smoke. |
+| 2026-05-16 | Plan 010 ST-001 — added `TodoSqlStore.widgetSnapshot`, below-editor `todo-strip`, and `session-sql:changed` refresh edge for raw SQL mutations. |

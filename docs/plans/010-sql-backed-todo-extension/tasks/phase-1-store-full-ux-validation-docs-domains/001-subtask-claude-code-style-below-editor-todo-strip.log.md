@@ -33,7 +33,7 @@
 | ST002 | done | Added below-editor `todo-strip` widget rendering, lifecycle refresh, clear-on-shutdown/zero-open behavior, and optional paging shortcut wiring. |
 | ST003 | done | Added `session-sql:changed` event emission and todo listener for immediate raw SQL refresh. |
 | ST004 | done | Added widget projection tests and smoke-visible in-flight widget anchor. |
-| ST005 | pending | Docs/domains/validation. |
+| ST005 | active | Docs/domains/validation in progress. |
 
 ### 2026-05-15 — ST002 started
 
@@ -71,7 +71,12 @@
 - Added store tests for compact recent-activity window, overflow/page metadata, completed-row retention while open work remains, and all-done widget clear behavior.
 - Extended todo smoke to use raw `/sql UPDATE ... in_progress` and assert the below-editor strip anchor `Todos 0/1 done · ... · 1 in flight` plus the smoke title.
 - Folded companion F001 fix into this validation commit: `session-sql:changed` now emits only for syntactically mutating SQL and reset.
-- Evidence: `npm test -- .pi/extensions/todo/store.test.ts` passed (16 tests); `npm run smoke -- todo` passed; `npm run typecheck` passed; scoped Biome checks passed.
+- Evidence: `npm test -- .pi/extensions/todo/store.test.ts .pi/extensions/session-sql/store.test.ts` passed (45 tests); `npm run smoke -- todo` passed; `npm run typecheck` passed; scoped Biome checks passed.
+
+### 2026-05-16 — ST005 started
+
+- Marked ST005 active in the task dossier and flight plan.
+- Scope: update user docs/domain records/ledgers, run full validation, reconcile companion findings, and close the subtask.
 
 ## Validation Evidence
 

@@ -108,11 +108,32 @@ Open the overlay with:
 
 The overlay renders the same SQL-backed open todos as `/todo list`. It supports selection, refresh, close, and marking the selected todo done. Defaults live in `DEFAULT_TODO_KEYBINDINGS` in `.pi/extensions/todo/store.ts`.
 
+The extension also renders a compact below-editor todo strip while open work exists. It is a read-only recent-activity view near the text area, not a full task manager:
+
+```text
+Todos 1/6 done · 5 open · 1 in flight · details: ctrl+shift+y
+▶ #8 Implement below-editor widget
+○ #9 Write widget smoke
+⛔ #10 Resolve shortcut collision — waiting on API decision
+✓ #7 Research Claude Code todo UI
+… +2 more · details: ctrl+shift+y
+```
+
+Strip rules:
+
+- shows at most four task rows by default;
+- puts `in_progress` rows first with `▶`;
+- shows recently modified pending/blocked rows next;
+- keeps recently completed rows visible with strikethrough while open work remains;
+- clears when there are zero open todos;
+- uses `/todo overlay` for the full interactive list.
+
 Current defaults:
 
 | Action | Default |
 |--------|---------|
 | Open overlay | `ctrl+shift+y` |
+| Compact strip next/previous page | unset by default |
 | Close overlay | `escape`, `q` |
 | Refresh | `r` |
 | Mark selected done | `d` |

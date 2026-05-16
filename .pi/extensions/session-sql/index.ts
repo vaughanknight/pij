@@ -20,7 +20,7 @@ const SESSION_SQL_CHANGED_EVENT = "session-sql:changed";
 
 type SessionSqlChangedSource = "command" | "tool" | "reset";
 
-function looksMutatingSql(query: string): boolean {
+export function looksMutatingSql(query: string): boolean {
 	return /(^|;)\s*(insert|update|delete|replace|create|drop|alter|vacuum|pragma|attach|detach|reindex|analyze|begin|commit|rollback)\b/i.test(
 		query,
 	);

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -12,6 +13,7 @@ import {
 	type SqlResult,
 	type StoreOpenResult,
 } from "../session-sql/store.js";
+import { type TodoStripTheme, TodoStripWidget } from "./index.js";
 import {
 	formatTodoRow,
 	parseTodoCommand,
@@ -214,6 +216,32 @@ describe("TodoSqlStore", () => {
 		expect(secondPage.rows.map((todo) => todo.title)).toEqual(["Old pending", "Recent done"]);
 		expect(secondPage.hidden).toBe(0);
 		expect(secondPage.page).toBe(1);
+	});
+
+	it("renders multiple in-flight widget rows without enforcing uniqueness", () => {
+		const { sql, store } = makeStore();
+		sql.execute(`INSERT INTO todos(title, status, priority, created_at, updated_at) VALUES
+('First active', 'in_progress', 0, '2026-01-01 00:00:00', '2026-01-01 00:02:00'),
+('Second active', 'in_progress', 0, '2026-01-01 00:00:00', '2026-01-01 00:01:00')`);
+
+		const snapshot = expectTodoOk(store.widgetSnapshot({ maxRows: 4 }));
+		expect(snapshot.inProgress).toBe(2);
+		expect(snapshot.rows.map((todo) => todo.title)).toEqual(["First active", "Second active"]);
+	});
+
+	it("truncates long below-editor widget lines without ANSI-specific assertions", () => {
+		const { sql, store } = makeStore();
+		sql.execute(
+			"INSERT INTO todos(title, status, priority) VALUES ('A very long todo title that must be truncated by the widget renderer', 'in_progress', 0)",
+		);
+		const snapshot = expectTodoOk(store.widgetSnapshot({ maxRows: 4 }));
+		const theme: TodoStripTheme = {
+			fg: (_color, text) => text,
+			strikethrough: (text) => `~~${text}~~`,
+		};
+		const rendered = new TodoStripWidget(snapshot, theme).render(32);
+		expect(rendered.every((line) => visibleWidth(line) <= 32)).toBe(true);
+		expect(rendered.join("\n")).toContain("▶ #1");
 	});
 
 	it("keeps recent completed rows visible while open work remains and clears when all done", () => {

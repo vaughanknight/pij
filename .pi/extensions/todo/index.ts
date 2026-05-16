@@ -164,7 +164,12 @@ function matchesAny(data: string, keys: readonly string[]): boolean {
 	return keys.some((key) => matchesKey(data, key as KeyId));
 }
 
-type TodoTheme = ExtensionContext["ui"]["theme"];
+type TodoStripColor = "accent" | "dim" | "muted" | "success" | "warning";
+
+export interface TodoStripTheme {
+	fg(color: TodoStripColor, text: string): string;
+	strikethrough(text: string): string;
+}
 
 function firstKey(keys: readonly string[]): string | undefined {
 	return keys[0];
@@ -175,10 +180,10 @@ function widgetTitle(row: Pick<TodoViewRow, "id" | "title">): string {
 	return title.length === 0 ? `<untitled #${row.id}>` : title;
 }
 
-class TodoStripWidget implements Component {
+export class TodoStripWidget implements Component {
 	constructor(
 		private readonly snapshot: TodoWidgetSnapshot,
-		private readonly theme: TodoTheme,
+		private readonly theme: TodoStripTheme,
 	) {}
 
 	render(width: number): string[] {

@@ -33,7 +33,7 @@
 - [x] **Stage 2: Widget surface** — Render and refresh `todo-strip` below the editor in `todo/index.ts`.
 - [x] **Stage 3: Sync path** — Decide and implement/document raw `/sql` synchronization (`session-sql:changed` or fallback).
 - [x] **Stage 4: Validation** — Add store/render tests and todo smoke anchors if observable.
-- [ ] **Stage 5: Documentation and closeout** — Update docs/domains/ledgers and run final validation.
+- [~] **Stage 5: Documentation and closeout** — Update docs/domains/ledgers and run final validation.
 
 ---
 
