@@ -39,6 +39,8 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | Finding | Severity | ackOf | Related Task | Disposition | Notes |
 |---------|----------|-------|--------------|-------------|-------|
 | F001 | MEDIUM | `01KRQEHXP8V9732FQWG54V6TPJ` | T001 | Fixed in `c266082`; ack `01KRQEVR37TR130TFJAV2TA3SG` | T001 commit had task-table progress drift; T002 commit corrected `tasks.md` and flight checklist. |
+| F002 | MEDIUM | `01KRQETYD73THCFW7GT2TDJEKJ` | T002 | Fixed in follow-up commit pending | Domain map missed explicit `agent-workbench` → `pi runtime` consume edge. |
+| F003 | MEDIUM | `01KRQETYD73THCFW7GT2TDJEKJ` | T002 | Fixed in follow-up commit pending | Execution log had stale "no findings" note for T001; replaced with F001 disposition. |
 
 ## Task entries
 
@@ -56,7 +58,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Evidence**: Added `agent-workbench` row to `docs/domains/registry.md`; added `AW` and `MH` nodes plus one-way edges/health notes/history in `docs/domains/domain-map.md`.
 - **Validation**: Documentation-only task; code validation deferred to implementation tasks and final self-check.
 - **Commit**: `c266082`
-- **Companion**: Sent `review-request: T002 c266082` as message `01KRQETYD73THCFW7GT2TDJEKJ`.
+- **Companion**: Sent `review-request: T002 c266082` as message `01KRQETYD73THCFW7GT2TDJEKJ`. Companion findings F002/F003 were accepted and fixed in a follow-up before T004.
 
 ### T003 — Scaffold `minih-workbench` extension
 
@@ -65,5 +67,6 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Validation**: `just typecheck` passed against the generated scaffold before customization.
 - **Commit**: `ca96f2e`
 - **Companion**: Sent `review-request: T003 ca96f2e` as message `01KRQEYH6Y714TVNS8DX3FX3KS`.
-- **Discovery**: Generator scaffold initially failed `just lint` due unused starter `DeleteResult`; removed it in generated file and encoded the template fix in `harness/templates/extension/store.ts.template` (D-031 follow-up commit pending).
+- **Discovery**: Generator scaffold initially failed `just lint` due unused starter `DeleteResult`; removed it in generated file and encoded the template fix in `harness/templates/extension/store.ts.template`.
+- **Follow-up commit**: `3fc8972` (`fix: keep extension scaffold lint clean`), companion message `01KRQF00C0HNP84ZZT8RYDHA60`.
 
