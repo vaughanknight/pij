@@ -27,13 +27,45 @@ export const MINIH_WORKBENCH_ACTIONS = {
 	refresh: "minih.refresh",
 	selectPrevious: "minih.selectPrevious",
 	selectNext: "minih.selectNext",
-	pageTranscript: "minih.pageTranscript",
-	pageTools: "minih.pageTools",
-	pageDiagnostics: "minih.pageDiagnostics",
+	focusPreviousPane: "minih.focusPreviousPane",
+	focusNextPane: "minih.focusNextPane",
+	pageTranscriptUp: "minih.pageTranscriptUp",
+	pageTranscriptDown: "minih.pageTranscriptDown",
+	pageToolsUp: "minih.pageToolsUp",
+	pageToolsDown: "minih.pageToolsDown",
+	pageCoordinationUp: "minih.pageCoordinationUp",
+	pageCoordinationDown: "minih.pageCoordinationDown",
+	pageDiagnosticsUp: "minih.pageDiagnosticsUp",
+	pageDiagnosticsDown: "minih.pageDiagnosticsDown",
+	pageReportUp: "minih.pageReportUp",
+	pageReportDown: "minih.pageReportDown",
 } as const;
 
 export type MinihWorkbenchAction =
 	(typeof MINIH_WORKBENCH_ACTIONS)[keyof typeof MINIH_WORKBENCH_ACTIONS];
+
+export type MinihWorkbenchKeybindings = Readonly<Record<MinihWorkbenchAction, readonly string[]>>;
+
+export const DEFAULT_MINIH_WORKBENCH_KEYBINDINGS: MinihWorkbenchKeybindings = {
+	[MINIH_WORKBENCH_ACTIONS.openList]: ["ctrl+m"],
+	[MINIH_WORKBENCH_ACTIONS.openRun]: ["enter"],
+	[MINIH_WORKBENCH_ACTIONS.closeView]: ["escape"],
+	[MINIH_WORKBENCH_ACTIONS.refresh]: ["r", "ctrl+r"],
+	[MINIH_WORKBENCH_ACTIONS.selectPrevious]: ["up", "k"],
+	[MINIH_WORKBENCH_ACTIONS.selectNext]: ["down", "j"],
+	[MINIH_WORKBENCH_ACTIONS.focusPreviousPane]: ["shift+tab"],
+	[MINIH_WORKBENCH_ACTIONS.focusNextPane]: ["tab"],
+	[MINIH_WORKBENCH_ACTIONS.pageTranscriptUp]: ["pageup"],
+	[MINIH_WORKBENCH_ACTIONS.pageTranscriptDown]: ["pagedown"],
+	[MINIH_WORKBENCH_ACTIONS.pageToolsUp]: ["alt+pageup"],
+	[MINIH_WORKBENCH_ACTIONS.pageToolsDown]: ["alt+pagedown"],
+	[MINIH_WORKBENCH_ACTIONS.pageCoordinationUp]: ["ctrl+pageup"],
+	[MINIH_WORKBENCH_ACTIONS.pageCoordinationDown]: ["ctrl+pagedown"],
+	[MINIH_WORKBENCH_ACTIONS.pageDiagnosticsUp]: ["shift+pageup"],
+	[MINIH_WORKBENCH_ACTIONS.pageDiagnosticsDown]: ["shift+pagedown"],
+	[MINIH_WORKBENCH_ACTIONS.pageReportUp]: ["home"],
+	[MINIH_WORKBENCH_ACTIONS.pageReportDown]: ["end"],
+};
 
 export const PHASE_1_FORBIDDEN_ACTIONS = [
 	"send",
