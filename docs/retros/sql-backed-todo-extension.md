@@ -43,3 +43,39 @@ The inside inbox was schema-corrupt for `minih inside inbox list` because one ac
 - Add a companion helper that captures the just-created commit SHA directly from `git commit` output and refuses to ping if touched paths do not match the current task.
 - Make `/plan-6a-v2-update-progress` available as a callable tool or document the manual fallback for final companion debrief in this harness.
 - Consider a first-class `expected-fail`/`optional` smoke convention for in-flight sibling extensions so one unfinished extension cannot obscure the current plan's validation signal.
+
+---
+
+## Follow-up Retro: Below-editor Todo Strip
+
+**Date**: 2026-05-16  
+**Subtask**: `ST-001` — Claude Code-style below-editor todo strip  
+**Companion**: `code-review-companion` run `2026-05-16T09-45-41-687Z-4b0a`
+
+### Companion farewell
+
+> Stopping on outside control request. Session reviewed seven commit-boundary tasks, sent three findings (F001/F002/F003), and verified the final F003 fix before shutdown.
+
+### Findings outcome
+
+| Finding | Outcome |
+|---------|---------|
+| F001 MEDIUM — `session-sql:changed` over-emitted for `SELECT` | Fixed by gating event emission to syntactically mutating SQL plus reset. Logged as D-029. |
+| F002 MEDIUM — missing regression coverage | Fixed with `looksMutatingSql()` tests, multiple in-flight widget tests, and visible-width truncation tests. |
+| F003 LOW — phase compatibility `tasks.md` status stale | Fixed by marking the parent compatibility index `Status: Complete`. |
+
+### What worked
+
+- The new `todo` tool made live plan work visible; the user confirmed the strip was working nicely at the bottom of pi.
+- Companion review caught an important cross-extension event contract drift before final report.
+- Below-editor widget smoke was observable enough to assert a stable in-flight strip anchor without ANSI-specific checks.
+
+### What hurt
+
+- `session-sql:changed` needed careful naming/semantics because row-returning mutations make result-kind detection misleading.
+- The plan-6 companion skill references `/plan-6a-v2-update-progress`, but no direct callable skill/tool was available in this session, so debrief was handled manually.
+
+### Magic wand / follow-ups
+
+- Encode a small event-contract test harness for extension event buses so future cross-extension events can be tested without exporting classifier helpers.
+- Add a plan-6 helper for closeout status consistency across root plan, phase index, subtask dossier, flight plan, and execution log.
