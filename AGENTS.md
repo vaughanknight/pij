@@ -70,8 +70,20 @@
 - **Driver SDK** at `harness/driver/` — typed `Scenario`/`Step`/`Session`
   for tmux-driven end-to-end smoke. `harness/scripts/smoke.ts` is a thin
   adapter over it. Use the SDK directly when authoring rich scenarios.
-- **`npm run link`** — symlinks `.pi/extensions/*` to `~/.pi/extensions/`
-  so `pi` from any cwd autoloads them. `-- --remove` to undo.
+- **`just link`** — symlinks `.pi/extensions/*` into
+  `~/.pi/agent/extensions/` so `pi` from any cwd autoloads them.
+  `just unlink` to undo. (Pi's loader resolves global extensions via
+  `getAgentDir() + "/extensions"` — `~/.pi/extensions/` looks plausible
+  but is silently ignored.)
+- **`just update-pi`** — updates the pi binary
+  (`@earendil-works/pi-coding-agent@latest`) and re-applies pij's harness
+  state (`just link` + `just pi-doctor`). Always update pi through this
+  recipe so a silent path move doesn't strand our extensions or MCP
+  config.
+- **`just pi-doctor`** — read-only audit of pi's global state: binary
+  version, extension symlinks at the correct path, packages in
+  `~/.pi/agent/settings.json`, and MCP servers in `~/.pi/agent/mcp.json`.
+  First diagnostic to run when "pi can't see X".
 - **`npm run pkg`** — manages third-party pi extensions in
   `.pi/packages.yaml` (source of truth) → `.pi/settings.json#packages`
   (generated). Subcommands: `list` / `add <src> [note...]` / `enable <s>`

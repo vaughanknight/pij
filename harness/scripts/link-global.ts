@@ -1,11 +1,17 @@
 #!/usr/bin/env tsx
-// npm run link              — symlink every .pi/extensions/<name>/ to ~/.pi/extensions/<name>/
-// npm run link -- <name>    — symlink only that one
-// npm run link -- --remove  — remove pij-owned symlinks from ~/.pi/extensions/
+// just link                  — symlink every .pi/extensions/<name>/ to ~/.pi/agent/extensions/<name>/
+// just link -- <name>        — symlink only that one
+// just unlink (or link -- --remove) — remove pij-owned symlinks from ~/.pi/agent/extensions/
 //
 // Idempotent. Refuses to clobber real directories or symlinks owned by
 // another source. After running, `pi` from any cwd autoloads pij's
 // extensions in addition to whatever the cwd's package.json provides.
+//
+// Why ~/.pi/agent/extensions and not ~/.pi/extensions? Pi's loader
+// resolves global extensions via `getAgentDir() + "/extensions"`, and
+// `getAgentDir()` returns `~/.pi/agent` (see pi-mono
+// `packages/coding-agent/src/config.ts:getAgentDir`). Linking into
+// `~/.pi/extensions` looks plausible but is silently ignored.
 
 import {
 	existsSync,
@@ -21,7 +27,7 @@ import { join, resolve } from "node:path";
 
 const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
 const SOURCE_ROOT = join(PIJ_ROOT, ".pi", "extensions");
-const TARGET_ROOT = join(homedir(), ".pi", "extensions");
+const TARGET_ROOT = join(homedir(), ".pi", "agent", "extensions");
 
 function listSourceExtensions(filter?: string): string[] {
 	let entries: string[];
@@ -57,11 +63,11 @@ function link(name: string): "linked" | "already" | "skipped" {
 	if (stat.isSymbolicLink()) {
 		const current = readlinkSync(target);
 		if (current === source) return "already";
-		console.error(`skip ${name}: ~/.pi/extensions/${name} → ${current} (not ours)`);
+		console.error(`skip ${name}: ~/.pi/agent/extensions/${name} → ${current} (not ours)`);
 		return "skipped";
 	}
 
-	console.error(`skip ${name}: ~/.pi/extensions/${name} is a real directory, not a symlink`);
+	console.error(`skip ${name}: ~/.pi/agent/extensions/${name} is a real directory, not a symlink`);
 	return "skipped";
 }
 
@@ -73,11 +79,11 @@ function unlink(name: string): "removed" | "missing" | "skipped" {
 	try {
 		const stat = lstatSync(target);
 		if (!stat.isSymbolicLink()) {
-			console.error(`skip ${name}: ~/.pi/extensions/${name} is not a symlink`);
+			console.error(`skip ${name}: ~/.pi/agent/extensions/${name} is not a symlink`);
 			return "skipped";
 		}
 		if (readlinkSync(target) !== source) {
-			console.error(`skip ${name}: ~/.pi/extensions/${name} points elsewhere`);
+			console.error(`skip ${name}: ~/.pi/agent/extensions/${name} points elsewhere`);
 			return "skipped";
 		}
 		unlinkSync(target);

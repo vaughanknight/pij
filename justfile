@@ -68,9 +68,42 @@ vet-live:
 new NAME:
     npm run new -- {{NAME}}
 
-# Symlink .pi/extensions/* into ~/.pi/extensions/ for autoload.
+# Symlink .pi/extensions/* into ~/.pi/agent/extensions/ for autoload.
 link:
     npm run link
 
 unlink:
     npm run link -- --remove
+
+# --- pi binary control ---
+#
+# `just update-pi` is the canonical way to update pi from this repo.
+# Pi update has historically moved discovery paths (e.g. global
+# extensions dir relocated under ~/.pi/agent/extensions/). This recipe
+# updates pi AND re-applies pij's harness state so a silent path move
+# doesn't strand our extensions, MCP config, or global packages.
+
+# Update pi to the latest published version, then re-apply harness state.
+update-pi:
+    @echo "=== current pi ===" && pi --version | head -1
+    npm install -g @earendil-works/pi-coding-agent@latest
+    @echo "=== updated pi ===" && pi --version | head -1
+    just link
+    just pi-doctor
+
+# Audit pi's globally-visible state. Read-only.
+# Prints: binary version, extension symlinks, manifest packages,
+# MCP servers, and flags anything that looks wrong.
+pi-doctor:
+    @echo "=== pi binary ===" && which pi && pi --version | head -1
+    @echo
+    @echo "=== ~/.pi/agent/extensions/ (pij symlinks should be here) ==="
+    @ls -la ~/.pi/agent/extensions/ 2>/dev/null || echo "  (missing — run: just link)"
+    @echo
+    @echo "=== ~/.pi/agent/settings.json packages[] ==="
+    @python3 -c 'import json; s=json.load(open("/Users/jordanknight/.pi/agent/settings.json")); [print(f"  - {p}") for p in s.get("packages", [])]'
+    @echo
+    @echo "=== ~/.pi/agent/mcp.json servers ==="
+    @if [ -f ~/.pi/agent/mcp.json ]; then \
+      python3 -c "import json,sys; s=json.load(open(sys.argv[1])); m=s.get('mcpServers',{}); [print(f'  - {k}: {v.get(\"command\",\"\")} {\" \".join(v.get(\"args\",[]))}'.rstrip()) for k,v in m.items()]; (not m) and print('  (no mcpServers defined)')" ~/.pi/agent/mcp.json; \
+    else echo "  (no ~/.pi/agent/mcp.json)"; fi
