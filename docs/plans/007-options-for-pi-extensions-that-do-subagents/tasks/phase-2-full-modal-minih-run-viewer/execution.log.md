@@ -36,7 +36,7 @@
 | T009 | complete | `f299c98` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQS784XVAY9TT8MEX1EDNW8` | Added session-scoped selected-run pointer reconciliation through the persistence facade, status cleanup, and feed/pointer disposal on one `session_start` handler plus `session_shutdown` without auto-opening UI. |
 | T010 | complete | `a6ab438` | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/feed.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 22 tests | `01KRQSFM9E9MX891009VSF391H` | Added `feed.test.ts` for coalescing, watcher-failure diagnostics/bounded fallback, and callbacks-after-dispose; expanded `ui.test.ts` for list selection/open, modal anchors/focus/Esc, multiline width safety, and report paging. |
 | T011 | complete | `caf9882` | `npm run smoke -- minih-workbench` ✅ | `01KRQSPZEDXHGCSD5KTJHYBG36` | Expanded Driver SDK smoke to prove `/minih status --json`, list render, Enter modal, pane focus, Esc close, report-pane modal, `/reload`, and post-reload status over deterministic fixtures. |
-| T012 | complete | pending | `just self-check` ✅ | pending | Updated extension rules, domain docs, plan-level flight plan, task/flight status, velocity evidence, and Phase 3 handoff notes. |
+| T012 | complete | `cbf9bfb` | `just self-check` ✅ | `01KRQTATHWFP1A1JPQE0SHFVFP` | Updated extension rules, domain docs, plan-level flight plan, task/flight status, velocity evidence, and Phase 3 handoff notes. Companion summary `01KRQTDBG4YS5P8F8SE56227NH` approved with 0 new findings. |
 
 ---
 
@@ -51,7 +51,20 @@
 | F005 | MEDIUM | `01KRQS784XVAY9TT8MEX1EDNW8` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Moved selected/status marking after non-UI fallback return so text fallback leaves no modal state. |
 | F006 | MEDIUM | `01KRQSFM9E9MX891009VSF391H` | Fixed; companion approved via `01KRQSK72HWA6SZK6Z6DJ0KY0X` | `15ed2c4` | UI tests now inject non-default list/modal key maps and assert default raw keys do not act. |
 | F007 | MEDIUM | `01KRQSPZEDXHGCSD5KTJHYBG36` | Fixed; companion approved via `01KRQT63YCBZ6H3713C5EVQ6GV` | `c76b8ef` | Removed generic post-Escape regexes; subsequent slash-command success after close-settle proves input was released. |
-| F008 | LOW | `01KRQT597KXAEZ400FEM2XZEHM` | Fixed in T012 working tree; will land in final evidence commit | pending | Reconciled stale F007 row after the fix commit was reviewed. |
+| F008 | LOW | `01KRQT597KXAEZ400FEM2XZEHM` | Fixed; companion reported resolved in farewell | `cbf9bfb` | Reconciled stale F007 row after the fix commit was reviewed. |
+
+---
+
+## Companion Farewell
+
+| Field | Value |
+|-------|-------|
+| Run | `2026-05-16T16-32-48-636Z-fb2e` |
+| Report | `agents/code-review-companion/runs/2026-05-16T16-32-48-636Z-fb2e/output/report.json` |
+| Verdict | APPROVE |
+| Findings | F001–F007 MEDIUM and F008 LOW; all resolved, no unresolved requests. |
+| Magic wand | Add first-class review-drain/control vocabulary in the coordination UI, distinct from `task`, so status-only notes do not look like review work and task counts can be generated automatically. |
+| Difficulties | MH-001 missing `MINIH_PROJECT_ROOT`, MH-002 Vitest `--runInBand` mismatch, MH-003 status/drain messages typed as `task`. |
 
 ---
 
