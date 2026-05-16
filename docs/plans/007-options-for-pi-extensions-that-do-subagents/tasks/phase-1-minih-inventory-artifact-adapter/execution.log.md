@@ -47,7 +47,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in `2aff4e1`; verification request `01KRQFP654X49S5Z75R3QSPB8T` | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
 | F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in `9cbf33a`; verification request `01KRQFT2233DSY9R77W8GAA19Y` | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
 | F009 | LOW | `01KRQFT2233DSY9R77W8GAA19Y` | T005-fix2 | Fixed in `47766c0` | F008 row still said pending in the first fix commit; T008 commit carried the corrected disposition. |
-| F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in follow-up commit pending | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
+| F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in `b76aa37`; verification request `01KRQGBY1VK6G7P6D829S1RAEN` | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
 
 ## Task entries
 
@@ -132,4 +132,11 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Validation**: `just typecheck`; `npm run smoke -- minih-workbench`; `just lint` passed.
 - **Commit**: `4fc9ed9`
 - **Companion**: Sent `review-request: T010 4fc9ed9` as message `01KRQG9JF4B3YRMJGMYRZFE6R6`.
+
+### T011 — Add store/projection tests
+
+- **Status**: complete
+- **Evidence**: Expanded `store.test.ts` to 10 pure tests covering summary sorting, status axes/attention, inventory projection and report-ready de-dupe/limit regressions, bounded pane truncation, default constants/placeholders, tagged result helpers, and Phase 1 no-write invariant.
+- **Validation**: `just typecheck`; `npx vitest run .pi/extensions/minih-workbench/store.test.ts`; `just lint` passed.
+- **Companion**: Review request to be sent after commit.
 

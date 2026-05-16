@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
 	classifyAttention,
+	DEFAULT_ACTIVE_RUN_LIMIT,
+	DEFAULT_COMPLETED_RUN_LIMIT,
 	defaultModalState,
 	diagnostic,
+	MINIH_WORKBENCH_ACTIONS,
 	type MinihRunSummary,
 	makePaneSnapshot,
+	minihError,
+	minihOk,
 	phase1NoWriteResult,
 	projectInventory,
 	sortRunSummaries,
@@ -45,6 +50,23 @@ function summary(
 describe("minih-workbench store contracts", () => {
 	it("starts with a closed modal state", () => {
 		expect(defaultModalState()).toMatchObject({ open: false, focusedPane: "transcript" });
+	});
+
+	it("exports default limits and placeholder actions without keybindings", () => {
+		expect(DEFAULT_ACTIVE_RUN_LIMIT).toBeGreaterThan(0);
+		expect(DEFAULT_COMPLETED_RUN_LIMIT).toBeGreaterThan(0);
+		expect(MINIH_WORKBENCH_ACTIONS.openRun).toBe("minih.openRun");
+		expect(Object.values(MINIH_WORKBENCH_ACTIONS)).not.toContain("up");
+		expect(Object.values(MINIH_WORKBENCH_ACTIONS)).not.toContain("escape");
+	});
+
+	it("creates tagged adapter result helpers", () => {
+		expect(minihOk({ value: 1 })).toEqual({ ok: true, value: { value: 1 }, diagnostics: [] });
+		const result = minihError("MINIH_BAD_ARTIFACT", "bad", [
+			diagnostic("error", "BAD", "bad artifact", "adapter"),
+		]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.code).toBe("MINIH_BAD_ARTIFACT");
 	});
 
 	it("sorts active and stale runs before completed runs", () => {

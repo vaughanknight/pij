@@ -66,7 +66,7 @@ stateDiagram-v2
     S8 --> [*]
 
     class S1,S2,S3,S4,S5,S6,S7 done
-    class S8 pending
+    class S8 active
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -84,7 +84,7 @@ stateDiagram-v2
 - [x] **Stage 5: Build fixtures** — create deterministic Minih artifact directories for success and failure cases (`fixtures/` — new directory).
 - [x] **Stage 6: Implement adapter** — read Minih artifacts/fixtures through a tagged, bounded, read-only adapter (`minih-adapter.ts`).
 - [x] **Stage 7: Expose read-only pull surfaces** — wire canonical `/minih status --json` and read-only tools (`index.ts`, `ui.ts`).
-- [ ] **Stage 8: Prove with tests and evidence** — add store/adapter tests and log validation results (`*.test.ts`, `execution.log.md`).
+- [~] **Stage 8: Prove with tests and evidence** — add store/adapter tests and log validation results (`*.test.ts`, `execution.log.md`).
 
 ---
 
@@ -190,6 +190,6 @@ flowchart LR
 - [x] T008: Create deterministic Minih fixture run directories.
 - [x] T009: Implement the read-only Minih adapter.
 - [x] T010: Add canonical read-only command/tool wiring for inventory/status/report.
-- [ ] T011: Add store/projection tests.
+- [x] T011: Add store/projection tests.
 - [ ] T012: Add adapter fixture tests.
 - [ ] T013: Record validation evidence for Phase 1.
