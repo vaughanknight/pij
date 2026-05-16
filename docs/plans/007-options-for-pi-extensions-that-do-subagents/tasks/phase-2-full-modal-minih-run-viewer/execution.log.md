@@ -25,7 +25,8 @@
 
 | Task | Status | Commit | Validation | Companion message | Notes |
 |------|--------|--------|------------|-------------------|-------|
-| T001 | complete | pending | `npx tsc --noEmit` ✅ | pending | Added `MinihWorkbenchKeybindings` plus default named key maps in Pi-free `store.ts`; no hardcoded UI keys introduced. |
+| T001 | complete | `5bbfb32` | `npx tsc --noEmit` ✅ | `01KRQQZKZ0FJR2DXJRX9RGQB16` | Added `MinihWorkbenchKeybindings` plus default named key maps in Pi-free `store.ts`; no hardcoded UI keys introduced. |
+| T002 | complete | pending | `npx tsc --noEmit` ✅ | pending | Added pure list selection, modal open/safe close, focused pane cycling, pane cursor lookup/update, and page helpers; added report pane cursor while preserving read-only state. |
 
 ---
 

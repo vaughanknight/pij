@@ -171,7 +171,7 @@ flowchart LR
 ## Checklist
 
 - [x] T001: Add Minih Workbench keybinding contracts and defaults.
-- [ ] T002: Add pure list/modal state helpers.
+- [x] T002: Add pure list/modal state helpers.
 - [ ] T003: Expand store tests for Phase 2 state contracts.
 - [ ] T004: Build UI rendering primitives and stable text anchors.
 - [ ] T005: Implement the keyboard-selectable Minih run-list component.

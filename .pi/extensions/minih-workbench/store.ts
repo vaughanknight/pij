@@ -180,6 +180,29 @@ export interface MinihPaneCursor {
 	maxBytes?: number;
 }
 
+export const MINIH_MODAL_PANES = [
+	"transcript",
+	"tools",
+	"coordination",
+	"diagnostics",
+	"report",
+] as const;
+
+export type MinihModalPane = (typeof MINIH_MODAL_PANES)[number];
+
+export interface MinihListSelection {
+	selectedIndex: number;
+	selectedRun?: MinihRunRef;
+}
+
+export interface MinihSafeCloseResult {
+	ok: true;
+	state: MinihModalState;
+	sentControl: false;
+	sentStop: false;
+	message: string;
+}
+
 export interface MinihPaneItem {
 	id: string;
 	timestamp?: string;
@@ -211,11 +234,12 @@ export interface MinihViewSnapshot extends MinihRunRef {
 export interface MinihModalState {
 	open: boolean;
 	selectedRun?: MinihRunRef;
-	focusedPane: "transcript" | "tools" | "coordination" | "diagnostics" | "report";
+	focusedPane: MinihModalPane;
 	transcriptCursor: MinihPaneCursor;
 	toolsCursor: MinihPaneCursor;
 	coordinationCursor: MinihPaneCursor;
 	diagnosticsCursor: MinihPaneCursor;
+	reportCursor: MinihPaneCursor;
 }
 
 export interface MinihInventorySnapshot {
@@ -272,7 +296,130 @@ export function defaultModalState(): MinihModalState {
 		toolsCursor: {},
 		coordinationCursor: {},
 		diagnosticsCursor: {},
+		reportCursor: {},
 	};
+}
+
+function cloneRunRef(run: MinihRunRef): MinihRunRef {
+	return { slug: run.slug, runId: run.runId };
+}
+
+export function clampListSelection(
+	runs: readonly MinihRunSummary[],
+	selectedIndex: number | undefined,
+): number {
+	if (runs.length === 0) return 0;
+	if (selectedIndex === undefined || !Number.isFinite(selectedIndex)) return 0;
+	return Math.min(Math.max(0, Math.floor(selectedIndex)), runs.length - 1);
+}
+
+export function moveListSelection(input: {
+	runs: readonly MinihRunSummary[];
+	selectedIndex: number | undefined;
+	delta: number;
+	wrap?: boolean;
+}): number {
+	if (input.runs.length === 0) return 0;
+	const current = clampListSelection(input.runs, input.selectedIndex);
+	const next = current + Math.trunc(input.delta);
+	if (input.wrap) return ((next % input.runs.length) + input.runs.length) % input.runs.length;
+	return clampListSelection(input.runs, next);
+}
+
+export function resolveSelectedRun(
+	runs: readonly MinihRunSummary[],
+	selectedIndex: number | undefined,
+): MinihRunRef | undefined {
+	const selected = runs[clampListSelection(runs, selectedIndex)];
+	return selected ? cloneRunRef(selected) : undefined;
+}
+
+export function openModalForRun(
+	run: MinihRunRef,
+	previous: MinihModalState = defaultModalState(),
+): MinihModalState {
+	return { ...previous, open: true, selectedRun: cloneRunRef(run) };
+}
+
+export function closeModalSafely(state: MinihModalState): MinihSafeCloseResult {
+	return {
+		ok: true,
+		state: { ...state, open: false, selectedRun: undefined },
+		sentControl: false,
+		sentStop: false,
+		message: "minih-workbench: view closed; Minih run untouched",
+	};
+}
+
+export function cycleFocusedPane(state: MinihModalState, delta: number): MinihModalState {
+	const current = MINIH_MODAL_PANES.indexOf(state.focusedPane);
+	const next = ((current + Math.trunc(delta)) % MINIH_MODAL_PANES.length) + MINIH_MODAL_PANES.length;
+	const focusedPane = MINIH_MODAL_PANES[next % MINIH_MODAL_PANES.length] ?? "transcript";
+	return { ...state, focusedPane };
+}
+
+export function paneCursorFor(state: MinihModalState, pane: MinihModalPane): MinihPaneCursor {
+	switch (pane) {
+		case "transcript":
+			return state.transcriptCursor;
+		case "tools":
+			return state.toolsCursor;
+		case "coordination":
+			return state.coordinationCursor;
+		case "diagnostics":
+			return state.diagnosticsCursor;
+		case "report":
+			return state.reportCursor;
+	}
+}
+
+export function withPaneCursor(
+	state: MinihModalState,
+	pane: MinihModalPane,
+	cursor: MinihPaneCursor,
+): MinihModalState {
+	switch (pane) {
+		case "transcript":
+			return { ...state, transcriptCursor: { ...cursor } };
+		case "tools":
+			return { ...state, toolsCursor: { ...cursor } };
+		case "coordination":
+			return { ...state, coordinationCursor: { ...cursor } };
+		case "diagnostics":
+			return { ...state, diagnosticsCursor: { ...cursor } };
+		case "report":
+			return { ...state, reportCursor: { ...cursor } };
+	}
+}
+
+export function pagePaneCursor(
+	cursor: MinihPaneCursor,
+	direction: "up" | "down",
+	total?: number,
+): MinihPaneCursor {
+	const limit = clampPaneLimit(cursor.limit);
+	const pageSize = limit <= 0 ? DEFAULT_MAX_PANE_EVENTS : limit;
+	const rawOffset = Math.max(0, Math.floor(cursor.offset ?? 0));
+	const delta = direction === "up" ? -pageSize : pageSize;
+	const maxOffset = total === undefined ? Number.POSITIVE_INFINITY : Math.max(0, total - pageSize);
+	return { ...cursor, offset: Math.min(maxOffset, Math.max(0, rawOffset + delta)), limit };
+}
+
+export function pageModalPane(
+	state: MinihModalState,
+	pane: MinihModalPane,
+	direction: "up" | "down",
+	total?: number,
+): MinihModalState {
+	return withPaneCursor(state, pane, pagePaneCursor(paneCursorFor(state, pane), direction, total));
+}
+
+export function pageFocusedPane(
+	state: MinihModalState,
+	direction: "up" | "down",
+	total?: number,
+): MinihModalState {
+	return pageModalPane(state, state.focusedPane, direction, total);
 }
 
 export function clampRunLimit(value: number | undefined, fallback: number): number {
