@@ -7,6 +7,7 @@ import type { Scenario } from "../../../harness/driver/index.js";
 const smokeTitle = `Smoke todo ${Date.now()}`;
 const smokeTitleRe = new RegExp(smokeTitle);
 const oneOpenRe = new RegExp(`todo: 1 open[\\s\\S]*${smokeTitle}`);
+const widgetInFlightRe = new RegExp(`Todos 0/1 done[\\s\\S]*1 in flight[\\s\\S]*${smokeTitle}`);
 
 const scenario: Scenario = {
 	name: "todo",
@@ -31,6 +32,13 @@ const scenario: Scenario = {
 			text: `/todo add ${smokeTitle}`,
 			press: "Enter",
 			expect: new RegExp(`todo: added #[0-9]+ pending . ${smokeTitle}`),
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: `/sql UPDATE todos SET status = 'in_progress' WHERE title = '${smokeTitle}'`,
+			press: "Enter",
+			expect: widgetInFlightRe,
 			expectTimeoutMs: 5000,
 		},
 		{

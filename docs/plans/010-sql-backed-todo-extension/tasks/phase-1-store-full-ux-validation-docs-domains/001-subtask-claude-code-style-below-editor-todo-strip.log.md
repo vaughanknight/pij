@@ -32,7 +32,7 @@
 | ST001 | done | Added widget constants/options/key fields, `TodoWidgetSnapshot`, and `widgetSnapshot()` recent-activity projection. |
 | ST002 | done | Added below-editor `todo-strip` widget rendering, lifecycle refresh, clear-on-shutdown/zero-open behavior, and optional paging shortcut wiring. |
 | ST003 | done | Added `session-sql:changed` event emission and todo listener for immediate raw SQL refresh. |
-| ST004 | pending | Tests + smoke. |
+| ST004 | done | Added widget projection tests and smoke-visible in-flight widget anchor. |
 | ST005 | pending | Docs/domains/validation. |
 
 ### 2026-05-15 — ST002 started
@@ -59,6 +59,19 @@
 - `todo` listens for matching-session events and refreshes the below-editor widget/status with page reset.
 - Evidence: `npm run typecheck` passed; `npx biome check .pi/extensions/session-sql/index.ts .pi/extensions/todo/index.ts` passed; `npm run smoke -- todo` passed.
 - Companion ST002 review summary: no findings.
+- Companion ST003 finding F001 MEDIUM: initial `session-sql:changed` event over-emitted on read-only `SELECT`; fixed by gating event emission to syntactically mutating statements plus reset, while preserving `INSERT ... RETURNING` handling.
+
+### 2026-05-16 — ST004 started
+
+- Marked ST004 active in the task dossier and flight plan.
+- Scope: add widget projection test coverage and extend todo smoke with stable below-editor anchors where Driver capture allows.
+
+### 2026-05-16 — ST004 completed
+
+- Added store tests for compact recent-activity window, overflow/page metadata, completed-row retention while open work remains, and all-done widget clear behavior.
+- Extended todo smoke to use raw `/sql UPDATE ... in_progress` and assert the below-editor strip anchor `Todos 0/1 done · ... · 1 in flight` plus the smoke title.
+- Folded companion F001 fix into this validation commit: `session-sql:changed` now emits only for syntactically mutating SQL and reset.
+- Evidence: `npm test -- .pi/extensions/todo/store.test.ts` passed (16 tests); `npm run smoke -- todo` passed; `npm run typecheck` passed; scoped Biome checks passed.
 
 ## Validation Evidence
 

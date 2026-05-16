@@ -99,7 +99,7 @@ flowchart TD
         ST001["ST001: Projection contract"]:::completed
         ST002["ST002: Widget rendering + lifecycle"]:::completed
         ST003["ST003: Optional raw SQL refresh event"]:::completed
-        ST004["ST004: Tests + smoke"]:::pending
+        ST004["ST004: Tests + smoke"]:::completed
         ST005["ST005: Docs/domains/validation"]:::pending
         ST001 --> ST002
         ST002 --> ST003
@@ -112,8 +112,8 @@ flowchart TD
     subgraph Files["Key files"]
         Store[".pi/extensions/todo/store.ts"]:::completed
         Index[".pi/extensions/todo/index.ts"]:::completed
-        Tests[".pi/extensions/todo/store.test.ts"]:::pending
-        Smoke[".pi/extensions/todo/smoke.ts"]:::pending
+        Tests[".pi/extensions/todo/store.test.ts"]:::completed
+        Smoke[".pi/extensions/todo/smoke.ts"]:::completed
         Docs["docs/how/todo.md + domains"]:::pending
     end
 
@@ -134,7 +134,7 @@ flowchart TD
 | [x] | ST001 | Add pi-free widget projection contract to `TodoSqlStore`. | `session-work-state` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/store.ts` | Store exports `TODO_WIDGET_KEY`, `DEFAULT_TODO_WIDGET_OPTIONS`, widget snapshot types, optional paging key fields, and a projection method that returns a 4-row recent-activity window with `hidden`, `page`, and `pageCount`. | Must preserve SQL source of truth; no pi imports; order by in-flight first then recently modified/completed. |
 | [x] | ST002 | Render and refresh the below-editor widget in todo wiring. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/index.ts` | `ctx.ui.setWidget("todo-strip", ..., { placement: "belowEditor" })` renders summary + rows; clears at zero open todos/shutdown; refreshes after `/todo`, `todo` tool, session start/reload, and turn end. | Use `theme.strikethrough` for completed rows; truncate every line; derive shortcut hints from defaults. |
 | [x] | ST003 | Add optional raw-SQL synchronization path if needed for immediate `/sql` agreement. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/session-sql/index.ts`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/index.ts` | Either `session-sql:changed` is emitted/listened to for successful SQL mutations/resets, or the implementation documents why turn-end/next-todo refresh is the v1 fallback. | Higher review attention: cross-extension event contract. Keep event payload plain and session-scoped. |
-| [ ] | ST004 | Add validation for projection, rendering, cap/overflow, paging, and smoke-visible widget anchors. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/store.test.ts`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/smoke.ts` | Tests cover empty, pending, in-progress, multiple in-progress, completed-while-open, all-done clear, blocked, overflow, recency window, paging, long titles, and SQL-created rows. Smoke checks stable visible text if Driver capture observes below-editor widgets. | Avoid ANSI-byte assertions; fake theme may expose `~~struck~~` for unit-level rendering. |
+| [x] | ST004 | Add validation for projection, rendering, cap/overflow, paging, and smoke-visible widget anchors. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/store.test.ts`, `/Users/jordanknight/pi-hacking/pij/.pi/extensions/todo/smoke.ts` | Tests cover empty, pending, in-progress, multiple in-progress, completed-while-open, all-done clear, blocked, overflow, recency window, paging, long titles, and SQL-created rows. Smoke checks stable visible text if Driver capture observes below-editor widgets. | Avoid ANSI-byte assertions; fake theme may expose `~~struck~~` for unit-level rendering. |
 | [ ] | ST005 | Update docs/domain records and run validation. | `agent-tooling-interface` / `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/how/todo.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md`, `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md`, `/Users/jordanknight/pi-hacking/pij/docs/velocity.md` | Docs explain below-editor strip, 4-row cap, paging policy, and overlay/full-list relationship; domain docs reflect new widget/projection contract if public; `npm run typecheck`, scoped tests, `npm run smoke -- todo`, and `npm run self-check` pass or unrelated failures are recorded. | Capture any TUI/widget friction in difficulties; do not skip harness validation. |
 
 ---
@@ -226,7 +226,8 @@ _Populated during implementation by plan-6._
 | Date | Task | Type | Discovery | Resolution | References |
 |------|------|------|-----------|------------|------------|
 | 2026-05-15 | ST001 | gotcha | Adding `inProgress` to `TodoCounts` broke existing exact-count tests and would broaden a public store contract unnecessarily. | Keep `TodoCounts` shape stable; compute `inProgress` inside `TodoWidgetSnapshot` only. | `.pi/extensions/todo/store.ts`, `.pi/extensions/todo/store.test.ts` |
-| 2026-05-16 | ST003 | decision | Raw `/sql` mutations can be `rows` results when using `INSERT ... RETURNING`, so change detection by result kind would miss real writes. | Emit `session-sql:changed` after any successful ad-hoc SQL command/tool execution and after reset; todo listener refreshes idempotently. | `.pi/extensions/session-sql/index.ts`, `.pi/extensions/todo/index.ts` |
+| 2026-05-16 | ST003 | decision | Raw `/sql` mutations can be `rows` results when using `INSERT ... RETURNING`, so change detection by result kind would miss real writes. | Emit `session-sql:changed` for syntactically mutating SQL and reset; todo listener refreshes idempotently. | `.pi/extensions/session-sql/index.ts`, `.pi/extensions/todo/index.ts` |
+| 2026-05-16 | ST003 | gotcha | Companion flagged that emitting `session-sql:changed` after read-only `SELECT` drifted from the event contract and reset widget pagination unnecessarily. | Gate event emission with a conservative SQL mutation detector instead of emitting after every successful query. | Companion F001, `.pi/extensions/session-sql/index.ts` |
 
 **Types**: `gotcha` | `research-needed` | `unexpected-behavior` | `workaround` | `decision` | `debt` | `insight`
 

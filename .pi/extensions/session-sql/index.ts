@@ -20,6 +20,12 @@ const SESSION_SQL_CHANGED_EVENT = "session-sql:changed";
 
 type SessionSqlChangedSource = "command" | "tool" | "reset";
 
+function looksMutatingSql(query: string): boolean {
+	return /(^|;)\s*(insert|update|delete|replace|create|drop|alter|vacuum|pragma|attach|detach|reindex|analyze|begin|commit|rollback)\b/i.test(
+		query,
+	);
+}
+
 function valueToText(value: unknown): string {
 	if (value === null) return "null";
 	if (value === undefined) return "";
@@ -188,7 +194,7 @@ export default function (pi: ExtensionAPI) {
 
 			const result = store.execute(args);
 			ctx.ui.notify(formatSqlResult(result), result.ok ? "info" : "error");
-			emitChanged("command", result);
+			if (looksMutatingSql(args)) emitChanged("command", result);
 			refreshStatus(ctx);
 		},
 	});
@@ -224,7 +230,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			ensureOpen(ctx);
 			const result = store.execute(params.query, { maxRows: params.maxRows });
-			emitChanged("tool", result);
+			if (looksMutatingSql(params.query)) emitChanged("tool", result);
 			refreshStatus(ctx);
 			return {
 				content: [{ type: "text", text: formatSqlResult(result) }],

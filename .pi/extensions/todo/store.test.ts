@@ -188,6 +188,51 @@ describe("TodoSqlStore", () => {
 		expect(expectTodoOk(store.next({ limit: 0 })).todos).toEqual([]);
 	});
 
+	it("projects a compact recent-activity widget window with overflow and paging", () => {
+		const { sql, store } = makeStore();
+		sql.execute(`INSERT INTO todos(title, status, priority, created_at, updated_at) VALUES
+('In flight old', 'in_progress', 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+('Recent pending', 'pending', 0, '2026-01-01 00:00:00', '2026-01-01 00:05:00'),
+('Recent blocked', 'blocked', 0, '2026-01-01 00:00:00', '2026-01-01 00:04:00'),
+('Another pending', 'pending', 0, '2026-01-01 00:00:00', '2026-01-01 00:03:00'),
+('Recent done', 'done', 0, '2026-01-01 00:00:00', '2026-01-01 00:02:00'),
+('Old pending', 'pending', 0, '2026-01-01 00:00:00', '2026-01-01 00:01:00')`);
+
+		const firstPage = expectTodoOk(store.widgetSnapshot({ maxRows: 4 }));
+		expect(firstPage.rows.map((todo) => todo.title)).toEqual([
+			"In flight old",
+			"Recent pending",
+			"Recent blocked",
+			"Another pending",
+		]);
+		expect(firstPage.hidden).toBe(2);
+		expect(firstPage.page).toBe(0);
+		expect(firstPage.pageCount).toBe(2);
+		expect(firstPage.inProgress).toBe(1);
+
+		const secondPage = expectTodoOk(store.widgetSnapshot({ maxRows: 4, page: 1 }));
+		expect(secondPage.rows.map((todo) => todo.title)).toEqual(["Old pending", "Recent done"]);
+		expect(secondPage.hidden).toBe(0);
+		expect(secondPage.page).toBe(1);
+	});
+
+	it("keeps recent completed rows visible while open work remains and clears when all done", () => {
+		const { sql, store } = makeStore();
+		sql.execute(`INSERT INTO todos(title, status, priority, created_at, updated_at) VALUES
+('Active', 'in_progress', 0, '2026-01-01 00:00:00', '2026-01-01 00:03:00'),
+('Open', 'pending', 0, '2026-01-01 00:00:00', '2026-01-01 00:02:00'),
+('Completed', 'done', 0, '2026-01-01 00:00:00', '2026-01-01 00:01:00')`);
+
+		const activeSnapshot = expectTodoOk(store.widgetSnapshot({ maxRows: 4 }));
+		expect(activeSnapshot.rows.map((todo) => todo.title)).toEqual(["Active", "Open", "Completed"]);
+
+		sql.execute("UPDATE todos SET status = 'done', updated_at = '2026-01-01 00:04:00'");
+		const completedSnapshot = expectTodoOk(store.widgetSnapshot({ maxRows: 4 }));
+		expect(completedSnapshot.open).toBe(0);
+		expect(completedSnapshot.rows).toEqual([]);
+		expect(completedSnapshot.pageCount).toBe(0);
+	});
+
 	it("persists todo rows when the same session DB is reopened", () => {
 		const location = locationForSession("todo-persist", tempRoot());
 		const first = makeStore(location);
