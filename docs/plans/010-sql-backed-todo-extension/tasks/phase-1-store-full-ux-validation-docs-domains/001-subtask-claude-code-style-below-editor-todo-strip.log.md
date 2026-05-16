@@ -1,6 +1,6 @@
 # Execution Log: Subtask 001 — Claude Code-style Below-editor Todo Strip
 
-**Status**: Active  
+**Status**: Complete  
 **Created**: 2026-05-15
 
 ## Pre-phase Harness Validation
@@ -33,7 +33,7 @@
 | ST002 | done | Added below-editor `todo-strip` widget rendering, lifecycle refresh, clear-on-shutdown/zero-open behavior, and optional paging shortcut wiring. |
 | ST003 | done | Added `session-sql:changed` event emission and todo listener for immediate raw SQL refresh. |
 | ST004 | done | Added widget projection tests and smoke-visible in-flight widget anchor. |
-| ST005 | active | Docs/domains/validation in progress. |
+| ST005 | done | Updated docs/domains/ledgers and final validation passed. |
 
 ### 2026-05-15 — ST002 started
 
@@ -78,6 +78,25 @@
 - Marked ST005 active in the task dossier and flight plan.
 - Scope: update user docs/domain records/ledgers, run full validation, reconcile companion findings, and close the subtask.
 
+### 2026-05-16 — ST005 completed
+
+- Updated `docs/how/todo.md`, `session-work-state`, `agent-tooling-interface`, `domain-map`, `docs/difficulties.md`, and task/flight-plan status.
+- Final validation passed with `just self-check`: typecheck, lint, tests, smoke (`ralph-loop_compact-survival`, `session-sql`, `todo`), package audit, and snapshots check.
+- Known non-failing output: Biome schema version info, Node SQLite experimental warnings, package-vetter legacy override warning.
+- Companion ST005 review summary: no findings; F001/F002 materially closed.
+
 ## Validation Evidence
 
-_To be populated during implementation._
+| Command | Result | Notes |
+|---------|--------|-------|
+| `npm run typecheck` | pass | Run before ST001/ST002/ST003/ST004 and inside final `just self-check`. |
+| `npm test -- .pi/extensions/todo/store.test.ts .pi/extensions/session-sql/store.test.ts` | pass | 45 tests after F002 coverage additions. |
+| `npm run smoke -- todo` | pass | Includes below-editor in-flight strip anchor. |
+| `just self-check` | pass | Full canonical gate per AGENTS.md. |
+
+## Companion Findings Reconciliation
+
+| Finding | Severity | Disposition | Notes |
+|---------|----------|-------------|-------|
+| F001 | MEDIUM | fixed | `session-sql:changed` now emits only for syntactically mutating SQL and reset, not read-only `SELECT`. |
+| F002 | MEDIUM | fixed | Added changed-classifier regression tests, multiple in-flight widget coverage, and long-title visible-width truncation coverage. |

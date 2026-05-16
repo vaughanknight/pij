@@ -5,7 +5,7 @@
 **Phase**: Phase 1: Store, full UX, validation, docs, domains  
 **Parent Task**: T006 — Overlay/status/key matching  
 **Generated**: 2026-05-15  
-**Status**: Active
+**Status**: Landed
 
 ---
 
@@ -33,17 +33,17 @@
 - [x] **Stage 2: Widget surface** — Render and refresh `todo-strip` below the editor in `todo/index.ts`.
 - [x] **Stage 3: Sync path** — Decide and implement/document raw `/sql` synchronization (`session-sql:changed` or fallback).
 - [x] **Stage 4: Validation** — Add store/render tests and todo smoke anchors if observable.
-- [~] **Stage 5: Documentation and closeout** — Update docs/domains/ledgers and run final validation.
+- [x] **Stage 5: Documentation and closeout** — Update docs/domains/ledgers and run final validation.
 
 ---
 
 ## Acceptance
 
-- [ ] Widget uses `ctx.ui.setWidget("todo-strip", ..., { placement: "belowEditor" })` and clears with `undefined`.
-- [ ] Widget shows at most 4 task rows by default, not the full todo list.
-- [ ] `in_progress` rows render first with an in-flight marker.
-- [ ] Recently completed rows remain visible and struck through while open work remains.
-- [ ] Overflow indicates hidden rows and paging/full-overlay path.
-- [ ] Paging shortcuts, if enabled, are configurable and named; no hardcoded `ctrl+t`.
-- [ ] Store tests cover recency ordering, cap, overflow, paging, completed retention, all-done clear, and long titles.
-- [ ] `npm run smoke -- todo` and `npm run self-check` pass or unrelated pre-existing failures are documented.
+- [x] Widget uses `ctx.ui.setWidget("todo-strip", ..., { placement: "belowEditor" })` and clears with `undefined`.
+- [x] Widget shows at most 4 task rows by default, not the full todo list.
+- [x] `in_progress` rows render first with an in-flight marker.
+- [x] Recently completed rows remain visible and struck through while open work remains.
+- [x] Overflow indicates hidden rows and paging/full-overlay path.
+- [x] Paging shortcuts, if enabled, are configurable and named; no hardcoded `ctrl+t`.
+- [x] Store tests cover recency ordering, cap, overflow, paging, completed retention, all-done clear, and long titles.
+- [x] `npm run smoke -- todo` and `npm run self-check` pass or unrelated pre-existing failures are documented.
