@@ -44,7 +44,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F004 | LOW | `01KRQF00C0HNP84ZZT8RYDHA60` | T003-fix | Fixed in `c7d9e40`; verification request `01KRQF543HP5TFS21D20J9QCTZ` | T003 discovery note still said D-031 follow-up commit pending even though `3fc8972` landed it. |
 | F005 | LOW | `01KRQF1E3001W6JZAV400HPB63` | T002-fix | Fixed in `c7d9e40`; verification request `01KRQF543HP5TFS21D20J9QCTZ` | F002/F003 rows still said pending even after `75d94e4`; dispositions now reference the fix commit. |
 | F006 | LOW | `01KRQF543HP5TFS21D20J9QCTZ` | finding-log-fix | Fixed in `0ea92c2`; verified by summary `01KRQF7GD7YW4NFWKKYDGECX3E` | F004/F005 rows still said pending; final log commit corrected them. |
-| F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in follow-up commit pending | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
+| F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in `2aff4e1`; verification request `01KRQFP654X49S5Z75R3QSPB8T` | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
 
 ## Task entries
 
@@ -97,4 +97,11 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Validation**: `just typecheck`; `just lint` passed after formatting.
 - **Commit**: `47f6e85`
 - **Companion**: Sent `review-request: T006 47f6e85` as message `01KRQFKVQVXXGDRHASP8RP9MCK`.
+
+### T007 — Record Minih dependency decision and package policy
+
+- **Status**: complete
+- **Evidence**: Added `minih-dependency-decision.md` deciding Phase 1 uses local Minih artifact/JSON contracts plus deterministic fixtures; no new package dependency; no package manifest edits.
+- **Validation**: Documentation-only task; `just lint` required before commit.
+- **Companion**: Review request to be sent after commit.
 
