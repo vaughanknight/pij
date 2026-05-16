@@ -163,6 +163,6 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
   - Final `just self-check` passed: typecheck → lint → test → smoke (`minih-workbench`, `ralph-loop`, `session-sql`, `todo`) → package audit with `PIJ_VET_SKIP_AGENT=1` → snapshots-check.
   - `minih doctor --json` at phase start: degraded with 0 errors; `code-review-companion` prompt-state-vocabulary-drift passed; warnings only.
   - Dependency decision: no new package added; no package-manifest hand edits for Minih Workbench.
-- **Commit**: evidence commit `0d745b1`; follow-up log SHA correction committed separately.
-- **Companion**: Final review request to be sent after commit.
+- **Commit**: evidence commit `0d745b1`; follow-up log corrections `76746a7` and `d592d40`.
+- **Companion**: Sent `review-request: T013 76746a7` as `01KRQGW5WHVHJ9SYQTTQ76H2KB`; companion summary `01KRQGXSJZ0VPZZ8N60B6QWQB3` found no HIGH/MEDIUM issues and approved Phase 1 handoff. Sent final-log review `d592d40` as `01KRQGYKPHW406E2CTG83M4T8M`, then drain `01KRQH169D3WC36V4RJZM7GBSQ` and control stop `01KRQH16FZTKVFE1BW6R45FJ5C`. Companion remained `stale` and no `output/report.json` farewell was written as of 2026-05-16T04:38Z; final summary therefore uses inbox findings/summaries as the review record.
 
