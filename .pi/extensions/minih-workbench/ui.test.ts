@@ -1,8 +1,8 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
-import { diagnostic, type MinihViewSnapshot, openModalForRun } from "./store.js";
-import { renderWidthSafeModalView } from "./ui.js";
+import { diagnostic, type MinihViewSnapshot, openModalForRun, pageModalPane } from "./store.js";
+import { renderWidthSafeModalView, reportLineCount } from "./ui.js";
 
 function viewWithMultilineText(): MinihViewSnapshot {
 	return {
@@ -96,6 +96,26 @@ describe("minih-workbench UI rendering", () => {
 		expect(lines.every((line) => !line.includes("\n"))).toBe(true);
 		expect(lines.every((line) => visibleWidth(line) <= 42)).toBe(true);
 		expect(lines.join("\n")).toContain("hello ↵ world");
-		expect(lines.join("\n")).toContain("summary:first line ↵ second line");
+		expect(lines.join("\n")).toContain("summary:first line");
+		expect(lines.join("\n")).toContain("summary:second line");
+	});
+
+	it("uses report cursor paging to change the visible report window", () => {
+		const view = viewWithMultilineText();
+		const longSummary = Array.from({ length: 6 }, (_item, index) => `line-${index}`).join("\n");
+		view.report.summary = longSummary;
+		view.summary.report.summary = longSummary;
+		let state = {
+			...openModalForRun({ slug: "agent", runId: "run" }),
+			focusedPane: "report" as const,
+			reportCursor: { limit: 2 },
+		};
+		const firstWindow = renderWidthSafeModalView(view, 80, { state }).join("\n");
+		state = pageModalPane(state, "report", "down", reportLineCount(view.report));
+		const secondWindow = renderWidthSafeModalView(view, 80, { state }).join("\n");
+		expect(firstWindow).toContain("reportState:ready");
+		expect(firstWindow).not.toContain("summary:line-0");
+		expect(secondWindow).toContain("summary:line-0");
+		expect(secondWindow).not.toBe(firstWindow);
 	});
 });

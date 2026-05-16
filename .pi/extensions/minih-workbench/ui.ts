@@ -2,6 +2,7 @@ import { type Component, type KeyId, matchesKey, truncateToWidth } from "@earend
 
 import {
 	clampListSelection,
+	clampPaneLimit,
 	closeModalSafely,
 	cycleFocusedPane,
 	DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
@@ -11,6 +12,7 @@ import {
 	type MinihInventorySnapshot,
 	type MinihModalPane,
 	type MinihModalState,
+	type MinihPaneCursor,
 	type MinihPaneSnapshot,
 	type MinihReportSummary,
 	type MinihRunRef,
@@ -176,15 +178,37 @@ export function renderPaneSnapshot(
 	return lines;
 }
 
-export function renderReportSummary(report: MinihReportSummary, focused: MinihModalPane): string[] {
-	const lines = [paneTitle("report", focused)];
-	lines.push(
+function reportLines(report: MinihReportSummary): string[] {
+	const lines = [
 		`reportState:${report.state} findings:${report.findingsCount} bytes:${report.bytes} truncated:${report.truncated}`,
-	);
+	];
 	if (report.path) lines.push(`path:${report.path}`);
-	if (report.summary && report.summary.length > 0) lines.push(`summary:${inlineText(report.summary)}`);
+	if (report.summary && report.summary.length > 0) {
+		lines.push(...report.summary.split(/\r?\n/).map((line) => `summary:${inlineText(line)}`));
+	}
 	if (!report.summary && report.state === "none") lines.push("  (no report yet)");
 	return lines;
+}
+
+export function reportLineCount(report: MinihReportSummary): number {
+	return reportLines(report).length;
+}
+
+export function renderReportSummary(
+	report: MinihReportSummary,
+	focused: MinihModalPane,
+	cursor: MinihPaneCursor = {},
+): string[] {
+	const allLines = reportLines(report);
+	const offset = Math.max(0, Math.floor(cursor.offset ?? 0));
+	const limit = clampPaneLimit(cursor.limit);
+	const visible = limit === 0 ? [] : allLines.slice(offset, offset + limit);
+	const end = offset + visible.length;
+	return [
+		paneTitle("report", focused),
+		`report lines:${allLines.length === 0 ? 0 : offset + 1}-${end}/${allLines.length}`,
+		...visible,
+	];
 }
 
 export function renderDiagnosticsSummary(diagnostics: readonly MinihDiagnostic[]): string[] {
@@ -224,7 +248,7 @@ export function renderModalView(
 		`Focused pane: ${focusedPane}`,
 	];
 	for (const pane of MINIH_MODAL_PANES) {
-		if (pane === "report") lines.push(...renderReportSummary(view.report, focusedPane));
+		if (pane === "report") lines.push(...renderReportSummary(view.report, focusedPane, options.state.reportCursor));
 		else {
 			const snapshot = activePaneSnapshot(view, pane);
 			if (snapshot) lines.push(...renderPaneSnapshot(pane, snapshot, focusedPane));
@@ -332,7 +356,7 @@ function paneTotal(view: MinihViewSnapshot, pane: MinihModalPane): number | unde
 		case "diagnostics":
 			return view.diagnostics.total;
 		case "report":
-			return view.report.summary ? 1 : 0;
+			return reportLineCount(view.report);
 	}
 }
 
