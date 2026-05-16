@@ -588,12 +588,12 @@ export function isPhase1ForbiddenAction(action: string): action is Phase1Forbidd
 export function phase1NoWriteResult(action: string): MinihAdapterResult<never> {
 	return minihError(
 		"MINIH_BAD_ARTIFACT",
-		`minih-workbench phase 1 is read-only; '${action}' is not available`,
+		`minih-workbench phase 2 is read-only; '${action}' is not available`,
 		[
 			diagnostic(
 				"warning",
-				"MINIH_PHASE1_READ_ONLY",
-				"Phase 1 exposes read-only pull surfaces only",
+				"MINIH_PHASE2_READ_ONLY",
+				"Phase 2 exposes read-only list, modal, and pull surfaces only",
 			),
 		],
 	);

@@ -32,6 +32,7 @@
 | T005 | complete | `d472fac` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRCZEE63JPJAC7W2H0JFB9` | Added `MinihRunListComponent` with injected keybindings and wired `/minih`/`/minih list` to an interactive overlay with non-UI text fallback; Enter selects a run for the upcoming modal task. |
 | T006 | complete | `135acec` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRNR62EYRCEWWM3CQ710XH` | Added `MinihRunModalComponent`, `/minih view <slug> <runId>`, list-to-modal open flow, full-area overlay rendering, pane focus/page handling, non-UI modal text fallback, and safe Esc close. |
 | T007 | complete | `58db25c` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRTXDAJ4CWFK9M2BJHHNEA` | Added Pi-free `feed.ts` read-only feed manager with injected readers/timers, coalesced refresh, watcher-failure diagnostics, bounded fallback polling, dispose guards, and list/modal feed integration with shutdown cleanup. |
+| T008 | complete | pending | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 17 tests; `npm run smoke -- minih-workbench` ✅ | pending | Wired `/minih view` and `/minih report` native modal flows, preserved `/minih report ... --json` and `/minih status --json`, and updated forbidden Phase 3 verb warnings to Phase 2 read-only wording. |
 
 ---
 
@@ -41,7 +42,7 @@
 |---------|----------|--------|-------------|------------|-------|
 | F001 | MEDIUM | `01KRQR969YPM0AMK8QDYHZD2SR` | Fixed; companion approved via `01KRQRGC25J787VJ1112Q16VWP` | `4c847ac` | Normalized multiline pane/report/diagnostic text and added `ui.test.ts` coverage for width-safe physical lines. |
 | F002 | MEDIUM | `01KRQRCZEE63JPJAC7W2H0JFB9` | Fixed; companion approved via `01KRQRJE6JCCP28NCX01ASRDXX` | `28103e6` | Added closed/superseded component guards around async list refresh completion. |
-| F003 | MEDIUM | `01KRQRNR62EYRCEWWM3CQ710XH` | Fixing inline before T008 | pending | Report pane exposed page actions but did not read `reportCursor`. |
+| F003 | MEDIUM | `01KRQRNR62EYRCEWWM3CQ710XH` | Fixed; companion approved via `01KRQRY6W3FAQY172A8RP0APBD` | `0ff2828` | Report rendering now windows summary lines with `reportCursor`; UI test proves report page-down changes visible content. |
 
 ---
 

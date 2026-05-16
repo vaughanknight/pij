@@ -19,6 +19,7 @@ import {
 	type MinihAdapterResult,
 	defaultModalState,
 	type MinihInventorySnapshot,
+	type MinihModalPane,
 	type MinihRunRef,
 	openModalForRun,
 	phase1NoWriteResult,
@@ -72,6 +73,8 @@ function helpText(): string {
 	return `minih-workbench read-only commands:
   /minih
   /minih list
+  /minih view <slug> <runId>
+  /minih report <slug> <runId>
   /minih status --json
   /minih status <slug> <runId> --json
   /minih report <slug> <runId> --json
@@ -107,7 +110,11 @@ export default function (pi: ExtensionAPI) {
 		return listMinihRuns({ rootDir: configuredRoot() });
 	}
 
-	async function openRunModal(ctx: ExtensionCommandContext, run: MinihRunRef): Promise<void> {
+	async function openRunModal(
+		ctx: ExtensionCommandContext,
+		run: MinihRunRef,
+		options: { focusedPane?: MinihModalPane } = {},
+	): Promise<void> {
 		const result = await readMinihRunStatus({
 			rootDir: configuredRoot(),
 			slug: run.slug,
@@ -117,7 +124,10 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(toolText(result), "error");
 			return;
 		}
-		const state = openModalForRun(run, defaultModalState());
+		const state = {
+			...openModalForRun(run, defaultModalState()),
+			focusedPane: options.focusedPane ?? "transcript",
+		};
 		if (!ctx.hasUI) {
 			ctx.ui.notify(renderWidthSafeModalView(result.value, 120, { state }).join("\n"), "info");
 			return;
@@ -273,9 +283,13 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(toolText(result), result.ok ? "info" : "error");
 				return;
 			}
-			if (verb === "report" && slug && runId) {
+			if (verb === "report" && slug && runId && wantsJson(tokens)) {
 				const result = await readMinihReport({ rootDir: configuredRoot(), slug, runId });
 				ctx.ui.notify(toolText(result), result.ok ? "info" : "error");
+				return;
+			}
+			if (verb === "report" && slug && runId) {
+				await openRunModal(ctx, { slug, runId }, { focusedPane: "report" });
 				return;
 			}
 			const result = await listMinihRuns({ rootDir: configuredRoot() });
