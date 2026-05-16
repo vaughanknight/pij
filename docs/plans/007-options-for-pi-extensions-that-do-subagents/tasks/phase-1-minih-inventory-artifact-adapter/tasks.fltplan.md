@@ -65,8 +65,8 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1,S2,S3,S4,S5 done
-    class S6,S7,S8 pending
+    class S1,S2,S3,S4,S5,S6 done
+    class S7,S8 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -82,7 +82,7 @@ stateDiagram-v2
 - [x] **Stage 3: Define contracts** — add Pi-free store contracts, adapter results, bounded snapshots, and persistence facade (`store.ts`, `persistence.ts`).
 - [x] **Stage 4: Decide Minih boundary** — record helper-vs-CLI/raw fallback decision before adapter code can add dependencies (`minih-dependency-decision.md` — new file).
 - [x] **Stage 5: Build fixtures** — create deterministic Minih artifact directories for success and failure cases (`fixtures/` — new directory).
-- [ ] **Stage 6: Implement adapter** — read Minih artifacts/fixtures through a tagged, bounded, read-only adapter (`minih-adapter.ts`).
+- [x] **Stage 6: Implement adapter** — read Minih artifacts/fixtures through a tagged, bounded, read-only adapter (`minih-adapter.ts`).
 - [ ] **Stage 7: Expose read-only pull surfaces** — wire canonical `/minih status --json` and read-only tools (`index.ts`, `ui.ts`).
 - [ ] **Stage 8: Prove with tests and evidence** — add store/adapter tests and log validation results (`*.test.ts`, `execution.log.md`).
 
@@ -188,7 +188,7 @@ flowchart LR
 - [x] T006: Define injected session persistence facade.
 - [x] T007: Record the Minih dependency decision and package policy.
 - [x] T008: Create deterministic Minih fixture run directories.
-- [ ] T009: Implement the read-only Minih adapter.
+- [x] T009: Implement the read-only Minih adapter.
 - [ ] T010: Add canonical read-only command/tool wiring for inventory/status/report.
 - [ ] T011: Add store/projection tests.
 - [ ] T012: Add adapter fixture tests.

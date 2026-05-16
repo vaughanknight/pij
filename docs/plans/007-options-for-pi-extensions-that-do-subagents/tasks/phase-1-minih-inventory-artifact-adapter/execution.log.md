@@ -46,6 +46,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F006 | LOW | `01KRQF543HP5TFS21D20J9QCTZ` | finding-log-fix | Fixed in `0ea92c2`; verified by summary `01KRQF7GD7YW4NFWKKYDGECX3E` | F004/F005 rows still said pending; final log commit corrected them. |
 | F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in `2aff4e1`; verification request `01KRQFP654X49S5Z75R3QSPB8T` | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
 | F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in `9cbf33a`; verification request `01KRQFT2233DSY9R77W8GAA19Y` | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
+| F009 | LOW | `01KRQFT2233DSY9R77W8GAA19Y` | T005-fix2 | Fixed in `47766c0` | F008 row still said pending in the first fix commit; T008 commit carried the corrected disposition. |
 
 ## Task entries
 
@@ -112,5 +113,13 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Added fixture Minih roots under `.pi/extensions/minih-workbench/fixtures/agents/` covering coordinated active, stale, standalone non-coordinated, completed/report-ready, malformed, missing/partial, permission-like, and large-output runs.
 - **Validation**: File inventory checked with `ctx_find`; adapter-specific validation lands in T012.
+- **Commit**: `47766c0`
+- **Companion**: Sent `review-request: T008 47766c0` as message `01KRQFYAMGZGGMA4DAV5474DAP`.
+
+### T009 — Implement read-only Minih adapter
+
+- **Status**: complete
+- **Evidence**: Added `.pi/extensions/minih-workbench/minih-adapter.ts` with fixture-root resolution, artifact/JSON/NDJSON readers, active/stale/completed inventory projection, bounded snapshots, diagnostics, report summaries, permission-like marker handling, and tagged results.
+- **Validation**: `npx biome check --write .pi/extensions/minih-workbench/minih-adapter.ts`; `just typecheck` passed. Adapter fixture assertions land in T012.
 - **Companion**: Review request to be sent after commit.
 
