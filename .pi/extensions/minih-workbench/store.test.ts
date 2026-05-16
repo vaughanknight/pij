@@ -99,6 +99,34 @@ describe("minih-workbench store contracts", () => {
 		expect(inventory.completedCount).toBe(1);
 	});
 
+	it("does not duplicate active report-ready runs in inventory", () => {
+		const inventory = projectInventory(
+			[
+				summary({
+					slug: "active-report",
+					runId: "1",
+					report: { state: "ready", findingsCount: 1, bytes: 100, truncated: false },
+				}),
+				summary({
+					slug: "done",
+					runId: "2",
+					status: {
+						liveness: "completed",
+						terminal: "completed",
+						inside: "complete",
+						outside: "unavailable",
+						attention: "none",
+					},
+				}),
+			],
+			{ activeLimit: 10, completedLimit: 5 },
+		);
+		expect(inventory.runs.map((run) => `${run.slug}/${run.runId}`)).toEqual([
+			"active-report/1",
+			"done/2",
+		]);
+	});
+
 	it("bounds pane snapshots with truncation markers", () => {
 		const pane = makePaneSnapshot(
 			[

@@ -367,18 +367,35 @@ export function projectInventory(
 	const activeLimit = clampRunLimit(limits.activeLimit, DEFAULT_ACTIVE_RUN_LIMIT);
 	const completedLimit = clampRunLimit(limits.completedLimit, DEFAULT_COMPLETED_RUN_LIMIT);
 	const sorted = sortRunSummaries(runs);
-	const active = sorted.filter((run) => run.status.liveness !== "completed").slice(0, activeLimit);
-	const completed = sorted
-		.filter((run) => run.status.liveness === "completed" || run.report.state === "ready")
-		.slice(0, completedLimit);
-	const selected = [...active, ...completed];
+	const selected: MinihRunSummary[] = [];
+	const selectedKeys = new Set<string>();
+	const keyForRun = (run: MinihRunSummary): string => `${run.slug}\u0000${run.runId}`;
+	const addRun = (run: MinihRunSummary): void => {
+		const key = keyForRun(run);
+		if (selectedKeys.has(key)) return;
+		selectedKeys.add(key);
+		selected.push(run);
+	};
+
+	for (const run of sorted
+		.filter((item) => item.status.liveness !== "completed")
+		.slice(0, activeLimit)) {
+		addRun(run);
+	}
+	for (const run of sorted.filter(
+		(item) => item.status.liveness === "completed" || item.report.state === "ready",
+	)) {
+		if (selectedKeys.size >= activeLimit + completedLimit) break;
+		addRun(run);
+	}
+	const uniqueTotal = new Set(sorted.map((run) => keyForRun(run))).size;
 	return {
 		runs: selected,
 		activeCount: sorted.filter((run) => run.status.liveness === "active").length,
 		staleCount: sorted.filter((run) => run.status.liveness === "stale").length,
 		completedCount: sorted.filter((run) => run.status.liveness === "completed").length,
 		diagnosticCount: sorted.reduce((total, run) => total + run.diagnostics.length, 0),
-		truncated: selected.length < sorted.length,
+		truncated: selectedKeys.size < uniqueTotal,
 	};
 }
 
