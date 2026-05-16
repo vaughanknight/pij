@@ -92,15 +92,23 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		let component: MinihRunListComponent | undefined;
+		let closed = false;
 		const selected = await ctx.ui.custom<MinihRunRef | "closed">(
 			(tui, _theme, _keybindings, done) => {
+				const finish = (value: MinihRunRef | "closed"): void => {
+					closed = true;
+					done(value);
+				};
 				component = new MinihRunListComponent(initial.value, {
-					onOpenRun: (run) => done(run),
-					onClose: () => done("closed"),
+					onOpenRun: (run) => finish(run),
+					onClose: () => finish("closed"),
 					onRefresh: () => {
+						const activeComponent = component;
+						if (!activeComponent) return;
 						void loadInventory().then((result) => {
-							if (result.ok) component?.updateSnapshot(result.value, "minih: refreshed");
-							else component?.updateSnapshot(initial.value, `minih: ${result.message}`);
+							if (closed || activeComponent !== component) return;
+							if (result.ok) activeComponent.updateSnapshot(result.value, "minih: refreshed");
+							else activeComponent.updateSnapshot(initial.value, `minih: ${result.message}`);
 						});
 					},
 					requestRender: () => tui.requestRender(),
@@ -118,6 +126,8 @@ export default function (pi: ExtensionAPI) {
 				},
 			},
 		);
+		closed = true;
+		component = undefined;
 		if (selected !== "closed") {
 			ctx.ui.notify(`minih: selected ${selected.slug}/${selected.runId}; modal lands in T006`, "info");
 		}

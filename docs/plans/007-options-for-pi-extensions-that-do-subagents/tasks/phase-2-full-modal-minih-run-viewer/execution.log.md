@@ -37,7 +37,8 @@
 
 | Finding | Severity | Ack Of | Disposition | Fix Commit | Notes |
 |---------|----------|--------|-------------|------------|-------|
-| F001 | MEDIUM | `01KRQR969YPM0AMK8QDYHZD2SR` | Fixing inline before T006 | pending | Multiline pane/report text bypassed width-safe physical-line rendering in `ui.ts`. |
+| F001 | MEDIUM | `01KRQR969YPM0AMK8QDYHZD2SR` | Fixed; verification requested via `01KRQRFQTYQB14N82K57MDGKQG` | `4c847ac` | Normalized multiline pane/report/diagnostic text and added `ui.test.ts` coverage for width-safe physical lines. |
+| F002 | MEDIUM | `01KRQRCZEE63JPJAC7W2H0JFB9` | Fixing inline before T006 | pending | Refresh callback could update a closed list overlay; needs disposed guard. |
 
 ---
 
