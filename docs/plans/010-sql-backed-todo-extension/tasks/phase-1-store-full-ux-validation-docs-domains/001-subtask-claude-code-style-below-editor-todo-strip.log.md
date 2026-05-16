@@ -30,10 +30,23 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | ST001 | done | Added widget constants/options/key fields, `TodoWidgetSnapshot`, and `widgetSnapshot()` recent-activity projection. |
-| ST002 | pending | Widget rendering + lifecycle. |
+| ST002 | done | Added below-editor `todo-strip` widget rendering, lifecycle refresh, clear-on-shutdown/zero-open behavior, and optional paging shortcut wiring. |
 | ST003 | pending | Optional raw SQL refresh event/fallback. |
 | ST004 | pending | Tests + smoke. |
 | ST005 | pending | Docs/domains/validation. |
+
+### 2026-05-15 — ST002 started
+
+- Marked ST002 active in the task dossier and flight plan.
+- Scope: render `todo-strip` below the editor, refresh after todo-visible operations, and clear on shutdown/zero open work.
+
+### 2026-05-15 — ST002 completed
+
+- Added `TodoStripWidget` using `ctx.ui.setWidget(TODO_WIDGET_KEY, ..., { placement: "belowEditor" })`.
+- Widget shows summary, in-flight marker, blocked marker/reason, completed strikethrough, overflow/page hints, and truncates each line.
+- Refreshes after `/todo` command paths, `todo` tool execution, session start, overlay close/done, and `turn_end`; clears on shutdown and zero open work.
+- Evidence: `npm run typecheck` passed; `npm test -- .pi/extensions/todo/store.test.ts` passed; `npm run smoke -- todo` passed.
+- Companion ST001 review summary: no findings; non-blocking note that Validation Evidence was still placeholder mid-phase.
 
 ## Validation Evidence
 

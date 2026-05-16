@@ -9,16 +9,19 @@ import { Type } from "typebox";
 import { defaultRootDir, locationForSession, SessionSqlStore } from "../session-sql/store.js";
 import {
 	DEFAULT_TODO_KEYBINDINGS,
+	DEFAULT_TODO_WIDGET_OPTIONS,
 	formatTodoRow,
 	type ParsedTodoCommand,
 	parseTodoCommand,
 	TODO_LIST_VIEWS,
 	TODO_STATUSES,
+	TODO_WIDGET_KEY,
 	type TodoListView,
 	TodoSqlStore,
 	type TodoStatus,
 	type TodoStoreResult,
 	type TodoViewRow,
+	type TodoWidgetSnapshot,
 	todoHelpText,
 } from "./store.js";
 
@@ -160,6 +163,75 @@ function matchesAny(data: string, keys: readonly string[]): boolean {
 	return keys.some((key) => matchesKey(data, key as KeyId));
 }
 
+type TodoTheme = ExtensionContext["ui"]["theme"];
+
+function firstKey(keys: readonly string[]): string | undefined {
+	return keys[0];
+}
+
+function widgetTitle(row: Pick<TodoViewRow, "id" | "title">): string {
+	const title = row.title.trim();
+	return title.length === 0 ? `<untitled #${row.id}>` : title;
+}
+
+class TodoStripWidget implements Component {
+	constructor(
+		private readonly snapshot: TodoWidgetSnapshot,
+		private readonly theme: TodoTheme,
+	) {}
+
+	render(width: number): string[] {
+		const safeWidth = Math.max(24, width);
+		const lines = [this.summaryLine(), ...this.snapshot.rows.map((row) => this.rowLine(row))];
+		if (this.snapshot.hidden > 0) lines.push(this.overflowLine());
+		return lines.map((line) => truncateToWidth(line, safeWidth));
+	}
+
+	invalidate(): void {}
+
+	private summaryLine(): string {
+		const parts = [
+			`Todos ${this.snapshot.done}/${this.snapshot.total} done`,
+			`${this.snapshot.open} open`,
+		];
+		if (this.snapshot.inProgress > 0) parts.push(`${this.snapshot.inProgress} in flight`);
+		if (this.snapshot.blocked > 0) parts.push(`${this.snapshot.blocked} blocked`);
+		parts.push(`details: ${firstKey(DEFAULT_TODO_KEYBINDINGS.openOverlay) ?? "/todo overlay"}`);
+		return parts.join(" · ");
+	}
+
+	private rowLine(row: TodoViewRow): string {
+		const title = widgetTitle(row);
+		const priority = row.priority === 0 ? "" : ` p${row.priority}`;
+		switch (row.status) {
+			case "in_progress":
+				return `${this.theme.fg("accent", "▶")} #${row.id}${priority} ${title}`;
+			case "blocked": {
+				const reason = row.description.trim();
+				const suffix = reason.length > 0 ? this.theme.fg("dim", ` — ${reason}`) : "";
+				return `${this.theme.fg("warning", "⛔")} #${row.id}${priority} ${title}${suffix}`;
+			}
+			case "done":
+				return `${this.theme.fg("success", "✓")} #${row.id}${priority} ${this.theme.fg(
+					"muted",
+					this.theme.strikethrough(title),
+				)}`;
+			case "pending":
+				return `${this.theme.fg("dim", "○")} #${row.id}${priority} ${title}`;
+		}
+	}
+
+	private overflowLine(): string {
+		const parts = [`… +${this.snapshot.hidden} more`];
+		if (this.snapshot.pageCount > 1)
+			parts.push(`page ${this.snapshot.page + 1}/${this.snapshot.pageCount}`);
+		const more = firstKey(DEFAULT_TODO_KEYBINDINGS.widgetNextPage);
+		if (more) parts.push(`more: ${more}`);
+		parts.push(`details: ${firstKey(DEFAULT_TODO_KEYBINDINGS.openOverlay) ?? "/todo overlay"}`);
+		return parts.join(" · ");
+	}
+}
+
 class TodoOverlay implements Component {
 	private rows: TodoViewRow[] = [];
 	private selectedIndex = 0;
@@ -252,6 +324,7 @@ class TodoOverlay implements Component {
 export default function (pi: ExtensionAPI) {
 	const sqlStore = new SessionSqlStore();
 	const todoStore = new TodoSqlStore(sqlStore);
+	let widgetPage = 0;
 
 	function openForCurrentSession(ctx: ExtensionContext): void {
 		const sessionId = ctx.sessionManager.getSessionId();
@@ -275,9 +348,54 @@ export default function (pi: ExtensionAPI) {
 		);
 	}
 
-	function notifyResult<T>(ctx: ExtensionCommandContext, result: TodoStoreResult<T>): void {
-		ctx.ui.notify(result.message, result.ok ? "info" : "error");
+	function refreshTodoWidget(ctx: ExtensionContext, options: { resetPage?: boolean } = {}): void {
+		if (options.resetPage) widgetPage = 0;
+		const snapshot = todoStore.widgetSnapshot({
+			maxRows: DEFAULT_TODO_WIDGET_OPTIONS.maxRows,
+			includeCompletedWhileOpen: DEFAULT_TODO_WIDGET_OPTIONS.includeCompletedWhileOpen,
+			page: widgetPage,
+		});
+		if (!snapshot.ok || snapshot.value.open === 0 || snapshot.value.rows.length === 0) {
+			ctx.ui.setWidget(TODO_WIDGET_KEY, undefined);
+			return;
+		}
+		widgetPage = snapshot.value.page;
+		ctx.ui.setWidget(TODO_WIDGET_KEY, (_tui, theme) => new TodoStripWidget(snapshot.value, theme), {
+			placement: DEFAULT_TODO_WIDGET_OPTIONS.placement,
+		});
+	}
+
+	function refreshTodoPresentation(
+		ctx: ExtensionContext,
+		options: { resetWidgetPage?: boolean } = {},
+	): void {
 		refreshStatus(ctx);
+		refreshTodoWidget(ctx, { resetPage: options.resetWidgetPage });
+	}
+
+	function notifyResult<T>(
+		ctx: ExtensionCommandContext,
+		result: TodoStoreResult<T>,
+		options: { resetWidgetPage?: boolean } = {},
+	): void {
+		ctx.ui.notify(result.message, result.ok ? "info" : "error");
+		refreshTodoPresentation(ctx, options);
+	}
+
+	function pageTodoWidget(ctx: ExtensionContext, delta: number): void {
+		ensureOpen(ctx);
+		const snapshot = todoStore.widgetSnapshot({
+			maxRows: DEFAULT_TODO_WIDGET_OPTIONS.maxRows,
+			includeCompletedWhileOpen: DEFAULT_TODO_WIDGET_OPTIONS.includeCompletedWhileOpen,
+			page: widgetPage,
+		});
+		if (!snapshot.ok || snapshot.value.pageCount <= 1) {
+			refreshTodoPresentation(ctx);
+			return;
+		}
+		widgetPage =
+			(snapshot.value.page + delta + snapshot.value.pageCount) % snapshot.value.pageCount;
+		refreshTodoPresentation(ctx);
 	}
 
 	async function openTodoOverlay(ctx: ExtensionContext): Promise<void> {
@@ -288,7 +406,7 @@ export default function (pi: ExtensionAPI) {
 					() => todoStore.list(),
 					(id) => todoStore.done(id),
 					() => tui.requestRender(),
-					() => refreshStatus(ctx),
+					() => refreshTodoPresentation(ctx, { resetWidgetPage: true }),
 					done,
 				),
 			{
@@ -302,7 +420,7 @@ export default function (pi: ExtensionAPI) {
 				},
 			},
 		);
-		refreshStatus(ctx);
+		refreshTodoPresentation(ctx);
 	}
 
 	async function runParsedCommand(
@@ -312,28 +430,31 @@ export default function (pi: ExtensionAPI) {
 		switch (parsed.action) {
 			case "help":
 				ctx.ui.notify(todoHelpText(), "info");
-				refreshStatus(ctx);
+				refreshTodoPresentation(ctx);
 				return;
 			case "list":
 				notifyResult(ctx, todoStore.list({ view: parsed.view, limit: parsed.limit }));
 				return;
 			case "add":
-				notifyResult(ctx, todoStore.add({ title: parsed.title }));
+				notifyResult(ctx, todoStore.add({ title: parsed.title }), { resetWidgetPage: true });
 				return;
 			case "done":
-				notifyResult(ctx, todoStore.done(parsed.id));
+				notifyResult(ctx, todoStore.done(parsed.id), { resetWidgetPage: true });
 				return;
 			case "status":
 				notifyResult(
 					ctx,
 					todoStore.setStatus({ id: parsed.id, status: parsed.status, reason: parsed.reason }),
+					{ resetWidgetPage: true },
 				);
 				return;
 			case "block":
-				notifyResult(ctx, todoStore.block(parsed.id, parsed.reason));
+				notifyResult(ctx, todoStore.block(parsed.id, parsed.reason), { resetWidgetPage: true });
 				return;
 			case "dep":
-				notifyResult(ctx, todoStore.addDependency({ id: parsed.id, dependsOn: parsed.dependsOn }));
+				notifyResult(ctx, todoStore.addDependency({ id: parsed.id, dependsOn: parsed.dependsOn }), {
+					resetWidgetPage: true,
+				});
 				return;
 			case "next":
 				notifyResult(ctx, todoStore.next({ limit: parsed.limit }));
@@ -348,10 +469,10 @@ export default function (pi: ExtensionAPI) {
 				);
 				if (!confirmed) {
 					ctx.ui.notify("todo: clear cancelled", "info");
-					refreshStatus(ctx);
+					refreshTodoPresentation(ctx);
 					return;
 				}
-				notifyResult(ctx, todoStore.clear());
+				notifyResult(ctx, todoStore.clear(), { resetWidgetPage: true });
 				return;
 			}
 		}
@@ -360,13 +481,19 @@ export default function (pi: ExtensionAPI) {
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
 		openForCurrentSession(ctx);
-		refreshStatus(ctx);
+		refreshTodoPresentation(ctx, { resetWidgetPage: true });
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		const result = sqlStore.close();
 		if (!result.ok) ctx.ui.notify(`todo: failed to close DB: ${result.message}`, "warning");
 		ctx.ui.setStatus(STATUS_KEY, undefined);
+		ctx.ui.setWidget(TODO_WIDGET_KEY, undefined);
+	});
+
+	pi.on("turn_end", async (_event, ctx) => {
+		ensureOpen(ctx);
+		refreshTodoPresentation(ctx);
 	});
 
 	pi.registerCommand("todo", {
@@ -376,7 +503,7 @@ export default function (pi: ExtensionAPI) {
 			const parsed = parseTodoCommand(args);
 			if (!parsed.ok) {
 				ctx.ui.notify(parsed.message, "error");
-				refreshStatus(ctx);
+				refreshTodoPresentation(ctx);
 				return;
 			}
 			await runParsedCommand(parsed.value, ctx);
@@ -390,6 +517,22 @@ export default function (pi: ExtensionAPI) {
 			handler: async (ctx: ExtensionContext): Promise<void> => {
 				await openTodoOverlay(ctx);
 			},
+		});
+	}
+
+	const [nextWidgetPageShortcut] = DEFAULT_TODO_KEYBINDINGS.widgetNextPage;
+	if (nextWidgetPageShortcut) {
+		pi.registerShortcut(nextWidgetPageShortcut as KeyId, {
+			description: "Show next SQL-backed todo strip page",
+			handler: (ctx: ExtensionContext): void => pageTodoWidget(ctx, 1),
+		});
+	}
+
+	const [previousWidgetPageShortcut] = DEFAULT_TODO_KEYBINDINGS.widgetPreviousPage;
+	if (previousWidgetPageShortcut) {
+		pi.registerShortcut(previousWidgetPageShortcut as KeyId, {
+			description: "Show previous SQL-backed todo strip page",
+			handler: (ctx: ExtensionContext): void => pageTodoWidget(ctx, -1),
 		});
 	}
 
@@ -468,7 +611,9 @@ export default function (pi: ExtensionAPI) {
 					break;
 			}
 
-			refreshStatus(ctx);
+			refreshTodoPresentation(ctx, {
+				resetWidgetPage: action !== "list" && action !== "next",
+			});
 			return {
 				content: [{ type: "text", text: result.message }],
 				details: detailsFromResult(action, result),

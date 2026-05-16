@@ -23,7 +23,18 @@ export const DEFAULT_TODO_WIDGET_OPTIONS = {
 	includeCompletedWhileOpen: true,
 } as const;
 
-export const DEFAULT_TODO_KEYBINDINGS = {
+export interface TodoKeybindings {
+	openOverlay: readonly string[];
+	widgetNextPage: readonly string[];
+	widgetPreviousPage: readonly string[];
+	closeOverlay: readonly string[];
+	refresh: readonly string[];
+	markDone: readonly string[];
+	selectPrevious: readonly string[];
+	selectNext: readonly string[];
+}
+
+export const DEFAULT_TODO_KEYBINDINGS: TodoKeybindings = {
 	openOverlay: ["ctrl+shift+y"],
 	widgetNextPage: [],
 	widgetPreviousPage: [],
@@ -32,7 +43,7 @@ export const DEFAULT_TODO_KEYBINDINGS = {
 	markDone: ["d"],
 	selectPrevious: ["up"],
 	selectNext: ["down"],
-} as const;
+};
 
 export type TodoErrorCode =
 	| "TODO_EMPTY_TITLE"
