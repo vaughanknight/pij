@@ -63,3 +63,7 @@ other_graphs:
       path: ~/pi-hacking/pi-mono/.fs2/graph.pickle
       description: Pi agent harness monorepo (upstream)
       source_url: https://github.com/earendil-works/pi-mono
+    - name: minih
+      path: ~/substrate/minih/.fs2/graph.pickle
+      description: minih — standalone minih agent runner (harness measurement branch)
+      source_url: https://github.com/AI-Substrate/minih
