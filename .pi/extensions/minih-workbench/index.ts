@@ -12,6 +12,7 @@ import {
 	readMinihReport,
 	readMinihRunStatus,
 } from "./minih-adapter.js";
+import { MemoryMinihWorkbenchPersistence } from "./persistence.js";
 import {
 	isPhase1ForbiddenAction,
 	MINIH_COMMAND_NAME,
@@ -85,6 +86,7 @@ Phase 2 is read-only: no send, stop, composer, push, launch, or install.`;
 
 export default function (pi: ExtensionAPI) {
 	const activeFeeds = new Set<MinihReadOnlyFeedHandle>();
+	const persistence = new MemoryMinihWorkbenchPersistence();
 
 	function disposeActiveFeeds(): void {
 		for (const feed of activeFeeds) feed.dispose();
@@ -106,6 +108,14 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setStatus(MINIH_STATUS_KEY, undefined);
 	}
 
+	function clearSelectedPointer(): void {
+		persistence.clearSelectedRun();
+	}
+
+	function setSelectedPointer(run: MinihRunRef): void {
+		persistence.setSelectedRun(run);
+	}
+
 	async function loadInventory(): Promise<MinihAdapterResult<MinihInventorySnapshot>> {
 		return listMinihRuns({ rootDir: configuredRoot() });
 	}
@@ -124,6 +134,8 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(toolText(result), "error");
 			return;
 		}
+		setSelectedPointer(run);
+		ctx.ui.setStatus(MINIH_STATUS_KEY, `minih: viewing ${run.slug}/${run.runId}`);
 		const state = {
 			...openModalForRun(run, defaultModalState()),
 			focusedPane: options.focusedPane ?? "transcript",
@@ -180,6 +192,8 @@ export default function (pi: ExtensionAPI) {
 		closed = true;
 		releaseFeed(feed);
 		component = undefined;
+		clearSelectedPointer();
+		clearStatus(ctx);
 	}
 
 	async function openRunList(ctx: ExtensionCommandContext): Promise<void> {
@@ -243,11 +257,13 @@ export default function (pi: ExtensionAPI) {
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
 		disposeActiveFeeds();
+		clearSelectedPointer();
 		clearStatus(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		disposeActiveFeeds();
+		clearSelectedPointer();
 		clearStatus(ctx);
 	});
 
