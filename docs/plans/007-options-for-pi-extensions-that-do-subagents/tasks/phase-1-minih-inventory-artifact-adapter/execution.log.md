@@ -41,8 +41,8 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F001 | MEDIUM | `01KRQEHXP8V9732FQWG54V6TPJ` | T001 | Fixed in `c266082`; ack `01KRQEVR37TR130TFJAV2TA3SG` | T001 commit had task-table progress drift; T002 commit corrected `tasks.md` and flight checklist. |
 | F002 | MEDIUM | `01KRQETYD73THCFW7GT2TDJEKJ` | T002 | Fixed in `75d94e4`; ack `01KRQF1MEHNXJTV7WVF9YQFGT2`; verification request `01KRQF1E3001W6JZAV400HPB63` | Domain map missed explicit `agent-workbench` → `pi runtime` consume edge. |
 | F003 | MEDIUM | `01KRQETYD73THCFW7GT2TDJEKJ` | T002 | Fixed in `75d94e4`; ack `01KRQF1MNXFYE708G610B3YS3R`; verification request `01KRQF1E3001W6JZAV400HPB63` | Execution log had stale "no findings" note for T001; replaced with F001 disposition. |
-| F004 | LOW | `01KRQF00C0HNP84ZZT8RYDHA60` | T003-fix | Fixed in follow-up commit pending | T003 discovery note still said D-031 follow-up commit pending even though `3fc8972` landed it. |
-| F005 | LOW | `01KRQF1E3001W6JZAV400HPB63` | T002-fix | Fixed in follow-up commit pending | F002/F003 rows still said pending even after `75d94e4`; dispositions now reference the fix commit. |
+| F004 | LOW | `01KRQF00C0HNP84ZZT8RYDHA60` | T003-fix | Fixed in `c7d9e40`; verification request `01KRQF543HP5TFS21D20J9QCTZ` | T003 discovery note still said D-031 follow-up commit pending even though `3fc8972` landed it. |
+| F005 | LOW | `01KRQF1E3001W6JZAV400HPB63` | T002-fix | Fixed in `c7d9e40`; verification request `01KRQF543HP5TFS21D20J9QCTZ` | F002/F003 rows still said pending even after `75d94e4`; dispositions now reference the fix commit. |
 
 ## Task entries
 
