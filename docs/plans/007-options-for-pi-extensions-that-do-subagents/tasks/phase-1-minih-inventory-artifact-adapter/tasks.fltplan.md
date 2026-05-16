@@ -191,5 +191,5 @@ flowchart LR
 - [x] T009: Implement the read-only Minih adapter.
 - [x] T010: Add canonical read-only command/tool wiring for inventory/status/report.
 - [x] T011: Add store/projection tests.
-- [ ] T012: Add adapter fixture tests.
+- [x] T012: Add adapter fixture tests.
 - [ ] T013: Record validation evidence for Phase 1.

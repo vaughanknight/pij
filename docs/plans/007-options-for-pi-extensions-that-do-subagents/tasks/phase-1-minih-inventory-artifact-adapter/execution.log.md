@@ -48,6 +48,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in `9cbf33a`; verification request `01KRQFT2233DSY9R77W8GAA19Y` | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
 | F009 | LOW | `01KRQFT2233DSY9R77W8GAA19Y` | T005-fix2 | Fixed in `47766c0` | F008 row still said pending in the first fix commit; T008 commit carried the corrected disposition. |
 | F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in `b76aa37`; verification request `01KRQGBY1VK6G7P6D829S1RAEN` | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
+| F011 | LOW | `01KRQGBY1VK6G7P6D829S1RAEN` | T009-fix | Fixed in follow-up commit pending | F010 row still said pending in the fix commit; current log corrected it. |
 
 ## Task entries
 
@@ -138,5 +139,13 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Expanded `store.test.ts` to 10 pure tests covering summary sorting, status axes/attention, inventory projection and report-ready de-dupe/limit regressions, bounded pane truncation, default constants/placeholders, tagged result helpers, and Phase 1 no-write invariant.
 - **Validation**: `just typecheck`; `npx vitest run .pi/extensions/minih-workbench/store.test.ts`; `just lint` passed.
+- **Commit**: `a3e259d`
+- **Companion**: Sent `review-request: T011 a3e259d` as message `01KRQGEKMSEECP7E8KPFMHMJW4`.
+
+### T012 — Add adapter fixture tests
+
+- **Status**: complete
+- **Evidence**: Added `minih-adapter.test.ts` with fixture-backed tests for inventory coverage, status axes, coordinated panes, report reading, malformed/missing/permission diagnostics, large-output truncation, and unknown-run tagged error.
+- **Validation**: `just typecheck`; `npx vitest run .pi/extensions/minih-workbench/minih-adapter.test.ts`; `just lint` passed.
 - **Companion**: Review request to be sent after commit.
 
