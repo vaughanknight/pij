@@ -34,7 +34,7 @@
 | T007 | complete | `58db25c` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRTXDAJ4CWFK9M2BJHHNEA` | Added Pi-free `feed.ts` read-only feed manager with injected readers/timers, coalesced refresh, watcher-failure diagnostics, bounded fallback polling, dispose guards, and list/modal feed integration with shutdown cleanup. |
 | T008 | complete | `122eb2c` | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 17 tests; `npm run smoke -- minih-workbench` ✅ | `01KRQS3T7Q95KSKC78H0EZNNE3` | Wired `/minih view` and `/minih report` native modal flows, preserved `/minih report ... --json` and `/minih status --json`, and updated forbidden Phase 3 verb warnings to Phase 2 read-only wording. |
 | T009 | complete | `f299c98` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQS784XVAY9TT8MEX1EDNW8` | Added session-scoped selected-run pointer reconciliation through the persistence facade, status cleanup, and feed/pointer disposal on one `session_start` handler plus `session_shutdown` without auto-opening UI. |
-| T010 | complete | pending | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/feed.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 22 tests | pending | Added `feed.test.ts` for coalescing, watcher-failure diagnostics/bounded fallback, and callbacks-after-dispose; expanded `ui.test.ts` for list selection/open, modal anchors/focus/Esc, multiline width safety, and report paging. |
+| T010 | complete | `a6ab438` | `npx tsc --noEmit` ✅; `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/feed.test.ts .pi/extensions/minih-workbench/ui.test.ts` ✅ 22 tests | `01KRQSFM9E9MX891009VSF391H` | Added `feed.test.ts` for coalescing, watcher-failure diagnostics/bounded fallback, and callbacks-after-dispose; expanded `ui.test.ts` for list selection/open, modal anchors/focus/Esc, multiline width safety, and report paging. |
 
 ---
 
@@ -45,8 +45,9 @@
 | F001 | MEDIUM | `01KRQR969YPM0AMK8QDYHZD2SR` | Fixed; companion approved via `01KRQRGC25J787VJ1112Q16VWP` | `4c847ac` | Normalized multiline pane/report/diagnostic text and added `ui.test.ts` coverage for width-safe physical lines. |
 | F002 | MEDIUM | `01KRQRCZEE63JPJAC7W2H0JFB9` | Fixed; companion approved via `01KRQRJE6JCCP28NCX01ASRDXX` | `28103e6` | Added closed/superseded component guards around async list refresh completion. |
 | F003 | MEDIUM | `01KRQRNR62EYRCEWWM3CQ710XH` | Fixed; companion approved via `01KRQRY6W3FAQY172A8RP0APBD` | `0ff2828` | Report rendering now windows summary lines with `reportCursor`; UI test proves report page-down changes visible content. |
-| F004 | MEDIUM | `01KRQS3T7Q95KSKC78H0EZNNE3` | Fixed; verification requested via `01KRQSANAPV1YCXJB8FJC2KZK5` | `8a40840` | Renamed Phase 1-specific no-write symbols to phase-neutral read-only contracts and updated task note/tests. |
-| F005 | MEDIUM | `01KRQS784XVAY9TT8MEX1EDNW8` | Fixed; verification requested via `01KRQSANAPV1YCXJB8FJC2KZK5` | `8a40840` | Moved selected/status marking after non-UI fallback return so text fallback leaves no modal state. |
+| F004 | MEDIUM | `01KRQS3T7Q95KSKC78H0EZNNE3` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Renamed Phase 1-specific no-write symbols to phase-neutral read-only contracts and updated task note/tests. |
+| F005 | MEDIUM | `01KRQS784XVAY9TT8MEX1EDNW8` | Fixed; companion approved via `01KRQSBNZ36RFXCSTJC8RFRN3S` | `8a40840` | Moved selected/status marking after non-UI fallback return so text fallback leaves no modal state. |
+| F006 | MEDIUM | `01KRQSFM9E9MX891009VSF391H` | Fixing inline before T011 | pending | UI component keybinding-injection test used default keys rather than proving custom injected keys. |
 
 ---
 

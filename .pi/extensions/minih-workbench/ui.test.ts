@@ -1,7 +1,14 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
-import { diagnostic, type MinihViewSnapshot, openModalForRun, pageModalPane } from "./store.js";
+import {
+	DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+	diagnostic,
+	MINIH_WORKBENCH_ACTIONS,
+	type MinihViewSnapshot,
+	openModalForRun,
+	pageModalPane,
+} from "./store.js";
 import {
 	MINIH_DISABLED_COMPOSER_REASON,
 	MinihRunListComponent,
@@ -100,6 +107,11 @@ describe("minih-workbench UI rendering", () => {
 		const second = { ...first, slug: "other", runId: "run-2" };
 		const opened: string[] = [];
 		let renders = 0;
+		const customKeys = {
+			...DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+			[MINIH_WORKBENCH_ACTIONS.selectNext]: ["x"],
+			[MINIH_WORKBENCH_ACTIONS.openRun]: ["o"],
+		};
 		const component = new MinihRunListComponent(
 			{
 				runs: [first, second],
@@ -117,10 +129,14 @@ describe("minih-workbench UI rendering", () => {
 					renders += 1;
 				},
 			},
+			customKeys,
 		);
 		expect(component.render(120).join("\n")).toContain("MINIH WORKBENCH — RUN LIST");
 		component.handleInput("\u001b[B");
 		component.handleInput("\r");
+		expect(opened).toEqual([]);
+		component.handleInput("x");
+		component.handleInput("o");
 		expect(opened).toEqual(["other/run-2"]);
 		expect(renders).toBeGreaterThan(0);
 	});
@@ -128,22 +144,36 @@ describe("minih-workbench UI rendering", () => {
 	it("renders modal anchors and changes focused pane without closing", () => {
 		let closed = false;
 		let state = openModalForRun({ slug: "agent", runId: "run" });
-		const component = new MinihRunModalComponent(viewWithMultilineText(), state, {
-			onClose: () => {
-				closed = true;
+		const customKeys = {
+			...DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+			[MINIH_WORKBENCH_ACTIONS.focusNextPane]: ["f"],
+			[MINIH_WORKBENCH_ACTIONS.closeView]: ["c"],
+		};
+		const component = new MinihRunModalComponent(
+			viewWithMultilineText(),
+			state,
+			{
+				onClose: () => {
+					closed = true;
+				},
+				onStateChange: (next) => {
+					state = next;
+				},
+				requestRender: () => {},
 			},
-			onStateChange: (next) => {
-				state = next;
-			},
-			requestRender: () => {},
-		});
+			customKeys,
+		);
 		const initial = component.render(120).join("\n");
 		expect(initial).toContain("MINIH WORKBENCH — RUN VIEW agent/run");
 		expect(initial).toContain(MINIH_DISABLED_COMPOSER_REASON);
 		component.handleInput("\t");
+		expect(state.focusedPane).toBe("transcript");
+		component.handleInput("f");
 		expect(state.focusedPane).toBe("tools");
 		expect(closed).toBe(false);
 		component.handleInput("\u001b");
+		expect(closed).toBe(false);
+		component.handleInput("c");
 		expect(closed).toBe(true);
 		expect(state.open).toBe(false);
 	});
