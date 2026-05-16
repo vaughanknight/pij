@@ -121,5 +121,13 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Added `.pi/extensions/minih-workbench/minih-adapter.ts` with fixture-root resolution, artifact/JSON/NDJSON readers, active/stale/completed inventory projection, bounded snapshots, diagnostics, report summaries, permission-like marker handling, and tagged results.
 - **Validation**: `npx biome check --write .pi/extensions/minih-workbench/minih-adapter.ts`; `just typecheck` passed. Adapter fixture assertions land in T012.
+- **Commit**: `05d8a0e`
+- **Companion**: Sent `review-request: T009 05d8a0e` as message `01KRQG2KD48S4NH8BSY7M7CAS6`.
+
+### T010 — Add canonical read-only command/tool wiring
+
+- **Status**: complete
+- **Evidence**: Added `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, read-only tools `minih_runs_list`, `minih_run_status`, `minih_read_report`, text formatting in `ui.ts`, and deterministic `minih-workbench` smoke.
+- **Validation**: `just typecheck`; `npm run smoke -- minih-workbench`; `just lint` passed.
 - **Companion**: Review request to be sent after commit.
 
