@@ -75,7 +75,14 @@ The inside inbox was schema-corrupt for `minih inside inbox list` because one ac
 - `session-sql:changed` needed careful naming/semantics because row-returning mutations make result-kind detection misleading.
 - The plan-6 companion skill references `/plan-6a-v2-update-progress`, but no direct callable skill/tool was available in this session, so debrief was handled manually.
 
+### Companion difficulty
+
+| ID | Category | Severity | Description | Ledger |
+|----|----------|----------|-------------|--------|
+| MH-001 | coordination | annoying | Final `output/report.json` required manual mirroring of findings already sent through the inbox; no automatic export from inbox messages to report JSON. | Promoted to `docs/difficulties.md` as D-030. |
+
 ### Magic wand / follow-ups
 
 - Encode a small event-contract test harness for extension event buses so future cross-extension events can be tested without exporting classifier helpers.
 - Add a plan-6 helper for closeout status consistency across root plan, phase index, subtask dossier, flight plan, and execution log.
+- Add a first-class companion command/template that turns inbox findings/summaries into the final report automatically.
