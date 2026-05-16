@@ -65,8 +65,7 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1,S2 done
-    class S3 active
+    class S1,S2,S3 done
     class S4,S5,S6,S7,S8 pending
 ```
 
@@ -80,7 +79,7 @@ stateDiagram-v2
 
 - [x] **Stage 1: Establish domain** — create `agent-workbench` and map it into the registry/domain map (`docs/domains/agent-workbench/domain.md` — new file).
 - [x] **Stage 2: Scaffold extension** — generate `.pi/extensions/minih-workbench/` and add extension-local rules (`AGENTS.md` — new file).
-- [~] **Stage 3: Define contracts** — add Pi-free store contracts, adapter results, bounded snapshots, and persistence facade (`store.ts`, `persistence.ts`).
+- [x] **Stage 3: Define contracts** — add Pi-free store contracts, adapter results, bounded snapshots, and persistence facade (`store.ts`, `persistence.ts`).
 - [ ] **Stage 4: Decide Minih boundary** — record helper-vs-CLI/raw fallback decision before adapter code can add dependencies (`minih-dependency-decision.md` — new file).
 - [ ] **Stage 5: Build fixtures** — create deterministic Minih artifact directories for success and failure cases (`fixtures/` — new directory).
 - [ ] **Stage 6: Implement adapter** — read Minih artifacts/fixtures through a tagged, bounded, read-only adapter (`minih-adapter.ts`).
@@ -186,7 +185,7 @@ flowchart LR
 - [x] T003: Scaffold the `minih-workbench` extension from the harness generator.
 - [x] T004: Add extension-local implementation rules.
 - [x] T005: Define Pi-free store contracts and constants.
-- [ ] T006: Define injected session persistence facade.
+- [x] T006: Define injected session persistence facade.
 - [ ] T007: Record the Minih dependency decision and package policy.
 - [ ] T008: Create deterministic Minih fixture run directories.
 - [ ] T009: Implement the read-only Minih adapter.
