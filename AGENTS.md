@@ -76,8 +76,12 @@
   `.pi/packages.yaml` (source of truth) → `.pi/settings.json#packages`
   (generated). Subcommands: `list` / `add <src> [note...]` / `enable <s>`
   / `disable <s>` (runs `pi remove`) / `sync`.
-- **`.mcp.json`** at repo root — MCP server config (read by
-  `pi-mcp-adapter` if installed).
+- **MCP server config** lives globally at `~/.pi/agent/mcp.json` (read by
+  `pi-mcp-adapter`). pij does **not** keep a project-local `.mcp.json` —
+  the configured servers (perplexity, flowspace/`fs2`) are shared across
+  every pi session. Per-project overrides would go in `.pi/mcp.json` if
+  ever needed. Config holds env-var **references** (`${PERPLEXITY_API_KEY}`),
+  never plaintext secrets — the actual key lives in `~/.zshenv` / shell env.
 - **`agents/extension-validator/`** — minih agent pack that drives the
   Driver SDK to validate extensions; used in plan-004 pilot flow.
 
