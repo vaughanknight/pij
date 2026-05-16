@@ -50,6 +50,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in `b76aa37`; verification request `01KRQGBY1VK6G7P6D829S1RAEN` | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
 | F011 | LOW | `01KRQGBY1VK6G7P6D829S1RAEN` | T009-fix | Fixed in `dfc1d3f` | F010 row still said pending in the fix commit; T012 log update corrected it. |
 | F012 | LOW | `01KRQGEKMSEECP7E8KPFMHMJW4` | T011 | Fixed in evidence commit `0d745b1` | T011 fixed F011's underlying complaint but did not include an F011 reconciliation row; current log records it. |
+| F013 | LOW | `01KRQGHNVRYF7EXT1QY2WDGNAK` | T012 | Fixed in final log follow-up | T012 review noted the reconciliation table remained stale for F011/F012; final evidence/log follow-up records both dispositions. |
 
 ## Task entries
 
