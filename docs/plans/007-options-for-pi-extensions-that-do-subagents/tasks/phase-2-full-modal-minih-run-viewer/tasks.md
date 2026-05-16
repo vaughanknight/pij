@@ -141,7 +141,7 @@ flowchart TD
     subgraph Phase["Phase 2: Full modal Minih run viewer"]
         T001["T001: Keybinding contracts"]:::completed
         T002["T002: List/modal state helpers"]:::completed
-        T003["T003: Store tests"]:::pending
+        T003["T003: Store tests"]:::completed
         T004["T004: UI rendering primitives"]:::pending
         T005["T005: Run-list component"]:::pending
         T006["T006: Full modal component"]:::pending
@@ -159,7 +159,7 @@ flowchart TD
         F2["ui.ts"]:::pending
         F3["feed.ts"]:::pending
         F4["index.ts"]:::pending
-        F5["*.test.ts"]:::pending
+        F5["*.test.ts"]:::completed
         F6["smoke.ts"]:::pending
         F7["domain docs"]:::pending
         F8["execution.log.md"]:::pending
@@ -188,7 +188,7 @@ flowchart TD
 |--------|-----|------|--------|---------|-----------|-------|
 | [x] | T001 | Add Minih Workbench keybinding contracts and defaults. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.ts` | `store.ts` exports `MinihWorkbenchKeybindings` and `DEFAULT_MINIH_WORKBENCH_KEYBINDINGS` next to `MINIH_WORKBENCH_ACTIONS`; defaults cover open list, open selected run, close view, refresh, select previous/next, pane focus next/previous, transcript/tool/coordination/diagnostics/report page up/down where applicable; no inline key literals are needed by UI code. | Plan task 2.1; project no-hardcoded-keybindings rule. Use `KeyId` only in UI wiring if needed; store remains Pi-free by using strings/readonly arrays. |
 | [x] | T002 | Add pure list/modal state helpers. | `agent-workbench` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.ts` | Store exports pure helpers for list selection bounds, selected run resolution, open/close modal transitions, pane focus cycling, pane cursor paging, and safe-close/no-control result; helpers preserve independent pane cursors and do not mutate Minih artifacts. | Builds on Phase 1 `MinihModalState`, `MinihPaneCursor`, `defaultModalState()`, and `phase1NoWriteResult()`. Add report pane cursor if required for modal UX. |
-| [ ] | T003 | Expand store tests for Phase 2 state contracts. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.test.ts` | Tests cover keybinding defaults, list selection wrap/clamp behavior, opening selected run, closing view without control side effects, pane focus cycling, independent pane cursor paging, and bounded/truncation metadata preservation. | Tests remain pure and fixture-light; no Pi runtime or TUI component dependency. |
+| [x] | T003 | Expand store tests for Phase 2 state contracts. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.test.ts` | Tests cover keybinding defaults, list selection wrap/clamp behavior, opening selected run, closing view without control side effects, pane focus cycling, independent pane cursor paging, and bounded/truncation metadata preservation. | Tests remain pure and fixture-light; no Pi runtime or TUI component dependency. |
 | [ ] | T004 | Build UI rendering primitives and stable text anchors. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.ts` | `ui.ts` exposes reusable formatting/render helpers for list rows, section headers, status axes, diagnostics, truncation/page indicators, disabled composer reason, and width-safe lines; every rendered smoke-critical state has stable visible anchors. | Use `@earendil-works/pi-tui` utilities such as `truncateToWidth`, `matchesKey`, `Key`, `Component` as needed. No adapter/file reads in UI. |
 | [ ] | T005 | Implement the keyboard-selectable Minih run-list component. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/index.ts` | `/minih` or `/minih list` renders a Pi-native list component showing active/stale first plus bounded completed/report-ready section; rows show slug/run id, liveness, terminal, inside/outside, attention, material count, report state, and diagnostics count; Up/Down selection, Enter open, refresh, and Esc close use injected keybindings. | Plan tasks 2.2/2.1. Reuse Todo overlay idiom but not todo code. If `ctx.hasUI` is false, command falls back to existing structured/text output. |
 | [ ] | T006 | Implement the full-area read-only modal viewer component. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.ts` | Enter or `/minih view <slug> <runId>` opens a full-area Pi-native overlay/modal for the selected run with header, transcript, tools, coordination/status, output/report, diagnostics, context/count indicators when available, visible focused pane, scroll/page indicators, and a clear composer-disabled reason; `Esc` closes only the modal. | Plan task 2.3. Native Pi UI only; do not nest Minih Ink or parse ANSI. Composer is absent/disabled in Phase 2. |

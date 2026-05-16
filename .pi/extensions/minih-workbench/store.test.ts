@@ -2,17 +2,27 @@ import { describe, expect, it } from "vitest";
 
 import {
 	classifyAttention,
+	clampListSelection,
+	closeModalSafely,
+	cycleFocusedPane,
 	DEFAULT_ACTIVE_RUN_LIMIT,
 	DEFAULT_COMPLETED_RUN_LIMIT,
+	DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
 	defaultModalState,
 	diagnostic,
+	MINIH_MODAL_PANES,
 	MINIH_WORKBENCH_ACTIONS,
+	moveListSelection,
 	type MinihRunSummary,
 	makePaneSnapshot,
 	minihError,
 	minihOk,
+	openModalForRun,
+	pageFocusedPane,
+	pageModalPane,
 	phase1NoWriteResult,
 	projectInventory,
+	resolveSelectedRun,
 	sortRunSummaries,
 } from "./store.js";
 
@@ -52,10 +62,16 @@ describe("minih-workbench store contracts", () => {
 		expect(defaultModalState()).toMatchObject({ open: false, focusedPane: "transcript" });
 	});
 
-	it("exports default limits and placeholder actions without keybindings", () => {
+	it("exports named actions and default keybindings without raw keys as action names", () => {
 		expect(DEFAULT_ACTIVE_RUN_LIMIT).toBeGreaterThan(0);
 		expect(DEFAULT_COMPLETED_RUN_LIMIT).toBeGreaterThan(0);
 		expect(MINIH_WORKBENCH_ACTIONS.openRun).toBe("minih.openRun");
+		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.openRun]).toContain(
+			"enter",
+		);
+		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.closeView]).toContain(
+			"escape",
+		);
 		expect(Object.values(MINIH_WORKBENCH_ACTIONS)).not.toContain("up");
 		expect(Object.values(MINIH_WORKBENCH_ACTIONS)).not.toContain("escape");
 	});
@@ -201,6 +217,64 @@ describe("minih-workbench store contracts", () => {
 				diagnostics: [diagnostic("warning", "STALE_PEER", "peer is slow")],
 			}),
 		).toBe("needs_attention");
+	});
+
+	it("clamps and moves list selection without leaving bounds", () => {
+		const runs = [summary({ slug: "a", runId: "1" }), summary({ slug: "b", runId: "2" })];
+		expect(clampListSelection(runs, -10)).toBe(0);
+		expect(clampListSelection(runs, 10)).toBe(1);
+		expect(moveListSelection({ runs, selectedIndex: 0, delta: 1 })).toBe(1);
+		expect(moveListSelection({ runs, selectedIndex: 1, delta: 1 })).toBe(1);
+		expect(moveListSelection({ runs, selectedIndex: 1, delta: 1, wrap: true })).toBe(0);
+		expect(clampListSelection([], 5)).toBe(0);
+	});
+
+	it("resolves and opens selected runs using cloned references", () => {
+		const runs = [summary({ slug: "a", runId: "1" }), summary({ slug: "b", runId: "2" })];
+		const selected = resolveSelectedRun(runs, 99);
+		expect(selected).toEqual({ slug: "b", runId: "2" });
+		const state = openModalForRun(selected ?? { slug: "missing", runId: "missing" });
+		expect(state.open).toBe(true);
+		expect(state.selectedRun).toEqual({ slug: "b", runId: "2" });
+		expect(state.selectedRun).not.toBe(selected);
+	});
+
+	it("closes modal safely without control or stop side effects", () => {
+		const state = openModalForRun({ slug: "agent", runId: "run" });
+		const result = closeModalSafely(state);
+		expect(result).toMatchObject({ ok: true, sentControl: false, sentStop: false });
+		expect(result.state.open).toBe(false);
+		expect(result.state.selectedRun).toBeUndefined();
+		expect(result.message).toContain("untouched");
+	});
+
+	it("cycles focused panes across the full modal pane set", () => {
+		let state = defaultModalState();
+		expect(MINIH_MODAL_PANES).toEqual([
+			"transcript",
+			"tools",
+			"coordination",
+			"diagnostics",
+			"report",
+		]);
+		state = cycleFocusedPane(state, 1);
+		expect(state.focusedPane).toBe("tools");
+		state = cycleFocusedPane(state, -1);
+		expect(state.focusedPane).toBe("transcript");
+		state = cycleFocusedPane(state, -1);
+		expect(state.focusedPane).toBe("report");
+	});
+
+	it("pages modal panes independently", () => {
+		let state = defaultModalState();
+		state = pageModalPane(state, "tools", "down", 200);
+		state = pageFocusedPane(state, "down", 200);
+		expect(state.toolsCursor.offset).toBe(80);
+		expect(state.transcriptCursor.offset).toBe(80);
+		expect(state.coordinationCursor.offset).toBeUndefined();
+		const back = pageModalPane(state, "tools", "up", 200);
+		expect(back.toolsCursor.offset).toBe(0);
+		expect(back.transcriptCursor.offset).toBe(80);
 	});
 
 	it("makes Phase 1 write/control attempts explicit errors", () => {

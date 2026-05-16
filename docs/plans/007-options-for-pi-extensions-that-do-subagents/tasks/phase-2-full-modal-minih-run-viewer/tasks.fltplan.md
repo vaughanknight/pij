@@ -66,8 +66,8 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1 done
-    class S2,S3,S4,S5,S6,S7,S8 pending
+    class S1,S2 done
+    class S3,S4,S5,S6,S7,S8 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -79,7 +79,7 @@ stateDiagram-v2
 <!-- Updated by /plan-6-v2 during implementation: [ ] → [~] → [x] -->
 
 - [x] **Stage 1: Define controls and state** — add default keybinding constants and pure list/modal focus/scroll helpers (`store.ts`).
-- [ ] **Stage 2: Prove pure behavior** — expand store tests for keybindings, selection, pane focus, cursor paging, and safe close (`store.test.ts`).
+- [x] **Stage 2: Prove pure behavior** — expand store tests for keybindings, selection, pane focus, cursor paging, and safe close (`store.test.ts`).
 - [ ] **Stage 3: Build native list UI** — implement width-safe run-list rendering and keyboard selection (`ui.ts`, `index.ts`).
 - [ ] **Stage 4: Build full modal UI** — implement header, transcript/tools/coordination/report/diagnostics panes, disabled composer reason, focus and scroll indicators (`ui.ts`).
 - [ ] **Stage 5: Add lazy feed lifecycle** — create read-only feed manager with fake timers/readers, diagnostics, bounded polling fallback, coalescing, and explicit dispose (`feed.ts`).
@@ -172,7 +172,7 @@ flowchart LR
 
 - [x] T001: Add Minih Workbench keybinding contracts and defaults.
 - [x] T002: Add pure list/modal state helpers.
-- [ ] T003: Expand store tests for Phase 2 state contracts.
+- [x] T003: Expand store tests for Phase 2 state contracts.
 - [ ] T004: Build UI rendering primitives and stable text anchors.
 - [ ] T005: Implement the keyboard-selectable Minih run-list component.
 - [ ] T006: Implement the full-area read-only modal viewer component.
