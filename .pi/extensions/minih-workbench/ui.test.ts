@@ -2,7 +2,13 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 
 import { diagnostic, type MinihViewSnapshot, openModalForRun, pageModalPane } from "./store.js";
-import { renderWidthSafeModalView, reportLineCount } from "./ui.js";
+import {
+	MINIH_DISABLED_COMPOSER_REASON,
+	MinihRunListComponent,
+	MinihRunModalComponent,
+	renderWidthSafeModalView,
+	reportLineCount,
+} from "./ui.js";
 
 function viewWithMultilineText(): MinihViewSnapshot {
 	return {
@@ -89,6 +95,59 @@ function viewWithMultilineText(): MinihViewSnapshot {
 }
 
 describe("minih-workbench UI rendering", () => {
+	it("renders list anchors and moves selection with injected component keys", () => {
+		const first = viewWithMultilineText().summary;
+		const second = { ...first, slug: "other", runId: "run-2" };
+		const opened: string[] = [];
+		let renders = 0;
+		const component = new MinihRunListComponent(
+			{
+				runs: [first, second],
+				activeCount: 2,
+				staleCount: 0,
+				completedCount: 0,
+				diagnosticCount: 1,
+				truncated: false,
+			},
+			{
+				onOpenRun: (run) => opened.push(`${run.slug}/${run.runId}`),
+				onClose: () => {},
+				onRefresh: () => {},
+				requestRender: () => {
+					renders += 1;
+				},
+			},
+		);
+		expect(component.render(120).join("\n")).toContain("MINIH WORKBENCH — RUN LIST");
+		component.handleInput("\u001b[B");
+		component.handleInput("\r");
+		expect(opened).toEqual(["other/run-2"]);
+		expect(renders).toBeGreaterThan(0);
+	});
+
+	it("renders modal anchors and changes focused pane without closing", () => {
+		let closed = false;
+		let state = openModalForRun({ slug: "agent", runId: "run" });
+		const component = new MinihRunModalComponent(viewWithMultilineText(), state, {
+			onClose: () => {
+				closed = true;
+			},
+			onStateChange: (next) => {
+				state = next;
+			},
+			requestRender: () => {},
+		});
+		const initial = component.render(120).join("\n");
+		expect(initial).toContain("MINIH WORKBENCH — RUN VIEW agent/run");
+		expect(initial).toContain(MINIH_DISABLED_COMPOSER_REASON);
+		component.handleInput("\t");
+		expect(state.focusedPane).toBe("tools");
+		expect(closed).toBe(false);
+		component.handleInput("\u001b");
+		expect(closed).toBe(true);
+		expect(state.open).toBe(false);
+	});
+
 	it("keeps multiline pane/report text on width-safe physical lines", () => {
 		const lines = renderWidthSafeModalView(viewWithMultilineText(), 42, {
 			state: openModalForRun({ slug: "agent", runId: "run" }),

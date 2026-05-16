@@ -67,7 +67,8 @@ stateDiagram-v2
     S8 --> [*]
 
     class S1,S2,S3,S4,S5,S6 done
-    class S7,S8 pending
+    class S7 active
+    class S8 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -84,7 +85,7 @@ stateDiagram-v2
 - [x] **Stage 4: Build full modal UI** — implement header, transcript/tools/coordination/report/diagnostics panes, disabled composer reason, focus and scroll indicators (`ui.ts`).
 - [x] **Stage 5: Add lazy feed lifecycle** — create read-only feed manager with fake timers/readers, diagnostics, bounded polling fallback, coalescing, and explicit dispose (`feed.ts`).
 - [x] **Stage 6: Wire commands/lifecycle** — connect `/minih`, `/minih list`, `/minih view`, `/minih report`, session_start reconciliation, and session_shutdown cleanup (`index.ts`).
-- [ ] **Stage 7: Validate UI/feed behavior** — add targeted UI/feed tests and deterministic Driver SDK modal smoke (`ui.test.ts`, `feed.test.ts`, `smoke.ts`).
+- [~] **Stage 7: Validate UI/feed behavior** — add targeted UI/feed tests and deterministic Driver SDK modal smoke (`ui.test.ts`, `feed.test.ts`, `smoke.ts`).
 - [ ] **Stage 8: Land evidence and handoff** — update execution log, extension `AGENTS.md`, domain docs, flight status, velocity/difficulty records, and Phase 3 handoff notes (`execution.log.md`, domain docs).
 
 ---
@@ -179,6 +180,6 @@ flowchart LR
 - [x] T007: Add lazy read-only feed/watch lifecycle with fake-feed support.
 - [x] T008: Wire `/minih` list/view/report commands to the native UI while preserving pull contracts.
 - [x] T009: Reconcile lifecycle and session state without auto-opening UI.
-- [ ] T010: Add targeted UI/feed tests.
+- [x] T010: Add targeted UI/feed tests.
 - [ ] T011: Expand deterministic Driver SDK smoke for read-only modal flows.
 - [ ] T012: Record Phase 2 evidence and update domain/handoff docs.
