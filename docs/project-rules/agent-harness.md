@@ -271,3 +271,4 @@ Removing either weakens the proof.
 | Plan | Change | Date |
 |------|--------|------|
 | 008-ralph-loop-extension | Created. AC-12 gift b. Codifies minih + companion-mode as the standard agent overlay for every plan-6 from now on. References D-025 workaround + AI-Substrate/minih#30. Layering split from `harness.md`. | 2026-05-15 |
+| 007-options-for-pi-extensions-that-do-subagents / Phase 1 | Exercised companion-mode over the Minih Workbench implementation, including inline finding reconciliation and deterministic Minih fixture/read-only pull-surface evidence for future Workbench phases. | 2026-05-16 |

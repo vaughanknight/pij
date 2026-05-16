@@ -48,7 +48,8 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in `9cbf33a`; verification request `01KRQFT2233DSY9R77W8GAA19Y` | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
 | F009 | LOW | `01KRQFT2233DSY9R77W8GAA19Y` | T005-fix2 | Fixed in `47766c0` | F008 row still said pending in the first fix commit; T008 commit carried the corrected disposition. |
 | F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in `b76aa37`; verification request `01KRQGBY1VK6G7P6D829S1RAEN` | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
-| F011 | LOW | `01KRQGBY1VK6G7P6D829S1RAEN` | T009-fix | Fixed in follow-up commit pending | F010 row still said pending in the fix commit; current log corrected it. |
+| F011 | LOW | `01KRQGBY1VK6G7P6D829S1RAEN` | T009-fix | Fixed in `dfc1d3f` | F010 row still said pending in the fix commit; T012 log update corrected it. |
+| F012 | LOW | `01KRQGEKMSEECP7E8KPFMHMJW4` | T011 | Fixed in `5964333` | T011 fixed F011's underlying complaint but did not include an F011 reconciliation row; current log records it. |
 
 ## Task entries
 
@@ -147,5 +148,20 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Added `minih-adapter.test.ts` with fixture-backed tests for inventory coverage, status axes, coordinated panes, report reading, malformed/missing/permission diagnostics, large-output truncation, and unknown-run tagged error.
 - **Validation**: `just typecheck`; `npx vitest run .pi/extensions/minih-workbench/minih-adapter.test.ts`; `just lint` passed.
-- **Companion**: Review request to be sent after commit.
+- **Commit**: `dfc1d3f`
+- **Companion**: Sent `review-request: T012 dfc1d3f` as message `01KRQGHNVRYF7EXT1QY2WDGNAK`.
+
+### T013 — Record validation evidence for Phase 1
+
+- **Status**: complete
+- **Evidence**:
+  - `just typecheck` passed repeatedly during T005/T006/T009/T010/T011/T012.
+  - `npx vitest run .pi/extensions/minih-workbench/store.test.ts` passed: 10 tests.
+  - `npx vitest run .pi/extensions/minih-workbench/minih-adapter.test.ts` passed: 7 tests.
+  - `npm run smoke -- minih-workbench` passed.
+  - Final `just self-check` passed: typecheck → lint → test → smoke (`minih-workbench`, `ralph-loop`, `session-sql`, `todo`) → package audit with `PIJ_VET_SKIP_AGENT=1` → snapshots-check.
+  - `minih doctor --json` at phase start: degraded with 0 errors; `code-review-companion` prompt-state-vocabulary-drift passed; warnings only.
+  - Dependency decision: no new package added; no package-manifest hand edits for Minih Workbench.
+- **Commit**: `5964333`
+- **Companion**: Final review request to be sent after commit.
 

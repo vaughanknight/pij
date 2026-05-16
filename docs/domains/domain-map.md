@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
     SWS[session-work-state\ncontracts: session DB semantics, schema, reset, TodoSqlStore/widgetSnapshot/cleanup]
-    ATI[agent-tooling-interface\ncontracts: sql tool, /sql command, todo tool, /todo, overlay/status/strip/cleanup UX]
+    ATI[agent-tooling-interface\ncontracts: sql tool, /sql, todo tool, /todo, /minih read-only tools/status UX]
     H[extension-authoring-harness\ncontracts: generator, smoke, self-check, feedback, pkg vet/audit]
     PI[pi runtime\ncontracts: extension lifecycle, tools, commands]
     V[vetter pipeline\ncontracts: Verdict, Finding, Vetter; vetted: schema]
@@ -56,4 +56,4 @@ flowchart LR
 | 2026-05-15 | Plan 010 — extended `session-work-state` with `TodoSqlStore` over the default `todos` / `todo_deps` schema and extended `agent-tooling-interface` with `todo` tool, `/todo`, overlay/status UX, docs, and smoke. |
 | 2026-05-16 | Plan 010 ST-001 — added `TodoSqlStore.widgetSnapshot`, below-editor `todo-strip`, and `session-sql:changed` refresh edge for raw SQL mutations. |
 | 2026-05-16 | Plan 010 follow-up — added targeted todo cleanup (`delete <id>`, `prune done`) to the store and tool/command UX. |
-| 2026-05-16 | Plan 007 Phase 1 — added `agent-workbench` (`AW`) and Minih artifact source (`MH`) nodes with one-way consume edges to `pi runtime`, `agent-tooling-interface`, `session-work-state`, `agentic-loops`, `extension-authoring-harness`, and Minih-owned artifacts. |
+| 2026-05-16 | Plan 007 Phase 1 — added `agent-workbench` (`AW`) and Minih artifact source (`MH`) nodes with one-way consume edges to `pi runtime`, `agent-tooling-interface`, `session-work-state`, `agentic-loops`, `extension-authoring-harness`, and Minih-owned artifacts; expanded `agent-tooling-interface` node label for `/minih` read-only surfaces. |

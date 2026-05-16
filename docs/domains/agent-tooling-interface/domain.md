@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Own the observable model and operator experience for using session SQL and SQL-backed current-session todos. This domain makes structured work state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
+Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, and read-only Minih Workbench pull surfaces. This domain makes structured work state and external agent-run state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
 
 ## Source Locations
 
@@ -14,6 +14,9 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | `.pi/extensions/todo/index.ts` | Pi wiring for lifecycle, `/todo` command, `todo` tool, overlay, status signal, and shortcut registration. |
 | `.pi/extensions/todo/smoke.ts` | Deterministic todo command/overlay/SQL agreement smoke. |
 | `.pi/extensions/todo/AGENTS.md` | Extension-local implementation and validation guidance. |
+| `.pi/extensions/minih-workbench/index.ts` | Pi wiring for `/minih status --json`, read-only status/report commands, model tools, and lifecycle status cleanup. |
+| `.pi/extensions/minih-workbench/ui.ts` | Read-only text formatting for Minih inventory rows until the Phase 2 native list/modal UI lands. |
+| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Minih Workbench command smoke over fixture artifacts. |
 | `docs/how/session-sql.md` | Detailed user/agent guide. |
 | `docs/how/todo.md` | Detailed SQL-backed todo user/agent guide. |
 | `README.md` | Quick-start mention. |
@@ -31,6 +34,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | Deterministic smoke | Validate the real pi TUI path without model tool selection. | Driver SDK scenarios exercise `/sql`, `/todo`, overlay anchors, and `/reload`. |
 | Todo command and tool UX | Routine task actions are available without raw SQL. | `/todo` and the `todo` tool share add/list/status/block/done/delete/prune/dep/next/clear semantics. |
 | Todo overlay, strip, and status | Current-session work is visible during live TUI use. | `/todo overlay` renders SQL-backed open todos; below-editor `todo-strip` shows a compact recent-activity window; footer status shows `todo: N open` and clears at zero. |
+| Minih Workbench read-only pull UX | Minih run state is inspectable from Pi without opening the future modal or writing to Minih. | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report`. |
 
 ## Contracts
 
@@ -43,6 +47,8 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | `todo` tool | LLM agent | Manages SQL-backed current-session todos through action payloads; targeted delete/prune cleanup is supported, while destructive clear requires `confirm: true`. |
 | `/todo` command | Human/operator/smoke | List/add/status/block/done/delete/prune/dep/next/overlay/clear command surface with stable output phrases. |
 | Todo overlay/status/widget | Human/operator | Minimal overlay through `ctx.ui.custom`, compact below-editor strip through `ctx.ui.setWidget`, and footer status through `ctx.ui.setStatus`. |
+| `/minih` read-only command | Human/operator/smoke | Canonical `/minih status --json` plus status/report subcommands over fixture or configured Minih artifact roots. |
+| Minih read-only tools | LLM agent | `minih_runs_list`, `minih_run_status`, and `minih_read_report` return deterministic bounded JSON envelopes and expose no send/stop/push capabilities. |
 
 ## Composition
 
@@ -54,6 +60,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | Documentation | implemented | README quick-start plus `docs/how/session-sql.md` and `docs/how/todo.md`. |
 | Todo wiring | implemented | `todo/index.ts` registers lifecycle, command, model tool, status, overlay, below-editor strip, and shortcuts. |
 | Todo smoke | implemented | `todo/smoke.ts` proves empty/add/list/delete/prune/SQL agreement/below-editor strip/overlay/reload path. |
+| Minih Workbench read-only wiring | implemented in Plan 007 Phase 1 | `minih-workbench/index.ts` registers canonical `/minih` read-only commands and model tools over the agent-workbench adapter contracts. |
 
 ## Dependencies
 
@@ -78,6 +85,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 - Result/error/truncation text.
 - Status/schema presentation.
 - Todo command/tool/overlay/below-editor strip/status presentation.
+- Minih Workbench read-only `/minih` command, model tools, and formatting presentation.
 - Deterministic smoke scenario.
 - Operator documentation and agent use recipes.
 
@@ -88,6 +96,7 @@ Own the observable model and operator experience for using session SQL and SQL-b
 - Broad harness redesign; belongs to the existing harness capability and is out of scope unless narrow friction appears.
 - Cross-session memory/search; out of scope for Plan 006/010.
 - Todo storage semantics; belongs to `session-work-state`.
+- Minih run execution, artifact ownership, adapter normalization, and future send/stop/push safety policy; belongs to Minih upstream and `agent-workbench`.
 
 ## History
 
@@ -98,3 +107,4 @@ Own the observable model and operator experience for using session SQL and SQL-b
 | 010-sql-backed-todo-extension | Added `todo` tool, `/todo` command, minimal overlay, open-count status signal, deterministic smoke, and docs over the shared session SQL work state. | 2026-05-15 |
 | 010-sql-backed-todo-extension/ST-001 | Added the compact below-editor `todo-strip` widget and `session-sql:changed` refresh path. | 2026-05-16 |
 | 010-sql-backed-todo-extension/follow-up | Added `/todo delete <id>`, `/todo prune done`, and matching model tool actions for tidying completed or unwanted rows. | 2026-05-16 |
+| 007-options-for-pi-extensions-that-do-subagents / Phase 1 | Added read-only Minih Workbench pull UX: `/minih status --json`, run status/report commands, `minih_runs_list`, `minih_run_status`, `minih_read_report`, and fixture-backed smoke. | 2026-05-16 |

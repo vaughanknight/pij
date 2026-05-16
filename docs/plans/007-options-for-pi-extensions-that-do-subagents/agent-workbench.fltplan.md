@@ -5,7 +5,7 @@
 **Dossier**: [research-dossier.md](./research-dossier.md) + `/tmp/pij-minih-flowspace-v3/research-dossier.md`  
 **Workshops**: [001 Pi-native Agent Workbench UX](./workshops/001-pi-native-agent-workbench-ux.md) — Minih-only full modal viewer first  
 **Generated**: 2026-05-16  
-**Status**: Ready for Phase 1 task dossier  
+**Status**: Phase 1 landed — ready for Phase 2 task dossier  
 **Mode**: Full, max 3 implementation phases  
 **Complexity**: CS-5 (epic)
 
@@ -69,7 +69,7 @@ flowchart LR
     classDef active fill:#FFF3E0,stroke:#FB8C00,color:#000
     classDef pending fill:#ECEFF1,stroke:#607D8B,color:#000
 
-    R[Research]:::done --> W[Workshop]:::done --> S[Spec]:::done --> C[Clarify]:::done --> A[Architect]:::done --> P4[Plan-4 Review]:::done --> T[Phase Tasks]:::active --> I[Implement]:::pending --> V[Validate]:::pending
+    R[Research]:::done --> W[Workshop]:::done --> S[Spec]:::done --> C[Clarify]:::done --> A[Architect]:::done --> P4[Plan-4 Review]:::done --> T[Phase Tasks]:::done --> I[Phase 1 Implement]:::done --> V[Phase 1 Validate]:::done
 ```
 
 ---
@@ -137,9 +137,9 @@ flowchart LR
 
 ## Next Steps
 
-1. Run `/plan-5-v2-phase-tasks-and-brief` for Phase 1 using [agent-workbench-plan.md](./agent-workbench-plan.md).
-2. Preserve the plan validation record when generating tasks.
-3. Keep the first proof read-only: inventory/adapter before modal, modal before Phase 3 interaction/push.
+1. Run `/plan-5-v2-phase-tasks-and-brief` for Phase 2 using [agent-workbench-plan.md](./agent-workbench-plan.md).
+2. Preserve Phase 1 exported contracts: `store.ts`, `minih-adapter.ts`, `persistence.ts`, fixtures, `/minih status --json`, and read-only tools.
+3. Keep Phase 2 read-only: native list/modal viewer before Phase 3 interaction/push.
 4. Run plan-4/validate again only if the plan contract changes materially.
 
 ---
@@ -165,3 +165,7 @@ Created [agent-workbench-plan.md](./agent-workbench-plan.md) with three phases: 
 ### 2026-05-16 — Plan-4 and validation complete
 
 Ran plan-4 readiness review: no HIGH findings. Folded mechanical MEDIUM findings into the plan: agentic-loops edge, persistence contract, keybinding constants in `store.ts`, single `session_start`, and persist-before-side-effect discipline. Re-ran thesis-aware validation on the architected plan: no HIGH findings. Folded mechanical MEDIUM findings into the plan: bounded completed/report-ready list section, concrete `persistence.ts`, dependency decision gate, redaction/truncation contract, large-pane bounds, watcher failure recovery, and current handoff state.
+
+### 2026-05-16 — Phase 1 landed
+
+Implemented Phase 1 with code-review-companion in Power-On-Mode. Created the `agent-workbench` domain and registered it, scaffolded `.pi/extensions/minih-workbench`, added Pi-free store contracts, a persistence facade, dependency decision, deterministic Minih fixture roots, read-only artifact adapter, `/minih status --json`, `minih_runs_list`, `minih_run_status`, `minih_read_report`, store/adapter tests, and deterministic smoke. Final `just self-check` passed. Phase 2 can now consume the read-only contracts to build the native list/modal viewer.

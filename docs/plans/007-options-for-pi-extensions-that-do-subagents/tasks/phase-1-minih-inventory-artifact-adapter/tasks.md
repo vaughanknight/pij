@@ -126,7 +126,7 @@ flowchart TD
         T010["T010: Read-only command/tool contracts"]:::completed
         T011["T011: Store tests"]:::completed
         T012["T012: Adapter tests"]:::completed
-        T013["T013: Validation evidence"]:::pending
+        T013["T013: Validation evidence"]:::completed
         T001 --> T002 --> T003 --> T004 --> T005 --> T006 --> T007 --> T008 --> T009 --> T010 --> T011 --> T012 --> T013
     end
 
@@ -141,7 +141,7 @@ flowchart TD
         F8[".pi/extensions/minih-workbench/minih-adapter.ts"]:::completed
         F9[".pi/extensions/minih-workbench/index.ts"]:::completed
         F10[".pi/extensions/minih-workbench/*.test.ts"]:::completed
-        F11["execution.log.md"]:::pending
+        F11["execution.log.md"]:::completed
     end
 
     T001 -.-> F1
@@ -176,7 +176,7 @@ flowchart TD
 | [x] | T010 | Add canonical read-only command/tool wiring for inventory/status/report. | `agent-tooling-interface` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/index.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.ts` | `/minih status --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report` return deterministic bounded envelopes; no `send`, `stop`, composer, push, or modal UI is implemented yet. | Pull fallback for smoke/model use. Aliases may be additional only; they cannot replace canonical `/minih status --json`. Keep one future-compatible `session_start` handler shape; no expensive watchers in Phase 1. |
 | [x] | T011 | Add store/projection tests. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.test.ts` | Tests cover summary sorting, status-axis separation, attention classification, bounded pane windows/truncation markers, report-ready projection, default constants/placeholders, tagged result helpers, and no-write Phase 1 invariant. | Store tests should be pure and fixture-light. |
 | [x] | T012 | Add adapter fixture tests. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/minih-adapter.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/fixtures/` | Tests use fixture run dirs to prove active/stale/completed/malformed/missing/permission-like/large cases produce summaries or diagnostics without crashes; tests prove no `last-run` race assumption and no ANSI parsing. | Plan Findings 02 and 06. |
-| [ ] | T013 | Record validation evidence for Phase 1. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-1-minih-inventory-artifact-adapter/execution.log.md`; relevant test outputs | Execution log records targeted store/adapter test outcomes, `just typecheck` or stronger, final `just self-check`, `minih doctor` status before companion use, and dependency-vet evidence if any package was added. | Evidence task closes the dossier loop; plan-6 updates this during implementation. |
+| [x] | T013 | Record validation evidence for Phase 1. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-1-minih-inventory-artifact-adapter/execution.log.md`; relevant test outputs | Execution log records targeted store/adapter test outcomes, `just typecheck` or stronger, final `just self-check`, `minih doctor` status before companion use, and dependency-vet evidence if any package was added. | Evidence task closes the dossier loop; plan-6 updates this during implementation. |
 
 ---
 

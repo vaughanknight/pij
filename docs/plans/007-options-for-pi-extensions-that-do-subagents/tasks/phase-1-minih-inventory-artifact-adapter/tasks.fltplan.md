@@ -3,7 +3,7 @@
 **Plan**: [../../agent-workbench-plan.md](../../agent-workbench-plan.md)  
 **Phase**: Phase 1: Minih inventory + artifact adapter  
 **Generated**: 2026-05-16  
-**Status**: Ready for takeoff
+**Status**: Landed
 
 ---
 
@@ -65,8 +65,7 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1,S2,S3,S4,S5,S6,S7 done
-    class S8 active
+    class S1,S2,S3,S4,S5,S6,S7,S8 done
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -84,7 +83,7 @@ stateDiagram-v2
 - [x] **Stage 5: Build fixtures** — create deterministic Minih artifact directories for success and failure cases (`fixtures/` — new directory).
 - [x] **Stage 6: Implement adapter** — read Minih artifacts/fixtures through a tagged, bounded, read-only adapter (`minih-adapter.ts`).
 - [x] **Stage 7: Expose read-only pull surfaces** — wire canonical `/minih status --json` and read-only tools (`index.ts`, `ui.ts`).
-- [~] **Stage 8: Prove with tests and evidence** — add store/adapter tests and log validation results (`*.test.ts`, `execution.log.md`).
+- [x] **Stage 8: Prove with tests and evidence** — add store/adapter tests and log validation results (`*.test.ts`, `execution.log.md`).
 
 ---
 
@@ -140,15 +139,15 @@ flowchart LR
 
 ## Acceptance Criteria
 
-- [ ] `agent-workbench` domain exists and is registered/mapped without circular ownership.
-- [ ] `.pi/extensions/minih-workbench` is generated with T2 layout and extension-local rules.
-- [ ] `store.ts` is Pi-free and exports Minih run summary/view/status/persistence contracts with bounded snapshot constants.
-- [ ] Minih dependency decision is recorded before adapter implementation imports or shells out through any helper path.
-- [ ] `minih-adapter.ts` reads fixture Minih artifacts and returns tagged summaries/snapshots/diagnostics without throwing.
-- [ ] Fixtures cover active, stale, completed/report-ready, malformed/missing, permission-like, coordinated, non-coordinated, and large-output cases.
-- [ ] Canonical `/minih status --json` and model tools return deterministic bounded envelopes.
-- [ ] Store and adapter tests cover sorting, status axes, reports, diagnostics, truncation, and the no-write Phase 1 invariant.
-- [ ] Execution log records targeted tests, `just typecheck` or stronger, final `just self-check`, `minih doctor` status, and package-vet evidence if a package is added.
+- [x] `agent-workbench` domain exists and is registered/mapped without circular ownership.
+- [x] `.pi/extensions/minih-workbench` is generated with T2 layout and extension-local rules.
+- [x] `store.ts` is Pi-free and exports Minih run summary/view/status/persistence contracts with bounded snapshot constants.
+- [x] Minih dependency decision is recorded before adapter implementation imports or shells out through any helper path.
+- [x] `minih-adapter.ts` reads fixture Minih artifacts and returns tagged summaries/snapshots/diagnostics without throwing.
+- [x] Fixtures cover active, stale, completed/report-ready, malformed/missing, permission-like, coordinated, non-coordinated, and large-output cases.
+- [x] Canonical `/minih status --json` and model tools return deterministic bounded envelopes.
+- [x] Store and adapter tests cover sorting, status axes, reports, diagnostics, truncation, and the no-write Phase 1 invariant.
+- [x] Execution log records targeted tests, `just typecheck` or stronger, final `just self-check`, `minih doctor` status, and package-vet evidence if a package is added.
 
 ## Goals & Non-Goals
 
@@ -192,4 +191,4 @@ flowchart LR
 - [x] T010: Add canonical read-only command/tool wiring for inventory/status/report.
 - [x] T011: Add store/projection tests.
 - [x] T012: Add adapter fixture tests.
-- [ ] T013: Record validation evidence for Phase 1.
+- [x] T013: Record validation evidence for Phase 1.

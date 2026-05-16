@@ -58,10 +58,10 @@ The adapter reads Minih-owned artifacts, the store projects bounded Pi-facing st
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Domain document | implemented in Phase 1 | Creates the boundary and source-of-truth contract. |
-| Store contracts | planned in Phase 1 | Pi-free types, constants, projections, tagged results, and no-write invariant. |
-| Persistence facade | planned in Phase 1 | In-memory/no-op implementation is acceptable until later phases wire session storage. |
-| Minih adapter | planned in Phase 1 | Reads artifacts/fixtures only; future write wrappers must stay here. |
-| Read-only command/tool wiring | planned in Phase 1 | `/minih status --json` and three model-facing read-only tools. |
+| Store contracts | implemented in Phase 1 | Pi-free types, constants, projections, tagged results, bounded panes, status axes, and no-write invariant. |
+| Persistence facade | implemented in Phase 1 | Pi-free interface plus in-memory implementation for selected run pointers, seen cursors, push opt-ins, and audit records until later phases wire session storage. |
+| Minih adapter | implemented in Phase 1 | Reads artifacts/fixtures only; returns tagged diagnostics/snapshots/reports; future write wrappers must stay here. |
+| Read-only command/tool wiring | implemented in Phase 1 | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, and three model-facing read-only tools. |
 | Full modal viewer | future Phase 2 | Native Pi UI only; no nested Minih Ink/ANSI view. |
 | Interaction/push controls | future Phase 3 | Capability-gated send/stop/report/push with confirmation, audit, redaction, and dedupe. |
 
