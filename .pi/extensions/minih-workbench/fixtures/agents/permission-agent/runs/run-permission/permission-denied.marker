@@ -1,0 +1,1 @@
+Simulates a permission-like diagnostic for adapter tests without relying on host chmod behavior.

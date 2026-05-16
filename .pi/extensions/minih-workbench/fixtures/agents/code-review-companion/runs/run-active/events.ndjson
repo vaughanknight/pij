@@ -1,0 +1,3 @@
+{"id":"e1","ts":"2026-05-16T03:40:10.000Z","type":"assistant_message","message":"Loaded briefing and starting review."}
+{"id":"e2","ts":"2026-05-16T03:41:00.000Z","type":"tool_call","tool":"rg","message":"Searching for domain-map edges."}
+{"id":"e3","ts":"2026-05-16T03:42:00.000Z","type":"finding","message":"Potential progress drift detected.","material":true}

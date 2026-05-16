@@ -1,0 +1,5 @@
+{
+	"summary": "Large output run completed with a long tool result that must be bounded by the adapter/store projection.",
+	"findings": [],
+	"retrospective": { "magicWand": "Bound long panes by bytes.", "difficulties": [] }
+}

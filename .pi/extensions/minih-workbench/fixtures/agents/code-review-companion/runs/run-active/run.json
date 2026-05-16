@@ -1,0 +1,10 @@
+{
+	"runId": "run-active",
+	"slug": "code-review-companion",
+	"status": "active",
+	"startedAt": "2026-05-16T03:40:00.000Z",
+	"updatedAt": "2026-05-16T03:50:00.000Z",
+	"coordinated": true,
+	"selfReportedState": "reviewing",
+	"outsideStatus": "polling"
+}

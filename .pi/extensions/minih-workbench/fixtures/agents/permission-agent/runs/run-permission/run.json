@@ -1,0 +1,9 @@
+{
+	"runId": "run-permission",
+	"slug": "permission-agent",
+	"status": "active",
+	"startedAt": "2026-05-16T03:20:00.000Z",
+	"updatedAt": "2026-05-16T03:20:10.000Z",
+	"coordinated": true,
+	"selfReportedState": "needs_recovery"
+}

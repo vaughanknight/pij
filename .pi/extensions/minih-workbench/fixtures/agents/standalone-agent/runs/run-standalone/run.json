@@ -1,0 +1,9 @@
+{
+	"runId": "run-standalone",
+	"slug": "standalone-agent",
+	"status": "active",
+	"startedAt": "2026-05-16T03:30:00.000Z",
+	"updatedAt": "2026-05-16T03:49:00.000Z",
+	"coordinated": false,
+	"selfReportedState": "running"
+}

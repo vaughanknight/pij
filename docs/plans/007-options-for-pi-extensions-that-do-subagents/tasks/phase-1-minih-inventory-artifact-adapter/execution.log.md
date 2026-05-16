@@ -45,7 +45,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F005 | LOW | `01KRQF1E3001W6JZAV400HPB63` | T002-fix | Fixed in `c7d9e40`; verification request `01KRQF543HP5TFS21D20J9QCTZ` | F002/F003 rows still said pending even after `75d94e4`; dispositions now reference the fix commit. |
 | F006 | LOW | `01KRQF543HP5TFS21D20J9QCTZ` | finding-log-fix | Fixed in `0ea92c2`; verified by summary `01KRQF7GD7YW4NFWKKYDGECX3E` | F004/F005 rows still said pending; final log commit corrected them. |
 | F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in `2aff4e1`; verification request `01KRQFP654X49S5Z75R3QSPB8T` | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
-| F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in follow-up commit pending | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
+| F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in `9cbf33a`; verification request `01KRQFT2233DSY9R77W8GAA19Y` | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
 
 ## Task entries
 
@@ -106,4 +106,11 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Validation**: Documentation-only task; `just lint` required before commit.
 - **Commit**: `ce6532d`
 - **Companion**: Sent `review-request: T007 ce6532d` as message `01KRQFRBTWHM854GWZ9A40FP98`.
+
+### T008 — Create deterministic Minih fixture run directories
+
+- **Status**: complete
+- **Evidence**: Added fixture Minih roots under `.pi/extensions/minih-workbench/fixtures/agents/` covering coordinated active, stale, standalone non-coordinated, completed/report-ready, malformed, missing/partial, permission-like, and large-output runs.
+- **Validation**: File inventory checked with `ctx_find`; adapter-specific validation lands in T012.
+- **Companion**: Review request to be sent after commit.
 

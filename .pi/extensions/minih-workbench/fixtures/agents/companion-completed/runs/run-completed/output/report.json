@@ -1,0 +1,16 @@
+{
+	"summary": "Completed companion review with one medium finding fixed inline.",
+	"findings": [
+		{
+			"id": "F001",
+			"severity": "MEDIUM",
+			"file": "store.ts",
+			"issue": "Duplicate inventory row",
+			"recommendation": "De-duplicate by run key."
+		}
+	],
+	"retrospective": {
+		"magicWand": "Expose companion findings inside Pi.",
+		"difficulties": []
+	}
+}

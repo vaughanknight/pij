@@ -1,0 +1,4 @@
+{
+	"badShape": true,
+	"note": "Valid JSON with the wrong shape; adapter should report a bad artifact diagnostic."
+}
