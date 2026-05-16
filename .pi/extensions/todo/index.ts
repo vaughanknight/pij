@@ -26,6 +26,7 @@ import {
 } from "./store.js";
 
 const STATUS_KEY = "todo";
+const SESSION_SQL_CHANGED_EVENT = "session-sql:changed";
 
 const TodoViewParameter = Type.Union([
 	Type.Literal("open"),
@@ -325,6 +326,7 @@ export default function (pi: ExtensionAPI) {
 	const sqlStore = new SessionSqlStore();
 	const todoStore = new TodoSqlStore(sqlStore);
 	let widgetPage = 0;
+	let currentCtx: ExtensionContext | undefined;
 
 	function openForCurrentSession(ctx: ExtensionContext): void {
 		const sessionId = ctx.sessionManager.getSessionId();
@@ -480,6 +482,7 @@ export default function (pi: ExtensionAPI) {
 
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
+		currentCtx = ctx;
 		openForCurrentSession(ctx);
 		refreshTodoPresentation(ctx, { resetWidgetPage: true });
 	});
@@ -489,11 +492,21 @@ export default function (pi: ExtensionAPI) {
 		if (!result.ok) ctx.ui.notify(`todo: failed to close DB: ${result.message}`, "warning");
 		ctx.ui.setStatus(STATUS_KEY, undefined);
 		ctx.ui.setWidget(TODO_WIDGET_KEY, undefined);
+		currentCtx = undefined;
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
+		currentCtx = ctx;
 		ensureOpen(ctx);
 		refreshTodoPresentation(ctx);
+	});
+
+	pi.events.on(SESSION_SQL_CHANGED_EVENT, (data) => {
+		if (!currentCtx) return;
+		const event = data as { sessionId?: string };
+		if (event.sessionId && event.sessionId !== currentCtx.sessionManager.getSessionId()) return;
+		ensureOpen(currentCtx);
+		refreshTodoPresentation(currentCtx, { resetWidgetPage: true });
 	});
 
 	pi.registerCommand("todo", {

@@ -31,7 +31,7 @@
 |------|--------|-------|
 | ST001 | done | Added widget constants/options/key fields, `TodoWidgetSnapshot`, and `widgetSnapshot()` recent-activity projection. |
 | ST002 | done | Added below-editor `todo-strip` widget rendering, lifecycle refresh, clear-on-shutdown/zero-open behavior, and optional paging shortcut wiring. |
-| ST003 | pending | Optional raw SQL refresh event/fallback. |
+| ST003 | done | Added `session-sql:changed` event emission and todo listener for immediate raw SQL refresh. |
 | ST004 | pending | Tests + smoke. |
 | ST005 | pending | Docs/domains/validation. |
 
@@ -47,6 +47,18 @@
 - Refreshes after `/todo` command paths, `todo` tool execution, session start, overlay close/done, and `turn_end`; clears on shutdown and zero open work.
 - Evidence: `npm run typecheck` passed; `npm test -- .pi/extensions/todo/store.test.ts` passed; `npm run smoke -- todo` passed.
 - Companion ST001 review summary: no findings; non-blocking note that Validation Evidence was still placeholder mid-phase.
+
+### 2026-05-16 — ST003 started
+
+- Marked ST003 active in the task dossier and flight plan.
+- Decision: implement the explicit `session-sql:changed` event path rather than relying only on `turn_end` fallback, because `/sql INSERT ... RETURNING` should update the strip immediately too.
+
+### 2026-05-16 — ST003 completed
+
+- `session-sql` now emits `session-sql:changed` after successful ad-hoc SQL command/tool execution and reset.
+- `todo` listens for matching-session events and refreshes the below-editor widget/status with page reset.
+- Evidence: `npm run typecheck` passed; `npx biome check .pi/extensions/session-sql/index.ts .pi/extensions/todo/index.ts` passed; `npm run smoke -- todo` passed.
+- Companion ST002 review summary: no findings.
 
 ## Validation Evidence
 

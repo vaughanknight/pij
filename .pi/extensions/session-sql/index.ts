@@ -16,6 +16,9 @@ import {
 } from "./store.js";
 
 const STATUS_KEY = "session-sql";
+const SESSION_SQL_CHANGED_EVENT = "session-sql:changed";
+
+type SessionSqlChangedSource = "command" | "tool" | "reset";
 
 function valueToText(value: unknown): string {
 	if (value === null) return "null";
@@ -124,6 +127,16 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setStatus(STATUS_KEY, status.open ? `${STORE_NAME}: ready` : undefined);
 	}
 
+	function emitChanged(source: SessionSqlChangedSource, result?: SqlResult): void {
+		if (result && !result.ok) return;
+		const status = store.status();
+		pi.events.emit(SESSION_SQL_CHANGED_EVENT, {
+			source,
+			sessionId: status.sessionId,
+			kind: result?.ok ? result.kind : "reset",
+		});
+	}
+
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
 		openForCurrentSession(ctx);
@@ -165,6 +178,7 @@ export default function (pi: ExtensionAPI) {
 				const result = store.reset();
 				if (result.ok) {
 					ctx.ui.notify("session-sql: reset complete", "info");
+					emitChanged("reset");
 				} else {
 					ctx.ui.notify(`session-sql: reset failed: ${result.message}`, "error");
 				}
@@ -174,6 +188,7 @@ export default function (pi: ExtensionAPI) {
 
 			const result = store.execute(args);
 			ctx.ui.notify(formatSqlResult(result), result.ok ? "info" : "error");
+			emitChanged("command", result);
 			refreshStatus(ctx);
 		},
 	});
@@ -209,6 +224,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			ensureOpen(ctx);
 			const result = store.execute(params.query, { maxRows: params.maxRows });
+			emitChanged("tool", result);
 			refreshStatus(ctx);
 			return {
 				content: [{ type: "text", text: formatSqlResult(result) }],
