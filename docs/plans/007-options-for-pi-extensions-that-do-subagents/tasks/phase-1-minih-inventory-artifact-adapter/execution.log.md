@@ -47,6 +47,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 | F007 | MEDIUM | `01KRQFBWSHGW4YKHNEXZCXJA9D` | T005 | Fixed in `2aff4e1`; verification request `01KRQFP654X49S5Z75R3QSPB8T` | `projectInventory()` duplicated active/stale report-ready runs across active and completed/report-ready buckets; added de-dupe and regression test. |
 | F008 | MEDIUM | `01KRQFP654X49S5Z75R3QSPB8T` | T005-fix | Fixed in `9cbf33a`; verification request `01KRQFT2233DSY9R77W8GAA19Y` | F007 fix failed to enforce `completedLimit` independently; added `completedAdded` bucket counter and regression test. |
 | F009 | LOW | `01KRQFT2233DSY9R77W8GAA19Y` | T005-fix2 | Fixed in `47766c0` | F008 row still said pending in the first fix commit; T008 commit carried the corrected disposition. |
+| F010 | MEDIUM | `01KRQG2KD48S4NH8BSY7M7CAS6` | T009 | Fixed in follow-up commit pending | Adapter accepted parseable wrong-shape `run.json`; added structural guard requiring runId plus recognized status. |
 
 ## Task entries
 
@@ -129,5 +130,6 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Status**: complete
 - **Evidence**: Added `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, read-only tools `minih_runs_list`, `minih_run_status`, `minih_read_report`, text formatting in `ui.ts`, and deterministic `minih-workbench` smoke.
 - **Validation**: `just typecheck`; `npm run smoke -- minih-workbench`; `just lint` passed.
-- **Companion**: Review request to be sent after commit.
+- **Commit**: `4fc9ed9`
+- **Companion**: Sent `review-request: T010 4fc9ed9` as message `01KRQG9JF4B3YRMJGMYRZFE6R6`.
 

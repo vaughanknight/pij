@@ -110,6 +110,14 @@ function arrayField(record: Record<string, unknown>, key: string): unknown[] | u
 	return Array.isArray(value) ? value : undefined;
 }
 
+function isRunJsonRecord(value: unknown): value is Record<string, unknown> {
+	if (!isRecord(value)) return false;
+	const status = stringField(value, "status");
+	const hasKnownStatus =
+		status === "active" || status === "running" || status === "completed" || status === "failed";
+	return typeof stringField(value, "runId") === "string" && hasKnownStatus;
+}
+
 async function exists(path: string): Promise<boolean> {
 	try {
 		await access(path, fsConstants.F_OK);
@@ -327,10 +335,15 @@ function summaryFromArtifacts(artifacts: RunArtifacts, nowMs: number): MinihRunS
 			),
 		);
 	}
-	const runRecord = isRecord(artifacts.runJson.value) ? artifacts.runJson.value : undefined;
+	const runRecord = isRunJsonRecord(artifacts.runJson.value) ? artifacts.runJson.value : undefined;
 	if (!runRecord) {
 		diagnostics.push(
-			diagnostic("error", "MINIH_BAD_RUN_JSON", "run.json is missing or invalid", "run"),
+			diagnostic(
+				"error",
+				"MINIH_BAD_RUN_JSON",
+				"run.json is missing, invalid, or missing required runId/status fields",
+				"run",
+			),
 		);
 	}
 	const completedRecord = isRecord(artifacts.completedJson.value)
