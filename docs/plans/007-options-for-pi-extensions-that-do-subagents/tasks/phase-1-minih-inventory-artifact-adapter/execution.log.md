@@ -38,6 +38,7 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 
 | Finding | Severity | ackOf | Related Task | Disposition | Notes |
 |---------|----------|-------|--------------|-------------|-------|
+| F001 | MEDIUM | `01KRQEHXP8V9732FQWG54V6TPJ` | T001 | Fixed in `c266082`; ack `01KRQEVR37TR130TFJAV2TA3SG` | T001 commit had task-table progress drift; T002 commit corrected `tasks.md` and flight checklist. |
 
 ## Task entries
 
@@ -47,12 +48,20 @@ Sent 2026-05-16T03:48:15Z. Message id `01KRQEC91350NH663Y9WE86A3G`. Subject: `Pl
 - **Evidence**: Created `docs/domains/agent-workbench/domain.md` with Purpose, Source Locations, Concepts, Contracts, Composition, Dependencies, Boundary Owns/Excludes, and History.
 - **Validation**: Documentation-only task; code validation deferred to implementation tasks and final self-check.
 - **Commit**: `cd46ae5`
-- **Companion**: Sent `review-request: T001 cd46ae5` as message `01KRQEHXP8V9732FQWG54V6TPJ`. Companion ack `01KRQEJ6X7Q1STX107W6CF215J`; no findings as of pre-T002 skim.
+- **Companion**: Sent `review-request: T001 cd46ae5` as message `01KRQEHXP8V9732FQWG54V6TPJ`. Companion ack `01KRQEJ6X7Q1STX107W6CF215J`; finding F001 (MEDIUM progress drift) fixed in `c266082` and acked with `01KRQEVR37TR130TFJAV2TA3SG`.
 
 ### T002 — Register `agent-workbench` in domain registry and map
 
 - **Status**: complete
 - **Evidence**: Added `agent-workbench` row to `docs/domains/registry.md`; added `AW` and `MH` nodes plus one-way edges/health notes/history in `docs/domains/domain-map.md`.
 - **Validation**: Documentation-only task; code validation deferred to implementation tasks and final self-check.
+- **Commit**: `c266082`
+- **Companion**: Sent `review-request: T002 c266082` as message `01KRQETYD73THCFW7GT2TDJEKJ`.
+
+### T003 — Scaffold `minih-workbench` extension
+
+- **Status**: complete
+- **Evidence**: Ran `just new minih-workbench`; generator created `.pi/extensions/minih-workbench/{AGENTS.md,index.ts,smoke.ts,store.test.ts,store.ts}`.
+- **Validation**: `just typecheck` passed against the generated scaffold before customization.
 - **Companion**: Review request to be sent after commit.
 
