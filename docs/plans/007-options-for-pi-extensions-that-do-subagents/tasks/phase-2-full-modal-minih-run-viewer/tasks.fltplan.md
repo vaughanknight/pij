@@ -66,8 +66,8 @@ stateDiagram-v2
     S7 --> S8
     S8 --> [*]
 
-    class S1,S2,S3 done
-    class S4,S5,S6,S7,S8 pending
+    class S1,S2,S3,S4 done
+    class S5,S6,S7,S8 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -81,7 +81,7 @@ stateDiagram-v2
 - [x] **Stage 1: Define controls and state** — add default keybinding constants and pure list/modal focus/scroll helpers (`store.ts`).
 - [x] **Stage 2: Prove pure behavior** — expand store tests for keybindings, selection, pane focus, cursor paging, and safe close (`store.test.ts`).
 - [x] **Stage 3: Build native list UI** — implement width-safe run-list rendering and keyboard selection (`ui.ts`, `index.ts`).
-- [ ] **Stage 4: Build full modal UI** — implement header, transcript/tools/coordination/report/diagnostics panes, disabled composer reason, focus and scroll indicators (`ui.ts`).
+- [x] **Stage 4: Build full modal UI** — implement header, transcript/tools/coordination/report/diagnostics panes, disabled composer reason, focus and scroll indicators (`ui.ts`).
 - [ ] **Stage 5: Add lazy feed lifecycle** — create read-only feed manager with fake timers/readers, diagnostics, bounded polling fallback, coalescing, and explicit dispose (`feed.ts`).
 - [ ] **Stage 6: Wire commands/lifecycle** — connect `/minih`, `/minih list`, `/minih view`, `/minih report`, session_start reconciliation, and session_shutdown cleanup (`index.ts`).
 - [ ] **Stage 7: Validate UI/feed behavior** — add targeted UI/feed tests and deterministic Driver SDK modal smoke (`ui.test.ts`, `feed.test.ts`, `smoke.ts`).
@@ -175,7 +175,7 @@ flowchart LR
 - [x] T003: Expand store tests for Phase 2 state contracts.
 - [x] T004: Build UI rendering primitives and stable text anchors.
 - [x] T005: Implement the keyboard-selectable Minih run-list component.
-- [ ] T006: Implement the full-area read-only modal viewer component.
+- [x] T006: Implement the full-area read-only modal viewer component.
 - [ ] T007: Add lazy read-only feed/watch lifecycle with fake-feed support.
 - [ ] T008: Wire `/minih` list/view/report commands to the native UI while preserving pull contracts.
 - [ ] T009: Reconcile lifecycle and session state without auto-opening UI.

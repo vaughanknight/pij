@@ -30,6 +30,7 @@
 | T003 | complete | `5371cb0` | `npx vitest run .pi/extensions/minih-workbench/store.test.ts` ✅ 15 tests | `01KRQR66ZFZ7K7TYEH9S8WJHFD` | Expanded store coverage for default keybindings, selection bounds/wrap, selected-run modal open, safe close, pane focus cycling, and independent pane paging. |
 | T004 | complete | `4fc6a41` | `npx tsc --noEmit` ✅ | `01KRQR969YPM0AMK8QDYHZD2SR` | Replaced text-only UI helpers with width-safe inventory/modal render primitives, stable anchors, status axes, diagnostics/report sections, pane indicators, and disabled composer reason. |
 | T005 | complete | `d472fac` | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | `01KRQRCZEE63JPJAC7W2H0JFB9` | Added `MinihRunListComponent` with injected keybindings and wired `/minih`/`/minih list` to an interactive overlay with non-UI text fallback; Enter selects a run for the upcoming modal task. |
+| T006 | complete | pending | `npx tsc --noEmit` ✅; `npm run smoke -- minih-workbench` ✅ | pending | Added `MinihRunModalComponent`, `/minih view <slug> <runId>`, list-to-modal open flow, full-area overlay rendering, pane focus/page handling, non-UI modal text fallback, and safe Esc close. |
 
 ---
 
@@ -37,8 +38,8 @@
 
 | Finding | Severity | Ack Of | Disposition | Fix Commit | Notes |
 |---------|----------|--------|-------------|------------|-------|
-| F001 | MEDIUM | `01KRQR969YPM0AMK8QDYHZD2SR` | Fixed; verification requested via `01KRQRFQTYQB14N82K57MDGKQG` | `4c847ac` | Normalized multiline pane/report/diagnostic text and added `ui.test.ts` coverage for width-safe physical lines. |
-| F002 | MEDIUM | `01KRQRCZEE63JPJAC7W2H0JFB9` | Fixing inline before T006 | pending | Refresh callback could update a closed list overlay; needs disposed guard. |
+| F001 | MEDIUM | `01KRQR969YPM0AMK8QDYHZD2SR` | Fixed; companion approved via `01KRQRGC25J787VJ1112Q16VWP` | `4c847ac` | Normalized multiline pane/report/diagnostic text and added `ui.test.ts` coverage for width-safe physical lines. |
+| F002 | MEDIUM | `01KRQRCZEE63JPJAC7W2H0JFB9` | Fixed; companion approved via `01KRQRJE6JCCP28NCX01ASRDXX` | `28103e6` | Added closed/superseded component guards around async list refresh completion. |
 
 ---
 

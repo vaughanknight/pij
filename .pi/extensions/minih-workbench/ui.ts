@@ -2,6 +2,8 @@ import { type Component, type KeyId, matchesKey, truncateToWidth } from "@earend
 
 import {
 	clampListSelection,
+	closeModalSafely,
+	cycleFocusedPane,
 	DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
 	MINIH_MODAL_PANES,
 	MINIH_WORKBENCH_ACTIONS,
@@ -16,6 +18,7 @@ import {
 	type MinihViewSnapshot,
 	type MinihWorkbenchKeybindings,
 	moveListSelection,
+	pageFocusedPane,
 	resolveSelectedRun,
 } from "./store.js";
 
@@ -38,6 +41,12 @@ export interface MinihRunListCallbacks {
 	onOpenRun(run: MinihRunRef): void;
 	onClose(): void;
 	onRefresh(): void;
+	requestRender(): void;
+}
+
+export interface MinihRunModalCallbacks {
+	onClose(): void;
+	onStateChange?(state: MinihModalState): void;
 	requestRender(): void;
 }
 
@@ -306,6 +315,119 @@ export class MinihRunListComponent implements Component {
 		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.openRun)) {
 			const selected = resolveSelectedRun(this.snapshot.runs, this.selectedIndex);
 			if (selected) this.callbacks.onOpenRun(selected);
+		}
+	}
+
+	invalidate(): void {}
+}
+
+function paneTotal(view: MinihViewSnapshot, pane: MinihModalPane): number | undefined {
+	switch (pane) {
+		case "transcript":
+			return view.transcript.total;
+		case "tools":
+			return view.tools.total;
+		case "coordination":
+			return view.coordination.total;
+		case "diagnostics":
+			return view.diagnostics.total;
+		case "report":
+			return view.report.summary ? 1 : 0;
+	}
+}
+
+function pageActionForPane(
+	pane: MinihModalPane,
+	direction: "up" | "down",
+): keyof typeof DEFAULT_MINIH_WORKBENCH_KEYBINDINGS {
+	switch (pane) {
+		case "transcript":
+			return direction === "up"
+				? MINIH_WORKBENCH_ACTIONS.pageTranscriptUp
+				: MINIH_WORKBENCH_ACTIONS.pageTranscriptDown;
+		case "tools":
+			return direction === "up"
+				? MINIH_WORKBENCH_ACTIONS.pageToolsUp
+				: MINIH_WORKBENCH_ACTIONS.pageToolsDown;
+		case "coordination":
+			return direction === "up"
+				? MINIH_WORKBENCH_ACTIONS.pageCoordinationUp
+				: MINIH_WORKBENCH_ACTIONS.pageCoordinationDown;
+		case "diagnostics":
+			return direction === "up"
+				? MINIH_WORKBENCH_ACTIONS.pageDiagnosticsUp
+				: MINIH_WORKBENCH_ACTIONS.pageDiagnosticsDown;
+		case "report":
+			return direction === "up"
+				? MINIH_WORKBENCH_ACTIONS.pageReportUp
+				: MINIH_WORKBENCH_ACTIONS.pageReportDown;
+	}
+}
+
+export class MinihRunModalComponent implements Component {
+	private view: MinihViewSnapshot;
+	private state: MinihModalState;
+	private statusLine: string | undefined;
+
+	constructor(
+		view: MinihViewSnapshot,
+		state: MinihModalState,
+		private readonly callbacks: MinihRunModalCallbacks,
+		private readonly keybindings: MinihWorkbenchKeybindings = DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+	) {
+		this.view = view;
+		this.state = state;
+	}
+
+	updateView(view: MinihViewSnapshot, statusLine?: string): void {
+		this.view = view;
+		this.statusLine = statusLine;
+		this.callbacks.requestRender();
+	}
+
+	render(width: number): string[] {
+		const lines = renderWidthSafeModalView(this.view, width, {
+			state: this.state,
+			keybindings: this.keybindings,
+		});
+		if (this.statusLine) return widthSafeLines([...lines, this.statusLine], width);
+		return lines;
+	}
+
+	handleInput(data: string): void {
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.closeView)) {
+			const result = closeModalSafely(this.state);
+			this.state = result.state;
+			this.callbacks.onStateChange?.(this.state);
+			this.callbacks.onClose();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.focusPreviousPane)) {
+			this.state = cycleFocusedPane(this.state, -1);
+			this.callbacks.onStateChange?.(this.state);
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.focusNextPane)) {
+			this.state = cycleFocusedPane(this.state, 1);
+			this.callbacks.onStateChange?.(this.state);
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, pageActionForPane(this.state.focusedPane, "up"))) {
+			this.state = pageFocusedPane(this.state, "up", paneTotal(this.view, this.state.focusedPane));
+			this.callbacks.onStateChange?.(this.state);
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, pageActionForPane(this.state.focusedPane, "down"))) {
+			this.state = pageFocusedPane(
+				this.state,
+				"down",
+				paneTotal(this.view, this.state.focusedPane),
+			);
+			this.callbacks.onStateChange?.(this.state);
+			this.callbacks.requestRender();
 		}
 	}
 

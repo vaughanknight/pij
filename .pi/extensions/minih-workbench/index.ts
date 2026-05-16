@@ -16,11 +16,18 @@ import {
 	MINIH_COMMAND_NAME,
 	MINIH_STATUS_KEY,
 	type MinihAdapterResult,
+	defaultModalState,
 	type MinihInventorySnapshot,
 	type MinihRunRef,
+	openModalForRun,
 	phase1NoWriteResult,
 } from "./store.js";
-import { formatInventoryText, MinihRunListComponent } from "./ui.js";
+import {
+	formatInventoryText,
+	MinihRunListComponent,
+	MinihRunModalComponent,
+	renderWidthSafeModalView,
+} from "./ui.js";
 
 interface RootOptions {
 	rootDir?: string;
@@ -81,6 +88,52 @@ export default function (pi: ExtensionAPI) {
 		return listMinihRuns({ rootDir: configuredRoot() });
 	}
 
+	async function openRunModal(ctx: ExtensionCommandContext, run: MinihRunRef): Promise<void> {
+		const result = await readMinihRunStatus({
+			rootDir: configuredRoot(),
+			slug: run.slug,
+			runId: run.runId,
+		});
+		if (!result.ok) {
+			ctx.ui.notify(toolText(result), "error");
+			return;
+		}
+		const state = openModalForRun(run, defaultModalState());
+		if (!ctx.hasUI) {
+			ctx.ui.notify(renderWidthSafeModalView(result.value, 120, { state }).join("\n"), "info");
+			return;
+		}
+		let component: MinihRunModalComponent | undefined;
+		let closed = false;
+		await ctx.ui.custom<"closed">(
+			(tui, _theme, _keybindings, done) => {
+				const close = (): void => {
+					closed = true;
+					done("closed");
+				};
+				component = new MinihRunModalComponent(result.value, state, {
+					onClose: close,
+					requestRender: () => {
+						if (!closed) tui.requestRender();
+					},
+				});
+				return component;
+			},
+			{
+				overlay: true,
+				overlayOptions: {
+					width: "95%",
+					minWidth: 70,
+					maxHeight: "95%",
+					anchor: "center",
+					margin: 1,
+				},
+			},
+		);
+		closed = true;
+		component = undefined;
+	}
+
 	async function openRunList(ctx: ExtensionCommandContext): Promise<void> {
 		const initial = await loadInventory();
 		if (!initial.ok) {
@@ -128,9 +181,7 @@ export default function (pi: ExtensionAPI) {
 		);
 		closed = true;
 		component = undefined;
-		if (selected !== "closed") {
-			ctx.ui.notify(`minih: selected ${selected.slug}/${selected.runId}; modal lands in T006`, "info");
-		}
+		if (selected !== "closed") await openRunModal(ctx, selected);
 	}
 
 	// Pattern P10: one handler for session_start, all reasons.
@@ -158,6 +209,10 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (verb === "help" || verb === "--help" || verb === "-h") {
 				ctx.ui.notify(helpText(), "info");
+				return;
+			}
+			if (verb === "view" && slug && runId) {
+				await openRunModal(ctx, { slug, runId });
 				return;
 			}
 			if (verb === "status" && slug && runId) {
