@@ -10,7 +10,7 @@ import {
 	pageModalPane,
 } from "./store.js";
 import {
-	MINIH_DISABLED_COMPOSER_REASON,
+	MINIH_EMPTY_COMPOSER_REASON,
 	MinihRunListComponent,
 	MinihRunModalComponent,
 	renderWidthSafeModalView,
@@ -165,7 +165,7 @@ describe("minih-workbench UI rendering", () => {
 		);
 		const initial = component.render(120).join("\n");
 		expect(initial).toContain("MINIH WORKBENCH — RUN VIEW agent/run");
-		expect(initial).toContain(MINIH_DISABLED_COMPOSER_REASON);
+		expect(initial).toContain("Composer: enabled");
 		component.handleInput("\t");
 		expect(state.focusedPane).toBe("transcript");
 		component.handleInput("f");
@@ -176,6 +176,37 @@ describe("minih-workbench UI rendering", () => {
 		component.handleInput("c");
 		expect(closed).toBe(true);
 		expect(state.open).toBe(false);
+	});
+
+	it("sends composer text only through the configured send action", () => {
+		const sent: string[] = [];
+		let renders = 0;
+		const customKeys = {
+			...DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+			[MINIH_WORKBENCH_ACTIONS.sendMessage]: ["s"],
+		};
+		const component = new MinihRunModalComponent(
+			viewWithMultilineText(),
+			openModalForRun({ slug: "agent", runId: "run" }),
+			{
+				onClose: () => {},
+				onSendMessage: (body) => sent.push(body),
+				requestRender: () => {
+					renders += 1;
+				},
+			},
+			customKeys,
+		);
+		component.handleInput("h");
+		component.handleInput("i");
+		component.handleInput("\u0013");
+		expect(sent).toEqual([]);
+		component.handleInput("s");
+		expect(sent).toEqual(["hi"]);
+		component.handleInput("s");
+		expect(sent).toEqual(["hi"]);
+		expect(component.render(120).join("\n")).toContain(MINIH_EMPTY_COMPOSER_REASON);
+		expect(renders).toBeGreaterThan(0);
 	});
 
 	it("keeps multiline pane/report text on width-safe physical lines", () => {

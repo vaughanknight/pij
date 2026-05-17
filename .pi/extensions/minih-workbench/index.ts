@@ -283,6 +283,15 @@ export default function (pi: ExtensionAPI) {
 				};
 				component = new MinihRunModalComponent(result.value, state, {
 					onClose: close,
+					onSendMessage: (body) => {
+						void sendMessageToRun({ slug: run.slug, runId: run.runId, body }).then((sendResult) => {
+							if (!closed)
+								component?.updateView(
+									result.value,
+									sendResult.ok ? "minih: sent" : sendResult.message,
+								);
+						});
+					},
 					requestRender: () => {
 						if (!closed) tui.requestRender();
 					},

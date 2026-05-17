@@ -1,6 +1,7 @@
 import { type Component, type KeyId, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 
 import {
+	actionAvailabilityForRun,
 	clampListSelection,
 	clampPaneLimit,
 	closeModalSafely,
@@ -25,7 +26,8 @@ import {
 } from "./store.js";
 
 export const MINIH_DISABLED_COMPOSER_REASON =
-	"Composer disabled: Phase 2 is read-only; send/stop/push arrive in Phase 3.";
+	"Composer disabled: run is not an active coordinated writable Minih run.";
+export const MINIH_EMPTY_COMPOSER_REASON = "Composer empty: type a message before sending.";
 
 export interface MinihListRenderOptions {
 	selectedIndex?: number;
@@ -37,6 +39,7 @@ export interface MinihModalRenderOptions {
 	state: MinihModalState;
 	keybindings?: MinihWorkbenchKeybindings;
 	showHelp?: boolean;
+	composerText?: string;
 }
 
 export interface MinihRunListCallbacks {
@@ -48,6 +51,7 @@ export interface MinihRunListCallbacks {
 
 export interface MinihRunModalCallbacks {
 	onClose(): void;
+	onSendMessage?(body: string): void;
 	onStateChange?(state: MinihModalState): void;
 	requestRender(): void;
 }
@@ -219,6 +223,18 @@ export function renderDiagnosticsSummary(diagnostics: readonly MinihDiagnostic[]
 	];
 }
 
+function renderComposerLines(view: MinihViewSnapshot, composerText: string | undefined): string[] {
+	const availability = actionAvailabilityForRun(view.summary, "send");
+	if (!availability.available) {
+		return [`Composer: disabled — ${availability.reason ?? MINIH_DISABLED_COMPOSER_REASON}`];
+	}
+	const text = composerText ?? "";
+	return [
+		"Composer: enabled — type text, then send with the configured send key",
+		`Draft: ${text.length > 0 ? inlineText(text) : "(empty)"}`,
+	];
+}
+
 function activePaneSnapshot(
 	view: MinihViewSnapshot,
 	pane: MinihModalPane,
@@ -247,7 +263,7 @@ export function renderModalView(
 		statusSummary(view.summary),
 		`kind:${view.summary.kind} material:${view.summary.materialEventCount} hasInbox:${view.summary.hasInbox} hasState:${view.summary.hasState}`,
 		`reportState:${view.report.state} diagnostics:${view.summary.diagnostics.length}`,
-		MINIH_DISABLED_COMPOSER_REASON,
+		...renderComposerLines(view, options.composerText),
 		`Focused pane: ${focusedPane}`,
 	];
 	for (const pane of MINIH_MODAL_PANES) {
@@ -264,7 +280,10 @@ export function renderModalView(
 			`Keys: ${keys(options.keybindings, MINIH_WORKBENCH_ACTIONS.focusPreviousPane)}/${keys(
 				options.keybindings,
 				MINIH_WORKBENCH_ACTIONS.focusNextPane,
-			)} pane • page keys scroll focused pane • ${keys(
+			)} pane • ${keys(
+				options.keybindings,
+				MINIH_WORKBENCH_ACTIONS.sendMessage,
+			)} send draft • page keys scroll focused pane • ${keys(
 				options.keybindings,
 				MINIH_WORKBENCH_ACTIONS.closeView,
 			)} close only`,
@@ -364,6 +383,10 @@ function paneTotal(view: MinihViewSnapshot, pane: MinihModalPane): number | unde
 	}
 }
 
+function isPrintableComposerInput(data: string): boolean {
+	return data.length === 1 && data >= " " && data !== "\u007f";
+}
+
 function pageActionForPane(
 	pane: MinihModalPane,
 	direction: "up" | "down",
@@ -396,6 +419,7 @@ export class MinihRunModalComponent implements Component {
 	private view: MinihViewSnapshot;
 	private state: MinihModalState;
 	private statusLine: string | undefined;
+	private composerText = "";
 
 	constructor(
 		view: MinihViewSnapshot,
@@ -417,6 +441,7 @@ export class MinihRunModalComponent implements Component {
 		const lines = renderWidthSafeModalView(this.view, width, {
 			state: this.state,
 			keybindings: this.keybindings,
+			composerText: this.composerText,
 		});
 		if (this.statusLine) return widthSafeLines([...lines, this.statusLine], width);
 		return lines;
@@ -428,6 +453,21 @@ export class MinihRunModalComponent implements Component {
 			this.state = result.state;
 			this.callbacks.onStateChange?.(this.state);
 			this.callbacks.onClose();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.sendMessage)) {
+			const availability = actionAvailabilityForRun(this.view.summary, "send");
+			const body = this.composerText.trim();
+			if (!availability.available) {
+				this.statusLine = availability.reason ?? MINIH_DISABLED_COMPOSER_REASON;
+			} else if (body.length === 0) {
+				this.statusLine = MINIH_EMPTY_COMPOSER_REASON;
+			} else {
+				this.callbacks.onSendMessage?.(body);
+				this.composerText = "";
+				this.statusLine = "minih: sending message";
+			}
+			this.callbacks.requestRender();
 			return;
 		}
 		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.focusPreviousPane)) {
@@ -455,6 +495,16 @@ export class MinihRunModalComponent implements Component {
 				paneTotal(this.view, this.state.focusedPane),
 			);
 			this.callbacks.onStateChange?.(this.state);
+			this.callbacks.requestRender();
+			return;
+		}
+		if (data === "\u007f" || data === "\b") {
+			this.composerText = this.composerText.slice(0, -1);
+			this.callbacks.requestRender();
+			return;
+		}
+		if (isPrintableComposerInput(data)) {
+			this.composerText = `${this.composerText}${data}`;
 			this.callbacks.requestRender();
 		}
 	}
