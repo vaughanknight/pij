@@ -213,6 +213,19 @@ describe("minih-workbench UI rendering", () => {
 		expect(renders).toBeGreaterThan(0);
 	});
 
+	it("renders disabled composer controls for read-only standalone runs", () => {
+		const view = viewWithMultilineText();
+		view.summary.kind = "standalone";
+		view.summary.hasInbox = false;
+		const rendered = renderWidthSafeModalView(view, 120, {
+			state: openModalForRun({ slug: "agent", runId: "run" }),
+		}).join("\n");
+		expect(rendered).toContain("send:disabled");
+		expect(rendered).toContain("stop:disabled");
+		expect(rendered).toContain("Composer: disabled");
+		expect(rendered).toContain("reportState:ready");
+	});
+
 	it("requests stop only through the configured stop action", () => {
 		let stopRequests = 0;
 		let closed = false;
