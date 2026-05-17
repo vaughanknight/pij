@@ -46,7 +46,7 @@ interface RootOptions {
 	rootDir?: string;
 }
 
-interface SendMessageInput extends RootOptions {
+interface SendMessageInput {
 	slug: string;
 	runId: string;
 	body: string;
@@ -197,7 +197,7 @@ export default function (pi: ExtensionAPI) {
 		input: SendMessageInput,
 	): Promise<MinihAdapterResult<MinihWriteOutcome>> {
 		const status = await readMinihRunStatus({
-			rootDir: configuredRoot(input.rootDir),
+			rootDir: configuredRoot(),
 			slug: input.slug,
 			runId: input.runId,
 		});
@@ -537,7 +537,6 @@ export default function (pi: ExtensionAPI) {
 			ackOf: Type.Optional(
 				Type.String({ description: "Optional Minih message id to ack/reply to." }),
 			),
-			rootDir: Type.Optional(Type.String({ description: "Fixture or Minih root directory." })),
 		}),
 		async execute(_id, params: SendMessageInput, _signal, _onUpdate, ctx) {
 			bindSession(ctx);

@@ -40,7 +40,8 @@
 |---------|----------|--------|---------|-------------|------------|
 | F001 | MEDIUM | `01KRT4PA5534VZ0JT8S52P9CMS` | `tasks.md` still said `Status: Proposed` after the phase was validated, briefed, and in execution. | Fixed by aligning Phase 3 task/flight statuses to `In Progress`; ack `01KRT4VNPFQNNW44595K63GP1S`; fix review `01KRT4VNY2YFN5TP5N6RZ2KA6F`; companion approved via `01KRT4WPTWWDJRK2XJ8CNPV2C6`. | `5a309dc` |
 | F002 | HIGH | `01KRT4TMBS0HY564CG777GR86X` | `classifyMaterialEvent` suppressed status-shaped blocked/needs-recovery events as status churn. | Fixed by classifying status-shaped material blocker/recovery reasons before generic status churn suppression; ack `01KRT51DD77YRQSRGZBQKWDDYE`; superseded by F003 refinement. | `91bb1e2` |
-| F003 | HIGH | `01KRT51DMAYE74074Y2RAB7Z15` | F002 fix overcorrected by letting raw tool events become material if their text contained blocker/recovery keywords. | Fixed by suppressing raw/large tool events before text-based material matching while preserving status-shaped blocked/recovery tests; ack `01KRT55WS0P86MZ78EGW3BNPMS`; fix review `01KRT55X11ZEWX7KM2XA0QE615`. | `f747467` |
+| F003 | HIGH | `01KRT51DMAYE74074Y2RAB7Z15` | F002 fix overcorrected by letting raw tool events become material if their text contained blocker/recovery keywords. | Fixed by suppressing raw/large tool events before text-based material matching while preserving status-shaped blocked/recovery tests; ack `01KRT55WS0P86MZ78EGW3BNPMS`; fix review `01KRT55X11ZEWX7KM2XA0QE615`; companion approved via `01KRT569R1GZSYEFF06BM6BYF7`. | `f747467` |
+| F004 | HIGH | `01KRT59J0353C7QXJBR5TVF603` | `minih_send_message` accepted `rootDir`, allowing capability checks against a different run universe than the CLI writer target. | Fixed by removing root override from all write-capable send inputs; write capability checks now use the same configured production root as the writer. | pending |
 
 ---
 
