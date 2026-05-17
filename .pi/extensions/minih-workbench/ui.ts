@@ -498,7 +498,7 @@ export class MinihRunModalComponent implements Component {
 			this.callbacks.requestRender();
 			return;
 		}
-		if (data === "\u007f" || data === "\b") {
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.deleteComposerChar)) {
 			this.composerText = this.composerText.slice(0, -1);
 			this.callbacks.requestRender();
 			return;

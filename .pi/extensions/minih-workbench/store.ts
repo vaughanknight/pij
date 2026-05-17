@@ -40,6 +40,7 @@ export const MINIH_WORKBENCH_ACTIONS = {
 	pageReportUp: "minih.pageReportUp",
 	pageReportDown: "minih.pageReportDown",
 	sendMessage: "minih.sendMessage",
+	deleteComposerChar: "minih.deleteComposerChar",
 	stopRun: "minih.stopRun",
 	confirmStop: "minih.confirmStop",
 } as const;
@@ -69,6 +70,7 @@ export const DEFAULT_MINIH_WORKBENCH_KEYBINDINGS: MinihWorkbenchKeybindings = {
 	[MINIH_WORKBENCH_ACTIONS.pageReportUp]: ["home"],
 	[MINIH_WORKBENCH_ACTIONS.pageReportDown]: ["end"],
 	[MINIH_WORKBENCH_ACTIONS.sendMessage]: ["ctrl+s"],
+	[MINIH_WORKBENCH_ACTIONS.deleteComposerChar]: ["backspace", "delete"],
 	[MINIH_WORKBENCH_ACTIONS.stopRun]: ["ctrl+x"],
 	[MINIH_WORKBENCH_ACTIONS.confirmStop]: ["ctrl+shift+x"],
 };

@@ -184,6 +184,7 @@ describe("minih-workbench UI rendering", () => {
 		const customKeys = {
 			...DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
 			[MINIH_WORKBENCH_ACTIONS.sendMessage]: ["s"],
+			[MINIH_WORKBENCH_ACTIONS.deleteComposerChar]: ["d"],
 		};
 		const component = new MinihRunModalComponent(
 			viewWithMultilineText(),
@@ -199,8 +200,11 @@ describe("minih-workbench UI rendering", () => {
 		);
 		component.handleInput("h");
 		component.handleInput("i");
+		component.handleInput("\u007f");
+		component.handleInput("!");
 		component.handleInput("\u0013");
 		expect(sent).toEqual([]);
+		component.handleInput("d");
 		component.handleInput("s");
 		expect(sent).toEqual(["hi"]);
 		component.handleInput("s");
