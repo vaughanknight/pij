@@ -35,7 +35,8 @@
 
 | Finding | Severity | Ack Of | Summary | Disposition | Fix Commit |
 |---------|----------|--------|---------|-------------|------------|
-| F001 | MEDIUM | `01KRT4PA5534VZ0JT8S52P9CMS` | `tasks.md` still said `Status: Proposed` after the phase was validated, briefed, and in execution. | Fixed by aligning Phase 3 task/flight statuses to `In Progress`; ack `01KRT4VNPFQNNW44595K63GP1S`; fix review `01KRT4VNY2YFN5TP5N6RZ2KA6F`. | `5a309dc` |
+| F001 | MEDIUM | `01KRT4PA5534VZ0JT8S52P9CMS` | `tasks.md` still said `Status: Proposed` after the phase was validated, briefed, and in execution. | Fixed by aligning Phase 3 task/flight statuses to `In Progress`; ack `01KRT4VNPFQNNW44595K63GP1S`; fix review `01KRT4VNY2YFN5TP5N6RZ2KA6F`; companion approved via `01KRT4WPTWWDJRK2XJ8CNPV2C6`. | `5a309dc` |
+| F002 | HIGH | `01KRT4TMBS0HY564CG777GR86X` | `classifyMaterialEvent` suppressed status-shaped blocked/needs-recovery events as status churn. | Fixed by classifying material blocker/recovery reasons before generic churn suppression and adding regression tests. | pending |
 
 ---
 

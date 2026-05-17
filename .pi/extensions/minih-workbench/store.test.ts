@@ -336,6 +336,26 @@ describe("minih-workbench store contracts", () => {
 			text: "HIGH issue",
 		});
 		expect(finding).toMatchObject({ material: true, reason: "finding", urgency: "normal" });
+		const blockedStatus = classifyMaterialEvent({
+			run,
+			source: "state",
+			id: "s1",
+			type: "inside.status",
+			text: "blocked waiting for permission",
+		});
+		expect(blockedStatus).toMatchObject({ material: true, reason: "blocker", urgency: "urgent" });
+		const recoveryStatus = classifyMaterialEvent({
+			run,
+			source: "state",
+			id: "s2",
+			type: "state.status",
+			text: "needs recovery after tool failure",
+		});
+		expect(recoveryStatus).toMatchObject({
+			material: true,
+			reason: "permission_or_recovery",
+			urgency: "urgent",
+		});
 		const progress = classifyMaterialEvent({
 			run,
 			source: "events",
