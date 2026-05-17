@@ -758,6 +758,9 @@ export function classifyMaterialEvent(event: MinihMaterialEventInput): MinihPush
 	if (type.includes("tool")) {
 		return { material: false, reason: "raw_tool_activity", dedupeKey: key };
 	}
+	if (event.source === "report" && type.includes("report") && !type.includes("summary")) {
+		return { material: false, reason: "large_raw_output", dedupeKey: key };
+	}
 	let reason: MinihMaterialEventReason | undefined;
 	if (event.addressedToUser) reason = "user_addressed";
 	else if (type.includes("finding")) reason = "finding";

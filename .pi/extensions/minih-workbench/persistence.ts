@@ -28,6 +28,7 @@ export interface WorkbenchAuditRecord {
 
 export interface SeenCursorKey extends MinihRunRef {
 	source: "events" | "inside" | "outside" | "report" | "push";
+	channel?: string;
 }
 
 export interface SeenCursorValue extends SeenCursorKey {
@@ -62,7 +63,7 @@ function runKey(run: MinihRunRef): string {
 }
 
 function cursorKey(key: SeenCursorKey): string {
-	return `${runKey(key)}\u0000${key.source}`;
+	return `${runKey(key)}\u0000${key.source}\u0000${key.channel ?? ""}`;
 }
 
 function cloneRun(run: MinihRunRef): MinihRunRef {
@@ -74,6 +75,7 @@ function cloneCursor(value: SeenCursorValue): SeenCursorValue {
 		slug: value.slug,
 		runId: value.runId,
 		source: value.source,
+		channel: value.channel,
 		cursor: value.cursor,
 		updatedAt: value.updatedAt,
 	};

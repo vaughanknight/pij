@@ -363,8 +363,13 @@ export default function (pi: ExtensionAPI) {
 		const classification = classifyMaterialEvent(event);
 		const envelope = buildPushedContextEnvelope(event, classification);
 		if (!envelope) return;
-		const cursor = persistence.getSeenCursor({ ...event.run, source: "push" });
-		if (!cursor.ok || cursor.value?.cursor === envelope.details.dedupeKey) return;
+		const cursorKey = {
+			...event.run,
+			source: "push" as const,
+			channel: envelope.details.dedupeKey,
+		};
+		const cursor = persistence.getSeenCursor(cursorKey);
+		if (!cursor.ok || cursor.value?.cursor === "delivered") return;
 		const audit = persistence.recordAudit({
 			id: randomUUID(),
 			kind: "cursor",
@@ -377,9 +382,8 @@ export default function (pi: ExtensionAPI) {
 		});
 		if (!audit.ok) return;
 		const advanced = persistence.advanceSeenCursor({
-			...event.run,
-			source: "push",
-			cursor: envelope.details.dedupeKey,
+			...cursorKey,
+			cursor: "delivered",
 			updatedAt: new Date().toISOString(),
 		});
 		if (!advanced.ok) return;

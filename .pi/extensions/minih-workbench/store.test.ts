@@ -445,6 +445,15 @@ describe("minih-workbench store contracts", () => {
 			text: JSON.stringify({ summary: "raw report body", findings: [{ secret: "value" }] }),
 		});
 		expect(rawReport).toMatchObject({ material: false, reason: "large_raw_output" });
+		const terminalRawReport = classifyMaterialEvent({
+			run,
+			source: "report",
+			id: "r1-terminal",
+			type: "output.report",
+			text: JSON.stringify({ summary: "terminal raw report body" }),
+			terminal: true,
+		});
+		expect(terminalRawReport).toMatchObject({ material: false, reason: "large_raw_output" });
 		const compactReport = classifyMaterialEvent({
 			run,
 			source: "report",

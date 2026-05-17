@@ -77,6 +77,31 @@ describe("session-backed Minih Workbench persistence", () => {
 		).toBe(true);
 	});
 
+	it("tracks push cursor channels independently for duplicate suppression", () => {
+		const harness = createHarness();
+		const run = { slug: "agent", runId: "run" };
+		harness.persistence.advanceSeenCursor({
+			...run,
+			source: "push",
+			channel: "event-a",
+			cursor: "delivered",
+			updatedAt: "2026-05-17T00:00:00Z",
+		});
+		harness.persistence.advanceSeenCursor({
+			...run,
+			source: "push",
+			channel: "event-b",
+			cursor: "delivered",
+			updatedAt: "2026-05-17T00:00:01Z",
+		});
+		expect(
+			harness.persistence.getSeenCursor({ ...run, source: "push", channel: "event-a" }),
+		).toMatchObject({ ok: true, value: { cursor: "delivered" } });
+		expect(
+			harness.persistence.getSeenCursor({ ...run, source: "push", channel: "event-b" }),
+		).toMatchObject({ ok: true, value: { cursor: "delivered" } });
+	});
+
 	it("fails closed when session append throws", () => {
 		const persistence = new SessionMinihWorkbenchPersistence({
 			getEntries: () => [],

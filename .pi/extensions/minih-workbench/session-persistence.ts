@@ -76,6 +76,7 @@ function cloneCursor(value: SeenCursorValue): SeenCursorValue {
 		slug: value.slug,
 		runId: value.runId,
 		source: value.source,
+		channel: value.channel,
 		cursor: value.cursor,
 		updatedAt: value.updatedAt,
 	};
@@ -108,7 +109,7 @@ function runKey(run: MinihRunRef): string {
 }
 
 function cursorKey(key: SeenCursorKey): string {
-	return `${runKey(key)}\u0000${key.source}`;
+	return `${runKey(key)}\u0000${key.source}\u0000${key.channel ?? ""}`;
 }
 
 function parseRun(value: unknown): MinihRunRef | undefined {
@@ -126,7 +127,13 @@ function parseCursor(value: unknown): SeenCursorValue | undefined {
 	const updatedAt = stringField(value, "updatedAt");
 	if (!run || !source || !cursor || !updatedAt) return undefined;
 	if (!["events", "inside", "outside", "report", "push"].includes(source)) return undefined;
-	return { ...run, source: source as SeenCursorValue["source"], cursor, updatedAt };
+	return {
+		...run,
+		source: source as SeenCursorValue["source"],
+		channel: stringField(value, "channel"),
+		cursor,
+		updatedAt,
+	};
 }
 
 function parsePushOptIn(value: unknown): PushOptInValue | undefined {
