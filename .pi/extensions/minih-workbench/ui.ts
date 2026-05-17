@@ -52,6 +52,7 @@ export interface MinihRunListCallbacks {
 export interface MinihRunModalCallbacks {
 	onClose(): void;
 	onSendMessage?(body: string): void;
+	onStopRun?(): void;
 	onStateChange?(state: MinihModalState): void;
 	requestRender(): void;
 }
@@ -224,12 +225,16 @@ export function renderDiagnosticsSummary(diagnostics: readonly MinihDiagnostic[]
 }
 
 function renderComposerLines(view: MinihViewSnapshot, composerText: string | undefined): string[] {
-	const availability = actionAvailabilityForRun(view.summary, "send");
-	if (!availability.available) {
-		return [`Composer: disabled — ${availability.reason ?? MINIH_DISABLED_COMPOSER_REASON}`];
+	const send = actionAvailabilityForRun(view.summary, "send");
+	const stop = actionAvailabilityForRun(view.summary, "stop");
+	const report = actionAvailabilityForRun(view.summary, "report");
+	const controlLine = `Controls: send:${send.available ? "enabled" : `disabled(${send.reason})`} stop:${stop.available ? "enabled" : `disabled(${stop.reason})`} report:${report.available ? "ready" : "not-ready"}`;
+	if (!send.available) {
+		return [controlLine, `Composer: disabled — ${send.reason ?? MINIH_DISABLED_COMPOSER_REASON}`];
 	}
 	const text = composerText ?? "";
 	return [
+		controlLine,
 		"Composer: enabled — type text, then send with the configured send key",
 		`Draft: ${text.length > 0 ? inlineText(text) : "(empty)"}`,
 	];
@@ -283,7 +288,10 @@ export function renderModalView(
 			)} pane • ${keys(
 				options.keybindings,
 				MINIH_WORKBENCH_ACTIONS.sendMessage,
-			)} send draft • page keys scroll focused pane • ${keys(
+			)} send draft • ${keys(
+				options.keybindings,
+				MINIH_WORKBENCH_ACTIONS.stopRun,
+			)} stop • page keys scroll focused pane • ${keys(
 				options.keybindings,
 				MINIH_WORKBENCH_ACTIONS.closeView,
 			)} close only`,
@@ -466,6 +474,17 @@ export class MinihRunModalComponent implements Component {
 				this.callbacks.onSendMessage?.(body);
 				this.composerText = "";
 				this.statusLine = "minih: sending message";
+			}
+			this.callbacks.requestRender();
+			return;
+		}
+		if (matchesAction(data, this.keybindings, MINIH_WORKBENCH_ACTIONS.stopRun)) {
+			const availability = actionAvailabilityForRun(this.view.summary, "stop");
+			if (!availability.available) {
+				this.statusLine = availability.reason ?? "stop disabled";
+			} else {
+				this.callbacks.onStopRun?.();
+				this.statusLine = "minih: stop confirmation requested";
 			}
 			this.callbacks.requestRender();
 			return;

@@ -16,11 +16,13 @@ import {
 	readMinihReport,
 	readMinihRunStatus,
 	sendMinihMessage,
+	sendMinihStopControl,
 } from "./minih-adapter.js";
 import { SessionMinihWorkbenchPersistence } from "./session-persistence.js";
 import {
 	actionAvailabilityForRun,
 	buildOutboundMessageDraft,
+	buildStopControlDraft,
 	defaultModalState,
 	diagnostic,
 	isForbiddenWorkbenchAction,
@@ -34,6 +36,8 @@ import {
 	minihError,
 	openModalForRun,
 	readOnlyNoWriteResult,
+	requiredStopConfirmation,
+	validateStopConfirmation,
 } from "./store.js";
 import {
 	formatInventoryText,
@@ -53,6 +57,12 @@ interface SendMessageInput {
 	subject?: string;
 	type?: MinihOutboundMessageType;
 	ackOf?: string;
+}
+
+interface StopRunInput {
+	slug: string;
+	runId: string;
+	confirm: string;
 }
 
 function configuredRoot(rootDir?: string): string {
@@ -115,13 +125,14 @@ function helpText(): string {
   /minih list
   /minih view <slug> <runId>
   /minih send <slug> <runId> <body>
+  /minih stop <slug> <runId>
   /minih report <slug> <runId>
   /minih status --json
   /minih status <slug> <runId> --json
   /minih report <slug> <runId> --json
 
-Tools: minih_runs_list, minih_run_status, minih_read_report, minih_send_message
-Send is gated to active coordinated writable runs with persisted audit; stop/push controls land separately in Phase 3.`;
+Tools: minih_runs_list, minih_run_status, minih_read_report, minih_send_message, minih_stop_run
+Send/stop are gated to active coordinated writable runs with persisted audit; stop requires explicit confirmation.`;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -247,6 +258,79 @@ export default function (pi: ExtensionAPI) {
 		return result;
 	}
 
+	async function stopRun(input: StopRunInput): Promise<MinihAdapterResult<MinihWriteOutcome>> {
+		const run = { slug: input.slug, runId: input.runId };
+		if (!validateStopConfirmation(run, input.confirm)) {
+			return minihError("MINIH_WRITE_REJECTED", "stop confirmation did not match required text", [
+				diagnostic(
+					"warning",
+					"MINIH_STOP_CONFIRMATION_MISMATCH",
+					`Expected confirmation: ${requiredStopConfirmation(run)}`,
+					"adapter",
+				),
+			]);
+		}
+		const status = await readMinihRunStatus({
+			rootDir: configuredRoot(),
+			slug: input.slug,
+			runId: input.runId,
+		});
+		if (!status.ok) return minihError(status.code, status.message, status.diagnostics);
+		const availability = actionAvailabilityForRun(status.value.summary, "stop");
+		if (!availability.available) {
+			return minihError("MINIH_WRITE_REJECTED", availability.reason ?? "stop disabled", [
+				diagnostic(
+					"warning",
+					"MINIH_STOP_NOT_AVAILABLE",
+					availability.reason ?? "stop disabled",
+					"adapter",
+				),
+			]);
+		}
+		const draft = buildStopControlDraft(run);
+		const intent = persistence.recordAudit({
+			id: randomUUID(),
+			kind: "intent",
+			action: "stop",
+			status: "accepted",
+			createdAt: new Date().toISOString(),
+			run,
+			message: draft.subject,
+			metadata: { type: draft.type },
+		});
+		if (!intent.ok) return persistenceError(intent.message);
+		const result = await sendMinihStopControl(draft, { writer: minihWriter });
+		const outcome = persistence.recordAudit({
+			id: randomUUID(),
+			kind: "outcome",
+			action: "stop",
+			status: result.ok && result.value.status === "accepted" ? "succeeded" : "failed",
+			createdAt: new Date().toISOString(),
+			run,
+			message: result.ok ? result.value.messageId : result.message,
+			metadata: result.ok ? { adapterStatus: result.value.status } : { adapterCode: result.code },
+		});
+		if (!outcome.ok) return persistenceError(outcome.message);
+		return result;
+	}
+
+	async function confirmAndStop(
+		ctx: ExtensionCommandContext,
+		run: MinihRunRef,
+	): Promise<MinihAdapterResult<MinihWriteOutcome>> {
+		const required = requiredStopConfirmation(run);
+		const confirmed = await ctx.ui.confirm(
+			"Stop Minih run?",
+			`Send dedicated stop control to ${run.slug}/${run.runId}? Required confirmation: ${required}`,
+		);
+		if (!confirmed) {
+			return minihError("MINIH_WRITE_REJECTED", "stop cancelled by user", [
+				diagnostic("warning", "MINIH_STOP_CANCELLED", "stop cancelled by user", "adapter"),
+			]);
+		}
+		return stopRun({ ...run, confirm: required });
+	}
+
 	async function openRunModal(
 		ctx: ExtensionCommandContext,
 		run: MinihRunRef,
@@ -289,6 +373,15 @@ export default function (pi: ExtensionAPI) {
 								component?.updateView(
 									result.value,
 									sendResult.ok ? "minih: sent" : sendResult.message,
+								);
+						});
+					},
+					onStopRun: () => {
+						void confirmAndStop(ctx, run).then((stopResult) => {
+							if (!closed)
+								component?.updateView(
+									result.value,
+									stopResult.ok ? "minih: stop sent" : stopResult.message,
 								);
 						});
 					},
@@ -442,6 +535,11 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(toolText(result), result.ok ? "info" : "error");
 				return;
 			}
+			if (verb === "stop" && slug && runId) {
+				const result = await confirmAndStop(ctx, { slug, runId });
+				ctx.ui.notify(toolText(result), result.ok ? "info" : "warning");
+				return;
+			}
 			if (verb === "view" && slug && runId) {
 				await openRunModal(ctx, { slug, runId });
 				return;
@@ -541,6 +639,23 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params: SendMessageInput, _signal, _onUpdate, ctx) {
 			bindSession(ctx);
 			const result = await sendMessageToRun(params);
+			return { content: [{ type: "text", text: toolText(result) }], details: envelope(result) };
+		},
+	});
+
+	pi.registerTool({
+		name: "minih_stop_run",
+		label: "Minih stop run",
+		description:
+			"Send a dedicated confirmed stop control to an active coordinated writable Minih run. Requires exact confirm text: stop <slug>/<runId>.",
+		parameters: Type.Object({
+			slug: Type.String({ description: "Minih agent slug." }),
+			runId: Type.String({ description: "Minih run id." }),
+			confirm: Type.String({ description: "Must exactly equal: stop <slug>/<runId>." }),
+		}),
+		async execute(_id, params: StopRunInput, _signal, _onUpdate, ctx) {
+			bindSession(ctx);
+			const result = await stopRun(params);
 			return { content: [{ type: "text", text: toolText(result) }], details: envelope(result) };
 		},
 	});

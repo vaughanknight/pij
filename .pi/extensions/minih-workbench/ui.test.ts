@@ -213,6 +213,38 @@ describe("minih-workbench UI rendering", () => {
 		expect(renders).toBeGreaterThan(0);
 	});
 
+	it("requests stop only through the configured stop action", () => {
+		let stopRequests = 0;
+		let closed = false;
+		const customKeys = {
+			...DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
+			[MINIH_WORKBENCH_ACTIONS.stopRun]: ["x"],
+			[MINIH_WORKBENCH_ACTIONS.closeView]: ["c"],
+		};
+		const component = new MinihRunModalComponent(
+			viewWithMultilineText(),
+			openModalForRun({ slug: "agent", runId: "run" }),
+			{
+				onClose: () => {
+					closed = true;
+				},
+				onStopRun: () => {
+					stopRequests += 1;
+				},
+				requestRender: () => {},
+			},
+			customKeys,
+		);
+		component.handleInput("stop agent/run");
+		component.handleInput("\u001b");
+		expect(stopRequests).toBe(0);
+		expect(closed).toBe(false);
+		component.handleInput("x");
+		expect(stopRequests).toBe(1);
+		component.handleInput("c");
+		expect(closed).toBe(true);
+	});
+
 	it("keeps multiline pane/report text on width-safe physical lines", () => {
 		const lines = renderWidthSafeModalView(viewWithMultilineText(), 42, {
 			state: openModalForRun({ slug: "agent", runId: "run" }),
