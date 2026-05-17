@@ -356,6 +356,14 @@ describe("minih-workbench store contracts", () => {
 			reason: "permission_or_recovery",
 			urgency: "urgent",
 		});
+		const toolOutput = classifyMaterialEvent({
+			run,
+			source: "events",
+			id: "t1",
+			type: "tool_result",
+			text: "tool output says blocked and needs recovery",
+		});
+		expect(toolOutput).toMatchObject({ material: false, reason: "raw_tool_activity" });
 		const progress = classifyMaterialEvent({
 			run,
 			source: "events",

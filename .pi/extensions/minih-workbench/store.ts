@@ -725,6 +725,12 @@ export function classifyMaterialEvent(event: MinihMaterialEventInput): MinihPush
 	const key = dedupeKeyForMaterialEvent(event);
 	const type = event.type.toLowerCase();
 	const text = event.text.toLowerCase();
+	if (byteLength(event.text) > DEFAULT_PUSH_TEXT_BYTES * 4 && type.includes("tool")) {
+		return { material: false, reason: "large_raw_output", dedupeKey: key };
+	}
+	if (type.includes("tool")) {
+		return { material: false, reason: "raw_tool_activity", dedupeKey: key };
+	}
 	let reason: MinihMaterialEventReason | undefined;
 	if (event.addressedToUser) reason = "user_addressed";
 	else if (type.includes("finding")) reason = "finding";
@@ -738,12 +744,6 @@ export function classifyMaterialEvent(event: MinihMaterialEventInput): MinihPush
 		reason = "permission_or_recovery";
 	} else if (type.includes("report") || event.terminal) reason = "terminal_report";
 	else if (type.includes("farewell")) reason = "farewell";
-	if (!reason && byteLength(event.text) > DEFAULT_PUSH_TEXT_BYTES * 4 && type.includes("tool")) {
-		return { material: false, reason: "large_raw_output", dedupeKey: key };
-	}
-	if (!reason && type.includes("tool")) {
-		return { material: false, reason: "raw_tool_activity", dedupeKey: key };
-	}
 	if (!reason && (type.includes("token") || type.includes("counter"))) {
 		return { material: false, reason: "counter_churn", dedupeKey: key };
 	}
