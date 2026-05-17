@@ -76,8 +76,8 @@ stateDiagram-v2
     S12 --> S13
     S13 --> [*]
 
-    class S1,S2,S3,S4,S5,S6 done
-    class S7,S8,S9,S10,S11,S12,S13 pending
+    class S1,S2,S3,S4,S5,S6,S7 done
+    class S8,S9,S10,S11,S12,S13 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -94,7 +94,7 @@ stateDiagram-v2
 - [x] **Stage 4: Wire send surfaces** — add `/minih send` and `minih_send_message` with explicit run id, fresh capability check, persisted intent, adapter write, and persisted outcome (`index.ts`).
 - [x] **Stage 5: Add modal composer** — render composer/send affordance only for coordinated writable runs and keep read-only disabled reasons visible (`ui.ts`).
 - [x] **Stage 6: Add stop/report controls** — add confirmed stop UI/command/tool, with `minih_stop_run({ slug, runId, confirm: "stop <slug>/<runId>" })` exact match for model tools, and report/farewell read-only controls; cancel/mismatch/failure sends no control (`index.ts`, `ui.ts`).
-- [ ] **Stage 7: Classify pushed context** — implement material-event classifier, redaction/truncation, stable cursor keys, and urgent/non-urgent delivery policy (`store.ts`, optional `push.ts` — new file).
+- [x] **Stage 7: Classify pushed context** — implement material-event classifier, redaction/truncation, stable cursor keys, and urgent/non-urgent delivery policy (`store.ts`, optional `push.ts` — new file).
 - [ ] **Stage 8: Deliver pushed context** — wire scoped opened/observed/opted-in push delivery after durable cursor/audit write; suppress duplicates across same-session reload/resume and preserve new/fork independence (`index.ts`, `feed.ts`).
 - [ ] **Stage 9: Prove safety negatives** — add regression tests for read-only no-write, persistence failure, stop cancel, safe Esc, and no raw/leaky push payloads (`*.test.ts`).
 - [ ] **Stage 10: Prove adapter/persistence behavior** — add fake writer/cursor/audit tests and deterministic fixture lanes (`minih-adapter.test.ts`, `fixtures/`).
@@ -187,7 +187,7 @@ flowchart LR
 - [x] T004: Add capability-gated send command/tool surfaces: `/minih send <slug> <runId> ...` and `minih_send_message`.
 - [x] T005: Add a capability-gated modal composer and send action that reuses Phase 2 keybinding injection and safe modal state.
 - [x] T006: Add explicit stop/report controls and `minih_stop_run` with confirmation and audit.
-- [ ] T007: Implement the pure push-context classifier, dedupe-key builder, redaction/truncation helpers, and urgency policy.
+- [x] T007: Implement the pure push-context classifier, dedupe-key builder, redaction/truncation helpers, and urgency policy.
 - [ ] T008: Wire scoped push-context delivery into Pi with durable cursor/audit ordering and reload-safe replay suppression.
 - [ ] T009: Add negative safety regression tests across store, adapter, persistence, command/tool, and push paths.
 - [ ] T010: Expand adapter/persistence fixture tests for write wrappers, audit ordering, cursor replay, and fake Minih run lanes.

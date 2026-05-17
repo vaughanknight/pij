@@ -243,6 +243,31 @@ export type MinihPushClassification =
 			dedupeKey: string;
 	  };
 
+export interface MinihPushedContextEnvelope {
+	customType: "minih.materialEvent";
+	content: string;
+	display: true;
+	details: {
+		slug: string;
+		runId: string;
+		source: MinihPushSource;
+		eventId: string;
+		eventType: string;
+		reason: MinihMaterialEventReason;
+		urgency: MinihPushUrgency;
+		dedupeKey: string;
+		redacted: boolean;
+		truncated: boolean;
+		timestamp?: string;
+	};
+}
+
+export interface MinihPushScopeInput {
+	opened: boolean;
+	observed: boolean;
+	optedIn: boolean;
+}
+
 export interface MinihDiagnostic {
 	severity: MinihDiagnosticSeverity;
 	code: string;
@@ -772,6 +797,36 @@ export function classifyMaterialEvent(event: MinihMaterialEventInput): MinihPush
 		modelText: model.text,
 		truncated: model.truncated,
 		redacted: model.redacted,
+	};
+}
+
+export function isPushScopeEligible(scope: MinihPushScopeInput): boolean {
+	return scope.opened || scope.observed || scope.optedIn;
+}
+
+export function buildPushedContextEnvelope(
+	event: MinihMaterialEventInput,
+	classification: MinihPushClassification = classifyMaterialEvent(event),
+): MinihPushedContextEnvelope | undefined {
+	if (!classification.material) return undefined;
+	const timestamp = event.timestamp ? ` at ${event.timestamp}` : "";
+	return {
+		customType: "minih.materialEvent",
+		content: `[minih:${classification.reason}:${classification.urgency}] ${event.run.slug}/${event.run.runId}${timestamp}: ${classification.modelText}`,
+		display: true,
+		details: {
+			slug: event.run.slug,
+			runId: event.run.runId,
+			source: event.source,
+			eventId: event.id,
+			eventType: event.type,
+			reason: classification.reason,
+			urgency: classification.urgency,
+			dedupeKey: classification.dedupeKey,
+			redacted: classification.redacted,
+			truncated: classification.truncated,
+			timestamp: event.timestamp,
+		},
 	};
 }
 

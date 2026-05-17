@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	actionAvailabilityForRun,
 	buildOutboundMessageDraft,
+	buildPushedContextEnvelope,
 	buildStopControlDraft,
 	clampListSelection,
 	classifyAttention,
@@ -15,6 +16,7 @@ import {
 	defaultModalState,
 	deriveRunCapability,
 	diagnostic,
+	isPushScopeEligible,
 	MINIH_MODAL_PANES,
 	MINIH_WORKBENCH_ACTIONS,
 	type MinihRunSummary,
@@ -383,5 +385,31 @@ describe("minih-workbench store contracts", () => {
 		expect(result.truncated).toBe(true);
 		expect(result.text).not.toContain("secret");
 		expect(result.text).not.toContain("jordanknight");
+	});
+
+	it("builds compact pushed-context envelopes with metadata-only details", () => {
+		const event = {
+			run: { slug: "agent", runId: "run" },
+			source: "inside" as const,
+			id: "q1",
+			type: "question",
+			text: "Can I proceed? SECRET=value",
+			timestamp: "2026-05-17T00:00:00Z",
+		};
+		const envelope = buildPushedContextEnvelope(event);
+		expect(envelope).toMatchObject({
+			customType: "minih.materialEvent",
+			display: true,
+			details: { reason: "question", urgency: "urgent", eventId: "q1" },
+		});
+		expect(envelope?.content).toContain("agent/run");
+		expect(envelope?.content).not.toContain("SECRET=value");
+	});
+
+	it("limits push scope to opened, observed, or opted-in runs", () => {
+		expect(isPushScopeEligible({ opened: false, observed: false, optedIn: false })).toBe(false);
+		expect(isPushScopeEligible({ opened: true, observed: false, optedIn: false })).toBe(true);
+		expect(isPushScopeEligible({ opened: false, observed: true, optedIn: false })).toBe(true);
+		expect(isPushScopeEligible({ opened: false, observed: false, optedIn: true })).toBe(true);
 	});
 });
