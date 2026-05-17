@@ -39,6 +39,9 @@ export const MINIH_WORKBENCH_ACTIONS = {
 	pageDiagnosticsDown: "minih.pageDiagnosticsDown",
 	pageReportUp: "minih.pageReportUp",
 	pageReportDown: "minih.pageReportDown",
+	sendMessage: "minih.sendMessage",
+	stopRun: "minih.stopRun",
+	confirmStop: "minih.confirmStop",
 } as const;
 
 export type MinihWorkbenchAction =
@@ -65,16 +68,12 @@ export const DEFAULT_MINIH_WORKBENCH_KEYBINDINGS: MinihWorkbenchKeybindings = {
 	[MINIH_WORKBENCH_ACTIONS.pageDiagnosticsDown]: ["shift+pagedown"],
 	[MINIH_WORKBENCH_ACTIONS.pageReportUp]: ["home"],
 	[MINIH_WORKBENCH_ACTIONS.pageReportDown]: ["end"],
+	[MINIH_WORKBENCH_ACTIONS.sendMessage]: ["ctrl+s"],
+	[MINIH_WORKBENCH_ACTIONS.stopRun]: ["ctrl+x"],
+	[MINIH_WORKBENCH_ACTIONS.confirmStop]: ["ctrl+shift+x"],
 };
 
-export const FORBIDDEN_WORKBENCH_ACTIONS = [
-	"send",
-	"stop",
-	"control",
-	"push_context",
-	"launch",
-	"install",
-] as const;
+export const FORBIDDEN_WORKBENCH_ACTIONS = ["launch", "install"] as const;
 
 export type ForbiddenWorkbenchAction = (typeof FORBIDDEN_WORKBENCH_ACTIONS)[number];
 
@@ -129,12 +128,118 @@ export type MinihAttentionState = (typeof MINIH_ATTENTION_STATES)[number];
 export const MINIH_REPORT_STATES = ["none", "ready", "partial", "error"] as const;
 export type MinihReportState = (typeof MINIH_REPORT_STATES)[number];
 
+export const MINIH_INTERACTION_ACTIONS = ["send", "stop", "report", "push_context"] as const;
+export type MinihInteractionAction = (typeof MINIH_INTERACTION_ACTIONS)[number];
+
+export const MINIH_OUTBOUND_MESSAGE_TYPES = [
+	"task",
+	"question",
+	"directive",
+	"briefing",
+	"review-request",
+	"note",
+] as const;
+export type MinihOutboundMessageType = (typeof MINIH_OUTBOUND_MESSAGE_TYPES)[number];
+
+export const MINIH_PUSH_SOURCES = ["events", "inside", "outside", "report", "state"] as const;
+export type MinihPushSource = (typeof MINIH_PUSH_SOURCES)[number];
+
+export const MINIH_MATERIAL_EVENT_REASONS = [
+	"finding",
+	"question",
+	"blocker",
+	"permission_or_recovery",
+	"terminal_report",
+	"farewell",
+	"user_addressed",
+] as const;
+export type MinihMaterialEventReason = (typeof MINIH_MATERIAL_EVENT_REASONS)[number];
+
+export const MINIH_SUPPRESSED_EVENT_REASONS = [
+	"routine_progress",
+	"raw_tool_activity",
+	"counter_churn",
+	"status_churn",
+	"large_raw_output",
+] as const;
+export type MinihSuppressedEventReason = (typeof MINIH_SUPPRESSED_EVENT_REASONS)[number];
+
+export const DEFAULT_OUTBOUND_SUBJECT_BYTES = 160;
+export const DEFAULT_OUTBOUND_BODY_BYTES = 16 * 1024;
+export const DEFAULT_PUSH_TEXT_BYTES = 1200;
+export const DEFAULT_PUSH_METADATA_TEXT_BYTES = 240;
+export const REDACTION_MARKER = "[redacted]";
+
 export type MinihDiagnosticSeverity = "info" | "warning" | "error";
 
 export interface MinihRunRef {
 	slug: string;
 	runId: string;
 }
+
+export interface MinihRunCapability {
+	run: MinihRunRef;
+	coordinated: boolean;
+	active: boolean;
+	writable: boolean;
+	canSend: boolean;
+	canStop: boolean;
+	canPush: boolean;
+	reasons: string[];
+}
+
+export interface MinihActionAvailability {
+	action: MinihInteractionAction;
+	available: boolean;
+	reason?: string;
+	capability: MinihRunCapability;
+}
+
+export interface MinihOutboundMessageDraft extends MinihRunRef {
+	type: MinihOutboundMessageType;
+	subject: string;
+	body: string;
+	ackOf?: string;
+	subjectTruncated: boolean;
+	bodyTruncated: boolean;
+}
+
+export interface MinihStopControlDraft extends MinihRunRef {
+	type: "control";
+	subject: "stop";
+	body: string;
+	requiredConfirmation: string;
+}
+
+export interface MinihMaterialEventInput {
+	run: MinihRunRef;
+	source: MinihPushSource;
+	id: string;
+	type: string;
+	text: string;
+	timestamp?: string;
+	severity?: MinihDiagnosticSeverity;
+	addressedToUser?: boolean;
+	terminal?: boolean;
+}
+
+export type MinihPushUrgency = "normal" | "urgent";
+
+export type MinihPushClassification =
+	| {
+			material: true;
+			reason: MinihMaterialEventReason;
+			urgency: MinihPushUrgency;
+			dedupeKey: string;
+			modelText: string;
+			truncated: boolean;
+			redacted: boolean;
+	  }
+	| {
+			material: false;
+			reason: MinihSuppressedEventReason;
+			dedupeKey: string;
+	  };
 
 export interface MinihDiagnostic {
 	severity: MinihDiagnosticSeverity;
@@ -493,6 +598,175 @@ export function makePaneSnapshot(
 		truncatedEvents: offset + windowed.length < items.length,
 		truncatedBytes,
 		truncationMarker: TRUNCATION_MARKER.trim(),
+	};
+}
+
+export function requiredStopConfirmation(run: MinihRunRef): string {
+	return `stop ${run.slug}/${run.runId}`;
+}
+
+export function validateStopConfirmation(run: MinihRunRef, confirmation: string): boolean {
+	return confirmation === requiredStopConfirmation(run);
+}
+
+export function buildStopControlDraft(run: MinihRunRef): MinihStopControlDraft {
+	const requiredConfirmation = requiredStopConfirmation(run);
+	return {
+		...cloneRunRef(run),
+		type: "control",
+		subject: "stop",
+		body: requiredConfirmation,
+		requiredConfirmation,
+	};
+}
+
+export function buildOutboundMessageDraft(input: {
+	run: MinihRunRef;
+	type?: MinihOutboundMessageType;
+	subject: string;
+	body: string;
+	ackOf?: string;
+	subjectMaxBytes?: number;
+	bodyMaxBytes?: number;
+}): MinihOutboundMessageDraft {
+	const subject = truncateText(
+		input.subject.trim(),
+		input.subjectMaxBytes ?? DEFAULT_OUTBOUND_SUBJECT_BYTES,
+	);
+	const body = truncateText(input.body, input.bodyMaxBytes ?? DEFAULT_OUTBOUND_BODY_BYTES);
+	return {
+		...cloneRunRef(input.run),
+		type: input.type ?? "task",
+		subject: subject.text,
+		body: body.text,
+		ackOf: input.ackOf,
+		subjectTruncated: subject.truncated,
+		bodyTruncated: body.truncated,
+	};
+}
+
+export function deriveRunCapability(run: MinihRunSummary): MinihRunCapability {
+	const reasons: string[] = [];
+	const coordinated = run.kind === "coordinated";
+	const active = run.status.liveness === "active" && run.status.terminal === "running";
+	if (!coordinated) reasons.push("run is not coordinated");
+	if (!run.hasInbox) reasons.push("run has no Minih inbox");
+	if (run.status.liveness !== "active") reasons.push(`run liveness is ${run.status.liveness}`);
+	if (run.status.terminal !== "running")
+		reasons.push(`run terminal status is ${run.status.terminal}`);
+	if (run.diagnostics.some((item) => item.severity === "error")) {
+		reasons.push("run has blocking diagnostics");
+	}
+	const writable = reasons.length === 0;
+	return {
+		run: cloneRunRef(run),
+		coordinated,
+		active,
+		writable,
+		canSend: writable,
+		canStop: writable,
+		canPush: coordinated && run.hasInbox,
+		reasons,
+	};
+}
+
+export function actionAvailabilityForRun(
+	run: MinihRunSummary,
+	action: MinihInteractionAction,
+): MinihActionAvailability {
+	const capability = deriveRunCapability(run);
+	if (action === "report") {
+		return {
+			action,
+			available: run.report.state === "ready",
+			reason: run.report.state === "ready" ? undefined : "run has no ready report",
+			capability,
+		};
+	}
+	if (action === "push_context") {
+		return {
+			action,
+			available: capability.canPush,
+			reason: capability.canPush ? undefined : capability.reasons.join("; ") || "push disabled",
+			capability,
+		};
+	}
+	const available = action === "send" ? capability.canSend : capability.canStop;
+	return {
+		action,
+		available,
+		reason: available ? undefined : capability.reasons.join("; ") || `${action} disabled`,
+		capability,
+	};
+}
+
+export function dedupeKeyForMaterialEvent(event: MinihMaterialEventInput): string {
+	return `${event.run.slug}\u0000${event.run.runId}\u0000${event.source}\u0000${event.type}\u0000${event.id}`;
+}
+
+export function redactAndTruncateModelText(
+	text: string,
+	maxBytes: number = DEFAULT_PUSH_TEXT_BYTES,
+): { text: string; redacted: boolean; truncated: boolean } {
+	const redacted = text
+		.replace(/\b[A-Z][A-Z0-9_]{2,}\s*=\s*[^\s]+/g, `${REDACTION_MARKER}=<value>`)
+		.replace(
+			/\b(?:api[_-]?key|token|secret|password)\b\s*[:=]\s*[^\s]+/gi,
+			`${REDACTION_MARKER}=<value>`,
+		)
+		.replace(/(?:\/[\w.-]+){3,}/g, `${REDACTION_MARKER}:path`);
+	const truncated = truncateText(redacted, maxBytes);
+	return { text: truncated.text, redacted: redacted !== text, truncated: truncated.truncated };
+}
+
+export function classifyMaterialEvent(event: MinihMaterialEventInput): MinihPushClassification {
+	const key = dedupeKeyForMaterialEvent(event);
+	const type = event.type.toLowerCase();
+	const text = event.text.toLowerCase();
+	if (byteLength(event.text) > DEFAULT_PUSH_TEXT_BYTES * 4 && type.includes("tool")) {
+		return { material: false, reason: "large_raw_output", dedupeKey: key };
+	}
+	if (type.includes("tool"))
+		return { material: false, reason: "raw_tool_activity", dedupeKey: key };
+	if (type.includes("token") || type.includes("counter")) {
+		return { material: false, reason: "counter_churn", dedupeKey: key };
+	}
+	if (type.includes("progress") || type.includes("heartbeat")) {
+		return { material: false, reason: "routine_progress", dedupeKey: key };
+	}
+	if (type.includes("status") && !event.terminal) {
+		return { material: false, reason: "status_churn", dedupeKey: key };
+	}
+	let reason: MinihMaterialEventReason | undefined;
+	if (event.addressedToUser) reason = "user_addressed";
+	else if (type.includes("finding")) reason = "finding";
+	else if (type.includes("question")) reason = "question";
+	else if (type.includes("block") || text.includes("blocked")) reason = "blocker";
+	else if (
+		type.includes("permission") ||
+		type.includes("recovery") ||
+		text.includes("needs recovery")
+	) {
+		reason = "permission_or_recovery";
+	} else if (type.includes("report") || event.terminal) reason = "terminal_report";
+	else if (type.includes("farewell")) reason = "farewell";
+	if (!reason) return { material: false, reason: "routine_progress", dedupeKey: key };
+	const model = redactAndTruncateModelText(event.text);
+	const urgent: MinihPushUrgency =
+		reason === "question" ||
+		reason === "blocker" ||
+		reason === "permission_or_recovery" ||
+		event.severity === "error"
+			? "urgent"
+			: "normal";
+	return {
+		material: true,
+		reason,
+		urgency: urgent,
+		dedupeKey: key,
+		modelText: model.text,
+		truncated: model.truncated,
+		redacted: model.redacted,
 	};
 }
 

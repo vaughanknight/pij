@@ -25,6 +25,8 @@
 
 | Task | Commit | Evidence | Companion Ping | Findings / Disposition |
 |------|--------|----------|----------------|------------------------|
+| Preflight | `09f2806` | Phase 3 task dossier and initial execution log committed. | `01KRT4PA5534VZ0JT8S52P9CMS` | Pending companion review. |
+| T001 | pending | Added Pi-free capability, action availability, outbound draft, stop confirmation/control draft, material event classification, redaction/truncation, and stable dedupe key contracts in `store.ts`; expanded store tests to 19 cases; `npx vitest run .pi/extensions/minih-workbench/store.test.ts` ✅; `just typecheck` ✅. | pending | Pending companion review. |
 
 ---
 

@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	actionAvailabilityForRun,
+	buildOutboundMessageDraft,
+	buildStopControlDraft,
 	clampListSelection,
 	classifyAttention,
+	classifyMaterialEvent,
 	closeModalSafely,
 	cycleFocusedPane,
 	DEFAULT_ACTIVE_RUN_LIMIT,
 	DEFAULT_COMPLETED_RUN_LIMIT,
 	DEFAULT_MINIH_WORKBENCH_KEYBINDINGS,
 	defaultModalState,
+	deriveRunCapability,
 	diagnostic,
 	MINIH_MODAL_PANES,
 	MINIH_WORKBENCH_ACTIONS,
@@ -22,8 +27,10 @@ import {
 	pageModalPane,
 	projectInventory,
 	readOnlyNoWriteResult,
+	redactAndTruncateModelText,
 	resolveSelectedRun,
 	sortRunSummaries,
+	validateStopConfirmation,
 } from "./store.js";
 
 function summary(
@@ -66,9 +73,14 @@ describe("minih-workbench store contracts", () => {
 		expect(DEFAULT_ACTIVE_RUN_LIMIT).toBeGreaterThan(0);
 		expect(DEFAULT_COMPLETED_RUN_LIMIT).toBeGreaterThan(0);
 		expect(MINIH_WORKBENCH_ACTIONS.openRun).toBe("minih.openRun");
+		expect(MINIH_WORKBENCH_ACTIONS.sendMessage).toBe("minih.sendMessage");
+		expect(MINIH_WORKBENCH_ACTIONS.stopRun).toBe("minih.stopRun");
 		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.openRun]).toContain("enter");
 		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.closeView]).toContain(
 			"escape",
+		);
+		expect(DEFAULT_MINIH_WORKBENCH_KEYBINDINGS[MINIH_WORKBENCH_ACTIONS.sendMessage]).toContain(
+			"ctrl+s",
 		);
 		expect(Object.values(MINIH_WORKBENCH_ACTIONS)).not.toContain("up");
 		expect(Object.values(MINIH_WORKBENCH_ACTIONS)).not.toContain("escape");
@@ -279,5 +291,69 @@ describe("minih-workbench store contracts", () => {
 		const result = readOnlyNoWriteResult("send");
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.message).toContain("read-only");
+	});
+
+	it("derives writable capability only for active coordinated inbox runs", () => {
+		const writable = summary({ slug: "agent", runId: "run", kind: "coordinated", hasInbox: true });
+		expect(deriveRunCapability(writable)).toMatchObject({
+			writable: true,
+			canSend: true,
+			canStop: true,
+		});
+		const standalone = summary({ slug: "solo", runId: "run", kind: "standalone", hasInbox: false });
+		const availability = actionAvailabilityForRun(standalone, "send");
+		expect(availability.available).toBe(false);
+		expect(availability.reason).toContain("not coordinated");
+	});
+
+	it("builds bounded outbound message and explicit stop-control drafts", () => {
+		const run = { slug: "agent", runId: "run" };
+		const message = buildOutboundMessageDraft({
+			run,
+			subject: " hello ",
+			body: "body",
+		});
+		expect(message).toMatchObject({ ...run, type: "task", subject: "hello", body: "body" });
+		const stop = buildStopControlDraft(run);
+		expect(stop).toEqual({
+			...run,
+			type: "control",
+			subject: "stop",
+			body: "stop agent/run",
+			requiredConfirmation: "stop agent/run",
+		});
+		expect(validateStopConfirmation(run, "stop agent/run")).toBe(true);
+		expect(validateStopConfirmation(run, "stop run")).toBe(false);
+	});
+
+	it("classifies material push events and suppresses churn", () => {
+		const run = { slug: "agent", runId: "run" };
+		const finding = classifyMaterialEvent({
+			run,
+			source: "inside",
+			id: "f1",
+			type: "finding",
+			text: "HIGH issue",
+		});
+		expect(finding).toMatchObject({ material: true, reason: "finding", urgency: "normal" });
+		const progress = classifyMaterialEvent({
+			run,
+			source: "events",
+			id: "p1",
+			type: "progress",
+			text: "working",
+		});
+		expect(progress).toMatchObject({ material: false, reason: "routine_progress" });
+	});
+
+	it("redacts and truncates model-visible push text", () => {
+		const result = redactAndTruncateModelText(
+			"TOKEN=secret /Users/jordanknight/pi-hacking/pij/sensitive/path",
+			24,
+		);
+		expect(result.redacted).toBe(true);
+		expect(result.truncated).toBe(true);
+		expect(result.text).not.toContain("secret");
+		expect(result.text).not.toContain("jordanknight");
 	});
 });

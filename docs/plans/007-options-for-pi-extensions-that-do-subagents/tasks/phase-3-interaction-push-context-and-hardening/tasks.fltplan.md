@@ -76,7 +76,8 @@ stateDiagram-v2
     S12 --> S13
     S13 --> [*]
 
-    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13 pending
+    class S1 done
+    class S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -87,7 +88,7 @@ stateDiagram-v2
 
 <!-- Updated by /plan-6-v2 during implementation: [ ] → [~] → [x] -->
 
-- [ ] **Stage 1: Define safety contracts** — capability, outbound message/control, action-state, push taxonomy, redaction, and dedupe contracts in Pi-free store (`store.ts`).
+- [x] **Stage 1: Define safety contracts** — capability, outbound message/control, action-state, push taxonomy, redaction, and dedupe contracts in Pi-free store (`store.ts`).
 - [ ] **Stage 2: Back persistence durably** — make selected pointers, seen cursors, push opt-ins, and audit/intent/outcome records survive same-session reload/resume through the existing facade, while new/forked sessions start independent (`persistence.ts`, optional `session-persistence.ts` — new file).
 - [ ] **Stage 3: Add adapter write wrappers** — implement injected Minih writer wrappers for the baseline `minih outside inbox send <slug> --run <runId> --type <type> --subject <subject> --body <body> [--ack-of <messageId>]` protocol and stop control without raw writes outside adapter (`minih-adapter.ts`).
 - [ ] **Stage 4: Wire send surfaces** — add `/minih send` and `minih_send_message` with explicit run id, fresh capability check, persisted intent, adapter write, and persisted outcome (`index.ts`).
@@ -180,7 +181,7 @@ flowchart LR
 
 ## Checklist
 
-- [ ] T001: Define Phase 3 capability, outbound message/control, action-state, push-event, redaction/truncation, and safety contracts in the Pi-free store.
+- [x] T001: Define Phase 3 capability, outbound message/control, action-state, push-event, redaction/truncation, and safety contracts in the Pi-free store.
 - [ ] T002: Add durable session-scoped persistence backing for selected pointers, seen cursors, push opt-ins, and audit/intent/outcome records.
 - [ ] T003: Implement Minih adapter write wrappers for outside-inbox send and stop-control delivery using injected execution/writer dependencies.
 - [ ] T004: Add capability-gated send command/tool surfaces: `/minih send <slug> <runId> ...` and `minih_send_message`.
