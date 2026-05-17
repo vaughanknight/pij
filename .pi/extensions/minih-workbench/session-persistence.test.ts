@@ -77,6 +77,31 @@ describe("session-backed Minih Workbench persistence", () => {
 		).toBe(true);
 	});
 
+	it("preserves audit ordering for intent-before-outcome evidence", () => {
+		const harness = createHarness();
+		const run = { slug: "agent", runId: "run" };
+		harness.persistence.recordAudit({
+			id: "intent-1",
+			kind: "intent",
+			action: "send",
+			status: "accepted",
+			createdAt: "2026-05-17T00:00:00Z",
+			run,
+		});
+		harness.persistence.recordAudit({
+			id: "outcome-1",
+			kind: "outcome",
+			action: "send",
+			status: "succeeded",
+			createdAt: "2026-05-17T00:00:01Z",
+			run,
+		});
+		expect(harness.persistence.listAudit()).toMatchObject({
+			ok: true,
+			value: [{ id: "intent-1" }, { id: "outcome-1" }],
+		});
+	});
+
 	it("tracks push cursor channels independently for duplicate suppression", () => {
 		const harness = createHarness();
 		const run = { slug: "agent", runId: "run" };
