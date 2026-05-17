@@ -38,7 +38,7 @@
 | T010 | `03a434a` | Added adapter/persistence behavior coverage for writer outcomes, thrown writer errors, session replay, new/fork reset, per-event cursor channels, and audit intent/outcome ordering. Validation: `npx vitest run .pi/extensions/minih-workbench/minih-adapter.test.ts .pi/extensions/minih-workbench/session-persistence.test.ts` ✅; `just typecheck` ✅. | `01KRT637QAFG1T1YJW1N1DSK4R` | F009 MEDIUM fixed in `34965bc`. |
 | T011 | `6299e19` + `34965bc` | Added UI/render tests for read-only composer/control report state, send/delete/stop keybinding injection, pushed envelope formatting, exact stop confirmation, tool result envelope, stop schema/mismatch, and existing command-adjacent helper behavior. Validation: `npx vitest run .pi/extensions/minih-workbench/index.test.ts .pi/extensions/minih-workbench/ui.test.ts .pi/extensions/minih-workbench/store.test.ts` ✅; `just typecheck` ✅. | `01KRT65DVD9PRNQAWF9Q9QB1XM` | F010 fixed in `34965bc`; companion approved via `01KRT6FCT0RR20XANNETASX3NW`. |
 | T012 | `4556628` + `1c06643` | Added smoke env hooks for deterministic fixture time and fake writer; expanded Driver SDK smoke for enabled composer, gated send success, read-only send rejection, report view, reload, and existing safe modal close. Stop/push/dedupe remain covered by targeted tests until Driver SDK can observe confirmation/custom-message lanes. Validation: `npm run smoke -- minih-workbench` ✅; `just typecheck` ✅. | `01KRT6CPMMBZK9M8WMFWQBSDDJ` | F011 fixed in `1c06643`. |
-| T013 | `2880022` + pending reconciliation fix | Updated README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan-level and phase flight plans, execution evidence, and velocity. Final `just self-check` passed after docs. | `01KRT6RYS074TGN847Z9G994E9` | F013 reconciliation fix pending. |
+| T013 | `2880022` + `eae63cc` + `811a6d0` + `c8baa5c` | Updated README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan-level and phase flight plans, execution evidence, velocity, companion farewell, retros, and difficulties. Final `just self-check` passed after farewell docs. | `01KRT6RYS074TGN847Z9G994E9` | F013/F014 fixed; companion farewell recorded. |
 
 ---
 
@@ -57,9 +57,9 @@
 | F009 | MEDIUM | `01KRT637QAFG1T1YJW1N1DSK4R` | Audit-ordering test proved persistence insertion order but not production persist-before-side-effect ordering. | Fixed by adding `index.test.ts` fake-extension tool test asserting send audit append occurs before writer exec and outcome after; ack `01KRT6EN7M1VNZRGQ94XM6EMEV`; fix review `01KRT6ENMXAFHY3YMQZSHJVXNR`. | `34965bc` |
 | F010 | MEDIUM | `01KRT65DVD9PRNQAWF9Q9QB1XM` | Stage 11 claimed tool schema/result coverage but only added UI rendering checks. | Fixed by adding `index.test.ts` coverage for `minih_send_message` result envelope and `minih_stop_run` confirmation schema/mismatch zero-side-effect behavior; ack `01KRT6ENEHMCF2SJFGAB2N3RYH`; fix review `01KRT6ENMXAFHY3YMQZSHJVXNR`. | `34965bc` |
 | F011 | MEDIUM | `01KRT6CPMMBZK9M8WMFWQBSDDJ` | Stage 12 overclaimed stop/push/dedupe smoke coverage that Driver SDK smoke did not directly exercise. | Fixed by aligning T012 task/flight/evidence wording: smoke covers observable fixture/fake-writer flows; targeted tests cover stop/push/dedupe until Driver SDK can observe confirmations/custom messages directly; companion approved via `01KRT6H6C7S5EY5AWNHBNKVZBD`. | `1c06643` |
-| F012 | LOW | `01KRT6G6MA7R7NAA6FCJRJY3FJ` | F011 fix evidence still had stale pending cells. | Fixed by setting T012/F011 to `1c06643` and adding this reconciliation row. | pending |
+| F012 | LOW | `01KRT6G6MA7R7NAA6FCJRJY3FJ` | F011 fix evidence still had stale pending cells. | Fixed by setting T012/F011 to `1c06643` and adding this reconciliation row. | `eae63cc` |
 | F013 | MEDIUM | `01KRT6RYS074TGN847Z9G994E9` | T013 landing evidence had stale task/finding dispositions and needed final post-docs self-check clarity. | Fixed by reconciling task rows through T013, findings through F013, and keeping companion drain pending until this review completes. | `eae63cc` |
-| F014 | LOW | `01KRT6XDS0GYG4WHRPTVS6QWCV` | Phase-end summary still said F001–F011 and self-check row was ambiguous after reconciliation. | Fixed by expanding the summary to F001–F014 and recording the post-reconciliation `just self-check` timestamp. | pending |
+| F014 | LOW | `01KRT6XDS0GYG4WHRPTVS6QWCV` | Phase-end summary still said F001–F011 and self-check row was ambiguous after reconciliation. | Fixed by expanding the summary to F001–F014 and recording the post-reconciliation `just self-check` timestamp; companion approved via `01KRT70QCY9ZKBCV54QV592NW4`. | `811a6d0` |
 
 ---
 
@@ -71,7 +71,7 @@
 | Driver SDK smoke | ✅ passed | `npm run smoke -- minih-workbench` with fixture clock + fake writer. |
 | Agent harness health | ⚠️ degraded, non-blocking | `minih doctor` had 0 errors and 3 warnings at phase start. |
 | Package vet | ✅ no new dependency | No package was added; final `just self-check` included deterministic `pkg audit` with existing vetted package set. |
-| Full self-check | ✅ passed | `just self-check` passed after the final reconciliation commit at `2026-05-17T05:36:31Z` (typecheck → lint → test → smoke → pkg audit → snapshots-check). |
+| Full self-check | ✅ passed | `just self-check` passed after the final farewell/docs commit at `2026-05-17T05:41:34Z` (typecheck → lint → test → smoke → pkg audit → snapshots-check). |
 
 ## Companion Findings Summary
 
