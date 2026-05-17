@@ -131,10 +131,22 @@ unlink:
 # doesn't strand our extensions, MCP config, or global packages.
 
 # Update pi to the latest published version, then re-apply harness state.
+#
+# Updates two things, in order:
+#   1. The pi binary itself (via npm -g)
+#   2. Installed pi packages in ~/.pi/agent/ (via `pi update`) — pi tells you
+#      "Package updates are available. Run pi update" when these drift; this
+#      catches them so a single command keeps everything current.
+# Then re-links pij extensions (pi update has historically moved discovery
+# paths) and runs pi-doctor.
 update-pi:
     @echo "=== current pi ===" && pi --version | head -1
     npm install -g @earendil-works/pi-coding-agent@latest
     @echo "=== updated pi ===" && pi --version | head -1
+    @echo
+    @echo "=== updating pi packages ==="
+    pi update
+    @echo
     just link
     just pi-doctor
 
