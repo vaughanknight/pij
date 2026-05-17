@@ -769,13 +769,21 @@ export function classifyMaterialEvent(event: MinihMaterialEventInput): MinihPush
 		text.includes("needs recovery")
 	) {
 		reason = "permission_or_recovery";
-	} else if (type.includes("report") || event.terminal) reason = "terminal_report";
-	else if (type.includes("farewell")) reason = "farewell";
+	} else if (
+		event.terminal ||
+		type.includes("report.summary") ||
+		type.includes("terminal_report")
+	) {
+		reason = "terminal_report";
+	} else if (type.includes("farewell")) reason = "farewell";
 	if (!reason && (type.includes("token") || type.includes("counter"))) {
 		return { material: false, reason: "counter_churn", dedupeKey: key };
 	}
 	if (!reason && (type.includes("progress") || type.includes("heartbeat"))) {
 		return { material: false, reason: "routine_progress", dedupeKey: key };
+	}
+	if (!reason && type.includes("report")) {
+		return { material: false, reason: "large_raw_output", dedupeKey: key };
 	}
 	if (!reason && type.includes("status") && !event.terminal) {
 		return { material: false, reason: "status_churn", dedupeKey: key };

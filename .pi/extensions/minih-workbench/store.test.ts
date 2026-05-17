@@ -387,6 +387,26 @@ describe("minih-workbench store contracts", () => {
 		expect(result.text).not.toContain("jordanknight");
 	});
 
+	it("suppresses raw reports while allowing compact terminal report summaries", () => {
+		const run = { slug: "agent", runId: "run" };
+		const rawReport = classifyMaterialEvent({
+			run,
+			source: "report",
+			id: "r1",
+			type: "output.report",
+			text: JSON.stringify({ summary: "raw report body", findings: [{ secret: "value" }] }),
+		});
+		expect(rawReport).toMatchObject({ material: false, reason: "large_raw_output" });
+		const compactReport = classifyMaterialEvent({
+			run,
+			source: "report",
+			id: "r2",
+			type: "report.summary",
+			text: "Completed with 1 finding",
+		});
+		expect(compactReport).toMatchObject({ material: true, reason: "terminal_report" });
+	});
+
 	it("builds compact pushed-context envelopes with metadata-only details", () => {
 		const event = {
 			run: { slug: "agent", runId: "run" },
