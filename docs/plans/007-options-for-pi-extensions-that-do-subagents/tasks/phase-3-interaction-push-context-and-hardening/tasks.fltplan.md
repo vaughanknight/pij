@@ -76,8 +76,8 @@ stateDiagram-v2
     S12 --> S13
     S13 --> [*]
 
-    class S1,S2,S3,S4,S5,S6,S7,S8 done
-    class S9,S10,S11,S12,S13 pending
+    class S1,S2,S3,S4,S5,S6,S7,S8,S9 done
+    class S10,S11,S12,S13 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -96,7 +96,7 @@ stateDiagram-v2
 - [x] **Stage 6: Add stop/report controls** — add confirmed stop UI/command/tool, with `minih_stop_run({ slug, runId, confirm: "stop <slug>/<runId>" })` exact match for model tools, and report/farewell read-only controls; cancel/mismatch/failure sends no control (`index.ts`, `ui.ts`).
 - [x] **Stage 7: Classify pushed context** — implement material-event classifier, redaction/truncation, stable cursor keys, and urgent/non-urgent delivery policy (`store.ts`, optional `push.ts` — new file).
 - [x] **Stage 8: Deliver pushed context** — wire scoped opened/observed/opted-in push delivery after durable cursor/audit write; suppress duplicates across same-session reload/resume and preserve new/fork independence (`index.ts`, `feed.ts`).
-- [ ] **Stage 9: Prove safety negatives** — add regression tests for read-only no-write, persistence failure, stop cancel, safe Esc, and no raw/leaky push payloads (`*.test.ts`).
+- [x] **Stage 9: Prove safety negatives** — add regression tests for read-only no-write, persistence failure, stop cancel, safe Esc, and no raw/leaky push payloads (`*.test.ts`).
 - [ ] **Stage 10: Prove adapter/persistence behavior** — add fake writer/cursor/audit tests and deterministic fixture lanes (`minih-adapter.test.ts`, `fixtures/`).
 - [ ] **Stage 11: Prove UI/command behavior** — add keybinding, composer, exact stop confirmation literal, report, tool schema/result, and pushed-envelope tests (`ui.test.ts`, `store.test.ts`).
 - [ ] **Stage 12: Prove end-to-end smoke** — deterministic Driver SDK smoke covers send, read-only gating, stop confirm/cancel/mismatch, push once, same-session dedupe after reload, and Esc safe close (`smoke.ts`).
@@ -189,7 +189,7 @@ flowchart LR
 - [x] T006: Add explicit stop/report controls and `minih_stop_run` with confirmation and audit.
 - [x] T007: Implement the pure push-context classifier, dedupe-key builder, redaction/truncation helpers, and urgency policy.
 - [x] T008: Wire scoped push-context delivery into Pi with durable cursor/audit ordering and reload-safe replay suppression.
-- [ ] T009: Add negative safety regression tests across store, adapter, persistence, command/tool, and push paths.
+- [x] T009: Add negative safety regression tests across store, adapter, persistence, command/tool, and push paths.
 - [ ] T010: Expand adapter/persistence fixture tests for write wrappers, audit ordering, cursor replay, and fake Minih run lanes.
 - [ ] T011: Expand UI/command/tool tests for composer, send, stop confirmation, report controls, push delivery envelopes, and keybindings.
 - [ ] T012: Expand deterministic Driver SDK smoke for Phase 3 interaction, controls, push, duplicate suppression, and reload.

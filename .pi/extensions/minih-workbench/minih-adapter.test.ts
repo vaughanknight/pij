@@ -190,4 +190,25 @@ describe("minih-adapter fixtures", () => {
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.code).toBe("MINIH_WRITE_UNAVAILABLE");
 	});
+
+	it("returns tagged writer errors without throwing", async () => {
+		const result = await sendMinihMessage(
+			{
+				slug: "agent",
+				runId: "run",
+				type: "task",
+				subject: "hello",
+				body: "body",
+				subjectTruncated: false,
+				bodyTruncated: false,
+			},
+			{
+				writer: async () => {
+					throw new Error("boom");
+				},
+			},
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.code).toBe("MINIH_IO_ERROR");
+	});
 });

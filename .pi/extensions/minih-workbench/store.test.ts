@@ -308,6 +308,54 @@ describe("minih-workbench store contracts", () => {
 		expect(availability.reason).toContain("not coordinated");
 	});
 
+	it("fails closed for stale, completed, and diagnostic-blocked write capability", () => {
+		const stale = actionAvailabilityForRun(
+			summary({
+				slug: "stale",
+				runId: "run",
+				kind: "coordinated",
+				hasInbox: true,
+				status: {
+					liveness: "stale",
+					terminal: "running",
+					inside: "running",
+					outside: "waiting",
+					attention: "needs_attention",
+				},
+			}),
+			"send",
+		);
+		expect(stale.available).toBe(false);
+		const completed = actionAvailabilityForRun(
+			summary({
+				slug: "done",
+				runId: "run",
+				kind: "coordinated",
+				hasInbox: true,
+				status: {
+					liveness: "completed",
+					terminal: "completed",
+					inside: "complete",
+					outside: "unavailable",
+					attention: "none",
+				},
+			}),
+			"stop",
+		);
+		expect(completed.available).toBe(false);
+		const blocked = actionAvailabilityForRun(
+			summary({
+				slug: "bad",
+				runId: "run",
+				kind: "coordinated",
+				hasInbox: true,
+				diagnostics: [diagnostic("error", "BAD", "bad")],
+			}),
+			"send",
+		);
+		expect(blocked.available).toBe(false);
+	});
+
 	it("builds bounded outbound message and explicit stop-control drafts", () => {
 		const run = { slug: "agent", runId: "run" };
 		const message = buildOutboundMessageDraft({
