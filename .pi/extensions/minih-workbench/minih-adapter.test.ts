@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
 	defaultFixtureRoot,
 	listMinihRuns,
+	type MinihWriterRequest,
 	readMinihReport,
 	readMinihRunStatus,
+	sendMinihMessage,
+	sendMinihStopControl,
 } from "./minih-adapter.js";
 
 const rootDir = defaultFixtureRoot();
@@ -108,5 +111,83 @@ describe("minih-adapter fixtures", () => {
 		const result = await readMinihRunStatus({ rootDir, slug: "missing", runId: "nope" });
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.code).toBe("MINIH_RUN_NOT_FOUND");
+	});
+
+	it("sends outside-inbox messages through an injected writer", async () => {
+		const requests: MinihWriterRequest[] = [];
+		const result = await sendMinihMessage(
+			{
+				slug: "agent",
+				runId: "run",
+				type: "task",
+				subject: "hello",
+				body: "body",
+				ackOf: "m1",
+				subjectTruncated: false,
+				bodyTruncated: false,
+			},
+			{
+				writer: async (request) => {
+					requests.push(request);
+					return { accepted: true, messageId: "m2", stdout: "ok", exitCode: 0 };
+				},
+			},
+		);
+		expect(requests).toEqual([
+			{
+				command: "outside.inbox.send",
+				slug: "agent",
+				runId: "run",
+				type: "task",
+				subject: "hello",
+				body: "body",
+				ackOf: "m1",
+			},
+		]);
+		expect(result).toMatchObject({ ok: true, value: { status: "accepted", messageId: "m2" } });
+	});
+
+	it("sends stop control with a dedicated control request shape", async () => {
+		let request: MinihWriterRequest | undefined;
+		const result = await sendMinihStopControl(
+			{
+				slug: "agent",
+				runId: "run",
+				type: "control",
+				subject: "stop",
+				body: "stop agent/run",
+				requiredConfirmation: "stop agent/run",
+			},
+			{
+				writer: async (nextRequest) => {
+					request = nextRequest;
+					return { accepted: false, stderr: "refused", exitCode: 2 };
+				},
+			},
+		);
+		expect(request).toEqual({
+			command: "outside.inbox.send",
+			slug: "agent",
+			runId: "run",
+			type: "control",
+			subject: "stop",
+			body: "stop agent/run",
+		});
+		expect(result).toMatchObject({ ok: true, value: { status: "rejected", stderr: "refused" } });
+		if (result.ok) expect(result.diagnostics.at(0)?.code).toBe("MINIH_WRITE_REJECTED");
+	});
+
+	it("fails closed when no writer dependency is injected", async () => {
+		const result = await sendMinihMessage({
+			slug: "agent",
+			runId: "run",
+			type: "task",
+			subject: "hello",
+			body: "body",
+			subjectTruncated: false,
+			bodyTruncated: false,
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.code).toBe("MINIH_WRITE_UNAVAILABLE");
 	});
 });

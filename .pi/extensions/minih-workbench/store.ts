@@ -361,6 +361,8 @@ export type MinihAdapterErrorCode =
 	| "MINIH_RUN_NOT_FOUND"
 	| "MINIH_BAD_ARTIFACT"
 	| "MINIH_PERMISSION_DENIED"
+	| "MINIH_WRITE_UNAVAILABLE"
+	| "MINIH_WRITE_REJECTED"
 	| "MINIH_IO_ERROR";
 
 export type MinihAdapterResult<T> =

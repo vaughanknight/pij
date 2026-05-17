@@ -17,12 +17,14 @@ import {
 	type MinihInsideStatus,
 	type MinihInventorySnapshot,
 	type MinihLiveness,
+	type MinihOutboundMessageDraft,
 	type MinihOutsideStatus,
 	type MinihPaneCursor,
 	type MinihPaneItem,
 	type MinihReportSummary,
 	type MinihRunKind,
 	type MinihRunSummary,
+	type MinihStopControlDraft,
 	type MinihTerminalResult,
 	type MinihViewSnapshot,
 	makePaneSnapshot,
@@ -46,6 +48,41 @@ export interface MinihRunReadOptions extends MinihAdapterOptions {
 	tools?: MinihPaneCursor;
 	coordination?: MinihPaneCursor;
 	diagnostics?: MinihPaneCursor;
+}
+
+export interface MinihWriterRequest {
+	command: "outside.inbox.send";
+	slug: string;
+	runId: string;
+	type: string;
+	subject: string;
+	body: string;
+	ackOf?: string;
+}
+
+export interface MinihWriterResult {
+	accepted: boolean;
+	messageId?: string;
+	stdout?: string;
+	stderr?: string;
+	exitCode?: number;
+}
+
+export type MinihWriter = (request: MinihWriterRequest) => Promise<MinihWriterResult>;
+
+export interface MinihWriteOptions {
+	writer?: MinihWriter;
+}
+
+export interface MinihWriteOutcome {
+	status: "accepted" | "rejected";
+	slug: string;
+	runId: string;
+	messageId?: string;
+	request: MinihWriterRequest;
+	stdout?: string;
+	stderr?: string;
+	exitCode?: number;
 }
 
 interface JsonReadResult {
@@ -423,6 +460,97 @@ async function resolveRunPath(
 ): Promise<string | undefined> {
 	const runPath = join(rootDir, "agents", slug, "runs", runId);
 	return (await exists(runPath)) ? runPath : undefined;
+}
+
+function writeUnavailable(request: MinihWriterRequest): MinihAdapterResult<MinihWriteOutcome> {
+	return minihError(
+		"MINIH_WRITE_UNAVAILABLE",
+		"Minih writer dependency was not provided; no write was attempted",
+		[
+			diagnostic(
+				"warning",
+				"MINIH_WRITE_UNAVAILABLE",
+				`writer missing for ${request.slug}/${request.runId}`,
+				"adapter",
+			),
+		],
+	);
+}
+
+async function executeWrite(
+	request: MinihWriterRequest,
+	writer: MinihWriter | undefined,
+): Promise<MinihAdapterResult<MinihWriteOutcome>> {
+	if (!writer) return writeUnavailable(request);
+	try {
+		const result = await writer(request);
+		return minihOk(
+			{
+				status: result.accepted ? "accepted" : "rejected",
+				slug: request.slug,
+				runId: request.runId,
+				messageId: result.messageId,
+				request,
+				stdout: result.stdout,
+				stderr: result.stderr,
+				exitCode: result.exitCode,
+			},
+			result.accepted
+				? []
+				: [
+						diagnostic(
+							"warning",
+							"MINIH_WRITE_REJECTED",
+							result.stderr ?? "Minih writer rejected the request",
+							"adapter",
+						),
+					],
+		);
+	} catch (error) {
+		return minihError("MINIH_IO_ERROR", `Minih writer failed: ${messageFromUnknown(error)}`, [
+			diagnostic(
+				"error",
+				"MINIH_WRITE_FAILED",
+				`Minih writer failed: ${messageFromUnknown(error)}`,
+				"adapter",
+			),
+		]);
+	}
+}
+
+export async function sendMinihMessage(
+	draft: MinihOutboundMessageDraft,
+	options: MinihWriteOptions = {},
+): Promise<MinihAdapterResult<MinihWriteOutcome>> {
+	return executeWrite(
+		{
+			command: "outside.inbox.send",
+			slug: draft.slug,
+			runId: draft.runId,
+			type: draft.type,
+			subject: draft.subject,
+			body: draft.body,
+			ackOf: draft.ackOf,
+		},
+		options.writer,
+	);
+}
+
+export async function sendMinihStopControl(
+	draft: MinihStopControlDraft,
+	options: MinihWriteOptions = {},
+): Promise<MinihAdapterResult<MinihWriteOutcome>> {
+	return executeWrite(
+		{
+			command: "outside.inbox.send",
+			slug: draft.slug,
+			runId: draft.runId,
+			type: draft.type,
+			subject: draft.subject,
+			body: draft.body,
+		},
+		options.writer,
+	);
 }
 
 export async function listMinihRuns(
