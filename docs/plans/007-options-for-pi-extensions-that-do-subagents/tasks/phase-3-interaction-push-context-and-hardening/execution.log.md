@@ -58,7 +58,8 @@
 | F010 | MEDIUM | `01KRT65DVD9PRNQAWF9Q9QB1XM` | Stage 11 claimed tool schema/result coverage but only added UI rendering checks. | Fixed by adding `index.test.ts` coverage for `minih_send_message` result envelope and `minih_stop_run` confirmation schema/mismatch zero-side-effect behavior; ack `01KRT6ENEHMCF2SJFGAB2N3RYH`; fix review `01KRT6ENMXAFHY3YMQZSHJVXNR`. | `34965bc` |
 | F011 | MEDIUM | `01KRT6CPMMBZK9M8WMFWQBSDDJ` | Stage 12 overclaimed stop/push/dedupe smoke coverage that Driver SDK smoke did not directly exercise. | Fixed by aligning T012 task/flight/evidence wording: smoke covers observable fixture/fake-writer flows; targeted tests cover stop/push/dedupe until Driver SDK can observe confirmations/custom messages directly; companion approved via `01KRT6H6C7S5EY5AWNHBNKVZBD`. | `1c06643` |
 | F012 | LOW | `01KRT6G6MA7R7NAA6FCJRJY3FJ` | F011 fix evidence still had stale pending cells. | Fixed by setting T012/F011 to `1c06643` and adding this reconciliation row. | pending |
-| F013 | MEDIUM | `01KRT6RYS074TGN847Z9G994E9` | T013 landing evidence had stale task/finding dispositions and needed final post-docs self-check clarity. | Fixed by reconciling task rows through T013, findings through F013, and keeping companion drain pending until this review completes. | pending |
+| F013 | MEDIUM | `01KRT6RYS074TGN847Z9G994E9` | T013 landing evidence had stale task/finding dispositions and needed final post-docs self-check clarity. | Fixed by reconciling task rows through T013, findings through F013, and keeping companion drain pending until this review completes. | `eae63cc` |
+| F014 | LOW | `01KRT6XDS0GYG4WHRPTVS6QWCV` | Phase-end summary still said F001–F011 and self-check row was ambiguous after reconciliation. | Fixed by expanding the summary to F001–F014 and recording the post-reconciliation `just self-check` timestamp. | pending |
 
 ---
 
@@ -70,8 +71,8 @@
 | Driver SDK smoke | ✅ passed | `npm run smoke -- minih-workbench` with fixture clock + fake writer. |
 | Agent harness health | ⚠️ degraded, non-blocking | `minih doctor` had 0 errors and 3 warnings at phase start. |
 | Package vet | ✅ no new dependency | No package was added; final `just self-check` included deterministic `pkg audit` with existing vetted package set. |
-| Full self-check | ✅ passed | `just self-check` passed at `2026-05-17T05:31:29Z`; it will be rerun after the final reconciliation commit. |
+| Full self-check | ✅ passed | `just self-check` passed after the final reconciliation commit at `2026-05-17T05:36:31Z` (typecheck → lint → test → smoke → pkg audit → snapshots-check). |
 
 ## Companion Findings Summary
 
-F001–F011 were fixed or reconciled inline. Final companion drain/farewell is recorded during the phase-end ceremony.
+F001–F014 were fixed or reconciled inline. Final companion drain/farewell is recorded during the phase-end ceremony.
