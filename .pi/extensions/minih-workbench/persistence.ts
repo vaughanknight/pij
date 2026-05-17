@@ -44,6 +44,7 @@ export interface MinihWorkbenchPersistence {
 	getSelectedRun(): PersistenceResult<MinihRunRef | undefined>;
 	setSelectedRun(run: MinihRunRef): PersistenceResult<MinihRunRef>;
 	clearSelectedRun(): PersistenceResult<undefined>;
+	resetForNewSession(createdAt: string): PersistenceResult<undefined>;
 	getSeenCursor(key: SeenCursorKey): PersistenceResult<SeenCursorValue | undefined>;
 	advanceSeenCursor(value: SeenCursorValue): PersistenceResult<SeenCursorValue>;
 	getPushOptIn(run: MinihRunRef): PersistenceResult<PushOptInValue | undefined>;
@@ -117,6 +118,14 @@ export class MemoryMinihWorkbenchPersistence implements MinihWorkbenchPersistenc
 
 	clearSelectedRun(): PersistenceResult<undefined> {
 		this.selectedRun = undefined;
+		return ok(undefined);
+	}
+
+	resetForNewSession(_createdAt: string): PersistenceResult<undefined> {
+		this.selectedRun = undefined;
+		this.cursors.clear();
+		this.pushOptIns.clear();
+		this.audit.length = 0;
 		return ok(undefined);
 	}
 

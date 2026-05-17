@@ -12,7 +12,7 @@ import {
 	readMinihReport,
 	readMinihRunStatus,
 } from "./minih-adapter.js";
-import { MemoryMinihWorkbenchPersistence } from "./persistence.js";
+import { SessionMinihWorkbenchPersistence } from "./session-persistence.js";
 import {
 	defaultModalState,
 	isForbiddenWorkbenchAction,
@@ -86,7 +86,15 @@ Phase 2 is read-only: no send, stop, composer, push, launch, or install.`;
 
 export default function (pi: ExtensionAPI) {
 	const activeFeeds = new Set<MinihReadOnlyFeedHandle>();
-	const persistence = new MemoryMinihWorkbenchPersistence();
+	let currentSessionManager: ExtensionContext["sessionManager"] | undefined;
+	const persistence = new SessionMinihWorkbenchPersistence({
+		getEntries: () => currentSessionManager?.getEntries() ?? [],
+		appendEntry: (customType, data) => pi.appendEntry(customType, data),
+	});
+
+	function bindSession(ctx: ExtensionContext): void {
+		currentSessionManager = ctx.sessionManager;
+	}
 
 	function disposeActiveFeeds(): void {
 		for (const feed of activeFeeds) feed.dispose();
@@ -125,6 +133,7 @@ export default function (pi: ExtensionAPI) {
 		run: MinihRunRef,
 		options: { focusedPane?: MinihModalPane } = {},
 	): Promise<void> {
+		bindSession(ctx);
 		const result = await readMinihRunStatus({
 			rootDir: configuredRoot(),
 			slug: run.slug,
@@ -198,6 +207,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	async function openRunList(ctx: ExtensionCommandContext): Promise<void> {
+		bindSession(ctx);
 		const initial = await loadInventory();
 		if (!initial.ok) {
 			ctx.ui.notify(toolText(initial), "error");
@@ -260,21 +270,25 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	// Pattern P10: one handler for session_start, all reasons.
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
+		bindSession(ctx);
 		disposeActiveFeeds();
-		clearSelectedPointer();
+		if (event.reason === "new" || event.reason === "fork") {
+			persistence.resetForNewSession(new Date().toISOString());
+		}
 		clearStatus(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		bindSession(ctx);
 		disposeActiveFeeds();
-		clearSelectedPointer();
 		clearStatus(ctx);
 	});
 
 	pi.registerCommand(MINIH_COMMAND_NAME, {
 		description: "Inspect Minih runs through the Pi-native Minih Workbench",
 		handler: async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
+			bindSession(ctx);
 			const tokens = commandTokens(args);
 			const positional = withoutFlags(tokens);
 			const [verb, slug, runId] = positional;

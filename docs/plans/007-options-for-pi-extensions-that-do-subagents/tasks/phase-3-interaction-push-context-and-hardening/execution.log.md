@@ -27,6 +27,7 @@
 |------|--------|----------|----------------|------------------------|
 | Preflight | `09f2806` | Phase 3 task dossier and initial execution log committed. | `01KRT4PA5534VZ0JT8S52P9CMS` | F001 MEDIUM: task status drift; fixed in follow-up. |
 | T001 | `f47bd9f` | Added Pi-free capability, action availability, outbound draft, stop confirmation/control draft, material event classification, redaction/truncation, and stable dedupe key contracts in `store.ts`; expanded store tests to 19 cases; `npx vitest run .pi/extensions/minih-workbench/store.test.ts` ✅; `just typecheck` ✅. | `01KRT4TMBS0HY564CG777GR86X` | Pending companion review. |
+| T002 | pending | Added append-only session-entry persistence backing with same-session replay and new/fork reset markers; wired `index.ts` to session-backed persistence; added session persistence tests; `npx vitest run .pi/extensions/minih-workbench/session-persistence.test.ts .pi/extensions/minih-workbench/store.test.ts` ✅; `just typecheck` ✅. | pending | Pending companion review. |
 
 ---
 
@@ -34,7 +35,7 @@
 
 | Finding | Severity | Ack Of | Summary | Disposition | Fix Commit |
 |---------|----------|--------|---------|-------------|------------|
-| F001 | MEDIUM | `01KRT4PA5534VZ0JT8S52P9CMS` | `tasks.md` still said `Status: Proposed` after the phase was validated, briefed, and in execution. | Fixed by aligning Phase 3 task/flight statuses to `In Progress`. | pending |
+| F001 | MEDIUM | `01KRT4PA5534VZ0JT8S52P9CMS` | `tasks.md` still said `Status: Proposed` after the phase was validated, briefed, and in execution. | Fixed by aligning Phase 3 task/flight statuses to `In Progress`; ack `01KRT4VNPFQNNW44595K63GP1S`; fix review `01KRT4VNY2YFN5TP5N6RZ2KA6F`. | `5a309dc` |
 
 ---
 
