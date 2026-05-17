@@ -95,3 +95,43 @@ angles: the companion's orient/lifecycle heuristics don't have a first-class
 adding it as a briefing-level field that the companion honours immediately
 (before orient default runs OR when re-targeting between plans). Worth
 upstreaming to minih as a coordinated PR.
+
+## 2026-05-16T00:17:07.049Z — code-review-companion / 2026-05-16T09-45-41-687Z-4b0a
+
+- runId: 2026-05-16T09-45-41-687Z-4b0a
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-05-16T09-45-41-687Z-4b0a
+- summary: Reviewed seven coordinated commit-boundary tasks for the Plan 010 below-editor todo strip follow-up. ST001, ST002, ST005, and the F003-fix had no findings; ST003 produced F001 on session-sql changed-event over-emission, ST004 produced F002 on missing regression/widget coverage, and closeout produced F003 on a stale phase status header. All three findings were subsequently reconciled or fixed by later commits before the outside peer sent stop.
+- **magicWand** (target: coordination): Add a first-class companion command or template for cumulative finding capture so each inbox finding is automatically mirrored into the final report without manual re-entry.
+- difficulties:
+  - [annoying] coordination: The report had to mirror findings that were already sent through the inbox, but there is no automatic export from inbox messages to output/report.json. (workaround: Manually tracked task ids, finding ids, and ackOf values during the run and copied the final finding content into the JSON envelope.)
+
+## 2026-05-16T04:46:21.478Z — code-review-companion / 2026-05-16T14-43-11-492Z-4616
+
+- runId: 2026-05-16T14-43-11-492Z-4616
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-05-16T14-43-11-492Z-4616
+- summary: Recovery debrief completed for the stale original Plan 007 Phase 1 companion run 2026-05-16T13-47-09-160Z-fc71. I reconstructed the review record from the original inside/outside inbox messages and the current execution log, verified that all original MEDIUM and LOW findings F001-F013 are recorded as fixed or reconciled, and found no unresolved HIGH or MEDIUM issues. The original final summary 01KRQGXSJZ0VPZZ8N60B6QWQB3 found no new HIGH/MEDIUM issues and approved Phase 1 handoff to Phase 2; the current execution log also records final self-check passing and documents this recovery fallback.
+- **magicWand** (target: coordination): Add a `minih recover-report <slug> <runId>` command that generates a draft farewell envelope from a stale run's inbox messages, summaries, findings, and last control message, then marks which fields still need human or companion confirmation.
+- difficulties:
+  - [degrading] coordination: The prior companion run went stale after sending its final inbox summary but before writing output/report.json, leaving the recovery agent to reconstruct the formal envelope manually. (workaround: Read the original inside/outside inbox message streams, extracted finding and summary content, cross-checked the current execution log dispositions, and wrote this replacement report.)
+  - [annoying] coordination: The recovery request arrived as a briefing rather than a task even though it required real reconstruction work, which made task counters and ack semantics slightly ambiguous. (workaround: Acknowledged and replied to the briefing with ackOf, treated tasksReceived as zero for this run, and recorded the ambiguity in the retrospective.)
+
+## 2026-05-16T07:21:06.483Z — code-review-companion / 2026-05-16T16-32-48-636Z-fb2e
+
+- runId: 2026-05-16T16-32-48-636Z-fb2e
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-05-16T16-32-48-636Z-fb2e
+- summary: Completed a coordinated, commit-by-commit Phase 2 review for the Minih Workbench full modal run viewer. I sent eight findings covering width-safe rendering, stale async UI refreshes, inert report paging, read-only contract drift, non-UI modal state leaks, insufficient injected-key coverage, fragile Escape-close smoke assertions, and stale evidence reconciliation. Each finding was fixed and re-reviewed; final T012 docs, domain handoff, and self-check evidence were approved with no unresolved requests.
+- **magicWand** (target: coordination): Add a first-class review-drain/control vocabulary in the coordination UI, distinct from task, so status-only notes do not look like review work and task counts can be generated automatically.
+- difficulties:
+  - [annoying] config: The shell did not expose MINIH_PROJECT_ROOT during orientation, even though the prompt instructed the companion to cd through it. (workaround: Used the explicit repository root from the environment context: /Users/jordanknight/pi-hacking/pij.)
+  - [annoying] test: Vitest 2.1.9 rejected the attempted --runInBand flag during focused test validation. (workaround: Reran the focused test command without --runInBand.)
+  - [degrading] coordination: Status-only and final-drain messages arrived as type=task, which made lifecycle notes indistinguishable from review requests at the protocol level. (workaround: Read the subject/body and replied with progress or drain summaries without starting unnecessary review work.)
+
+## 2026-05-17T05:38:50.151Z — code-review-companion / 2026-05-17T14-55-31-573Z-53a4
+
+- runId: 2026-05-17T14-55-31-573Z-53a4
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-05-17T14-55-31-573Z-53a4
+- summary: Reviewed Plan 007 Phase 3 Minih Workbench implementation from preflight through T013 and targeted fixes through F014. I sent findings covering status drift, classifier ordering, raw tool/report leakage, write-root mismatch, keybinding injection, per-event push dedupe, persist-before-side-effect evidence, command/tool evidence overclaims, smoke/evidence overclaims, and final reconciliation drift. All medium/high findings were fixed and re-reviewed, final low evidence cleanups were resolved, and no open review findings remained when stop was requested.
+- **magicWand** (target: coordination): Generate the final companion report automatically from acked inbox findings and summaries, including ids, severities, ackOf values, and dispositions.
+- difficulties:
+  - [degrading] coordination: Final report generation required manually reconstructing cumulative findings from inbox traffic and compaction summary instead of exporting them from the coordination log. (workaround: Kept finding ids and ackOf references during review and manually populated the final report.)
+  - [annoying] config: The shell did not expose MINIH_PROJECT_ROOT, so orientation used the repository root from environment context. (workaround: Used /Users/jordanknight/pi-hacking/pij as the project root for file and git reads.)

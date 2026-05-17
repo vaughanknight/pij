@@ -75,4 +75,15 @@
 
 ## Companion Findings Summary
 
-F001–F014 were fixed or reconciled inline. Final companion drain/farewell is recorded during the phase-end ceremony.
+F001–F014 were fixed or reconciled inline. Companion drain summary `01KRT71J2NENCHMFSMP5E86K2R` reported no open review findings before stop.
+
+## Companion Farewell
+
+| Field | Value |
+|-------|-------|
+| Run | `2026-05-17T14-55-31-573Z-53a4` |
+| Report | `agents/code-review-companion/runs/2026-05-17T14-55-31-573Z-53a4/output/report.json` |
+| Exit reason | `stop_requested` |
+| Findings | F001–F014, all fixed/reviewed, no open findings |
+| Magic wand | Generate the final companion report automatically from acked inbox findings and summaries, including ids, severities, ackOf values, and dispositions. |
+| Difficulties | MH-001 degrading report reconstruction → `D-036`; MH-002 annoying missing `MINIH_PROJECT_ROOT` → `D-037` |
