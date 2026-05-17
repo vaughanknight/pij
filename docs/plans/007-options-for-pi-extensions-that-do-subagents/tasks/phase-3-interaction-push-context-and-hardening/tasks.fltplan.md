@@ -99,7 +99,7 @@ stateDiagram-v2
 - [x] **Stage 9: Prove safety negatives** — add regression tests for read-only no-write, persistence failure, stop cancel, safe Esc, and no raw/leaky push payloads (`*.test.ts`).
 - [x] **Stage 10: Prove adapter/persistence behavior** — add fake writer/cursor/audit tests and deterministic fixture lanes (`minih-adapter.test.ts`, `fixtures/`).
 - [x] **Stage 11: Prove UI/command behavior** — add keybinding, composer, exact stop confirmation literal, report, tool schema/result, and pushed-envelope tests (`ui.test.ts`, `store.test.ts`).
-- [x] **Stage 12: Prove end-to-end smoke** — deterministic Driver SDK smoke covers send, read-only gating, stop confirm/cancel/mismatch, push once, same-session dedupe after reload, and Esc safe close (`smoke.ts`).
+- [x] **Stage 12: Prove end-to-end smoke** — deterministic Driver SDK smoke covers list/modal, send success via fake writer, read-only gating, report view, reload, and Esc safe close; targeted tests cover stop confirm/cancel/mismatch plus push once/dedupe until Driver SDK can observe confirmation/custom-message lanes directly (`smoke.ts`, `*.test.ts`).
 - [ ] **Stage 13: Land docs and evidence** — update README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan progress, velocity, difficulties, execution log, and final validation evidence (`docs/**`, `.pi/extensions/minih-workbench/AGENTS.md`).
 
 ---
@@ -158,7 +158,7 @@ flowchart LR
 - [ ] Push scope defaults to opened/observed runs plus explicitly opted-in runs; it does not push all running Minih agents by default.
 - [ ] Same-session reload/resume does not duplicate pushes because stable cursors are durably advanced before model-visible delivery; new/forked sessions start with no inherited Minih Workbench rows unless a future explicit import/migration is designed.
 - [ ] Deterministic tests cover capability gates, writer shapes, confirmation, audit ordering, cursor replay, redaction, no-write negatives, and keybinding injection.
-- [ ] `npm run smoke -- minih-workbench` proves coordinated send, read-only gating, stop confirm/cancel/mismatch, confirmed stop control, report/farewell viewing, push-once behavior, same-session reload dedupe, and safe `Esc` close without live Minih/Copilot.
+- [ ] `npm run smoke -- minih-workbench` proves coordinated send, read-only gating, report/farewell viewing, reload, and safe `Esc` close without live Minih/Copilot; targeted unit/integration tests prove stop confirm/cancel/mismatch, confirmed stop control, push-once behavior, and same-session reload dedupe until Driver SDK can observe confirmation/custom-message lanes directly.
 - [ ] README, `docs/how/agent-workbench.md`, extension `AGENTS.md`, domain docs, task docs, flight plan, velocity, and difficulties/retros are updated with final evidence.
 - [ ] Final implementation reports `just self-check` passing before Phase 3 is declared complete.
 
