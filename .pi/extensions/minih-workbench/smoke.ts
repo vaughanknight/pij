@@ -10,6 +10,10 @@ const scenario: Scenario = {
 	name: "minih-workbench",
 	cols: 140,
 	rows: 44,
+	env: {
+		PIJ_MINIH_WORKBENCH_FAKE_WRITER: "1",
+		PIJ_MINIH_WORKBENCH_NOW_MS: "1778903700000",
+	},
 	steps: [
 		{
 			kind: "type",
@@ -28,7 +32,7 @@ const scenario: Scenario = {
 		{
 			kind: "press",
 			key: "Enter",
-			expect: /MINIH WORKBENCH — RUN VIEW[\s\S]*Composer disabled[\s\S]*Focused pane: transcript/,
+			expect: /MINIH WORKBENCH — RUN VIEW[\s\S]*Composer: enabled[\s\S]*Focused pane: transcript/,
 			expectTimeoutMs: 5000,
 		},
 		{
@@ -44,6 +48,20 @@ const scenario: Scenario = {
 		{
 			kind: "sleep",
 			ms: 300,
+		},
+		{
+			kind: "type",
+			text: "/minih send code-review-companion run-active hello from smoke",
+			press: "Enter",
+			expect: /"ok": true[\s\S]*"status": "accepted"[\s\S]*fake-code-review-companion-run-active/,
+			expectTimeoutMs: 5000,
+		},
+		{
+			kind: "type",
+			text: "/minih send standalone-agent run-standalone blocked smoke",
+			press: "Enter",
+			expect: /"ok": false[\s\S]*MINIH_SEND_NOT_AVAILABLE/,
+			expectTimeoutMs: 5000,
 		},
 		{
 			kind: "type",

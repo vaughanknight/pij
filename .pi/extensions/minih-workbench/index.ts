@@ -74,6 +74,13 @@ function configuredRoot(rootDir?: string): string {
 	return rootDir ?? process.env.PIJ_MINIH_WORKBENCH_ROOT ?? defaultFixtureRoot();
 }
 
+function configuredNowMs(): number | undefined {
+	const value = process.env.PIJ_MINIH_WORKBENCH_NOW_MS;
+	if (!value) return undefined;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function envelope<T>(result: MinihAdapterResult<T>) {
 	if (result.ok) return { ok: true, data: result.value, diagnostics: result.diagnostics };
 	return {
@@ -148,6 +155,14 @@ export default function (pi: ExtensionAPI) {
 		appendEntry: (customType, data) => pi.appendEntry(customType, data),
 	});
 	const minihWriter: MinihWriter = async (request) => {
+		if (process.env.PIJ_MINIH_WORKBENCH_FAKE_WRITER === "1") {
+			return {
+				accepted: true,
+				messageId: `fake-${request.slug}-${request.runId}`,
+				stdout: jsonText({ data: { messageId: `fake-${request.slug}-${request.runId}` } }),
+				exitCode: 0,
+			};
+		}
 		const args = [
 			"outside",
 			"inbox",
@@ -206,7 +221,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	async function loadInventory(): Promise<MinihAdapterResult<MinihInventorySnapshot>> {
-		return listMinihRuns({ rootDir: configuredRoot() });
+		return listMinihRuns({ rootDir: configuredRoot(), nowMs: configuredNowMs() });
 	}
 
 	async function sendMessageToRun(
@@ -214,6 +229,7 @@ export default function (pi: ExtensionAPI) {
 	): Promise<MinihAdapterResult<MinihWriteOutcome>> {
 		const status = await readMinihRunStatus({
 			rootDir: configuredRoot(),
+			nowMs: configuredNowMs(),
 			slug: input.slug,
 			runId: input.runId,
 		});
@@ -277,6 +293,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		const status = await readMinihRunStatus({
 			rootDir: configuredRoot(),
+			nowMs: configuredNowMs(),
 			slug: input.slug,
 			runId: input.runId,
 		});
@@ -405,6 +422,7 @@ export default function (pi: ExtensionAPI) {
 		bindSession(ctx);
 		const result = await readMinihRunStatus({
 			rootDir: configuredRoot(),
+			nowMs: configuredNowMs(),
 			slug: run.slug,
 			runId: run.runId,
 		});
@@ -461,6 +479,7 @@ export default function (pi: ExtensionAPI) {
 						read: () =>
 							readMinihRunStatus({
 								rootDir: configuredRoot(),
+								nowMs: configuredNowMs(),
 								slug: run.slug,
 								runId: run.runId,
 							}),
@@ -613,17 +632,27 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (verb === "status" && slug && runId) {
-				const result = await readMinihRunStatus({ rootDir: configuredRoot(), slug, runId });
+				const result = await readMinihRunStatus({
+					rootDir: configuredRoot(),
+					nowMs: configuredNowMs(),
+					slug,
+					runId,
+				});
 				ctx.ui.notify(toolText(result), result.ok ? "info" : "error");
 				return;
 			}
 			if (verb === "status" && wantsJson(tokens)) {
-				const result = await listMinihRuns({ rootDir: configuredRoot() });
+				const result = await listMinihRuns({ rootDir: configuredRoot(), nowMs: configuredNowMs() });
 				ctx.ui.notify(toolText(result), result.ok ? "info" : "error");
 				return;
 			}
 			if (verb === "report" && slug && runId && wantsJson(tokens)) {
-				const result = await readMinihReport({ rootDir: configuredRoot(), slug, runId });
+				const result = await readMinihReport({
+					rootDir: configuredRoot(),
+					nowMs: configuredNowMs(),
+					slug,
+					runId,
+				});
 				ctx.ui.notify(toolText(result), result.ok ? "info" : "error");
 				return;
 			}
@@ -631,7 +660,7 @@ export default function (pi: ExtensionAPI) {
 				await openRunModal(ctx, { slug, runId }, { focusedPane: "report" });
 				return;
 			}
-			const result = await listMinihRuns({ rootDir: configuredRoot() });
+			const result = await listMinihRuns({ rootDir: configuredRoot(), nowMs: configuredNowMs() });
 			ctx.ui.notify(
 				result.ok ? formatInventoryText(result.value) : toolText(result),
 				result.ok ? "info" : "error",

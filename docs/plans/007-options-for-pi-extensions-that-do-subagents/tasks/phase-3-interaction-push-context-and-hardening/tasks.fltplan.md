@@ -76,8 +76,8 @@ stateDiagram-v2
     S12 --> S13
     S13 --> [*]
 
-    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11 done
-    class S12,S13 pending
+    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12 done
+    class S13 pending
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -99,7 +99,7 @@ stateDiagram-v2
 - [x] **Stage 9: Prove safety negatives** — add regression tests for read-only no-write, persistence failure, stop cancel, safe Esc, and no raw/leaky push payloads (`*.test.ts`).
 - [x] **Stage 10: Prove adapter/persistence behavior** — add fake writer/cursor/audit tests and deterministic fixture lanes (`minih-adapter.test.ts`, `fixtures/`).
 - [x] **Stage 11: Prove UI/command behavior** — add keybinding, composer, exact stop confirmation literal, report, tool schema/result, and pushed-envelope tests (`ui.test.ts`, `store.test.ts`).
-- [ ] **Stage 12: Prove end-to-end smoke** — deterministic Driver SDK smoke covers send, read-only gating, stop confirm/cancel/mismatch, push once, same-session dedupe after reload, and Esc safe close (`smoke.ts`).
+- [x] **Stage 12: Prove end-to-end smoke** — deterministic Driver SDK smoke covers send, read-only gating, stop confirm/cancel/mismatch, push once, same-session dedupe after reload, and Esc safe close (`smoke.ts`).
 - [ ] **Stage 13: Land docs and evidence** — update README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan progress, velocity, difficulties, execution log, and final validation evidence (`docs/**`, `.pi/extensions/minih-workbench/AGENTS.md`).
 
 ---
@@ -192,5 +192,5 @@ flowchart LR
 - [x] T009: Add negative safety regression tests across store, adapter, persistence, command/tool, and push paths.
 - [x] T010: Expand adapter/persistence fixture tests for write wrappers, audit ordering, cursor replay, and fake Minih run lanes.
 - [x] T011: Expand UI/command/tool tests for composer, send, stop confirmation, report controls, push delivery envelopes, and keybindings.
-- [ ] T012: Expand deterministic Driver SDK smoke for Phase 3 interaction, controls, push, duplicate suppression, and reload.
+- [x] T012: Expand deterministic Driver SDK smoke for Phase 3 interaction, controls, push, duplicate suppression, and reload.
 - [ ] T013: Update operator docs, extension rules, domain docs, plan flight status, execution evidence, velocity, and difficulty/retro handoff.
