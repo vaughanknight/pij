@@ -22,17 +22,22 @@ import { SessionMinihWorkbenchPersistence } from "./session-persistence.js";
 import {
 	actionAvailabilityForRun,
 	buildOutboundMessageDraft,
+	buildPushedContextEnvelope,
 	buildStopControlDraft,
+	classifyMaterialEvent,
 	defaultModalState,
 	diagnostic,
 	isForbiddenWorkbenchAction,
+	isPushScopeEligible,
 	MINIH_COMMAND_NAME,
 	MINIH_STATUS_KEY,
 	type MinihAdapterResult,
 	type MinihInventorySnapshot,
+	type MinihMaterialEventInput,
 	type MinihModalPane,
 	type MinihOutboundMessageType,
 	type MinihRunRef,
+	type MinihViewSnapshot,
 	minihError,
 	openModalForRun,
 	readOnlyNoWriteResult,
@@ -331,6 +336,63 @@ export default function (pi: ExtensionAPI) {
 		return stopRun({ ...run, confirm: required });
 	}
 
+	function materialEventsFromSnapshot(snapshot: MinihViewSnapshot): MinihMaterialEventInput[] {
+		const run = { slug: snapshot.slug, runId: snapshot.runId };
+		return [
+			...snapshot.transcript.items.map((item) => ({
+				run,
+				source: "events" as const,
+				id: item.id,
+				type: item.type,
+				text: item.text,
+				timestamp: item.timestamp,
+			})),
+			...snapshot.coordination.items.map((item) => ({
+				run,
+				source: "inside" as const,
+				id: item.id,
+				type: item.type,
+				text: item.text,
+				timestamp: item.timestamp,
+			})),
+		];
+	}
+
+	function deliverMaterialEvent(event: MinihMaterialEventInput): void {
+		if (!isPushScopeEligible({ opened: true, observed: true, optedIn: false })) return;
+		const classification = classifyMaterialEvent(event);
+		const envelope = buildPushedContextEnvelope(event, classification);
+		if (!envelope) return;
+		const cursor = persistence.getSeenCursor({ ...event.run, source: "push" });
+		if (!cursor.ok || cursor.value?.cursor === envelope.details.dedupeKey) return;
+		const audit = persistence.recordAudit({
+			id: randomUUID(),
+			kind: "cursor",
+			action: "push_context",
+			status: "accepted",
+			createdAt: new Date().toISOString(),
+			run: event.run,
+			message: envelope.details.reason,
+			metadata: { urgency: envelope.details.urgency, eventType: event.type },
+		});
+		if (!audit.ok) return;
+		const advanced = persistence.advanceSeenCursor({
+			...event.run,
+			source: "push",
+			cursor: envelope.details.dedupeKey,
+			updatedAt: new Date().toISOString(),
+		});
+		if (!advanced.ok) return;
+		pi.sendMessage(envelope, {
+			deliverAs: "steer",
+			triggerTurn: envelope.details.urgency === "urgent",
+		});
+	}
+
+	function deliverSnapshotPushes(snapshot: MinihViewSnapshot): void {
+		for (const event of materialEventsFromSnapshot(snapshot)) deliverMaterialEvent(event);
+	}
+
 	async function openRunModal(
 		ctx: ExtensionCommandContext,
 		run: MinihRunRef,
@@ -355,6 +417,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		setSelectedPointer(run);
+		deliverSnapshotPushes(result.value);
 		ctx.ui.setStatus(MINIH_STATUS_KEY, `minih: viewing ${run.slug}/${run.runId}`);
 		let component: MinihRunModalComponent | undefined;
 		let feed: MinihReadOnlyFeedHandle | undefined;
@@ -398,6 +461,7 @@ export default function (pi: ExtensionAPI) {
 								runId: run.runId,
 							}),
 						onSnapshot: (snapshot) => {
+							deliverSnapshotPushes(snapshot);
 							if (!closed) component?.updateView(snapshot, "minih: refreshed");
 						},
 						onDiagnostics: (diagnostics) => {
