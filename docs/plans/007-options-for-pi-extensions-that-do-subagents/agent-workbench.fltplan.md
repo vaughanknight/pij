@@ -5,7 +5,7 @@
 **Dossier**: [research-dossier.md](./research-dossier.md) + `/tmp/pij-minih-flowspace-v3/research-dossier.md`  
 **Workshops**: [001 Pi-native Agent Workbench UX](./workshops/001-pi-native-agent-workbench-ux.md) — Minih-only full modal viewer first  
 **Generated**: 2026-05-16  
-**Status**: Phase 2 landed — ready for Phase 3 task dossier
+**Status**: Phase 3 landed — implementation complete
 **Mode**: Full, max 3 implementation phases  
 **Complexity**: CS-5 (epic)
 
@@ -69,7 +69,7 @@ flowchart LR
     classDef active fill:#FFF3E0,stroke:#FB8C00,color:#000
     classDef pending fill:#ECEFF1,stroke:#607D8B,color:#000
 
-    R[Research]:::done --> W[Workshop]:::done --> S[Spec]:::done --> C[Clarify]:::done --> A[Architect]:::done --> P4[Plan-4 Review]:::done --> T[Phase Tasks]:::done --> I[Phase 1 Implement]:::done --> V[Phase 1 Validate]:::done --> P2T[Phase 2 Tasks]:::done --> P2I[Phase 2 Implement]:::done --> P2V[Phase 2 Validate]:::done
+    R[Research]:::done --> W[Workshop]:::done --> S[Spec]:::done --> C[Clarify]:::done --> A[Architect]:::done --> P4[Plan-4 Review]:::done --> T[Phase Tasks]:::done --> I[Phase 1 Implement]:::done --> V[Phase 1 Validate]:::done --> P2T[Phase 2 Tasks]:::done --> P2I[Phase 2 Implement]:::done --> P2V[Phase 2 Validate]:::done --> P3T[Phase 3 Tasks]:::done --> P3I[Phase 3 Implement]:::done --> P3V[Phase 3 Validate]:::done
 ```
 
 ---
@@ -139,8 +139,8 @@ flowchart LR
 
 1. Run `/plan-5-v2-phase-tasks-and-brief` for Phase 3 using [agent-workbench-plan.md](./agent-workbench-plan.md).
 2. Preserve Phase 2 exported contracts: `DEFAULT_MINIH_WORKBENCH_KEYBINDINGS`, pure list/modal state helpers, `MinihRunListComponent`, `MinihRunModalComponent`, `MinihReadOnlyFeed`, `/minih` list/view/report UI flows, canonical `/minih status --json`, and read-only tools.
-3. Keep Phase 3 gated: typed send, confirmed stop/report controls, and push-context delivery require capability checks, persistence-before-side-effect, redaction/truncation, and duplicate suppression.
-4. Run plan-4/validate again only if the plan contract changes materially.
+3. Maintain Phase 3 gates: typed send, confirmed stop/report controls, and push-context delivery require capability checks, persistence-before-side-effect, redaction/truncation, and duplicate suppression.
+4. Future work should focus on richer Minih coordination UX only after the current safety gates remain green under `just self-check`.
 
 ---
 
@@ -173,3 +173,7 @@ Implemented Phase 1 with code-review-companion in Power-On-Mode. Created the `ag
 ### 2026-05-16 — Phase 2 landed
 
 Implemented the read-only Pi-native Minih Workbench viewer with code-review-companion in Power-On-Mode. Added default keybinding contracts, pure list/modal state helpers, native run-list and full modal components, read-only feed lifecycle with bounded fallback polling, `/minih` list/view/report UI wiring, lifecycle cleanup without auto-open, targeted store/feed/UI tests, and Driver SDK smoke for list → modal → pane focus → Esc close → report pane → reload. Final self-check passed. Phase 3 can now add gated send/stop/report controls and push-context delivery on top of stable read-only UI/feed contracts.
+
+### 2026-05-17 — Phase 3 landed
+
+Implemented gated Minih Workbench interaction and push hardening with code-review-companion in Power-On-Mode. Added capability/action contracts, session-backed audit/cursor persistence, adapter send/stop write wrappers, `/minih send`, `minih_send_message`, modal composer, `/minih stop`, `minih_stop_run`, compact pushed-context envelopes, per-event dedupe cursors, targeted safety/ordering tests, deterministic fake-writer smoke, README/operator docs, domain updates, and final self-check evidence.

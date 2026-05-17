@@ -1,6 +1,6 @@
 # minih-workbench
 
-Pi-native Minih Workbench extension. Phase 2 has landed: the extension provides read-only Minih inventory, native run-list UI, full-area modal viewing, lazy feed refresh, and deterministic modal smoke over fixture artifacts.
+Pi-native Minih Workbench extension. Phase 3 has landed: the extension provides Minih inventory, native run-list UI, full-area modal viewing, lazy feed refresh, gated send, confirmed stop controls, compact pushed context, durable audit/cursor persistence, and deterministic fixture/fake validation.
 
 ## Source of truth
 
@@ -9,12 +9,13 @@ Pi-native Minih Workbench extension. Phase 2 has landed: the extension provides 
 - All Minih artifact/CLI/helper access goes through `minih-adapter.ts`.
 - Never parse ANSI output from `minih view`, `minih attach`, or Minih's Ink human UI.
 
-## Phase 2 boundary
+## Interaction boundary
 
-- Read-only only: no composer, no `send`, no `stop`, no control messages, no push-context delivery, no arbitrary Minih launch/install flows.
-- `/minih`, `/minih list`, `/minih view <slug> <runId>`, and `/minih report <slug> <runId>` may open native Pi UI, but they must not write to Minih artifacts or control Minih runs.
-- `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report` are pull surfaces only.
-- Phase 3 placeholders are allowed as inert types/constants/facade methods; do not implement side effects early.
+- `/minih`, `/minih list`, `/minih view <slug> <runId>`, and `/minih report <slug> <runId>` open native Pi UI over Minih-owned artifacts.
+- `/minih send <slug> <runId> <body>` and `minih_send_message` are write-capable only after explicit run id, fresh capability check, active coordinated writable state, and intent audit persistence.
+- `/minih stop <slug> <runId>` and `minih_stop_run` use dedicated control messages only; model tools require exact `confirm: "stop <slug>/<runId>"`, and human UI/commands require `ctx.ui.confirm`.
+- `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report` remain bounded pull surfaces.
+- No arbitrary Minih launch/install flows, no model-controlled root override for writes, and no raw artifact writes outside `minih-adapter.ts`.
 
 ## Layout and imports
 
@@ -37,8 +38,8 @@ Pi-native Minih Workbench extension. Phase 2 has landed: the extension provides 
 
 - Tests use deterministic fixture run directories under `fixtures/`; routine validation must not require live Minih/Copilot.
 - Fixture coverage should include active, stale/dead, completed/report-ready, malformed/missing, permission-like, coordinated, non-coordinated, and large transcript/tool-output cases.
-- Adapter/store/feed/UI tests prove bounded payloads, visible truncation markers, separated status axes, report-ready projection, list/modal focus/scroll state, feed disposal, and no-write Phase 2 invariant.
-- Driver SDK smoke proves `/minih` list → Enter modal → pane focus → Esc close → report pane → reload cleanup over fixtures.
+- Adapter/store/feed/UI/index tests prove bounded payloads, visible truncation markers, separated status axes, report-ready projection, list/modal focus/scroll state, feed disposal, write capability gates, exact stop confirmation, persist-before-side-effect ordering, redaction, and duplicate suppression.
+- Driver SDK smoke proves `/minih` list → Enter modal → pane focus → Esc close, gated send success with a fake writer, read-only send rejection, report pane, and reload cleanup over fixtures.
 - Before reporting complete: `just self-check` from the repo root.
 
 ## Package/dependency policy
@@ -49,8 +50,8 @@ Pi-native Minih Workbench extension. Phase 2 has landed: the extension provides 
 
 ## Companion review watchlist
 
-- Scope creep into send/stop/push before Phase 3.
-- Direct filesystem reads in `index.ts`/`ui.ts` instead of `minih-adapter.ts`.
+- Write/control paths that skip capability checks, exact confirmation, or persistence-before-side-effect.
+- Direct filesystem reads/writes in `index.ts`/`ui.ts` instead of `minih-adapter.ts`.
 - Unbounded raw reports, tool output, paths, or environment values in tool/command responses.
 - Collapsing liveness, terminal result, inside status, outside status, attention, and UI focus into one ambiguous status.
 - Watchers or expensive/global always-on polling outside an open list/modal lifecycle.

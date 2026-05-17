@@ -2,26 +2,26 @@
 
 ## Purpose
 
-Own the product contract for observing Minih runs from inside Pi, without replacing Minih as the runner or artifact source of truth. Phase 1 established read-only run inventory, status/report projection, adapter results, and future-safe persistence placeholders. Phase 2 adds named keybindings, pure list/modal focus and scroll helpers, read-only feed lifecycle contracts, and full modal viewer semantics. Phase 3 consumes these contracts to add gated interaction/push behavior.
+Own the product contract for observing and safely coordinating Minih runs from inside Pi, without replacing Minih as the runner or artifact source of truth. Phase 1 established read-only run inventory, status/report projection, adapter results, and persistence placeholders. Phase 2 added named keybindings, pure list/modal focus and scroll helpers, read-only feed lifecycle contracts, and full modal viewer semantics. Phase 3 adds gated send, confirmed stop controls, compact pushed context, durable audit/cursor persistence, and duplicate suppression.
 
 ## Source Locations
 
 | Path | Role |
 |------|------|
-| `.pi/extensions/minih-workbench/AGENTS.md` | Extension-local rules for Minih source-of-truth, read-only Phase 2, fixture-first validation, list/modal/feed contracts, and future safety gates. |
+| `.pi/extensions/minih-workbench/AGENTS.md` | Extension-local rules for Minih source-of-truth, gated interaction, fixture-first validation, list/modal/feed contracts, and permanent safety gates. |
 | `.pi/extensions/minih-workbench/store.ts` | Pi-free product contracts, constants, pure projection helpers, bounded pane snapshots, keybinding defaults, list/modal focus/scroll helpers, and tagged adapter results. |
 | `.pi/extensions/minih-workbench/feed.ts` | Pi-free lazy read-only feed manager with injected readers/timers, diagnostics, coalescing, bounded fallback polling, and explicit dispose. |
-| `.pi/extensions/minih-workbench/minih-adapter.ts` | Internal Minih artifact/CLI/helper read boundary; all Minih filesystem reads and future write wrappers must remain isolated here. |
+| `.pi/extensions/minih-workbench/minih-adapter.ts` | Internal Minih artifact/CLI/helper boundary; all Minih filesystem reads and send/stop write wrappers remain isolated here. |
 | `.pi/extensions/minih-workbench/persistence.ts` | Injected session persistence facade for selected run pointers, seen cursors, push opt-ins, and audit/intent/outcome records. |
 | `.pi/extensions/minih-workbench/ui.ts` | Pi-native run-list and full modal read-only UI components plus width-safe render helpers. |
-| `.pi/extensions/minih-workbench/index.ts` | Pi command/tool wiring that consumes this domain's contracts through read-only surfaces. |
+| `.pi/extensions/minih-workbench/index.ts` | Pi command/tool/message wiring that consumes this domain's contracts through read-only pull surfaces plus gated send/stop/push paths. |
 | `.pi/extensions/minih-workbench/fixtures/` | Deterministic Minih run artifact fixtures used by adapter/store tests and smoke. |
 | `.pi/extensions/minih-workbench/store.test.ts` | Store/projection contract tests. |
 | `.pi/extensions/minih-workbench/minih-adapter.test.ts` | Fixture-backed Minih adapter tests. |
 | `.pi/extensions/minih-workbench/feed.test.ts` | Feed lifecycle tests for coalescing, diagnostics, fallback polling, and dispose safety. |
 | `.pi/extensions/minih-workbench/ui.test.ts` | UI render/component tests for anchors, keybinding injection, modal focus/close, report paging, and width safety. |
-| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Driver SDK smoke for Phase 2 list/modal/report/reload flows. |
-| `docs/how/agent-workbench.md` | Future operator guide for list/modal/status/controls/push semantics. |
+| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Driver SDK smoke for list/modal/send-gating/report/reload flows. |
+| `docs/how/agent-workbench.md` | Operator guide for list/modal/status/send/stop/report/push semantics and troubleshooting. |
 
 ## Concepts
 
@@ -35,7 +35,7 @@ Own the product contract for observing Minih runs from inside Pi, without replac
 | Session workbench persistence | Pi may persist pointers/cursors/audit milestones, but never Minih artifacts as a second source of truth. | `persistence.ts` exposes selected-run pointers, seen cursors, push opt-ins, and audit/intent/outcome records for later phases. |
 | Native list and modal viewer | Pi can observe Minih runs without taking control of them. | `/minih` opens a keyboard-selectable run list, Enter opens a full read-only modal, pane focus/scroll state stays in Pi UI state, and `Esc` closes without Minih control. |
 | Lazy read-only feed | Open list/modal views refresh through injected readers while avoiding global polling. | Feed handles coalesce refreshes, emit diagnostics, fall back to bounded polling after watcher failure, and ignore callbacks after dispose. |
-| Phase 3 safety placeholders | Write/control/push work is required later but must not leak into Phase 2. | Contracts reserve capability, audit, cursor, and action identifiers while Phase 2 forbids send, stop, composer, and pushed-context side effects. |
+| Gated interaction and push | Phase 3 write/control/push paths cross a safety boundary. | Send/stop require fresh capability checks, explicit run ids, persist-before-side-effect audit, adapter-only writes, exact stop confirmation, scoped redacted pushed context, and per-event dedupe cursors. |
 
 ### Example: reading inventory without taking ownership
 
@@ -57,7 +57,9 @@ The adapter reads Minih-owned artifacts, the store projects bounded Pi-facing st
 | `MinihWorkbenchPersistence` | Phase 2/3 wiring | Injected facade for selected run pointer, seen cursors, push opt-ins, and audit/intent/outcome records; future write paths persist before side effects. |
 | `DEFAULT_MINIH_WORKBENCH_KEYBINDINGS` / `MINIH_WORKBENCH_ACTIONS` | UI wiring | Named actions and default keybinding map; UI consumes injected maps and avoids hardcoded key checks. |
 | `MinihReadOnlyFeed` | UI wiring and tests | Lazy read-only feed handle with explicit `start()`, `refresh()`, `dispose()`, diagnostics, coalescing, and bounded fallback polling. |
-| Read-only command/tool envelope | Human/operator/model/smoke | Deterministic JSON with bounded payloads and truncation markers; no write-capable fields. |
+| Read-only command/tool envelope | Human/operator/model/smoke | Deterministic JSON with bounded payloads and truncation markers; pull surfaces do not write. |
+| Gated send/stop contracts | `agent-tooling-interface`, tests | `minih_send_message` and `/minih send` deliver outside-inbox messages only for active coordinated writable runs after audit intent persistence; `minih_stop_run` requires exact `stop <slug>/<runId>` confirmation and writes a dedicated control message only after audit persistence. |
+| Pushed context envelope | Pi runtime, model context, tests | Material Minih events become compact redacted `minih.materialEvent` custom messages after audit+cursor persistence; raw reports/tool output/secrets/paths are suppressed/redacted and duplicate events use per-event push cursor channels. |
 
 ## Composition
 
@@ -71,7 +73,7 @@ The adapter reads Minih-owned artifacts, the store projects bounded Pi-facing st
 | Native run-list UI | implemented in Phase 2 | `/minih` and `/minih list` open a keyboard-selectable native Pi list with active/stale plus completed/report-ready sections. |
 | Full modal viewer | implemented in Phase 2 | `/minih view`, list Enter, and `/minih report` open native Pi read-only modal panes; no nested Minih Ink/ANSI view. |
 | Lazy feed lifecycle | implemented in Phase 2 | List/modal feeds refresh through injected readers, coalesce duplicate refreshes, expose diagnostics, and dispose on close/reload/shutdown. |
-| Interaction/push controls | future Phase 3 | Capability-gated send/stop/report/push with confirmation, audit, redaction, and dedupe. |
+| Interaction/push controls | implemented in Phase 3 | Capability-gated send/stop/report/push with confirmation, audit, redaction, and dedupe. |
 
 ## Dependencies
 
@@ -98,7 +100,7 @@ The adapter reads Minih-owned artifacts, the store projects bounded Pi-facing st
 - Minih Workbench view snapshot semantics.
 - Read-only inventory/status/report projection contracts.
 - Adapter error/diagnostic taxonomy.
-- Phase 3 safety invariants for send/stop/report/push contracts.
+- Phase 3 safety invariants and implemented contracts for send/stop/report/push.
 - Session pointer/cursor/audit facade shape.
 - Default bounded payload limits for workbench projections.
 
@@ -110,7 +112,7 @@ The adapter reads Minih-owned artifacts, the store projects bounded Pi-facing st
 - SQLite/session storage implementation internals; those belong to `session-work-state`.
 - Extension generator, smoke driver, package vetters, and self-check orchestration; those belong to `extension-authoring-harness`.
 - Right-hand monitor/dock UX in v1.
-- Any Phase 1/2 write/send/stop/push side effect.
+- Ungated write/send/stop/push side effects outside the Phase 3 safety contract.
 
 ## History
 
@@ -118,3 +120,4 @@ The adapter reads Minih-owned artifacts, the store projects bounded Pi-facing st
 |------|--------|------|
 | 007-options-for-pi-extensions-that-do-subagents / Phase 1 | Created `agent-workbench` domain for Pi-native Minih run visibility, read-only adapter contracts, persistence facade, and future Phase 3 safety placeholders. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 2 | Added Pi-free keybinding/list/modal/feed contracts, native read-only run-list/modal semantics, safe close, and deterministic feed/UI/smoke evidence. | 2026-05-16 |
+| 007-options-for-pi-extensions-that-do-subagents / Phase 3 | Added gated send/stop contracts, adapter write wrappers, session-backed audit/cursor persistence, compact pushed context, redaction/dedupe helpers, tests, smoke, and operator docs. | 2026-05-17 |

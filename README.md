@@ -57,6 +57,20 @@ npm run smoke -- todo
 See [`docs/how/todo.md`](./docs/how/todo.md) for command examples, dependency
 semantics, overlay keys, and `/todo` + `/sql` agreement scenarios.
 
+## Minih Workbench
+
+`minih-workbench` adds `/minih` for Pi-native Minih run visibility and safe
+coordination. It lists Minih runs, opens a full modal viewer, supports gated
+send to active coordinated runs, confirms stop controls explicitly, and pushes
+compact material Minih context with redaction and duplicate suppression.
+
+```bash
+npm run smoke -- minih-workbench
+```
+
+See [`docs/how/agent-workbench.md`](./docs/how/agent-workbench.md) for commands,
+tool contracts, safety gates, and troubleshooting.
+
 ## Where things are
 
 | What | Where |

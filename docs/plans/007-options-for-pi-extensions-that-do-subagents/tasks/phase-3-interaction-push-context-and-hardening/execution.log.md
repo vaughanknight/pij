@@ -37,7 +37,8 @@
 | T009 | `7474e66` + `1cc5864` | Added negative safety regressions for stale/completed/diagnostic-blocked capability, writer thrown errors, existing safe Esc/stop-freeform, persistence append failure, raw report/tool suppression, redaction gates, per-event push cursor channels, and terminal raw-report suppression. Validation: `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/minih-adapter.test.ts .pi/extensions/minih-workbench/ui.test.ts .pi/extensions/minih-workbench/session-persistence.test.ts` ✅; `just typecheck` ✅. | `01KRT5XM5V1A971SEZVG1PHSPE` | F008 fixed in `1cc5864`; pending targeted review. |
 | T010 | `03a434a` | Added adapter/persistence behavior coverage for writer outcomes, thrown writer errors, session replay, new/fork reset, per-event cursor channels, and audit intent/outcome ordering. Validation: `npx vitest run .pi/extensions/minih-workbench/minih-adapter.test.ts .pi/extensions/minih-workbench/session-persistence.test.ts` ✅; `just typecheck` ✅. | `01KRT637QAFG1T1YJW1N1DSK4R` | Pending companion review. |
 | T011 | `6299e19` + pending fix | Added UI/render tests for read-only composer/control report state, send/delete/stop keybinding injection, pushed envelope formatting, exact stop confirmation, tool result envelope, stop schema/mismatch, and existing command-adjacent helper behavior. Validation: `npx vitest run .pi/extensions/minih-workbench/index.test.ts .pi/extensions/minih-workbench/ui.test.ts .pi/extensions/minih-workbench/store.test.ts` ✅; `just typecheck` ✅. | `01KRT65DVD9PRNQAWF9Q9QB1XM` | F010 fixed in follow-up. |
-| T012 | `4556628` + pending evidence wording fix | Added smoke env hooks for deterministic fixture time and fake writer; expanded Driver SDK smoke for enabled composer, gated send success, read-only send rejection, report view, reload, and existing safe modal close. Stop/push/dedupe remain covered by targeted tests until Driver SDK can observe confirmation/custom-message lanes. Validation: `npm run smoke -- minih-workbench` ✅; `just typecheck` ✅. | `01KRT6CPMMBZK9M8WMFWQBSDDJ` | F011 fixed in follow-up wording. |
+| T012 | `4556628` + `1c06643` | Added smoke env hooks for deterministic fixture time and fake writer; expanded Driver SDK smoke for enabled composer, gated send success, read-only send rejection, report view, reload, and existing safe modal close. Stop/push/dedupe remain covered by targeted tests until Driver SDK can observe confirmation/custom-message lanes. Validation: `npm run smoke -- minih-workbench` ✅; `just typecheck` ✅. | `01KRT6CPMMBZK9M8WMFWQBSDDJ` | F011 fixed in `1c06643`. |
+| T013 | pending | Updated README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan-level and phase flight plans, execution evidence, and velocity. Final `just self-check` passed. | pending | Pending companion review/drain. |
 
 ---
 
@@ -61,4 +62,14 @@
 
 ## Final Validation
 
-_Populated at T013._
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Focused store/adapter/persistence/UI/index tests | ✅ passed | `npx vitest run .pi/extensions/minih-workbench/store.test.ts .pi/extensions/minih-workbench/minih-adapter.test.ts .pi/extensions/minih-workbench/session-persistence.test.ts .pi/extensions/minih-workbench/ui.test.ts .pi/extensions/minih-workbench/index.test.ts` covered 46 focused tests during the phase. |
+| Driver SDK smoke | ✅ passed | `npm run smoke -- minih-workbench` with fixture clock + fake writer. |
+| Agent harness health | ⚠️ degraded, non-blocking | `minih doctor` had 0 errors and 3 warnings at phase start. |
+| Package vet | ✅ no new dependency | No package was added; final `just self-check` included deterministic `pkg audit` with existing vetted package set. |
+| Full self-check | ✅ passed | `just self-check` passed at `2026-05-17T05:31:29Z` (typecheck → lint → test → smoke → pkg audit → snapshots-check). |
+
+## Companion Findings Summary
+
+F001–F011 were fixed or reconciled inline. Final companion drain/farewell is recorded during the phase-end ceremony.

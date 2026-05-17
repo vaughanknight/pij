@@ -1,9 +1,9 @@
 # Phase 3 Tasks: Interaction, Push Context, and Hardening
 
-**Plan**: [agent-workbench-plan.md](../../agent-workbench-plan.md)  
-**Phase**: Phase 3: Interaction, push context, and hardening  
-**Status**: In Progress  
-**Complexity**: CS-5  
+**Plan**: [agent-workbench-plan.md](../../agent-workbench-plan.md)
+**Phase**: Phase 3: Interaction, push context, and hardening
+**Status**: Landed
+**Complexity**: CS-5
 **Generated**: 2026-05-16
 
 ---
@@ -199,7 +199,7 @@ flowchart TD
         T010["T010: Adapter + persistence tests"]:::completed
         T011["T011: UI + command tests"]:::completed
         T012["T012: Driver SDK smoke"]:::completed
-        T013["T013: Docs/domain/evidence"]:::pending
+        T013["T013: Docs/domain/evidence"]:::completed
         T001 --> T002 --> T003 --> T004 --> T005 --> T006
         T001 --> T007 --> T008
         T002 --> T008
@@ -221,7 +221,7 @@ flowchart TD
         F4["/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/index.ts"]:::completed
         F5["/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.ts"]:::completed
         F6["/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/smoke.ts"]:::completed
-        F7["/Users/jordanknight/pi-hacking/pij/docs/how/agent-workbench.md"]:::pending
+        F7["/Users/jordanknight/pi-hacking/pij/docs/how/agent-workbench.md"]:::completed
     end
 
     T001 -.-> F1
@@ -254,7 +254,7 @@ flowchart TD
 | [x] | T010 | Expand adapter/persistence fixture tests for write wrappers, audit ordering, cursor replay, and fake Minih run lanes. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/minih-adapter.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/fixtures/` | Fixture/fake tests prove exact send/control shapes, tagged success/unavailable/error results, message/control ids where available, intent-before-write and outcome-after-write records, cursor-before-push ordering, push opt-in behavior, same-session reload/resume replay suppression, and new/fork independence. | Extend fixtures deterministically; no live Minih/Copilot. |
 | [x] | T011 | Expand UI/command/tool tests for composer, send, stop confirmation, report controls, push delivery envelopes, and keybindings. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/ui.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/store.test.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/index.ts` | Tests cover writable vs disabled composer rendering, non-default send/stop/report keybindings, command parse errors, explicit run-id requirement, model-tool schemas/results, exact `confirm: "stop <slug>/<runId>"` match and mismatch rejection, stop confirm/cancel, read-only report viewing, and compact pushed message envelope formatting. | Prefer pure/injected tests around external runtime boundaries; avoid broad Pi runtime mocks except necessary command/UI seams. |
 | [x] | T012 | Expand deterministic Driver SDK smoke for Phase 3 interaction, controls, push, duplicate suppression, and reload. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/smoke.ts`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/fixtures/` | `npm run smoke -- minih-workbench` proves `/minih` list/modal still works; coordinated send succeeds through a fake writer; non-coordinated/read-only send is blocked; report/farewell remains visible; reload preserves the fixture flow; Esc close still releases input and never stops the run. Stop confirmation/mismatch, write ordering, push-once, and same-session dedupe are covered by targeted store/adapter/persistence/UI/tool tests until Driver SDK smoke can observe confirmation dialogs and custom pushed messages directly. | Use fixture/fake writer/push hooks only. No live Minih/Copilot or model-dependent behavior. |
-| [ ] | T013 | Update operator docs, extension rules, domain docs, plan flight status, execution evidence, velocity, and difficulty/retro handoff. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/README.md`; `/Users/jordanknight/pi-hacking/pij/docs/how/agent-workbench.md`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/AGENTS.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-workbench/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/agent-workbench.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-3-interaction-push-context-and-hardening/tasks.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-3-interaction-push-context-and-hardening/tasks.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-3-interaction-push-context-and-hardening/execution.log.md`; `/Users/jordanknight/pi-hacking/pij/docs/velocity.md`; `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md` | Docs describe list/modal/send/stop/report/push semantics, safety gates, troubleshooting, and no-live-test routine. Task/flight docs show landed status and validation evidence after implementation. Phase execution log records companion findings/reconciliations. Final validation includes focused tests, `npm run smoke -- minih-workbench`, `minih doctor`, package-vet evidence if any dependency is added, and `just self-check`. | Plan-6 creates/updates `execution.log.md`. Harvest companion report/retro and ledger real difficulties; do not fabricate retros. |
+| [x] | T013 | Update operator docs, extension rules, domain docs, plan flight status, execution evidence, velocity, and difficulty/retro handoff. | `extension-authoring-harness` | `/Users/jordanknight/pi-hacking/pij/README.md`; `/Users/jordanknight/pi-hacking/pij/docs/how/agent-workbench.md`; `/Users/jordanknight/pi-hacking/pij/.pi/extensions/minih-workbench/AGENTS.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-workbench/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/agent-tooling-interface/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/domains/session-work-state/domain.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/agent-workbench.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-3-interaction-push-context-and-hardening/tasks.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-3-interaction-push-context-and-hardening/tasks.fltplan.md`; `/Users/jordanknight/pi-hacking/pij/docs/plans/007-options-for-pi-extensions-that-do-subagents/tasks/phase-3-interaction-push-context-and-hardening/execution.log.md`; `/Users/jordanknight/pi-hacking/pij/docs/velocity.md`; `/Users/jordanknight/pi-hacking/pij/docs/difficulties.md` | Docs describe list/modal/send/stop/report/push semantics, safety gates, troubleshooting, and no-live-test routine. Task/flight docs show landed status and validation evidence after implementation. Phase execution log records companion findings/reconciliations. Final validation includes focused tests, `npm run smoke -- minih-workbench`, `minih doctor`, package-vet evidence if any dependency is added, and `just self-check`. | Plan-6 creates/updates `execution.log.md`. Harvest companion report/retro and ledger real difficulties; do not fabricate retros. |
 
 ---
 

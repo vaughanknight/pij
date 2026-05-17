@@ -3,7 +3,7 @@
 **Plan**: [../../agent-workbench-plan.md](../../agent-workbench-plan.md)  
 **Phase**: Phase 3: Interaction, push context, and hardening  
 **Generated**: 2026-05-16  
-**Status**: In Progress
+**Status**: Landed
 
 ---
 
@@ -76,8 +76,7 @@ stateDiagram-v2
     S12 --> S13
     S13 --> [*]
 
-    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12 done
-    class S13 pending
+    class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13 done
 ```
 
 **Legend**: grey = pending | yellow = active | red = blocked/needs input | green = done
@@ -100,7 +99,7 @@ stateDiagram-v2
 - [x] **Stage 10: Prove adapter/persistence behavior** — add fake writer/cursor/audit tests and deterministic fixture lanes (`minih-adapter.test.ts`, `fixtures/`).
 - [x] **Stage 11: Prove UI/command behavior** — add keybinding, composer, exact stop confirmation literal, report, tool schema/result, and pushed-envelope tests (`ui.test.ts`, `store.test.ts`).
 - [x] **Stage 12: Prove end-to-end smoke** — deterministic Driver SDK smoke covers list/modal, send success via fake writer, read-only gating, report view, reload, and Esc safe close; targeted tests cover stop confirm/cancel/mismatch plus push once/dedupe until Driver SDK can observe confirmation/custom-message lanes directly (`smoke.ts`, `*.test.ts`).
-- [ ] **Stage 13: Land docs and evidence** — update README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan progress, velocity, difficulties, execution log, and final validation evidence (`docs/**`, `.pi/extensions/minih-workbench/AGENTS.md`).
+- [x] **Stage 13: Land docs and evidence** — update README, `docs/how/agent-workbench.md`, extension rules, domain docs, plan progress, velocity, difficulties, execution log, and final validation evidence (`docs/**`, `.pi/extensions/minih-workbench/AGENTS.md`).
 
 ---
 
@@ -146,21 +145,21 @@ flowchart LR
 
 ## Acceptance Criteria
 
-- [ ] Store contracts expose capability, action-state, outbound message/control, material-event, redaction/truncation, and dedupe helpers without Pi imports, `any`, or inline/dynamic imports.
-- [ ] Send is enabled only for active coordinated writable runs after a fresh capability check and explicit `slug`/`runId`; read-only/non-coordinated/stale/completed/missing runs perform zero writes.
-- [ ] Every send/control path records durable intent/audit before the adapter write and durable outcome after it; persistence failure returns a tagged error and skips the side effect.
-- [ ] Adapter write wrappers are the only production Minih write boundary, follow the current outside-inbox CLI/helper protocol baseline, and return tagged success/unavailable/error results with diagnostics.
-- [ ] Modal composer uses named/injected keybindings, is disabled or absent with a clear reason for read-only runs, and never interprets freeform text as stop/control.
-- [ ] Stop requires explicit confirmation, including exact `confirm: "stop <slug>/<runId>"` for `minih_stop_run`, sends a dedicated control message only after confirmation and persisted intent, rejects mismatches with zero writes, and is never triggered by `Esc`, close, report viewing, or composer text.
-- [ ] Report/farewell controls remain read-only and surface path/summary/findings where available.
-- [ ] Push classifier sends findings, questions, blockers, permission/needs-recovery states, terminal reports, farewells, and explicit user-addressed inside messages once; routine progress/tool/counter/status churn and large raw outputs are suppressed.
-- [ ] Pushed context is compact, redacted/truncated, source-labelled, and excludes secrets, environment values, raw reports/tool outputs, and unbounded paths from model-visible payloads.
-- [ ] Push scope defaults to opened/observed runs plus explicitly opted-in runs; it does not push all running Minih agents by default.
-- [ ] Same-session reload/resume does not duplicate pushes because stable cursors are durably advanced before model-visible delivery; new/forked sessions start with no inherited Minih Workbench rows unless a future explicit import/migration is designed.
-- [ ] Deterministic tests cover capability gates, writer shapes, confirmation, audit ordering, cursor replay, redaction, no-write negatives, and keybinding injection.
-- [ ] `npm run smoke -- minih-workbench` proves coordinated send, read-only gating, report/farewell viewing, reload, and safe `Esc` close without live Minih/Copilot; targeted unit/integration tests prove stop confirm/cancel/mismatch, confirmed stop control, push-once behavior, and same-session reload dedupe until Driver SDK can observe confirmation/custom-message lanes directly.
-- [ ] README, `docs/how/agent-workbench.md`, extension `AGENTS.md`, domain docs, task docs, flight plan, velocity, and difficulties/retros are updated with final evidence.
-- [ ] Final implementation reports `just self-check` passing before Phase 3 is declared complete.
+- [x] Store contracts expose capability, action-state, outbound message/control, material-event, redaction/truncation, and dedupe helpers without Pi imports, `any`, or inline/dynamic imports.
+- [x] Send is enabled only for active coordinated writable runs after a fresh capability check and explicit `slug`/`runId`; read-only/non-coordinated/stale/completed/missing runs perform zero writes.
+- [x] Every send/control path records durable intent/audit before the adapter write and durable outcome after it; persistence failure returns a tagged error and skips the side effect.
+- [x] Adapter write wrappers are the only production Minih write boundary, follow the current outside-inbox CLI/helper protocol baseline, and return tagged success/unavailable/error results with diagnostics.
+- [x] Modal composer uses named/injected keybindings, is disabled or absent with a clear reason for read-only runs, and never interprets freeform text as stop/control.
+- [x] Stop requires explicit confirmation, including exact `confirm: "stop <slug>/<runId>"` for `minih_stop_run`, sends a dedicated control message only after confirmation and persisted intent, rejects mismatches with zero writes, and is never triggered by `Esc`, close, report viewing, or composer text.
+- [x] Report/farewell controls remain read-only and surface path/summary/findings where available.
+- [x] Push classifier sends findings, questions, blockers, permission/needs-recovery states, terminal reports, farewells, and explicit user-addressed inside messages once; routine progress/tool/counter/status churn and large raw outputs are suppressed.
+- [x] Pushed context is compact, redacted/truncated, source-labelled, and excludes secrets, environment values, raw reports/tool outputs, and unbounded paths from model-visible payloads.
+- [x] Push scope defaults to opened/observed runs plus explicitly opted-in runs; it does not push all running Minih agents by default.
+- [x] Same-session reload/resume does not duplicate pushes because stable cursors are durably advanced before model-visible delivery; new/forked sessions start with no inherited Minih Workbench rows unless a future explicit import/migration is designed.
+- [x] Deterministic tests cover capability gates, writer shapes, confirmation, audit ordering, cursor replay, redaction, no-write negatives, and keybinding injection.
+- [x] `npm run smoke -- minih-workbench` proves coordinated send, read-only gating, report/farewell viewing, reload, and safe `Esc` close without live Minih/Copilot; targeted unit/integration tests prove stop confirm/cancel/mismatch, confirmed stop control, push-once behavior, and same-session reload dedupe until Driver SDK can observe confirmation/custom-message lanes directly.
+- [x] README, `docs/how/agent-workbench.md`, extension `AGENTS.md`, domain docs, task docs, flight plan, velocity, and difficulties/retros are updated with final evidence.
+- [x] Final implementation reports `just self-check` passing before Phase 3 is declared complete.
 
 ## Goals & Non-Goals
 
@@ -193,4 +192,4 @@ flowchart LR
 - [x] T010: Expand adapter/persistence fixture tests for write wrappers, audit ordering, cursor replay, and fake Minih run lanes.
 - [x] T011: Expand UI/command/tool tests for composer, send, stop confirmation, report controls, push delivery envelopes, and keybindings.
 - [x] T012: Expand deterministic Driver SDK smoke for Phase 3 interaction, controls, push, duplicate suppression, and reload.
-- [ ] T013: Update operator docs, extension rules, domain docs, plan flight status, execution evidence, velocity, and difficulty/retro handoff.
+- [x] T013: Update operator docs, extension rules, domain docs, plan flight status, execution evidence, velocity, and difficulty/retro handoff.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, and Minih Workbench read-only pull plus native list/modal surfaces. This domain makes structured work state and external agent-run state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
+Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, and Minih Workbench pull, native list/modal, gated send/stop, and pushed-context surfaces. This domain makes structured work state and external agent-run state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
 
 ## Source Locations
 
@@ -14,9 +14,9 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | `.pi/extensions/todo/index.ts` | Pi wiring for lifecycle, `/todo` command, `todo` tool, overlay, status signal, and shortcut registration. |
 | `.pi/extensions/todo/smoke.ts` | Deterministic todo command/overlay/SQL agreement smoke. |
 | `.pi/extensions/todo/AGENTS.md` | Extension-local implementation and validation guidance. |
-| `.pi/extensions/minih-workbench/index.ts` | Pi wiring for `/minih`, `/minih list`, `/minih view`, `/minih report`, read-only status/report JSON commands, model tools, feed lifecycle, and lifecycle cleanup. |
-| `.pi/extensions/minih-workbench/ui.ts` | Native Pi run-list and full modal components plus width-safe read-only render helpers for Minih inventory/view panes. |
-| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Minih Workbench list/modal/report/reload smoke over fixture artifacts. |
+| `.pi/extensions/minih-workbench/index.ts` | Pi wiring for `/minih`, `/minih list`, `/minih view`, `/minih report`, `/minih send`, `/minih stop`, status/report JSON commands, model tools, pushed context, feed lifecycle, and lifecycle cleanup. |
+| `.pi/extensions/minih-workbench/ui.ts` | Native Pi run-list and full modal components plus width-safe render helpers for Minih inventory/view panes, composer, and controls. |
+| `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Minih Workbench list/modal/send-gating/report/reload smoke over fixture artifacts and fake writer hooks. |
 | `docs/how/session-sql.md` | Detailed user/agent guide. |
 | `docs/how/todo.md` | Detailed SQL-backed todo user/agent guide. |
 | `README.md` | Quick-start mention. |
@@ -36,6 +36,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Todo overlay, strip, and status | Current-session work is visible during live TUI use. | `/todo overlay` renders SQL-backed open todos; below-editor `todo-strip` shows a compact recent-activity window; footer status shows `todo: N open` and clears at zero. |
 | Minih Workbench native list/modal UX | Minih run state is inspectable from Pi through read-only native TUI without writing to Minih. | `/minih` and `/minih list` open a keyboard-selectable run list; `/minih view <slug> <runId>` opens transcript/tool/status/coordination/report/diagnostic panes; `/minih report <slug> <runId>` opens the report-focused modal; `Esc` only closes UI. |
 | Minih Workbench read-only pull UX | Minih run state is inspectable from Pi without opening the modal or writing to Minih. | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report`. |
+| Minih Workbench gated interaction UX | Coordinated Minih runs can be messaged or stopped only through explicit safe surfaces. | `/minih send`, `minih_send_message`, `/minih stop`, and `minih_stop_run` require explicit run id, fresh capability checks, audit persistence, adapter write wrappers, and exact stop confirmation. |
 
 ## Contracts
 
@@ -50,7 +51,9 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Todo overlay/status/widget | Human/operator | Minimal overlay through `ctx.ui.custom`, compact below-editor strip through `ctx.ui.setWidget`, and footer status through `ctx.ui.setStatus`. |
 | `/minih` native UI command | Human/operator/smoke | `/minih`/`list` opens the read-only run-list overlay; `view`/`report` open full-area read-only modal panes; `Esc` closes only Pi UI. |
 | `/minih` read-only pull command | Human/operator/smoke | Canonical `/minih status --json` plus status/report JSON subcommands over fixture or configured Minih artifact roots. |
-| Minih read-only tools | LLM agent | `minih_runs_list`, `minih_run_status`, and `minih_read_report` return deterministic bounded JSON envelopes and expose no send/stop/push capabilities. |
+| Minih read-only tools | LLM agent | `minih_runs_list`, `minih_run_status`, and `minih_read_report` return deterministic bounded JSON envelopes and expose no write behavior. |
+| Minih interaction tools | LLM agent | `minih_send_message` sends only after capability/audit gating; `minih_stop_run` requires exact `confirm: "stop <slug>/<runId>"` and sends a dedicated control message only after audit persistence. |
+| Minih pushed context | Human/operator/model | Compact `minih.materialEvent` custom messages use `deliverAs: "steer"`, urgent `triggerTurn` only for urgent classified events, and redacted/deduped payloads. |
 
 ## Composition
 
@@ -64,6 +67,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Todo smoke | implemented | `todo/smoke.ts` proves empty/add/list/delete/prune/SQL agreement/below-editor strip/overlay/reload path. |
 | Minih Workbench read-only pull wiring | implemented in Plan 007 Phase 1 | `minih-workbench/index.ts` registers canonical `/minih` read-only JSON commands and model tools over the agent-workbench adapter contracts. |
 | Minih Workbench native list/modal wiring | implemented in Plan 007 Phase 2 | `minih-workbench/index.ts` wires `/minih` list/view/report UI, lazy feed handles, selected-run pointer cleanup, and status lifecycle. |
+| Minih Workbench interaction/push wiring | implemented in Plan 007 Phase 3 | `minih-workbench/index.ts` wires send/stop tools and commands, modal composer/stop callbacks, fake writer smoke hooks, and compact pushed context delivery. |
 
 ## Dependencies
 
@@ -88,7 +92,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 - Result/error/truncation text.
 - Status/schema presentation.
 - Todo command/tool/overlay/below-editor strip/status presentation.
-- Minih Workbench read-only `/minih` command, native list/modal/report UI, model tools, and formatting presentation.
+- Minih Workbench `/minih` command, native list/modal/report/composer/control UI, model tools, pushed-context delivery, and formatting presentation.
 - Deterministic smoke scenario.
 - Operator documentation and agent use recipes.
 
@@ -99,7 +103,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 - Broad harness redesign; belongs to the existing harness capability and is out of scope unless narrow friction appears.
 - Cross-session memory/search; out of scope for Plan 006/010.
 - Todo storage semantics; belongs to `session-work-state`.
-- Minih run execution, artifact ownership, adapter normalization, and future send/stop/push safety policy; belongs to Minih upstream and `agent-workbench`.
+- Minih run execution, artifact ownership, adapter normalization, and send/stop/push safety policy; belongs to Minih upstream and `agent-workbench`.
 
 ## History
 
@@ -112,3 +116,4 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | 010-sql-backed-todo-extension/follow-up | Added `/todo delete <id>`, `/todo prune done`, and matching model tool actions for tidying completed or unwanted rows. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 1 | Added read-only Minih Workbench pull UX: `/minih status --json`, run status/report commands, `minih_runs_list`, `minih_run_status`, `minih_read_report`, and fixture-backed smoke. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 2 | Added native read-only `/minih` run-list, full modal run/report viewer, feed lifecycle cleanup, and deterministic Driver SDK modal smoke. | 2026-05-16 |
+| 007-options-for-pi-extensions-that-do-subagents / Phase 3 | Added gated `/minih send`, `/minih stop`, `minih_send_message`, `minih_stop_run`, modal composer/controls, pushed-context delivery, fake-writer smoke hooks, and tool-ordering tests. | 2026-05-17 |
