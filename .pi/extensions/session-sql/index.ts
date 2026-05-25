@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -7,7 +9,9 @@ import { Type } from "typebox";
 
 import {
 	defaultRootDir,
+	executeAtPath,
 	locationForSession,
+	resolveRepoDbPath,
 	SessionSqlStore,
 	type SqlResult,
 	STORE_NAME,
@@ -81,7 +85,7 @@ function formatSqlResult(result: SqlResult): string {
 	}
 }
 
-function formatStatus(status: StoreStatus): string {
+function formatStatus(status: StoreStatus, gitRoot: string | undefined): string {
 	if (!status.open) return "session-sql: not open";
 	return [
 		"session-sql: ready",
@@ -90,7 +94,30 @@ function formatStatus(status: StoreStatus): string {
 		`schema_version: ${status.schemaVersion ?? "unknown"}`,
 		`native_extension_loading: ${status.nativeExtensionLoading}`,
 		`tables: ${status.tables.join(", ")}`,
+		`repo_db_root: ${gitRoot ?? "(not in a git repo — repo-targeted db param disabled)"}`,
 	].join("\n");
+}
+
+function detectGitRoot(cwd: string): string | undefined {
+	try {
+		const out = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+			cwd,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		const trimmed = out.trim();
+		return trimmed.length > 0 ? trimmed : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function errorResult(message: string): {
+	content: { type: "text"; text: string }[];
+	details: SqlResult;
+} {
+	const result: SqlResult = { ok: false, reason: "sqlite_error", message };
+	return { content: [{ type: "text", text: `sql error: ${message}` }], details: result };
 }
 
 function formatSchema(schema: TableSchema[]): string {
@@ -115,6 +142,7 @@ function formatSchema(schema: TableSchema[]): string {
 
 export default function (pi: ExtensionAPI) {
 	const store = new SessionSqlStore();
+	let cachedGitRoot: string | undefined;
 
 	function openForCurrentSession(ctx: ExtensionContext): void {
 		const sessionId = ctx.sessionManager.getSessionId();
@@ -146,6 +174,7 @@ export default function (pi: ExtensionAPI) {
 	// Pattern P10: one handler for session_start, all reasons.
 	pi.on("session_start", async (_event, ctx) => {
 		openForCurrentSession(ctx);
+		cachedGitRoot = detectGitRoot(process.cwd());
 		refreshStatus(ctx);
 	});
 
@@ -161,7 +190,7 @@ export default function (pi: ExtensionAPI) {
 			ensureOpen(ctx);
 			const trimmed = args.trim();
 			if (trimmed === "" || trimmed === "status") {
-				ctx.ui.notify(formatStatus(store.status()), "info");
+				ctx.ui.notify(formatStatus(store.status(), cachedGitRoot), "info");
 				refreshStatus(ctx);
 				return;
 			}
@@ -203,20 +232,22 @@ export default function (pi: ExtensionAPI) {
 		name: "sql",
 		label: "Session SQL",
 		description:
-			"Execute SQLite against a private database scoped to the current pi session. Use it for task tracking, test matrices, review queues, file inventories, research ledgers, batches, and structured temporary work.",
+			"Execute SQLite against the per-session ephemeral DB, OR (with `db`) against any .sqlite file inside this git repo. Use the session DB for ephemeral structured state; use `db` to read/write a committable SQLite file you want shared across machines.",
 		promptSnippet:
-			"sql: execute SQLite against a private database linked to the current pi session for structured task state.",
+			"sql: execute SQLite against a private per-session DB, or pass `db` to target any .sqlite file inside this git repo (shared across machines via git).",
 		promptGuidelines: [
-			"Use sql when structured current-session state would help: todos, dependencies, file inventories, test matrices, review findings, research sources, decision matrices, or batch progress.",
-			"Start with the default session_sql_meta, todos, and todo_deps tables for top-level work queues; create custom tables freely for workflow-specific state.",
+			"Default (no `db` param): per-session ephemeral DB. Use for todos, dependencies, file inventories, test matrices, review findings, research sources, decision matrices, batch progress — ephemeral structured state for this session.",
+			"Default DB has bootstrapped tables: session_sql_meta, todos, todo_deps. Create custom tables freely for workflow-specific state.",
+			"Pass `db` (path relative to cwd or absolute, must live inside this git repo) to target a committable SQLite file. Use for structured data you want to keep across machines via git.",
+			"Repo-targeted calls open → execute → close per call, so git operations (commit, checkout, branch-switch) are never blocked by held file handles. No default schema is injected — you own the schema.",
+			"Path safety: any path that resolves outside the git repo, or inside .git/, is refused. SQLite creates missing files on first write.",
 			"Query before choosing the next item, update rows after edits/tests/research/decisions, and check open rows before final answers.",
-			"The DB persists with this pi session across reload/resume and lives in user pi state, not the repo. Do not use it as long-term memory or project source documentation.",
 			"Prefer LIMIT, WHERE, counts, and grouped summaries on exploratory SELECTs. Returned previews cap at 200 rows even though SQL execution is trusted and unrestricted.",
-			"Native SQLite extension loading is available when the runtime supports it; treat loaded extensions as trusted local native code.",
+			"Native SQLite extension loading is available on the session DB when the runtime supports it; repo-targeted calls run without extension loading by default.",
 		],
 		parameters: Type.Object({
 			query: Type.String({
-				description: "SQLite SQL to execute against the current session database.",
+				description: "SQLite SQL to execute against the chosen database.",
 			}),
 			description: Type.String({ description: "2-5 word summary of what this query does." }),
 			maxRows: Type.Optional(
@@ -225,9 +256,36 @@ export default function (pi: ExtensionAPI) {
 						"Maximum result rows to return. Defaults to 200; capped by extension maximum.",
 				}),
 			),
+			db: Type.Optional(
+				Type.String({
+					description:
+						"Optional. Path to a SQLite file inside this git repo (relative to cwd or absolute). Omit to use the per-session ephemeral DB. Paths outside the repo or inside .git/ are refused.",
+				}),
+			),
 		}),
 		executionMode: "sequential",
 		async execute(_id, params, _signal, _onUpdate, ctx) {
+			if (params.db !== undefined && params.db !== "") {
+				if (!cachedGitRoot) {
+					return errorResult(
+						"session-sql: db parameter requires pi to have been launched inside a git repo",
+					);
+				}
+				const resolved = resolveRepoDbPath(params.db, cachedGitRoot);
+				if (!resolved.ok) return errorResult(`session-sql: ${resolved.message}`);
+				const result = executeAtPath(resolved.absolutePath, params.query, {
+					maxRows: params.maxRows,
+				});
+				return {
+					content: [
+						{
+							type: "text",
+							text: `db: ${resolved.relativePath}\n${formatSqlResult(result)}`,
+						},
+					],
+					details: result,
+				};
+			}
 			ensureOpen(ctx);
 			const result = store.execute(params.query, { maxRows: params.maxRows });
 			if (looksMutatingSql(params.query)) emitChanged("tool", result);

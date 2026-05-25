@@ -1,4 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,10 +13,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { looksMutatingSql } from "./index.js";
 import {
+	executeAtPath,
 	locationForSession,
 	MAX_QUERY_BYTES,
 	MAX_ROWS,
 	memoryLocation,
+	resolveRepoDbPath,
 	type SessionSqlLocation,
 	SessionSqlStore,
 	type SqlResult,
@@ -340,3 +349,143 @@ describe("SessionSqlStore", () => {
 		if (!result.ok) expect(result.reason).toBe("sqlite_error");
 	});
 });
+
+describe("resolveRepoDbPath", () => {
+	// On macOS, tmpdir() returns /var/folders/... but realpath resolves to
+	// /private/var/folders/... — canonicalising the root upfront keeps the
+	// expected/actual comparisons aligned.
+	function repo(): { root: string; cwd: string } {
+		const root = realpathSync(tempRoot());
+		const cwd = join(root, "pkg");
+		mkdirSync(cwd, { recursive: true });
+		return { root, cwd };
+	}
+
+	it("accepts a path relative to cwd that stays inside the repo", () => {
+		const { root, cwd } = repo();
+		const result = resolveRepoDbPath("data/notes.sqlite", root, cwd);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.absolutePath).toBe(join(root, "pkg", "data", "notes.sqlite"));
+			expect(result.relativePath).toBe(join("pkg", "data", "notes.sqlite"));
+		}
+	});
+
+	it("accepts an absolute path inside the repo", () => {
+		const { root, cwd } = repo();
+		const target = join(root, "share.sqlite");
+		const result = resolveRepoDbPath(target, root, cwd);
+		expect(result.ok).toBe(true);
+		if (result.ok) expect(result.relativePath).toBe("share.sqlite");
+	});
+
+	it("rejects a path outside the repo", () => {
+		const { root, cwd } = repo();
+		const result = resolveRepoDbPath("/tmp/escape.sqlite", root, cwd);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("outside_repo");
+	});
+
+	it("rejects relative paths that escape via ..", () => {
+		const { root, cwd } = repo();
+		const result = resolveRepoDbPath("../../escape.sqlite", root, cwd);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("outside_repo");
+	});
+
+	it("rejects paths whose any segment is .git (covers root and nested submodules)", () => {
+		const { root, cwd } = repo();
+		const result = resolveRepoDbPath("../.git/sneak.sqlite", root, cwd);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("git_internal");
+		const nested = resolveRepoDbPath("sub/.git/sneak.sqlite", root, cwd);
+		expect(nested.ok).toBe(false);
+		if (!nested.ok) expect(nested.reason).toBe("git_internal");
+	});
+
+	it("rejects empty paths", () => {
+		const { root, cwd } = repo();
+		const result = resolveRepoDbPath("   ", root, cwd);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("invalid_path");
+	});
+
+	it("rejects symlinks that escape the repo (target missing)", () => {
+		const { root, cwd } = repo();
+		const outside = realpathSync(mkdtempSync(join(tmpdir(), "session-sql-escape-")));
+		cleanupDirs.push(outside);
+		const linkPath = join(root, "leak.sqlite");
+		symlinkSync(join(outside, "real.sqlite"), linkPath);
+		const result = resolveRepoDbPath(linkPath, root, cwd);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("outside_repo");
+	});
+
+	it("allows ..-relative paths that land back inside the repo", () => {
+		const { root, cwd } = repo();
+		const result = resolveRepoDbPath("../sibling/notes.sqlite", root, cwd);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.relativePath).toBe(join("sibling", "notes.sqlite"));
+		}
+	});
+});
+
+describe("executeAtPath", () => {
+	it("creates a new SQLite file on first use without bootstrapping default schema", () => {
+		const root = tempRoot();
+		const target = join(root, "fresh", "repo.sqlite");
+		const result = executeAtPath(target, "CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT)");
+		expect(result.ok).toBe(true);
+		expect(existsSync(target)).toBe(true);
+
+		const tablesResult = executeAtPath(
+			target,
+			"SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
+		);
+		expect(tablesResult.ok).toBe(true);
+		if (tablesResult.ok && tablesResult.kind === "rows") {
+			expect(tablesResult.rows.map((row) => row.name)).toEqual(["notes"]);
+		}
+	});
+
+	it("persists writes between separate calls (open/exec/close round-trip)", () => {
+		const root = tempRoot();
+		const target = join(root, "round-trip.sqlite");
+		expect(executeAtPath(target, "CREATE TABLE k(v TEXT)").ok).toBe(true);
+		expect(executeAtPath(target, "INSERT INTO k(v) VALUES ('hello')").ok).toBe(true);
+
+		const read = executeAtPath(target, "SELECT v FROM k");
+		expect(read.ok).toBe(true);
+		if (read.ok && read.kind === "rows") {
+			expect(read.rows).toEqual([{ v: "hello" }]);
+		}
+	});
+
+	it("does not leave WAL/SHM sidecar files behind between calls", () => {
+		const root = tempRoot();
+		const target = join(root, "no-sidecars.sqlite");
+		expect(executeAtPath(target, "CREATE TABLE t(v INTEGER)").ok).toBe(true);
+		expect(executeAtPath(target, "INSERT INTO t(v) VALUES (1)").ok).toBe(true);
+		expect(existsSync(`${target}-wal`)).toBe(false);
+		expect(existsSync(`${target}-shm`)).toBe(false);
+	});
+
+	it("returns tagged errors for invalid SQL without crashing", () => {
+		const root = tempRoot();
+		const target = join(root, "errors.sqlite");
+		const result = executeAtPath(target, "SELECT * FROM definitely_not_a_table");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("sqlite_error");
+	});
+
+	it("rejects oversized queries before opening the DB", () => {
+		const root = tempRoot();
+		const target = join(root, "oversize.sqlite");
+		const result = executeAtPath(target, " ".repeat(MAX_QUERY_BYTES + 1));
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.reason).toBe("too_large");
+		expect(existsSync(target)).toBe(false);
+	});
+});
+

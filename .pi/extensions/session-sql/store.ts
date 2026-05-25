@@ -4,9 +4,9 @@
 // index.ts. Tests run against this store with real temp SQLite files.
 
 import { Buffer } from "node:buffer";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 export const STORE_NAME = "session-sql";
@@ -294,113 +294,9 @@ export class SessionSqlStore {
 		if (!this.db || !this.location || !this.db.isOpen) {
 			return { ok: false, reason: "not_open", message: "session SQL database is not open" };
 		}
-		if (Buffer.byteLength(query, "utf8") > MAX_QUERY_BYTES) {
-			return {
-				ok: false,
-				reason: "too_large",
-				message: `SQL query exceeds ${MAX_QUERY_BYTES} bytes`,
-				dbPath: this.location.dbPath,
-			};
-		}
-		const trimmed = query.trim();
-		if (trimmed.length === 0) {
-			return {
-				ok: false,
-				reason: "empty_query",
-				message: "SQL query is empty",
-				dbPath: this.location.dbPath,
-			};
-		}
-
-		try {
-			const statement = this.db.prepare(query);
-			const trailingSql = query.slice(statement.sourceSQL.length).trim();
-			if (trailingSql.length > 0) {
-				if (hasBindParams(options)) {
-					return {
-						ok: false,
-						reason: "sqlite_error",
-						message: "Bound parameters are only supported for a single SQL statement",
-						dbPath: this.location.dbPath,
-					};
-				}
-				this.db.exec(query);
-				return { ok: true, kind: "exec", dbPath: this.location.dbPath };
-			}
-			const columns = statement.columns().map((column) => column.name);
-			if (columns.length > 0) {
-				const rows: Record<string, unknown>[] = [];
-				const maxRows = clampMaxRows(options.maxRows);
-				const maxBytes = options.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES;
-				let returnedBytes = 0;
-				let truncated = false;
-				for (const row of iterateStatement(statement, options.params)) {
-					if (rows.length >= maxRows) {
-						truncated = true;
-						break;
-					}
-					const nextBytes = jsonSize(row);
-					if (returnedBytes + nextBytes > maxBytes) {
-						truncated = true;
-						break;
-					}
-					rows.push({ ...row });
-					returnedBytes += nextBytes;
-				}
-				return {
-					ok: true,
-					kind: "rows",
-					columns,
-					rows,
-					rowsReturned: rows.length,
-					truncated,
-					dbPath: this.location.dbPath,
-				};
-			}
-
-			const keyword = firstKeyword(query);
-			if (isMutationKeyword(keyword)) {
-				const result = runStatement(statement, options.params);
-				return {
-					ok: true,
-					kind: "change",
-					changes: result.changes,
-					lastInsertRowid: result.lastInsertRowid,
-					dbPath: this.location.dbPath,
-				};
-			}
-
-			if (hasBindParams(options)) {
-				runStatement(statement, options.params);
-				return { ok: true, kind: "exec", dbPath: this.location.dbPath };
-			}
-			this.db.exec(query);
-			return { ok: true, kind: "exec", dbPath: this.location.dbPath };
-		} catch (error) {
-			const message = messageFromUnknown(error);
-			if (isMultiStatementError(message)) {
-				if (hasBindParams(options)) {
-					return {
-						ok: false,
-						reason: "sqlite_error",
-						message: "Bound parameters are only supported for a single SQL statement",
-						dbPath: this.location.dbPath,
-					};
-				}
-				try {
-					this.db.exec(query);
-					return { ok: true, kind: "exec", dbPath: this.location.dbPath };
-				} catch (execError) {
-					return {
-						ok: false,
-						reason: "sqlite_error",
-						message: messageFromUnknown(execError),
-						dbPath: this.location.dbPath,
-					};
-				}
-			}
-			return { ok: false, reason: "sqlite_error", message, dbPath: this.location.dbPath };
-		}
+		const guard = guardQuery(query, this.location.dbPath);
+		if (guard) return guard;
+		return runQuery(this.db, this.location.dbPath, query, options);
 	}
 
 	reset(): StoreOpenResult {
@@ -489,5 +385,236 @@ export class SessionSqlStore {
 			defaultValue:
 				row.dflt_value === null || row.dflt_value === undefined ? null : String(row.dflt_value),
 		}));
+	}
+}
+
+// --- repo-targeted execution (per-call open/exec/close) ------------------
+
+export type RepoDbResolution =
+	| { ok: true; absolutePath: string; relativePath: string }
+	| {
+			ok: false;
+			reason: "outside_repo" | "git_internal" | "invalid_path";
+			message: string;
+	  };
+
+// Resolve a user-supplied db path to an absolute path that is guaranteed to
+// live inside `repoRoot` (after symlink resolution) and outside `.git/`.
+// Non-existent files are allowed — SQLite will create them on open — as long
+// as the would-be path resolves inside the repo.
+export function resolveRepoDbPath(
+	input: string,
+	repoRoot: string,
+	cwd: string = process.cwd(),
+): RepoDbResolution {
+	if (typeof input !== "string" || input.trim().length === 0) {
+		return { ok: false, reason: "invalid_path", message: "db path is empty" };
+	}
+	const absolute = isAbsolute(input) ? resolve(input) : resolve(cwd, input);
+	const rootCanonical = canonicalize(resolve(repoRoot));
+	const canonical = canonicalizeAllowMissing(absolute);
+	if (!isInside(canonical, rootCanonical)) {
+		return {
+			ok: false,
+			reason: "outside_repo",
+			message: `db path resolves outside the git repo: ${absolute}`,
+		};
+	}
+	const rel = relative(rootCanonical, canonical);
+	if (rel.split(sep).includes(".git")) {
+		return {
+			ok: false,
+			reason: "git_internal",
+			message: "db path inside .git/ is not allowed",
+		};
+	}
+	return { ok: true, absolutePath: canonical, relativePath: rel };
+}
+
+// Execute one SQL statement (or batch) against `absolutePath`, opening a
+// fresh connection for this call and closing it before returning. No schema
+// is bootstrapped — repo DBs are caller-owned.
+export function executeAtPath(
+	absolutePath: string,
+	query: string,
+	options: ExecuteOptions = {},
+): SqlResult {
+	const guard = guardQuery(query, absolutePath);
+	if (guard) return guard;
+	let db: DatabaseSync | undefined;
+	try {
+		mkdirSync(dirname(absolutePath), { recursive: true });
+		db = new DatabaseSync(absolutePath, {
+			enableForeignKeyConstraints: true,
+			timeout: 1000,
+		});
+		return runQuery(db, absolutePath, query, options);
+	} catch (error) {
+		return {
+			ok: false,
+			reason: "sqlite_error",
+			message: messageFromUnknown(error),
+			dbPath: absolutePath,
+		};
+	} finally {
+		if (db?.isOpen) {
+			try {
+				db.close();
+			} catch {
+				// best-effort close; surface as part of next call if it matters
+			}
+		}
+	}
+}
+
+function canonicalize(absolute: string): string {
+	try {
+		return realpathSync(absolute);
+	} catch {
+		return absolute;
+	}
+}
+
+// Like canonicalize, but tolerates the leaf (and intermediate parents) not
+// existing yet. Also follows symlinks whose target is missing — realpathSync
+// throws ENOENT in that case, so we readlink manually and recurse so that an
+// in-repo symlink to an outside path is still rejected.
+function canonicalizeAllowMissing(absolute: string): string {
+	try {
+		const stat = lstatSync(absolute);
+		if (stat.isSymbolicLink()) {
+			const target = readlinkSync(absolute);
+			const resolvedTarget = isAbsolute(target) ? target : resolve(dirname(absolute), target);
+			return canonicalizeAllowMissing(resolvedTarget);
+		}
+		return canonicalize(absolute);
+	} catch {
+		// ENOENT on the leaf — walk up.
+	}
+	let ancestor = dirname(absolute);
+	while (ancestor !== dirname(ancestor)) {
+		if (existsSync(ancestor)) {
+			const real = canonicalize(ancestor);
+			return join(real, relative(ancestor, absolute));
+		}
+		ancestor = dirname(ancestor);
+	}
+	return absolute;
+}
+
+function isInside(target: string, root: string): boolean {
+	const rel = relative(root, target);
+	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+function guardQuery(query: string, dbPath: string): SqlFailureResult | undefined {
+	if (Buffer.byteLength(query, "utf8") > MAX_QUERY_BYTES) {
+		return {
+			ok: false,
+			reason: "too_large",
+			message: `SQL query exceeds ${MAX_QUERY_BYTES} bytes`,
+			dbPath,
+		};
+	}
+	if (query.trim().length === 0) {
+		return { ok: false, reason: "empty_query", message: "SQL query is empty", dbPath };
+	}
+	return undefined;
+}
+
+function runQuery(
+	db: DatabaseSync,
+	dbPath: string,
+	query: string,
+	options: ExecuteOptions,
+): SqlResult {
+	try {
+		const statement = db.prepare(query);
+		const trailingSql = query.slice(statement.sourceSQL.length).trim();
+		if (trailingSql.length > 0) {
+			if (hasBindParams(options)) {
+				return {
+					ok: false,
+					reason: "sqlite_error",
+					message: "Bound parameters are only supported for a single SQL statement",
+					dbPath,
+				};
+			}
+			db.exec(query);
+			return { ok: true, kind: "exec", dbPath };
+		}
+		const columns = statement.columns().map((column) => column.name);
+		if (columns.length > 0) {
+			const rows: Record<string, unknown>[] = [];
+			const maxRows = clampMaxRows(options.maxRows);
+			const maxBytes = options.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES;
+			let returnedBytes = 0;
+			let truncated = false;
+			for (const row of iterateStatement(statement, options.params)) {
+				if (rows.length >= maxRows) {
+					truncated = true;
+					break;
+				}
+				const nextBytes = jsonSize(row);
+				if (returnedBytes + nextBytes > maxBytes) {
+					truncated = true;
+					break;
+				}
+				rows.push({ ...row });
+				returnedBytes += nextBytes;
+			}
+			return {
+				ok: true,
+				kind: "rows",
+				columns,
+				rows,
+				rowsReturned: rows.length,
+				truncated,
+				dbPath,
+			};
+		}
+
+		const keyword = firstKeyword(query);
+		if (isMutationKeyword(keyword)) {
+			const result = runStatement(statement, options.params);
+			return {
+				ok: true,
+				kind: "change",
+				changes: result.changes,
+				lastInsertRowid: result.lastInsertRowid,
+				dbPath,
+			};
+		}
+
+		if (hasBindParams(options)) {
+			runStatement(statement, options.params);
+			return { ok: true, kind: "exec", dbPath };
+		}
+		db.exec(query);
+		return { ok: true, kind: "exec", dbPath };
+	} catch (error) {
+		const message = messageFromUnknown(error);
+		if (isMultiStatementError(message)) {
+			if (hasBindParams(options)) {
+				return {
+					ok: false,
+					reason: "sqlite_error",
+					message: "Bound parameters are only supported for a single SQL statement",
+					dbPath,
+				};
+			}
+			try {
+				db.exec(query);
+				return { ok: true, kind: "exec", dbPath };
+			} catch (execError) {
+				return {
+					ok: false,
+					reason: "sqlite_error",
+					message: messageFromUnknown(execError),
+					dbPath,
+				};
+			}
+		}
+		return { ok: false, reason: "sqlite_error", message, dbPath };
 	}
 }
