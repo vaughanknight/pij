@@ -58,6 +58,47 @@ Avoid dense paragraph slabs. Prefer compact sections, bullets, and clear human-r
 - Keep SQL state current: query before choosing the next item, update after edits/tests/research/decisions, and check open rows before final answers.
 - Do not store secrets, huge raw logs, binary data, or durable project deliverables in session SQL. Use repo files for durable source/docs; use `sql` for session-local structured work.
 
+# Image inspection (workaround for interactive image bug)
+
+Pi's interactive REPL does NOT attach images. Typing `@image.jpg` or
+pasting with Ctrl+V puts only the file path into the message — the model
+receives a path string, no image bytes. Confirmed bug in pi 0.75.5: the
+submit handler in `interactive-mode.ts` never sets `{ images }` on
+`session.prompt()`. The CLI `-p` (print-mode) path DOES attach images
+properly (verified end-to-end: user message contains
+`{type:"image",mimeType:"image/jpeg",data:"..."}`).
+
+When you need to actually **see** an image (screenshot, UI mockup,
+diagram, photo), shell out to a one-shot child pi instead of trying to
+read the file directly:
+
+    pi --no-tools -p @/abs/path/to/file.jpg "Describe exactly what you see.
+    Report only — do not run any tools, OCR, or workarounds."
+
+Use `ctx_shell` if it's exposed, otherwise `bash`. Capture stdout and
+treat the child's text response as your visual report.
+
+Rules of thumb:
+
+- **Absolute paths only.** The child pi resolves `@<path>` against its
+  own cwd, not yours. Relative paths inside a `@` token frequently miss.
+- **Format matters.** Pi accepts `image/{png,jpeg,webp,gif}` only. HEIC,
+  TIFF, RAW, etc. are silently dropped to text. Convert first:
+
+      sips -s format png /abs/file.heic --out /abs/file.png
+
+  Then `pi -p @/abs/file.png`.
+- **`--no-tools` keeps the child honest.** Without it the child may
+  shell out to OCR / sips / etc. to fake an answer when it can't see;
+  with it, you get either a real visual report or an explicit "I cannot
+  see an image."
+- **Cost**: one extra round trip on the same provider/model your session
+  is using, so you're getting the same vision-capable model you already
+  have configured.
+- **Don't loop on it.** If the child reports it can't see the image
+  after a valid-format convert, escalate to the user — don't retry with
+  workarounds.
+
 # Change safety preference
 
 - Before editing config, prompts, package manifests, or project policy files, verify the requested change is actionable in the current environment.
