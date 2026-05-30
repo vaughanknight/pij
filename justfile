@@ -122,33 +122,112 @@ link:
 unlink:
     npm run link -- --remove
 
+# --- pi fork source control ---
+
+# Sync the local ../pi-fork checkout from official upstream, then push the
+# fast-forwarded main branch to the jakkaj fork. Refuses divergent history.
+pi-fork-sync-upstream:
+    @set -eu; \
+      repo="../pi-fork"; \
+      test -d "$repo/.git" || { echo "❌ $repo is not a git checkout"; exit 1; }; \
+      git -C "$repo" remote get-url origin | grep -q 'jakkaj/pi-mono' || { echo "❌ origin is not jakkaj/pi-mono"; exit 1; }; \
+      git -C "$repo" remote get-url upstream >/dev/null 2>&1 || git -C "$repo" remote add upstream git@github.com:earendil-works/pi.git; \
+      git -C "$repo" remote set-url upstream git@github.com:earendil-works/pi.git; \
+      echo "=== fetch fork + upstream ==="; \
+      git -C "$repo" fetch origin; \
+      git -C "$repo" fetch upstream; \
+      echo "=== fast-forward local main to upstream/main ==="; \
+      git -C "$repo" checkout main; \
+      git -C "$repo" merge --ff-only upstream/main; \
+      echo "=== push fork origin/main ==="; \
+      git -C "$repo" push origin main
+
+# Link the current built ../pi-fork CLI as global `pi` and record the
+# exact commit in .pi/pi-fork-build.txt (gitignored). No network, no git pull.
+pi-fork-link:
+    @set -eu; \
+      repo="../pi-fork"; \
+      log_file=".pi/pi-fork-build.txt"; \
+      test -d "$repo/.git" || { echo "❌ $repo is not a git checkout"; exit 1; }; \
+      commit="$(git -C "$repo" rev-parse HEAD)"; \
+      short="$(git -C "$repo" rev-parse --short HEAD)"; \
+      repo_abs="$(cd "$repo" && pwd)"; \
+      cli="$repo_abs/packages/coding-agent/dist/cli.js"; \
+      test -x "$cli" || { echo "❌ built cli missing or not executable: $cli"; echo "Run: just pi-fork-build"; exit 1; }; \
+      global_bin="$(npm prefix -g)/bin"; \
+      mkdir -p "$global_bin"; \
+      ln -sfn "$cli" "$global_bin/pi"; \
+      mkdir -p .pi; \
+      { \
+        echo "commit=$commit"; \
+        echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; \
+        echo "repo=$repo_abs"; \
+        echo "cli=$cli"; \
+        echo "global_pi=$global_bin/pi"; \
+      } > "$log_file"; \
+      echo "✓ linked pi fork $short"; \
+      echo "  linked: $global_bin/pi -> $cli"; \
+      echo "  logged: $log_file"
+
+# Build the current ../pi-fork checkout and link it globally. Deliberately
+# does not pull/fetch; use `just pi-fork-sync-upstream` explicitly for that.
+pi-fork-build:
+    @set -eu; \
+      repo="../pi-fork"; \
+      test -d "$repo/.git" || { echo "❌ $repo is not a git checkout"; exit 1; }; \
+      short="$(git -C "$repo" rev-parse --short HEAD)"; \
+      repo_abs="$(cd "$repo" && pwd)"; \
+      echo "=== install pi fork dependencies ==="; \
+      cd "$repo_abs" && npm install --ignore-scripts; \
+      echo; \
+      echo "=== build pi fork $short ==="; \
+      npm run build; \
+      cd - >/dev/null; \
+      just pi-fork-link
+
 # --- pi binary control ---
 #
-# `just update-pi` is the canonical way to update pi from this repo.
-# Pi update has historically moved discovery paths (e.g. global
-# extensions dir relocated under ~/.pi/agent/extensions/). This recipe
-# updates pi AND re-applies pij's harness state so a silent path move
-# doesn't strand our extensions, MCP config, or global packages.
+# `just update-pi` is the canonical way to refresh pi runtime state from
+# this repo. It does not fetch, pull, build, or otherwise touch git history.
+# Source sync/build are explicit: `just pi-fork-sync-upstream` and
+# `just pi-fork-build`.
 
-# Update pi to the latest published version, then re-apply harness state.
-#
-# Updates two things, in order:
-#   1. The pi binary itself (via npm -g)
-#   2. Installed pi packages in ~/.pi/agent/ (via `pi update`) — pi tells you
-#      "Package updates are available. Run pi update" when these drift; this
-#      catches them so a single command keeps everything current.
-# Then re-links pij extensions (pi update has historically moved discovery
-# paths) and runs pi-doctor.
+# Re-link the already-built ../pi-fork CLI as global `pi`, update installed
+# pi packages, then re-link pij extensions and run pi-doctor. No git pull.
 update-pi:
-    @echo "=== current pi ===" && pi --version | head -1
-    npm install -g @earendil-works/pi-coding-agent@latest
-    @echo "=== updated pi ===" && pi --version | head -1
+    @echo "=== current pi ===" && pi --version | head -1 || true
+    just pi-fork-link
+    @echo
+    @echo "=== linked pi ===" && pi --version | head -1
     @echo
     @echo "=== updating pi packages ==="
     pi update
     @echo
     just link
     just pi-doctor
+
+# Full end-to-end refresh from OUR fork, upstream included. This is the
+# "do it all" recipe: pull upstream into ../pi-fork, build it, link the
+# built CLI as global `pi`, update pi packages, re-link pij extensions,
+# and audit. Use this when you want to be fully current on the fork.
+#
+# Order matters:
+#   1. pi-fork-sync-upstream — ff-merge upstream/main into fork main + push
+#      (the ONLY git-touching step; refuses divergent history)
+#   2. pi-fork-build         — npm install + npm run build + link the CLI
+#   3. update-pi             — re-link CLI, `pi update` packages, link pij
+#                              extensions, pi-doctor
+update-pi-full:
+    @echo "######## 1/3 sync fork from upstream ########"
+    just pi-fork-sync-upstream
+    @echo
+    @echo "######## 2/3 build + link fork ########"
+    just pi-fork-build
+    @echo
+    @echo "######## 3/3 update packages + extensions + audit ########"
+    just update-pi
+    @echo
+    @echo "✓ update-pi-full complete — running our fork, fully current."
 
 # Audit pi's globally-visible state. Read-only.
 # Prints: binary version, extension symlinks, manifest packages,
