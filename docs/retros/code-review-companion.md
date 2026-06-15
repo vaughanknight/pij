@@ -135,3 +135,12 @@ upstreaming to minih as a coordinated PR.
 - difficulties:
   - [degrading] coordination: Final report generation required manually reconstructing cumulative findings from inbox traffic and compaction summary instead of exporting them from the coordination log. (workaround: Kept finding ids and ackOf references during review and manually populated the final report.)
   - [annoying] config: The shell did not expose MINIH_PROJECT_ROOT, so orientation used the repository root from environment context. (workaround: Used /Users/jordanknight/pi-hacking/pij as the project root for file and git reads.)
+
+## 2026-05-27T06:09:46.467Z — code-review-companion / 2026-05-27T15-38-53-180Z-6d10
+
+- runId: 2026-05-27T15-38-53-180Z-6d10
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-05-27T15-38-53-180Z-6d10
+- summary: Oriented on Plan 013 pi-peacock and acknowledged the outside implementation briefing, but no review-request task arrived before the idle safety budget, so no code review findings were produced.
+- **magicWand** (target: coordination): Add a dedicated briefing-only idle check-in, for example briefingPollThreshold, so a companion can ask whether the first milestone task is still expected without violating the post-task ackOf rule.
+- difficulties:
+  - [annoying] coordination: A briefing counts as first contact and disables first-contact nudging, while no task has completed so post-task nudging is also disabled. That creates a long quiet wait if the orchestrator sends a briefing but no milestone task. (workaround: Stayed in the required bounded long-poll loop until the default idle safety budget was reached, then exited with idle_budget.)

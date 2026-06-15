@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1",
+  "slug": "code-review",
+  "source": {
+    "type": "url",
+    "url": "github:AI-Substrate/minih",
+    "ref": "020-minih-harness-measurement",
+    "subpath": "agents/code-review",
+    "commitSha": "cad88eeec395f0d842c7fb910d1a585c33db7bb2"
+  },
+  "installedAt": "2026-05-15T06:34:36.238Z",
+  "manifestVersion": "0.0.0",
+  "fileChecksums": {
+    "prompt.md": "sha256:a269c12ae88adefff69964a07245b2a7a02e7b3ef92de0100571b5db7091c513",
+    "instructions.md": "sha256:bfb5697d5277a6e9387da07c66b42d2af0d3e9d76f3240366c32437bfae7c67c",
+    "output-schema.json": "sha256:1b3c5fe31485c0a8e633677ce49ebb5ad84d89774b2d650eb06a042c90391b0a",
+    "input-schema.json": "sha256:03fb287bf58169e0e4329aaa7f1a810bb2956b4d14b552e563689b320ac10d17"
+  },
+  "lockedDefault": "restricted",
+  "lockedDefaultRecordedAt": "2026-05-15T06:34:36.238Z",
+  "lockedDefaultReason": "minih-default"
+}
