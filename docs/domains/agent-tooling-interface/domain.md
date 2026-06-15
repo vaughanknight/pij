@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, and Minih Workbench pull, native list/modal, gated send/stop, and pushed-context surfaces. This domain makes structured work state and external agent-run state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
+Own the observable model and operator experience for using session SQL, SQL-backed current-session todos, Minih Workbench pull/native list/modal/gated send/stop/pushed-context surfaces, and Pi Peacock footer identity chrome. This domain makes structured work state, external agent-run state, and session/workspace presentation state discoverable, debuggable, and testable without relying on nondeterministic model behavior.
 
 ## Source Locations
 
@@ -17,8 +17,13 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | `.pi/extensions/minih-workbench/index.ts` | Pi wiring for `/minih`, `/minih list`, `/minih view`, `/minih report`, `/minih send`, `/minih stop`, status/report JSON commands, model tools, pushed context, feed lifecycle, and lifecycle cleanup. |
 | `.pi/extensions/minih-workbench/ui.ts` | Native Pi run-list and full modal components plus width-safe render helpers for Minih inventory/view panes, composer, and controls. |
 | `.pi/extensions/minih-workbench/smoke.ts` | Deterministic Minih Workbench list/modal/send-gating/report/reload smoke over fixture artifacts and fake writer hooks. |
+| `.pi/extensions/pi-peacock/index.ts` | Pi wiring for `/peacock`, lifecycle rehydrate/repaint, footer installation/cleanup, and status JSON. |
+| `.pi/extensions/pi-peacock/ui.ts` | Width-safe colored footer renderer, text sanitization, readable foreground selection, and token/context formatting. |
+| `.pi/extensions/pi-peacock/smoke.ts` | Deterministic Peacock command/reload/off smoke. |
+| `.pi/extensions/pi-peacock/AGENTS.md` | Extension-local footer ownership/sanitization guidance. |
 | `docs/how/session-sql.md` | Detailed user/agent guide. |
 | `docs/how/todo.md` | Detailed SQL-backed todo user/agent guide. |
+| `docs/how/pi-peacock.md` | Detailed Peacock footer user/operator guide. |
 | `README.md` | Quick-start mention. |
 | `docs/plans/006-generic-sqlite-session-tool/workshops/003-tool-command-and-result-contract.md` | Source design for tool/command contract. |
 | `docs/plans/006-generic-sqlite-session-tool/workshops/007-agent-sql-use-cases-and-working-patterns.md` | Source design for agent use patterns and prompt guidance. |
@@ -37,6 +42,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Minih Workbench native list/modal UX | Minih run state is inspectable from Pi through read-only native TUI without writing to Minih. | `/minih` and `/minih list` open a keyboard-selectable run list; `/minih view <slug> <runId>` opens transcript/tool/status/coordination/report/diagnostic panes; `/minih report <slug> <runId>` opens the report-focused modal; `Esc` only closes UI. |
 | Minih Workbench read-only pull UX | Minih run state is inspectable from Pi without opening the modal or writing to Minih. | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report`. |
 | Minih Workbench gated interaction UX | Coordinated Minih runs can be messaged or stopped only through explicit safe surfaces. | `/minih send`, `minih_send_message`, `/minih stop`, and `minih_stop_run` require explicit run id, fresh capability checks, audit persistence, adapter write wrappers, and exact stop confirmation. |
+| Peacock footer identity chrome | Operators can color the full bottom footer/status area while preserving useful footer information. | `/peacock` applies/list/status/off/reset; custom footer rendering preserves cwd/branch, provider/model/thinking, context usage, and `footerData.getExtensionStatuses()` when width permits. |
 
 ## Contracts
 
@@ -54,6 +60,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Minih read-only tools | LLM agent | `minih_runs_list`, `minih_run_status`, and `minih_read_report` return deterministic bounded JSON envelopes and expose no write behavior. |
 | Minih interaction tools | LLM agent | `minih_send_message` sends only after capability/audit gating; `minih_stop_run` requires exact `confirm: "stop <slug>/<runId>"` and sends a dedicated control message only after audit persistence. |
 | Minih pushed context | Human/operator/model | Compact `minih.materialEvent` custom messages use `deliverAs: "steer"`, urgent `triggerTurn` only for urgent classified events, and redacted/deduped payloads. |
+| `/peacock` command and footer renderer | Human/operator/smoke | CLI-only color selection over Peacock presets/hex values; footer mode owns the singleton custom-footer slot while active and sanitizes external footer text before ANSI wrapping. |
 
 ## Composition
 
@@ -68,6 +75,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Minih Workbench read-only pull wiring | implemented in Plan 007 Phase 1 | `minih-workbench/index.ts` registers canonical `/minih` read-only JSON commands and model tools over the agent-workbench adapter contracts. |
 | Minih Workbench native list/modal wiring | implemented in Plan 007 Phase 2 | `minih-workbench/index.ts` wires `/minih` list/view/report UI, lazy feed handles, selected-run pointer cleanup, and status lifecycle. |
 | Minih Workbench interaction/push wiring | implemented in Plan 007 Phase 3 | `minih-workbench/index.ts` wires send/stop tools and commands, modal composer/stop callbacks, fake writer smoke hooks, and compact pushed context delivery. |
+| Peacock footer identity chrome | implemented in Plan 013 | `pi-peacock/index.ts` wires `/peacock`, lifecycle replay, and footer ownership; `pi-peacock/ui.ts` renders sanitized width-safe ANSI footer lines. |
 
 ## Dependencies
 
@@ -75,7 +83,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 
 | Domain / System | Type | Contract Used |
 |-----------------|------|---------------|
-| session-work-state | consume | `SessionSqlStore`, `TodoSqlStore`, schema/status/result/reset/todo contracts. |
+| session-work-state | consume | `SessionSqlStore`, `TodoSqlStore`, schema/status/result/reset/todo contracts, and append-only custom session-entry replay semantics for Peacock state. |
 | pi runtime | direct | `registerTool`, `registerCommand`, session lifecycle events, UI status/notify. |
 | extension-authoring-harness | consume | Driver SDK smoke, self-check, difficulty/retro/velocity feedback loops. |
 
@@ -93,6 +101,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 - Status/schema presentation.
 - Todo command/tool/overlay/below-editor strip/status presentation.
 - Minih Workbench `/minih` command, native list/modal/report/composer/control UI, model tools, pushed-context delivery, and formatting presentation.
+- Peacock `/peacock` command, full-footer identity presentation, status preservation, and docs.
 - Deterministic smoke scenario.
 - Operator documentation and agent use recipes.
 
@@ -117,3 +126,4 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | 007-options-for-pi-extensions-that-do-subagents / Phase 1 | Added read-only Minih Workbench pull UX: `/minih status --json`, run status/report commands, `minih_runs_list`, `minih_run_status`, `minih_read_report`, and fixture-backed smoke. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 2 | Added native read-only `/minih` run-list, full modal run/report viewer, feed lifecycle cleanup, and deterministic Driver SDK modal smoke. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 3 | Added gated `/minih send`, `/minih stop`, `minih_send_message`, `minih_stop_run`, modal composer/controls, pushed-context delivery, fake-writer smoke hooks, and tool-ordering tests. | 2026-05-17 |
+| 013-pi-peacock | Added `/peacock` CLI, full-footer identity chrome, sanitized footer renderer, reload persistence, status JSON, smoke, and operator docs. | 2026-05-27 |

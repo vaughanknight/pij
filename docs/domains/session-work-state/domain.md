@@ -15,6 +15,7 @@ Own session-scoped structured state used by an agent while solving the current t
 | `docs/plans/006-generic-sqlite-session-tool/workshops/001-session-sqlite-semantics-and-safety-boundary.md` | Source design for session semantics and safety boundary. |
 | `docs/plans/006-generic-sqlite-session-tool/workshops/004-default-schema-and-migrations.md` | Source design for default schema and migrations. |
 | `.pi/extensions/minih-workbench/session-persistence.ts` | Append-only custom session-entry projection for Minih Workbench pointers, audit records, push opt-ins, and per-event cursors. |
+| `.pi/extensions/pi-peacock/store.ts` | Pi-free Peacock preset, command, settings, and append-only replay projection for footer identity state. |
 
 ## Concepts
 
@@ -27,7 +28,7 @@ Own session-scoped structured state used by an agent while solving the current t
 | Trusted SQL execution | SQL is trusted local-agent capability, not a sandbox. | Unrestricted SQL, 200-row returned preview cap, native extension loading when supported. |
 | SQL-backed todo state | Routine todo operations and compact widget projections are typed views over the default work schema. | `TodoSqlStore` uses only `todos` and `todo_deps`, shares `/sql` visibility, exposes `widgetSnapshot()` for recent-activity display, supports targeted delete/prune cleanup, and never creates duplicate storage. |
 | Dependency-aware readiness | Ready work is derived from status plus dependency edges. | `next` returns `in_progress`/`pending` rows whose dependencies are all `done`, ordered deterministically. |
-| Append-only extension session entries | Some extensions persist lightweight session-local state in Pi custom entries instead of SQLite. | Minih Workbench uses `minih-workbench.persistence.v1` custom entries to replay selected pointers, audit records, push opt-ins, and per-event push cursors across reload/resume while adding reset markers for new/fork independence. |
+| Append-only extension session entries | Some extensions persist lightweight session-local state in Pi custom entries instead of SQLite. | Minih Workbench uses `minih-workbench.persistence.v1` custom entries to replay selected pointers, audit records, push opt-ins, and per-event push cursors across reload/resume while adding reset markers for new/fork independence; Pi Peacock uses `pi-peacock.settings.v1` entries to replay selected color/surface/off/reset state. |
 
 ## Contracts
 
@@ -39,6 +40,7 @@ Own session-scoped structured state used by an agent while solving the current t
 | Result caps | Agent/tool UX | Returned previews cap at 200 rows and mark truncation. |
 | `TodoSqlStore` | `agent-tooling-interface` | Pi-free todo add/list/status/block/done/delete/prune/dependency/next/counts/clear/widgetSnapshot operations over the default schema with tagged-union results. |
 | Minih Workbench session projection | `agent-workbench`, `agent-tooling-interface` | Append-only custom entries replay selected-run pointers, seen cursors, push opt-ins, and audit records; same-session reload/resume replays rows, while new/fork appends a reset marker. |
+| Peacock session projection | `agent-tooling-interface` | Append-only `pi-peacock.settings.v1` entries replay selected color, preset, surface, off, and reset state across same-session reload/resume without importing Pi runtime into the store. |
 
 ## Composition
 
@@ -50,6 +52,7 @@ Own session-scoped structured state used by an agent while solving the current t
 | Todo widget projection | implemented | `TodoSqlStore.widgetSnapshot()` returns a compact recent-activity projection for the agent-tooling-interface widget without adding storage. |
 | Todo store tests | implemented | `.pi/extensions/todo/store.test.ts` covers SQL agreement, statuses, dependencies, delete/prune/clear, limits, widget projection, and persistence. |
 | Minih Workbench session projection | implemented in Plan 007 Phase 3 | `.pi/extensions/minih-workbench/session-persistence.ts` projects append-only custom session entries for selected pointers, audit records, push opt-ins, and per-event cursor channels. |
+| Peacock session projection | implemented in Plan 013 | `.pi/extensions/pi-peacock/store.ts` projects append-only footer color/surface settings with persist-before-mutate semantics. |
 
 ## Dependencies
 
@@ -74,7 +77,7 @@ Own session-scoped structured state used by an agent while solving the current t
 - DB path and persistence expectations.
 - Default schema and schema version.
 - Todo/dependency state semantics and recent-activity widget projection over the default schema.
-- Append-only custom session-entry replay semantics for lightweight extension-local state.
+- Append-only custom session-entry replay semantics for lightweight extension-local state, including Peacock color/surface settings.
 - Reset behavior.
 - New/fork independence.
 - Output caps as store-level result limits.
@@ -98,3 +101,4 @@ Own session-scoped structured state used by an agent while solving the current t
 | 010-sql-backed-todo-extension/ST-001 | Added `TodoSqlStore.widgetSnapshot()` for compact below-editor recent-activity display without new storage. | 2026-05-16 |
 | 010-sql-backed-todo-extension/follow-up | Added targeted todo cleanup: delete one id and prune completed rows without clearing open work. | 2026-05-16 |
 | 007-options-for-pi-extensions-that-do-subagents / Phase 3 | Minih Workbench consumed append-only custom session entries for audit/cursor/push state with reload/resume replay and new/fork reset markers. | 2026-05-17 |
+| 013-pi-peacock | Added Pi-free Peacock session projection for selected footer color/surface, off, and reset state over append-only custom entries. | 2026-05-27 |

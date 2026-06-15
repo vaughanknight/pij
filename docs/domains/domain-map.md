@@ -2,8 +2,8 @@
 
 ```mermaid
 flowchart LR
-    SWS[session-work-state\ncontracts: session DB semantics, schema, reset, TodoSqlStore/widgetSnapshot/cleanup]
-    ATI[agent-tooling-interface\ncontracts: sql tool, /sql, todo tool, /todo, /minih read-only tools/status UX]
+    SWS[session-work-state\ncontracts: session DB semantics, schema, reset, TodoSqlStore/widgetSnapshot/cleanup, Peacock replay]
+    ATI[agent-tooling-interface\ncontracts: sql tool, /sql, todo tool, /todo, /minih UX, /peacock footer chrome]
     H[extension-authoring-harness\ncontracts: generator, smoke, self-check, feedback, pkg vet/audit]
     PI[pi runtime\ncontracts: extension lifecycle, tools, commands]
     V[vetter pipeline\ncontracts: Verdict, Finding, Vetter; vetted: schema]
@@ -32,7 +32,7 @@ flowchart LR
 
 | Relationship | Status | Notes |
 |--------------|--------|-------|
-| `agent-tooling-interface` → `session-work-state` | healthy | UI/tool/strip layer consumes `SessionSqlStore`, `TodoSqlStore.widgetSnapshot`, and targeted cleanup operations; stores remain pi-free and SQL-backed. |
+| `agent-tooling-interface` → `session-work-state` | healthy | UI/tool/strip/footer layer consumes `SessionSqlStore`, `TodoSqlStore.widgetSnapshot`, targeted cleanup operations, and Peacock append-only replay; stores remain pi-free. |
 | `agent-tooling-interface` → `pi runtime` | healthy | Wiring owns pi APIs and presentation. |
 | `session-work-state` → `pi runtime` | indirect | Store does not import pi; `index.ts` passes plain session/location data. |
 | `session-work-state` / `agent-tooling-interface` → `extension-authoring-harness` | healthy | Harness provides generator, store tests, `/todo` + `/sql` smoke, self-check, ledgers, and retro loop. |
@@ -57,3 +57,4 @@ flowchart LR
 | 2026-05-16 | Plan 010 ST-001 — added `TodoSqlStore.widgetSnapshot`, below-editor `todo-strip`, and `session-sql:changed` refresh edge for raw SQL mutations. |
 | 2026-05-16 | Plan 010 follow-up — added targeted todo cleanup (`delete <id>`, `prune done`) to the store and tool/command UX. |
 | 2026-05-16 | Plan 007 Phase 1 — added `agent-workbench` (`AW`) and Minih artifact source (`MH`) nodes with one-way consume edges to `pi runtime`, `agent-tooling-interface`, `session-work-state`, `agentic-loops`, `extension-authoring-harness`, and Minih-owned artifacts; expanded `agent-tooling-interface` node label for `/minih` read-only surfaces. |
+| 2026-05-27 | Plan 013 — extended `agent-tooling-interface` with `/peacock` footer chrome and `session-work-state` with Peacock append-only color/surface replay semantics. |

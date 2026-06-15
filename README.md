@@ -71,6 +71,22 @@ npm run smoke -- minih-workbench
 See [`docs/how/agent-workbench.md`](./docs/how/agent-workbench.md) for commands,
 tool contracts, safety gates, and troubleshooting.
 
+## Pi Peacock
+
+`pi-peacock` colors Pi's full bottom footer/status area with VS Code
+Peacock-style identity colors while preserving cwd/branch, model/thinking,
+context usage, and extension statuses.
+
+```text
+/peacock list
+/peacock reactBlue
+/peacock status --json
+/peacock off
+```
+
+See [`docs/how/pi-peacock.md`](./docs/how/pi-peacock.md) for presets,
+footer-mode limitations, persistence scope, and validation notes.
+
 ## Where things are
 
 | What | Where |
@@ -86,6 +102,7 @@ tool contracts, safety gates, and troubleshooting.
 | Custom / unlisted pi models | `RUNBOOK.md` § "Custom / unlisted pi models" (+ `D-020`) |
 | Ralph Loop extension | `.pi/extensions/ralph-loop/` + [`docs/how/ralph-loop.md`](docs/how/ralph-loop.md) (RUNBOOK § "How to start a Ralph Loop") |
 | Agent harness (companion mode) | [`docs/project-rules/agent-harness.md`](docs/project-rules/agent-harness.md) (RUNBOOK § "Companion mode (minih)") |
+| Pi Peacock extension | `.pi/extensions/pi-peacock/` + [`docs/how/pi-peacock.md`](docs/how/pi-peacock.md) |
 
 ## Using extensions on another machine
 
