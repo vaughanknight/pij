@@ -52,11 +52,11 @@
 > etc.) only for IDE/tooling integration — agents drive `just`.
 
 0. **Fresh clone / new machine: `just install`** — single-command
-   bootstrap. Installs deps, syncs `.pi/APPEND_SYSTEM.md` + `.pi/mcp.json`
-   to `~/.pi/agent/`, symlinks local extensions globally, installs every
-   vetted manifest package, then runs `just pi-doctor` to verify. Re-run
-   any time pi's global state drifts (after `pi update`, after switching
-   machines).
+   bootstrap. Installs deps, installs/updates official Pi from npm, syncs
+   `.pi/APPEND_SYSTEM.md` + `.pi/mcp.json` to `~/.pi/agent/`, symlinks
+   local extensions globally, installs every vetted manifest package, then
+   runs `just pi-doctor` to verify. Re-run any time pi's global state drifts
+   (after `pi update`, after switching machines).
 1. New extension: **`just new <name>`** — never hand-roll the T2
    boilerplate.
 2. Iterate: `pi` from pij root + `/reload`. Type-check in another tab
@@ -81,11 +81,12 @@
   `just unlink` to undo. (Pi's loader resolves global extensions via
   `getAgentDir() + "/extensions"` — `~/.pi/extensions/` looks plausible
   but is silently ignored.)
-- **`just update-pi`** — updates the pi binary
-  (`@earendil-works/pi-coding-agent@latest`) and re-applies pij's harness
-  state (`just link` + `just pi-doctor`). Always update pi through this
-  recipe so a silent path move doesn't strand our extensions or MCP
-  config.
+- **`just update-pi`** — installs/updates the official pi binary from npm
+  (`@earendil-works/pi-coding-agent@latest`) and re-applies pij's global
+  harness state: prefs/MCP sync, `just link`, vetted package bootstrap,
+  `pi update --extensions`, and `just pi-doctor`. Always update pi through
+  this recipe so the global CLI stays official while pij's local extensions
+  and config remain globally visible.
 - **`just pi-doctor`** — read-only audit of pi's global state: binary
   version, extension symlinks at the correct path, packages in
   `~/.pi/agent/settings.json`, and MCP servers in `~/.pi/agent/mcp.json`.

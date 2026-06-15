@@ -20,7 +20,7 @@ default:
 #
 # What it does:
 #   1. Install repo dependencies (`npm ci`)
-#   2. Verify the global `pi` binary is present (fail loudly if not)
+#   2. Install/update the official global `pi` binary from npm
 #   3. Sync user-personal prefs to the pi global agent dir:
 #        .pi/APPEND_SYSTEM.md  → ~/.pi/agent/APPEND_SYSTEM.md
 #        .pi/mcp.json          → ~/.pi/agent/mcp.json
@@ -37,9 +37,8 @@ install:
     @echo "=== 1/6 npm dependencies ==="
     npm ci
     @echo
-    @echo "=== 2/6 verify pi binary ==="
-    @command -v pi >/dev/null 2>&1 || { echo "❌ pi not found. Install: npm install -g @earendil-works/pi-coding-agent"; exit 1; }
-    @pi --version | head -1
+    @echo "=== 2/6 install/update official pi binary ==="
+    just pi-official-install
     @mkdir -p ~/.pi/agent
     @echo
     @echo "=== 3/6 sync global pi prefs ==="
@@ -122,7 +121,29 @@ link:
 unlink:
     npm run link -- --remove
 
-# --- pi fork source control ---
+# Install/update official Pi from npm. If this machine still has pij's old
+# local ../pi-fork symlink as the global `pi`, remove that symlink first so
+# npm can own the executable again. Refuses to clobber unknown real files.
+pi-official-install:
+    @set -eu; \
+      package="@earendil-works/pi-coding-agent@latest"; \
+      global_bin_dir="$(npm prefix -g)/bin"; \
+      global_pi="$global_bin_dir/pi"; \
+      if [ -L "$global_pi" ]; then \
+        target="$(readlink "$global_pi")"; \
+        case "$target" in \
+          */pi-fork/packages/coding-agent/dist/cli.js) \
+            echo "removing old local-fork pi symlink: $global_pi -> $target"; \
+            rm "$global_pi"; \
+            ;; \
+        esac; \
+      elif [ -e "$global_pi" ]; then \
+        echo "ℹ existing non-symlink pi at $global_pi; npm will update it if package-owned"; \
+      fi; \
+      npm install -g --ignore-scripts "$package"; \
+      pi --version | head -1
+
+# --- pi fork source control (optional Pi core development only) ---
 
 # Sync the local ../pi-fork checkout from official upstream, then push the
 # fast-forwarded main branch to the jakkaj fork. Refuses divergent history.
@@ -188,46 +209,50 @@ pi-fork-build:
 # --- pi binary control ---
 #
 # `just update-pi` is the canonical way to refresh pi runtime state from
-# this repo. It does not fetch, pull, build, or otherwise touch git history.
-# Source sync/build are explicit: `just pi-fork-sync-upstream` and
-# `just pi-fork-build`.
+# this repo. Pi itself comes from the official npm package; pij contributes
+# global prefs, MCP config, local extension symlinks, and vetted extension
+# packages from this checkout.
+#
+# Important: use `pi update --extensions` after the npm install. Bare
+# `pi update` also self-updates pi, which can fight with the explicit npm
+# install step above.
 
-# Re-link the already-built ../pi-fork CLI as global `pi`, update installed
-# pi packages, then re-link pij extensions and run pi-doctor. No git pull.
+# Install/update official Pi globally, sync pij prefs, globally link pij's
+# local extensions, ensure vetted packages are installed, update extension
+# packages, then run pi-doctor.
 update-pi:
     @echo "=== current pi ===" && pi --version | head -1 || true
-    just pi-fork-link
     @echo
-    @echo "=== linked pi ===" && pi --version | head -1
+    @echo "=== install/update official pi binary ==="
+    just pi-official-install
+    @mkdir -p ~/.pi/agent
     @echo
-    @echo "=== updating pi packages ==="
-    pi update
+    @echo "=== sync global pi prefs from pij ==="
+    cp .pi/APPEND_SYSTEM.md ~/.pi/agent/APPEND_SYSTEM.md
+    @echo "  → ~/.pi/agent/APPEND_SYSTEM.md"
+    cp .pi/mcp.json ~/.pi/agent/mcp.json
+    @echo "  → ~/.pi/agent/mcp.json"
     @echo
+    @echo "=== link pij extensions globally ==="
     just link
+    @echo
+    @echo "=== ensure vetted pi packages are installed globally ==="
+    just pkg bootstrap
+    @echo
+    @echo "=== update pi extension packages only ==="
+    pi update --extensions
+    @echo
     just pi-doctor
 
-# Full end-to-end refresh from OUR fork, upstream included. This is the
-# "do it all" recipe: pull upstream into ../pi-fork, build it, link the
-# built CLI as global `pi`, update pi packages, re-link pij extensions,
-# and audit. Use this when you want to be fully current on the fork.
-#
-# Order matters:
-#   1. pi-fork-sync-upstream — ff-merge upstream/main into fork main + push
-#      (the ONLY git-touching step; refuses divergent history)
-#   2. pi-fork-build         — npm install + npm run build + link the CLI
-#   3. update-pi             — re-link CLI, `pi update` packages, link pij
-#                              extensions, pi-doctor
-update-pi-full:
-    @echo "######## 1/3 sync fork from upstream ########"
-    just pi-fork-sync-upstream
-    @echo
-    @echo "######## 2/3 build + link fork ########"
-    just pi-fork-build
-    @echo
-    @echo "######## 3/3 update packages + extensions + audit ########"
+# Backwards-compatible alias for the previous "build our fork" one-command
+# flow. The canonical flow now uses official Pi from npm plus pij's globally
+# linked extensions/config.
+pi-full-update:
     just update-pi
-    @echo
-    @echo "✓ update-pi-full complete — running our fork, fully current."
+
+# Backwards-compatible alias for the old recipe name.
+update-pi-full:
+    just update-pi
 
 # Audit pi's globally-visible state. Read-only.
 # Prints: binary version, extension symlinks, manifest packages,

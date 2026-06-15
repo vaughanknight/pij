@@ -249,6 +249,12 @@ pi --list-models claude-opus-4.7-1m-internal
 pi --model github-copilot/claude-opus-4.7-1m-internal
 ```
 
+Known Copilot long-context customizations in `~/.pi/agent/models.json`:
+
+- `github-copilot/gpt-5.5` — built-in Copilot entry exists, but `modelOverrides` bumps it to `contextWindow: 1050000`.
+- `github-copilot/claude-opus-4.8` — Copilot's supported slug for Opus 4.8. `modelOverrides` labels it `Claude Opus 4.8-1M (Copilot)` and sets `contextWindow: 1000000` / `maxTokens: 64000`. Do **not** create a `-1m` custom-model alias unless pi gains an upstream-model-id field: custom ids are sent to Copilot as-is and Copilot rejects unknown ids with `model_not_supported`.
+- `github-copilot/claude-opus-4.7-1m-internal` — custom model entry, not just an override.
+
 ### Per-family api routing
 
 The `api` field **must** match the model family — Copilot routes Claude

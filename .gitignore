@@ -11,6 +11,11 @@ session-state/
 # Local agent / tooling state
 .chainglass/
 .fs2/graph.pickle
+.pi/pi-mono-build.txt
+.pi/pi-fork-build.txt
+
+# Generated review artifacts (raw computed diffs)
+docs/plans/*/reviews/_computed.diff
 
 # Pi install artifacts (third-party extension code; analog of node_modules)
 .pi/git/
