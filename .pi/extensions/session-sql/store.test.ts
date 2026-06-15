@@ -1,11 +1,4 @@
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	realpathSync,
-	rmSync,
-	symlinkSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -488,4 +481,3 @@ describe("executeAtPath", () => {
 		expect(existsSync(target)).toBe(false);
 	});
 });
-

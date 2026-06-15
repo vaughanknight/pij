@@ -1,16 +1,23 @@
 // Smoke scenario for {{name}}. Runs via `npm run smoke -- {{name}}`.
 //
-// Each step sends keystrokes into a tmux session running pi (autoload from
-// pij root) and (optionally) checks that captured output matches a regex.
+// Steps drive pi through the Driver SDK's current discriminated-union Step
+// shape. Keep smoke deterministic: prefer slash commands over model tool
+// selection.
 
-export default {
+import type { Scenario } from "../../../harness/driver/index.js";
+
+const scenario: Scenario = {
 	name: "{{name}}",
 	steps: [
 		{
-			send: "/{{name}}",
+			kind: "type",
+			text: "/{{name}}",
+			press: "Enter",
 			expect: /not implemented/,
-			delay: 1500,
+			expectTimeoutMs: 5000,
 		},
-		// TODO: add real steps once /{{name}} is implemented
+		// TODO: add real steps once /{{name}} is implemented.
 	],
 };
+
+export default scenario;

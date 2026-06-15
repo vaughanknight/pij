@@ -14,10 +14,7 @@ export default function (pi: ExtensionAPI) {
 
 	function refreshStatus(ctx: ExtensionContext): void {
 		const n = store.count();
-		ctx.ui.setStatus(
-			"{{name}}",
-			n === 0 ? "" : `{{name}}: ${n}`,
-		);
+		ctx.ui.setStatus("{{name}}", n === 0 ? undefined : `{{name}}: ${n}`);
 	}
 
 	// Pattern P10: one handler for session_start, all reasons.
