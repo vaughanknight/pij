@@ -74,3 +74,18 @@ security posture. **AC-12 amended in the plan** (clarifying reading, not a
 weakening): gates + integration smoke green in CI; live Driver `/pij` smoke green
 locally (hosted CI has no tmux/pi). Recorded here + in the plan so review/merge
 sees it (closes validation F2).
+
+## T004 — Docs (README + docs/how/pij.md)
+
+`docs/how/pij.md` — the canonical guide: the economic thesis, setup (`just pij` /
+`npm link` / `PIJ_HOME` / `PIJ_SESSION_ID`), the full **CLI reference** (6 verbs +
+flags + exit codes, grounded in `core/cli.ts`), the **message + receipt protocol**
+(raw body framed once on receipt; idle→immediate / busy→steer; receipts observe-only,
+recorded never injected), the **event stream** (tail --since / state stall / path),
+and the **parent/worker workflow** (7-step loop + use cases, from workshop 002).
+README gains a "pij — peer session messaging" section linking the guide.
+
+Note: workshop 002 predates the receipts feature ("no acks") — the docs document
+the **as-built** behaviour (receipts exist, observe-only). AGENTS.md self-announce
+snippet included in the guide (matches `announceText` @ `core/message.ts:54`) — the
+static copy lands in `.pi/extensions/pij/AGENTS.md` in T005.

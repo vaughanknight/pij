@@ -19,6 +19,25 @@ and the pattern library, see [`AGENTS.md`](./AGENTS.md). For the
 Boot/Interact/Observe contract, see
 [`docs/project-rules/harness.md`](./docs/project-rules/harness.md).
 
+## pij — peer session messaging
+
+`pij` lets two running pi sessions in the same repo talk to each other and observe
+each other's work in near-real-time — a parent (expensive, reviewing) session
+instructs a cheaper worker session, then follows its event stream incrementally
+and fires feedback. File-backed, fire-and-forget; no server.
+
+```bash
+just pij list --here              # discover peer sessions (★ = you)
+just pij send <id> "do X"          # message a peer (your id is stamped)
+just pij tail <id> --since N      # read a peer's new events (cheap review)
+just pij state <id>               # peer working/idle + liveness + age
+npm run smoke -- pij              # in-pi boot/announce smoke (local)
+```
+
+After `just install` (which runs `npm link`), bare `pij …` resolves from any cwd.
+See [`docs/how/pij.md`](./docs/how/pij.md) for the full CLI reference, the
+message/receipt protocol, and the parent/worker workflow.
+
 ## session-sql
 
 `session-sql` is a pi extension that gives the current pi session a private
