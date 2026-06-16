@@ -77,6 +77,10 @@ test:
 smoke:
     npm run smoke
 
+# Run the pij CLI in-repo (no global link needed): `just pij list --here`.
+pij *ARGS:
+    npx tsx .pi/extensions/pij/cli.ts {{ARGS}}
+
 # Manage third-party pi-extensions via .pi/packages.yaml.
 pkg *ARGS:
     npm run pkg -- {{ARGS}}

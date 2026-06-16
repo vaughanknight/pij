@@ -39,3 +39,15 @@ One cohesive pi-free module (P2/P4/P8): `parseArgs(argv)→Result<ParsedCommand>
 
 | D2 | `dispatch` stays pure + one-shot; the two imperative behaviours (`--follow` tail loop, `--wait` receipt poll) are surfaced as a `CliResult.follow` hint for the bin instead of leaking I/O into the core. | Keeps `core/` testable vs fakes; the bin owns the only loops. |
 | D3 | `EventLogPort.read(query)` already filters since/type/last, so `tail` needs no separate `filterEvents` call; `ProcessPort.env` gives whoami its `PIJ_SESSION_ID` read — both are cleaner than the dossier's first cut. | Less code; fewer moving parts. |
+
+## T009 — thin `cli.ts` bin + invocation wiring
+
+`cli.ts` (the `pij` bin): wires the real fs adapters (`FsRegistry`/`FsEventLog`-per-id/`FsChannel`/`NodeProcess`) to the pure `dispatch`, owns Node I/O (argv/stdout/stderr/exit) and the **only two loops** — `--follow` (poll the peer log from the trailer cursor, print new batches) and `--wait` (poll self's `receipt` events, `parseReceiptBody`-match the messageId until `delivered` or timeout). `E-NOREG` (exit 3) is a bin pre-check (`~/.pij` absent). Invocation: `package.json` `bin.pij → .pi/extensions/pij/cli.ts` (tsx shebang; `npm link` makes bare `pij` resolve as the boot announce claims) **and** a `just pij *ARGS` recipe for in-repo use.
+
+**Proven live** against the running peer sessions:
+- `just pij list` → both peers with `state`/`liveness`/folder (`pij-21756 idle stale`, `pij-95351 idle dead`).
+- `just pij whoami` → `E-AMBIG` (exit 2) from a non-pij shell; `PIJ_SESSION_ID=pij-21756 just pij whoami --json` → correct `{id,folder,dataDir,state,pid}`.
+- `just pij state ghost` → exit 2 (E-NOID); `just pij frobnicate` → exit 64 (E-ARG); `state`/`path --events` render correctly.
+- pij typecheck + Biome clean; **single-pi-importer invariant holds** — `cli.ts` is NOT a pi importer (grep = `index.ts` + `adapters/pi-runtime.ts` only).
+
+| D4 | Bare `pij` on PATH (what the boot announce promises) needs `npm link` (or `./bin` on PATH); in-repo we expose `just pij` so no global state is required. Phase 5's `just install` should `npm link` the bin so a fresh clone gets bare `pij` for free. | Closes the announce-vs-reality gap the live peer hit; flagged for Phase 5. |

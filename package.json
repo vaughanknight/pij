@@ -3,6 +3,9 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
+	"bin": {
+		"pij": ".pi/extensions/pij/cli.ts"
+	},
 	"description": "Engineering harness for building pi extensions.",
 	"keywords": [
 		"pi-package"
