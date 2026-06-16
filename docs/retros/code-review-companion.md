@@ -144,3 +144,12 @@ upstreaming to minih as a coordinated PR.
 - **magicWand** (target: coordination): Add a dedicated briefing-only idle check-in, for example briefingPollThreshold, so a companion can ask whether the first milestone task is still expected without violating the post-task ackOf rule.
 - difficulties:
   - [annoying] coordination: A briefing counts as first contact and disables first-contact nudging, while no task has completed so post-task nudging is also disabled. That creates a long quiet wait if the orchestrator sends a briefing but no milestone task. (workaround: Stayed in the required bounded long-poll loop until the default idle safety budget was reached, then exited with idle_budget.)
+
+## 2026-06-16T04:07:30.073Z — code-review-companion / 2026-06-16T13-48-24-415Z-308c
+
+- runId: 2026-06-16T13-48-24-415Z-308c
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-06-16T13-48-24-415Z-308c
+- summary: Reviewed Plan 014 Phase 1 across T001, T002-T011, and the final fix commit. Initial T001 review found three issues: missing domain-map integration, placeholder extension AGENTS.md, and premature completed-core history wording. The pure core, ports, fake adapters, and 50 vitest specs in d549dfe passed review and the existing test/typecheck/lint gates. The final 6203775 fix sufficiently addressed the outstanding domain-map and AGENTS.md findings; no unresolved peer requests remain.
+- **magicWand** (target: minih): Have minih expose and validate a canonical projectRoot for coordinated agents, failing early if $MINIH_PROJECT_ROOT points at the run directory instead of the repo root.
+- difficulties:
+  - [degrading] config: $MINIH_PROJECT_ROOT resolved to the run folder even though the prompt said to use it as the project root, so the first docs/plans lookup incorrectly found no plan tree. (workaround: Used the known Git repository root from context and verified the active plan from /Users/jordanknight/pi-hacking/pij.)

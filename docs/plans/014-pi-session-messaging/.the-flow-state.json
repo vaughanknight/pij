@@ -3,13 +3,13 @@
   "slug": "pi-session-messaging",
   "plan_dir": "docs/plans/014-pi-session-messaging",
   "mode": "Full",
-  "current_stage": "awaiting-6",
-  "pending_command": "/the-flow 6 implement --phase \"Phase 1: Domain + pure core + ports + fakes\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
+  "current_stage": "awaiting-5",
+  "pending_command": "/the-flow 5 tasks --phase \"Phase 2: Adapters (fs registry/event-log/channel + pi-runtime)\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
   "intent": "pij: two live pi sessions converse (parent reviewer + cheaper worker), with fire-and-forget self-identifying messaging, remote commands (compact first), and an observable per-session event stream (seq/offset/type filters) + state/liveness. Hexagonal core + DI, CI/vitest/biome/npm-audit. Phase-1 inject path proven.",
   "milestones_total": 7,
-  "milestones_done": 3,
-  "last_checkpoint_at": "2026-06-16T03:05:00Z",
+  "milestones_done": 4,
+  "last_checkpoint_at": "2026-06-16T04:08:00Z",
   "compacted_seams": [],
   "status": "active",
-  "notes": "Phase 1 tasks dossier prepared (T000–T012 + T009b, TDD-first) + validate-v2 inline = VALIDATED WITH FIXES. Delivery receipts (AC-13, finding 08) folded into spec/plan/dossier/workshop-001 after live prototype in scratch/receipt_test/ confirmed input.streamingBehavior + next-turn_start lifecycle. NEXT: implement Phase 1."
+  "notes": "Phase 1 IMPLEMENTED with live code-review companion (minih run 308c). Commits f46748e (scaffold+docs), d549dfe (pi-free core+ports+fakes+50 tests, companion APPROVE/0 findings), 7fd9acc (SDD artifacts+exec log), 6203775 (fix F001 domain-map + F002 AGENTS, companion verified APPROVE). Gates green: typecheck+lint+50 tests. Pre/phase-end harness seams = degraded (eng-harness installed but repo unadopted) -> ran on just gates. Companion retro harvested to docs/retros/code-review-companion.md (magicWand: minih should validate projectRoot; difficulty MH-001). NEXT: Phase 2 tasks (adapters)."
 }
