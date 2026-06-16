@@ -4,7 +4,7 @@
   "plan_dir": "docs/plans/014-pi-session-messaging",
   "mode": "Full",
   "current_stage": "awaiting-6",
-  "pending_command": "/the-flow 5 tasks --phase \"Phase 4: pij CLI\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
+  "pending_command": "/the-flow 6 implement --phase \"Phase 4: pij CLI\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
   "intent": "pij: two live pi sessions converse (parent reviewer + cheaper worker), with fire-and-forget self-identifying messaging, remote commands (compact first), and an observable per-session event stream (seq/offset/type filters) + state/liveness. Hexagonal core + DI, CI/vitest/biome/npm-audit. Phase-1 inject path proven.",
   "milestones_total": 7,
   "milestones_done": 4,
