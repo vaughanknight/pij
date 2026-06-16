@@ -51,3 +51,21 @@ One cohesive pi-free module (P2/P4/P8): `parseArgs(argv)→Result<ParsedCommand>
 - pij typecheck + Biome clean; **single-pi-importer invariant holds** — `cli.ts` is NOT a pi importer (grep = `index.ts` + `adapters/pi-runtime.ts` only).
 
 | D4 | Bare `pij` on PATH (what the boot announce promises) needs `npm link` (or `./bin` on PATH); in-repo we expose `just pij` so no global state is required. Phase 5's `just install` should `npm link` the bin so a fresh clone gets bare `pij` for free. | Closes the announce-vs-reality gap the live peer hit; flagged for Phase 5. |
+
+## Companion findings reconciliation
+
+| Finding | Sev | Commit (review) | Disposition |
+|---------|-----|-----------------|-------------|
+| **F001** — `parseArgs` too lenient (unknown flags / extra arity / non-numeric `--since`,`--lines` / `text`+`--command` both accepted / `--wait` ms not carried) vs the T002 E-ARG contract | HIGH | T002-T008 `fe768de` | **Fixed inline** `a031b70`: strict per-verb flag allow-list, arity cap, numeric validation, text-xor-command, `--command` needs a name, `--wait <ms>` parsed + threaded to the bin timeout. Added an E-ARG spec per case + a `--wait` ms spec (cli.test.ts 15). Re-pinged for verification. |
+
+## T010 — Phase gate
+
+All gates green: `just typecheck` clean, `just lint` clean (1 info, 0 errors), `just test` (full suite green, incl. the new `core/cli.test.ts` + the 3 D-A `session.test.ts` specs), and the **single-pi-importer invariant holds** (`grep 'from "@earendil-works'` = `index.ts` + `adapters/pi-runtime.ts` only — `cli.ts` + `core/cli.ts` are pi-free). CLI proven live against the running peer sessions (`list`/`whoami`/`state`/`path` + `E-NOID`/`E-ARG` exit codes). Two-window Driver smoke + CI are **Phase 5** (not this phase).
+
+## T0z — Harness phase-end (`--event phase-end`)
+
+Same `degraded` posture as T000 / Phases 1–3 (router installed, repo unadopted). Best-effort, narrated, non-blocking — the real phase-end evidence is the green `just` gates + the live CLI proof above.
+
+## Phase 4 complete
+
+All of T000–T0z are `[x]`. The `pij` CLI now gives agents/humans the act+observe surface: `whoami`/`list --here` (discover + self), `send <id> "…"` / `--command compact` (RAW body, receiver frames; commands via channel, no pi handle), `tail`/`state`/`path` (observe stream + liveness/stall + direct paths) — all over the pure fakes-tested `core/cli.ts`, with `cli.ts` a thin pi-free bin. Commits: `82a4ea9` (T001 D-A), `fe768de` (T002–T008 core), `e80fb4d` (T009 bin), `a031b70` (F001 fix).
