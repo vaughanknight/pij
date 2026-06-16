@@ -8,7 +8,7 @@
 // liveness/validateCommand/filterEvents via the ports) — no new logic. Node I/O
 // (fs, argv, exit) and the imperative --follow / --wait loops live in the bin.
 
-import { validateCommand } from "./commands.js";
+import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, resolveSelf } from "./discovery.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
 import { liveness } from "./state.js";
@@ -159,7 +159,8 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		case "send": {
 			const to = pos[0];
 			if (to === undefined) return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
-			if (flags.command === true) return err("E-ARG", "--command needs a name (allowed: compact)");
+			if (flags.command === true)
+				return err("E-ARG", `--command needs a name (allowed: ${ALLOWED_COMMANDS.join(", ")})`);
 			const command = typeof flags.command === "string" ? flags.command : undefined;
 			const text = pos[1];
 			if (command !== undefined && text !== undefined)
@@ -323,7 +324,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (cmd.command !== undefined) {
 				const v = validateCommand(cmd.command);
 				if (!v.ok)
-					return fail("E-CMD", `unknown command '${cmd.command}' (allowed: compact)`, cmd.json);
+					return fail(
+						"E-CMD",
+						`unknown command '${cmd.command}' (allowed: ${ALLOWED_COMMANDS.join(", ")})`,
+						cmd.json,
+					);
 				const del = deps.delivery.deliver({ from: self, to: cmd.to, body: "", command: v.value });
 				if (!del.ok) return fail(del.code, del.message, cmd.json);
 				messageId = del.value.messageId;

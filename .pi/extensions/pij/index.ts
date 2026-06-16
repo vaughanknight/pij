@@ -9,6 +9,7 @@ import type {
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
 import { PijSession } from "./core/session.js";
@@ -32,6 +33,10 @@ export default function (pi: ExtensionAPI): void {
 	let self = "";
 	let role: Role | undefined;
 	let disposeWatch: (() => void) | undefined;
+	// Captured from pi's ExtensionCommandContext on each `/pij` run (the only
+	// instant pi exposes newSession/reload). The receive watcher re-routes remote
+	// new|reload onto this; undefined until armed / after a consuming op.
+	let commandControl: CommandControl | undefined;
 
 	// Pattern P10: ONE session_start handler for every reason
 	// (startup/reload/new/resume/fork). Boot is idempotent — reload reuses the
@@ -54,7 +59,7 @@ export default function (pi: ExtensionAPI): void {
 			registry,
 			eventLog,
 			delivery: channel,
-			pi: new PiRuntimeAdapter(pi, ctx),
+			pi: new PiRuntimeAdapter(pi, ctx, () => commandControl),
 			process: new NodeProcess(),
 		});
 
@@ -104,9 +109,23 @@ export default function (pi: ExtensionAPI): void {
 				ctx.ui.notify("pij: not booted yet", "info");
 				return;
 			}
+			// Arm the command-control channel: this ctx is an ExtensionCommandContext,
+			// the one place pi hands out newSession/reload. Capture it so the receive
+			// watcher can fire remote new|reload, then drain anything queued while
+			// un-armed.
+			commandControl = {
+				newSession: () => {
+					void ctx.newSession();
+				},
+				reload: () => {
+					void ctx.reload();
+				},
+			};
+			const applied = session?.applyPendingControl() ?? [];
 			const peers = registry.list().filter((d) => d.id !== self).length;
+			const appliedNote = applied.length > 0 ? ` · applied ${applied.join("+")}` : "";
 			ctx.ui.notify(
-				`pij: ${self} · role=${role ?? "peer"} · peers ${peers} · events ${eventLog.count()}`,
+				`pij: ${self} · role=${role ?? "peer"} · peers ${peers} · events ${eventLog.count()}${appliedNote}`,
 				"info",
 			);
 		},

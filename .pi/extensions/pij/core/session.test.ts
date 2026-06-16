@@ -167,6 +167,36 @@ describe("PijSession.onInbound — commands (AC-6, finding 05)", () => {
 		expect(res).toMatchObject({ kind: "command-rejected", code: "E-CMD" });
 		expect(h.pi.compactCount).toBe(before);
 	});
+
+	it("new fires via the captured command context when armed; no compact, no inject", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.pi.injects.length = 0;
+		const res = h.session.onInbound({ from: "bob", to: "alice", body: "", command: "new" }, "c3");
+		expect(res).toMatchObject({ kind: "command-executed", command: "new" });
+		expect(h.pi.controlCalls).toEqual(["new"]);
+		expect(h.pi.compactCount).toBe(0);
+		expect(h.pi.injects).toHaveLength(0);
+	});
+
+	it("reload is deferred when un-armed: queued + wakes, then drained on /pij", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.pi.setArmed(false);
+		h.pi.injects.length = 0;
+		const res = h.session.onInbound(
+			{ from: "bob", to: "alice", body: "", command: "reload" },
+			"c4",
+		);
+		expect(res).toMatchObject({ kind: "command-deferred", command: "reload" });
+		expect(h.pi.controlCalls).toHaveLength(0);
+		expect(h.pi.injects[0]?.text).toContain("/reload");
+		// a `/pij` invocation arms the channel and drains the queue exactly once
+		h.pi.setArmed(true);
+		expect(h.session.applyPendingControl()).toEqual(["reload"]);
+		expect(h.pi.controlCalls).toEqual(["reload"]);
+		expect(h.session.applyPendingControl()).toEqual([]);
+	});
 });
 
 describe("PijSession.onInbound — receipts never wake the peer", () => {

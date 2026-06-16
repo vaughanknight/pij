@@ -86,11 +86,20 @@ export class FakeDelivery implements DeliveryPort {
 export class FakePiRuntime implements PiRuntimePort {
 	readonly injects: Array<{ text: string; mode: "immediate" | "steer" }> = [];
 	compactCount = 0;
+	/** Control ops that fired (only when armed). Assert against this in tests. */
+	readonly controlCalls: Array<"new" | "reload"> = [];
 
-	constructor(private idle = true) {}
+	constructor(
+		private idle = true,
+		/** When false, control() returns false (no command context armed). */
+		private armed = true,
+	) {}
 
 	setIdle(idle: boolean): void {
 		this.idle = idle;
+	}
+	setArmed(armed: boolean): void {
+		this.armed = armed;
 	}
 	isIdle(): boolean {
 		return this.idle;
@@ -100,6 +109,11 @@ export class FakePiRuntime implements PiRuntimePort {
 	}
 	compact(): void {
 		this.compactCount += 1;
+	}
+	control(command: "new" | "reload"): boolean {
+		if (!this.armed) return false;
+		this.controlCalls.push(command);
+		return true;
 	}
 }
 

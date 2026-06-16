@@ -7,7 +7,7 @@
 // (index.ts) is a thin pi-event -> coordinator translator that owns no logic,
 // so the behaviour here is proven against fakes before any live-pi smoke.
 
-import { validateCommand } from "./commands.js";
+import { type ControlCommand, isControlCommand, validateCommand } from "./commands.js";
 import { buildEvent } from "./events.js";
 import { announceText, frame, receiptBody } from "./message.js";
 import type {
@@ -63,6 +63,7 @@ export interface BootResult {
 export type InboundResult =
 	| { readonly kind: "delivered"; readonly state: "queued" | "delivered" }
 	| { readonly kind: "command-executed"; readonly command: string }
+	| { readonly kind: "command-deferred"; readonly command: string }
 	| { readonly kind: "command-rejected"; readonly code: PijErrorCode }
 	| { readonly kind: "receipt-recorded" };
 
@@ -76,6 +77,10 @@ export class PijSession {
 	private role: Role | undefined;
 	private seq = new SeqCounter(0);
 	private pending: PendingReceipt[] = [];
+	/** new|reload requests that arrived before a command context was armed; the
+	 *  `/pij` handler drains these via applyPendingControl() (finding: command
+	 *  context only exists inside a registered command handler). */
+	private pendingControl: ControlCommand[] = [];
 	private descriptor: SessionDescriptor | undefined;
 
 	constructor(private readonly ports: PijPorts) {}
@@ -134,16 +139,32 @@ export class PijSession {
 		}
 
 		// Remote command: only the allow-list reaches pi; unknown is rejected
-		// before any pi call (finding 05).
+		// before any pi call (finding 05). `compact` runs autonomously here;
+		// `new`/`reload` need a command context, so they route through control()
+		// and fall back to a pending queue (drained on the next `/pij`).
 		if (msg.command !== undefined) {
 			const v = validateCommand(msg.command);
 			if (!v.ok) {
 				this.capture("receipt", { messageId, command: msg.command, rejected: true, code: v.code });
 				return { kind: "command-rejected", code: v.code };
 			}
-			this.ports.pi.compact();
-			this.capture("receipt", { messageId, command: v.value, executed: true });
-			return { kind: "command-executed", command: v.value };
+			if (!isControlCommand(v.value)) {
+				this.ports.pi.compact();
+				this.capture("receipt", { messageId, command: v.value, executed: true });
+				return { kind: "command-executed", command: v.value };
+			}
+			if (this.ports.pi.control(v.value)) {
+				this.capture("receipt", { messageId, command: v.value, executed: true });
+				return { kind: "command-executed", command: v.value };
+			}
+			// Not armed: queue + wake the peer so a human can `/pij` to apply it.
+			this.pendingControl.push(v.value);
+			this.ports.pi.inject(
+				`[pij] ${msg.from} requested /${v.value}; run /pij in this session to apply.`,
+				this.ports.pi.isIdle() ? "immediate" : "steer",
+			);
+			this.capture("receipt", { messageId, command: v.value, deferred: true });
+			return { kind: "command-deferred", command: v.value };
 		}
 
 		// Free text: classify from the peer's idle state, frame the sender id so a
@@ -187,6 +208,24 @@ export class PijSession {
 	 *  showing it active. */
 	shutdown(): void {
 		this.ports.registry.remove(this.self);
+	}
+
+	/** Drain queued new|reload requests now that a command context is armed
+	 *  (called from the `/pij` command handler). Returns the commands applied. */
+	applyPendingControl(): ControlCommand[] {
+		if (this.pendingControl.length === 0) return [];
+		const applied: ControlCommand[] = [];
+		const still: ControlCommand[] = [];
+		for (const c of this.pendingControl) {
+			if (this.ports.pi.control(c)) {
+				applied.push(c);
+				this.capture("receipt", { command: c, executed: true, viaDrain: true });
+			} else {
+				still.push(c);
+			}
+		}
+		this.pendingControl = still;
+		return applied;
 	}
 
 	// ─── internals ──────────────────────────────────────────────────────────

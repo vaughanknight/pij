@@ -51,8 +51,13 @@ export interface PiRuntimePort {
 	isIdle(): boolean;
 	/** Inject text as user input; "steer" queues during a live turn. */
 	inject(text: string, mode: "immediate" | "steer"): void;
-	/** Trigger a context compaction (remote command: compact). */
+	/** Trigger a context compaction (remote command: compact). Always available
+	 *  — compact() lives on the long-lived ExtensionContext. */
 	compact(): void;
+	/** Run a command-context-only control op (new|reload). Returns true if a
+	 *  captured ExtensionCommandContext was armed and the op fired; false if not
+	 *  armed (caller should queue it for the next `/pij` invocation). */
+	control(command: "new" | "reload"): boolean;
 }
 
 /** OS-level seams: pid, liveness probe, clock, env. */
