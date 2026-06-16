@@ -45,6 +45,7 @@ export type ParsedCommand =
 			readonly text?: string;
 			readonly command?: string;
 			readonly wait: boolean;
+			readonly waitMs?: number;
 			readonly json: boolean;
 	  }
 	| {
@@ -71,7 +72,12 @@ export interface CliResult {
 	/** Set when the bin must keep going: --follow tails, --wait polls receipts. */
 	readonly follow?:
 		| { readonly kind: "tail"; readonly id: SessionId; readonly nextSince: number }
-		| { readonly kind: "wait"; readonly self: SessionId; readonly messageId: string };
+		| {
+				readonly kind: "wait";
+				readonly self: SessionId;
+				readonly messageId: string;
+				readonly timeoutMs?: number;
+		  };
 }
 
 /** Workshop-001 exit codes. */
@@ -115,16 +121,35 @@ function lex(argv: readonly string[], booleans: ReadonlySet<string>) {
 	return { pos, flags };
 }
 
-const BOOLEANS = new Set(["here", "json", "follow", "wait", "events", "state", "dir"]);
+const BOOLEAN_FLAGS = new Set(["here", "json", "follow", "events", "state", "dir"]);
+
+/** Flags each verb accepts — anything else is E-ARG. */
+const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
+	whoami: new Set(["json"]),
+	list: new Set(["here", "json"]),
+	send: new Set(["command", "wait", "json"]),
+	tail: new Set(["since", "type", "lines", "follow", "json"]),
+	state: new Set(["json"]),
+	path: new Set(["events", "state", "dir", "json"]),
+};
+/** Max positionals per verb (send allows id + text). */
+const MAX_POS: Record<string, number> = { whoami: 0, list: 0, send: 2, tail: 1, state: 1, path: 1 };
 
 export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	const verb = argv[0];
 	if (verb === undefined) return err("E-ARG", "usage: pij <whoami|list|send|tail|state|path> …");
-	const rest = argv.slice(1);
-	const { pos, flags } = lex(rest, BOOLEANS);
+	const allowed = ALLOWED_FLAGS[verb];
+	if (!allowed) return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|path)`);
+	const { pos, flags } = lex(argv.slice(1), BOOLEAN_FLAGS);
+	// strict: reject unknown flags and extra arity (finding F001).
+	for (const k of Object.keys(flags)) {
+		if (!allowed.has(k)) return err("E-ARG", `unknown flag --${k} for '${verb}'`);
+	}
+	if (pos.length > (MAX_POS[verb] ?? 0)) return err("E-ARG", `too many arguments for '${verb}'`);
 	const json = flags.json === true;
-	const num = (v: string | true | undefined): number | undefined =>
-		typeof v === "string" && /^\d+$/.test(v) ? Number(v) : undefined;
+	// number | undefined (absent) | "bad" (present but non-numeric -> E-ARG).
+	const pnum = (v: string | true | undefined): number | undefined | "bad" =>
+		v === undefined ? undefined : typeof v === "string" && /^\d+$/.test(v) ? Number(v) : "bad";
 
 	switch (verb) {
 		case "whoami":
@@ -134,22 +159,36 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		case "send": {
 			const to = pos[0];
 			if (to === undefined) return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
+			if (flags.command === true) return err("E-ARG", "--command needs a name (allowed: compact)");
 			const command = typeof flags.command === "string" ? flags.command : undefined;
 			const text = pos[1];
+			if (command !== undefined && text !== undefined)
+				return err("E-ARG", "pij send takes a <text> OR --command <name>, not both");
 			if (command === undefined && text === undefined)
 				return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
-			return ok({ verb: "send", to, text, command, wait: flags.wait === true, json });
+			let waitMs: number | undefined;
+			if (typeof flags.wait === "string") {
+				if (!/^\d+$/.test(flags.wait))
+					return err("E-ARG", "--wait takes an optional milliseconds value");
+				waitMs = Number(flags.wait);
+			}
+			return ok({ verb: "send", to, text, command, wait: flags.wait !== undefined, waitMs, json });
 		}
 		case "tail": {
 			const id = pos[0];
 			if (id === undefined)
 				return err("E-ARG", "usage: pij tail <id> [--since N --type T --lines N --follow]");
+			const since = pnum(flags.since);
+			if (since === "bad") return err("E-ARG", "--since takes a number");
+			const lines = pnum(flags.lines);
+			if (lines === "bad") return err("E-ARG", "--lines takes a number");
+			if (flags.type === true) return err("E-ARG", "--type takes an event type");
 			return ok({
 				verb: "tail",
 				id,
-				since: num(flags.since),
+				since,
 				type: typeof flags.type === "string" ? flags.type : undefined,
-				lines: num(flags.lines),
+				lines,
 				follow: flags.follow === true,
 				json,
 			});
@@ -299,7 +338,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const initial = (target.state ?? "idle") === "working" ? "queued" : "delivered";
 			const warn =
 				live === "stale" ? " (warning: peer is stale but alive — will see it on next read)" : "";
-			const follow = cmd.wait ? ({ kind: "wait", self, messageId } as const) : undefined;
+			const follow = cmd.wait
+				? ({ kind: "wait", self, messageId, timeoutMs: cmd.waitMs } as const)
+				: undefined;
 			if (cmd.json)
 				return {
 					stdout: JSON.stringify({

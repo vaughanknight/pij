@@ -83,11 +83,48 @@ describe("parseArgs", () => {
 		});
 	});
 
-	it("E-ARG on bad invocation", () => {
+	it("E-ARG on bad invocation (strict: flags, arity, numerics, text-xor-command)", () => {
 		expect(parseArgs([])).toMatchObject({ ok: false, code: "E-ARG" });
 		expect(parseArgs(["frobnicate"])).toMatchObject({ ok: false, code: "E-ARG" });
 		expect(parseArgs(["send", "w3"])).toMatchObject({ ok: false, code: "E-ARG" }); // no text + no command
 		expect(parseArgs(["tail"])).toMatchObject({ ok: false, code: "E-ARG" });
+		// unknown flag
+		expect(parseArgs(["list", "--bogus"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["whoami", "--here"])).toMatchObject({ ok: false, code: "E-ARG" });
+		// extra positionals
+		expect(parseArgs(["whoami", "extra"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["state", "a", "b"])).toMatchObject({ ok: false, code: "E-ARG" });
+		// bad numerics
+		expect(parseArgs(["tail", "w3", "--since", "nope"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["tail", "w3", "--lines", "x"])).toMatchObject({ ok: false, code: "E-ARG" });
+		// text AND command are mutually exclusive; --command needs a name
+		expect(parseArgs(["send", "w3", "hi", "--command", "compact"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["send", "w3", "--command"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["send", "w3", "hi", "--wait", "nope"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("--wait carries an optional ms; bare --wait is a boolean", () => {
+		expect(parseArgs(["send", "w3", "hi", "--wait", "5000"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", wait: true, waitMs: 5000 },
+		});
+		expect(parseArgs(["send", "w3", "hi", "--wait"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", wait: true },
+		});
+		expect(parseArgs(["send", "w3", "hi"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", wait: false },
+		});
 	});
 });
 

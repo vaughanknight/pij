@@ -53,7 +53,12 @@ function followTail(cmd: ParsedCommand & { verb: "tail" }, d: CliDeps, fromSeq: 
 
 /** --wait: poll self's receipt events until the delivered receipt for this
  *  messageId lands (F3 — parse receiptBody), or the timeout elapses. */
-function waitReceipt(d: CliDeps, self: string, messageId: string): void {
+function waitReceipt(
+	d: CliDeps,
+	self: string,
+	messageId: string,
+	timeoutMs = WAIT_TIMEOUT_MS,
+): void {
 	const started = Date.now();
 	const log = d.eventLogFor(self);
 	const seen = new Set<string>();
@@ -68,7 +73,7 @@ function waitReceipt(d: CliDeps, self: string, messageId: string): void {
 			process.stdout.write(`receipt → ${r.state}\n`);
 			if (r.state === "delivered") process.exit(0);
 		}
-		if (Date.now() - started > WAIT_TIMEOUT_MS) {
+		if (Date.now() - started > timeoutMs) {
 			process.stdout.write("receipt → (timeout; check `pij tail` later)\n");
 			process.exit(0);
 		}
@@ -96,7 +101,7 @@ function main(): void {
 		return; // loops until killed
 	}
 	if (res.follow?.kind === "wait") {
-		waitReceipt(d, res.follow.self, res.follow.messageId);
+		waitReceipt(d, res.follow.self, res.follow.messageId, res.follow.timeoutMs);
 		return;
 	}
 	process.exit(res.exitCode);
