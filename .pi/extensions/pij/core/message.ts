@@ -35,6 +35,20 @@ export function receiptBody(messageId: string, state: ReceiptState): string {
 	return `[pij receipt ${messageId}] ${state}`;
 }
 
+const RECEIPT_RE = /^\[pij receipt ([^\]]+)\] (queued|delivered)$/;
+
+/** Parse a receipt body back into { messageId, state }, or null if not a
+ *  receipt (used by `pij send --wait` to correlate the delivered receipt and
+ *  by `pij tail` to summarise receipt events). */
+export function parseReceiptBody(body: string): { messageId: string; state: ReceiptState } | null {
+	const m = RECEIPT_RE.exec(body);
+	if (!m) return null;
+	const messageId = m[1];
+	const state = m[2];
+	if (messageId === undefined || state === undefined) return null;
+	return { messageId, state: state as ReceiptState };
+}
+
 /** Boot self-announce injected at session start (spec AC-2): tells the session
  *  its own id + how to use pij, so it can be addressed and can reply. */
 export function announceText(self: SessionId, role?: Role): string {
