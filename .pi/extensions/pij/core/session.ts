@@ -8,6 +8,7 @@
 // so the behaviour here is proven against fakes before any live-pi smoke.
 
 import { validateCommand } from "./commands.js";
+import { buildEvent } from "./events.js";
 import { announceText, frame, receiptBody } from "./message.js";
 import type {
 	DeliveryPort,
@@ -23,7 +24,6 @@ import {
 	markDelivered,
 } from "./receipts.js";
 import { SeqCounter } from "./seq.js";
-import { buildEvent } from "./events.js";
 import type {
 	MessageReceipt,
 	PijErrorCode,
@@ -76,6 +76,7 @@ export class PijSession {
 	private role: Role | undefined;
 	private seq = new SeqCounter(0);
 	private pending: PendingReceipt[] = [];
+	private descriptor: SessionDescriptor | undefined;
 
 	constructor(private readonly ports: PijPorts) {}
 
@@ -93,8 +94,11 @@ export class PijSession {
 			eventsPath: input.eventsPath,
 			pid: this.ports.process.pid(),
 			startedAt: existing?.startedAt ?? this.nowIso(),
+			state: existing?.state ?? "idle",
+			lastEventAt: existing?.lastEventAt,
 		};
 		this.ports.registry.write(descriptor);
+		this.descriptor = descriptor;
 		this.self = input.id;
 		this.role = input.role;
 		this.seq = new SeqCounter(this.ports.eventLog.lastSeq());
@@ -106,7 +110,11 @@ export class PijSession {
 
 	/** Append one captured pi-activity event (monotonic seq + ISO timestamp). */
 	capture(type: string, data?: unknown): void {
-		this.ports.eventLog.append(buildEvent(this.seq.next(), type, this.ports.process.now(), data));
+		const nowMs = this.ports.process.now();
+		this.ports.eventLog.append(buildEvent(this.seq.next(), type, nowMs, data));
+		// D-A: refresh the descriptor's age cursor so `pij state`/`list` read a
+		// fresh lastEventAt without parsing events.ndjson (AC-9/7a).
+		this.persist({ lastEventAt: new Date(nowMs).toISOString() });
 	}
 
 	/** Handle one inbound channel message: a receipt (record only), a remote
@@ -155,6 +163,7 @@ export class PijSession {
 	/** turn_start (ISO). Resolves any queued receipt whose steered message has
 	 *  now been consumed by the live turn (finding 08). */
 	onTurnStart(iso: string): void {
+		this.persist({ state: "working" }); // D-A: a live turn => working
 		if (this.pending.length === 0) return;
 		const still: PendingReceipt[] = [];
 		for (const p of this.pending) {
@@ -168,6 +177,12 @@ export class PijSession {
 		this.pending = still;
 	}
 
+	/** turn_end: the session is back to idle (D-A) — a working->idle that the
+	 *  CLI reads from the descriptor. Carries no receipt work. */
+	onTurnEnd(): void {
+		this.persist({ state: "idle" });
+	}
+
 	/** session_shutdown: drop this session's descriptor so `pij list` stops
 	 *  showing it active. */
 	shutdown(): void {
@@ -175,6 +190,16 @@ export class PijSession {
 	}
 
 	// ─── internals ──────────────────────────────────────────────────────────
+	/** Merge a patch into the live descriptor and persist it (D-A). No-op before
+	 *  boot. */
+	private persist(
+		patch: Partial<Pick<SessionDescriptor, "state" | "lastEventAt" | "pid">>,
+	): void {
+		if (!this.descriptor) return;
+		this.descriptor = { ...this.descriptor, ...patch };
+		this.ports.registry.write(this.descriptor);
+	}
+
 	/** Record a receipt as an event AND send it back to its target as a
 	 *  kind:receipt message (which the target records but never injects). */
 	private emitReceipt(r: MessageReceipt): void {

@@ -32,6 +32,13 @@ export interface SessionDescriptor {
 	readonly pid: number;
 	/** ISO-8601 session start time. */
 	readonly startedAt: string;
+	/** Coarse working/idle signal (D-A): `working` between turn_start and
+	 *  turn_end, else `idle`. Lets `pij state` report working/static without a
+	 *  stream parse (AC-9); `working` + a stale `lastEventAt` = a stall (AC-7a). */
+	readonly state?: "working" | "idle";
+	/** ISO-8601 timestamp of this session's newest captured event (D-A) — the
+	 *  cheap age source for liveness/stall, read straight from the descriptor. */
+	readonly lastEventAt?: string;
 }
 
 // ─── event stream ─────────────────────────────────────────────────────────

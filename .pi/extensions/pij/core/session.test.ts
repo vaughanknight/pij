@@ -10,8 +10,8 @@ import {
 	FakeProcess,
 	FakeRegistry,
 } from "../adapters/fakes.js";
-import { PijSession } from "./session.js";
 import type { BootInput, PijPorts } from "./session.js";
+import { PijSession } from "./session.js";
 import type { PijEvent, SessionDescriptor } from "./types.js";
 
 const T0 = Date.parse("2026-06-16T00:00:00.000Z");
@@ -27,12 +27,14 @@ function bootInput(over: Partial<BootInput> = {}): BootInput {
 	};
 }
 
-function harness(opts: {
-	idle?: boolean;
-	registry?: readonly SessionDescriptor[];
-	events?: readonly PijEvent[];
-	now?: number;
-} = {}) {
+function harness(
+	opts: {
+		idle?: boolean;
+		registry?: readonly SessionDescriptor[];
+		events?: readonly PijEvent[];
+		now?: number;
+	} = {},
+) {
 	const registry = new FakeRegistry(opts.registry ?? []);
 	const eventLog = new FakeEventLog(opts.events ?? []);
 	const delivery = new FakeDelivery();
@@ -161,10 +163,7 @@ describe("PijSession.onInbound — commands (AC-6, finding 05)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
 		const before = h.pi.compactCount;
-		const res = h.session.onInbound(
-			{ from: "bob", to: "alice", body: "", command: "rm-rf" },
-			"c2",
-		);
+		const res = h.session.onInbound({ from: "bob", to: "alice", body: "", command: "rm-rf" }, "c2");
 		expect(res).toMatchObject({ kind: "command-rejected", code: "E-CMD" });
 		expect(h.pi.compactCount).toBe(before);
 	});
@@ -183,6 +182,45 @@ describe("PijSession.onInbound — receipts never wake the peer", () => {
 		expect(h.pi.injects).toHaveLength(0); // the parent is NOT woken
 		expect(h.delivery.outbox).toHaveLength(0); // no receipt-of-a-receipt
 		expect(h.eventLog.read({ type: "receipt" })).toHaveLength(1);
+	});
+});
+
+describe("PijSession descriptor state (D-A / AC-9, AC-7a)", () => {
+	it("boots idle, goes working on turn_start, idle again on turn_end", () => {
+		const h = harness({ now: T0 });
+		h.session.boot(bootInput());
+		expect(h.registry.read("alice")?.state).toBe("idle");
+		h.session.onTurnStart(new Date(T0).toISOString());
+		expect(h.registry.read("alice")?.state).toBe("working");
+		h.session.onTurnEnd();
+		expect(h.registry.read("alice")?.state).toBe("idle");
+	});
+
+	it("capture refreshes lastEventAt to the event's ISO timestamp", () => {
+		const h = harness({ now: T0 });
+		h.session.boot(bootInput());
+		expect(h.registry.read("alice")?.lastEventAt).toBeUndefined();
+		h.process.advance(2000);
+		h.session.capture("tool_call");
+		expect(h.registry.read("alice")?.lastEventAt).toBe(new Date(T0 + 2000).toISOString());
+	});
+
+	it("reload preserves state + lastEventAt", () => {
+		const existing: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			folder: "/repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			state: "working",
+			lastEventAt: "2026-06-15T01:00:00.000Z",
+		};
+		const h = harness({ registry: [existing], now: T0 });
+		h.session.boot(bootInput());
+		expect(h.registry.read("alice")?.state).toBe("working");
+		expect(h.registry.read("alice")?.lastEventAt).toBe("2026-06-15T01:00:00.000Z");
 	});
 });
 

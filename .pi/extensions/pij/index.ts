@@ -87,6 +87,10 @@ export default function (pi: ExtensionAPI): void {
 	// (finding 08). timestamp is epoch ms; the coordinator speaks ISO.
 	pi.on("turn_start", (event) => session?.onTurnStart(new Date(event.timestamp).toISOString()));
 
+	// turn_end flips the descriptor back to idle (D-A) so `pij state` reads
+	// working/idle without parsing the stream.
+	pi.on("turn_end", () => session?.onTurnEnd());
+
 	pi.on("session_shutdown", async () => {
 		disposeWatch?.();
 		disposeWatch = undefined;
