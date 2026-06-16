@@ -126,9 +126,21 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(r.out.trim()).toBe(join(HOME, "pij-B", "events.ndjson"));
 	});
 
-	it("AC-6 command: invalid exit codes are honored (E-NOID exit 2)", () => {
+	it("AC-6 errors: invalid target exit codes are honored (E-NOID exit 2)", () => {
 		const r = pij(["send", "pij-MISSING", "hi"], { PIJ_SESSION_ID: "pij-A" });
 		expect(r.code).toBe(2);
+	});
+
+	it("AC-6 command: send --command compact is accepted + the peer executes it", () => {
+		const r = pij(["send", "pij-B", "--command", "compact"], { PIJ_SESSION_ID: "pij-A" });
+		expect(r.code).toBe(0);
+		const cmd = readdirSync(join(HOME, "pij-B", "inbox"))
+			.map((f) => JSON.parse(readFileSync(join(HOME, "pij-B", "inbox", f), "utf8")) as PijMessage)
+			.find((m) => m.command === "compact");
+		expect(cmd).toBeTruthy();
+		// the receiver runs the allow-listed command through its runtime (real coordinator).
+		const res = B.onInbound(cmd as PijMessage, "m-cmd-1");
+		expect(res).toMatchObject({ kind: "command-executed", command: "compact" });
 	});
 
 	it("AC-13 receipt loop: B records inbound + emits a receipt; A records it; tail shows it", () => {

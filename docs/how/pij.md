@@ -49,7 +49,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 | Verb | Usage | Does |
 |------|-------|------|
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
-| `list` | `pij list [--here]` | List known sessions (id, role, liveness, folder). `--here` filters to the current folder; self is marked `★`. |
+| `list` | `pij list [--here]` | List known sessions (id, state, liveness, folder). `--here` filters to the current folder; self is marked `★`. |
 | `send` | `pij send <id> "<text>"` · `pij send <id> --command <name>` | Message a peer (your id is stamped automatically). `--command compact` runs an allow-listed command on the peer. `--wait [ms]` blocks for the delivery receipt. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
@@ -82,7 +82,7 @@ pij list --here               # bare `pij` on PATH from any cwd
   peer) or `queued` → `delivered` (busy peer). Receipts ride back as ordinary
   `kind:"receipt"` messages and are **recorded as events** on the sender — they are
   never injected, so they never wake or bill the parent. See them with
-  `pij tail <self> --type receipt` or `pij state`.
+  `pij tail <self> --type receipt`.
 
 ---
 
