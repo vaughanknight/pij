@@ -49,6 +49,8 @@ install:
     @echo
     @echo "=== 4/6 link pij extensions globally ==="
     just link
+    @echo "--- link the pij CLI bin (bare \`pij\` on PATH) ---"
+    npm link
     @echo
     @echo "=== 5/6 install vetted packages globally ==="
     just pkg bootstrap
@@ -240,6 +242,8 @@ update-pi:
     @echo
     @echo "=== link pij extensions globally ==="
     just link
+    @echo "--- link the pij CLI bin (bare \`pij\` on PATH) ---"
+    npm link
     @echo
     @echo "=== ensure vetted pi packages are installed globally ==="
     just pkg bootstrap

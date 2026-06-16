@@ -52,3 +52,27 @@ just lint              # Biome (scratch/ is excluded)
 npx vitest run .pi/extensions/pij    # the core + fakes specs
 just self-check        # before declaring any task done
 ```
+
+## Self-announce snippet (AC-2)
+
+At session start the extension injects a runtime announce (the `announceText`
+in `core/message.ts`) telling the session its id + how to use pij. For a fresh
+agent reading a project's `AGENTS.md` *before* that fires, paste this static
+block into the project AGENTS.md:
+
+```md
+## pij — talk to peer pi sessions
+
+If another pi session is running in this repo, you can message and observe it:
+- `pij list --here` — discover peer sessions in this folder (★ = you)
+- `pij send <id> "<text>"` — message a peer (your id is stamped automatically)
+- `pij send <id> --command compact` — run an allow-listed command on a peer
+- `pij tail <id> --since N` — read a peer's new events (cheap incremental review)
+- `pij state <id>` — a peer's working/idle + liveness + latest-event age
+- `pij path <id> --events` — the peer's events.ndjson path for direct reading
+
+You are stamped with a stable id at boot (`pij whoami`). Full guide: docs/how/pij.md
+```
+
+`just install` runs `npm link`, so bare `pij` resolves on PATH exactly as the
+announce promises; in-repo, `just pij …` works without a global link.

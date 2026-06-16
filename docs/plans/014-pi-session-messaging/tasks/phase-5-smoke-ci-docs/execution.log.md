@@ -89,3 +89,15 @@ Note: workshop 002 predates the receipts feature ("no acks") — the docs docume
 the **as-built** behaviour (receipts exist, observe-only). AGENTS.md self-announce
 snippet included in the guide (matches `announceText` @ `core/message.ts:54`) — the
 static copy lands in `.pi/extensions/pij/AGENTS.md` in T005.
+
+## T005 — Self-announce snippet + `npm link` PATH (AC-2, D4)
+
+`.pi/extensions/pij/AGENTS.md`: added the static "## pij — talk to peer pi sessions"
+self-announce snippet (mirrors `announceText`), so a fresh agent reading AGENTS.md
+knows pij exists before the runtime announce fires. AC-2's two halves are now both
+covered: runtime announce (Phase 3, live-verified) + this static snippet.
+
+`justfile`: `npm link` added to both `install` and `update-pi` (step 4, after
+`just link`). **D4 closed** — proven live: after `npm link`, bare `pij whoami` →
+"pij session: pij-7794" (this session) from `/Users/jordanknight/.npm-global/bin/pij`.
+In-repo, `just pij …` needs no global link. `just --list` still parses.
