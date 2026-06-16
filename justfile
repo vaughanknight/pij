@@ -8,6 +8,11 @@
 #
 # See AGENTS.md § Self-improvement loop — encode, don't document.
 
+# Forward variadic recipe args verbatim via "$@" (preserves quoting,
+# spaces, and shell metacharacters like () so `just pij send <id> "a (b)"`
+# works). Without this, {{ARGS}} re-splits and the shell chokes on ().
+set positional-arguments
+
 # Default recipe: list available recipes.
 default:
     @just --list
@@ -74,19 +79,20 @@ format:
 
 # Run vitest. Optionally scope to file(s)/pattern: `just test path/to/x.test.ts`.
 test *ARGS:
-    npm run test -- {{ARGS}}
+    npm run test -- "$@"
 
 # tmux-driven end-to-end smoke (Driver SDK).
 smoke:
     npm run smoke
 
 # Run the pij CLI in-repo (no global link needed): `just pij list --here`.
+# Quote message bodies normally: `just pij send pij-X "hello (world)"`.
 pij *ARGS:
-    npx tsx .pi/extensions/pij/cli.ts {{ARGS}}
+    npx tsx .pi/extensions/pij/cli.ts "$@"
 
 # Manage third-party pi-extensions via .pi/packages.yaml.
 pkg *ARGS:
-    npm run pkg -- {{ARGS}}
+    npm run pkg -- "$@"
 
 # --- composite gates ---
 

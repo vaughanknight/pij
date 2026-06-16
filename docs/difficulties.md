@@ -108,3 +108,15 @@ and an encoded fix (durable). Severity guides priority.
   command happy-path test, F004/F005 doc accuracy, F001 T001 done-when, F006 T006
   done-when honesty (self-check caveat). F003 (report-only `npm audit` vs AC-12
   "green in CI") escalated to the user as a policy sign-off.
+
+## 2026-06-16 — Live pij two-session test (pij-7794 ↔ pij-21756)
+
+- **FIXED [annoying] `just pij send` broke on shell metachars** — the `pij *ARGS`
+  (and `test`/`pkg`) recipes interpolated `{{ARGS}}`, which re-splits args and lets
+  the shell interpret `()` etc., so `just pij send <id> "msg (with parens)"` failed
+  with a bash syntax error. **Encoded the fix immediately**: added
+  `set positional-arguments` to the justfile + switched the three variadic recipes
+  to forward `"$@"` (preserves quoting/spaces/metachars). Verified live: the exact
+  failing message now sends cleanly; `list`/`whoami`/`pkg`/`test <file>` unaffected.
+  Surfaced by the first real cross-session messaging test — the system otherwise
+  worked end-to-end (send → receive → reply → receipts → state/tail observation).
