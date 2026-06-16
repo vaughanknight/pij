@@ -101,3 +101,36 @@ covered: runtime announce (Phase 3, live-verified) + this static snippet.
 `just link`). **D4 closed** — proven live: after `npm link`, bare `pij whoami` →
 "pij session: pij-7794" (this session) from `/Users/jordanknight/.npm-global/bin/pij`.
 In-repo, `just pij …` needs no global link. `just --list` still parses.
+
+## T006 — Closeout (gates + domain history)
+
+**pij gates all green**: `just typecheck` clean, `just lint` clean, `just test`
+(incl. the new `cli.integration.test.ts`) green, **`smoke: pij ✓`** (Driver `/pij`
+status line), `snapshots-check ✓`, `pkg audit` report-only (2 pre-existing flagged
+entries, unrelated). Single-pi-importer invariant holds.
+
+**Honest caveat on `just self-check`**: it exits non-zero, but **not** because of
+pij — the failure is the unrelated **`pi-peacock`** smoke hitting an Anthropic
+`400` extra-usage/billing error + a model-config mismatch (expects `gpt-5.5`, the
+env runs `claude-opus-4-7`). Environmental + another extension's concern, not
+Phase 5's. Logged as a separate difficulty. pij's own slice of self-check is green.
+
+**Domain docs**: `docs/domains/pij-messaging/domain.md` § History + `registry.md`
+§ History both gain a "Phases 2–5 complete" row. `pij-messaging` was already
+registered `active`; `domain-map.md` needs no edit (no new cross-domain edges —
+pij-messaging stays self-contained with its pi-free core).
+
+## T0z — Harness phase-end (`--event phase-end`)
+
+Same `degraded` posture as T000 (router present, repo unadopted). Best-effort,
+non-blocking — the real phase-end evidence is the green pij gates + the live smoke
+above.
+
+## Phase 5 complete — Plan 014 shipped
+
+All T000–T0z `[x]`. pij now: discovers peers, messages (raw body framed on
+receipt; idle/busy; observe-only receipts), serves commands, streams + observes
+activity, and is proven (two-peer integration smoke in CI + Driver `/pij` smoke
+local), gated (CI typecheck/lint/test + report-only audit), and documented
+(`docs/how/pij.md` + README + AGENTS.md snippet + bare-`pij` PATH). Commits:
+`5c7fb0d` T001, `832610d` T002, `29e7098` T003, `181d822` T004, `4675eb0` T005.

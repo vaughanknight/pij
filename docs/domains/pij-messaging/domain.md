@@ -91,3 +91,4 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | Plan | Change | Date |
 |------|--------|------|
 | 014-pi-session-messaging / Phase 1 | Created `pij-messaging` domain; pi-free core (8 modules) + fake adapters + 50 unit tests; ports incl. `EventLogPort.lastSeq/count`; receipts (finding 08) + self-resolution (finding 07) modelled pure. | 2026-06-16 |
+| 014-pi-session-messaging / Phases 2–5 | Shipped the domain end-to-end: fs adapters (registry/event-log/channel/process/pi-runtime); the `PijSession` coordinator + thin `index.ts` extension (boot announce, capture, inbound serve, receipts); the `pij` CLI (6 verbs, exit codes, `PIJ_HOME` override); two-peer integration smoke (AC-1..11+13) in CI + the Driver `/pij` smoke; report-only `npm audit` in CI; `docs/how/pij.md` + README + AGENTS.md self-announce + `npm link` PATH. Single-pi-importer invariant holds (`index.ts` + `adapters/pi-runtime.ts` only). | 2026-06-16 |
