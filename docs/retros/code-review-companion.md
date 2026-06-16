@@ -173,3 +173,13 @@ upstreaming to minih as a coordinated PR.
 - difficulties:
   - [degrading] config: MINIH_PROJECT_ROOT was unavailable or resolved to the run folder from the shell, so the mandated initial cd did not reach the project root. (workaround: Used the repository root supplied in the environment context (/Users/jordanknight/pi-hacking/pij) for all subsequent reads.)
   - [annoying] test: The canonical just test recipe does not accept a file argument; attempting just test .pi/extensions/pij/core/session.test.ts failed as an unknown recipe argument. (workaround: Inspected just --list and used the repository-level just test gate instead.)
+
+## 2026-06-16T07:56:09.214Z — code-review-companion / 2026-06-16T07-35-17-071Z-e04a
+
+- runId: 2026-06-16T07-35-17-071Z-e04a
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-06-16T07-35-17-071Z-e04a
+- summary: Reviewed Plan 014 Phase 5 across T001 through closeout and one fixes commit. I sent six findings: four were fixed and verified in b63b1a4, one audit-policy issue was escalated for user sign-off, and one self-check closeout caveat remained documented as an unrelated baseline failure rather than a pij failure.
+- **magicWand** (target: coordination): Add a coordination report generator that exports task counts, ackOf-linked finding ids, fixed/unresolved status, and the farewell JSON skeleton directly from the inbox ledger.
+- difficulties:
+  - [annoying] tooling: The glob helper returned no matches for existing plan files under an absolute project-root path, so the orientation file discovery could not rely on glob. (workaround: Used `find` from the project root and then read discovered files by absolute path.)
+  - [annoying] tooling: Large combined `git show` plus ripgrep commands overflowed tool output into temporary files, requiring a second narrowed read. (workaround: Repeated the review with targeted `view` ranges and narrower ripgrep patterns.)
