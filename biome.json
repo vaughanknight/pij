@@ -9,7 +9,8 @@
 			"!.pi/npm",
 			"!**/*.template",
 			"!agents",
-			"!docs/plans"
+			"!docs/plans",
+			"!scratch"
 		]
 	},
 	"formatter": {
