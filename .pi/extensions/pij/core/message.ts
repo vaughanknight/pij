@@ -3,7 +3,7 @@
 // A message carries the sender id inline so the receiver can reply with zero
 // lookup (spec AC-5): `[pij from <id>] <body>`.
 
-import type { Role, SessionId } from "./types.js";
+import type { ReceiptState, Role, SessionId } from "./types.js";
 
 const FRAME_RE = /^\[pij from ([^\]]+)\] ([\s\S]*)$/;
 
@@ -27,6 +27,12 @@ export function roleLabel(role: Role | undefined): string {
 	if (role === "parent") return "PARENT (reviewer)";
 	if (role === "worker") return "WORKER";
 	return "PEER";
+}
+
+/** Body of an extension-issued delivery receipt, framed for the sender's
+ *  event log (spec AC-13): `[pij receipt <messageId>] queued|delivered`. */
+export function receiptBody(messageId: string, state: ReceiptState): string {
+	return `[pij receipt ${messageId}] ${state}`;
 }
 
 /** Boot self-announce injected at session start (spec AC-2): tells the session

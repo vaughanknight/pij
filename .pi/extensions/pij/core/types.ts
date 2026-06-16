@@ -67,6 +67,10 @@ export interface PijMessage {
 	readonly body: string;
 	/** Present when this is a remote command rather than free text. */
 	readonly command?: string;
+	/** "receipt" marks an extension-issued delivery receipt: the receiver
+	 *  records it as an event but never injects it, so a receipt can never
+	 *  wake (or bill) the peer it acknowledges (finding 08 / Phase-3 fix). */
+	readonly kind?: "receipt";
 }
 
 // ─── delivery receipts (finding 08; spec AC-13) ───────────────────────────
