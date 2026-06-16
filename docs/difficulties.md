@@ -55,3 +55,21 @@ and an encoded fix (durable). Severity guides priority.
 - **mitigated**: workaround in place; durable fix pending.
 - **encoded**: durable fix landed (template, lint, generator).
 - **resolved**: fix verified by passing tests/smoke.
+
+## 2026-06-16 — Plan 014 Phase 3 (pij extension) companion run
+
+- **MH-001 [degrading, RECURRING ×3] config** — `MINIH_PROJECT_ROOT` resolves to the
+  companion's *run folder*, not the repo root, so the companion's first `docs/plans`
+  lookup finds nothing and it must recover via `git rev-parse --show-toplevel`. Seen in
+  runs `308c`, the earlier pi-peacock run, and now `5219`. **Companion magicWand (target:
+  minih runner):** validate + expose `MINIH_PROJECT_ROOT` as the repo root (or add an
+  explicit `MINIH_REPO_ROOT`). **pij-side mitigation candidate:** our companion-boot path
+  should `export MINIH_PROJECT_ROOT=$(git rev-parse --show-toplevel)` before `minih run`
+  — encode this in the the-flow companion-boot wrapper rather than re-hitting it every run.
+- **MH-002 [annoying] coordination** — the companion's own prompt mandates a per-task
+  summary message, but our outside protocol asked for replies *only on issues*. The
+  companion resolved it by withholding no-op summaries. Worth aligning the two protocols
+  so "reply only on findings" is first-class (no per-task ack/summary obligation).
+- **Stop/send adapter mismatch (recurring):** the Pi `minih_send_message` / `minih_stop_run`
+  tools fail `MINIH_RUN_NOT_FOUND` (different adapter root); the `minih outside inbox`
+  CLI works. Use the CLI for companion comms until the Pi adapter root is reconciled.
