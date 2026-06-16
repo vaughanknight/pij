@@ -1,15 +1,54 @@
-# pij
+# pij extension — agent rules
 
-(Brief description goes here.)
+> Domain: **`pij-messaging`** (see `docs/domains/pij-messaging/domain.md`).
+> First inhabitant of the domain. Two live pi sessions discover each other,
+> exchange fire-and-forget self-identifying messages + remote commands, and
+> observe each other's work via a per-session event stream + state/liveness.
 
-## Acceptance for v1
+## Layout (T2, hexagonal)
 
-- [ ] `npm test` green for `pij/store.test.ts`
-- [ ] `npm run typecheck` clean
-- [ ] `cd pij && pi` loads without error; `/pij` registered
-- [ ] `npm run smoke -- pij` passes
-- [ ] One difficulty entry added (or zero, if nothing was friction)
+```
+core/        pure, pi-free domain logic + port interfaces (imports NOTHING from @earendil-works)
+  types.ts ports.ts seq.ts events.ts state.ts commands.ts discovery.ts message.ts receipts.ts
+adapters/    port implementations
+  fakes.ts          in-memory all ports (tests target these — Pattern P8)
+  pi-runtime.ts     (Phase 3) the ONLY file that may import @earendil-works
+index.ts     extension wiring (Phase-3 stub today)
+smoke.ts     Driver SDK smoke (Phase 5)
+```
 
-## Notes
+## Hard rules (do not violate)
 
-(Authoring decisions, gotchas, links to relevant findings.)
+1. **`core/` is pi-free.** Nothing under `core/` imports from `@earendil-works/*`
+   (Patterns P2/P9). Only `adapters/pi-runtime.ts` (Phase 3) may.
+2. **Tagged-union returns, not throws** (`Result<T>` — Pattern P4). Error codes:
+   `E-NOID/E-SELF/E-CMD/E-DEAD/E-NOREG/E-ARG/E-AMBIG`.
+3. **Constants live next to the data they constrain** (`STALE_AFTER_MS`,
+   `ALLOWED_COMMANDS`) — Pattern P5.
+4. **Side effects via ports + constructor DI** (Pattern P3). No global mutable state.
+5. **Tests target `core/` + `adapters/fakes.ts`** (Pattern P8), not the wiring.
+6. `.js` extension on all relative imports (NodeNext/ESM — Pattern P7).
+7. **Every event carries `seq` (strictly monotonic) + ISO-8601 `timestamp`** so a
+   reader computes age from the stream alone. `seq` recovers from
+   `EventLogPort.lastSeq()` after `/reload` (finding 04).
+
+## Phase status
+
+- **Phase 1 (done):** pi-free core + 5 ports + fake adapters + 50 unit tests.
+- **Phase 2:** fs adapters (registry/event-log/channel).
+- **Phase 3:** extension wiring — registry write, `PIJ_SESSION_ID`/`PIJ_ROLE`
+  env export (finding 07), boot self-announce, delivery injector, event capture,
+  delivery-receipt emission (finding 08). Replaces the `index.ts` stub.
+- **Phase 4:** `pij` CLI (whoami/list/send/tail/state/path).
+- **Phase 5:** two-window smoke + CI + docs.
+
+## Acceptance / gates
+
+Use the repo's `just` gates — **not** the generated scaffold commands:
+
+```
+just typecheck         # tsc --noEmit (noUncheckedIndexedAccess is ON — guard index access)
+just lint              # Biome (scratch/ is excluded)
+npx vitest run .pi/extensions/pij    # the core + fakes specs
+just self-check        # before declaring any task done
+```
