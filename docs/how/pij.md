@@ -50,7 +50,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 |------|-------|------|
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
 | `list` | `pij list [--here]` | List known sessions (id, state, liveness, folder). `--here` filters to the current folder; self is marked `★`. |
-| `send` | `pij send <id> "<text>"` · `pij send <id> --command <name>` | Message a peer (your id is stamped automatically). `--command compact` runs an allow-listed command on the peer. `--wait [ms]` blocks for the delivery receipt. |
+| `send` | `pij send <id> "<text>"` · `pij send <id> --command <name>` | Message a peer (your id is stamped automatically). `--command <compact\|new\|reload>` runs an allow-listed session-control command on the peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks for the delivery receipt. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
@@ -75,14 +75,47 @@ pij list --here               # bare `pij` on PATH from any cwd
 - **Idle vs busy.** An idle peer receives the message immediately (triggers a turn);
   a busy/streaming peer receives it via *steer* after its current turn (never a
   mid-stream interrupt).
-- **Commands.** `--command compact` is the only allow-listed command; it runs
-  `compact` on the peer via the pi runtime. Unknown commands are rejected (`E-CMD`)
-  before any pi call.
+- **Commands.** `--command <compact|new|reload>` are the allow-listed session-control
+  commands; unknown names are rejected (`E-CMD`) before any pi call. See
+  [Remote session control](#remote-session-control) for how each one fires.
 - **Delivery receipts (observe-only).** The sender gets a `delivered` receipt (idle
   peer) or `queued` → `delivered` (busy peer). Receipts ride back as ordinary
   `kind:"receipt"` messages and are **recorded as events** on the sender — they are
   never injected, so they never wake or bill the parent. See them with
   `pij tail <self> --type receipt`.
+
+---
+
+## Remote session control
+
+`pij send <id> --command <name>` drives one of three session-control commands in the
+target session. They split by **which pi context they need**:
+
+| Command | Effect on the peer | Fires from |
+|---------|--------------------|------------|
+| `compact` | Compacts the peer's context (summarize-in-place) | **Autonomously** — `compact()` is on the long-lived `ExtensionContext`, so the background receiver runs it on arrival. No arming. |
+| `new` | Starts a fresh session in the peer | Captured command context (must be armed). |
+| `reload` | Reloads the peer's extensions/skills/prompts/keybindings (keeps the conversation) | Captured command context (must be armed). |
+
+### Why `new`/`reload` need "arming"
+
+pi only exposes `newSession()` / `reload()` on an **`ExtensionCommandContext`**, which
+it hands out *only inside a registered slash-command handler* — never on the
+long-lived context the background receiver holds, and `sendUserMessage()` can't
+dispatch a slash command. So pij **captures that command context the moment the
+target runs `/pij`**, and re-routes remote `new`/`reload` onto it.
+
+- **Arm:** run `/pij` once in the target session. Thereafter a remote `--command
+  reload`/`new` fires by itself.
+- **One-shot:** a `reload`/`new` consumes the captured context (it self-invalidates),
+  so re-arm with another `/pij` for the next one.
+- **Un-armed = deferred, not lost:** if the request arrives before arming, pij queues
+  it and wakes the peer with a notice; it applies the next time the peer runs `/pij`.
+- **Receipts tell you which happened:** the peer records `{"command":"reload",
+  "executed":true}` when it fired, or `{…,"deferred":true}` when it was queued —
+  read them with `pij tail <peer> --type receipt`.
+
+`compact` needs none of this — it always runs on arrival.
 
 ---
 
@@ -99,6 +132,35 @@ types: `tool_call`, `tool_result`, `message`, `receipt`.
 - **Deep dive**: `pij path w3 --events` prints the file path; read it directly with
   your file tools for exact tool args/outputs.
 
+### Commanding a peer: reading what it's doing
+
+A reviewer driving a worker can reconstruct exactly what the worker is up to from
+its stream — last few turns, full history, tool calls + args, filtered slices:
+
+```bash
+# Native CLI filters (no extra tooling)
+pij tail w3 --lines 5                  # last 5 events (any type)
+pij tail w3 --type tool_call --lines 8 # just what it ran, recently
+pij tail w3 --type tool_result         # just the outputs it got back
+pij tail w3 --since 200 --type message # new assistant/user turns since seq 200
+
+# Rich parse via the raw log (pij path w3 --events) + jq
+EV=$(pij path w3 --events)
+jq -r '.type' "$EV" | sort | uniq -c            # whole-history shape by type
+jq -r 'select(.type=="tool_call")
+       | "\(.seq)  \(.data.toolName)  \(.data.input.command // .data.input.path)"' "$EV"
+jq -r 'select(.type=="message" and .data.message.role=="assistant")
+       | .data.message.content[]? | select(.type=="text") | .text' "$EV" | tail   # its words
+jq -r 'select(.type=="message" and .data.message.role=="user")
+       | .data.message.content[]? | select(.type=="text") | .text' "$EV"          # what it was tasked with
+```
+
+The event envelope is `{seq, type, timestamp, data}`; `data` is the captured pi
+event (`tool_call`/`tool_result` carry `toolName`+`input`/`content`; `message`
+carries `message.role`+`message.content[]`). This is the same data the parent pays
+*input* tokens to review — but only the new slice (`--since N`), never the whole
+context.
+
 ---
 
 ## Parent/worker workflow
@@ -113,7 +175,7 @@ The canonical loop (roles are fixed per session at boot):
 | 4 | Parent | If off-track, fire targeted feedback (steers if busy) | `pij send w3 "fix …"` |
 | 5 | Worker | On completion, message the parent the agreed done-signal | `pij send a1 "done — …"` |
 | 6 | Parent | Final verify against `tool_result`/tests | `pij tail w3 --since N --type tool_result` |
-| 7 | Parent | If worker context heavy, request compact | `pij send w3 --command compact` |
+| 7 | Parent | If worker context heavy, request compact; or remotely `reload`/`new` it | `pij send w3 --command <compact\|reload\|new>` |
 
 **Use cases**: delegated implementation (headline), live code review, stuck-worker
 rescue (`state` shows `working` but the age grows, or `dead`), context hygiene
@@ -136,7 +198,7 @@ the runtime boot announce fires:
 If another pi session is running in this repo, you can message and observe it:
 - `pij list --here` — discover peer sessions in this folder (★ = you)
 - `pij send <id> "<text>"` — message a peer (your id is stamped automatically)
-- `pij send <id> --command compact` — run an allow-listed command on a peer
+- `pij send <id> --command <compact\|new\|reload>` — run an allow-listed session-control command on a peer
 - `pij tail <id> --since N` — read a peer's new events (cheap incremental review)
 - `pij state <id>` — a peer's working/idle + liveness + latest-event age
 - `pij path <id> --events` — the peer's events.ndjson path for direct reading
