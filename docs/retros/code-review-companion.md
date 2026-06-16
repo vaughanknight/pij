@@ -153,3 +153,23 @@ upstreaming to minih as a coordinated PR.
 - **magicWand** (target: minih): Have minih expose and validate a canonical projectRoot for coordinated agents, failing early if $MINIH_PROJECT_ROOT points at the run directory instead of the repo root.
 - difficulties:
   - [degrading] config: $MINIH_PROJECT_ROOT resolved to the run folder even though the prompt said to use it as the project root, so the first docs/plans lookup incorrectly found no plan tree. (workaround: Used the known Git repository root from context and verified the active plan from /Users/jordanknight/pi-hacking/pij.)
+
+## 2026-06-16T06:25:38.156Z — code-review-companion / 2026-06-16T15-59-13-231Z-5219
+
+- runId: 2026-06-16T15-59-13-231Z-5219
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-06-16T15-59-13-231Z-5219
+- summary: Oriented on plan 014, acknowledged the Phase 3 briefing, reviewed the T001+T002 coordinator commit, the T003-T010 index.ts wiring commit, and the final Phase 3 drain commit. No material issues were found across pi-free core invariants, receipt wake prevention, contract drift, scope, reload-safety, or the final documentation/gate record.
+- **magicWand** (target: coordination): Have the runner validate and expose MINIH_PROJECT_ROOT as the repository root, or include an explicit MINIH_REPO_ROOT alongside it so companions can orient without a recovery step.
+- difficulties:
+  - [degrading] config: MINIH_PROJECT_ROOT resolved to the run folder, so the required initial cd did not land in the project root and docs/plans was initially invisible. (workaround: Used git rev-parse --show-toplevel from the run folder, then ran all orientation and review commands from /Users/jordanknight/pi-hacking/pij.)
+  - [annoying] coordination: The companion prompt mandates a summary message for every task, while the outside reviewer protocol explicitly requested replies only for issues. (workaround: Acknowledged each task, performed the review, transitioned state back to idle, and withheld no-op summaries when no issues were found.)
+
+## 2026-06-16T07:19:08.732Z — code-review-companion / 2026-06-16T06-57-54-119Z-b4f0
+
+- runId: 2026-06-16T06-57-54-119Z-b4f0
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-06-16T06-57-54-119Z-b4f0
+- summary: Reviewed Phase 4 pij CLI work across descriptor enrichment, pure CLI parse/dispatch, thin bin wiring, parser fix, final drain, and follow-loop fix. I found two HIGH issues: F001 for lenient malformed-argument parsing and F002 for a non-advancing tail --follow loop. Both were fixed later in the run and verified before stop.
+- **magicWand** (target: coordination): Make the runner export MINIH_PROJECT_ROOT reliably to the project root and include a preflight assertion in companion boot that fails loudly if it resolves to the run directory.
+- difficulties:
+  - [degrading] config: MINIH_PROJECT_ROOT was unavailable or resolved to the run folder from the shell, so the mandated initial cd did not reach the project root. (workaround: Used the repository root supplied in the environment context (/Users/jordanknight/pi-hacking/pij) for all subsequent reads.)
+  - [annoying] test: The canonical just test recipe does not accept a file argument; attempting just test .pi/extensions/pij/core/session.test.ts failed as an unknown recipe argument. (workaround: Inspected just --list and used the repository-level just test gate instead.)

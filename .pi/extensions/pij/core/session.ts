@@ -192,9 +192,7 @@ export class PijSession {
 	// ─── internals ──────────────────────────────────────────────────────────
 	/** Merge a patch into the live descriptor and persist it (D-A). No-op before
 	 *  boot. */
-	private persist(
-		patch: Partial<Pick<SessionDescriptor, "state" | "lastEventAt" | "pid">>,
-	): void {
+	private persist(patch: Partial<Pick<SessionDescriptor, "state" | "lastEventAt" | "pid">>): void {
 		if (!this.descriptor) return;
 		this.descriptor = { ...this.descriptor, ...patch };
 		this.ports.registry.write(this.descriptor);
