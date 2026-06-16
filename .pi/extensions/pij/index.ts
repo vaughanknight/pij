@@ -23,7 +23,7 @@ import type { Role } from "./core/types.js";
 // pi-importing seams are here + adapters/pi-runtime.ts; core/ stays pi-free.
 
 export default function (pi: ExtensionAPI): void {
-	const pijHome = join(homedir(), ".pij");
+	const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
 
 	// Per-session handles, (re)assigned on every session_start (all reasons).
 	let session: PijSession | undefined;

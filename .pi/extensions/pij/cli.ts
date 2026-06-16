@@ -16,7 +16,7 @@ import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, parseArgs } from "./core/cli.js";
 import { parseReceiptBody } from "./core/message.js";
 
-const pijHome = join(homedir(), ".pij");
+const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
 const FOLLOW_MS = 200;
 const WAIT_TIMEOUT_MS = 15_000;
 
