@@ -173,3 +173,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Stray research-subagent scratch dropped at repo root (should go to /tmp or scratch/).
+/progress.md
