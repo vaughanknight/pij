@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "slug": "pi-session-messaging",
+  "plan_dir": "docs/plans/014-pi-session-messaging",
+  "mode": "Full",
+  "current_stage": "awaiting-6",
+  "pending_command": "/the-flow 6 implement --phase \"Phase 1: Domain + pure core + ports + fakes\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
+  "intent": "pij: two live pi sessions converse (parent reviewer + cheaper worker), with fire-and-forget self-identifying messaging, remote commands (compact first), and an observable per-session event stream (seq/offset/type filters) + state/liveness. Hexagonal core + DI, CI/vitest/biome/npm-audit. Phase-1 inject path proven.",
+  "milestones_total": 7,
+  "milestones_done": 3,
+  "last_checkpoint_at": "2026-06-16T03:05:00Z",
+  "compacted_seams": [],
+  "status": "active",
+  "notes": "Phase 1 tasks dossier prepared (T000–T012 + T009b, TDD-first) + validate-v2 inline = VALIDATED WITH FIXES. Delivery receipts (AC-13, finding 08) folded into spec/plan/dossier/workshop-001 after live prototype in scratch/receipt_test/ confirmed input.streamingBehavior + next-turn_start lifecycle. NEXT: implement Phase 1."
+}

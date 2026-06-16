@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "slug": "pi-session-messaging",
+  "cursor": "n3",
+  "recommended_next": "n4",
+  "milestones_total": 7,
+  "milestones_done": 3,
+  "mode": "Full",
+  "nodes": [
+    {
+      "id": "n0",
+      "type": "research",
+      "status": "done",
+      "label": "preamble: prototype + minih prior-art + design decisions",
+      "ran_at": "2026-06-16T02:04:34Z",
+      "artifacts": [
+        "docs/plans/014-pi-session-messaging/progress-so-far.md",
+        "docs/plans/014-pi-session-messaging/minih-prior-art.md"
+      ],
+      "next": ["n1"]
+    },
+    {
+      "id": "n1",
+      "type": "research",
+      "status": "done",
+      "label": "explore: research-dossier",
+      "note": "Greenfield design-research synthesis (pi API + minih prior-art + pij patterns). No codebase archaeology fan-out (nothing to archaeologize yet).",
+      "ran_at": "2026-06-16T02:30:00Z",
+      "user_input": "yes run explore, then straight into spec then validate",
+      "artifacts": ["docs/plans/014-pi-session-messaging/research-dossier.md"],
+      "next": ["n2"]
+    },
+    {
+      "id": "n2",
+      "type": "spec",
+      "status": "done",
+      "label": "spec: Full, CS-4 (validated)",
+      "note": "Round 1 answered by reasoned default (flagged). Gates pass. 12 testable ACs. 1 NEW domain (pij-messaging).",
+      "ran_at": "2026-06-16T02:35:00Z",
+      "artifacts": ["docs/plans/014-pi-session-messaging/pi-session-messaging-spec.md"],
+      "next": ["n3"]
+    },
+    {
+      "id": "w1",
+      "type": "spec",
+      "status": "done",
+      "label": "workshop: pij CLI shape (Contract Ready)",
+      "branch_of": "n2",
+      "ran_at": "2026-06-16T02:50:00Z",
+      "user_input": "i want workshop on cli shape",
+      "artifacts": ["docs/plans/014-pi-session-messaging/workshops/001-pij-cli-shape.md"],
+      "next": ["n3"]
+    },
+    {
+      "id": "w2",
+      "type": "spec",
+      "status": "done",
+      "label": "workshop: parent/worker use cases (Preferred Direction)",
+      "branch_of": "n2",
+      "ran_at": "2026-06-16T02:50:00Z",
+      "user_input": "parent instructs worker, reviews work; parent = expensive model, worker generates",
+      "artifacts": ["docs/plans/014-pi-session-messaging/workshops/002-parent-worker-workflow.md"],
+      "next": ["n3"]
+    },
+    {
+      "id": "n3",
+      "type": "plan",
+      "status": "done",
+      "label": "architect: plan READY + validated (1 HIGH fixed)",
+      "note": "Full plan, 5 phases, gates G1–G7 PASS/N-A. validate-v2 inline: VALIDATED WITH FIXES — found+fixed shared-cwd self-id (finding 07, PIJ_SESSION_ID env); Phase 1 size noted for tasks stage.",
+      "ran_at": "2026-06-16T03:05:00Z",
+      "user_input": "run it :)",
+      "artifacts": ["docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md"],
+      "next": ["n4"]
+    },
+    {
+      "id": "n4",
+      "type": "phase",
+      "status": "in_progress",
+      "label": "build: Phase 1 tasks ready (validated) → implement next",
+      "note": "Phase 1 dossier prepared (T000–T012, TDD-first); validate-v2 inline = VALIDATED WITH FIXES (just-new bootstrap + EventLogPort.lastSeq).",
+      "command": "/the-flow 6 implement --phase \"Phase 1: Domain + pure core + ports + fakes\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
+      "next": ["n5"]
+    },
+    {
+      "id": "n5",
+      "type": "merge",
+      "status": "assumed",
+      "label": "merge",
+      "next": []
+    }
+  ]
+}
