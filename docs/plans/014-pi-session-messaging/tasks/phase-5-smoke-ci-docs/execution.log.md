@@ -42,3 +42,22 @@ steps). Instead:
 **Evidence**: `npx tsc --noEmit` clean; `PIJ_HOME=$(mktemp -d) just pij list` →
 "no pij sessions"; bare `just pij list` → real home (3 sessions, ★ = self). Commit
 captures `index.ts` + `cli.ts`.
+
+## T002 — Two-peer integration smoke (`cli.integration.test.ts`)
+
+`.pi/extensions/pij/cli.integration.test.ts` — boots two **real** `PijSession`
+coordinators (A=parent, B=worker) over the real fs adapters in a sandboxed tmp
+`PIJ_HOME`, then observes them end-to-end through the **real `cli.ts` bin**
+(subprocess via the local `tsx`). 8 specs, all green (~2.5s):
+- AC-1 `list --here` sees both peers · AC-5 `whoami` via `PIJ_SESSION_ID`
+- AC-3 `send` lands raw body in B's on-disk inbox · AC-7/8 `tail --since` filters
+- AC-9/10 `state` reports liveness · AC-11 `path --events` · AC-6 E-NOID exit 2
+- **AC-13 receipt loop**: B.onInbound emits a `kind:receipt` to A's inbox; A
+  records it as a `receipt` event; `pij tail pij-A --type receipt` surfaces it.
+
+Runs under `just test` → **CI** (relaxes D-B: the act/observe + receipt protocol
+is CI-provable; only the in-pi boot/announce smoke stays local). Gotchas: (1) macOS
+`mkdtemp` returns a `/var` symlink — `realpathSync` the folder so `--here`'s cwd
+match works; (2) invoke the local `node_modules/.bin/tsx` (not `npx tsx`) to avoid
+a CI network fetch. Invariant holds (test imports `FakePiRuntime` from fakes, zero
+`@earendil-works`).
