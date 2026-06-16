@@ -20,6 +20,16 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # npm test now includes the two-peer integration smoke
+      # (.pi/extensions/pij/cli.integration.test.ts) — AC-1..11 + AC-13 end-to-end
+      # against the real cli.ts over a sandboxed PIJ_HOME, deterministic + in-CI.
       - run: npm test
-      # smoke is local-only for now (requires tmux + pi binary)
-      # — see docs/difficulties.md D-008 for the SDK-driven smoke wishlist
+      # npm audit runs REPORT-ONLY (`|| true`) — the repo's Plan-009 security
+      # posture is report-and-continue, and the current advisories are devDep
+      # toolchain (esbuild via vite/vitest/tsx) needing a breaking bump. Surfaces
+      # findings in the log without failing CI. Hard gate on demand: `npm audit`.
+      - run: npm audit --audit-level=high || true
+      # The live two-window Driver smoke (.pi/extensions/pij/smoke.ts, /pij status
+      # line) stays local-only — needs tmux + the pi binary, absent on hosted
+      # runners. Run via `just smoke` / `just self-check`. AC-12: gates +
+      # integration smoke green in CI; live Driver smoke green locally.

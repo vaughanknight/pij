@@ -61,3 +61,16 @@ is CI-provable; only the in-pi boot/announce smoke stays local). Gotchas: (1) ma
 match works; (2) invoke the local `node_modules/.bin/tsx` (not `npx tsx`) to avoid
 a CI network fetch. Invariant holds (test imports `FakePiRuntime` from fakes, zero
 `@earendil-works`).
+
+## T003 — CI gate + AC-12 reading (D-B)
+
+`.github/workflows/ci.yml`: added a **report-only** `npm audit --audit-level=high
+|| true` step + a comment noting `npm test` now runs the two-peer integration
+smoke. **D-B resolved**: a hard `npm audit` gate would red CI immediately — 8
+advisories (incl. prod-path esbuild via vite/vitest/tsx) whose fix needs a
+breaking vitest@4 bump (forbidden toolchain replacement, out of phase scope). So
+audit is report-only, consistent with the repo's Plan-009 report-and-continue
+security posture. **AC-12 amended in the plan** (clarifying reading, not a
+weakening): gates + integration smoke green in CI; live Driver `/pij` smoke green
+locally (hosted CI has no tmux/pi). Recorded here + in the plan so review/merge
+sees it (closes validation F2).

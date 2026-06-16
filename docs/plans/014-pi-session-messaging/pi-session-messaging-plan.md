@@ -203,7 +203,7 @@ Classification: `contract` (public interface), `internal` (domain-internal), `cr
 - [ ] **AC-9 State**: `pij state <id>` reports working/static + latest-event age without stream parse.
 - [ ] **AC-10 Liveness**: crashed→`dead` (pid gone), quiet-but-alive→`stale`, active→`active`.
 - [ ] **AC-11 Direct path**: `pij path <id>` prints the readable `events.ndjson`/data-dir path.
-- [ ] **AC-12 Quality gates**: typecheck, Biome lint, vitest, npm audit, two-window smoke all green in CI.
+- [ ] **AC-12 Quality gates**: typecheck, Biome lint, vitest, npm audit, two-window smoke all green in CI. _(Reading, per Phase 5 D-B: typecheck + Biome + vitest — including the two-peer **integration** smoke `cli.integration.test.ts` (AC-1..11+13) — run green in CI; `npm audit` runs **report-only** in CI per the Plan-009 report-and-continue posture; the live **Driver** two-window smoke (`/pij` status line, needs tmux + pi binary) is green **locally** via `just smoke`/`just self-check`. Hosted CI has no tmux/pi.)_
 - [ ] **AC-13 Delivery receipts**: sender gets `delivered` (idle peer) or `queued`→`delivered` (busy peer) receipts; visible in `pij tail`/`state`. Grounded in `scratch/receipt_test/` (input.streamingBehavior + next turn_start).
 
 ## Risks
