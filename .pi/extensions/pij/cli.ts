@@ -40,7 +40,9 @@ function deps(): CliDeps {
 function followTail(cmd: ParsedCommand & { verb: "tail" }, d: CliDeps, fromSeq: number): void {
 	let cursor = fromSeq;
 	const tick = (): void => {
-		const res = dispatch({ ...cmd, since: cursor, follow: false }, d);
+		// follow:true so dispatch returns the {kind:tail,nextSince} cursor hint;
+		// with follow:false res.follow is absent and the cursor never advances (F002).
+		const res = dispatch({ ...cmd, since: cursor, follow: true }, d);
 		const next = res.follow?.kind === "tail" ? res.follow.nextSince : cursor;
 		if (next > cursor) {
 			write({ ...res, follow: undefined });
