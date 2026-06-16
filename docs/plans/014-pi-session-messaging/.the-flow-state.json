@@ -3,8 +3,8 @@
   "slug": "pi-session-messaging",
   "plan_dir": "docs/plans/014-pi-session-messaging",
   "mode": "Full",
-  "current_stage": "awaiting-6",
-  "pending_command": "/the-flow 5 tasks --phase \"Phase 5: Smoke + CI + docs\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
+  "current_stage": "awaiting-8",
+  "pending_command": "/the-flow 8 merge --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
   "intent": "pij: two live pi sessions converse (parent reviewer + cheaper worker), with fire-and-forget self-identifying messaging, remote commands (compact first), and an observable per-session event stream (seq/offset/type filters) + state/liveness. Hexagonal core + DI, CI/vitest/biome/npm-audit. Phase-1 inject path proven.",
   "milestones_total": 7,
   "milestones_done": 4,
@@ -12,8 +12,8 @@
   "compacted_seams": [],
   "status": "active",
   "milestones_done": 7,
-  "last_checkpoint_at": "2026-06-16T07:20:00Z",
+  "last_checkpoint_at": "2026-06-16T07:56:00Z",
   "compacted_seams": [],
   "status": "active",
-  "notes": "Phases 1-4 IMPLEMENTED (Phase 4 pij CLI done WITH companion b4f0: 2 HIGH found+fixed -- F001 lenient parseArgs, F002 dead tail --follow; commits 82a4ea9 T001 D-A, fe768de T002-T008 core, e80fb4d T009 bin, a031b70 fix F001, 53160a7 fix F002; CLI proven live; retro harvested; difficulties MH-001 4th + just-test-arg FIXED). Phase 3 (pij extension receive+serve) wired live: pure core/session.ts PijSession coordinator (10 specs vs fakes) + thin index.ts pi-event translator. T000-T012 all done. Commits 0e30b2c (T001+T002 coordinator), 8e37432 (T003-T010 wiring), b5e7e8a (T011+T012 gates). Gates green: typecheck/lint/test (389 pass) + pij smoke green (/pij status line). Single-pi-importer invariant holds. Companion run 5219 reviewed 3 boundary messages -> 0 findings; retro auto-harvested; recurring MH-001 (MINIH_PROJECT_ROOT->run-dir) + MH-002 logged to docs/difficulties.md. Quarantined a stray untracked skill-runner/ scaffold (scratch/quarantine) that broke repo-wide tsc. NEXT: Phase 4 (pij CLI) tasks — depends on Phase 2/3, unblocked. Phase 4 DONE; NEXT: Phase 5 (smoke/CI/docs) -- the final phase."
+  "notes": "Phases 1-5 COMPLETE — Plan 014 SHIPPED. Phase 5 (smoke/CI/docs) done WITH companion (run e04a): PIJ_HOME override (T001 5c7fb0d), two-peer integration smoke AC-1..11+13 over sandbox home via real cli.ts + 2 real PijSessions (T002 832610d), report-only npm audit in CI + AC-12 reading (T003 29e7098), docs/how/pij.md + README (T004 181d822), AGENTS.md self-announce + npm link PATH (T005 4675eb0), closeout + domain history (T006 5cc5ec0). Companion e04a: 6 findings (5 MED/1 LOW) all fixed inline (incl. F006 honest self-check caveat); F003 (report-only audit vs AC-12 'green in CI') ESCALATED to user for policy sign-off. pij gates all green; single-pi-importer invariant holds. KNOWN: just self-check exits non-zero ONLY due to unrelated pi-peacock smoke (Anthropic 400 extra-usage + model mismatch) — logged as difficulty. NEXT: review superseded by the live companion; stage 8 merge (executes only on typed PROCEED). OPEN for user: F003 AC-12 audit-policy sign-off."
 }
