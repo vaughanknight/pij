@@ -10,9 +10,20 @@
 //   enable <source-or-substring>  — flip enabled=true, then sync
 //   disable <source-or-substring> — flip enabled=false, sync (runs `pi remove`)
 //   sync                          — regenerate settings.json, `pi remove` disabled entries
-//   bootstrap                     — sync, then `pi install` every enabled entry (T004: gated on vetted: freshness)
+//   bootstrap                     — sync, then `pi install` every enabled entry, then
+//                                   report-and-continue: re-vet stale entries offline and
+//                                   surface findings for human review (never blocks)
 //   vet <source> [--json]         — run vetter pipeline against one source; print Verdict
-//   audit [--json]                — run pipeline across all enabled entries; exit 0/2 (warn-as-fail)
+//                                   (STRICT escape hatch: still exits 0/2 for on-demand checks)
+//   audit [--json]                — run pipeline across all enabled entries; REPORT-ONLY (exit 0).
+//                                   Findings are surfaced for review, not enforced.
+//
+// Policy (changed 2026-06-16, per user): the vetter pipeline REPORTS rather than
+// blocks. add/bootstrap/audit never refuse on stale/warn/fail — they print the
+// findings and the agent relays them so the human can choose to keep a package or
+// remove it with `pkg disable <source>`. `vet <source>` remains the strict, exit-
+// coded check. The hand-edit bans (packages.yaml / settings.json) and the
+// `requires.install` shell-vector caution still stand.
 
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -38,6 +49,15 @@ const VETTERS = [
 	scorecardVetter,
 	agentVetter, // last because it's slowest + uses LLM credits
 ] as const;
+
+// Offline subset used for report-only re-vetting during bootstrap: no LLM agent
+// vetter, no scorecard network call, so routine installs stay fast and reliable.
+// These cover the findings a human actually decides on (CVEs, lockfile, trust).
+const OFFLINE_VETTERS: Parameters<typeof runPipeline>[0] = [
+	lockfileLintVetter,
+	npmAuditVetter,
+	githubTrustVetter,
+];
 
 const VET_TTL_DAYS = 30;
 
@@ -193,29 +213,23 @@ async function cmdAdd(args: string[]): Promise<void> {
 
 	if (verdict.level === "fail" && !unsafe) {
 		console.error(
-			`\n✗ refusing to add: vet returned ${verdict.level}. Re-run with --unsafe to override.`,
+			`\n⚠ ${source} vetted ${verdict.level} — adding anyway (report-and-continue policy).`,
 		);
-		// Roll back the install
-		try {
-			execFileSync("pi", ["remove", source], { stdio: ["ignore", "pipe", "pipe"] });
-		} catch {
-			/* best-effort */
-		}
-		process.exit(2);
+		console.error(`  Review the findings above. Remove later with: npm run pkg disable ${source}`);
 	}
 
 	let overrides: Overrides | undefined;
-	if (unsafe && verdict.level !== "ok") {
-		const reason = reasonFromFlag ?? (await promptReason(`unsafe add of ${source}`));
-		if (!reason) {
-			console.error("✗ --unsafe requires a non-empty reason");
-			process.exit(2);
+	if (verdict.level !== "ok") {
+		// add no longer blocks; --unsafe/--reason only records an acceptance note
+		// as provenance. Prompt only when the user explicitly passed --unsafe.
+		const reason =
+			reasonFromFlag ?? (unsafe ? await promptReason(`acceptance note for ${source}`) : null);
+		if (reason) {
+			// FX001-1: rules:[] — fails/warns are never auto-downgraded; reason is
+			// captured as provenance for later review.
+			overrides = { rules: [], reason };
+			logUnsafeOverride("add", source, reason);
 		}
-		// FX001-1: --unsafe at add-time accepts a fail Verdict; fails are never
-		// auto-downgraded by cmdAudit anyway, so rules:[] is correct. Reason is
-		// captured as provenance.
-		overrides = { rules: [], reason };
-		logUnsafeOverride("add", source, reason);
 	}
 
 	let seq = doc.get("packages") as YAMLSeq | null;
@@ -259,10 +273,7 @@ function cmdToggle(needle: string, enabled: boolean): void {
 	cmdSync();
 }
 
-async function cmdBootstrap(args: string[]): Promise<void> {
-	const unsafe = args.includes("--unsafe");
-	const reasonFromFlag = extractReason(args);
-
+async function cmdBootstrap(_args: string[]): Promise<void> {
 	cmdSync();
 	const list = entries(readDoc()).filter((e) => e.enabled);
 	if (list.length === 0) {
@@ -270,55 +281,9 @@ async function cmdBootstrap(args: string[]): Promise<void> {
 		return;
 	}
 
-	// Gate: refuse entries with missing or stale vetted.date unless --unsafe
-	const stale: Array<{ entry: Entry; ageInfo: string }> = [];
-	for (const e of list) {
-		if (!isFresh(e)) {
-			const days = ageDays(e);
-			stale.push({
-				entry: e,
-				ageInfo: days === null ? "no vetted: block" : `vetted ${days}d ago (>${VET_TTL_DAYS}d TTL)`,
-			});
-		}
-	}
-	if (stale.length && !unsafe) {
-		console.error(`✗ refusing to bootstrap — ${stale.length} entry/entries are stale or unvetted:`);
-		for (const s of stale) console.error(`  - ${s.entry.source}  (${s.ageInfo})`);
-		console.error("Run `npm run pkg audit` to refresh, or pass --unsafe to override.");
-		process.exit(2);
-	}
-	if (stale.length && unsafe) {
-		const reason =
-			reasonFromFlag ??
-			(await promptReason(`unsafe bootstrap of ${stale.length} stale/unvetted entries`));
-		if (!reason) {
-			console.error("✗ --unsafe requires a non-empty reason");
-			process.exit(2);
-		}
-		const doc = readDoc();
-		const seq = doc.get("packages") as YAMLSeq;
-		for (const s of stale) {
-			const idx = findIndex(doc, s.entry.source);
-			if (idx === -1) continue;
-			const item = seq.get(idx) as YAMLMap;
-			const vetted = (item.get("vetted") as YAMLMap | null) ?? null;
-			// FX001-1: bootstrap --unsafe overrides staleness, not findings,
-			// so rules:[]. Future audits still gate on real findings.
-			const overrideObj: Overrides = { rules: [], reason };
-			if (vetted) {
-				vetted.set("overrides", overrideObj);
-			} else {
-				item.set("vetted", {
-					date: new Date().toISOString(),
-					score: 0,
-					overrides: overrideObj,
-				});
-			}
-			logUnsafeOverride("bootstrap", s.entry.source, reason);
-		}
-		writeDoc(doc);
-	}
-
+	// Report-and-continue: bootstrap NEVER blocks on staleness. Install
+	// everything, then re-vet stale/unvetted entries offline and surface their
+	// findings so the human can decide whether to keep each package.
 	console.log(`\nbootstrapping ${list.length} package(s)...`);
 	let installed = 0;
 	let failed = 0;
@@ -337,6 +302,32 @@ async function cmdBootstrap(args: string[]): Promise<void> {
 	}
 	const failedNote = failed > 0 ? ` (${failed} failed)` : "";
 	console.log(`\n✓ installed ${installed}/${list.length}${failedNote}`);
+
+	const stale = list.filter((e) => !isFresh(e));
+	const flagged: Array<{ source: string; verdict: Verdict }> = [];
+	if (stale.length) {
+		console.log(
+			`\n⚠ re-vetting ${stale.length} stale/unvetted entr${stale.length === 1 ? "y" : "ies"} (offline) for review:`,
+		);
+		for (const e of stale) {
+			const days = ageDays(e);
+			const ageInfo = days === null ? "no vetted block" : `vetted ${days}d ago`;
+			const verdict = await vetSource(e.source, OFFLINE_VETTERS);
+			console.log(`\n=== ${e.source} (${ageInfo}) ===`);
+			printVerdict(verdict);
+			if (verdict.level !== "ok") flagged.push({ source: e.source, verdict });
+		}
+	}
+
+	if (flagged.length) {
+		console.log(`\n──── REVIEW: ${flagged.length} package(s) have findings — your call ────`);
+		for (const f of flagged) {
+			const fails = f.verdict.findings.filter((x) => x.severity === "fail").length;
+			const warns = f.verdict.findings.filter((x) => x.severity === "warn").length;
+			console.log(`  • ${f.source}: ${f.verdict.level} (${fails} fail, ${warns} warn)`);
+		}
+		console.log("  Keep: do nothing.  Remove: npm run pkg disable <source>");
+	}
 }
 
 function isFresh(entry: Entry): boolean {
@@ -366,7 +357,10 @@ function printVerdict(v: Verdict): void {
 	}
 }
 
-async function vetSource(source: string): Promise<Verdict> {
+async function vetSource(
+	source: string,
+	vetters: Parameters<typeof runPipeline>[0] = [...VETTERS],
+): Promise<Verdict> {
 	const installPath = resolveSourcePath(source);
 	if (!installPath) {
 		return aggregate([
@@ -386,7 +380,7 @@ async function vetSource(source: string): Promise<Verdict> {
 			},
 		]);
 	}
-	const verdicts = await runPipeline([...VETTERS], installPath, source, { shortCircuit: false });
+	const verdicts = await runPipeline(vetters, installPath, source, { shortCircuit: false });
 	return aggregate(verdicts);
 }
 
@@ -520,13 +514,24 @@ async function cmdAudit(args: string[]): Promise<void> {
 		"ok",
 	);
 	if (!json) {
-		const summary =
-			worst === "ok"
-				? `✓ ${results.length} entries vetted ok`
-				: `✗ aggregate ${worst} across ${results.length} entries`;
-		console.log(`\n${summary}`);
+		if (worst === "ok") {
+			console.log(`\n✓ ${results.length} entries vetted ok`);
+		} else {
+			const flagged = results.filter((r) => r.effective !== "ok");
+			console.log(
+				`\n⚠ REVIEW (report-only, not blocking): ${flagged.length}/${results.length} entr${flagged.length === 1 ? "y" : "ies"} flagged — aggregate ${worst}`,
+			);
+			for (const r of flagged) {
+				const fails = r.verdict.findings.filter((f) => f.severity === "fail").length;
+				const warns = r.verdict.findings.filter((f) => f.severity === "warn").length;
+				const hint = r.source.startsWith("<") ? "" : ` — keep, or: npm run pkg disable ${r.source}`;
+				console.log(`  • ${r.source}: ${r.effective} (${fails} fail, ${warns} warn)${hint}`);
+			}
+		}
 	}
-	process.exit(worst === "ok" ? 0 : 2);
+	// Report-only policy (2026-06-16): audit never fails the build. Use
+	// `pkg vet <source>` for a strict, exit-coded check on demand.
+	process.exit(0);
 }
 
 function cmdList(): void {

