@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+
+import { excludeSelf, filterByFolder, resolveSelf } from "./discovery.js";
+import type { SessionDescriptor } from "./types.js";
+
+function desc(id: string, folder: string): SessionDescriptor {
+	return {
+		id,
+		folder,
+		dataDir: `/home/u/.pij/${id}`,
+		eventsPath: `/home/u/.pij/${id}/events.ndjson`,
+		pid: 100,
+		startedAt: "2026-06-16T00:00:00.000Z",
+	};
+}
+
+const a = desc("a", "/work/proj");
+const b = desc("b", "/work/proj");
+const c = desc("c", "/work/other");
+
+describe("filterByFolder", () => {
+	it("keeps only descriptors in the folder", () => {
+		expect(filterByFolder([a, b, c], "/work/proj").map((d) => d.id)).toEqual(["a", "b"]);
+	});
+});
+
+describe("excludeSelf", () => {
+	it("drops the self id", () => {
+		expect(excludeSelf([a, b], "a").map((d) => d.id)).toEqual(["b"]);
+	});
+});
+
+describe("resolveSelf", () => {
+	it("env id wins", () => {
+		const r = resolveSelf("a", [a, b]);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value).toBe("a");
+	});
+	it("falls back to the lone local descriptor", () => {
+		const r = resolveSelf(undefined, [b]);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value).toBe("b");
+	});
+	it("E-AMBIG when env unset + multiple local", () => {
+		const r = resolveSelf("", [a, b]);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.code).toBe("E-AMBIG");
+	});
+	it("E-AMBIG when env unset + no local", () => {
+		const r = resolveSelf(undefined, []);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.code).toBe("E-AMBIG");
+	});
+});

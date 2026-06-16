@@ -1,0 +1,68 @@
+// pij-messaging — port interfaces (hexagonal boundary, Pattern P3 DI).
+//
+// Pi-free. These are the seams the pure core depends on; adapters/ (fakes for
+// tests, real fs/pi adapters in Phase 2/3) implement them. Only
+// adapters/pi-runtime.ts (Phase 2) may import @earendil-works/* — never here.
+
+import type {
+	EventQuery,
+	PijEvent,
+	PijMessage,
+	Result,
+	SessionDescriptor,
+	SessionId,
+} from "./types.js";
+
+/** Reads/writes the ~/.pij/ peer registry (one descriptor per session). */
+export interface RegistryPort {
+	/** All known session descriptors. */
+	list(): SessionDescriptor[];
+	/** One descriptor by id, or null if absent. */
+	read(id: SessionId): SessionDescriptor | null;
+	/** Upsert this session's descriptor. */
+	write(descriptor: SessionDescriptor): void;
+	/** Remove a session's descriptor (on shutdown). */
+	remove(id: SessionId): void;
+}
+
+/** Appends/reads a single session's events.ndjson. */
+export interface EventLogPort {
+	/** Append one event line (persist before mutate — Pattern P9). */
+	append(event: PijEvent): void;
+	/** Read events, optionally filtered (since/type/last). */
+	read(query?: EventQuery): PijEvent[];
+	/** Highest seq written so far, or 0 if empty. Drives crash-safe seq
+	 *  recovery after /reload (finding 04). */
+	lastSeq(): number;
+	/** Total number of events. */
+	count(): number;
+}
+
+/** Writes a framed message to a target peer's delivery channel. */
+export interface DeliveryPort {
+	/** Deliver a message to the peer named by message.to. */
+	deliver(message: PijMessage): Result<{ messageId: string }>;
+}
+
+/** The ONLY port whose real adapter imports pi (adapters/pi-runtime.ts,
+ *  Phase 3). The core depends on this interface, never the pi SDK. */
+export interface PiRuntimePort {
+	/** Is the session currently idle (not streaming a turn)? */
+	isIdle(): boolean;
+	/** Inject text as user input; "steer" queues during a live turn. */
+	inject(text: string, mode: "immediate" | "steer"): void;
+	/** Trigger a context compaction (remote command: compact). */
+	compact(): void;
+}
+
+/** OS-level seams: pid, liveness probe, clock, env. */
+export interface ProcessPort {
+	/** This process's pid. */
+	pid(): number;
+	/** Is a pid currently alive? */
+	isAlive(pid: number): boolean;
+	/** Current time (ms epoch) — injected for deterministic tests. */
+	now(): number;
+	/** Read an environment variable (e.g. PIJ_SESSION_ID). */
+	env(key: string): string | undefined;
+}

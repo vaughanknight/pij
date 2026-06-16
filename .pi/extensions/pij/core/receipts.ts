@@ -1,0 +1,53 @@
+// pij-messaging — delivery receipt model + steered-delivery correlation (pure).
+//
+// Mechanism proven in scratch/receipt_test/ (finding 08):
+//   - input.streamingBehavior null  → idle  → delivered immediately
+//   - input.streamingBehavior steer → busy  → queued, then delivered at the
+//     NEXT turn_start after the input(steer) event (no before_agent_start fires).
+// Runtime emission is Phase 3; this module is the pure model + correlation.
+
+import type { MessageReceipt, ReceiptState, SessionId } from "./types.js";
+
+/** Classify a message at inject time from the peer's idle state. */
+export function classifyOnInject(idle: boolean): ReceiptState {
+	return idle ? "delivered" : "queued";
+}
+
+/** Build the first receipt for a just-injected message. Idle peer → a single
+ *  `delivered`; busy peer → `queued` (a later `delivered` follows). */
+export function initialReceipt(
+	messageId: string,
+	from: SessionId,
+	to: SessionId,
+	idle: boolean,
+	atIso: string,
+): MessageReceipt {
+	if (idle) {
+		return { messageId, from, to, state: "delivered", deliveredAt: atIso };
+	}
+	return { messageId, from, to, state: "queued", queuedAt: atIso };
+}
+
+/** Transition a queued receipt to delivered. */
+export function markDelivered(receipt: MessageReceipt, atIso: string): MessageReceipt {
+	return { ...receipt, state: "delivered", deliveredAt: atIso };
+}
+
+/** Correlate the delivery time of a steered message to the runtime stream.
+ *  - idle (steer=false) → delivered immediately (returns injectIso);
+ *  - steer (steer=true) → the first turn_start timestamp strictly after the
+ *    inject, or null if none has occurred yet (still queued).
+ *  `turnStartIsos` are turn_start timestamps observed after the inject, in
+ *  arrival order. */
+export function correlateDeliveredAt(
+	injectIso: string,
+	steer: boolean,
+	turnStartIsos: readonly string[],
+): string | null {
+	if (!steer) return injectIso;
+	const injectMs = Date.parse(injectIso);
+	for (const ts of turnStartIsos) {
+		if (Date.parse(ts) > injectMs) return ts;
+	}
+	return null;
+}
