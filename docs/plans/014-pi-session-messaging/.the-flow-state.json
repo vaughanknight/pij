@@ -4,16 +4,16 @@
   "plan_dir": "docs/plans/014-pi-session-messaging",
   "mode": "Full",
   "current_stage": "awaiting-6",
-  "pending_command": "/the-flow 6 implement --phase \"Phase 4: pij CLI\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
+  "pending_command": "/the-flow 5 tasks --phase \"Phase 5: Smoke + CI + docs\" --plan \"docs/plans/014-pi-session-messaging/pi-session-messaging-plan.md\"",
   "intent": "pij: two live pi sessions converse (parent reviewer + cheaper worker), with fire-and-forget self-identifying messaging, remote commands (compact first), and an observable per-session event stream (seq/offset/type filters) + state/liveness. Hexagonal core + DI, CI/vitest/biome/npm-audit. Phase-1 inject path proven.",
   "milestones_total": 7,
   "milestones_done": 4,
   "last_checkpoint_at": "2026-06-16T04:08:00Z",
   "compacted_seams": [],
   "status": "active",
-  "milestones_done": 6,
-  "last_checkpoint_at": "2026-06-16T06:25:00Z",
+  "milestones_done": 7,
+  "last_checkpoint_at": "2026-06-16T07:20:00Z",
   "compacted_seams": [],
   "status": "active",
-  "notes": "Phase 1 + Phase 2 + Phase 3 IMPLEMENTED. Phase 3 (pij extension receive+serve) wired live: pure core/session.ts PijSession coordinator (10 specs vs fakes) + thin index.ts pi-event translator. T000-T012 all done. Commits 0e30b2c (T001+T002 coordinator), 8e37432 (T003-T010 wiring), b5e7e8a (T011+T012 gates). Gates green: typecheck/lint/test (389 pass) + pij smoke green (/pij status line). Single-pi-importer invariant holds. Companion run 5219 reviewed 3 boundary messages -> 0 findings; retro auto-harvested; recurring MH-001 (MINIH_PROJECT_ROOT->run-dir) + MH-002 logged to docs/difficulties.md. Quarantined a stray untracked skill-runner/ scaffold (scratch/quarantine) that broke repo-wide tsc. NEXT: Phase 4 (pij CLI) tasks — depends on Phase 2/3, unblocked; then Phase 5 (smoke/CI/docs)."
+  "notes": "Phases 1-4 IMPLEMENTED (Phase 4 pij CLI done WITH companion b4f0: 2 HIGH found+fixed -- F001 lenient parseArgs, F002 dead tail --follow; commits 82a4ea9 T001 D-A, fe768de T002-T008 core, e80fb4d T009 bin, a031b70 fix F001, 53160a7 fix F002; CLI proven live; retro harvested; difficulties MH-001 4th + just-test-arg FIXED). Phase 3 (pij extension receive+serve) wired live: pure core/session.ts PijSession coordinator (10 specs vs fakes) + thin index.ts pi-event translator. T000-T012 all done. Commits 0e30b2c (T001+T002 coordinator), 8e37432 (T003-T010 wiring), b5e7e8a (T011+T012 gates). Gates green: typecheck/lint/test (389 pass) + pij smoke green (/pij status line). Single-pi-importer invariant holds. Companion run 5219 reviewed 3 boundary messages -> 0 findings; retro auto-harvested; recurring MH-001 (MINIH_PROJECT_ROOT->run-dir) + MH-002 logged to docs/difficulties.md. Quarantined a stray untracked skill-runner/ scaffold (scratch/quarantine) that broke repo-wide tsc. NEXT: Phase 4 (pij CLI) tasks — depends on Phase 2/3, unblocked. Phase 4 DONE; NEXT: Phase 5 (smoke/CI/docs) -- the final phase."
 }

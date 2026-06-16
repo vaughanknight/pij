@@ -73,3 +73,23 @@ and an encoded fix (durable). Severity guides priority.
 - **Stop/send adapter mismatch (recurring):** the Pi `minih_send_message` / `minih_stop_run`
   tools fail `MINIH_RUN_NOT_FOUND` (different adapter root); the `minih outside inbox`
   CLI works. Use the CLI for companion comms until the Pi adapter root is reconciled.
+
+## 2026-06-16 — Plan 014 Phase 4 (pij CLI) companion run
+
+- **MH-001 [degrading, RECURRING ×4] config** — `MINIH_PROJECT_ROOT` again unavailable / resolved
+  to the companion's run folder, so the mandated initial `cd` didn't reach the repo root. Seen in
+  runs `308c`, pi-peacock, `5219`, now `b4f0`. **Companion magicWand (target: minih runner):** export
+  `MINIH_PROJECT_ROOT` reliably + add a companion-boot preflight that fails loudly if it points at the
+  run dir. **pij-side mitigation (still open):** `export MINIH_PROJECT_ROOT=$(git rev-parse --show-toplevel)`
+  before `minih run` in the companion-boot path.
+- **NEW [annoying] test-ergonomics → FIXED** — the canonical `just test` recipe didn't accept a file
+  argument (`just test path/x.test.ts` → "unknown recipe argument"), so the companion couldn't scope a
+  single test file. **Encoded the fix immediately**: `test *ARGS: npm run test -- {{ARGS}}` — `just test`
+  (no args) still runs the full suite (self-check unaffected); `just test <file>` now scopes to it. A real
+  user (the companion) hitting our canonical interface → encode, don't document.
+
+### Companion findings this run (both fixed inline)
+- **F001 [HIGH]** `parseArgs` too lenient vs the E-ARG contract → strict per-verb flags/arity/numerics +
+  text-xor-command + `--wait <ms>` (`a031b70`).
+- **F002 [HIGH]** `tail --follow` never advanced (re-dispatched with `follow:false`) → `follow:true`,
+  verified live (`53160a7`).

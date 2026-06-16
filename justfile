@@ -70,8 +70,9 @@ lint:
 format:
     npm run format
 
-test:
-    npm run test
+# Run vitest. Optionally scope to file(s)/pattern: `just test path/to/x.test.ts`.
+test *ARGS:
+    npm run test -- {{ARGS}}
 
 # tmux-driven end-to-end smoke (Driver SDK).
 smoke:
