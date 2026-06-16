@@ -93,3 +93,18 @@ and an encoded fix (durable). Severity guides priority.
   text-xor-command + `--wait <ms>` (`a031b70`).
 - **F002 [HIGH]** `tail --follow` never advanced (re-dispatched with `follow:false`) → `follow:true`,
   verified live (`53160a7`).
+
+## 2026-06-16 — Plan 014 Phase 5 (smoke/CI/docs) companion run (e04a)
+
+- **NEW [annoying] cross-extension smoke flake** — `just self-check` exits non-zero
+  because the unrelated **pi-peacock** smoke fails: an Anthropic `400` extra-usage/
+  billing error ("Third-party apps now draw from your extra usage") **plus** a model
+  mismatch (the smoke asserts `gpt-5.5 • medium`, the env runs `claude-opus-4-7`).
+  Not pij's concern, but it red-lines the shared `self-check` gate so a pij phase
+  can't show a globally-green self-check. **Encode candidate**: make smoke assertions
+  model-agnostic (don't hard-match the model name), and/or let `self-check` smoke be
+  per-extension so one extension's environmental failure doesn't fail the whole gate.
+- **Companion (e04a) findings**: 6 (5 MED, 1 LOW) — all addressed inline: F002 AC-6
+  command happy-path test, F004/F005 doc accuracy, F001 T001 done-when, F006 T006
+  done-when honesty (self-check caveat). F003 (report-only `npm audit` vs AC-12
+  "green in CI") escalated to the user as a policy sign-off.
