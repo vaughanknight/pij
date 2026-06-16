@@ -13,10 +13,10 @@ const scenario: Scenario = {
 			kind: "type",
 			text: "/pij",
 			press: "Enter",
-			expect: /not implemented/,
+			// pinned wired status line: `pij: <id> · role=<role> · peers <n> · events <m>`
+			expect: /pij: pij-\d+ · role=\S+ · peers \d+ · events \d+/,
 			expectTimeoutMs: 5000,
 		},
-		// TODO: add real steps once /pij is implemented.
 	],
 };
 
