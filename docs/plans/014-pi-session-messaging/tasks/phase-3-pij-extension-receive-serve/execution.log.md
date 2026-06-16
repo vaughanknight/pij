@@ -45,3 +45,17 @@ Rewrote `index.ts` as a pi-event→PijSession translator. Construction + boot ha
 
 | D4 | Classifying receipts via `ctx.isIdle()` at inject time (not `input.streamingBehavior`) makes the `input` event subscription unnecessary and sidesteps the `undefined`/`followUp` nuance entirely — the coordinator reads the same live idle signal the prototype used. | Simpler wiring; `turn_start` is the only receipt-correlation event needed. |
 | D5 | Listeners must be top-level (once), not inside `session_start`, or `/reload` double-registers capture handlers. The watcher is the lone per-session resource (dispose-then-recreate on reload). | Reload-safety; P10 one-handler honoured. |
+
+## T011 — Phase gate
+
+All gates green: `just typecheck` clean, `just lint` clean (1 info, no errors), `just test` 389 pass / 4 skip (incl. the 10 `session.test.ts` specs), single-pi-importer invariant holds (`index.ts` + `adapters/pi-runtime.ts` only; `core/` zero), and **`npm run smoke -- pij` ✓** — the live `/pij` command emitted the pinned status line and matched the updated smoke regex (pi 0.74.0 driver).
+
+**Blocker resolved**: a stray untracked `.pi/extensions/skill-runner/` T2 scaffold (created 16:13 this session, never committed, not mine) broke repo-wide `tsc` (`smoke.ts(1,…) TS1003`). Quarantined to `scratch/quarantine/skill-runner/` (gitignored, fully reversible) so the gate is honest. **Flagged for the user** — restore if it was intentional WIP.
+
+## T012 — Harness phase-end (`--event phase-end`)
+
+Same `degraded` posture as T000 / Phases 1–2: engineering-harness router installed but the pij repo is unadopted. Best-effort, narrated, non-blocking — the real phase-end evidence is the green `just` gates above. Recorded once; no drain/harvest action owned by this repo.
+
+## Phase 3 complete
+
+All of T000–T012 are `[x]`. The pij extension now boots (stable id + descriptor + announce), captures its own pi activity into `events.ndjson`, receives peer messages (idle→immediate / busy→steer) and remote `compact`, emits delivery receipts (events + `kind:receipt`, never waking the peer), exports `PIJ_SESSION_ID`/`PIJ_ROLE`, and cleans up on shutdown — all logic in the pure fakes-tested `PijSession`, with `index.ts` a thin translator. Commits: `0e30b2c` (T001+T002 coordinator), `8e37432` (T003–T010 wiring).
