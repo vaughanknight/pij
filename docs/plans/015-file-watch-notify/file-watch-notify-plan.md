@@ -69,7 +69,7 @@ A standalone pi extension that watches **one or more configured folders**, each 
 - **AC-03**: **Multiple patterns** and **multiple watched folders** are supported from config.
 - **AC-04**: Editor atomic-save artifacts (`4913`, `*~`, `.goutputstream*`, `.tmp*`, dotfiles) produce **no** spurious notices; an atomic save is reported as a single **"modified"**.
 - **AC-05**: A burst of rapid changes is **debounced/coalesced** (no notice spam); change kind is classified via **snapshot reconcile**, not raw `fs.watch` event types.
-- **AC-06**: The watcher **starts at `session_start`** and **disposes on shutdown/reload** — no tool call to arm.
+- **AC-06**: The watcher **starts at `session_start`** and **disposes on reload** (explicit `disposeAll()`); **shutdown** disposal is implicit via `persistent: false` (the watcher never holds the event loop; the OS reclaims it on exit) — no tool call to arm.
 - **AC-07**: Runtime commands arm/list/disarm watchers **without a reload** — `/file-watch-notify watch <dir> <glob...>` starts a live watcher, `/file-watch-notify list` shows active watches, `/file-watch-notify stop <dir>` disposes one. Config-at-boot (AC-06) remains the persistent path; runtime watches are session-local.
 
 ### Risks & Assumptions
@@ -143,6 +143,28 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 - `debounceMs` default 30 (20–50 ok); `ignore` defaults to the atomic-save artifact list; `notice` template tokens `{path}`/`{kind}`.
 - Parsed via a tagged-union `Result` (P4); invalid config → a single startup notice, watcher stays down. This is the minimal contract the implementer builds to (T003b/T006); the config-schema workshop may extend it.
 
+### Runtime Commands (amendment) — implementation contract
+The runtime `/file-watch-notify watch|list|stop` surface (T010–T012) builds to this concrete contract so the T010 tests and the T011 handler cannot drift (closes the validate-v2 HIGH gaps):
+
+**`commands.ts` — pure parser (pi-free, P2/P8):**
+```ts
+export type ParsedCommand =
+  | { kind: "watch"; dir: string; patterns: string[] }
+  | { kind: "list" }
+  | { kind: "stop"; dir: string }
+  | { kind: "status" }                 // empty args / `help` → status line + usage
+  | { kind: "error"; reason: string };
+export function parseCommand(args: string): ParsedCommand;
+// "" or "help" → {kind:"status"}; "watch <dir> <glob...>" needs >=1 pattern else error.
+```
+
+**`index.ts` refactor (T011)** — required because the current handler is read-only and the watcher-build block + `config` are `session_start`-callback-local:
+- **Promote config to module scope**: `let loadedConfig: Config | null = null;` set in `session_start` after a successful parse. Runtime watches use `loadedConfig?.debounceMs ?? DEFAULT_DEBOUNCE_MS`, `?? DEFAULT_IGNORE`, `?? DEFAULT_NOTICE` — so they match config-booted watches and still work when no `.pi/file-watch.json` exists.
+- **Migrate `disposers: Array<() => void>` → `Map<string, () => void>` keyed by resolved absolute dir.** `disposeAll()` becomes `for (const d of disposers.values()) d(); disposers.clear();`; the `session_start` loop uses `disposers.set(dir, () => folder.dispose())`. This makes per-dir `stop` possible **and** guarantees runtime watches are torn down on `/reload` (no leak/inject into the new session).
+- **Extract a module-scope helper** `startWatch(dir, patterns): { ok: true } | { ok: false; reason: string }` that compiles + arms a `FolderWatcher` **inside a `try`** (bad glob / missing dir → `{ok:false}`, never an uncaught throw — also fixes the current `compileWatch`-outside-`try` gap) and `disposers.set(resolvedDir, …)`. Both `session_start` and the command handler call it.
+- **Arming dedupes**: if `disposers.has(resolvedDir)`, dispose + delete the existing watcher first, then re-arm (no double-notification from config-vs-runtime or runtime-vs-runtime overlap).
+- **Replace the existing `registerCommand("file-watch-notify")` handler** (do NOT add a second registration): the body dispatches on `parseCommand(args).kind` — `status` → the status line + usage; `watch` → `startWatch` + notify; `list` → one line per `disposers` entry `watching: <dir> [<patterns>]` (or "no active watches"); `stop` → `disposers.get(resolvedDir)?.()` + `delete` (works for config- or runtime-armed dirs, since both live in the map), else "not watched".
+
 ### Domain Manifest
 
 | File | Domain | Classification | Rationale |
@@ -158,7 +180,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | `docs/domains/file-watch-notify/domain.md` | file-watch-notify | contract | domain doc |
 | `package.json` | _platform | cross-domain | add `picomatch` dep |
 | `.pi/file-watch.json` | file-watch-notify | contract | user-authored watch config (shape in § Config Schema) — read at boot |
-| `.pi/extensions/file-watch-notify/watcher.test.ts`, `inject.test.ts` | file-watch-notify | internal | adapter tests (Hybrid lightweight) |
+| `.pi/extensions/file-watch-notify/watcher.test.ts`, `inject.test.ts`, `index.test.ts` | file-watch-notify | internal | adapter + wiring integration tests (Hybrid; `index.test.ts` covers AC-01/02/06, reload, error recovery) |
 
 ### Key Findings
 
@@ -190,9 +212,9 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | [x] | T007 | Domain doc + user guide | file-watch-notify | `docs/domains/file-watch-notify/domain.md`, `docs/how/file-watch-notify.md` | config + behavior + steer semantics + directory-watch-trap documented | docs strategy |
 | [x] | T008 | `just self-check` green; live smoke (edit a watched `*.md`, see the notice while busy) | file-watch-notify | — | self-check passes; manual steer notice observed | AC-01..06 |
 | [x] | T099 | **Harness phase-end** — `/eng-harness-flow --event phase-end --plan-dir docs/plans/015-file-watch-notify` | — | — | Router envelope handled at phase end | _Harness seam (router installed)_ |
-| [ ] | T010 | **Tests-first** (follow-on increment): pure `parseCommand(args)` → tagged union `{ watch dir+patterns \| list \| stop dir \| help \| error }` | file-watch-notify | `commands.test.ts` | red tests cover watch/list/stop/invalid; AC-07 | TDD core (P8) |
-| [ ] | T011 | `commands.ts` parser + `index.ts` runtime handler: `/file-watch-notify watch <dir> <glob...>` arms a `FolderWatcher` live (inject reuses the session `currentCtx`), `list` shows active, `stop <dir>` disposes; track a `dir→disposer` map | file-watch-notify | `commands.ts`, `index.ts` | live `/file-watch-notify watch scratch/x "**/*.md"` arms with **no reload**; `list`/`stop` work | AC-07; reuse the session_start watcher-build block |
-| [ ] | T012 | Self-check + live smoke: arm at runtime, edit a watched file, see the steered notice; `stop` silences it | file-watch-notify | — | self-check green; runtime arm/stop observed live | AC-07 |
+| [ ] | T010 | **Tests-first** (follow-on increment): pure `parseCommand(args)` → the `ParsedCommand` tagged union in § Runtime Commands | file-watch-notify | `commands.test.ts` | red tests assert each `kind` + fields: `watch`(dir+patterns), `list`, `stop`(dir), `status`(empty/`help`), `error`(missing args / no pattern); AC-07 | TDD core (P8) |
+| [ ] | T011 | Implement `commands.ts` + **refactor** `index.ts` per § Runtime Commands: module-scope `loadedConfig` + `DEFAULT_*` fallbacks, `disposers`→`Map<dir,()=>void>`, try-guarded `startWatch` helper (dedupes same dir), and **replace** the existing `registerCommand` handler with the dispatcher | file-watch-notify | `commands.ts`, `index.ts` | live `/file-watch-notify watch scratch/x "**/*.md"` arms with **no reload** (defaults when no config); `list` shows it; `stop` disposes it; bad glob / missing dir → warning, no crash | AC-07; § Runtime Commands |
+| [ ] | T012 | Self-check + live smoke: arm at runtime → `list` shows the dir → edit a watched file → see the steered notice → `stop` → `list` empty & silence; **reload smoke**: a runtime watch is gone after `/reload` (Map cleared) | file-watch-notify | — | self-check green; arm/list/stop + reload-disposal observed live | AC-07 |
 
 ### Acceptance Coverage Map
 
@@ -210,15 +232,17 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Cross-platform fs.watch modify-detection gaps | Medium | Medium | Snapshot reconcile (not event types) — platform-agnostic |
+| **Directory-watch trap (KF-01)** — `fs.watch` event types are unreliable for *all* directory watchers (not just cross-platform) | Critical→Low (mitigated) | High | Snapshot reconcile (not event types) is architecturally **required**, not optional hardening — platform-agnostic |
 | Steer-spam during large rebuilds | Medium | Low | Debounce + coalesce N changes per wake into one notice |
 | Atomic-save artifact false positives | Medium | Low | Ignore-list; tmp+rename is single-wake → one `modified`; cross-wake re-add reclassified `modified` (see Known Limitations) |
 | picomatch dep rejected by policy | Low | Low | It's a regular npm dep (0 transitive); hand-rolled `*.ext` matcher is a fallback |
 | Runtime-added watches lost on reload | High | Low | Documented as session-local (Non-Goal + Known Limitations); re-add after reload or use `.pi/file-watch.json` for durable watches |
+| T011 latent scope (config-scope refactor, `disposers`→Map, dedupe, `list` format) | Medium | Medium | Fully specified inline in § Runtime Commands so the implementer doesn't guess; a post-T011 mini-check before the T012 smoke |
 
 ### Known Limitations
 - **AC-04 scope**: a true atomic save (write-temp → rename over the target) lands inside one debounced wake, so it is reported as a **single `modified`** — AC-04 holds. The distinct, rarer case where a delete and its re-add fall in **separate** wakes is reclassified to `modified` (never a spurious `created`), but a preceding `deleted` may surface. Single-notice coalescing across wakes would require a deferred-delete flush timer (a lone delete must still surface without a following fs event) and is **deliberately out of scope** (documented in `docs/how/file-watch-notify.md` + `domain.md`).
 - **Burst delivery**: all changes in one wake are combined into a **single** injected message (AC-05), not one message per file.
+- **Runtime watches are session-local**: watches added via `/file-watch-notify watch` are not persisted and are lost on `/reload` (the disposer Map is cleared). Tear down with `/file-watch-notify stop <dir>`, or add the dir to `.pi/file-watch.json` for a durable watch.
 
 ### Harness Seams
 - **Entry point**: `/eng-harness-flow --event <seam> [--phase <id>] [--plan-dir <p>] --json` — the single door; child skills never named.
@@ -287,3 +311,30 @@ Overall: ⚠️ VALIDATED WITH FIXES
 **Status**: stays **READY** (Simple, CS-3 unchanged). Gate Matrix re-checked — G5 structure intact (new sections populated), G6 testing (T010 tests precede T011 impl), G7 domain (new files in manifest). No CRITICAL/HIGH open.
 
 Overall: ✅ VALIDATED (amendment) — READY to implement T010–T012.
+
+---
+
+## Validation Record — real `validate-v2` fan-out (2026-06-17)
+
+The earlier two passes (original + amendment) ran **in-parent** because the `subagent` tool was wedged — a globally-linked pij announced inside subagent children and collided with the `-p` task prompt (fixed in `bb3e40e`). With subagents healthy, the **real 4-agent parallel fan-out** ran (4/4 succeeded), grounded against the shipped source.
+
+| Agent (lens) | Issues | Verdict |
+|---|---|---|
+| Coherence + Completeness + Proof-Level Fit | 0 CRIT · 2 HIGH · 4 MED · 3 LOW | ⚠️→✅ after fixes |
+| Risk + Hidden Assumptions + Edge Cases | 0 CRIT · 2 HIGH · 3 MED · 2 LOW | ⚠️→✅ after fixes |
+| Thesis Alignment | 0 blockers · 1 LOW | ✅ (thesis advanced; reuse claims verified vs source) |
+| Forward-Compatibility | 2 HIGH · 3 MED · 1 LOW | ⚠️→✅ after fixes |
+
+**Thesis Verdict** (dedicated agent): understood **Yes**; value claim **advanced**; proof Target=Implementation, Actual=Implementation (T001–T008 shipped, T010–T012 pending); evidence **Strong**; main risk = the runtime `dir→disposer` lifecycle must reach `disposeAll()` on reload — **now specified**.
+
+**Outcome alignment** (FC agent): the plan **fully advances** *"configured folder/glob changes appear in-session with no tool call, steered when busy"* (Phase 1 shipped); the *"runtime arm/list/stop without reload"* half **did not advance as written** — two HIGH gaps (disposers shape; config scope) forced implementer guesswork. **Both are now closed** by § Runtime Commands.
+
+**Fixes applied to the plan (all grounded in real source):**
+- **HIGH — config scope**: the runtime handler couldn't reach `config.{debounceMs,ignore,notice}` (callback-local). → § Runtime Commands promotes `loadedConfig` to module scope with `DEFAULT_*` fallbacks.
+- **HIGH — disposers shape / reload leak**: `Array<()=>void>` can't do per-dir `stop` and runtime watches would survive `/reload` and inject into the new session. → migrate to `Map<dir,()=>void>`; `disposeAll()` clears all; T012 adds a reload-disposal smoke.
+- **MED**: concrete `ParsedCommand` TS contract (T010 asserts each `kind`) · **replace** (don't double-register) the handler · **dedupe** arming the same dir · specify `list` format (+ T012 asserts it) · try-guard `compileWatch`/`WatchReconciler` via the `startWatch` helper · Risk row for T011 latent scope.
+- **LOW**: Known-Limitations runtime-watch bullet (broken xref) · `index.test.ts` added to the Domain Manifest · AC-06 shutdown qualified (implicit via `persistent:false`) · T012 verifies `list` + the nonexistent-dir error path.
+
+**Status**: stays **READY** — 0 CRITICAL; the 2 HIGH and all MEDIUM/LOW are resolved in-plan (T010–T012 are now buildable without guessing). Agent reports at `/tmp/pij-val-015c/{coherence,risk,thesis,forward-compat}.md`.
+
+Overall: ⚠️→✅ VALIDATED WITH FIXES (real fan-out).
