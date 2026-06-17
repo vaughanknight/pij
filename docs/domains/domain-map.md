@@ -60,8 +60,8 @@ flowchart LR
 | `pij-messaging` → `agent-workbench` | vocabulary-only | Reuses `active/stale/dead` liveness + working-state names; no code reuse (pij owns its own peer registry, AW reads Minih runs). |
 | `pij-messaging` → `agent-tooling-interface` | contract-only (future) | The future `pij` command/CLI surface + boot self-announce will present through Pi command/tool UX; no wiring in Phase 1. |
 | `file-watch-notify` → `pi runtime` | healthy | `index.ts` + `inject.ts` are the only pi importers: `session_start` arms the watcher; delivery is `sendUserMessage` (immediate) / `sendUserMessage(...,{deliverAs:"steer"})` (busy). Core/watcher stay pi-free (P2). |
-| `file-watch-notify` → `extension-authoring-harness` | healthy | `just new` generator, vitest (59 specs: TDD core + parser unit + real-fs watcher + fake-pi inject/stale-ctx + runtime tool/command e2e), Biome, Driver `/file-watch-notify` smoke, self-check. |
-| `file-watch-notify` → `agent-tooling-interface` | contract-only | Primary `file_watch_notify` LLM tool (status/list/watch/stop) plus compatibility `/file-watch-notify` command presents through Pi tool/command UX. |
+| `file-watch-notify` → `extension-authoring-harness` | healthy | `just new` generator, vitest (60 specs: TDD core + parser unit + real-fs watcher + fake-pi inject/stale-ctx + runtime tool/command e2e), Biome, Driver `/file-watch-notify` smoke, self-check. |
+| `file-watch-notify` → `agent-tooling-interface` | contract-only | Primary `file_watch_notify` LLM tool (status/list/watch/stop; recursive watch option) plus compatibility `/file-watch-notify` command presents through Pi tool/command UX. |
 | `file-watch-notify` ⇢ `pij-messaging` | pattern-only | Adapts pij's `pi-runtime` inject path (idle→send, busy→steer); **no import, no shared code, no changes to pij**. |
 
 ## History
@@ -80,4 +80,4 @@ flowchart LR
 | 2026-06-17 | Plan 015 — added `file-watch-notify` (`FWN`) node; three outbound edges (`pi runtime` wiring; `extension-authoring-harness` validation; `agent-tooling-interface` status command) plus a dashed pattern-only link to `pij-messaging` (adapts the inject seam, no code reuse). Standalone extension; snapshot-reconcile trap fix is the headline contract. |
 | 2026-06-17 | Plan 015 (amend) — `FWN` gained the runtime control surface (`/file-watch-notify` watch/list/stop): new `parseCommand`/`ParsedCommand` contract; the `agent-tooling-interface` edge now covers arm/list/stop (not just status). Test count 22 → 52. |
 | 2026-06-17 | Plan 015 (live crash fix) — `FWN` inject seam now treats stale/throwing Pi ctx as non-fatal after reload/session replacement; test count 52 → 56. |
-| 2026-06-17 | Plan 015 (tool surface fix) — `FWN` gained the missing LLM-callable `file_watch_notify` tool; test count 56 → 59. |
+| 2026-06-17 | Plan 015 (tool surface fix) — `FWN` gained the missing LLM-callable `file_watch_notify` tool plus recursive watch option; test count 56 → 60. |

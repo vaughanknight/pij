@@ -142,8 +142,12 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 			.join("\n");
 	}
 
-	async function armRuntimeWatch(dir: string, patterns: string[]): Promise<string> {
-		const r = await startWatch(dir, patterns, "runtime");
+	async function armRuntimeWatch(
+		dir: string,
+		patterns: string[],
+		extra?: { recursive?: boolean },
+	): Promise<string> {
+		const r = await startWatch(dir, patterns, "runtime", extra);
 		if (!r.ok) return `file-watch: cannot watch "${dir}" — ${r.reason}`;
 		refreshStatus();
 		return `file-watch: now watching ${resolve(base, dir)} [${patterns.join(", ")}]`;
@@ -260,7 +264,7 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		promptGuidelines: [
 			"Use file_watch_notify when the user asks you to watch a folder, arm file-change notifications, list active watches, or stop a watch. Prefer this tool over asking the user to type /file-watch-notify.",
 			"Runtime watches are session-local: they are not written to .pi/file-watch.json and are cleared on /reload/session replacement. Use config only for durable watches.",
-			"For broad scratch testing, call file_watch_notify with action='watch', dir='scratch', patterns=['**/*'] before asking a peer to edit or create files.",
+			"For broad scratch testing, call file_watch_notify with action='watch', dir='scratch', patterns=['**/*'], recursive=true before asking a peer to edit or create files.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["status", "list", "watch", "stop"] as const, {
@@ -274,6 +278,12 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 			patterns: Type.Optional(
 				Type.Array(Type.String(), {
 					description: "Glob patterns for action='watch' (for example ['**/*.md'] or ['**/*']).",
+				}),
+			),
+			recursive: Type.Optional(
+				Type.Boolean({
+					description:
+						"When action='watch', watch subdirectories too. Use true for broad scratch watches like dir='scratch', patterns=['**/*'].",
 				}),
 			),
 		}),
@@ -292,7 +302,9 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 						text = "file-watch: watch needs dir and at least one pattern";
 						break;
 					}
-					text = await armRuntimeWatch(params.dir, params.patterns);
+					text = await armRuntimeWatch(params.dir, params.patterns, {
+						recursive: params.recursive === true,
+					});
 					break;
 				}
 				case "stop":

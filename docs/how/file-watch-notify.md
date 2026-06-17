@@ -40,7 +40,7 @@ Beyond config-file watches, the assistant can arm and tear down watches **live**
 | Tool call | Effect |
 |-----------|--------|
 | `file_watch_notify({ action: "status" })` | Show status (`watching N folders`, `not configured`, or `invalid (...)`) plus usage. |
-| `file_watch_notify({ action: "watch", dir: "scratch", patterns: ["**/*"] })` | Arm a watch on `dir` for one or more globs. Re-arming the same dir **replaces** the previous watch (no double-notify). Inherits `debounceMs`/`ignore`/`notice` from `.pi/file-watch.json` if present, else the defaults. |
+| `file_watch_notify({ action: "watch", dir: "scratch", patterns: ["**/*"], recursive: true })` | Arm a watch on `dir` for one or more globs. Set `recursive: true` when changes may happen in existing subdirectories. Re-arming the same dir **replaces** the previous watch (no double-notify). Inherits `debounceMs`/`ignore`/`notice` from `.pi/file-watch.json` if present, else the defaults. |
 | `file_watch_notify({ action: "list" })` | List active watches, each labelled `(config)` or `(runtime)`. |
 | `file_watch_notify({ action: "stop", dir: "scratch" })` | Dispose the watch on `dir` (config- or runtime-armed). |
 

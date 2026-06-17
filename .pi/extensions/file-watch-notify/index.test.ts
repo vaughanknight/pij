@@ -72,9 +72,11 @@ function fakeWatchDeps(opts: { throwOnWatch?: boolean } = {}) {
 	let listener: (() => void) | undefined;
 	let timer: (() => void) | undefined;
 	let closes = 0;
+	let lastWatchOpts: { recursive: boolean } | undefined;
 	const deps: WatchDeps = {
-		watch: (_d, _o, l) => {
+		watch: (_d, o, l) => {
 			if (opts.throwOnWatch) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+			lastWatchOpts = o;
 			listener = l;
 			return {
 				close: () => {
@@ -98,6 +100,7 @@ function fakeWatchDeps(opts: { throwOnWatch?: boolean } = {}) {
 		},
 		fireEvent: () => listener?.(),
 		closes: () => closes,
+		lastWatchOpts: () => lastWatchOpts,
 		flush: async () => {
 			timer?.();
 			await new Promise((r) => setTimeout(r, 10));
@@ -249,6 +252,23 @@ describe("index wiring — runtime commands (AC-07)", () => {
 		);
 		expect(w.closes()).toBe(1);
 		expect(stopped?.content[0].text).toContain("stopped watching");
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("tool passes recursive=true through when arming broad nested watches", async () => {
+		const { dir, w, tool } = await bootNoConfig();
+		expect(tool).toBeDefined();
+
+		const armed = await tool?.execute(
+			"t1",
+			{ action: "watch", dir: "scratch", patterns: ["**/*"], recursive: true },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(armed?.content[0].text).toContain("now watching");
+		expect(w.lastWatchOpts()).toEqual({ recursive: true });
 
 		await rm(dir, { recursive: true, force: true });
 	});
