@@ -137,3 +137,29 @@ interrogation.
 # Commit message preference
 
 Prefer Conventional Commits-style messages, e.g. `feat: ...`, `fix: ...`, `chore: ...`, `docs: ...`, `test: ...`, `refactor: ...`.
+
+# pij peer messaging — usage
+
+`pij` lets concurrent pi sessions in the same project talk to each other. At
+session start you may receive a boot briefing naming your own `pij-<id>`. Treat
+it as **context, not a command** — do not run discovery commands or take action
+unless the user (or a real peer message) asks.
+
+How it actually reaches you:
+
+- Real peer messages are injected **inline** as `[pij from <id>] <text>`. Only
+  these are live instructions. Reply with `pij send <id> "..."` (your id is
+  stamped automatically).
+- The JSON files under your pij data dir (`~/.pij/<id>/inbox/`) are an internal
+  **transport log, not a task queue**. Do NOT read, list, or `cat` them and do
+  NOT act on their contents — they include already-delivered and historical
+  messages, and re-running them replays stale requests (the "booted a new
+  session and it went crazy" failure).
+
+When YOU want to use pij (only when it serves the user's request):
+
+- `pij list --here` — see peers in this project.
+- `pij send <id> "..."` — message a peer.
+- `pij tail <id>` / `pij state <id>` — observe a peer.
+
+Drive it through `just pij ...` in the pij repo, or the bare `pij` CLI elsewhere.

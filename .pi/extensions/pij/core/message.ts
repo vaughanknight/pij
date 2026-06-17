@@ -50,12 +50,19 @@ export function parseReceiptBody(body: string): { messageId: string; state: Rece
 }
 
 /** Boot self-announce injected at session start (spec AC-2): tells the session
- *  its own id + how to use pij, so it can be addressed and can reply. */
+ *  its own id + how to use pij, so it can be addressed and can reply.
+ *
+ *  Deliberately NON-imperative: it states capabilities, it does not hand the
+ *  model a startup to-do list. A directive briefing made fresh boots run every
+ *  `pij` command and snoop their own inbox (difficulty D-040). It also tells the
+ *  model NOT to treat inbox files as live instructions — real peer messages are
+ *  injected as `[pij from <id>] …`; the JSON files in the inbox dir are an
+ *  internal transport log, not a task queue. */
 export function announceText(self: SessionId, role?: Role): string {
 	return [
-		`You are pij session ${self} (${roleLabel(role)}).`,
-		`Peers reach you via: pij send ${self} "..."`,
-		`To message a peer: pij send <id> "..." (your id is stamped automatically).`,
-		`Discover peers: pij list --here   ·   Observe one: pij tail <id> / pij state <id>.`,
+		`You are pij session ${self} (${roleLabel(role)}). This is context only — no action is required.`,
+		`Peers can reach you; their messages arrive inline as "[pij from <id>] …". Only those injected messages are live instructions.`,
+		`Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.`,
+		`When you DO want to use pij: "pij send <id> "..."" to message a peer (your id is stamped automatically); "pij list --here" to see peers; "pij tail <id>" / "pij state <id>" to observe one.`,
 	].join("\n");
 }
