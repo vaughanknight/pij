@@ -32,7 +32,7 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 |---------|-------------|----------|
 | Watch config | What folders/globs to watch and how to phrase notices. | `.pi/file-watch.json` → `parseConfig` → `Config { watches[], debounceMs, ignore, notice }`. |
 | Snapshot reconcile | The ONLY change-classification mechanism (trap fix). | `reconcile(prev, next): Change[]` over `{mtimeMs,size}` maps — created/modified/deleted; no event-type input exists. |
-| Atomic-save coalesce | Editor save artifacts/round-trips don't spam. | ignore-list (`4913`,`*~`,`.goutputstream*`,`.tmp*`,`.*`) + delete→re-add within `REDELETE_COALESCE_MS` (100ms) → `modified`. |
+| Atomic-save handling | A real atomic save (write-temp → rename) lands in one wake → a single `modified`; editor scratch files are ignore-listed. | Within-wake rename ⇒ one `modified` (AC-04). A rarer **cross-wake** delete→re-add is reclassified to `modified` (a preceding `deleted` may surface) — documented limitation, not deferred-flushed. |
 | Debounced wake | A burst of fs events becomes one scan. | `FolderWatcher` debounces (`debounceMs`, default 30) then rebuilds the snapshot once. |
 | In-session notice | The change reaches the model with no tool call. | `deliverNotices(port, notices)` → `sendUserMessage` (immediate) or `sendUserMessage(...,{deliverAs:"steer"})` (busy). |
 | Steer vs immediate | Busy ⇒ after the current turn; idle ⇒ start a turn. | `pickInjectMode(isIdle)`; `isIdle()` read fresh from the live ctx at delivery. |

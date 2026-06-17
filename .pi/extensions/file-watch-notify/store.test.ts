@@ -131,12 +131,12 @@ describe("WatchReconciler — stateful classify + filter + coalesce", () => {
 		]);
 	});
 
-	it("coalesces a delete→re-add within 100ms into a single modified (atomic save, Finding 02)", () => {
+	it("reclassifies a cross-wake delete→re-add within 100ms as modified (a preceding 'deleted' may surface — see known limitation)", () => {
 		const r = new WatchReconciler(compiled, DEFAULT_NOTICE);
 		r.prime(snap({ "a.md": meta(1, 1) }));
-		// wake 1: file vanished
+		// wake 1: file vanished → reported deleted (held-delete flushing is out of scope)
 		expect(r.apply(new Map(), 1000)).toEqual([{ path: "a.md", kind: "deleted" }]);
-		// wake 2: reappears 50ms later → modified, not created
+		// wake 2: reappears 50ms later → reclassified modified, NOT a spurious created
 		expect(r.apply(snap({ "a.md": meta(2, 2) }), 1050)).toEqual([
 			{ path: "a.md", kind: "modified" },
 		]);
