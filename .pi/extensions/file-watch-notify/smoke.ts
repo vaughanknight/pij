@@ -13,10 +13,10 @@ const scenario: Scenario = {
 			kind: "type",
 			text: "/file-watch-notify",
 			press: "Enter",
-			expect: /not implemented/,
+			// read-only status line: "file-watch: not configured" | "... watching N folder(s)" | "... invalid (...)"
+			expect: /file-watch: (not configured|watching \d+ folder|invalid|configured but)/,
 			expectTimeoutMs: 5000,
 		},
-		// TODO: add real steps once /file-watch-notify is implemented.
 	],
 };
 

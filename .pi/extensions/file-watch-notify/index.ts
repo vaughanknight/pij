@@ -1,52 +1,113 @@
+// file-watch-notify — pi wiring (Pattern P10: one session_start handler).
+//
+// The ONLY pi-importing files are this one and inject.ts. On session_start
+// (every reason) we load .pi/file-watch.json, start a FolderWatcher per
+// configured watch, and on each change inject an in-session notice — steered
+// if the model is busy, immediate if idle — with no tool call. Reload-safe:
+// prior watchers are disposed before new ones start.
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 
-import { FileWatchNotifyStore } from "./store.js";
+import { deliverNotices, makePiInjectPort } from "./inject.js";
+import { compileWatch, parseConfig, WatchReconciler } from "./store.js";
+import { FolderWatcher, nodeWatchDeps } from "./watcher.js";
+
+const CONFIG_REL = ".pi/file-watch.json";
 
 export default function (pi: ExtensionAPI) {
-	const store = new FileWatchNotifyStore(
-		(customType, data) => pi.appendEntry(customType, data),
-	);
+	let currentCtx: ExtensionContext | undefined;
+	let disposers: Array<() => void> = [];
+	// Human-readable status, refreshed each session_start; surfaced by the
+	// read-only /file-watch-notify command (and the deterministic smoke).
+	let statusLine = "file-watch: not configured";
 
-	function refreshStatus(ctx: ExtensionContext): void {
-		const n = store.count();
-		ctx.ui.setStatus("file-watch-notify", n === 0 ? undefined : `file-watch-notify: ${n}`);
+	const injectPort = makePiInjectPort(pi, () => currentCtx);
+
+	function disposeAll(): void {
+		for (const d of disposers) d();
+		disposers = [];
 	}
 
-	// Pattern P10: one handler for session_start, all reasons.
-	pi.on("session_start", async (_event, ctx) => {
-		store.rehydrate(ctx.sessionManager.getEntries());
-		refreshStatus(ctx);
+	// Pattern P10: ONE handler for startup/reload/new/resume/fork. Idempotent —
+	// reload disposes prior watchers and refreshes the live ctx.
+	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
+		currentCtx = ctx;
+		disposeAll();
+
+		const base = process.cwd();
+		const configPath = resolve(base, CONFIG_REL);
+
+		let rawText: string;
+		try {
+			rawText = readFileSync(configPath, "utf8");
+		} catch {
+			// No config => feature simply not enabled. Stay silent (don't nag).
+			statusLine = "file-watch: not configured";
+			ctx.ui.setStatus("file-watch-notify", undefined);
+			return;
+		}
+
+		let raw: unknown;
+		try {
+			raw = JSON.parse(rawText);
+		} catch (e) {
+			statusLine = "file-watch: invalid (not JSON)";
+			ctx.ui.notify(`file-watch: ${CONFIG_REL} is not valid JSON (${String(e)})`, "warning");
+			return;
+		}
+
+		const parsed = parseConfig(raw);
+		if (!parsed.ok) {
+			statusLine = `file-watch: invalid (${parsed.reason})`;
+			ctx.ui.notify(`file-watch: invalid config — ${parsed.reason}`, "warning");
+			return;
+		}
+		const { config } = parsed;
+
+		let started = 0;
+		for (const watch of config.watches) {
+			const dir = resolve(base, watch.dir);
+			const compiled = compileWatch({ ...watch, dir }, config.ignore);
+			const reconciler = new WatchReconciler(compiled, config.notice);
+			const folder = new FolderWatcher(
+				compiled,
+				reconciler,
+				config.debounceMs,
+				(notices) => deliverNotices(injectPort, notices),
+				nodeWatchDeps(),
+			);
+			try {
+				await folder.start();
+				disposers.push(() => folder.dispose());
+				started++;
+			} catch (e) {
+				ctx.ui.notify(`file-watch: cannot watch "${watch.dir}" (${String(e)})`, "warning");
+			}
+		}
+
+		statusLine =
+			started === 0
+				? "file-watch: configured but 0 folders started"
+				: `file-watch: watching ${started} folder${started === 1 ? "" : "s"}`;
+		ctx.ui.setStatus(
+			"file-watch-notify",
+			started === 0 ? undefined : `watching ${started} folder${started === 1 ? "" : "s"}`,
+		);
 	});
 
+	// Read-only status command — no tool call, no side effects. Lets a human (and
+	// the deterministic smoke) confirm the watcher's state.
 	pi.registerCommand("file-watch-notify", {
-		description: "TODO: describe file-watch-notify",
-		handler: async (
-			args: string,
-			ctx: ExtensionCommandContext,
-		): Promise<void> => {
-			// TODO: implement /file-watch-notify
-			ctx.ui.notify(`file-watch-notify: not implemented (got: ${args})`, "info");
-		},
-	});
-
-	// Optional starter tool — delete or expand.
-	pi.registerTool({
-		name: "file-watch-notify_ping",
-		label: "FileWatchNotify ping",
-		description: "TODO: describe what file-watch-notify_ping does",
-		parameters: Type.Object({
-			message: Type.String({ description: "Message to echo" }),
-		}),
-		async execute(_id, params, _signal, _onUpdate, _ctx) {
-			return {
-				content: [{ type: "text", text: `pong: ${params.message}` }],
-				details: {},
-			};
+		description: "file-watch-notify — show whether folders are being watched",
+		handler: async (_args: string, ctx: ExtensionCommandContext): Promise<void> => {
+			ctx.ui.notify(statusLine, "info");
 		},
 	});
 }
