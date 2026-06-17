@@ -12,6 +12,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
+import { isSubagentChild } from "./core/discovery.js";
 import { PijSession } from "./core/session.js";
 import type { Role } from "./core/types.js";
 
@@ -24,6 +25,12 @@ import type { Role } from "./core/types.js";
 // pi-importing seams are here + adapters/pi-runtime.ts; core/ stays pi-free.
 
 export default function (pi: ExtensionAPI): void {
+	// A pi process spawned as a subagent child (pi-subagents: `pi --mode json -p`)
+	// must NOT activate pij: the session_start announce is a sendUserMessage that
+	// collides with the child's `-p` task prompt ("Agent is already processing"),
+	// and a throwaway child should never register as a peer. Skip ALL wiring.
+	if (isSubagentChild(process.env)) return;
+
 	const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
 
 	// Per-session handles, (re)assigned on every session_start (all reasons).

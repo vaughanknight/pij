@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { excludeSelf, filterByFolder, resolveSelf } from "./discovery.js";
+import { excludeSelf, filterByFolder, isSubagentChild, resolveSelf } from "./discovery.js";
 import type { SessionDescriptor } from "./types.js";
 
 function desc(id: string, folder: string): SessionDescriptor {
@@ -50,5 +50,22 @@ describe("resolveSelf", () => {
 		const r = resolveSelf(undefined, []);
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.code).toBe("E-AMBIG");
+	});
+});
+
+describe("isSubagentChild", () => {
+	it("false for a top-level session (neither env set)", () => {
+		expect(isSubagentChild({})).toBe(false);
+	});
+	it("true when PI_SUBAGENT_CHILD=1", () => {
+		expect(isSubagentChild({ PI_SUBAGENT_CHILD: "1" })).toBe(true);
+	});
+	it("true when PI_SUBAGENT_DEPTH>0", () => {
+		expect(isSubagentChild({ PI_SUBAGENT_DEPTH: "1" })).toBe(true);
+		expect(isSubagentChild({ PI_SUBAGENT_DEPTH: "3" })).toBe(true);
+	});
+	it("false at depth 0 / non-numeric", () => {
+		expect(isSubagentChild({ PI_SUBAGENT_DEPTH: "0" })).toBe(false);
+		expect(isSubagentChild({ PI_SUBAGENT_DEPTH: "nope" })).toBe(false);
 	});
 });
