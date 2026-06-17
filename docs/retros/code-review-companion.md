@@ -192,3 +192,13 @@ upstreaming to minih as a coordinated PR.
 - **magicWand** (target: coordination): Expose a reliable projectRoot field through coordination state and validate it at boot so companion agents do not have to infer or override MINIH_PROJECT_ROOT.
 - difficulties:
   - [degrading] config: MINIH_PROJECT_ROOT resolved to the run folder rather than the project root during orientation. (workaround: Used the repository root from the session context (/Users/jordanknight/pi-hacking/pij) for plan and git inspection.)
+
+## 2026-06-17T02:55:09.569Z — code-review-companion / 2026-06-17T02-36-34-285Z-5351
+
+- runId: 2026-06-17T02-36-34-285Z-5351
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-06-17T02-36-34-285Z-5351
+- summary: Reviewed Plan 015 file-watch-notify runtime command work across T010, T011, surplus-token fixes, companion-fix docs, and final drain. I sent five MEDIUM findings: parser contract coverage, permissive parser behavior, docs/domain drift, strict-stop pushback, and residual domain registry/map drift. Later commits fixed the parser/runtime issues and most docs; at stop-time only stale historical wording remained in a few ledger/domain history rows.
+- **magicWand** (target: coordination): Add a coordination-level final-drain handshake that waits for the companion to acknowledge the last fix/disposition before allowing an all-clear control:stop message.
+- difficulties:
+  - [annoying] test: I initially used the Jest-only --runInBand flag with the Vitest test command during T010 verification. (workaround: Reran the focused test with the repository's Vitest syntax: npm test -- .pi/extensions/file-watch-notify/commands.test.ts.)
+  - [degrading] coordination: The final drain and control:stop sequence claimed all findings were addressed while my stop-time drift sweep still found stale historical rows. (workaround: Honored stop precedence, sent farewell, and recorded the residual stale wording in the final report rather than continuing the review loop.)
