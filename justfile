@@ -162,6 +162,15 @@ flow-pair-link:
 flow-pair-test *ARGS:
     npx vitest run skills/flow-pair/test/ "$@"
 
+# Mutation smoke: PROVE the flow-pair suite actually guards a behaviour. The worker
+# writes its own tests, so green != good — this deliberately breaks <file> with a
+# sed ERE expr, asserts tests go RED, restores byte-identical, asserts GREEN again.
+# A suite that stays green under mutation is decoration. See references/review-rubrics.md
+# Dimension 0. Usage:
+#   just flow-pair-mutate skills/flow-pair/lib/ledger.ts 's/if \(!ev[A-Za-z]+\.ok\)/if (false)/g'
+flow-pair-mutate file expr:
+    bash harness/scripts/flow-pair-mutate.sh "{{file}}" '{{expr}}'
+
 # Install/update official Pi from npm. If this machine still has pij's old
 # local ../pi-fork symlink as the global `pi`, remove that symlink first so
 # npm can own the executable again. Refuses to clobber unknown real files.

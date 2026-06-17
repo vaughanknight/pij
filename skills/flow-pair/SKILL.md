@@ -66,8 +66,12 @@ Finding 08). See `references/architecture.md` for the full call chain.
 4. **Deliver** — run `flow-pair dispatch --packet <path>` which saves the packet
    to `.flow-pair/runs/<run-id>/prompts/` first, then send the path pointer via
    `pij send <worker-id> "<path>"`.
-5. **Await and review** — on inbound worker report, apply the 10-dimension rubric
-   from `references/review-rubrics.md`; emit `ACCEPT` or `FIX_REQUIRED`.
+5. **Await and review** — on inbound worker report, apply the rubric in
+   `references/review-rubrics.md`. **Dimension 0 (test quality) is mandatory for
+   CODE packets**: the worker wrote its own tests, so green ≠ good — prove the
+   tests are non-vacuous (`just flow-pair-mutate <file> '<sed-expr>'`, or a reasoned
+   mutation argument naming the assertion that flips) before ACCEPT. Emit `ACCEPT`
+   or `FIX_REQUIRED`.
 6. **Learn** — after `ACCEPT`, write a candidate learning note to
    `prompt-lab/clusters/<cluster>/candidates/` (never auto-promote to
    `active.md`; manual approval required).
