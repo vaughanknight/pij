@@ -15,12 +15,14 @@ flowchart TD
   said0>"🗗 new research on how we can add an exteion … file watching … notification … no tool call, steered if busy"]:::said
   n_research["🔎 Explore: folder-watch → in-session notification"]:::done
   n_plan["📋 Plan (spec + impl) — Simple, READY"]:::done
-  n_build["🛠 Build (Phase 1)"]:::known
-  n_review["🔍 Review"]:::assumed
+  n_build["🛠 Build (Phase 1 + runtime-commands amendment)"]:::done
+  said1>"🗗 implement now with the companion please"]:::said
+  n_review["🔍 Review (skippable — companion reviewed every commit)"]:::known
   n_merge["🔀 Merge"]:::assumed
 
   n_start --> n_research --> n_plan --> n_build --> n_review --> n_merge
   said0 -.- n_start
+  said1 -.- n_build
 ```
 
 **Legend**: 🟩 done · 🟧 in-progress · 🟥 blocked · 🟦 known (designed) · ⬜ assumed (speculative) · 🗗 user input

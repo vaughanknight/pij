@@ -1,10 +1,10 @@
 {
   "slug": "file-watch-notify",
   "plan_dir": "docs/plans/015-file-watch-notify",
-  "cursor": "n-build",
-  "recommended_next": "n-build",
+  "cursor": "n-review",
+  "recommended_next": "n-review",
   "milestones_total": 5,
-  "milestones_done": 2,
+  "milestones_done": 3,
   "nodes": [
     {
       "id": "n-start",
@@ -41,15 +41,20 @@
     {
       "id": "n-build",
       "type": "phase",
-      "status": "known",
-      "title": "Build (Phase 1 — Simple, inline tasks)",
+      "status": "done",
+      "ran_at": "2026-06-17T02:57:05Z",
+      "title": "Build (Phase 1 + runtime-commands amendment)",
+      "user_input": "implement now with the companion please",
+      "note": "Phase 1 (T001-T008) shipped earlier; this session built the T010-T012 runtime watch/list/stop amendment with a live code-review-companion. Real validate-v2 fan-out first (closed 2 HIGH gaps), then tests-first parser + index.ts refactor (disposer Map, module-scope config, try-guarded startWatch). Companion posted 5 MEDIUMs, all addressed (strict stop + malformed-quote rejection + docs). 54 fwn tests; 496 total green. Commits 6e7d70d..ae6bee2.",
+      "artifacts": ["execution.log.md"],
       "next": ["n-review"]
     },
     {
       "id": "n-review",
       "type": "phase",
-      "status": "assumed",
+      "status": "known",
       "title": "Review",
+      "note": "Skippable: the companion reviewed every commit live (Graph decoration). An independent /the-flow review pass is optional before merge.",
       "next": ["n-merge"]
     },
     {
