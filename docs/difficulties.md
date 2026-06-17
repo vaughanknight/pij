@@ -120,3 +120,20 @@ and an encoded fix (durable). Severity guides priority.
   failing message now sends cleanly; `list`/`whoami`/`pkg`/`test <file>` unaffected.
   Surfaced by the first real cross-session messaging test — the system otherwise
   worked end-to-end (send → receive → reply → receipts → state/tail observation).
+
+- **[P1 → FIXED] pij broke the `pi-subagents` tool globally** (2026-06-17).
+  Every foreground `subagent(...)` launch failed instantly with `Agent is already
+  processing. Specify streamingBehavior (...)`, for all agent types, persistently
+  across pi restarts — blocking `validate-v2` fan-out and the harness pre/post
+  seams all session. **Root cause (ours):** `pi-subagents` spawns each foreground
+  child as `pi --mode json -p "<task>"`; the child loads our globally-symlinked
+  `pij`, whose `session_start` announce is a `sendUserMessage` (turn-triggering
+  prompt) that **races the child's `-p` task prompt** → the pi SDK throws
+  `Agent is already processing` (`agent-session.ts:739`). Persistent because pij
+  is always `just link`ed globally; global because every child loads it.
+  **Encoded the fix:** `core/discovery.ts isSubagentChild(env)` (pure, tested) +
+  early-return in `index.ts` — pij no longer activates when `PI_SUBAGENT_CHILD=1`
+  / `PI_SUBAGENT_DEPTH>0` (a throwaway child is never a real peer). Proven live: a
+  subagent canary returns OK with no restart (`bb3e40e`). **Lesson:** any globally
+  linked extension that injects at `session_start` will break subagent children
+  spawned via `-p`; guard `session_start` injectors on the subagent-child env.
