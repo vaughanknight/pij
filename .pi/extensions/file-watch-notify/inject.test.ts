@@ -1,6 +1,13 @@
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import { deliverNotices, type InjectMode, type InjectPort, pickInjectMode } from "./inject.js";
+import {
+	deliverNotices,
+	type InjectMode,
+	type InjectPort,
+	makePiInjectPort,
+	pickInjectMode,
+} from "./inject.js";
 
 function fakePort(isIdle: boolean) {
 	const sent: Array<{ text: string; mode: InjectMode }> = [];
@@ -15,6 +22,38 @@ describe("pickInjectMode", () => {
 	it("idle ⇒ immediate, busy ⇒ steer", () => {
 		expect(pickInjectMode(true)).toBe("immediate");
 		expect(pickInjectMode(false)).toBe("steer");
+	});
+});
+
+describe("makePiInjectPort", () => {
+	it("treats a stale ctx.isIdle() as busy instead of throwing", () => {
+		const sent: Array<{ text: string; opts?: unknown }> = [];
+		const pi = {
+			sendUserMessage: (text: string, opts?: unknown) => sent.push({ text, opts }),
+		} as unknown as ExtensionAPI;
+		const staleCtx = {
+			isIdle: () => {
+				throw new Error("stale ctx");
+			},
+		} as unknown as ExtensionContext;
+		const port = makePiInjectPort(pi, () => staleCtx);
+
+		expect(() => deliverNotices(port, ["[file-watch] stale.md modified"])).not.toThrow();
+		expect(sent).toEqual([
+			{ text: "[file-watch] stale.md modified", opts: { deliverAs: "steer" } },
+		]);
+	});
+
+	it("drops a stale sendUserMessage() wake instead of throwing", () => {
+		const pi = {
+			sendUserMessage: () => {
+				throw new Error("stale extension runner");
+			},
+		} as unknown as ExtensionAPI;
+		const ctx = { isIdle: () => false } as unknown as ExtensionContext;
+		const port = makePiInjectPort(pi, () => ctx);
+
+		expect(() => deliverNotices(port, ["[file-watch] stale.md modified"])).not.toThrow();
 	});
 });
 

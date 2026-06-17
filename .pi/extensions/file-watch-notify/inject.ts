@@ -42,12 +42,24 @@ export function makePiInjectPort(
 	getCtx: () => ExtensionContext | undefined,
 ): InjectPort {
 	return {
-		// No live ctx ⇒ treat as busy so the notice is steered (queued), never an
-		// unsolicited immediate turn.
-		isIdle: () => getCtx()?.isIdle() ?? false,
+		// No live ctx (or a stale ctx after reload/session replacement) ⇒ treat as
+		// busy so the notice is steered, never an unsolicited immediate turn. Watcher
+		// callbacks are async and must never crash pi if they outlive their ctx.
+		isIdle: () => {
+			try {
+				return getCtx()?.isIdle() ?? false;
+			} catch {
+				return false;
+			}
+		},
 		send: (text, mode) => {
-			if (mode === "steer") pi.sendUserMessage(text, { deliverAs: "steer" });
-			else pi.sendUserMessage(text);
+			try {
+				if (mode === "steer") pi.sendUserMessage(text, { deliverAs: "steer" });
+				else pi.sendUserMessage(text);
+			} catch {
+				// Stale post-reload delivery: drop the obsolete wake rather than bringing
+				// down the host process. A fresh watcher will be armed by session_start.
+			}
 		},
 	};
 }
