@@ -157,10 +157,12 @@ export class PijSession {
 				this.capture("receipt", { messageId, command: v.value, executed: true });
 				return { kind: "command-executed", command: v.value };
 			}
-			// Not armed: queue + wake the peer so a human can `/pij` to apply it.
+			// Not armed: queue it, and wake the peer. NB the wake lands in the peer's
+			// LLM (sendUserMessage), and an agent cannot run a slash command itself, so
+			// the message must ask it to RELAY to its human operator (D-042).
 			this.pendingControl.push(v.value);
 			this.ports.pi.inject(
-				`[pij] ${msg.from} requested /${v.value}; run /pij in this session to apply.`,
+				`[pij] Peer ${msg.from} asked this session to /${v.value}, but pij is not armed yet. You cannot run a slash command yourself — please ask your human operator to run /pij once in this session to apply it (that also arms reload/new from peers for the rest of this session).`,
 				this.ports.pi.isIdle() ? "immediate" : "steer",
 			);
 			this.capture("receipt", { messageId, command: v.value, deferred: true });

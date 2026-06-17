@@ -67,6 +67,27 @@ describe("parseArgs", () => {
 			ok: true,
 			value: { verb: "send", to: "w3", command: "compact" },
 		});
+		// D-042: a bare "/<allow-listed>" text body auto-routes to the command path
+		// (so `pij send w3 "/compact"` executes instead of leaking to the peer's LLM).
+		for (const name of ["compact", "reload", "new"]) {
+			expect(parseArgs(["send", "w3", `/${name}`])).toMatchObject({
+				ok: true,
+				value: { verb: "send", to: "w3", command: name, text: undefined },
+			});
+		}
+		expect(parseArgs(["send", "w3", "  /compact  "])).toMatchObject({
+			ok: true,
+			value: { verb: "send", to: "w3", command: "compact" },
+		});
+		// only an EXACT bare slash-command is hijacked; everything else stays text
+		expect(parseArgs(["send", "w3", "/unknown"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", to: "w3", text: "/unknown", command: undefined },
+		});
+		expect(parseArgs(["send", "w3", "/compact please"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", to: "w3", text: "/compact please", command: undefined },
+		});
 		expect(
 			parseArgs(["tail", "w3", "--since", "5", "--type", "tool_call", "--lines", "10", "--follow"]),
 		).toMatchObject({

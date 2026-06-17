@@ -161,8 +161,23 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if (to === undefined) return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
 			if (flags.command === true)
 				return err("E-ARG", `--command needs a name (allowed: ${ALLOWED_COMMANDS.join(", ")})`);
-			const command = typeof flags.command === "string" ? flags.command : undefined;
-			const text = pos[1];
+			let command = typeof flags.command === "string" ? flags.command : undefined;
+			let text = pos[1];
+			// Ergonomic (D-042): a bare "/compact" | "/reload" | "/new" text body is
+			// almost certainly meant as a remote command, not a chat line for the
+			// peer's LLM. Route an EXACT, trimmed "/"+allow-listed name to the command
+			// path so it executes instead of leaking as text. Anything else (extra
+			// words, unknown name) stays plain text.
+			if (command === undefined && text !== undefined) {
+				const slug = text.trim();
+				if (slug.startsWith("/")) {
+					const name = slug.slice(1);
+					if ((ALLOWED_COMMANDS as readonly string[]).includes(name)) {
+						command = name;
+						text = undefined;
+					}
+				}
+			}
 			if (command !== undefined && text !== undefined)
 				return err("E-ARG", "pij send takes a <text> OR --command <name>, not both");
 			if (command === undefined && text === undefined)

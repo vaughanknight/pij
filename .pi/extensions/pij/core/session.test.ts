@@ -191,6 +191,7 @@ describe("PijSession.onInbound — commands (AC-6, finding 05)", () => {
 		expect(res).toMatchObject({ kind: "command-deferred", command: "reload" });
 		expect(h.pi.controlCalls).toHaveLength(0);
 		expect(h.pi.injects[0]?.text).toContain("/reload");
+		expect(h.pi.injects[0]?.text).toContain("human operator");
 		// a `/pij` invocation arms the channel and drains the queue exactly once
 		h.pi.setArmed(true);
 		expect(h.session.applyPendingControl()).toEqual(["reload"]);
