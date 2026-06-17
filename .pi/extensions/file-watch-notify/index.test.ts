@@ -9,9 +9,20 @@ import factory from "./index.js";
 import type { FileEntry, WatchDeps } from "./watcher.js";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<void> | void;
+type ToolForTest = {
+	name: string;
+	execute: (
+		id: string,
+		params: Record<string, unknown>,
+		signal: AbortSignal | undefined,
+		onUpdate: undefined,
+		ctx: unknown,
+	) => Promise<{ content: Array<{ type: "text"; text: string }>; details?: unknown }>;
+};
 
 function fakePi() {
 	const sent: Array<{ text: string; opts?: unknown }> = [];
+	const tools = new Map<string, ToolForTest>();
 	let sessionStart: Handler | undefined;
 	let command: ((args: string, ctx: unknown) => Promise<void> | void) | undefined;
 	const pi = {
@@ -27,12 +38,14 @@ function fakePi() {
 		) => {
 			command = def.handler;
 		},
+		registerTool: (tool: ToolForTest) => tools.set(tool.name, tool),
 	};
 	return {
 		pi: pi as unknown as ExtensionAPI,
 		sent,
 		getStart: () => sessionStart,
 		getCommand: () => command,
+		getTool: (name: string) => tools.get(name),
 	};
 }
 
@@ -188,8 +201,82 @@ describe("index wiring — runtime commands (AC-07)", () => {
 		const harness = fakePi();
 		factory(harness.pi, { cwd: dir, makeWatchDeps: () => w.deps });
 		await harness.getStart()?.({}, fakeCtx(true)); // boot, no config => 0 watches
-		return { dir, w, ...harness, run: harness.getCommand() };
+		return {
+			dir,
+			w,
+			...harness,
+			run: harness.getCommand(),
+			tool: harness.getTool("file_watch_notify"),
+		};
 	}
+
+	it("registers an LLM-callable tool for status/list/watch/stop", async () => {
+		const { tool } = await bootNoConfig();
+		expect(tool).toBeDefined();
+	});
+
+	it("tool arms, lists, and stops a runtime watch with no slash command", async () => {
+		const { dir, w, tool } = await bootNoConfig();
+		expect(tool).toBeDefined();
+
+		const armed = await tool?.execute(
+			"t1",
+			{ action: "watch", dir: "docs", patterns: ["**/*.md"] },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(w.closes()).toBe(0);
+		expect(armed?.content[0].text).toContain("now watching");
+		expect(armed?.content[0].text).toContain("**/*.md");
+
+		const listed = await tool?.execute(
+			"t2",
+			{ action: "list" },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(listed?.content[0].text).toContain("watching:");
+		expect(listed?.content[0].text).toContain("(runtime)");
+
+		const stopped = await tool?.execute(
+			"t3",
+			{ action: "stop", dir: "docs" },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(w.closes()).toBe(1);
+		expect(stopped?.content[0].text).toContain("stopped watching");
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("tool validates required watch/stop fields", async () => {
+		const { dir, tool } = await bootNoConfig();
+		expect(tool).toBeDefined();
+
+		const noPatterns = await tool?.execute(
+			"t1",
+			{ action: "watch", dir: "docs" },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(noPatterns?.content[0].text).toContain("watch needs dir and at least one pattern");
+
+		const noDir = await tool?.execute(
+			"t2",
+			{ action: "stop" },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(noDir?.content[0].text).toContain("stop needs dir");
+
+		await rm(dir, { recursive: true, force: true });
+	});
 
 	it("arms, lists, and stops a runtime watch with no reload", async () => {
 		const { dir, w, run } = await bootNoConfig();

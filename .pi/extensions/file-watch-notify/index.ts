@@ -16,11 +16,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { StringEnum } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 
 import { COMMAND_USAGE, parseCommand } from "./commands.js";
 import { deliverNotices, makePiInjectPort } from "./inject.js";
@@ -133,6 +135,30 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		);
 	}
 
+	function formatActiveWatches(): string {
+		if (watches.size === 0) return "file-watch: no active watches";
+		return [...watches.entries()]
+			.map(([dir, w]) => `watching: ${dir} [${w.patterns.join(", ")}] (${w.source})`)
+			.join("\n");
+	}
+
+	async function armRuntimeWatch(dir: string, patterns: string[]): Promise<string> {
+		const r = await startWatch(dir, patterns, "runtime");
+		if (!r.ok) return `file-watch: cannot watch "${dir}" — ${r.reason}`;
+		refreshStatus();
+		return `file-watch: now watching ${resolve(base, dir)} [${patterns.join(", ")}]`;
+	}
+
+	function stopWatch(dir: string): string {
+		const resolved = resolve(base, dir);
+		const w = watches.get(resolved);
+		if (!w) return `file-watch: not watching ${resolved}`;
+		w.dispose();
+		watches.delete(resolved);
+		refreshStatus();
+		return `file-watch: stopped watching ${resolved}`;
+	}
+
 	// Pattern P10: ONE handler for startup/reload/new/resume/fork. Idempotent —
 	// reload disposes prior watchers (config AND runtime) and refreshes the live ctx.
 	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
@@ -198,8 +224,8 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		);
 	});
 
-	// Runtime control surface — no tool call. `status`/no-args shows the status
-	// line + usage; `watch`/`list`/`stop` arm/list/dispose watches live (T010-T012).
+	// Human command surface. The LLM-callable tool below is the primary automation
+	// surface; this command remains as a compatibility/manual UI wrapper.
 	pi.registerCommand("file-watch-notify", {
 		description: "file-watch-notify — watch/list/stop folder watches live (no args = status)",
 		handler: async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
@@ -208,47 +234,75 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 				case "status":
 					ctx.ui.notify(`${statusLine}\n${COMMAND_USAGE}`, "info");
 					return;
-				case "list": {
-					if (watches.size === 0) {
-						ctx.ui.notify("file-watch: no active watches", "info");
-						return;
-					}
-					const lines = [...watches.entries()].map(
-						([dir, w]) => `watching: ${dir} [${w.patterns.join(", ")}] (${w.source})`,
-					);
-					ctx.ui.notify(lines.join("\n"), "info");
+				case "list":
+					ctx.ui.notify(formatActiveWatches(), "info");
 					return;
-				}
-				case "watch": {
-					const r = await startWatch(cmd.dir, cmd.patterns, "runtime");
-					if (r.ok) {
-						refreshStatus();
-						ctx.ui.notify(
-							`file-watch: now watching ${resolve(base, cmd.dir)} [${cmd.patterns.join(", ")}]`,
-							"info",
-						);
-					} else {
-						ctx.ui.notify(`file-watch: cannot watch "${cmd.dir}" — ${r.reason}`, "warning");
-					}
+				case "watch":
+					ctx.ui.notify(await armRuntimeWatch(cmd.dir, cmd.patterns), "info");
 					return;
-				}
-				case "stop": {
-					const resolved = resolve(base, cmd.dir);
-					const w = watches.get(resolved);
-					if (!w) {
-						ctx.ui.notify(`file-watch: not watching ${resolved}`, "warning");
-						return;
-					}
-					w.dispose();
-					watches.delete(resolved);
-					refreshStatus();
-					ctx.ui.notify(`file-watch: stopped watching ${resolved}`, "info");
+				case "stop":
+					ctx.ui.notify(stopWatch(cmd.dir), "info");
 					return;
-				}
 				case "error":
 					ctx.ui.notify(`file-watch: ${cmd.reason}`, "warning");
 					return;
 			}
+		},
+	});
+
+	pi.registerTool({
+		name: "file_watch_notify",
+		label: "File watch notify",
+		description:
+			"Manage file-watch-notify watches for the current Pi session. Use this to arm, list, stop, or inspect watches so file changes inject live [file-watch] notices into the session.",
+		promptSnippet:
+			"file_watch_notify: arm/list/stop current-session file watchers that inject [file-watch] notices when matching files change.",
+		promptGuidelines: [
+			"Use file_watch_notify when the user asks you to watch a folder, arm file-change notifications, list active watches, or stop a watch. Prefer this tool over asking the user to type /file-watch-notify.",
+			"Runtime watches are session-local: they are not written to .pi/file-watch.json and are cleared on /reload/session replacement. Use config only for durable watches.",
+			"For broad scratch testing, call file_watch_notify with action='watch', dir='scratch', patterns=['**/*'] before asking a peer to edit or create files.",
+		],
+		parameters: Type.Object({
+			action: StringEnum(["status", "list", "watch", "stop"] as const, {
+				description: "Operation to perform.",
+			}),
+			dir: Type.Optional(
+				Type.String({
+					description: "Directory to watch or stop, resolved relative to the project root.",
+				}),
+			),
+			patterns: Type.Optional(
+				Type.Array(Type.String(), {
+					description: "Glob patterns for action='watch' (for example ['**/*.md'] or ['**/*']).",
+				}),
+			),
+		}),
+		executionMode: "sequential",
+		async execute(_id, params) {
+			let text: string;
+			switch (params.action) {
+				case "status":
+					text = `${statusLine}\n${COMMAND_USAGE}`;
+					break;
+				case "list":
+					text = formatActiveWatches();
+					break;
+				case "watch": {
+					if (!params.dir || !params.patterns || params.patterns.length === 0) {
+						text = "file-watch: watch needs dir and at least one pattern";
+						break;
+					}
+					text = await armRuntimeWatch(params.dir, params.patterns);
+					break;
+				}
+				case "stop":
+					text = params.dir ? stopWatch(params.dir) : "file-watch: stop needs dir";
+					break;
+			}
+			return {
+				content: [{ type: "text", text }],
+				details: { action: params.action, activeWatches: watches.size },
+			};
 		},
 	});
 }
