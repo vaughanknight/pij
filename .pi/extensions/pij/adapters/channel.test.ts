@@ -59,6 +59,20 @@ describe("FsChannel", () => {
 		expect(new Set(got.map((m) => m.messageId)).size).toBe(5);
 	});
 
+	it("poll fallback drains a live message even when fs.watch never fires", async () => {
+		// Inject a no-op watcher: with fs.watch effectively dead, the ONLY drain path
+		// is the fallback poll. This reproduces the post-compaction stranded-message
+		// failure mode (fs.watch dropped the inbox event). On the pre-fix code this
+		// test hangs (nothing ever drains the message).
+		const ch = new FsChannel(home, { pollMs: 30, watchFactory: () => ({ close() {} }) });
+		const got: DeliveredMessage[] = [];
+		disposers.push(ch.watch("bob", (m) => got.push(m)));
+		// Deliver AFTER subscribe so the initial scan() misses it and no watch event fires.
+		ch.deliver(msg("stranded"));
+		await waitFor(() => got.length === 1);
+		expect(got.map((m) => m.body)).toEqual(["stranded"]);
+	});
+
 	it("a watcher only sees its own inbox (routes by message.to)", async () => {
 		const ch = new FsChannel(home);
 		ch.deliver({ from: "alice", to: "carol", body: "for carol" });

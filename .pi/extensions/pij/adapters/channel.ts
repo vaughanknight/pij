@@ -18,11 +18,22 @@ export interface DeliveredMessage extends PijMessage {
 }
 
 const DEBOUNCE_MS = 20;
+// fs.watch silently drops events under load (notably while a session is busy
+// compacting), which can strand a delivered message until the next inbox event.
+// A low-frequency poll guarantees a missed event still drains within POLL_MS.
+const POLL_MS = 1500;
 
 export class FsChannel {
 	private seq = 0;
 
-	constructor(private readonly pijHome: string) {}
+	constructor(
+		private readonly pijHome: string,
+		private readonly watchOpts: {
+			pollMs?: number;
+			/** Injectable for tests; defaults to node:fs watch. */
+			watchFactory?: (dir: string, onEvent: () => void) => { close(): void };
+		} = {},
+	) {}
 
 	private inboxDir(id: SessionId): string {
 		return join(this.pijHome, id, "inbox");
@@ -80,13 +91,20 @@ export class FsChannel {
 			}
 		};
 
-		const watcher = watch(dir, () => {
+		const mkWatcher = this.watchOpts.watchFactory ?? ((d, cb) => watch(d, cb));
+		const watcher = mkWatcher(dir, () => {
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(scan, DEBOUNCE_MS);
 		});
+		// Fallback poll: covers fs.watch events dropped under load (e.g. while the
+		// session is compacting) so a delivered message can never strand longer than
+		// pollMs. unref so it never keeps the process alive.
+		const poll = setInterval(scan, this.watchOpts.pollMs ?? POLL_MS);
+		poll.unref?.();
 		scan(); // drain anything already present
 		return () => {
 			if (timer) clearTimeout(timer);
+			clearInterval(poll);
 			watcher.close();
 		};
 	}
