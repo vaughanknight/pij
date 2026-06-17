@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	deliverNotices,
-	type InjectMode,
-	type InjectPort,
-	pickInjectMode,
-} from "./inject.js";
+import { deliverNotices, type InjectMode, type InjectPort, pickInjectMode } from "./inject.js";
 
 function fakePort(isIdle: boolean) {
 	const sent: Array<{ text: string; mode: InjectMode }> = [];

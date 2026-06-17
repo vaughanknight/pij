@@ -49,9 +49,7 @@ export const REDELETE_COALESCE_MS = 100;
 const ALL_KINDS: readonly ChangeKind[] = ["created", "modified", "deleted"];
 
 // ─── config parsing (Pattern P4: tagged-union over throws) ──────────────────
-export type ConfigResult =
-	| { ok: true; config: Config }
-	| { ok: false; reason: string };
+export type ConfigResult = { ok: true; config: Config } | { ok: false; reason: string };
 
 function isStringArray(v: unknown): v is string[] {
 	return Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -121,8 +119,7 @@ export function parseConfig(raw: unknown): ConfigResult {
 		ok: true,
 		config: {
 			watches,
-			debounceMs:
-				typeof obj.debounceMs === "number" ? obj.debounceMs : DEFAULT_DEBOUNCE_MS,
+			debounceMs: typeof obj.debounceMs === "number" ? obj.debounceMs : DEFAULT_DEBOUNCE_MS,
 			ignore: isStringArray(obj.ignore) ? obj.ignore : DEFAULT_IGNORE,
 			notice: typeof obj.notice === "string" ? obj.notice : DEFAULT_NOTICE,
 		},

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	type Snapshot,
 	compileWatch,
 	DEFAULT_IGNORE,
 	DEFAULT_NOTICE,
 	formatNotice,
 	parseConfig,
 	reconcile,
+	type Snapshot,
 	WatchReconciler,
 } from "./store.js";
 

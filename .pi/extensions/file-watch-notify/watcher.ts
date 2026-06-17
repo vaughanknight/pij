@@ -18,11 +18,7 @@ export interface FileEntry {
 
 /** Injected side effects (Pattern P3) — node-backed by default, faked in tests. */
 export interface WatchDeps {
-	watch: (
-		dir: string,
-		opts: { recursive: boolean },
-		listener: () => void,
-	) => { close(): void };
+	watch: (dir: string, opts: { recursive: boolean }, listener: () => void) => { close(): void };
 	listFiles: (dir: string, recursive: boolean) => Promise<FileEntry[]>;
 	now: () => number;
 	setTimer: (fn: () => void, ms: number) => () => void;
@@ -47,10 +43,8 @@ export class FolderWatcher {
 	async start(): Promise<void> {
 		this.reconciler.prime(await this.snapshot());
 		if (this.disposed) return;
-		this.fsw = this.deps.watch(
-			this.compiled.dir,
-			{ recursive: this.compiled.recursive },
-			() => this.schedule(),
+		this.fsw = this.deps.watch(this.compiled.dir, { recursive: this.compiled.recursive }, () =>
+			this.schedule(),
 		);
 	}
 
@@ -106,9 +100,7 @@ export class FolderWatcher {
 export function nodeWatchDeps(): WatchDeps {
 	return {
 		watch: (dir, opts, listener) => {
-			const w = watch(dir, { recursive: opts.recursive, persistent: false }, () =>
-				listener(),
-			);
+			const w = watch(dir, { recursive: opts.recursive, persistent: false }, () => listener());
 			return { close: () => w.close() };
 		},
 		listFiles: (dir, recursive) => listFilesNode(dir, recursive),
@@ -124,12 +116,8 @@ export function nodeWatchDeps(): WatchDeps {
 async function listFilesNode(dir: string, recursive: boolean): Promise<FileEntry[]> {
 	const out: FileEntry[] = [];
 	async function walk(current: string): Promise<void> {
-		let entries: Awaited<ReturnType<typeof readdir>>;
-		try {
-			entries = await readdir(current, { withFileTypes: true });
-		} catch {
-			return; // dir vanished mid-walk — ignore
-		}
+		const entries = await readdir(current, { withFileTypes: true }).catch(() => null);
+		if (entries === null) return; // dir vanished mid-walk — ignore
 		for (const e of entries) {
 			const abs = join(current, e.name);
 			if (e.isDirectory()) {
