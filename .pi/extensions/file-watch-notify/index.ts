@@ -17,11 +17,19 @@ import type {
 
 import { deliverNotices, makePiInjectPort } from "./inject.js";
 import { compileWatch, parseConfig, WatchReconciler } from "./store.js";
-import { FolderWatcher, nodeWatchDeps } from "./watcher.js";
+import { FolderWatcher, nodeWatchDeps, type WatchDeps } from "./watcher.js";
 
 const CONFIG_REL = ".pi/file-watch.json";
 
-export default function (pi: ExtensionAPI) {
+/** Optional injection seam for the lightweight wiring test (pi calls with 1 arg). */
+export interface WiringDeps {
+	cwd?: string;
+	makeWatchDeps?: () => WatchDeps;
+}
+
+export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
+	const base = wiring.cwd ?? process.cwd();
+	const makeWatchDeps = wiring.makeWatchDeps ?? nodeWatchDeps;
 	let currentCtx: ExtensionContext | undefined;
 	let disposers: Array<() => void> = [];
 	// Human-readable status, refreshed each session_start; surfaced by the
@@ -41,7 +49,6 @@ export default function (pi: ExtensionAPI) {
 		currentCtx = ctx;
 		disposeAll();
 
-		const base = process.cwd();
 		const configPath = resolve(base, CONFIG_REL);
 
 		let rawText: string;
@@ -81,7 +88,7 @@ export default function (pi: ExtensionAPI) {
 				reconciler,
 				config.debounceMs,
 				(notices) => deliverNotices(injectPort, notices),
-				nodeWatchDeps(),
+				makeWatchDeps(),
 			);
 			try {
 				await folder.start();
