@@ -81,6 +81,13 @@ format:
 test *ARGS:
     npm run test -- "$@"
 
+# Focused gate for the file-watch-notify extension. Use after touching its
+# wiring/tools/tests/docs before running the full self-check.
+check-file-watch-notify:
+    just typecheck
+    just test .pi/extensions/file-watch-notify
+    npx biome check .pi/extensions/file-watch-notify/
+
 # tmux-driven end-to-end smoke (Driver SDK).
 smoke:
     npm run smoke
