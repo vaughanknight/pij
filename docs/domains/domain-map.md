@@ -11,6 +11,7 @@ flowchart LR
     AW[agent-workbench\ncontracts: MinihRunSummary, MinihViewSnapshot, MinihAdapterResult, persistence facade]
     MH[Minih artifacts\ncontracts: run.json, events.ndjson, inbox/state/history, output/report.json]
     PIJ[pij-messaging\ncontracts: SessionDescriptor, PijEvent+EventQuery, 5 ports, MessageReceipt, resolveSelf, Result]
+    FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -31,6 +32,10 @@ flowchart LR
     PIJ -->|validated by generator/tests/smoke/self-check| H
     PIJ -->|aligns liveness vocabulary active/stale/dead only| AW
     PIJ -->|future pij command/CLI surface presented through| ATI
+    FWN -->|index.ts + inject.ts import pi; session_start watcher + sendUserMessage/steer| PI
+    FWN -->|validated by generator/tests/smoke/self-check| H
+    FWN -->|/file-watch-notify status command presented through| ATI
+    FWN -.->|adapts inject seam pattern only, no code reuse| PIJ
 ```
 
 ## Health Summary
@@ -54,6 +59,10 @@ flowchart LR
 | `pij-messaging` → `extension-authoring-harness` | healthy | `just new` generator, vitest (50 specs), Biome, self-check, retros, difficulty ledger. |
 | `pij-messaging` → `agent-workbench` | vocabulary-only | Reuses `active/stale/dead` liveness + working-state names; no code reuse (pij owns its own peer registry, AW reads Minih runs). |
 | `pij-messaging` → `agent-tooling-interface` | contract-only (future) | The future `pij` command/CLI surface + boot self-announce will present through Pi command/tool UX; no wiring in Phase 1. |
+| `file-watch-notify` → `pi runtime` | healthy | `index.ts` + `inject.ts` are the only pi importers: `session_start` arms the watcher; delivery is `sendUserMessage` (immediate) / `sendUserMessage(...,{deliverAs:"steer"})` (busy). Core/watcher stay pi-free (P2). |
+| `file-watch-notify` → `extension-authoring-harness` | healthy | `just new` generator, vitest (22 specs: TDD core + real-fs watcher + fake-pi inject), Biome, Driver `/file-watch-notify` smoke, self-check. |
+| `file-watch-notify` → `agent-tooling-interface` | contract-only | Read-only `/file-watch-notify` status command presents through Pi command UX. |
+| `file-watch-notify` ⇢ `pij-messaging` | pattern-only | Adapts pij's `pi-runtime` inject path (idle→send, busy→steer); **no import, no shared code, no changes to pij**. |
 
 ## History
 
@@ -68,3 +77,4 @@ flowchart LR
 | 2026-05-16 | Plan 007 Phase 1 — added `agent-workbench` (`AW`) and Minih artifact source (`MH`) nodes with one-way consume edges to `pi runtime`, `agent-tooling-interface`, `session-work-state`, `agentic-loops`, `extension-authoring-harness`, and Minih-owned artifacts; expanded `agent-tooling-interface` node label for `/minih` read-only surfaces. |
 | 2026-05-27 | Plan 013 — extended `agent-tooling-interface` with `/peacock` footer chrome and `session-work-state` with Peacock append-only color/surface replay semantics. |
 | 2026-06-16 | Plan 014 Phase 1 — added `pij-messaging` (`PIJ`) node; four outbound edges (future pi-runtime adapter → `pi runtime`; validation → `extension-authoring-harness`; liveness vocabulary-only → `agent-workbench`; future CLI surface → `agent-tooling-interface`). Phase-1 core is pi-free; no inbound edges yet. |
+| 2026-06-17 | Plan 015 — added `file-watch-notify` (`FWN`) node; three outbound edges (`pi runtime` wiring; `extension-authoring-harness` validation; `agent-tooling-interface` status command) plus a dashed pattern-only link to `pij-messaging` (adapts the inject seam, no code reuse). Standalone extension; snapshot-reconcile trap fix is the headline contract. |
