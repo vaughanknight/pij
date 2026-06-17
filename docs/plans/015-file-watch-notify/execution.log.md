@@ -85,3 +85,15 @@ Plan v1.1.0 · validated by the **real** `validate-v2` fan-out (2026-06-17, 4/4 
   - **Replaced** (not double-registered) the `registerCommand("file-watch-notify")` handler with a `parseCommand`-dispatched body: `status` → status line + usage; `list` → one labelled line per watch (`watching: <dir> [<globs>] (config|runtime)`) or "no active watches"; `watch` → `startWatch` + `refreshStatus`; `stop` → dispose + delete by resolved dir (works for config or runtime watches).
 - session_start's config-load error wording + `statusLine` values preserved (the deterministic smoke asserts them); `refreshStatus()` recomputes from `watches.size` only for runtime ops.
 - typecheck ✓ (fixed a `noUncheckedIndexedAccess` nit via destructure), biome ✓, **45 fwn tests green** (16 commands + 16 store + 5 inject + 5 index + 3 watcher). Companion pinged.
+
+### T012 — self-check + runtime smoke + cleanup
+- Extended `index.test.ts` to drive the runtime command path (captures the registered `registerCommand` handler): **arm → list → stop** (AC-07), **same-dir dedupe** (re-arm disposes the prior), **arming-failure try-guard** (notify "cannot watch", no throw), and the **HIGH-2 reload guard** — a runtime-armed watch is closed by `disposeAll()` on the next `session_start` and a follow-up `list` shows "no active watches" (proves it does NOT leak into the new session). 9 index tests (was 5).
+- **Live evidence (serendipitous, real pi session)**: while removing the trial config, deleting `scratch/fwn-demo/seed.md` tripped THIS session's config-booted watcher → an in-session `[file-watch] seed.md deleted` notice arrived with **no tool call** (AC-01/AC-05 demonstrated live, not just in tests).
+- **Cleanup**: removed the untracked trial dogfood config `.pi/file-watch.json` + `scratch/fwn-demo/` (they would arm a watcher in every session/child).
+- **Companion MEDIUM (T010) fixed** (`c8bad34`): documented + tested the lenient surplus-token contract (`list`/`help`/`stop` ignore extra args).
+- **self-check**: typecheck ✓, lint ✓, test ✓ (**490 passed / 4 skipped; 52 in file-watch-notify**), smoke ✓ for file-watch-notify + every other extension EXCEPT the pre-existing `pi-peacock` environmental model-string mismatch (`gpt-5.5•medium` vs live `claude-sonnet-4.6•high`) — not a fwn regression. `pkg audit` report-only.
+
+### Amendment complete (T010–T012)
+- **Phase-end harness seam**: the `/eng-harness-flow` router keys on a `.harness/` governance shape this repo doesn't use (pij runs its own `just` + `harness/` Driver SDK harness) — best-effort / never-blocks → noted + skipped (same as the pre-implement seam).
+- Both validate-v2 HIGH gaps closed in code (config scope; disposers → Map / reload leak); 1 companion MEDIUM fixed.
+- Commits: `6e7d70d` (T010 red tests) → `4625fec` (T011 parser + index refactor) → `c8bad34` (companion-fix) → T012 (this commit).

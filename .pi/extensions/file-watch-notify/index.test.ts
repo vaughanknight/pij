@@ -13,6 +13,7 @@ type Handler = (event: unknown, ctx: unknown) => Promise<void> | void;
 function fakePi() {
 	const sent: Array<{ text: string; opts?: unknown }> = [];
 	let sessionStart: Handler | undefined;
+	let command: ((args: string, ctx: unknown) => Promise<void> | void) | undefined;
 	const pi = {
 		on: (name: string, h: Handler) => {
 			if (name === "session_start") sessionStart = h;
@@ -20,9 +21,33 @@ function fakePi() {
 		sendUserMessage: (text: string, opts?: unknown) => {
 			sent.push({ text, opts });
 		},
-		registerCommand: () => {},
+		registerCommand: (
+			_name: string,
+			def: { handler: (args: string, ctx: unknown) => Promise<void> | void },
+		) => {
+			command = def.handler;
+		},
 	};
-	return { pi: pi as unknown as ExtensionAPI, sent, getStart: () => sessionStart };
+	return {
+		pi: pi as unknown as ExtensionAPI,
+		sent,
+		getStart: () => sessionStart,
+		getCommand: () => command,
+	};
+}
+
+function fakeCmdCtx() {
+	const notifies: Array<{ msg: string; level?: string }> = [];
+	return {
+		ctx: {
+			ui: {
+				notify: (msg: string, level?: string) => notifies.push({ msg, level }),
+				setStatus: () => {},
+			},
+		} as unknown,
+		notifies,
+		last: () => notifies[notifies.length - 1]?.msg ?? "",
+	};
 }
 
 function fakeCtx(isIdle: boolean) {
@@ -151,6 +176,95 @@ describe("index wiring — config → watcher → inject end-to-end", () => {
 		factory(pi, { cwd: dir, makeWatchDeps: () => w.deps });
 		await expect(getStart()?.({}, fakeCtx(false))).resolves.toBeUndefined();
 		expect(sent).toEqual([]); // watcher never armed; no crash
+
+		await rm(dir, { recursive: true, force: true });
+	});
+});
+
+describe("index wiring — runtime commands (AC-07)", () => {
+	async function bootNoConfig() {
+		const dir = await mkdtemp(join(tmpdir(), "fwn-rt-"));
+		const w = fakeWatchDeps();
+		const harness = fakePi();
+		factory(harness.pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await harness.getStart()?.({}, fakeCtx(true)); // boot, no config => 0 watches
+		return { dir, w, ...harness, run: harness.getCommand() };
+	}
+
+	it("arms, lists, and stops a runtime watch with no reload", async () => {
+		const { dir, w, run } = await bootNoConfig();
+		expect(run).toBeDefined();
+
+		const armed = fakeCmdCtx();
+		await run?.("watch docs **/*.md", armed.ctx);
+		expect(w.closes()).toBe(0);
+		expect(armed.last()).toContain("now watching");
+		expect(armed.last()).toContain("**/*.md");
+
+		const listed = fakeCmdCtx();
+		await run?.("list", listed.ctx);
+		expect(listed.last()).toContain("watching:");
+		expect(listed.last()).toContain("(runtime)");
+
+		const stopped = fakeCmdCtx();
+		await run?.("stop docs", stopped.ctx);
+		expect(w.closes()).toBe(1);
+		expect(stopped.last()).toContain("stopped watching");
+
+		const empty = fakeCmdCtx();
+		await run?.("list", empty.ctx);
+		expect(empty.last()).toBe("file-watch: no active watches");
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("dedupes a second watch on the same dir (disposes the first)", async () => {
+		const { dir, w, run } = await bootNoConfig();
+		await run?.("watch docs **/*.md", fakeCmdCtx().ctx);
+		expect(w.closes()).toBe(0);
+		await run?.("watch docs **/*.ts", fakeCmdCtx().ctx); // same dir, re-arm
+		expect(w.closes()).toBe(1); // prior disposed
+
+		const listed = fakeCmdCtx();
+		await run?.("list", listed.ctx);
+		expect(listed.notifies).toHaveLength(1);
+		expect(listed.last().split("\n")).toHaveLength(1); // still exactly one watch
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("reports a clear error when arming fails, without crashing (try-guard)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "fwn-rt-bad-"));
+		const w = fakeWatchDeps({ throwOnWatch: true });
+		const h = fakePi();
+		factory(h.pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await h.getStart()?.({}, fakeCtx(true));
+		const run = h.getCommand();
+
+		const armed = fakeCmdCtx();
+		await expect(run?.("watch docs **/*.md", armed.ctx)).resolves.toBeUndefined();
+		expect(armed.last()).toContain("cannot watch");
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("disposes a runtime watch on reload — it does NOT survive (HIGH-2 leak guard)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "fwn-rt-reload-"));
+		const w = fakeWatchDeps();
+		const h = fakePi();
+		factory(h.pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await h.getStart()?.({}, fakeCtx(true)); // boot, no config
+		const run = h.getCommand();
+
+		await run?.("watch docs **/*.md", fakeCmdCtx().ctx); // runtime-arm
+		expect(w.closes()).toBe(0);
+
+		await h.getStart()?.({}, fakeCtx(true)); // reload — disposeAll must clear runtime watch
+		expect(w.closes()).toBe(1);
+
+		const listed = fakeCmdCtx();
+		await run?.("list", listed.ctx);
+		expect(listed.last()).toBe("file-watch: no active watches"); // gone, not leaked
 
 		await rm(dir, { recursive: true, force: true });
 	});
