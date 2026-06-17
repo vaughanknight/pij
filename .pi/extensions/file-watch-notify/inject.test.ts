@@ -38,4 +38,18 @@ describe("deliverNotices (AC-02)", () => {
 		expect(deliverNotices(port, [])).toBeNull();
 		expect(sent).toEqual([]);
 	});
+
+	it("coalesces a multi-file wake into ONE message (no per-file spam, AC-05)", () => {
+		const { port, sent } = fakePort(false);
+		const mode = deliverNotices(port, [
+			"[file-watch] a.md created",
+			"[file-watch] b.md modified",
+			"[file-watch] c.md deleted",
+		]);
+		expect(mode).toBe("steer");
+		expect(sent).toHaveLength(1);
+		expect(sent[0].text).toBe(
+			"[file-watch] a.md created\n[file-watch] b.md modified\n[file-watch] c.md deleted",
+		);
+	});
 });

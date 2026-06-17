@@ -22,13 +22,14 @@ export interface InjectPort {
 }
 
 /**
- * Deliver a batch of notices, choosing the mode once from the current idle
- * state. Returns the mode used (or null if nothing to deliver).
+ * Deliver a wake's notices as a SINGLE message (no per-file spam, AC-05),
+ * choosing the mode once from the current idle state. Returns the mode used
+ * (or null if nothing to deliver).
  */
 export function deliverNotices(port: InjectPort, notices: string[]): InjectMode | null {
 	if (notices.length === 0) return null;
 	const mode = pickInjectMode(port.isIdle());
-	for (const notice of notices) port.send(notice, mode);
+	port.send(notices.join("\n"), mode);
 	return mode;
 }
 
@@ -41,7 +42,9 @@ export function makePiInjectPort(
 	getCtx: () => ExtensionContext | undefined,
 ): InjectPort {
 	return {
-		isIdle: () => getCtx()?.isIdle() ?? true,
+		// No live ctx ⇒ treat as busy so the notice is steered (queued), never an
+		// unsolicited immediate turn.
+		isIdle: () => getCtx()?.isIdle() ?? false,
 		send: (text, mode) => {
 			if (mode === "steer") pi.sendUserMessage(text, { deliverAs: "steer" });
 			else pi.sendUserMessage(text);

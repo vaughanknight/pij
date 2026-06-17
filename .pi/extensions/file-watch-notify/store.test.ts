@@ -49,6 +49,15 @@ describe("parseConfig", () => {
 		expect(r.config.debounceMs).toBe(50);
 	});
 
+	it("normalizes chokidar-style event aliases add/change/unlink", () => {
+		const r = parseConfig({
+			watches: [{ dir: "docs", patterns: ["*.md"], events: ["add", "change", "unlink"] }],
+		});
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.config.watches[0].events).toEqual(["created", "modified", "deleted"]);
+	});
+
 	it("rejects malformed config with a reason (tagged-union, not throw)", () => {
 		expect(parseConfig(null).ok).toBe(false);
 		expect(parseConfig({}).ok).toBe(false); // no watches

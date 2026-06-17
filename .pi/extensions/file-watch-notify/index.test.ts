@@ -29,14 +29,20 @@ function fakeCtx(isIdle: boolean) {
 	return { isIdle: () => isIdle, ui: { setStatus: () => {}, notify: () => {} } };
 }
 
-function fakeWatchDeps() {
+function fakeWatchDeps(opts: { throwOnWatch?: boolean } = {}) {
 	let files: FileEntry[] = [];
 	let listener: (() => void) | undefined;
 	let timer: (() => void) | undefined;
+	let closes = 0;
 	const deps: WatchDeps = {
 		watch: (_d, _o, l) => {
+			if (opts.throwOnWatch) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
 			listener = l;
-			return { close: () => {} };
+			return {
+				close: () => {
+					closes++;
+				},
+			};
 		},
 		listFiles: async () => files,
 		now: () => 1000,
@@ -53,6 +59,7 @@ function fakeWatchDeps() {
 			files = f;
 		},
 		fireEvent: () => listener?.(),
+		closes: () => closes,
 		flush: async () => {
 			timer?.();
 			await new Promise((r) => setTimeout(r, 10));
@@ -118,6 +125,32 @@ describe("index wiring — config → watcher → inject end-to-end", () => {
 		await w.flush();
 
 		expect(sent).toEqual([]); // no watcher armed, nothing injected
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("disposes the prior watcher on reload (second session_start) (AC-06)", async () => {
+		const dir = await makeProject();
+		const w = fakeWatchDeps();
+		const { pi, getStart } = fakePi();
+
+		factory(pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await getStart()?.({}, fakeCtx(true)); // boot
+		expect(w.closes()).toBe(0);
+		await getStart()?.({}, fakeCtx(true)); // reload — must close the first watcher
+		expect(w.closes()).toBe(1);
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("survives an fs.watch setup failure without rejecting session_start (HIGH-3)", async () => {
+		const dir = await makeProject();
+		const w = fakeWatchDeps({ throwOnWatch: true });
+		const { pi, sent, getStart } = fakePi();
+
+		factory(pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await expect(getStart()?.({}, fakeCtx(false))).resolves.toBeUndefined();
+		expect(sent).toEqual([]); // watcher never armed; no crash
 
 		await rm(dir, { recursive: true, force: true });
 	});

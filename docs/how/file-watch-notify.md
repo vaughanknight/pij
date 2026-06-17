@@ -54,13 +54,14 @@ configured`, or `invalid (...)`).
 | `watches[]` | ✅ | — | One or more watches; each needs `dir` + ≥1 `patterns`. |
 | `watches[].dir` | ✅ | — | Folder, resolved relative to the project root. |
 | `watches[].patterns` | ✅ | — | picomatch globs, matched against the path **relative to `dir`** (`*.md` = top-level, `**/*.md` = nested). |
-| `watches[].events` | — | all | Subset of `created` \| `modified` \| `deleted` (the change kinds; `add`/`change`/`unlink` aliases are *not* used — use the kind names). |
+| `watches[].events` | — | all | Subset of `created` \| `modified` \| `deleted`. The chokidar-style aliases `add` \| `change` \| `unlink` are accepted and normalized to those kinds. |
 | `watches[].recursive` | — | `false` | Watch subdirectories (needs Node ≥19.1). See scale caveats below. |
 | `debounceMs` | — | `30` | Coalesce a burst of events into one scan (20–50 recommended). |
 | `ignore` | — | atomic-save list | picomatch globs over **basename**; the default filters editor artifacts. |
 | `notice` | — | `[file-watch] {path} {kind}` | Template; `{path}` and `{kind}` are substituted. |
 
-> Note: the kind filter values are `created` / `modified` / `deleted`.
+> Note: `events` accepts either the kind names (`created`/`modified`/`deleted`) or the
+> chokidar aliases (`add`/`change`/`unlink`); both normalize to the same kinds.
 
 Invalid config (bad JSON or a failed validation) surfaces **one** startup
 warning and the watcher stays down — it never half-starts.
@@ -84,6 +85,13 @@ A `delete`→`re-add` within ~100 ms (a split atomic save) is coalesced to a
 single `modified`, and the default `ignore` list drops editor scratch files
 (`4913`, `*~`, `.goutputstream*`, dotfiles). The result is one honest notice per
 real change, regardless of platform or editor.
+
+> Known limitation: the common atomic save (write-temp → rename) lands inside a
+> single debounced wake, so it is reported as one `modified`. In the rarer case
+> where a delete and its re-add fall in **separate** wakes, you may see a
+> `deleted` followed by a `modified` (the re-add is still correctly classified as
+> `modified`, not `created`). True single-notice coalescing across wakes needs a
+> deferred-flush timer and is deliberately not built here.
 
 ## Steer vs immediate
 

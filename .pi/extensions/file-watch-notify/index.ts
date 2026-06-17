@@ -54,9 +54,15 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		let rawText: string;
 		try {
 			rawText = readFileSync(configPath, "utf8");
-		} catch {
-			// No config => feature simply not enabled. Stay silent (don't nag).
-			statusLine = "file-watch: not configured";
+		} catch (e) {
+			const code = (e as NodeJS.ErrnoException).code;
+			if (code === "ENOENT") {
+				// No config => feature simply not enabled. Stay silent (don't nag).
+				statusLine = "file-watch: not configured";
+			} else {
+				statusLine = `file-watch: cannot read config (${code ?? String(e)})`;
+				ctx.ui.notify(`file-watch: cannot read ${CONFIG_REL} (${code ?? String(e)})`, "warning");
+			}
 			ctx.ui.setStatus("file-watch-notify", undefined);
 			return;
 		}
@@ -66,6 +72,7 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 			raw = JSON.parse(rawText);
 		} catch (e) {
 			statusLine = "file-watch: invalid (not JSON)";
+			ctx.ui.setStatus("file-watch-notify", undefined);
 			ctx.ui.notify(`file-watch: ${CONFIG_REL} is not valid JSON (${String(e)})`, "warning");
 			return;
 		}
@@ -73,6 +80,7 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		const parsed = parseConfig(raw);
 		if (!parsed.ok) {
 			statusLine = `file-watch: invalid (${parsed.reason})`;
+			ctx.ui.setStatus("file-watch-notify", undefined);
 			ctx.ui.notify(`file-watch: invalid config — ${parsed.reason}`, "warning");
 			return;
 		}

@@ -55,8 +55,18 @@ function isStringArray(v: unknown): v is string[] {
 	return Array.isArray(v) && v.every((x) => typeof x === "string");
 }
 
-function isKind(v: unknown): v is ChangeKind {
-	return v === "created" || v === "modified" || v === "deleted";
+/** Canonical change kinds + the chokidar-style aliases the docs use. */
+const EVENT_ALIASES: Readonly<Record<string, ChangeKind>> = {
+	created: "created",
+	modified: "modified",
+	deleted: "deleted",
+	add: "created",
+	change: "modified",
+	unlink: "deleted",
+};
+
+function normalizeEvent(v: unknown): ChangeKind | undefined {
+	return typeof v === "string" ? EVENT_ALIASES[v] : undefined;
 }
 
 /** Parse raw JSON (already `JSON.parse`d) into a validated Config. */
@@ -86,13 +96,21 @@ export function parseConfig(raw: unknown): ConfigResult {
 		}
 		let events: ChangeKind[] | undefined;
 		if (w.events !== undefined) {
-			if (!Array.isArray(w.events) || !w.events.every(isKind)) {
-				return {
-					ok: false,
-					reason: `watches[${i}].events must be a subset of created|modified|deleted`,
-				};
+			if (!Array.isArray(w.events)) {
+				return { ok: false, reason: `watches[${i}].events must be an array` };
 			}
-			events = w.events as ChangeKind[];
+			const norm: ChangeKind[] = [];
+			for (const e of w.events) {
+				const kind = normalizeEvent(e);
+				if (!kind) {
+					return {
+						ok: false,
+						reason: `watches[${i}].events entries must be created|modified|deleted (aliases add|change|unlink ok)`,
+					};
+				}
+				norm.push(kind);
+			}
+			events = norm;
 		}
 		if (w.recursive !== undefined && typeof w.recursive !== "boolean") {
 			return { ok: false, reason: `watches[${i}].recursive must be a boolean` };
