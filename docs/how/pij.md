@@ -89,33 +89,53 @@ pij list --here               # bare `pij` on PATH from any cwd
 ## Remote session control
 
 `pij send <id> --command <name>` drives one of three session-control commands in the
-target session. They split by **which pi context they need**:
+target session. A bare `/compact` | `/reload` | `/new` **text** body auto-routes to
+this path too (so `pij send <id> "/compact"` executes instead of leaking the text
+into the peer's LLM). The three commands split by **which pi context they need** —
+which determines how reliable they are:
 
-| Command | Effect on the peer | Fires from |
-|---------|--------------------|------------|
-| `compact` | Compacts the peer's context (summarize-in-place) | **Autonomously** — `compact()` is on the long-lived `ExtensionContext`, so the background receiver runs it on arrival. No arming. |
-| `new` | Starts a fresh session in the peer | Captured command context (must be armed). |
-| `reload` | Reloads the peer's extensions/skills/prompts/keybindings (keeps the conversation) | Captured command context (must be armed). |
+| Command | Effect on the peer | Reliability |
+|---------|--------------------|-------------|
+| `compact` | Compacts the peer's context (summarize-in-place) | ✅ **Always works, no arming.** `compact()` is on the long-lived `ExtensionContext`, so the background receiver runs it on arrival. Use freely. |
+| `new` | Starts a fresh session in the peer | ⚠️ **Arm once, fire once.** Needs a captured command context; one-shot, so the disarm below doesn't bite. |
+| `reload` | Reloads the peer's extensions/skills/prompts/keybindings | 🔻 **Best-effort; disarms itself (see below).** For a reliable reload, have the peer's human type `/reload` directly. |
 
-### Why `new`/`reload` need "arming"
+### Why `new`/`reload` need "arming" — and why `reload` keeps disarming
 
 pi only exposes `newSession()` / `reload()` on an **`ExtensionCommandContext`**, which
 it hands out *only inside a registered slash-command handler* — never on the
 long-lived context the background receiver holds, and `sendUserMessage()` can't
-dispatch a slash command. So pij **captures that command context the moment the
-target runs `/pij`**, and re-routes remote `new`/`reload` onto it.
+dispatch a slash command (an injected `/…` goes to the peer's **LLM** as text, not
+to pi). So pij **captures that command context the moment the target runs `/pij`**
+and re-routes remote `new`/`reload` onto it.
 
-- **Arm:** run `/pij` once in the target session. Thereafter a remote `--command
-  reload`/`new` fires by itself.
-- **One-shot:** a `reload`/`new` consumes the captured context (it self-invalidates),
-  so re-arm with another `/pij` for the next one.
-- **Un-armed = deferred, not lost:** if the request arrives before arming, pij queues
-  it and wakes the peer with a notice; it applies the next time the peer runs `/pij`.
+The catch with `reload` specifically: **reload re-runs the extension**, which resets
+the captured handle (`commandControl`) back to un-armed — and pi also marks the old
+command context *stale* on reload, so it can't be persisted across the boundary.
+**A remote reload therefore disarms the peer as it runs**, and the *next* one defers
+until someone re-arms. This is a pi limitation, not a pij bug; there is no
+extension-side workaround.
+
+- **Arm:** a human runs `/pij` once in the target session.
+- **`compact`:** ignores all of this — runs on arrival, every time.
+- **`new`:** arm once, fire once (you don't repeat it, so disarm is moot).
+- **`reload`:** prefer the peer's human typing **`/reload`** directly. Remote
+  `--command reload` works *once* after each `/pij`, then needs re-arming — don't
+  expect repeated hands-free remote reloads.
+- **Un-armed = deferred, not lost:** an un-armed `new`/`reload` is queued and the peer
+  is woken with a notice that asks its **human operator** to run `/pij` (an agent
+  cannot run a slash command itself). It applies on the next `/pij`.
 - **Receipts tell you which happened:** the peer records `{"command":"reload",
   "executed":true}` when it fired, or `{…,"deferred":true}` when it was queued —
   read them with `pij tail <peer> --type receipt`.
 
-`compact` needs none of this — it always runs on arrival.
+### What `/pij` is for
+
+Given the above, `/pij` earns its place as **(a) an in-session status readout**
+(`pij: <id> · role=<role> · peers <n> · events <n>` — the only in-session view of
+your own pij identity + live counts) and **(b) the arming gate** for the one-shot
+`new` and the occasional `reload`. It is **not** needed for `compact` or for any of
+the messaging/observability verbs (`send`/`tail`/`state`/`list`) — those always work.
 
 ---
 
@@ -180,7 +200,7 @@ The canonical loop (roles are fixed per session at boot):
 | 4 | Parent | If off-track, fire targeted feedback (steers if busy) | `pij send w3 "fix …"` |
 | 5 | Worker | On completion, message the parent the agreed done-signal | `pij send a1 "done — …"` |
 | 6 | Parent | Final verify against `tool_result`/tests | `pij tail w3 --since N --type tool_result` |
-| 7 | Parent | If worker context heavy, request compact; or remotely `reload`/`new` it | `pij send w3 --command <compact\|reload\|new>` |
+| 7 | Parent | If worker context heavy, request `compact` (always works); to refresh code, prefer the worker's human typing `/reload` (remote `reload`/`new` need arming) | `pij send w3 --command compact` |
 
 **Use cases**: delegated implementation (headline), live code review, stuck-worker
 rescue (`state` shows `working` but the age grows, or `dead`), context hygiene
