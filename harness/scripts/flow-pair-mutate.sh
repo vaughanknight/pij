@@ -23,7 +23,9 @@ TEST_CMD="${3:-npx vitest run skills/flow-pair/test/}"
 
 BAK="$(mktemp)"
 cp "$FILE" "$BAK"
-trap 'cp "$BAK" "$FILE"; rm -f "$BAK"' EXIT   # safety net: always restore
+UNTRACKED_BEFORE="$(mktemp)"
+git status --porcelain 2>/dev/null | grep '^??' | sort > "$UNTRACKED_BEFORE" || true
+trap 'cp "$BAK" "$FILE"; rm -f "$BAK" "$UNTRACKED_BEFORE"' EXIT   # safety net: always restore
 
 # Portable in-place sed (GNU vs BSD/macOS).
 if sed --version >/dev/null 2>&1; then
@@ -55,4 +57,14 @@ if eval "$TEST_CMD" >/tmp/fp-mutate.log 2>&1; then
 else
   echo "✗ suite RED after restore — restore failed; investigate /tmp/fp-mutate.log" >&2
   exit 4
+fi
+
+# N1: surface stray untracked artifacts the mutated code wrote outside its sandbox
+# (e.g. a test that writes to cwd when a guard is bypassed). Warn, don't auto-delete.
+STRAY="$(git status --porcelain 2>/dev/null | grep '^??' | sort | comm -13 "$UNTRACKED_BEFORE" - || true)"
+if [ -n "$STRAY" ]; then
+  echo "" >&2
+  echo "⚠ mutation run left NEW untracked paths (mutated code escaped its sandbox):" >&2
+  printf '%s\n' "$STRAY" | sed 's/^/    /' >&2
+  echo "  → clean these, and check the test isolates its filesystem writes." >&2
 fi
