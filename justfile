@@ -101,6 +101,15 @@ pij *ARGS:
 pkg *ARGS:
     npm run pkg -- "$@"
 
+# List the GitHub Copilot models your account is actually entitled to.
+# Auto-selects the correct API host from the token's proxy-ep claim
+# (enterprise vs individual), so it works where pi's models.json host 421s.
+#   just copilot-models            # all entitled model ids
+#   just copilot-models mai        # filter ids containing "mai"
+#   just copilot-models --json     # raw JSON
+copilot-models *ARGS:
+    @python3 harness/scripts/copilot-models.py "$@"
+
 # --- composite gates ---
 
 # Pre-merge / pre-release gate. Agents MUST run this before reporting a
