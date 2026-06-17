@@ -44,7 +44,7 @@ export const DEFAULT_DEBOUNCE_MS = 30;
 /** editor atomic-save artifacts (research Key Finding 02). */
 export const DEFAULT_IGNORE = ["4913", "*~", ".goutputstream*", ".tmp*", ".*"];
 export const DEFAULT_NOTICE = "[file-watch] {path} {kind}";
-/** a re-add this soon after a delete is an atomic save → "modified". */
+/** a re-add this soon after a delete is reclassified "modified" (not "created"). */
 export const REDELETE_COALESCE_MS = 100;
 const ALL_KINDS: readonly ChangeKind[] = ["created", "modified", "deleted"];
 
@@ -191,9 +191,12 @@ export function reconcile(prev: Snapshot, next: Snapshot): Change[] {
 
 /**
  * Per-watch stateful classifier: holds the last snapshot + recently-deleted
- * paths so a delete→re-add inside REDELETE_COALESCE_MS (an atomic save split
- * across two wakes) collapses to "modified". Applies the event filter and
- * formats notices. The snapshot it receives is already pattern-matched and
+ * paths so a delete→re-add inside REDELETE_COALESCE_MS (a delete+recreate split
+ * across two wakes) is reclassified "modified" rather than a spurious "created".
+ * NB: a preceding "deleted" from the earlier wake may still have been emitted
+ * (single-notice cross-wake coalescing is out of scope — see plan Known
+ * Limitations). Applies the event filter and formats notices. The snapshot it
+ * receives is already pattern-matched and
  * ignore-filtered by the watcher adapter.
  */
 export class WatchReconciler {

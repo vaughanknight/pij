@@ -157,7 +157,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | # | Impact | Finding | Action |
 |---|--------|---------|--------|
 | 01 | Critical | **Directory-watch trap**: `fs.watch(dir)` may miss in-place modifies; pij avoids it only via atomic writes. | Classify via `{mtimeMs,size}` snapshot reconcile on each debounced wake — never trust `fs.watch` event types. |
-| 02 | High | Editor atomic-saves emit artifacts (`4913`, `*~`, `.goutputstream*`) + delete-then-recreate. | Ignore-list + "re-added within ~100 ms of delete ⇒ modified" coalescing. |
+| 02 | High | Editor atomic-saves emit artifacts (`4913`, `*~`, `.goutputstream*`) + delete-then-recreate. | Ignore-list; a true tmp+rename atomic save is single-wake → one `modified`; a cross-wake re-add within ~100 ms is reclassified `modified` (not spurious `created`). |
 | 03 | High | `picomatch` is 0-dep, ~3–5× faster than minimatch, accepts one-or-more patterns, compile-once. | Compile matcher once at config load; reuse per path. |
 | 04 | Medium | Inject path + lifecycle already proven in pij (`sendUserMessage`+`deliverAs:"steer"`; `session_start` seam). | Adapt verbatim; pick steer vs immediate from `isIdle()`. |
 | 05 | Medium | Bursts cause double events / steer-spam. | Debounce 20–50 ms; coalesce N changes per wake into one notice. |
@@ -200,7 +200,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 |------|------------|--------|------------|
 | Cross-platform fs.watch modify-detection gaps | Medium | Medium | Snapshot reconcile (not event types) — platform-agnostic |
 | Steer-spam during large rebuilds | Medium | Low | Debounce + coalesce N changes per wake into one notice |
-| Atomic-save artifact false positives | Medium | Low | Ignore-list + re-add-within-100ms→modified coalescing |
+| Atomic-save artifact false positives | Medium | Low | Ignore-list; tmp+rename is single-wake → one `modified`; cross-wake re-add reclassified `modified` (see Known Limitations) |
 | picomatch dep rejected by policy | Low | Low | It's a regular npm dep (0 transitive); hand-rolled `*.ext` matcher is a fallback |
 
 ### Known Limitations

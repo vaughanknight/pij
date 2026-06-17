@@ -81,7 +81,7 @@ debounced wake it rebuilds a `{mtimeMs,size}` snapshot of the matching files and
 - in both, different `mtimeMs`/`size` → `modified`
 - in the old snapshot only → `deleted`
 
-A `delete`→`re-add` within ~100 ms (a split atomic save) is coalesced to a
+A `delete`→`re-add` within ~100 ms is **reclassified** to a
 single `modified`, and the default `ignore` list drops editor scratch files
 (`4913`, `*~`, `.goutputstream*`, dotfiles). The result is one honest notice per
 real change, regardless of platform or editor.
