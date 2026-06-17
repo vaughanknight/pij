@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "kind": "flight-plan",
+  "slug": "flow-pair",
+  "plan_dir": "docs/plans/016-flow-pair",
+  "mode": "Full",
+  "cursor": "p2",
+  "recommended_next": "p2",
+  "now": "Phase 1 COMPLETE (implement→review→fix, all gates green) — accepted",
+  "next": "Phase 2: Central ledger writer (tasks)",
+  "agents": [
+    { "id": "worker", "kind": "worker", "slug": "pij-1gzyr0p", "runtime": "pij-messaging",
+      "status": "live", "covers": ["p1","p2","p3","p4","p5","p6","p7","p8"], "render": "side",
+      "note": "Implementer (Sonnet 4.6). Three-window topology: orchestrator pij-xnj6p0 + implementer pij-1gzyr0p + reviewer pij-5994yi (GPT 5.5). Comms via native pij_send tool (built this session; replaced fragile CLI shell-out)." },
+    { "id": "reviewer", "kind": "worker", "slug": "pij-5994yi", "runtime": "pij-messaging",
+      "status": "live", "covers": ["p1"], "render": "side",
+      "note": "Independent code reviewer (GPT 5.5) running /the-flow 7 review; cross-model decorrelation caught 2 HIGH the orchestrator draft missed in Phase 1." }
+  ],
+  "nodes": [
+    { "id": "start", "type": "research", "label": "Intent captured (dossier as research seed)", "status": "done",
+      "command": "/the-flow", "ran_at": "2026-06-17T07:54:21Z",
+      "user_input": "build flow-pair: orchestrator/worker wrapper around the-flow, per scratch dossier 20260617T074841.md",
+      "note": "Fresh start; clear architecture-heavy ask routed straight to plan; dossier is the research seed.",
+      "artifacts": ["original-ask.md"], "next": ["plan"] },
+
+    { "id": "plan", "type": "plan", "label": "Plan (spec + impl)", "status": "done",
+      "command": "/the-flow 1b plan", "ran_at": "2026-06-17T08:00:00Z",
+      "user_input": "Full · Hybrid testing · no mocks · README+docs/how · skills/flow-pair/ · pij-messaging delivery · NEW domain · dogfood inside pij",
+      "note": "Atomic pass -> flow-pair-plan.md (## Business Specification + ## Implementation Plan). CS-4, Full, Status READY, 8 phases. NEW domain flow-pair. Inline thesis-aware validation: VALIDATED WITH FIXES (2 HIGH: CLI invocation surface + pointer delivery; 1 MEDIUM: observe flow-state guard). Phases pA->p1..p8 revealed; rail recomputed 2+8+1=11.",
+      "artifacts": ["flow-pair-plan.md"], "next": ["p1"] },
+
+    { "id": "p1", "type": "phase", "phase": 1, "label": "Domain + skill skeleton + path/identity resolver", "status": "done",
+      "command": "/the-flow 6 implement --phase \"Phase 1: Domain + skill skeleton + path/identity resolver\" --plan \"docs/plans/016-flow-pair/flow-pair-plan.md\"",
+      "note": "COMPLETE. dlg-0002 tasks (worker-validated) → dlg-0003 implement (10 tests) → dlg-0004 review (GPT 5.5, NEEDS-FIX: 2 HIGH+2 MED) → dlg-0005 fix (all 4 gates green: flow-pair --help exit0, lint0, 14 tests, typecheck0). domain.md+registry+map; lib/identity+paths (pi-free, P3, path-traversal-guarded); SKILL.md+refs+templates; flow-pair CLI (bin+npm link); justfile/tsconfig/vitest wiring.",
+      "artifacts": ["tasks/phase-1-domain-skill-skeleton-path-identity-resolver/tasks.md", "tasks/phase-1-domain-skill-skeleton-path-identity-resolver/execution.log.md", "skills/flow-pair/lib/{identity,paths,cli}.ts", "skills/flow-pair/SKILL.md"],
+      "next": ["p2"] },
+    { "id": "p2", "type": "phase", "phase": 2, "label": "Central ledger writer", "status": "next", "next": ["p3"] },
+    { "id": "p3", "type": "phase", "phase": 3, "label": "Context-pack compiler", "status": "known", "next": ["p4"] },
+    { "id": "p4", "type": "phase", "phase": 4, "label": "Worker-packet generation + pij-messaging delivery", "status": "known", "next": ["p5"] },
+    { "id": "p5", "type": "phase", "phase": 5, "label": "Observe + diff capture", "status": "known", "next": ["p6"] },
+    { "id": "p6", "type": "phase", "phase": 6, "label": "Review + fix loop", "status": "known", "next": ["p7"] },
+    { "id": "p7", "type": "phase", "phase": 7, "label": "Prompt-learning notes + cluster lifecycle", "status": "known", "next": ["p8"] },
+    { "id": "p8", "type": "phase", "phase": 8, "label": "End-to-end MVP wiring + dogfood run", "status": "known", "next": ["merge"] },
+
+    { "id": "merge", "type": "merge", "label": "Merge", "status": "known",
+      "command": "/the-flow 8 merge --plan \"docs/plans/016-flow-pair/flow-pair-plan.md\"", "next": [] }
+  ]
+}

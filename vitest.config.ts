@@ -23,7 +23,7 @@ export default defineConfig({
 		},
 	],
 	test: {
-		include: [".pi/extensions/**/*.test.ts", "harness/**/*.test.ts"],
+		include: [".pi/extensions/**/*.test.ts", "harness/**/*.test.ts", "skills/**/*.test.ts"],
 		exclude: ["node_modules", ".pi/git", ".pi/npm"],
 		testTimeout: 5000,
 		reporters: process.env.CI ? ["default", "github-actions"] : ["default"],

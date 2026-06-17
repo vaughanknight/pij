@@ -15,6 +15,6 @@
 		"lib": ["ES2022"],
 		"types": ["node"]
 	},
-	"include": [".pi/extensions/**/*.ts", "harness/**/*.ts"],
+	"include": [".pi/extensions/**/*.ts", "harness/**/*.ts", "skills/**/*.ts"],
 	"exclude": ["node_modules", "**/node_modules", ".pi/git", ".pi/npm", "**/*.test.ts"]
 }

@@ -12,6 +12,8 @@ flowchart LR
     MH[Minih artifacts\ncontracts: run.json, events.ndjson, inbox/state/history, output/report.json]
     PIJ[pij-messaging\ncontracts: SessionDescriptor, PijEvent+EventQuery, 5 ports, MessageReceipt, resolveSelf, Result]
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
+    FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
+    TF[the-flow\nexternal: SDD route authority, flow-state files]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -36,6 +38,10 @@ flowchart LR
     FWN -->|validated by generator/tests/smoke/self-check| H
     FWN -->|file_watch_notify tool presented through| ATI
     FWN -.->|adapts inject seam pattern only, no code reuse| PIJ
+    FP -->|delivers packets / receives reports via pointer| PIJ
+    FP -->|skill + flow-pair CLI surface presented through| ATI
+    FP -->|validated by tests/self-check| H
+    FP -.->|wraps as inner route authority; never edits it or flow-state| TF
 ```
 
 ## Health Summary
@@ -63,6 +69,10 @@ flowchart LR
 | `file-watch-notify` → `extension-authoring-harness` | healthy | `just new` generator, vitest (39 specs: TDD core + real-fs watcher + fake-pi inject/stale-ctx + runtime tool e2e), Biome, boot-only smoke, self-check. |
 | `file-watch-notify` → `agent-tooling-interface` | contract-only | `file_watch_notify` LLM tool (status/list/watch/stop; recursive watch option) presents through Pi tool UX. |
 | `file-watch-notify` ⇢ `pij-messaging` | pattern-only | Adapts pij's `pi-runtime` inject path (idle→send, busy→steer); **no import, no shared code, no changes to pij**. |
+| `flow-pair` → `pij-messaging` | planned (dogfooded) | Worker-packet delivery + report return over the live peer channel; **pointer-only** sends (packet body in the ledger). Dogfood `dlg-0001` confirmed idle/stale/busy delivery + inline report round-trip. No changes to pij-messaging. |
+| `flow-pair` → `agent-tooling-interface` | planned | Skill + `flow-pair` CLI present through Pi skill/tool UX; not yet built. |
+| `flow-pair` → `extension-authoring-harness` | planned | `just`/vitest/self-check will validate the pi-free helper lib; retros/difficulty/velocity feed the learning loop. |
+| `flow-pair` ⇢ `the-flow` (external) | wraps-only | Wrapper-level delegation seam; **never** edits `the-flow` or writes `.the-flow-state.json`/`the-flow.json`/`the-flow.md`. Single flow-state-writer invariant. |
 
 ## History
 
@@ -81,3 +91,4 @@ flowchart LR
 | 2026-06-17 | Plan 015 (amend) — `FWN` gained a runtime control surface; it ultimately settled on the LLM-callable `file_watch_notify` tool (not a slash command) for arm/list/stop/status. |
 | 2026-06-17 | Plan 015 (live crash fix) — `FWN` inject seam now treats stale/throwing Pi ctx as non-fatal after reload/session replacement. |
 | 2026-06-17 | Plan 015 (tool surface fix) — `FWN` gained the missing LLM-callable `file_watch_notify` tool plus recursive watch option; obsolete slash-command parser/surface removed. |
+| 2026-06-17 | Plan 016 — added `flow-pair` (`FP`) node + external `the-flow` (`TF`) node; three consume edges (`PIJ` delivery, `ATI` surface, `H` validation) + a dashed wraps-only edge to `TF`. Created during planning; domain doc produced by the first manual flow-pair worker-delegation dogfood (`dlg-0001`). |

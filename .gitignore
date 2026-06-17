@@ -21,6 +21,7 @@ docs/plans/*/reviews/_computed.diff
 .pi/git/
 .pi/npm/
 .pi/agent/
+.pi/skills/flow-pair
 
 # MCP server config (contains secrets — env-expand at runtime)
 .mcp.json
@@ -176,3 +177,6 @@ vite.config.ts.timestamp-*
 
 # Stray research-subagent scratch dropped at repo root (should go to /tmp or scratch/).
 /progress.md
+
+# flow-pair runtime ledger (mutable, gitignored; curated learnings committed separately)
+.flow-pair/

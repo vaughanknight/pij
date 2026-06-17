@@ -150,6 +150,18 @@ link:
 unlink:
     npm run link -- --remove
 
+# Symlink skills/flow-pair/ into .pi/skills/ so pi auto-discovers it (Finding 02:
+# pi only scans .pi/skills/, not the bare top-level skills/ dir).
+flow-pair-link:
+    mkdir -p .pi/skills
+    ln -sf "$(realpath skills/flow-pair)" .pi/skills/flow-pair
+    @echo "✓ .pi/skills/flow-pair → $(realpath skills/flow-pair)"
+
+# Run vitest scoped to the flow-pair lib tests (explicit path bypasses vitest
+# config include filter; also works with: just test skills/flow-pair/test/).
+flow-pair-test *ARGS:
+    npx vitest run skills/flow-pair/test/ "$@"
+
 # Install/update official Pi from npm. If this machine still has pij's old
 # local ../pi-fork symlink as the global `pi`, remove that symlink first so
 # npm can own the executable again. Refuses to clobber unknown real files.
