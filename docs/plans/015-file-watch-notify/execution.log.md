@@ -58,3 +58,8 @@ Power-On companion reviewed all 8 commits, acked every ping, posted **9 findings
 7 of 9 fixed in code; 2 (the same delete-coalesce concern) resolved by formally narrowing AC-04 + making docs/test internally consistent (the companion's own sanctioned option). Final: 29 fwn tests, 463 total green; fwn Driver smoke ✓.
 
 **Companion magicWand**: “Auto-derive more of the farewell retrospective directly from the coordination ledger.” (filed as a minih-side wishlist note.)
+
+### Phase complete
+- **T099 phase-end harness seam**: DEFERRED (same cause as T000 — `subagent` tool globally blocked all session; best-effort, logged + skipped).
+- Companion `code-review-companion` stopped cleanly (verdict `completed`); minih auto-harvested its retro → `docs/retros/code-review-companion.md` (magicWand: expose a reliable `projectRoot` through coordination state — a minih-side ask, not pij).
+- **Final gate**: typecheck ✓, lint ✓, 463 tests ✓ (29 in file-watch-notify), fwn Driver smoke ✓; only red is the pre-existing `pi-peacock` environmental model-string smoke (not a fwn regression). All 8 build tasks + 10 companion findings addressed (7 code fixes, 3 resolved-by-scoping/wording). Commits e1be6df..c2d2263.

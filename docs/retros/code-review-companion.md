@@ -183,3 +183,12 @@ upstreaming to minih as a coordinated PR.
 - difficulties:
   - [annoying] tooling: The glob helper returned no matches for existing plan files under an absolute project-root path, so the orientation file discovery could not rely on glob. (workaround: Used `find` from the project root and then read discovered files by absolute path.)
   - [annoying] tooling: Large combined `git show` plus ripgrep commands overflowed tool output into temporary files, requiring a second narrowed read. (workaround: Repeated the review with targeted `view` ranges and narrower ripgrep patterns.)
+
+## 2026-06-17T01:17:14.449Z — code-review-companion / 2026-06-17T00-46-24-146Z-28c2
+
+- runId: 2026-06-17T00-46-24-146Z-28c2
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/code-review-companion/runs/2026-06-17T00-46-24-146Z-28c2
+- summary: Reviewed Plan 015 file-watch-notify across scaffold, core, watcher, inject, wiring, docs, final e2e tests, and two fix passes. I sent 10 finding messages: the fixes resolved or narrowed the major implementation concerns, with the final remaining issue being stale wording around cross-wake delete to re-add behavior in docs/how and the store comment.
+- **magicWand** (target: coordination): Expose a reliable projectRoot field through coordination state and validate it at boot so companion agents do not have to infer or override MINIH_PROJECT_ROOT.
+- difficulties:
+  - [degrading] config: MINIH_PROJECT_ROOT resolved to the run folder rather than the project root during orientation. (workaround: Used the repository root from the session context (/Users/jordanknight/pi-hacking/pij) for plan and git inspection.)

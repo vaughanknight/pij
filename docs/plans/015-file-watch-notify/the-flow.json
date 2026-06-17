@@ -1,0 +1,63 @@
+{
+  "slug": "file-watch-notify",
+  "plan_dir": "docs/plans/015-file-watch-notify",
+  "cursor": "n-build",
+  "recommended_next": "n-build",
+  "milestones_total": 5,
+  "milestones_done": 2,
+  "nodes": [
+    {
+      "id": "n-start",
+      "type": "start",
+      "status": "done",
+      "title": "Intent captured",
+      "ran_at": "2026-06-16T22:27:18Z",
+      "user_input": "new research on how we can add an exteion that we can configure one or more pattersn and do file watching in a folder, and when the file changes we get a notification straightin teh window just like we do when we receive a message, no tool clal to know, just get told / steered if busy.",
+      "note": "Fresh flow; research-worthy intent — routed to explore.",
+      "artifacts": ["original-ask.md"],
+      "next": ["n-research"]
+    },
+    {
+      "id": "n-research",
+      "type": "research",
+      "status": "done",
+      "ran_at": "2026-06-16T22:30:00Z",
+      "title": "Explore: configurable folder-watch → in-session notification",
+      "note": "Dossier: pij already implements the watch→debounce→dedupe→steer-inject seam; pi has no native fs-watch hook. Feature = generalize pij's inbox watcher to configurable folder+glob. CS-2–3 estimate; 6 open questions for plan.",
+      "artifacts": ["research-dossier.md"],
+      "command": "/the-flow 1a explore \"...\"",
+      "next": ["n-plan"]
+    },
+    {
+      "id": "n-plan",
+      "type": "plan",
+      "status": "done",
+      "ran_at": "2026-06-16T22:40:00Z",
+      "title": "Plan (business spec + implementation plan)",
+      "note": "Simple, CS-3, Status READY. Standalone extension; Hybrid testing; docs/how guide. 1 phase, 8 tasks (+2 harness seams). Key finding: directory-watch-trap → snapshot reconcile.",
+      "artifacts": ["file-watch-notify-plan.md"],
+      "next": ["n-build"]
+    },
+    {
+      "id": "n-build",
+      "type": "phase",
+      "status": "known",
+      "title": "Build (Phase 1 — Simple, inline tasks)",
+      "next": ["n-review"]
+    },
+    {
+      "id": "n-review",
+      "type": "phase",
+      "status": "assumed",
+      "title": "Review",
+      "next": ["n-merge"]
+    },
+    {
+      "id": "n-merge",
+      "type": "merge",
+      "status": "assumed",
+      "title": "Merge",
+      "next": []
+    }
+  ]
+}

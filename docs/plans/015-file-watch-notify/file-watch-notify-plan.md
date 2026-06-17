@@ -171,7 +171,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 
 | Status | ID | Task | Domain | Path(s) | Done When | Notes |
 |--------|-----|------|--------|---------|-----------|-------|
-| [ ] | T000 | **Harness pre-flight** — `/eng-harness-flow --event pre-implement --phase "Phase 1" --plan-dir docs/plans/015-file-watch-notify` | — | — | Router envelope handled; verdict narrated before code | _Harness seam (router installed)_ |
+| [x] | T000 | **Harness pre-flight** — `/eng-harness-flow --event pre-implement --phase "Phase 1" --plan-dir docs/plans/015-file-watch-notify` | — | — | Router envelope handled; verdict narrated before code | _Harness seam (router installed)_ |
 | [x] | T001 | Scaffold extension (`just new file-watch-notify`) + add `picomatch` dep | file-watch-notify / _platform | `.pi/extensions/file-watch-notify/*`, `package.json` | typecheck passes; picomatch resolves | P1 layout |
 | [x] | T002 | **Tests-first**: core unit tests vs fakes (glob compile, snapshot reconcile → created/modified/deleted, atomic-save ignore-list, multi-pattern/multi-folder match, notice format) | file-watch-notify | `store.test.ts` | tests written + red; cover AC-01/03/04/05 | TDD |
 | [x] | T003a | **Tests-driven core (the trap fix)**: `{mtimeMs,size}` snapshot reconcile → created/modified/deleted + atomic-save ignore-list + re-add-within-100ms→modified | file-watch-notify | `store.ts` | T002 green; AC-04/05 covered | P2, finding 01/02 — **critical path** |
@@ -181,7 +181,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | [x] | T006 | `index.ts` wiring (P10 single `session_start` handler): load `.pi/file-watch.json` (per § Config Schema), start watcher(s), inject on change, dispose on shutdown/reload | file-watch-notify | `index.ts` | live `/reload` arms watcher with no tool call | AC-06; mirror pij `index.ts` lifecycle |
 | [x] | T007 | Domain doc + user guide | file-watch-notify | `docs/domains/file-watch-notify/domain.md`, `docs/how/file-watch-notify.md` | config + behavior + steer semantics + directory-watch-trap documented | docs strategy |
 | [x] | T008 | `just self-check` green; live smoke (edit a watched `*.md`, see the notice while busy) | file-watch-notify | — | self-check passes; manual steer notice observed | AC-01..06 |
-| [ ] | T099 | **Harness phase-end** — `/eng-harness-flow --event phase-end --plan-dir docs/plans/015-file-watch-notify` | — | — | Router envelope handled at phase end | _Harness seam (router installed)_ |
+| [x] | T099 | **Harness phase-end** — `/eng-harness-flow --event phase-end --plan-dir docs/plans/015-file-watch-notify` | — | — | Router envelope handled at phase end | _Harness seam (router installed)_ |
 
 ### Acceptance Coverage Map
 
