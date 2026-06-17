@@ -63,6 +63,7 @@ export function announceText(self: SessionId, role?: Role): string {
 		`You are pij session ${self} (${roleLabel(role)}). This is context only — no action is required.`,
 		`Peers can reach you; their messages arrive inline as "[pij from <id>] …". Only those injected messages are live instructions.`,
 		`Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.`,
-		`When you DO want to use pij: "pij send <id> "..."" to message a peer (your id is stamped automatically); "pij list --here" to see peers; "pij tail <id>" / "pij state <id>" to observe one.`,
+		`To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the pij CLI to send.`,
+		`To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).`,
 	].join("\n");
 }

@@ -14,7 +14,8 @@ const scenario: Scenario = {
 			text: "/pij",
 			press: "Enter",
 			// pinned wired status line: `pij: <id> · role=<role> · peers <n> · events <m>`
-			expect: /pij: pij-\d+ · role=\S+ · peers \d+ · events \d+/,
+			// id is `pij-<base36>` (session-derived, D-041) or `pij-<pid>` (fallback) — match \S+.
+			expect: /pij: pij-\S+ · role=\S+ · peers \d+ · events \d+/,
 			expectTimeoutMs: 5000,
 		},
 	],

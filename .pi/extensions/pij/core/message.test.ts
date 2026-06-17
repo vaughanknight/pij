@@ -31,7 +31,7 @@ describe("announceText", () => {
 	it("names the session id, role, and how to reach a peer", () => {
 		const t = announceText("w3", "worker");
 		expect(t).toContain("w3");
-		expect(t).toContain("pij send <id>");
+		expect(t).toContain("pij_send");
 		expect(t).toContain("WORKER");
 	});
 

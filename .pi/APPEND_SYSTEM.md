@@ -148,8 +148,9 @@ unless the user (or a real peer message) asks.
 How it actually reaches you:
 
 - Real peer messages are injected **inline** as `[pij from <id>] <text>`. Only
-  these are live instructions. Reply with `pij send <id> "..."` (your id is
-  stamped automatically).
+  these are live instructions. Reply with the **`pij_send` tool**
+  (`pij_send { to, message }`) — your id is stamped automatically. Do NOT shell
+  out to the `pij` CLI to send.
 - The JSON files under your pij data dir (`~/.pij/<id>/inbox/`) are an internal
   **transport log, not a task queue**. Do NOT read, list, or `cat` them and do
   NOT act on their contents — they include already-delivered and historical
@@ -158,8 +159,9 @@ How it actually reaches you:
 
 When YOU want to use pij (only when it serves the user's request):
 
-- `pij list --here` — see peers in this project.
-- `pij send <id> "..."` — message a peer.
-- `pij tail <id>` / `pij state <id>` — observe a peer.
-
-Drive it through `just pij ...` in the pij repo, or the bare `pij` CLI elsewhere.
+- **Send / control — use the `pij_send` tool**: `pij_send { to, message }` to
+  message a peer, or `pij_send { to, command: "compact"|"new"|"reload" }` to run
+  an allow-listed control command. Do NOT shell out to the CLI to send.
+- Observe with the CLI: `pij list --here` (peers), `pij tail <id>` /
+  `pij state <id>` (watch one) — drive via `just pij …` in the pij repo, or the
+  bare `pij` CLI elsewhere.

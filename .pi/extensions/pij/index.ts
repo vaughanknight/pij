@@ -1,17 +1,21 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { StringEnum } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
+import { type CliDeps, dispatch } from "./core/cli.js";
+import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild } from "./core/discovery.js";
 import { PijSession } from "./core/session.js";
 import type { Role } from "./core/types.js";
@@ -32,6 +36,70 @@ export default function (pi: ExtensionAPI): void {
 	if (isSubagentChild(process.env)) return;
 
 	const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+
+	// Native send tool (the model-facing comms seam). Agents call this instead of
+	// shelling out to the `pij` CLI — it reuses the proven core dispatch() send
+	// path (resolveSelf, E-SELF/E-NOID/E-DEAD, command allow-list, receipts) over
+	// the same fs adapters the CLI bin wires, so there is no second send logic.
+	// Registered at factory level so it is callable before/independent of a turn.
+	pi.registerTool({
+		name: "pij_send",
+		label: "pij send",
+		description:
+			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij from <id>]` message by passing that <id> as `to`.",
+		promptSnippet: "Message or control a peer pij session (reply to [pij from <id>])",
+		promptGuidelines: [
+			"Use pij_send to reply to a `[pij from <id>]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
+		],
+		parameters: Type.Object({
+			to: Type.String({
+				description:
+					"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij from <id>]` message, or from `pij list --here`).",
+			}),
+			message: Type.Optional(
+				Type.String({
+					description:
+						"Message text to deliver (appears to the peer as user input). Provide message OR command, not both.",
+				}),
+			),
+			command: Type.Optional(
+				StringEnum(ALLOWED_COMMANDS, {
+					description:
+						"Run an allow-listed control command on the peer instead of text: compact | new | reload. Provide message OR command, not both.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const message = typeof params.message === "string" ? params.message.trim() : "";
+			const command = typeof params.command === "string" ? params.command : undefined;
+			if (message.length > 0 === (command !== undefined)) {
+				throw new Error("pij_send needs exactly one of `message` or `command`.");
+			}
+			const deps: CliDeps = {
+				registry: new FsRegistry(pijHome),
+				eventLogFor: (id) => new FsEventLog(pijHome, id),
+				delivery: new FsChannel(pijHome),
+				process: new NodeProcess(),
+				cwd: ctx.cwd,
+				pijHome,
+			};
+			const res = dispatch(
+				{
+					verb: "send",
+					to: params.to,
+					text: command === undefined ? message : undefined,
+					command,
+					wait: false,
+					json: false,
+				},
+				deps,
+			);
+			if (res.exitCode !== 0) {
+				throw new Error(res.stderr || `pij_send failed (exit ${res.exitCode})`);
+			}
+			return { content: [{ type: "text", text: res.stdout }], details: {} };
+		},
+	});
 
 	// Per-session handles, (re)assigned on every session_start (all reasons).
 	let session: PijSession | undefined;
