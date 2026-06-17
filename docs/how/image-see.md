@@ -63,6 +63,9 @@ machine-wide (`PI_SEE_MODEL`).
 
 - The child is a real round-trip on the chosen vision model — costs one extra
   call and a few seconds.
+- The child runs with an **empty stdin** (`spawn` + `stdio:["ignore",…]`): `pi
+  -p` reads stdin, and an inherited/open pipe would make it block until EOF
+  (the original 120s-timeout bug, D-043).
 - If the child reports it can't see the image after a valid-format file +
   vision model, escalate to the user; don't loop on workarounds.
 - Pure decisions (model/prompt/argv/validation) live in `store.ts` and are

@@ -8,11 +8,9 @@
 // All decisions (model, prompt, argv, validation) live in the pi-free
 // store.ts; this file only does the fs check + child_process spawn.
 
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { promisify } from "node:util";
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -30,7 +28,58 @@ import {
 	validateSeeRequest,
 } from "./store.js";
 
-const execFileAsync = promisify(execFile);
+interface ChildResult {
+	stdout: string;
+	stderr: string;
+}
+
+/**
+ * Run the one-shot vision child. Uses spawn (not execFile) so we can hand it an
+ * EMPTY stdin: `pi -p` reads stdin and an inherited/open pipe makes it block
+ * until EOF (D-043). stdin:"ignore" gives it /dev/null so it runs headless.
+ * Rejects with an Error carrying { stdout, stderr, killed } on non-zero/timeout.
+ */
+function runVisionChild(
+	args: string[],
+	env: NodeJS.ProcessEnv,
+	signal: AbortSignal | undefined,
+): Promise<ChildResult> {
+	return new Promise<ChildResult>((resolve, reject) => {
+		const child = spawn("pi", args, { env, stdio: ["ignore", "pipe", "pipe"], signal });
+		let stdout = "";
+		let stderr = "";
+		let killed = false;
+		const cap = SEE_MAX_OUTPUT_BYTES * 4;
+		const timer = setTimeout(() => {
+			killed = true;
+			child.kill("SIGKILL");
+		}, SEE_TIMEOUT_MS);
+		child.stdout?.on("data", (d: Buffer) => {
+			if (stdout.length < cap) stdout += d.toString();
+		});
+		child.stderr?.on("data", (d: Buffer) => {
+			if (stderr.length < cap) stderr += d.toString();
+		});
+		child.on("error", (err) => {
+			clearTimeout(timer);
+			reject(Object.assign(err, { stdout, stderr, killed }));
+		});
+		child.on("close", (code) => {
+			clearTimeout(timer);
+			if (code === 0 && !killed) {
+				resolve({ stdout, stderr });
+				return;
+			}
+			reject(
+				Object.assign(new Error(`pi exited with code ${code}`), {
+					stdout,
+					stderr,
+					killed,
+				}),
+			);
+		});
+	});
+}
 
 export default function (pi: ExtensionAPI): void {
 	// Never register inside our own vision-child (or any pi-subagents child):
@@ -98,12 +147,7 @@ export default function (pi: ExtensionAPI): void {
 			const args = buildSeeArgs({ absPath, model, prompt });
 
 			try {
-				const { stdout, stderr } = await execFileAsync("pi", args, {
-					env: seeChildEnv(process.env),
-					timeout: SEE_TIMEOUT_MS,
-					maxBuffer: SEE_MAX_OUTPUT_BYTES * 4,
-					signal,
-				});
+				const { stdout, stderr } = await runVisionChild(args, seeChildEnv(process.env), signal);
 				const text = clampOutput(stdout.trim());
 				if (!text) {
 					const note = stderr.trim() || "(child produced no output)";
