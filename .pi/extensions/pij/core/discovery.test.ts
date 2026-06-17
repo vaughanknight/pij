@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { excludeSelf, filterByFolder, isSubagentChild, resolveSelf } from "./discovery.js";
+import {
+	deriveSelfId,
+	excludeSelf,
+	filterByFolder,
+	isSubagentChild,
+	resolveSelf,
+} from "./discovery.js";
 import type { SessionDescriptor } from "./types.js";
 
 function desc(id: string, folder: string): SessionDescriptor {
@@ -50,6 +56,27 @@ describe("resolveSelf", () => {
 		const r = resolveSelf(undefined, []);
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.code).toBe("E-AMBIG");
+	});
+});
+
+describe("deriveSelfId", () => {
+	it("derives a stable pij id from a pi session id", () => {
+		const id = deriveSelfId("sess-ABC123", 4242);
+		expect(id).toMatch(/^pij-[a-z0-9]+$/);
+		// deterministic across /reload: same input => same id
+		expect(deriveSelfId("sess-ABC123", 4242)).toBe(id);
+		// independent of pid (a /new in the same process keeps the pid but not the id)
+		expect(deriveSelfId("sess-ABC123", 9999)).toBe(id);
+	});
+
+	it("gives different ids for different session ids (/new => new peer)", () => {
+		expect(deriveSelfId("sess-OLD", 4242)).not.toBe(deriveSelfId("sess-NEW", 4242));
+	});
+
+	it("falls back to pij-<pid> when no session id is available", () => {
+		expect(deriveSelfId(undefined, 4242)).toBe("pij-4242");
+		expect(deriveSelfId("", 4242)).toBe("pij-4242");
+		expect(deriveSelfId("   ", 4242)).toBe("pij-4242");
 	});
 });
 

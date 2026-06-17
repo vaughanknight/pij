@@ -2,6 +2,35 @@
 
 import { err, ok, type Result, type SessionDescriptor, type SessionId } from "./types.js";
 
+/** Derive this session's stable pij id from pi's own session identity.
+ *
+ *  pi mints a fresh session id on `/new` and `/fork`, but keeps it stable across
+ *  `/reload` and `/resume` — exactly pij's desired identity semantics (a `/new`
+ *  session is a NEW peer; a `/reload` is the SAME peer). Keying the id off the
+ *  pi session id therefore fixes "`/new` keeps the same `pij-` id" (D-041),
+ *  which the old `pij-${pid}` scheme could not: `/new` reuses the OS process, so
+ *  the pid never changes.
+ *
+ *  Falls back to the OS `pid` when pi does not surface a session id (SDK / test
+ *  contexts), preserving the legacy id shape so nothing downstream breaks. */
+export function deriveSelfId(piSessionId: string | undefined, pid: number): SessionId {
+	const slug = sessionSlug(piSessionId);
+	return slug ? `pij-${slug}` : `pij-${pid}`;
+}
+
+/** Short, stable, low-collision token for a pi session id. Uses FNV-1a (32-bit)
+ *  → base36 so the token is deterministic across `/reload` (same input → same
+ *  output) and well-distributed regardless of the id's internal structure. */
+function sessionSlug(piSessionId: string | undefined): string | null {
+	if (!piSessionId || piSessionId.trim() === "") return null;
+	let h = 0x811c9dc5;
+	for (let i = 0; i < piSessionId.length; i++) {
+		h ^= piSessionId.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	return (h >>> 0).toString(36);
+}
+
 /** True when this pi process was spawned as a SUBAGENT CHILD by pi-subagents.
  *  Such children run `pi --mode json -p "<task>"`, so pij MUST NOT activate:
  *  its session_start announce is a `sendUserMessage` (a turn-triggering prompt)

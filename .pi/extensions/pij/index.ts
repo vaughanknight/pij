@@ -12,7 +12,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
-import { isSubagentChild } from "./core/discovery.js";
+import { deriveSelfId, isSubagentChild } from "./core/discovery.js";
 import { PijSession } from "./core/session.js";
 import type { Role } from "./core/types.js";
 
@@ -49,17 +49,31 @@ export default function (pi: ExtensionAPI): void {
 	// (startup/reload/new/resume/fork). Boot is idempotent — reload reuses the
 	// descriptor (no duplicate, no replay) and refreshes the live ctx.
 	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
-		// Derive a stable self-id from this OS process (always present, even on
-		// first boot; identical across /reload since it's the same process), so
-		// boot never depends on resolveSelf — that is the CLI's "which am I"
-		// resolver, and the extension is the *producer* of PIJ_SESSION_ID.
-		self = `pij-${process.pid}`;
+		// Derive a stable self-id from pi's OWN session identity (changes on /new
+		// and /fork, stable across /reload and /resume) so a /new session becomes a
+		// new peer instead of reusing this process's id (D-041). Falls back to the
+		// OS pid when pi does not surface a session id (SDK/test). The extension is
+		// the *producer* of PIJ_SESSION_ID; resolveSelf is the CLI's "which am I".
+		const previousSelf = self; // module-scoped; holds the prior id across reload/new
+		let piSessionId: string | undefined;
+		try {
+			piSessionId = ctx.sessionManager?.getSessionId();
+		} catch {
+			piSessionId = undefined; // stale/unavailable session manager
+		}
+		self = deriveSelfId(piSessionId, process.pid);
 		const envRole = process.env.PIJ_ROLE;
 		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const dataDir = join(pijHome, self);
 		const eventsPath = join(dataDir, "events.ndjson");
 
 		registry = new FsRegistry(pijHome);
+		// /new and /fork mint a fresh id => drop the prior session's descriptor so it
+		// does not linger as a duplicate live peer (same pid, stale id). /reload keeps
+		// the same id, so this is a no-op there.
+		if (previousSelf && previousSelf !== self) {
+			registry.remove(previousSelf);
+		}
 		eventLog = new FsEventLog(pijHome, self);
 		const channel = new FsChannel(pijHome);
 		session = new PijSession({

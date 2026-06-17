@@ -165,6 +165,11 @@ context.
 
 ## Parent/worker workflow
 
+> **Session identity.** A session's `pij-<id>` is derived from pi's own session
+> id, so it is stable across `/reload` and `/resume` but a **fresh id on `/new`
+> and `/fork`** (a `/new` session is a new peer, not the old one). When pi
+> exposes no session id (SDK/tests) it falls back to `pij-<pid>`.
+
 The canonical loop (roles are fixed per session at boot):
 
 | # | Actor | Action | Command |
