@@ -1,6 +1,6 @@
 # File-Watch Notify — pi extension
 **Mode**: Simple
-**Plan Version**: 1.0.0
+**Plan Version**: 1.1.0
 **Created**: 2026-06-16
 **Status**: READY
 **Spec source**: unified (this file)
@@ -21,12 +21,14 @@ A standalone pi extension that watches **one or more configured folders**, each 
 - Reuse pij's steer-if-busy / immediate-if-idle inject behavior verbatim.
 - Reliable change classification under real editors (atomic-save artifacts ignored; bursts debounced/coalesced).
 - Zero coupling to pij (standalone extension; copies/adapts the proven pattern).
+- Arm/list/stop watches at **runtime** via `/file-watch-notify` subcommands (no reload needed).
 
 ### Non-Goals
 - Recursive repo-wide watching at scale (opt-in `recursive:true` only; chokidar/@parcel documented as future drop-in, not built now).
 - Reacting to changes with actions (it only *notifies* — the agent decides what to do).
 - A new shared core / refactor of pij (explicitly rejected in clarifications — standalone).
 - Cross-session delivery (this is local-session only; that's pij's job).
+- Persisting runtime-added watches back to `.pi/file-watch.json` (runtime watches are session-local; re-add after reload, or use the config file for durable watches).
 
 ### Target Domains
 
@@ -68,6 +70,7 @@ A standalone pi extension that watches **one or more configured folders**, each 
 - **AC-04**: Editor atomic-save artifacts (`4913`, `*~`, `.goutputstream*`, `.tmp*`, dotfiles) produce **no** spurious notices; an atomic save is reported as a single **"modified"**.
 - **AC-05**: A burst of rapid changes is **debounced/coalesced** (no notice spam); change kind is classified via **snapshot reconcile**, not raw `fs.watch` event types.
 - **AC-06**: The watcher **starts at `session_start`** and **disposes on shutdown/reload** — no tool call to arm.
+- **AC-07**: Runtime commands arm/list/disarm watchers **without a reload** — `/file-watch-notify watch <dir> <glob...>` starts a live watcher, `/file-watch-notify list` shows active watches, `/file-watch-notify stop <dir>` disposes one. Config-at-boot (AC-06) remains the persistent path; runtime watches are session-local.
 
 ### Risks & Assumptions
 - Assumes a single shallow folder is the common case; `recursive:true` is opt-in and documented with EMFILE/ENOSPC caveats.
@@ -91,6 +94,9 @@ A standalone pi extension that watches **one or more configured folders**, each 
 - **Documentation**: `docs/how/file-watch-notify.md`.
 - **Mock Usage**: Targeted fakes for `fs`/pi-runtime (project convention; not asked).
 - **Config source** (decided default): `.pi/file-watch.json`.
+
+#### Session 2026-06-17
+- **Runtime watch control** (scope change, user-requested): the runtime `/file-watch-notify watch|list|stop` subcommands are now **in scope** (the original plan implied config-at-boot only). Rationale: live setup/adjustment without a `/reload` is the natural way to try and tune watches. Runtime watches are **session-local** (not persisted to config). Feasibility grounded in the existing `pi.registerCommand("file-watch-notify", { handler(args, ctx) })` seam in `index.ts` — the read-only status command already proves the command + `ExtensionCommandContext` path.
 
 ## Planning Seam
 _Refinement opportunities still open — recorded as evidence; the flow surfaces and offers these, none gate:_
@@ -145,6 +151,8 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | `.pi/extensions/file-watch-notify/store.test.ts` | file-watch-notify | internal | core unit tests vs fakes |
 | `.pi/extensions/file-watch-notify/watcher.ts` | file-watch-notify | internal | fs.watch + debounce + readdir/stat adapter |
 | `.pi/extensions/file-watch-notify/inject.ts` | file-watch-notify | internal | pi inject adapter (steer/immediate) — adapts pij's pi-runtime |
+| `.pi/extensions/file-watch-notify/commands.ts` | file-watch-notify | internal | pure runtime-command parser (`watch`/`list`/`stop`) — pi-free |
+| `.pi/extensions/file-watch-notify/commands.test.ts` | file-watch-notify | internal | command-parser unit tests |
 | `.pi/extensions/file-watch-notify/index.ts` | file-watch-notify | contract | session_start wiring (P10) |
 | `docs/how/file-watch-notify.md` | file-watch-notify | contract | user guide |
 | `docs/domains/file-watch-notify/domain.md` | file-watch-notify | contract | domain doc |
@@ -182,6 +190,9 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | [x] | T007 | Domain doc + user guide | file-watch-notify | `docs/domains/file-watch-notify/domain.md`, `docs/how/file-watch-notify.md` | config + behavior + steer semantics + directory-watch-trap documented | docs strategy |
 | [x] | T008 | `just self-check` green; live smoke (edit a watched `*.md`, see the notice while busy) | file-watch-notify | — | self-check passes; manual steer notice observed | AC-01..06 |
 | [x] | T099 | **Harness phase-end** — `/eng-harness-flow --event phase-end --plan-dir docs/plans/015-file-watch-notify` | — | — | Router envelope handled at phase end | _Harness seam (router installed)_ |
+| [ ] | T010 | **Tests-first** (follow-on increment): pure `parseCommand(args)` → tagged union `{ watch dir+patterns \| list \| stop dir \| help \| error }` | file-watch-notify | `commands.test.ts` | red tests cover watch/list/stop/invalid; AC-07 | TDD core (P8) |
+| [ ] | T011 | `commands.ts` parser + `index.ts` runtime handler: `/file-watch-notify watch <dir> <glob...>` arms a `FolderWatcher` live (inject reuses the session `currentCtx`), `list` shows active, `stop <dir>` disposes; track a `dir→disposer` map | file-watch-notify | `commands.ts`, `index.ts` | live `/file-watch-notify watch scratch/x "**/*.md"` arms with **no reload**; `list`/`stop` work | AC-07; reuse the session_start watcher-build block |
+| [ ] | T012 | Self-check + live smoke: arm at runtime, edit a watched file, see the steered notice; `stop` silences it | file-watch-notify | — | self-check green; runtime arm/stop observed live | AC-07 |
 
 ### Acceptance Coverage Map
 
@@ -193,6 +204,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | AC-04 | T002, T003a | atomic-save ignore-list tests |
 | AC-05 | T003a, T004 | debounce/coalesce + reconcile tests |
 | AC-06 | T006, T008 | live `/reload` smoke (no tool call) |
+| AC-07 | T010, T011, T012 | command-parser tests + live runtime arm/list/stop smoke |
 
 ### Risks
 
@@ -202,6 +214,7 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 | Steer-spam during large rebuilds | Medium | Low | Debounce + coalesce N changes per wake into one notice |
 | Atomic-save artifact false positives | Medium | Low | Ignore-list; tmp+rename is single-wake → one `modified`; cross-wake re-add reclassified `modified` (see Known Limitations) |
 | picomatch dep rejected by policy | Low | Low | It's a regular npm dep (0 transitive); hand-rolled `*.ext` matcher is a fallback |
+| Runtime-added watches lost on reload | High | Low | Documented as session-local (Non-Goal + Known Limitations); re-add after reload or use `.pi/file-watch.json` for durable watches |
 
 ### Known Limitations
 - **AC-04 scope**: a true atomic save (write-temp → rename over the target) lands inside one debounced wake, so it is reported as a **single `modified`** — AC-04 holds. The distinct, rarer case where a delete and its re-add fall in **separate** wakes is reclassified to `modified` (never a spurious `created`), but a preceding `deleted` may surface. Single-notice coalescing across wakes would require a deferred-delete flush timer (a lone delete must still surface without a following fs event) and is **deliberately out of scope** (documented in `docs/how/file-watch-notify.md` + `domain.md`).
@@ -257,3 +270,20 @@ Build a standalone `file-watch-notify` pi extension that adapts pij's proven bac
 **Standalone?**: No — downstream consumer is the implement stage (this plan's inline tasks).
 
 Overall: ⚠️ VALIDATED WITH FIXES
+
+---
+
+## Amendment Validation (2026-06-17) — runtime watch/list/stop commands
+
+**Trigger**: user brought the runtime `/file-watch-notify watch|list|stop` subcommands in-scope (was implied config-at-boot only). Re-ran the plan verb's amendment path; the mandated `/validate-v2` step ran **in-parent** (the `subagent` fan-out is blocked by a live singleton agent this session — the same infra limit recorded above; validate-v2 permits in-parent synthesis).
+
+**Thesis impact**: value claim unchanged ("changes appear in-session, no tool call") — the amendment adds a *control surface*, not a new mechanism. Low marginal risk: the runtime handler reuses the exact watcher-build block already proven in `session_start`.
+
+**Lens findings (in-parent, grounded vs real source)**:
+- **Coherence / Completeness** — AC-07 added; Goals + Non-Goals updated; Domain Manifest gains `commands.ts` / `commands.test.ts`; tasks T010–T012 (tests-first → impl → smoke) cover it; coverage map + risks updated. No dangling cross-refs. ✅
+- **Feasibility / Forward-Compat** — grounded against `index.ts:122` `pi.registerCommand("file-watch-notify", { handler: async (args, ctx: ExtensionCommandContext) })`: the handler already receives raw `args` + ctx; the watcher-build loop (`compileWatch`→`WatchReconciler`→`FolderWatcher.start()`→`disposers.push`) is in activate-scope and reusable for live arming; inject uses the session `currentCtx` already set at boot. **No new pi capability required.** ✅
+- **Thesis risk** — runtime watches are ephemeral (lost on reload). Surfaced as a Non-Goal + a Risk row (documented, not silently dropped). ✅
+
+**Status**: stays **READY** (Simple, CS-3 unchanged). Gate Matrix re-checked — G5 structure intact (new sections populated), G6 testing (T010 tests precede T011 impl), G7 domain (new files in manifest). No CRITICAL/HIGH open.
+
+Overall: ✅ VALIDATED (amendment) — READY to implement T010–T012.
