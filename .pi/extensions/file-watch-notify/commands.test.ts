@@ -84,3 +84,15 @@ describe("parseCommand — unknown verb", () => {
 		expect(r.kind).toBe("error");
 	});
 });
+
+describe("parseCommand — surplus trailing tokens (documented: lenient)", () => {
+	it("ignores tokens after 'list'", () => {
+		expect(parseCommand("list extra junk")).toEqual({ kind: "list" });
+	});
+	it("ignores tokens after 'help'", () => {
+		expect(parseCommand("help me please")).toEqual({ kind: "status" });
+	});
+	it("uses the first token as the dir for 'stop' and ignores the rest", () => {
+		expect(parseCommand("stop docs and more")).toEqual({ kind: "stop", dir: "docs" });
+	});
+});

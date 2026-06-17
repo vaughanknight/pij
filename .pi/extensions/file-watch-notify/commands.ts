@@ -33,6 +33,10 @@ export function parseCommand(args: string): ParsedCommand {
 
 	const verb = first.toLowerCase();
 
+	// Surplus trailing tokens are intentionally lenient: `list`/`help`/`status`
+	// ignore extra args, and `stop <dir>` takes the first token as the dir and
+	// ignores the rest. (Documented + tested in commands.test.ts.)
+
 	switch (verb) {
 		case "help":
 		case "status":
