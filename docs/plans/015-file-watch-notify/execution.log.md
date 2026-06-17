@@ -75,3 +75,13 @@ Plan v1.1.0 · validated by the **real** `validate-v2` fan-out (2026-06-17, 4/4 
 ### T010 — tests-first `parseCommand` (commands.test.ts)
 - `commands.test.ts`: 16 red tests pin the `ParsedCommand` union (status/list/watch/stop/error) — empty + `help` → status (case-insensitive verb), `list`, `watch <dir> <glob...>` (single + multi pattern + single/double-quote stripping), `watch <dir>` missing-pattern → error, `watch` → error, `stop <dir>`, `stop` missing-dir → error, unknown verb → error.
 - Confirmed **RED** (`./commands.js` not found) before implementing — tests-first (P8).
+
+### T011 — `commands.ts` parser + `index.ts` runtime refactor
+- `commands.ts`: pure `parseCommand(args)` → `ParsedCommand` union. Quote-aware tokenizer (`String.matchAll`, no assign-in-expression) strips one layer of single/double quotes so a dir/glob with spaces survives. Verb lowercased; `help`/empty → status; `watch` needs dir + ≥1 glob; `stop` needs dir; unknown → error with `COMMAND_USAGE`. Zero pi/fs imports (P2). 16 tests green.
+- `index.ts` refactor (closes the two validate-v2 HIGH gaps):
+  - **HIGH-1 config scope** — `loadedConfig: Config | null` lifted to closure scope; reset to `null` on every `session_start` (after `disposeAll`) and on each invalid-config branch; runtime watches inherit `loadedConfig?.{debounceMs,ignore,notice} ?? DEFAULT_*` (work even with no `.pi/file-watch.json`).
+  - **HIGH-2 disposers shape / reload leak** — `disposers: Array` → `watches: Map<absDir, {dispose, source, patterns}>`; `disposeAll()` disposes **all** (config + runtime) and `clear()`s, so runtime watches never survive `/reload`.
+  - `startWatch(rawDir, patterns, source, extra?)` helper: fully **try-guarded** (bad glob / unreadable dir → `{ok:false}`, no uncaught throw — fixes the prior `compileWatch`-outside-`try` gap); **dedupes** by disposing any existing watcher on the same resolved dir first; preserves config `events`/`recursive` fidelity. Both `session_start` and the command handler call it.
+  - **Replaced** (not double-registered) the `registerCommand("file-watch-notify")` handler with a `parseCommand`-dispatched body: `status` → status line + usage; `list` → one labelled line per watch (`watching: <dir> [<globs>] (config|runtime)`) or "no active watches"; `watch` → `startWatch` + `refreshStatus`; `stop` → dispose + delete by resolved dir (works for config or runtime watches).
+- session_start's config-load error wording + `statusLine` values preserved (the deterministic smoke asserts them); `refreshStatus()` recomputes from `watches.size` only for runtime ops.
+- typecheck ✓ (fixed a `noUncheckedIndexedAccess` nit via destructure), biome ✓, **45 fwn tests green** (16 commands + 16 store + 5 inject + 5 index + 3 watcher). Companion pinged.
