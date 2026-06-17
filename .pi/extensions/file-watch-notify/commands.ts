@@ -18,24 +18,37 @@ export const COMMAND_USAGE =
  * Split on whitespace, honouring single/double quoted runs (so a dir or glob
  * containing spaces survives) and stripping one layer of surrounding quotes.
  */
-function tokenize(args: string): string[] {
-	const out: string[] = [];
+function tokenize(args: string): { tokens: string[]; malformed: boolean } {
+	const tokens: string[] = [];
+	let malformed = false;
 	const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
 	for (const m of args.matchAll(re)) {
-		out.push(m[1] ?? m[2] ?? m[3] ?? "");
+		if (m[3] !== undefined) {
+			// A bare run still carrying a quote char means the quote was never closed
+			// (a properly quoted run matches m[1]/m[2] and is stripped instead).
+			if (m[3].includes('"') || m[3].includes("'")) malformed = true;
+			tokens.push(m[3]);
+		} else {
+			tokens.push(m[1] ?? m[2] ?? "");
+		}
 	}
-	return out;
+	return { tokens, malformed };
 }
 
 export function parseCommand(args: string): ParsedCommand {
-	const [first, ...rest] = tokenize(args);
+	const { tokens, malformed } = tokenize(args);
+	if (malformed) {
+		return { kind: "error", reason: `unmatched quote in arguments. ${COMMAND_USAGE}` };
+	}
+
+	const [first, ...rest] = tokens;
 	if (!first) return { kind: "status" };
 
 	const verb = first.toLowerCase();
 
-	// Surplus trailing tokens are intentionally lenient: `list`/`help`/`status`
-	// ignore extra args, and `stop <dir>` takes the first token as the dir and
-	// ignores the rest. (Documented + tested in commands.test.ts.)
+	// Arity policy: `help`/`status`/`list` are lenient (no args — surplus ignored);
+	// `watch` is variadic (extra tokens are additional globs); `stop` is exact-arity
+	// (a stray token is almost certainly a typo). (Tested in commands.test.ts.)
 
 	switch (verb) {
 		case "help":
@@ -60,8 +73,14 @@ export function parseCommand(args: string): ParsedCommand {
 			return { kind: "watch", dir, patterns };
 		}
 		case "stop": {
-			const [dir] = rest;
+			const [dir, ...extra] = rest;
 			if (!dir) return { kind: "error", reason: `stop needs a <dir>. ${COMMAND_USAGE}` };
+			if (extra.length > 0) {
+				return {
+					kind: "error",
+					reason: `stop takes exactly one <dir> (unexpected: "${extra.join(" ")}"). ${COMMAND_USAGE}`,
+				};
+			}
 			return { kind: "stop", dir };
 		}
 		default:

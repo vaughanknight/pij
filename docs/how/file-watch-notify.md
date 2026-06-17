@@ -28,8 +28,29 @@ file-system analogue of receiving a `pij` peer message.
    If the model is mid-turn, the notice is **steered** in after the turn; if
    idle, it arrives immediately and starts a turn.
 
-Run `/file-watch-notify` any time to see status (`watching N folders`, `not
-configured`, or `invalid (...)`).
+Run `/file-watch-notify` (no args) any time to see status (`watching N folders`,
+`not configured`, or `invalid (...)`) plus the usage line.
+
+## Runtime commands (arm/list/stop without a config file)
+
+Beyond the config-file watches you can arm and tear down watches **live** — no
+`/reload`, no tool call:
+
+| Command | Effect |
+|---------|--------|
+| `/file-watch-notify` (or `help`) | Show the status line + usage. |
+| `/file-watch-notify watch <dir> <glob...>` | Arm a watch on `<dir>` for one or more globs. Re-arming the same dir **replaces** the previous watch (no double-notify). Inherits `debounceMs`/`ignore`/`notice` from `.pi/file-watch.json` if present, else the defaults. |
+| `/file-watch-notify list` | List active watches, each labelled `(config)` or `(runtime)`. |
+| `/file-watch-notify stop <dir>` | Dispose the watch on `<dir>` (config- or runtime-armed). |
+
+Argument rules: dirs/globs with spaces can be quoted (`"my dir"`, `'**/*.md'`);
+`list`/`help` ignore extra tokens; `stop` takes **exactly one** `<dir>`; an
+unmatched quote is rejected with a usage hint.
+
+> **Runtime watches are session-local.** They are not written back to
+> `.pi/file-watch.json` and are **lost on `/reload`** (the watcher map is cleared
+> and re-seeded from the config file only). For a durable watch, add it to
+> `.pi/file-watch.json`; for a one-off, the runtime command is ideal.
 
 ## Config reference (`.pi/file-watch.json`)
 

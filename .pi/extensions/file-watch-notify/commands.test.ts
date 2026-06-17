@@ -85,14 +85,23 @@ describe("parseCommand — unknown verb", () => {
 	});
 });
 
-describe("parseCommand — surplus trailing tokens (documented: lenient)", () => {
+describe("parseCommand — surplus tokens (list/help lenient, stop strict)", () => {
 	it("ignores tokens after 'list'", () => {
 		expect(parseCommand("list extra junk")).toEqual({ kind: "list" });
 	});
 	it("ignores tokens after 'help'", () => {
 		expect(parseCommand("help me please")).toEqual({ kind: "status" });
 	});
-	it("uses the first token as the dir for 'stop' and ignores the rest", () => {
-		expect(parseCommand("stop docs and more")).toEqual({ kind: "stop", dir: "docs" });
+	it("errors on surplus tokens after 'stop <dir>' (exact arity)", () => {
+		expect(parseCommand("stop docs and more").kind).toBe("error");
+	});
+});
+
+describe("parseCommand — malformed quotes", () => {
+	it("errors on an unterminated double quote", () => {
+		expect(parseCommand('watch docs "**/*.md').kind).toBe("error");
+	});
+	it("errors on an unterminated single quote", () => {
+		expect(parseCommand("stop 'docs").kind).toBe("error");
 	});
 });
