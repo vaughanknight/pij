@@ -97,3 +97,22 @@ Plan v1.1.0 · validated by the **real** `validate-v2` fan-out (2026-06-17, 4/4 
 - **Phase-end harness seam**: the `/eng-harness-flow` router keys on a `.harness/` governance shape this repo doesn't use (pij runs its own `just` + `harness/` Driver SDK harness) — best-effort / never-blocks → noted + skipped (same as the pre-implement seam).
 - Both validate-v2 HIGH gaps closed in code (config scope; disposers → Map / reload leak); 1 companion MEDIUM fixed.
 - Commits: `6e7d70d` (T010 red tests) → `4625fec` (T011 parser + index refactor) → `c8bad34` (companion-fix) → T012 (this commit).
+
+### Companion review reconciliation (amendment) — `code-review-companion` run `2026-06-17T02-36-34-285Z-5351`
+Power-On companion reviewed every amendment commit, acked every ping, posted **5 findings** (cumulative findings lane). All addressed:
+
+| # | Sev | Finding | Disposition | Commit |
+|---|-----|---------|-------------|--------|
+| 1 | MED | surplus tokens on list/help/stop untested/undocumented | **Fixed** — documented lenient, then (per #4) made `stop` strict + tested | c8bad34 → 756475c |
+| 2 | MED | reject surplus + unmatched quotes | **Fixed** — `stop` exact-arity; unterminated quote → error (tokenizer flags a bare run carrying a quote) + tests | 756475c |
+| 3 | MED | document runtime watch/list/stop + update domain source/contracts/history | **Fixed** — domain.md (source/concept/contract/boundary/history) + docs/how runtime section | 756475c |
+| 4 | MED | make `stop` exact-arity, keep help/list lenient, malformed-quote coverage | **Fixed** — same as #2 | 756475c |
+| 5 | MED | update domain-map + registry (runtime surface + test count) | **Fixed** — FWN node contracts + ATI edges + 22→52 + amendment rows | ae6bee2 |
+
+5/5 addressed in code/docs (the companion pushed back on the initial lenient-everywhere choice — adopted strict `stop` + malformed-quote rejection). Companion stopped cleanly (verdict `completed`); minih auto-harvests its retro → `docs/retros/code-review-companion.md`.
+
+**Companion magicWand**: “Auto-derive more of the farewell retrospective directly from the coordination ledger.” (minih-side ask — same as the prior run; not a pij/fwn change.)
+
+### Amendment final gate
+- typecheck ✓, lint ✓ (11 fwn files), **full vitest 496 (492 passed / 4 skipped); 54 in file-watch-notify**; fwn Driver smoke ✓ (no-args status line unchanged). Only red across the repo = the pre-existing `pi-peacock` environmental model-string smoke (not a fwn regression).
+- **Final commit chain**: `6e7d70d` (T010) → `4625fec` (T011) → `c8bad34` → `0dfd803` (T012) → `756475c` → `ae6bee2`.
