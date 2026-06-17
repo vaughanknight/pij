@@ -1,0 +1,26 @@
+# flow-pair — Logged follow-ups (non-blocking)
+
+Findings surfaced during phase reviews that were accepted as non-blocking. Pick up
+in a later hardening pass or the relevant future phase.
+
+## From Phase 3 review (dlg-0011, APPROVE WITH NOTES)
+
+| ID | Sev | Where | Finding | Suggested fix |
+|----|-----|-------|---------|---------------|
+| F1 | MED | `lib/context-pack.ts` `nextPackId` + `lib/ledger.ts` `nextId` | Duplicated monotonic-id logic (`readdirSync.filter(.json).length+1` padStart 4). | Extract a shared `nextSequentialId(dir, prefix, deps)` helper; both import it. |
+| F2 | LOW | `lib/context-pack.ts` `clusterLearnings` | Final `readFileSync(active.md)` not wrapped — throws (vs tagged-union `{ok:false}`) if the read fails after `existsSync` (race/permission). | try/catch → `{ok:false}`. |
+| F3 | NIT | `lib/context-pack.ts` `compile` | `mkdirSync(packDir)` is a tiny fs side-effect BEFORE the P9 event append. Harmless + consistent with Phase 2 `createRun`, but not strictly event-first. | P9-purity: compute packId without creating the dir (`existsSync?readdirSync:0`), append event first, then mkdir + write. |
+| N2 | LOW | `lib/context-pack.ts` `compile` | When the `resolveRunDir` guard is bypassed (only reachable if the guard regresses), `runDir` is empty and writes default to cwd. Mutation test proved the guard prevents a path-traversal write to the repo root. | Defense-in-depth: assert `runDir` is a non-empty absolute path before any write. |
+
+## Upstream `/the-flow 7` review-skill suggestions (do NOT edit the installed skill; note for later)
+
+| # | Suggestion |
+|---|------------|
+| U1 | **Add a test-quality / mutation-resistance dimension to Subagent 4 (Testing & Evidence).** It checks RED-GREEN + coverage but never "would a test fail if the fix were reverted?" — the exact gap that hid the Phase 2 CRITICAL behind green gates. Weight heavily when a cheaper model authored the tests. |
+| U2 | The 5-subagent fan-out is tool-blind in lean-ctx envs (agents' allowlists name raw read/grep/bash). Detect "subagent can't read the diff" → fall back to in-session lens + declare the degradation rather than emit a hollow review. |
+| U3 | Subagent JSON severity enum is HIGH/MED/LOW but synthesis references CRITICAL — align (add CRITICAL). |
+| U4 | Add an "in-progress work" review mode for parallel/live review (skill currently assumes the implement verb finished and the diff is final). |
+
+## Done (orchestrator-owned, not logged)
+- F5 — `docs/domains/flow-pair/domain.md` Source Locations note + History brought current (Phases 1–3 built). ✅
+- N1 — `harness/scripts/flow-pair-mutate.sh` now surfaces stray untracked artifacts a mutation run leaves behind. ✅

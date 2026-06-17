@@ -8,6 +8,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ContextPackCompiler, nodeContextPackDeps } from "./context-pack.js";
 import { deriveRepoId, nodeGitDeps } from "./identity.js";
 import { LedgerWriter, nodeLedgerDeps } from "./ledger.js";
 import { LEDGER_ROOT, resolveRunDir } from "./paths.js";
@@ -26,7 +27,7 @@ Usage:
 
 Subcommands:
   start      Start a new flow-pair run          (Phase 1 functional)
-  dispatch   Dispatch a worker packet           [stub — Phase 4]
+  dispatch   Compile a context pack for a delegation      (Phase 3)
   observe    Capture diffs after execution      [stub — Phase 5]
   review     Run review rubric on output        [stub — Phase 6]
   fix        Generate a fix packet              [stub — Phase 6]
@@ -37,9 +38,14 @@ Options:
   --json             Emit structured JSON to stdout
   --repo <path>      Target repo path (start; default: cwd)
   --ledger-root <p>  Ledger root directory (start; default: .flow-pair)
-  --run-id <id>      Run id (observe/review/fix/accept/ledger)
-  --packet <path>    Packet file path (dispatch)
-  --delegation <id>  Delegation id (review/accept)
+  --run-id <id>      Run id (dispatch/observe/review/fix/accept/ledger)
+  --delegation <id>  Delegation id (dispatch/review/accept)
+  --plan-path <p>    Absolute path to plan file (dispatch)
+  --phase <text>     Phase section heading to extract (dispatch)
+  --tasks-dir <p>    Absolute path to tasks directory (dispatch)
+  --cluster <name>   Prompt-lab cluster name (dispatch; default: implement-code)
+  --allowed-paths <p1,p2,...>  Comma-separated allowed paths (dispatch)
+  --packet <path>    Packet file path (Phase 4)
   --review <id>      Review id (fix)
   --help             Show this help
 
@@ -124,6 +130,43 @@ function runLedger(flags: Record<string, string | boolean>): Record<string, unkn
 	return JSON.parse(readFileSync(runJsonPath, "utf8")) as Record<string, unknown>;
 }
 
+function runDispatch(flags: Record<string, string | boolean>): Record<string, unknown> {
+	const ledgerRoot = typeof flags["ledger-root"] === "string" ? flags["ledger-root"] : LEDGER_ROOT;
+	const repoRoot = typeof flags.repo === "string" ? flags.repo : process.cwd();
+	const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : undefined;
+	const delegationId = typeof flags.delegation === "string" ? flags.delegation : undefined;
+	const planPath = typeof flags["plan-path"] === "string" ? flags["plan-path"] : undefined;
+	const phase = typeof flags.phase === "string" ? flags.phase : undefined;
+	const tasksDir = typeof flags["tasks-dir"] === "string" ? flags["tasks-dir"] : undefined;
+	const cluster = typeof flags.cluster === "string" ? flags.cluster : "implement-code";
+	const allowedPathsRaw = typeof flags["allowed-paths"] === "string" ? flags["allowed-paths"] : "";
+	const allowedPaths = allowedPathsRaw ? allowedPathsRaw.split(",").map((p) => p.trim()) : [];
+
+	if (!runId || !delegationId || !planPath || !phase || !tasksDir) {
+		throw new Error("dispatch requires: --run-id --delegation --plan-path --phase --tasks-dir");
+	}
+
+	const compiler = new ContextPackCompiler(repoRoot, ledgerRoot, nodeContextPackDeps());
+	const result = compiler.compile({
+		runId,
+		delegationId,
+		planPath,
+		phase,
+		tasksDir,
+		cluster,
+		allowedPaths,
+	});
+	if (!result.ok || !result.manifest) {
+		throw new Error(result.error ?? "compile failed");
+	}
+	return {
+		ok: true,
+		packId: result.manifest.packId,
+		entries: result.manifest.entries.length,
+		exclusions: result.manifest.exclusions.length,
+	};
+}
+
 function runStub(cmd: Subcommand): Record<string, unknown> {
 	return { ok: true, subcommand: cmd, status: "stub — not yet implemented" };
 }
@@ -146,7 +189,7 @@ function main(): void {
 	const { subcommand, flags } = parseArgs(argv);
 	const useJson = flags.json === true;
 
-	if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
+	if (argv.length === 0 || flags.help === true || argv[0] === "--help" || argv[0] === "-h") {
 		process.stdout.write(HELP);
 		process.exit(0);
 	}
@@ -162,7 +205,13 @@ function main(): void {
 	try {
 		const cmd = subcommand as Subcommand;
 		const out =
-			cmd === "start" ? runStart(flags) : cmd === "ledger" ? runLedger(flags) : runStub(cmd);
+			cmd === "start"
+				? runStart(flags)
+				: cmd === "dispatch"
+					? runDispatch(flags)
+					: cmd === "ledger"
+						? runLedger(flags)
+						: runStub(cmd);
 
 		if (useJson) {
 			process.stdout.write(`${JSON.stringify(out)}\n`);

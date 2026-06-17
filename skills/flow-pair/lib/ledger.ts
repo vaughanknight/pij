@@ -85,6 +85,13 @@ export type LedgerEvent =
 			delegationId: string;
 			learningId: string;
 			at: string;
+	  }
+	| {
+			type: "context_pack.created";
+			runId: string;
+			delegationId: string;
+			packId: string;
+			at: string;
 	  };
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
@@ -150,6 +157,24 @@ export function nodeLedgerDeps(): LedgerDeps {
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Standalone helper: append a single event line to events.jsonl.
+ * Exported so Phase 3+ can reuse the tested primitive without importing LedgerWriter.
+ * P9 primitive: callers must invoke this BEFORE writing any state file.
+ */
+export function appendLedgerEvent(
+	deps: Pick<LedgerDeps, "appendFileSync">,
+	runDir: string,
+	event: LedgerEvent,
+): { ok: boolean; error?: string } {
+	try {
+		deps.appendFileSync(join(runDir, EVENTS_FILE), `${JSON.stringify(event)}\n`);
+		return { ok: true };
+	} catch (err) {
+		return { ok: false, error: err instanceof Error ? err.message : String(err) };
+	}
+}
 
 /** Allocate next monotonic ID for a record type in the given sub-directory. */
 function nextId(dir: string, prefix: string, deps: LedgerDeps): string {
@@ -254,14 +279,10 @@ export class LedgerWriter {
 
 	/**
 	 * Append a single event line to events.jsonl (the only write path to the event log).
+	 * Delegates to the exported `appendLedgerEvent` standalone helper.
 	 */
 	appendEvent(runDir: string, event: LedgerEvent): { ok: boolean; error?: string } {
-		try {
-			this.deps.appendFileSync(join(runDir, EVENTS_FILE), `${JSON.stringify(event)}\n`);
-			return { ok: true };
-		} catch (err) {
-			return { ok: false, error: err instanceof Error ? err.message : String(err) };
-		}
+		return appendLedgerEvent(this.deps, runDir, event);
 	}
 
 	// ─── Record writers ─────────────────────────────────────────────────────────

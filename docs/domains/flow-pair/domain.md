@@ -19,8 +19,9 @@ packets hard-forbid those paths.
 
 ## Source Locations
 
-> **All paths below are planned and not yet built** (Phase 1 of plan 016 is
-> the first implementation pass).
+> **Phases 1–3 are built**; Phases 4–8 (`packet.ts`, `observe.ts`, `review.ts`,
+> `learning.ts` + wiring) are planned. Built so far: `identity.ts`, `paths.ts`,
+> `cli.ts`, `ledger.ts` (+ `appendLedgerEvent`), `context-pack.ts`, `schemas/*.json`.
 
 | Path | Role |
 |------|------|
@@ -106,4 +107,7 @@ packets hard-forbid those paths.
 
 | Plan | Change | Date |
 |------|--------|------|
-| 016-flow-pair | Created the domain (planning). First inhabitant: `skills/flow-pair/` (Phase 1, not yet built). | 2026-06-17 |
+| 016-flow-pair | Created the domain (planning). First inhabitant: `skills/flow-pair/`. | 2026-06-17 |
+| 016-flow-pair | **Phase 1 built**: `lib/identity.ts`, `lib/paths.ts`, `lib/cli.ts`, `SKILL.md` + references/templates skeleton; `flow-pair` CLI (bin + npm link). | 2026-06-17 |
+| 016-flow-pair | **Phase 2 built**: `lib/ledger.ts` (`LedgerWriter` + `appendLedgerEvent` + record writers, P9 persist-before-mutate), `schemas/*.json` (6 draft-07). Encoded test-quality Dimension 0 + `just flow-pair-mutate` after a cross-model review caught a CRITICAL P9 bug behind green gates. | 2026-06-17 |
+| 016-flow-pair | **Phase 3 built**: `lib/context-pack.ts` (`ContextPackCompiler`: `extractSection` prefix-boundary match, `clusterLearnings` graceful-empty, `compile` P9-via-`appendLedgerEvent`, manifest carries content + forbidden-paths guard); `dispatch` CLI subcommand; `references/context-packs.md`. Tests mutation-proven; worker self-mutation caught a vacuous P9 test. | 2026-06-17 |

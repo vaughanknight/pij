@@ -16,7 +16,7 @@ flowchart TD
   plan["Plan (spec + impl)<br/>CS-4 · Full · READY"]:::done
   p1["P1 · Domain + skill skeleton + resolver<br/>✓ complete · all gates green"]:::done
   p2["P2 · Central ledger writer<br/>✓ complete"]:::done
-  p3["P3 · Context-pack compiler"]:::known
+  p3["P3 · Context-pack compiler<br/>✓ complete"]:::done
   p4["P4 · Worker-packet gen + pij delivery"]:::known
   p5["P5 · Observe + diff capture"]:::known
   p6["P6 · Review + fix loop"]:::known
@@ -39,4 +39,4 @@ flowchart TD
 
 **Legend**: 🟩 done · 🟧 in progress · 🟥 blocked · 🟦 known (designed future) · ⬜ assumed (speculative) · 🗣 your words · 🤝 worker
 
-**Now**: Phase 2 ✓ COMPLETE (ledger writer; cross-model review caught a CRITICAL P9 data-loss bug; fix mutation-proven; test-quality Dimension 0 encoded) · **Next**: Phase 3 — Context-pack compiler (tasks)
+**Now**: Phase 3 ✓ COMPLETE (context-pack compiler; APPROVE WITH NOTES; tests mutation-proven — worker self-mutation caught a vacuous P9 test; findings in follow-ups.md) · **Next**: Phase 4 — Worker-packet generation + pij delivery (tasks)
