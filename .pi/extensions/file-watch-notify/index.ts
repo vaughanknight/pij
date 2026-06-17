@@ -6,10 +6,10 @@
 // if the model is busy, immediate if idle — with no tool call. Reload-safe:
 // prior watchers are disposed before new ones start.
 //
-// Runtime control surface (amendment, T010-T012): a `/file-watch-notify`
-// command arms/lists/stops watches live, with no reload. Both config-booted and
+// Runtime control surface: the LLM-callable `file_watch_notify` tool arms,
+// lists, and stops watches live, with no reload. Both config-booted and
 // runtime-armed watches live in ONE `watches` map keyed by resolved abs dir, so
-// they share dedupe, `stop`, and reload-disposal. The parsed config is held at
+// they share dedupe, stop, and reload-disposal. The parsed config is held at
 // module/closure scope (`loadedConfig`) so runtime watches inherit its
 // debounce/ignore/notice (falling back to defaults when no config exists).
 
@@ -17,14 +17,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { StringEnum } from "@earendil-works/pi-ai";
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { COMMAND_USAGE, parseCommand } from "./commands.js";
 import { deliverNotices, makePiInjectPort } from "./inject.js";
 import {
 	type ChangeKind,
@@ -40,6 +35,8 @@ import {
 import { FolderWatcher, nodeWatchDeps, type WatchDeps } from "./watcher.js";
 
 const CONFIG_REL = ".pi/file-watch.json";
+const TOOL_USAGE =
+	"Use file_watch_notify with action='status'|'list'|'watch'|'stop'; for watch, pass dir, patterns, and optional recursive=true.";
 
 /** Optional injection seam for the lightweight wiring test (pi calls with 1 arg). */
 export interface WiringDeps {
@@ -61,11 +58,11 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 	// Config + runtime watches share one map keyed by resolved abs dir (enables
 	// per-dir stop, dedupe-on-arm, and reload disposal in one place).
 	const watches = new Map<string, ActiveWatch>();
-	// The parsed config, lifted to closure scope so the runtime command handler
-	// can inherit debounce/ignore/notice. null = no/invalid config (use defaults).
+	// The parsed config, lifted to closure scope so the runtime tool handler can
+	// inherit debounce/ignore/notice. null = no/invalid config (use defaults).
 	let loadedConfig: Config | null = null;
 	// Human-readable status, refreshed each session_start; surfaced by the
-	// /file-watch-notify command (and the deterministic smoke).
+	// file_watch_notify tool.
 	let statusLine = "file-watch: not configured";
 
 	const injectPort = makePiInjectPort(pi, () => currentCtx);
@@ -228,32 +225,6 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		);
 	});
 
-	// Human command surface. The LLM-callable tool below is the primary automation
-	// surface; this command remains as a compatibility/manual UI wrapper.
-	pi.registerCommand("file-watch-notify", {
-		description: "file-watch-notify — watch/list/stop folder watches live (no args = status)",
-		handler: async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
-			const cmd = parseCommand(args);
-			switch (cmd.kind) {
-				case "status":
-					ctx.ui.notify(`${statusLine}\n${COMMAND_USAGE}`, "info");
-					return;
-				case "list":
-					ctx.ui.notify(formatActiveWatches(), "info");
-					return;
-				case "watch":
-					ctx.ui.notify(await armRuntimeWatch(cmd.dir, cmd.patterns), "info");
-					return;
-				case "stop":
-					ctx.ui.notify(stopWatch(cmd.dir), "info");
-					return;
-				case "error":
-					ctx.ui.notify(`file-watch: ${cmd.reason}`, "warning");
-					return;
-			}
-		},
-	});
-
 	pi.registerTool({
 		name: "file_watch_notify",
 		label: "File watch notify",
@@ -262,7 +233,7 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 		promptSnippet:
 			"file_watch_notify: arm/list/stop current-session file watchers that inject [file-watch] notices when matching files change.",
 		promptGuidelines: [
-			"Use file_watch_notify when the user asks you to watch a folder, arm file-change notifications, list active watches, or stop a watch. Prefer this tool over asking the user to type /file-watch-notify.",
+			"Use file_watch_notify when the user asks you to watch a folder, arm file-change notifications, list active watches, or stop a watch.",
 			"Runtime watches are session-local: they are not written to .pi/file-watch.json and are cleared on /reload/session replacement. Use config only for durable watches.",
 			"For broad scratch testing, call file_watch_notify with action='watch', dir='scratch', patterns=['**/*'], recursive=true before asking a peer to edit or create files.",
 		],
@@ -292,7 +263,7 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 			let text: string;
 			switch (params.action) {
 				case "status":
-					text = `${statusLine}\n${COMMAND_USAGE}`;
+					text = `${statusLine}\n${TOOL_USAGE}`;
 					break;
 				case "list":
 					text = formatActiveWatches();

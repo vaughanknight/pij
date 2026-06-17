@@ -6,7 +6,7 @@
 
 - [ ] `npm test` green for `file-watch-notify/store.test.ts`
 - [ ] `npm run typecheck` clean
-- [ ] `cd pij && pi` loads without error; `/file-watch-notify` registered
+- [ ] `cd pij && pi` loads without error; `file_watch_notify` tool registered
 - [ ] `npm run smoke -- file-watch-notify` passes
 - [ ] One difficulty entry added (or zero, if nothing was friction)
 

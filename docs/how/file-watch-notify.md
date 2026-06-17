@@ -29,8 +29,8 @@ file-system analogue of receiving a `pij` peer message.
    idle, it arrives immediately and starts a turn.
 
 Run the `file_watch_notify` tool any time to inspect or change runtime watches.
-The manual `/file-watch-notify` command remains available as a compatibility UI,
-but the **tool is the primary surface** so the assistant can arm watches itself.
+There is intentionally **no slash-command surface**; the assistant arms watches
+itself through the tool.
 
 ## Runtime tool (arm/list/stop without a config file)
 
@@ -43,10 +43,6 @@ Beyond config-file watches, the assistant can arm and tear down watches **live**
 | `file_watch_notify({ action: "watch", dir: "scratch", patterns: ["**/*"], recursive: true })` | Arm a watch on `dir` for one or more globs. Set `recursive: true` when changes may happen in existing subdirectories. Re-arming the same dir **replaces** the previous watch (no double-notify). Inherits `debounceMs`/`ignore`/`notice` from `.pi/file-watch.json` if present, else the defaults. |
 | `file_watch_notify({ action: "list" })` | List active watches, each labelled `(config)` or `(runtime)`. |
 | `file_watch_notify({ action: "stop", dir: "scratch" })` | Dispose the watch on `dir` (config- or runtime-armed). |
-
-Manual equivalents still work for humans: `/file-watch-notify`,
-`/file-watch-notify watch <dir> <glob...>`, `/file-watch-notify list`, and
-`/file-watch-notify stop <dir>`.
 
 > **Runtime watches are session-local.** They are not written back to
 > `.pi/file-watch.json` and are **lost on `/reload`** (the watcher map is cleared

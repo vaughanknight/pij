@@ -22,9 +22,8 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 | `.pi/extensions/file-watch-notify/store.ts` | Pi-free pure core: `parseConfig` (tagged-union), `compileWatch` (picomatch), `reconcile` snapshot diff, `WatchReconciler` (classify + events-filter + delete→re-add coalesce), `formatNotice`. |
 | `.pi/extensions/file-watch-notify/watcher.ts` | `FolderWatcher` fs adapter: `fs.watch` + debounce → `readdir`/`stat` snapshot → `WatchReconciler`. `WatchDeps` injected (P3); `nodeWatchDeps()` is the production binding. |
 | `.pi/extensions/file-watch-notify/inject.ts` | Delivery seam: pi-free `pickInjectMode`/`deliverNotices`/`InjectPort` + `makePiInjectPort` (adapts pij `pi-runtime.ts` `sendUserMessage`/`deliverAs:"steer"`). |
-| `.pi/extensions/file-watch-notify/commands.ts` | Pi-free runtime-command parser: `parseCommand(args) → ParsedCommand` (watch/list/stop/status/error). Quote-aware tokenizer; `help`/`list` lenient, `watch` variadic, `stop` exact-arity, unmatched quotes → error. |
-| `.pi/extensions/file-watch-notify/index.ts` | P10 single `session_start` handler: load `.pi/file-watch.json`, start a watcher per config entry, inject on change, dispose on reload. Primary runtime surface: LLM-callable `file_watch_notify` tool (`status`/`list`/`watch`/`stop`). Compatibility/manual surface: `/file-watch-notify` command. Config + runtime watches share ONE disposer `Map<absDir,…>` (per-dir stop, dedupe-on-arm, reload-disposal); `loadedConfig` at module scope so runtime watches inherit debounce/ignore/notice. |
-| `.pi/extensions/file-watch-notify/{store,watcher,inject,commands,index}.test.ts` | Hybrid coverage: TDD core + parser unit tests + real-fs watcher integration + fake-pi inject + runtime-tool/command e2e (60 tests). |
+| `.pi/extensions/file-watch-notify/index.ts` | P10 single `session_start` handler: load `.pi/file-watch.json`, start a watcher per config entry, inject on change, dispose on reload. Runtime surface: LLM-callable `file_watch_notify` tool (`status`/`list`/`watch`/`stop`). Config + runtime watches share ONE disposer `Map<absDir,…>` (per-dir stop, dedupe-on-arm, reload-disposal); `loadedConfig` at module scope so runtime watches inherit debounce/ignore/notice. |
+| `.pi/extensions/file-watch-notify/{store,watcher,inject,index}.test.ts` | Hybrid coverage: TDD core + real-fs watcher integration + fake-pi inject + runtime-tool e2e. |
 | `.pi/file-watch.json` | User-authored watch config (project-local). |
 
 ## Concepts
@@ -37,7 +36,7 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 | Debounced wake | A burst of fs events becomes one scan. | `FolderWatcher` debounces (`debounceMs`, default 30) then rebuilds the snapshot once. |
 | In-session notice | The change reaches the model with no tool call. | `deliverNotices(port, notices)` → `sendUserMessage` (immediate) or `sendUserMessage(...,{deliverAs:"steer"})` (busy). |
 | Steer vs immediate | Busy ⇒ after the current turn; idle ⇒ start a turn. | `pickInjectMode(isIdle)`; `isIdle()` read fresh from the live ctx at delivery. |
-| Runtime control surface | Arm/list/stop watches live — no reload; assistant-callable first. | `file_watch_notify` tool is the primary LLM surface (`status`/`list`/`watch`/`stop`; `watch` accepts `recursive:true` for subdirectories). `/file-watch-notify` remains a manual compatibility wrapper parsed by `parseCommand(args) → ParsedCommand` (P4). Both arm via shared `startWatch` and tear down via the disposer Map. Runtime watches are **session-local** (lost on reload). |
+| Runtime control surface | Arm/list/stop watches live — no reload; assistant-callable only. | `file_watch_notify` tool is the LLM surface (`status`/`list`/`watch`/`stop`; `watch` accepts `recursive:true` for subdirectories). It arms via shared `startWatch` and tears down via the disposer Map. Runtime watches are **session-local** (lost on reload). |
 
 ## Contracts
 
@@ -47,8 +46,7 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 | `reconcile` / `WatchReconciler` | `watcher.ts`, tests | Snapshot-only classification; structurally cannot consume an fs event type (Key Finding 01). |
 | `WatchDeps` | `watcher.ts`, tests | Injected `watch`/`listFiles`/`now`/`setTimer` (P3); `nodeWatchDeps()` in prod. |
 | `InjectPort` + `deliverNotices` | `index.ts`, tests | Busy→steer, idle→immediate; no tool call. Only `inject.ts` + `index.ts` import pi. |
-| `file_watch_notify` tool | LLM / assistant, tests | Primary agent-callable control contract: `{ action: status|list|watch|stop, dir?, patterns?, recursive? }`; uses the same watcher registry as config and command surfaces. |
-| `parseCommand` + `ParsedCommand` | `index.ts`, tests | Pure parse of the manual `/file-watch-notify` arg string → tagged union (P4); pi-free, no fs. |
+| `file_watch_notify` tool | LLM / assistant, tests | Agent-callable control contract: `{ action: status|list|watch|stop, dir?, patterns?, recursive? }`; uses the same watcher registry as config watches. |
 
 ## Boundary Owns
 
@@ -57,7 +55,7 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 - Snapshot reconcile + change classification + atomic-save coalescing.
 - Debounced watcher lifecycle (arm at `session_start`, dispose on reload).
 - The steer-vs-immediate inject decision.
-- The runtime `file_watch_notify` tool surface plus compatibility `/file-watch-notify` command surface (session-local watches; one disposer map shared with config watches).
+- The runtime `file_watch_notify` tool surface (session-local watches; one disposer map shared with config watches).
 
 ## Boundary Excludes
 
@@ -65,7 +63,7 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 - Acting on changes (it only *notifies*; the agent decides what to do).
 - Recursive-at-scale backends (chokidar/@parcel) — documented as a future drop-in, not built.
 - Persisting runtime-added watches back to `.pi/file-watch.json` — a Non-Goal (runtime watches are session-local).
-- Pi command/tool/UI registration conventions — `agent-tooling-interface`.
+- Slash-command UI — intentionally removed; agents use the `file_watch_notify` tool.
 
 ## Dependencies
 
@@ -77,6 +75,6 @@ reconciling a `{mtimeMs,size}` snapshot per debounced wake — never from raw
 | Plan | Change | Date |
 |------|--------|------|
 | 015-file-watch-notify | Created the domain; standalone extension at `.pi/extensions/file-watch-notify/`. Pure core (config/glob/reconcile/coalesce/notice) + fs watcher adapter + steer/immediate inject adapter + P10 wiring + read-only status command. 22 unit/integration tests. Headline: snapshot-reconcile classification (directory-watch-trap fix). | 2026-06-17 |
-| 015-file-watch-notify (amend) | Added the runtime control surface (`/file-watch-notify` watch/list/stop): pure `parseCommand` parser + `index.ts` refactor (disposer `Map` keyed by abs dir, module-scope `loadedConfig`, try-guarded `startWatch`, replaced status-only handler). Closes the real validate-v2 HIGH gaps (config scope; reload leak). 52 tests. | 2026-06-17 |
+| 015-file-watch-notify (amend) | Added the runtime control architecture: `index.ts` refactor (disposer `Map` keyed by abs dir, module-scope `loadedConfig`, try-guarded `startWatch`). Closes the real validate-v2 HIGH gaps (config scope; reload leak). The first implementation used slash commands; the final surface is tool-only (see below). | 2026-06-17 |
 | 015-file-watch-notify (live crash fix) | Hardened the inject adapter against stale extension ctx after reload/session replacement: stale/throwing `ctx.isIdle()` falls back to busy/steer; stale/throwing `sendUserMessage()` is caught/dropped so async watcher callbacks cannot crash pi. 56 tests. | 2026-06-17 |
-| 015-file-watch-notify (tool surface fix) | Added the missing LLM-callable `file_watch_notify` tool for status/list/watch/stop so the assistant can arm watches itself; slash command remains as compatibility/manual UI. Follow-up: added `recursive:true` pass-through for broad scratch watches. 60 tests. | 2026-06-17 |
+| 015-file-watch-notify (tool surface fix) | Added the missing LLM-callable `file_watch_notify` tool for status/list/watch/stop so the assistant can arm watches itself; added `recursive:true` pass-through for broad scratch watches. Follow-up removed the obsolete slash-command parser/surface so tool-only is the contract. | 2026-06-17 |

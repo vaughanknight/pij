@@ -24,7 +24,6 @@ function fakePi() {
 	const sent: Array<{ text: string; opts?: unknown }> = [];
 	const tools = new Map<string, ToolForTest>();
 	let sessionStart: Handler | undefined;
-	let command: ((args: string, ctx: unknown) => Promise<void> | void) | undefined;
 	const pi = {
 		on: (name: string, h: Handler) => {
 			if (name === "session_start") sessionStart = h;
@@ -32,34 +31,13 @@ function fakePi() {
 		sendUserMessage: (text: string, opts?: unknown) => {
 			sent.push({ text, opts });
 		},
-		registerCommand: (
-			_name: string,
-			def: { handler: (args: string, ctx: unknown) => Promise<void> | void },
-		) => {
-			command = def.handler;
-		},
 		registerTool: (tool: ToolForTest) => tools.set(tool.name, tool),
 	};
 	return {
 		pi: pi as unknown as ExtensionAPI,
 		sent,
 		getStart: () => sessionStart,
-		getCommand: () => command,
 		getTool: (name: string) => tools.get(name),
-	};
-}
-
-function fakeCmdCtx() {
-	const notifies: Array<{ msg: string; level?: string }> = [];
-	return {
-		ctx: {
-			ui: {
-				notify: (msg: string, level?: string) => notifies.push({ msg, level }),
-				setStatus: () => {},
-			},
-		} as unknown,
-		notifies,
-		last: () => notifies[notifies.length - 1]?.msg ?? "",
 	};
 }
 
@@ -197,7 +175,7 @@ describe("index wiring — config → watcher → inject end-to-end", () => {
 	});
 });
 
-describe("index wiring — runtime commands (AC-07)", () => {
+describe("index wiring — file_watch_notify tool (AC-07)", () => {
 	async function bootNoConfig() {
 		const dir = await mkdtemp(join(tmpdir(), "fwn-rt-"));
 		const w = fakeWatchDeps();
@@ -208,7 +186,6 @@ describe("index wiring — runtime commands (AC-07)", () => {
 			dir,
 			w,
 			...harness,
-			run: harness.getCommand(),
 			tool: harness.getTool("file_watch_notify"),
 		};
 	}
@@ -298,80 +275,86 @@ describe("index wiring — runtime commands (AC-07)", () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("arms, lists, and stops a runtime watch with no reload", async () => {
-		const { dir, w, run } = await bootNoConfig();
-		expect(run).toBeDefined();
-
-		const armed = fakeCmdCtx();
-		await run?.("watch docs **/*.md", armed.ctx);
-		expect(w.closes()).toBe(0);
-		expect(armed.last()).toContain("now watching");
-		expect(armed.last()).toContain("**/*.md");
-
-		const listed = fakeCmdCtx();
-		await run?.("list", listed.ctx);
-		expect(listed.last()).toContain("watching:");
-		expect(listed.last()).toContain("(runtime)");
-
-		const stopped = fakeCmdCtx();
-		await run?.("stop docs", stopped.ctx);
-		expect(w.closes()).toBe(1);
-		expect(stopped.last()).toContain("stopped watching");
-
-		const empty = fakeCmdCtx();
-		await run?.("list", empty.ctx);
-		expect(empty.last()).toBe("file-watch: no active watches");
-
-		await rm(dir, { recursive: true, force: true });
-	});
-
 	it("dedupes a second watch on the same dir (disposes the first)", async () => {
-		const { dir, w, run } = await bootNoConfig();
-		await run?.("watch docs **/*.md", fakeCmdCtx().ctx);
+		const { dir, w, tool } = await bootNoConfig();
+		expect(tool).toBeDefined();
+		await tool?.execute(
+			"t1",
+			{ action: "watch", dir: "docs", patterns: ["**/*.md"] },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
 		expect(w.closes()).toBe(0);
-		await run?.("watch docs **/*.ts", fakeCmdCtx().ctx); // same dir, re-arm
+		await tool?.execute(
+			"t2",
+			{ action: "watch", dir: "docs", patterns: ["**/*.ts"] },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
 		expect(w.closes()).toBe(1); // prior disposed
 
-		const listed = fakeCmdCtx();
-		await run?.("list", listed.ctx);
-		expect(listed.notifies).toHaveLength(1);
-		expect(listed.last().split("\n")).toHaveLength(1); // still exactly one watch
+		const listed = await tool?.execute(
+			"t3",
+			{ action: "list" },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(listed?.content[0].text.split("\n")).toHaveLength(1); // still exactly one watch
 
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("reports a clear error when arming fails, without crashing (try-guard)", async () => {
+	it("reports a clear tool error when arming fails, without crashing (try-guard)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "fwn-rt-bad-"));
 		const w = fakeWatchDeps({ throwOnWatch: true });
 		const h = fakePi();
 		factory(h.pi, { cwd: dir, makeWatchDeps: () => w.deps });
 		await h.getStart()?.({}, fakeCtx(true));
-		const run = h.getCommand();
+		const tool = h.getTool("file_watch_notify");
 
-		const armed = fakeCmdCtx();
-		await expect(run?.("watch docs **/*.md", armed.ctx)).resolves.toBeUndefined();
-		expect(armed.last()).toContain("cannot watch");
+		const armed = await tool?.execute(
+			"t1",
+			{ action: "watch", dir: "docs", patterns: ["**/*.md"] },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(armed?.content[0].text).toContain("cannot watch");
 
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("disposes a runtime watch on reload — it does NOT survive (HIGH-2 leak guard)", async () => {
+	it("disposes a runtime tool watch on reload — it does NOT survive (HIGH-2 leak guard)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "fwn-rt-reload-"));
 		const w = fakeWatchDeps();
 		const h = fakePi();
 		factory(h.pi, { cwd: dir, makeWatchDeps: () => w.deps });
 		await h.getStart()?.({}, fakeCtx(true)); // boot, no config
-		const run = h.getCommand();
+		const tool = h.getTool("file_watch_notify");
 
-		await run?.("watch docs **/*.md", fakeCmdCtx().ctx); // runtime-arm
+		await tool?.execute(
+			"t1",
+			{ action: "watch", dir: "docs", patterns: ["**/*.md"] },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
 		expect(w.closes()).toBe(0);
 
 		await h.getStart()?.({}, fakeCtx(true)); // reload — disposeAll must clear runtime watch
 		expect(w.closes()).toBe(1);
 
-		const listed = fakeCmdCtx();
-		await run?.("list", listed.ctx);
-		expect(listed.last()).toBe("file-watch: no active watches"); // gone, not leaked
+		const listed = await tool?.execute(
+			"t2",
+			{ action: "list" },
+			undefined,
+			undefined,
+			fakeCtx(true),
+		);
+		expect(listed?.content[0].text).toBe("file-watch: no active watches"); // gone, not leaked
 
 		await rm(dir, { recursive: true, force: true });
 	});
