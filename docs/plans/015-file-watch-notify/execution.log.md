@@ -63,3 +63,15 @@ Power-On companion reviewed all 8 commits, acked every ping, posted **9 findings
 - **T099 phase-end harness seam**: DEFERRED (same cause as T000 — `subagent` tool globally blocked all session; best-effort, logged + skipped).
 - Companion `code-review-companion` stopped cleanly (verdict `completed`); minih auto-harvested its retro → `docs/retros/code-review-companion.md` (magicWand: expose a reliable `projectRoot` through coordination state — a minih-side ask, not pij).
 - **Final gate**: typecheck ✓, lint ✓, 463 tests ✓ (29 in file-watch-notify), fwn Driver smoke ✓; only red is the pre-existing `pi-peacock` environmental model-string smoke (not a fwn regression). All 8 build tasks + 10 companion findings addressed (7 code fixes, 3 resolved-by-scoping/wording). Commits e1be6df..c2d2263.
+
+---
+
+## Amendment — runtime watch/list/stop commands (T010–T012)
+Plan v1.1.0 · validated by the **real** `validate-v2` fan-out (2026-06-17, 4/4 agents, 2 HIGH gaps closed in-plan) · Companion: `code-review-companion` run `2026-06-17T02-36-34-285Z-5351`
+
+### Seam outcomes (amendment)
+- **Pre-implement harness seam**: the `/eng-harness-flow` router is installed globally (a `harness` CLI is on PATH), but it keys on a `.harness/` governance shape this repo does not have — pij runs its **own** engineering harness (`just` + `harness/` Driver SDK). Firing it here would route to *adopting* a foreign `.harness/` flavor. Per harness posture (advisory, never blocks): one calm note, proceed with pij's standard testing (`just typecheck` / `test` / `self-check`).
+
+### T010 — tests-first `parseCommand` (commands.test.ts)
+- `commands.test.ts`: 16 red tests pin the `ParsedCommand` union (status/list/watch/stop/error) — empty + `help` → status (case-insensitive verb), `list`, `watch <dir> <glob...>` (single + multi pattern + single/double-quote stripping), `watch <dir>` missing-pattern → error, `watch` → error, `stop <dir>`, `stop` missing-dir → error, unknown verb → error.
+- Confirmed **RED** (`./commands.js` not found) before implementing — tests-first (P8).
