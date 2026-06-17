@@ -1,12 +1,16 @@
 #!/usr/bin/env -S npx tsx
+
 // skills/flow-pair/lib/cli.ts
 // Thin flow-pair CLI entrypoint.
 // The flow-pair SKILL.md shells out to this — it is NEVER imported into pi (P2 boundary, Finding 08).
 // P2: zero @earendil-works/* imports | P7: .js ESM relative imports
 // Exit codes: 0=success  1=usage error  2=runtime error
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { deriveRepoId, nodeGitDeps } from "./identity.js";
-import { resolveRunDir } from "./paths.js";
+import { LedgerWriter, nodeLedgerDeps } from "./ledger.js";
+import { LEDGER_ROOT, resolveRunDir } from "./paths.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
@@ -27,7 +31,7 @@ Subcommands:
   review     Run review rubric on output        [stub — Phase 6]
   fix        Generate a fix packet              [stub — Phase 6]
   accept     Accept and close a run             [stub — Phase 7]
-  ledger     Query the run ledger               [stub — Phase 2]
+  ledger     Print run.json for --run-id                (Phase 2)
 
 Options:
   --json             Emit structured JSON to stdout
@@ -83,28 +87,41 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function runStart(flags: Record<string, string | boolean>): Record<string, unknown> {
 	const repoPath = typeof flags.repo === "string" ? flags.repo : process.cwd();
-	const ledgerRoot = typeof flags["ledger-root"] === "string" ? flags["ledger-root"] : ".flow-pair";
+	const ledgerRoot = typeof flags["ledger-root"] === "string" ? flags["ledger-root"] : LEDGER_ROOT;
 
 	const idResult = deriveRepoId(repoPath, nodeGitDeps());
 	if (!idResult.ok) {
 		throw new Error(idResult.error ?? "failed to derive repo id");
 	}
 
-	// Build run id: ISO timestamp (safe chars) + truncated repo id
-	const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19).concat("Z");
-	const runId = `${ts}-${idResult.repoId.slice(0, 20)}`;
+	const writer = new LedgerWriter(ledgerRoot, nodeLedgerDeps());
+	const result = writer.createRun(idResult.repoId);
+	if (!result.ok || !result.run) {
+		throw new Error(result.error ?? "failed to create run");
+	}
+	const { run } = result;
+	return { ok: true, repoId: run.repoId, runId: run.runId, runDir: run.runDir };
+}
+
+function runLedger(flags: Record<string, string | boolean>): Record<string, unknown> {
+	const ledgerRoot = typeof flags["ledger-root"] === "string" ? flags["ledger-root"] : LEDGER_ROOT;
+	const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : undefined;
+
+	if (!runId) {
+		throw new Error("--run-id is required for ledger subcommand");
+	}
 
 	const dirResult = resolveRunDir(ledgerRoot, runId);
 	if (!dirResult.ok) {
-		throw new Error(dirResult.error ?? "failed to resolve run dir");
+		throw new Error(dirResult.error ?? "invalid run id");
 	}
 
-	return {
-		ok: true,
-		repoId: idResult.repoId,
-		runId,
-		runDir: dirResult.runDir,
-	};
+	const runJsonPath = join(dirResult.runDir, "run.json");
+	if (!existsSync(runJsonPath)) {
+		throw new Error(`run not found: ${runId}`);
+	}
+
+	return JSON.parse(readFileSync(runJsonPath, "utf8")) as Record<string, unknown>;
 }
 
 function runStub(cmd: Subcommand): Record<string, unknown> {
@@ -144,10 +161,11 @@ function main(): void {
 
 	try {
 		const cmd = subcommand as Subcommand;
-		const out = cmd === "start" ? runStart(flags) : runStub(cmd);
+		const out =
+			cmd === "start" ? runStart(flags) : cmd === "ledger" ? runLedger(flags) : runStub(cmd);
 
 		if (useJson) {
-			process.stdout.write(JSON.stringify(out) + "\n");
+			process.stdout.write(`${JSON.stringify(out)}\n`);
 		} else {
 			for (const [k, v] of Object.entries(out)) {
 				process.stdout.write(`${k}: ${String(v)}\n`);

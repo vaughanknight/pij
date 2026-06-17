@@ -4,11 +4,11 @@
   "plan_dir": "docs/plans/016-flow-pair",
   "mode": "Full",
   "current_stage": "awaiting-5",
-  "pending_command": "/the-flow 5 tasks --phase \"Phase 2: Central ledger writer\" --plan \"docs/plans/016-flow-pair/flow-pair-plan.md\"",
+  "pending_command": "/the-flow 5 tasks --phase \"Phase 3: Context-pack compiler\" --plan \"docs/plans/016-flow-pair/flow-pair-plan.md\"",
   "intent": "Build flow-pair: a two-session orchestrator/worker wrapper around the-flow with a central pij ledger and cluster-isolated prompt-learning lab.",
   "milestones_total": 11,
-  "milestones_done": 3,
-  "last_checkpoint_at": "2026-06-17T10:39:00Z",
+  "milestones_done": 4,
+  "last_checkpoint_at": "2026-06-17T12:15:00Z",
   "compacted_seams": [],
   "status": "active"
 }

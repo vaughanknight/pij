@@ -15,7 +15,7 @@ flowchart TD
   start["Intent captured<br/>(dossier as research seed)"]:::done
   plan["Plan (spec + impl)<br/>CS-4 · Full · READY"]:::done
   p1["P1 · Domain + skill skeleton + resolver<br/>✓ complete · all gates green"]:::done
-  p2["P2 · Central ledger writer"]:::known
+  p2["P2 · Central ledger writer<br/>✓ complete"]:::done
   p3["P3 · Context-pack compiler"]:::known
   p4["P4 · Worker-packet gen + pij delivery"]:::known
   p5["P5 · Observe + diff capture"]:::known
@@ -39,4 +39,4 @@ flowchart TD
 
 **Legend**: 🟩 done · 🟧 in progress · 🟥 blocked · 🟦 known (designed future) · ⬜ assumed (speculative) · 🗣 your words · 🤝 worker
 
-**Now**: Phase 1 ✓ COMPLETE (implement→review→fix, all gates green) · **Next**: Phase 2 — Central ledger writer (tasks)
+**Now**: Phase 2 ✓ COMPLETE (ledger writer; cross-model review caught a CRITICAL P9 data-loss bug; fix mutation-proven; test-quality Dimension 0 encoded) · **Next**: Phase 3 — Context-pack compiler (tasks)

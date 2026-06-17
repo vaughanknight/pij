@@ -1,0 +1,82 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "flow-pair/event",
+	"title": "LedgerEvent",
+	"description": "One line in events.jsonl — discriminated by the 'type' field.",
+	"oneOf": [
+		{
+			"title": "run.started",
+			"type": "object",
+			"required": ["type", "runId", "repoId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "run.started" },
+				"runId": { "type": "string" },
+				"repoId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		},
+		{
+			"title": "run.closed",
+			"type": "object",
+			"required": ["type", "runId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "run.closed" },
+				"runId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		},
+		{
+			"title": "delegation.created",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "delegation.created" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		},
+		{
+			"title": "prompt_trial.created",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "trialId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "prompt_trial.created" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"trialId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		},
+		{
+			"title": "review.created",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "reviewId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "review.created" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"reviewId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		},
+		{
+			"title": "learning.created",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "learningId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "learning.created" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"learningId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		}
+	]
+}
