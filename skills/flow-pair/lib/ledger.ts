@@ -92,9 +92,13 @@ export type LedgerEvent =
 			delegationId: string;
 			packId: string;
 			at: string;
-	  };
+	  }
+	| { type: "packet.written"; runId: string; delegationId: string; packetPath: string; at: string };
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
+
+/** Sub-directory under the run directory holding rendered worker packets. Exported for Phase 4+. */
+export const PROMPTS_DIR = "prompts" as const;
 
 const EVENTS_FILE = "events.jsonl" as const;
 const RUN_JSON_FILE = "run.json" as const;

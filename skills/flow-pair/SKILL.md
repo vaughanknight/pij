@@ -42,7 +42,7 @@ The expensive orchestrator follows this finite-state loop each turn:
 
 ```
 /flow-pair start "<request>" [--repo <path>] [--ledger-root <path>]
-/flow-pair dispatch --packet <path>
+/flow-pair dispatch --run-id <id> --plan-path <p> --phase <text> --tasks-dir <p> [--task-description <t>] [--allowed-paths <p1,...>]
 /flow-pair observe [--run-id <id>]
 /flow-pair review --delegation <id>
 /flow-pair fix --review <id>
@@ -63,9 +63,13 @@ Finding 08). See `references/architecture.md` for the full call chain.
 3. **Render packet** — follow `references/templates/orchestrator-stage.md` for
    orchestrator decisions; follow `references/templates/worker-implement.md` or
    `references/templates/worker-fix.md` for delegation packets.
-4. **Deliver** — run `flow-pair dispatch --packet <path>` which saves the packet
-   to `.flow-pair/runs/<run-id>/prompts/` first, then send the path pointer via
-   `pij send <worker-id> "<path>"`.
+4. **Deliver** — run `flow-pair dispatch --run-id <id> --plan-path <p> --phase <text> --tasks-dir <p>`,
+   which compiles the context pack, renders the packet, writes it to
+   `.flow-pair/runs/<run-id>/prompts/<delegationId>.md`, and prints exactly ONE line to stdout:
+   `[flow-pair <delegationId>] Packet at: <rel-path>`
+   Capture that line and deliver it to the worker via the **`pij_send` tool**:
+   `pij_send({ to: workerId, message: pointerMsg })`. Do NOT shell `pij send` from
+   SKILL.md — the tool call is the transport boundary (P2: lib never sends; orchestrator sends).
 5. **Await and review** — on inbound worker report, apply the rubric in
    `references/review-rubrics.md`. **Dimension 0 (test quality) is mandatory for
    CODE packets**: the worker wrote its own tests, so green ≠ good — prove the

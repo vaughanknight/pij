@@ -6,11 +6,13 @@
 // P2: zero @earendil-works/* imports | P7: .js ESM relative imports
 // Exit codes: 0=success  1=usage error  2=runtime error
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ContextPackCompiler, nodeContextPackDeps } from "./context-pack.js";
 import { deriveRepoId, nodeGitDeps } from "./identity.js";
-import { LedgerWriter, nodeLedgerDeps } from "./ledger.js";
+import { LedgerWriter, nodeLedgerDeps, PROMPTS_DIR } from "./ledger.js";
+import { nodePacketRendererDeps, PacketRenderer } from "./packet.js";
 import { LEDGER_ROOT, resolveRunDir } from "./paths.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
@@ -39,15 +41,19 @@ Options:
   --repo <path>      Target repo path (start; default: cwd)
   --ledger-root <p>  Ledger root directory (start; default: .flow-pair)
   --run-id <id>      Run id (dispatch/observe/review/fix/accept/ledger)
-  --delegation <id>  Delegation id (dispatch/review/accept)
+  --delegation <id>  Delegation id (review/accept; allocated automatically by dispatch)
   --plan-path <p>    Absolute path to plan file (dispatch)
   --phase <text>     Phase section heading to extract (dispatch)
   --tasks-dir <p>    Absolute path to tasks directory (dispatch)
+  --task-description <t>  Task description for worker packet (dispatch; default: phase name)
   --cluster <name>   Prompt-lab cluster name (dispatch; default: implement-code)
   --allowed-paths <p1,p2,...>  Comma-separated allowed paths (dispatch)
-  --packet <path>    Packet file path (Phase 4)
   --review <id>      Review id (fix)
   --help             Show this help
+
+Dispatch stdout contract:
+  Non-JSON: exactly one line — "[flow-pair <delegationId>] Packet at: <rel-path>"
+  --json: full JSON object (pointerMsg + delegationId + packId + packetPath + promptHash)
 
 Exit codes: 0=success  1=usage error  2=runtime error
 `;
@@ -134,36 +140,86 @@ function runDispatch(flags: Record<string, string | boolean>): Record<string, un
 	const ledgerRoot = typeof flags["ledger-root"] === "string" ? flags["ledger-root"] : LEDGER_ROOT;
 	const repoRoot = typeof flags.repo === "string" ? flags.repo : process.cwd();
 	const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : undefined;
-	const delegationId = typeof flags.delegation === "string" ? flags.delegation : undefined;
 	const planPath = typeof flags["plan-path"] === "string" ? flags["plan-path"] : undefined;
 	const phase = typeof flags.phase === "string" ? flags.phase : undefined;
 	const tasksDir = typeof flags["tasks-dir"] === "string" ? flags["tasks-dir"] : undefined;
+	const taskDescription =
+		typeof flags["task-description"] === "string"
+			? flags["task-description"]
+			: (phase ?? "implement");
 	const cluster = typeof flags.cluster === "string" ? flags.cluster : "implement-code";
 	const allowedPathsRaw = typeof flags["allowed-paths"] === "string" ? flags["allowed-paths"] : "";
 	const allowedPaths = allowedPathsRaw ? allowedPathsRaw.split(",").map((p) => p.trim()) : [];
 
-	if (!runId || !delegationId || !planPath || !phase || !tasksDir) {
-		throw new Error("dispatch requires: --run-id --delegation --plan-path --phase --tasks-dir");
+	if (!runId || !planPath || !phase || !tasksDir) {
+		throw new Error("dispatch requires: --run-id --plan-path --phase --tasks-dir");
 	}
 
+	const dirResult = resolveRunDir(ledgerRoot, runId);
+	if (!dirResult.ok) {
+		throw new Error(dirResult.error ?? "invalid run id");
+	}
+	const { runDir } = dirResult;
+
+	// Step 1: pre-compute expected delegationId so packetPath can be passed to writeDelegation.
+	// Uses the same nextId logic as LedgerWriter (OQ-01: single-writer assumption).
+	const delegationsDir = join(runDir, "delegations");
+	const existingCount = existsSync(delegationsDir)
+		? readdirSync(delegationsDir).filter((f) => f.endsWith(".json")).length
+		: 0;
+	const delegationId = `dlg-${String(existingCount + 1).padStart(4, "0")}`;
+	const packetPath = join(runDir, PROMPTS_DIR, `${delegationId}.md`);
+
+	const writer = new LedgerWriter(ledgerRoot, nodeLedgerDeps());
+
+	// Step 2: create delegation record (packetPath is now known)
+	const delegResult = writer.writeDelegation(runId, {
+		taskRef: taskDescription,
+		packetPath,
+	});
+	if (!delegResult.ok || !delegResult.delegation) {
+		throw new Error(delegResult.error ?? "writeDelegation failed");
+	}
+
+	// Step 3: compile context pack
 	const compiler = new ContextPackCompiler(repoRoot, ledgerRoot, nodeContextPackDeps());
-	const result = compiler.compile({
+	const compileResult = compiler.compile({
 		runId,
-		delegationId,
+		delegationId: delegResult.delegation.delegationId,
 		planPath,
 		phase,
 		tasksDir,
 		cluster,
 		allowedPaths,
 	});
-	if (!result.ok || !result.manifest) {
-		throw new Error(result.error ?? "compile failed");
+	if (!compileResult.ok || !compileResult.manifest) {
+		throw new Error(compileResult.error ?? "compile failed");
 	}
+
+	// Step 4: render + write packet (P9 inside writePacket)
+	// templateDir is adjacent to this file: lib/../references/templates/
+	const __filename = fileURLToPath(import.meta.url);
+	const __dirname = dirname(__filename);
+	const templateDir = join(__dirname, "..", "references", "templates");
+	const renderer = new PacketRenderer(ledgerRoot, templateDir, writer, nodePacketRendererDeps());
+	const packetResult = renderer.writePacket({
+		manifest: compileResult.manifest,
+		taskDescription,
+		repoRoot,
+	});
+	if (!packetResult.ok || !packetResult.packet) {
+		throw new Error(packetResult.error ?? "writePacket failed");
+	}
+
+	// P2 boundary: pointerMsg is printed to stdout; the ORCHESTRATOR calls pij_send.
+	// NO --send-to, NO execSync("pij send ...") — transport stays above the lib layer.
 	return {
 		ok: true,
-		packId: result.manifest.packId,
-		entries: result.manifest.entries.length,
-		exclusions: result.manifest.exclusions.length,
+		pointerMsg: packetResult.packet.pointerMsg,
+		delegationId: packetResult.packet.delegationId,
+		packId: compileResult.manifest.packId,
+		packetPath: packetResult.packet.packetPath,
+		promptHash: packetResult.packet.promptHash,
 	};
 }
 
@@ -215,6 +271,10 @@ function main(): void {
 
 		if (useJson) {
 			process.stdout.write(`${JSON.stringify(out)}\n`);
+		} else if (cmd === "dispatch") {
+			// Fix 1: stdout = EXACTLY the pointer line so orchestrator can pipe stdout into pij_send.
+			// Metadata (delegationId, packId, packetPath, promptHash) is only emitted under --json.
+			process.stdout.write(`${out.pointerMsg as string}\n`);
 		} else {
 			for (const [k, v] of Object.entries(out)) {
 				process.stdout.write(`${k}: ${String(v)}\n`);

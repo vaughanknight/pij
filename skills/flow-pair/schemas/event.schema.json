@@ -77,6 +77,32 @@
 				"at": { "type": "string", "format": "date-time" }
 			},
 			"additionalProperties": false
+		},
+		{
+			"title": "context_pack.created",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "packId", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "context_pack.created" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"packId": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
+		},
+		{
+			"title": "packet.written",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "packetPath", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "packet.written" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"packetPath": { "type": "string" },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
 		}
 	]
 }
