@@ -24,3 +24,9 @@ in a later hardening pass or the relevant future phase.
 ## Done (orchestrator-owned, not logged)
 - F5 — `docs/domains/flow-pair/domain.md` Source Locations note + History brought current (Phases 1–3 built). ✅
 - N1 — `harness/scripts/flow-pair-mutate.sh` now surfaces stray untracked artifacts a mutation run leaves behind. ✅
+
+## Phase 4 follow-ups (2026-06-17)
+
+- **H3-LOW (SKILL.md wording)**: lines ~19/36 still use the phrase "pij send" descriptively ("sent via `pij send`", "`pij send` path pointer"). The dangerous shell instruction + `--packet` are gone (HIGH fixed), but tighten the descriptive phrasing to "the `pij_send` tool" / "pointer delivery" for consistency so no reader infers a shell step.
+- **Worker report-accuracy (process)**: dlg-0015 self-report claimed 94 tests (RAW: 88), cli-dispatch.test.ts "4 tests" (RAW: 2), and named a mutation guard function `assertValidDelegationId` that does not exist in the final code (the guard is an inline `DLG_ID_RE` check). Substance was correct, counts inflated. Reinforces RAW verify-don't-trust. Candidate encode: require the worker to paste the literal `Tests N passed (N)` vitest line + the exact `sed` expr it mutated, so claims are copy-paste verifiable.
+- **O1 (resolved)**: the "dispatch chain has no integration test" gap is now closed by `test/cli-dispatch.test.ts` (asserts pointer-only stdout). Keep an eye that it stays a real end-to-end (start→dispatch) test, not a unit stub.
