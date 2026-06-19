@@ -80,7 +80,18 @@ export function resolveSeePrompt(override?: string): string {
 
 /** Build the child-pi argv. Pure — index.ts feeds the result to execFile("pi", …). */
 export function buildSeeArgs(input: { absPath: string; model: string; prompt: string }): string[] {
-	return ["--no-tools", "--model", input.model, "-p", `@${input.absPath}`, input.prompt];
+	// --no-extensions: the vision child needs zero extensions; loading global
+	// extensions only risks aborting the child on an unrelated broken/conflicting
+	// extension (e.g. duplicate CLI flags or an invalid factory). (D-043)
+	return [
+		"--no-tools",
+		"--no-extensions",
+		"--model",
+		input.model,
+		"-p",
+		`@${input.absPath}`,
+		input.prompt,
+	];
 }
 
 /** Env for the spawned child: inherit, but force the subagent guard on. */

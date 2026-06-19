@@ -69,9 +69,10 @@ describe("model + prompt resolution", () => {
 });
 
 describe("child argv + env", () => {
-	it("builds a --no-tools -p @path argv with the @ prefix and model", () => {
+	it("builds a --no-tools --no-extensions -p @path argv with the @ prefix and model", () => {
 		expect(buildSeeArgs({ absPath: "/x/y.png", model: "m/n", prompt: "hi" })).toEqual([
 			"--no-tools",
+			"--no-extensions",
 			"--model",
 			"m/n",
 			"-p",
