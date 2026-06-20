@@ -36,6 +36,8 @@ export interface PeacockFooterSnapshot {
 export interface PeacockFooterRenderOptions {
 	readonly width: number;
 	readonly colorHex?: string;
+	/** Apply Claude-style per-segment foreground colors. Off by default in the pure render API. */
+	readonly claudeColors?: boolean;
 }
 
 export interface PeacockFooterTelemetry {
@@ -100,6 +102,80 @@ function parseHex(hex: string): { r: number; g: number; b: number } {
 function ansiForColor(hex: string): { bg: string; reset: string } {
 	const { r, g, b } = parseHex(hex);
 	return { bg: `\x1b[48;2;${r};${g};${b}m`, reset: "\x1b[0m" };
+}
+
+// Claude Code-inspired palette. Foreground segments use the 39 (default-fg) reset
+// so an optional Peacock background wrap survives underneath them.
+const CLAUDE_PALETTE = {
+	path: "#cbb994",
+	dim: "#8a8173",
+	branch: "#9ec07c",
+	input: "#6cae9d",
+	output: "#9ec07c",
+	cache: "#7d8c8a",
+	cost: "#d97757",
+	model: "#d97757",
+	ctxGood: "#9ec07c",
+	ctxWarn: "#e0b54e",
+	ctxHot: "#e06c75",
+} as const;
+
+function fg(hex: string, text: string): string {
+	const { r, g, b } = parseHex(hex);
+	return `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
+}
+
+const THINKING_WORDS = new Set(["thinking", "off", "minimal", "low", "medium", "high", "xhigh"]);
+
+function contextColor(token: string): string {
+	if (token.startsWith("?")) return CLAUDE_PALETTE.dim;
+	const match = /^(\d+(?:\.\d+)?)%/.exec(token);
+	const pct = match ? Number.parseFloat(match[1] ?? "0") : 0;
+	if (pct > 90) return CLAUDE_PALETTE.ctxHot;
+	if (pct > 70) return CLAUDE_PALETTE.ctxWarn;
+	return CLAUDE_PALETTE.ctxGood;
+}
+
+function colorizeStatsToken(token: string): string {
+	if (token.length === 0) return token;
+	const first = token[0] ?? "";
+	if (first === "\u2191")
+		return fg(CLAUDE_PALETTE.dim, "\u2191") + fg(CLAUDE_PALETTE.input, token.slice(1));
+	if (first === "\u2193")
+		return fg(CLAUDE_PALETTE.dim, "\u2193") + fg(CLAUDE_PALETTE.output, token.slice(1));
+	if ((first === "R" || first === "W") && /\d/.test(token[1] ?? "")) {
+		return fg(CLAUDE_PALETTE.dim, first) + fg(CLAUDE_PALETTE.cache, token.slice(1));
+	}
+	if (first === "$") return fg(CLAUDE_PALETTE.cost, token);
+	if (token === "(sub)" || token === "(auto)") return fg(CLAUDE_PALETTE.dim, token);
+	if (token.includes("/") && (token.includes("%") || token.startsWith("?"))) {
+		return fg(contextColor(token), token);
+	}
+	if (/^\(.+\)$/.test(token)) return fg(CLAUDE_PALETTE.dim, token);
+	if (token === "\u2022") return fg(CLAUDE_PALETTE.dim, token);
+	if (THINKING_WORDS.has(token)) return fg(CLAUDE_PALETTE.dim, token);
+	return fg(CLAUDE_PALETTE.model, token);
+}
+
+function colorizeByToken(line: string, color: (token: string) => string): string {
+	return line
+		.split(/(\s+)/)
+		.map((part) => (part.length === 0 || /^\s+$/.test(part) ? part : color(part)))
+		.join("");
+}
+
+function colorizePathToken(token: string): string {
+	if (/^\(.+\)$/.test(token)) return fg(CLAUDE_PALETTE.branch, token);
+	if (token === "\u2022") return fg(CLAUDE_PALETTE.dim, token);
+	return fg(CLAUDE_PALETTE.path, token);
+}
+
+function colorizeFooterLines(lines: string[]): string[] {
+	return lines.map((line, index) => {
+		if (index === 0) return colorizeByToken(line, colorizePathToken);
+		if (index === 1) return colorizeByToken(line, colorizeStatsToken);
+		return fg(CLAUDE_PALETTE.dim, line);
+	});
 }
 
 export function formatTokensCompact(tokens: number): string {
@@ -240,7 +316,8 @@ export function renderPeacockFooter(
 	options: PeacockFooterRenderOptions,
 ): string[] {
 	const width = Math.max(1, Math.floor(options.width));
-	const lines = buildPlainLines(snapshot, width);
+	let lines = buildPlainLines(snapshot, width);
+	if (options.claudeColors) lines = colorizeFooterLines(lines);
 	if (!options.colorHex) return lines;
 	const { bg, reset } = ansiForColor(options.colorHex);
 	return lines.map((line) => `${bg}${line}${reset}`);
@@ -255,13 +332,18 @@ export class PeacockFooterComponent implements Component {
 		private readonly onTelemetry?: (telemetry: PeacockFooterTelemetry) => void,
 		subscribeBranch?: (callback: () => void) => () => void,
 		private readonly requestRender?: () => void,
+		private readonly claudeColors: boolean = true,
 	) {
 		this.unsubscribeBranch = subscribeBranch?.(() => this.requestRender?.());
 	}
 
 	render(width: number): string[] {
 		const snapshot = this.snapshot();
-		const lines = renderPeacockFooter(snapshot, { width, colorHex: this.colorHex });
+		const lines = renderPeacockFooter(snapshot, {
+			width,
+			colorHex: this.colorHex,
+			claudeColors: this.claudeColors,
+		});
 		this.onTelemetry?.({
 			lastRenderedStatusCount: snapshot.statuses.filter(
 				(status) => sanitizeFooterText(status.text).length > 0,

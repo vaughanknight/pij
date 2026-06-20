@@ -98,3 +98,44 @@ describe("renderPeacockFooter", () => {
 		expect(line).not.toContain("\x1b[38;2;");
 	});
 });
+
+describe("renderPeacockFooter Claude colors", () => {
+	it("adds foreground segments without changing visible width", () => {
+		for (const width of [20, 80, 140]) {
+			const lines = renderPeacockFooter(snapshot, { width, claudeColors: true });
+			expect(lines.some((line) => line.includes("\x1b[38;2;"))).toBe(true);
+			for (const line of lines) {
+				expect(visibleWidthWithoutAnsi(line)).toBe(width);
+			}
+		}
+	});
+
+	it("uses the default-foreground (39) reset so a Peacock background survives", () => {
+		const [line] = renderPeacockFooter(snapshot, {
+			width: 140,
+			colorHex: "#dd0531",
+			claudeColors: true,
+		});
+		expect(line).toContain("\x1b[48;2;221;5;49m");
+		expect(line).toContain("\x1b[38;2;");
+		expect(line).toContain("\x1b[39m");
+		expect(line.endsWith("\x1b[0m")).toBe(true);
+	});
+
+	it("colors the context percentage red under high pressure", () => {
+		const hot = {
+			...snapshot,
+			contextUsage: { tokens: 990_000, contextWindow: 1_000_000, percent: 95.4 },
+		};
+		const lines = renderPeacockFooter(hot, { width: 140, claudeColors: true });
+		const statsLine = lines[1] ?? "";
+		// #e06c75 -> rgb(224,108,117)
+		expect(statsLine).toContain("\x1b[38;2;224;108;117m");
+		expect(stripAnsiForTest(statsLine)).toContain("95.4%/1.0M");
+	});
+
+	it("leaves output plain when claudeColors is not requested", () => {
+		const lines = renderPeacockFooter(snapshot, { width: 80 });
+		expect(lines.join("")).not.toContain("\x1b[38;2;");
+	});
+});
