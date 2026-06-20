@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formatContextUsage,
 	formatTokens,
+	makeContextBar,
 	renderPeacockFooter,
 	sanitizeFooterText,
 	stripAnsiForTest,
@@ -120,6 +121,19 @@ describe("renderPeacockFooter Claude colors", () => {
 		expect(line).toContain("\x1b[38;2;");
 		expect(line).toContain("\x1b[39m");
 		expect(line.endsWith("\x1b[0m")).toBe(true);
+	});
+
+	it("renders a block context meter colored by pressure", () => {
+		expect(makeContextBar(0)).toBe("[░░░░░░░░]");
+		expect(makeContextBar(100)).toBe("[████████]");
+		expect(makeContextBar(50)).toBe("[████░░░░]");
+		expect(makeContextBar(null)).toBe("[░░░░░░░░]");
+		const lines = renderPeacockFooter(snapshot, { width: 140, claudeColors: true });
+		const statsLine = lines[1] ?? "";
+		expect(stripAnsiForTest(statsLine)).toContain("[");
+		expect(stripAnsiForTest(statsLine)).toContain("░");
+		// green fill at low usage -> rgb(158,192,124)
+		expect(statsLine).toContain("\x1b[38;2;158;192;124m█");
 	});
 
 	it("colors the context percentage red under high pressure", () => {
