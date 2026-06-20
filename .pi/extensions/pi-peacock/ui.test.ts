@@ -124,16 +124,16 @@ describe("renderPeacockFooter Claude colors", () => {
 	});
 
 	it("renders a block context meter colored by pressure", () => {
-		expect(makeContextBar(0)).toBe("[░░░░░░░░]");
-		expect(makeContextBar(100)).toBe("[████████]");
-		expect(makeContextBar(50)).toBe("[████░░░░]");
-		expect(makeContextBar(null)).toBe("[░░░░░░░░]");
+		expect(makeContextBar(0)).toBe("[▯▯▯▯▯▯▯▯]");
+		expect(makeContextBar(100)).toBe("[▮▮▮▮▮▮▮▮]");
+		expect(makeContextBar(50)).toBe("[▮▮▮▮▯▯▯▯]");
+		expect(makeContextBar(null)).toBe("[▯▯▯▯▯▯▯▯]");
 		const lines = renderPeacockFooter(snapshot, { width: 140, claudeColors: true });
 		const statsLine = lines[1] ?? "";
 		expect(stripAnsiForTest(statsLine)).toContain("[");
-		expect(stripAnsiForTest(statsLine)).toContain("░");
+		expect(stripAnsiForTest(statsLine)).toContain("▯");
 		// green fill at low usage -> rgb(158,192,124)
-		expect(statsLine).toContain("\x1b[38;2;158;192;124m█");
+		expect(statsLine).toContain("\x1b[38;2;158;192;124m▮");
 	});
 
 	it("colors the context percentage red under high pressure", () => {

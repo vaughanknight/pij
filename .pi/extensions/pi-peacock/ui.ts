@@ -139,20 +139,20 @@ function contextColor(token: string): string {
 function colorizeContextBar(token: string): string {
 	const inner = token.slice(1, -1);
 	const total = inner.length || 1;
-	const filled = (inner.match(/█/g) ?? []).length;
+	const filled = (inner.match(/▮/g) ?? []).length;
 	const pct = (filled / total) * 100;
 	const fillColor =
 		pct > 90 ? CLAUDE_PALETTE.ctxHot : pct > 70 ? CLAUDE_PALETTE.ctxWarn : CLAUDE_PALETTE.ctxGood;
 	let out = fg(CLAUDE_PALETTE.dim, "[");
 	for (const ch of inner) {
-		out += ch === "█" ? fg(fillColor, ch) : fg(CLAUDE_PALETTE.dim, ch);
+		out += ch === "▮" ? fg(fillColor, ch) : fg(CLAUDE_PALETTE.dim, ch);
 	}
 	return out + fg(CLAUDE_PALETTE.dim, "]");
 }
 
 function colorizeStatsToken(token: string): string {
 	if (token.length === 0) return token;
-	if (token.startsWith("[") && (token.includes("█") || token.includes("░"))) {
+	if (token.startsWith("[") && (token.includes("▮") || token.includes("▯"))) {
 		return colorizeContextBar(token);
 	}
 	const first = token[0] ?? "";
@@ -218,14 +218,14 @@ const CONTEXT_BAR_SEGMENTS = 8;
 
 export function makeContextBar(percent: number | null | undefined): string {
 	if (percent === null || percent === undefined) {
-		return `[${"░".repeat(CONTEXT_BAR_SEGMENTS)}]`;
+		return `[${"▯".repeat(CONTEXT_BAR_SEGMENTS)}]`;
 	}
 	const clamped = Math.max(0, Math.min(100, percent));
 	const filled = Math.max(
 		0,
 		Math.min(CONTEXT_BAR_SEGMENTS, Math.round((clamped / 100) * CONTEXT_BAR_SEGMENTS)),
 	);
-	return `[${"█".repeat(filled)}${"░".repeat(CONTEXT_BAR_SEGMENTS - filled)}]`;
+	return `[${"▮".repeat(filled)}${"▯".repeat(CONTEXT_BAR_SEGMENTS - filled)}]`;
 }
 
 function formatBuiltInContextUsage(
