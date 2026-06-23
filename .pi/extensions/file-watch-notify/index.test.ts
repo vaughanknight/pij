@@ -24,9 +24,13 @@ function fakePi() {
 	const sent: Array<{ text: string; opts?: unknown }> = [];
 	const tools = new Map<string, ToolForTest>();
 	let sessionStart: Handler | undefined;
+	let turnStart: Handler | undefined;
+	let turnEnd: Handler | undefined;
 	const pi = {
 		on: (name: string, h: Handler) => {
 			if (name === "session_start") sessionStart = h;
+			if (name === "turn_start") turnStart = h;
+			if (name === "turn_end") turnEnd = h;
 		},
 		sendUserMessage: (text: string, opts?: unknown) => {
 			sent.push({ text, opts });
@@ -37,6 +41,8 @@ function fakePi() {
 		pi: pi as unknown as ExtensionAPI,
 		sent,
 		getStart: () => sessionStart,
+		getTurnStart: () => turnStart,
+		getTurnEnd: () => turnEnd,
 		getTool: (name: string) => tools.get(name),
 	};
 }
@@ -129,6 +135,70 @@ describe("index wiring — config → watcher → inject end-to-end", () => {
 		await w.flush();
 
 		expect(sent).toEqual([{ text: "[file-watch] a.md created", opts: undefined }]);
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("keeps steered notice dedup through current turn end and the consuming turn", async () => {
+		const dir = await makeProject();
+		const w = fakeWatchDeps();
+		const { pi, sent, getStart, getTurnStart, getTurnEnd } = fakePi();
+
+		factory(pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await getStart()?.({}, fakeCtx(false)); // busy; changes are steered
+		await getTurnStart()?.({ timestamp: 1230 }, fakeCtx(false)); // active current turn
+
+		w.setFiles([{ rel: "guide.md", mtimeMs: 5, size: 5 }]);
+		w.fireEvent();
+		await w.flush();
+
+		w.setFiles([{ rel: "guide.md", mtimeMs: 6, size: 5 }]);
+		w.fireEvent();
+		await w.flush();
+
+		w.setFiles([{ rel: "guide.md", mtimeMs: 7, size: 5 }]);
+		w.fireEvent();
+		await w.flush();
+
+		expect(sent.map((s) => s.text)).toEqual([
+			"[file-watch] guide.md created",
+			"[file-watch] guide.md modified",
+		]);
+
+		// Pi delivers steer messages after the current turn ends, so this turn_end
+		// must not clear pending notices before their consuming turn starts.
+		await getTurnEnd()?.({ timestamp: 1231 }, fakeCtx(false));
+		w.setFiles([{ rel: "guide.md", mtimeMs: 8, size: 5 }]);
+		w.fireEvent();
+		await w.flush();
+
+		expect(sent.map((s) => s.text)).toEqual([
+			"[file-watch] guide.md created",
+			"[file-watch] guide.md modified",
+		]);
+
+		// The steered message has now begun its consuming turn, but the model is
+		// still busy. A same-file change during that turn must not be re-steered.
+		await getTurnStart()?.({ timestamp: 1232 }, fakeCtx(false));
+		w.setFiles([{ rel: "guide.md", mtimeMs: 9, size: 5 }]);
+		w.fireEvent();
+		await w.flush();
+
+		expect(sent.map((s) => s.text)).toEqual([
+			"[file-watch] guide.md created",
+			"[file-watch] guide.md modified",
+		]);
+
+		await getTurnEnd()?.({ timestamp: 1233 }, fakeCtx(false));
+		w.setFiles([{ rel: "guide.md", mtimeMs: 10, size: 5 }]);
+		w.fireEvent();
+		await w.flush();
+
+		expect(sent.map((s) => s.text)).toEqual([
+			"[file-watch] guide.md created",
+			"[file-watch] guide.md modified",
+			"[file-watch] guide.md modified",
+		]);
 
 		await rm(dir, { recursive: true, force: true });
 	});

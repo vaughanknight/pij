@@ -9,6 +9,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 export type InjectMode = "immediate" | "steer";
+export type InjectSendResult = { ok: true } | { ok: false; reason: "dropped" };
+
+const DEFAULT_MAX_PENDING_STEERED_NOTICES = 200;
 
 /** Idle ⇒ immediate (start a turn); busy ⇒ steer (after the current turn). */
 export function pickInjectMode(isIdle: boolean): InjectMode {
@@ -18,18 +21,86 @@ export function pickInjectMode(isIdle: boolean): InjectMode {
 /** What the wiring depends on — faked in tests, pi-backed in production. */
 export interface InjectPort {
 	isIdle(): boolean;
-	send(text: string, mode: InjectMode): void;
+	send(text: string, mode: InjectMode): InjectSendResult;
+}
+
+/** Tracks file-watch notices already queued through Pi's steering list. */
+export interface PendingSteerNotices {
+	has(notice: string): boolean;
+	add(notice: string): void;
+}
+
+/**
+ * Pi's steer queue delivers after the current turn and before the next turn.
+ * Keep two generations so the current turn_end does not clear notices before
+ * they are consumed, while notices queued during a consuming turn survive for
+ * their own next turn. The max-size cap is a bounded fallback for lifecycle
+ * anomalies: once too many entries accumulate, dedup is re-armed rather than
+ * suppressing notices indefinitely.
+ */
+export class SteeredNoticeTracker implements PendingSteerNotices {
+	private awaitingConsumption = new Set<string>();
+	private consuming = new Set<string>();
+	private readonly maxPendingNotices: number;
+
+	constructor(opts: { maxPendingNotices?: number } = {}) {
+		this.maxPendingNotices = opts.maxPendingNotices ?? DEFAULT_MAX_PENDING_STEERED_NOTICES;
+	}
+
+	has(notice: string): boolean {
+		return this.awaitingConsumption.has(notice) || this.consuming.has(notice);
+	}
+
+	add(notice: string): void {
+		if (this.has(notice)) return;
+		if (this.pendingCount() >= this.maxPendingNotices) this.clear();
+		this.awaitingConsumption.add(notice);
+	}
+
+	onTurnStart(): void {
+		if (this.awaitingConsumption.size === 0) return;
+		this.consuming = this.awaitingConsumption;
+		this.awaitingConsumption = new Set<string>();
+	}
+
+	onTurnEnd(): void {
+		this.consuming.clear();
+	}
+
+	clear(): void {
+		this.awaitingConsumption.clear();
+		this.consuming.clear();
+	}
+
+	private pendingCount(): number {
+		return this.awaitingConsumption.size + this.consuming.size;
+	}
 }
 
 /**
  * Deliver a wake's notices as a SINGLE message (no per-file spam, AC-05),
- * choosing the mode once from the current idle state. Returns the mode used
- * (or null if nothing to deliver).
+ * choosing the mode once from the current idle state. When steering, suppress
+ * notice lines already queued in the steering list so rapid file events don't
+ * append duplicate `[file-watch] ...` entries while the model is busy. Returns
+ * the mode used (or null if nothing to deliver after filtering).
  */
-export function deliverNotices(port: InjectPort, notices: string[]): InjectMode | null {
+export function deliverNotices(
+	port: InjectPort,
+	notices: string[],
+	pendingSteers?: PendingSteerNotices,
+): InjectMode | null {
 	if (notices.length === 0) return null;
 	const mode = pickInjectMode(port.isIdle());
-	port.send(notices.join("\n"), mode);
+	const deliverable =
+		mode === "steer" && pendingSteers
+			? notices.filter((notice) => !pendingSteers.has(notice))
+			: notices;
+	if (deliverable.length === 0) return null;
+	const sendResult = port.send(deliverable.join("\n"), mode);
+	if (!sendResult.ok) return null;
+	if (mode === "steer" && pendingSteers) {
+		for (const notice of deliverable) pendingSteers.add(notice);
+	}
 	return mode;
 }
 
@@ -56,9 +127,11 @@ export function makePiInjectPort(
 			try {
 				if (mode === "steer") pi.sendUserMessage(text, { deliverAs: "steer" });
 				else pi.sendUserMessage(text);
+				return { ok: true };
 			} catch {
 				// Stale post-reload delivery: drop the obsolete wake rather than bringing
 				// down the host process. A fresh watcher will be armed by session_start.
+				return { ok: false, reason: "dropped" };
 			}
 		},
 	};

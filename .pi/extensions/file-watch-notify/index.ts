@@ -20,7 +20,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { deliverNotices, makePiInjectPort } from "./inject.js";
+import { deliverNotices, makePiInjectPort, SteeredNoticeTracker } from "./inject.js";
 import {
 	type ChangeKind,
 	type Config,
@@ -64,12 +64,18 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 	// Human-readable status, refreshed each session_start; surfaced by the
 	// file_watch_notify tool.
 	let statusLine = "file-watch: not configured";
+	// Mirrors Pi's steering list for file-watch notices we queued while busy.
+	// Steered notices land after the current turn, so lifecycle state must keep
+	// them pending through the current turn_end and clear only after the consuming
+	// turn ends.
+	const pendingSteeredNotices = new SteeredNoticeTracker();
 
 	const injectPort = makePiInjectPort(pi, () => currentCtx);
 
 	function disposeAll(): void {
 		for (const w of watches.values()) w.dispose();
 		watches.clear();
+		pendingSteeredNotices.clear();
 	}
 
 	/**
@@ -108,7 +114,7 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 				compiled,
 				reconciler,
 				debounceMs,
-				(notices) => deliverNotices(injectPort, notices),
+				(notices) => deliverNotices(injectPort, notices, pendingSteeredNotices),
 				makeWatchDeps(),
 			);
 			await folder.start();
@@ -223,6 +229,14 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 			"file-watch-notify",
 			started === 0 ? undefined : `watching ${started} folder${started === 1 ? "" : "s"}`,
 		);
+	});
+
+	pi.on("turn_start", () => {
+		pendingSteeredNotices.onTurnStart();
+	});
+
+	pi.on("turn_end", () => {
+		pendingSteeredNotices.onTurnEnd();
 	});
 
 	pi.registerTool({
