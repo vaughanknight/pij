@@ -89,8 +89,12 @@ later `tidy` can find and close our windows even after a crash.
 **Lifecycle:**
 
 - **Acquire — provided-or-spawn, lazy.** If a role's peer id was provided, use it.
-  Otherwise `pij_spawn({ model })` the *first time that role is needed* (coder on
-  first dispatch, reviewer on first review) — **never hijack ambient idle peers**.
+  Otherwise `pij_spawn({ model, layout: "split" })` the *first time that role is
+  needed* (coder on first dispatch, reviewer on first review) — **never hijack
+  ambient idle peers**. `layout:"split"` keeps the whole fleet in one window:
+  orchestrator **main-left**, coder + reviewer **stacked on the right** — which is
+  exactly the 3-pane cap (main + 2). Pass `layout:"window"` (the default) to fan
+  the colleagues out into separate tmux windows instead.
 - **Canary-verify before trusting — a ready-ping is NOT proof.** A wrong `--model`
   is accepted **silently** at startup (the bogus name even shows in the footer);
   the child still boots, registers, and ready-pings — then **400s on its first real

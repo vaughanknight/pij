@@ -41,7 +41,7 @@ export interface SessionDescriptor {
 	readonly lastEventAt?: string;
 	/** Tmux pane id (%N) of this session's window, self-recorded by the child
 	 *  from $TMUX_PANE at fresh boot (§H1). Present iff spawned via pij_spawn.
-	 *  Used by PijSession.close() to killWindow. */
+	 *  Used by PijSession.close() to killPane. */
 	readonly paneId?: string;
 	/** SessionId of the session that spawned this one (= PIJ_ANNOUNCE_TO at
 	 *  fresh boot). Present iff this is a spawned worker session. */
@@ -110,7 +110,8 @@ export type PijErrorCode =
 	| "E-NOREG" // no registry present
 	| "E-ARG" // bad CLI arguments
 	| "E-AMBIG" // cannot resolve "self" (env unset + multiple local)
-	| "E-NOTMUX"; // not inside a tmux session (required for pij_spawn)
+	| "E-NOTMUX" // not inside a tmux session (required for pij_spawn)
+	| "E-FULL"; // split layout full — 2 workers already on the right (cap 3 panes)
 
 /** Tagged-union result used across the core (Pattern P4: no throws). */
 export type Result<T> =

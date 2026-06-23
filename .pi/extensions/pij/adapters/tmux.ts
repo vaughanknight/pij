@@ -8,7 +8,7 @@
 
 import { type ExecFileSyncOptions, execFileSync } from "node:child_process";
 
-import type { NewWindowOpts, TmuxPort } from "../core/ports.js";
+import type { NewWindowOpts, SplitWindowOpts, TmuxPort } from "../core/ports.js";
 import { err, ok, type Result } from "../core/types.js";
 
 // ─── Internal primitive ─────────────────────────────────────────────────────
@@ -71,6 +71,44 @@ export class TmuxAdapter implements TmuxPort {
 	}
 
 	/**
+	 * Split an existing pane and capture the new %N pane id via -P -F.
+	 *
+	 *   tmux split-window -P -F '#{pane_id}' -t <target> -h|-v [-d] [-p N]
+	 *        [-c <cwd>] [-e KEY=VAL …] <cmd> [args…]
+	 *
+	 * -h = LEFT/RIGHT column, -v = UP/DOWN stack (VERIFIED on tmux 3.6a; bare
+	 * split-window defaults to -v, so -h is always explicit). AC-09: argv-only.
+	 */
+	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string }> {
+		const args = [
+			"split-window",
+			"-P",
+			"-F",
+			"#{pane_id}",
+			"-t",
+			opts.target,
+			`-${opts.direction}`,
+		];
+		if (opts.detached) args.push("-d");
+		if (opts.percent !== undefined) args.push("-p", String(opts.percent));
+		if (opts.cwd !== undefined) args.push("-c", opts.cwd);
+		for (const [k, v] of Object.entries(opts.env)) {
+			args.push("-e", `${k}=${v}`);
+		}
+		args.push(opts.cmd, ...opts.args);
+		try {
+			const raw = tmux(args);
+			const paneId = raw.trim();
+			if (!/^%\d+$/.test(paneId)) {
+				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(paneId)}`);
+			}
+			return ok({ paneId });
+		} catch (e) {
+			return err("E-ARG", `tmux split-window failed: ${(e as Error).message}`);
+		}
+	}
+
+	/**
 	 * Kill a window by pane id. Swallows all errors (idempotent — the window
 	 * may already be gone when close() fires).
 	 *
@@ -78,6 +116,18 @@ export class TmuxAdapter implements TmuxPort {
 	 */
 	killWindow(paneId: string): Result<void> {
 		tmuxSafe(["kill-window", "-t", paneId]);
+		return ok(undefined);
+	}
+
+	/**
+	 * Kill a single pane by id (split-safe — siblings survive; killing a
+	 * window's last pane closes the window, so this is correct for window-mode
+	 * workers too). Swallows all errors (idempotent).
+	 *
+	 *   tmux kill-pane -t %N
+	 */
+	killPane(paneId: string): Result<void> {
+		tmuxSafe(["kill-pane", "-t", paneId]);
 		return ok(undefined);
 	}
 
@@ -94,6 +144,31 @@ export class TmuxAdapter implements TmuxPort {
 			return name || null;
 		} catch {
 			return null;
+		}
+	}
+
+	/** The orchestrator's own pane id, straight from $TMUX_PANE. */
+	currentPane(): string | null {
+		return process.env.TMUX_PANE ?? null;
+	}
+
+	/**
+	 * Pane ids in the orchestrator's current window. Targets the window that
+	 * holds $TMUX_PANE (robust even if the client is viewing another window).
+	 *
+	 *   tmux list-panes -t <ownPane> -F '#{pane_id}'
+	 */
+	currentWindowPanes(): string[] {
+		const pane = process.env.TMUX_PANE;
+		if (!pane) return [];
+		try {
+			const raw = tmux(["list-panes", "-t", pane, "-F", "#{pane_id}"]);
+			return raw
+				.split("\n")
+				.map((s) => s.trim())
+				.filter((s) => /^%\d+$/.test(s));
+		} catch {
+			return [];
 		}
 	}
 }

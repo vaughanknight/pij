@@ -59,6 +59,9 @@ export interface SpawnOpts {
 	readonly task?: string;
 	/** Absolute working directory for the new pi session. */
 	readonly cwd: string;
+	/** "window" (default) opens a new tmux window; "split" places the worker as a
+	 *  pane in the CURRENT window (main-left, up to 2 stacked right; cap 3). */
+	readonly layout?: "window" | "split";
 }
 
 /** What index.ts hands `boot` once it has minted/derived the session id from
@@ -186,6 +189,44 @@ export class PijSession {
 		});
 		// §H2: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand itself when
 		// input.model is set — no post-process needed here.
+
+		// layout:"split" — place the worker in the CURRENT window instead of a new
+		// window. #1 splits the orchestrator pane LEFT/RIGHT (-h → right column);
+		// #2 splits worker-1 UP/DOWN (-v → stacked below). Cap = main + 2 panes.
+		if (opts.layout === "split") {
+			const here = new Set(this.ports.tmux.currentWindowPanes());
+			// Count only OUR spawned panes that live in THIS window (window-mode
+			// kids are in other windows; stray user panes aren't in the registry).
+			const kids = this.ports.registry
+				.list()
+				.filter((d) => d.spawnedBy === this.self && d.paneId && here.has(d.paneId));
+			if (kids.length >= 2) {
+				return err(
+					"E-FULL",
+					"split layout full — 2 workers already on the right; close one or use layout:'window'",
+				);
+			}
+			const first = kids.length === 0;
+			const target = first ? this.ports.tmux.currentPane() : (kids[0]?.paneId ?? null);
+			if (!target) {
+				return err("E-NOTMUX", "cannot resolve the current tmux pane to split");
+			}
+			const splitResult = this.ports.tmux.splitWindow({
+				cmd: spawnCmd.cmd,
+				args: spawnCmd.args,
+				env: spawnCmd.env,
+				cwd: opts.cwd,
+				target,
+				direction: first ? "h" : "v",
+				percent: first ? 40 : undefined,
+				detached: true,
+			});
+			if (!splitResult.ok) {
+				return err(splitResult.code, splitResult.message);
+			}
+			return ok({ spawnId, paneId: splitResult.value.paneId });
+		}
+
 		const winResult = this.ports.tmux.newWindow({
 			cmd: spawnCmd.cmd,
 			args: spawnCmd.args,
@@ -226,8 +267,10 @@ export class PijSession {
 				closedBy: this.self,
 			});
 		}
-		// Kill the window (TmuxAdapter is idempotent: swallows "already gone")
-		const killResult = this.ports.tmux.killWindow(descriptor.paneId);
+		// Kill the pane (TmuxAdapter is idempotent: swallows "already gone").
+		// kill-pane is split-safe AND closes the window when it is the last pane,
+		// so it is correct for both window-mode and split-mode workers.
+		const killResult = this.ports.tmux.killPane(descriptor.paneId);
 		if (!killResult.ok) {
 			return err(killResult.code, killResult.message);
 		}

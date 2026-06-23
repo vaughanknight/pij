@@ -9,6 +9,7 @@ import type {
 	PiRuntimePort,
 	ProcessPort,
 	RegistryPort,
+	SplitWindowOpts,
 	TmuxPort,
 } from "../core/ports.js";
 import {
@@ -156,20 +157,36 @@ export class FakeProcess implements ProcessPort {
 export class FakeTmux implements TmuxPort {
 	/** Recorded newWindow calls, in order. Assert against this in tests. */
 	readonly windows: Array<{ opts: NewWindowOpts; paneId: string }> = [];
+	/** Recorded splitWindow calls, in order. */
+	readonly splits: Array<{ opts: SplitWindowOpts; paneId: string }> = [];
 	/** Recorded killWindow pane ids, in order. */
 	readonly killed: string[] = [];
+	/** Recorded killPane pane ids, in order (close() uses killPane). */
+	readonly killedPanes: string[] = [];
 	/** Synthetic session name returned by currentSession().
 	 *  null = not inside tmux (enables E-NOTMUX unit tests — F004). */
 	readonly sessionName: string | null;
 
 	private paneCounter: number;
+	private readonly curPane: string;
+	/** Panes "in the current window": orchestrator pane + live split children. */
+	private readonly windowPanes: Set<string>;
 
 	constructor({
 		paneStart = 900,
 		sessionName = "fake-session",
-	}: { paneStart?: number; sessionName?: string | null } = {}) {
+		currentPane = "%500",
+		windowPanes = [],
+	}: {
+		paneStart?: number;
+		sessionName?: string | null;
+		currentPane?: string;
+		windowPanes?: readonly string[];
+	} = {}) {
 		this.paneCounter = paneStart;
 		this.sessionName = sessionName;
+		this.curPane = currentPane;
+		this.windowPanes = new Set([currentPane, ...windowPanes]);
 	}
 
 	newWindow(opts: NewWindowOpts): Result<{ paneId: string }> {
@@ -178,12 +195,33 @@ export class FakeTmux implements TmuxPort {
 		return ok({ paneId });
 	}
 
+	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string }> {
+		const paneId = `%${this.paneCounter++}`;
+		this.splits.push({ opts, paneId });
+		this.windowPanes.add(paneId);
+		return ok({ paneId });
+	}
+
 	killWindow(paneId: string): Result<void> {
 		this.killed.push(paneId);
 		return ok(undefined);
 	}
 
+	killPane(paneId: string): Result<void> {
+		this.killedPanes.push(paneId);
+		this.windowPanes.delete(paneId);
+		return ok(undefined);
+	}
+
 	currentSession(): string | null {
 		return this.sessionName;
+	}
+
+	currentPane(): string | null {
+		return this.sessionName === null ? null : this.curPane;
+	}
+
+	currentWindowPanes(): string[] {
+		return [...this.windowPanes];
 	}
 }

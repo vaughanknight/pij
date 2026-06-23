@@ -121,7 +121,7 @@ export default function (pi: ExtensionAPI): void {
 		name: "pij_spawn",
 		label: "pij spawn",
 		description:
-			"Spawn a new pij worker session in a new tmux window. Returns once the window opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
+			"Spawn a new pij worker session running pi in tmux — a new window (default) or a split pane in the current window (layout:'split' → main-left, up to 2 workers stacked on the right, hard cap 3 panes). Returns once the pane opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
 		promptSnippet: "Spawn a pij worker in a new tmux window",
 		promptGuidelines: [
 			"Use pij_spawn to start a new worker session in a new tmux window. The child sends a ready-ping via the delivery channel when it has booted.",
@@ -138,12 +138,19 @@ export default function (pi: ExtensionAPI): void {
 					description: "Model override for the child session (passed as --model).",
 				}),
 			),
+			layout: Type.Optional(
+				Type.Union([Type.Literal("window"), Type.Literal("split")], {
+					description:
+						"Where to place the worker: 'window' (default) opens a new tmux window; 'split' places it as a pane in the CURRENT window (main-left, up to 2 stacked on the right; hard cap 3 panes, else E-FULL).",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!session) throw new Error("pij_spawn: session not booted yet");
 			const res = session.spawn({
 				task: typeof params.task === "string" ? params.task : undefined,
 				model: typeof params.model === "string" ? params.model : undefined,
+				layout: params.layout === "split" ? "split" : undefined,
 				cwd: ctx.cwd, // §M6: cwd from tool execute context
 			});
 			if (!res.ok) {

@@ -334,6 +334,70 @@ describe("PijSession.spawn", () => {
 		expect(r.code).toBe("E-NOTMUX");
 		expect(h.tmux.windows).toHaveLength(0); // no window opened
 	});
+
+	// ─── split-pane layout ───────────────────────────────────────────────────
+	const mkKid = (id: string, paneId: string): SessionDescriptor => ({
+		id,
+		role: "worker",
+		folder: "/repo",
+		dataDir: `/home/.pij/${id}`,
+		eventsPath: `/home/.pij/${id}/events.ndjson`,
+		pid: 9999,
+		startedAt: new Date(T0).toISOString(),
+		paneId,
+		spawnedBy: "alice",
+	});
+
+	it("layout:split with 0 pij panes → split -h (left/right) on the current pane @ 40%", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		expect(r.ok).toBe(true);
+		expect(h.tmux.windows).toHaveLength(0); // no new window in split mode
+		expect(h.tmux.splits).toHaveLength(1);
+		const s = h.tmux.splits[0];
+		expect(s?.opts.direction).toBe("h");
+		expect(s?.opts.target).toBe("%500"); // FakeTmux default current pane
+		expect(s?.opts.percent).toBe(40);
+		expect(s?.opts.detached).toBe(true);
+	});
+
+	it("layout:split with 1 worker in-window → split -v (stack) on worker-1's pane", () => {
+		const h = harness({
+			registry: [mkKid("kid1", "%901")],
+			tmux: new FakeTmux({ currentPane: "%500", windowPanes: ["%901"] }),
+		});
+		h.session.boot(bootInput());
+		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		expect(r.ok).toBe(true);
+		const s = h.tmux.splits[0];
+		expect(s?.opts.direction).toBe("v");
+		expect(s?.opts.target).toBe("%901");
+	});
+
+	it("layout:split refuses a 3rd pane with E-FULL (cap = main + 2)", () => {
+		const h = harness({
+			registry: [mkKid("k1", "%901"), mkKid("k2", "%902")],
+			tmux: new FakeTmux({ currentPane: "%500", windowPanes: ["%901", "%902"] }),
+		});
+		h.session.boot(bootInput());
+		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.code).toBe("E-FULL");
+		expect(h.tmux.splits).toHaveLength(0);
+	});
+
+	it("layout:split counts only CURRENT-window pij panes (window-mode kids ignored)", () => {
+		const h = harness({
+			registry: [mkKid("winkid", "%950")], // pane lives in another window
+			tmux: new FakeTmux({ currentPane: "%500", windowPanes: [] }),
+		});
+		h.session.boot(bootInput());
+		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		expect(r.ok).toBe(true);
+		expect(h.tmux.splits[0]?.opts.direction).toBe("h"); // still the first column
+	});
 });
 
 // ─── T203: PijSession.close ───────────────────────────────────────────────────
@@ -351,26 +415,26 @@ describe("PijSession.close", () => {
 		spawnedBy: "alice",
 	};
 
-	it("kills the window by paneId and removes the descriptor (AC-05)", () => {
+	it("kills the pane by paneId and removes the descriptor (AC-05)", () => {
 		const h = harness({ registry: [spawnedDescriptor] });
 		h.session.boot(bootInput());
 		const r = h.session.close("bob");
 		expect(r.ok).toBe(true);
-		expect(h.tmux.killed).toEqual(["%901"]);
+		expect(h.tmux.killedPanes).toEqual(["%901"]);
 		expect(h.registry.read("bob")).toBeNull();
 	});
 
-	it("missing session → E-NOID, no killWindow call", () => {
+	it("missing session → E-NOID, no killPane call", () => {
 		const h = harness();
 		h.session.boot(bootInput());
 		const r = h.session.close("nonexistent");
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.code).toBe("E-NOID");
-		expect(h.tmux.killed).toHaveLength(0);
+		expect(h.tmux.killedPanes).toHaveLength(0);
 	});
 
-	it("no paneId (not a spawned window) → E-NOID, no killWindow call (§H3)", () => {
+	it("no paneId (not a spawned window) → E-NOID, no killPane call (§H3)", () => {
 		const noPaneId: SessionDescriptor = { ...spawnedDescriptor, paneId: undefined };
 		const h = harness({ registry: [noPaneId] });
 		h.session.boot(bootInput());
@@ -378,7 +442,7 @@ describe("PijSession.close", () => {
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.code).toBe("E-NOID");
-		expect(h.tmux.killed).toHaveLength(0);
+		expect(h.tmux.killedPanes).toHaveLength(0);
 	});
 
 	it("warn-if-not-mine: captures internal warn event AND returns caller-visible warning (AC-06 / FT-002)", () => {
@@ -387,7 +451,7 @@ describe("PijSession.close", () => {
 		h.session.boot(bootInput());
 		const r = h.session.close("bob");
 		expect(r.ok).toBe(true);
-		expect(h.tmux.killed).toEqual(["%901"]);
+		expect(h.tmux.killedPanes).toEqual(["%901"]);
 		expect(h.registry.read("bob")).toBeNull();
 		// Internal event captured
 		const warnEvents = h.eventLog.read({ type: "receipt" });

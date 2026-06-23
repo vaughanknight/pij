@@ -76,17 +76,47 @@ export interface NewWindowOpts {
 	cwd?: string;
 }
 
-/** Seam for creating/destroying tmux windows (Pattern P2: impurity confined
- *  to adapters/tmux.ts; this interface is pi-free). The 6th port — additive;
- *  existing PijPorts consumers are unaffected until Phase 2 wires it. */
+/** Options for splitting an existing pane (layout:"split" mode). */
+export interface SplitWindowOpts {
+	/** Command to run (always "pi"). */
+	cmd: string;
+	/** Argv to pass to the command. */
+	args: string[];
+	/** Environment variables for the new pane. */
+	env: Record<string, string>;
+	/** Working directory for the new pane. */
+	cwd?: string;
+	/** Pane to split (%N): orchestrator pane for the right column; worker-1's
+	 *  pane to stack the second worker below it. */
+	target: string;
+	/** "h" = LEFT/RIGHT (side-by-side column); "v" = UP/DOWN (stacked).
+	 *  NB: bare `split-window` defaults to -v, so -h must be explicit. */
+	direction: "h" | "v";
+	/** Size % for the NEW pane (e.g. 40 → right column ~40% width). */
+	percent?: number;
+	/** Pass tmux -d: keep focus on the current pane (don't follow into the new one). */
+	detached?: boolean;
+}
+
+/** Seam for creating/destroying tmux windows + panes (Pattern P2: impurity
+ *  confined to adapters/tmux.ts; this interface is pi-free). */
 export interface TmuxPort {
 	/** Create a new tmux window running the given command. Returns the
 	 *  captured %N pane id. */
 	newWindow(opts: NewWindowOpts): Result<{ paneId: string }>;
+	/** Split an existing pane (layout:"split"); returns the new %N pane id. */
+	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string }>;
 	/** Kill a window by its pane id. Swallows "already gone" (idempotent). */
 	killWindow(paneId: string): Result<void>;
+	/** Kill a single pane by its id (split-safe: siblings survive; a window's
+	 *  last pane dying closes the window). Swallows "already gone". */
+	killPane(paneId: string): Result<void>;
 	/** Returns the current tmux session name if inside tmux, else null. */
 	currentSession(): string | null;
+	/** The orchestrator's own pane id ($TMUX_PANE), or null if not in tmux. */
+	currentPane(): string | null;
+	/** Pane ids in the orchestrator's current window (for the split cap count). */
+	currentWindowPanes(): string[];
 }
 
 /** OS-level seams: pid, liveness probe, clock, env. */
