@@ -398,6 +398,24 @@ describe("PijSession.spawn", () => {
 		expect(r.ok).toBe(true);
 		expect(h.tmux.splits[0]?.opts.direction).toBe("h"); // still the first column
 	});
+
+	it("layout:split tracks panes parent-side across back-to-back spawns (registry lags boot)", () => {
+		// Fire-and-forget: children write their descriptors only on boot, so the
+		// registry is empty here. The parent must still stack #2 on #1 and cap #3.
+		const h = harness();
+		h.session.boot(bootInput());
+		const r1 = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r2 = h.session.spawn({ cwd: "/repo", layout: "split" });
+		expect(r1.ok && r2.ok).toBe(true);
+		if (!r1.ok || !r2.ok) return;
+		expect(h.tmux.splits[0]?.opts.direction).toBe("h"); // #1 = right column
+		expect(h.tmux.splits[1]?.opts.direction).toBe("v"); // #2 = stacked on #1
+		expect(h.tmux.splits[1]?.opts.target).toBe(r1.value.paneId);
+		const r3 = h.session.spawn({ cwd: "/repo", layout: "split" });
+		expect(r3.ok).toBe(false);
+		if (r3.ok) return;
+		expect(r3.code).toBe("E-FULL"); // 3rd refused even before any child booted
+	});
 });
 
 // ─── T203: PijSession.close ───────────────────────────────────────────────────

@@ -100,6 +100,12 @@ export class PijSession {
 	private seq = new SeqCounter(0);
 	/** Monotonic counter for deterministic spawnId generation (§M4). */
 	private spawnCounter = 0;
+	/** Pane ids this session has split into the current window (layout:"split"),
+	 *  in spawn order. Tracked parent-side because the child's registry descriptor
+	 *  is written only when it boots — a registry-only count would race back-to-back
+	 *  fire-and-forget split spawns (all see 0 kids → all -h, no E-FULL). Pruned to
+	 *  live panes on each use. */
+	private splitPanes: string[] = [];
 	private pending: PendingReceipt[] = [];
 	/** new|reload requests that arrived before a command context was armed; the
 	 *  `/pij` handler drains these via applyPendingControl() (finding: command
@@ -195,19 +201,30 @@ export class PijSession {
 		// #2 splits worker-1 UP/DOWN (-v → stacked below). Cap = main + 2 panes.
 		if (opts.layout === "split") {
 			const here = new Set(this.ports.tmux.currentWindowPanes());
-			// Count only OUR spawned panes that live in THIS window (window-mode
-			// kids are in other windows; stray user panes aren't in the registry).
-			const kids = this.ports.registry
-				.list()
-				.filter((d) => d.spawnedBy === this.self && d.paneId && here.has(d.paneId));
-			if (kids.length >= 2) {
+			// Live split panes in THIS window = parent-recorded panes (known the
+			// instant splitWindow returns — the registry lags the fire-and-forget
+			// child boot) UNION any registry kids, ordered, pruned to panes still
+			// alive in the window (a closed pane drops out via currentWindowPanes()).
+			this.splitPanes = this.splitPanes.filter((p) => here.has(p));
+			const ordered: string[] = [...this.splitPanes];
+			for (const d of this.ports.registry.list()) {
+				if (
+					d.spawnedBy === this.self &&
+					d.paneId &&
+					here.has(d.paneId) &&
+					!ordered.includes(d.paneId)
+				) {
+					ordered.push(d.paneId);
+				}
+			}
+			if (ordered.length >= 2) {
 				return err(
 					"E-FULL",
 					"split layout full — 2 workers already on the right; close one or use layout:'window'",
 				);
 			}
-			const first = kids.length === 0;
-			const target = first ? this.ports.tmux.currentPane() : (kids[0]?.paneId ?? null);
+			const first = ordered.length === 0;
+			const target = first ? this.ports.tmux.currentPane() : ordered[0];
 			if (!target) {
 				return err("E-NOTMUX", "cannot resolve the current tmux pane to split");
 			}
@@ -224,6 +241,9 @@ export class PijSession {
 			if (!splitResult.ok) {
 				return err(splitResult.code, splitResult.message);
 			}
+			// Record parent-side so the NEXT spawn sees this pane before the child
+			// has booted its descriptor (fixes the fire-and-forget cap/target race).
+			this.splitPanes.push(splitResult.value.paneId);
 			return ok({ spawnId, paneId: splitResult.value.paneId });
 		}
 

@@ -122,9 +122,9 @@ export default function (pi: ExtensionAPI): void {
 		label: "pij spawn",
 		description:
 			"Spawn a new pij worker session running pi in tmux — a new window (default) or a split pane in the current window (layout:'split' → main-left, up to 2 workers stacked on the right, hard cap 3 panes). Returns once the pane opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
-		promptSnippet: "Spawn a pij worker in a new tmux window",
+		promptSnippet: "Spawn a pij worker in a new tmux window or split pane",
 		promptGuidelines: [
-			"Use pij_spawn to start a new worker session in a new tmux window. The child sends a ready-ping via the delivery channel when it has booted.",
+			"Use pij_spawn to start a new worker session in a new tmux window (default), or pass layout:'split' to place it as a pane in the current window (main-left, up to 2 workers stacked on the right; a 3rd split returns E-FULL). The child sends a ready-ping via the delivery channel when it has booted.",
 		],
 		parameters: Type.Object({
 			task: Type.Optional(
