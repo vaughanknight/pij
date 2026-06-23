@@ -9,6 +9,7 @@ import {
 	FakePiRuntime,
 	FakeProcess,
 	FakeRegistry,
+	FakeTmux,
 } from "../adapters/fakes.js";
 import type { BootInput, PijPorts } from "./session.js";
 import { PijSession } from "./session.js";
@@ -33,15 +34,20 @@ function harness(
 		registry?: readonly SessionDescriptor[];
 		events?: readonly PijEvent[];
 		now?: number;
+		/** PIJ_* env vars forwarded to FakeProcess (for spawn-child boot tests). */
+		vars?: Record<string, string>;
+		/** Override default FakeTmux (e.g. to test E-NOTMUX with sessionName: null). */
+		tmux?: FakeTmux;
 	} = {},
 ) {
 	const registry = new FakeRegistry(opts.registry ?? []);
 	const eventLog = new FakeEventLog(opts.events ?? []);
 	const delivery = new FakeDelivery();
 	const pi = new FakePiRuntime(opts.idle ?? true);
-	const process = new FakeProcess(4242, opts.now ?? T0);
-	const ports: PijPorts = { registry, eventLog, delivery, pi, process };
-	return { ports, registry, eventLog, delivery, pi, process, session: new PijSession(ports) };
+	const process = new FakeProcess(4242, opts.now ?? T0, opts.vars ?? {});
+	const tmux = opts.tmux ?? new FakeTmux();
+	const ports: PijPorts = { registry, eventLog, delivery, pi, process, tmux };
+	return { ports, registry, eventLog, delivery, pi, process, tmux, session: new PijSession(ports) };
 }
 
 describe("PijSession.boot", () => {
@@ -262,5 +268,238 @@ describe("PijSession.shutdown", () => {
 		expect(h.registry.read("alice")).not.toBeNull();
 		h.session.shutdown();
 		expect(h.registry.read("alice")).toBeNull();
+	});
+});
+
+// ─── T202: PijSession.spawn ───────────────────────────────────────────────────
+
+describe("PijSession.spawn", () => {
+	it("opens exactly one window; returns spawnId + paneId (AC-01)", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		const r = h.session.spawn({ cwd: "/repo" });
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(typeof r.value.spawnId).toBe("string");
+		expect(r.value.paneId).toBe("%900"); // FakeTmux starts at 900
+		expect(h.tmux.windows).toHaveLength(1);
+	});
+
+	it("env carries PIJ_ANNOUNCE_TO=self, PIJ_SPAWN_ID, PIJ_ROLE=worker (AC-02)", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.session.spawn({ cwd: "/repo" });
+		const w = h.tmux.windows[0];
+		expect(w?.opts.env.PIJ_ANNOUNCE_TO).toBe("alice");
+		expect(w?.opts.env.PIJ_ROLE).toBe("worker");
+		expect(typeof w?.opts.env.PIJ_SPAWN_ID).toBe("string");
+		expect(w?.opts.env.PIJ_SPAWN_ID).toBeTruthy();
+	});
+
+	it("threads model via --model argv AND PIJ_SPAWN_MODEL env (§H2 / F003)", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.session.spawn({ cwd: "/repo", model: "test-model" });
+		const w = h.tmux.windows[0];
+		// F003: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand (not post-processed)
+		expect(w?.opts.args).toContain("--model");
+		expect(w?.opts.args).toContain("test-model");
+		expect(w?.opts.env.PIJ_SPAWN_MODEL).toBe("test-model");
+		// No post-processing remnant: env is spawnCmd.env directly
+		expect(Object.keys(w?.opts.env ?? {}).filter((k) => k === "PIJ_SPAWN_MODEL")).toHaveLength(1);
+	});
+
+	it("does NOT set PIJ_PANE_ID in child env (§H1: child reads $TMUX_PANE)", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.session.spawn({ cwd: "/repo" });
+		const w = h.tmux.windows[0];
+		expect(w?.opts.env.PIJ_PANE_ID).toBeUndefined();
+	});
+
+	it("passes task via PIJ_SPAWN_TASK env (finding 01 / CF-01)", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.session.spawn({ cwd: "/repo", task: "do the thing" });
+		const w = h.tmux.windows[0];
+		expect(w?.opts.env.PIJ_SPAWN_TASK).toBe("do the thing");
+	});
+
+	it("returns E-NOTMUX when not inside a tmux session (§M5 / F004 / AC-07)", () => {
+		const h = harness({ tmux: new FakeTmux({ sessionName: null }) });
+		h.session.boot(bootInput());
+		const r = h.session.spawn({ cwd: "/repo" });
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.code).toBe("E-NOTMUX");
+		expect(h.tmux.windows).toHaveLength(0); // no window opened
+	});
+});
+
+// ─── T203: PijSession.close ───────────────────────────────────────────────────
+
+describe("PijSession.close", () => {
+	const spawnedDescriptor: SessionDescriptor = {
+		id: "bob",
+		role: "worker",
+		folder: "/repo",
+		dataDir: "/home/.pij/bob",
+		eventsPath: "/home/.pij/bob/events.ndjson",
+		pid: 9999,
+		startedAt: new Date(T0).toISOString(),
+		paneId: "%901",
+		spawnedBy: "alice",
+	};
+
+	it("kills the window by paneId and removes the descriptor (AC-05)", () => {
+		const h = harness({ registry: [spawnedDescriptor] });
+		h.session.boot(bootInput());
+		const r = h.session.close("bob");
+		expect(r.ok).toBe(true);
+		expect(h.tmux.killed).toEqual(["%901"]);
+		expect(h.registry.read("bob")).toBeNull();
+	});
+
+	it("missing session → E-NOID, no killWindow call", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		const r = h.session.close("nonexistent");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.code).toBe("E-NOID");
+		expect(h.tmux.killed).toHaveLength(0);
+	});
+
+	it("no paneId (not a spawned window) → E-NOID, no killWindow call (§H3)", () => {
+		const noPaneId: SessionDescriptor = { ...spawnedDescriptor, paneId: undefined };
+		const h = harness({ registry: [noPaneId] });
+		h.session.boot(bootInput());
+		const r = h.session.close("bob");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.code).toBe("E-NOID");
+		expect(h.tmux.killed).toHaveLength(0);
+	});
+
+	it("warn-if-not-mine: captures internal warn event AND returns caller-visible warning (AC-06 / FT-002)", () => {
+		const notMine: SessionDescriptor = { ...spawnedDescriptor, spawnedBy: "charlie" };
+		const h = harness({ registry: [notMine] });
+		h.session.boot(bootInput());
+		const r = h.session.close("bob");
+		expect(r.ok).toBe(true);
+		expect(h.tmux.killed).toEqual(["%901"]);
+		expect(h.registry.read("bob")).toBeNull();
+		// Internal event captured
+		const warnEvents = h.eventLog.read({ type: "receipt" });
+		expect(
+			warnEvents.some(
+				(e) => (e.data as { kind?: string } | undefined)?.kind === "warn-close-not-mine",
+			),
+		).toBe(true);
+		// Caller-visible warning string (AC-06)
+		if (!r.ok) return;
+		expect(typeof r.value.warning).toBe("string");
+		expect(r.value.warning).toContain("charlie");
+		expect(r.value.warning).toContain("alice"); // closedBy = self
+	});
+
+	it("warn when spawnedBy is absent but paneId exists (unknown origin — AC-06)", () => {
+		const unknownOrigin: SessionDescriptor = { ...spawnedDescriptor, spawnedBy: undefined };
+		const h = harness({ registry: [unknownOrigin] });
+		h.session.boot(bootInput());
+		const r = h.session.close("bob");
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.value.warning).toContain("unknown");
+	});
+
+	it("no warning when this session spawned the target (spawnedBy === self)", () => {
+		const mine: SessionDescriptor = { ...spawnedDescriptor, spawnedBy: "alice" };
+		const h = harness({ registry: [mine] });
+		h.session.boot(bootInput());
+		const r = h.session.close("bob");
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.value.warning).toBeUndefined();
+	});
+});
+
+// ─── T204: boot() spawned-child path ─────────────────────────────────────────
+
+describe("PijSession.boot — spawned child path (T204)", () => {
+	it("fresh spawned boot: persists paneId from TMUX_PANE + spawnedBy; delivers ready-ping; injects announce (AC-03)", () => {
+		const h = harness({
+			vars: {
+				PIJ_ANNOUNCE_TO: "parent",
+				PIJ_SPAWN_ID: "s-test-001",
+				TMUX_PANE: "%42",
+			},
+		});
+		h.session.boot(bootInput());
+		// P9: descriptor has paneId + spawnedBy
+		const d = h.registry.read("alice");
+		expect(d?.paneId).toBe("%42");
+		expect(d?.spawnedBy).toBe("parent");
+		// Ready-ping delivered (not injected) — to the parent
+		expect(h.delivery.outbox).toHaveLength(1);
+		const ping = h.delivery.outbox[0];
+		expect(ping?.message.to).toBe("parent");
+		expect(ping?.message.from).toBe("alice");
+		const body = JSON.parse(ping?.message.body ?? "") as { spawnId: string; cwd: string };
+		expect(body.spawnId).toBe("s-test-001");
+		expect(body.cwd).toBe("/repo"); // BootInput.folder
+		// Exactly ONE inject: announceText (no task present)
+		expect(h.pi.injects).toHaveLength(1);
+		expect(h.pi.injects[0]?.text).toContain("alice");
+	});
+
+	it("spawned boot with task: suppresses announceText, injects task only (finding 07 / AC-03)", () => {
+		const h = harness({
+			vars: {
+				PIJ_ANNOUNCE_TO: "parent",
+				PIJ_SPAWN_ID: "s-test-002",
+				PIJ_SPAWN_TASK: "go do the thing",
+			},
+		});
+		h.session.boot(bootInput());
+		// Exactly ONE inject: the task (not announceText)
+		expect(h.pi.injects).toHaveLength(1);
+		expect(h.pi.injects[0]?.text).toBe("go do the thing");
+		// Ready-ping still delivered
+		expect(h.delivery.outbox).toHaveLength(1);
+	});
+
+	it("model threads via PIJ_SPAWN_MODEL into ready-ping body (§H2)", () => {
+		const h = harness({
+			vars: {
+				PIJ_ANNOUNCE_TO: "parent",
+				PIJ_SPAWN_ID: "s-test-003",
+				PIJ_SPAWN_MODEL: "claude-opus",
+			},
+		});
+		h.session.boot(bootInput());
+		expect(h.delivery.outbox).toHaveLength(1);
+		const body = JSON.parse(h.delivery.outbox[0]?.message.body ?? "") as { model: string };
+		expect(body.model).toBe("claude-opus");
+	});
+
+	it("reload (not fresh) does NOT re-ping (finding 04 / AC-04)", () => {
+		const existingDescriptor: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			folder: "/repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+		};
+		const h = harness({
+			registry: [existingDescriptor],
+			vars: { PIJ_ANNOUNCE_TO: "parent", PIJ_SPAWN_ID: "s-test-004" },
+		});
+		// boot() sees existing descriptor → fresh=false → no ready-ping, no inject
+		h.session.boot(bootInput());
+		expect(h.delivery.outbox).toHaveLength(0); // no ping on reload
+		expect(h.pi.injects).toHaveLength(0); // no announce on reload
 	});
 });

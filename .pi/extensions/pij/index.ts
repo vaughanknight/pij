@@ -14,6 +14,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
+import { TmuxAdapter } from "./adapters/tmux.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild } from "./core/discovery.js";
@@ -113,6 +114,87 @@ export default function (pi: ExtensionAPI): void {
 	// new|reload onto this; undefined until armed / after a consuming op.
 	let commandControl: CommandControl | undefined;
 
+	// pij_spawn — open a new tmux window running a pij worker (T206).
+	// Parameters: {task?, model?}; cwd from ctx.cwd (§M6). Thin pass-through of
+	// session.spawn(); E-NOTMUX is returned by spawn() itself (§M5 / P8-testable).
+	pi.registerTool({
+		name: "pij_spawn",
+		label: "pij spawn",
+		description:
+			"Spawn a new pij worker session in a new tmux window. Returns once the window opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
+		promptSnippet: "Spawn a pij worker in a new tmux window",
+		promptGuidelines: [
+			"Use pij_spawn to start a new worker session in a new tmux window. The child sends a ready-ping via the delivery channel when it has booted.",
+		],
+		parameters: Type.Object({
+			task: Type.Optional(
+				Type.String({
+					description:
+						"Initial task injected into the child session as its first prompt (via PIJ_SPAWN_TASK env; avoids the announce-race).",
+				}),
+			),
+			model: Type.Optional(
+				Type.String({
+					description: "Model override for the child session (passed as --model).",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!session) throw new Error("pij_spawn: session not booted yet");
+			const res = session.spawn({
+				task: typeof params.task === "string" ? params.task : undefined,
+				model: typeof params.model === "string" ? params.model : undefined,
+				cwd: ctx.cwd, // §M6: cwd from tool execute context
+			});
+			if (!res.ok) {
+				throw new Error(`pij_spawn failed (${res.code}): ${res.message}`);
+			}
+			return {
+				content: [
+					{
+						type: "text",
+						text: `spawned pij worker — spawnId=${res.value.spawnId} paneId=${res.value.paneId}`,
+					},
+				],
+				details: {},
+			};
+		},
+	});
+
+	// pij_close — kill a spawned worker's tmux window + remove its descriptor (T206).
+	pi.registerTool({
+		name: "pij_close",
+		label: "pij close",
+		description:
+			"Close a pij worker session: kills its tmux window and removes it from the peer registry.",
+		promptSnippet: "Close a pij worker session",
+		promptGuidelines: [
+			// FT-005: pij_spawn returns spawnId+paneId, NOT the child SessionId.
+			// The child id arrives as [pij from <child-id>] or via pij list.
+			"Use pij_close to terminate a spawned worker session. Pass the child session id from its ready-ping ([pij from <child-id>]) or from pij list; do not pass the spawnId.",
+		],
+		parameters: Type.Object({
+			to: Type.String({
+				description: "Session id of the worker to close (e.g. pij-1abc2de).",
+			}),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			if (!session) throw new Error("pij_close: session not booted yet");
+			const res = session.close(params.to);
+			if (!res.ok) {
+				throw new Error(`pij_close failed (${res.code}): ${res.message}`);
+			}
+			// FT-002: surface AC-06 non-owner warning to the caller.
+			const text = res.value.warning
+				? `closed pij worker: ${params.to}\n⚠️ ${res.value.warning}`
+				: `closed pij worker: ${params.to}`;
+			return {
+				content: [{ type: "text", text }],
+				details: {},
+			};
+		},
+	});
+
 	// Pattern P10: ONE session_start handler for every reason
 	// (startup/reload/new/resume/fork). Boot is idempotent — reload reuses the
 	// descriptor (no duplicate, no replay) and refreshes the live ctx.
@@ -150,6 +232,7 @@ export default function (pi: ExtensionAPI): void {
 			delivery: channel,
 			pi: new PiRuntimeAdapter(pi, ctx, () => commandControl),
 			process: new NodeProcess(),
+			tmux: new TmuxAdapter(),
 		});
 
 		const boot = session.boot({ id: self, role, folder: process.cwd(), dataDir, eventsPath });

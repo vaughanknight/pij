@@ -53,6 +53,8 @@ export interface ReadyPayload {
  * Build the argv + env needed to launch a new pij worker via tmux.
  *
  * - `--model <model>` is emitted iff `input.model` is given.
+ * - `PIJ_SPAWN_MODEL` is emitted in env iff `input.model` is given, so the
+ *   child's `boot()` can include it in the ready-ping body (§H2).
  * - `task` is passed via `PIJ_SPAWN_TASK` env (not positional arg) to avoid
  *   the announce-vs-initial-prompt race (finding 01 / CF-01).
  * - `paneId` is an optional pass-through (Phase 2 resolves ownership).
@@ -68,6 +70,12 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		PIJ_SPAWN_ID: input.spawnId,
 		PIJ_ROLE: input.role,
 	};
+
+	// §H2: thread model via env so the child boot() reads PIJ_SPAWN_MODEL
+	// and includes it in the ready-ping body — same value as --model argv.
+	if (input.model !== undefined) {
+		env.PIJ_SPAWN_MODEL = input.model;
+	}
 
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;

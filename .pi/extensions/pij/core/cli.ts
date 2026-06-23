@@ -89,6 +89,7 @@ const EXIT: Record<PijErrorCode, number> = {
 	"E-DEAD": 1,
 	"E-NOREG": 3,
 	"E-ARG": 64,
+	"E-NOTMUX": 2,
 };
 
 // ─── argv parsing ───────────────────────────────────────────────────────────

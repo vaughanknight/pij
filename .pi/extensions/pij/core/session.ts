@@ -16,6 +16,7 @@ import type {
 	PiRuntimePort,
 	ProcessPort,
 	RegistryPort,
+	TmuxPort,
 } from "./ports.js";
 import {
 	classifyOnInject,
@@ -24,22 +25,40 @@ import {
 	markDelivered,
 } from "./receipts.js";
 import { SeqCounter } from "./seq.js";
-import type {
-	MessageReceipt,
-	PijErrorCode,
-	PijMessage,
-	Role,
-	SessionDescriptor,
-	SessionId,
+import { buildSpawnCommand, readyBody } from "./spawn.js";
+import {
+	err,
+	type MessageReceipt,
+	ok,
+	type PijErrorCode,
+	type PijMessage,
+	type Result,
+	type Role,
+	type SessionDescriptor,
+	type SessionId,
 } from "./types.js";
 
-/** The 5 seams the coordinator depends on (constructor-injected). */
+/** The 6 seams the coordinator depends on (constructor-injected). */
 export interface PijPorts {
 	readonly registry: RegistryPort;
 	readonly eventLog: EventLogPort;
 	readonly delivery: DeliveryPort;
 	readonly pi: PiRuntimePort;
 	readonly process: ProcessPort;
+	/** Tmux seam: open/kill windows, check session. Wired in index.ts only
+	 *  (P2: core stays tmux-free); `FakeTmux` used in session.test.ts (P8). */
+	readonly tmux: TmuxPort;
+}
+
+/** Input to PijSession.spawn(). The session generates spawnId + announceTo
+ *  internally; callers supply task/model/cwd. */
+export interface SpawnOpts {
+	/** Optional model override for the worker (passed via --model + PIJ_SPAWN_MODEL). */
+	readonly model?: string;
+	/** Optional first task (delivered via PIJ_SPAWN_TASK env; finding 01 / CF-01). */
+	readonly task?: string;
+	/** Absolute working directory for the new pi session. */
+	readonly cwd: string;
 }
 
 /** What index.ts hands `boot` once it has minted/derived the session id from
@@ -76,6 +95,8 @@ export class PijSession {
 	private self: SessionId = "";
 	private role: Role | undefined;
 	private seq = new SeqCounter(0);
+	/** Monotonic counter for deterministic spawnId generation (§M4). */
+	private spawnCounter = 0;
 	private pending: PendingReceipt[] = [];
 	/** new|reload requests that arrived before a command context was armed; the
 	 *  `/pij` handler drains these via applyPendingControl() (finding: command
@@ -101,6 +122,9 @@ export class PijSession {
 			startedAt: existing?.startedAt ?? this.nowIso(),
 			state: existing?.state ?? "idle",
 			lastEventAt: existing?.lastEventAt,
+			// preserve spawn fields across reload (§H1/T204)
+			paneId: existing?.paneId,
+			spawnedBy: existing?.spawnedBy,
 		};
 		this.ports.registry.write(descriptor);
 		this.descriptor = descriptor;
@@ -108,9 +132,107 @@ export class PijSession {
 		this.role = input.role;
 		this.seq = new SeqCounter(this.ports.eventLog.lastSeq());
 		if (fresh) {
-			this.ports.pi.inject(announceText(input.id, input.role), "immediate");
+			const announceTo = this.ports.process.env("PIJ_ANNOUNCE_TO");
+			if (announceTo) {
+				// Spawned child boot path (P10: additive, fresh-guarded).
+				// §H1: read own pane id from $TMUX_PANE — tmux sets it natively in
+				// every new pane; no PIJ_PANE_ID needed in the child env.
+				const tmuxPane = this.ports.process.env("TMUX_PANE");
+				const spawnId = this.ports.process.env("PIJ_SPAWN_ID") ?? "";
+				// §H2: model via PIJ_SPAWN_MODEL (set by spawner); "" = default model
+				const model = this.ports.process.env("PIJ_SPAWN_MODEL") ?? "";
+				// P9: persist paneId/spawnedBy BEFORE the ready-ping
+				this.persist({ paneId: tmuxPane, spawnedBy: announceTo });
+				// Deliver the ready-ping via channel (event — never an inject)
+				this.ports.delivery.deliver({
+					from: this.self,
+					to: announceTo,
+					body: readyBody(spawnId, model, input.folder),
+				});
+				// Finding 07: exactly ONE inject at boot — suppress announceText
+				// when a task is present (the CF-01 mitigation; finding 01).
+				const task = this.ports.process.env("PIJ_SPAWN_TASK");
+				if (task) {
+					this.ports.pi.inject(task, "immediate");
+				} else {
+					this.ports.pi.inject(announceText(input.id, input.role), "immediate");
+				}
+			} else {
+				// Normal fresh boot: announce to peers (no spawner context)
+				this.ports.pi.inject(announceText(input.id, input.role), "immediate");
+			}
 		}
 		return { id: input.id, role: input.role, fresh };
+	}
+
+	/** Open a new tmux window running a pij worker and return immediately
+	 *  (fire-and-forget: the child's ready-ping arrives via the delivery channel
+	 *  once it has booted). */
+	spawn(opts: SpawnOpts): Result<{ spawnId: string; paneId: string }> {
+		// §M5: E-NOTMUX lives here (P8-testable against FakeTmux)
+		if (this.ports.tmux.currentSession() === null) {
+			return err("E-NOTMUX", "not inside a tmux session — cannot spawn a pij worker window");
+		}
+		// §M4: deterministic spawnId via clock + per-session counter (not crypto.randomUUID)
+		const spawnId = `s${this.ports.process.now()}-${this.spawnCounter++}`;
+		const spawnCmd = buildSpawnCommand({
+			model: opts.model,
+			task: opts.task,
+			spawnId,
+			announceTo: this.self,
+			// paneId NOT passed (§H1): child reads its own $TMUX_PANE at boot
+			cwd: opts.cwd,
+			role: "worker",
+		});
+		// §H2: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand itself when
+		// input.model is set — no post-process needed here.
+		const winResult = this.ports.tmux.newWindow({
+			cmd: spawnCmd.cmd,
+			args: spawnCmd.args,
+			env: spawnCmd.env,
+			name: `pi:${spawnId}`,
+			cwd: opts.cwd,
+		});
+		if (!winResult.ok) {
+			return err(winResult.code, winResult.message);
+		}
+		return ok({ spawnId, paneId: winResult.value.paneId });
+	}
+
+	/** Kill the tmux window of a spawned peer and remove its descriptor.
+	 *  Returns `{ warning }` if the session was spawned by a different peer
+	 *  (AC-06 non-owner close — still succeeds; caller should surface the text). */
+	close(id: SessionId): Result<{ warning?: string }> {
+		const descriptor = this.ports.registry.read(id);
+		if (!descriptor) {
+			return err("E-NOID", `no such session '${id}'`);
+		}
+		// §H3: descriptor.paneId is string|undefined; guard before killWindow
+		if (!descriptor.paneId) {
+			return err("E-NOID", `session '${id}' has no paneId — not a spawned window`);
+		}
+		// Warn when the caller did not spawn this session.
+		// Also warn when spawnedBy is absent but paneId exists (spawned via an
+		// external path — ownership is unknown — AC-06).
+		let warning: string | undefined;
+		if (descriptor.spawnedBy !== this.self) {
+			warning = `warning: session '${id}' was spawned by ${
+				descriptor.spawnedBy ?? "unknown"
+			}; you are ${this.self}`;
+			this.capture("receipt", {
+				kind: "warn-close-not-mine",
+				id,
+				spawnedBy: descriptor.spawnedBy,
+				closedBy: this.self,
+			});
+		}
+		// Kill the window (TmuxAdapter is idempotent: swallows "already gone")
+		const killResult = this.ports.tmux.killWindow(descriptor.paneId);
+		if (!killResult.ok) {
+			return err(killResult.code, killResult.message);
+		}
+		this.ports.registry.remove(id);
+		return ok({ warning });
 	}
 
 	/** Append one captured pi-activity event (monotonic seq + ISO timestamp). */
@@ -233,7 +355,11 @@ export class PijSession {
 	// ─── internals ──────────────────────────────────────────────────────────
 	/** Merge a patch into the live descriptor and persist it (D-A). No-op before
 	 *  boot. */
-	private persist(patch: Partial<Pick<SessionDescriptor, "state" | "lastEventAt" | "pid">>): void {
+	private persist(
+		patch: Partial<
+			Pick<SessionDescriptor, "state" | "lastEventAt" | "pid" | "paneId" | "spawnedBy">
+		>,
+	): void {
 		if (!this.descriptor) return;
 		this.descriptor = { ...this.descriptor, ...patch };
 		this.ports.registry.write(this.descriptor);

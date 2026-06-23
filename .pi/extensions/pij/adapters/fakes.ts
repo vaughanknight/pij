@@ -158,15 +158,16 @@ export class FakeTmux implements TmuxPort {
 	readonly windows: Array<{ opts: NewWindowOpts; paneId: string }> = [];
 	/** Recorded killWindow pane ids, in order. */
 	readonly killed: string[] = [];
-	/** Synthetic session name returned by currentSession(). */
-	readonly sessionName: string;
+	/** Synthetic session name returned by currentSession().
+	 *  null = not inside tmux (enables E-NOTMUX unit tests — F004). */
+	readonly sessionName: string | null;
 
 	private paneCounter: number;
 
 	constructor({
 		paneStart = 900,
 		sessionName = "fake-session",
-	}: { paneStart?: number; sessionName?: string } = {}) {
+	}: { paneStart?: number; sessionName?: string | null } = {}) {
 		this.paneCounter = paneStart;
 		this.sessionName = sessionName;
 	}

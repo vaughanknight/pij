@@ -99,6 +99,23 @@ describe("buildSpawnCommand", () => {
 		expect(result.env.PIJ_PANE_ID).toBe("%42");
 	});
 
+	it("omits PIJ_SPAWN_MODEL when model is not given (§H2)", () => {
+		const result = buildSpawnCommand(base);
+		expect(result.env).not.toHaveProperty("PIJ_SPAWN_MODEL");
+	});
+
+	it("sets PIJ_SPAWN_MODEL in env when model is given (§H2)", () => {
+		const result = buildSpawnCommand({ ...base, model: "anthropic/claude-3-5-sonnet" });
+		expect(result.env.PIJ_SPAWN_MODEL).toBe("anthropic/claude-3-5-sonnet");
+	});
+
+	it("PIJ_SPAWN_MODEL matches the --model argv value (both emitted together)", () => {
+		const model = "openai/gpt-4o";
+		const result = buildSpawnCommand({ ...base, model });
+		expect(result.args).toContain(model); // --model argv
+		expect(result.env.PIJ_SPAWN_MODEL).toBe(model); // env var
+	});
+
 	it("role 'parent' is passed through to PIJ_ROLE", () => {
 		const result = buildSpawnCommand({ ...base, role: "parent" });
 		expect(result.env.PIJ_ROLE).toBe("parent");

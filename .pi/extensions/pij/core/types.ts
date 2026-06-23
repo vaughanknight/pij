@@ -39,6 +39,13 @@ export interface SessionDescriptor {
 	/** ISO-8601 timestamp of this session's newest captured event (D-A) — the
 	 *  cheap age source for liveness/stall, read straight from the descriptor. */
 	readonly lastEventAt?: string;
+	/** Tmux pane id (%N) of this session's window, self-recorded by the child
+	 *  from $TMUX_PANE at fresh boot (§H1). Present iff spawned via pij_spawn.
+	 *  Used by PijSession.close() to killWindow. */
+	readonly paneId?: string;
+	/** SessionId of the session that spawned this one (= PIJ_ANNOUNCE_TO at
+	 *  fresh boot). Present iff this is a spawned worker session. */
+	readonly spawnedBy?: SessionId;
 }
 
 // ─── event stream ─────────────────────────────────────────────────────────
@@ -102,7 +109,8 @@ export type PijErrorCode =
 	| "E-DEAD" // target session is dead
 	| "E-NOREG" // no registry present
 	| "E-ARG" // bad CLI arguments
-	| "E-AMBIG"; // cannot resolve "self" (env unset + multiple local)
+	| "E-AMBIG" // cannot resolve "self" (env unset + multiple local)
+	| "E-NOTMUX"; // not inside a tmux session (required for pij_spawn)
 
 /** Tagged-union result used across the core (Pattern P4: no throws). */
 export type Result<T> =

@@ -151,6 +151,329 @@
           "comments"
         ]
       }
+    },
+    {
+      "id": "NOD-004",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.405Z",
+      "details": {
+        "node": "phase-1",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.406Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "NOD-005",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.476Z",
+      "details": {
+        "node": "phase-2",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.476Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "NOD-006",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.549Z",
+      "details": {
+        "node": "phase-3",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.549Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "STA-004",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.621Z",
+      "details": {
+        "node": "plan",
+        "from": "done",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-004",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.691Z",
+      "details": {
+        "from": "plan",
+        "to": "phase-1"
+      }
+    },
+    {
+      "id": "UPD-007",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.762Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:16:52.832Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:21:18.578Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-005",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:58:52.111Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-010",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:58:52.180Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-011",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:58:52.248Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-005",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-23T07:58:52.316Z",
+      "details": {
+        "from": "phase-1",
+        "to": "phase-2"
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:05:58.214Z",
+      "details": {
+        "node": "phase-2",
+        "from": "known",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "UPD-012",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:05:58.278Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-013",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:16:56.262Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:34:02.653Z",
+      "details": {
+        "node": "phase-1",
+        "from": "done",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "UPD-014",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:34:02.718Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:36:55.741Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-015",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T08:36:55.815Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-016",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T09:22:39.833Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-017",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T09:43:06.783Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-018",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T09:55:53.299Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-019",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-23T10:00:59.449Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "CUR-006",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-23T10:02:26.774Z",
+      "details": {
+        "from": "phase-2",
+        "to": "phase-3"
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-23T10:02:35.656Z",
+      "details": {
+        "node": "phase-2",
+        "from": "in_progress",
+        "to": "done"
+      }
     }
   ],
   "nodes": [
@@ -170,11 +493,11 @@
       "label": "Plan",
       "status": "done",
       "next": [
-        "ship"
+        "phase-1"
       ],
       "created_at": "2026-06-23T02:01:33.940Z",
-      "modified_at": "2026-06-23T05:04:56.158Z",
-      "ran_at": "2026-06-23T05:04:48.099Z",
+      "modified_at": "2026-06-23T07:16:52.621Z",
+      "ran_at": "2026-06-23T07:16:52.621Z",
       "note": "Unified plan written (Full, 3 phases, Hybrid testing): pij_spawn/pij_close via new TmuxPort+adapters/tmux.ts+core/spawn.ts; ready-ping via existing bus; paneId/spawnedBy descriptor fields. validate-v2 run by parent (reviewer agent read-blind); Status READY, VALIDATED WITH FIXES (HIGH finding 07 boot inject-race fixed). Per-spawn model param clarified.",
       "comments": [
         {
@@ -196,11 +519,108 @@
       "modified_at": "2026-06-23T02:03:17.860Z",
       "ran_at": "2026-06-23T02:03:17.793Z",
       "note": "research-dossier.md written: 22 findings; CF-01 initial-prompt race (prefer env+self-inject task), TmuxPort fits the 5-port DI seam, ready-ping via existing bus, paneId in descriptor for close"
+    },
+    {
+      "id": "phase-1",
+      "type": "phase",
+      "label": "Phase 1: Pure spawn core + TmuxPort + tmux adapter",
+      "status": "done",
+      "next": [
+        "phase-2"
+      ],
+      "created_at": "2026-06-23T07:16:52.405Z",
+      "modified_at": "2026-06-23T08:36:55.815Z",
+      "note": "Implemented via flow-pair worker pij-1x210ln (dlg-0001): TmuxPort+NewWindowOpts, pure core/spawn.ts, 26-test spawn.test.ts, argv-only adapters/tmux.ts, FakeTmux. Reviewed+APPROVED.",
+      "artifacts": [
+        "docs/plans/017-pij-spawn-tmux-windows/tasks/phase-1-pure-spawn-core/tasks.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-06-23T07:16:52.832Z",
+          "text": "Stage 5 (tasks) complete for Phase 1: 5 tasks T101-T105, no prior phase, CS-3.",
+          "kind": "note"
+        },
+        {
+          "at": "2026-06-23T07:21:18.578Z",
+          "text": "validate-v2 (parent-run; subagents read-blind): VALIDATED WITH FIXES. Source Truth/Cross-Ref/Thesis ✅; 1 MEDIUM advisory (PIJ_PANE_ID ownership) surfaced in-dossier for Phase 2. 0 CRITICAL/HIGH.",
+          "kind": "validation"
+        },
+        {
+          "at": "2026-06-23T07:58:52.180Z",
+          "text": "flow-pair dlg-0001 review (orchestrator): APPROVE. Dim-0 mutation PASSED (--model guard flips 2 tests RED, GREEN on restore); typecheck clean; 664/664; AC-08/09 clean (core pi-free, argv-only tmux); P2/P3/P4/P7 honored; scope = exactly the 5 allowed files; no forbidden paths.",
+          "kind": "validation"
+        },
+        {
+          "at": "2026-06-23T08:34:02.718Z",
+          "text": "Stage-7 review (pij-1vru9uw, /the-flow 7, as-parent): REQUEST_CHANGES. F001 HIGH — just lint/Biome FAILS on changed files (unused Role import in ports.ts; FakeTmux fmt in fakes.ts). F002/F003 MED (stale domain docs; no execution.log). F004 LOW (FakeTmux nullable sessionName for Phase 2 E-NOTMUX). Confirmed real by orchestrator. NOTE: my earlier flow-pair APPROVE missed this — it ran typecheck+test but not lint.",
+          "kind": "review"
+        },
+        {
+          "at": "2026-06-23T08:36:55.815Z",
+          "text": "F001 RESOLVED: removed unused Role import (ports.ts) + biome-formatted fakes.ts → all 5 Phase 1 files biome-clean; typecheck clean; 675 tests pass. Also fixed my own boot extension lint debt. Remaining repo just-lint failure (flow-pair/test/ledger-records.test.ts) is peer work, not Phase 1. F002 (domain docs)/F003 (execution log)/F004 (FakeTmux nullable for Phase-2 E-NOTMUX) deferred.",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-06-23T08:36:55.741Z"
+    },
+    {
+      "id": "phase-2",
+      "type": "phase",
+      "label": "Phase 2: Session wiring + tools + ready-ping",
+      "status": "done",
+      "next": [
+        "phase-3"
+      ],
+      "created_at": "2026-06-23T07:16:52.476Z",
+      "modified_at": "2026-06-23T10:02:35.656Z",
+      "note": "Phase 2 tasks dossier written: tasks/phase-2-session-wiring/tasks.md (T201-T206). Validation delegated to companion pij-1x210ln.",
+      "artifacts": [
+        "docs/plans/017-pij-spawn-tmux-windows/tasks/phase-2-session-wiring/tasks.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-06-23T08:16:56.261Z",
+          "text": "Companion validation (dlg-0002, pij-1x210ln as-parent): VALIDATED WITH FIXES — 3 HIGH + 4 MEDIUM + 1 LOW, all real (H1 paneId loop, H2 readyBody model gap, H3 close() type error). Orchestrator verified + applied resolutions (H1 via child $TMUX_PANE self-read; H2 PIJ_SPAWN_MODEL env; H3 guard; M4-M7/L8). Dossier now implementation-ready.",
+          "kind": "validation"
+        },
+        {
+          "at": "2026-06-23T09:22:39.833Z",
+          "text": "Phase 2 implement dispatched via flow-pair packet dlg-0003 to worker pij-1x210ln (T201-T206, resolutions H1-H3/M4-M7/L8/F004 baked in). Watchers armed on core/** adapters/** index.ts + phase-2 tasks/**. Awaiting COMPLETE report; compact-early reflex on done.",
+          "kind": "note"
+        },
+        {
+          "at": "2026-06-23T09:43:06.783Z",
+          "text": "Phase 2 impl (dlg-0003) APPROVED on orchestrator verification: typecheck green, 698 tests pass (+34), pij lint clean (38 files), AC-08 clean, all resolutions H1/H2/H3/M5/M7/P9 verified in session.ts, scope clean (cli.ts type-forced E-NOTMUX entry justified). Dimension-0: 2 mutations RED->GREEN (E-NOTMUX guard, fresh-guard reload idempotency). Worker compact queued.",
+          "kind": "note"
+        },
+        {
+          "at": "2026-06-23T09:55:53.299Z",
+          "text": "Stage-7 review (pij-1vru9uw): REQUEST_CHANGES, 2 HIGH + 2 MED. F002 (AC-06 close warning not caller-visible) + F003 (PIJ_SPAWN_MODEL builder drift) dispatched as fix packet dlg-0004 to worker pij-1x210ln. F001 (gate red on peer's skills/flow-pair ledger-records.test.ts lint, FIXABLE) = cross-workstream, pinged owner pij-xnj6p0, NOT touched. F004 (pij-messaging domain docs stale, 5-port wording) DEFERRED to Phase 3 docs (tracked). Manual tmux dogfood succeeded this session: spawned pij-6czdes in a real window, round-tripped a message, closed cleanly.",
+          "kind": "note"
+        },
+        {
+          "at": "2026-06-23T10:00:59.449Z",
+          "text": "Fix pass dlg-0004 APPROVED on orchestrator verification: typecheck green, 703 tests (+5), lint clean on 5 touched files, F002 (close warning caller-visible via Result<{warning?}> + index.ts surfacing) and F003 (PIJ_SPAWN_MODEL moved into buildSpawnCommand) verified in source. Dimension-0 MUT-3: neutered F002 warning cond -> 2 RED, restore -> GREEN. Ready for re-review by pij-1vru9uw (compacted).",
+          "kind": "note"
+        }
+      ],
+      "ran_at": "2026-06-23T10:02:35.656Z"
+    },
+    {
+      "id": "phase-3",
+      "type": "phase",
+      "label": "Phase 3: Smoke + docs",
+      "status": "known",
+      "next": [
+        "ship"
+      ],
+      "created_at": "2026-06-23T07:16:52.549Z",
+      "modified_at": "2026-06-23T07:16:52.549Z"
     }
   ],
   "nav": {
-    "now": "plan",
-    "next": "ship",
+    "now": "phase-3",
+    "next": "phase-3",
     "intent": "Extend the pij extension to spawn a new pi instance in a new tmux window under the current session (settable model), have it report ready, and close/remove it when done",
     "bag": {
       "mode": "Full",
