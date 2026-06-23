@@ -157,6 +157,29 @@ flow-pair-link:
     ln -sf "$(realpath skills/flow-pair)" .pi/skills/flow-pair
     @echo "✓ .pi/skills/flow-pair → $(realpath skills/flow-pair)"
 
+# Install the flow front-door skills GLOBALLY for pi only (machine-wide), via
+# `npx skills`. Mirrors ~/github/tools `install-skills`, but scoped to pi
+# (-a pi) and to just the flow skills (-s) rather than every CLI / every skill.
+# Two sources:
+#   • the-flow                       ← jakkaj/tools (remote)
+#   • eng-harness-flow (+ its peer    ← the globally-installed
+#     harnessability-assessment)        @ai-substrate/engineering-harness
+#                                        skills/ dir, resolved via `npm root -g`
+#                                        so no personal path is hard-coded
+#                                        (requires the harness CLI installed).
+# Re-run after a fresh machine or `pi update` to restore the flow skills.
+install-flow-skills:
+    @echo "=== the-flow ← jakkaj/tools (pi, global) ==="
+    npx skills@latest add jakkaj/tools -a pi -g -y -s the-flow
+    @echo
+    @echo "=== eng-harness-flow ← @ai-substrate/engineering-harness (pi, global) ==="
+    @set -eu; \
+      eh="$(npm root -g)/@ai-substrate/engineering-harness/skills"; \
+      test -d "$eh" || { echo "❌ harness skills not found at $eh"; echo "   install @ai-substrate/engineering-harness globally first"; exit 1; }; \
+      npx skills@latest add "$eh" -a pi -g -y -s eng-harness-flow -s eng-harness-0-harnessability-assessment
+    @echo
+    @echo "✓ flow skills installed globally for pi (the-flow + eng-harness-flow)"
+
 # Run vitest scoped to the flow-pair lib tests (explicit path bypasses vitest
 # config include filter; also works with: just test skills/flow-pair/test/).
 flow-pair-test *ARGS:
