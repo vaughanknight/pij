@@ -1,13 +1,14 @@
 ---
 name: flow-pair
 description: |
-  Orchestrate a two-session flow-pair run: an expensive orchestrator session supervises planning, delegation, review, and learning while a cheap worker session executes one bounded packet at a time. Use for: starting a flow-pair run, delegating a task packet to a worker, reviewing worker output, recording prompt-cluster learnings, or querying the run ledger. Also invoked as /flow-pair.
+  Orchestrate a flow-pair run: an expensive orchestrator session supervises planning, delegation, review, and learning, driving a small roster of pij **colleague** sessions — a **coder** that implements bounded packets and a separate **(cross-model) reviewer** — acquired lazily and reused across the run. Use for: starting a flow-pair run, delegating a task packet to a worker, reviewing worker output, recording prompt-cluster learnings, or querying the run ledger. Also invoked as /flow-pair.
 ---
 
 # /flow-pair
 
-Wrap `the-flow` with a **two-session orchestrator/worker delegation seam** and a
-central prompt-learning ledger. `the-flow` remains the inner route authority;
+Wrap `the-flow` with an **orchestrator + colleague-peer delegation seam** (a coder
+and a separate cross-model reviewer — § Fleet lifecycle) and a central
+prompt-learning ledger. `the-flow` remains the inner route authority;
 `flow-pair` is the delegation wrapper — never a replacement.
 
 ## Hard Invariants
@@ -34,9 +35,9 @@ The expensive orchestrator follows this finite-state loop each turn:
 | `ASK_USER` | Requirement ambiguous or needs human decision | Pause and ask; never proceed without answer |
 | `RUN_LOCAL` | Task is safe, cheap, read-only, or needs no delegation | Execute directly in orchestrator session |
 | `DELEGATE` | Task is bounded, executable, and suitable for a cheap worker | Compile context pack → render packet → `pij send` path pointer |
-| `REVIEW` | Worker reports completion | Read worker report → apply 10-dimension rubric → emit verdict |
-| `FIX` | Review verdict = `FIX_REQUIRED` | Render narrowed fix packet scoped to review findings only |
-| `APPROVE` | Review verdict = `APPROVE` or `APPROVE_WITH_NOTES` | Record approval → update ledger → advance state |
+| `REVIEW` | Worker reports completion | **Compact the worker FIRST** (reflex; § Fleet lifecycle) → acquire/canary the **reviewer peer** if not yet live → dispatch a review pointer to it. The verdict (+ mandatory Dim-0 mutation gate) is produced **by the reviewer**, handled on its return |
+| `FIX` | Review verdict = `FIX_REQUIRED` | **Compact the reviewer FIRST** → render a narrowed fix packet (review findings only) → **dispatch it to the coder** (DELEGATE) |
+| `APPROVE` | Review verdict = `APPROVE` or `APPROVE_WITH_NOTES` | **Compact the reviewer FIRST** → record approval → update ledger → advance state |
 
 ### Worker context hygiene — compact EARLY, not late (reflexive)
 
@@ -69,10 +70,65 @@ re-review.
   sending the next pointer, and confirm the session flips to `working` within
   ~10s of dispatch (send a one-byte nudge if it is still idle).
 
+## Fleet lifecycle — the colleagues (coder + reviewer)
+
+A run keeps a small **roster** of colleague sessions, acquired **lazily** and
+**reused** across the whole run (never torn down between phases — only at final
+tidy-up). The roster lives in the ledger (`run.json`) as
+`role → { pijId, paneId, model, spawnedByUs }`, persisted before use (P9), so a
+later `tidy` can find and close our windows even after a crash.
+
+**Roles & default models** (overridable per run via `--coder-model` /
+`--reviewer-model`):
+
+| Role | Default model | Acquire when |
+|------|---------------|--------------|
+| coder | `github-copilot/claude-sonnet-4.6:xhigh` | first `DELEGATE` |
+| reviewer | `github-copilot/gpt-5.5:xhigh` (cross-model, deliberately ≠ coder) | first `REVIEW` |
+
+**Lifecycle:**
+
+- **Acquire — provided-or-spawn, lazy.** If a role's peer id was provided, use it.
+  Otherwise `pij_spawn({ model })` the *first time that role is needed* (coder on
+  first dispatch, reviewer on first review) — **never hijack ambient idle peers**.
+- **Canary-verify before trusting — a ready-ping is NOT proof.** A wrong `--model`
+  is accepted **silently** at startup (the bogus name even shows in the footer);
+  the child still boots, registers, and ready-pings — then **400s on its first real
+  inference** (`API error (400): model not supported`). Cost stays **$0.00** —
+  there is **no expensive silent fallback**, but you get a *useless* worker that
+  *looks* healthy. So after spawn, **capture the new window's footer**, confirm it
+  shows the *expected* model, and confirm the boot turn completed without a 400.
+  Mark the role healthy only then. **This canary applies to *provided* peers too**
+  — verify a given peer's footer/model + no-400 before first use; never trust an
+  inherited session blind.
+- **Reuse across phases — compact, never close.** Between phases `pij_send({ to,
+  command: "compact" })` each colleague so the same coder + reviewer carry the
+  entire run, clean-slate each phase. (This is the compact-early reflex extended
+  to "compact, keep, reuse.")
+- **Heal.** A dead/stale colleague — or one that fails its canary — is closed and
+  `pij_spawn`-replaced on next need; **persist the updated roster before**
+  re-delivering the packet (P9).
+- **Teardown — end only.** When tidying up after the run, `pij_close` **only**
+  colleagues with `spawnedByUs === true`; leave *provided* peers for their owner
+  (close is ownership-aware and warns on non-owner anyway).
+
+> **Real peers, not builtin subagents.** Builtin subagents are **read-blind** in
+> this harness (they cannot read files), so a coder/reviewer must be a real pij
+> peer session (spawned or provided) — **never** a builtin-subagent fanout.
+
+### Pipeline while a colleague is busy
+
+The decision loop is per-turn, but the orchestrator must **not idle** while a
+colleague works. The instant you dispatch — a packet to the coder, or a review to
+the reviewer — advance the **next independent** work in parallel: prep the next
+phase's tasks / context pack, draft the next packet, update the flight plan. The
+colleague's run-time then overlaps orchestrator prep; collect the report when it
+lands. (Same overlap logic as compact-early, applied to the whole busy window.)
+
 ## Invocation
 
 ```
-/flow-pair start "<request>" [--repo <path>] [--ledger-root <path>]
+/flow-pair start "<request>" [--repo <path>] [--ledger-root <path>] [--coder-model <m>] [--reviewer-model <m>]
 /flow-pair dispatch --run-id <id> --plan-path <p> --phase <text> --tasks-dir <p> [--task-description <t>] [--allowed-paths <p1,...>]
 /flow-pair observe [--run-id <id>]
 /flow-pair review --delegation <id>
@@ -102,12 +158,15 @@ Finding 08). See `references/architecture.md` for the full call chain.
    Capture that line and deliver it to the worker via the **`pij_send` tool**:
    `pij_send({ to: workerId, message: pointerMsg })`. Do NOT shell `pij send` from
    SKILL.md — the tool call is the transport boundary (P2: lib never sends; orchestrator sends).
-5. **Await and review** — on inbound worker report, apply the rubric in
+5. **Review via the reviewer peer** — on inbound **worker** report, **compact the
+   worker FIRST**, then hand the diff to the **reviewer colleague** (acquire/canary
+   it if not yet live; § Fleet lifecycle) with the rubric in
    `references/review-rubrics.md`. **Dimension 0 (test quality) is mandatory for
-   CODE packets**: the worker wrote its own tests, so green ≠ good — prove the
-   tests are non-vacuous (`just flow-pair-mutate <file> '<sed-expr>'`, or a reasoned
-   mutation argument naming the assertion that flips) before approval. Emit `APPROVE`,
-   `APPROVE_WITH_NOTES`, or `FIX_REQUIRED`.
+   CODE packets**: the worker wrote its own tests, so green ≠ good — the reviewer
+   proves the tests are non-vacuous (`just flow-pair-mutate <file> '<sed-expr>'`, or a
+   reasoned mutation argument naming the assertion that flips) before approval. On
+   the reviewer's **verdict** (`APPROVE` / `APPROVE_WITH_NOTES` / `FIX_REQUIRED`),
+   **compact the reviewer FIRST**, then APPROVE or loop back to the coder via FIX.
 6. **Learn** — after approval, write a candidate learning note to
    `prompt-lab/clusters/<cluster>/candidates/` (never auto-promote to
    `active.md`; manual approval required).
