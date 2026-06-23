@@ -32,6 +32,10 @@ the pij extension's own event stream (`~/.pij/<id>/events.ndjson`) + minih retro
 - `npm run pkg vet <src>` / `pkg audit` — third-party extension vetting (Plan 009).
 - `snapshots-check` — agent-pack snapshot drift.
 - `just self-check` — the composite merge gate over all of the above.
+- **`harness checks`** — the runnable signal inventory: runs every sensor above
+  as individual stages with a per-sensor verdict (runs ALL, not first-fail;
+  `--quick` skips smoke). The single "are we done?/ship" gate; add new sensors to
+  `.harness/extensions/checks/`.
 
 ## Evidence paths
 - Test/typecheck/lint output → stdout (captured by `harness boot` envelope `data`).

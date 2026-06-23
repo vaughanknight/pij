@@ -1,0 +1,48 @@
+# `harness checks` — agent briefing
+
+> Served verbatim by `harness instructions checks`, freshly read every call.
+
+## What this verb computes (the deterministic part)
+
+`harness checks` runs pij's full deterministic gate — the engineering-harness
+**signal inventory** made runnable. It mirrors `just self-check` but runs each
+sensor as its own stage and runs **all** of them (it does not stop at the first
+failure), so one invocation surfaces every problem:
+
+1. `typecheck` — `just typecheck` (the TS surface compiles)
+2. `lint` — `just lint` (Biome errors + warnings clean)
+3. `test` — `just test` (vitest suite passes)
+4. `smoke` — `just smoke` (tmux-driven driver scenarios) — **heavy**
+5. `pkg-audit` — `PIJ_VET_SKIP_AGENT=1 just pkg audit` (no new package findings)
+6. `snapshots` — `just snapshots-check` (agent-pack snapshots not drifted)
+
+Envelope `data` carries `{ ok, ran[], skipped[], results[] }`; each `results[]`
+entry is `{ name, status: pass|fail|skipped, code, proves }`. On failure,
+`data.failures[]` holds the last ~25 lines of each failing sensor's output.
+
+`--quick` skips heavy sensors (smoke) for a fast static+unit gate.
+
+## Your role (the inference part)
+
+- `status: ok` (no `--quick`) → **ship/done-ready**: every sensor passed.
+- `status: ok` with `--quick` → fast gate green, but run the full `harness checks`
+  (incl. smoke) before actually shipping / declaring done.
+- `status: error` → read `data.failures[]`, fix every failing sensor, re-run.
+  Do not declare the task done while this is red.
+
+## Watch out for
+
+- **`smoke` needs tmux** and is slow; it fails (not skips) if tmux is unavailable.
+  Use `--quick` when you only need the static+unit signal mid-change.
+- **Scope = tsconfig-included paths only.** typecheck/lint cover `.pi/extensions/**`,
+  `harness/**`, `skills/**` (tsconfig `include`) — a broken file under `scratch/`
+  (excluded) will NOT trip the gate. That's correct, but don't probe `scratch/`
+  to test the failure path; use an in-scope file or you'll get a confusing false green.
+- **Output**: the envelope is JSON when piped / `HARNESS_JSON=1`, and a TTY renders
+  it human-readably. `--json` / `--no-json` are **global harness flags** (kernel-level,
+  so not listed in `harness checks --help`); when output is already piped they are no-ops.
+- This is the canonical **done/ship gate** — distinct from `harness boot`
+  (a fast readiness proof = typecheck+test only). Boot green ≠ checks green.
+- `code: 127` on a sensor means the binary (`just`) could not be spawned.
+- Adding a new harness sensor/back-pressure check = add one entry to `SENSORS`
+  in `.harness/extensions/checks/extension.ts` (keep it in sync with `just self-check`).
