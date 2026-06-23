@@ -14,7 +14,6 @@ import {
 	resolveRepoDbPath,
 	SessionSqlStore,
 	type SqlResult,
-	STORE_NAME,
 	type StoreStatus,
 	type TableSchema,
 } from "./store.js";
@@ -157,8 +156,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function refreshStatus(ctx: ExtensionContext): void {
-		const status = store.status();
-		ctx.ui.setStatus(STATUS_KEY, status.open ? `${STORE_NAME}: ready` : undefined);
+		ctx.ui.setStatus(STATUS_KEY, undefined);
 	}
 
 	function emitChanged(source: SessionSqlChangedSource, result?: SqlResult): void {

@@ -24,6 +24,10 @@ import type { Role } from "./core/types.js";
 // pij — peer session messaging + observability.
 //
 // Thin pi-event -> coordinator translator (Patterns P2/P8/P10): owns NO logic.
+
+/** Footer status key — shows the session's pij id (e.g. `pij-abc123`) in pi's
+ *  bottom bar so the operator knows which peer this terminal is at a glance. */
+const PIJ_STATUS_KEY = "pij";
 // All boot/announce/capture/inject/command/receipt/shutdown behaviour lives in
 // the pure, fakes-tested PijSession (./core/session.ts); this file only adapts
 // pi events into coordinator calls and wires the fs adapters. The single
@@ -219,6 +223,7 @@ export default function (pi: ExtensionAPI): void {
 			piSessionId = undefined; // stale/unavailable session manager
 		}
 		self = deriveSelfId(piSessionId, process.pid);
+		ctx.ui.setStatus(PIJ_STATUS_KEY, self);
 		const envRole = process.env.PIJ_ROLE;
 		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const dataDir = join(pijHome, self);
@@ -275,10 +280,11 @@ export default function (pi: ExtensionAPI): void {
 	// working/idle without parsing the stream.
 	pi.on("turn_end", () => session?.onTurnEnd());
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx: ExtensionContext) => {
 		disposeWatch?.();
 		disposeWatch = undefined;
 		session?.shutdown();
+		ctx.ui.setStatus(PIJ_STATUS_KEY, undefined);
 	});
 
 	pi.registerCommand("pij", {
