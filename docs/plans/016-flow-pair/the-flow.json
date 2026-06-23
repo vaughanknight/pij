@@ -4,10 +4,10 @@
   "slug": "flow-pair",
   "plan_dir": "docs/plans/016-flow-pair",
   "mode": "Full",
-  "cursor": "p8",
-  "recommended_next": "p8",
-  "now": "Phase 7 ✓ COMPLETE — prompt-learning + cluster isolation. dlg-0025 tasks (validate-v2 PASSED WITH NOTES) → dlg-0026 implement (lib/learning.ts, 145 tests) → dlg-0027 cross-model review (pij-uz6f3e OpenAI family; APPROVE_WITH_NOTES — 1 MED taxonomy↔PROMPT_CLUSTERS drift + 1 LOW learning.schema.json non-canonical clusters, both non-blocking, carried to P8). AC-07 E2E reproduced; mismatch fail-closed; P9 mutation RED→GREEN; ledger.ts zero diff; no auto-promotion.",
-  "next": "Phase 8 — End-to-end MVP wiring + dogfood run (tasks)",
+  "cursor": "merge",
+  "recommended_next": "merge",
+  "now": "Phase 8 ✓ COMPLETE — MVP wiring + dogfood run. 8.1 SKILL wiring (learn + harness checks gate). 8.2 docs/how/flow-pair.md + README. 8.4 harness checks folded in as the done gate (peer pij-70pmv1 verb, tested). 8.3 DOGFOOD on the file-watch-notify steer-dedup bug: dlg-0028->dlg-0030 (lifecycle HIGH: current-turn turn_end fires BEFORE consuming turn_start — cross-model caught what gates-green missed; two-generation SteeredNoticeTracker fix) + dlg-0032 (path-normalization: overlapping watch roots render the same file under different rel-path strings — dedup by resolved abs-path key). Dogfood caught its own false greens TWICE; both encoded as implement-code learnings (learn-0001/0002). AC-07 + AC-11 proven live. Phase 7 MED/LOW guardrails folded in. 8 of 8 phases done.",
+  "next": "Merge (8 merge) — PROCEED-gated",
   "agents": [
     { "id": "worker", "kind": "worker", "slug": "pij-1exbr8j", "runtime": "pij-messaging",
       "status": "live", "covers": ["p1","p2","p3","p4","p5","p6","p7","p8"], "render": "side",
@@ -60,9 +60,13 @@
       "note": "COMPLETE. dlg-0025 tasks (validate-v2 PASSED WITH NOTES: 1 MED CLI prompt-lab-root unspecified + 2 LOW, all folded as implement directives) → dlg-0026 implement (lib/learning.ts Learning.recordLearning cluster-isolation layer, 145 tests, six cluster scaffolds, prompt-taxonomy + learning-synthesis filled, learn CLI wired) → dlg-0027 cross-model review (pij-uz6f3e OpenAI family; APPROVE_WITH_NOTES — no HIGH/CRITICAL; 1 MED taxonomy↔PROMPT_CLUSTERS drift not mechanically guarded + 1 LOW learning.schema.json accepts non-canonical clusters; both non-blocking guardrail hardening carried to Phase 8). AC-07 E2E reproduced against the binary (1 candidate in implement-code, 0 siblings, active.md byte-identical); mismatch fail-closed; P9 ledger-before-candidate mutation RED→GREEN; ledger.ts zero diff (separation held); no silent auto-promotion. Orchestrator APPROVE.",
       "artifacts": ["skills/flow-pair/lib/learning.ts", "skills/flow-pair/test/learning.test.ts", "skills/flow-pair/test/cli-learning.test.ts", "skills/flow-pair/prompt-lab/", "skills/flow-pair/references/prompt-taxonomy.md", "skills/flow-pair/references/templates/learning-synthesis.md"],
       "next": ["p8"] },
-    { "id": "p8", "type": "phase", "phase": 8, "label": "End-to-end MVP wiring + dogfood run", "status": "next", "next": ["merge"] },
+    { "id": "p8", "type": "phase", "phase": 8, "label": "End-to-end MVP wiring + dogfood run", "status": "done",
+      "command": "/the-flow 6 implement --phase \"Phase 8: End-to-end MVP wiring + dogfood run\" --plan \"docs/plans/016-flow-pair/flow-pair-plan.md\"",
+      "note": "COMPLETE. 8.1 SKILL wiring (learn in Invocation + harness checks end-of-work gate). 8.2 docs/how/flow-pair.md operator guide + README section. 8.4 harness checks folded in (peer verb tested). 8.3 DOGFOOD: file-watch-notify steer-dedup — dlg-0028 first fix APPROVED gates+mutation but cross-model dlg-0029 caught lifecycle HIGH (current-turn turn_end BEFORE consuming turn_start) + LOW (swallowed-send poisons pending); dlg-0030 two-generation SteeredNoticeTracker + tagged InjectSendResult. Real use surfaced a 2nd gap (dlg-0032): overlapping watch roots render same file under different rel-path strings -> exact-text dedup missed it -> dedup by resolved abs-path key. Dogfood caught its own false greens TWICE -> encoded as learn-0001/0002. AC-07+AC-11 proven live. Phase 7 MED/LOW guardrails folded in.",
+      "artifacts": ["docs/how/flow-pair.md", "skills/flow-pair/SKILL.md", "skills/flow-pair/prompt-lab/clusters/implement-code/candidates/learn-0001.md", "skills/flow-pair/prompt-lab/clusters/implement-code/candidates/learn-0002.md"],
+      "next": ["merge"] },
 
-    { "id": "merge", "type": "merge", "label": "Merge", "status": "known",
+    { "id": "merge", "type": "merge", "label": "Merge", "status": "next",
       "command": "/the-flow 8 merge --plan \"docs/plans/016-flow-pair/flow-pair-plan.md\"", "next": [] }
   ]
 }
