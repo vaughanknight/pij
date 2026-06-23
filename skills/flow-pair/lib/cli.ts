@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { ContextPackCompiler, nodeContextPackDeps } from "./context-pack.js";
 import { deriveRepoId, nodeGitDeps } from "./identity.js";
 import { LedgerWriter, nodeLedgerDeps, PROMPTS_DIR } from "./ledger.js";
+import { nodeObserveDeps, Observe } from "./observe.js";
 import { nodePacketRendererDeps, PacketRenderer } from "./packet.js";
 import { LEDGER_ROOT, resolveRunDir } from "./paths.js";
 
@@ -30,7 +31,7 @@ Usage:
 Subcommands:
   start      Start a new flow-pair run          (Phase 1 functional)
   dispatch   Compile a context pack for a delegation      (Phase 3)
-  observe    Capture diffs after execution      [stub — Phase 5]
+  observe    Capture diffs after worker execution     (Phase 5)
   review     Run review rubric on output        [stub — Phase 6]
   fix        Generate a fix packet              [stub — Phase 6]
   accept     Accept and close a run             [stub — Phase 7]
@@ -41,7 +42,7 @@ Options:
   --repo <path>      Target repo path (start; default: cwd)
   --ledger-root <p>  Ledger root directory (start; default: .flow-pair)
   --run-id <id>      Run id (dispatch/observe/review/fix/accept/ledger)
-  --delegation <id>  Delegation id (review/accept; allocated automatically by dispatch)
+  --delegation <id>  Delegation id (observe/review/accept; allocated automatically by dispatch)
   --plan-path <p>    Absolute path to plan file (dispatch)
   --phase <text>     Phase section heading to extract (dispatch)
   --tasks-dir <p>    Absolute path to tasks directory (dispatch)
@@ -223,6 +224,33 @@ function runDispatch(flags: Record<string, string | boolean>): Record<string, un
 	};
 }
 
+function runObserve(flags: Record<string, string | boolean>): Record<string, unknown> {
+	const ledgerRoot = typeof flags["ledger-root"] === "string" ? flags["ledger-root"] : LEDGER_ROOT;
+	const repoRoot = typeof flags.repo === "string" ? flags.repo : process.cwd();
+	const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : undefined;
+	const delegationId = typeof flags.delegation === "string" ? flags.delegation : undefined;
+
+	if (!runId || !delegationId) {
+		throw new Error("observe requires: --run-id --delegation");
+	}
+
+	const obs = new Observe(ledgerRoot, nodeObserveDeps());
+	const res = obs.capture({ repoRoot, runId, delegationId });
+	if (!res.ok || !res.result) {
+		throw new Error(res.error ?? "observe capture failed");
+	}
+	return {
+		ok: true,
+		diffId: res.result.diffId,
+		runId: res.result.runId,
+		delegationId: res.result.delegationId,
+		changedFiles: res.result.changedFiles,
+		patchPath: res.result.patchPath,
+		statPath: res.result.statPath,
+		manifestPath: res.result.manifestPath,
+	};
+}
+
 function runStub(cmd: Subcommand): Record<string, unknown> {
 	return { ok: true, subcommand: cmd, status: "stub — not yet implemented" };
 }
@@ -265,9 +293,11 @@ function main(): void {
 				? runStart(flags)
 				: cmd === "dispatch"
 					? runDispatch(flags)
-					: cmd === "ledger"
-						? runLedger(flags)
-						: runStub(cmd);
+					: cmd === "observe"
+						? runObserve(flags)
+						: cmd === "ledger"
+							? runLedger(flags)
+							: runStub(cmd);
 
 		if (useJson) {
 			process.stdout.write(`${JSON.stringify(out)}\n`);
@@ -275,6 +305,10 @@ function main(): void {
 			// Fix 1: stdout = EXACTLY the pointer line so orchestrator can pipe stdout into pij_send.
 			// Metadata (delegationId, packId, packetPath, promptHash) is only emitted under --json.
 			process.stdout.write(`${out.pointerMsg as string}\n`);
+		} else if (cmd === "observe") {
+			// Observe stdout contract: exactly one line — "diffId: diff-NNNN"
+			// Full ObserveResult is available under --json for Phase 6 consumers.
+			process.stdout.write(`diffId: ${out.diffId as string}\n`);
 		} else {
 			for (const [k, v] of Object.entries(out)) {
 				process.stdout.write(`${k}: ${String(v)}\n`);

@@ -19,9 +19,10 @@ packets hard-forbid those paths.
 
 ## Source Locations
 
-> **Phases 1–3 are built**; Phases 4–8 (`packet.ts`, `observe.ts`, `review.ts`,
-> `learning.ts` + wiring) are planned. Built so far: `identity.ts`, `paths.ts`,
-> `cli.ts`, `ledger.ts` (+ `appendLedgerEvent`), `context-pack.ts`, `schemas/*.json`.
+> **Phases 1–5 are built**; Phases 6–8 (`review.ts`, `learning.ts` + wiring) are
+> planned. Built so far: `identity.ts`, `paths.ts`, `cli.ts`, `ledger.ts`
+> (+ `appendLedgerEvent`), `context-pack.ts`, `packet.ts`, `observe.ts`, `schemas/*.json`
+> (incl. `packet.written` + `files.changed` events).
 
 | Path | Role |
 |------|------|
@@ -111,3 +112,5 @@ packets hard-forbid those paths.
 | 016-flow-pair | **Phase 1 built**: `lib/identity.ts`, `lib/paths.ts`, `lib/cli.ts`, `SKILL.md` + references/templates skeleton; `flow-pair` CLI (bin + npm link). | 2026-06-17 |
 | 016-flow-pair | **Phase 2 built**: `lib/ledger.ts` (`LedgerWriter` + `appendLedgerEvent` + record writers, P9 persist-before-mutate), `schemas/*.json` (6 draft-07). Encoded test-quality Dimension 0 + `just flow-pair-mutate` after a cross-model review caught a CRITICAL P9 bug behind green gates. | 2026-06-17 |
 | 016-flow-pair | **Phase 3 built**: `lib/context-pack.ts` (`ContextPackCompiler`: `extractSection` prefix-boundary match, `clusterLearnings` graceful-empty, `compile` P9-via-`appendLedgerEvent`, manifest carries content + forbidden-paths guard); `dispatch` CLI subcommand; `references/context-packs.md`. Tests mutation-proven; worker self-mutation caught a vacuous P9 test. | 2026-06-17 |
+| 016-flow-pair | **Phase 4 built**: `lib/packet.ts` (`PacketRenderer`: single-pass template render, `delegationId` `/^dlg-\d{4}$/` validation + path-escape guard, P9 `packet.written` before write); `dispatch` chain prints pointer-only (orchestrator sends via `pij_send` tool — no CLI shell-out). Cross-model review caught schema + transport doc-drift. | 2026-06-17 |
+| 016-flow-pair | **Phase 5 built**: `lib/observe.ts` (`Observe.capture`: `git status --porcelain=v1 -z` NUL parse, AC-13 flow-state guard by **basename** before any write, P9 `files.changed` event, synthetic patches for untracked files via `git diff --no-index`); `flow-pair observe` CLI. Cross-model review caught a quoted-path AC-13 bypass (fixed `-z`); fix verified end-to-end. | 2026-06-20 |

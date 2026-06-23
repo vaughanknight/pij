@@ -93,7 +93,15 @@ export type LedgerEvent =
 			packId: string;
 			at: string;
 	  }
-	| { type: "packet.written"; runId: string; delegationId: string; packetPath: string; at: string };
+	| { type: "packet.written"; runId: string; delegationId: string; packetPath: string; at: string }
+	| {
+			type: "files.changed";
+			runId: string;
+			delegationId: string;
+			diffId: string;
+			changedFiles: string[];
+			at: string;
+	  };
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 

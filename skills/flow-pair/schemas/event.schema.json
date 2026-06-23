@@ -103,6 +103,20 @@
 				"at": { "type": "string", "format": "date-time" }
 			},
 			"additionalProperties": false
+		},
+		{
+			"title": "files.changed",
+			"type": "object",
+			"required": ["type", "runId", "delegationId", "diffId", "changedFiles", "at"],
+			"properties": {
+				"type": { "type": "string", "const": "files.changed" },
+				"runId": { "type": "string" },
+				"delegationId": { "type": "string" },
+				"diffId": { "type": "string" },
+				"changedFiles": { "type": "array", "items": { "type": "string" } },
+				"at": { "type": "string", "format": "date-time" }
+			},
+			"additionalProperties": false
 		}
 	]
 }
