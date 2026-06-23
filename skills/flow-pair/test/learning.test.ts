@@ -355,12 +355,7 @@ describe("cluster-set single-source (Phase 7 MED guardrail)", () => {
 	// declared taxonomy source (prompt-taxonomy.md), nor the committed scaffold
 	// dirs. A future code-only cluster addition would otherwise leave the taxonomy
 	// stale and tests building fixtures from the code constant silently.
-	const taxonomyPath = join(
-		__dirname,
-		"..",
-		"references",
-		"prompt-taxonomy.md",
-	);
+	const taxonomyPath = join(__dirname, "..", "references", "prompt-taxonomy.md");
 	const clustersRoot = join(__dirname, "..", "prompt-lab", "clusters");
 
 	function parseTaxonomyClusters(): string[] {

@@ -78,11 +78,11 @@ describe("LedgerWriter — record writers", () => {
 		const rec = JSON.parse(
 			deps.readFileSync(join(runDir, "delegations", "dlg-0001.json"), "utf8"),
 		) as Record<string, unknown>;
-		expect(rec["delegationId"]).toBe("dlg-0001");
-		expect(rec["runId"]).toBe(FIXED_RUN_ID);
-		expect(rec["taskRef"]).toBe("T001");
-		expect(rec["packetPath"]).toBe("prompts/dlg-0001.md");
-		expect(rec["status"]).toBe("pending");
+		expect(rec.delegationId).toBe("dlg-0001");
+		expect(rec.runId).toBe(FIXED_RUN_ID);
+		expect(rec.taskRef).toBe("T001");
+		expect(rec.packetPath).toBe("prompts/dlg-0001.md");
+		expect(rec.status).toBe("pending");
 	});
 
 	it("writeDelegation appends delegation.created event", () => {
@@ -95,8 +95,8 @@ describe("LedgerWriter — record writers", () => {
 			.filter(Boolean);
 		expect(lines.length).toBeGreaterThanOrEqual(1);
 		const event = JSON.parse(lines.at(-1) ?? "{}") as Record<string, unknown>;
-		expect(event["type"]).toBe("delegation.created");
-		expect(event["delegationId"]).toBe("dlg-0001");
+		expect(event.type).toBe("delegation.created");
+		expect(event.delegationId).toBe("dlg-0001");
 	});
 
 	it("writeDelegation ids are monotonic: dlg-0001, dlg-0002", () => {
@@ -131,10 +131,10 @@ describe("LedgerWriter — record writers", () => {
 		const rec = JSON.parse(
 			deps.readFileSync(join(runDir, "prompt-trials", "trial-0001.json"), "utf8"),
 		) as Record<string, unknown>;
-		expect(rec["trialId"]).toBe("trial-0001");
-		expect(rec["runId"]).toBe(FIXED_RUN_ID);
-		expect(rec["delegationId"]).toBe("dlg-0001");
-		expect(rec["promptHash"]).toBe("abc12345");
+		expect(rec.trialId).toBe("trial-0001");
+		expect(rec.runId).toBe(FIXED_RUN_ID);
+		expect(rec.delegationId).toBe("dlg-0001");
+		expect(rec.promptHash).toBe("abc12345");
 	});
 
 	// ─── writeReview ──────────────────────────────────────────────────────────
@@ -150,11 +150,11 @@ describe("LedgerWriter — record writers", () => {
 		const rec = JSON.parse(
 			deps.readFileSync(join(runDir, "reviews", "rev-0001.json"), "utf8"),
 		) as Record<string, unknown>;
-		expect(rec["reviewId"]).toBe("rev-0001");
-		expect(rec["runId"]).toBe(FIXED_RUN_ID);
-		expect(rec["delegationId"]).toBe("dlg-0001");
-		expect(rec["verdict"]).toBe("APPROVE");
-		expect(Array.isArray(rec["findings"])).toBe(true);
+		expect(rec.reviewId).toBe("rev-0001");
+		expect(rec.runId).toBe(FIXED_RUN_ID);
+		expect(rec.delegationId).toBe("dlg-0001");
+		expect(rec.verdict).toBe("APPROVE");
+		expect(Array.isArray(rec.findings)).toBe(true);
 	});
 
 	// ─── writeLearning ────────────────────────────────────────────────────────
@@ -170,9 +170,9 @@ describe("LedgerWriter — record writers", () => {
 		const rec = JSON.parse(
 			deps.readFileSync(join(runDir, "learnings", "learn-0001.json"), "utf8"),
 		) as Record<string, unknown>;
-		expect(rec["learningId"]).toBe("learn-0001");
-		expect(rec["runId"]).toBe(FIXED_RUN_ID);
-		expect(rec["delegationId"]).toBe("dlg-0001");
-		expect(rec["cluster"]).toBe("tdd-patterns");
+		expect(rec.learningId).toBe("learn-0001");
+		expect(rec.runId).toBe(FIXED_RUN_ID);
+		expect(rec.delegationId).toBe("dlg-0001");
+		expect(rec.cluster).toBe("tdd-patterns");
 	});
 });
