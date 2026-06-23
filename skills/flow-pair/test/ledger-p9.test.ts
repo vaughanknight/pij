@@ -141,7 +141,7 @@ describe("LedgerWriter — P9 failure injection (F1)", () => {
 		const deps = makeFailAppendDeps(FIXED_RUN_ID);
 		const writer = new LedgerWriter("/tmp/any", deps);
 		const result = writer.writeReview(FIXED_RUN_ID, "dlg-0001", {
-			verdict: "ACCEPT",
+			verdict: "APPROVE",
 			findings: [],
 		});
 		expect(result.ok).toBe(false);
@@ -193,7 +193,7 @@ describe("LedgerWriter — P9 success-path order (F4: writePromptTrial/writeRevi
 		const deps = makeTrackingDeps();
 		scaffoldRunDir(tmpRoot, FIXED_RUN_ID);
 		const writer = new LedgerWriter(tmpRoot, deps);
-		writer.writeReview(FIXED_RUN_ID, "dlg-0001", { verdict: "ACCEPT", findings: [] });
+		writer.writeReview(FIXED_RUN_ID, "dlg-0001", { verdict: "APPROVE", findings: [] });
 		const appendIdx = deps.callLog.indexOf("appendFileSync");
 		const writeIdx = deps.callLog.indexOf("writeFileSync");
 		expect(appendIdx).toBeGreaterThanOrEqual(0);

@@ -36,7 +36,27 @@ The expensive orchestrator follows this finite-state loop each turn:
 | `DELEGATE` | Task is bounded, executable, and suitable for a cheap worker | Compile context pack → render packet → `pij send` path pointer |
 | `REVIEW` | Worker reports completion | Read worker report → apply 10-dimension rubric → emit verdict |
 | `FIX` | Review verdict = `FIX_REQUIRED` | Render narrowed fix packet scoped to review findings only |
-| `ACCEPT` | Review verdict = `ACCEPT` | Record acceptance → update ledger → advance state |
+| `APPROVE` | Review verdict = `APPROVE` or `APPROVE_WITH_NOTES` | Record approval → update ledger → advance state |
+
+### Worker context hygiene — compact EARLY, not late
+
+**As soon as a worker reports a stage complete and you enter `REVIEW`, compact it
+immediately** (`pij_send({ to: workerId, command: "compact" })`). The worker is idle
+for the entire time you review/verify/synthesize, so the ~30–90s compact+summarize
+latency overlaps work you are doing anyway, and the worker is ready on a clean slate
+by the time you `DELEGATE` the next packet — **zero wait**.
+
+Compacting *late* (right before dispatch) forces you to wait, and on a saturated
+post-stage context it has repeatedly caused the worker to **stall** (it reads the
+packet, runs one tool call, then goes idle without starting the stage). Encode the
+habit; don't rely on remembering it at dispatch time.
+
+- A worker packet always carries full re-grounding context (findings, file:line,
+  fixes), so a compacted worker re-reads the files and continues fine — even for a
+  `FIX` iteration on its own code. When in doubt, compact early.
+- **Always confirm `command:compact, executed:true`** (via `pij tail <worker>`)
+  before sending the next pointer, and confirm the worker flips to `working` within
+  ~10s of dispatch (send a one-byte nudge if it is still idle).
 
 ## Invocation
 
@@ -74,9 +94,9 @@ Finding 08). See `references/architecture.md` for the full call chain.
    `references/review-rubrics.md`. **Dimension 0 (test quality) is mandatory for
    CODE packets**: the worker wrote its own tests, so green ≠ good — prove the
    tests are non-vacuous (`just flow-pair-mutate <file> '<sed-expr>'`, or a reasoned
-   mutation argument naming the assertion that flips) before ACCEPT. Emit `ACCEPT`
-   or `FIX_REQUIRED`.
-6. **Learn** — after `ACCEPT`, write a candidate learning note to
+   mutation argument naming the assertion that flips) before approval. Emit `APPROVE`,
+   `APPROVE_WITH_NOTES`, or `FIX_REQUIRED`.
+6. **Learn** — after approval, write a candidate learning note to
    `prompt-lab/clusters/<cluster>/candidates/` (never auto-promote to
    `active.md`; manual approval required).
 
@@ -87,7 +107,7 @@ Finding 08). See `references/architecture.md` for the full call chain.
 - [`references/ledger-schema.md`](./references/ledger-schema.md) — run/delegation/trial/review/learning record schemas
 - [`references/prompt-taxonomy.md`](./references/prompt-taxonomy.md) — cluster taxonomy (implement-code, fix-code, review-code, docs-writing, codebase-research, validation-runner, …)
 - [`references/context-packs.md`](./references/context-packs.md) — context pack extraction rules (inclusion/exclusion, section mapping, size contract)
-- [`references/review-rubrics.md`](./references/review-rubrics.md) — 10-dimension rubric and verdict model (`ACCEPT` / `FIX_REQUIRED`)
+- [`references/review-rubrics.md`](./references/review-rubrics.md) — 10-dimension rubric and verdict model (`APPROVE` / `APPROVE_WITH_NOTES` / `FIX_REQUIRED`)
 - [`references/templates/orchestrator-stage.md`](./references/templates/orchestrator-stage.md) — orchestrator stage prompt template
 - [`references/templates/worker-implement.md`](./references/templates/worker-implement.md) — worker implementation packet template
 - [`references/templates/worker-fix.md`](./references/templates/worker-fix.md) — worker fix packet template

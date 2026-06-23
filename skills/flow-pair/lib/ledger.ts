@@ -47,13 +47,15 @@ export interface ReviewFinding {
 	dimension: string;
 	severity: "critical" | "high" | "medium" | "low" | "info";
 	message: string;
+	/** Repo-relative path; present when finding relates to a specific file. AC-06 anchor. */
+	file?: string;
 }
 
 export interface ReviewRecord {
 	reviewId: string;
 	runId: string;
 	delegationId: string;
-	verdict: "ACCEPT" | "FIX_REQUIRED";
+	verdict: "APPROVE" | "APPROVE_WITH_NOTES" | "FIX_REQUIRED";
 	findings: ReviewFinding[];
 	createdAt: string;
 }
@@ -101,12 +103,32 @@ export type LedgerEvent =
 			diffId: string;
 			changedFiles: string[];
 			at: string;
+	  }
+	| {
+			type: "review.recorded";
+			runId: string;
+			delegationId: string;
+			reviewId: string;
+			verdict: string;
+			at: string;
+	  }
+	| {
+			type: "fix_packet.written";
+			runId: string;
+			delegationId: string;
+			reviewId: string;
+			fixPacketId: string;
+			fixPacketPath: string;
+			allowedFiles: string[];
+			at: string;
 	  };
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
 /** Sub-directory under the run directory holding rendered worker packets. Exported for Phase 4+. */
 export const PROMPTS_DIR = "prompts" as const;
+/** Sub-directory under the run directory holding fix packets. Exported for Phase 6. */
+export const FIX_PACKETS_DIR = "fix-packets" as const;
 
 const EVENTS_FILE = "events.jsonl" as const;
 const RUN_JSON_FILE = "run.json" as const;
@@ -124,6 +146,7 @@ const RUN_SUBDIRS = [
 	"prompts",
 	"worker-reports",
 	"diffs",
+	"fix-packets",
 ] as const;
 
 const ID_PREFIXES = {
@@ -397,7 +420,7 @@ export class LedgerWriter {
 	writeReview(
 		runId: string,
 		delegationId: string,
-		opts: { verdict: "ACCEPT" | "FIX_REQUIRED"; findings: ReviewFinding[] },
+		opts: { verdict: ReviewRecord["verdict"]; findings: ReviewFinding[] },
 	): { ok: boolean; review?: ReviewRecord; error?: string } {
 		try {
 			const dirResult = resolveRunDir(this.ledgerRoot, runId);

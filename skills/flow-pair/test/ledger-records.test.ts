@@ -143,7 +143,7 @@ describe("LedgerWriter — record writers", () => {
 		const deps = makeTrackingDeps();
 		const writer = new LedgerWriter(tmpRoot, deps);
 		const result = writer.writeReview(FIXED_RUN_ID, "dlg-0001", {
-			verdict: "ACCEPT",
+			verdict: "APPROVE",
 			findings: [{ dimension: "correctness", severity: "info", message: "looks good" }],
 		});
 		expect(result.ok).toBe(true);
@@ -153,7 +153,7 @@ describe("LedgerWriter — record writers", () => {
 		expect(rec["reviewId"]).toBe("rev-0001");
 		expect(rec["runId"]).toBe(FIXED_RUN_ID);
 		expect(rec["delegationId"]).toBe("dlg-0001");
-		expect(rec["verdict"]).toBe("ACCEPT");
+		expect(rec["verdict"]).toBe("APPROVE");
 		expect(Array.isArray(rec["findings"])).toBe(true);
 	});
 

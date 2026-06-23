@@ -73,11 +73,11 @@
 | `reviewId` | string | `rev-NNNN` |
 | `runId` | string | Link to run |
 | `delegationId` | string | Link to delegation |
-| `verdict` | `"ACCEPT" \| "FIX_REQUIRED"` | |
+| `verdict` | `"APPROVE" \| "APPROVE_WITH_NOTES" \| "FIX_REQUIRED"` | |
 | `findings` | `ReviewFinding[]` | Structured review findings |
 | `createdAt` | ISO 8601 | |
 
-**ReviewFinding sub-type**: `{ dimension: string; severity: "critical"|"high"|"medium"|"low"|"info"; message: string }`
+**ReviewFinding sub-type**: `{ dimension: string; severity: "critical"|"high"|"medium"|"low"|"info"; message: string; file?: string }`
 
 ### LearningRecord (`learnings/learn-NNNN.json`)
 

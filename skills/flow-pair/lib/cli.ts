@@ -15,10 +15,12 @@ import { LedgerWriter, nodeLedgerDeps, PROMPTS_DIR } from "./ledger.js";
 import { nodeObserveDeps, Observe } from "./observe.js";
 import { nodePacketRendererDeps, PacketRenderer } from "./packet.js";
 import { LEDGER_ROOT, resolveRunDir } from "./paths.js";
+import { nodeReviewDeps, Review } from "./review.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
 const SUBCOMMANDS = ["start", "dispatch", "observe", "review", "fix", "accept", "ledger"] as const;
+const REVIEW_ID_RE = /^rev-\d{4}$/;
 
 type Subcommand = (typeof SUBCOMMANDS)[number];
 
@@ -255,6 +257,103 @@ function runStub(cmd: Subcommand): Record<string, unknown> {
 	return { ok: true, subcommand: cmd, status: "stub — not yet implemented" };
 }
 
+function runReview(flags: Record<string, string | boolean>): Record<string, unknown> {
+	const runId = flags["run-id"];
+	const delegationId = flags["delegation-id"] ?? flags.delegation;
+	const phaseDir = flags["phase-dir"];
+	if (
+		typeof runId !== "string" ||
+		typeof delegationId !== "string" ||
+		typeof phaseDir !== "string"
+	) {
+		throw new Error("review requires: --run-id --delegation-id --phase-dir");
+	}
+	const localRepoRoot = typeof flags["repo-root"] === "string" ? flags["repo-root"] : process.cwd();
+	const ledgerRoot =
+		typeof flags["ledger-root"] === "string"
+			? flags["ledger-root"]
+			: join(localRepoRoot, ".flow-pair");
+	const dirResult = resolveRunDir(ledgerRoot, runId);
+	if (!dirResult.ok) {
+		throw new Error(dirResult.error ?? "invalid run id");
+	}
+	const rev = new Review(ledgerRoot, nodeReviewDeps());
+	const res = rev.evaluate({
+		runId,
+		delegationId,
+		phaseDir,
+		repoRoot: localRepoRoot,
+	});
+	if (!res.ok) {
+		throw new Error(res.error ?? "review evaluate failed");
+	}
+	return {
+		ok: true,
+		verdict: res.verdict,
+		reviewId: res.reviewId,
+		findings: res.findings,
+	};
+}
+
+function runFix(flags: Record<string, string | boolean>): Record<string, unknown> {
+	const runId = flags["run-id"];
+	const delegationId = flags["delegation-id"] ?? flags.delegation;
+	const reviewId = flags["review-id"];
+	if (
+		typeof runId !== "string" ||
+		typeof delegationId !== "string" ||
+		typeof reviewId !== "string"
+	) {
+		throw new Error("fix requires: --run-id --delegation-id --review-id");
+	}
+	const localRepoRoot = typeof flags["repo-root"] === "string" ? flags["repo-root"] : process.cwd();
+	const ledgerRoot =
+		typeof flags["ledger-root"] === "string"
+			? flags["ledger-root"]
+			: join(localRepoRoot, ".flow-pair");
+	const dirResult = resolveRunDir(ledgerRoot, runId);
+	if (!dirResult.ok) {
+		throw new Error(dirResult.error ?? "invalid run id");
+	}
+	if (!REVIEW_ID_RE.test(reviewId)) {
+		throw new Error("reviewId must match rev-NNNN");
+	}
+	// Read findings from validated review record path
+	const { runDir } = dirResult;
+	const reviewPath = join(runDir, "reviews", `${reviewId}.json`);
+	if (!existsSync(reviewPath)) {
+		throw new Error(`review record not found: ${reviewPath}`);
+	}
+	const reviewRec = JSON.parse(readFileSync(reviewPath, "utf8")) as {
+		findings: unknown[];
+	};
+	const __filename = fileURLToPath(import.meta.url);
+	const __dirname = dirname(__filename);
+	const templateDir =
+		typeof flags["template-dir"] === "string"
+			? flags["template-dir"]
+			: join(__dirname, "..", "references", "templates");
+	const rev = new Review(ledgerRoot, nodeReviewDeps());
+	const res = rev.generateFixPacket({
+		runId,
+		delegationId,
+		reviewId,
+		findings: reviewRec.findings as Parameters<Review["generateFixPacket"]>[0]["findings"],
+		templateDir,
+		repoRoot: localRepoRoot,
+	});
+	if (!res.ok) {
+		throw new Error(res.error ?? "fix packet generation failed");
+	}
+	return {
+		ok: true,
+		fixPacketId: res.packet?.fixPacketId,
+		pointerMsg: res.packet?.pointerMsg,
+		allowedFiles: res.packet?.allowedFiles,
+		fixPacketPath: res.packet?.fixPacketPath,
+	};
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 function usageError(useJson: boolean, message: string): never {
@@ -295,9 +394,13 @@ function main(): void {
 					? runDispatch(flags)
 					: cmd === "observe"
 						? runObserve(flags)
-						: cmd === "ledger"
-							? runLedger(flags)
-							: runStub(cmd);
+						: cmd === "review"
+							? runReview(flags)
+							: cmd === "fix"
+								? runFix(flags)
+								: cmd === "ledger"
+									? runLedger(flags)
+									: runStub(cmd);
 
 		if (useJson) {
 			process.stdout.write(`${JSON.stringify(out)}\n`);
@@ -309,6 +412,12 @@ function main(): void {
 			// Observe stdout contract: exactly one line — "diffId: diff-NNNN"
 			// Full ObserveResult is available under --json for Phase 6 consumers.
 			process.stdout.write(`diffId: ${out.diffId as string}\n`);
+		} else if (cmd === "review") {
+			// Review stdout contract: exactly one line — "verdict: APPROVE|FIX_REQUIRED|..."
+			process.stdout.write(`verdict: ${out.verdict as string}\n`);
+		} else if (cmd === "fix") {
+			// Fix stdout contract: exactly one line — "fixPacket: fix-NNNN"
+			process.stdout.write(`fixPacket: ${out.fixPacketId as string}\n`);
 		} else {
 			for (const [k, v] of Object.entries(out)) {
 				process.stdout.write(`${k}: ${String(v)}\n`);

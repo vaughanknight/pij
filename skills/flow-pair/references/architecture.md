@@ -15,7 +15,7 @@ Orchestrator (expensive model)          Worker (cheap model)
 │  pij_send { to: workerId, message }──▶│  executes bounded task
 │  awaits worker report                 │  pij_send report { to: orchestratorId }
 │  runs review rubric                   │
-│  ACCEPT / FIX_REQUIRED                │
+│  APPROVE / APPROVE_WITH_NOTES / FIX_REQUIRED │
 ```
 
 **Key rule**: the CLI and `lib/` layers never call `pij send`. Transport is always
