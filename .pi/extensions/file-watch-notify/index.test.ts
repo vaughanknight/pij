@@ -92,6 +92,47 @@ function fakeWatchDeps(opts: { throwOnWatch?: boolean } = {}) {
 	};
 }
 
+function multiRootWatchDeps() {
+	const filesByDir = new Map<string, FileEntry[]>();
+	const listeners: Array<() => void> = [];
+	let timers: Array<() => void> = [];
+	let closes = 0;
+	const deps: WatchDeps = {
+		watch: (_d, _o, l) => {
+			listeners.push(l);
+			return {
+				close: () => {
+					closes++;
+				},
+			};
+		},
+		listFiles: async (dir) => filesByDir.get(dir) ?? [],
+		now: () => 1000,
+		setTimer: (fn) => {
+			timers.push(fn);
+			return () => {
+				timers = timers.filter((timer) => timer !== fn);
+			};
+		},
+	};
+	return {
+		deps,
+		setFiles: (dir: string, files: FileEntry[]) => {
+			filesByDir.set(dir, files);
+		},
+		fireAll: () => {
+			for (const listener of listeners) listener();
+		},
+		closes: () => closes,
+		flush: async () => {
+			const pending = timers;
+			timers = [];
+			for (const timer of pending) timer();
+			await new Promise((r) => setTimeout(r, 10));
+		},
+	};
+}
+
 async function makeProject(): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "fwn-wire-"));
 	await mkdir(join(dir, ".pi"), { recursive: true });
@@ -135,6 +176,39 @@ describe("index wiring — config → watcher → inject end-to-end", () => {
 		await w.flush();
 
 		expect(sent).toEqual([{ text: "[file-watch] a.md created", opts: undefined }]);
+
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	it("dedupes steered notices for the same file across overlapping watch roots", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "fwn-overlap-"));
+		await mkdir(join(dir, ".pi"), { recursive: true });
+		await writeFile(
+			join(dir, ".pi/file-watch.json"),
+			JSON.stringify({
+				watches: [
+					{ dir: "skills", patterns: ["**/*.ts"], recursive: true },
+					{ dir: "skills/flow-pair", patterns: ["**/*.ts"], recursive: true },
+				],
+			}),
+		);
+		const skillsDir = join(dir, "skills");
+		const flowPairDir = join(dir, "skills/flow-pair");
+		const w = multiRootWatchDeps();
+		const { pi, sent, getStart, getTurnStart } = fakePi();
+
+		w.setFiles(skillsDir, [{ rel: "flow-pair/lib/identity.ts", mtimeMs: 1, size: 1 }]);
+		w.setFiles(flowPairDir, [{ rel: "lib/identity.ts", mtimeMs: 1, size: 1 }]);
+		factory(pi, { cwd: dir, makeWatchDeps: () => w.deps });
+		await getStart()?.({}, fakeCtx(false));
+		await getTurnStart()?.({ timestamp: 1230 }, fakeCtx(false));
+
+		w.setFiles(skillsDir, [{ rel: "flow-pair/lib/identity.ts", mtimeMs: 2, size: 1 }]);
+		w.setFiles(flowPairDir, [{ rel: "lib/identity.ts", mtimeMs: 2, size: 1 }]);
+		w.fireAll();
+		await w.flush();
+
+		expect(sent.map((s) => s.text)).toEqual(["[file-watch] flow-pair/lib/identity.ts modified"]);
 
 		await rm(dir, { recursive: true, force: true });
 	});

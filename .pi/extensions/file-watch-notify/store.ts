@@ -14,6 +14,8 @@ export type ChangeKind = "created" | "modified" | "deleted";
 export interface FileMeta {
 	readonly mtimeMs: number;
 	readonly size: number;
+	/** Resolved physical file identity; used only for cross-watch dedup keys. */
+	readonly identityPath?: string;
 }
 
 /** path (relative to a watch dir) → file metadata. */
@@ -22,6 +24,8 @@ export type Snapshot = Map<string, FileMeta>;
 export interface Change {
 	readonly path: string;
 	readonly kind: ChangeKind;
+	/** Resolved physical file identity; rendered notices still use `path`. */
+	readonly identityPath?: string;
 }
 
 export interface WatchConfig {
@@ -178,13 +182,13 @@ export function reconcile(prev: Snapshot, next: Snapshot): Change[] {
 	for (const [path, meta] of next) {
 		const before = prev.get(path);
 		if (before === undefined) {
-			changes.push({ path, kind: "created" });
+			changes.push({ path, kind: "created", identityPath: meta.identityPath });
 		} else if (before.mtimeMs !== meta.mtimeMs || before.size !== meta.size) {
-			changes.push({ path, kind: "modified" });
+			changes.push({ path, kind: "modified", identityPath: meta.identityPath });
 		}
 	}
-	for (const path of prev.keys()) {
-		if (!next.has(path)) changes.push({ path, kind: "deleted" });
+	for (const [path, meta] of prev) {
+		if (!next.has(path)) changes.push({ path, kind: "deleted", identityPath: meta.identityPath });
 	}
 	return changes;
 }
@@ -229,7 +233,9 @@ export class WatchReconciler {
 			}
 			if (kind === "deleted") this.recentDeletes.set(c.path, now);
 			else this.recentDeletes.delete(c.path);
-			if (this.compiled.events.has(kind)) out.push({ path: c.path, kind });
+			if (this.compiled.events.has(kind)) {
+				out.push({ path: c.path, kind, identityPath: c.identityPath });
+			}
 		}
 
 		for (const [path, at] of this.recentDeletes) {

@@ -146,6 +146,32 @@ describe("deliverNotices (AC-02)", () => {
 		]);
 	});
 
+	it("dedupes different notice strings with the same normalized key", () => {
+		const { port, sent } = fakePort(false);
+		const pending = new Set<string>();
+
+		const mode = deliverNotices(
+			port,
+			[
+				{
+					text: "[file-watch] flow-pair/lib/identity.ts modified",
+					dedupKey: "modified\0/root/skills/flow-pair/lib/identity.ts",
+				},
+				{
+					text: "[file-watch] lib/identity.ts modified",
+					dedupKey: "modified\0/root/skills/flow-pair/lib/identity.ts",
+				},
+			],
+			pending,
+		);
+
+		expect(mode).toBe("steer");
+		expect(sent).toEqual([
+			{ text: "[file-watch] flow-pair/lib/identity.ts modified", mode: "steer" },
+		]);
+		expect([...pending]).toEqual(["modified\0/root/skills/flow-pair/lib/identity.ts"]);
+	});
+
 	it("keeps queued notices pending across the current turn_end", () => {
 		const pending = new SteeredNoticeTracker();
 		pending.add("[file-watch] a.md modified");

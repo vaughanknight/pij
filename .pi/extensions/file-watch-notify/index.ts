@@ -20,7 +20,12 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { deliverNotices, makePiInjectPort, SteeredNoticeTracker } from "./inject.js";
+import {
+	deliverNotices,
+	makeNoticeDedupKey,
+	makePiInjectPort,
+	SteeredNoticeTracker,
+} from "./inject.js";
 import {
 	type ChangeKind,
 	type Config,
@@ -114,7 +119,15 @@ export default function (pi: ExtensionAPI, wiring: WiringDeps = {}) {
 				compiled,
 				reconciler,
 				debounceMs,
-				(notices) => deliverNotices(injectPort, notices, pendingSteeredNotices),
+				(notices, changes) =>
+					deliverNotices(
+						injectPort,
+						notices.map((text, i) => ({
+							text,
+							dedupKey: makeNoticeDedupKey(changes[i], text),
+						})),
+						pendingSteeredNotices,
+					),
 				makeWatchDeps(),
 			);
 			await folder.start();

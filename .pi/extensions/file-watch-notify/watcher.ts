@@ -6,7 +6,7 @@
 
 import { watch } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { relative, resolve, sep } from "node:path";
 
 import type { Change, CompiledWatch, Snapshot, WatchReconciler } from "./store.js";
 
@@ -14,6 +14,7 @@ export interface FileEntry {
 	readonly rel: string;
 	readonly mtimeMs: number;
 	readonly size: number;
+	readonly abs?: string;
 }
 
 /** Injected side effects (Pattern P3) — node-backed by default, faked in tests. */
@@ -84,7 +85,11 @@ export class FolderWatcher {
 			const base = f.rel.split("/").pop() ?? f.rel;
 			if (this.compiled.isIgnored(base)) continue;
 			if (!this.compiled.isMatch(f.rel)) continue;
-			snap.set(f.rel, { mtimeMs: f.mtimeMs, size: f.size });
+			snap.set(f.rel, {
+				mtimeMs: f.mtimeMs,
+				size: f.size,
+				identityPath: f.abs ?? resolve(this.compiled.dir, f.rel),
+			});
 		}
 		return snap;
 	}
@@ -119,7 +124,7 @@ async function listFilesNode(dir: string, recursive: boolean): Promise<FileEntry
 		const entries = await readdir(current, { withFileTypes: true }).catch(() => null);
 		if (entries === null) return; // dir vanished mid-walk — ignore
 		for (const e of entries) {
-			const abs = join(current, e.name);
+			const abs = resolve(current, e.name);
 			if (e.isDirectory()) {
 				if (recursive) await walk(abs);
 				continue;
@@ -129,6 +134,7 @@ async function listFilesNode(dir: string, recursive: boolean): Promise<FileEntry
 				const s = await stat(abs);
 				out.push({
 					rel: relative(dir, abs).split(sep).join("/"),
+					abs,
 					mtimeMs: s.mtimeMs,
 					size: s.size,
 				});

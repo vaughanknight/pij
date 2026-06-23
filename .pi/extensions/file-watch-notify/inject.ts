@@ -10,8 +10,17 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 export type InjectMode = "immediate" | "steer";
 export type InjectSendResult = { ok: true } | { ok: false; reason: "dropped" };
+export type NoticeInput = string | { readonly text: string; readonly dedupKey?: string };
 
 const DEFAULT_MAX_PENDING_STEERED_NOTICES = 200;
+
+export function makeNoticeDedupKey(
+	change: { readonly kind: string; readonly identityPath?: string } | undefined,
+	fallbackText: string,
+): string {
+	if (change?.identityPath) return `${change.kind}\0${change.identityPath}`;
+	return fallbackText;
+}
 
 /** Idle ⇒ immediate (start a turn); busy ⇒ steer (after the current turn). */
 export function pickInjectMode(isIdle: boolean): InjectMode {
@@ -24,10 +33,10 @@ export interface InjectPort {
 	send(text: string, mode: InjectMode): InjectSendResult;
 }
 
-/** Tracks file-watch notices already queued through Pi's steering list. */
+/** Tracks file-watch notice identities already queued through Pi's steering list. */
 export interface PendingSteerNotices {
-	has(notice: string): boolean;
-	add(notice: string): void;
+	has(key: string): boolean;
+	add(key: string): void;
 }
 
 /**
@@ -47,14 +56,14 @@ export class SteeredNoticeTracker implements PendingSteerNotices {
 		this.maxPendingNotices = opts.maxPendingNotices ?? DEFAULT_MAX_PENDING_STEERED_NOTICES;
 	}
 
-	has(notice: string): boolean {
-		return this.awaitingConsumption.has(notice) || this.consuming.has(notice);
+	has(key: string): boolean {
+		return this.awaitingConsumption.has(key) || this.consuming.has(key);
 	}
 
-	add(notice: string): void {
-		if (this.has(notice)) return;
+	add(key: string): void {
+		if (this.has(key)) return;
 		if (this.pendingCount() >= this.maxPendingNotices) this.clear();
-		this.awaitingConsumption.add(notice);
+		this.awaitingConsumption.add(key);
 	}
 
 	onTurnStart(): void {
@@ -86,22 +95,42 @@ export class SteeredNoticeTracker implements PendingSteerNotices {
  */
 export function deliverNotices(
 	port: InjectPort,
-	notices: string[],
+	notices: NoticeInput[],
 	pendingSteers?: PendingSteerNotices,
 ): InjectMode | null {
 	if (notices.length === 0) return null;
 	const mode = pickInjectMode(port.isIdle());
+	const prepared = notices.map((notice) =>
+		typeof notice === "string"
+			? { text: notice, dedupKey: notice }
+			: { text: notice.text, dedupKey: notice.dedupKey ?? notice.text },
+	);
 	const deliverable =
 		mode === "steer" && pendingSteers
-			? notices.filter((notice) => !pendingSteers.has(notice))
-			: notices;
+			? filterPendingSteerNotices(prepared, pendingSteers)
+			: prepared;
 	if (deliverable.length === 0) return null;
-	const sendResult = port.send(deliverable.join("\n"), mode);
+	const sendResult = port.send(deliverable.map((notice) => notice.text).join("\n"), mode);
 	if (!sendResult.ok) return null;
 	if (mode === "steer" && pendingSteers) {
-		for (const notice of deliverable) pendingSteers.add(notice);
+		for (const notice of deliverable) pendingSteers.add(notice.dedupKey);
 	}
 	return mode;
+}
+
+function filterPendingSteerNotices(
+	notices: Array<{ text: string; dedupKey: string }>,
+	pendingSteers: PendingSteerNotices,
+): Array<{ text: string; dedupKey: string }> {
+	const seen = new Set<string>();
+	const deliverable: Array<{ text: string; dedupKey: string }> = [];
+	for (const notice of notices) {
+		if (pendingSteers.has(notice.dedupKey)) continue;
+		if (seen.has(notice.dedupKey)) continue;
+		seen.add(notice.dedupKey);
+		deliverable.push(notice);
+	}
+	return deliverable;
 }
 
 /**
