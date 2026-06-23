@@ -38,24 +38,35 @@ The expensive orchestrator follows this finite-state loop each turn:
 | `FIX` | Review verdict = `FIX_REQUIRED` | Render narrowed fix packet scoped to review findings only |
 | `APPROVE` | Review verdict = `APPROVE` or `APPROVE_WITH_NOTES` | Record approval → update ledger → advance state |
 
-### Worker context hygiene — compact EARLY, not late
+### Worker context hygiene — compact EARLY, not late (reflexive)
 
-**As soon as a worker reports a stage complete and you enter `REVIEW`, compact it
-immediately** (`pij_send({ to: workerId, command: "compact" })`). The worker is idle
-for the entire time you review/verify/synthesize, so the ~30–90s compact+summarize
-latency overlaps work you are doing anyway, and the worker is ready on a clean slate
-by the time you `DELEGATE` the next packet — **zero wait**.
+**The instant a worker (or reviewer) reports it is done, compact it — before you do
+anything else with its report.** Do NOT wait until you're about to dispatch the
+next packet. This is a reflex, not a remembered step: the first action after
+receiving a "done" report is `pij_send({ to: <id>, command: "compact" })`.
 
-Compacting *late* (right before dispatch) forces you to wait, and on a saturated
-post-stage context it has repeatedly caused the worker to **stall** (it reads the
-packet, runs one tool call, then goes idle without starting the stage). Encode the
-habit; don't rely on remembering it at dispatch time.
+**Why early, not late:** the session is idle for the entire time you review /
+verify / synthesize / write the next packet, so the ~30–90s compact+summarize
+latency overlaps work you're doing anyway. By the time you need the session
+again it's already on a clean slate — **zero wait**. Compacting *late* (right
+before dispatch) forces you to wait that latency each time, and on a saturated
+post-stage context it has repeatedly caused the worker to **stall** (it reads
+the packet, runs one tool call, then goes idle without starting the stage).
+
+This applies to **every** worker session AND the reviewer — compact a reviewer
+the moment it returns its verdict, so it's clean-slate ready for the next
+re-review.
 
 - A worker packet always carries full re-grounding context (findings, file:line,
   fixes), so a compacted worker re-reads the files and continues fine — even for a
   `FIX` iteration on its own code. When in doubt, compact early.
-- **Always confirm `command:compact, executed:true`** (via `pij tail <worker>`)
-  before sending the next pointer, and confirm the worker flips to `working` within
+- **Safety for running sessions on a buggy extension:** compacting (and reloading)
+  triggers a render. If a session still has a known-crashy extension loaded
+  (e.g. the pi-peacock narrow-width crash), **reload it onto the fix first**
+  (`command: "reload"`) and confirm it survives, *then* compact — otherwise the
+  compact's render can crash it. Freshly-spawned sessions already have the fix.
+- **Always confirm `command:compact, executed:true`** (via `pij tail <id>`) before
+  sending the next pointer, and confirm the session flips to `working` within
   ~10s of dispatch (send a one-byte nudge if it is still idle).
 
 ## Invocation
