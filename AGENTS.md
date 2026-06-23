@@ -63,11 +63,17 @@
    (`just typecheck` or `npm run test:watch`).
 3. Test: `just test` (vitest). Tests target `store.ts`.
 4. Smoke: `just smoke` before merging.
-5. **Self-check before reporting any task complete: `just self-check`.**
-   This runs typecheck → lint → test → smoke → `pkg audit` (with
-   `PIJ_VET_SKIP_AGENT=1` for determinism) → `snapshots-check`. If it
-   exits non-zero, the task is not done. The `/pre-commit` skill
-   (`.pi/skills/pre-commit/SKILL.md`) encodes the full contract — invoke
+5. **Before declaring any task done — or before ship — run `harness checks`.**
+   The engineering-harness gate: it runs the full deterministic **signal
+   inventory** (typecheck → lint → test → smoke → `pkg audit` with
+   `PIJ_VET_SKIP_AGENT=1` → `snapshots-check`) as individual stages and reports a
+   per-sensor verdict — and unlike `just self-check` it runs **all** sensors, so
+   one invocation surfaces every failure (`--quick` skips heavy smoke for a fast
+   static+unit gate). It mirrors `just self-check` (the same composite, run
+   sequentially — use whichever you prefer); **new back-pressure sensors get added
+   to `.harness/extensions/checks/` so this one verb stays the single "are we
+   done?" gate.** If it exits non-zero, the task is not done. The `/pre-commit`
+   skill (`.pi/skills/pre-commit/SKILL.md`) encodes the full contract — invoke
    it whenever you'd otherwise consider declaring a task done or about
    to stage a commit.
 
@@ -111,6 +117,15 @@
   and re-run `just install`.
 - **`agents/extension-validator/`** — minih agent pack that drives the
   Driver SDK to validate extensions; used in plan-004 pilot flow.
+- **Engineering harness (`harness` CLI + `.harness/`)** — pij has adopted the
+  ai-substrate engineering harness (governance doc `.harness/engineering-harness.md`,
+  extensions in `.harness/extensions/`). Two verbs matter day-to-day:
+  **`harness boot`** (fast readiness proof = typecheck + test) and
+  **`harness checks`** (the full ship/done gate — the signal inventory above,
+  per-sensor verdict, `--quick` to skip smoke). `harness doctor` audits what
+  loaded. The CLI is an ambient tool (global npm, never a repo dep); the
+  `.harness/` substrate is committed. Add a new sensor by editing
+  `.harness/extensions/checks/extension.ts` (keep it in sync with `just self-check`).
 
 ## Security protocol (Plan 009)
 
@@ -153,6 +168,8 @@ vetted:
 Overrides only mask the rules listed — any **new** warn finding still fails the audit. `fail` is never auto-downgraded.
 
 **Common pitfall — module on disk but pi can't see it**: if `pi install <pkg>` ran outside `just pkg add`, the npm module lives under `.pi/npm/node_modules/` but isn't in `packages.yaml`, so pi won't auto-load it on session start. Fix by running `just pkg add <source>` to register + vet it properly.
+
+**Recovery — a globally-installed package bricked pi** (e.g. an extension that gates every message; the `pi-vs-claude-code` `purpose-gate.ts` printing `Warning: Set a purpose first.` is the known case): this is the *inverse* of the pitfall above. A raw `pi install <source>` registers the package in the **global** `~/.pi/agent/settings.json#packages[]` (and clones it to `~/.pi/agent/git/<host>/<owner>/<repo>`), **not** in the project `.pi/packages.yaml`. So editing `.pi/packages.yaml` or running `just pkg sync` does **nothing** — that tooling only ever touches the project `.pi/settings.json` (see `harness/scripts/packages.ts`, `SETTINGS_PATH` = `PIJ_ROOT/.pi/settings.json`). To remove a global package: **`pi remove <source>`** (the canonical fix — it drops the entry from the global settings and uninstalls). If pi won't even boot far enough to run that, edit `~/.pi/agent/settings.json` by hand to delete the offending line from `packages[]` and `rm -rf ~/.pi/agent/git/<host>/<owner>/<repo>`. Always install third-party packages via `just pkg add <source>` so they go through the manifest + vetter and stay project-managed.
 
 ## Voice input — phonetic interpretation
 
