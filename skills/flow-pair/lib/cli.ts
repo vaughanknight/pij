@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ContextPackCompiler, nodeContextPackDeps } from "./context-pack.js";
 import { deriveRepoId, nodeGitDeps } from "./identity.js";
+import { Learning, nodeLearningDeps } from "./learning.js";
 import { LedgerWriter, nodeLedgerDeps, PROMPTS_DIR } from "./ledger.js";
 import { nodeObserveDeps, Observe } from "./observe.js";
 import { nodePacketRendererDeps, PacketRenderer } from "./packet.js";
@@ -19,7 +20,16 @@ import { nodeReviewDeps, Review } from "./review.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
-const SUBCOMMANDS = ["start", "dispatch", "observe", "review", "fix", "accept", "ledger"] as const;
+const SUBCOMMANDS = [
+	"start",
+	"dispatch",
+	"observe",
+	"review",
+	"fix",
+	"learn",
+	"accept",
+	"ledger",
+] as const;
 const REVIEW_ID_RE = /^rev-\d{4}$/;
 
 type Subcommand = (typeof SUBCOMMANDS)[number];
@@ -36,6 +46,7 @@ Subcommands:
   observe    Capture diffs after worker execution     (Phase 5)
   review     Run review rubric on output        [stub — Phase 6]
   fix        Generate a fix packet              [stub — Phase 6]
+  learn      Record a prompt-learning candidate         (Phase 7)
   accept     Accept and close a run             [stub — Phase 7]
   ledger     Print run.json for --run-id                (Phase 2)
 
@@ -51,7 +62,12 @@ Options:
   --task-description <t>  Task description for worker packet (dispatch; default: phase name)
   --cluster <name>   Prompt-lab cluster name (dispatch; default: implement-code)
   --allowed-paths <p1,p2,...>  Comma-separated allowed paths (dispatch)
-  --review <id>      Review id (fix)
+  --review-id <id>   Review id (fix)
+  --prompt-lab-root <p>  Prompt-lab root (learn; default: skills/flow-pair/prompt-lab)
+  --miss-type <name> Learning miss type (learn; v1 must equal --cluster)
+  --summary <text>   Learning summary (learn)
+  --evidence <text>  Learning evidence; repeat not supported, use ';' separated text (learn)
+  --candidate-delta <text>  Candidate prompt delta (learn; default: --summary)
   --help             Show this help
 
 Dispatch stdout contract:
@@ -354,6 +370,62 @@ function runFix(flags: Record<string, string | boolean>): Record<string, unknown
 	};
 }
 
+function runLearn(flags: Record<string, string | boolean>): Record<string, unknown> {
+	const runId = flags["run-id"];
+	const delegationId = flags["delegation-id"] ?? flags.delegation;
+	const cluster = flags.cluster;
+	const missType = flags["miss-type"];
+	const summary = flags.summary;
+	const localRepoRoot = typeof flags["repo-root"] === "string" ? flags["repo-root"] : process.cwd();
+	const ledgerRoot =
+		typeof flags["ledger-root"] === "string"
+			? flags["ledger-root"]
+			: join(localRepoRoot, ".flow-pair");
+	const __filename = fileURLToPath(import.meta.url);
+	const __dirname = dirname(__filename);
+	const promptLabRoot =
+		typeof flags["prompt-lab-root"] === "string"
+			? flags["prompt-lab-root"]
+			: join(__dirname, "..", "prompt-lab");
+	const evidenceRaw = typeof flags.evidence === "string" ? flags.evidence : "";
+	const candidateDelta =
+		typeof flags["candidate-delta"] === "string" ? flags["candidate-delta"] : summary;
+
+	if (
+		typeof runId !== "string" ||
+		typeof delegationId !== "string" ||
+		typeof cluster !== "string" ||
+		typeof missType !== "string" ||
+		typeof summary !== "string" ||
+		typeof candidateDelta !== "string"
+	) {
+		throw new Error("learn requires: --run-id --delegation-id --cluster --miss-type --summary");
+	}
+
+	const learning = new Learning(ledgerRoot, nodeLearningDeps());
+	const res = learning.recordLearning({
+		runId,
+		delegationId,
+		cluster: cluster as Parameters<Learning["recordLearning"]>[0]["cluster"],
+		missType: missType as Parameters<Learning["recordLearning"]>[0]["missType"],
+		summary,
+		evidence: evidenceRaw.length === 0 ? [] : evidenceRaw.split(";").map((item) => item.trim()),
+		candidateDelta,
+		promptLabRoot,
+	});
+	if (!res.ok) {
+		throw new Error(res.error);
+	}
+	return {
+		ok: true,
+		candidate: res.candidate,
+		learningId: res.candidate.learningId,
+		cluster: res.candidate.cluster,
+		candidatePath: res.candidate.candidatePath,
+		ledgerRecordPath: res.candidate.ledgerRecordPath,
+	};
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 function usageError(useJson: boolean, message: string): never {
@@ -398,9 +470,11 @@ function main(): void {
 							? runReview(flags)
 							: cmd === "fix"
 								? runFix(flags)
-								: cmd === "ledger"
-									? runLedger(flags)
-									: runStub(cmd);
+								: cmd === "learn"
+									? runLearn(flags)
+									: cmd === "ledger"
+										? runLedger(flags)
+										: runStub(cmd);
 
 		if (useJson) {
 			process.stdout.write(`${JSON.stringify(out)}\n`);
@@ -418,6 +492,9 @@ function main(): void {
 		} else if (cmd === "fix") {
 			// Fix stdout contract: exactly one line — "fixPacket: fix-NNNN"
 			process.stdout.write(`fixPacket: ${out.fixPacketId as string}\n`);
+		} else if (cmd === "learn") {
+			// Learn stdout contract: exactly one line — "learning: learn-NNNN"
+			process.stdout.write(`learning: ${out.learningId as string}\n`);
 		} else {
 			for (const [k, v] of Object.entries(out)) {
 				process.stdout.write(`${k}: ${String(v)}\n`);
