@@ -5,9 +5,11 @@ import { filterEvents } from "../core/events.js";
 import type {
 	DeliveryPort,
 	EventLogPort,
+	NewWindowOpts,
 	PiRuntimePort,
 	ProcessPort,
 	RegistryPort,
+	TmuxPort,
 } from "../core/ports.js";
 import {
 	type EventQuery,
@@ -148,5 +150,39 @@ export class FakeProcess implements ProcessPort {
 	}
 	kill(pid: number): void {
 		this.alive.delete(pid);
+	}
+}
+
+export class FakeTmux implements TmuxPort {
+	/** Recorded newWindow calls, in order. Assert against this in tests. */
+	readonly windows: Array<{ opts: NewWindowOpts; paneId: string }> = [];
+	/** Recorded killWindow pane ids, in order. */
+	readonly killed: string[] = [];
+	/** Synthetic session name returned by currentSession(). */
+	readonly sessionName: string;
+
+	private paneCounter: number;
+
+	constructor({
+		paneStart = 900,
+		sessionName = "fake-session",
+	}: { paneStart?: number; sessionName?: string } = {}) {
+		this.paneCounter = paneStart;
+		this.sessionName = sessionName;
+	}
+
+	newWindow(opts: NewWindowOpts): Result<{ paneId: string }> {
+		const paneId = `%${this.paneCounter++}`;
+		this.windows.push({ opts, paneId });
+		return ok({ paneId });
+	}
+
+	killWindow(paneId: string): Result<void> {
+		this.killed.push(paneId);
+		return ok(undefined);
+	}
+
+	currentSession(): string | null {
+		return this.sessionName;
 	}
 }

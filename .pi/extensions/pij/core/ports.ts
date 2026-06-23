@@ -60,6 +60,35 @@ export interface PiRuntimePort {
 	control(command: "new" | "reload"): boolean;
 }
 
+// ─── Tmux seam ──────────────────────────────────────────────────────────────
+
+/** Options for opening a new tmux window running a pij worker. */
+export interface NewWindowOpts {
+	/** Command to run (always "pi"). */
+	cmd: string;
+	/** Argv to pass to the command. */
+	args: string[];
+	/** Environment variables for the new window. */
+	env: Record<string, string>;
+	/** Tmux window name, e.g. "pi:<spawnId>". */
+	name: string;
+	/** Working directory for the new window. */
+	cwd?: string;
+}
+
+/** Seam for creating/destroying tmux windows (Pattern P2: impurity confined
+ *  to adapters/tmux.ts; this interface is pi-free). The 6th port — additive;
+ *  existing PijPorts consumers are unaffected until Phase 2 wires it. */
+export interface TmuxPort {
+	/** Create a new tmux window running the given command. Returns the
+	 *  captured %N pane id. */
+	newWindow(opts: NewWindowOpts): Result<{ paneId: string }>;
+	/** Kill a window by its pane id. Swallows "already gone" (idempotent). */
+	killWindow(paneId: string): Result<void>;
+	/** Returns the current tmux session name if inside tmux, else null. */
+	currentSession(): string | null;
+}
+
 /** OS-level seams: pid, liveness probe, clock, env. */
 export interface ProcessPort {
 	/** This process's pid. */
