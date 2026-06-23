@@ -148,6 +148,33 @@ describe("renderPeacockFooter Claude colors", () => {
 		expect(stripAnsiForTest(statsLine)).toContain("95.4%/1.0M");
 	});
 
+	it("claudeColors stats line never overflows at narrow widths (regression: crash w=49>43)", () => {
+		// Full stats snapshot mirroring the crash: network + cost + (sub) + context bar.
+		const hotStats = {
+			...snapshot,
+			totalInputTokens: 457_000,
+			totalOutputTokens: 14_000,
+			totalCacheReadTokens: 3_700_000,
+			totalCacheWriteTokens: 37_000,
+			totalCostUsd: 4.796,
+			usingSubscription: true,
+			contextUsage: { tokens: 130_000, contextWindow: 1_050_000, percent: 12.4 },
+		};
+		// claudeColors is the path that crashed (per-segment context-bar colorizer),
+		// and it must hold with AND without the colorHex background wrap.
+		for (const width of [1, 2, 10, 20, 43, 80, 140]) {
+			for (const opts of [
+				{ width, claudeColors: true },
+				{ width, claudeColors: true, colorHex: "#dd0531" },
+			]) {
+				const lines = renderPeacockFooter(hotStats, opts);
+				for (const line of lines) {
+					expect(visibleWidthWithoutAnsi(line)).toBeLessThanOrEqual(width);
+				}
+			}
+		}
+	});
+
 	it("leaves output plain when claudeColors is not requested", () => {
 		const lines = renderPeacockFooter(snapshot, { width: 80 });
 		expect(lines.join("")).not.toContain("\x1b[38;2;");

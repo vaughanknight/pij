@@ -152,7 +152,11 @@ function colorizeContextBar(token: string): string {
 
 function colorizeStatsToken(token: string): string {
 	if (token.length === 0) return token;
-	if (token.startsWith("[") && (token.includes("▮") || token.includes("▯"))) {
+	if (
+		token.startsWith("[") &&
+		token.endsWith("]") &&
+		(token.includes("▮") || token.includes("▯"))
+	) {
 		return colorizeContextBar(token);
 	}
 	const first = token[0] ?? "";
@@ -350,6 +354,12 @@ export function renderPeacockFooter(
 	const width = Math.max(1, Math.floor(options.width));
 	let lines = buildPlainLines(snapshot, width);
 	if (options.claudeColors) lines = colorizeFooterLines(lines);
+	// Final width invariant: colorization (e.g. the per-segment context bar over a
+	// mid-truncated token) can re-introduce visible width beyond `width`. pi-tui aborts
+	// the whole render if ANY line exceeds the terminal width, so clamp every line here
+	// with the ANSI-aware truncateToWidth. Regression: ui.test.ts "claudeColors stats
+	// line never overflows at narrow widths" (crash was w=49 > terminal 43).
+	lines = lines.map((line) => truncateToWidth(line, width));
 	if (!options.colorHex) return lines;
 	const { bg, reset } = ansiForColor(options.colorHex);
 	return lines.map((line) => `${bg}${line}${reset}`);
