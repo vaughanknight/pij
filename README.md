@@ -106,6 +106,25 @@ context usage, and extension statuses.
 See [`docs/how/pi-peacock.md`](./docs/how/pi-peacock.md) for presets,
 footer-mode limitations, persistence scope, and validation notes.
 
+## flow-pair
+
+`flow-pair` wraps `the-flow` in a **three-session orchestrator/worker/reviewer**
+delegation seam with a central prompt-learning ledger: an expensive orchestrator
+plans/routes/reviews/learns, a cheap worker executes one bounded packet at a time,
+and an independent cross-model reviewer runs clean-room code review. Prompt-learnings
+are cluster-isolated (an `implement-code` miss never pollutes `fix-code` guidance) and
+compound across runs.
+
+Invoke as `/flow-pair`. Packets are pointer-delivered over `pij_send`; the worker
+direct-jumps the relevant `/the-flow` verb. Test-quality is a gate (Dimension 0 —
+prove tests are non-vacuous via `just flow-pair-mutate`); cross-model review decorrelates
+blind spots; workers/reviewers are compacted early (at done-report, while the
+orchestrator reviews) for zero-wait dispatch.
+
+→ Full operator guide: [`docs/how/flow-pair.md`](docs/how/flow-pair.md) · skill:
+[`skills/flow-pair/SKILL.md`](skills/flow-pair/SKILL.md) · build plan:
+[`docs/plans/016-flow-pair/flow-pair-plan.md`](docs/plans/016-flow-pair/flow-pair-plan.md)
+
 ## Where things are
 
 | What | Where |
@@ -122,6 +141,7 @@ footer-mode limitations, persistence scope, and validation notes.
 | Ralph Loop extension | `.pi/extensions/ralph-loop/` + [`docs/how/ralph-loop.md`](docs/how/ralph-loop.md) (RUNBOOK § "How to start a Ralph Loop") |
 | Agent harness (companion mode) | [`docs/project-rules/agent-harness.md`](docs/project-rules/agent-harness.md) (RUNBOOK § "Companion mode (minih)") |
 | Pi Peacock extension | `.pi/extensions/pi-peacock/` + [`docs/how/pi-peacock.md`](docs/how/pi-peacock.md) |
+| flow-pair (orchestrator/worker/reviewer) | `skills/flow-pair/` + [`docs/how/flow-pair.md`](docs/how/flow-pair.md) |
 
 ## Using extensions on another machine
 
