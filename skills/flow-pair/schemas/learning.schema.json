@@ -8,7 +8,17 @@
 		"learningId": { "type": "string", "pattern": "^learn-\\d{4}$" },
 		"runId": { "type": "string" },
 		"delegationId": { "type": "string" },
-		"cluster": { "type": "string" },
+		"cluster": {
+			"type": "string",
+			"enum": [
+				"implement-code",
+				"fix-code",
+				"review-code",
+				"docs-writing",
+				"codebase-research",
+				"validation-runner"
+			]
+		},
 		"candidatePath": { "type": "string" },
 		"createdAt": { "type": "string", "format": "date-time" }
 	},

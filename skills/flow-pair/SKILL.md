@@ -79,6 +79,7 @@ re-review.
 /flow-pair fix --review <id>
 /flow-pair accept --delegation <id>
 /flow-pair ledger [--run-id <id>]
+/flow-pair learn --run-id <id> --delegation-id <id> --cluster <cluster> --miss-type <type> --summary <text> [--evidence <text>] [--candidate-delta <text>] [--prompt-lab-root <p>] [--json]
 ```
 
 The skill shells out to `flow-pair` CLI (`skills/flow-pair/lib/cli.ts`) for all
@@ -110,6 +111,12 @@ Finding 08). See `references/architecture.md` for the full call chain.
 6. **Learn** — after approval, write a candidate learning note to
    `prompt-lab/clusters/<cluster>/candidates/` (never auto-promote to
    `active.md`; manual approval required).
+7. **End-of-work gate** — before declaring any delegation or phase done, run
+   `harness checks` (all sensors: typecheck→lint→test→smoke→pkg-audit→snapshots,
+   per-sensor verdicts, non-zero exit on any failure). Use `harness checks --quick`
+   to skip heavy smoke for a fast static+unit gate mid-iteration; run the FULL
+   `harness checks` before ship/declare-done. This supersedes `just self-check`'s
+   first-fail behavior — it runs ALL sensors so one pass surfaces every failure.
 
 ## References
 

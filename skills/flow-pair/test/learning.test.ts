@@ -349,3 +349,57 @@ describe("Learning.recordLearning — P9 ledger before candidate", () => {
 		expect(candidateMdFiles(promptLabRoot, "implement-code")).toEqual([]);
 	});
 });
+
+describe("cluster-set single-source (Phase 7 MED guardrail)", () => {
+	// P5: the cluster set must not drift between code (PROMPT_CLUSTERS) and the
+	// declared taxonomy source (prompt-taxonomy.md), nor the committed scaffold
+	// dirs. A future code-only cluster addition would otherwise leave the taxonomy
+	// stale and tests building fixtures from the code constant silently.
+	const taxonomyPath = join(
+		__dirname,
+		"..",
+		"references",
+		"prompt-taxonomy.md",
+	);
+	const clustersRoot = join(__dirname, "..", "prompt-lab", "clusters");
+
+	function parseTaxonomyClusters(): string[] {
+		const md = readFileSync(taxonomyPath, "utf8");
+		// Capture the `## Canonical clusters` table's first column (`slug` in backticks).
+		const section = md.split(/^## /m).find((s) => s.startsWith("Canonical clusters"));
+		expect(section).toBeDefined();
+		const clusters: string[] = [];
+		for (const line of section!.split("\n")) {
+			const m = line.match(/^\|\s*`([a-z-]+)`/);
+			if (m) clusters.push(m[1]);
+		}
+		return clusters;
+	}
+
+	it("PROMPT_CLUSTERS matches the taxonomy Canonical clusters table (order-insensitive)", () => {
+		const fromTaxonomy = parseTaxonomyClusters();
+		expect(fromTaxonomy.sort()).toEqual([...PROMPT_CLUSTERS].sort());
+	});
+
+	it("committed prompt-lab scaffold dirs are exactly PROMPT_CLUSTERS", () => {
+		const dirs = readdirSync(clustersRoot, { withFileTypes: true })
+			.filter((e) => e.isDirectory())
+			.map((e) => e.name)
+			.sort();
+		expect(dirs).toEqual([...PROMPT_CLUSTERS].sort());
+	});
+
+	it("learning.schema.json cluster enum is exactly PROMPT_CLUSTERS (Phase 7 LOW)", () => {
+		// The runtime isolation layer rejects invalid clusters, but the persisted
+		// ledger schema must ALSO constrain the enum so a hand-edited or future-written
+		// record can't carry an invalid cluster past schema validation. Tie the enum to
+		// PROMPT_CLUSTERS so it can't drift from the code constant.
+		const schemaPath = join(__dirname, "..", "schemas", "learning.schema.json");
+		const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as {
+			properties: { cluster: { enum?: string[] } };
+		};
+		const enumValues = schema.properties.cluster.enum;
+		expect(enumValues).toBeDefined();
+		expect(enumValues?.slice().sort()).toEqual([...PROMPT_CLUSTERS].sort());
+	});
+});

@@ -59,7 +59,10 @@ Do **NOT** touch any of:
 
 When done:
 
-1. Run `just self-check` — all gates must be clean.
+1. Run `harness checks` (all sensors: typecheck→lint→test→smoke→pkg-audit→snapshots;
+   `--quick` skips smoke for a fast mid-iteration gate). All sensors must pass before
+   reporting — this supersedes `just self-check`'s first-fail behavior (it runs ALL
+   sensors so one pass surfaces every failure).
 2. Confirm mutation checks on any load-bearing guard you touched.
 3. Reply with a Worker Report per the orchestrator-worker protocol
    (`references/orchestrator-worker-protocol.md`). Include the literal
