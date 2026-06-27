@@ -149,6 +149,9 @@ export interface ControlSpawnInput {
 	readonly model?: string;
 	/** Optional first task — delivered later via the init inject, not argv. */
 	readonly task?: string;
+	/** Copilot only: the pij-chosen session UUID, passed as `--session-id <uuid>`
+	 *  so binding is deterministic at spawn (Copilot sets a new session's UUID). */
+	readonly copilotSessionId?: string;
 }
 
 /** Input to {@link buildPendingDescriptor}. */
@@ -164,8 +167,11 @@ export interface PendingDescriptorInput {
 	/** ISO-8601 — the daemon's clock at spawn. */
 	readonly startedAtIso: string;
 	/** Transcript paths present at spawn (BEFORE the pane exists) — seeds
-	 *  deterministic new-path discovery (AC-03 / review H1). */
+	 *  deterministic new-path discovery (AC-03 / review H1). Claude only. */
 	readonly transcriptsAtSpawn?: readonly string[];
+	/** Copilot only: the pij-chosen session UUID (`--session-id`) the daemon binds
+	 *  to deterministically — no discovery. */
+	readonly plannedHarnessSessionId?: string;
 }
 
 /**
@@ -183,20 +189,27 @@ export function allocatePijId(spawnToken: string, pid: number): SessionId {
  * pij-id rides PIJ_SESSION_ID (so `pij phonehome` from inside binds to it) and
  * the harness kind rides PIJ_HARNESS. argv stays an array (AC-09: no shell).
  *
- * - `claude`: `claude --dangerously-skip-permissions [--model <model>]`.
- * - `copilot`: reserved (Non-Goal this pass) — emitted as the bare cmd.
+ * - `claude`:  `claude --dangerously-skip-permissions [--model <model>]`.
+ * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`.
  *
- * `--dangerously-skip-permissions` is REQUIRED for a daemon-driven pane: there
- * is no human at the pane to answer Claude's permission/auto-mode prompts, so
- * without it the agent hangs the instant it runs a tool (e.g. the confirmatory
- * `pij phonehome` bash call gets blocked by the auto-mode classifier). The pane
- * is a controlled peer we spawned, not an untrusted surface, so skipping is the
- * right trust posture here.
+ * The blanket-permission flag (`--dangerously-skip-permissions` for claude,
+ * `--yolo` for copilot — the latter = --allow-all-tools/paths/urls) is REQUIRED
+ * for a daemon-driven pane: there is no human at the pane to answer the harness's
+ * permission/auto-mode prompts, so without it the agent hangs the instant it runs
+ * a tool (e.g. the confirmatory `pij phonehome` bash call gets blocked). The pane
+ * is a controlled peer we spawned, not an untrusted surface, so this is the right
+ * trust posture. `--session-id <uuid>` SETS the copilot session UUID so the daemon
+ * binds deterministically to it (no transcript-discovery race like claude).
  */
 export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand {
 	const args: string[] = [];
 	if (input.harness === "claude") {
 		args.push("--dangerously-skip-permissions");
+	} else if (input.harness === "copilot") {
+		args.push("--yolo");
+		if (input.copilotSessionId !== undefined) {
+			args.push("--session-id", input.copilotSessionId);
+		}
 	}
 	if (input.model !== undefined) {
 		args.push("--model", input.model);
@@ -229,6 +242,9 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		paneId: input.paneId,
 		lifecycle: "pending",
 		...(input.transcriptsAtSpawn ? { transcriptsAtSpawn: input.transcriptsAtSpawn } : {}),
+		...(input.plannedHarnessSessionId
+			? { plannedHarnessSessionId: input.plannedHarnessSessionId }
+			: {}),
 	};
 }
 

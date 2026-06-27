@@ -6,15 +6,22 @@
 // is FOOTER-based (`auto mode on` / `shift+tab to cycle`), NOT "? for shortcuts";
 // a live turn shows `esc to interrupt`. These markers are version-sensitive, so
 // they are frozen HERE in one classifier (the T008 readiness gate).
+//
+// Copilot CLI (v1.0.66) has a wholly different TUI but the SAME footer-marker
+// shape (verified live 2026-06-27): idle footer = `/ commands · ? help · tab next
+// tab`; a live turn = `◎ Working esc cancel`. Both harnesses' markers live in this
+// one classifier (the daemon reads any control-plane pane through it).
 
 import { classifyInterstitial } from "./interstitial.js";
 
 export type ReadinessState = "booting" | "interstitial" | "ready" | "busy" | "dead";
 
-/** Idle-ready footer markers (last is a forward-compat fallback). */
-const READY_RE = /shift\+tab to cycle|auto mode on|for shortcuts/i;
-/** A live turn — used as the negative guard so an in-progress turn isn't idle. */
-const BUSY_RE = /esc to interrupt/i;
+/** Idle-ready footer markers across control-plane harnesses (claude + copilot);
+ *  `for shortcuts` is a forward-compat fallback. */
+const READY_RE = /shift\+tab to cycle|auto mode on|for shortcuts|tab next tab|\? help/i;
+/** A live turn — the negative guard so an in-progress turn isn't read as idle.
+ *  `esc to interrupt` = claude; `esc cancel` (the `◎ Working` footer) = copilot. */
+const BUSY_RE = /esc to interrupt|esc cancel/i;
 /** Best-effort text death signal; the authoritative one is tmux `pane_dead`
  *  (the daemon's `inspect`), which this pure classifier cannot see. */
 const DEAD_RE = /\[exited\]|pane is dead|process completed|command not found/i;

@@ -152,7 +152,22 @@ export function driveSession(
 	}
 	if (drive.readyAtMs === undefined) return { kind: "waiting" };
 
-	// 2) Deterministic binding: a transcript path that did not exist at spawn.
+	// 2) Binding. Copilot is the easy case: `copilot --session-id <uuid>` SET the
+	// session id at spawn, so the daemon binds deterministically to the planned id
+	// the instant the pane is interactive — no transcript discovery, no race.
+	if (descriptor.harness === "copilot" && descriptor.plannedHarnessSessionId) {
+		const bound = applyBinding(descriptor, descriptor.plannedHarnessSessionId);
+		registry.write(bound);
+		if (!drive.settled && descriptor.spawnedBy) {
+			drive.settled = true;
+			const note = buildBoundNotice(bound);
+			if (note) notify(delivery, descriptor.id, note.to, note.text);
+		}
+		return { kind: "bound", harnessSessionId: descriptor.plannedHarnessSessionId };
+	}
+
+	// Claude: the session id is auto-generated, so discover it by NEW path
+	// appearance — a transcript path that did not exist at spawn (AC-03).
 	const discovery = discoverNewTranscript(drive.before, ports.listTranscripts(dir));
 	if (discovery.status === "found") {
 		const bound = applyBinding(descriptor, discovery.sessionId);

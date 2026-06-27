@@ -74,6 +74,10 @@ export interface NewWindowOpts {
 	name: string;
 	/** Working directory for the new window. */
 	cwd?: string;
+	/** Pass tmux `-d`: create the window in the BACKGROUND without switching the
+	 *  client's focus to it (e.g. the auto-started daemon window — it must not
+	 *  steal the operator's view). */
+	detached?: boolean;
 }
 
 /** Options for splitting an existing pane (layout:"split" mode). */

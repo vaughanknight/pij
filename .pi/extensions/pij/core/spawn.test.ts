@@ -230,6 +230,30 @@ describe("buildControlSpawnCommand", () => {
 			"review the diff",
 		);
 	});
+
+	it("copilot: cmd is 'copilot' with --yolo + --session-id (deterministic bind)", () => {
+		const r = buildControlSpawnCommand({
+			harness: "copilot",
+			pijId: "pij-cop",
+			cwd: "/repo",
+			copilotSessionId: "9a8f8be6-3670-4e5c-b43e-09f46fe4dfad",
+		});
+		expect(r.cmd).toBe("copilot");
+		expect(r.args).toEqual(["--yolo", "--session-id", "9a8f8be6-3670-4e5c-b43e-09f46fe4dfad"]);
+		expect(r.env.PIJ_HARNESS).toBe("copilot");
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-cop");
+	});
+
+	it("copilot: --model rides after --session-id as discrete argv", () => {
+		const r = buildControlSpawnCommand({
+			harness: "copilot",
+			pijId: "pij-cop",
+			cwd: "/repo",
+			copilotSessionId: "uuid-1",
+			model: "gpt-5.5",
+		});
+		expect(r.args).toEqual(["--yolo", "--session-id", "uuid-1", "--model", "gpt-5.5"]);
+	});
 });
 
 describe("buildPendingDescriptor", () => {
@@ -259,6 +283,22 @@ describe("buildPendingDescriptor", () => {
 		const d = buildPendingDescriptor(input);
 		expect(d.harnessSessionId).toBeUndefined();
 		expect(d.initInjectedAt).toBeUndefined();
+	});
+
+	it("carries plannedHarnessSessionId for copilot (the daemon binds to it)", () => {
+		const d = buildPendingDescriptor({
+			...input,
+			harness: "copilot",
+			plannedHarnessSessionId: "uuid-9",
+		});
+		expect(d.plannedHarnessSessionId).toBe("uuid-9");
+		// still pending until the daemon confirms ready + injects init.
+		expect(d.lifecycle).toBe("pending");
+		expect(d.harnessSessionId).toBeUndefined();
+	});
+
+	it("omits plannedHarnessSessionId for claude (discovery-bound)", () => {
+		expect(buildPendingDescriptor(input)).not.toHaveProperty("plannedHarnessSessionId");
 	});
 });
 

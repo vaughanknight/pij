@@ -101,8 +101,8 @@ pij adopt "$TMUX_PANE" --harness claude    # → your pij-id; peers' sends now t
 
 | Intent | pi mode (tools) | control-plane mode (CLI + daemon) |
 |---|---|---|
-| Prereq | pi extension loaded | a running `pij daemon` (one machine-wide) + `pij adopt` self |
-| Spawn colleague | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude --model <m>` (returns id at once; daemon drives boot→bind) |
+| Prereq | pi extension loaded | a `pij daemon` (auto-started by `pij spawn`; else `pij daemon start`) + `pij adopt` self |
+| Spawn colleague | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude\|copilot --model <m>` (returns id at once; daemon drives boot→bind) |
 | Deliver pointer / message | `pij_send({ to, message })` | `pij send <id> "<text>"` |
 | Compact a colleague | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` |
 | Peek (non-disturbing) | `pij tail <id>` | `pij tail <id> [--follow]` (reads the bound transcript) |
@@ -110,11 +110,13 @@ pij adopt "$TMUX_PANE" --harness claude    # → your pij-id; peers' sends now t
 
 **Model names differ by mode.** The default-model table below is for pi/copilot
 peers (`github-copilot/…` strings via `pij_spawn`). In control-plane mode the
-colleague is a real **Claude** process, so `--model` takes **claude** names
-(`sonnet` / `opus` / `haiku` or a full id). `pij spawn` auto-applies
-`--dangerously-skip-permissions` (a daemon-driven pane has no human to approve
-prompts). The canary-verify, compact-early, and reuse-never-close disciplines
-below apply **identically** in both modes — only the transport verb changes.
+colleague is a real **Claude** *or* **Copilot** process: `--harness claude` takes
+claude names (`sonnet`/`opus`/`haiku` or a full id); `--harness copilot` takes
+copilot names (`gpt-5.5`, `claude-sonnet-4.6`, …). `pij spawn` auto-applies the
+harness's blanket-permission flag (`--dangerously-skip-permissions` for claude,
+`--yolo` for copilot — a daemon-driven pane has no human to approve prompts). The
+canary-verify, compact-early, and reuse-never-close disciplines below apply
+**identically** across modes and harnesses — only the transport verb changes.
 
 ## Fleet lifecycle — the colleagues (coder + reviewer)
 

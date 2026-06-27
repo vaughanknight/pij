@@ -27,6 +27,24 @@ const CHROME_INTERSTITIAL = `
    Enter to confirm · Esc to keep browser tools off
 `;
 
+// Copilot CLI v1.0.66 fixtures, captured live 2026-06-27 (wholly different TUI,
+// same footer-marker shape).
+const COPILOT_READY = `
+ ~/pi-hacking/pij [⎇ main*%]             Session: 0 AIC used
+─────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────
+ / commands · ? help · tab next tab                  GPT-5.5
+`;
+
+const COPILOT_BUSY = `
+ ~/pi-hacking/pij [⎇ main*%]             Session: 0 AIC used
+─────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────
+ ◎ Working esc cancel                                GPT-5.5
+`;
+
 describe("classifyReadiness", () => {
 	it("idle footer markers → ready", () => {
 		expect(classifyReadiness(READY_FOOTER)).toBe("ready");
@@ -50,5 +68,13 @@ describe("classifyReadiness", () => {
 
 	it("a dead/exited pane → dead", () => {
 		expect(classifyReadiness("claude: command not found")).toBe("dead");
+	});
+
+	it("copilot idle footer ('? help · tab next tab') → ready", () => {
+		expect(classifyReadiness(COPILOT_READY)).toBe("ready");
+	});
+
+	it("copilot '◎ Working esc cancel' → busy", () => {
+		expect(classifyReadiness(COPILOT_BUSY)).toBe("busy");
 	});
 });

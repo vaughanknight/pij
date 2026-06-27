@@ -66,6 +66,12 @@ export interface SessionDescriptor {
 	 *  transcript stem under ~/.claude/projects/<mangled cwd>/<this>.jsonl,
 	 *  discovered deterministically by the daemon (AC-03). Drives `pij tail`. */
 	readonly harnessSessionId?: string;
+	/** Copilot only: the session UUID pij CHOSE at spawn and passed to
+	 *  `copilot --session-id <uuid>`. Copilot lets us set a new session's UUID, so
+	 *  binding is deterministic at spawn (no transcript-discovery race like Claude).
+	 *  The daemon binds to this once the pane is ready + initialised; it then
+	 *  becomes `harnessSessionId`. Absent for claude/pi. */
+	readonly plannedHarnessSessionId?: string;
 	/** ISO-8601 — set the moment the daemon injects the init exactly once.
 	 *  Persisted so a daemon restart never re-injects (init-exactly-once, AC-02/12). */
 	readonly initInjectedAt?: string;

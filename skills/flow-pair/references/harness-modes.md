@@ -13,11 +13,11 @@ straight into its turn via `pi.sendUserMessage`. That seam is **pi-only** — it
 the one thing that cannot move out of process.
 
 Plan 019 added a **machine-wide control plane** so pij can drive **non-pi**
-harnesses (Claude Code today, Copilot later): a single **`pij daemon`** spawns a
-harness in a tmux pane, binds its identity deterministically, and **relays
+harnesses (Claude Code **and** GitHub Copilot CLI today): a single **`pij daemon`**
+spawns a harness in a tmux pane, binds its identity deterministically, and **relays
 messages via tmux `send-keys`** instead of the in-process inject. Everything a pi
-session did with the `pij_*` tools, a Claude orchestrator does with the `pij` CLI
-+ the daemon.
+session did with the `pij_*` tools, a Claude/Copilot orchestrator does with the
+`pij` CLI + the daemon.
 
 > **The invariant:** pi keeps the in-process seam (old path, unchanged). Every
 > **other** client uses the daemon + send-keys path. Never inject into a pi
@@ -34,10 +34,22 @@ availability is the definitive signal.)
 
 ## Control-plane prerequisites
 
-1. **One daemon, machine-wide.** Start it in its own tmux window:
-   `npx tsx .pi/extensions/pij/daemon.ts` (or `pij daemon` once that verb ships).
-   It is single-instance (a second one refuses), watches `~/.pij/` for pending
-   spawns + bound-session inboxes, and drives readiness → init → bind → relay.
+1. **One daemon, machine-wide — AUTO-STARTED, you rarely touch it.** The daemon
+   watches `~/.pij/` for pending spawns + bound-session inboxes and drives
+   readiness → init → bind → relay. It is single-instance (a second one refuses).
+   **`pij spawn` auto-starts one if none is running** — it creates a *background*
+   tmux window named **`pij-daemon`** (no focus steal) and prints a line telling
+   you it did so (`⚙ no pij daemon was running — started one …`). So in the common
+   path you just `pij spawn` and the daemon appears. Manage it explicitly with:
+   - `pij daemon start` — start one now (idempotent; says so if already up).
+   - `pij daemon status` — `running (pid …, window @N)` / `stale` / `not running`.
+   - `pij daemon stop` (alias `kill`) — SIGTERM the daemon **and** tear down the
+     `pij-daemon` window pij owns (found by the lock's recorded window id **and** by
+     the window-name convention — so it cleans up orphans too). Never kills a window
+     a human started the daemon in.
+
+   *Identification is by convention:* a tmux window named `pij-daemon` is pij's;
+   that's how auto-start avoids double-starting and how `stop` finds the window.
 2. **Self-adopt — make the orchestrator reachable.** In pi, inbound is automatic;
    in control-plane mode the orchestrator must register its **own** pane as a peer,
    or colleague replies have nowhere to land:
@@ -53,12 +65,12 @@ availability is the definitive signal.)
 
 | Intent | pi mode (in-process tools) | control-plane mode (CLI + daemon) |
 |---|---|---|
-| **Prereq** | pi extension loaded | running `pij daemon` + `pij adopt` self once |
+| **Prereq** | pi extension loaded | a `pij daemon` (auto-started by `pij spawn`, or `pij daemon start`) + `pij adopt` self once |
 | **Be reachable (inbound)** | automatic (in-process receiver injects into your turn) | `pij adopt "$TMUX_PANE" --harness claude` (peers' sends → `[pij from <id>]` turns in your pane) |
-| **Spawn a colleague** | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude --model <m>` — returns the id **immediately**; the daemon drives boot → ready → init → bind asynchronously |
+| **Spawn a colleague** | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude\|copilot --model <m>` — returns the id **immediately**; the daemon drives boot → ready → init → bind asynchronously |
 | **Deliver a pointer / message** | `pij_send({ to, message })` | `pij send <id> "<text>"` (daemon `send-keys` into the colleague's pane) |
 | **Run a control command** | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` (raw, executes in the pane) |
-| **Peek without disturbing** | `pij tail <id>` | `pij tail <id> [--follow]` (reads the colleague's bound Claude transcript) |
+| **Peek without disturbing** | `pij tail <id>` | `pij tail <id> [--follow] [--lines N]` (reads the colleague's bound transcript — Claude JSONL or Copilot `events.jsonl`) |
 | **Inspect state / liveness** | `pij state <id>` / `pij list` | same — the CLI verbs are shared |
 | **Close / teardown** | `pij_close({ to })` (ownership-aware) | `tmux kill-pane -t <pane>` + `rm -f ~/.pij/<id>.json && rm -rf ~/.pij/<id>` |
 
@@ -67,15 +79,18 @@ availability is the definitive signal.)
 - **pi mode** colleagues are spawned through pi/Copilot, so `--model` /
   `pij_spawn({ model })` takes the Copilot strings (e.g.
   `github-copilot/claude-sonnet-4.6:xhigh`, `github-copilot/gpt-5.5:xhigh`).
-- **control-plane mode** colleagues are real **Claude** processes, so `--model`
-  takes Claude names: `sonnet`, `opus`, `haiku`, or a full id
-  (`claude-sonnet-4-6`). Cross-model review still applies — pick a reviewer model
-  deliberately ≠ the coder.
+- **control-plane mode** colleagues are real **Claude** or **Copilot** processes:
+  - `--harness claude` → Claude names: `sonnet`, `opus`, `haiku`, or a full id
+    (`claude-sonnet-4-6`).
+  - `--harness copilot` → Copilot names: `gpt-5.5`, `claude-sonnet-4.6`, etc.
+  Cross-model (and now cross-**harness**) review still applies — pick a reviewer
+  deliberately ≠ the coder (e.g. a Copilot reviewer over a Claude coder).
 
-`pij spawn` always launches a driven Claude pane with
-`--dangerously-skip-permissions`: there is no human at that pane to answer
-permission/auto-mode prompts, so without it the colleague hangs the instant it
-runs a tool. The pane is a controlled peer you spawned, not an untrusted surface.
+`pij spawn` always launches a driven pane with blanket permissions —
+`claude --dangerously-skip-permissions`, `copilot --yolo` (= --allow-all-tools/
+paths/urls): there is no human at that pane to answer permission/auto-mode
+prompts, so without it the colleague hangs the instant it runs a tool. The pane is
+a controlled peer you spawned, not an untrusted surface.
 
 ## What is identical across modes
 
@@ -100,9 +115,20 @@ The **disciplines do not change** — only the transport verb does:
 - **Liveness is pane-based.** A control-plane colleague's descriptor records the
   **pane** pid (`#{pane_pid}`), not the spawner's, so `pij send` doesn't falsely
   refuse a live pane as dead.
-- **Binding is deterministic but daemon-relative.** `pij spawn` snapshots the cwd's
-  transcripts *before* the pane exists, so the daemon binds the genuinely-new
-  transcript even if Claude writes it before the first daemon tick.
+- **Binding is deterministic but daemon-relative (Claude).** `pij spawn` snapshots
+  the cwd's transcripts *before* the pane exists, so the daemon binds the
+  genuinely-new transcript even if Claude writes it before the first daemon tick.
+- **Copilot binding is deterministic *and* race-free.** Copilot lets pij CHOOSE the
+  session UUID at spawn (`copilot --session-id <uuid>`), so the daemon binds to that
+  exact id the instant the pane is interactive — no transcript discovery, no
+  snapshot, no phonehome needed to bind (phonehome still runs as a nice confirm).
+- **Getting Copilot's info out — `events.jsonl`, NOT the sqlite turns table.** A
+  bound Copilot session streams every turn LIVE to
+  `~/.copilot/session-state/<uuid>/events.jsonl` (lines `{type,data,…}`;
+  `user.message`/`assistant.message` carry `data.content`, tools in
+  `data.toolRequests[]`). That's what `pij tail` reads. Do **not** read
+  `~/.copilot/session-store.db` `turns` — its `assistant_response` is persisted
+  lazily (still null while the pane already shows the reply).
 - **"peer is stale but alive" on send is benign.** Control-plane peers (claude)
   don't write pij `events.ndjson`, so `lastEventAt` stays null → liveness reads
   *stale*. The send still delivers (pid is alive). Don't treat that warning as a

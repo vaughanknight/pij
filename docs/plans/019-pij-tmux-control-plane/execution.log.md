@@ -289,3 +289,61 @@ passed / 4 skipped / 0 fail**; **plus the live claude+tmux end-to-end smoke
   pi↔pi no-regression), T023 (`pij adopt <pane>` — own discovery rule).
 - **Group G** — chalk TUI (AC-11), `pij daemon` verb, two-harness smoke, operator guide
   (`docs/how/pij-daemon.md`), domain-map Health Summary finalize (T028).
+
+### EXT — GitHub Copilot CLI as a second control-plane harness (post-plan extension)
+Original plan listed `copilot` as *reserved / Non-Goal*. Added it as a real driven
+harness (v1.0.66), live-verified end-to-end against the daemon.
+
+- **Spawn** (`pij spawn --harness copilot`): emits `copilot --yolo --session-id <uuid>`.
+  `--yolo` (= --allow-all-tools/paths/urls) is the Copilot analog of claude's
+  `--dangerously-skip-permissions` (driven pane, no human to approve). `core/spawn.ts`
+  `buildControlSpawnCommand` + `ControlSpawnInput.copilotSessionId`.
+- **Deterministic, race-free binding** — the key asymmetry vs Claude: `--session-id`
+  **SETS a new session's UUID**, so pij CHOOSES the id at spawn (`randomUUID()` in the
+  bin), persists it as `SessionDescriptor.plannedHarnessSessionId`, and the daemon binds
+  to it the instant the pane is interactive (`core/daemon/loop.ts` binding branch) — **no
+  transcript discovery, no `transcriptsAtSpawn` snapshot, no phonehome needed to bind**.
+- **Tail** (`pij tail <id>`) reads Copilot's LIVE per-session stream
+  `~/.copilot/session-state/<uuid>/events.jsonl` (`core/harness/copilot.ts`
+  `sessionEventsPath` + `summarizeCopilotEvent`) — reusing claude's exact file-tail loop,
+  swapping path + summarizer. **NOT** the sqlite `session-store.db` `turns` table — its
+  `assistant_response` is persisted lazily (null while the pane already shows the reply).
+- **Readiness** (`core/readiness.ts`): added Copilot's footer markers to the one shared
+  classifier — idle `? help` / `tab next tab`, busy `esc cancel` (`◎ Working`).
+- **Live dogfood** (Copilot v1.0.66, GPT-5.5): `spawn` → daemon `injected-init` →
+  `bound ↔ <chosen-uuid>` → Copilot ran the injected `pij phonehome` (proving `--yolo`) →
+  `pij send` framed `[pij from …]` relay → Copilot replied `COPILOT-OVER-TMUX-WORKS` →
+  `pij tail` rendered the whole exchange incl. `⚙ bash`. **Proof**: +14 unit specs
+  (copilot summarizer/path, spawn argv, readiness footers, daemon deterministic bind);
+  full suite **833 passed / 4 skipped / 0 fail**.
+- **Skill**: `flow-pair/references/harness-modes.md` + `SKILL.md` updated (copilot model
+  names, `--yolo`, the `events.jsonl` tail source, deterministic-bind gotcha).
+- **Tooling**: `just flow-pair-install` symlinks `skills/flow-pair` into `~/.claude/skills`
+  + `~/.copilot/skills` (machine-wide, for control-plane dogfooding).
+
+### EXT — daemon lifecycle: auto-start on demand + `pij daemon` verb (post-plan extension)
+A control-plane spawn is inert without a daemon. Made the daemon self-managing so an
+agent never has to hand-start it, and added a clean teardown.
+
+- **Auto-start** (`core/daemon/lifecycle.ts` `needsAutoStart` + bin `ensureDaemonRunning`):
+  `pij spawn` checks for a live daemon (lock pid alive) and, if none, creates a
+  **background** tmux window (`-d`, no focus steal — `NewWindowOpts.detached`) named
+  **`pij-daemon`** running the daemon, and **prints a note** so the calling agent knows
+  one was started. Idempotent: skips if the lock is live OR a `pij-daemon` window already
+  exists (convention guard against a double-start race before the lock is written).
+- **Convention-based ownership** (user steer): a tmux window named `pij-daemon` IS pij's.
+  `daemonWindows()` (`tmux list-windows -a`) is the lock-independent signal — finds the
+  window even with a missing/stale lock, and finds orphans. The daemon also records its
+  own `#{window_id}` in the lock (`LockFile.window`, set only when `PIJ_DAEMON_OWNED=1`),
+  so stop has both signals.
+- **`pij daemon [start|status|stop|kill]`** (`runDaemonVerb`): `status` reports
+  running/stale/absent + the owned window; `stop` SIGTERMs the daemon AND kills every
+  `pij-daemon` window pij owns (never a window a human started the daemon in), then clears
+  the lock. `planStop` (pure) decides nothing|cleanup|kill.
+- **Live dogfood**: `status` → `running (pid …, window @150)`; `stop` → SIGTERM + window
+  torn down + lock cleared + `not running`; `pij spawn` with no daemon → `⚙ no pij daemon
+  was running — started one in tmux window 'pij-daemon' …` → peer driven to **bound**, with
+  the client's **active window unchanged** (background launch verified: daemon window
+  `active=0`). **Proof**: +9 lifecycle specs; full suite **842 passed / 4 skipped / 0 fail**.
+- **Skill**: `harness-modes.md` + `SKILL.md` updated — auto-start, the `pij daemon` verbs,
+  and the `pij-daemon` naming convention, so agents know the daemon is self-managing.

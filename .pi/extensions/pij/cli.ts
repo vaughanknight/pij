@@ -6,9 +6,11 @@
 // this process never imports @earendil-works/*.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
@@ -18,11 +20,14 @@ import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { applyBinding, resolveAdoptSessionId } from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, parseArgs } from "./core/cli.js";
+import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
+import { parseLockFile } from "./core/daemon/lock.js";
 import {
 	summarizeTranscriptLine,
 	transcriptDir,
 	transcriptPathFor,
 } from "./core/harness/claude.js";
+import { sessionEventsPath, summarizeCopilotEvent } from "./core/harness/copilot.js";
 import { parseReceiptBody } from "./core/message.js";
 import {
 	allocatePijId,
@@ -100,11 +105,148 @@ function waitReceipt(
 	tick();
 }
 
-/** `pij spawn --harness claude` (T018, AC-01): split a pane right running the
- *  harness under a PRE-ALLOCATED pij-id, write the `pending` descriptor, and
- *  return the id IMMEDIATELY (<500ms). The running daemon drives the pane to
- *  ready → bound asynchronously; this never blocks on boot. Impure (tmux + fs),
- *  so it lives in the bin; the parse + builders are pure core. */
+// ─── daemon lifecycle (auto-start on demand + `pij daemon` verb) ──────────────
+
+/** tmux window name pij gives a daemon window it creates. The convention is the
+ *  robust ownership signal (survives a missing/stale lock): a window named this
+ *  IS a pij-managed daemon window — safe to find and to tear down. */
+const DAEMON_WINDOW_NAME = "pij-daemon";
+const daemonLockPath = join(pijHome, "daemon.lock");
+
+function readDaemonStatus() {
+	let raw: string | null = null;
+	try {
+		raw = readFileSync(daemonLockPath, "utf8");
+	} catch {
+		/* no lock → absent */
+	}
+	return daemonStatus(parseLockFile(raw), (pid) => new NodeProcess().isAlive(pid));
+}
+
+/** Window ids (`@N`) of every tmux window named `pij-daemon`, across all sessions
+ *  (`list-windows -a`). The lock-independent convention signal — used both to
+ *  avoid double-starting and to tear the daemon's window down on stop. */
+function daemonWindows(): string[] {
+	try {
+		const raw = execFileSync("tmux", ["list-windows", "-a", "-F", "#{window_id} #{window_name}"], {
+			encoding: "utf8",
+		});
+		return raw
+			.split("\n")
+			.map((l) => l.trim())
+			.filter(Boolean)
+			.map((l) => {
+				const sp = l.indexOf(" ");
+				return { id: l.slice(0, sp), name: l.slice(sp + 1) };
+			})
+			.filter((w) => w.name === DAEMON_WINDOW_NAME && /^@\d+$/.test(w.id))
+			.map((w) => w.id);
+	} catch {
+		return [];
+	}
+}
+
+/** Ensure a daemon is running for a control-plane command. No-op when the lock
+ *  shows a LIVE daemon, or when a `pij-daemon` window already exists (one is
+ *  booting — the convention guard against a double-start race before the lock is
+ *  written). Otherwise create a tmux window that runs the daemon and return a
+ *  note so the calling agent KNOWS one was auto-started. Returns null if a daemon
+ *  was already up (nothing to report). */
+function ensureDaemonRunning(): string | null {
+	if (!needsAutoStart(readDaemonStatus())) return null; // lock says a live daemon
+	const tmux = new TmuxAdapter();
+	if (!tmux.currentSession()) {
+		return "⚠️ no pij daemon running and not inside tmux — start one with `pij daemon start`";
+	}
+	if (daemonWindows().length > 0) return null; // a pij-daemon window already exists (booting)
+	const daemonPath = fileURLToPath(new URL("./daemon.ts", import.meta.url));
+	const res = tmux.newWindow({
+		name: DAEMON_WINDOW_NAME,
+		cwd: process.cwd(),
+		env: { PIJ_DAEMON_OWNED: "1" },
+		cmd: "npx",
+		args: ["tsx", daemonPath],
+		detached: true, // background — never steal the operator's focus
+	});
+	if (!res.ok) return `⚠️ could not auto-start pij daemon: ${res.message}`;
+	return `⚙ no pij daemon was running — started one in tmux window '${DAEMON_WINDOW_NAME}' (pane ${res.value.paneId}); it will drive control-plane sessions to bound.`;
+}
+
+/** `pij daemon [start|status|stop|kill]` — lifecycle for the machine-wide daemon.
+ *  start: auto-start if absent. status: report lock + convention windows.
+ *  stop/kill: SIGTERM the daemon AND kill any `pij-daemon` window pij owns. */
+function runDaemonVerb(argv: readonly string[]): void {
+	const sub = argv[0] ?? "start";
+	if (sub === "start") {
+		const note = ensureDaemonRunning();
+		if (note) process.stdout.write(`${note}\n`);
+		else {
+			const st = readDaemonStatus();
+			process.stdout.write(
+				`pij daemon already running (pid ${st.kind === "running" ? st.pid : "?"})\n`,
+			);
+		}
+		process.exit(0);
+	}
+	if (sub === "status") {
+		const st = readDaemonStatus();
+		const wins = daemonWindows();
+		const winNote = wins.length ? `; pij-daemon window(s): ${wins.join(", ")}` : "";
+		if (st.kind === "running") {
+			process.stdout.write(
+				`running (pid ${st.pid}${st.window ? `, window ${st.window}` : ""})${winNote}\n`,
+			);
+		} else if (st.kind === "stale") {
+			process.stdout.write(`stale lock (dead pid ${st.pid})${winNote}\n`);
+		} else {
+			process.stdout.write(`not running${wins.length ? ` (orphan${winNote})` : ""}\n`);
+		}
+		process.exit(0);
+	}
+	if (sub === "stop" || sub === "kill") {
+		const plan = planStop(readDaemonStatus());
+		const did: string[] = [];
+		if (plan.kind === "kill") {
+			try {
+				process.kill(plan.pid, "SIGTERM");
+				did.push(`signalled daemon pid ${plan.pid}`);
+			} catch {
+				did.push(`daemon pid ${plan.pid} already gone`);
+			}
+		} else if (plan.kind === "cleanup") {
+			did.push(`cleared stale lock (dead pid ${plan.pid})`);
+		}
+		// Convention teardown: kill EVERY pij-daemon window (the one in the lock +
+		// any orphan a crashed start left behind). We own these by naming.
+		for (const w of daemonWindows()) {
+			try {
+				// stderr piped (not inherited) so an already-auto-closed window's
+				// "can't find window" never leaks to the caller — teardown is idempotent.
+				execFileSync("tmux", ["kill-window", "-t", w], { stdio: ["ignore", "pipe", "pipe"] });
+				did.push(`killed tmux window ${w}`);
+			} catch {
+				/* already gone */
+			}
+		}
+		try {
+			rmSync(daemonLockPath, { force: true });
+		} catch {
+			/* already gone */
+		}
+		process.stdout.write(
+			did.length ? `pij daemon stopped — ${did.join("; ")}\n` : "no pij daemon running\n",
+		);
+		process.exit(0);
+	}
+	process.stderr.write(`E-ARG: unknown 'pij daemon' subcommand '${sub}' (use start|status|stop)\n`);
+	process.exit(64);
+}
+
+/** `pij spawn --harness claude|copilot` (T018, AC-01): split a pane right running
+ *  the harness under a PRE-ALLOCATED pij-id, write the `pending` descriptor, and
+ *  return the id IMMEDIATELY (<500ms). The running daemon (auto-started here if
+ *  absent) drives the pane to ready → bound asynchronously; this never blocks on
+ *  boot. Impure (tmux + fs), so it lives in the bin; the parse + builders are pure. */
 function runSpawn(argv: readonly string[]): void {
 	const req = parseSpawnArgs(argv);
 	if (!req.ok) {
@@ -117,18 +259,29 @@ function runSpawn(argv: readonly string[]): void {
 		process.stderr.write("E-NOTMUX: pij spawn --harness needs an active tmux session\n");
 		process.exit(2);
 	}
+	// A control-plane spawn is inert without a daemon to drive it → ready → bound.
+	// Auto-start one if none is running, and tell the caller we did (so the agent
+	// knows a new tmux window appeared and that binding is now in motion).
+	const daemonNote = ensureDaemonRunning();
+	if (daemonNote) process.stdout.write(`${daemonNote}\n`);
 	const cwd = process.cwd();
-	// H1 (dogfood review): snapshot the transcript dir NOW, before the pane (and
-	// Claude) exist, so new-path discovery is genuinely deterministic — the
-	// daemon's first-tick snapshot would race Claude's early transcript write.
-	const dir = transcriptDir(homedir(), cwd);
+	const isCopilot = req.value.harness === "copilot";
+	// Copilot lets us CHOOSE the session UUID (`--session-id`), so binding is
+	// deterministic at spawn — no transcript-discovery snapshot needed. Claude's
+	// id is auto-generated, so snapshot the transcript dir NOW (before the pane
+	// and Claude exist) so new-path discovery is genuinely deterministic (the
+	// daemon's first-tick snapshot would race Claude's early transcript write — H1).
+	const copilotSessionId = isCopilot ? randomUUID() : undefined;
 	let transcriptsAtSpawn: string[] = [];
-	try {
-		transcriptsAtSpawn = readdirSync(dir)
-			.filter((n) => n.endsWith(".jsonl"))
-			.map((n) => `${dir}/${n}`);
-	} catch {
-		/* dir not created yet → empty before-set */
+	if (!isCopilot) {
+		const dir = transcriptDir(homedir(), cwd);
+		try {
+			transcriptsAtSpawn = readdirSync(dir)
+				.filter((n) => n.endsWith(".jsonl"))
+				.map((n) => `${dir}/${n}`);
+		} catch {
+			/* dir not created yet → empty before-set */
+		}
 	}
 	const token = `s${Date.now()}-${process.pid}`;
 	const pijId = allocatePijId(token, process.pid);
@@ -138,6 +291,7 @@ function runSpawn(argv: readonly string[]): void {
 		cwd,
 		model: req.value.model,
 		task: req.value.task,
+		copilotSessionId,
 	});
 	const split = tmux.splitWindow({
 		cmd: spawnCmd.cmd,
@@ -177,7 +331,8 @@ function runSpawn(argv: readonly string[]): void {
 			eventsPath: join(dataDir, "events.ndjson"),
 			pid: panePid,
 			startedAtIso: new Date().toISOString(),
-			transcriptsAtSpawn,
+			transcriptsAtSpawn: isCopilot ? undefined : transcriptsAtSpawn,
+			plannedHarnessSessionId: copilotSessionId,
 		}),
 	);
 	if (req.value.json) {
@@ -291,17 +446,29 @@ function runAdopt(argv: readonly string[]): void {
 	process.exit(0);
 }
 
-/** `pij tail <pij-id>` for a BOUND claude session (T022, AC-09): claude writes a
- *  JSONL transcript, not pij's events.ndjson, so resolve that file and stream a
- *  summarized view (`[role] text`, tool calls as `⚙ name`). `--follow` polls for
- *  new lines. Returns false when the target is not a bound claude (caller falls
- *  back to the normal event tail). */
+/** `pij tail <pij-id>` for a BOUND control-plane session (T022, AC-09): a coding
+ *  harness writes its OWN per-session JSONL transcript, not pij's events.ndjson —
+ *  claude under ~/.claude/projects/…/<sid>.jsonl, copilot under
+ *  ~/.copilot/session-state/<sid>/events.jsonl. Resolve that file (by harness) and
+ *  stream a summarized view (`[role] text`, tool calls as `⚙ name`); `--follow`
+ *  polls for new lines. Returns false when the target is not a bound claude/copilot
+ *  (caller falls back to the normal event tail). */
 function tailTranscript(id: string, follow: boolean, linesArg: number | undefined): boolean {
 	const d = new FsRegistry(pijHome).read(id);
-	if (!d || d.harness !== "claude" || !d.harnessSessionId) return false;
-	const path = transcriptPathFor(homedir(), d.folder, d.harnessSessionId);
+	if (!d || !d.harnessSessionId) return false;
+	let path: string;
+	let summarize: (raw: string) => { role: "user" | "assistant"; text: string } | null;
+	if (d.harness === "claude") {
+		path = transcriptPathFor(homedir(), d.folder, d.harnessSessionId);
+		summarize = summarizeTranscriptLine;
+	} else if (d.harness === "copilot") {
+		path = sessionEventsPath(homedir(), d.harnessSessionId);
+		summarize = summarizeCopilotEvent;
+	} else {
+		return false;
+	}
 	const render = (raw: string): void => {
-		const e = summarizeTranscriptLine(raw);
+		const e = summarize(raw);
 		if (e) process.stdout.write(`[${e.role}] ${e.text.replace(/\n/g, " ").slice(0, 200)}\n`);
 	};
 	let consumed = 0;
@@ -346,6 +513,10 @@ function main(): void {
 		runCompactSelf(process.argv.slice(3));
 		return;
 	}
+	if (process.argv[2] === "daemon") {
+		runDaemonVerb(process.argv.slice(3));
+		return;
+	}
 	// E-NOREG: registry home absent => the extension never booted here.
 	if (!existsSync(pijHome)) {
 		process.stderr.write("E-NOREG: no pij registry — is the pij extension loaded?\n");
@@ -356,9 +527,9 @@ function main(): void {
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(64);
 	}
-	// `pij tail` of a bound claude session streams its JSONL transcript, not the
-	// pij event log (T022). Try that first; fall through to the event tail if the
-	// target isn't a bound claude.
+	// `pij tail` of a bound claude/copilot session streams ITS JSONL transcript,
+	// not the pij event log (T022). Try that first; fall through to the event tail
+	// if the target isn't a bound control-plane harness.
 	if (parsed.value.verb === "tail") {
 		if (tailTranscript(parsed.value.id, parsed.value.follow, parsed.value.lines)) {
 			return; // tailTranscript owns output (and the follow loop)

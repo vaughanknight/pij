@@ -10,6 +10,7 @@
 // Delivery ownership (AC-08): the daemon drives + drains ONLY tmux harnesses
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -148,10 +149,31 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	const proc = new NodeProcess();
 	const lockPath = join(pijHome, "daemon.lock");
 
+	// When pij auto-started us, it created our tmux window and set PIJ_DAEMON_OWNED.
+	// Record that window id (resolved from our own $TMUX_PANE) in the lock so
+	// `pij daemon stop` can tear down the window it owns — and ONLY that one (a
+	// human-started daemon has no PIJ_DAEMON_OWNED, so its window is never killed).
+	let ownedWindow: string | undefined;
+	if (process.env.PIJ_DAEMON_OWNED === "1" && process.env.TMUX_PANE) {
+		try {
+			ownedWindow = execFileSync(
+				"tmux",
+				["display-message", "-p", "-t", process.env.TMUX_PANE, "#{window_id}"],
+				{ encoding: "utf8" },
+			).trim();
+		} catch {
+			/* not resolvable → leave unset (stop just won't kill a window) */
+		}
+	}
+
 	// Atomic acquire (review M2): `wx` = O_CREAT|O_EXCL, so two daemons racing
 	// can't both "win" a stale-lock read. On EEXIST, evaluate the holder: a live
 	// one → refuse; a dead one → reclaim (unlink + retry the exclusive create).
-	const lockBody = serializeLockFile({ pid: process.pid, startedAt: new Date().toISOString() });
+	const lockBody = serializeLockFile({
+		pid: process.pid,
+		startedAt: new Date().toISOString(),
+		...(ownedWindow ? { window: ownedWindow } : {}),
+	});
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
 			writeFileSync(lockPath, lockBody, { flag: "wx" });

@@ -11,6 +11,10 @@ export interface LockFile {
 	readonly pid: number;
 	/** ISO-8601 acquisition time (diagnostics; not used by the decision). */
 	readonly startedAt: string;
+	/** tmux window id (`@N`) the daemon runs in — recorded ONLY when pij itself
+	 *  created that window (auto-start). Lets `pij daemon stop` tear down the
+	 *  window it owns, while never touching a window a human started the daemon in. */
+	readonly window?: string;
 }
 
 export type LockDecision =
@@ -24,7 +28,11 @@ export function parseLockFile(raw: string | null): LockFile | null {
 	try {
 		const v = JSON.parse(raw) as Partial<LockFile>;
 		if (typeof v.pid === "number" && typeof v.startedAt === "string") {
-			return { pid: v.pid, startedAt: v.startedAt };
+			return {
+				pid: v.pid,
+				startedAt: v.startedAt,
+				...(typeof v.window === "string" ? { window: v.window } : {}),
+			};
 		}
 		return null;
 	} catch {

@@ -47,6 +47,11 @@ export class TmuxAdapter implements TmuxPort {
 	newWindow(opts: NewWindowOpts): Result<{ paneId: string }> {
 		const args = ["new-window", "-P", "-F", "#{pane_id}", "-n", opts.name];
 
+		// -d: create in the background, don't switch the client's focus into it.
+		if (opts.detached) {
+			args.push("-d");
+		}
+
 		if (opts.cwd !== undefined) {
 			args.push("-c", opts.cwd);
 		}

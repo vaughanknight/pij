@@ -7,6 +7,7 @@ import { type DaemonPorts, type DriveState, driveSession, WATCHDOG_TIMEOUT_MS } 
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
 const READY = "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+const COPILOT_READY = "/ commands · ? help · tab next tab                  GPT-5.5";
 const BOOTING = "▝▜█████▛▘ Loading…";
 const CHROME = "Claude in Chrome extension detected\n Esc to keep browser tools off";
 const TRUST = "Do you trust the files in this folder?\n /repo\n Enter to confirm · Esc to exit";
@@ -140,6 +141,32 @@ describe("driveSession state machine", () => {
 		);
 		expect(out).toEqual({ kind: "bound", harnessSessionId: "claude-new" });
 		expect(reg.read("pij-w")?.harnessSessionId).toBe("claude-new");
+		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
+		expect(
+			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
+		).toBe(true);
+	});
+
+	it("copilot: ready + plannedHarnessSessionId → binds deterministically (no discovery)", () => {
+		// Copilot chose its session id at spawn (`--session-id`), so the daemon binds
+		// to the planned id the instant the pane is interactive — no transcript needed.
+		const w = world({ pane: COPILOT_READY, transcripts: [] });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = { readyAtMs: 1000 };
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "9a8f8be6-uuid",
+			}),
+			drive,
+			w.ports,
+			reg,
+			del,
+		);
+		expect(out).toEqual({ kind: "bound", harnessSessionId: "9a8f8be6-uuid" });
+		expect(reg.read("pij-w")?.harnessSessionId).toBe("9a8f8be6-uuid");
 		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
 		expect(
 			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
