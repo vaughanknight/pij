@@ -307,6 +307,10 @@ describe("dispatch tail / state / path", () => {
 		const r = dispatch({ verb: "state", id: "w3", json: true }, d);
 		const j = JSON.parse(r.stdout);
 		expect(j).toMatchObject({ id: "w3", state: "working", liveness: "stale", pid: 100 });
+		// cwd + harness are first-class so a colleague's working dir is readable
+		// without scraping the tmux footer (feedback #4).
+		expect(j).toHaveProperty("cwd");
+		expect(j).toHaveProperty("harness");
 	});
 
 	it("path prints events/state/dir", () => {

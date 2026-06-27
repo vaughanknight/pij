@@ -65,6 +65,33 @@ Messaging:
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
 
+const SPAWN_USAGE = `pij spawn — spawn a control-plane colleague (daemon binds it asynchronously)
+
+USAGE
+  pij spawn --harness claude|copilot [--model <m>]
+
+FLAGS
+  --harness <h>   claude | copilot  (the harness to launch in a new tmux pane)
+  --model <m>     model id for that harness:
+                    claude  -> sonnet | opus | haiku | claude-sonnet-4-6
+                    copilot -> gpt-5.5 | claude-sonnet-4.6 | …
+                  NOTE: an unknown model is currently passed through to the harness,
+                  which may silently fall back to its default — verify with the pane
+                  footer / pij tail until spawn-time validation lands.
+
+Returns the new pij id immediately; the daemon drives boot -> ready -> bound.`;
+
+/** Package version for `pij --version` (best-effort; "unknown" if unreadable). */
+function pijVersion(): string {
+	try {
+		const here = fileURLToPath(import.meta.url);
+		const pkg = JSON.parse(readFileSync(join(here, "../../../../package.json"), "utf8"));
+		return typeof pkg.version === "string" ? pkg.version : "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
 /** Block the current thread for `ms` without spawning a process (no async). Used
  *  by compact-self to settle between keystrokes and to wait out compaction. */
 function sleepSync(ms: number): void {
@@ -278,6 +305,10 @@ function runDaemonVerb(argv: readonly string[]): void {
  *  absent) drives the pane to ready → bound asynchronously; this never blocks on
  *  boot. Impure (tmux + fs), so it lives in the bin; the parse + builders are pure. */
 function runSpawn(argv: readonly string[]): void {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		process.stdout.write(`${SPAWN_USAGE}\n`);
+		return;
+	}
 	const req = parseSpawnArgs(argv);
 	if (!req.ok) {
 		process.stderr.write(`${req.code}: ${req.message}\n`);
@@ -569,6 +600,10 @@ function main(): void {
 	const top = process.argv[2];
 	if (top === undefined || top === "--help" || top === "-h" || top === "help") {
 		process.stdout.write(`${USAGE}\n`);
+		process.exit(0);
+	}
+	if (top === "--version" || top === "-v" || top === "version") {
+		process.stdout.write(`pij ${pijVersion()}\n`);
 		process.exit(0);
 	}
 	// `spawn` is impure (tmux split + pending write) — intercept before the pure

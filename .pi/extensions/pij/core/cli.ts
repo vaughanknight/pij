@@ -452,10 +452,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						lastEventAt: d.lastEventAt ?? null,
 						pid: d.pid,
 						ageMs,
+						// First-class cwd + harness so a colleague's working dir is
+						// machine-readable without scraping the tmux footer (feedback #4).
+						cwd: d.folder,
+						harness: d.harness ?? null,
 					}),
 				);
 			return okOut(
-				`${d.id}: ${d.state ?? "idle"} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})`,
+				`${d.id}: ${d.state ?? "idle"} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}`,
 			);
 		}
 		case "phonehome": {

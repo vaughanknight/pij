@@ -70,8 +70,55 @@ pruned 70 dead-pid entries this session.
   liveness alone (normal for claude/copilot peers). Same "transient state cleans
   itself" theme as the Cut #1 inbox fix. Touches: daemon loop (GC pass), lifecycle.
 
+## Second run — pij-94dd91 (Claude orchestrator, substrate/harness-engineering)
+
+A separate dogfood; its **magic wand independently matched run #1's #3** — silent
+wrong-model is the single most dangerous thing (a correctness bug masquerading as a
+healthy worker).
+
+### ✅ Done (landed + live-verified)
+
+- **#4 cwd not exposed** → `pij state` (and `--json`) now report **`cwd` + `harness`**
+  as first-class fields (the data was already stored as `folder`; no footer scraping).
+- **#6 discovery friction** → `pij spawn --help` now prints spawn usage (was
+  `--help needs a value`); `pij --version` now prints the version (was unknown
+  command). Bare `pij`/`--help` already print the full surface.
+
+### 📋 Fix-asks (deferred — prioritised)
+
+1. **[TOP — fail loud on bad `--model`]** `pij spawn --harness copilot --model glm-5.2`
+   silently launched GPT-5.5; `state`/`list`/`tail` never surfaced the bound model, so
+   you ship a reviewer running the wrong model and never know. **Ask:** reject an
+   unknown `--model` at spawn (no silent harness-default substitution) **and** record
+   the **bound** model on the descriptor so `state/list --json` report it. NB: expose
+   the *bound* model (read from the footer / ready-ping), **not** merely the
+   *requested* one — surfacing the requested model alone would show `glm-5.2` while the
+   worker runs GPT-5.5, **amplifying** the bug. This is why the model field is bundled
+   here, not shipped with #4. (Corroborates run #1's #3.) Touches: spawn (validate),
+   daemon loop (footer→bound-model, promote mismatch to a warning/bind-failed), types
+   (descriptor `model`), core/cli (surface).
+2. **[BLOCKER — can't spawn a `pi` colleague]** `pij spawn --harness pi …` →
+   `E-ARG: --harness must be claude|copilot`. A Claude/Copilot orchestrator has **no
+   documented path** to spawn a pi colleague (e.g. pi on GLM-5.2), so "use a pi
+   colleague on GLM" is unreachable from a non-pi orchestrator. **Ask:** add `pi` as a
+   spawnable control-plane harness (launch the `pi` CLI in a pane, drive via send-keys
+   like claude/copilot) + document it. Meatier — pi's readiness/transcript differ.
+3. **[model discovery]** nothing lists a harness's accepted models; the skill only
+   documents `github-copilot/*` strings (GLM/pi undocumented). **Ask:** a `pij models
+   [--harness h]` verb (or skill pointer to `~/.pi/agent/models.json` + the copilot
+   list). Pairs naturally with fix-ask #1's validation.
+4. **[layout flag]** pi-mode `pij_spawn({layout:'split'})` has no CLI equivalent;
+   `pij spawn` can't honour "spawn to the right". **Ask:** a `--layout split|stack`
+   (or `--right`) flag mapping onto the existing `planControlSplit` geometry.
+
+> **Retracted by the reporter:** an initial "cross-harness skill gap" note (a Copilot
+> reviewer can't run `~/.claude` skills) was **wrong** — skills live in the shared
+> `~/.agents/skills/`, which every harness loads. No gap; no doc change.
+
 ## Overall
 
 The peer's verdict: the control-plane path (daemon + adopt + spawn + send-keys relay)
 held up across a full review cycle. The friction was all at the **edges** —
-self-identification, model/trust validation, and wording — not the core relay.
+self-identification, model/trust validation, model discovery, and wording — not the
+core relay. The recurring, highest-priority theme across both runs: **make the bound
+model fail-loud and first-class.**
