@@ -45,6 +45,21 @@ const COPILOT_BUSY = `
  ◎ Working esc cancel                                GPT-5.5
 `;
 
+// Live capture of a pij-spawned claude MID-TURN in a narrow split pane: the
+// `(esc to interrupt · …)` hint is truncated off the spinner line, so busy must
+// be read from the capitalized gerund (`Percolating…`) + the streaming token
+// counter. The status bar still reads `bypass permissions on` (a READY marker),
+// so this is the load-bearing "busy guard must win" case (regression).
+const CLAUDE_NARROW_BUSY = `
+✻ Churned for 16s
+✽ Percolating… (6s · ↓ 131 tokens)
+─────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────
+  pij ⎇ main • Opus 4.8 (1M context) • ⚡high •…
+  ⏵⏵ bypass permissions on (shift+tab to      ·
+`;
+
 describe("classifyReadiness", () => {
 	it("idle footer markers → ready", () => {
 		expect(classifyReadiness(READY_FOOTER)).toBe("ready");
@@ -70,8 +85,23 @@ describe("classifyReadiness", () => {
 		expect(classifyReadiness("claude: command not found")).toBe("dead");
 	});
 
+	it("claude --dangerously-skip-permissions footer ('bypass permissions on') → ready", () => {
+		// The ACTUAL footer of a pij-spawned claude (live capture, narrow split pane
+		// that truncates 'shift+tab to cycle' → 'shift+tab to'). The old fixture used
+		// 'auto mode on', which a pij-spawned pane never shows. Regression for the
+		// stuck-at-pending bind bug.
+		const REAL = "  pij ⎇ main • Opus 4.8 • ⚡high •…\n  ⏵⏵ bypass permissions on (shift+tab to      ·";
+		expect(classifyReadiness(REAL)).toBe("ready");
+	});
+
 	it("copilot idle footer ('? help · tab next tab') → ready", () => {
 		expect(classifyReadiness(COPILOT_READY)).toBe("ready");
+	});
+
+	it("claude mid-turn in a NARROW pane → busy (gerund+counter, esc-hint truncated)", () => {
+		// The busy guard must beat the `bypass permissions on` READY marker that the
+		// status bar shows even while working (the #11 live-validation bug).
+		expect(classifyReadiness(CLAUDE_NARROW_BUSY)).toBe("busy");
 	});
 
 	it("copilot '◎ Working esc cancel' → busy", () => {
