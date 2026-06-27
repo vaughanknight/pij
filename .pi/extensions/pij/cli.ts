@@ -14,6 +14,7 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
+import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { applyBinding, resolveAdoptSessionId } from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, parseArgs } from "./core/cli.js";
@@ -191,6 +192,32 @@ function runSpawn(argv: readonly string[]): void {
 	process.exit(0);
 }
 
+/** `pij compact-self [--pane %N]` — dead simple: type `/compact` + Enter into the
+ *  CURRENT tmux pane (default `$TMUX_PANE`) so a session compacts ITSELF. Works
+ *  for any harness — pi and Claude both run `/compact` when it's typed + Entered
+ *  into their pane. No daemon, no registry, no binding: just send-keys. */
+function runCompactSelf(argv: readonly string[]): void {
+	let pane = process.env.TMUX_PANE;
+	for (let i = 0; i < argv.length; i++) {
+		const tok = argv[i];
+		if (tok === "--pane") pane = argv[++i];
+		else if (tok?.startsWith("--pane=")) pane = tok.slice("--pane=".length);
+	}
+	if (!pane || !/^%\d+$/.test(pane)) {
+		process.stderr.write(
+			"E-NOTMUX: compact-self needs a tmux pane (set $TMUX_PANE, or pass --pane %N)\n",
+		);
+		process.exit(2);
+	}
+	typeLiteral(pane, "/compact", execFileRunner);
+	// Settle so Claude Code's paste/slash-menu detection resolves before Enter
+	// (same lesson as the daemon's send-keys — fire Enter too soon and it's swallowed).
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+	pressKey(pane, "Enter", 1, execFileRunner);
+	process.stdout.write(`compact-self → fired /compact into ${pane}\n`);
+	process.exit(0);
+}
+
 /** `pij adopt <pane> --harness claude` (T023, AC-14): register an ALREADY-running
  *  tmux agent (e.g. this orchestrator's own pane) as a bound pij peer so other
  *  sessions can `pij send` to it and the daemon dumps the message into its pane.
@@ -313,6 +340,10 @@ function main(): void {
 	}
 	if (process.argv[2] === "adopt") {
 		runAdopt(process.argv.slice(3));
+		return;
+	}
+	if (process.argv[2] === "compact-self") {
+		runCompactSelf(process.argv.slice(3));
 		return;
 	}
 	// E-NOREG: registry home absent => the extension never booted here.
