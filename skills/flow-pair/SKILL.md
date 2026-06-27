@@ -105,6 +105,7 @@ pij adopt "$TMUX_PANE" --harness claude    # → your pij-id; peers' sends now t
 | Spawn colleague | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude\|copilot --model <m>` (returns id at once; daemon drives boot→bind) |
 | Deliver pointer / message | `pij_send({ to, message })` | `pij send <id> "<text>"` |
 | Compact a colleague | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` |
+| Compact YOURSELF (+ auto-continue) | `pij compact-self [instruction]` | `pij compact-self [instruction]` — same in both modes |
 | Peek (non-disturbing) | `pij tail <id>` | `pij tail <id> [--follow]` (reads the bound transcript) |
 | Close (teardown) | `pij_close({ to })` | `tmux kill-pane -t <pane>` + `rm ~/.pij/<id>.json` |
 

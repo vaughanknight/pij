@@ -108,6 +108,15 @@ The **disciplines do not change** — only the transport verb does:
 
 ## Gotchas & patterns (from live dogfooding, Plan 019)
 
+- **Compact YOURSELF and queue a follow-up — `pij compact-self`.** Any session
+  (the orchestrator OR a peer) can compact its own context and continue in one
+  shot: `pij compact-self [--pane %N] [--delay-ms N] [instruction…]`. It types
+  `/compact` into the current pane (default `$TMUX_PANE`); with an `instruction` it
+  then waits `--delay-ms` (~1.5s default, so compaction has begun) and types the
+  instruction so the harness **queues** it and runs it as the **first turn of the
+  fresh context**. So `pij compact-self "resume phase 3 from <plan>"` = compact,
+  then auto-continue. No daemon/registry — pure send-keys; works for pi, claude,
+  and copilot. (Same settle lesson as below: it waits before each Enter.)
 - **Submit timing.** A burst `send-keys` trips Claude Code's paste detection; the
   daemon waits a short settle before Enter so the line submits crisply. If you ever
   shell `send-keys` by hand, type-then-settle-then-Enter (don't fire Enter
