@@ -65,4 +65,44 @@ describe("FsRegistry", () => {
 		new FsRegistry(home).write(descriptor("carol"));
 		expect(new FsRegistry(home).read("carol")?.id).toBe("carol");
 	});
+
+	// ─── Plan 019: new control-plane fields round-trip; old files still parse ──
+
+	it("round-trips the control-plane fields (harness/harnessSessionId/initInjectedAt/lifecycle)", () => {
+		const reg = new FsRegistry(home);
+		const d: SessionDescriptor = {
+			...descriptor("dave"),
+			harness: "claude",
+			harnessSessionId: "8f3a-uuid",
+			initInjectedAt: "2026-06-27T00:00:01.000Z",
+			lifecycle: "bound",
+		};
+		reg.write(d);
+		expect(reg.read("dave")).toMatchObject({
+			harness: "claude",
+			harnessSessionId: "8f3a-uuid",
+			initInjectedAt: "2026-06-27T00:00:01.000Z",
+			lifecycle: "bound",
+		});
+	});
+
+	it("an OLD descriptor without the new fields still parses (migration-safe)", () => {
+		const reg = new FsRegistry(home);
+		// A pre-Plan-019 descriptor literally has none of the new keys.
+		writeFileSync(
+			join(home, "legacy.json"),
+			JSON.stringify({
+				id: "legacy",
+				folder: "/proj",
+				dataDir: "/home/.pij/legacy",
+				eventsPath: "/home/.pij/legacy/events.ndjson",
+				pid: 7,
+				startedAt: "2026-06-16T00:00:00.000Z",
+			}),
+		);
+		const read = reg.read("legacy");
+		expect(read?.id).toBe("legacy");
+		expect(read?.harness).toBeUndefined();
+		expect(read?.lifecycle).toBeUndefined();
+	});
 });

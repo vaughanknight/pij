@@ -8,6 +8,7 @@
 // liveness/validateCommand/filterEvents via the ports) — no new logic. Node I/O
 // (fs, argv, exit) and the imperative --follow / --wait loops live in the bin.
 
+import { applyBinding } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, resolveSelf } from "./discovery.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
@@ -58,6 +59,7 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| { readonly verb: "state"; readonly id: SessionId; readonly json: boolean }
+	| { readonly verb: "phonehome"; readonly json: boolean }
 	| {
 			readonly verb: "path";
 			readonly id: SessionId;
@@ -132,16 +134,27 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	send: new Set(["command", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
+	phonehome: new Set(["json"]),
 	path: new Set(["events", "state", "dir", "json"]),
 };
 /** Max positionals per verb (send allows id + text). */
-const MAX_POS: Record<string, number> = { whoami: 0, list: 0, send: 2, tail: 1, state: 1, path: 1 };
+const MAX_POS: Record<string, number> = {
+	whoami: 0,
+	list: 0,
+	send: 2,
+	tail: 1,
+	state: 1,
+	phonehome: 0,
+	path: 1,
+};
 
 export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	const verb = argv[0];
-	if (verb === undefined) return err("E-ARG", "usage: pij <whoami|list|send|tail|state|path> …");
+	if (verb === undefined)
+		return err("E-ARG", "usage: pij <whoami|list|send|tail|state|phonehome|path> …");
 	const allowed = ALLOWED_FLAGS[verb];
-	if (!allowed) return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|path)`);
+	if (!allowed)
+		return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|phonehome|path)`);
 	const { pos, flags } = lex(argv.slice(1), BOOLEAN_FLAGS);
 	// strict: reject unknown flags and extra arity (finding F001).
 	for (const k of Object.keys(flags)) {
@@ -216,6 +229,8 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if (id === undefined) return err("E-ARG", "usage: pij state <id>");
 			return ok({ verb: "state", id, json });
 		}
+		case "phonehome":
+			return ok({ verb: "phonehome", json });
 		case "path": {
 			const id = pos[0];
 			if (id === undefined) return err("E-ARG", "usage: pij path <id> [--events|--state|--dir]");
@@ -223,7 +238,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			return ok({ verb: "path", id, which, json });
 		}
 		default:
-			return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|path)`);
+			return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|phonehome|path)`);
 	}
 }
 
@@ -438,6 +453,41 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			return okOut(
 				`${d.id}: ${d.state ?? "idle"} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})`,
+			);
+		}
+		case "phonehome": {
+			// Confirmatory binding (AC-03): the agent self-reports its harness-native
+			// session id (Claude exposes CLAUDE_CODE_SESSION_ID — the transcript stem
+			// the daemon discovers deterministically). Deterministic discovery is
+			// primary; this converges on the SAME id and resolves the ambiguous
+			// (concurrent-boot) case. Idempotent: re-running is a no-op confirm.
+			const s = selfId(deps);
+			if (!s.ok) return fail(s.code, s.message, cmd.json);
+			const d = deps.registry.read(s.value);
+			if (!d) return fail("E-NOID", `no session '${s.value}' in registry`, cmd.json);
+			const harnessSessionId = deps.process.env("CLAUDE_CODE_SESSION_ID");
+			let bound = d;
+			if (harnessSessionId && harnessSessionId.trim() !== "") {
+				if (d.harnessSessionId !== harnessSessionId) {
+					bound = applyBinding(d, harnessSessionId);
+					deps.registry.write(bound);
+				}
+			}
+			const confirmed = Boolean(bound.harnessSessionId);
+			if (cmd.json)
+				return okOut(
+					JSON.stringify({
+						id: bound.id,
+						harness: bound.harness ?? null,
+						harnessSessionId: bound.harnessSessionId ?? null,
+						lifecycle: bound.lifecycle ?? null,
+						confirmed,
+					}),
+				);
+			return okOut(
+				confirmed
+					? `phoned home: ${bound.id} ↔ ${bound.harness ?? "?"} session ${bound.harnessSessionId} (${bound.lifecycle ?? "?"})`
+					: `phoned home: ${bound.id} — no harness session id yet (CLAUDE_CODE_SESSION_ID unset); deterministic discovery will bind`,
 			);
 		}
 		case "path": {

@@ -10,7 +10,9 @@
 //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
-import type { Role } from "./types.js";
+import { deriveSelfId } from "./discovery.js";
+import type { HarnessKind, Role, SessionDescriptor, SessionId } from "./types.js";
+import { err, ok, type Result } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -33,9 +35,11 @@ export interface SpawnInput {
 	role: Role;
 }
 
-/** Output of buildSpawnCommand — passed to TmuxPort.newWindow. */
+/** Output of buildSpawnCommand — passed to TmuxPort.newWindow. `cmd` is `"pi"`
+ *  for a pi worker; the control-plane builder (buildControlSpawnCommand) widens
+ *  it to `"claude"` (copilot later), hence the `string` type. */
 export interface SpawnCommand {
-	readonly cmd: "pi";
+	readonly cmd: string;
 	readonly args: string[];
 	readonly env: Record<string, string>;
 }
@@ -121,4 +125,203 @@ export function parseReadyBody(body: string): ReadyPayload | null {
 	} catch {
 		return null;
 	}
+}
+
+// ─── Control plane (Plan 019) ────────────────────────────────────────────────
+//
+// A non-pi harness (Claude Code today) cannot derive its own pij-id at boot the
+// way a child pi session does (it knows nothing about pij). So the daemon
+// PRE-ALLOCATES the id before the pane exists (AC-01), threads it into the child
+// env (PIJ_SESSION_ID), and writes a `pending` descriptor the daemon then drives
+// to `ready` → `bound`. These builders are PURE — the impure split/write/inject
+// orchestration lives in the daemon (Groups E/F).
+
+/** Input to {@link buildControlSpawnCommand}. */
+export interface ControlSpawnInput {
+	/** The harness to launch (`claude` now; `copilot` reserved). */
+	readonly harness: HarnessKind;
+	/** The PRE-ALLOCATED pij-id ({@link allocatePijId}) — rides PIJ_SESSION_ID so
+	 *  the agent's `pij phonehome` self-resolves to the same id. */
+	readonly pijId: SessionId;
+	/** Absolute working directory for the new session. */
+	readonly cwd: string;
+	/** Optional model override (`claude --model <model>`). */
+	readonly model?: string;
+	/** Optional first task — delivered later via the init inject, not argv. */
+	readonly task?: string;
+}
+
+/** Input to {@link buildPendingDescriptor}. */
+export interface PendingDescriptorInput {
+	readonly pijId: SessionId;
+	/** %N captured from `split-window -P` at spawn (finding 04). */
+	readonly paneId: string;
+	readonly cwd: string;
+	readonly harness: HarnessKind;
+	readonly dataDir: string;
+	readonly eventsPath: string;
+	readonly pid: number;
+	/** ISO-8601 — the daemon's clock at spawn. */
+	readonly startedAtIso: string;
+	/** Transcript paths present at spawn (BEFORE the pane exists) — seeds
+	 *  deterministic new-path discovery (AC-03 / review H1). */
+	readonly transcriptsAtSpawn?: readonly string[];
+}
+
+/**
+ * Pre-allocate a control-plane pij-id BEFORE the pane exists (AC-01). A non-pi
+ * harness has no pi session id, so we seed {@link deriveSelfId} with the spawn
+ * token (the daemon's `s<now>-<counter>`): deterministic, collision-resistant,
+ * and known before launch — the value spawn returns to its caller immediately.
+ */
+export function allocatePijId(spawnToken: string, pid: number): SessionId {
+	return deriveSelfId(spawnToken, pid);
+}
+
+/**
+ * Build argv + env to launch a non-pi harness in a tmux pane. The pre-allocated
+ * pij-id rides PIJ_SESSION_ID (so `pij phonehome` from inside binds to it) and
+ * the harness kind rides PIJ_HARNESS. argv stays an array (AC-09: no shell).
+ *
+ * - `claude`: `claude --dangerously-skip-permissions [--model <model>]`.
+ * - `copilot`: reserved (Non-Goal this pass) — emitted as the bare cmd.
+ *
+ * `--dangerously-skip-permissions` is REQUIRED for a daemon-driven pane: there
+ * is no human at the pane to answer Claude's permission/auto-mode prompts, so
+ * without it the agent hangs the instant it runs a tool (e.g. the confirmatory
+ * `pij phonehome` bash call gets blocked by the auto-mode classifier). The pane
+ * is a controlled peer we spawned, not an untrusted surface, so skipping is the
+ * right trust posture here.
+ */
+export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand {
+	const args: string[] = [];
+	if (input.harness === "claude") {
+		args.push("--dangerously-skip-permissions");
+	}
+	if (input.model !== undefined) {
+		args.push("--model", input.model);
+	}
+	const env: Record<string, string> = {
+		PIJ_SESSION_ID: input.pijId,
+		PIJ_HARNESS: input.harness,
+	};
+	if (input.task !== undefined) {
+		env.PIJ_SPAWN_TASK = input.task;
+	}
+	const cmd = input.harness === "claude" ? "claude" : input.harness;
+	return { cmd, args, env };
+}
+
+/**
+ * Build the `pending` descriptor written atomically at spawn, before any inject
+ * (F2 / AC-01). The daemon's dir-watch keys on `lifecycle: "pending"` to start
+ * readiness; `paneId` (from split `-P`) is how it addresses the pane.
+ */
+export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDescriptor {
+	return {
+		id: input.pijId,
+		folder: input.cwd,
+		dataDir: input.dataDir,
+		eventsPath: input.eventsPath,
+		pid: input.pid,
+		startedAt: input.startedAtIso,
+		harness: input.harness,
+		paneId: input.paneId,
+		lifecycle: "pending",
+		...(input.transcriptsAtSpawn ? { transcriptsAtSpawn: input.transcriptsAtSpawn } : {}),
+	};
+}
+
+/** A parsed `pij spawn --harness <h> [--task …] [--model …] [--json]` request.
+ *  Pure parse so the bin only owns the impure split/write (T018). */
+export interface SpawnRequest {
+	readonly harness: HarnessKind;
+	readonly task?: string;
+	readonly model?: string;
+	readonly json: boolean;
+}
+
+const CONTROL_HARNESSES = new Set<HarnessKind>(["claude", "copilot"]);
+
+/** Parse the `spawn` verb's args. `--harness` is required and must be a control
+ *  harness (claude today; copilot reserved) — pi sessions spawn via `pij_spawn`,
+ *  not this control-plane path. Unknown flags / missing values → E-ARG. */
+export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
+	let harness: HarnessKind | undefined;
+	let task: string | undefined;
+	let model: string | undefined;
+	let json = false;
+	for (let i = 0; i < argv.length; i++) {
+		const tok = argv[i];
+		if (tok === "--json") {
+			json = true;
+			continue;
+		}
+		const eq = tok?.indexOf("=") ?? -1;
+		const key = tok?.startsWith("--") ? tok.slice(2, eq === -1 ? undefined : eq) : undefined;
+		if (!key) return err("E-ARG", `unexpected argument '${tok}' for spawn`);
+		const inlineVal = eq === -1 ? undefined : tok?.slice(eq + 1);
+		const value = inlineVal ?? argv[++i];
+		if (value === undefined) return err("E-ARG", `--${key} needs a value`);
+		if (key === "harness") {
+			if (!CONTROL_HARNESSES.has(value as HarnessKind))
+				return err("E-ARG", `--harness must be claude|copilot (got '${value}')`);
+			harness = value as HarnessKind;
+		} else if (key === "task") {
+			task = value;
+		} else if (key === "model") {
+			model = value;
+		} else {
+			return err("E-ARG", `unknown flag --${key} for spawn`);
+		}
+	}
+	if (!harness) return err("E-ARG", "usage: pij spawn --harness claude [--task …] [--model …]");
+	return ok({ harness, task, model, json });
+}
+
+/** A parsed `pij adopt <pane> --harness <h> [--id <pij-id>] [--json]` request. */
+export interface AdoptRequest {
+	readonly pane: string;
+	readonly harness: HarnessKind;
+	readonly id?: SessionId;
+	readonly json: boolean;
+}
+
+/** Parse the `adopt` verb: a positional `<pane>` (%N) + `--harness` (required,
+ *  a control harness) + optional `--id` (else allocate) + `--json`. */
+export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
+	let pane: string | undefined;
+	let harness: HarnessKind | undefined;
+	let id: SessionId | undefined;
+	let json = false;
+	for (let i = 0; i < argv.length; i++) {
+		const tok = argv[i];
+		if (tok === "--json") {
+			json = true;
+			continue;
+		}
+		if (tok && !tok.startsWith("--")) {
+			if (pane !== undefined) return err("E-ARG", `unexpected extra argument '${tok}'`);
+			pane = tok;
+			continue;
+		}
+		const eq = tok?.indexOf("=") ?? -1;
+		const key = tok?.startsWith("--") ? tok.slice(2, eq === -1 ? undefined : eq) : undefined;
+		if (!key) return err("E-ARG", `unexpected argument '${tok}' for adopt`);
+		const value = eq === -1 ? argv[++i] : tok?.slice(eq + 1);
+		if (value === undefined) return err("E-ARG", `--${key} needs a value`);
+		if (key === "harness") {
+			if (!CONTROL_HARNESSES.has(value as HarnessKind))
+				return err("E-ARG", `--harness must be claude|copilot (got '${value}')`);
+			harness = value as HarnessKind;
+		} else if (key === "id") {
+			id = value;
+		} else {
+			return err("E-ARG", `unknown flag --${key} for adopt`);
+		}
+	}
+	if (!pane || !/^%\d+$/.test(pane))
+		return err("E-ARG", "usage: pij adopt <pane:%N> --harness claude [--id <pij-id>]");
+	if (!harness) return err("E-ARG", "adopt needs --harness claude|copilot");
+	return ok({ pane, harness, id, json });
 }

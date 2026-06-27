@@ -70,6 +70,52 @@ re-review.
   sending the next pointer, and confirm the session flips to `working` within
   ~10s of dispatch (send a one-byte nudge if it is still idle).
 
+## Harness mode — pi tools vs the tmux control plane
+
+flow-pair runs under **two harnesses**, and the colleague-comms seam differs.
+**Detect once at run start** and use that mode for every spawn/send/tail/close:
+
+- **pi mode** — the orchestrator is a **pi** session, so the in-process `pij_*`
+  **tools** exist (`pij_spawn` / `pij_send` / `pij_close`). Use them. Inbound peer
+  messages inject into your turn automatically (the in-process receiver). This is
+  the original path and is **unchanged**.
+- **control-plane mode** — the orchestrator is **Claude Code (or any non-pi
+  client)**: the `pij_*` tools do **not** exist. Drive the **`pij` CLI + a running
+  `pij daemon`** instead (Plan 019). The daemon spawns/binds the colleague in a
+  tmux pane and relays messages via `send-keys`.
+
+**Detection:** if the `pij_spawn` tool is callable → pi mode; otherwise →
+control-plane mode (you're in Claude/other; the `pij` CLI is on `$PATH`).
+
+**The one extra step in control-plane mode — self-adopt so colleagues can reach
+*you*.** In pi, inbound is automatic; in control-plane mode you must register your
+own pane as a peer **once at start**, or colleague replies have nowhere to land:
+
+```
+pij adopt "$TMUX_PANE" --harness claude    # → your pij-id; peers' sends now type
+                                           #   into your pane as [pij from <id>] turns
+```
+
+**Command mapping** (same intent, per mode — full detail in
+[`references/harness-modes.md`](./references/harness-modes.md)):
+
+| Intent | pi mode (tools) | control-plane mode (CLI + daemon) |
+|---|---|---|
+| Prereq | pi extension loaded | a running `pij daemon` (one machine-wide) + `pij adopt` self |
+| Spawn colleague | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude --model <m>` (returns id at once; daemon drives boot→bind) |
+| Deliver pointer / message | `pij_send({ to, message })` | `pij send <id> "<text>"` |
+| Compact a colleague | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` |
+| Peek (non-disturbing) | `pij tail <id>` | `pij tail <id> [--follow]` (reads the bound transcript) |
+| Close (teardown) | `pij_close({ to })` | `tmux kill-pane -t <pane>` + `rm ~/.pij/<id>.json` |
+
+**Model names differ by mode.** The default-model table below is for pi/copilot
+peers (`github-copilot/…` strings via `pij_spawn`). In control-plane mode the
+colleague is a real **Claude** process, so `--model` takes **claude** names
+(`sonnet` / `opus` / `haiku` or a full id). `pij spawn` auto-applies
+`--dangerously-skip-permissions` (a daemon-driven pane has no human to approve
+prompts). The canary-verify, compact-early, and reuse-never-close disciplines
+below apply **identically** in both modes — only the transport verb changes.
+
 ## Fleet lifecycle — the colleagues (coder + reviewer)
 
 A run keeps a small **roster** of colleague sessions, acquired **lazily** and
@@ -89,9 +135,11 @@ later `tidy` can find and close our windows even after a crash.
 **Lifecycle:**
 
 - **Acquire — provided-or-spawn, lazy.** If a role's peer id was provided, use it.
-  Otherwise `pij_spawn({ model, layout: "split" })` the *first time that role is
-  needed* (coder on first dispatch, reviewer on first review) — **never hijack
-  ambient idle peers**. `layout:"split"` keeps the whole fleet in one window:
+  Otherwise spawn the *first time that role is needed* (coder on first dispatch,
+  reviewer on first review) — **never hijack ambient idle peers**. *pi mode:*
+  `pij_spawn({ model, layout: "split" })`. *Control-plane mode:* `pij spawn
+  --harness claude --model <m>` (§ Harness mode; the daemon drives boot→bind and
+  returns the id immediately). `layout:"split"` keeps the whole fleet in one window:
   orchestrator **main-left**, coder + reviewer **stacked on the right** — which is
   exactly the 3-pane cap (main + 2). Pass `layout:"window"` (the default) to fan
   the colleagues out into separate tmux windows instead.
@@ -159,9 +207,12 @@ Finding 08). See `references/architecture.md` for the full call chain.
    which compiles the context pack, renders the packet, writes it to
    `.flow-pair/runs/<run-id>/prompts/<delegationId>.md`, and prints exactly ONE line to stdout:
    `[flow-pair <delegationId>] Packet at: <rel-path>`
-   Capture that line and deliver it to the worker via the **`pij_send` tool**:
-   `pij_send({ to: workerId, message: pointerMsg })`. Do NOT shell `pij send` from
-   SKILL.md — the tool call is the transport boundary (P2: lib never sends; orchestrator sends).
+   Capture that line and deliver it to the worker (§ Harness mode for the verb).
+   *pi mode:* the **`pij_send` tool** — `pij_send({ to: workerId, message: pointerMsg })`;
+   do NOT shell `pij send` (the tool call is the transport boundary — P2: lib never
+   sends; orchestrator sends). *Control-plane mode:* there is no in-process tool, so
+   shell `pij send <workerId> "<pointerMsg>"` (the daemon injects it into the
+   colleague's pane). Either way the **lib never sends** — the orchestrator does.
 5. **Review via the reviewer peer** — on inbound **worker** report, **compact the
    worker FIRST**, then hand the diff to the **reviewer colleague** (acquire/canary
    it if not yet live; § Fleet lifecycle) with the rubric in
@@ -183,6 +234,7 @@ Finding 08). See `references/architecture.md` for the full call chain.
 
 ## References
 
+- [`references/harness-modes.md`](./references/harness-modes.md) — pi tools vs the tmux control plane: detection, self-adopt, per-mode command mapping, daemon prerequisite (Plan 019)
 - [`references/architecture.md`](./references/architecture.md) — system architecture and CLI → lib → ledger call chain
 - [`references/orchestrator-worker-protocol.md`](./references/orchestrator-worker-protocol.md) — full protocol spec (packet schema, report schema, allowed/forbidden paths contract)
 - [`references/ledger-schema.md`](./references/ledger-schema.md) — run/delegation/trial/review/learning record schemas

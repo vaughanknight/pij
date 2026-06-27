@@ -8,6 +8,12 @@
 
 import { type ExecFileSyncOptions, execFileSync } from "node:child_process";
 
+import {
+	capturePane,
+	pasteBuffer,
+	pressKey,
+	typeLiteral,
+} from "../../.pi/extensions/pij/adapters/tmux-keys.js";
 import { DriverBootError, DriverPaneDeadError } from "./errors.js";
 
 // ─── Public types ──────────────────────────────────────────────────────────
@@ -184,38 +190,24 @@ export function assertAlive(t: Target): void {
 
 // Function name kept as `type` to match workshop 001's public surface; the
 // re-export in index.ts aliases it to avoid clashing with the `type`
-// keyword in consumer call sites.
+// keyword in consumer call sites. The argv construction now lives once in the
+// shared lib (adapters/tmux-keys.ts) — these delegate for parity (finding 02).
 export function type(t: Target, text: string): void {
-	// TC-02: `-l` literal mode disables key-name lookup. Always separate from press().
-	tmux(["send-keys", "-t", targetStr(t), "-l", text]);
+	typeLiteral(targetStr(t), text);
 }
 
 export function press(t: Target, key: Key, n: number = 1): void {
-	const args = ["send-keys", "-t", targetStr(t)];
-	if (n > 1) args.push("-N", String(n));
-	args.push(key);
-	tmux(args);
+	pressKey(targetStr(t), key, n);
 }
 
 export function paste(t: Target, data: string, opts: { bracketed?: boolean } = {}): void {
-	// TC-03: set-buffer takes ONE argv → no shell interpretation, safe for any payload.
-	const buf = `pij-${process.pid}-${Date.now()}`;
-	tmux(["set-buffer", "-b", buf, data]);
-	const args = ["paste-buffer", "-d", "-b", buf, "-t", targetStr(t)];
-	if (opts.bracketed) args.splice(1, 0, "-p");
-	tmux(args);
+	pasteBuffer(targetStr(t), data, opts);
 }
 
 // ─── Capture (TC-04) ────────────────────────────────────────────────────────
 
 export function capture(t: Target, opts: CaptureOpts = {}): string {
-	const args = ["capture-pane", "-t", targetStr(t), "-p"];
-	if (opts.join !== false) args.push("-J");
-	if (opts.ansi) args.push("-e");
-	if (opts.scrollback && opts.scrollback > 0) {
-		args.push("-S", `-${opts.scrollback}`, "-E", "-");
-	}
-	return tmux(args);
+	return capturePane(targetStr(t), opts);
 }
 
 // ─── Recording (TC-06) ──────────────────────────────────────────────────────

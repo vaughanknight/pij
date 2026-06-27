@@ -263,6 +263,11 @@ export default function (pi: ExtensionAPI): void {
 			readdirSync(inbox).filter((n) => n.startsWith("msg-") && n.endsWith(".json")),
 		);
 		disposeWatch?.(); // reload: drop the prior watcher before opening a new one
+		// Delivery ownership (Plan 019, finding 01/06, AC-08): this in-process
+		// receiver watches ONLY its OWN inbox (`self`) and is the SOLE consumer of
+		// a pi session's inbox — `pi.sendUserMessage` is the one immovable seam. The
+		// daemon never injects into pi (it `observe`s pi inboxes for the TUI and
+		// consumes only tmux harnesses' inboxes), so there is no double-processing.
 		disposeWatch = channel.watch(self, (dm) => session?.onInbound(dm, dm.messageId), seen);
 	});
 

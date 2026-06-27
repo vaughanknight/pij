@@ -32,10 +32,11 @@ function deps(opts: {
 	cwd?: string;
 	alive?: number[];
 	logs?: Record<string, PijEvent[]>;
+	env?: Record<string, string>;
 }): CliDeps & { delivery: FakeDelivery; registry: FakeRegistry } {
 	const registry = new FakeRegistry(opts.descs ?? []);
 	const delivery = new FakeDelivery();
-	const vars = opts.self ? { PIJ_SESSION_ID: opts.self } : {};
+	const vars = { ...(opts.self ? { PIJ_SESSION_ID: opts.self } : {}), ...(opts.env ?? {}) };
 	const process = new FakeProcess(999, T, vars, opts.alive ?? [100]);
 	const logMap = new Map<string, FakeEventLog>();
 	for (const [id, evs] of Object.entries(opts.logs ?? {})) logMap.set(id, new FakeEventLog(evs));
@@ -323,5 +324,70 @@ describe("dispatch tail / state / path", () => {
 		const d = deps({ descs: [] });
 		expect(dispatch({ verb: "tail", id: "ghost", follow: false, json: false }, d).exitCode).toBe(2);
 		expect(dispatch({ verb: "state", id: "ghost", json: false }, d).exitCode).toBe(2);
+	});
+});
+
+describe("parseArgs phonehome", () => {
+	it("parses bare phonehome + --json, rejects positionals/unknown flags", () => {
+		expect(parseArgs(["phonehome"])).toMatchObject({ ok: true, value: { verb: "phonehome" } });
+		expect(parseArgs(["phonehome", "--json"])).toMatchObject({
+			ok: true,
+			value: { verb: "phonehome", json: true },
+		});
+		expect(parseArgs(["phonehome", "extra"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["phonehome", "--here"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+});
+
+describe("dispatch phonehome (confirmatory binding, AC-03)", () => {
+	it("binds self's harnessSessionId from CLAUDE_CODE_SESSION_ID and persists it", () => {
+		const d = deps({
+			descs: [desc({ id: "pij-w", harness: "claude", lifecycle: "pending" })],
+			self: "pij-w",
+			env: { CLAUDE_CODE_SESSION_ID: "claude-abc" },
+		});
+		const r = dispatch({ verb: "phonehome", json: true }, d);
+		const j = JSON.parse(r.stdout);
+		expect(j).toMatchObject({
+			id: "pij-w",
+			harness: "claude",
+			harnessSessionId: "claude-abc",
+			lifecycle: "bound",
+			confirmed: true,
+		});
+		// persisted to the registry (the daemon's index-state rebuild reads this)
+		expect(d.registry.read("pij-w")?.harnessSessionId).toBe("claude-abc");
+		expect(d.registry.read("pij-w")?.lifecycle).toBe("bound");
+	});
+
+	it("is idempotent — re-running with the same id confirms without re-writing a change", () => {
+		const d = deps({
+			descs: [
+				desc({
+					id: "pij-w",
+					harness: "claude",
+					harnessSessionId: "claude-abc",
+					lifecycle: "bound",
+				}),
+			],
+			self: "pij-w",
+			env: { CLAUDE_CODE_SESSION_ID: "claude-abc" },
+		});
+		const r = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(r.stdout)).toMatchObject({ harnessSessionId: "claude-abc", confirmed: true });
+	});
+
+	it("without CLAUDE_CODE_SESSION_ID, confirms self but reports no binding yet", () => {
+		const d = deps({
+			descs: [desc({ id: "pij-w", harness: "claude", lifecycle: "pending" })],
+			self: "pij-w",
+		});
+		const r = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(r.stdout)).toMatchObject({ harnessSessionId: null, confirmed: false });
+	});
+
+	it("E-NOID when self resolves to no descriptor", () => {
+		const d = deps({ descs: [], self: "ghost" });
+		expect(dispatch({ verb: "phonehome", json: false }, d).exitCode).toBe(2);
 	});
 });

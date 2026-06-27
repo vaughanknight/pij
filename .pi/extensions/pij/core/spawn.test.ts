@@ -5,7 +5,16 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildSpawnCommand, parseReadyBody, readyBody } from "./spawn.js";
+import {
+	allocatePijId,
+	buildControlSpawnCommand,
+	buildPendingDescriptor,
+	buildSpawnCommand,
+	parseAdoptArgs,
+	parseReadyBody,
+	parseSpawnArgs,
+	readyBody,
+} from "./spawn.js";
 
 // ─── buildSpawnCommand ───────────────────────────────────────────────────────
 
@@ -177,5 +186,127 @@ describe("readyBody + parseReadyBody round-trip", () => {
 
 	it("parseReadyBody returns null for null JSON", () => {
 		expect(parseReadyBody("null")).toBeNull();
+	});
+});
+
+// ─── Control plane (Plan 019) ────────────────────────────────────────────────
+
+describe("allocatePijId", () => {
+	it("is known BEFORE launch and deterministic for the same token+pid (AC-01)", () => {
+		const a = allocatePijId("s1700000000000-0", 4242);
+		const b = allocatePijId("s1700000000000-0", 4242);
+		expect(a).toBe(b);
+		expect(a).toMatch(/^pij-/);
+	});
+
+	it("distinct spawn tokens yield distinct ids", () => {
+		expect(allocatePijId("s1-0", 4242)).not.toBe(allocatePijId("s1-1", 4242));
+	});
+});
+
+describe("buildControlSpawnCommand", () => {
+	const base = { harness: "claude" as const, pijId: "pij-abc", cwd: "/repo" };
+
+	it("claude: cmd is 'claude', --dangerously-skip-permissions always (driven pane, no human to approve)", () => {
+		const r = buildControlSpawnCommand(base);
+		expect(r.cmd).toBe("claude");
+		expect(r.args).toEqual(["--dangerously-skip-permissions"]);
+	});
+
+	it("emits --model after --skip-permissions as discrete argv (AC-09: no shell string)", () => {
+		const r = buildControlSpawnCommand({ ...base, model: "claude-sonnet-4-6" });
+		expect(r.args).toEqual(["--dangerously-skip-permissions", "--model", "claude-sonnet-4-6"]);
+	});
+
+	it("threads the pre-allocated id via PIJ_SESSION_ID + harness via PIJ_HARNESS", () => {
+		const r = buildControlSpawnCommand(base);
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc");
+		expect(r.env.PIJ_HARNESS).toBe("claude");
+	});
+
+	it("sets PIJ_SPAWN_TASK only when a task is given", () => {
+		expect(buildControlSpawnCommand(base).env).not.toHaveProperty("PIJ_SPAWN_TASK");
+		expect(buildControlSpawnCommand({ ...base, task: "review the diff" }).env.PIJ_SPAWN_TASK).toBe(
+			"review the diff",
+		);
+	});
+});
+
+describe("buildPendingDescriptor", () => {
+	const input = {
+		pijId: "pij-abc",
+		paneId: "%42",
+		cwd: "/repo",
+		harness: "claude" as const,
+		dataDir: "/home/.pij/pij-abc",
+		eventsPath: "/home/.pij/pij-abc/events.ndjson",
+		pid: 4242,
+		startedAtIso: "2026-06-27T00:00:00.000Z",
+	};
+
+	it("carries (id, paneId, cwd, harness) with lifecycle 'pending' (F2/AC-01)", () => {
+		const d = buildPendingDescriptor(input);
+		expect(d).toMatchObject({
+			id: "pij-abc",
+			paneId: "%42",
+			folder: "/repo",
+			harness: "claude",
+			lifecycle: "pending",
+		});
+	});
+
+	it("is NOT yet bound — no harnessSessionId, no initInjectedAt", () => {
+		const d = buildPendingDescriptor(input);
+		expect(d.harnessSessionId).toBeUndefined();
+		expect(d.initInjectedAt).toBeUndefined();
+	});
+});
+
+describe("parseSpawnArgs (T018)", () => {
+	it("parses --harness with --task/--model/--json (space and = forms)", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--task", "review the diff"])).toEqual({
+			ok: true,
+			value: { harness: "claude", task: "review the diff", model: undefined, json: false },
+		});
+		expect(parseSpawnArgs(["--harness=claude", "--model=opus", "--json"])).toMatchObject({
+			ok: true,
+			value: { harness: "claude", model: "opus", json: true },
+		});
+	});
+
+	it("requires --harness and rejects pi / unknown harnesses (pi uses pij_spawn)", () => {
+		expect(parseSpawnArgs([])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseSpawnArgs(["--harness", "pi"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseSpawnArgs(["--harness", "bogus"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+
+	it("rejects unknown flags and missing values", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--nope", "x"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+});
+
+describe("parseAdoptArgs (T023)", () => {
+	it("parses <pane> + --harness + optional --id/--json", () => {
+		expect(parseAdoptArgs(["%72", "--harness", "claude"])).toEqual({
+			ok: true,
+			value: { pane: "%72", harness: "claude", id: undefined, json: false },
+		});
+		expect(parseAdoptArgs(["%5", "--harness=claude", "--id=pij-x", "--json"])).toMatchObject({
+			ok: true,
+			value: { pane: "%5", harness: "claude", id: "pij-x", json: true },
+		});
+	});
+
+	it("requires a %N pane and a harness", () => {
+		expect(parseAdoptArgs(["--harness", "claude"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseAdoptArgs(["notapane", "--harness", "claude"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseAdoptArgs(["%72"])).toMatchObject({ ok: false, code: "E-ARG" });
 	});
 });

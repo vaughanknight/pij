@@ -14,6 +14,7 @@ flowchart LR
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
+    PCP[pij-control-plane\ncontracts: tmux-keys primitives, HarnessKind/selectTransport, classifyReadiness, classifyInterstitial, binding record, daemon switchboard]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -42,6 +43,9 @@ flowchart LR
     FP -->|skill + flow-pair CLI surface presented through| ATI
     FP -->|validated by tests/self-check| H
     FP -.->|wraps as inner route authority; never edits it or flow-state| TF
+    PCP -->|extends SessionDescriptor/ports/Result; thin receiver keeps pi.sendUserMessage| PIJ
+    PCP -->|re-exports shared tmux-keys; validated by tests/smoke/self-check| H
+    PCP -->|future spawn/daemon/adopt CLI + pij_spawn --harness presented through| ATI
 ```
 
 ## Health Summary
@@ -73,6 +77,9 @@ flowchart LR
 | `flow-pair` → `agent-tooling-interface` | planned | Skill + `flow-pair` CLI present through Pi skill/tool UX; not yet built. |
 | `flow-pair` → `extension-authoring-harness` | planned | `just`/vitest/self-check will validate the pi-free helper lib; retros/difficulty/velocity feed the learning loop. |
 | `flow-pair` ⇢ `the-flow` (external) | wraps-only | Wrapper-level delegation seam; **never** edits `the-flow` or writes `.the-flow-state.json`/`the-flow.json`/`the-flow.md`. Single flow-state-writer invariant. |
+| `pij-control-plane` → `pij-messaging` | extends (Plan 019) | Reuses `SessionDescriptor` (+`harness`/`harnessSessionId`/`initInjectedAt`/`state`), the five ports, `Result`, `deriveSelfId`/`resolveSelf`, the `~/.pij/` layout + `FsChannel`. The daemon never imports pi; the in-process `pi.sendUserMessage` seam stays in `pij-messaging`'s thin receiver. |
+| `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate. |
+| `pij-control-plane` → `agent-tooling-interface` | contract-only (future) | The `pij spawn`/`daemon`/`adopt` CLI + `pij_spawn --harness` UX will present through Pi command/tool surfaces. |
 
 ## History
 
@@ -92,3 +99,4 @@ flowchart LR
 | 2026-06-17 | Plan 015 (live crash fix) — `FWN` inject seam now treats stale/throwing Pi ctx as non-fatal after reload/session replacement. |
 | 2026-06-17 | Plan 015 (tool surface fix) — `FWN` gained the missing LLM-callable `file_watch_notify` tool plus recursive watch option; obsolete slash-command parser/surface removed. |
 | 2026-06-17 | Plan 016 — added `flow-pair` (`FP`) node + external `the-flow` (`TF`) node; three consume edges (`PIJ` delivery, `ATI` surface, `H` validation) + a dashed wraps-only edge to `TF`. Created during planning; domain doc produced by the first manual flow-pair worker-delegation dogfood (`dlg-0001`). |
+| 2026-06-27 | Plan 019 — added `pij-control-plane` (`PCP`) node; three outbound edges (extends `pij-messaging`; validated by `extension-authoring-harness`; future CLI surface through `agent-tooling-interface`). Group A landed the shared `tmux-keys` primitives. Health Summary + edge detail finalized at T028. |

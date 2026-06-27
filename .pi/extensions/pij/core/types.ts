@@ -11,6 +11,18 @@ export type SessionId = string;
 /** Role a session plays in the parent/worker loop (rides in PIJ_ROLE). */
 export type Role = "parent" | "worker";
 
+/** Which coding-agent harness a session runs under (Plan 019 control plane).
+ *  The transport-selection contract (`HarnessKind` → inbox|sendkeys) lives in
+ *  `core/harness/types.ts`; the kind is declared here because it is part of the
+ *  shared `SessionDescriptor` vocabulary. Absent ⇒ legacy pi session. */
+export type HarnessKind = "pi" | "claude" | "copilot";
+
+/** Spawn→bind lifecycle of a control-plane session (Plan 019). DISTINCT from
+ *  `SessionDescriptor.state` (working/idle of a live turn): this tracks the
+ *  pre-bind handoff `pending` → `ready` → `bound`, or `failed` on watchdog
+ *  timeout. Absent ⇒ a session that never went through control-plane spawn. */
+export type SessionLifecycle = "pending" | "ready" | "bound" | "failed";
+
 // ─── liveness + state (vocabulary aligned with agent-workbench) ───────────
 /** Self-reported working state of a session. */
 export type SessionState = "idle" | "in-progress" | "paused" | "reviewing" | "complete" | "error";
@@ -46,6 +58,25 @@ export interface SessionDescriptor {
 	/** SessionId of the session that spawned this one (= PIJ_ANNOUNCE_TO at
 	 *  fresh boot). Present iff this is a spawned worker session. */
 	readonly spawnedBy?: SessionId;
+	// ─── control plane (Plan 019; all optional ⇒ migration-safe) ──────────
+	/** Which harness this session runs (`pi`/`claude`/`copilot`). Absent ⇒
+	 *  legacy pi session. Decides the message transport (inbox vs send-keys). */
+	readonly harness?: HarnessKind;
+	/** The harness-native session id bound to this pij-id — for Claude, the
+	 *  transcript stem under ~/.claude/projects/<mangled cwd>/<this>.jsonl,
+	 *  discovered deterministically by the daemon (AC-03). Drives `pij tail`. */
+	readonly harnessSessionId?: string;
+	/** ISO-8601 — set the moment the daemon injects the init exactly once.
+	 *  Persisted so a daemon restart never re-injects (init-exactly-once, AC-02/12). */
+	readonly initInjectedAt?: string;
+	/** Spawn→bind lifecycle (pending/ready/bound/failed) — distinct from
+	 *  `state` (working/idle). The daemon dir-watch keys on `pending` (AC-01). */
+	readonly lifecycle?: SessionLifecycle;
+	/** Transcript `*.jsonl` paths present in the cwd's project dir at the instant
+	 *  of spawn — captured BEFORE the pane exists so new-path discovery is truly
+	 *  deterministic (AC-03). Without this the daemon's first-tick snapshot races
+	 *  Claude's early transcript write (dogfood review H1). Cleared once bound. */
+	readonly transcriptsAtSpawn?: readonly string[];
 }
 
 // ─── event stream ─────────────────────────────────────────────────────────
