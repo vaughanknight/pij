@@ -68,11 +68,16 @@ export function excludeSelf(
  *  Precedence:
  *    1. PIJ_SESSION_ID env value wins (exported by the extension at boot);
  *    2. else, if exactly one local descriptor exists, use it;
- *    3. else E-AMBIG (cannot disambiguate without the env hint).
- *  `envId` is the injected env value (undefined/empty when unset). */
+ *    3. else, if `$TMUX_PANE` matches exactly one descriptor's paneId, use it
+ *       (an adopted/spawned control-plane session records its pane, so sends
+ *       from that pane "just work" with no export — control-plane feedback #1);
+ *    4. else E-AMBIG, with an actionable message (candidate ids + the fix).
+ *  `envId` is the injected env value (undefined/empty when unset); `paneId` is
+ *  `$TMUX_PANE` (undefined when not in tmux). */
 export function resolveSelf(
 	envId: string | undefined,
 	localDescriptors: readonly SessionDescriptor[],
+	paneId?: string,
 ): Result<SessionId> {
 	if (envId && envId.trim() !== "") {
 		return ok(envId);
@@ -81,10 +86,20 @@ export function resolveSelf(
 		const only = localDescriptors[0];
 		if (only) return ok(only.id);
 	}
+	if (paneId && paneId.trim() !== "") {
+		const byPane = localDescriptors.filter((d) => d.paneId === paneId);
+		const first = byPane[0];
+		if (byPane.length === 1 && first) return ok(first.id);
+	}
+	if (localDescriptors.length === 0) {
+		return err("E-AMBIG", "cannot resolve self: no local session and PIJ_SESSION_ID unset");
+	}
+	const ids = localDescriptors.map((d) => d.id);
+	const hint = ids[0] ?? "<id>";
 	return err(
 		"E-AMBIG",
-		localDescriptors.length === 0
-			? "cannot resolve self: no local session and PIJ_SESSION_ID unset"
-			: "cannot resolve self: multiple local sessions and PIJ_SESSION_ID unset",
+		`cannot resolve self among ${ids.length} local sessions: ${ids.join(", ")}. ` +
+			`Set who you are — \`export PIJ_SESSION_ID=${hint}\` — or run ` +
+			`\`pij adopt "$TMUX_PANE" --harness <h>\` so this pane resolves itself.`,
 	);
 }

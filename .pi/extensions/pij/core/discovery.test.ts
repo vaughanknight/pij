@@ -57,6 +57,36 @@ describe("resolveSelf", () => {
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.code).toBe("E-AMBIG");
 	});
+	it("disambiguates by $TMUX_PANE when env unset + multiple local (feedback #1)", () => {
+		const ap = { ...a, paneId: "%1" };
+		const bp = { ...b, paneId: "%2" };
+		const r = resolveSelf(undefined, [ap, bp], "%2");
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value).toBe("b");
+	});
+	it("pane hint that matches nothing stays E-AMBIG", () => {
+		const ap = { ...a, paneId: "%1" };
+		const bp = { ...b, paneId: "%2" };
+		const r = resolveSelf(undefined, [ap, bp], "%9");
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.code).toBe("E-AMBIG");
+	});
+	it("env still wins over a pane hint", () => {
+		const ap = { ...a, paneId: "%1" };
+		const bp = { ...b, paneId: "%2" };
+		const r = resolveSelf("a", [ap, bp], "%2");
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value).toBe("a");
+	});
+	it("ambiguous error lists candidate ids and the export hint", () => {
+		const r = resolveSelf("", [a, b]);
+		expect(r.ok).toBe(false);
+		if (!r.ok) {
+			expect(r.message).toContain("a, b");
+			expect(r.message).toContain("export PIJ_SESSION_ID=a");
+			expect(r.message).toContain("pij adopt");
+		}
+	});
 });
 
 describe("deriveSelfId", () => {

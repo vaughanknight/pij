@@ -267,7 +267,9 @@ describe("dispatch send", () => {
 			staleDeps,
 		);
 		expect(staleR.exitCode).toBe(0);
-		expect(staleR.stdout.toLowerCase()).toContain("stale");
+		// Stale peer (no recent pij events — normal for control-plane) still gets a
+		// note and the send lands; wording reworded to read as idle, not alarming.
+		expect(staleR.stdout.toLowerCase()).toContain("no recent pij events");
 	});
 });
 

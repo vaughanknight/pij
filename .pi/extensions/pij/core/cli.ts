@@ -274,6 +274,7 @@ function selfId(deps: CliDeps): Result<SessionId> {
 	return resolveSelf(
 		deps.process.env("PIJ_SESSION_ID"),
 		filterByFolder(deps.registry.list(), deps.cwd),
+		deps.process.env("TMUX_PANE"),
 	);
 }
 
@@ -374,7 +375,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			}
 			const initial = (target.state ?? "idle") === "working" ? "queued" : "delivered";
 			const warn =
-				live === "stale" ? " (warning: peer is stale but alive — will see it on next read)" : "";
+				live === "stale"
+					? " (note: no recent pij events from peer — normal for a control-plane peer; the send still lands)"
+					: "";
 			const follow = cmd.wait
 				? ({ kind: "wait", self, messageId, timeoutMs: cmd.waitMs } as const)
 				: undefined;
