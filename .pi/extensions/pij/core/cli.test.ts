@@ -311,6 +311,8 @@ describe("dispatch tail / state / path", () => {
 		// without scraping the tmux footer (feedback #4).
 		expect(j).toHaveProperty("cwd");
 		expect(j).toHaveProperty("harness");
+		// working|idle|done activity for the orchestrator (feedback round 3).
+		expect(j.activity).toBe("working"); // state:working → working
 	});
 
 	it("path prints events/state/dir", () => {

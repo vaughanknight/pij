@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isStalled, isWorking, liveness, STALE_AFTER_MS } from "./state.js";
+import { activityOf, isStalled, isWorking, liveness, STALE_AFTER_MS } from "./state.js";
 
 describe("isWorking", () => {
 	it("treats in-progress/reviewing as working", () => {
@@ -40,5 +40,19 @@ describe("isStalled", () => {
 	});
 	it("never flags a static session", () => {
 		expect(isStalled("idle", null)).toBe(false);
+	});
+});
+
+describe("activityOf", () => {
+	it("working state → working (regardless of activity ts)", () => {
+		expect(activityOf("working", true)).toBe("working");
+		expect(activityOf("working", false)).toBe("working");
+	});
+	it("idle after having worked → done", () => {
+		expect(activityOf("idle", true)).toBe("done");
+	});
+	it("idle and never active → idle", () => {
+		expect(activityOf("idle", false)).toBe("idle");
+		expect(activityOf(undefined, false)).toBe("idle");
 	});
 });

@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import { FakeDelivery, FakeRegistry } from "../../adapters/fakes.js";
 import { transcriptDir } from "../harness/claude.js";
 import type { SessionDescriptor } from "../types.js";
-import { type DaemonPorts, type DriveState, driveSession, WATCHDOG_TIMEOUT_MS } from "./loop.js";
+import {
+	type DaemonPorts,
+	type DriveState,
+	driveSession,
+	observeActivity,
+	WATCHDOG_TIMEOUT_MS,
+} from "./loop.js";
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
 const READY = "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
@@ -262,5 +268,39 @@ describe("driveSession state machine", () => {
 		const out = driveSession(desc(), {}, w.ports, reg, del);
 		expect(out.kind).toBe("failed");
 		expect(reg.read("pij-w")?.lifecycle).toBe("failed");
+	});
+});
+
+describe("observeActivity (control-plane working|idle|done persistence)", () => {
+	const NOW = 1_000_000;
+	it("busy footer → working + a fresh lastEventAt", () => {
+		const u = observeActivity(desc({ lifecycle: "bound" }), "busy", NOW);
+		expect(u?.state).toBe("working");
+		expect(u?.lastEventAt).toBe(new Date(NOW).toISOString());
+	});
+	it("ready footer → idle, preserving the last-activity ts (so it reads 'done')", () => {
+		const prior = new Date(NOW - 5000).toISOString();
+		const u = observeActivity(desc({ lifecycle: "bound", state: "working", lastEventAt: prior }), "ready", NOW);
+		expect(u?.state).toBe("idle");
+		expect(u?.lastEventAt).toBe(prior);
+	});
+	it("no change → null (no needless registry write)", () => {
+		const at = new Date(NOW).toISOString();
+		const u = observeActivity(desc({ lifecycle: "bound", state: "idle", lastEventAt: at }), "ready", NOW);
+		expect(u).toBeNull();
+	});
+	it("throttles the busy refresh — a recent lastEventAt is not rewritten every tick", () => {
+		const recent = new Date(NOW - 2000).toISOString(); // < ACTIVITY_REFRESH_MS
+		const u = observeActivity(desc({ lifecycle: "bound", state: "working", lastEventAt: recent }), "busy", NOW);
+		expect(u).toBeNull();
+	});
+	it("refreshes a stale busy ts past the throttle window (liveness stays active mid-turn)", () => {
+		const old = new Date(NOW - 30_000).toISOString(); // > ACTIVITY_REFRESH_MS
+		const u = observeActivity(desc({ lifecycle: "bound", state: "working", lastEventAt: old }), "busy", NOW);
+		expect(u?.lastEventAt).toBe(new Date(NOW).toISOString());
+	});
+	it("non-interactive readiness (booting/interstitial/dead) → null (driveSession owns it)", () => {
+		expect(observeActivity(desc({ lifecycle: "bound" }), "booting", NOW)).toBeNull();
+		expect(observeActivity(desc({ lifecycle: "bound" }), "dead", NOW)).toBeNull();
 	});
 });

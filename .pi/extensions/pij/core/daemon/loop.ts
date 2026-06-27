@@ -22,7 +22,7 @@ import {
 import { buildInitInjection, discoverNewTranscript, transcriptDir } from "../harness/claude.js";
 import { classifyInterstitial } from "../interstitial.js";
 import type { DeliveryPort, RegistryPort } from "../ports.js";
-import { classifyReadiness } from "../readiness.js";
+import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import type { PijMessage, SessionDescriptor, SessionId } from "../types.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
@@ -80,6 +80,36 @@ function notify(delivery: DeliveryPort, from: SessionId, to: SessionId, text: st
 
 /** Drive ONE pending/booting session one tick. Mutates `drive` (in-memory) and
  *  persists descriptor changes through `registry`; returns what it did. */
+/** While `busy`, refresh the activity ts at most this often (keeps liveness
+ *  `active` against STALE_AFTER_MS=60s without a registry write every 600ms tick). */
+const ACTIVITY_REFRESH_MS = 10_000;
+
+/** Persist a bound control-plane peer's footer activity onto its descriptor so
+ *  `pij state`/`list` report real working|idle|done instead of a frozen
+ *  `idle · never` (control-plane feedback round 3 — these peers write no pij
+ *  events, so state/lastEventAt never moved). `busy` → working + a freshened
+ *  lastEventAt (so the EXISTING liveness stops reading 'stale' mid-turn); `ready`
+ *  → idle, preserving the last-activity ts (so an idle-after-working peer reads
+ *  `done`, not `idle`). Returns the updated descriptor iff something changed, so
+ *  the daemon writes only on a transition or a throttled working refresh — never
+ *  every tick. Other readiness (booting/interstitial/dead) → no-op (driveSession
+ *  owns those). Pure: `nowMs` in, ISO out. */
+export function observeActivity(
+	descriptor: SessionDescriptor,
+	readiness: ReadinessState,
+	nowMs: number,
+): SessionDescriptor | null {
+	if (readiness !== "busy" && readiness !== "ready") return null;
+	const state: "working" | "idle" = readiness === "busy" ? "working" : "idle";
+	let lastEventAt = descriptor.lastEventAt;
+	if (readiness === "busy") {
+		const ageMs = lastEventAt ? nowMs - Date.parse(lastEventAt) : Number.POSITIVE_INFINITY;
+		if (ageMs >= ACTIVITY_REFRESH_MS) lastEventAt = new Date(nowMs).toISOString();
+	}
+	if (descriptor.state === state && descriptor.lastEventAt === lastEventAt) return null;
+	return { ...descriptor, state, lastEventAt };
+}
+
 export function driveSession(
 	descriptor: SessionDescriptor,
 	drive: DriveState,

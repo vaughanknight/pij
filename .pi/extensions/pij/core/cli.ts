@@ -12,7 +12,7 @@ import { applyBinding } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, resolveSelf } from "./discovery.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
-import { liveness } from "./state.js";
+import { activityOf, liveness } from "./state.js";
 import {
 	err,
 	ok,
@@ -324,6 +324,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							dataDir: d.dataDir,
 							pid: d.pid,
 							state: d.state ?? "idle",
+							activity: activityOf(d.state, d.lastEventAt != null),
 							liveness: live,
 							lastEventAt: d.lastEventAt ?? null,
 						})),
@@ -333,9 +334,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				return okOut(cmd.here ? "no pij sessions in this folder" : "no pij sessions");
 			const lines = rows.map(
 				({ d, live }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${pad(d.state ?? "idle", 8)} ${pad(live, 7)} ${d.folder}`,
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${d.folder}`,
 			);
-			const header = `  ${pad("id", 14)} ${pad("state", 8)} ${pad("liveness", 7)} folder`;
+			const header = `  ${pad("id", 14)} ${pad("activity", 8)} ${pad("liveness", 7)} folder`;
 			return okOut(
 				[header, ...lines, `${rows.length} session(s)${self ? ` · ★ = you (${self})` : ""}`].join(
 					"\n",
@@ -448,6 +449,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					JSON.stringify({
 						id: d.id,
 						state: d.state ?? "idle",
+						activity: activityOf(d.state, d.lastEventAt != null),
 						liveness: live,
 						lastEventAt: d.lastEventAt ?? null,
 						pid: d.pid,
@@ -459,7 +461,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					}),
 				);
 			return okOut(
-				`${d.id}: ${d.state ?? "idle"} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}`,
+				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}`,
 			);
 		}
 		case "phonehome": {

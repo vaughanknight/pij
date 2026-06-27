@@ -28,10 +28,12 @@ import {
 	drainTmuxInbox,
 	driveSession,
 	flushedText,
+	observeActivity,
 } from "./core/daemon/loop.js";
 import { SendBuffer } from "./core/daemon/router.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import type { DeliveryPort, RegistryPort } from "./core/ports.js";
+import { classifyReadiness } from "./core/readiness.js";
 
 const TICK_MS = 600;
 
@@ -86,6 +88,14 @@ export class Daemon {
 				}
 			}
 			this.drainInbox(d.id);
+			// Persist footer activity → working|idle (+ fresh last-activity ts) so
+			// `pij state`/`list` report real liveness instead of `idle · never`
+			// (control-plane peers write no pij events). Writes only on a change.
+			if (d.paneId) {
+				const readiness = classifyReadiness(this.ports.capturePane(d.paneId));
+				const updated = observeActivity(d, readiness, this.ports.now());
+				if (updated) this.registry.write(updated);
+			}
 		}
 	}
 

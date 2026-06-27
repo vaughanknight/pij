@@ -32,6 +32,19 @@ export function liveness(
 	return "active";
 }
 
+/** The orchestration-facing activity of a peer (control-plane feedback, round 3):
+ *  a colleague is `working` (footer busy / mid-turn), `done` (idle *after* having
+ *  produced activity — finished its turn, awaiting the next), or `idle` (bound but
+ *  never yet active). Lets an orchestrator distinguish "still working" from
+ *  "finished" without scraping the transcript — the crux of "don't idle while a
+ *  colleague works". Derived purely from the descriptor's state + whether it has a
+ *  last-activity timestamp. */
+export type Activity = "working" | "idle" | "done";
+export function activityOf(state: "working" | "idle" | undefined, hasActivity: boolean): Activity {
+	if (state === "working") return "working";
+	return hasActivity ? "done" : "idle";
+}
+
 /** A worker that reports working but whose newest event is stale is a stall
  *  (spec AC-7a) — detectable from state + event age alone, no external clock. */
 export function isStalled(
