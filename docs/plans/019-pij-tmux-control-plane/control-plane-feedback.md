@@ -115,10 +115,50 @@ healthy worker).
 > reviewer can't run `~/.claude` skills) was **wrong** — skills live in the shared
 > `~/.agents/skills/`, which every harness loads. No gap; no doc change.
 
+## Third run — pij-94dd91 (full cross-model review cycle)
+
+### ✅ Wins (the thesis earning its keep)
+
+- **[BIG] End-to-end cross-model review paid off.** A GPT-5.5 colleague (invoked
+  `/frugal` + `/the-flow 7` from the shared `~/.agents/skills`) reviewed a 57-file
+  diff, returned a structured `REQUEST_CHANGES` via `pij send` that auto-injected
+  into the orchestrator's pane, and **caught a real HIGH data-loss bug** (a
+  watermark-skip on interleaved date buckets) that the *other* reviewer (minih)
+  **missed** — the independent cross-model second opinion demonstrably working.
+- Reply auto-injection (colleague → pane turn) is seamless — no polling for the verdict.
+- `pij state` cwd+harness (shipped mid-session) used instead of footer-scraping.
+- `pij send --command compact` compacted the reviewer cleanly post-verdict.
+
+### 📋 Fix-asks (this round)
+
+1. **[TOP — magic wand: trustworthy working|idle|done signal]** While the reviewer
+   worked, `pij state` showed `idle · stale (last event never ago)` between every
+   tool burst, while `pij tail` showed continuous tool calls. **Root cause:** a
+   control-plane peer writes **no** pij `events.ndjson`, so the descriptor's `state`
+   / `lastEventAt` never update — they reflect the in-process model, which these
+   peers don't feed. `idle·stale·never` is *actively misleading*: it cost the
+   reporter a **false "done"** in a watcher loop. **Fix (contained — the signal
+   already exists):** the **daemon already classifies the footer** (busy
+   `◎ Working` vs idle `? help`) for readiness; persist that to the descriptor each
+   tick → real `working | idle` (+ a `done` = idle-after-working transition) and a
+   true **last-activity-ts** in `pij state --json`. This is the crux of "don't idle
+   while a colleague works." Touches: daemon loop (write footer state →
+   descriptor), types (a real activity ts), core/cli (surface working|idle|done).
+2. **[tail empties right after bind]** `pij tail` returns `(no events)` immediately
+   post-bind though the peer is alive; needed `--lines N` + retry. Minor.
+3. **[delivery-integrity receipt for big packets]** A long multi-line review brief
+   over send-keys worked, but there's no confirmation the colleague received the
+   **full, untruncated** text. **Ask:** a bytes-delivered / echo receipt to build
+   trust for large packets.
+
 ## Overall
 
 The peer's verdict: the control-plane path (daemon + adopt + spawn + send-keys relay)
-held up across a full review cycle. The friction was all at the **edges** —
-self-identification, model/trust validation, model discovery, and wording — not the
-core relay. The recurring, highest-priority theme across both runs: **make the bound
-model fail-loud and first-class.**
+held up across a full review cycle **and caught a real bug a same-harness reviewer
+missed**. The friction was all at the **edges** — self-identification, model/trust
+validation, model discovery, wording, and (the new crux) **liveness/working-state
+visibility** — not the core relay. Two highest-priority themes across all three runs:
+**(a) make the bound model fail-loud and first-class**, and **(b) give control-plane
+peers a trustworthy `working | idle | done` + last-activity signal** (the daemon
+already has both signals — footer model and footer busy/idle — it just doesn't
+persist them).
