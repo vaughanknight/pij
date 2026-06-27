@@ -248,6 +248,46 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 	};
 }
 
+/** A parsed `pij compact-self [--pane %N] [--delay-ms N] [instruction…]` request. */
+export interface CompactSelfRequest {
+	/** Target pane (`--pane`, else the caller's `$TMUX_PANE` default). */
+	readonly pane?: string;
+	/** Optional follow-up to TYPE after `/compact` — queued by the harness while it
+	 *  compacts, so it runs as the first turn of the fresh context. */
+	readonly instruction?: string;
+	/** ms to wait after firing `/compact` before typing the instruction, so the
+	 *  harness has entered compaction and queues the follow-up (not run pre-compact). */
+	readonly delayMs: number;
+}
+
+/** Parse `compact-self` args (pure). Non-flag tokens join into the instruction
+ *  (so an unquoted multi-word follow-up still works); `--pane`/`--delay-ms` take
+ *  values in space or `=` form. Default delay 1500ms (~1–2s). */
+export function parseCompactSelfArgs(
+	argv: readonly string[],
+	envPane?: string,
+): CompactSelfRequest {
+	let pane = envPane;
+	let delayMs = 1500;
+	const rest: string[] = [];
+	for (let i = 0; i < argv.length; i++) {
+		const tok = argv[i];
+		if (tok === "--pane") pane = argv[++i];
+		else if (tok?.startsWith("--pane=")) pane = tok.slice("--pane=".length);
+		else if (tok === "--delay-ms") {
+			const v = Number(argv[++i]);
+			if (Number.isFinite(v) && v >= 0) delayMs = v;
+		} else if (tok?.startsWith("--delay-ms=")) {
+			const v = Number(tok.slice("--delay-ms=".length));
+			if (Number.isFinite(v) && v >= 0) delayMs = v;
+		} else if (tok !== undefined) {
+			rest.push(tok);
+		}
+	}
+	const instruction = rest.join(" ").trim();
+	return { pane, delayMs, ...(instruction ? { instruction } : {}) };
+}
+
 /** Where a control-plane spawn should split, mirroring pi's `layout:"split"`. */
 export type ControlSplitPlan =
 	| {

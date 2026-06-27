@@ -34,6 +34,7 @@ import {
 	buildControlSpawnCommand,
 	buildPendingDescriptor,
 	parseAdoptArgs,
+	parseCompactSelfArgs,
 	parseSpawnArgs,
 	planControlSplit,
 } from "./core/spawn.js";
@@ -41,6 +42,34 @@ import {
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
 const FOLLOW_MS = 200;
 const WAIT_TIMEOUT_MS = 15_000;
+
+// The COMPLETE surface. The control-plane verbs (spawn/adopt/compact-self/daemon)
+// are intercepted here in the bin and never reach the pure core parser, so the
+// core parser's E-ARG strings can't (and shouldn't — it's pi/tmux-free) list
+// them. This bin-level usage is the one place that advertises every verb, printed
+// on no args / --help and on an unknown top-level command.
+const USAGE = `pij — session messaging + tmux control plane
+
+Control plane (drive non-pi harnesses via the machine-wide daemon):
+  pij spawn --harness claude|copilot [--model <m>]   spawn a colleague (daemon binds it)
+  pij adopt "$TMUX_PANE" --harness <h>               register your own pane so peers can reach you
+  pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
+  pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
+
+Messaging:
+  pij whoami [--json]                                your stable session id
+  pij list [--here] [--json]                         known sessions
+  pij send <id> "<text>" | --command <name> [--wait] deliver a message / control command
+  pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
+  pij state <id> [--json]                            liveness + working/idle
+  pij phonehome [--json]                             confirm a pending binding
+  pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
+
+/** Block the current thread for `ms` without spawning a process (no async). Used
+ *  by compact-self to settle between keystrokes and to wait out compaction. */
+function sleepSync(ms: number): void {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 
 function write(res: CliResult): void {
 	if (res.stdout) process.stdout.write(`${res.stdout}\n`);
@@ -373,17 +402,16 @@ function runSpawn(argv: readonly string[]): void {
 	process.exit(0);
 }
 
-/** `pij compact-self [--pane %N]` — dead simple: type `/compact` + Enter into the
- *  CURRENT tmux pane (default `$TMUX_PANE`) so a session compacts ITSELF. Works
- *  for any harness — pi and Claude both run `/compact` when it's typed + Entered
- *  into their pane. No daemon, no registry, no binding: just send-keys. */
+/** `pij compact-self [--pane %N] [--delay-ms N] [instruction…]` — type `/compact`
+ *  + Enter into the CURRENT tmux pane (default `$TMUX_PANE`) so a session compacts
+ *  ITSELF. With an `instruction`, after firing `/compact` it waits `--delay-ms`
+ *  (default ~1.5s, so compaction has begun) then types the instruction + Enter —
+ *  the harness QUEUES input entered during compaction, so the follow-up runs as the
+ *  first turn of the fresh context. Works for any harness (pi/claude/copilot all
+ *  run `/compact` + queue typed input). No daemon/registry: just send-keys. */
 function runCompactSelf(argv: readonly string[]): void {
-	let pane = process.env.TMUX_PANE;
-	for (let i = 0; i < argv.length; i++) {
-		const tok = argv[i];
-		if (tok === "--pane") pane = argv[++i];
-		else if (tok?.startsWith("--pane=")) pane = tok.slice("--pane=".length);
-	}
+	const req = parseCompactSelfArgs(argv, process.env.TMUX_PANE);
+	const pane = req.pane;
 	if (!pane || !/^%\d+$/.test(pane)) {
 		process.stderr.write(
 			"E-NOTMUX: compact-self needs a tmux pane (set $TMUX_PANE, or pass --pane %N)\n",
@@ -391,11 +419,23 @@ function runCompactSelf(argv: readonly string[]): void {
 		process.exit(2);
 	}
 	typeLiteral(pane, "/compact", execFileRunner);
-	// Settle so Claude Code's paste/slash-menu detection resolves before Enter
-	// (same lesson as the daemon's send-keys — fire Enter too soon and it's swallowed).
-	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+	// Settle so the paste/slash-menu detection resolves before Enter (same lesson
+	// as the daemon's send-keys — fire Enter too soon and it's swallowed).
+	sleepSync(300);
 	pressKey(pane, "Enter", 1, execFileRunner);
-	process.stdout.write(`compact-self → fired /compact into ${pane}\n`);
+	if (req.instruction) {
+		// Let compaction BEGIN, then type the follow-up. The harness queues input
+		// entered mid-compaction and runs it once the fresh context is ready.
+		sleepSync(req.delayMs);
+		typeLiteral(pane, req.instruction, execFileRunner);
+		sleepSync(300);
+		pressKey(pane, "Enter", 1, execFileRunner);
+		process.stdout.write(
+			`compact-self → fired /compact into ${pane}, queued follow-up (after ${req.delayMs}ms): ${req.instruction}\n`,
+		);
+	} else {
+		process.stdout.write(`compact-self → fired /compact into ${pane}\n`);
+	}
 	process.exit(0);
 }
 
@@ -524,6 +564,13 @@ function tailTranscript(id: string, follow: boolean, linesArg: number | undefine
 }
 
 function main(): void {
+	// Full-surface usage on no args / --help (the core parser only knows the
+	// messaging verbs; the control-plane verbs live here in the bin).
+	const top = process.argv[2];
+	if (top === undefined || top === "--help" || top === "-h" || top === "help") {
+		process.stdout.write(`${USAGE}\n`);
+		process.exit(0);
+	}
 	// `spawn` is impure (tmux split + pending write) — intercept before the pure
 	// dispatch path. It writes the registry home itself, so it predates the
 	// E-NOREG guard below.
@@ -550,6 +597,12 @@ function main(): void {
 	}
 	const parsed = parseArgs(process.argv.slice(2));
 	if (!parsed.ok) {
+		// A top-level unknown verb gets the COMPLETE surface (core only lists the
+		// messaging verbs); per-verb arity/flag errors keep core's precise message.
+		if (parsed.message.startsWith("unknown command")) {
+			process.stderr.write(`E-ARG: unknown command '${top}'\n${USAGE}\n`);
+			process.exit(64);
+		}
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(64);
 	}

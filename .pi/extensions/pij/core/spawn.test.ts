@@ -11,6 +11,7 @@ import {
 	buildPendingDescriptor,
 	buildSpawnCommand,
 	parseAdoptArgs,
+	parseCompactSelfArgs,
 	parseReadyBody,
 	parseSpawnArgs,
 	planControlSplit,
@@ -300,6 +301,38 @@ describe("buildPendingDescriptor", () => {
 
 	it("omits plannedHarnessSessionId for claude (discovery-bound)", () => {
 		expect(buildPendingDescriptor(input)).not.toHaveProperty("plannedHarnessSessionId");
+	});
+});
+
+describe("parseCompactSelfArgs", () => {
+	it("no args → uses the env pane, default 1500ms, no instruction", () => {
+		expect(parseCompactSelfArgs([], "%72")).toEqual({ pane: "%72", delayMs: 1500 });
+	});
+
+	it("joins non-flag tokens into the instruction (unquoted multi-word works)", () => {
+		expect(parseCompactSelfArgs(["resume", "the", "build"], "%72")).toEqual({
+			pane: "%72",
+			delayMs: 1500,
+			instruction: "resume the build",
+		});
+	});
+
+	it("--pane and --delay-ms override (space and = forms), instruction is the rest", () => {
+		expect(parseCompactSelfArgs(["--pane", "%9", "--delay-ms", "2000", "go", "now"])).toEqual({
+			pane: "%9",
+			delayMs: 2000,
+			instruction: "go now",
+		});
+		expect(parseCompactSelfArgs(["--pane=%9", "--delay-ms=800", "carry on"], "%72")).toEqual({
+			pane: "%9",
+			delayMs: 800,
+			instruction: "carry on",
+		});
+	});
+
+	it("ignores a non-numeric/negative delay (keeps the default)", () => {
+		expect(parseCompactSelfArgs(["--delay-ms", "nope"], "%72").delayMs).toBe(1500);
+		expect(parseCompactSelfArgs(["--delay-ms=-5"], "%72").delayMs).toBe(1500);
 	});
 });
 
