@@ -35,6 +35,7 @@ import {
 	buildPendingDescriptor,
 	parseAdoptArgs,
 	parseSpawnArgs,
+	planControlSplit,
 } from "./core/spawn.js";
 
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
@@ -293,13 +294,38 @@ function runSpawn(argv: readonly string[]): void {
 		task: req.value.task,
 		copilotSessionId,
 	});
+	// Layout (parity with pi's pij_spawn): the FIRST peer splits the orchestrator
+	// pane right (a 40% column); the SECOND stacks below it (vertical). Derive the
+	// live peer panes from the registry ∩ this window — `currentWindowPanes()` only
+	// lists ALIVE panes, so a closed peer frees its slot. Cap = main + 2 → E-FULL.
+	const here = new Set(tmux.currentWindowPanes());
+	const peerPanes = Array.from(
+		new Set(
+			new FsRegistry(pijHome)
+				.list()
+				.filter(
+					(d) =>
+						d.paneId &&
+						d.paneId !== ownPane &&
+						here.has(d.paneId) &&
+						(d.harness === "claude" || d.harness === "copilot"),
+				)
+				.map((d) => d.paneId as string),
+		),
+	);
+	const plan = planControlSplit(ownPane, peerPanes);
+	if (!plan.ok) {
+		process.stderr.write(`${plan.code}: ${plan.message}\n`);
+		process.exit(2);
+	}
 	const split = tmux.splitWindow({
 		cmd: spawnCmd.cmd,
 		args: spawnCmd.args,
 		env: spawnCmd.env,
 		cwd,
-		target: ownPane,
-		direction: "h",
+		target: plan.target,
+		direction: plan.direction,
+		percent: plan.percent,
 		detached: true, // keep focus here; the daemon drives the new pane
 	});
 	if (!split.ok) {

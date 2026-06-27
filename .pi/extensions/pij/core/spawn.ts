@@ -248,6 +248,39 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 	};
 }
 
+/** Where a control-plane spawn should split, mirroring pi's `layout:"split"`. */
+export type ControlSplitPlan =
+	| {
+			readonly ok: true;
+			readonly target: string;
+			readonly direction: "h" | "v";
+			readonly percent?: number;
+	  }
+	| { readonly ok: false; readonly code: "E-FULL"; readonly message: string };
+
+/** Decide where `pij spawn --harness …` splits, mirroring pi's `pij_spawn`
+ *  layout (core/session.ts): worker #1 splits the orchestrator pane LEFT/RIGHT
+ *  (`-h` → a right column ~40% wide); worker #2 splits worker-1's pane UP/DOWN
+ *  (`-v` → stacked below it). Cap = main + 2 panes; a 3rd → E-FULL. `peerPanes`
+ *  is the set of LIVE control-plane peer panes already in the orchestrator's
+ *  window (a closed pane drops out, freeing its slot). */
+export function planControlSplit(ownPane: string, peerPanes: readonly string[]): ControlSplitPlan {
+	if (peerPanes.length >= 2) {
+		return {
+			ok: false,
+			code: "E-FULL",
+			message:
+				"split layout full — 2 workers already on the right; close one or kill its pane first",
+		};
+	}
+	const first = peerPanes.length === 0;
+	const firstPeer = peerPanes[0];
+	if (first || firstPeer === undefined) {
+		return { ok: true, target: ownPane, direction: "h", percent: 40 };
+	}
+	return { ok: true, target: firstPeer, direction: "v" };
+}
+
 /** A parsed `pij spawn --harness <h> [--task …] [--model …] [--json]` request.
  *  Pure parse so the bin only owns the impure split/write (T018). */
 export interface SpawnRequest {

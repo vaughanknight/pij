@@ -13,6 +13,7 @@ import {
 	parseAdoptArgs,
 	parseReadyBody,
 	parseSpawnArgs,
+	planControlSplit,
 	readyBody,
 } from "./spawn.js";
 
@@ -299,6 +300,31 @@ describe("buildPendingDescriptor", () => {
 
 	it("omits plannedHarnessSessionId for claude (discovery-bound)", () => {
 		expect(buildPendingDescriptor(input)).not.toHaveProperty("plannedHarnessSessionId");
+	});
+});
+
+describe("planControlSplit (right-then-stack, parity with pi)", () => {
+	it("worker #1 → split the orchestrator pane right (40% column)", () => {
+		expect(planControlSplit("%72", [])).toEqual({
+			ok: true,
+			target: "%72",
+			direction: "h",
+			percent: 40,
+		});
+	});
+
+	it("worker #2 → split worker-1's pane vertically (stacked below)", () => {
+		expect(planControlSplit("%72", ["%80"])).toEqual({
+			ok: true,
+			target: "%80",
+			direction: "v",
+		});
+	});
+
+	it("worker #3 → E-FULL (cap = main + 2 panes)", () => {
+		const r = planControlSplit("%72", ["%80", "%81"]);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.code).toBe("E-FULL");
 	});
 });
 
