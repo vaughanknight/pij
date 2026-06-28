@@ -217,9 +217,11 @@ export function allocatePijId(spawnToken: string, pid: number): SessionId {
  *
  * - `claude`:  `claude --dangerously-skip-permissions [--model <model>]`.
  * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`.
+ * - `codex`:   `codex --dangerously-bypass-approvals-and-sandbox [--model <model>]`.
  *
  * The blanket-permission flag (`--dangerously-skip-permissions` for claude,
- * `--yolo` for copilot — the latter = --allow-all-tools/paths/urls) is REQUIRED
+ * `--yolo` for copilot — the latter = --allow-all-tools/paths/urls,
+ * `--dangerously-bypass-approvals-and-sandbox` for codex) is REQUIRED
  * for a daemon-driven pane: there is no human at the pane to answer the harness's
  * permission/auto-mode prompts, so without it the agent hangs the instant it runs
  * a tool (e.g. the confirmatory `pij phonehome` bash call gets blocked). The pane
@@ -247,6 +249,12 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 		if (input.copilotSessionId !== undefined) {
 			args.push("--session-id", input.copilotSessionId);
 		}
+	} else if (input.harness === "codex") {
+		// Codex's blanket-permission flag (Finding 05): skip all approval prompts +
+		// run without the sandbox, so the daemon-driven pane never blocks on a tool.
+		// Codex auto-generates its session UUID (F-01) — no `--session-id` to set, so
+		// binding is transcript DISCOVERY (the claude path), not a deterministic id.
+		args.push("--dangerously-bypass-approvals-and-sandbox");
 	}
 	if (input.model !== undefined) {
 		args.push("--model", input.model);
@@ -402,14 +410,16 @@ export interface SpawnRequest {
 }
 
 /** Daemon-bound harnesses: the daemon pre-allocates an id and drives boot→bound
- *  (transcript discovery for claude, deterministic `--session-id` for copilot). */
-const CONTROL_HARNESSES = new Set<HarnessKind>(["claude", "copilot"]);
+ *  (transcript discovery for claude + codex, deterministic `--session-id` for
+ *  copilot). codex (Plan 022) is the second discovery harness. */
+const CONTROL_HARNESSES = new Set<HarnessKind>(["claude", "copilot", "codex"]);
 
 /** Harnesses `pij spawn` can launch (Plan 021 — one uniform surface). `pi` joins
- *  claude/copilot here, but it is NOT a CONTROL_HARNESS: a pi child derives its own
- *  pij-id at boot and self-registers (core/session.ts §H1), so it needs no daemon,
- *  no pre-allocated id, and no binding — the bin dispatches it down the pi path. */
-const SPAWNABLE_HARNESSES = new Set<HarnessKind>(["pi", "claude", "copilot"]);
+ *  claude/copilot/codex here, but it is NOT a CONTROL_HARNESS: a pi child derives
+ *  its own pij-id at boot and self-registers (core/session.ts §H1), so it needs no
+ *  daemon, no pre-allocated id, and no binding — the bin dispatches it down the pi
+ *  path. codex (Plan 022) IS daemon-bound, like claude/copilot. */
+const SPAWNABLE_HARNESSES = new Set<HarnessKind>(["pi", "claude", "copilot", "codex"]);
 
 /** Parse the `spawn` verb's args. `--harness` is required and must be a spawnable
  *  harness (pi | claude | copilot). pi launches via the in-process path inside the
@@ -439,7 +449,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		if (value === undefined) return err("E-ARG", `--${key} needs a value`);
 		if (key === "harness") {
 			if (!SPAWNABLE_HARNESSES.has(value as HarnessKind))
-				return err("E-ARG", `--harness must be pi|claude|copilot (got '${value}')`);
+				return err("E-ARG", `--harness must be pi|claude|copilot|codex (got '${value}')`);
 			harness = value as HarnessKind;
 		} else if (key === "task") {
 			task = value;
@@ -450,7 +460,10 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		}
 	}
 	if (!harness)
-		return err("E-ARG", "usage: pij spawn --harness pi|claude|copilot [--task …] [--model …]");
+		return err(
+			"E-ARG",
+			"usage: pij spawn --harness pi|claude|copilot|codex [--task …] [--model …]",
+		);
 	return ok({ harness, task, model, branch, json });
 }
 
@@ -543,7 +556,7 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 		if (value === undefined) return err("E-ARG", `--${key} needs a value`);
 		if (key === "harness") {
 			if (!CONTROL_HARNESSES.has(value as HarnessKind))
-				return err("E-ARG", `--harness must be claude|copilot (got '${value}')`);
+				return err("E-ARG", `--harness must be claude|copilot|codex (got '${value}')`);
 			harness = value as HarnessKind;
 		} else if (key === "id") {
 			id = value;
@@ -553,7 +566,7 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 	}
 	if (!pane || !/^%\d+$/.test(pane))
 		return err("E-ARG", "usage: pij adopt <pane:%N> --harness claude [--id <pij-id>]");
-	if (!harness) return err("E-ARG", "adopt needs --harness claude|copilot");
+	if (!harness) return err("E-ARG", "adopt needs --harness claude|copilot|codex");
 	return ok({ pane, harness, id, json });
 }
 

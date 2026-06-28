@@ -42,8 +42,8 @@ pij list --here               # bare `pij` on PATH from any cwd
 - **`PIJ_PARENT_ID`** is set on a *spawned* session to the pij-id of the session
   that spawned it (its parent). Together with `PIJ_SESSION_ID` (own id) this gives
   a spawned agent both "who am I" and "who spawned me" without any resolution
-  step — uniform across `pi`, `claude`, and `copilot` spawns. Absent on a session
-  with no resolvable spawner (e.g. a top-level boot).
+  step — uniform across `pi`, `claude`, `copilot`, and `codex` spawns. Absent on a
+  session with no resolvable spawner (e.g. a top-level boot).
 
 ---
 
@@ -59,7 +59,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
-| `spawn` | `pij spawn --harness pi\|claude\|copilot [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`copilot` are daemon-bound. See `pij spawn --help`. |
+| `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 
 ### Exit codes
 

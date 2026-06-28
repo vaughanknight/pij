@@ -20,7 +20,8 @@ import {
 	shouldInjectInit,
 } from "../binding.js";
 import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js";
-import { buildInitInjection, discoverNewTranscript, transcriptDir } from "../harness/claude.js";
+import { buildInitInjection, discoverNewTranscript } from "../harness/claude.js";
+import { type TranscriptListing, transcriptLayout } from "../harness/transcript.js";
 import { classifyInterstitial } from "../interstitial.js";
 import type { DeliveryPort, RegistryPort } from "../ports.js";
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
@@ -39,8 +40,16 @@ export interface DaemonPorts {
 	sendText(paneId: string, text: string): void;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
 	sendKey(paneId: string, key: "Escape" | "Enter"): void;
-	/** List `*.jsonl` transcript paths currently in a directory. */
+	/** List `*.jsonl` transcript paths currently in a directory (FLAT — claude). */
 	listTranscripts(dir: string): string[];
+	/** List rollout `*.jsonl` paths RECURSIVELY under a dir (codex's date-nested
+	 *  global tree, Plan 022). Optional — only codex discovery uses it; absent ⇒
+	 *  the discovery path falls back to the flat `listTranscripts`. */
+	listTranscriptsDeep?(dir: string): string[];
+	/** Read a codex rollout's `session_meta.cwd` (Plan 022) for the cwd-confirm
+	 *  tiebreak on the global sessions dir (R-2). Optional — only codex uses it;
+	 *  absent ⇒ no cwd-confirm (raw new-path discovery). `null` if unreadable. */
+	readTranscriptCwd?(path: string): string | null;
 	/** Home dir (for the transcript path). */
 	home(): string;
 	/** Monotonic-ish now (ms). */
@@ -133,14 +142,23 @@ export function driveSession(
 		return fail(descriptor, drive, registry, delivery, "pane exited before binding", dr);
 	}
 
-	// The `before` set for new-path discovery (AC-03). Prefer the spawn-time
-	// snapshot persisted on the descriptor (captured before the pane existed, so
-	// a pre-existing active transcript is in `before` and never chosen — review
-	// H1); only fall back to a live snapshot for sessions spawned without it
-	// (e.g. adopt). phone-home remains the confirmatory backstop.
-	const dir = transcriptDir(ports.home(), descriptor.folder);
+	// The `before` set for new-path discovery (AC-03). The transcript LAYOUT is
+	// harness-selected (Plan 022, Finding 03): claude = cwd-scoped dir + FLAT
+	// listing + stem id (byte-unchanged); codex = global date-tree + DEEP listing
+	// + trailing-UUID id. `deep`/cwd-confirm fall back gracefully if a port is
+	// absent (e.g. a test fake or adopt). Prefer the spawn-time snapshot persisted
+	// on the descriptor (captured before the pane existed, so a pre-existing active
+	// transcript is in `before` and never chosen — review H1); only fall back to a
+	// live snapshot for sessions spawned without it. phone-home is the backstop.
+	const harness = descriptor.harness ?? "claude";
+	const layout = transcriptLayout(harness);
+	const dir = layout.dir(ports.home(), descriptor.folder);
+	const listing: TranscriptListing = {
+		flat: (d) => ports.listTranscripts(d),
+		deep: (d) => ports.listTranscriptsDeep?.(d) ?? ports.listTranscripts(d),
+	};
 	if (drive.before === undefined) {
-		drive.before = descriptor.transcriptsAtSpawn ?? ports.listTranscripts(dir);
+		drive.before = descriptor.transcriptsAtSpawn ?? layout.list(listing, dir);
 	}
 
 	const pane = ports.capturePane(paneId);
@@ -244,22 +262,41 @@ export function driveSession(
 		return { kind: "bound", harnessSessionId: descriptor.plannedHarnessSessionId };
 	}
 
-	// Claude: the session id is auto-generated, so discover it by NEW path
-	// appearance — a transcript path that did not exist at spawn (AC-03).
-	const discovery = discoverNewTranscript(drive.before, ports.listTranscripts(dir));
+	// Claude/codex: the session id is auto-generated, so discover it by NEW path
+	// appearance — a transcript that did not exist at spawn (AC-03). The layout
+	// picks the listing (flat vs deep) and the id extraction (stem vs trailing UUID).
+	let after = layout.list(listing, dir);
+	// Codex's sessions dir is GLOBAL (every cwd's rollouts land here), so a
+	// concurrent codex in ANOTHER cwd surfaces as a spurious "new" path. Confirm
+	// each FRESH candidate's cwd via its session_meta before considering it; paths
+	// already in the before-set are kept untouched, so only genuinely-new files pay
+	// the read, and an unreadable head (mid-write) defers to a later tick (R-2).
+	if (harness === "codex" && ports.readTranscriptCwd) {
+		const confirmCwd = ports.readTranscriptCwd;
+		const beforeSet = new Set(drive.before);
+		after = after.filter((p) => beforeSet.has(p) || confirmCwd(p) === descriptor.folder);
+	}
+	const discovery = discoverNewTranscript(drive.before, after);
 	if (discovery.status === "found") {
-		const bound = applyBinding(descriptor, discovery.sessionId);
+		// The bind id is layout-derived: codex's trailing UUID, NOT discovery's
+		// claude-stem default (Finding 06). Codex also persists the absolute rollout
+		// path — its date-nested path can't be rebuilt from the bare UUID for tail.
+		const harnessSessionId = layout.sessionIdOf(discovery.path);
+		const bound = {
+			...applyBinding(descriptor, harnessSessionId),
+			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
+		};
 		registry.write(bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
 		}
-		return { kind: "bound", harnessSessionId: discovery.sessionId };
+		return { kind: "bound", harnessSessionId };
 	}
 	if (discovery.status === "ambiguous") {
-		// Concurrent boots in the same cwd — discovery can't pick deterministically;
-		// surface it (review M4) and let phone-home + the watchdog resolve it.
+		// Concurrent boots discovery can't pick deterministically; surface it
+		// (review M4) and let phone-home + the watchdog resolve it.
 		return { kind: "ambiguous", count: discovery.paths.length };
 	}
 

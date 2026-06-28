@@ -60,6 +60,10 @@ function world(opts: { pane?: string; transcripts?: string[]; dead?: boolean } =
 		sendText: (p, t) => sentText.push({ pane: p, text: t }),
 		sendKey: (p, k) => sentKeys.push({ pane: p, key: k }),
 		listTranscripts: () => transcripts,
+		// Codex (Plan 022): the deep lister backs onto the SAME fake transcript set;
+		// cwd-confirm defaults to the descriptor's cwd (overridable per-test).
+		listTranscriptsDeep: () => transcripts,
+		readTranscriptCwd: () => CWD,
 		home: () => HOME,
 		now: () => nowMs,
 		isAlive: () => true,
@@ -210,6 +214,68 @@ describe("driveSession state machine", () => {
 		expect(out).toEqual({ kind: "bound", harnessSessionId: "fork-uuid" });
 		expect(reg.read("pij-w")?.harnessSessionId).toBe("fork-uuid");
 		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
+	});
+
+	// ─── codex discovery bind (Plan 022, AC-02, Finding 06) ─────────────────────
+	const CODEX_ROOT = `${HOME}/.codex/sessions`;
+	const CODEX_OLD = `${CODEX_ROOT}/2026/06/27/rollout-2026-06-27T09-00-00-aaaaaaaa-0001-7000-8000-000000000001.jsonl`;
+	const CODEX_NEW = `${CODEX_ROOT}/2026/06/28/rollout-2026-06-28T15-33-30-019f0cb7-f65c-76f1-bb38-c96269590118.jsonl`;
+	const CODEX_UUID = "019f0cb7-f65c-76f1-bb38-c96269590118";
+
+	it("codex: ready + a NEW rollout appears → bound to the rollout's TRAILING UUID + transcriptPath persisted (AC-02, Finding 06)", () => {
+		const w = world({ pane: READY, transcripts: [CODEX_OLD, CODEX_NEW] });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = { before: [CODEX_OLD], readyAtMs: 1000 };
+		const out = driveSession(
+			desc({ harness: "codex", folder: CWD, initInjectedAt: "2026-06-27T00:00:05.000Z" }),
+			drive,
+			w.ports,
+			reg,
+			del,
+		);
+		expect(out).toEqual({ kind: "bound", harnessSessionId: CODEX_UUID });
+		const bound = reg.read("pij-w");
+		// The bind id is the trailing UUID — NOT the claude-style stem (mutation guard).
+		expect(bound?.harnessSessionId).toBe(CODEX_UUID);
+		expect(bound?.harnessSessionId).not.toContain("rollout-");
+		// The absolute path is persisted for tail (the UUID can't rebuild the date path).
+		expect(bound?.transcriptPath).toBe(CODEX_NEW);
+		expect(bound?.lifecycle).toBe("bound");
+		expect(
+			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
+		).toBe(true);
+	});
+
+	it("codex: a NEW rollout from ANOTHER cwd is ignored via session_meta cwd-confirm (R-2)", () => {
+		const CODEX_OTHER = `${CODEX_ROOT}/2026/06/28/rollout-2026-06-28T15-40-00-cccccccc-0003-7000-8000-000000000003.jsonl`;
+		const w = world({ pane: READY, transcripts: [CODEX_OLD, CODEX_OTHER] });
+		// The fresh rollout belongs to a DIFFERENT cwd → must not bind to it.
+		w.ports.readTranscriptCwd = (p) => (p === CODEX_OTHER ? "/some/other/repo" : CWD);
+		const reg = new FakeRegistry();
+		const drive: DriveState = { before: [CODEX_OLD], readyAtMs: 1000 };
+		const out = driveSession(
+			desc({ harness: "codex", folder: CWD, initInjectedAt: "x" }),
+			drive,
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+		expect(out.kind).toBe("waiting");
+		expect(reg.read("pij-w")).toBeNull();
+	});
+
+	it("claude bind sets NO transcriptPath (byte-unchanged — only codex persists the path)", () => {
+		const w = world({
+			pane: READY,
+			transcripts: [`${DIR}/preexisting.jsonl`, `${DIR}/claude-new.jsonl`],
+		});
+		const reg = new FakeRegistry();
+		const drive: DriveState = { before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 };
+		driveSession(desc({ initInjectedAt: "x" }), drive, w.ports, reg, new FakeDelivery());
+		const bound = reg.read("pij-w");
+		expect(bound?.harnessSessionId).toBe("claude-new");
+		expect(bound?.transcriptPath).toBeUndefined();
 	});
 
 	it("NEVER binds the pre-existing transcript (the load-bearing case)", () => {

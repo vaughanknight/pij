@@ -14,8 +14,10 @@ export type Role = "parent" | "worker";
 /** Which coding-agent harness a session runs under (Plan 019 control plane).
  *  The transport-selection contract (`HarnessKind` → inbox|sendkeys) lives in
  *  `core/harness/types.ts`; the kind is declared here because it is part of the
- *  shared `SessionDescriptor` vocabulary. Absent ⇒ legacy pi session. */
-export type HarnessKind = "pi" | "claude" | "copilot";
+ *  shared `SessionDescriptor` vocabulary. Absent ⇒ legacy pi session.
+ *  `codex` (Plan 022) is the 4th spawnable harness — a discovery-bound,
+ *  send-keys-driven, claude-style harness with its own transcript layout. */
+export type HarnessKind = "pi" | "claude" | "copilot" | "codex";
 
 /** Spawn→bind lifecycle of a control-plane session (Plan 019). DISTINCT from
  *  `SessionDescriptor.state` (working/idle of a live turn): this tracks the
@@ -77,6 +79,12 @@ export interface SessionDescriptor {
 	 *  transcript stem under ~/.claude/projects/<mangled cwd>/<this>.jsonl,
 	 *  discovered deterministically by the daemon (AC-03). Drives `pij tail`. */
 	readonly harnessSessionId?: string;
+	/** Codex only (Plan 022): the ABSOLUTE path to the discovered rollout `*.jsonl`,
+	 *  persisted at bind. Codex's transcript dir is date-nested + global, so a bare
+	 *  `harnessSessionId` (the trailing UUID) cannot reconstruct the path the way
+	 *  claude's stem→`transcriptPathFor` join can (Finding 06) — `pij tail` reads
+	 *  this file directly. Absent for claude (stem-derived) and copilot/pi. */
+	readonly transcriptPath?: string;
 	/** Copilot only: the session UUID pij CHOSE at spawn and passed to
 	 *  `copilot --session-id <uuid>`. Copilot lets us set a new session's UUID, so
 	 *  binding is deterministic at spawn (no transcript-discovery race like Claude).

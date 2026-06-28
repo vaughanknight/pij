@@ -29,6 +29,11 @@ import {
 	transcriptDir,
 	transcriptPathFor,
 } from "./core/harness/claude.js";
+import {
+	codexTranscriptRoot,
+	listCodexRollouts,
+	summarizeCodexEvent,
+} from "./core/harness/codex.js";
 import { sessionEventsPath, summarizeCopilotEvent } from "./core/harness/copilot.js";
 import { supportsBranching } from "./core/harness/types.js";
 import { parseReceiptBody } from "./core/message.js";
@@ -65,7 +70,7 @@ const WAIT_TIMEOUT_MS = 15_000;
 const USAGE = `pij — session messaging + tmux control plane
 
 Control plane (spawn colleagues in tmux):
-  pij spawn --harness pi|claude|copilot [--model <m>]   spawn a colleague (pi self-registers; claude/copilot daemon-bound)
+  pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h>               register your own pane so peers can reach you
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
@@ -83,25 +88,27 @@ Messaging:
 const SPAWN_USAGE = `pij spawn — spawn a colleague in a tmux pane (one uniform surface for every harness)
 
 USAGE
-  pij spawn --harness pi|claude|copilot [--model <m>] [--task "<t>"] [--branch]
+  pij spawn --harness pi|claude|copilot|codex [--model <m>] [--task "<t>"] [--branch]
 
 FLAGS
-  --harness <h>   pi | claude | copilot  (the harness to launch in a new tmux pane)
+  --harness <h>   pi | claude | copilot | codex  (the harness to launch in a new tmux pane)
                     pi      -> self-registers at boot; NO daemon, NO binding step
                     claude  -> daemon-bound via transcript discovery
                     copilot -> daemon-bound via deterministic --session-id
+                    codex   -> daemon-bound via transcript discovery (date-nested rollout)
   --model <m>     model id for that harness:
                     pi      -> a pi model/preset (e.g. @preset/glm-1m; pair with the
                                session's configured provider)
                     claude  -> sonnet | opus | haiku | claude-sonnet-4-6
                     copilot -> gpt-5.5 | claude-sonnet-4.6 | …
+                    codex   -> gpt-5.5 | o3 | … (codex -m model id)
                   NOTE: an unknown model is currently passed through to the harness,
                   which may silently fall back to its default — verify with the pane
                   footer / pij tail until spawn-time validation lands.
   --task "<t>"    first task, delivered race-free via PIJ_SPAWN_TASK (never a positional
                   prompt — dodges the announce-vs-prompt race, finding 01).
   --branch        fork YOUR OWN session into the new pane (branch-from-self), so the
-                  colleague inherits your full context. Claude only (pi/copilot reject).
+                  colleague inherits your full context. Claude only (pi/copilot/codex reject).
                   Requires: the new harness MATCHES yours and your session is bound.
 
 pi: prints the new pane id immediately; the child self-registers and its pij-id arrives
@@ -449,6 +456,7 @@ function runSpawn(argv: readonly string[]): void {
 	if (daemonNote) process.stdout.write(`${daemonNote}\n`);
 	const cwd = process.cwd();
 	const isCopilot = req.value.harness === "copilot";
+	const isCodex = req.value.harness === "codex";
 	// Branch-from-self (Plan 020): `--branch` forks the CALLER's own session into the
 	// new pane. Resolve who's calling (PIJ_SESSION_ID → lone-local → $TMUX_PANE),
 	// then gate purely via planBranch (same-harness + supports-branching + bound).
@@ -484,13 +492,27 @@ function runSpawn(argv: readonly string[]): void {
 	const skipSnapshot = isCopilot || forkSessionId !== undefined;
 	let transcriptsAtSpawn: string[] = [];
 	if (!skipSnapshot) {
-		const dir = transcriptDir(homedir(), cwd);
-		try {
-			transcriptsAtSpawn = readdirSync(dir)
-				.filter((n) => n.endsWith(".jsonl"))
-				.map((n) => `${dir}/${n}`);
-		} catch {
-			/* dir not created yet → empty before-set */
+		if (isCodex) {
+			// Codex's rollouts live in the GLOBAL date-nested tree ~/.codex/sessions/**
+			// (Plan 022) — snapshot it recursively BEFORE the pane exists so new-path
+			// discovery is deterministic (the same H1 race-avoidance as claude, with
+			// codex's layout). The daemon binds the one rollout absent from this set.
+			transcriptsAtSpawn = listCodexRollouts((d) => {
+				try {
+					return readdirSync(d);
+				} catch {
+					return [];
+				}
+			}, codexTranscriptRoot(homedir()));
+		} else {
+			const dir = transcriptDir(homedir(), cwd);
+			try {
+				transcriptsAtSpawn = readdirSync(dir)
+					.filter((n) => n.endsWith(".jsonl"))
+					.map((n) => `${dir}/${n}`);
+			} catch {
+				/* dir not created yet → empty before-set */
+			}
 		}
 	}
 	const token = `s${Date.now()}-${process.pid}`;
@@ -744,10 +766,11 @@ function runClose(argv: readonly string[]): void {
 /** `pij tail <pij-id>` for a BOUND control-plane session (T022, AC-09): a coding
  *  harness writes its OWN per-session JSONL transcript, not pij's events.ndjson —
  *  claude under ~/.claude/projects/…/<sid>.jsonl, copilot under
- *  ~/.copilot/session-state/<sid>/events.jsonl. Resolve that file (by harness) and
- *  stream a summarized view (`[role] text`, tool calls as `⚙ name`); `--follow`
- *  polls for new lines. Returns false when the target is not a bound claude/copilot
- *  (caller falls back to the normal event tail). */
+ *  ~/.copilot/session-state/<sid>/events.jsonl, codex under the persisted
+ *  ~/.codex/sessions/…/rollout-…<uuid>.jsonl (Plan 022, Finding 06). Resolve that
+ *  file (by harness) and stream a summarized view (`[role] text`, tool calls as
+ *  `⚙ name`); `--follow` polls for new lines. Returns false when the target is not
+ *  a bound claude/copilot/codex (caller falls back to the normal event tail). */
 function tailTranscript(id: string, follow: boolean, linesArg: number | undefined): boolean {
 	const d = new FsRegistry(pijHome).read(id);
 	if (!d?.harnessSessionId) return false;
@@ -759,6 +782,12 @@ function tailTranscript(id: string, follow: boolean, linesArg: number | undefine
 	} else if (d.harness === "copilot") {
 		path = sessionEventsPath(homedir(), d.harnessSessionId);
 		summarize = summarizeCopilotEvent;
+	} else if (d.harness === "codex") {
+		// Codex's date-nested rollout path can't be rebuilt from the bare UUID, so
+		// tail reads the absolute path the daemon persisted at bind (Finding 06).
+		if (!d.transcriptPath) return false;
+		path = d.transcriptPath;
+		summarize = summarizeCodexEvent;
 	} else {
 		return false;
 	}

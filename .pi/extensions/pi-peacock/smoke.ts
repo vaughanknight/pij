@@ -3,8 +3,16 @@
 
 import type { Scenario } from "../../../harness/driver/index.js";
 
+// Proves peacock RENDERS the status line, without pinning the machine's pi
+// config: the cwd + git branch, a context-usage segment (`<pct>%/<ctx> (auto)`),
+// and a provider/model/effort segment (`(<provider>) <model> • <effort>`) — all
+// three are peacock's doing and hold regardless of which model/provider the user
+// has configured. (Previously pinned `(github-copilot) gpt-5.5 • medium`, `1.1M`,
+// and a `session-sql: ready` footer segment — all environment-specific: they
+// drift when the user switches model/provider or pi changes the footer segments,
+// turning an env change into a false smoke failure. session-sql has its own smoke.)
 const stableFooterRe =
-	/~\/pi-hacking\/pij \(main\)[\s\S]*\$0\.000 \(sub\) 0\.0%\/1\.1M \(auto\)[\s\S]*\(github-copilot\) gpt-5\.5 • medium[\s\S]*session-sql: ready/;
+	/~\/pi-hacking\/pij \(main\)[\s\S]*\d[\d.]*%\/\S+ \(auto\)[\s\S]*\([\w-]+\) \S+ • \w+/;
 
 const scenario: Scenario = {
 	name: "pi-peacock",

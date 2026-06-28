@@ -8,6 +8,7 @@ describe("selectTransport", () => {
 		["pi", "inbox"],
 		["claude", "sendkeys"],
 		["copilot", "sendkeys"],
+		["codex", "sendkeys"],
 	];
 
 	for (const [harness, transport] of cases) {
@@ -30,5 +31,16 @@ describe("supportsBranching (branch-from-self capability seam, Plan 020)", () =>
 	it("copilot and pi do NOT support branching yet — the seam exists for later", () => {
 		expect(supportsBranching("copilot")).toBe(false);
 		expect(supportsBranching("pi")).toBe(false);
+	});
+
+	it("codex does NOT support branching yet (it has fork/resume — a clean future flip)", () => {
+		expect(supportsBranching("codex")).toBe(false);
+	});
+});
+
+describe("HarnessKind accepts codex (Plan 022 — 4th spawnable harness)", () => {
+	it("codex is a valid HarnessKind and selects the send-keys transport", () => {
+		const codex: HarnessKind = "codex";
+		expect(selectTransport(codex)).toBe("sendkeys");
 	});
 });

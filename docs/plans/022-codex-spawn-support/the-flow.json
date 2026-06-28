@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "kind": "flight-plan",
+  "slug": "codex-spawn-support",
+  "created_at": "2026-06-28T05:16:53.909Z",
+  "provenance": {
+    "record_kind": "flow",
+    "harness_version": "0.6.0",
+    "branch": "main",
+    "repo": "https://github.com/AI-Substrate/pij.git",
+    "created_at": "2026-06-28T05:16:53.909Z",
+    "agent": "the-flow",
+    "plan_id": null
+  },
+  "events": [
+    {
+      "id": "CRT-001",
+      "kind": "created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:16:53.918Z",
+      "details": {
+        "kind": "flight-plan",
+        "slug": "codex-spawn-support"
+      }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:16:54.038Z",
+      "details": {
+        "node": "ship",
+        "type": "ship"
+      }
+    },
+    {
+      "id": "NOD-002",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:16:54.158Z",
+      "details": {
+        "node": "plan",
+        "type": "plan"
+      }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:16:54.274Z",
+      "details": {
+        "node": "research",
+        "type": "research"
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:16:54.387Z",
+      "details": {
+        "from": "",
+        "to": "research"
+      }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:23:31.239Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:23:31.369Z",
+      "details": {
+        "node": "research",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-002",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:23:31.501Z",
+      "details": {
+        "node": "plan",
+        "from": "assumed",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:23:31.628Z",
+      "details": {
+        "from": "research",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "NOD-004",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:33:01.535Z",
+      "details": {
+        "node": "build",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "UPD-002",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:33:01.535Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "STA-003",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:33:01.653Z",
+      "details": {
+        "node": "plan",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:33:01.775Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-003",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:33:02.024Z",
+      "details": {
+        "from": "plan",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T05:35:35.110Z",
+      "details": {
+        "node": "build",
+        "fields": [
+          "comments"
+        ]
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ship",
+      "type": "ship",
+      "label": "Ship",
+      "status": "assumed",
+      "next": [],
+      "created_at": "2026-06-28T05:16:54.038Z",
+      "modified_at": "2026-06-28T05:16:54.038Z",
+      "zone": "postflight"
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "label": "Plan",
+      "status": "done",
+      "next": [
+        "build"
+      ],
+      "created_at": "2026-06-28T05:16:54.158Z",
+      "modified_at": "2026-06-28T05:33:01.775Z",
+      "ran_at": "2026-06-28T05:33:01.653Z",
+      "note": "Simple/CS-3 READY. validate-v2: VALIDATED WITH FIXES (2 HIGH closed — codex id=trailing UUID via sessionIdOf not stem; persist transcriptPath for tail). 13 tasks."
+    },
+    {
+      "id": "research",
+      "type": "research",
+      "label": "Research",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-06-28T05:16:54.274Z",
+      "modified_at": "2026-06-28T05:23:31.369Z",
+      "ran_at": "2026-06-28T05:23:31.239Z",
+      "note": "Codex = claude-style (transcript-discovery bind, sendkeys, --dangerously-bypass-approvals-and-sandbox). New surface: codex transcript module (~/.codex/sessions date-tree). 8 findings, 4 risks (R-1 readiness=POC)."
+    },
+    {
+      "id": "build",
+      "type": "phase",
+      "label": "Build: codex harness (spawn+bind+transport+tail)",
+      "status": "known",
+      "next": [
+        "ship"
+      ],
+      "created_at": "2026-06-28T05:33:01.535Z",
+      "modified_at": "2026-06-28T05:35:35.110Z",
+      "comments": [
+        {
+          "at": "2026-06-28T05:35:35.110Z",
+          "text": "POC (2026-06-28): codex popped in tmux (pane %29, YOLO mode), controlled via send-keys (replied CODEX_POC_OK_42), bound via discovery (rollout UUID 019f0cb7…=session_meta.id), cwd-confirmed, tail parsed. New Finding 07: codex writes rollout lazily on first turn (binds after init-inject). Evidence: poc-evidence.md.",
+          "kind": "validation"
+        }
+      ]
+    }
+  ],
+  "nav": {
+    "now": "plan",
+    "next": "build",
+    "intent": "add support for codex to the pij spawner thing. codex is installed and logged in ready to go",
+    "bag": {
+      "mode": "Simple",
+      "status": "active"
+    }
+  }
+}

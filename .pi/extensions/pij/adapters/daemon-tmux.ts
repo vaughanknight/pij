@@ -7,10 +7,11 @@
 // pane / missing dir degrades to "" / [] rather than throwing — Pattern P4).
 
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DaemonPorts } from "../core/daemon/loop.js";
+import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
 import { NodeProcess } from "./process.js";
 import { capturePane, execFileRunner, pressKey, typeLiteral } from "./tmux-keys.js";
 
@@ -68,6 +69,29 @@ export class DaemonTmux implements DaemonPorts {
 				.map((n) => join(dir, n));
 		} catch {
 			return []; // dir not created yet (claude hasn't written a transcript)
+		}
+	}
+
+	listTranscriptsDeep(dir: string): string[] {
+		// Codex's date-nested tree (`<root>/YYYY/MM/DD/rollout-*.jsonl`) — the pure
+		// walk recurses; we inject a best-effort (errors → []) per-dir name reader.
+		return listCodexRollouts((d) => {
+			try {
+				return readdirSync(d);
+			} catch {
+				return [];
+			}
+		}, dir);
+	}
+
+	readTranscriptCwd(path: string): string | null {
+		try {
+			// `session_meta` is line 1 — slice off the first newline so we parse just it.
+			const raw = readFileSync(path, "utf8");
+			const nl = raw.indexOf("\n");
+			return codexCwdFromMeta(nl === -1 ? raw : raw.slice(0, nl));
+		} catch {
+			return null; // unreadable (mid-write / gone) → no cwd confirmation this tick
 		}
 	}
 

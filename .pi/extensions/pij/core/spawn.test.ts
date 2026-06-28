@@ -312,6 +312,49 @@ describe("buildControlSpawnCommand", () => {
 	it("no branchFrom → today's claude args are byte-identical (AC-05 regression)", () => {
 		expect(buildControlSpawnCommand(base).args).toEqual(["--dangerously-skip-permissions"]);
 	});
+
+	// ─── codex arm (Plan 022, AC-01/05/07; Finding 05) ──────────────────────────
+	it("codex: cmd is 'codex' with --dangerously-bypass-approvals-and-sandbox (driven pane, no human to approve)", () => {
+		const r = buildControlSpawnCommand({ harness: "codex", pijId: "pij-cdx", cwd: "/repo" });
+		expect(r.cmd).toBe("codex");
+		expect(r.args).toEqual(["--dangerously-bypass-approvals-and-sandbox"]);
+		expect(r.env.PIJ_HARNESS).toBe("codex");
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-cdx");
+	});
+
+	it("codex: --model rides after the bypass flag as discrete argv (AC-09: no shell string)", () => {
+		const r = buildControlSpawnCommand({
+			harness: "codex",
+			pijId: "pij-cdx",
+			cwd: "/repo",
+			model: "gpt-5.5",
+		});
+		expect(r.args).toEqual(["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.5"]);
+	});
+
+	it("codex: sets PIJ_PARENT_ID when given; NEVER a deterministic --session-id (discovery-bound, AC-02/05)", () => {
+		const r = buildControlSpawnCommand({
+			harness: "codex",
+			pijId: "pij-cdx",
+			cwd: "/repo",
+			parentId: "pij-boss",
+			model: "o3",
+		});
+		expect(r.env.PIJ_PARENT_ID).toBe("pij-boss");
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-cdx");
+		// codex auto-generates its UUID (F-01) — no --session-id like copilot.
+		expect(r.args).not.toContain("--session-id");
+	});
+
+	it("codex: sets PIJ_SPAWN_TASK only when a task is given", () => {
+		expect(
+			buildControlSpawnCommand({ harness: "codex", pijId: "p", cwd: "/r" }).env,
+		).not.toHaveProperty("PIJ_SPAWN_TASK");
+		expect(
+			buildControlSpawnCommand({ harness: "codex", pijId: "p", cwd: "/r", task: "go" }).env
+				.PIJ_SPAWN_TASK,
+		).toBe("go");
+	});
 });
 
 describe("buildPendingDescriptor", () => {
@@ -479,6 +522,17 @@ describe("parseSpawnArgs (T018)", () => {
 		expect(parseSpawnArgs(["--harness", "bogus"])).toMatchObject({ ok: false, code: "E-ARG" });
 	});
 
+	it("accepts codex (Plan 022 — 4th spawnable harness)", () => {
+		expect(parseSpawnArgs(["--harness", "codex"])).toMatchObject({
+			ok: true,
+			value: { harness: "codex", branch: false },
+		});
+		expect(parseSpawnArgs(["--harness=codex", "--model=gpt-5.5"])).toMatchObject({
+			ok: true,
+			value: { harness: "codex", model: "gpt-5.5" },
+		});
+	});
+
 	it("rejects unknown flags and missing values", () => {
 		expect(parseSpawnArgs(["--harness", "claude", "--nope", "x"])).toMatchObject({
 			ok: false,
@@ -548,6 +602,12 @@ describe("planBranch (branch-from-self gating, Plan 020)", () => {
 	it("pi can spawn (Plan 021) but cannot fork → E-BRANCH (the bin mirrors this guard)", () => {
 		expect(
 			planBranch("pi", boundSelf({ harness: "pi", harnessSessionId: "pi-self" }), supports, "u"),
+		).toMatchObject({ ok: false, code: "E-BRANCH" });
+	});
+
+	it("codex can spawn (Plan 022) but cannot fork-from-self → E-BRANCH (AC-07)", () => {
+		expect(
+			planBranch("codex", boundSelf({ harness: "codex", harnessSessionId: "x" }), supports, "u"),
 		).toMatchObject({ ok: false, code: "E-BRANCH" });
 	});
 

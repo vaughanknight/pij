@@ -16,15 +16,29 @@ import { classifyInterstitial } from "./interstitial.js";
 
 export type ReadinessState = "booting" | "interstitial" | "ready" | "busy" | "dead";
 
-/** Idle-ready footer markers across control-plane harnesses (claude + copilot);
- *  `for shortcuts` is a forward-compat fallback. `bypass permissions on` is the
- *  claude footer when launched with --dangerously-skip-permissions — which is
- *  EXACTLY how pij spawns claude, so it's the common case, not an edge one (the
+/** Idle-ready footer markers across control-plane harnesses (claude + copilot +
+ *  codex); `for shortcuts` is a forward-compat fallback. `bypass permissions on`
+ *  is the claude footer when launched with --dangerously-skip-permissions — which
+ *  is EXACTLY how pij spawns claude, so it's the common case, not an edge one (the
  *  old `auto mode on` fixture never matched a real pij-spawned pane). It also
  *  survives a narrow split pane that truncates `shift+tab to cycle` → `shift+tab
- *  to`, because `bypass permissions on` appears earlier on the line. */
+ *  to`, because `bypass permissions on` appears earlier on the line.
+ *
+ *  Codex (Plan 022, T013 — R-1 resolved against the live pane): its INTERACTIVE
+ *  composer renders a `Use /skills` hint (the codex analogue of claude's `Try "…"`
+ *  placeholder) next to a `›` prompt glyph. We match the codex-SPECIFIC `Use /skills`
+ *  token ALONE and deliberately do NOT list the bare `›`: classifyReadiness is
+ *  harness-agnostic (the daemon runs EVERY pane through it), and `›` is a single
+ *  generic glyph a claude/copilot pane can emit in its own output (a breadcrumb, a
+ *  quote) — listing it risked a premature `ready` on a non-codex pane (review note
+ *  dlg-0002, LOW). `Use /skills` persisted on the live idle composer, so dropping `›`
+ *  does not weaken codex bind. The hint appears only once codex accepts input — NOT
+ *  during the boot banner (`>_ OpenAI Codex`) — so it signals true readiness without
+ *  the premature-inject hazard a boot-banner marker would carry. The busy guard below
+ *  still wins for `Working (Ns • esc to interrupt)`, so it never fires mid-turn even
+ *  though the composer line persists during a turn. */
 const READY_RE =
-	/bypass permissions on|shift\+tab to cycle|auto mode on|for shortcuts|tab next tab|\? help/i;
+	/bypass permissions on|shift\+tab to cycle|auto mode on|for shortcuts|tab next tab|\? help|Use \/skills/i;
 /** A live turn — the negative guard so an in-progress turn isn't read as idle.
  *  `esc to interrupt` = claude (WIDE pane); `esc cancel` (the `◎ Working` footer)
  *  = copilot. In a NARROW split pane (how pij spawns), claude truncates

@@ -60,6 +60,43 @@ const CLAUDE_NARROW_BUSY = `
   ⏵⏵ bypass permissions on (shift+tab to      ·
 `;
 
+// Codex CLI v0.142.3 fixtures, captured LIVE from a pij-spawned codex pane
+// (Plan 022, T013): idle = the `›` composer + `Use /skills` hint + a
+// `<model> <effort> · <cwd>` footer; a live turn = `Working (Ns • esc to
+// interrupt)`. The boot box (`>_ OpenAI Codex`) is deliberately NOT a ready
+// marker — it shows BEFORE the composer is interactive, so binding off it would
+// inject init into a pane that can't yet receive keystrokes.
+const CODEX_READY = `
+• You have 1 usage limit reset available. Run /usage to use one.
+› Use /skills to list available skills
+  gpt-5.5 medium · ~/pi-hacking/pij
+`;
+
+const CODEX_BUSY = `
+› Run this shell command: sleep 6 && echo SLEPT
+• Working (4s • esc to interrupt) · 1 background terminal running · /ps …
+› Use /skills to list available skills
+  gpt-5.5 medium · ~/pi-hacking/pij
+`;
+
+const CODEX_BOOTING = `
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.142.3)                     │
+│ permissions: YOLO mode                          │
+╰────────────────────────────────────────────────╯
+`;
+
+// A NON-codex pane (claude) that renders a bare `›` glyph in its OWN output — a
+// breadcrumb / nav arrow, not the codex composer — with NO codex marker and NO
+// other READY footer marker. classifyReadiness is harness-agnostic (the daemon
+// runs every control-plane pane through it), so the old READY_RE — which listed a
+// bare `›` as a codex marker — misread this as `ready` (review note dlg-0002, LOW).
+// The codex signal is now anchored to the codex-specific `Use /skills` token, so a
+// stray `›` alone must NOT read as ready.
+const STRAY_CHEVRON_NON_CODEX = `
+ ⏺ The file you asked about lives at src › core › readiness.ts
+`;
+
 describe("classifyReadiness", () => {
 	it("idle footer markers → ready", () => {
 		expect(classifyReadiness(READY_FOOTER)).toBe("ready");
@@ -107,5 +144,32 @@ describe("classifyReadiness", () => {
 
 	it("copilot '◎ Working esc cancel' → busy", () => {
 		expect(classifyReadiness(COPILOT_BUSY)).toBe("busy");
+	});
+
+	// ─── codex (Plan 022, T013 — R-1 resolved against the live pane) ────────────
+	it("codex idle composer ('› Use /skills' + footer) → ready", () => {
+		expect(classifyReadiness(CODEX_READY)).toBe("ready");
+	});
+
+	it("codex live turn ('Working (Ns • esc to interrupt)') → busy, even with the footer present", () => {
+		// Busy guard must beat the codex footer that persists during a turn — the same
+		// rule as claude/copilot. Without it the daemon would re-inject mid-turn.
+		expect(classifyReadiness(CODEX_BUSY)).toBe("busy");
+	});
+
+	it("codex boot box (before the composer renders) → booting, NOT ready", () => {
+		// The `>_ OpenAI Codex` banner shows BEFORE codex accepts input; binding off it
+		// would inject init into a pane that drops the keystrokes (Finding 07 timing).
+		expect(classifyReadiness(CODEX_BOOTING)).toBe("booting");
+	});
+
+	// ─── dlg-0002 guard: anchor the codex `›` so it can't false-positive ─────────
+	it("a stray '›' in a non-codex pane (no codex/READY marker) → NOT ready", () => {
+		// RED against the old bare-`›` READY_RE (it matched `›` → ready); GREEN once the
+		// codex signal requires the codex-specific `Use /skills` token. This is the guard
+		// that would have caught review note dlg-0002 (LOW): `›` is a single generic
+		// glyph a claude/copilot pane can emit in its own output.
+		expect(classifyReadiness(STRAY_CHEVRON_NON_CODEX)).not.toBe("ready");
+		expect(classifyReadiness(STRAY_CHEVRON_NON_CODEX)).toBe("booting");
 	});
 });
