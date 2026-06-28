@@ -71,6 +71,11 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 
 	const env: Record<string, string> = {
 		PIJ_ANNOUNCE_TO: input.announceTo,
+		// The spawner's pij-id, exposed under a stable identity name so the child
+		// (and anything it shells) can read "who spawned me" without resolution
+		// gymnastics. For pi this equals PIJ_ANNOUNCE_TO; PIJ_SESSION_ID (the
+		// child's OWN id) is exported by the child at boot. Empty ⇒ caller unresolved.
+		PIJ_PARENT_ID: input.announceTo,
 		PIJ_SPAWN_ID: input.spawnId,
 		PIJ_ROLE: input.role,
 	};
@@ -149,6 +154,10 @@ export interface ControlSpawnInput {
 	readonly model?: string;
 	/** Optional first task — delivered later via the init inject, not argv. */
 	readonly task?: string;
+	/** The spawner's pij id — becomes PIJ_PARENT_ID so the child knows who
+	 *  spawned it (uniform with the pi path's PIJ_PARENT_ID). Omitted from env
+	 *  when the caller can't be resolved. */
+	readonly parentId?: string;
 	/** Copilot only: the pij-chosen session UUID, passed as `--session-id <uuid>`
 	 *  so binding is deterministic at spawn (Copilot sets a new session's UUID). */
 	readonly copilotSessionId?: string;
@@ -240,6 +249,12 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 		PIJ_SESSION_ID: input.pijId,
 		PIJ_HARNESS: input.harness,
 	};
+	// The spawner's pij-id (when the caller resolved) — the control-plane analogue
+	// of the pi path's PIJ_PARENT_ID. Self id is PIJ_SESSION_ID above; this is the
+	// parent. Omitted (not set to "") when the caller couldn't be resolved.
+	if (input.parentId) {
+		env.PIJ_PARENT_ID = input.parentId;
+	}
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;
 	}

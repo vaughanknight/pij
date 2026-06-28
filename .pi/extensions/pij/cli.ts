@@ -422,13 +422,17 @@ function runSpawn(argv: readonly string[]): void {
 	// A forked claude pins its id (`--session-id`), so it binds on the planned id —
 	// no transcript snapshot. branch-from-ANOTHER-peer is out of scope (we only ever
 	// pass our own resolved descriptor as `self`), but the seam doesn't preclude it.
+	// Resolve the CALLING session once (PIJ_SESSION_ID → lone-local → $TMUX_PANE):
+	// its pij-id becomes the child's PIJ_PARENT_ID (who spawned it), and — for
+	// --branch — the source descriptor to fork. Unresolved caller → no parent.
+	const reg0 = new FsRegistry(pijHome);
+	const locals0 = filterByFolder(reg0.list(), cwd);
+	const callerRes = resolveSelf(process.env.PIJ_SESSION_ID, locals0, process.env.TMUX_PANE);
+	const parentId = callerRes.ok ? callerRes.value : undefined;
 	let branchFrom: string | undefined;
 	let forkSessionId: string | undefined;
 	if (req.value.branch) {
-		const reg0 = new FsRegistry(pijHome);
-		const locals = filterByFolder(reg0.list(), cwd);
-		const selfRes = resolveSelf(process.env.PIJ_SESSION_ID, locals, process.env.TMUX_PANE);
-		const self = selfRes.ok ? (reg0.read(selfRes.value) ?? null) : null;
+		const self = callerRes.ok ? (reg0.read(callerRes.value) ?? null) : null;
 		const plan = planBranch(req.value.harness, self, supportsBranching, randomUUID());
 		if (!plan.ok) {
 			process.stderr.write(`${plan.code}: ${plan.message}\n`);
@@ -464,6 +468,7 @@ function runSpawn(argv: readonly string[]): void {
 		cwd,
 		model: req.value.model,
 		task: req.value.task,
+		parentId,
 		copilotSessionId,
 		branchFrom,
 		forkSessionId,

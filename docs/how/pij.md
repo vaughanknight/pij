@@ -39,6 +39,11 @@ pij list --here               # bare `pij` on PATH from any cwd
 - **`PIJ_SESSION_ID`** is exported into each session's env at boot so a `pij`
   invocation from inside that session resolves "self" unambiguously even when two
   sessions share a folder.
+- **`PIJ_PARENT_ID`** is set on a *spawned* session to the pij-id of the session
+  that spawned it (its parent). Together with `PIJ_SESSION_ID` (own id) this gives
+  a spawned agent both "who am I" and "who spawned me" without any resolution
+  step — uniform across `pi`, `claude`, and `copilot` spawns. Absent on a session
+  with no resolvable spawner (e.g. a top-level boot).
 
 ---
 

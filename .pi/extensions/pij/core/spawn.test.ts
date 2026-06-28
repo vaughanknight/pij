@@ -68,6 +68,11 @@ describe("buildSpawnCommand", () => {
 		expect(result.env.PIJ_ROLE).toBe("worker");
 	});
 
+	it("exposes the spawner id as PIJ_PARENT_ID (who spawned me)", () => {
+		const result = buildSpawnCommand(base);
+		expect(result.env.PIJ_PARENT_ID).toBe("pij-parent01");
+	});
+
 	it("omits PIJ_SPAWN_TASK when no task given", () => {
 		const result = buildSpawnCommand(base);
 		expect(result.env).not.toHaveProperty("PIJ_SPAWN_TASK");
@@ -226,6 +231,16 @@ describe("buildControlSpawnCommand", () => {
 		const r = buildControlSpawnCommand(base);
 		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc");
 		expect(r.env.PIJ_HARNESS).toBe("claude");
+	});
+
+	it("omits PIJ_PARENT_ID when no parentId given (caller unresolved)", () => {
+		expect(buildControlSpawnCommand(base).env).not.toHaveProperty("PIJ_PARENT_ID");
+	});
+
+	it("sets PIJ_PARENT_ID to the spawner id when parentId given (who spawned me)", () => {
+		const r = buildControlSpawnCommand({ ...base, parentId: "pij-boss01" });
+		expect(r.env.PIJ_PARENT_ID).toBe("pij-boss01");
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc"); // self id unchanged
 	});
 
 	it("sets PIJ_SPAWN_TASK only when a task is given", () => {
