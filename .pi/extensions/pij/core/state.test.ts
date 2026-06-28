@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { activityOf, isStalled, isWorking, liveness, STALE_AFTER_MS } from "./state.js";
+import {
+	activityOf,
+	classifyDeathReason,
+	isStalled,
+	isWorking,
+	liveness,
+	STALE_AFTER_MS,
+} from "./state.js";
 
 describe("isWorking", () => {
 	it("treats in-progress/reviewing as working", () => {
@@ -67,5 +74,33 @@ describe("activityOf", () => {
 	it("idle and never active → idle", () => {
 		expect(activityOf("idle", false)).toBe("idle");
 		expect(activityOf(undefined, false)).toBe("idle");
+	});
+});
+
+describe("classifyDeathReason", () => {
+	it("treats transient provider quota/rate-limit text as non-fatal unknown", () => {
+		const transientPanes = [
+			"API Error: 429 Too Many Requests",
+			"provider overloaded, retrying",
+			"API Error: 529 overloaded",
+			'{"error":{"code":"resource_exhausted","message":"rate limit exceeded"}}',
+			'{"error":{"code":"rate_limit_exceeded"}}',
+		];
+
+		for (const pane of transientPanes) {
+			expect(classifyDeathReason(pane)).toBe("unknown");
+		}
+	});
+
+	it("classifies terminal quota/billing text as quota", () => {
+		const terminalPanes = [
+			"insufficient credit to continue",
+			"billing is not enabled for this workspace",
+			"prepaid balance exhausted",
+		];
+
+		for (const pane of terminalPanes) {
+			expect(classifyDeathReason(pane)).toBe("quota");
+		}
 	});
 });

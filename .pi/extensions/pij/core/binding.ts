@@ -121,6 +121,10 @@ export function buildFailedNotice(
 	};
 }
 
+export interface DeadNoticeOptions {
+	readonly authoritativeDeath?: boolean;
+}
+
 /** Stall notice for a bound session that is working but gone silent (whole-life
  *  push, T012). Includes the `boundModel` when available so the creator can see
  *  which model stalled. Returns `null` if there is no creator to notify. */
@@ -138,11 +142,19 @@ export function buildStalledNotice(descriptor: SessionDescriptor): CreatorNotice
 export function buildDeadNotice(
 	descriptor: SessionDescriptor,
 	reason: DeathReason,
+	options: DeadNoticeOptions = {},
 ): CreatorNotice | null {
 	if (!descriptor.spawnedBy) return null;
 	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
+	const authoritativeDeath = options.authoritativeDeath ?? reason === "dead";
+	if (authoritativeDeath) {
+		return {
+			to: descriptor.spawnedBy,
+			text: `💀 ${descriptor.id}${modelNote} has exited (reason: ${reason}). The session is dead and will not recover.`,
+		};
+	}
 	return {
 		to: descriptor.spawnedBy,
-		text: `💀 ${descriptor.id}${modelNote} has exited (reason: ${reason}). The session is dead and will not recover.`,
+		text: `⚠️ ${descriptor.id}${modelNote} appears stuck on a provider error (reason: ${reason}). Pane ${descriptor.paneId ?? "?"} is still alive; check the session before treating it as dead.`,
 	};
 }

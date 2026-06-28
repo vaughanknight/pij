@@ -31,7 +31,7 @@ export type SessionLifecycle = "pending" | "ready" | "bound" | "failed";
 export type DeathReason =
 	| "model-not-supported" // harness rejected the --model (400/not_found_error)
 	| "auth" // authentication failure (401)
-	| "quota" // rate-limit / quota exhausted (429/529)
+	| "quota" // terminal quota: credit/billing/insufficient (429/529/overloaded are transient → unknown)
 	| "stalled" // watchdog: working but silent past the stale threshold
 	| "dead" // pane exited (no specific error signal)
 	| "unknown"; // fallback when no pattern matched

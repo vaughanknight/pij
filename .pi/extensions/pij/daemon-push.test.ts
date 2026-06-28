@@ -7,12 +7,14 @@
 import { describe, expect, it } from "vitest";
 import { FakeDelivery, FakeProcess, FakeRegistry } from "./adapters/fakes.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
+import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
 
 const HOME = "/home/jo";
 const T0 = 1_000_000;
-const STALE_AFTER_MS = 60_000;
+const FRESH_EVENT_AT = new Date(T0 - 5000).toISOString();
+const STALE_EVENT_AT = new Date(T0 - STALE_AFTER_MS - 5000).toISOString();
 
 function bound(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
 	return {
@@ -28,7 +30,7 @@ function bound(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
 		paneId: "%2",
 		spawnedBy: "pij-boss",
 		state: "working",
-		lastEventAt: new Date(T0 - STALE_AFTER_MS - 5000).toISOString(), // stale
+		lastEventAt: STALE_EVENT_AT,
 		...over,
 	};
 }
@@ -226,7 +228,7 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 		"Error: prepaid credit balance exhausted — add credits at https://console.sakana.ai/billing\n⏵ bypass permissions on";
 
 	it("detects quota error in pane of idle pid-alive bound session → pushes once to creator", () => {
-		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
 		d.tick();
@@ -234,8 +236,16 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 		expect(toCreator.length).toBeGreaterThan(0);
 	});
 
+	it("does NOT push yet for an idle pid-alive bound session with fresh activity", () => {
+		const desc = bound({ state: "idle", lastEventAt: FRESH_EVENT_AT });
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
+	});
+
 	it("pushes only ONCE per provider-failure (latch)", () => {
-		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
 		d.tick();
@@ -246,7 +256,7 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 	});
 
 	it("persists failureReason='quota' on the descriptor after provider-failure push", () => {
-		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { registry, daemon: d } = (() => {
 			const r = new FakeRegistry([desc]);
@@ -259,7 +269,7 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 	});
 
 	it("does NOT push for an idle session with no recognisable error (transient text)", () => {
-		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: "Retrying… (attempt 2/3)", pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
 		d.tick();
@@ -291,7 +301,7 @@ describe("daemon tick: provider-failure peek covers a pi worker (DL-005)", () =>
 			paneId: "%9",
 			spawnedBy: "pij-boss",
 			state: "idle",
-			lastEventAt: new Date(T0 - 5000).toISOString(),
+			lastEventAt: STALE_EVENT_AT,
 			...over,
 		};
 	}

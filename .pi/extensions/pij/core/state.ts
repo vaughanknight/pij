@@ -71,8 +71,9 @@ const MODEL_NOT_SUPPORTED_RE =
 	/not_found_error|model.*not found|invalid_model|model.*does not exist|unknown model|model.*unavailable/i;
 const MODEL_HTTP_400_RE = /API Error:\s*400|error.*400.*model|400.*not_found/i;
 const AUTH_RE = /authentication_error|401\s+Unauthorized|invalid.*api.?key|401.*auth/i;
-const QUOTA_RE =
-	/rate_limit_exceeded|429\s|429\b|overloaded|529\s|quota.*exceeded|resource_exhausted|credit|balance|billing|prepaid|payAsYouGo|insufficient/i;
+const TERMINAL_QUOTA_RE =
+	/quota.*exceeded|exceeded.*quota|credit|balance|billing|prepaid|payAsYouGo|insufficient/i;
+const TRANSIENT_QUOTA_RE = /rate_limit_exceeded|resource_exhausted|429\s|429\b|overloaded|529\s/i;
 const DEAD_RE = /\[exited\]|pane is dead|process completed|command not found/i;
 
 /**
@@ -86,7 +87,8 @@ export function classifyDeathReason(pane: string, hint?: DeathReason): DeathReas
 	if (MODEL_NOT_SUPPORTED_RE.test(pane) || MODEL_HTTP_400_RE.test(pane))
 		return "model-not-supported";
 	if (AUTH_RE.test(pane)) return "auth";
-	if (QUOTA_RE.test(pane)) return "quota";
+	if (TERMINAL_QUOTA_RE.test(pane)) return "quota";
 	if (DEAD_RE.test(pane)) return "dead";
+	if (TRANSIENT_QUOTA_RE.test(pane)) return "unknown";
 	return "unknown";
 }

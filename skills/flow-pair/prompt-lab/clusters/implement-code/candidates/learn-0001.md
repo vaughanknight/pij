@@ -1,22 +1,23 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-06-28T10-42-02Z-github.com-AI-Substr
+- **Run**: 2026-06-28T12-30-47Z-github.com-AI-Substr
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-06-28T11:37:35.819Z
+- **Created at**: 2026-06-28T13:11:13.186Z
 
 ## Summary
 
-Naming the subtle correctness trap + its mutation proof IN the packet produced a verified non-vacuous test. Finding 06 (codex bind id = rollout trailing UUID, not the claude stem) was called out explicitly with 'mutate stem-vs-UUID, a test MUST flip RED'; the cross-model reviewer reproduced exactly that and confirmed RED at loop.test.ts:241.
+Semantic regex split + AND-gated condition: coder left ambiguous tokens (model.*overloaded, resource_exhausted) in the TERMINAL class (should be transient) and implemented a liveness gate on 'not working' alone, dropping the plan's AND-staleness condition. Both needed a fix round.
 
 ## Evidence
 
-- (none provided)
+- plan-024 dlg-0001 APPROVE? no -> FIX_REQUIRED -> dlg-0002 APPROVE_WITH_NOTES. Review: 529/resource_exhausted still classified quota (AC-02)
+- gate keyed on state===working not (not-working AND lastEventAt stale > STALE_AFTER_MS) per AC-03/T004.
 
 ## Candidate prompt delta
 
-In implement packets, for each Critical/subtle finding, state the exact mutation that must flip a test RED (assertion + expected file:line). Carries the Dim-0 gate into the coder's own TDD, not just the reviewer's.
+When a packet asks to split a set by semantic class, instruct the worker to enumerate EVERY token's target bucket explicitly and quote the plan's exact transient-vs-terminal lists (no token left ambiguous). When the plan states a condition as 'A AND B' (e.g. not-working AND stale), require BOTH in the impl and a dedicated test for each half (incl. the negative: A-but-not-B must not fire).
 
 ## Promotion status
 

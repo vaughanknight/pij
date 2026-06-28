@@ -161,6 +161,14 @@ describe("buildDeadNotice", () => {
 		expect(n?.text).toContain("model-not-supported");
 	});
 
+	it("does not claim provider failures have exited or will not recover", () => {
+		const n = buildDeadNotice(BOUND_DESC, "quota");
+		expect(n?.text).toContain("quota");
+		expect(n?.text).not.toContain("has exited");
+		expect(n?.text).not.toContain("will not recover");
+		expect(n?.text).toMatch(/appears stuck|provider error/i);
+	});
+
 	it("returns null when there is no creator", () => {
 		const orphan: SessionDescriptor = { ...BOUND_DESC, spawnedBy: undefined };
 		expect(buildDeadNotice(orphan, "dead")).toBeNull();

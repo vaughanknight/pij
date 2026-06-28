@@ -63,14 +63,19 @@ describe("classifyDeathReason", () => {
 		expect(classifyDeathReason(pane)).toBe("auth");
 	});
 
-	it("detects quota from rate limit text", () => {
-		const pane = "Error: 429 rate_limit_exceeded — You have exceeded your quota";
+	it("returns unknown for pure 429 rate-limit text", () => {
+		const pane = "Error: 429 rate_limit_exceeded — Too many requests";
+		expect(classifyDeathReason(pane)).toBe("unknown");
+	});
+
+	it("detects quota from terminal exceeded-quota text", () => {
+		const pane = "Error: You have exceeded your quota";
 		expect(classifyDeathReason(pane)).toBe("quota");
 	});
 
-	it("detects quota from 'overloaded' text (copilot/pi capacity error)", () => {
+	it("returns unknown for 529 overloaded text because it is transient", () => {
 		const pane = "Error: 529 — The model is overloaded";
-		expect(classifyDeathReason(pane)).toBe("quota");
+		expect(classifyDeathReason(pane)).toBe("unknown");
 	});
 
 	it("returns dead for a pane that exited cleanly", () => {

@@ -163,7 +163,7 @@ peers a trustworthy `working | idle | done` + last-activity signal** (the daemon
 already has both signals — footer model and footer busy/idle — it just doesn't
 persist them).
 
-## Fourth run — flow-pair coder (pij-1f3q58b) — 🐞 FALSE "💀 exited (quota)" on a live, working session
+## Fourth run — flow-pair coder (pij-1f3q58b) — RESOLVED: false "exited (quota)" on a live, working session
 
 ### Symptom
 
@@ -222,3 +222,19 @@ working" — and over-fires on the latter.
   (liveness wins over a stale scrollback line).
 - **Soften the wording** until non-recovery is proven: "appears stuck on a provider
   error (quota)" ≠ "has exited … will not recover".
+
+### Resolution — 2026-06-28
+
+Plan 024 fixed the false death path while preserving the real Case-3 terminal-error
+push:
+
+- `classifyDeathReason` now treats retryable provider overload/rate-limit text
+  (`429`, `overloaded`, `529`, `rate_limit_exceeded`) as non-fatal `unknown`, while
+  terminal credit/billing/balance text remains `quota`.
+- `Daemon.pushProviderFailure` no longer notifies while the descriptor is
+  **working**; terminal idle provider-error Case-3 remains eligible so a stuck worker
+  still fails loud.
+- Recovery now clears stale provider-failure state: `failureReason` is removed and
+  the `provider-failure` latch is dropped when the session is working again.
+- Provider-failure notices now say the peer **appears stuck on a provider error**;
+  only authoritative pid death keeps the "has exited / will not recover" wording.

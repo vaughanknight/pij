@@ -74,6 +74,51 @@
           "comments"
         ]
       }
+    },
+    {
+      "id": "UPD-002",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T12:26:05.582Z",
+      "details": {
+        "node": "build",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T13:12:13.587Z",
+      "details": {
+        "node": "build",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-28T13:12:13.734Z",
+      "details": {
+        "from": "plan",
+        "to": "build"
+      }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-28T13:12:40.728Z",
+      "details": {
+        "node": "build",
+        "from": "known",
+        "to": "done"
+      }
     }
   ],
   "nodes": [
@@ -91,19 +136,30 @@
       "id": "build",
       "type": "phase",
       "label": "Fix: liveness-gate provider-failure peek + transient/terminal split + reconcile",
-      "status": "known",
+      "status": "done",
       "next": [
         "ship"
       ],
       "created_at": "2026-06-28T11:07:40.016Z",
-      "modified_at": "2026-06-28T11:07:50.805Z",
+      "modified_at": "2026-06-28T13:12:40.728Z",
       "comments": [
         {
           "at": "2026-06-28T11:07:50.805Z",
           "text": "QUEUED: start only after plan-022 codex build lands + reviews — shares daemon.ts/state.ts/binding.ts",
           "kind": "note"
+        },
+        {
+          "at": "2026-06-28T12:26:05.582Z",
+          "text": "UNBLOCKED: plan-022 codex landed on main (411d9aa) + files present; shared-file queue gate (R-3) cleared. Ready to implement.",
+          "kind": "note"
+        },
+        {
+          "at": "2026-06-28T13:12:13.586Z",
+          "text": "flow-pair (codex dogfood, both roles codex gpt-5.5): dlg-0001 build (9 tasks TDD) + dlg-0002 fix (2 findings). Cross-review APPROVE_WITH_NOTES, DIM0=PASS via 7 mutations. LOW note (types.ts stale comment) folded. harness checks --quick green; full suite 1069 passed.",
+          "kind": "validation"
         }
-      ]
+      ],
+      "ran_at": "2026-06-28T13:12:40.728Z"
     },
     {
       "id": "plan",
@@ -118,8 +174,8 @@
     }
   ],
   "nav": {
-    "now": "plan",
-    "next": "build",
+    "now": "build",
+    "next": "ship",
     "intent": "Fix false 'exited (quota)' death on a live/working session (defect in plan 023 whole-life notify); queued after plan-022 codex",
     "bag": {
       "mode": "Simple",

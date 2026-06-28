@@ -39,6 +39,7 @@ import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
 import type { DeathReason, SessionDescriptor } from "./core/types.js";
 
 const TICK_MS = 600;
+type PushedTransition = "stalled" | "dead" | "provider-failure";
 
 /** One daemon, holding the cross-tick drive state. Pure-ish: `tick()` is
  *  synchronous and side-effects only through the injected ports/registry, so a
@@ -50,7 +51,7 @@ export class Daemon {
 	private readonly flushed = new Set<string>();
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
-	private readonly pushed = new Map<string, Set<"stalled" | "dead" | "provider-failure">>();
+	private readonly pushed = new Map<string, Set<PushedTransition>>();
 
 	constructor(
 		private readonly pijHome: string,
@@ -83,28 +84,32 @@ export class Daemon {
 		}
 
 		for (const d of this.index.all()) {
+			let current = d;
 			// Delivery is daemon-owned ONLY for bound tmux harnesses (claude/copilot).
 			// pi self-drives its inbox via its in-process receiver, so it is excluded
 			// from flush/drain/observe — the daemon must never touch a pi inbox.
-			const owns = d.lifecycle === "bound" && daemonOwnsDelivery(d.harness ?? "pi");
+			const owns = current.lifecycle === "bound" && daemonOwnsDelivery(current.harness ?? "pi");
 			if (owns) {
 				// Flush buffered pre-bind sends — but ONLY once we have a pane to send to.
 				// `SendBuffer.flush` deletes the queue unconditionally, so guarding the
 				// flush (not just the send) avoids silently dropping them (review M1).
-				if (d.paneId && !this.flushed.has(d.id)) {
-					this.flushed.add(d.id);
-					for (const m of this.buffer.flush(d.id)) {
-						this.ports.sendText(d.paneId, flushedText(m));
+				if (current.paneId && !this.flushed.has(current.id)) {
+					this.flushed.add(current.id);
+					for (const m of this.buffer.flush(current.id)) {
+						this.ports.sendText(current.paneId, flushedText(m));
 					}
 				}
-				this.drainInbox(d.id);
+				this.drainInbox(current.id);
 				// Persist footer activity → working|idle (+ fresh last-activity ts) so
 				// `pij state`/`list` report real liveness instead of `idle · never`
 				// (control-plane peers write no pij events). Writes only on a change.
-				if (d.paneId) {
-					const readiness = classifyReadiness(this.ports.capturePane(d.paneId));
-					const updated = observeActivity(d, readiness, this.ports.now());
-					if (updated) this.registry.write(updated);
+				if (current.paneId) {
+					const readiness = classifyReadiness(this.ports.capturePane(current.paneId));
+					const updated = observeActivity(current, readiness, this.ports.now());
+					if (updated) {
+						current = updated;
+						this.registry.write(updated);
+					}
 				}
 				// Whole-life stalled/dead push (T012): detect transitions and push once
 				// per transition to the creator. The latch (`this.pushed`) ensures each
@@ -117,7 +122,8 @@ export class Daemon {
 			// branch above never sees it — and a pi worker never enters that branch at
 			// all (no lifecycle/sendkeys). `capture-pane` is read-only, so pi keeps
 			// owning its inbox, delivery, and self-written state — we only peek.
-			if (d.paneId && d.spawnedBy) this.pushProviderFailure(d);
+			const providerView = current.state === "working" ? current : d;
+			if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
 		}
 	}
 
@@ -127,7 +133,7 @@ export class Daemon {
 	 *  transition, latched by `this.pushed`. */
 	private pushWholeLifeTransition(d: SessionDescriptor): void {
 		if (!d.spawnedBy) return; // no creator to notify
-		const latch = this.pushed.get(d.id) ?? new Set<"stalled" | "dead" | "provider-failure">();
+		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
 		this.pushed.set(d.id, latch);
 
 		// Dead: pid gone (authoritative)
@@ -138,7 +144,7 @@ export class Daemon {
 			const reason: DeathReason = classifyDeathReason(pane);
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
 			this.registry.write({ ...d, failureReason: reason });
-			const note = buildDeadNotice(d, reason);
+			const note = buildDeadNotice(d, reason, { authoritativeDeath: true });
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: dead (${reason})`);
 			return;
@@ -176,15 +182,32 @@ export class Daemon {
 		if (!d.spawnedBy || !d.paneId) return; // no creator / no pane to peek
 		if (d.lifecycle === "pending") return; // mid-bind → driveSession owns it (its bad-model detect fails it)
 		if (!this.ports.isAlive(d.pid)) return; // dead → handled by the dead branch
-		const latch = this.pushed.get(d.id) ?? new Set<"stalled" | "dead" | "provider-failure">();
+		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
 		this.pushed.set(d.id, latch);
+		const isWorking = d.state === "working";
+		const providerFailureReason =
+			d.failureReason === "quota" ||
+			d.failureReason === "auth" ||
+			d.failureReason === "model-not-supported";
+		if (isWorking) {
+			const hadProviderFailureLatch = latch.delete("provider-failure");
+			if (providerFailureReason || hadProviderFailureLatch) {
+				const { failureReason: _failureReason, ...recovered } = d;
+				this.registry.write(recovered);
+				this.log(`push ${d.id}: provider-failure cleared on recovery`);
+			}
+			return;
+		}
+		const ageMs = d.lastEventAt ? this.ports.now() - Date.parse(d.lastEventAt) : null;
+		const staleAge = ageMs === null || ageMs > STALE_AFTER_MS;
+		if (!staleAge) return;
 		if (latch.has("provider-failure")) return;
 		const reason = classifyDeathReason(this.ports.capturePane(d.paneId));
 		const isFatal = reason === "quota" || reason === "auth" || reason === "model-not-supported";
 		if (!isFatal) return;
 		latch.add("provider-failure");
 		this.registry.write({ ...d, failureReason: reason });
-		const note = buildDeadNotice(d, reason);
+		const note = buildDeadNotice(d, reason, { authoritativeDeath: false });
 		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: provider-failure (${reason})`);
 	}
