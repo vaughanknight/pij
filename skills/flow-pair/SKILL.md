@@ -34,7 +34,7 @@ The expensive orchestrator follows this finite-state loop each turn:
 |-------|------|--------|
 | `ASK_USER` | Requirement ambiguous or needs human decision | Pause and ask; never proceed without answer |
 | `RUN_LOCAL` | Task is safe, cheap, read-only, or needs no delegation | Execute directly in orchestrator session |
-| `DELEGATE` | Task is bounded, executable, and suitable for a cheap worker | Compile context pack → render packet → `pij send` path pointer |
+| `DELEGATE` | Task is bounded, executable, and suitable for a cheap worker | Compile context pack → render packet → `pij send` path pointer. **Delegate a whole phase per packet, and make the packet say so** (worker-implement template § Completion Discipline): the coder implements *every* task in the phase in one run, not a couple-then-handback — fragmenting wastes a round-trip per slice and loses the worker's warm context |
 | `REVIEW` | Worker reports completion | **Compact the worker FIRST** (reflex; § Fleet lifecycle) → acquire/canary the **reviewer peer** if not yet live → dispatch a review pointer to it. The verdict (+ mandatory Dim-0 mutation gate) is produced **by the reviewer**, handled on its return |
 | `FIX` | Review verdict = `FIX_REQUIRED` | **Compact the reviewer FIRST** → render a narrowed fix packet (review findings only) → **dispatch it to the coder** (DELEGATE) |
 | `APPROVE` | Review verdict = `APPROVE` or `APPROVE_WITH_NOTES` | **Compact the reviewer FIRST** → record approval → update ledger → advance state |

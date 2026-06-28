@@ -12,6 +12,23 @@
 
 ---
 
+## Completion Discipline — finish the WHOLE phase in this one delegation
+
+**Implement every task in this phase before you report.** This delegation covers the
+entire phase, not a slice of it. Do **not** complete a couple of tasks and hand back —
+that fragments the work, wastes a full orchestrator round-trip per slice, and loses your
+warm context. Work straight through the task list start-to-finish in this single run.
+
+- Only report `"outcome": "COMPLETE"` when **every** task in the phase is done and the
+  self-check gates pass.
+- Use `"PARTIAL"` / `"BLOCKED"` **only** for a genuine hard blocker you cannot resolve
+  (missing decision, contradictory spec, failing dependency) — never as a routine
+  "checkpoint" pause. If you can keep going, keep going.
+- Don't stop to ask for confirmation between tasks; the packet IS your authorization for
+  the full phase. Re-read the allowed scope if unsure, then proceed.
+
+---
+
 ## Repo Root
 
 ```
@@ -89,6 +106,7 @@ When your work is complete, send a report via `pij_send` using this exact JSON s
 
 ## Stop Conditions
 
+- **Finish the entire phase before reporting** (§ Completion Discipline) — do not hand back after a couple of tasks; `COMPLETE` means the whole phase is done
 - **Run your self-check gates before reporting** (`just flow-pair-test`, `just typecheck`, `just lint`)
 - **Do NOT edit forbidden paths** under any circumstances
 - **Do NOT write `.flow-pair/`** and do NOT read any ledger files under `.flow-pair/` —
