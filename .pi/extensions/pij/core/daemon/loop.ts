@@ -166,7 +166,7 @@ export function driveSession(
 	// readiness is `ready` or `busy` — the pane exists and is interactive.
 	// 1) Inject the init exactly once (only when truly ready, not mid-turn busy).
 	if (readiness === "ready" && shouldInjectInit(descriptor)) {
-		const init = buildInitInjection(descriptor.id);
+		const init = buildInitInjection(descriptor.id, descriptor.branchedFrom != null);
 		ports.sendText(paneId, init.body);
 		const at = new Date(ports.now()).toISOString();
 		registry.write(markInitInjected(descriptor, at));
@@ -182,10 +182,13 @@ export function driveSession(
 	}
 	if (drive.readyAtMs === undefined) return { kind: "waiting" };
 
-	// 2) Binding. Copilot is the easy case: `copilot --session-id <uuid>` SET the
-	// session id at spawn, so the daemon binds deterministically to the planned id
-	// the instant the pane is interactive — no transcript discovery, no race.
-	if (descriptor.harness === "copilot" && descriptor.plannedHarnessSessionId) {
+	// 2) Binding. The deterministic case: a session whose id pij CHOSE at spawn —
+	// copilot (`--session-id <uuid>`) OR a branched claude (`--resume <src>
+	// --fork-session --session-id <new>`, Plan 020). Either way the daemon binds to
+	// the planned id the instant the pane is interactive — no transcript discovery,
+	// no race, and no wait on a (possibly slow) context load (Finding 06). Keyed on
+	// the planned id, not the harness, so claude-branch rides the same path.
+	if (descriptor.plannedHarnessSessionId) {
 		const bound = applyBinding(descriptor, descriptor.plannedHarnessSessionId);
 		registry.write(bound);
 		if (!drive.settled && descriptor.spawnedBy) {

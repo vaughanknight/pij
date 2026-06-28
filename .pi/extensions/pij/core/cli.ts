@@ -93,6 +93,7 @@ const EXIT: Record<PijErrorCode, number> = {
 	"E-ARG": 64,
 	"E-NOTMUX": 2,
 	"E-FULL": 2,
+	"E-BRANCH": 64,
 };
 
 // ─── argv parsing ───────────────────────────────────────────────────────────

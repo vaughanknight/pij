@@ -22,20 +22,25 @@ import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, parseArgs } from "./core/cli.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
+import { filterByFolder, resolveSelf } from "./core/discovery.js";
 import {
 	summarizeTranscriptLine,
 	transcriptDir,
 	transcriptPathFor,
 } from "./core/harness/claude.js";
 import { sessionEventsPath, summarizeCopilotEvent } from "./core/harness/copilot.js";
+import { supportsBranching } from "./core/harness/types.js";
 import { parseReceiptBody } from "./core/message.js";
 import {
 	allocatePijId,
 	buildControlSpawnCommand,
 	buildPendingDescriptor,
+	buildSpawnCommand,
+	livePeerPanes,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseSpawnArgs,
+	planBranch,
 	planControlSplit,
 } from "./core/spawn.js";
 
@@ -50,8 +55,8 @@ const WAIT_TIMEOUT_MS = 15_000;
 // on no args / --help and on an unknown top-level command.
 const USAGE = `pij — session messaging + tmux control plane
 
-Control plane (drive non-pi harnesses via the machine-wide daemon):
-  pij spawn --harness claude|copilot [--model <m>]   spawn a colleague (daemon binds it)
+Control plane (spawn colleagues in tmux):
+  pij spawn --harness pi|claude|copilot [--model <m>]   spawn a colleague (pi self-registers; claude/copilot daemon-bound)
   pij adopt "$TMUX_PANE" --harness <h>               register your own pane so peers can reach you
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
@@ -65,21 +70,33 @@ Messaging:
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
 
-const SPAWN_USAGE = `pij spawn — spawn a control-plane colleague (daemon binds it asynchronously)
+const SPAWN_USAGE = `pij spawn — spawn a colleague in a tmux pane (one uniform surface for every harness)
 
 USAGE
-  pij spawn --harness claude|copilot [--model <m>]
+  pij spawn --harness pi|claude|copilot [--model <m>] [--task "<t>"] [--branch]
 
 FLAGS
-  --harness <h>   claude | copilot  (the harness to launch in a new tmux pane)
+  --harness <h>   pi | claude | copilot  (the harness to launch in a new tmux pane)
+                    pi      -> self-registers at boot; NO daemon, NO binding step
+                    claude  -> daemon-bound via transcript discovery
+                    copilot -> daemon-bound via deterministic --session-id
   --model <m>     model id for that harness:
+                    pi      -> a pi model/preset (e.g. @preset/glm-1m; pair with the
+                               session's configured provider)
                     claude  -> sonnet | opus | haiku | claude-sonnet-4-6
                     copilot -> gpt-5.5 | claude-sonnet-4.6 | …
                   NOTE: an unknown model is currently passed through to the harness,
                   which may silently fall back to its default — verify with the pane
                   footer / pij tail until spawn-time validation lands.
+  --task "<t>"    first task, delivered race-free via PIJ_SPAWN_TASK (never a positional
+                  prompt — dodges the announce-vs-prompt race, finding 01).
+  --branch        fork YOUR OWN session into the new pane (branch-from-self), so the
+                  colleague inherits your full context. Claude only (pi/copilot reject).
+                  Requires: the new harness MATCHES yours and your session is bound.
 
-Returns the new pij id immediately; the daemon drives boot -> ready -> bound.`;
+pi: prints the new pane id immediately; the child self-registers and its pij-id arrives
+via its ready-ping (see \`pij list\`). claude/copilot: returns the pre-allocated pij id
+immediately; the daemon drives boot -> ready -> bound.`;
 
 /** Package version for `pij --version` (best-effort; "unknown" if unreadable). */
 function pijVersion(): string {
@@ -320,6 +337,78 @@ function runSpawn(argv: readonly string[]): void {
 		process.stderr.write("E-NOTMUX: pij spawn --harness needs an active tmux session\n");
 		process.exit(2);
 	}
+	// ── pi path (Plan 021 — one uniform spawn surface) ────────────────────────────
+	// A pi child derives its OWN pij-id at boot and self-registers (core/session.ts
+	// §H1), and its in-process receiver handles delivery (selectTransport: pi→inbox).
+	// So unlike claude/copilot it needs NO daemon, NO pre-allocated id, NO pending
+	// descriptor, NO transcript snapshot, and NO binding. We reuse the IDENTICAL
+	// registry-based split layout so the fleet sits in one window just like the
+	// daemon-bound harnesses — only the command builder + the (absent) bind differ.
+	if (req.value.harness === "pi") {
+		if (req.value.branch && !supportsBranching(req.value.harness)) {
+			// pi cannot fork-from-self (supportsBranching → claude only); reject clearly.
+			// Same predicate planBranch gates on, so the two never drift.
+			process.stderr.write("E-BRANCH: --branch is not supported for pi (claude only)\n");
+			process.exit(64);
+		}
+		const cwdPi = process.cwd();
+		const regPi = new FsRegistry(pijHome);
+		// announce-to: resolve the CALLING session (PIJ_SESSION_ID → lone-local →
+		// $TMUX_PANE, same as --branch) so the child ready-pings us back. Unresolved
+		// caller → "" → the child fresh-boots and announces to all peers.
+		const selfPi = resolveSelf(
+			process.env.PIJ_SESSION_ID,
+			filterByFolder(regPi.list(), cwdPi),
+			process.env.TMUX_PANE,
+		);
+		const announceTo = selfPi.ok ? selfPi.value : "";
+		const spawnCmdPi = buildSpawnCommand({
+			spawnId: `s${Date.now()}-${process.pid}`,
+			announceTo,
+			cwd: cwdPi,
+			role: "worker",
+			model: req.value.model,
+			task: req.value.task,
+		});
+		// Same split layout as the daemon-bound harnesses (shared helper → one cap
+		// across the whole mixed fleet): first peer → right 40% column, second →
+		// stacked below; cap = main + 2.
+		const peerPanesPi = livePeerPanes(regPi.list(), tmux.currentWindowPanes(), ownPane);
+		const planPi = planControlSplit(ownPane, peerPanesPi);
+		if (!planPi.ok) {
+			process.stderr.write(`${planPi.code}: ${planPi.message}\n`);
+			process.exit(2);
+		}
+		const splitPi = tmux.splitWindow({
+			cmd: spawnCmdPi.cmd,
+			args: spawnCmdPi.args,
+			env: spawnCmdPi.env,
+			cwd: cwdPi,
+			target: planPi.target,
+			direction: planPi.direction,
+			percent: planPi.percent,
+			detached: true, // keep focus here; the child boots on its own
+		});
+		if (!splitPi.ok) {
+			process.stderr.write(`${splitPi.code}: ${splitPi.message}\n`);
+			process.exit(2);
+		}
+		const panePi = splitPi.value.paneId;
+		if (req.value.json) {
+			process.stdout.write(
+				`${JSON.stringify({
+					harness: "pi",
+					paneId: panePi,
+					note: "pi self-registers; its id is assigned by the child at boot — watch for its ready-ping or `pij list`",
+				})}\n`,
+			);
+		} else {
+			process.stdout.write(
+				`spawned pi worker in pane ${panePi} — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
+			);
+		}
+		return;
+	}
 	// A control-plane spawn is inert without a daemon to drive it → ready → bound.
 	// Auto-start one if none is running, and tell the caller we did (so the agent
 	// knows a new tmux window appeared and that binding is now in motion).
@@ -327,14 +416,37 @@ function runSpawn(argv: readonly string[]): void {
 	if (daemonNote) process.stdout.write(`${daemonNote}\n`);
 	const cwd = process.cwd();
 	const isCopilot = req.value.harness === "copilot";
+	// Branch-from-self (Plan 020): `--branch` forks the CALLER's own session into the
+	// new pane. Resolve who's calling (PIJ_SESSION_ID → lone-local → $TMUX_PANE),
+	// then gate purely via planBranch (same-harness + supports-branching + bound).
+	// A forked claude pins its id (`--session-id`), so it binds on the planned id —
+	// no transcript snapshot. branch-from-ANOTHER-peer is out of scope (we only ever
+	// pass our own resolved descriptor as `self`), but the seam doesn't preclude it.
+	let branchFrom: string | undefined;
+	let forkSessionId: string | undefined;
+	if (req.value.branch) {
+		const reg0 = new FsRegistry(pijHome);
+		const locals = filterByFolder(reg0.list(), cwd);
+		const selfRes = resolveSelf(process.env.PIJ_SESSION_ID, locals, process.env.TMUX_PANE);
+		const self = selfRes.ok ? (reg0.read(selfRes.value) ?? null) : null;
+		const plan = planBranch(req.value.harness, self, supportsBranching, randomUUID());
+		if (!plan.ok) {
+			process.stderr.write(`${plan.code}: ${plan.message}\n`);
+			process.exit(64);
+		}
+		branchFrom = plan.value.from;
+		forkSessionId = plan.value.newSessionId;
+	}
 	// Copilot lets us CHOOSE the session UUID (`--session-id`), so binding is
-	// deterministic at spawn — no transcript-discovery snapshot needed. Claude's
-	// id is auto-generated, so snapshot the transcript dir NOW (before the pane
-	// and Claude exist) so new-path discovery is genuinely deterministic (the
-	// daemon's first-tick snapshot would race Claude's early transcript write — H1).
+	// deterministic at spawn — no transcript-discovery snapshot needed. A branched
+	// claude is the same: it pins its forked id. A NON-branch claude's id is
+	// auto-generated, so snapshot the transcript dir NOW (before the pane and Claude
+	// exist) so new-path discovery is genuinely deterministic (the daemon's
+	// first-tick snapshot would race Claude's early transcript write — H1).
 	const copilotSessionId = isCopilot ? randomUUID() : undefined;
+	const skipSnapshot = isCopilot || forkSessionId !== undefined;
 	let transcriptsAtSpawn: string[] = [];
-	if (!isCopilot) {
+	if (!skipSnapshot) {
 		const dir = transcriptDir(homedir(), cwd);
 		try {
 			transcriptsAtSpawn = readdirSync(dir)
@@ -353,25 +465,17 @@ function runSpawn(argv: readonly string[]): void {
 		model: req.value.model,
 		task: req.value.task,
 		copilotSessionId,
+		branchFrom,
+		forkSessionId,
 	});
 	// Layout (parity with pi's pij_spawn): the FIRST peer splits the orchestrator
-	// pane right (a 40% column); the SECOND stacks below it (vertical). Derive the
-	// live peer panes from the registry ∩ this window — `currentWindowPanes()` only
-	// lists ALIVE panes, so a closed peer frees its slot. Cap = main + 2 → E-FULL.
-	const here = new Set(tmux.currentWindowPanes());
-	const peerPanes = Array.from(
-		new Set(
-			new FsRegistry(pijHome)
-				.list()
-				.filter(
-					(d) =>
-						d.paneId &&
-						d.paneId !== ownPane &&
-						here.has(d.paneId) &&
-						(d.harness === "claude" || d.harness === "copilot"),
-				)
-				.map((d) => d.paneId as string),
-		),
+	// pane right (a 40% column); the SECOND stacks below it (vertical). The shared
+	// helper derives the live peer panes (registry ∩ this window) — harness-agnostic
+	// so a pi colleague counts toward the same main+2 cap. Cap exceeded → E-FULL.
+	const peerPanes = livePeerPanes(
+		new FsRegistry(pijHome).list(),
+		tmux.currentWindowPanes(),
+		ownPane,
 	);
 	const plan = planControlSplit(ownPane, peerPanes);
 	if (!plan.ok) {
@@ -417,17 +521,19 @@ function runSpawn(argv: readonly string[]): void {
 			eventsPath: join(dataDir, "events.ndjson"),
 			pid: panePid,
 			startedAtIso: new Date().toISOString(),
-			transcriptsAtSpawn: isCopilot ? undefined : transcriptsAtSpawn,
-			plannedHarnessSessionId: copilotSessionId,
+			transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
+			plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
+			branchedFrom: branchFrom,
 		}),
 	);
 	if (req.value.json) {
 		process.stdout.write(
-			`${JSON.stringify({ id: pijId, paneId, harness: req.value.harness, lifecycle: "pending" })}\n`,
+			`${JSON.stringify({ id: pijId, paneId, harness: req.value.harness, lifecycle: "pending", ...(branchFrom ? { branchedFrom: branchFrom } : {}) })}\n`,
 		);
 	} else {
+		const branchNote = branchFrom ? ` — branched from ${branchFrom}` : "";
 		process.stdout.write(
-			`spawned ${pijId} (${req.value.harness}) in pane ${paneId} — daemon will drive it to ready→bound (track: pij state ${pijId} · pij tail ${pijId})\n`,
+			`spawned ${pijId} (${req.value.harness})${branchNote} in pane ${paneId} — daemon will drive it to ready→bound (track: pij state ${pijId} · pij tail ${pijId})\n`,
 		);
 	}
 	process.exit(0);
@@ -552,7 +658,7 @@ function runAdopt(argv: readonly string[]): void {
  *  (caller falls back to the normal event tail). */
 function tailTranscript(id: string, follow: boolean, linesArg: number | undefined): boolean {
 	const d = new FsRegistry(pijHome).read(id);
-	if (!d || !d.harnessSessionId) return false;
+	if (!d?.harnessSessionId) return false;
 	let path: string;
 	let summarize: (raw: string) => { role: "user" | "assistant"; text: string } | null;
 	if (d.harness === "claude") {

@@ -91,3 +91,4 @@ thin receiver). Plan 019.
 | Plan | Change | Date |
 |------|--------|------|
 | 019-pij-tmux-control-plane | Created `pij-control-plane` domain. Group A: extracted the shared `tmux-keys` send-keys/paste/capture lib (argv-only, injectable `TmuxRunner`) from `harness/driver/tmux.ts` and re-delegated the driver to it for parity. | 2026-06-27 |
+| 021-unify-spawn-harness | `pij spawn` is now one uniform surface for `pi\|claude\|copilot` (`SPAWNABLE_HARNESSES`). pi dispatches down a self-registering path in the bin (pure `buildSpawnCommand` + same registry-tracked split layout) — no daemon, no pre-allocated id, no pending descriptor, no binding; claude/copilot daemon-bound path unchanged. | 2026-06-28 |

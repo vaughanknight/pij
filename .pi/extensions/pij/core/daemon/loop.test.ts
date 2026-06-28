@@ -117,6 +117,14 @@ describe("driveSession state machine", () => {
 		expect(reg.read("pij-w")?.initInjectedAt).toBeTruthy();
 	});
 
+	it("branched descriptor → init injects the fork reframe (T016, Finding 08)", () => {
+		const w = world({ pane: READY });
+		const reg = new FakeRegistry();
+		driveSession(desc({ branchedFrom: "claude-src" }), {}, w.ports, reg, new FakeDelivery());
+		expect(w.sentText[0]?.text).toMatch(/FORK/);
+		expect(w.sentText[0]?.text).toMatch(/do not (continue|spawn)/i);
+	});
+
 	it("does NOT re-inject init once initInjectedAt is set (idempotent)", () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry();
@@ -177,6 +185,31 @@ describe("driveSession state machine", () => {
 		expect(
 			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
 		).toBe(true);
+	});
+
+	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", () => {
+		// A branched claude pinned its forked id (`--session-id`), so it binds on the
+		// planned id like copilot — even with NO new transcript (empty discovery set).
+		// Pre-Plan-020 this claude would fall through to discovery → never bind here.
+		const w = world({ pane: READY, transcripts: [] });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = { readyAtMs: 1000 };
+		const out = driveSession(
+			desc({
+				harness: "claude",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "fork-uuid",
+				branchedFrom: "claude-src",
+			}),
+			drive,
+			w.ports,
+			reg,
+			del,
+		);
+		expect(out).toEqual({ kind: "bound", harnessSessionId: "fork-uuid" });
+		expect(reg.read("pij-w")?.harnessSessionId).toBe("fork-uuid");
+		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
 	});
 
 	it("NEVER binds the pre-existing transcript (the load-bearing case)", () => {
@@ -280,23 +313,39 @@ describe("observeActivity (control-plane working|idle|done persistence)", () => 
 	});
 	it("ready footer → idle, preserving the last-activity ts (so it reads 'done')", () => {
 		const prior = new Date(NOW - 5000).toISOString();
-		const u = observeActivity(desc({ lifecycle: "bound", state: "working", lastEventAt: prior }), "ready", NOW);
+		const u = observeActivity(
+			desc({ lifecycle: "bound", state: "working", lastEventAt: prior }),
+			"ready",
+			NOW,
+		);
 		expect(u?.state).toBe("idle");
 		expect(u?.lastEventAt).toBe(prior);
 	});
 	it("no change → null (no needless registry write)", () => {
 		const at = new Date(NOW).toISOString();
-		const u = observeActivity(desc({ lifecycle: "bound", state: "idle", lastEventAt: at }), "ready", NOW);
+		const u = observeActivity(
+			desc({ lifecycle: "bound", state: "idle", lastEventAt: at }),
+			"ready",
+			NOW,
+		);
 		expect(u).toBeNull();
 	});
 	it("throttles the busy refresh — a recent lastEventAt is not rewritten every tick", () => {
 		const recent = new Date(NOW - 2000).toISOString(); // < ACTIVITY_REFRESH_MS
-		const u = observeActivity(desc({ lifecycle: "bound", state: "working", lastEventAt: recent }), "busy", NOW);
+		const u = observeActivity(
+			desc({ lifecycle: "bound", state: "working", lastEventAt: recent }),
+			"busy",
+			NOW,
+		);
 		expect(u).toBeNull();
 	});
 	it("refreshes a stale busy ts past the throttle window (liveness stays active mid-turn)", () => {
 		const old = new Date(NOW - 30_000).toISOString(); // > ACTIVITY_REFRESH_MS
-		const u = observeActivity(desc({ lifecycle: "bound", state: "working", lastEventAt: old }), "busy", NOW);
+		const u = observeActivity(
+			desc({ lifecycle: "bound", state: "working", lastEventAt: old }),
+			"busy",
+			NOW,
+		);
 		expect(u?.lastEventAt).toBe(new Date(NOW).toISOString());
 	});
 	it("non-interactive readiness (booting/interstitial/dead) → null (driveSession owns it)", () => {

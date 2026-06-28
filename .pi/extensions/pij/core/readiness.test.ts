@@ -90,7 +90,8 @@ describe("classifyReadiness", () => {
 		// that truncates 'shift+tab to cycle' → 'shift+tab to'). The old fixture used
 		// 'auto mode on', which a pij-spawned pane never shows. Regression for the
 		// stuck-at-pending bind bug.
-		const REAL = "  pij ⎇ main • Opus 4.8 • ⚡high •…\n  ⏵⏵ bypass permissions on (shift+tab to      ·";
+		const REAL =
+			"  pij ⎇ main • Opus 4.8 • ⚡high •…\n  ⏵⏵ bypass permissions on (shift+tab to      ·";
 		expect(classifyReadiness(REAL)).toBe("ready");
 	});
 

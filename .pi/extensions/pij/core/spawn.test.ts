@@ -4,19 +4,21 @@
 // paneId ±, required env vars, argv array shape, ready-body round-trip.
 
 import { describe, expect, it } from "vitest";
-
 import {
 	allocatePijId,
 	buildControlSpawnCommand,
 	buildPendingDescriptor,
 	buildSpawnCommand,
+	livePeerPanes,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseReadyBody,
 	parseSpawnArgs,
+	planBranch,
 	planControlSplit,
 	readyBody,
 } from "./spawn.js";
+import type { HarnessKind, SessionDescriptor } from "./types.js";
 
 // ─── buildSpawnCommand ───────────────────────────────────────────────────────
 
@@ -256,6 +258,45 @@ describe("buildControlSpawnCommand", () => {
 		});
 		expect(r.args).toEqual(["--yolo", "--session-id", "uuid-1", "--model", "gpt-5.5"]);
 	});
+
+	it("claude --branch: --resume <from> --fork-session --session-id <new> after skip-permissions (AC-01)", () => {
+		const r = buildControlSpawnCommand({
+			...base,
+			branchFrom: "claude-src",
+			forkSessionId: "fork-uuid",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--resume",
+			"claude-src",
+			"--fork-session",
+			"--session-id",
+			"fork-uuid",
+		]);
+	});
+
+	it("claude --branch + --model: model rides last (fork onto another model)", () => {
+		const r = buildControlSpawnCommand({
+			...base,
+			branchFrom: "claude-src",
+			forkSessionId: "fork-uuid",
+			model: "sonnet",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--resume",
+			"claude-src",
+			"--fork-session",
+			"--session-id",
+			"fork-uuid",
+			"--model",
+			"sonnet",
+		]);
+	});
+
+	it("no branchFrom → today's claude args are byte-identical (AC-05 regression)", () => {
+		expect(buildControlSpawnCommand(base).args).toEqual(["--dangerously-skip-permissions"]);
+	});
 });
 
 describe("buildPendingDescriptor", () => {
@@ -301,6 +342,22 @@ describe("buildPendingDescriptor", () => {
 
 	it("omits plannedHarnessSessionId for claude (discovery-bound)", () => {
 		expect(buildPendingDescriptor(input)).not.toHaveProperty("plannedHarnessSessionId");
+	});
+
+	it("branched claude: carries plannedHarnessSessionId + branchedFrom, no transcriptsAtSpawn (AC-02)", () => {
+		const d = buildPendingDescriptor({
+			...input,
+			plannedHarnessSessionId: "fork-uuid",
+			branchedFrom: "claude-src",
+		});
+		expect(d.plannedHarnessSessionId).toBe("fork-uuid");
+		expect(d.branchedFrom).toBe("claude-src");
+		expect(d).not.toHaveProperty("transcriptsAtSpawn");
+		expect(d.lifecycle).toBe("pending");
+	});
+
+	it("omits branchedFrom for a normal (non-branch) spawn", () => {
+		expect(buildPendingDescriptor(input)).not.toHaveProperty("branchedFrom");
 	});
 });
 
@@ -365,7 +422,13 @@ describe("parseSpawnArgs (T018)", () => {
 	it("parses --harness with --task/--model/--json (space and = forms)", () => {
 		expect(parseSpawnArgs(["--harness", "claude", "--task", "review the diff"])).toEqual({
 			ok: true,
-			value: { harness: "claude", task: "review the diff", model: undefined, json: false },
+			value: {
+				harness: "claude",
+				task: "review the diff",
+				model: undefined,
+				branch: false,
+				json: false,
+			},
 		});
 		expect(parseSpawnArgs(["--harness=claude", "--model=opus", "--json"])).toMatchObject({
 			ok: true,
@@ -373,9 +436,31 @@ describe("parseSpawnArgs (T018)", () => {
 		});
 	});
 
-	it("requires --harness and rejects pi / unknown harnesses (pi uses pij_spawn)", () => {
+	it("accepts --branch as a boolean flag (default false)", () => {
+		const off = parseSpawnArgs(["--harness", "claude"]);
+		expect(off).toMatchObject({ ok: true, value: { branch: false } });
+		const on = parseSpawnArgs(["--harness", "claude", "--branch"]);
+		expect(on).toMatchObject({ ok: true, value: { harness: "claude", branch: true } });
+		// --branch composes with --model (fork onto another model)
+		expect(parseSpawnArgs(["--harness", "claude", "--branch", "--model", "sonnet"])).toMatchObject({
+			ok: true,
+			value: { harness: "claude", branch: true, model: "sonnet" },
+		});
+	});
+
+	it("accepts pi (Plan 021 — uniform spawn surface), requires --harness, rejects unknown", () => {
 		expect(parseSpawnArgs([])).toMatchObject({ ok: false, code: "E-ARG" });
-		expect(parseSpawnArgs(["--harness", "pi"])).toMatchObject({ ok: false, code: "E-ARG" });
+		// pi is now a first-class spawnable harness (was rejected pre-021).
+		expect(parseSpawnArgs(["--harness", "pi"])).toMatchObject({
+			ok: true,
+			value: { harness: "pi", branch: false },
+		});
+		expect(
+			parseSpawnArgs(["--harness", "pi", "--task", "review the diff", "--model", "@preset/glm-1m"]),
+		).toMatchObject({
+			ok: true,
+			value: { harness: "pi", task: "review the diff", model: "@preset/glm-1m" },
+		});
 		expect(parseSpawnArgs(["--harness", "bogus"])).toMatchObject({ ok: false, code: "E-ARG" });
 	});
 
@@ -385,6 +470,89 @@ describe("parseSpawnArgs (T018)", () => {
 			code: "E-ARG",
 		});
 		expect(parseSpawnArgs(["--harness"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+});
+
+describe("livePeerPanes (shared split-cap input, Plan 021)", () => {
+	const d = (paneId: string | undefined, harness: HarnessKind): SessionDescriptor =>
+		({ paneId, harness }) as SessionDescriptor;
+
+	it("counts EVERY live peer pane in the window regardless of harness (the asymmetry fix)", () => {
+		// A pi pane and a claude pane both count toward the same main+2 cap. A mutation
+		// re-introducing a `harness === claude|copilot` filter would drop the pi pane
+		// and flip this assertion RED.
+		const descriptors = [d("%2", "claude"), d("%3", "pi"), d("%4", "copilot")];
+		const windowPanes = ["%1", "%2", "%3", "%4"];
+		expect(livePeerPanes(descriptors, windowPanes, "%1")).toEqual(["%2", "%3", "%4"]);
+	});
+
+	it("excludes own pane, dead/closed panes (not in windowPanes), and paneless descriptors", () => {
+		const descriptors = [
+			d("%1", "pi"), // own pane → excluded
+			d("%9", "claude"), // not in windowPanes (closed) → excluded
+			d(undefined, "pi"), // no paneId → excluded
+			d("%2", "pi"), // live peer → kept
+		];
+		expect(livePeerPanes(descriptors, ["%1", "%2"], "%1")).toEqual(["%2"]);
+	});
+
+	it("dedupes repeated pane ids", () => {
+		expect(livePeerPanes([d("%2", "pi"), d("%2", "claude")], ["%1", "%2"], "%1")).toEqual(["%2"]);
+	});
+});
+
+describe("planBranch (branch-from-self gating, Plan 020)", () => {
+	const supports = (h: HarnessKind) => h === "claude";
+	const boundSelf = (over: Partial<SessionDescriptor> = {}): SessionDescriptor => ({
+		id: "pij-me",
+		folder: "/repo",
+		dataDir: "/d",
+		eventsPath: "/e",
+		pid: 1,
+		startedAt: "2026-06-28T00:00:00.000Z",
+		harness: "claude",
+		harnessSessionId: "claude-self",
+		lifecycle: "bound",
+		...over,
+	});
+
+	it("bound same-harness claude → ok {from: self's harnessSessionId, newSessionId}", () => {
+		expect(planBranch("claude", boundSelf(), supports, "new-uuid")).toEqual({
+			ok: true,
+			value: { from: "claude-self", newSessionId: "new-uuid" },
+		});
+	});
+
+	it("unsupported harness (copilot today) → E-BRANCH (AC-04)", () => {
+		expect(planBranch("copilot", boundSelf({ harness: "copilot" }), supports, "u")).toMatchObject({
+			ok: false,
+			code: "E-BRANCH",
+		});
+	});
+
+	it("pi can spawn (Plan 021) but cannot fork → E-BRANCH (the bin mirrors this guard)", () => {
+		expect(
+			planBranch("pi", boundSelf({ harness: "pi", harnessSessionId: "pi-self" }), supports, "u"),
+		).toMatchObject({ ok: false, code: "E-BRANCH" });
+	});
+
+	it("caller unresolved (self null) → E-BRANCH (AC-04)", () => {
+		expect(planBranch("claude", null, supports, "u")).toMatchObject({
+			ok: false,
+			code: "E-BRANCH",
+		});
+	});
+
+	it("harness mismatch (caller copilot, spawning claude) → E-BRANCH (AC-04)", () => {
+		expect(
+			planBranch("claude", boundSelf({ harness: "copilot", harnessSessionId: "x" }), supports, "u"),
+		).toMatchObject({ ok: false, code: "E-BRANCH" });
+	});
+
+	it("caller not bound (no harnessSessionId) → E-BRANCH (AC-04)", () => {
+		const r = planBranch("claude", boundSelf({ harnessSessionId: undefined }), supports, "u");
+		expect(r).toMatchObject({ ok: false, code: "E-BRANCH" });
+		if (!r.ok) expect(r.message).toMatch(/not bound/i);
 	});
 });
 

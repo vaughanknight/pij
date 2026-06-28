@@ -26,3 +26,14 @@ export function selectTransport(harness: HarnessKind): Transport {
 			return "sendkeys";
 	}
 }
+
+/**
+ * Whether a harness supports **branch-from-self** at spawn — forking the caller's
+ * OWN session into the new pane (Plan 020). Claude forks via `--resume <id>
+ * --fork-session --session-id <new>` (verified live, v2.1.195). Copilot/pi have
+ * no equivalent yet; the seam lives HERE so they flip to `true` later without
+ * touching any caller (the bin only asks this predicate, never hard-codes claude).
+ */
+export function supportsBranching(harness: HarnessKind): boolean {
+	return harness === "claude";
+}

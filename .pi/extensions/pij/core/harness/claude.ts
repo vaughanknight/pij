@@ -123,11 +123,21 @@ export interface InitInjection {
 	readonly body: string;
 }
 
-/** Build the init injection for a pre-allocated pij-id. */
-export function buildInitInjection(pijId: SessionId): InitInjection {
+/** Build the init injection for a pre-allocated pij-id. When `branched` (this
+ *  session was forked from another via `pij spawn --branch`, Plan 020 Finding 08),
+ *  prepend a fork-reframe: the inherited transcript is context, NOT a task to
+ *  resume — otherwise the fork acts on the parent's "continue where you left off"
+ *  prompt and autonomously continues the parent's agenda (it once stood up a
+ *  runaway peer). The reframe stops it cold and tells it new instructions follow. */
+export function buildInitInjection(pijId: SessionId, branched = false): InitInjection {
 	const phonehomeLine = "pij phonehome";
+	const forkReframe = branched
+		? "You are a FORK of another session — its prior conversation is yours for CONTEXT only, " +
+			"NOT a task to resume. Do NOT continue the parent's previous work, and do NOT spawn or " +
+			"message other sessions; new instructions are coming. First, "
+		: "";
 	const body =
-		`You are now a pij peer (id: ${pijId}). ` +
+		`${forkReframe}You are now a pij peer (id: ${pijId}). ` +
 		`Message other sessions with \`pij send <id> "<text>"\` and list peers with \`pij list\`. ` +
 		`To confirm your binding, run: ${phonehomeLine}`;
 	return { pijId, phonehomeLine, body };

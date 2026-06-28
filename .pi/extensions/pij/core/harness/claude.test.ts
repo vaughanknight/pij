@@ -124,4 +124,21 @@ describe("buildInitInjection", () => {
 		expect(init.body).toContain("pij-abc");
 		expect(init.body).toContain("pij phonehome");
 	});
+
+	it("a normal (non-branch) init carries NO fork reframe", () => {
+		const init = buildInitInjection("pij-abc");
+		expect(init.body).not.toMatch(/FORK/i);
+		expect(init.body.startsWith("You are now a pij peer")).toBe(true);
+	});
+
+	it("a branched init reframes the fork (context-only, don't resume/spawn) — Finding 08, T016", () => {
+		const init = buildInitInjection("pij-fork", true);
+		expect(init.body).toMatch(/FORK/);
+		expect(init.body).toMatch(/CONTEXT only|NOT a task/i);
+		expect(init.body).toMatch(/do not (continue|spawn)/i);
+		// still a valid peer init: keeps the id + phonehome confirmatory line
+		expect(init.body).toContain("pij-fork");
+		expect(init.body).toContain("pij phonehome");
+		expect(init.phonehomeLine).toBe("pij phonehome");
+	});
 });

@@ -152,6 +152,14 @@ export interface ControlSpawnInput {
 	/** Copilot only: the pij-chosen session UUID, passed as `--session-id <uuid>`
 	 *  so binding is deterministic at spawn (Copilot sets a new session's UUID). */
 	readonly copilotSessionId?: string;
+	/** Branch-from-self (claude, Plan 020): the SOURCE harness session id to fork —
+	 *  emits `--resume <branchFrom> --fork-session`. Paired with {@link forkSessionId}.
+	 *  Absent for a normal (non-branch) spawn. */
+	readonly branchFrom?: string;
+	/** Branch-from-self (claude): the pij-chosen NEW session id for the fork —
+	 *  emits `--session-id <forkSessionId>` so the daemon binds deterministically
+	 *  (the planned-id path, no transcript discovery). Set with `branchFrom`. */
+	readonly forkSessionId?: string;
 }
 
 /** Input to {@link buildPendingDescriptor}. */
@@ -172,6 +180,9 @@ export interface PendingDescriptorInput {
 	/** Copilot only: the pij-chosen session UUID (`--session-id`) the daemon binds
 	 *  to deterministically — no discovery. */
 	readonly plannedHarnessSessionId?: string;
+	/** Branch-from-self (Plan 020): the source harness session id this pane was
+	 *  forked from. Observability only — the bind keys on `plannedHarnessSessionId`. */
+	readonly branchedFrom?: string;
 }
 
 /**
@@ -205,6 +216,17 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	const args: string[] = [];
 	if (input.harness === "claude") {
 		args.push("--dangerously-skip-permissions");
+		// Branch-from-self: fork the caller's own session into this pane. `--session-id`
+		// pins the fork's id so the daemon binds deterministically (no discovery race).
+		if (input.branchFrom !== undefined && input.forkSessionId !== undefined) {
+			args.push(
+				"--resume",
+				input.branchFrom,
+				"--fork-session",
+				"--session-id",
+				input.forkSessionId,
+			);
+		}
 	} else if (input.harness === "copilot") {
 		args.push("--yolo");
 		if (input.copilotSessionId !== undefined) {
@@ -245,6 +267,7 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		...(input.plannedHarnessSessionId
 			? { plannedHarnessSessionId: input.plannedHarnessSessionId }
 			: {}),
+		...(input.branchedFrom ? { branchedFrom: input.branchedFrom } : {}),
 	};
 }
 
@@ -321,29 +344,69 @@ export function planControlSplit(ownPane: string, peerPanes: readonly string[]):
 	return { ok: true, target: firstPeer, direction: "v" };
 }
 
+/** The live peer panes sharing the orchestrator's window — the input to
+ *  {@link planControlSplit}'s main+2 cap. A descriptor counts iff it has a `paneId`,
+ *  it isn't the caller's own pane, and that pane is still ALIVE (present in
+ *  `windowPanes`, which lists only live panes — a closed peer frees its slot).
+ *  **Harness-agnostic (Plan 021)**: every spawned colleague — pi, claude, or copilot
+ *  — counts toward the SAME cap, so a mixed fleet is consistent (a pi pane and a claude
+ *  pane are both just panes). Deduped; insertion order preserved. Pure, so both the pi
+ *  and the daemon-bound spawn paths share one definition (and one test). */
+export function livePeerPanes(
+	descriptors: readonly SessionDescriptor[],
+	windowPanes: readonly string[],
+	ownPane: string,
+): string[] {
+	const alive = new Set(windowPanes);
+	return Array.from(
+		new Set(
+			descriptors
+				.filter((d) => d.paneId && d.paneId !== ownPane && alive.has(d.paneId))
+				.map((d) => d.paneId as string),
+		),
+	);
+}
+
 /** A parsed `pij spawn --harness <h> [--task …] [--model …] [--json]` request.
  *  Pure parse so the bin only owns the impure split/write (T018). */
 export interface SpawnRequest {
 	readonly harness: HarnessKind;
 	readonly task?: string;
 	readonly model?: string;
+	/** Branch-from-self (Plan 020): fork the CALLER's own session into the new pane
+	 *  (`--branch`). Default false. Gated + resolved by the bin via {@link planBranch}. */
+	readonly branch: boolean;
 	readonly json: boolean;
 }
 
+/** Daemon-bound harnesses: the daemon pre-allocates an id and drives boot→bound
+ *  (transcript discovery for claude, deterministic `--session-id` for copilot). */
 const CONTROL_HARNESSES = new Set<HarnessKind>(["claude", "copilot"]);
 
-/** Parse the `spawn` verb's args. `--harness` is required and must be a control
- *  harness (claude today; copilot reserved) — pi sessions spawn via `pij_spawn`,
- *  not this control-plane path. Unknown flags / missing values → E-ARG. */
+/** Harnesses `pij spawn` can launch (Plan 021 — one uniform surface). `pi` joins
+ *  claude/copilot here, but it is NOT a CONTROL_HARNESS: a pi child derives its own
+ *  pij-id at boot and self-registers (core/session.ts §H1), so it needs no daemon,
+ *  no pre-allocated id, and no binding — the bin dispatches it down the pi path. */
+const SPAWNABLE_HARNESSES = new Set<HarnessKind>(["pi", "claude", "copilot"]);
+
+/** Parse the `spawn` verb's args. `--harness` is required and must be a spawnable
+ *  harness (pi | claude | copilot). pi launches via the in-process path inside the
+ *  bin (self-registering); claude/copilot are daemon-bound. Unknown flags / missing
+ *  values → E-ARG. */
 export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let harness: HarnessKind | undefined;
 	let task: string | undefined;
 	let model: string | undefined;
+	let branch = false;
 	let json = false;
 	for (let i = 0; i < argv.length; i++) {
 		const tok = argv[i];
 		if (tok === "--json") {
 			json = true;
+			continue;
+		}
+		if (tok === "--branch") {
+			branch = true;
 			continue;
 		}
 		const eq = tok?.indexOf("=") ?? -1;
@@ -353,8 +416,8 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		const value = inlineVal ?? argv[++i];
 		if (value === undefined) return err("E-ARG", `--${key} needs a value`);
 		if (key === "harness") {
-			if (!CONTROL_HARNESSES.has(value as HarnessKind))
-				return err("E-ARG", `--harness must be claude|copilot (got '${value}')`);
+			if (!SPAWNABLE_HARNESSES.has(value as HarnessKind))
+				return err("E-ARG", `--harness must be pi|claude|copilot (got '${value}')`);
 			harness = value as HarnessKind;
 		} else if (key === "task") {
 			task = value;
@@ -364,8 +427,65 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			return err("E-ARG", `unknown flag --${key} for spawn`);
 		}
 	}
-	if (!harness) return err("E-ARG", "usage: pij spawn --harness claude [--task …] [--model …]");
-	return ok({ harness, task, model, json });
+	if (!harness)
+		return err("E-ARG", "usage: pij spawn --harness pi|claude|copilot [--task …] [--model …]");
+	return ok({ harness, task, model, branch, json });
+}
+
+/** Result of planning a branch-from-self spawn (Plan 020). */
+export interface BranchPlan {
+	/** Source harness session id to fork (`--resume <from>`). */
+	readonly from: string;
+	/** The pij-chosen new session id for the fork (`--session-id <newSessionId>`). */
+	readonly newSessionId: string;
+}
+
+/**
+ * Decide whether a `--branch` (branch-from-self) spawn is allowed, given the
+ * resolved CALLER descriptor (`self`) and a freshly-minted session id. PURE — the
+ * impure self-resolution + uuid mint live in the bin. Branch-from-self forks the
+ * caller's OWN session, so it requires: the caller resolves, the requested harness
+ * supports branching, the caller runs the SAME harness, and the caller is already
+ * BOUND (has a `harnessSessionId` to fork). Every reject is a specific, actionable
+ * E-BRANCH. `supports` is injected ({@link supportsBranching}) for testability;
+ * branching from ANOTHER peer is intentionally out of scope but not precluded —
+ * a future caller passes that peer's descriptor as `self`.
+ */
+export function planBranch(
+	reqHarness: HarnessKind,
+	self: SessionDescriptor | null,
+	supports: (h: HarnessKind) => boolean,
+	newSessionId: string,
+): Result<BranchPlan> {
+	if (!supports(reqHarness)) {
+		return err(
+			"E-BRANCH",
+			`--branch is not supported for ${reqHarness} yet (claude only) — spawn without --branch`,
+		);
+	}
+	if (!self) {
+		return err(
+			"E-BRANCH",
+			"cannot --branch: cannot resolve which session is calling. Set PIJ_SESSION_ID, " +
+				'or run `pij adopt "$TMUX_PANE" --harness <h>` so this pane resolves itself',
+		);
+	}
+	const selfHarness = self.harness ?? "pi";
+	if (selfHarness !== reqHarness) {
+		return err(
+			"E-BRANCH",
+			`--branch forks your OWN session, so the new harness must match yours: ` +
+				`you are ${selfHarness}, spawning ${reqHarness}`,
+		);
+	}
+	if (!self.harnessSessionId || self.harnessSessionId.trim() === "") {
+		return err(
+			"E-BRANCH",
+			"cannot --branch: your session is not bound yet (no harness session id to fork) — " +
+				"wait for binding, then retry",
+		);
+	}
+	return ok({ from: self.harnessSessionId, newSessionId });
 }
 
 /** A parsed `pij adopt <pane> --harness <h> [--id <pij-id>] [--json]` request. */
