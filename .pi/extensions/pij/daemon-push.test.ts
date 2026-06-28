@@ -266,3 +266,65 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
 	});
 });
+
+// ─── DL-005 mutation-proof: provider-failure peek covers a PI worker ──────────
+// The motivating case the prior tests structurally could not express: a real pi
+// worker self-registers a LEAN descriptor — `paneId` + `spawnedBy` but NO
+// `lifecycle` and NO `harness` — so it fails the delivery-ownership gate and
+// never enters the owned branch. The read-only peek must still catch it.
+// Mutation: gate the peek on `owns` (lifecycle==="bound" && daemonOwnsDelivery)
+// instead of `d.paneId && d.spawnedBy` → no push fires for the pi worker → RED.
+
+describe("daemon tick: provider-failure peek covers a pi worker (DL-005)", () => {
+	const CREDIT_PANE =
+		"Error: prepaid credit balance exhausted — add credits at https://console.sakana.ai/billing\nfugu-ultra • high";
+
+	// A pi self-register descriptor: NO lifecycle, NO harness (the real shape).
+	function piWorker(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
+		return {
+			id: "pij-pi-worker",
+			folder: "/repo",
+			dataDir: `${HOME}/.pij/pij-pi-worker`,
+			eventsPath: `${HOME}/.pij/pij-pi-worker/events.ndjson`,
+			pid: 400,
+			startedAt: "2026-06-28T00:00:00.000Z",
+			paneId: "%9",
+			spawnedBy: "pij-boss",
+			state: "idle",
+			lastEventAt: new Date(T0 - 5000).toISOString(),
+			...over,
+		};
+	}
+
+	it("detects the sakana credit error in a pi worker's pane → pushes once to creator", () => {
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const { delivery, daemon: d } = daemon([piWorker()], ports);
+		d.tick();
+		d.tick(); // second tick proves the latch holds (no double-push)
+		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
+		expect(toCreator).toHaveLength(1);
+	});
+
+	it("persists failureReason='quota' on the pi worker descriptor", () => {
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const registry = new FakeRegistry([piWorker()]);
+		const del = new FakeDelivery();
+		const d = new Daemon(`${HOME}/.pij`, ports, registry, del, () => {});
+		d.tick();
+		expect(registry.read("pij-pi-worker")?.failureReason).toBe("quota");
+	});
+
+	it("does NOT push for a pi worker whose pane shows only transient text", () => {
+		const ports = makePorts({ pane: "⠴ Retrying (2/3)…", pidAlive: true });
+		const { delivery, daemon: d } = daemon([piWorker()], ports);
+		d.tick();
+		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
+	});
+
+	it("does NOT peek a pi worker with no creator (spawnedBy absent)", () => {
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const { delivery, daemon: d } = daemon([piWorker({ spawnedBy: undefined })], ports);
+		d.tick();
+		expect(delivery.outbox).toHaveLength(0);
+	});
+});
