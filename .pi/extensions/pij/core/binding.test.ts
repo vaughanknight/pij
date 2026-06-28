@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
 	applyBinding,
 	buildBoundNotice,
+	buildDeadNotice,
 	buildFailedNotice,
+	buildStalledNotice,
 	evaluateWatchdog,
 	markFailed,
 	markInitInjected,
@@ -114,5 +116,53 @@ describe("creator notices", () => {
 		const orphan: SessionDescriptor = { ...PENDING, spawnedBy: undefined };
 		expect(buildBoundNotice(orphan)).toBeNull();
 		expect(buildFailedNotice(orphan, "x")).toBeNull();
+	});
+});
+
+// ─── T011: stalled/dead notices (whole-life push) ────────────────────────────
+
+const BOUND_DESC: SessionDescriptor = {
+	...PENDING,
+	lifecycle: "bound",
+	harnessSessionId: "claude-sess-123",
+	boundModel: "claude-sonnet-4-6",
+};
+
+describe("buildStalledNotice", () => {
+	it("targets the creator with a stall message (AC-03)", () => {
+		const n = buildStalledNotice(BOUND_DESC);
+		expect(n).not.toBeNull();
+		expect(n?.to).toBe("pij-creator");
+		expect(n?.text).toMatch(/stall|stalled|quiet/i);
+		expect(n?.text).toContain(BOUND_DESC.id);
+	});
+
+	it("includes boundModel when available", () => {
+		const n = buildStalledNotice(BOUND_DESC);
+		expect(n?.text).toContain("claude-sonnet-4-6");
+	});
+
+	it("returns null when there is no creator", () => {
+		const orphan: SessionDescriptor = { ...BOUND_DESC, spawnedBy: undefined };
+		expect(buildStalledNotice(orphan)).toBeNull();
+	});
+});
+
+describe("buildDeadNotice", () => {
+	it("targets the creator with a dead-peer message", () => {
+		const n = buildDeadNotice(BOUND_DESC, "dead");
+		expect(n?.to).toBe("pij-creator");
+		expect(n?.text).toMatch(/dead|exit|gone/i);
+		expect(n?.text).toContain(BOUND_DESC.id);
+	});
+
+	it("includes the machine-stable reason", () => {
+		const n = buildDeadNotice(BOUND_DESC, "model-not-supported");
+		expect(n?.text).toContain("model-not-supported");
+	});
+
+	it("returns null when there is no creator", () => {
+		const orphan: SessionDescriptor = { ...BOUND_DESC, spawnedBy: undefined };
+		expect(buildDeadNotice(orphan, "dead")).toBeNull();
 	});
 });

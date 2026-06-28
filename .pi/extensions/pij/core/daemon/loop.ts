@@ -19,11 +19,13 @@ import {
 	markInitInjected,
 	shouldInjectInit,
 } from "../binding.js";
+import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js";
 import { buildInitInjection, discoverNewTranscript, transcriptDir } from "../harness/claude.js";
 import { classifyInterstitial } from "../interstitial.js";
 import type { DeliveryPort, RegistryPort } from "../ports.js";
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
-import type { PijMessage, SessionDescriptor, SessionId } from "../types.js";
+import { classifyDeathReason } from "../state.js";
+import type { DeathReason, PijMessage, SessionDescriptor, SessionId } from "../types.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -60,6 +62,10 @@ export interface DriveState {
 	flaggedHuman?: boolean;
 	/** A terminal notice (bound/failed) was already delivered. */
 	settled?: boolean;
+	/** Set true the first time the pane goes `busy` after init injection —
+	 *  the first-inference gate uses this to know the agent has started
+	 *  processing and the pane may now show a model error (T009/T010). */
+	firstInferenceSeen?: boolean;
 }
 
 /** What one drive tick did, for the TUI / smoke assertions. */
@@ -122,7 +128,9 @@ export function driveSession(
 
 	// Dead pane → terminal failure (authoritative death signal).
 	if (ports.isPaneDead(paneId)) {
-		return fail(descriptor, drive, registry, delivery, "pane exited before binding");
+		const pane0 = ports.capturePane(paneId);
+		const dr = classifyDeathReason(pane0);
+		return fail(descriptor, drive, registry, delivery, "pane exited before binding", dr);
 	}
 
 	// The `before` set for new-path discovery (AC-03). Prefer the spawn-time
@@ -139,7 +147,8 @@ export function driveSession(
 	const readiness = classifyReadiness(pane);
 
 	if (readiness === "dead") {
-		return fail(descriptor, drive, registry, delivery, "pane reported dead");
+		const dr = classifyDeathReason(pane);
+		return fail(descriptor, drive, registry, delivery, "pane reported dead", dr);
 	}
 	if (readiness === "interstitial") {
 		const verdict = classifyInterstitial(pane);
@@ -182,14 +191,50 @@ export function driveSession(
 	}
 	if (drive.readyAtMs === undefined) return { kind: "waiting" };
 
+	// Track the first inference: once init is injected, the next `busy` tick is
+	// the agent processing the init (first inference). Mark it so the gate below
+	// knows a round trip has completed.
+	if (descriptor.initInjectedAt && readiness === "busy" && !drive.firstInferenceSeen) {
+		drive.firstInferenceSeen = true;
+	}
+
 	// 2) Binding. The deterministic case: a session whose id pij CHOSE at spawn —
 	// copilot (`--session-id <uuid>`) OR a branched claude (`--resume <src>
 	// --fork-session --session-id <new>`, Plan 020). Either way the daemon binds to
 	// the planned id the instant the pane is interactive — no transcript discovery,
 	// no race, and no wait on a (possibly slow) context load (Finding 06). Keyed on
 	// the planned id, not the harness, so claude-branch rides the same path.
+	//
+	// First-inference gate (T009/T010): if the pane shows a bad-model error after
+	// the init-inject turn, fail with reason "model-not-supported" instead of
+	// binding. Good models bind immediately — the gate never delays a valid spawn.
 	if (descriptor.plannedHarnessSessionId) {
-		const bound = applyBinding(descriptor, descriptor.plannedHarnessSessionId);
+		const harness = descriptor.harness ?? "claude";
+		// Bad-model check runs BEFORE the first-inference gate so a 400 error visible
+		// on the very first ready tick is caught immediately (the error signal does not
+		// require a busy→ready round-trip — the harness rejects the model synchronously).
+		const badModel = detectBadModelInPane(harness, pane);
+		if (badModel.detected) {
+			return fail(
+				descriptor,
+				drive,
+				registry,
+				delivery,
+				`bad model in pane: ${badModel.reason ?? "model-not-supported"}`,
+				badModel.reason ?? "model-not-supported",
+			);
+		}
+		// First-inference gate (FIX-1): do NOT bind until the init-inject turn has
+		// completed a round-trip (pane went busy at least once after init injection).
+		// A good model still binds on the next ready tick — exactly one extra tick.
+		// Removing this gate lets the daemon bind on the very first ready tick before
+		// any model error has had a chance to surface → false-healthy bind.
+		if (!drive.firstInferenceSeen) return { kind: "waiting" };
+		const model = extractBoundModel(harness, pane);
+		const bound = {
+			...applyBinding(descriptor, descriptor.plannedHarnessSessionId),
+			...(model ? { boundModel: model } : {}),
+		};
 		registry.write(bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
@@ -243,11 +288,16 @@ function fail(
 	registry: RegistryPort,
 	delivery: DeliveryPort,
 	reason: string,
+	deathReason?: DeathReason,
 ): DriveOutcome {
-	registry.write(markFailed(descriptor));
+	const failed = {
+		...markFailed(descriptor),
+		...(deathReason ? { failureReason: deathReason } : {}),
+	};
+	registry.write(failed);
 	if (!drive.settled && descriptor.spawnedBy) {
 		drive.settled = true;
-		const note = buildFailedNotice(descriptor, reason);
+		const note = buildFailedNotice(failed, reason);
 		if (note) notify(delivery, descriptor.id, note.to, note.text);
 	}
 	return { kind: "failed", reason };

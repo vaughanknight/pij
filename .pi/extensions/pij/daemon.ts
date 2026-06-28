@@ -20,6 +20,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
 import {
@@ -34,6 +35,8 @@ import { SendBuffer } from "./core/daemon/router.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import type { DeliveryPort, RegistryPort } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
+import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
+import type { DeathReason, SessionDescriptor } from "./core/types.js";
 
 const TICK_MS = 600;
 
@@ -45,6 +48,9 @@ export class Daemon {
 	private readonly drives = new Map<string, DriveState>();
 	private readonly buffer = new SendBuffer();
 	private readonly flushed = new Set<string>();
+	/** Per-bound-session latch: tracks which transitions have already been pushed
+	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
+	private readonly pushed = new Map<string, Set<"stalled" | "dead" | "provider-failure">>();
 
 	constructor(
 		private readonly pijHome: string,
@@ -95,6 +101,69 @@ export class Daemon {
 				const readiness = classifyReadiness(this.ports.capturePane(d.paneId));
 				const updated = observeActivity(d, readiness, this.ports.now());
 				if (updated) this.registry.write(updated);
+			}
+			// Whole-life stalled/dead push (T012): detect transitions and push once
+			// per transition to the creator. The latch (`this.pushed`) ensures each
+			// transition (stalled, dead) fires exactly one creator notification.
+			this.pushWholeLifeTransition(d);
+		}
+	}
+
+	/** Detect and push stalled/dead transitions for a bound session. The push
+	 *  lives HERE (impure: it holds the delivery port) — NOT in `observeActivity`
+	 *  (pure, returns null for non-busy/ready, has no delivery port). One push per
+	 *  transition, latched by `this.pushed`. */
+	private pushWholeLifeTransition(d: SessionDescriptor): void {
+		if (!d.spawnedBy) return; // no creator to notify
+		const latch = this.pushed.get(d.id) ?? new Set<"stalled" | "dead">();
+		this.pushed.set(d.id, latch);
+
+		// Dead: pid gone (authoritative)
+		const pidAlive = this.ports.isAlive(d.pid);
+		if (!pidAlive && !latch.has("dead")) {
+			latch.add("dead");
+			const pane = d.paneId ? this.ports.capturePane(d.paneId) : "";
+			const reason: DeathReason = classifyDeathReason(pane);
+			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
+			this.registry.write({ ...d, failureReason: reason });
+			const note = buildDeadNotice(d, reason);
+			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+			this.log(`push ${d.id}: dead (${reason})`);
+			return;
+		}
+
+		// Stalled: `state === "working"` (daemon's descriptor vocab) + event age past stale.
+		// Note: `isStalled` uses SessionState ("in-progress"|"reviewing") which is different
+		// from the daemon's descriptor state ("working"|"idle") — compare directly.
+		const ageMs = d.lastEventAt ? this.ports.now() - Date.parse(d.lastEventAt) : null;
+		const isWorking = d.state === "working";
+		const staleAge = ageMs === null || ageMs > STALE_AFTER_MS;
+		const stalled = isWorking && staleAge;
+		if (stalled && !latch.has("stalled")) {
+			latch.add("stalled");
+			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
+			this.registry.write({ ...d, failureReason: "stalled" });
+			const note = buildStalledNotice(d);
+			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+			this.log(`push ${d.id}: stalled`);
+		}
+
+		// Provider failure on a live bound session (FIX-A / DL-003):
+		// Covers the Case-3 gap — a pid-alive session (quota/auth/model error in pane)
+		// that never died or stalled, so the two branches above never fire.
+		// Guard: only fire on a positively-identified terminal error; "unknown" means
+		// no recognisable pattern (could be transient, e.g. "Retrying…").
+		if (pidAlive && !latch.has("provider-failure") && d.paneId) {
+			const provPane = this.ports.capturePane(d.paneId);
+			const provReason = classifyDeathReason(provPane);
+			const isFatal =
+				provReason === "quota" || provReason === "auth" || provReason === "model-not-supported";
+			if (isFatal) {
+				latch.add("provider-failure");
+				this.registry.write({ ...d, failureReason: provReason });
+				const note = buildDeadNotice(d, provReason);
+				if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+				this.log(`push ${d.id}: provider-failure (${provReason})`);
 			}
 		}
 	}

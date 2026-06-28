@@ -23,6 +23,17 @@ export type HarnessKind = "pi" | "claude" | "copilot";
  *  timeout. Absent ⇒ a session that never went through control-plane spawn. */
 export type SessionLifecycle = "pending" | "ready" | "bound" | "failed";
 
+// ─── fail-loud death-reason vocabulary ───────────────────────────────────────
+/** Machine-stable reason a spawned session failed to bind or died after binding.
+ *  Used in `SessionDescriptor.failureReason` and `classifyDeathReason`. */
+export type DeathReason =
+	| "model-not-supported" // harness rejected the --model (400/not_found_error)
+	| "auth" // authentication failure (401)
+	| "quota" // rate-limit / quota exhausted (429/529)
+	| "stalled" // watchdog: working but silent past the stale threshold
+	| "dead" // pane exited (no specific error signal)
+	| "unknown"; // fallback when no pattern matched
+
 // ─── liveness + state (vocabulary aligned with agent-workbench) ───────────
 /** Self-reported working state of a session. */
 export type SessionState = "idle" | "in-progress" | "paused" | "reviewing" | "complete" | "error";
@@ -87,6 +98,14 @@ export interface SessionDescriptor {
 	 *  forked from at spawn (claude `--resume <src> --fork-session`). Observability
 	 *  only — binding keys on `plannedHarnessSessionId`. Absent for a normal spawn. */
 	readonly branchedFrom?: string;
+	// ─── fail-loud model layer (additive — migration-safe) ────────────────
+	/** The actual model reported by the harness footer after first inference
+	 *  (may differ from the --model arg if the harness substituted a fallback).
+	 *  Absent until the daemon captures it from the pane. */
+	readonly boundModel?: string;
+	/** Machine-stable failure reason set by the daemon when lifecycle → failed.
+	 *  model-not-supported|auth|quota|stalled|dead|unknown. Absent until failed. */
+	readonly failureReason?: DeathReason;
 }
 
 // ─── event stream ─────────────────────────────────────────────────────────

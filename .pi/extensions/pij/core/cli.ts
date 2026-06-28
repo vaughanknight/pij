@@ -11,10 +11,13 @@
 import { applyBinding } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, resolveSelf } from "./discovery.js";
+import { closestModel } from "./models/match.js";
+import type { ModelEntry } from "./models/registry.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
 import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
 import {
 	err,
+	type HarnessKind,
 	ok,
 	type PijErrorCode,
 	type PijEvent,
@@ -34,12 +37,21 @@ export interface CliDeps {
 	readonly cwd: string;
 	/** Registry home (`~/.pij`) — only `path --state` needs it. */
 	readonly pijHome: string;
+	/** Model entries loaded by the bin (for pij models verb). Empty when absent. */
+	readonly models?: readonly ModelEntry[];
 }
 
 // ─── parsed command (discriminated per verb) ────────────────────────────────
 export type ParsedCommand =
 	| { readonly verb: "whoami"; readonly json: boolean }
 	| { readonly verb: "list"; readonly here: boolean; readonly json: boolean }
+	| {
+			readonly verb: "models";
+			readonly filter?: string;
+			/** Provider/harness filter: pi|claude|copilot (or any provider string). */
+			readonly harnessFilter?: string;
+			readonly json: boolean;
+	  }
 	| {
 			readonly verb: "send";
 			readonly to: SessionId;
@@ -132,16 +144,18 @@ const BOOLEAN_FLAGS = new Set(["here", "json", "follow", "events", "state", "dir
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	whoami: new Set(["json"]),
 	list: new Set(["here", "json"]),
+	models: new Set(["harness", "json"]),
 	send: new Set(["command", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
 	path: new Set(["events", "state", "dir", "json"]),
 };
-/** Max positionals per verb (send allows id + text). */
+/** Max positionals per verb (send allows id + text; models allows optional filter). */
 const MAX_POS: Record<string, number> = {
 	whoami: 0,
 	list: 0,
+	models: 1,
 	send: 2,
 	tail: 1,
 	state: 1,
@@ -152,10 +166,13 @@ const MAX_POS: Record<string, number> = {
 export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	const verb = argv[0];
 	if (verb === undefined)
-		return err("E-ARG", "usage: pij <whoami|list|send|tail|state|phonehome|path> …");
+		return err("E-ARG", "usage: pij <whoami|list|models|send|tail|state|phonehome|path> …");
 	const allowed = ALLOWED_FLAGS[verb];
 	if (!allowed)
-		return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|phonehome|path)`);
+		return err(
+			"E-ARG",
+			`unknown command '${verb}' (whoami|list|models|send|tail|state|phonehome|path)`,
+		);
 	const { pos, flags } = lex(argv.slice(1), BOOLEAN_FLAGS);
 	// strict: reject unknown flags and extra arity (finding F001).
 	for (const k of Object.keys(flags)) {
@@ -172,6 +189,11 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			return ok({ verb: "whoami", json });
 		case "list":
 			return ok({ verb: "list", here: flags.here === true, json });
+		case "models": {
+			const filter = pos[0];
+			const harnessFilter = typeof flags.harness === "string" ? flags.harness : undefined;
+			return ok({ verb: "models", filter, harnessFilter, json });
+		}
 		case "send": {
 			const to = pos[0];
 			if (to === undefined) return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
@@ -239,7 +261,10 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			return ok({ verb: "path", id, which, json });
 		}
 		default:
-			return err("E-ARG", `unknown command '${verb}' (whoami|list|send|tail|state|phonehome|path)`);
+			return err(
+				"E-ARG",
+				`unknown command '${verb}' (whoami|list|models|send|tail|state|phonehome|path)`,
+			);
 	}
 }
 
@@ -279,10 +304,61 @@ function selfId(deps: CliDeps): Result<SessionId> {
 	);
 }
 
+// ─── models helpers (pure) ──────────────────────────────────────────────────
+const PROVIDER_HARNESS_MAP: Record<string, string> = {
+	"github-copilot": "copilot",
+	copilot: "copilot",
+	claude: "claude",
+	codex: "codex",
+	pi: "pi",
+};
+
+function providerMatchesHarness(provider: string, harness: string): boolean {
+	const mapped = PROVIDER_HARNESS_MAP[provider];
+	return mapped === harness || provider === harness;
+}
+
 // ─── dispatch ───────────────────────────────────────────────────────────────
 export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 	const now = deps.process.now();
 	switch (cmd.verb) {
+		case "models": {
+			let entries = deps.models ?? [];
+			// pi proxies ALL providers — applying a provider filter would return nothing
+			// because real provider keys are github-copilot, sakana, openrouter, etc.
+			if (cmd.harnessFilter && cmd.harnessFilter !== "pi") {
+				entries = entries.filter((e) => providerMatchesHarness(e.provider, cmd.harnessFilter!));
+			}
+			if (cmd.filter) {
+				// Fuzzy filter: keep entries whose normalised id or name contains the query,
+				// or match via closestModel.
+				const q = cmd.filter.toLowerCase();
+				const filtered = entries.filter(
+					(e) => e.id.toLowerCase().includes(q) || e.name.toLowerCase().includes(q),
+				);
+				if (filtered.length > 0) {
+					entries = filtered;
+				} else {
+					const closest = closestModel(cmd.filter, entries);
+					entries = closest ? [closest] : [];
+				}
+			}
+			if (entries.length === 0) {
+				return okOut(
+					cmd.json ? JSON.stringify([]) : "no models found (try a different filter or harness)",
+				);
+			}
+			if (cmd.json) return okOut(JSON.stringify(entries));
+			const lines = entries.map((e) => {
+				const tag = e.verified ? "" : " *";
+				return `${pad(e.id, 36)} ${pad(e.name, 40)} ${e.provider}${tag}`;
+			});
+			const header = `${pad("id", 36)} ${pad("name", 40)} provider`;
+			const unverNote = entries.some((e) => !e.verified)
+				? "\n* unverified (best-effort alias list — not confirmed by a live registry)"
+				: "";
+			return okOut([header, ...lines, `\n${entries.length} model(s)${unverNote}`].join("\n"));
+		}
 		case "whoami": {
 			const s = selfId(deps);
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
@@ -328,6 +404,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							activity: activityOf(d.state, d.lastEventAt != null),
 							liveness: live,
 							lastEventAt: d.lastEventAt ?? null,
+							boundModel: d.boundModel ?? null,
+							failureReason: d.failureReason ?? null,
 						})),
 					),
 				);
@@ -463,10 +541,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						// machine-readable without scraping the tmux footer (feedback #4).
 						cwd: d.folder,
 						harness: d.harness ?? null,
+						// Fail-loud model layer (T013): surface actual bound model + reason
+						boundModel: d.boundModel ?? null,
+						failureReason: d.failureReason ?? null,
 					}),
 				);
+			const modelLine = d.boundModel ? `  ·  model: ${d.boundModel}` : "";
+			const failLine = d.failureReason ? `  ·  failure: ${d.failureReason}` : "";
 			return okOut(
-				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}`,
+				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${failLine}`,
 			);
 		}
 		case "phonehome": {

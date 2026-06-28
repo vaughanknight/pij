@@ -245,3 +245,57 @@ Peers reach you via: pij send <id> "..."
 To message a peer: pij send <id> "..." (your id is stamped automatically).
 Discover peers: pij list --here   ·   Observe one: pij tail <id> / pij state <id>.
 ```
+
+---
+
+## Fail-loud model layer
+
+Three layers of observability for model-related failures in spawned sessions.
+
+### 1. Model discovery — `pij models`
+
+List all models known to pij (pi-first, then copilot seed, claude aliases, codex snapshot):
+
+```sh
+pij models                          # all known models (table)
+pij models fugu                     # fuzzy filter (shows fugu, fugu-ultra)
+pij models --harness claude         # only claude aliases
+pij models --harness copilot        # copilot models seeded from pi's github-copilot section
+pij models --json                   # machine-readable JSON array
+```
+
+Models labelled `*` are **unverified** (best-effort alias lists, not confirmed by a live API).
+
+### 2. Spawn-time validation — warn-don't-block
+
+When `pij spawn --model <id>` names an unknown model, pij prints a warning **but still spawns immediately** — the pij-id is returned right away, binding proceeds normally:
+
+```
+warning: unknown model 'claude-zz-99' (did you mean 'claude-sonnet-4-6'?) — spawn continues; confirm the id is correct
+```
+
+The spawn is never blocked. If the model truly does not exist, the session will fail at first inference and the fail-loud heartbeat (layer 3) notifies the creator.
+
+### 3. Fail-loud heartbeat — whole-life stalled/dead push
+
+Once a session is bound, the daemon monitors it every tick and pushes to the creator **once per transition**:
+
+| Event | Message to creator |
+|-------|--------------------|
+| Session stalled (working + silent past 60s) | `⏸ <id> has gone quiet (stalled…)` |
+| Session dead (pid exited) | `💀 <id> has exited (reason: <code>)` |
+
+Machine-stable reason codes: `model-not-supported` · `auth` · `quota` · `stalled` · `dead` · `unknown`
+
+The bound model (captured from first inference) and reason code are surfaced in `pij state <id>` and `pij state <id> --json`:
+
+```sh
+pij state pij-worker          # shows model + failure reason in human text
+pij state pij-worker --json   # boundModel, failureReason fields
+```
+
+Per-harness detection (on captured pane text, never stderr):
+- **claude**: `API Error: 400` → `model-not-supported` (also triggers pane-dead via `classifyReadiness`)
+- **copilot/pi**: first-inference error text → `model-not-supported`
+
+The first-inference gate (deterministic-bind path only) defers the bound-notice until the init-inject turn completes without a model error — so the creator is never told a session is "ready" when it immediately 400d.

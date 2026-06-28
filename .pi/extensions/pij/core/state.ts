@@ -1,6 +1,6 @@
 // pij-messaging — session state classification + liveness verdict (pure).
 
-import type { LivenessVerdict, SessionState } from "./types.js";
+import type { DeathReason, LivenessVerdict, SessionState } from "./types.js";
 
 // ─── thresholds (Pattern P5: live with the data they constrain) ───────────
 /** Newer than this → active; older (but pid alive) → stale. */
@@ -63,4 +63,30 @@ export function isStalled(
 ): boolean {
 	if (!isWorking(state)) return false;
 	return latestEventAgeMs === null || latestEventAgeMs > staleAfterMs;
+}
+
+// ─── death-reason classifier (pure) ──────────────────────────────────────────
+
+const MODEL_NOT_SUPPORTED_RE =
+	/not_found_error|model.*not found|invalid_model|model.*does not exist|unknown model|model.*unavailable/i;
+const MODEL_HTTP_400_RE = /API Error:\s*400|error.*400.*model|400.*not_found/i;
+const AUTH_RE = /authentication_error|401\s+Unauthorized|invalid.*api.?key|401.*auth/i;
+const QUOTA_RE =
+	/rate_limit_exceeded|429\s|429\b|overloaded|529\s|quota.*exceeded|resource_exhausted|credit|balance|billing|prepaid|payAsYouGo|insufficient/i;
+const DEAD_RE = /\[exited\]|pane is dead|process completed|command not found/i;
+
+/**
+ * Classify pane text into a machine-stable {@link DeathReason}. Used by the
+ * daemon before calling `fail()` to give a typed reason instead of a raw string.
+ * An optional `hint` (e.g. `"stalled"`) short-circuits pattern matching for
+ * the watchdog's stall case, where there is no distinctive pane text.
+ */
+export function classifyDeathReason(pane: string, hint?: DeathReason): DeathReason {
+	if (hint === "stalled") return "stalled";
+	if (MODEL_NOT_SUPPORTED_RE.test(pane) || MODEL_HTTP_400_RE.test(pane))
+		return "model-not-supported";
+	if (AUTH_RE.test(pane)) return "auth";
+	if (QUOTA_RE.test(pane)) return "quota";
+	if (DEAD_RE.test(pane)) return "dead";
+	return "unknown";
 }

@@ -32,10 +32,18 @@ import { sessionEventsPath, summarizeCopilotEvent } from "./core/harness/copilot
 import { supportsBranching } from "./core/harness/types.js";
 import { parseReceiptBody } from "./core/message.js";
 import {
+	claudeAliases,
+	codexSnapshot,
+	copilotSeedFromPi,
+	type ModelEntry,
+	parseModelsJson,
+} from "./core/models/registry.js";
+import {
 	allocatePijId,
 	buildControlSpawnCommand,
 	buildPendingDescriptor,
 	buildSpawnCommand,
+	buildSpawnWarning,
 	livePeerPanes,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
@@ -120,6 +128,25 @@ function write(res: CliResult): void {
 	if (res.stderr) process.stderr.write(`${res.stderr}\n`);
 }
 
+/** Load the pi model registry from `~/.pi/agent/models.json`, merge with copilot
+ *  seed, claude aliases, and codex snapshot. Best-effort: returns empty list on
+ *  any I/O error so `pij models` degrades gracefully in CI / offline environments. */
+function loadModels(): ModelEntry[] {
+	const piModelsPath = join(homedir(), ".pi", "agent", "models.json");
+	let piRaw: unknown = null;
+	try {
+		piRaw = JSON.parse(readFileSync(piModelsPath, "utf8"));
+	} catch {
+		/* no pi install or no models.json → fall back to aliases only */
+	}
+	const piModels = parseModelsJson(piRaw);
+	const copilotModels = copilotSeedFromPi(piRaw);
+	const seenIds = new Set(piModels.map((m) => m.id).concat(copilotModels.map((m) => m.id)));
+	const claude = claudeAliases().filter((m) => !seenIds.has(m.id));
+	const codex = codexSnapshot().filter((m) => !seenIds.has(m.id));
+	return [...piModels, ...copilotModels, ...claude, ...codex];
+}
+
 function deps(): CliDeps {
 	return {
 		registry: new FsRegistry(pijHome),
@@ -128,6 +155,7 @@ function deps(): CliDeps {
 		process: new NodeProcess(),
 		cwd: process.cwd(),
 		pijHome,
+		models: loadModels(),
 	};
 }
 
@@ -331,6 +359,9 @@ function runSpawn(argv: readonly string[]): void {
 		process.stderr.write(`${req.code}: ${req.message}\n`);
 		process.exit(64);
 	}
+	// T006: warn (never block) on unknown model so the caller knows before the pane opens.
+	const spawnWarn = buildSpawnWarning(req.value.model, loadModels());
+	if (spawnWarn) process.stderr.write(`${spawnWarn}\n`);
 	const tmux = new TmuxAdapter();
 	const ownPane = tmux.currentPane();
 	if (!ownPane || !tmux.currentSession()) {

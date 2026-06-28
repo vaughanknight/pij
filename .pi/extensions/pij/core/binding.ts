@@ -5,7 +5,7 @@
 // exactly-once, and run the watchdog that re-sends the confirm line once then
 // fails the spawn (notifying the creator) — no silent dead spawn (AC-03/04/05).
 
-import type { SessionDescriptor, SessionId } from "./types.js";
+import type { DeathReason, SessionDescriptor, SessionId } from "./types.js";
 
 /** Apply a discovered/confirmed harness session id to a (pending) descriptor,
  *  producing the BOUND descriptor — the binding `pij-id ↔ harnessSessionId ↔
@@ -118,5 +118,31 @@ export function buildFailedNotice(
 	return {
 		to: descriptor.spawnedBy,
 		text: `⚠️ ${descriptor.id} failed to bind: ${reason}`,
+	};
+}
+
+/** Stall notice for a bound session that is working but gone silent (whole-life
+ *  push, T012). Includes the `boundModel` when available so the creator can see
+ *  which model stalled. Returns `null` if there is no creator to notify. */
+export function buildStalledNotice(descriptor: SessionDescriptor): CreatorNotice | null {
+	if (!descriptor.spawnedBy) return null;
+	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
+	return {
+		to: descriptor.spawnedBy,
+		text: `⏸ ${descriptor.id}${modelNote} has gone quiet (stalled — no activity past the stale threshold). Pane ${descriptor.paneId ?? "?"} is still alive but silent.`,
+	};
+}
+
+/** Dead-session notice for a bound session whose process exited (whole-life
+ *  push, T012). Includes the machine-stable `reason`. Returns `null` if no creator. */
+export function buildDeadNotice(
+	descriptor: SessionDescriptor,
+	reason: DeathReason,
+): CreatorNotice | null {
+	if (!descriptor.spawnedBy) return null;
+	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
+	return {
+		to: descriptor.spawnedBy,
+		text: `💀 ${descriptor.id}${modelNote} has exited (reason: ${reason}). The session is dead and will not recover.`,
 	};
 }

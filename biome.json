@@ -11,7 +11,8 @@
 			"!**/*.template",
 			"!agents",
 			"!docs/plans",
-			"!scratch"
+			"!scratch",
+			"!.harness"
 		]
 	},
 	"formatter": {

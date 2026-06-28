@@ -163,11 +163,11 @@ describe("driveSession state machine", () => {
 
 	it("copilot: ready + plannedHarnessSessionId → binds deterministically (no discovery)", () => {
 		// Copilot chose its session id at spawn (`--session-id`), so the daemon binds
-		// to the planned id the instant the pane is interactive — no transcript needed.
+		// to the planned id after the first-inference round-trip — no transcript needed.
 		const w = world({ pane: COPILOT_READY, transcripts: [] });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
-		const drive: DriveState = { readyAtMs: 1000 };
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
 		const out = driveSession(
 			desc({
 				harness: "copilot",
@@ -190,11 +190,11 @@ describe("driveSession state machine", () => {
 	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", () => {
 		// A branched claude pinned its forked id (`--session-id`), so it binds on the
 		// planned id like copilot — even with NO new transcript (empty discovery set).
-		// Pre-Plan-020 this claude would fall through to discovery → never bind here.
+		// Binding is gated on firstInferenceSeen (FIX-1) — one tick after the busy turn.
 		const w = world({ pane: READY, transcripts: [] });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
-		const drive: DriveState = { readyAtMs: 1000 };
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
 		const out = driveSession(
 			desc({
 				harness: "claude",
@@ -351,5 +351,132 @@ describe("observeActivity (control-plane working|idle|done persistence)", () => 
 	it("non-interactive readiness (booting/interstitial/dead) → null (driveSession owns it)", () => {
 		expect(observeActivity(desc({ lifecycle: "bound" }), "booting", NOW)).toBeNull();
 		expect(observeActivity(desc({ lifecycle: "bound" }), "dead", NOW)).toBeNull();
+	});
+});
+
+// ─── T009: first-inference gate (bad-model detector on deterministic-bind path)
+
+describe("first-inference gate (T009)", () => {
+	const BAD_MODEL_PANE =
+		'API Error: 400 {"type":"error","error":{"type":"not_found_error","message":"model: gpt-99"}}\n' +
+		"[exited]";
+
+	// The deterministic-bind path: copilot with plannedHarnessSessionId
+	it("copilot: bad-model pane after init-inject → fail with model-not-supported reason (not bound)", () => {
+		const w = world({ pane: COPILOT_READY });
+		w.setPane(BAD_MODEL_PANE); // pane shows model error after init
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		// initInjectedAt set, first inference returned error
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "uuid-999",
+			}),
+			drive,
+			w.ports,
+			reg,
+			del,
+		);
+		expect(out.kind).toBe("failed");
+		// failureReason on the descriptor
+		expect(reg.read("pij-w")?.failureReason).toBe("model-not-supported");
+	});
+
+	it("copilot: good model → still binds immediately (gate does not regress fast-bind)", () => {
+		const w = world({ pane: COPILOT_READY });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "uuid-good",
+			}),
+			drive,
+			w.ports,
+			reg,
+			del,
+		);
+		expect(out.kind).toBe("bound");
+		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
+	});
+
+	it("claude: dead pane with API Error → fail with model-not-supported reason", () => {
+		// Plain claude bad model → classifyReadiness "dead" → fail()
+		// We just need the failureReason to be machine-stable
+		const w = world({ pane: BAD_MODEL_PANE, dead: true });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const out = driveSession(desc({ harness: "claude" }), {}, w.ports, reg, del);
+		expect(out.kind).toBe("failed");
+		expect(reg.read("pij-w")?.failureReason).toBe("model-not-supported");
+	});
+
+	it("firstInferenceSeen is set when pane goes busy after init injection", () => {
+		const BUSY = "↓ 42 tokens  esc to interrupt";
+		const w = world({ pane: BUSY });
+		const drive: DriveState = { readyAtMs: 1000, before: [] };
+		driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "uuid-any",
+			}),
+			drive,
+			w.ports,
+			new FakeRegistry(),
+			new FakeDelivery(),
+		);
+		expect(drive.firstInferenceSeen).toBe(true);
+	});
+
+	// FIX-1 mutation-proof: gate blocks premature bind on good-model pane
+	// Mutation: remove the `if (!drive.firstInferenceSeen) return { kind: "waiting" }` guard
+	// → session binds on the first ready tick before the model error has time to surface → RED.
+	it("good-model pane before first inference → waiting (gate blocks premature bind)", () => {
+		const w = world({ pane: COPILOT_READY });
+		const reg = new FakeRegistry();
+		// drive has readyAtMs set (init injected) but firstInferenceSeen NOT yet set
+		const drive: DriveState = { readyAtMs: 1000 };
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "uuid-pre-gate",
+			}),
+			drive,
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+		expect(out.kind).toBe("waiting");
+		// Must NOT have bound while gate is active
+		expect(reg.read("pij-w")?.lifecycle).not.toBe("bound");
+	});
+
+	// FIX-3 mutation-proof: boundModel captured from pane footer at bind time
+	// Mutation: remove extractBoundModel call → boundModel undefined → RED.
+	it("captures boundModel from copilot pane footer at bind time", () => {
+		const PANE_WITH_MODEL = "/ commands · ? help · tab next tab  gpt-4o";
+		const w = world({ pane: PANE_WITH_MODEL });
+		const reg = new FakeRegistry();
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: "uuid-model-capture",
+			}),
+			drive,
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+		expect(out.kind).toBe("bound");
+		expect(reg.read("pij-w")?.boundModel).toBe("gpt-4o");
 	});
 });

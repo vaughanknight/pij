@@ -1,0 +1,268 @@
+// pij-control-plane — daemon whole-life stalled/dead push tests (T011).
+//
+// The impure daemon.ts tick detects stalled/dead bound sessions and pushes
+// once per transition to the creator. Tests use the Daemon class directly
+// with fake ports to drive behaviour without real tmux.
+
+import { describe, expect, it } from "vitest";
+import { FakeDelivery, FakeProcess, FakeRegistry } from "./adapters/fakes.js";
+import type { DaemonPorts } from "./core/daemon/loop.js";
+import type { SessionDescriptor } from "./core/types.js";
+import { Daemon } from "./daemon.js";
+
+const HOME = "/home/jo";
+const T0 = 1_000_000;
+const STALE_AFTER_MS = 60_000;
+
+function bound(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
+	return {
+		id: "pij-worker",
+		folder: "/repo",
+		dataDir: `${HOME}/.pij/pij-worker`,
+		eventsPath: `${HOME}/.pij/pij-worker/events.ndjson`,
+		pid: 200,
+		startedAt: "2026-06-28T00:00:00.000Z",
+		harness: "claude",
+		lifecycle: "bound",
+		harnessSessionId: "claude-sess-abc",
+		paneId: "%2",
+		spawnedBy: "pij-boss",
+		state: "working",
+		lastEventAt: new Date(T0 - STALE_AFTER_MS - 5000).toISOString(), // stale
+		...over,
+	};
+}
+
+function makePorts(opts: {
+	pane?: string;
+	dead?: boolean;
+	nowMs?: number;
+	pidAlive?: boolean;
+}): DaemonPorts {
+	return {
+		capturePane: () => opts.pane ?? "⏵ bypass permissions on",
+		isPaneDead: () => opts.dead ?? false,
+		sendText: () => {},
+		sendKey: () => {},
+		listTranscripts: () => [],
+		home: () => HOME,
+		now: () => opts.nowMs ?? T0,
+		isAlive: () => opts.pidAlive ?? true,
+	};
+}
+
+function daemon(
+	descs: SessionDescriptor[],
+	ports: DaemonPorts,
+): { delivery: FakeDelivery; daemon: Daemon } {
+	const registry = new FakeRegistry(descs);
+	const delivery = new FakeDelivery();
+	// Daemon constructor needs: pijHome, ports, registry, channel, log
+	const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
+	return { delivery, daemon: d };
+}
+
+describe("daemon tick: stalled-session push (T011/T012)", () => {
+	it("pushes a stalled notice to the creator when a bound session is working+stale", () => {
+		const desc = bound(); // state=working, lastEventAt stale
+		const ports = makePorts({ pane: "⏵ bypass permissions on" });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
+		expect(toCreator.some((e) => e.message.body.match(/stall|stalled|quiet/i))).toBe(true);
+	});
+
+	it("pushes only ONCE per stalled transition (latch)", () => {
+		// Use a booting-classified pane so classifyReadiness → "booting" and
+		// observeActivity returns null (no-op). The registry keeps state="working" +
+		// the original stale lastEventAt, so tick 2 and 3 still see working+stale.
+		// Without the latch.has("stalled") guard, ticks 2+ would push again → RED.
+		const desc = bound();
+		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		d.tick();
+		d.tick();
+		const toCreator = delivery.outbox.filter(
+			(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled|quiet/i),
+		);
+		expect(toCreator).toHaveLength(1);
+	});
+
+	it("does NOT push for a non-stalled session (working with fresh events)", () => {
+		const desc = bound({
+			state: "working",
+			lastEventAt: new Date(T0 - 5000).toISOString(), // recent
+		});
+		const ports = makePorts({ pane: "↓ 42 tokens  esc to interrupt" });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		expect(
+			delivery.outbox.filter(
+				(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled/i),
+			),
+		).toHaveLength(0);
+	});
+});
+
+describe("daemon tick: dead-session push (T011/T012)", () => {
+	it("pushes a dead notice to the creator when the bound session's pid is gone", () => {
+		const desc = bound({ state: "idle" });
+		const ports = makePorts({ pidAlive: false });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
+		expect(toCreator.some((e) => e.message.body.match(/dead|exit|gone/i))).toBe(true);
+	});
+
+	it("pushes only once for a dead session (latch)", () => {
+		const desc = bound({ state: "idle" });
+		const ports = makePorts({ pidAlive: false });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		d.tick();
+		const toCreator = delivery.outbox.filter(
+			(e) => e.message.to === "pij-boss" && e.message.body.match(/dead|exit|gone/i),
+		);
+		expect(toCreator).toHaveLength(1);
+	});
+});
+
+// ─── FIX-4 mutation-proof: failureReason persisted on whole-life push ─────────
+// Mutation: remove registry.write({ ...d, failureReason }) → descriptor missing reason → RED.
+
+describe("failureReason persisted on whole-life push (FIX-4)", () => {
+	it("dead push: registry descriptor carries failureReason after tick", () => {
+		const desc = bound({ state: "idle" });
+		// empty pane → classifyDeathReason → "unknown" (no pattern matches)
+		const ports = makePorts({ pidAlive: false, pane: "" });
+		const { registry, daemon: d } = (() => {
+			const r = new FakeRegistry([desc]);
+			const del = new FakeDelivery();
+			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
+			return { registry: r, daemon: dm };
+		})();
+		d.tick();
+		const updated = registry.read("pij-worker");
+		expect(updated?.failureReason).toBeDefined();
+	});
+
+	it("stalled push: registry descriptor carries failureReason='stalled' after tick", () => {
+		const desc = bound(); // state=working, lastEventAt stale
+		// booting pane → observeActivity no-op, session stays working+stale
+		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
+		const { registry, daemon: d } = (() => {
+			const r = new FakeRegistry([desc]);
+			const del = new FakeDelivery();
+			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
+			return { registry: r, daemon: dm };
+		})();
+		d.tick();
+		const updated = registry.read("pij-worker");
+		expect(updated?.failureReason).toBe("stalled");
+	});
+});
+
+// ─── T014: bad-model smoke (mocked capturePane, no live harness) ─────────────
+
+describe("bad-model smoke (T014 — mocked pane, no live harness)", () => {
+	// A PENDING copilot session whose pane shows a model-not-supported 400 error.
+	// The daemon's driveSession path must: detect the error → fail() with
+	// reason model-not-supported → push to the creator. No live tmux needed.
+	const BAD_PANE =
+		'Error: 400 Bad Request — model "gpt-99" not available\n' +
+		"/ commands · ? help · tab next tab";
+
+	function pendingCopilot(): SessionDescriptor {
+		return {
+			id: "pij-copilot-bad",
+			folder: "/repo",
+			dataDir: `${HOME}/.pij/pij-copilot-bad`,
+			eventsPath: `${HOME}/.pij/pij-copilot-bad/events.ndjson`,
+			pid: 300,
+			startedAt: "2026-06-28T00:00:00.000Z",
+			harness: "copilot",
+			lifecycle: "pending",
+			paneId: "%5",
+			spawnedBy: "pij-boss",
+			plannedHarnessSessionId: "uuid-bad-model",
+			initInjectedAt: "2026-06-28T00:00:01.000Z",
+		};
+	}
+
+	it("daemon driveSession detects bad model → fail with model-not-supported → creator notified", () => {
+		const ports: DaemonPorts = {
+			capturePane: () => BAD_PANE,
+			isPaneDead: () => false,
+			sendText: () => {},
+			sendKey: () => {},
+			listTranscripts: () => [],
+			home: () => HOME,
+			now: () => T0,
+			isAlive: () => true,
+		};
+		const registry = new FakeRegistry([pendingCopilot()]);
+		const delivery = new FakeDelivery();
+		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
+		d.tick();
+		// Session must be marked failed with model-not-supported reason
+		const desc = registry.read("pij-copilot-bad");
+		expect(desc?.lifecycle).toBe("failed");
+		expect(desc?.failureReason).toBe("model-not-supported");
+		// Creator must be notified
+		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
+		expect(toCreator.some((e) => e.message.body.match(/failed to bind|model-not-supported/i))).toBe(
+			true,
+		);
+	});
+});
+
+// ─── FIX-A mutation-proof: provider-failure on idle bound session (DL-003) ───
+// Mutation: remove the new `provider-failure` branch in pushWholeLifeTransition
+// → no push fires for an idle pid-alive session with a credit error → RED.
+
+describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)", () => {
+	const CREDIT_PANE =
+		"Error: prepaid credit balance exhausted — add credits at https://console.sakana.ai/billing\n⏵ bypass permissions on";
+
+	it("detects quota error in pane of idle pid-alive bound session → pushes once to creator", () => {
+		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
+		expect(toCreator.length).toBeGreaterThan(0);
+	});
+
+	it("pushes only ONCE per provider-failure (latch)", () => {
+		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		d.tick();
+		d.tick();
+		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
+		expect(toCreator).toHaveLength(1);
+	});
+
+	it("persists failureReason='quota' on the descriptor after provider-failure push", () => {
+		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
+		const { registry, daemon: d } = (() => {
+			const r = new FakeRegistry([desc]);
+			const del = new FakeDelivery();
+			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
+			return { registry: r, daemon: dm };
+		})();
+		d.tick();
+		expect(registry.read("pij-worker")?.failureReason).toBe("quota");
+	});
+
+	it("does NOT push for an idle session with no recognisable error (transient text)", () => {
+		const desc = bound({ state: "idle", lastEventAt: new Date(T0 - 5000).toISOString() });
+		const ports = makePorts({ pane: "Retrying… (attempt 2/3)", pidAlive: true });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick();
+		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
+	});
+});

@@ -11,6 +11,8 @@
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
 import { deriveSelfId } from "./discovery.js";
+import type { ModelEntry } from "./models/registry.js";
+import { validateModel } from "./models/validate.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId } from "./types.js";
 import { err, ok, type Result } from "./types.js";
 
@@ -548,4 +550,27 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 		return err("E-ARG", "usage: pij adopt <pane:%N> --harness claude [--id <pij-id>]");
 	if (!harness) return err("E-ARG", "adopt needs --harness claude|copilot");
 	return ok({ pane, harness, id, json });
+}
+
+// ─── Spawn-time model validation (warn-don't-block, T006) ───────────────────
+
+/**
+ * Validate a spawn's --model against the known list. Returns a human-readable
+ * warning string if the model is unknown, or null if it is known / not specified
+ * / the known list is empty (cannot validate). NEVER blocks spawn — the caller
+ * prints the warning and continues. The pij-id is always returned immediately.
+ */
+export function buildSpawnWarning(
+	model: string | undefined,
+	known: readonly ModelEntry[],
+): string | null {
+	if (!model) return null;
+	const result = validateModel(model, known);
+	if (result.ok) return null;
+	// Only warn when the registry can POSITIVELY confirm absence — at least one
+	// verified entry must exist. Best-effort alias lists (claude/codex, all
+	// verified=false) cannot confirm absence, so stay silent (FIX-C / INS-007).
+	if (!known.some((e) => e.verified)) return null;
+	const suggestion = result.suggestion ? ` (did you mean '${result.suggestion}'?)` : "";
+	return `warning: unknown model '${model}'${suggestion} — spawn continues; confirm the id is correct`;
 }
