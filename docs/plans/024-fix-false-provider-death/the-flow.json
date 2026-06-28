@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "kind": "flight-plan",
+  "slug": "fix-false-provider-death",
+  "created_at": "2026-06-28T11:07:39.726Z",
+  "provenance": {
+    "record_kind": "flow",
+    "harness_version": "0.6.0",
+    "branch": "main",
+    "repo": "https://github.com/AI-Substrate/pij.git",
+    "created_at": "2026-06-28T11:07:39.726Z",
+    "agent": "the-flow",
+    "plan_id": null
+  },
+  "events": [
+    {
+      "id": "CRT-001",
+      "kind": "created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T11:07:39.736Z",
+      "details": {
+        "kind": "flight-plan",
+        "slug": "fix-false-provider-death"
+      }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T11:07:39.875Z",
+      "details": {
+        "node": "ship",
+        "type": "ship"
+      }
+    },
+    {
+      "id": "NOD-002",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T11:07:40.016Z",
+      "details": {
+        "node": "build",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T11:07:40.167Z",
+      "details": {
+        "node": "plan",
+        "type": "plan"
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-28T11:07:40.323Z",
+      "details": {
+        "from": "",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T11:07:50.805Z",
+      "details": {
+        "node": "build",
+        "fields": [
+          "comments"
+        ]
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ship",
+      "type": "ship",
+      "label": "Ship",
+      "status": "assumed",
+      "next": [],
+      "created_at": "2026-06-28T11:07:39.875Z",
+      "modified_at": "2026-06-28T11:07:39.875Z",
+      "zone": "postflight"
+    },
+    {
+      "id": "build",
+      "type": "phase",
+      "label": "Fix: liveness-gate provider-failure peek + transient/terminal split + reconcile",
+      "status": "known",
+      "next": [
+        "ship"
+      ],
+      "created_at": "2026-06-28T11:07:40.016Z",
+      "modified_at": "2026-06-28T11:07:50.805Z",
+      "comments": [
+        {
+          "at": "2026-06-28T11:07:50.805Z",
+          "text": "QUEUED: start only after plan-022 codex build lands + reviews — shares daemon.ts/state.ts/binding.ts",
+          "kind": "note"
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "label": "Plan",
+      "status": "done",
+      "next": [
+        "build"
+      ],
+      "created_at": "2026-06-28T11:07:40.167Z",
+      "modified_at": "2026-06-28T11:07:40.167Z"
+    }
+  ],
+  "nav": {
+    "now": "plan",
+    "next": "build",
+    "intent": "Fix false 'exited (quota)' death on a live/working session (defect in plan 023 whole-life notify); queued after plan-022 codex",
+    "bag": {
+      "mode": "Simple",
+      "status": "active"
+    }
+  }
+}

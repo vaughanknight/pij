@@ -107,13 +107,23 @@ pij adopt "$TMUX_PANE" --harness claude    # → your pij-id; peers' sends now t
 | Compact a colleague | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` |
 | Compact YOURSELF (+ auto-continue) | `pij compact-self [instruction]` | `pij compact-self [instruction]` — same in both modes |
 | Peek (non-disturbing) | `pij tail <id>` | `pij tail <id> [--follow]` (reads the bound transcript) |
-| Close (teardown) | `pij_close({ to })` | `tmux kill-pane -t <pane>` + `rm ~/.pij/<id>.json` |
+| Close (teardown) | `pij_close({ to })` | `pij close <id>` (ownership-aware; add `--force` to close a peer you didn't spawn) |
+
+**Discover models with `pij models` — never grep config or hardcode strings.**
+`pij models` (add `--json` to parse) lists every model id + provider pij knows —
+`claude` (`claude-opus-4-8`, `claude-sonnet-4-6`, …), `copilot` (`gpt-5.5`, …),
+`codex`, and `openrouter` incl. pi presets (`@preset/glm-1m`). Run it at fleet
+setup to confirm the exact id for `--coder-model` / `--reviewer-model` before you
+spawn. (`*`-marked rows are a best-effort alias list, not a live registry —
+canary-verify the footer regardless.)
 
 **Model names differ by mode.** The default-model table below is for pi/copilot
 peers (`github-copilot/…` strings via `pij_spawn`). In control-plane mode the
-colleague is a real **Claude** *or* **Copilot** process: `--harness claude` takes
-claude names (`sonnet`/`opus`/`haiku` or a full id); `--harness copilot` takes
-copilot names (`gpt-5.5`, `claude-sonnet-4.6`, …). `pij spawn` auto-applies the
+colleague is a real **Claude**, **Copilot**, **codex**, or **pi** process:
+`--harness claude` takes claude names (`opus`/`sonnet`/`haiku` or a full id like
+`claude-opus-4-8`); `--harness copilot` takes copilot names (`gpt-5.5`,
+`claude-sonnet-4.6`, …); `--harness pi` takes a pi model/preset (e.g.
+`@preset/glm-1m`). `pij spawn` auto-applies the
 harness's blanket-permission flag (`--dangerously-skip-permissions` for claude,
 `--yolo` for copilot — a daemon-driven pane has no human to approve prompts). The
 canary-verify, compact-early, and reuse-never-close disciplines below apply
@@ -163,9 +173,12 @@ later `tidy` can find and close our windows even after a crash.
 - **Heal.** A dead/stale colleague — or one that fails its canary — is closed and
   `pij_spawn`-replaced on next need; **persist the updated roster before**
   re-delivering the packet (P9).
-- **Teardown — end only.** When tidying up after the run, `pij_close` **only**
-  colleagues with `spawnedByUs === true`; leave *provided* peers for their owner
-  (close is ownership-aware and warns on non-owner anyway).
+- **Teardown — end only.** When tidying up after the run, close **only**
+  colleagues with `spawnedByUs === true` (use the mode-appropriate verb —
+  `pij_close({ to })` in pi mode, `pij close <id>` in control-plane mode); leave
+  *provided* peers for their owner. Close is ownership-aware either way: pi's
+  `pij_close` warns on a non-owner, while the CLI `pij close` **refuses** a peer
+  you didn't spawn unless you pass `--force`.
 
 > **Real peers, not builtin subagents.** Builtin subagents are **read-blind** in
 > this harness (they cannot read files), so a coder/reviewer must be a real pij

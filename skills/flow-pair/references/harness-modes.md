@@ -72,19 +72,29 @@ availability is the definitive signal.)
 | **Run a control command** | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` (raw, executes in the pane) |
 | **Peek without disturbing** | `pij tail <id>` | `pij tail <id> [--follow] [--lines N]` (reads the colleague's bound transcript — Claude JSONL or Copilot `events.jsonl`) |
 | **Inspect state / liveness** | `pij state <id>` / `pij list` | same — the CLI verbs are shared |
-| **Close / teardown** | `pij_close({ to })` (ownership-aware) | `tmux kill-pane -t <pane>` + `rm -f ~/.pij/<id>.json && rm -rf ~/.pij/<id>` |
+| **Close / teardown** | `pij_close({ to })` (ownership-aware) | `pij close <id>` (ownership-aware: kills the pane + drops the descriptor; refuses a peer you didn't spawn unless `--force`) |
 
 ## Model names
+
+**Discover, don't guess — `pij models`.** Run `pij models` (or `pij models
+--json`) to list every model id pij knows **with its provider** — `claude`,
+`copilot`, `codex`, and `openrouter` (incl. pi presets like `@preset/glm-1m`).
+That is the authoritative source for the `--model` value of any harness; never
+grep `~/.pi/agent/models.json` or hardcode a string from memory. `*`-marked rows
+are a best-effort alias list (not a live registry), so canary-verify the spawned
+pane's footer regardless.
 
 - **pi mode** colleagues are spawned through pi/Copilot, so `--model` /
   `pij_spawn({ model })` takes the Copilot strings (e.g.
   `github-copilot/claude-sonnet-4.6:xhigh`, `github-copilot/gpt-5.5:xhigh`).
-- **control-plane mode** colleagues are real **Claude** or **Copilot** processes:
-  - `--harness claude` → Claude names: `sonnet`, `opus`, `haiku`, or a full id
-    (`claude-sonnet-4-6`).
+- **control-plane mode** colleagues are real **Claude**, **Copilot**, **codex**,
+  or **pi** processes:
+  - `--harness claude` → Claude names: `opus`, `sonnet`, `haiku`, or a full id
+    (`claude-opus-4-8`, `claude-sonnet-4-6`).
   - `--harness copilot` → Copilot names: `gpt-5.5`, `claude-sonnet-4.6`, etc.
+  - `--harness pi` → a pi model/preset (e.g. `@preset/glm-1m`).
   Cross-model (and now cross-**harness**) review still applies — pick a reviewer
-  deliberately ≠ the coder (e.g. a Copilot reviewer over a Claude coder).
+  deliberately ≠ the coder (e.g. a pi/GLM reviewer over a Claude coder).
 
 `pij spawn` always launches a driven pane with blanket permissions —
 `claude --dangerously-skip-permissions`, `copilot --yolo` (= --allow-all-tools/

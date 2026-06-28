@@ -162,3 +162,63 @@ visibility** — not the core relay. Two highest-priority themes across all thre
 peers a trustworthy `working | idle | done` + last-activity signal** (the daemon
 already has both signals — footer model and footer busy/idle — it just doesn't
 persist them).
+
+## Fourth run — flow-pair coder (pij-1f3q58b) — 🐞 FALSE "💀 exited (quota)" on a live, working session
+
+### Symptom
+
+A spawned claude coder (Opus 4.8, control-plane) was actively building (footer
+`✽ Schlepping… 16m · ↑76.5k tokens`, `pij state` = `working · active · last event
+5s ago · pid alive`) when the daemon pushed **`💀 pij-1f3q58b has exited (reason:
+quota). The session is dead and will not recover.`** to the creator and stamped a
+**sticky `failure: quota`** on the descriptor. The session never died — it hit a
+transient rate-limit, the harness retried through it, and it kept making forward
+progress. The death notice was simply wrong (and the most dangerous wording —
+"will not recover" — for a 429 that did recover).
+
+### Root cause — the provider-failure peek classifies on scrollback text alone, with no liveness corroboration
+
+`PijDaemon.pushProviderFailure` (`daemon.ts:175`, the FIX-A / DL-005 peek) runs
+every tick for any spawned+paned session: it captures the pane and calls
+`classifyDeathReason` (`state.ts:84`). `QUOTA_RE` (`state.ts:75`) matches the
+**retryable** error class — `429`, `overloaded`, `529`, `rate_limit_exceeded` —
+which is exactly what Claude Code prints *then auto-retries through*, leaving the
+text in scrollback. The peek treats `quota` as `isFatal` (`daemon.ts:183`) and
+immediately fires `buildDeadNotice` + persists `failureReason`. Two defects:
+
+1. **Transient ≠ terminal (core bug).** The peek has **no liveness corroboration**.
+   The *dead* branch is correctly gated on `!pidAlive` (authoritative, `daemon.ts:135`);
+   the *provider-failure* branch fires on scrollback pattern alone even while the
+   pid is alive AND `lastEventAt` is advancing AND `state === "working"`. A session
+   that is *demonstrably still progressing* cannot be terminally dead — but the peek
+   declares it so. (The "Retrying… → unknown never fires" guard at `daemon.ts:172`
+   is defeated: the sibling `429/overloaded` line on the same screen still matches
+   `QUOTA_RE`.)
+2. **Sticky, never reconciled.** Once `failureReason` is written and the
+   `provider-failure` latch is set, nothing clears them when the session keeps
+   emitting events / flips back to `working`. `pij state` shows `failure: quota` on
+   a healthy session indefinitely.
+
+Why our just-shipped work didn't catch it: FIX-A/DL-005 was built for **Case-3** —
+a worker that hits a *fatal* error then **sits idle forever** (pid alive, never
+stalls, never dies), invisible to the dead/stalled branches. That case is real and
+the fix is right *for it*. But it keys on **pattern alone**, so it can't tell
+"hit fatal error and is now stuck idle" from "hit transient error, retried, still
+working" — and over-fires on the latter.
+
+### Fix direction (feeds plan 023 fail-loud-model)
+
+- **Require non-recovery evidence before declaring terminal death.** Only fire the
+  provider-failure death notice when the pattern persists AND the session is *not*
+  progressing — e.g. `state !== "working"` AND `lastEventAt` stale past a threshold
+  (mirror the stalled-branch corroboration). A session with events advancing is
+  never "will not recover".
+- **Split retryable vs terminal inside `QUOTA_RE`.** `429`/`overloaded`/`529`/
+  `rate_limit_exceeded` are *transient* (harness retries); only the
+  `insufficient credit|balance|billing|prepaid|payAsYouGo` subclass is truly
+  unrecoverable. Classify the transient class as non-fatal (or fatal-only-when-stuck).
+- **Reconcile the flag on recovery.** When a session with `failureReason` set
+  resumes emitting events, clear `failureReason` and the `provider-failure` latch
+  (liveness wins over a stale scrollback line).
+- **Soften the wording** until non-recovery is proven: "appears stuck on a provider
+  error (quota)" ≠ "has exited … will not recover".
