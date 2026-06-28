@@ -157,20 +157,15 @@ flow-pair-link:
     ln -sf "$(realpath skills/flow-pair)" .pi/skills/flow-pair
     @echo "✓ .pi/skills/flow-pair → $(realpath skills/flow-pair)"
 
-# Install skills/flow-pair MACHINE-WIDE for the tmux control-plane harnesses
-# (Claude Code + Copilot CLI) by symlinking it into their global skills dirs
-# (~/.claude/skills, ~/.copilot/skills). Symlinks (not copies) so the live skill
-# always tracks this repo — re-run only to (re)create a missing link. This is the
-# control-plane analogue of `flow-pair-link` (which targets pi's .pi/skills/).
-# Run after each build stage when dogfooding flow-pair from Claude/Copilot.
+# Install skills/flow-pair MACHINE-WIDE to EVERY detected agent (Claude Code +
+# Copilot CLI + codex + pi + …) via `npx skills` — the canonical installer that
+# manages ~/.agents/skills (the shared store) + per-agent symlink bridges, tracked
+# in ~/.agents/.skill-lock.json. `-a '*'` fans out to all agents (codex included,
+# which the old hand-rolled ~/.claude+~/.copilot loop missed); default is symlink
+# (no --copy) so the live skill always tracks this repo. Supersedes the manual
+# per-dir symlink loop. Run after a build stage when dogfooding from any harness.
 flow-pair-install:
-    @set -eu; src="$(realpath skills/flow-pair)"; \
-      for dir in "$HOME/.claude/skills" "$HOME/.copilot/skills"; do \
-        if [ -d "$(dirname "$dir")" ]; then \
-          mkdir -p "$dir"; ln -sfn "$src" "$dir/flow-pair"; \
-          echo "✓ $dir/flow-pair → $src"; \
-        else echo "– skipped $dir (host not present)"; fi; \
-      done
+    npx skills@latest add "$(realpath skills)" -a '*' -g -y -s flow-pair
 
 # Install the flow front-door skills GLOBALLY for pi only (machine-wide), via
 # `npx skills`. Mirrors ~/github/tools `install-skills`, but scoped to pi
