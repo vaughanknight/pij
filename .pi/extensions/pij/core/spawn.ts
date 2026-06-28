@@ -185,6 +185,10 @@ export interface PendingDescriptorInput {
 	readonly pid: number;
 	/** ISO-8601 — the daemon's clock at spawn. */
 	readonly startedAtIso: string;
+	/** The spawner's pij-id (= PIJ_PARENT_ID). Records ownership so `pij close`
+	 *  can distinguish a worker you spawned from one you don't own (a pi worker
+	 *  self-registers this; claude/copilot get it written here at spawn). */
+	readonly spawnedBy?: SessionId;
 	/** Transcript paths present at spawn (BEFORE the pane exists) — seeds
 	 *  deterministic new-path discovery (AC-03 / review H1). Claude only. */
 	readonly transcriptsAtSpawn?: readonly string[];
@@ -280,6 +284,7 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		harness: input.harness,
 		paneId: input.paneId,
 		lifecycle: "pending",
+		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.transcriptsAtSpawn ? { transcriptsAtSpawn: input.transcriptsAtSpawn } : {}),
 		...(input.plannedHarnessSessionId
 			? { plannedHarnessSessionId: input.plannedHarnessSessionId }

@@ -172,7 +172,8 @@ export type PijErrorCode =
 	| "E-AMBIG" // cannot resolve "self" (env unset + multiple local)
 	| "E-NOTMUX" // not inside a tmux session (required for pij_spawn)
 	| "E-FULL" // split layout full — 2 workers already on the right (cap 3 panes)
-	| "E-BRANCH"; // branch-from-self refused (unsupported harness / unresolved / mismatch / unbound)
+	| "E-BRANCH" // branch-from-self refused (unsupported harness / unresolved / mismatch / unbound)
+	| "E-OWN"; // close refused: caller does not own the target session (re-run with --force)
 
 /** Tagged-union result used across the core (Pattern P4: no throws). */
 export type Result<T> =

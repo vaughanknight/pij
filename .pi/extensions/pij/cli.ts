@@ -20,6 +20,7 @@ import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { applyBinding, resolveAdoptSessionId } from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, parseArgs } from "./core/cli.js";
+import { parseCloseArgs, planClose } from "./core/close.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
 import { filterByFolder, resolveSelf } from "./core/discovery.js";
@@ -65,6 +66,7 @@ const USAGE = `pij — session messaging + tmux control plane
 
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot [--model <m>]   spawn a colleague (pi self-registers; claude/copilot daemon-bound)
+  pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h>               register your own pane so peers can reach you
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
@@ -557,6 +559,9 @@ function runSpawn(argv: readonly string[]): void {
 			eventsPath: join(dataDir, "events.ndjson"),
 			pid: panePid,
 			startedAtIso: new Date().toISOString(),
+			// Record who spawned this worker so `pij close` is ownership-aware (a pi
+			// child self-registers spawnedBy; claude/copilot get it written here).
+			spawnedBy: parentId,
 			transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
 			plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
 			branchedFrom: branchFrom,
@@ -685,6 +690,57 @@ function runAdopt(argv: readonly string[]): void {
 	process.exit(0);
 }
 
+/** `pij close <id> [--force]` — tear down a colleague's tmux pane and drop its
+ *  descriptor with just the pij-id (the first-class replacement for hand-rolled
+ *  `tmux kill-pane` + `rm ~/.pij/<id>.json`). Ownership-guarded by `planClose`:
+ *  you may close a worker you spawned; closing one you don't own is refused
+ *  (E-OWN) unless `--force`. Impure (tmux killPane + registry.remove), so it
+ *  lives in the bin; the decision is the pure core. */
+function runClose(argv: readonly string[]): void {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		process.stdout.write(
+			"pij close — tear down a colleague's pane + descriptor by pij-id\n\n" +
+				"USAGE\n  pij close <id> [--force]\n\n" +
+				"FLAGS\n  --force   close a session you did NOT spawn (default: refuse with E-OWN)\n",
+		);
+		return;
+	}
+	const parsed = parseCloseArgs(argv);
+	if (!parsed.ok) {
+		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
+		process.exit(64);
+	}
+	const reg = new FsRegistry(pijHome);
+	const descriptor = reg.read(parsed.value.id);
+	// Resolve who's asking (PIJ_SESSION_ID → lone-local → $TMUX_PANE) for the
+	// ownership check. Unresolved self is fine — a non-owner without --force is
+	// refused either way, and --force always proceeds.
+	const selfRes = resolveSelf(
+		process.env.PIJ_SESSION_ID,
+		filterByFolder(reg.list(), process.cwd()),
+		process.env.TMUX_PANE,
+	);
+	const self = selfRes.ok ? selfRes.value : undefined;
+	const plan = planClose(descriptor, parsed.value.id, self, parsed.value.force);
+	if (!plan.ok) {
+		process.stderr.write(`${plan.code}: ${plan.message}\n`);
+		// E-NOID / E-SELF / E-OWN are all precondition refusals → exit 2.
+		process.exit(2);
+	}
+	if (plan.value.warning) process.stderr.write(`${plan.value.warning}\n`);
+	const tmux = new TmuxAdapter();
+	const killed = tmux.killPane(plan.value.paneId); // idempotent: swallows "already gone"
+	if (!killed.ok) {
+		process.stderr.write(`${killed.code}: ${killed.message}\n`);
+		process.exit(2);
+	}
+	reg.remove(plan.value.id);
+	process.stdout.write(
+		`closed ${plan.value.id} — killed pane ${plan.value.paneId}, removed descriptor\n`,
+	);
+	process.exit(0);
+}
+
 /** `pij tail <pij-id>` for a BOUND control-plane session (T022, AC-09): a coding
  *  harness writes its OWN per-session JSONL transcript, not pij's events.ndjson —
  *  claude under ~/.claude/projects/…/<sid>.jsonl, copilot under
@@ -757,6 +813,10 @@ function main(): void {
 	}
 	if (process.argv[2] === "adopt") {
 		runAdopt(process.argv.slice(3));
+		return;
+	}
+	if (process.argv[2] === "close") {
+		runClose(process.argv.slice(3));
 		return;
 	}
 	if (process.argv[2] === "compact-self") {
