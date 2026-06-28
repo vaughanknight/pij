@@ -22,11 +22,24 @@ describe("liveness", () => {
 	it("active when pid alive + recent event", () => {
 		expect(liveness(true, 5_000)).toBe("active");
 	});
-	it("stale when pid alive but newest event too old", () => {
-		expect(liveness(true, STALE_AFTER_MS + 1)).toBe("stale");
+	// `stale` means "should be making progress but isn't" (a stall — mirrors
+	// isStalled), NOT merely "quiet". It only fires for a WORKING peer gone silent.
+	it("stale when WORKING + newest event too old (a stall)", () => {
+		expect(liveness(true, STALE_AFTER_MS + 1, STALE_AFTER_MS, true)).toBe("stale");
 	});
-	it("stale when pid alive but no events", () => {
-		expect(liveness(true, null)).toBe("stale");
+	it("stale when WORKING + no events", () => {
+		expect(liveness(true, null, STALE_AFTER_MS, true)).toBe("stale");
+	});
+	it("active when WORKING but event is recent (making progress)", () => {
+		expect(liveness(true, 5_000, STALE_AFTER_MS, true)).toBe("active");
+	});
+	// The fix (INS-001): a bound, pid-alive, IDLE/done peer that is simply quiet
+	// past the threshold is reachable — it must read `active`, never `stale`.
+	it("active (NOT stale) when an idle/done peer is quiet past the threshold", () => {
+		expect(liveness(true, STALE_AFTER_MS + 1)).toBe("active");
+	});
+	it("active (NOT stale) when an idle peer has no events at all", () => {
+		expect(liveness(true, null)).toBe("active");
 	});
 });
 

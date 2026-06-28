@@ -17,18 +17,27 @@ export function isWorking(state: SessionState): boolean {
 	return WORKING_STATES.has(state);
 }
 
-/** Derive liveness from a pid probe + the age of the newest event.
- *  - pid gone           → dead
- *  - no events / too old → stale
- *  - recent event        → active
- *  (spec AC-10; mirrors minih run-liveness) */
+/** Derive liveness from a pid probe + the age of the newest event + whether the
+ *  peer is mid-work.
+ *  - pid gone                     → dead
+ *  - WORKING but quiet past stale → stale (a stall — mirrors {@link isStalled})
+ *  - otherwise (pid alive)        → active
+ *
+ *  `stale` means "should be making progress but isn't", NOT merely "quiet". A
+ *  bound, pid-alive peer that has finished its turn (idle/done) is reachable and
+ *  reads `active` however long it sits — only a peer that *claims to be working*
+ *  yet has gone silent past the threshold is suspect. Gating on `working` fixes the
+ *  false-stale on healthy idle control-plane peers: a `done` colleague's normal
+ *  quiet (its `lastEventAt` only advances while the daemon sees the pane `busy`)
+ *  no longer reads as stale (observation INS-001; spec AC-10). */
 export function liveness(
 	pidAlive: boolean,
 	latestEventAgeMs: number | null,
 	staleAfterMs: number = STALE_AFTER_MS,
+	working = false,
 ): LivenessVerdict {
 	if (!pidAlive) return "dead";
-	if (latestEventAgeMs === null || latestEventAgeMs > staleAfterMs) return "stale";
+	if (working && (latestEventAgeMs === null || latestEventAgeMs > staleAfterMs)) return "stale";
 	return "active";
 }
 

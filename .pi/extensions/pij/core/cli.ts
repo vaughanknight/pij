@@ -12,7 +12,7 @@ import { applyBinding } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, resolveSelf } from "./discovery.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
-import { activityOf, liveness } from "./state.js";
+import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
 import {
 	err,
 	ok,
@@ -376,8 +376,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				kindNote = "text";
 			}
 			const initial = (target.state ?? "idle") === "working" ? "queued" : "delivered";
+			// Informational "quiet peer" note keys on event AGE, not the liveness
+			// label: an idle/done peer is now `active` (INS-001), but a long-quiet
+			// peer is still worth flagging to the sender. The send lands regardless.
+			const targetAgeMs = descAgeMs(target, now);
 			const warn =
-				live === "stale"
+				targetAgeMs === null || targetAgeMs > STALE_AFTER_MS
 					? " (note: no recent pij events from peer — normal for a control-plane peer; the send still lands)"
 					: "";
 			const follow = cmd.wait
@@ -524,7 +528,14 @@ function pad(s: string, n: number): string {
 }
 
 function liveOf(deps: CliDeps, d: SessionDescriptor, nowMs: number): "active" | "stale" | "dead" {
-	return liveness(deps.process.isAlive(d.pid), descAgeMs(d, nowMs));
+	// `stale` is reserved for a peer that claims to be working but has gone quiet
+	// (a stall). An idle/done peer that is simply quiet stays `active` (INS-001).
+	return liveness(
+		deps.process.isAlive(d.pid),
+		descAgeMs(d, nowMs),
+		STALE_AFTER_MS,
+		d.state === "working",
+	);
 }
 
 function renderEventLine(e: PijEvent, nowMs: number): string {
