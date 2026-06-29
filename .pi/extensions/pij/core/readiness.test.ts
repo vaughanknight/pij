@@ -61,12 +61,26 @@ const CLAUDE_NARROW_BUSY = `
 `;
 
 // Codex CLI v0.142.3 fixtures, captured LIVE from a pij-spawned codex pane
-// (Plan 022, T013): idle = the `›` composer + `Use /skills` hint + a
-// `<model> <effort> · <cwd>` footer; a live turn = `Working (Ns • esc to
-// interrupt)`. The boot box (`>_ OpenAI Codex`) is deliberately NOT a ready
-// marker — it shows BEFORE the composer is interactive, so binding off it would
-// inject init into a pane that can't yet receive keystrokes.
+// (Plan 022, T013; refreshed after the readiness-deadlock fix): idle = the `›`
+// composer + a ROTATING placeholder hint + a `<model> <effort> · <cwd>` footer;
+// a live turn = `Working (Ns • esc to interrupt)`. The boot box (`>_ OpenAI
+// Codex`) is deliberately NOT a ready marker — it shows BEFORE the composer is
+// interactive, so binding off it would inject init into a pane that can't yet
+// receive keystrokes.
+//
+// CODEX_READY is the CURRENT live idle pane: the placeholder has rotated to
+// `Find and fix a bug in @filename` and `Use /skills` is GONE — exactly the
+// regression that left codex `booting` forever. Readiness now anchors on the
+// composer FOOTER (`· ~/cwd`), which survives the rotation.
 const CODEX_READY = `
+• You have 1 usage limit reset available. Run /usage to use one.
+› Find and fix a bug in @filename
+  gpt-5.5 xhigh · ~/pi-hacking/pij
+`;
+
+// The OLDER idle pane (placeholder happened to be `Use /skills`) must STILL read
+// ready — the `Use /skills` token is retained as a bonus marker for back-compat.
+const CODEX_READY_SKILLS_HINT = `
 • You have 1 usage limit reset available. Run /usage to use one.
 › Use /skills to list available skills
   gpt-5.5 medium · ~/pi-hacking/pij
@@ -147,8 +161,16 @@ describe("classifyReadiness", () => {
 	});
 
 	// ─── codex (Plan 022, T013 — R-1 resolved against the live pane) ────────────
-	it("codex idle composer ('› Use /skills' + footer) → ready", () => {
+	it("codex idle composer (rotated placeholder + '· ~/cwd' footer) → ready", () => {
+		// THE deadlock regression: the placeholder rotated to `Find and fix a bug in
+		// @filename` so `Use /skills` is gone. Anchoring on the composer FOOTER keeps
+		// this `ready`. RED if readiness still depended on `Use /skills` (→ booting →
+		// codex never injects init, never binds, all sends buffered forever).
 		expect(classifyReadiness(CODEX_READY)).toBe("ready");
+	});
+
+	it("codex idle with the older 'Use /skills' placeholder → still ready (back-compat)", () => {
+		expect(classifyReadiness(CODEX_READY_SKILLS_HINT)).toBe("ready");
 	});
 
 	it("codex live turn ('Working (Ns • esc to interrupt)') → busy, even with the footer present", () => {

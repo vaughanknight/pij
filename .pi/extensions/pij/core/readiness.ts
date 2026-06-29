@@ -24,21 +24,30 @@ export type ReadinessState = "booting" | "interstitial" | "ready" | "busy" | "de
  *  survives a narrow split pane that truncates `shift+tab to cycle` → `shift+tab
  *  to`, because `bypass permissions on` appears earlier on the line.
  *
- *  Codex (Plan 022, T013 — R-1 resolved against the live pane): its INTERACTIVE
- *  composer renders a `Use /skills` hint (the codex analogue of claude's `Try "…"`
- *  placeholder) next to a `›` prompt glyph. We match the codex-SPECIFIC `Use /skills`
- *  token ALONE and deliberately do NOT list the bare `›`: classifyReadiness is
- *  harness-agnostic (the daemon runs EVERY pane through it), and `›` is a single
- *  generic glyph a claude/copilot pane can emit in its own output (a breadcrumb, a
- *  quote) — listing it risked a premature `ready` on a non-codex pane (review note
- *  dlg-0002, LOW). `Use /skills` persisted on the live idle composer, so dropping `›`
- *  does not weaken codex bind. The hint appears only once codex accepts input — NOT
- *  during the boot banner (`>_ OpenAI Codex`) — so it signals true readiness without
- *  the premature-inject hazard a boot-banner marker would carry. The busy guard below
- *  still wins for `Working (Ns • esc to interrupt)`, so it never fires mid-turn even
- *  though the composer line persists during a turn. */
+ *  Codex (Plan 022, T013; FIXED here after a live v0.142.3 deadlock): the codex
+ *  idle marker is its INTERACTIVE composer FOOTER — `<model> <effort> · <cwd>`
+ *  (e.g. `gpt-5.5 xhigh · ~/pi-hacking/pij`), matched by {@link CODEX_COMPOSER_FOOTER}.
+ *  The ORIGINAL marker was the `Use /skills` hint — but that hint is a ROTATING
+ *  placeholder: codex cycles it with `Find and fix a bug in @filename`,
+ *  `Explain @filename`, … so on a live pane it had rotated AWAY, `Use /skills`
+ *  never matched, the daemon read codex as `booting` FOREVER, never injected init,
+ *  codex never took a turn, never wrote a rollout, never bound — and every send
+ *  stayed buffered pre-bind (the reported "codex peers never bind" bug). The
+ *  composer footer, by contrast, PERSISTS across every placeholder rotation, so it
+ *  is the stable anchor; `Use /skills` is kept below only as a bonus (harmless when
+ *  it does show). We anchor the footer on the `·` (U+00B7) middot + a `~/` or `/`
+ *  cwd path — NOT a bare `›` glyph, which a non-codex pane can emit in its own
+ *  output (review note dlg-0002, LOW). The footer is absent from the boot banner
+ *  (`>_ OpenAI Codex` → stays `booting`, no premature inject) and present once the
+ *  composer accepts input; the busy guard below still wins for `Working (Ns • esc
+ *  to interrupt)`, so it never fires mid-turn though the footer persists. */
 const READY_RE =
 	/bypass permissions on|shift\+tab to cycle|auto mode on|for shortcuts|tab next tab|\? help|Use \/skills/i;
+/** Codex's interactive composer footer: `<model> <effort> · <cwd>`. The `·`
+ *  (U+00B7) middot separator followed by a `~/` or `/` path is codex-specific and
+ *  appears ONLY once the composer is interactive — see the READY_RE note above for
+ *  why this (not the rotating `Use /skills` placeholder) is the codex idle anchor. */
+const CODEX_COMPOSER_FOOTER = /·\s+~?\/\S/;
 /** A live turn — the negative guard so an in-progress turn isn't read as idle.
  *  `esc to interrupt` = claude (WIDE pane); `esc cancel` (the `◎ Working` footer)
  *  = copilot. In a NARROW split pane (how pij spawns), claude truncates
@@ -63,6 +72,6 @@ export function classifyReadiness(paneText: string): ReadinessState {
 	if (DEAD_RE.test(paneText)) return "dead";
 	if (classifyInterstitial(paneText).action !== "none") return "interstitial";
 	if (BUSY_RE.test(paneText)) return "busy";
-	if (READY_RE.test(paneText)) return "ready";
+	if (READY_RE.test(paneText) || CODEX_COMPOSER_FOOTER.test(paneText)) return "ready";
 	return "booting";
 }
