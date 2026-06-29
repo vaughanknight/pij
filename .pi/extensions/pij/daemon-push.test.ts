@@ -338,3 +338,34 @@ describe("daemon tick: provider-failure peek covers a pi worker (DL-005)", () =>
 		expect(delivery.outbox).toHaveLength(0);
 	});
 });
+
+// ─── Phase 1 (#5): both daemon paths honour the tightened classifier ──────────
+// AC-01 covers BOTH the dead branch (pushWholeLifeTransition) and the peek branch
+// (pushProviderFailure): neither may assert a confident `quota` off ambient
+// billing-domain scrollback. Prose with no real error frame → unknown / no push.
+
+const PROSE_PANE = "split billing report\ncredit memo #4471\ninsufficient line items detected";
+
+describe("daemon dead branch: billing prose never reports quota (#5, task 1.2)", () => {
+	it("a dead session whose pane shows only billing-domain prose → failureReason unknown", () => {
+		const desc = bound({ state: "idle" });
+		const ports = makePorts({ pidAlive: false, pane: PROSE_PANE });
+		const registry = new FakeRegistry([desc]);
+		const d = new Daemon(`${HOME}/.pij`, ports, registry, new FakeDelivery(), () => {});
+		d.tick();
+		expect(registry.read("pij-worker")?.failureReason).toBe("unknown");
+	});
+});
+
+describe("daemon peek branch: billing prose never reports quota (#5, task 1.2b)", () => {
+	it("a stale-idle pid-alive session with only billing prose → no provider-failure push", () => {
+		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
+		const ports = makePorts({ pidAlive: true, pane: PROSE_PANE });
+		const registry = new FakeRegistry([desc]);
+		const delivery = new FakeDelivery();
+		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
+		d.tick();
+		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
+		expect(registry.read("pij-worker")?.failureReason).toBeUndefined();
+	});
+});

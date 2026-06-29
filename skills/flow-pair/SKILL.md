@@ -67,8 +67,10 @@ re-review.
   (`command: "reload"`) and confirm it survives, *then* compact — otherwise the
   compact's render can crash it. Freshly-spawned sessions already have the fix.
 - **Always confirm `command:compact, executed:true`** (via `pij tail <id>`) before
-  sending the next pointer, and confirm the session flips to `working` within
-  ~10s of dispatch (send a one-byte nudge if it is still idle).
+  sending the next pointer. After dispatch, **do not poll** for the session to flip
+  to `working` and **do not nudge an "idle" peer** — trust the daemon's push and
+  pipeline instead (§ Pipeline while a colleague is busy — the daemon pushes, you
+  don't poll).
 
 ## Harness mode — pi tools vs the tmux control plane
 
@@ -147,9 +149,20 @@ later `tidy` can find and close our windows even after a crash.
 
 **Lifecycle:**
 
-- **Acquire — provided-or-spawn, lazy.** If a role's peer id was provided, use it.
-  Otherwise spawn the *first time that role is needed* (coder on first dispatch,
-  reviewer on first review) — **never hijack ambient idle peers**. *pi mode:*
+- **Acquire — provided-or-spawn, lazy (truly lazy for the reviewer).** If a role's
+  peer id was provided, use it. Otherwise spawn the *first time that role is needed*
+  — the coder on the first `DELEGATE`, the reviewer on the first `REVIEW` — and
+  **never hijack ambient idle peers**.
+  **Mandate: do NOT pre-spawn the reviewer alongside the coder.** It is tempting to
+  stand up both peers at fleet setup "so they're ready," but the reviewer has
+  nothing to do until the coder's first packet comes *back* for review — typically a
+  whole phase (many minutes) later. **A spawned-but-idle peer is not free:** it is a
+  live session holding a warm context that gets **re-sent and re-cached on every
+  compact / keep-alive cycle**, and the prompt cache's short TTL means an untouched
+  session's warmth lapses and must be **rewritten** to stay usable — so a reviewer
+  pre-spawned a phase early quietly burns cache-token writes (plus a tmux pane) the
+  entire time, with zero reviews to show for it. Spawn the reviewer at the *moment*
+  of the first `REVIEW`, not one step sooner. *pi mode:*
   `pij_spawn({ model, layout: "split" })`. *Control-plane mode:* `pij spawn
   --harness claude --model <m>` (§ Harness mode; the daemon drives boot→bind and
   returns the id immediately). `layout:"split"` keeps the whole fleet in one window:
@@ -184,7 +197,7 @@ later `tidy` can find and close our windows even after a crash.
 > this harness (they cannot read files), so a coder/reviewer must be a real pij
 > peer session (spawned or provided) — **never** a builtin-subagent fanout.
 
-### Pipeline while a colleague is busy
+### Pipeline while a colleague is busy — the daemon pushes, you don't poll
 
 The decision loop is per-turn, but the orchestrator must **not idle** while a
 colleague works. The instant you dispatch — a packet to the coder, or a review to
@@ -192,6 +205,24 @@ the reviewer — advance the **next independent** work in parallel: prep the nex
 phase's tasks / context pack, draft the next packet, update the flight plan. The
 colleague's run-time then overlaps orchestrator prep; collect the report when it
 lands. (Same overlap logic as compact-early, applied to the whole busy window.)
+
+**Let the push re-invoke you — never sit in a `pij state` poll loop.** The daemon
+owns liveness and **pushes** it back to you: the colleague's **done-report**
+re-invokes you on completion, and a **`stalled`** (went idle without finishing) or
+**`dead`** (crashed / quota-died) push re-invokes you on failure. So after you
+dispatch you do **not** confirm the session flipped to `working` within ~10s, and
+you do **not** nudge a peer that merely looks idle — that old polling-nudge reflex
+just burns your own expensive turns watching state the daemon already tracks and
+will hand you unprompted. **Dispatch → do independent prep → let the push wake you.**
+
+**Caveat — broken-transport peers still need a spot-check.** A peer whose
+transport is broken (seen live with **codex v0.142.3**: `send` keystrokes don't
+land and no events flow back) will never deliver a done-report *or* a
+`stalled`/`dead` push, so its silence is **ambiguous — not a guarantee it's still
+working**. For a peer on a known-broken transport only, fall back to a **periodic
+`pij tail <id>` spot-check** (read its bound transcript directly; a slow heartbeat,
+never a tight loop) to learn whether it actually finished or stalled. Healthy-
+transport peers need no such poll — the push covers them.
 
 ## Invocation
 

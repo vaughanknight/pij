@@ -12,7 +12,7 @@
 
 import { deriveSelfId } from "./discovery.js";
 import type { ModelEntry } from "./models/registry.js";
-import { validateModel } from "./models/validate.js";
+import { validateEffort, validateModel } from "./models/validate.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId } from "./types.js";
 import { err, ok, type Result } from "./types.js";
 
@@ -22,6 +22,10 @@ import { err, ok, type Result } from "./types.js";
 export interface SpawnInput {
 	/** Optional model override (passed as --model <model>). */
 	model?: string;
+	/** Optional thinking/reasoning effort (#3). For pi it rides the model id as a
+	 *  `:<level>` suffix (e.g. `github-copilot/gpt-5.5:xhigh`); a no-op without a
+	 *  model. Unset ⇒ nothing emitted (the child uses its boot default). */
+	effort?: string;
 	/** Optional first task; delivered via PIJ_SPAWN_TASK env (finding 01). */
 	task?: string;
 	/** Correlation token — becomes PIJ_SPAWN_ID. */
@@ -67,8 +71,15 @@ export interface ReadyPayload {
  */
 export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	const args: string[] = [];
-	if (input.model !== undefined) {
-		args.push("--model", input.model);
+	// pi sets effort via a per-model `:<level>` suffix on the model id (#3). It
+	// requires a model to attach to — with no model there's nothing to suffix, so
+	// effort is a silent no-op (validation warns separately). Unset ⇒ plain id.
+	const piModel =
+		input.model !== undefined && input.effort !== undefined
+			? `${input.model}:${input.effort}`
+			: input.model;
+	if (piModel !== undefined) {
+		args.push("--model", piModel);
 	}
 
 	const env: Record<string, string> = {
@@ -83,9 +94,10 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	};
 
 	// §H2: thread model via env so the child boot() reads PIJ_SPAWN_MODEL
-	// and includes it in the ready-ping body — same value as --model argv.
-	if (input.model !== undefined) {
-		env.PIJ_SPAWN_MODEL = input.model;
+	// and includes it in the ready-ping body — same value as --model argv (incl.
+	// any `:<effort>` suffix).
+	if (piModel !== undefined) {
+		env.PIJ_SPAWN_MODEL = piModel;
 	}
 
 	if (input.task !== undefined) {
@@ -154,6 +166,10 @@ export interface ControlSpawnInput {
 	readonly cwd: string;
 	/** Optional model override (`claude --model <model>`). */
 	readonly model?: string;
+	/** Optional thinking/reasoning effort level (#3). Translated per harness:
+	 *  claude/copilot → `--effort <level>`; codex → `-c model_reasoning_effort=<level>`
+	 *  (codex has no `--effort` flag). Unset ⇒ nothing emitted (boot default). */
+	readonly effort?: string;
 	/** Optional first task — delivered later via the init inject, not argv. */
 	readonly task?: string;
 	/** The spawner's pij id — becomes PIJ_PARENT_ID so the child knows who
@@ -258,6 +274,18 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	}
 	if (input.model !== undefined) {
 		args.push("--model", input.model);
+	}
+	// Effort translation (#3) — pinned per harness (flag drift is the key risk):
+	//  • claude / copilot accept `--effort <level>` (verified in their --help).
+	//  • codex has NO CLI effort flag — it takes a config override instead, so we
+	//    emit `-c model_reasoning_effort=<level>` (discrete argv, AC-09: no shell).
+	// Unset ⇒ emit nothing, so the harness uses its own boot default.
+	if (input.effort !== undefined) {
+		if (input.harness === "codex") {
+			args.push("-c", `model_reasoning_effort=${input.effort}`);
+		} else {
+			args.push("--effort", input.effort);
+		}
 	}
 	const env: Record<string, string> = {
 		PIJ_SESSION_ID: input.pijId,
@@ -403,6 +431,9 @@ export interface SpawnRequest {
 	readonly harness: HarnessKind;
 	readonly task?: string;
 	readonly model?: string;
+	/** Optional thinking/reasoning effort level (#3). Translated per harness at
+	 *  build time; unset ⇒ no flag (the colleague keeps its boot default). */
+	readonly effort?: string;
 	/** Branch-from-self (Plan 020): fork the CALLER's own session into the new pane
 	 *  (`--branch`). Default false. Gated + resolved by the bin via {@link planBranch}. */
 	readonly branch: boolean;
@@ -429,6 +460,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let harness: HarnessKind | undefined;
 	let task: string | undefined;
 	let model: string | undefined;
+	let effort: string | undefined;
 	let branch = false;
 	let json = false;
 	for (let i = 0; i < argv.length; i++) {
@@ -455,6 +487,8 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			task = value;
 		} else if (key === "model") {
 			model = value;
+		} else if (key === "effort") {
+			effort = value;
 		} else {
 			return err("E-ARG", `unknown flag --${key} for spawn`);
 		}
@@ -462,9 +496,9 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	if (!harness)
 		return err(
 			"E-ARG",
-			"usage: pij spawn --harness pi|claude|copilot|codex [--task …] [--model …]",
+			"usage: pij spawn --harness pi|claude|copilot|codex [--task …] [--model …] [--effort …]",
 		);
-	return ok({ harness, task, model, branch, json });
+	return ok({ harness, task, model, effort, branch, json });
 }
 
 /** Result of planning a branch-from-self spawn (Plan 020). */
@@ -591,4 +625,24 @@ export function buildSpawnWarning(
 	if (!known.some((e) => e.verified)) return null;
 	const suggestion = result.suggestion ? ` (did you mean '${result.suggestion}'?)` : "";
 	return `warning: unknown model '${model}'${suggestion} — spawn continues; confirm the id is correct`;
+}
+
+/**
+ * Validate a spawn's `--effort` against the chosen model's known levels (#3,
+ * task 2.6). Returns a human-readable warning when the registry can POSITIVELY
+ * say the effort is unsupported for that model (listing the levels it does
+ * support), else null (effort unset / model unknown / no level data — cannot
+ * validate). NEVER blocks spawn — like {@link buildSpawnWarning}, the caller
+ * prints this and continues; the effort is still passed to the harness.
+ */
+export function buildEffortWarning(
+	effort: string | undefined,
+	model: string | undefined,
+	known: readonly ModelEntry[],
+): string | null {
+	if (!effort) return null;
+	const r = validateEffort(effort, model, known);
+	if (r.ok) return null;
+	const supported = r.levels.length ? ` — ${model} supports: ${r.levels.join(", ")}` : "";
+	return `warning: effort '${effort}' may be unsupported for '${model}'${supported}; spawn continues`;
 }

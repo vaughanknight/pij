@@ -4,9 +4,11 @@
 // paneId ±, required env vars, argv array shape, ready-body round-trip.
 
 import { describe, expect, it } from "vitest";
+import type { ModelEntry } from "./models/registry.js";
 import {
 	allocatePijId,
 	buildControlSpawnCommand,
+	buildEffortWarning,
 	buildPendingDescriptor,
 	buildSpawnCommand,
 	livePeerPanes,
@@ -137,6 +139,25 @@ describe("buildSpawnCommand", () => {
 	it("role 'parent' is passed through to PIJ_ROLE", () => {
 		const result = buildSpawnCommand({ ...base, role: "parent" });
 		expect(result.env.PIJ_ROLE).toBe("parent");
+	});
+
+	// ── --effort translation for pi: `:<level>` suffix on the model id (#3) ──────
+	it("--effort with a model rides as a :<level> suffix on the pi model id", () => {
+		const r = buildSpawnCommand({ ...base, model: "github-copilot/gpt-5.5", effort: "xhigh" });
+		expect(r.args).toEqual(["--model", "github-copilot/gpt-5.5:xhigh"]);
+		expect(r.env.PIJ_SPAWN_MODEL).toBe("github-copilot/gpt-5.5:xhigh");
+	});
+
+	it("--effort without a model is a no-op for pi (nothing to suffix)", () => {
+		const r = buildSpawnCommand({ ...base, effort: "high" });
+		expect(r.args).toEqual([]);
+		expect(r.env).not.toHaveProperty("PIJ_SPAWN_MODEL");
+	});
+
+	it("no --effort → model rides unchanged (default-to-agent)", () => {
+		const r = buildSpawnCommand({ ...base, model: "fugu" });
+		expect(r.args).toEqual(["--model", "fugu"]);
+		expect(r.env.PIJ_SPAWN_MODEL).toBe("fugu");
 	});
 });
 
@@ -355,6 +376,51 @@ describe("buildControlSpawnCommand", () => {
 				.PIJ_SPAWN_TASK,
 		).toBe("go");
 	});
+
+	// ── --effort translation (#3) — per-harness flag drift pinned by exact argv ──
+	it("claude: appends --effort <level> after the model (flag-drift pin)", () => {
+		const r = buildControlSpawnCommand({ ...base, model: "sonnet", effort: "high" });
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--model",
+			"sonnet",
+			"--effort",
+			"high",
+		]);
+	});
+
+	it("copilot: appends --effort <level> (same flag as claude)", () => {
+		const r = buildControlSpawnCommand({
+			harness: "copilot",
+			pijId: "pij-cop",
+			cwd: "/repo",
+			copilotSessionId: "u",
+			effort: "medium",
+		});
+		expect(r.args).toEqual(["--yolo", "--session-id", "u", "--effort", "medium"]);
+	});
+
+	it("codex: translates effort to -c model_reasoning_effort=<level> (no --effort flag)", () => {
+		const r = buildControlSpawnCommand({
+			harness: "codex",
+			pijId: "pij-cdx",
+			cwd: "/repo",
+			effort: "xhigh",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-bypass-approvals-and-sandbox",
+			"-c",
+			"model_reasoning_effort=xhigh",
+		]);
+		expect(r.args).not.toContain("--effort");
+	});
+
+	it("unset effort → NO effort flag for any harness (default-to-agent)", () => {
+		expect(buildControlSpawnCommand(base).args).not.toContain("--effort");
+		expect(
+			buildControlSpawnCommand({ harness: "codex", pijId: "p", cwd: "/r" }).args,
+		).not.toContain("-c");
+	});
 });
 
 describe("buildPendingDescriptor", () => {
@@ -539,6 +605,45 @@ describe("parseSpawnArgs (T018)", () => {
 			code: "E-ARG",
 		});
 		expect(parseSpawnArgs(["--harness"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+
+	it("parses --effort (space and = forms); unset → effort undefined (#3, AC-04)", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--effort", "high"])).toMatchObject({
+			ok: true,
+			value: { harness: "claude", effort: "high" },
+		});
+		expect(parseSpawnArgs(["--harness=codex", "--effort=xhigh"])).toMatchObject({
+			ok: true,
+			value: { harness: "codex", effort: "xhigh" },
+		});
+		const unset = parseSpawnArgs(["--harness", "claude"]);
+		expect(unset.ok).toBe(true);
+		if (unset.ok) expect(unset.value.effort).toBeUndefined();
+	});
+});
+
+describe("buildEffortWarning (warn-don't-block vs a model's levels, #3)", () => {
+	const KNOWN: ModelEntry[] = [
+		{
+			id: "fugu",
+			name: "Sakana Fugu",
+			provider: "sakana",
+			verified: true,
+			reasoning: true,
+			levels: ["high", "xhigh"],
+		},
+	];
+
+	it("returns null when effort is supported / unset / model unknown", () => {
+		expect(buildEffortWarning("high", "fugu", KNOWN)).toBeNull();
+		expect(buildEffortWarning(undefined, "fugu", KNOWN)).toBeNull();
+		expect(buildEffortWarning("high", "unknown-model", KNOWN)).toBeNull();
+	});
+
+	it("warns (never throws) when effort is unsupported, listing the model's levels", () => {
+		const w = buildEffortWarning("medium", "fugu", KNOWN);
+		expect(w).toMatch(/medium/);
+		expect(w).toMatch(/high/);
 	});
 });
 

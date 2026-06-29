@@ -7,9 +7,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	claudeAliases,
+	codexConfigModels,
 	codexSnapshot,
 	copilotSeedFromPi,
-	type ModelEntry,
 	parseModelsJson,
 } from "./registry.js";
 
@@ -146,5 +146,110 @@ describe("codexSnapshot", () => {
 
 	it("all entries have provider=codex", () => {
 		for (const e of codexSnapshot()) expect(e.provider).toBe("codex");
+	});
+
+	// Task 2.2: the snapshot is now only a THIN fallback (the real source is the
+	// user's ~/.codex/config.toml default model, read in cli.ts loadModels).
+	it("is a thin fallback whose entries carry curated thinking levels", () => {
+		const snap = codexSnapshot();
+		expect(snap.length).toBeLessThanOrEqual(3);
+		for (const e of snap) expect(Array.isArray(e.levels)).toBe(true);
+	});
+});
+
+// ─── Phase 2 (#1): per-model reasoning + thinking levels ──────────────────────
+// pi's models.json carries `reasoning: bool` + `thinkingLevelMap: {canonical→native|null}`
+// per model; parseModelsJson now surfaces them (it previously dropped them).
+const PI_THINKING_JSON = {
+	providers: {
+		sakana: {
+			models: [
+				{
+					id: "fugu",
+					name: "Sakana Fugu",
+					reasoning: true,
+					// canonical → native|null; null = UNSUPPORTED for this model.
+					thinkingLevelMap: {
+						off: null,
+						minimal: null,
+						low: null,
+						medium: null,
+						high: "high",
+						xhigh: "max",
+					},
+				},
+				{ id: "plain", name: "No Reasoning Model" }, // no reasoning / no map
+			],
+		},
+		"github-copilot": {
+			models: [
+				{
+					id: "mai",
+					name: "MAI",
+					reasoning: true,
+					thinkingLevelMap: { low: "low", medium: "medium", high: "high" },
+				},
+			],
+		},
+	},
+};
+
+describe("parseModelsJson — reasoning + levels (#1)", () => {
+	it("surfaces the per-model reasoning flag (default false when absent)", () => {
+		const entries = parseModelsJson(PI_THINKING_JSON);
+		expect(entries.find((e) => e.id === "fugu")?.reasoning).toBe(true);
+		expect(entries.find((e) => e.id === "plain")?.reasoning).toBe(false);
+	});
+
+	it("derives levels from the NON-NULL keys of thinkingLevelMap (null = unsupported)", () => {
+		const entries = parseModelsJson(PI_THINKING_JSON);
+		// fugu: only high→high and xhigh→max are honored; the null-mapped ones drop out.
+		expect(entries.find((e) => e.id === "fugu")?.levels).toEqual(["high", "xhigh"]);
+		expect(entries.find((e) => e.id === "mai")?.levels).toEqual(["low", "medium", "high"]);
+	});
+
+	it("a model with no thinkingLevelMap has empty levels", () => {
+		const entries = parseModelsJson(PI_THINKING_JSON);
+		expect(entries.find((e) => e.id === "plain")?.levels).toEqual([]);
+	});
+});
+
+// ─── Phase 2 (#2): codex default-model read from ~/.codex/config.toml ──────────
+describe("codexConfigModels (default-model TOML read, #2)", () => {
+	const TOML = [
+		'model = "gpt-5.5"',
+		'model_reasoning_effort = "xhigh"',
+		'personality = "pragmatic"',
+		"",
+		"[notice]",
+		"hide_full_access_warning = true",
+	].join("\n");
+
+	it("extracts the top-level default model as a codex entry (verified:false)", () => {
+		const entries = codexConfigModels(TOML);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]).toMatchObject({ id: "gpt-5.5", provider: "codex", verified: false });
+	});
+
+	it("carries curated reasoning levels for the gpt-5 family", () => {
+		const entries = codexConfigModels(TOML);
+		expect(entries[0]?.reasoning).toBe(true);
+		expect(entries[0]?.levels).toEqual(["minimal", "low", "medium", "high", "xhigh"]);
+	});
+
+	it("carries the o-series curated levels (no xhigh)", () => {
+		const entries = codexConfigModels('model = "o3"');
+		expect(entries[0]?.levels).toEqual(["minimal", "low", "medium", "high"]);
+	});
+
+	it("ignores a `model =` key that lives inside a [section] (top-level only)", () => {
+		const t = ["[notice]", 'model = "inside-section"'].join("\n");
+		expect(codexConfigModels(t)).toEqual([]);
+	});
+
+	it("returns empty for toml with no top-level model / empty / non-string", () => {
+		expect(codexConfigModels("[notice]\nx = 1")).toEqual([]);
+		expect(codexConfigModels("")).toEqual([]);
+		expect(codexConfigModels(undefined as unknown as string)).toEqual([]);
 	});
 });

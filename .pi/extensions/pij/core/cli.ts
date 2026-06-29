@@ -352,9 +352,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (cmd.json) return okOut(JSON.stringify(entries));
 			const lines = entries.map((e) => {
 				const tag = e.verified ? "" : " *";
-				return `${pad(e.id, 36)} ${pad(e.name, 40)} ${e.provider}${tag}`;
+				// `thinking` column (#1): the canonical effort levels the model honors,
+				// or `yes`/`—` when only the reasoning flag (not the level set) is known.
+				const thinking = e.levels?.length ? e.levels.join("/") : e.reasoning ? "yes" : "—";
+				return `${pad(e.id, 36)} ${pad(e.name, 40)} ${pad(e.provider, 10)} ${thinking}${tag}`;
 			});
-			const header = `${pad("id", 36)} ${pad("name", 40)} provider`;
+			const header = `${pad("id", 36)} ${pad("name", 40)} ${pad("provider", 10)} thinking`;
 			const unverNote = entries.some((e) => !e.verified)
 				? "\n* unverified (best-effort alias list — not confirmed by a live registry)"
 				: "";

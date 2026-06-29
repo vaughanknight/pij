@@ -39,6 +39,7 @@ import { supportsBranching } from "./core/harness/types.js";
 import { parseReceiptBody } from "./core/message.js";
 import {
 	claudeAliases,
+	codexConfigModels,
 	codexSnapshot,
 	copilotSeedFromPi,
 	type ModelEntry,
@@ -47,6 +48,7 @@ import {
 import {
 	allocatePijId,
 	buildControlSpawnCommand,
+	buildEffortWarning,
 	buildPendingDescriptor,
 	buildSpawnCommand,
 	buildSpawnWarning,
@@ -88,7 +90,7 @@ Messaging:
 const SPAWN_USAGE = `pij spawn — spawn a colleague in a tmux pane (one uniform surface for every harness)
 
 USAGE
-  pij spawn --harness pi|claude|copilot|codex [--model <m>] [--task "<t>"] [--branch]
+  pij spawn --harness pi|claude|copilot|codex [--model <m>] [--effort <lvl>] [--task "<t>"] [--branch]
 
 FLAGS
   --harness <h>   pi | claude | copilot | codex  (the harness to launch in a new tmux pane)
@@ -105,6 +107,11 @@ FLAGS
                   NOTE: an unknown model is currently passed through to the harness,
                   which may silently fall back to its default — verify with the pane
                   footer / pij tail until spawn-time validation lands.
+  --effort <lvl>  thinking/reasoning effort: off|minimal|low|medium|high|xhigh|max
+                  (per-model — see the 'thinking' column in \`pij models\`). Translated
+                  per harness: claude/copilot \`--effort\`, codex \`-c model_reasoning_effort=\`,
+                  pi a \`:<lvl>\` suffix on the model id. Unset ⇒ the colleague's own default.
+                  Validated warn-don't-block (an unsupported level warns, never blocks).
   --task "<t>"    first task, delivered race-free via PIJ_SPAWN_TASK (never a positional
                   prompt — dodges the announce-vs-prompt race, finding 01).
   --branch        fork YOUR OWN session into the new pane (branch-from-self), so the
@@ -152,7 +159,22 @@ function loadModels(): ModelEntry[] {
 	const copilotModels = copilotSeedFromPi(piRaw);
 	const seenIds = new Set(piModels.map((m) => m.id).concat(copilotModels.map((m) => m.id)));
 	const claude = claudeAliases().filter((m) => !seenIds.has(m.id));
-	const codex = codexSnapshot().filter((m) => !seenIds.has(m.id));
+	// Codex (#2): prefer the user's configured default model from ~/.codex/config.toml
+	// (best-effort; empty on any read/parse error), ahead of the thin static snapshot.
+	let codexToml = "";
+	try {
+		codexToml = readFileSync(join(homedir(), ".codex", "config.toml"), "utf8");
+	} catch {
+		/* no codex install / unreadable config → snapshot-only fallback */
+	}
+	const codexConfig = codexConfigModels(codexToml);
+	const codexCfgIds = new Set(codexConfig.map((m) => m.id));
+	// codex is a DISTINCT harness target, so its entries are NOT deduped against
+	// pi/copilot (a `gpt-5.5` under copilot ≠ the codex one — different harness,
+	// different reasoning table). Dedup only WITHIN codex: the config default wins
+	// over the thin snapshot fallback. (claude aliases stay seenIds-deduped above.)
+	const codexFallback = codexSnapshot().filter((m) => !codexCfgIds.has(m.id));
+	const codex = [...codexConfig, ...codexFallback];
 	return [...piModels, ...copilotModels, ...claude, ...codex];
 }
 
@@ -368,9 +390,13 @@ function runSpawn(argv: readonly string[]): void {
 		process.stderr.write(`${req.code}: ${req.message}\n`);
 		process.exit(64);
 	}
-	// T006: warn (never block) on unknown model so the caller knows before the pane opens.
-	const spawnWarn = buildSpawnWarning(req.value.model, loadModels());
+	// T006 / #3: warn (never block) on an unknown model OR an effort the chosen model
+	// doesn't support, so the caller knows before the pane opens. Both continue.
+	const known = loadModels();
+	const spawnWarn = buildSpawnWarning(req.value.model, known);
 	if (spawnWarn) process.stderr.write(`${spawnWarn}\n`);
+	const effortWarn = buildEffortWarning(req.value.effort, req.value.model, known);
+	if (effortWarn) process.stderr.write(`${effortWarn}\n`);
 	const tmux = new TmuxAdapter();
 	const ownPane = tmux.currentPane();
 	if (!ownPane || !tmux.currentSession()) {
@@ -408,6 +434,7 @@ function runSpawn(argv: readonly string[]): void {
 			cwd: cwdPi,
 			role: "worker",
 			model: req.value.model,
+			effort: req.value.effort,
 			task: req.value.task,
 		});
 		// Same split layout as the daemon-bound harnesses (shared helper → one cap
@@ -522,6 +549,7 @@ function runSpawn(argv: readonly string[]): void {
 		pijId,
 		cwd,
 		model: req.value.model,
+		effort: req.value.effort,
 		task: req.value.task,
 		parentId,
 		copilotSessionId,

@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "kind": "flight-plan",
+  "slug": "pij-effort-discovery-quota-fix",
+  "nav": {
+    "now": "ship",
+    "next": null,
+    "intent": "All 3 phases built + cross-reviewed (DIM0=PASS); ready to ship"
+  },
+  "created_at": "2026-06-28T22:43:39.828Z",
+  "provenance": {
+    "record_kind": "flow",
+    "harness_version": "0.6.0",
+    "branch": "main",
+    "repo": "https://github.com/AI-Substrate/pij.git",
+    "created_at": "2026-06-28T22:43:39.828Z",
+    "agent": "the-flow",
+    "plan_id": "025"
+  },
+  "events": [
+    {
+      "id": "CRT-001",
+      "kind": "created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:43:39.838Z",
+      "details": {
+        "kind": "flight-plan",
+        "slug": "pij-effort-discovery-quota-fix"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:21.662Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "label",
+          "next"
+        ]
+      }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:21.662Z",
+      "details": {
+        "node": "phase-2",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "NOD-002",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:21.662Z",
+      "details": {
+        "node": "phase-3",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:21.662Z",
+      "details": {
+        "node": "review",
+        "type": "review"
+      }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:21.835Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "skipped"
+      }
+    },
+    {
+      "id": "STA-002",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:21.998Z",
+      "details": {
+        "node": "plan",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-28T22:44:22.144Z",
+      "details": {
+        "from": "research",
+        "to": "phase-1"
+      }
+    },
+    {
+      "id": "STA-003",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-29T00:21:56.690Z",
+      "details": {
+        "node": "phase-1",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-004",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-29T00:21:56.854Z",
+      "details": {
+        "node": "phase-2",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-005",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-29T00:21:57.016Z",
+      "details": {
+        "node": "phase-3",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-06-29T00:21:57.172Z",
+      "details": {
+        "node": "review",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-06-29T00:21:57.339Z",
+      "details": {
+        "from": "phase-1",
+        "to": "ship"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "research",
+      "type": "research",
+      "label": "Research",
+      "status": "skipped",
+      "command": "/the-flow 1a explore",
+      "next": [
+        "plan"
+      ],
+      "modified_at": "2026-06-28T22:44:21.835Z"
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "label": "Plan",
+      "status": "done",
+      "command": "/the-flow 1b plan",
+      "next": [
+        "phase-1"
+      ],
+      "modified_at": "2026-06-28T22:44:21.998Z",
+      "ran_at": "2026-06-28T22:44:21.998Z"
+    },
+    {
+      "id": "phase-1",
+      "type": "phase",
+      "phase": 1,
+      "label": "P1: Quota-classifier honesty (#5)",
+      "status": "done",
+      "command": "/the-flow 6 implement",
+      "next": [
+        "phase-2"
+      ],
+      "modified_at": "2026-06-29T00:21:56.690Z",
+      "ran_at": "2026-06-29T00:21:56.690Z"
+    },
+    {
+      "id": "ship",
+      "type": "ship",
+      "label": "Ship",
+      "status": "assumed",
+      "command": "/the-flow 8 ship",
+      "next": []
+    },
+    {
+      "id": "phase-2",
+      "type": "phase",
+      "label": "P2: Thinking-levels — discovery + spawn --effort (#1–#3)",
+      "status": "done",
+      "next": [
+        "phase-3"
+      ],
+      "created_at": "2026-06-28T22:44:21.662Z",
+      "modified_at": "2026-06-29T00:21:56.854Z",
+      "ran_at": "2026-06-29T00:21:56.854Z"
+    },
+    {
+      "id": "phase-3",
+      "type": "phase",
+      "label": "P3: flow-pair lazy reviewer (#4)",
+      "status": "done",
+      "next": [
+        "review"
+      ],
+      "created_at": "2026-06-28T22:44:21.662Z",
+      "modified_at": "2026-06-29T00:21:57.016Z",
+      "ran_at": "2026-06-29T00:21:57.016Z"
+    },
+    {
+      "id": "review",
+      "type": "review",
+      "label": "Code review",
+      "status": "done",
+      "next": [
+        "ship"
+      ],
+      "created_at": "2026-06-28T22:44:21.662Z",
+      "modified_at": "2026-06-29T00:21:57.172Z",
+      "ran_at": "2026-06-29T00:21:57.172Z"
+    }
+  ],
+  "title": "pij Thinking-Levels, Discovery & Quota-Classifier Honesty"
+}

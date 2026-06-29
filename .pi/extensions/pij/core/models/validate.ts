@@ -26,3 +26,33 @@ export function validateModel(model: string, known: readonly ModelEntry[]): Vali
 	const closest = closestModel(model, known);
 	return { ok: false, unknown: true, suggestion: closest?.id ?? null };
 }
+
+export type EffortValidation =
+	| { readonly ok: true }
+	| { readonly ok: false; readonly unsupported: true; readonly levels: readonly string[] };
+
+/**
+ * Validate a requested `--effort` level against the chosen model's known levels
+ * (#3, task 2.6). Warn-don't-block — like {@link validateModel}, it only reports
+ * `unsupported` when the registry can POSITIVELY contradict the request:
+ *   - no effort requested, or no model → ok (nothing to validate)
+ *   - model not found in `known`, or the entry carries no level data → ok (cannot
+ *     validate, so never block — mirrors the empty-known-list rule)
+ *   - effort matches one of the model's levels (case-insensitive) → ok
+ * Otherwise `{ ok: false, unsupported: true, levels }` (the supported levels, so
+ * the caller can list them). NEVER throws/blocks — the spawn always proceeds.
+ */
+export function validateEffort(
+	effort: string,
+	model: string | undefined,
+	known: readonly ModelEntry[],
+): EffortValidation {
+	if (!effort || !model) return { ok: true };
+	const norm = normalizeModelQuery(model);
+	const entry = known.find((e) => normalizeModelQuery(e.id) === norm);
+	const levels = entry?.levels ?? [];
+	if (levels.length === 0) return { ok: true }; // unknown model / no level data → can't validate
+	const want = effort.toLowerCase();
+	if (levels.some((l) => l.toLowerCase() === want)) return { ok: true };
+	return { ok: false, unsupported: true, levels };
+}

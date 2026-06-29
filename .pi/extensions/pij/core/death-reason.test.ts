@@ -113,3 +113,49 @@ describe("classifyDeathReason", () => {
 		expect(classifyDeathReason("")).toBe("unknown");
 	});
 });
+
+// ─── Phase 1 (#5): quota-classifier honesty — the discriminator, both jaws ─────
+// The load-bearing spec: `quota` requires a GENUINE error frame (anchored phrase
+// or an exhausted-balance signal next to a billing noun), never bare vocabulary.
+// These two blocks are the mutation pincer (task 1.5):
+//   • re-broaden the regex to bare words  → the reject block flips RED
+//   • narrow the regex off a named fixture → the keep block flips RED
+describe("classifyDeathReason — quota honesty (#5)", () => {
+	// KEEP green: the repo already decided these bare-frame strings ARE quota.
+	it("keeps the named terminal-quota fixtures green", () => {
+		expect(
+			classifyDeathReason(
+				"Error: prepaid credit balance exhausted — add credits at https://console.sakana.ai/billing",
+			),
+		).toBe("quota");
+		expect(classifyDeathReason("Error: payAsYouGo balance insufficient — top up to continue")).toBe(
+			"quota",
+		);
+		expect(classifyDeathReason("API Error: 402 insufficient credits")).toBe("quota");
+	});
+
+	// REJECT: bare billing-domain vocabulary (a billing repo's own output) is NOT a
+	// provider quota death — no error frame, no anchored phrase.
+	it("rejects bare billing-domain vocabulary as unknown", () => {
+		for (const pane of [
+			"split billing",
+			"credit memo",
+			"insufficient line items",
+			"billing is not enabled for this workspace",
+		]) {
+			expect(classifyDeathReason(pane)).toBe("unknown");
+		}
+	});
+
+	// Transients stay non-fatal unknown (task 1.4) — including resource_exhausted,
+	// which must NOT trip the terminal "exhausted" signal.
+	it("treats transient provider signals (429/529/overloaded/resource_exhausted) as unknown", () => {
+		for (const pane of [
+			"API Error: 429 rate_limit_exceeded",
+			"Error: 529 — The model is overloaded",
+			'{"error":{"code":"resource_exhausted","message":"rate limit exceeded"}}',
+		]) {
+			expect(classifyDeathReason(pane)).toBe("unknown");
+		}
+	});
+});

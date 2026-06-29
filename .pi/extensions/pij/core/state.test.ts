@@ -94,13 +94,63 @@ describe("classifyDeathReason", () => {
 
 	it("classifies terminal quota/billing text as quota", () => {
 		const terminalPanes = [
-			"insufficient credit to continue",
-			"billing is not enabled for this workspace",
-			"prepaid balance exhausted",
+			"insufficient credit to continue", // anchored: insufficient + balance noun
+			"prepaid balance exhausted", // exhausted signal next to a billing noun
 		];
 
 		for (const pane of terminalPanes) {
 			expect(classifyDeathReason(pane)).toBe("quota");
 		}
+	});
+
+	// Quota-classifier honesty (#5, task 1.1): bare billing-domain vocabulary —
+	// the kind a billing/accounting repo prints in its OWN output — must never be
+	// mistaken for a provider quota death. No error frame, no anchored phrase → unknown.
+	it("returns unknown for billing-domain prose with no real error frame", () => {
+		const prose = [
+			"split billing",
+			"credit memo",
+			"insufficient line items", // NOT "insufficient credits"
+			"billing is not enabled for this workspace", // bare billing, no error frame
+			"reconcile the outstanding balance",
+		];
+
+		for (const pane of prose) {
+			expect(classifyDeathReason(pane)).toBe("unknown");
+		}
+	});
+
+	// Residual false-positive F3 (#5, task 1.6): classification is scoped to the
+	// pane TAIL (last error region). A real provider-error string sitting HIGHER in
+	// scrollback (e.g. a billing repo that printed `402 insufficient credits` in its
+	// own output earlier) is NOT this session's death reason.
+	it("does not classify quota from a real error string higher in scrollback (tail-scoped)", () => {
+		const pane = [
+			"API Error: 402 insufficient credits",
+			...Array(25).fill("regular build output line"),
+			"$ ready",
+		].join("\n");
+		expect(classifyDeathReason(pane)).toBe("unknown");
+	});
+
+	// 1.6 ordering: a clean `[exited]` death must read `dead`, not `quota`, even when
+	// billing text sits higher in scrollback (quota-before-DEAD_RE ordering addressed
+	// via tail-scoping — the high-scrollback billing string is out of the tail).
+	it("returns dead for a clean [exited] even when billing text sits higher in scrollback", () => {
+		const pane = [
+			"API Error: 402 insufficient credits",
+			...Array(25).fill("regular build output line"),
+			"[exited]",
+		].join("\n");
+		expect(classifyDeathReason(pane)).toBe("dead");
+	});
+
+	// The pincer's other jaw: a GENUINE terminal quota error in the tail still → quota.
+	it("still classifies a real terminal quota error in the pane tail as quota", () => {
+		const pane = [
+			...Array(25).fill("regular build output line"),
+			"Error: prepaid credit balance exhausted — add credits at https://console.example.ai/billing",
+		].join("\n");
+		expect(classifyDeathReason(pane)).toBe("quota");
 	});
 });

@@ -129,3 +129,39 @@ describe("dispatch models", () => {
 		expect(r.stdout).toContain("m2");
 	});
 });
+
+// ─── Phase 2 (#1, task 2.4): surface reasoning + thinking levels ──────────────
+describe("dispatch models — thinking levels", () => {
+	const WITH_LEVELS: ModelEntry[] = [
+		{
+			id: "fugu",
+			name: "Sakana Fugu",
+			provider: "sakana",
+			verified: true,
+			reasoning: true,
+			levels: ["high", "xhigh"],
+		},
+		{
+			id: "plain",
+			name: "Plain",
+			provider: "sakana",
+			verified: true,
+			reasoning: false,
+			levels: [],
+		},
+	];
+
+	it("--json carries reasoning + levels", () => {
+		const r = dispatch({ verb: "models", json: true }, deps(WITH_LEVELS));
+		const parsed = JSON.parse(r.stdout) as ModelEntry[];
+		const fugu = parsed.find((e) => e.id === "fugu");
+		expect(fugu?.reasoning).toBe(true);
+		expect(fugu?.levels).toEqual(["high", "xhigh"]);
+	});
+
+	it("table shows a 'thinking' column rendering the levels", () => {
+		const r = dispatch({ verb: "models", json: false }, deps(WITH_LEVELS));
+		expect(r.stdout).toMatch(/thinking/i); // header column
+		expect(r.stdout).toContain("high/xhigh"); // levels rendered for fugu
+	});
+});
