@@ -59,6 +59,7 @@ import {
 	planBranch,
 	planControlSplit,
 } from "./core/spawn.js";
+import { runTelegram } from "./telegram/index.js";
 
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
 const FOLLOW_MS = 200;
@@ -77,6 +78,7 @@ Control plane (spawn colleagues in tmux):
   pij adopt "$TMUX_PANE" --harness <h>               register your own pane so peers can reach you
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
+  pij telegram <init|start|stop>                     bridge pij sessions to a Telegram bot
 
 Messaging:
   pij whoami [--json]                                your stable session id
@@ -882,6 +884,12 @@ function main(): void {
 	}
 	if (process.argv[2] === "daemon") {
 		runDaemonVerb(process.argv.slice(3));
+		return;
+	}
+	// `telegram` is a self-contained bridge surface (its own .env + bot process);
+	// it never reads the pij registry home, so it predates the E-NOREG guard too.
+	if (process.argv[2] === "telegram") {
+		runTelegram(process.argv.slice(3));
 		return;
 	}
 	// E-NOREG: registry home absent => the extension never booted here.

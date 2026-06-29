@@ -37,6 +37,7 @@ import type { DeliveryPort, RegistryPort } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
 import type { DeathReason, SessionDescriptor } from "./core/types.js";
+import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
@@ -340,8 +341,16 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		}
 	}, opts.tickMs ?? TICK_MS);
 
+	// Auto-start the Telegram bridge IN-PROCESS when a scoped telegram.env is present
+	// (else a no-op, so a bridge-less daemon is unchanged). The bridge stays a harness:"pi"
+	// peer the tick loop OBSERVES, so co-locating it changes only who owns the long-poll.
+	// A bridge failure tears down only the bridge (never the daemon); its teardown folds
+	// into the disposer below.
+	const stopBridge = autoStartBridgeForDaemon(pijHome, log);
+
 	return () => {
 		clearInterval(timer);
+		stopBridge();
 		try {
 			const held = parseLockFile(readFileSync(lockPath, "utf8"));
 			if (held?.pid === process.pid) rmSync(lockPath);

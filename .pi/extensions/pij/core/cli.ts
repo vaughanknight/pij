@@ -57,6 +57,10 @@ export type ParsedCommand =
 			readonly to: SessionId;
 			readonly text?: string;
 			readonly command?: string;
+			/** Reference-passing attachment (Plan 026 Phase 5): a local file path. */
+			readonly file?: string;
+			/** Caption for the attached file (only valid alongside `file`). */
+			readonly caption?: string;
 			readonly wait: boolean;
 			readonly waitMs?: number;
 			readonly json: boolean;
@@ -146,7 +150,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	whoami: new Set(["json"]),
 	list: new Set(["here", "json"]),
 	models: new Set(["harness", "json"]),
-	send: new Set(["command", "wait", "json"]),
+	send: new Set(["command", "file", "caption", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
@@ -202,6 +206,19 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				return err("E-ARG", `--command needs a name (allowed: ${ALLOWED_COMMANDS.join(", ")})`);
 			let command = typeof flags.command === "string" ? flags.command : undefined;
 			let text = pos[1];
+			// Reference-passing attachment (Plan 026 Phase 5): `--file <path>` carries one
+			// local file, `--caption <text>` its caption. The file path + caption ride the
+			// message's `attachments` field; only the telegram bridge acts on it. A bare
+			// `--caption` without `--file` is a user error (nothing to caption), and a file
+			// is mutually exclusive with `--command` (a remote command can't carry media).
+			if (flags.file === true) return err("E-ARG", "--file needs a path");
+			const file = typeof flags.file === "string" ? flags.file : undefined;
+			if (flags.caption === true) return err("E-ARG", "--caption needs text");
+			const caption = typeof flags.caption === "string" ? flags.caption : undefined;
+			if (caption !== undefined && file === undefined)
+				return err("E-ARG", "--caption requires --file <path>");
+			if (file !== undefined && command !== undefined)
+				return err("E-ARG", "pij send takes --file OR --command <name>, not both");
 			// Ergonomic (D-042): a bare "/compact" | "/reload" | "/new" text body is
 			// almost certainly meant as a remote command, not a chat line for the
 			// peer's LLM. Route an EXACT, trimmed "/"+allow-listed name to the command
@@ -219,15 +236,25 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			}
 			if (command !== undefined && text !== undefined)
 				return err("E-ARG", "pij send takes a <text> OR --command <name>, not both");
-			if (command === undefined && text === undefined)
-				return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
+			if (command === undefined && text === undefined && file === undefined)
+				return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name> | --file <path>');
 			let waitMs: number | undefined;
 			if (typeof flags.wait === "string") {
 				if (!/^\d+$/.test(flags.wait))
 					return err("E-ARG", "--wait takes an optional milliseconds value");
 				waitMs = Number(flags.wait);
 			}
-			return ok({ verb: "send", to, text, command, wait: flags.wait !== undefined, waitMs, json });
+			return ok({
+				verb: "send",
+				to,
+				text,
+				command,
+				file,
+				caption,
+				wait: flags.wait !== undefined,
+				waitMs,
+				json,
+			});
 		}
 		case "tail": {
 			const id = pos[0];
@@ -452,10 +479,30 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				kindNote = `command=${v.value}`;
 			} else {
 				// F1: deliver the RAW text — the receiver frames on inject. NEVER frame() here.
-				const del = deps.delivery.deliver({ from: self, to: cmd.to, body: cmd.text ?? "" });
+				// Plan 026 Phase 5: a `--file` attaches one reference-passing entry (path +
+				// optional caption); the attachments field is added ONLY when a file is given,
+				// so a plain text send round-trips byte-for-byte unchanged (no `attachments` key).
+				const attachments =
+					cmd.file !== undefined
+						? [
+								cmd.caption !== undefined
+									? { path: cmd.file, caption: cmd.caption }
+									: { path: cmd.file },
+							]
+						: undefined;
+				const del = deps.delivery.deliver(
+					attachments !== undefined
+						? { from: self, to: cmd.to, body: cmd.text ?? "", attachments }
+						: { from: self, to: cmd.to, body: cmd.text ?? "" },
+				);
 				if (!del.ok) return fail(del.code, del.message, cmd.json);
 				messageId = del.value.messageId;
-				kindNote = "text";
+				kindNote =
+					attachments !== undefined
+						? cmd.text !== undefined && cmd.text !== ""
+							? "text+file"
+							: "file"
+						: "text";
 			}
 			const initial = (target.state ?? "idle") === "working" ? "queued" : "delivered";
 			// Informational "quiet peer" note keys on event AGE, not the liveness

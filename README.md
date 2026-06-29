@@ -125,6 +125,36 @@ orchestrator reviews) for zero-wait dispatch.
 [`skills/flow-pair/SKILL.md`](skills/flow-pair/SKILL.md) · build plan:
 [`docs/plans/016-flow-pair/flow-pair-plan.md`](docs/plans/016-flow-pair/flow-pair-plan.md)
 
+## Telegram bridge
+
+`telegram` relays your pi sessions to a Telegram bot, so you can drive and observe
+peers from your phone. Address a session by name (`osn ship it`); it sticks as the
+default target and replies stream back chunked. The id captured at setup is the **only**
+access control — only your Telegram account can talk to the bridge.
+
+```bash
+pij telegram init     # one-time: paste a BotFather token, then message your bot once
+pij telegram start    # run the bridge (foreground — background it yourself)
+pij telegram stop     # stop a running bridge / clear a stale lock
+```
+
+`init` walks you through @BotFather, validates the token (`getMe`, prints the bot
+`@handle`), captures your Telegram id from your first message as the allowlist, then
+writes the three keys — `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`,
+`TELEGRAM_CHAT_ID` — to `~/.pij/telegram.env` (override with `PIJ_TELEGRAM_ENV`; the keys
+are documented in [`.env.example`](.env.example)). Existing keys in that file are
+preserved. `start` is a **single-instance, foreground** long-poll — run it under a process
+manager (or `&` it). Then, from Telegram: `/list` to see live sessions, `osn <message>`
+to address one, `/tail` to peek its recent events.
+
+**Attachments** ride both ways by reference (paths, never bytes on the pij wire):
+`pij send pij-telegram --file ./chart.png --caption "done"` lands the file in your chat,
+and a photo/gif/document you send to the bot is saved with the addressed session
+(`~/.pij/<id>/attachments/`) and announced to it as a text path — same allowlist, with
+10/50 MB upload and 20 MB download caps.
+
+→ Full operator + security guide: [`docs/how/pij-telegram.md`](docs/how/pij-telegram.md)
+
 ## Where things are
 
 | What | Where |

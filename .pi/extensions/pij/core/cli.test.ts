@@ -148,6 +148,36 @@ describe("parseArgs", () => {
 			value: { verb: "send", wait: false },
 		});
 	});
+
+	it("--file/--caption attach a reference-passing file (Plan 026 Phase 5)", () => {
+		expect(parseArgs(["send", "w3", "--file", "./chart.png", "--caption", "done"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", to: "w3", file: "./chart.png", caption: "done" },
+		});
+		// a file MAY accompany a text body …
+		expect(parseArgs(["send", "w3", "see this", "--file", "./a.pdf"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", to: "w3", text: "see this", file: "./a.pdf" },
+		});
+		// … and a file may stand alone (attachment-only — no text, no command).
+		// Mutation: drop `file` from the no-payload guard and this flips to E-ARG.
+		expect(parseArgs(["send", "w3", "--file", "./a.pdf"])).toMatchObject({
+			ok: true,
+			value: { verb: "send", to: "w3", file: "./a.pdf", text: undefined, command: undefined },
+		});
+	});
+
+	it("rejects --caption without --file, a bare --file, and --file with --command", () => {
+		expect(parseArgs(["send", "w3", "--caption", "orphan"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["send", "w3", "hi", "--file"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["send", "w3", "--file", "a.png", "--command", "compact"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
 });
 
 describe("dispatch whoami / list", () => {
@@ -206,6 +236,33 @@ describe("dispatch send", () => {
 			to: "w3",
 			command: "compact",
 		});
+	});
+
+	it("--file attaches a reference-passing entry; plain text carries NO attachments key", () => {
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+		// attachment-only (empty body) with a caption
+		dispatch(
+			{ verb: "send", to: "w3", file: "/tmp/chart.png", caption: "done", wait: false, json: false },
+			d,
+		);
+		expect(d.delivery.outbox[0]?.message).toEqual({
+			from: "a1",
+			to: "w3",
+			body: "",
+			attachments: [{ path: "/tmp/chart.png", caption: "done" }],
+		});
+		// a file with no caption omits the caption key …
+		dispatch({ verb: "send", to: "w3", file: "/tmp/a.pdf", wait: false, json: false }, d);
+		expect(d.delivery.outbox[1]?.message).toEqual({
+			from: "a1",
+			to: "w3",
+			body: "",
+			attachments: [{ path: "/tmp/a.pdf" }],
+		});
+		// … and a plain text send is byte-for-byte unchanged (no attachments key at all).
+		// Mutation: always set `attachments` and this toEqual flips RED.
+		dispatch({ verb: "send", to: "w3", text: "just text", wait: false, json: false }, d);
+		expect(d.delivery.outbox[2]?.message).toEqual({ from: "a1", to: "w3", body: "just text" });
 	});
 
 	it("queued vs delivered receipt hint follows the peer's state", () => {

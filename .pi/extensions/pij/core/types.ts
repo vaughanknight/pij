@@ -153,6 +153,12 @@ export interface PijMessage {
 	 *  records it as an event but never injects it, so a receipt can never
 	 *  wake (or bill) the peer it acknowledges (finding 08 / Phase-3 fix). */
 	readonly kind?: "receipt";
+	/** Reference-passing media (Plan 026 Phase 5): each entry is a LOCAL file path
+	 *  plus an optional caption — never bytes on the wire. Only the telegram bridge
+	 *  acts on these (uploads each via grammY); every other peer ignores the field, so
+	 *  it is fully additive and the text `body` stays the contract. Present only when
+	 *  `pij send … --file` attached a file; a plain text send has no `attachments` key. */
+	readonly attachments?: ReadonlyArray<{ readonly path: string; readonly caption?: string }>;
 }
 
 // ─── delivery receipts (finding 08; spec AC-13) ───────────────────────────
