@@ -91,7 +91,28 @@ just flow-pair-link        # (in-repo dogfood) symlink flow-pair into .pi/skills
 you do **not** install per-agent. For cold start the skills that matter are
 `the-flow`, `flow-pair`, and `eng-harness-flow`.
 
-→ [`docs/how/skills.md`](docs/how/skills.md)
+### `the-flow` from the source repo (`jakkaj/tools`)
+
+`the-flow` lives in the **tools** repo — `git@github.com:jakkaj/tools.git`
+(its README documents the full `npx skills` install surface). `npx skills` takes
+the `owner/repo` shorthand `jakkaj/tools` and resolves it to that remote, so you
+can install `the-flow` directly without the `justfile`:
+
+```bash
+# the-flow only (the whole /the-flow SDD pipeline ships as one skill):
+npx skills@latest add jakkaj/tools --skill the-flow -a claude-code -g   # Claude (~/.claude/skills)
+npx skills@latest add jakkaj/tools --skill the-flow -a github-copilot   # Copilot (~/.agents/skills)
+
+# or every skill in the repo, globally for Claude:
+npx skills@latest add jakkaj/tools -a claude-code -g
+```
+
+`just install-flow-skills` is the pi-scoped wrapper around the first form
+(`-a pi`). Use the raw one-liners above when you want `the-flow` on **Claude or
+Copilot** specifically.
+
+→ [`docs/how/skills.md`](docs/how/skills.md) ·
+[`jakkaj/tools` README](https://github.com/jakkaj/tools#readme)
 
 ## The extensions (the pi-extensions half)
 
