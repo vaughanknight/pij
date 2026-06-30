@@ -71,14 +71,25 @@ pi in-process inbox, claude/copilot/codex via tmux send-keys).
 
 ## Skills
 
-> Non-Claude agents (copilot, codex, pi) read skills from **`~/.agents/skills/`**
-> (installed via `npx skills`; manifest `~/.agents/.skill-lock.json`). Claude's
-> skills live at **`~/.claude/skills/`**, which **symlinks into** the shared
-> `~/.agents/skills/` store.
+> **Copilot** (and codex, pi) read skills from **`~/.agents/skills/`** (installed
+> via `npx skills`; manifest `~/.agents/.skill-lock.json`). **Claude** reads from
+> **`~/.claude/skills/`**, which **symlinks into** that same `~/.agents/skills/`
+> store — one physical store, both agents see it.
 
-Install machine-wide with `just flow-pair-install`; install the pi-scoped flow
-skills with `just install-flow-skills`. For cold start, the skills that matter
-are `the-flow`, `flow-pair`, and `eng-harness-flow`.
+Install via the `justfile` (it wraps `npx skills` — never call `npx skills` by
+hand for a cold start):
+
+```bash
+just flow-pair-install     # flow-pair → EVERY agent (`-a '*'`): Claude (~/.claude/skills)
+                           #   AND Copilot/codex/pi (~/.agents/skills), in one pass
+just install-flow-skills   # the-flow + eng-harness-flow, pi-scoped, global
+just flow-pair-link        # (in-repo dogfood) symlink flow-pair into .pi/skills/
+```
+
+`flow-pair-install` fans out to Claude **and** Copilot at once (it populates
+`~/.agents/skills/` and the per-agent symlink bridge into `~/.claude/skills/`);
+you do **not** install per-agent. For cold start the skills that matter are
+`the-flow`, `flow-pair`, and `eng-harness-flow`.
 
 → [`docs/how/skills.md`](docs/how/skills.md)
 

@@ -156,6 +156,21 @@ export class DaemonTmux implements DaemonPorts {
 				sleepSync(WAKE_SETTLE_MS);
 				pressKey(paneId, "Enter", 1, execFileRunner);
 			}
+			// EXHAUSTED all retries and the line is STILL in the composer — the genuine
+			// "stuck in the input box" wedge the operator keeps reporting. We can't
+			// reproduce it in tests, so make it leave EVIDENCE: emit a loud daemon-log
+			// line (stderr → the daemon pane) naming the pane/pid so the next real
+			// occurrence is diagnosable instead of a silent ghost. Best-effort; never throws.
+			if (composerPending(this.capturePane(paneId), text)) {
+				try {
+					const tail = text.replace(/\s+/g, " ").slice(-48);
+					process.stderr.write(
+						`⚠️  copilot WEDGE: send to pane ${paneId} (pid ${pid ?? "?"}) still pending after ${SUBMIT_RETRIES} WINCH+Enter retries — text tail «…${tail}». The Enter was not consumed; the message is stranded in the composer.\n`,
+					);
+				} catch {
+					// logging is diagnostic-only — a write failure must not break delivery.
+				}
+			}
 		}
 	}
 
