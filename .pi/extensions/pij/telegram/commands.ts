@@ -9,6 +9,7 @@
 // the `register*Command` functions are the thin grammY wiring.
 
 import type { Bot } from "grammy";
+import { liveness, STALE_AFTER_MS } from "../core/state.js";
 import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";
 import { recencyKey } from "./match.js";
 
@@ -21,29 +22,60 @@ const TAIL_DEFAULT = 10;
 const TAIL_MAX = 50;
 
 /**
- * Render a `/list` reply: the newest `MAX_LIST` sessions, each as `id — folder`.
+ * Filter a registry snapshot down to LIVE sessions only, newest-first, capped.
+ * Reuses the canonical `liveness` verdict (`core/state.ts`) — "active" for
+ * `/list` means `verdict === "active"`, which drops both `dead` and `stale`
+ * sessions (a stall is not something an operator should be addressing).
  *
  * @param sessions a registry snapshot (order undefined — we sort it here)
- * @returns the reply text (a friendly note when there are no sessions)
+ * @param isAlive  pid liveness probe (`OsPort.isAlive` in production)
+ * @param nowMs    current time, injected for testability
+ * @param max      cap on the returned list (default `MAX_LIST`)
  */
-export function formatSessionList(sessions: readonly SessionDescriptor[]): string {
-	if (sessions.length === 0) return "No live pij sessions. Spawn one, then /list again.";
-
+export function selectActiveRecent(
+	sessions: readonly SessionDescriptor[],
+	isAlive: (pid: number) => boolean,
+	nowMs: number,
+	max: number = MAX_LIST,
+): readonly SessionDescriptor[] {
+	const active = sessions.filter((d) => {
+		const ts = Date.parse(d.lastEventAt ?? d.startedAt);
+		const ageMs = Number.isNaN(ts) ? null : nowMs - ts;
+		const verdict = liveness(isAlive(d.pid), ageMs, STALE_AFTER_MS, d.state === "working");
+		return verdict === "active";
+	});
 	// Newest-first by the same recency rule the matcher uses; stable sort keeps
 	// equal-recency ties in registry order. ISO-8601 strings sort chronologically.
-	const ordered = [...sessions]
+	return [...active]
 		.sort((a, b) => {
 			const ka = recencyKey(a);
 			const kb = recencyKey(b);
 			return ka < kb ? 1 : ka > kb ? -1 : 0;
 		})
-		.slice(0, MAX_LIST);
+		.slice(0, max);
+}
+
+/**
+ * Render a `/list` reply from an ALREADY active-filtered, sorted, capped list
+ * (see {@link selectActiveRecent}) — this function only renders.
+ *
+ * @param sessions the selected sessions to show, newest-first
+ * @param total    the active count BEFORE capping (defaults to `sessions.length`,
+ *                 i.e. "this is everything") — pass the pre-cap total to surface
+ *                 the AC-4 "N of TOTAL" header when more were active than shown
+ * @returns the reply text (a friendly note when there are no active sessions)
+ */
+export function formatSessionList(
+	sessions: readonly SessionDescriptor[],
+	total: number = sessions.length,
+): string {
+	if (sessions.length === 0) return "No active pij sessions. Spawn one, then /list again.";
 
 	const header =
-		sessions.length > MAX_LIST
-			? `${ordered.length} of ${sessions.length} sessions (newest first):`
-			: `${ordered.length} session${ordered.length === 1 ? "" : "s"}:`;
-	const lines = ordered.map((s) => `• ${s.id} — ${s.folder}`);
+		total > sessions.length
+			? `${sessions.length} of ${total} active (newest first):`
+			: `${sessions.length} active session${sessions.length === 1 ? "" : "s"}:`;
+	const lines = sessions.map((s) => `• ${s.id} — ${s.folder}`);
 	return [header, ...lines].join("\n");
 }
 
@@ -53,13 +85,18 @@ export function formatSessionList(sessions: readonly SessionDescriptor[]): strin
  *
  * @param bot          the grammY bot (allowlist middleware already registered first)
  * @param listSessions injected session source (FsRegistry.list in production)
+ * @param isAlive      pid liveness probe, threaded into {@link selectActiveRecent}
+ * @param now          clock, threaded into {@link selectActiveRecent}
  */
 export function registerListCommand(
 	bot: Bot,
 	listSessions: () => readonly SessionDescriptor[],
+	isAlive: (pid: number) => boolean,
+	now: () => number,
 ): void {
 	bot.command("list", async (ctx) => {
-		await ctx.reply(formatSessionList(listSessions()));
+		const activeAll = selectActiveRecent(listSessions(), isAlive, now(), Number.POSITIVE_INFINITY);
+		await ctx.reply(formatSessionList(activeAll.slice(0, MAX_LIST), activeAll.length));
 	});
 }
 

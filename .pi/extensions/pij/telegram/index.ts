@@ -121,6 +121,8 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 
 	const bot = createBot(config, {
 		listSessions: () => rt.registry.list(),
+		isAlive: rt.isAlive,
+		now: () => Date.now(),
 		deliver: (message) => {
 			rt.channel.deliver(message);
 		},

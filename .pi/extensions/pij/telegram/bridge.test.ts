@@ -141,12 +141,16 @@ function makeBridge(
 	allowed: number[] = [ALLOWED],
 	readEvents?: (id: SessionId, last: number) => readonly PijEvent[],
 	downloadMedia?: (ctx: unknown, dest: string) => Promise<void>,
+	isAlive?: (pid: number) => boolean,
+	now?: () => number,
 ) {
 	const deliver = vi.fn();
 	const log = vi.fn();
 	const config: TelegramConfig = { token: "test-token", allowedUserIds: allowed };
 	const bot = createBot(config, {
 		listSessions: () => sessions,
+		isAlive,
+		now,
 		deliver,
 		readEvents,
 		downloadMedia: downloadMedia as ((ctx: never, dest: string) => Promise<void>) | undefined,
@@ -324,6 +328,23 @@ describe("createBot (inbound bridge)", () => {
 		await bot.handleUpdate(textUpdate({ fromId: 999, text: "/list", command: true }));
 		expect(replies()).toEqual([]);
 		expect(log).toHaveBeenCalledWith(expect.stringContaining("drop"));
+	});
+
+	it("/list excludes a dead session — proves isAlive threads through the wiring (Plan 027)", async () => {
+		const live = desc({ id: "pij-live", folder: "/work/live", pid: 1111 });
+		const dead = desc({ id: "pij-dead", folder: "/work/dead", pid: 2222 });
+		const isAlive = (pid: number) => pid !== dead.pid;
+		const { bot, replies } = makeBridge(
+			[live, dead],
+			[ALLOWED],
+			undefined,
+			undefined,
+			isAlive,
+			() => Date.now(),
+		);
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/list", command: true }));
+		expect(replies()[0]).toContain("pij-live");
+		expect(replies()[0]).not.toContain("pij-dead");
 	});
 });
 

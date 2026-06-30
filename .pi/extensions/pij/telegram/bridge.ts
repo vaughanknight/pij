@@ -71,6 +71,12 @@ export function framedBody(text: string, firstContact: boolean): string {
 export interface BridgeDeps {
 	/** Live session snapshot — `FsRegistry.list` in production. */
 	listSessions: () => readonly SessionDescriptor[];
+	/** pid liveness probe for `/list`'s active filter — `OsPort.isAlive` in production
+	 *  (same seam the CLI's `liveOf` uses). Defaults to "always alive" so callers that
+	 *  only care about routing (not `/list`) don't need to wire a probe. */
+	isAlive?: (pid: number) => boolean;
+	/** Clock for `/list`'s active filter. Defaults to `Date.now`. */
+	now?: () => number;
 	/** Deliver a framed message to a session inbox — `FsChannel.deliver` in production. */
 	deliver: (message: PijMessage) => void;
 	/** Read the last `n` events of a session for `/tail` — `FsEventLog.read({last:n})`
@@ -238,7 +244,7 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 	// is answered by its command and never falls through to be relayed as an address.
 	// `/tail` shares THIS closure's sticky map so it peeks the same target the relay
 	// is talking to, and reuses the relay's GUIDANCE when no target is set (T003).
-	registerListCommand(bot, deps.listSessions);
+	registerListCommand(bot, deps.listSessions, deps.isAlive ?? (() => true), deps.now ?? Date.now);
 	registerTailCommand(bot, {
 		getStickyTarget: (chatId) => sticky.get(chatId),
 		readEvents: deps.readEvents ?? (() => []),
