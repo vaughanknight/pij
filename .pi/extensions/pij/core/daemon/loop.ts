@@ -26,7 +26,13 @@ import { classifyInterstitial } from "../interstitial.js";
 import type { DeliveryPort, RegistryPort } from "../ports.js";
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import { classifyDeathReason } from "../state.js";
-import type { DeathReason, PijMessage, SessionDescriptor, SessionId } from "../types.js";
+import type {
+	DeathReason,
+	HarnessKind,
+	PijMessage,
+	SessionDescriptor,
+	SessionId,
+} from "../types.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -36,8 +42,11 @@ export interface DaemonPorts {
 	capturePane(paneId: string): string;
 	/** Is the pane dead/exited (tmux `#{pane_dead}`)? */
 	isPaneDead(paneId: string): boolean;
-	/** Type literal text into a pane and press Enter (a submitted line). */
-	sendText(paneId: string, text: string): void;
+	/** Type literal text into a pane and press Enter (a submitted line). `harness`
+	 *  selects the per-harness Enter-settle (Copilot's composer needs longer than
+	 *  Claude's, else the Return is swallowed and the text strands in the input box).
+	 *  Optional — absent falls back to the Claude default. */
+	sendText(paneId: string, text: string, harness?: HarnessKind): void;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
 	sendKey(paneId: string, key: "Escape" | "Enter"): void;
 	/** List `*.jsonl` transcript paths currently in a directory (FLAT — claude). */
@@ -194,7 +203,7 @@ export function driveSession(
 	// 1) Inject the init exactly once (only when truly ready, not mid-turn busy).
 	if (readiness === "ready" && shouldInjectInit(descriptor)) {
 		const init = buildInitInjection(descriptor.id, descriptor.branchedFrom != null);
-		ports.sendText(paneId, init.body);
+		ports.sendText(paneId, init.body, harness);
 		const at = new Date(ports.now()).toISOString();
 		registry.write(markInitInjected(descriptor, at));
 		drive.readyAtMs = ports.now();
@@ -309,7 +318,7 @@ export function driveSession(
 		timeoutMs: WATCHDOG_TIMEOUT_MS,
 	});
 	if (decision.kind === "resend-phonehome") {
-		ports.sendText(paneId, buildInitInjection(descriptor.id).phonehomeLine);
+		ports.sendText(paneId, buildInitInjection(descriptor.id).phonehomeLine, harness);
 		drive.resentAtMs = ports.now();
 		return { kind: "resent-phonehome" };
 	}
@@ -366,7 +375,7 @@ export function drainTmuxInbox(
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
-			ports.sendText(decision.paneId, decision.text);
+			ports.sendText(decision.paneId, decision.text, target.harness);
 			consumed.push(m.messageId);
 		} else if (decision.kind === "buffer") {
 			buffer.enqueue(msg);

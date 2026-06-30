@@ -12,12 +12,31 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DaemonPorts } from "../core/daemon/loop.js";
 import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
+import type { HarnessKind } from "../core/types.js";
 import { NodeProcess } from "./process.js";
 import { capturePane, execFileRunner, pressKey, typeLiteral } from "./tmux-keys.js";
 
-/** Debounce window Claude Code applies to a pasted/burst input before the line
- *  is submittable. Tuned by observation (T020). */
-const ENTER_SETTLE_MS = 350;
+/** Debounce window a harness applies to a pasted/burst input before the line is
+ *  submittable — the settle the daemon waits out BEFORE pressing Enter so the
+ *  keystroke lands AFTER the paste-pill resolves (an Enter fired mid-debounce is
+ *  swallowed and the text strands in the composer). The value is HARNESS-SPECIFIC:
+ *  Claude's pill resolves fast (350ms, tuned at T020), but Copilot CLI's composer
+ *  needs materially longer or the Return is eaten and the message sits unsent in
+ *  the input box (operator-reported, repeatedly). `pi` never reaches here (the
+ *  daemon never injects into pi — it self-drains); listed only for totality. */
+const ENTER_SETTLE_BY_HARNESS: Record<HarnessKind, number> = {
+	claude: 350,
+	copilot: 900,
+	codex: 350,
+	pi: 350,
+};
+
+/** The Enter-settle (ms) for a harness — pure + exported so the per-harness rule
+ *  is unit-testable without driving a live pane. An unknown/absent harness falls
+ *  back to the Claude default (the long-standing behaviour). */
+export function enterSettleMs(harness?: HarnessKind): number {
+	return harness ? (ENTER_SETTLE_BY_HARNESS[harness] ?? 350) : 350;
+}
 
 /** Block the current thread for `ms` without spawning a process. The daemon tick
  *  is synchronous, so a brief settle here is simpler than threading async. */
@@ -47,14 +66,15 @@ export class DaemonTmux implements DaemonPorts {
 		}
 	}
 
-	sendText(paneId: string, text: string): void {
+	sendText(paneId: string, text: string, harness?: HarnessKind): void {
 		typeLiteral(paneId, text, execFileRunner);
-		// Settle before Enter (T020/R-02): a literal burst trips Claude Code's
-		// paste detection, which parks the text in a "pasted text" pill and runs a
-		// short idle-debounce. An Enter fired immediately lands mid-debounce and is
-		// swallowed, so the submit lags or needs a second key. Wait out the debounce
+		// Settle before Enter (T020/R-02): a literal burst trips the harness's paste
+		// detection, which parks the text in a "pasted text" pill and runs a short
+		// idle-debounce. An Enter fired immediately lands mid-debounce and is swallowed,
+		// so the submit lags or strands the text in the composer. Wait out the debounce
 		// (synchronously — the daemon tick is single-threaded) so Enter submits crisply.
-		sleepSync(ENTER_SETTLE_MS);
+		// The window is HARNESS-SPECIFIC: Copilot's composer needs longer than Claude's.
+		sleepSync(enterSettleMs(harness));
 		pressKey(paneId, "Enter", 1, execFileRunner);
 	}
 
