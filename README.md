@@ -1,10 +1,25 @@
 # pij
 
-Engineering harness for building [pi](https://github.com/earendil-works) extensions.
+pij is **two things at once — and more**:
 
-> **The harness is the product.** pij is infrastructure for authoring pi
-> extensions fast, with patterns P1–P10 enforced by templates and a
-> measured velocity log so the path compounds with use.
+1. A **pi-extensions project** — the `.pi/extensions/*` product surfaces
+   (`pij`, `session-sql`, `todo`, `minih-workbench`, `pi-peacock`, and more)
+   shipped as [pi](https://github.com/earendil-works) extensions.
+2. A **cross-agent worker system** — a control-plane daemon, `flow-pair`
+   delegation, and a Telegram bridge that let **agents drive agents** across
+   pi / claude / copilot / codex.
+
+…plus the engineering + agent harness that makes both compound. How we work
+end-to-end lives in [`docs/how/workflow.md`](./docs/how/workflow.md).
+
+> **The harness is the product.** Beneath both halves, pij is infrastructure
+> for authoring pi extensions fast and coordinating agents reliably — patterns
+> P1–P10 enforced by templates, a measured velocity log, and a deterministic
+> gate, so the path compounds with use.
+
+> **New agent? Start here →** [`AGENTS_README.md`](./AGENTS_README.md) is the
+> cold-start front door (clone → build → update pi → "I understand this repo"),
+> indexing the depth articles under [`docs/how/`](./docs/how/).
 
 ## Three commands
 
