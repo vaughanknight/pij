@@ -59,6 +59,45 @@ function wakeRenderLoop(pid: number): void {
 	}
 }
 
+// ─── submit verification (the cause-independent wedge fix) ──────────────────
+/** Re-check the composer this many times after Enter; WINCH+re-Enter each time the
+ *  line is still pending. 3 is enough to ride out a parked loop without blocking the
+ *  single-threaded daemon tick for long. */
+const SUBMIT_RETRIES = 3;
+/** Wait after an Enter before reading the pane back — long enough for copilot to
+ *  clear the composer on a real submit, short enough to retry quickly when it didn't. */
+const SUBMIT_VERIFY_MS = 450;
+/** Settle between a WINCH-wake and the retry Enter. */
+const WAKE_SETTLE_MS = 200;
+
+/** The composer box's contents from a captured pane. Copilot boxes its input between
+ *  two horizontal-rule lines (`────`); the `❯` prompt + any typed text live inside.
+ *  Returns the region between the LAST two rules (the live composer), or the bottom
+ *  few lines if the box can't be located. Pure + exported for test. */
+export function composerRegion(pane: string): string {
+	const lines = pane.split("\n");
+	const rules: number[] = [];
+	for (let i = 0; i < lines.length; i++) if (/─{8,}/.test(lines[i] ?? "")) rules.push(i);
+	const lo = rules.at(-2);
+	const hi = rules.at(-1);
+	if (lo !== undefined && hi !== undefined) return lines.slice(lo + 1, hi).join("\n");
+	return lines.slice(-4).join("\n");
+}
+
+/** Did the text we just sent FAIL to submit — i.e. is its tail still sitting in the
+ *  composer box (the wedge)? Compares a whitespace-stripped tail of `sent` against the
+ *  composer region (prompt char + whitespace stripped). An empty composer (a real
+ *  submit moved the line into the transcript) → false. A too-short `sent` → false (can't
+ *  match reliably; assume submitted rather than risk a spurious double-Enter). Pure +
+ *  exported for test. NOTE: a very long send copilot collapses into a "[Pasted text]"
+ *  pill is not matched (the literal isn't shown) — a known gap, logged not silent. */
+export function composerPending(pane: string, sent: string): boolean {
+	const tail = sent.replace(/\s+/g, "").slice(-24);
+	if (tail.length < 4) return false;
+	const region = composerRegion(pane).replace(/[❯\s]/g, "");
+	return region.includes(tail);
+}
+
 /** Block the current thread for `ms` without spawning a process. The daemon tick
  *  is synchronous, so a brief settle here is simpler than threading async. */
 function sleepSync(ms: number): void {
@@ -102,6 +141,22 @@ export class DaemonTmux implements DaemonPorts {
 		// The window is HARNESS-SPECIFIC: Copilot's composer needs longer than Claude's.
 		sleepSync(enterSettleMs(harness));
 		pressKey(paneId, "Enter", 1, execFileRunner);
+		// Verify-and-retry (copilot, cause-independent): the preemptive WINCH + settle
+		// handle the *known* wedge/debounce, but the wedge has been seen even foreground,
+		// so don't trust the single Enter — read the pane back and confirm the line left
+		// the composer. While its tail is still pending, WINCH-wake + re-press Enter. This
+		// checks "did it actually submit?" regardless of WHY it stuck. Copilot-only (claude/
+		// codex submit reliably); re-Enter fires ONLY when text is still detected, so a
+		// real submit never gets a spurious second Enter (no double-send).
+		if (needsRenderWake(harness)) {
+			for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
+				sleepSync(SUBMIT_VERIFY_MS);
+				if (!composerPending(this.capturePane(paneId), text)) return; // submitted — done
+				if (pid !== undefined) wakeRenderLoop(pid);
+				sleepSync(WAKE_SETTLE_MS);
+				pressKey(paneId, "Enter", 1, execFileRunner);
+			}
+		}
 	}
 
 	sendKey(paneId: string, key: "Escape" | "Enter"): void {
