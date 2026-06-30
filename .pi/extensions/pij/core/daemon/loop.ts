@@ -45,8 +45,10 @@ export interface DaemonPorts {
 	/** Type literal text into a pane and press Enter (a submitted line). `harness`
 	 *  selects the per-harness Enter-settle (Copilot's composer needs longer than
 	 *  Claude's, else the Return is swallowed and the text strands in the input box).
-	 *  Optional — absent falls back to the Claude default. */
-	sendText(paneId: string, text: string, harness?: HarnessKind): void;
+	 *  `pid` is the pane's app process — used to WINCH-wake a parked copilot render
+	 *  loop before typing (the backgrounded-pane wedge). Both optional — absent
+	 *  falls back to the Claude default settle and no wake. */
+	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): void;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
 	sendKey(paneId: string, key: "Escape" | "Enter"): void;
 	/** List `*.jsonl` transcript paths currently in a directory (FLAT — claude). */
@@ -203,7 +205,7 @@ export function driveSession(
 	// 1) Inject the init exactly once (only when truly ready, not mid-turn busy).
 	if (readiness === "ready" && shouldInjectInit(descriptor)) {
 		const init = buildInitInjection(descriptor.id, descriptor.branchedFrom != null);
-		ports.sendText(paneId, init.body, harness);
+		ports.sendText(paneId, init.body, harness, descriptor.pid);
 		const at = new Date(ports.now()).toISOString();
 		registry.write(markInitInjected(descriptor, at));
 		drive.readyAtMs = ports.now();
@@ -318,7 +320,12 @@ export function driveSession(
 		timeoutMs: WATCHDOG_TIMEOUT_MS,
 	});
 	if (decision.kind === "resend-phonehome") {
-		ports.sendText(paneId, buildInitInjection(descriptor.id).phonehomeLine, harness);
+		ports.sendText(
+			paneId,
+			buildInitInjection(descriptor.id).phonehomeLine,
+			harness,
+			descriptor.pid,
+		);
 		drive.resentAtMs = ports.now();
 		return { kind: "resent-phonehome" };
 	}
@@ -375,7 +382,7 @@ export function drainTmuxInbox(
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
-			ports.sendText(decision.paneId, decision.text, target.harness);
+			ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
 			consumed.push(m.messageId);
 		} else if (decision.kind === "buffer") {
 			buffer.enqueue(msg);

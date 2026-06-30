@@ -38,6 +38,27 @@ export function enterSettleMs(harness?: HarnessKind): number {
 	return harness ? (ENTER_SETTLE_BY_HARNESS[harness] ?? 350) : 350;
 }
 
+/** Does this harness need a render-loop WINCH wake before a send-keys? Copilot's
+ *  TUI parks its input/render loop when its pane is backgrounded — keystrokes
+ *  (text AND Enter) then strand until a SIGWINCH-class event forces a redraw, so
+ *  a peer message can silently never land (operator-reported wedge). Claude/codex
+ *  don't exhibit it. Pure + exported so the per-harness rule is unit-testable. */
+export function needsRenderWake(harness?: HarnessKind): boolean {
+	return harness === "copilot";
+}
+
+/** Best-effort SIGWINCH to a pane's app process to wake a parked render/input loop
+ *  (the copilot wedge). `process.kill(pid, "SIGWINCH")` re-renders at the same size
+ *  — verified safe (copilot stays up, next keystrokes land). Swallow every error:
+ *  a gone pid (ESRCH) / perms (EPERM) just means no wake this send, never a throw. */
+function wakeRenderLoop(pid: number): void {
+	try {
+		process.kill(pid, "SIGWINCH");
+	} catch {
+		// pid gone or unsignalable — best-effort; the send proceeds regardless.
+	}
+}
+
 /** Block the current thread for `ms` without spawning a process. The daemon tick
  *  is synchronous, so a brief settle here is simpler than threading async. */
 function sleepSync(ms: number): void {
@@ -66,7 +87,12 @@ export class DaemonTmux implements DaemonPorts {
 		}
 	}
 
-	sendText(paneId: string, text: string, harness?: HarnessKind): void {
+	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): void {
+		// Wake a parked copilot render loop BEFORE typing (the backgrounded-pane wedge):
+		// a SIGWINCH to the pane's app process forces a redraw so the keystrokes below
+		// are actually consumed instead of stranding in a frozen composer. Best-effort,
+		// copilot-only, no-op when we have no pid.
+		if (pid !== undefined && needsRenderWake(harness)) wakeRenderLoop(pid);
 		typeLiteral(paneId, text, execFileRunner);
 		// Settle before Enter (T020/R-02): a literal burst trips the harness's paste
 		// detection, which parks the text in a "pasted text" pill and runs a short

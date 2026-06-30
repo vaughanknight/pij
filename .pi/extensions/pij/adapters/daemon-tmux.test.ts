@@ -7,7 +7,7 @@
 // the table back to one value and these go RED.
 
 import { describe, expect, it } from "vitest";
-import { enterSettleMs } from "./daemon-tmux.js";
+import { enterSettleMs, needsRenderWake } from "./daemon-tmux.js";
 
 describe("enterSettleMs — per-harness Enter settle", () => {
 	it("gives copilot a LONGER settle than claude (the whole point of task #24)", () => {
@@ -29,5 +29,21 @@ describe("enterSettleMs — per-harness Enter settle", () => {
 
 	it("an absent/unknown harness falls back to the claude default (350)", () => {
 		expect(enterSettleMs(undefined)).toBe(350);
+	});
+});
+
+describe("needsRenderWake — per-harness WINCH-wake before send (the wedge fix)", () => {
+	it("copilot needs a render wake (it parks its input loop when backgrounded)", () => {
+		// If this flips false, the daemon stops WINCH-waking copilot → the wedge returns.
+		expect(needsRenderWake("copilot")).toBe(true);
+	});
+
+	it("claude + codex do NOT (they don't exhibit the wedge)", () => {
+		expect(needsRenderWake("claude")).toBe(false);
+		expect(needsRenderWake("codex")).toBe(false);
+	});
+
+	it("an absent harness does not wake", () => {
+		expect(needsRenderWake(undefined)).toBe(false);
 	});
 });
