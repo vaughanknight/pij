@@ -53,6 +53,12 @@ export class Daemon {
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
 	private readonly pushed = new Map<string, Set<PushedTransition>>();
+	/** Per-bound-session last captured-pane signature — the pane-content heartbeat.
+	 *  ANY visible change tick-to-tick means the peer is alive (streaming reasoning
+	 *  or tool output), even when its footer momentarily classifies as `booting`
+	 *  (raw tool output) rather than a `busy` marker. Feeds the stall guard so a
+	 *  deep-thinking / long-tool xhigh peer isn't false-flagged stalled. */
+	private readonly paneSig = new Map<string, string>();
 
 	constructor(
 		private readonly pijHome: string,
@@ -105,8 +111,24 @@ export class Daemon {
 				// `pij state`/`list` report real liveness instead of `idle · never`
 				// (control-plane peers write no pij events). Writes only on a change.
 				if (current.paneId) {
-					const readiness = classifyReadiness(this.ports.capturePane(current.paneId));
-					const updated = observeActivity(current, readiness, this.ports.now());
+					const pane = this.ports.capturePane(current.paneId);
+					const readiness = classifyReadiness(pane);
+					let updated = observeActivity(current, readiness, this.ports.now());
+					// Pane-content heartbeat: while WORKING, treat any visible change since
+					// last tick as activity — refresh lastEventAt. `observeActivity` only
+					// refreshes on a `busy` footer, but a deep-think / long-tool xhigh peer
+					// renders streaming reasoning or scrolling tool output that classifies as
+					// `booting` (no footer marker); its pane is still CHANGING, so this keeps
+					// its liveness fresh and stops the stall watchdog false-firing (SUGG-002).
+					const prevSig = this.paneSig.get(current.id);
+					this.paneSig.set(current.id, pane);
+					const effectiveState = updated?.state ?? current.state;
+					if (prevSig !== undefined && pane !== prevSig && effectiveState === "working") {
+						updated = {
+							...(updated ?? current),
+							lastEventAt: new Date(this.ports.now()).toISOString(),
+						};
+					}
 					if (updated) {
 						current = updated;
 						this.registry.write(updated);
@@ -114,8 +136,10 @@ export class Daemon {
 				}
 				// Whole-life stalled/dead push (T012): detect transitions and push once
 				// per transition to the creator. The latch (`this.pushed`) ensures each
-				// transition (stalled, dead) fires exactly one creator notification.
-				this.pushWholeLifeTransition(d);
+				// transition (stalled, dead) fires exactly one creator notification. Pass
+				// the JUST-OBSERVED snapshot (`current`), not the tick-start `d`, or the
+				// stall check reads a stale state/lastEventAt and false-fires (SUGG-002).
+				this.pushWholeLifeTransition(current);
 			}
 			// Provider-failure peek (FIX-A / DL-005) — read-only and HARNESS-AGNOSTIC
 			// (pi INCLUDED). A spawned worker can sit idle on a fatal provider error

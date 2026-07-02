@@ -5,7 +5,7 @@
 // with fake ports to drive behaviour without real tmux.
 
 import { describe, expect, it } from "vitest";
-import { FakeDelivery, FakeProcess, FakeRegistry } from "./adapters/fakes.js";
+import { FakeDelivery, FakeRegistry } from "./adapters/fakes.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
@@ -67,7 +67,10 @@ function daemon(
 describe("daemon tick: stalled-session push (T011/T012)", () => {
 	it("pushes a stalled notice to the creator when a bound session is working+stale", () => {
 		const desc = bound(); // state=working, lastEventAt stale
-		const ports = makePorts({ pane: "⏵ bypass permissions on" });
+		// A booting-classified pane (no idle/busy footer marker) keeps state=working:
+		// an idle-footer pane would flip to `idle` (not stalled). Single tick has no
+		// prior pane signature, so the heartbeat can't refresh → working+stale stalls.
+		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
 		const { delivery, daemon: d } = daemon([desc], ports);
 		d.tick();
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
@@ -104,6 +107,54 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 				(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled/i),
 			),
 		).toHaveLength(0);
+	});
+
+	it("does NOT push stalled while the pane keeps CHANGING (deep-think heartbeat, SUGG-002)", () => {
+		// A deep-think / long-tool xhigh peer renders scrolling output that classifies
+		// as `booting` (no footer marker), so observeActivity never refreshes on a busy
+		// marker — but the pane IS changing. The pane-content heartbeat treats each
+		// change as activity, keeping lastEventAt fresh so the 60s stale clock never
+		// trips even as the wall clock passes the window. This is the false-positive fix.
+		let clock = T0;
+		let frame = 0;
+		const ports: DaemonPorts = {
+			...makePorts({}),
+			capturePane: () => `▝▜█ working… frame ${frame}`, // booting-classified AND changes each tick
+			now: () => clock,
+		};
+		const desc = bound({ state: "working", lastEventAt: new Date(T0).toISOString() });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		for (let i = 0; i < 5; i++) {
+			frame++; // pane content changes tick-to-tick
+			clock += STALE_AFTER_MS / 2; // cumulative wall time races well past the stale window
+			d.tick();
+		}
+		expect(
+			delivery.outbox.filter(
+				(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled/i),
+			),
+		).toHaveLength(0);
+	});
+
+	it("DOES push stalled when the pane is byte-STABLE past the window (genuine stall)", () => {
+		// The heartbeat's flip side: a working peer whose pane never changes for the
+		// whole window is genuinely stuck → still pushed exactly once.
+		let clock = T0;
+		const ports: DaemonPorts = {
+			...makePorts({}),
+			capturePane: () => "▝▜█ Loading…", // booting-classified, NEVER changes
+			now: () => clock,
+		};
+		const desc = bound({ state: "working", lastEventAt: new Date(T0).toISOString() });
+		const { delivery, daemon: d } = daemon([desc], ports);
+		d.tick(); // establishes the pane-signature baseline (fresh, no stall)
+		clock += STALE_AFTER_MS + 5000; // wall clock passes the window, pane unchanged
+		d.tick();
+		expect(
+			delivery.outbox.filter(
+				(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled/i),
+			),
+		).toHaveLength(1);
 	});
 });
 
