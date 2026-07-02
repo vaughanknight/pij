@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { capturePane, pasteBuffer, pressKey, type TmuxRunner, typeLiteral } from "./tmux-keys.js";
+import {
+	capturePane,
+	pasteBuffer,
+	pressKey,
+	sendFocusIn,
+	type TmuxRunner,
+	typeLiteral,
+} from "./tmux-keys.js";
 
 /** A fake tmux runner that records argv and returns a canned stdout. */
 function recorder(stdout = ""): { calls: string[][]; run: TmuxRunner } {
@@ -43,6 +50,15 @@ describe("pressKey", () => {
 		const r = recorder();
 		pressKey("%3", "BSpace", 4, r.run);
 		expect(r.calls).toEqual([["send-keys", "-t", "%3", "-N", "4", "BSpace"]]);
+	});
+});
+
+describe("sendFocusIn — CSI I focus-in (the backgrounded-copilot wedge fix)", () => {
+	it("injects the raw ESC [ I bytes via -H (unblocks a focus-OUT'd copilot's Enter)", () => {
+		// If these bytes drift, a backgrounded copilot swallows Enter again → wedge.
+		const r = recorder();
+		sendFocusIn("%3", r.run);
+		expect(r.calls).toEqual([["send-keys", "-t", "%3", "-H", "1b", "5b", "49"]]);
 	});
 });
 

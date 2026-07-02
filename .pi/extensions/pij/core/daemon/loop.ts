@@ -45,9 +45,10 @@ export interface DaemonPorts {
 	/** Type literal text into a pane and press Enter (a submitted line). `harness`
 	 *  selects the per-harness Enter-settle (Copilot's composer needs longer than
 	 *  Claude's, else the Return is swallowed and the text strands in the input box).
-	 *  `pid` is the pane's app process — used to WINCH-wake a parked copilot render
-	 *  loop before typing (the backgrounded-pane wedge). Both optional — absent
-	 *  falls back to the Claude default settle and no wake. */
+	 *  `pid` is the pane's app process — used to wake a backgrounded copilot before
+	 *  typing (focus-IN injection + a secondary SIGWINCH) so its Enter submits instead
+	 *  of stranding the message in the composer. Both optional — absent falls back to
+	 *  the Claude default settle and no wake. */
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): void;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
 	sendKey(paneId: string, key: "Escape" | "Enter"): void;

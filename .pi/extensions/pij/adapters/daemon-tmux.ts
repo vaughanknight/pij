@@ -14,7 +14,7 @@ import type { DaemonPorts } from "../core/daemon/loop.js";
 import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
 import type { HarnessKind } from "../core/types.js";
 import { NodeProcess } from "./process.js";
-import { capturePane, execFileRunner, pressKey, typeLiteral } from "./tmux-keys.js";
+import { capturePane, execFileRunner, pressKey, sendFocusIn, typeLiteral } from "./tmux-keys.js";
 
 /** Debounce window a harness applies to a pasted/burst input before the line is
  *  submittable — the settle the daemon waits out BEFORE pressing Enter so the
@@ -38,25 +38,37 @@ export function enterSettleMs(harness?: HarnessKind): number {
 	return harness ? (ENTER_SETTLE_BY_HARNESS[harness] ?? 350) : 350;
 }
 
-/** Does this harness need a render-loop WINCH wake before a send-keys? Copilot's
- *  TUI parks its input/render loop when its pane is backgrounded — keystrokes
- *  (text AND Enter) then strand until a SIGWINCH-class event forces a redraw, so
- *  a peer message can silently never land (operator-reported wedge). Claude/codex
- *  don't exhibit it. Pure + exported so the per-harness rule is unit-testable. */
-export function needsRenderWake(harness?: HarnessKind): boolean {
+/** Does this harness need an input-wake before a send-keys? Copilot's composer
+ *  IGNORES Enter-as-submit when its pane is BACKGROUNDED: with tmux `focus-events
+ *  on`, switching away from the pane sends copilot a focus-OUT (CSI O) and it then
+ *  swallows the Return — a peer message types into the composer but strands unsent
+ *  (operator-reported "stuck in the input box", reproduced live). The fix is a
+ *  focus-IN (CSI I) injection before the keystrokes (see {@link wakeCopilotInput});
+ *  a SIGWINCH redraw alone does NOT clear it, because copilot gates submit on FOCUS
+ *  state, not render. Claude/codex don't exhibit it. Pure + exported for test. */
+export function needsInputWake(harness?: HarnessKind): boolean {
 	return harness === "copilot";
 }
 
-/** Best-effort SIGWINCH to a pane's app process to wake a parked render/input loop
- *  (the copilot wedge). `process.kill(pid, "SIGWINCH")` re-renders at the same size
- *  — verified safe (copilot stays up, next keystrokes land). Swallow every error:
- *  a gone pid (ESRCH) / perms (EPERM) just means no wake this send, never a throw. */
+/** Best-effort SIGWINCH to a pane's app process — forces a redraw at the same size.
+ *  A SECONDARY wake (the focus-IN in {@link wakeCopilotInput} is the real fix for the
+ *  backgrounded-copilot wedge); kept because a redraw is harmless and can help a
+ *  genuinely stale render. Swallow every error: a gone pid (ESRCH) / perms (EPERM)
+ *  just means no wake this send, never a throw. */
 function wakeRenderLoop(pid: number): void {
 	try {
 		process.kill(pid, "SIGWINCH");
 	} catch {
 		// pid gone or unsignalable — best-effort; the send proceeds regardless.
 	}
+}
+
+/** Wake a backgrounded copilot so its next Enter submits: inject a focus-IN escape
+ *  (CSI I — the PROVEN fix: a focus-OUT'd copilot ignores Enter until it sees focus-
+ *  IN) and, secondarily, SIGWINCH the app for a redraw. Best-effort, copilot-only. */
+function wakeCopilotInput(paneId: string, pid?: number): void {
+	sendFocusIn(paneId, execFileRunner);
+	if (pid !== undefined) wakeRenderLoop(pid);
 }
 
 // ─── submit verification (the cause-independent wedge fix) ──────────────────
@@ -127,32 +139,32 @@ export class DaemonTmux implements DaemonPorts {
 	}
 
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): void {
-		// Wake a parked copilot render loop BEFORE typing (the backgrounded-pane wedge):
-		// a SIGWINCH to the pane's app process forces a redraw so the keystrokes below
-		// are actually consumed instead of stranding in a frozen composer. Best-effort,
-		// copilot-only, no-op when we have no pid.
-		if (pid !== undefined && needsRenderWake(harness)) wakeRenderLoop(pid);
+		const wake = needsInputWake(harness);
+		// Wake a BACKGROUNDED copilot BEFORE typing (the real wedge fix): with tmux
+		// `focus-events on`, a pane you've switched away from is in focus-OUT state and
+		// copilot then swallows Enter-as-submit, stranding the message in the composer.
+		// A focus-IN (CSI I) injection flips it back to focused-input mode so the Return
+		// below actually submits (proven live). Copilot-only, best-effort.
+		if (wake) wakeCopilotInput(paneId, pid);
 		typeLiteral(paneId, text, execFileRunner);
-		// Settle before Enter (T020/R-02): a literal burst trips the harness's paste
-		// detection, which parks the text in a "pasted text" pill and runs a short
-		// idle-debounce. An Enter fired immediately lands mid-debounce and is swallowed,
-		// so the submit lags or strands the text in the composer. Wait out the debounce
-		// (synchronously — the daemon tick is single-threaded) so Enter submits crisply.
-		// The window is HARNESS-SPECIFIC: Copilot's composer needs longer than Claude's.
+		// Settle before Enter (T020/R-02): a literal burst can trip the harness's paste
+		// detection + a short idle-debounce; an Enter fired mid-debounce is swallowed, so
+		// the submit lags or strands the text. Wait it out (synchronously — the daemon tick
+		// is single-threaded). The window is HARNESS-SPECIFIC (Copilot's needs longer).
 		sleepSync(enterSettleMs(harness));
+		// Re-assert focus-IN right before the Return (a focus-OUT can arrive between the
+		// type and the Enter), then submit.
+		if (wake) sendFocusIn(paneId, execFileRunner);
 		pressKey(paneId, "Enter", 1, execFileRunner);
-		// Verify-and-retry (copilot, cause-independent): the preemptive WINCH + settle
-		// handle the *known* wedge/debounce, but the wedge has been seen even foreground,
-		// so don't trust the single Enter — read the pane back and confirm the line left
-		// the composer. While its tail is still pending, WINCH-wake + re-press Enter. This
-		// checks "did it actually submit?" regardless of WHY it stuck. Copilot-only (claude/
-		// codex submit reliably); re-Enter fires ONLY when text is still detected, so a
-		// real submit never gets a spurious second Enter (no double-send).
-		if (needsRenderWake(harness)) {
+		// Verify-and-retry (copilot, cause-independent): don't trust the single Enter —
+		// read the pane back and confirm the line left the composer. While its tail is
+		// still pending, re-wake (focus-IN + WINCH) and re-press Enter. Re-Enter fires ONLY
+		// when text is still detected, so a real submit never gets a spurious second Enter.
+		if (wake) {
 			for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
 				sleepSync(SUBMIT_VERIFY_MS);
 				if (!composerPending(this.capturePane(paneId), text)) return; // submitted — done
-				if (pid !== undefined) wakeRenderLoop(pid);
+				wakeCopilotInput(paneId, pid);
 				sleepSync(WAKE_SETTLE_MS);
 				pressKey(paneId, "Enter", 1, execFileRunner);
 			}

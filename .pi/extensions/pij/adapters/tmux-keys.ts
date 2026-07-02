@@ -92,6 +92,19 @@ export function typeLiteral(target: string, text: string, run: TmuxRunner = exec
 	run(["send-keys", "-t", target, "-l", text]);
 }
 
+/** `send-keys -t <target> -H 1b 5b 49` — inject a raw FOCUS-IN escape (CSI I,
+ *  `ESC [ I`) into the pane. With tmux `focus-events on`, switching away from a
+ *  copilot pane sends it a focus-OUT (CSI O) and copilot then IGNORES Enter-as-
+ *  submit — a peer message types into the composer but the Return is swallowed
+ *  and the text strands (operator-reported "stuck in the input box"; a SIGWINCH
+ *  redraw does NOT clear it, because copilot gates submit on FOCUS state, not
+ *  render). Injecting focus-IN flips copilot back to focused-input mode so the
+ *  next Enter submits. Verified against a live backgrounded copilot: focus-OUT →
+ *  stuck; focus-IN → submits. Argv-only (`-H` = hex bytes). */
+export function sendFocusIn(target: string, run: TmuxRunner = execFileRunner): void {
+	run(["send-keys", "-t", target, "-H", "1b", "5b", "49"]);
+}
+
 /** `send-keys -t <target> [-N n] <key>` — a named key, optionally repeated. */
 export function pressKey(
 	target: string,
