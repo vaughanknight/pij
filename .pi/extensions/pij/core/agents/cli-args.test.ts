@@ -162,3 +162,93 @@ describe("coerceParams — JSON auto-coercion (minih -p semantics)", () => {
 		});
 	});
 });
+
+describe("parseAgentArgs — spawn (peer mode, Phase 3)", () => {
+	it("parses spawn <slug> with repeated -p, --once, and overrides", () => {
+		const cmd = ok([
+			"spawn",
+			"flowspace-search",
+			"-p",
+			"query=daemon stall",
+			"-p",
+			"limit=5",
+			"--once",
+			"--model",
+			"claude-sonnet-4-6",
+			"--harness",
+			"claude",
+		]);
+		expect(cmd.subverb).toBe("spawn");
+		expect(cmd.slug).toBe("flowspace-search");
+		expect(cmd.params).toEqual({ query: "daemon stall", limit: "5" });
+		expect(cmd.once).toBe(true);
+		expect(cmd.model).toBe("claude-sonnet-4-6");
+		expect(cmd.harness).toBe("claude");
+	});
+
+	it("defaults once to false", () => {
+		expect(ok(["spawn", "flowspace-search"]).once).toBe(false);
+	});
+
+	it("parses spawn --prompt inline", () => {
+		const cmd = ok(["spawn", "--prompt", "watch the build"]);
+		expect(cmd.subverb).toBe("spawn");
+		expect(cmd.prompt).toBe("watch the build");
+		expect(cmd.slug).toBeUndefined();
+	});
+
+	it("rejects spawn with neither slug nor --prompt", () => {
+		expect(err(["spawn"]).code).toBe("E-ARG");
+	});
+
+	it("rejects spawn with both a slug and --prompt", () => {
+		expect(err(["spawn", "flowspace-search", "--prompt", "x"]).code).toBe("E-ARG");
+	});
+
+	it("rejects a second positional for spawn", () => {
+		expect(err(["spawn", "a", "b"]).code).toBe("E-ARG");
+	});
+});
+
+describe("parseAgentArgs — report (peer mode, Phase 3)", () => {
+	it("parses report --json '<payload>' into reportJson (not the boolean json)", () => {
+		const cmd = ok(["report", "--json", '{"summary":"done","results":[]}']);
+		expect(cmd.subverb).toBe("report");
+		expect(cmd.reportJson).toBe('{"summary":"done","results":[]}');
+		expect(cmd.json).toBe(false);
+	});
+
+	it("rejects report without --json", () => {
+		expect(err(["report"]).code).toBe("E-ARG");
+	});
+
+	it("rejects report --json with no value", () => {
+		expect(err(["report", "--json"]).code).toBe("E-ARG");
+	});
+
+	it("rejects a stray positional for report", () => {
+		expect(err(["report", "extra", "--json", "{}"]).code).toBe("E-ARG");
+	});
+});
+
+describe("parseAgentArgs — --once scoping", () => {
+	it("rejects --once for a non-spawn subverb", () => {
+		expect(err(["run", "flowspace-search", "--once"]).code).toBe("E-ARG");
+	});
+});
+
+// ─── FX001-3 / SUGG-001: spawn --layout ──────────────────────────────────────
+describe("parseAgentArgs --layout", () => {
+	it("parses spawn --layout window", () => {
+		const cmd = ok(["spawn", "pack-x", "--layout", "window"]);
+		expect(cmd.layout).toBe("window");
+	});
+	it("rejects a bad layout value", () => {
+		const r = parseAgentArgs(["spawn", "pack-x", "--layout", "sideways"]);
+		expect(r.ok).toBe(false);
+	});
+	it("rejects --layout outside spawn", () => {
+		const r = parseAgentArgs(["run", "pack-x", "--layout", "right"]);
+		expect(r.ok).toBe(false);
+	});
+});

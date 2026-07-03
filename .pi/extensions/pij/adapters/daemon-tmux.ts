@@ -190,6 +190,15 @@ export class DaemonTmux implements DaemonPorts {
 		pressKey(paneId, key, 1, execFileRunner);
 	}
 
+	killPane(paneId: string): void {
+		// Idempotent: a gone pane/window just errors out — swallow it (Pattern P4).
+		try {
+			execFileSync("tmux", ["kill-pane", "-t", paneId], { stdio: "ignore" });
+		} catch {
+			/* already gone → nothing to close */
+		}
+	}
+
 	listTranscripts(dir: string): string[] {
 		try {
 			return readdirSync(dir)

@@ -79,7 +79,7 @@ describe("flowspace-search built-in (AC-08)", () => {
 			(a) => a.slug === "flowspace-search",
 		);
 		expect(found).toBeDefined();
-		expect(found?.model).toBe("claude-sonnet-4-6"); // pinned (plan § Clarifications)
+		expect(found?.model).toBe("claude-sonnet-5"); // re-pinned per user, 2026-07-03 (was sonnet-4-6, plan § Clarifications)
 		expect(found?.reasoning).toBe("low");
 		expect(found?.description.trim().length).toBeGreaterThan(0);
 	});

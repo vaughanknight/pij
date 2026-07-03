@@ -42,15 +42,18 @@ interface FakePortsOptions {
 
 function fakePorts(
 	options: FakePortsOptions = {},
-): DaemonPorts & { sent: Array<{ pane: string; text: string }> } {
+): DaemonPorts & { sent: Array<{ pane: string; text: string }>; killed: string[] } {
 	const sent: Array<{ pane: string; text: string }> = [];
+	const killed: string[] = [];
 	const paneText = options.paneText;
 	return {
 		sent,
+		killed,
 		capturePane: () => (typeof paneText === "function" ? paneText() : (paneText ?? READY)),
 		isPaneDead: () => false,
 		sendText: (pane, text) => sent.push({ pane, text }),
 		sendKey: () => {},
+		killPane: (pane) => killed.push(pane),
 		listTranscripts: () => [],
 		home: () => home,
 		now: () => options.nowMs ?? 1000,
@@ -234,5 +237,126 @@ describe("Daemon.tick provider-failure peek", () => {
 		daemon.tick();
 		expect(registry.read("pij-coder")?.failureReason).toBe("quota");
 		expect(messageBodies("pij-boss")).toHaveLength(2);
+	});
+});
+
+describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => {
+	it("closes a once-mode peer that has reported: kills the pane + removes the descriptor", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-agent",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%7",
+				agentPack: "flowspace-search",
+				agentOnce: true,
+				reportedAt: FRESH_AT,
+			}),
+		);
+		const ports = fakePorts();
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(ports.killed).toContain("%7");
+		expect(registry.read("pij-agent")).toBeNull();
+	});
+
+	it("does NOT close a once-mode peer that has not reported yet (the load-bearing latch)", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-agent",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%7",
+				agentPack: "flowspace-search",
+				agentOnce: true,
+				// no reportedAt → planOnceClose false
+			}),
+		);
+		const ports = fakePorts();
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(ports.killed).not.toContain("%7");
+		expect(registry.read("pij-agent")).not.toBeNull();
+	});
+
+	it("leaves a RESIDENT peer that reported untouched (agentOnce false)", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-agent",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%7",
+				agentPack: "flowspace-search",
+				agentOnce: false,
+				reportedAt: FRESH_AT,
+			}),
+		);
+		const ports = fakePorts();
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(ports.killed).not.toContain("%7");
+		expect(registry.read("pij-agent")).not.toBeNull();
+	});
+
+	it("never touches a non-agent colleague (no agentOnce/reportedAt)", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-plain", harness: "claude", lifecycle: "bound", paneId: "%7" }));
+		const ports = fakePorts();
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(ports.killed).toEqual([]);
+		expect(registry.read("pij-plain")).not.toBeNull();
+	});
+
+	// Concurrent-writer regression (rev-0004 Finding 1): `pij agent report` runs in
+	// the peer's OWN pane (a separate process) and stamps `reportedAt` on the peer's
+	// descriptor. The daemon rebuilds its index at tick start, then — mid-tick —
+	// derives an activity write (working→idle at report time) from that STALE snapshot
+	// and persists it. Before the fix, that write clobbered the freshly-stamped
+	// `reportedAt`, so `planOnceClose` never latched and the pane stayed open forever.
+	// We simulate the concurrent stamp via a `capturePane` side effect (capturePane
+	// is called AFTER the index rebuild, exactly where the real report lands).
+	it("preserves a reportedAt stamped concurrently mid-tick, then auto-closes next tick", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-agent",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%7",
+				agentPack: "flowspace-search",
+				agentOnce: true,
+				// Working at tick start; the pane below reads READY (idle), so the daemon's
+				// activity write flips working→idle — the near-guaranteed clobber path.
+				state: "working",
+				lastEventAt: FRESH_AT,
+			}),
+		);
+		// Simulate `executeAgentReport` stamping reportedAt between the index rebuild
+		// and the daemon's activity write. Idempotent so repeat capturePane calls
+		// within a tick don't re-stamp. Returns an idle pane to force the activity write.
+		const ports = fakePorts({
+			paneText: () => {
+				const d = registry.read("pij-agent");
+				if (d && !d.reportedAt) registry.write({ ...d, reportedAt: FRESH_AT });
+				return READY;
+			},
+		});
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
+
+		// Tick 1: the activity write fires with the concurrent stamp already on disk.
+		daemon.tick();
+		const afterTick1 = registry.read("pij-agent");
+		expect(afterTick1, "descriptor must still exist after tick 1").not.toBeNull();
+		expect(afterTick1?.state, "the activity write must have happened (working→idle)").toBe("idle");
+		expect(
+			afterTick1?.reportedAt,
+			"reportedAt stamped mid-tick must survive the daemon's activity write",
+		).toBe(FRESH_AT);
+
+		// Tick 2: the index now sees reportedAt → planOnceClose latches → pane killed +
+		// descriptor removed.
+		daemon.tick();
+		expect(ports.killed).toContain("%7");
+		expect(registry.read("pij-agent")).toBeNull();
 	});
 });

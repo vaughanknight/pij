@@ -129,6 +129,90 @@ run folder otherwise.
 
 ---
 
+## Spawn mode — a pack as a pij peer (`pij agent spawn`)
+
+`pij agent run` is a **one-shot**: it blocks, runs the pack, prints the report, exits.
+`pij agent spawn` instead runs the pack as a **daemon-bound, visible, addressable pij
+peer** — its own tmux pane you can watch (`pij tail`), converse with (`pij send`), and
+close (`pij close`), with an explicit schema-validated done-signal
+(`pij agent report`). Contract: `docs/plans/029-pij-agents-minih/workshops/003-agent-pack-as-peer.md`.
+
+> **Pane placement.** `spawn` always splits the current tmux window to the **right**;
+> if that window is already at the pane cap it fails with `E-FULL`. Run it from a
+> scratch window (or point `TMUX_PANE` at one) when the current window is full — full
+> placement control (right/below/new-window/headless) is queued as Phase 4 scope.
+
+```bash
+# spawn the built-in flowspace-search as a resident peer (packet auto-delivered)
+pij agent spawn flowspace-search -p query="where is the stall watchdog?"
+
+# alias — identical to the above
+pij spawn --agent flowspace-search -p query="…"
+
+# an inline (prompt-only) peer, auto-closed after its first report
+pij agent spawn --prompt "watch the build and report failures" --once
+
+# from INSIDE the spawned pane, the peer signals done:
+pij agent report --json '{"summary":"…","results":[…]}'
+```
+
+### The packet (first turn)
+
+On spawn, pij renders a **packet** to `~/.pij/<id>/packet.md` and delivers a short
+pointer to the new peer's inbox. The message persists and the daemon injects it as the
+peer's **first turn once it is bound**. The packet contains the pack's prompt +
+`instructions.md` + your coerced `-p` params + a **report contract that names the literal
+command** `pij agent report --json '…'` (weak models copy a *named* mechanism — KF-08),
+with the pack's `output-schema.json` inlined so the peer knows the exact shape to emit.
+
+### The report round-trip (`pij agent report`)
+
+Run **inside the spawned pane** (`PIJ_SESSION_ID` is set there). The report is validated
+**synchronously at the CLI** against the pack's `~/.pij/<id>/output-schema.json`:
+
+- **valid** → the report is pushed to the spawner's inbox (`📋 agent report from <id>`),
+  and `reportedAt` is stamped on the peer's descriptor. Repeatable — a re-tasked peer can
+  report again.
+- **invalid** → exit `1` with the AJV lines on stderr and **nothing delivered**; the peer
+  fixes its JSON and re-runs. (No daemon re-prompt loop — validation is synchronous,
+  workshop 003 OQ2.)
+
+### Lifecycle — resident (default) vs `--once`
+
+| Lifecycle | How | Behaviour |
+|-----------|-----|-----------|
+| **resident** (default) | *(nothing)* | the peer stays open after reporting; steer it with `pij send`, tear it down with `pij close` |
+| **once** | `--once` **or** pack frontmatter `lifecycle: once` | the daemon closes the pane + drops the descriptor after the first report push is durable |
+
+Precedence is **flag > frontmatter > resident**. `lifecycle:` is a **pij-only** frontmatter
+key (read via a separate regex, like `harness:` — minih neither emits nor validates it).
+
+### Permissions posture (KF-09)
+
+A daemon-bound peer has **no human at the pane** to answer a harness permission prompt, so
+it always runs **fully permissioned** (`--dangerously-skip-permissions` / `--yolo` /
+`--dangerously-bypass-approvals-and-sandbox`). If a pack declares a `permissions:` preset,
+`spawn` prints **one advisory line** and ignores the preset — use `pij agent run` when you
+need scoped permissions.
+
+### Errors (spawn/report)
+
+| Code | Exit | Cause |
+|------|------|-------|
+| `E-BADINPUT` | 1 | `-p` input failed the pack's `input-schema.json` — **before any pane opens** (fail-fast, AC-14) |
+| `E-NOAGENT` | 1 | slug not found in any source |
+| `E-NOADAPTER` | 1 | the resolved harness is not a daemon-bound harness (`claude·copilot·codex`) |
+| `E-NOTMUX` | 2 | `pij agent spawn` needs an active tmux session |
+| `E-FULL` | 2 | the current tmux window is at the pane cap — `spawn` splits right (see **Pane placement**); run from a scratch window |
+| `E-AMBIG` | 1 | `pij agent report` cannot resolve *self* (run it inside the spawned pane) |
+| `E-NOREPORTTARGET` | 1 | `pij agent report` from a session with no spawner to report to |
+| `E-BADREPORT` | 1 | report failed the pack's `output-schema.json` — nothing delivered |
+
+The `PIJ_AGENT_LIVE=1` live ship gate (`peer.live.test.ts`) exercises the whole
+resident round-trip against a real `claude` peer end-to-end.
+
+---
+
 ## Harness adapters
 
 pij ships three `IAgentAdapter`s (in `core/agents/adapters/`):

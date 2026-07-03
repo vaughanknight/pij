@@ -1,17 +1,19 @@
 # pij agents on minih — `pij agent` verb family, minih-compatible agent runtime
 **Mode**: Full
-**Plan Version**: 1.0.0
+**Plan Version**: 1.1.0 (Phase 3 amendment: agent pack as peer, per `workshops/003-agent-pack-as-peer.md`)
 **Created**: 2026-07-03
 **Status**: READY
 **Spec source**: unified (this file)
 
 ## Business Specification
 
-📚 Incorporates findings from `research-dossier.md` (F-01…F-18, H-01…H-03) and two authoritative workshops: `workshops/001-minih-reuse.md` (D1–D6), `workshops/002-pij-agent-cli-experience.md`.
+📚 Incorporates findings from `research-dossier.md` (F-01…F-18, H-01…H-03) and three authoritative workshops: `workshops/001-minih-reuse.md` (D1–D6), `workshops/002-pij-agent-cli-experience.md`, `workshops/003-agent-pack-as-peer.md` (v1.1 Phase 3 — D1–D4, OQs ratified + grill-revised 2026-07-03).
 
 ### Summary
 
 pij gains a first-class agent runtime: minih-format agent packs (folders of `prompt.md` + optional schemas/instructions) discovered from three sources, run through minih's embedded library runner with pij-authored harness adapters (claude, codex, copilot), overridable model/effort/harness at instantiation, an inline zero-setup mode that records nothing, and shipped built-ins starting with `flowspace-search`. The feature serves three ends with one primitive: **right-sized delegation** (each pack pins the smallest model that reliably does its job), a **determinism gradient** (validated input, checked output, recorded runs — a prompt graduates into a contract the way an eyeballed check graduates into a harness verb), and **compatibility** (packs, runs, and envelopes stay 100% minih-native; pij coordinates, minih remains the runner of record).
+
+**v1.1 (Phase 3)** extends the shipped one-shot runtime with **agent pack as peer**: `pij agent spawn` runs a pack as a daemon-bound, *visible and steerable* peer in a tmux pane — briefed by an auto-delivered first-turn packet, signalling done via an explicit `pij agent report` verb (schema-validated synchronously), resident by default for follow-up discourse (a warm `flowspace-search` sidekick amortizes cold starts across queries), auto-closing with `--once`. Contract: `workshops/003-agent-pack-as-peer.md`.
 
 ### Goals
 
@@ -21,6 +23,8 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 - Zero-setup inline agents (`--prompt`) and ephemeral runs that leave nothing on disk.
 - Built-in agents shipped with pij (flowspace-search first), listed alongside project + user agents.
 - The companion scenario (coordination-aware packs like code-review-companion) remains supportable without new pij machinery.
+- **(v1.1)** Spawn any pack as a visible, addressable pij peer (`pij agent spawn`): watch it work, converse with it (`pij send`), audit it (`pij tail`), close it (`pij close`) — with an explicit, schema-validated done-signal (`pij agent report`).
+- **(v1.1)** Resident-by-default lifecycle so a spawned research sidekick keeps its context warm across follow-up queries; `--once` for fire-and-forget runs that close themselves after reporting.
 
 ### Non-Goals
 
@@ -28,15 +32,16 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 - Changes to `minih-workbench` UI (`agent-workbench` domain observes runs; unchanged).
 - Reimplementing minih's registry/`agent install`/`.minih-source.json` provenance (stays `minih agent install`).
 - A `pi`-harness adapter (v1 ships claude/codex/copilot).
-- Automatic finished-agent detection or auto-close of sessions — residency/close lifecycle is a recorded open design (Workshop Opportunities); v1 agent runs are synchronous one-shots.
+- ~~Automatic finished-agent detection or auto-close of sessions — residency/close lifecycle is a recorded open design; v1 agent runs are synchronous one-shots.~~ **Superseded in v1.1**: the residency/close lifecycle is now designed (workshop 003 D3) and built in Phase 3. Still excluded: a harness-agnostic *self-close/farewell* protocol (the copilot coordination lane already provides one for that harness via configuration).
+- **(v1.1)** Sandboxed/permission-scoped *spawned* peers — spawn mode always runs fully permissioned (workshop 003 D4); the per-harness read-only levers (codex `--sandbox read-only`, claude `--allowedTools`, copilot `--deny-tool`) are recorded as future hardening, not built.
 - Migrating `harness/scripts/vetters/agent.ts` off spawnSync (workshop 001 D6 — deliberate later phase, not this plan).
 
 ### Target Domains
 
 | Domain | Status | Relationship | Role in This Feature |
 |--------|--------|-------------|---------------------|
-| agent-runtime | **NEW** | **create** | The runtime: pack discovery (3-tier), minih library embedding, harness adapters, inline/ephemeral engine |
-| pij-control-plane | existing | **modify** | New `agent` verb intercept + USAGE in the pij bin; small export refactors (`loadModels`, `PROVIDER_HARNESS_MAP`) |
+| agent-runtime | **NEW** (created in P1) | **create**, then **modify** (P3) | The runtime: pack discovery (3-tier), minih library embedding, harness adapters, inline/ephemeral engine; P3 adds pure peer-packet rendering + report-validation helpers |
+| pij-control-plane | existing | **modify** | New `agent` verb intercept + USAGE in the pij bin; small export refactors (`loadModels`, `PROVIDER_HARNESS_MAP`); P3 adds `agent spawn`/`agent report` wiring, daemon packet delivery + report relay + `--once` close |
 | agent-workbench | existing | **consume** | Observes the minih-format runs this feature produces; no changes — run artifacts stay minih-owned |
 | extension-authoring-harness | existing | **consume** | Test/gate conventions (`*.live.test.ts`, self-check); the vetter keeps its own minih path for now |
 
@@ -68,7 +73,7 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 - **Assumptions**: minih `runAgent`/`IAgentAdapter` behave per dossier evidence at tag `minih-v0.2.4`; claude/codex headless modes deliver structured one-shot results.
 - **Dependencies**: `minih` git dep (`github:AI-Substrate/minih#minih-v0.2.4`); `@github/copilot-sdk` optional peer; `claude`/`codex` CLIs on PATH for their adapters (runtime-optional).
 - **Risks**: see § Risks.
-- **Phases**: 2 (fewest that hold — runtime below, surface above).
+- **Phases**: 3 (fewest that hold — runtime below, surface above; Phase 3 added in v1.1: peer mode is a real dependency boundary — it consumes the shipped P1 runtime + P2 CLI and the daemon spawn path).
 
 ### Acceptance Criteria
 
@@ -85,6 +90,11 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 11. **AC-11** Companion supportability: a coordination-enabled pack boots through the copilot adapter path (or the documented minih-binary path per RUNBOOK) with **no pij code changes** — proven by a configuration walkthrough in `docs/how/pij-agents.md`, not new machinery.
 12. **AC-12** A minih contract test (hello-world pack + `FakeAgentAdapter` through the real `runAgent` import) runs inside `just self-check`, so a future `minih` tag bump that breaks the API fails loudly ("use latest, tests catch issues").
 13. **AC-13** Docs land per strategy: AGENTS_README/RUNBOOK quick-start + `docs/how/pij-agents.md`.
+14. **AC-14** *(v1.1)* `pij agent spawn <slug> [-p k=v]` spawns a daemon-bound peer pane running the pack's harness/model/effort (same override rails as `run`); `-p` input is AJV-validated **before any pane exists** (`E-BADINPUT`, exit 1, nothing to clean up); after bind, the rendered first-turn packet (prompt + instructions + params + a report-contract clause naming the **literal** `pij agent report` command) is delivered automatically. `pij agent spawn --prompt "<text>"` does the same for an inline pack.
+15. **AC-15** *(v1.1)* `pij agent report --json '<report>'`, run inside the pane (sender resolved from the daemon-stamped `PIJ_SELF` env), validates **synchronously** against the pack's `output-schema.json` when present: invalid → exit 1 + per-error AJV lines on stderr and **nothing is pushed**; valid → the report pushes to the spawner. Reports are repeatable (a re-tasked resident peer reports again). Run outside a pack-peer pane (no `PIJ_SELF`) → clear error, exit 1.
+16. **AC-16** *(v1.1)* Lifecycle: by default the peer is **resident** after reporting — it answers a `pij send` follow-up and is closed by the parent via `pij close` (existing ownership rules). With `--once` (or pack frontmatter `lifecycle: once`; flag > frontmatter > resident) the daemon closes the pane **after the first report push is delivered**. A peer that never reports falls to the existing stalled/dead watchdog.
+17. **AC-17** *(v1.1)* Spawned peers always run **fully permissioned** (the `pij spawn` posture). A pack declaring a `permissions:` preset spawns with **one loud stderr advisory** naming that the preset is enforced only in `pij agent run`. No refusal path; `run`-mode enforcement is unchanged.
+18. **AC-18** *(v1.1)* `pij spawn --agent <slug>` forwards to the `pij agent spawn` path (canonical verb unchanged); and the **live ship gate** passes behind `PIJ_AGENT_LIVE=1`: spawn `flowspace-search` resident → packet delivered → real fs2 graph answer → `pij agent report` round-trip received → `pij send` follow-up answered → `--once` variant auto-closes after its report.
 
 ### Risks & Assumptions
 
@@ -95,7 +105,7 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 
 ### Open Questions
 
-- **Residency / close lifecycle** (from Jordan's scenario review): when a session-resident agent finishes, who closes it — a self-close verb, the parent, or deliberate stay-open-for-discourse/compact? **Deferred by design**: v1 runs are synchronous one-shots; session-resident agents remain `pij spawn`/`close` territory. Recorded below as a Workshop Opportunity, not a blocker.
+- ~~**Residency / close lifecycle**: when a session-resident agent finishes, who closes it?~~ **RESOLVED in v1.1** (workshop 003 D3 + grill, 2026-07-03): explicit done-signal via `pij agent report`; default resident with parent close; `--once` auto-close after the first report push; no self-close protocol in v1.1.
 - Stdin prompt (`--prompt -`): include in Phase 2 unless the parser fights it (workshop 002 Q2).
 
 ### Workshop Opportunities
@@ -104,7 +114,7 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 |-------|------|--------------|---------------|--------|
 | minih re-use (dep mode, adapters, upstreaming) | Integration Pattern | decides every seam | done | ✅ `workshops/001-minih-reuse.md` |
 | pij agent CLI experience | CLI Flow | the entire user surface | done | ✅ `workshops/002-pij-agent-cli-experience.md` |
-| Agent residency & close lifecycle | State Machine | closure is ownership, not inference — needs scenario walk (one-shot / discourse-then-close / resident+compact) | self-close verb? parent close? `pij agent run --wait`? how do resident agents surface in `pij list`? | open (post-v1) |
+| Agent residency & close lifecycle (→ agent pack as peer) | Integration Pattern + State Machine | closure is ownership, not inference — needed scenario walk | verb shape? report seam? lifecycle default? permissions on interactive harnesses? | ✅ `workshops/003-agent-pack-as-peer.md` (OQs ratified + grill-revised 2026-07-03) |
 
 ### Clarifications
 
@@ -116,16 +126,27 @@ pij gains a first-class agent runtime: minih-format agent packs (folders of `pro
 - Q: Documentation Strategy? → A: **Hybrid** (AGENTS_README/RUNBOOK + docs/how deep guide).
 - Prior-session directives folded in: track latest minih release (no 0.3.0 cut, no manifest edits); built-ins default to the smallest reliable model (flowspace-search = sonnet-class/low); determinism-gradient framing is a stated goal; companion scenario must be provably supportable but adds no machinery.
 
+#### Session 2026-07-03 (v1.1 amendment — Phase 3, agent pack as peer)
+
+- Q: What can't `pij spawn` + a hand-sent packet do that this must? → A: **Visibility + packaging**: run minih agents where you can see and interact with them; packaged spawnable sidekicks (flowspace-search first, warm across follow-ups).
+- Q: Which turn is "the report" for a resident peer? → A: **The peer signals done explicitly** — resolved as the `pij agent report` verb (no transcript scraping).
+- Q (OQ1): Lifecycle default? → A: **Resident**; `--once` opts into auto-close.
+- Q (OQ2): Invalid report handling? → A: One auto re-prompt — **superseded same day** by the report verb's synchronous CLI validation (exit 1 + AJV errors; agent self-corrects; only valid reports push).
+- Q (OQ3): `pij spawn --agent` alias? → A: **Add now**; `pij agent spawn` stays canonical.
+- Q: Enforce pack permission presets on spawned peers? → A: **No — always fully permissioned** (the `pij spawn` posture); preset advisory-only in spawn mode, per-harness sandbox levers recorded as future hardening.
+- Q: Ship gate? → A: One `PIJ_AGENT_LIVE=1` live scenario covering spawn → packet → report → discourse → `--once` close (AC-18).
+
 ## Planning Seam
 
 _Refinement opportunities still open — recorded as evidence; the flow surfaces and offers these, none gate:_
-- Open Workshop Opportunities: **Agent residency & close lifecycle** (deliberately post-v1; v1 scope excludes session-resident runs).
+- Open Workshop Opportunities: **none — all resolved** (residency/close lifecycle resolved by workshop 003 in v1.1).
 
 | Artifact | Present? | Effect on the plan |
 |----------|----------|--------------------|
 | research-dossier.md | y | informs Key Findings, AC wording, risks (F/H ids cited throughout) |
 | workshops/001-minih-reuse.md | y | authoritative: library dep, adapter strategy, ephemeral design, upstream list |
 | workshops/002-pij-agent-cli-experience.md | y | authoritative: verb grammar, discovery precedence, flags, errors, envelopes |
+| workshops/003-agent-pack-as-peer.md | y | authoritative (v1.1): spawn verb shape, packet/report seam, lifecycle, spawn-mode permissions posture, ship gate |
 
 ## Implementation Plan
 
@@ -137,13 +158,13 @@ _Refinement opportunities still open — recorded as evidence; the flow surfaces
 | G2 | Constitution | N/A | no `docs/project-rules/constitution.md` |
 | G3 | Architecture | N/A | no `docs/project-rules/architecture.md` (harness.md/agent-harness.md are conventions, honoured in Key Findings) |
 | G4 | ADR Compliance | N/A | no `docs/adr/` |
-| G5 | Structure | PASS | all required sections present; cross-refs resolve |
-| G6 | Testing Alignment | PASS | Hybrid: test-first tasks precede impl for pure core in both phases; live-gated validation tasks present |
-| G7 | Domain Completeness | PASS | agent-runtime NEW has setup tasks (1.1); manifest covers every file in task tables |
+| G5 | Structure | PASS | all required sections present; cross-refs resolve (v1.1 re-check: AC-14..18 ↔ coverage map ↔ Phase 3 tasks; findings 08/09 cited) |
+| G6 | Testing Alignment | PASS | Hybrid: test-first tasks precede impl for pure core in all three phases (3.1–3.3 before 3.4–3.6); live-gated validation tasks present (1.8, 3.7) |
+| G7 | Domain Completeness | PASS | agent-runtime NEW has setup tasks (1.1; domain shipped in `12e74af`); manifest covers every file in task tables incl. P3 rows |
 
 ### Summary
 
-Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack discovery across three sources, the runner wrapper with injected adapters (fake, claude, codex, copilot-optional), and the ephemeral/inline engine — all testable without a CLI. Phase 2 exposes it as the `pij agent` verb family per workshop 002's contract, ships the flowspace-search built-in, and lands docs. Two phases because the surface cannot be built before the runtime, and nothing else earns a boundary.
+Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack discovery across three sources, the runner wrapper with injected adapters (fake, claude, codex, copilot-optional), and the ephemeral/inline engine — all testable without a CLI. Phase 2 exposes it as the `pij agent` verb family per workshop 002's contract, ships the flowspace-search built-in, and lands docs. Phase 3 (v1.1, per workshop 003) adds **agent pack as peer**: `pij agent spawn` runs a pack as a daemon-bound resident tmux peer briefed by an auto-delivered first-turn packet, `pij agent report` is the explicit schema-validated done-signal, and the lifecycle is resident-by-default with `--once` auto-close. Three phases: the surface cannot precede the runtime, and peer mode consumes both shipped layers plus the daemon spawn path.
 
 ### Domain Manifest
 
@@ -165,8 +186,16 @@ Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack di
 | `.pi/extensions/pij/core/models/registry.ts` | pij-control-plane | internal | receives exported `loadModels()` composition (moved from bin) |
 | `.pi/extensions/pij/builtin-agents/flowspace-search/*` | agent-runtime | contract | shipped built-in pack (minih format is the external contract) |
 | `docs/domains/agent-runtime/domain.md`, `docs/domains/registry.md`, `docs/domains/domain-map.md` | agent-runtime | contract | domain setup (NEW domain) |
-| `docs/how/pij-agents.md`, `AGENTS_README.md`, `RUNBOOK.md` | agent-runtime | internal | docs per strategy (incl. AC-11 companion walkthrough) |
+| `docs/how/pij-agents.md`, `AGENTS_README.md`, `RUNBOOK.md` | agent-runtime | internal | docs per strategy (incl. AC-11 companion walkthrough; P3 spawn-mode section) |
 | `harness/scripts/…` (self-check wiring for contract test) | extension-authoring-harness | cross-domain | AC-12 rides existing `just self-check` composition |
+| `.pi/extensions/pij/core/agents/peer-packet.ts` (P3) | agent-runtime | internal | pure first-turn packet rendering (prompt + instructions + params + literal report-contract clause) — no daemon/tmux imports (boundary sensor extended) |
+| `.pi/extensions/pij/core/agents/report.ts` (P3) | agent-runtime | contract | synchronous report validation helpers over minih `validateOutput`; consumed by the report verb |
+| `.pi/extensions/pij/daemon.ts` (P3) | pij-control-plane | internal | spawn-mode packet delivery after bind; report relay push; `--once` close-after-report |
+| `.pi/extensions/pij/core/agents/peer.live.test.ts` (P3) | pij-control-plane | internal | the AC-18 live ship-gate scenario behind `PIJ_AGENT_LIVE=1` |
+| `.pi/extensions/pij/core/agent-peer.ts` (P3) | pij-control-plane | internal | pure peer planning (env build, advisory, lifecycle precedence, once-close decision) — sibling of core/spawn.ts |
+| `.pi/extensions/pij/core/types.ts` (P3) | pij-control-plane | contract | additive optional descriptor fields (`agentPack?`, `agentPackDir?`, `agentOnce?`, `reportedAt?`) |
+| `.pi/extensions/pij/core/spawn.ts` (P3) | pij-control-plane | internal | `parseSpawnArgs` gains the `--agent <slug>` alias |
+| `.pi/extensions/pij/cli.ts` (P3) | pij-control-plane | cross-domain | `runAgentSpawn`/`runAgentReport` bin handlers + AGENT_USAGE lines |
 
 ### Key Findings
 
@@ -179,6 +208,8 @@ Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack di
 | 05 | High | `core/` convention is barrel-less concrete-file imports; no `index.ts` anywhere; `PIJ_HOME ?? ~/.pij` inlined 3× | `core/agents/` follows barrel-less layout; `paths.ts` becomes the single home resolver |
 | 06 | Medium | minih effort enum lacks `minimal`; model list validation is copilot-derived (F-08) | pij validates via its own registry (warn-don't-block); codex adapter clamps `minimal` |
 | 07 | Medium | Built-ins must survive `npm link`/package installs and stay read-only — and minih roots `runs/` at the pack dir (`folder.ts:799`), so a recorded built-in run would write into the installed package | serve from `.pi/extensions/pij/builtin-agents/`; un-ejected built-ins run ephemeral (no ledger); `eject` copies out and unlocks recording |
+| 08 | High *(P3)* | Weak/cheap models do **not infer** report-back mechanisms — live incident: a gpt-5.4-mini worker never reported because the packet said "report back" without naming the tool (retro DL-001, 2026-07-02) | the P3 first-turn packet names the **literal** `pij agent report --json …` command, no placeholders left to infer |
+| 09 | High *(P3)* | Daemon-driven panes have no human to approve permission prompts — the whole spawn path exists on blanket-permission flags | spawn-mode peers always run fully permissioned (workshop 003 D4); pack presets stay run-mode contracts + one stderr advisory |
 
 ### Phases
 
@@ -188,6 +219,7 @@ Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack di
 |-------|-------|---------------|-------------------|------------|
 | 1 | Agent runtime + harness adapters | agent-runtime | Embed minih, discover packs, run them through injected adapters, ephemeral engine — CLI-free and fully tested | None |
 | 2 | `pij agent` CLI surface, built-ins, docs | pij-control-plane | Expose the runtime per workshop 002's contract; ship flowspace-search; land docs | Phase 1 |
+| 3 | Agent pack as peer (`pij agent spawn`) | pij-control-plane | Spawn packs as daemon-bound resident peers: first-turn packet, `pij agent report` done-signal, resident/`--once` lifecycle, alias — per workshop 003 | Phase 2 (shipped: `12e74af`) |
 
 #### Phase 1: Agent runtime + harness adapters
 
@@ -228,6 +260,25 @@ Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack di
 | 2.8 | Docs: `docs/how/pij-agents.md` (authoring, adapters, inline/ephemeral, determinism gradient, AC-11 companion walkthrough via copilot adapter/RUNBOOK path), AGENTS_README + RUNBOOK quick-start | agent-runtime | AC-11, AC-13; walkthrough names zero pij code changes | |
 | 2.9 | Validation sweep: `just self-check` green; scripted `--json` consumption exercise (exit codes + envelope) from a shell script in `scratch/` | pij-control-plane | all ACs ticked or explicitly deferred with reason | gate |
 
+#### Phase 3: Agent pack as peer (`pij agent spawn`)
+
+**Objective**: Run a pack as a daemon-bound, visible, addressable pij peer — briefed automatically, reporting explicitly, resident by default — per workshop 003's contract (D1–D4, all OQs ratified).
+**Domain**: pij-control-plane (+ agent-runtime pure helpers)
+**Delivers**: `agent spawn` + `agent report` verbs; `pij spawn --agent` alias; peer-packet rendering; synchronous report validation; resident/`--once` lifecycle; the AC-18 live ship gate; docs.
+**Depends on**: Phase 2 (shipped: `12e74af`)
+**Key risks**: packet delivery is send-after-bind (reuses the machinery flow-pair exercised live); `pij agent report` outside a pack pane must fail clearly, not push garbage.
+
+| # | Task | Domain | Success Criteria | Notes |
+|---|------|--------|-----------------|-------|
+| 3.1 | Tests then impl: `peer-packet.ts` — render the first-turn packet from a discovered pack (prompt.md + instructions.md + `-p` params + report-contract clause naming the **literal** `pij agent report --json …` command); pure functions, no daemon/tmux imports (extend the boundary sensor) | agent-runtime | unit tests: packet contains prompt, instructions, coerced params, the literal command string; boundary test stays green | TDD; finding 08 |
+| 3.2 | Tests then impl: `report.ts` — synchronous validation helpers (minih `validateOutput` when `output-schema.json` present; pass-through otherwise); typed result `{valid, errors[]}` | agent-runtime | unit tests: valid/invalid/no-schema paths; AJV error lines surfaced verbatim | TDD |
+| 3.3 | Tests then impl: `agent spawn` + `agent report` arg parsing (slug/`--prompt`, `-p` repeats, `--once`, override flags; report `--json`) as pure functions + `pij spawn --agent <slug>` alias forwarding; **input AJV validation fires before any spawn** (`E-BADINPUT` exit 1, no pane) | pij-control-plane | unit tests: happy + error paths, exit codes, alias forwards verbatim, fail-fast ordering asserted (spawn never invoked on bad input) | TDD; AC-14/18 |
+| 3.4 | Spawn wiring: daemon-bound spawn honouring pack/override harness+model+effort; stamp `PIJ_SELF=<id>` into the pane env; blanket permission flags always (one stderr advisory when the pack declares a preset); deliver the rendered packet after bind via the existing send path; parse pack `lifecycle:` frontmatter (pij-only key, flag > frontmatter > resident) | pij-control-plane | fixture test: spawn request carries env + packet queued-after-bind; advisory printed exactly once; lifecycle precedence unit-tested | AC-14/17; finding 09 |
+| 3.5 | `pij agent report` verb: resolve sender from `PIJ_SELF` + registry (absent → clear error, exit 1); validate via 3.2 (invalid → exit 1 + AJV stderr, **nothing pushed**); valid → push report to the spawner; repeatable across re-tasks | pij-control-plane | unit tests: no-PIJ_SELF error, invalid-blocked, valid-pushed, second report pushes again | AC-15 |
+| 3.6 | Lifecycle: `--once`/pack-`once` → daemon closes the pane after the first report push is delivered; resident → no auto-close (parent `pij close` as today); never-reports → existing stalled/dead watchdog untouched | pij-control-plane | fixture tests: once-closes-after-push (and not before), resident-stays, watchdog path unchanged | AC-16 |
+| 3.7 | Live ship gate (`peer.live.test.ts` behind `PIJ_AGENT_LIVE=1`): spawn `flowspace-search` resident → packet delivered → real fs2 answer → report round-trip received → `pij send` follow-up answered → `--once` variant auto-closes | pij-control-plane | the whole scenario green against a real claude peer; run recorded in execution log | AC-18; live-gated |
+| 3.8 | Docs: `docs/how/pij-agents.md` § spawn mode (verb, report contract, lifecycle table, permissions posture, alias); AGENTS_README/RUNBOOK quick-start lines | agent-runtime | docs match the shipped flags; workshop 003 linked as the contract | AC-13 extension |
+
 ### Acceptance Coverage Map
 
 | AC | Covered by | Verified in |
@@ -244,7 +295,12 @@ Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack di
 | AC-10 | 2.6, 2.9 | envelope tests + scripted consumption |
 | AC-11 | 2.8 | companion walkthrough (config-only) |
 | AC-12 | 1.2 | contract test in self-check |
-| AC-13 | 2.8 | docs land |
+| AC-13 | 2.8, 3.8 | docs land |
+| AC-14 | 3.1, 3.3, 3.4 | packet render tests; fail-fast ordering test; spawn-wiring fixture test |
+| AC-15 | 3.2, 3.5 | validation helper tests; report verb tests |
+| AC-16 | 3.4, 3.6 | lifecycle precedence + once/resident fixture tests |
+| AC-17 | 3.4 | blanket-flags + advisory assertions |
+| AC-18 | 3.3, 3.7 | alias test; live ship-gate scenario |
 
 ### Risks
 
@@ -255,3 +311,13 @@ Phase 1 builds the `agent-runtime` domain: the minih library dependency, pack di
 | Ephemeral temp-tree leaks on crash | Low | Low | Daemon-start sweep (1.7); tmp under `~/.pij/tmp` only |
 | Copilot adapter peer-dep confusion | Low | Medium | Lazy import + explicit `E-HARNESSBIN`-style message naming the missing package |
 | Built-ins path breaks under npm link vs package install | Low | Medium | Resolve relative to module URL, not cwd; covered in 2.7 test |
+| *(P3)* Packet delivery races bind / lands in a half-booted pane | Medium | Medium | Reuse the existing send-after-bind machinery (proven live by flow-pair runs); live gate 3.7 exercises the real sequence |
+| *(P3)* `pij agent report` invoked outside a pack-peer pane | Medium | Low | `PIJ_SELF` absent → clear error + exit 1 (3.5); never a silent no-op or misrouted push |
+| *(P3)* `--once` close races a concurrent `pij send` follow-up | Low | Medium | Close fires only after the report push is delivered; a racing send to a closing pane surfaces the existing dead-peer push, not silence |
+| *(P3)* Fully-permissioned spawn of a "read-only" pack surprises an operator | Medium | Low | AC-17's loud stderr advisory at spawn + docs; per-harness sandbox levers recorded as future hardening (workshop 003 D4) |
+
+## Fixes
+
+| ID | Created | Summary | Domain(s) | Status | Source |
+|----|---------|---------|-----------|--------|--------|
+| FX001 | 2026-07-03 | Control-plane trio: --task inbox delivery (DL-002), pane-first cross-repo self-resolution (DL-003), --layout right\|below\|window (SUGG-001) | pij-control-plane | Complete | plan 030 P1 retro (fixes/FX001-control-plane-trio.md) |

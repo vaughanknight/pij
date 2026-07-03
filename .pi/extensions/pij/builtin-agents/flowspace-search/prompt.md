@@ -1,7 +1,8 @@
 ---
 description: Search this repo's fs2 code graph and answer a natural-language query about the code.
 tags: [search, fs2, code-intelligence]
-model: claude-sonnet-4-6
+model: claude-sonnet-5
+harness: claude
 reasoning: low
 permissions:
   preset: read-only

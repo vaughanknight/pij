@@ -130,11 +130,13 @@ The `.pi/extensions/*` product surfaces — the things pij ships as pi extension
 - [`docs/how/ralph-loop.md`](docs/how/ralph-loop.md) — the ralph loop.
 - [`docs/how/pij-agents.md`](docs/how/pij-agents.md) — **`pij agent`**: run
   declarative minih agent packs (list/run/inline/new/check/eject) across
-  claude·codex·copilot. Quick start:
+  claude·codex·copilot, or **spawn a pack as a daemon-bound pij peer**. Quick start:
   ```bash
   pij agent list                                       # merged pack inventory
-  pij agent run flowspace-search -p query="…"           # run a named pack
+  pij agent run flowspace-search -p query="…"           # run a named pack (one-shot)
   pij agent run --prompt "List risky TODOs" --json       # inline, scriptable
+  pij agent spawn flowspace-search -p query="…"          # spawn as a resident pij peer
+  pij agent report --json '{"summary":"…"}'              # (inside a peer) push a report to the spawner
   ```
 - `skill-runner` — runs skills inside a session (no dedicated article yet).
 

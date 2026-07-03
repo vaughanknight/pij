@@ -114,6 +114,21 @@ export interface SessionDescriptor {
 	/** Machine-stable failure reason set by the daemon when lifecycle → failed.
 	 *  model-not-supported|auth|quota|stalled|dead|unknown. Absent until failed. */
 	readonly failureReason?: DeathReason;
+	// ─── agent-pack peer layer (Plan 029 Phase 3; additive — migration-safe) ──
+	/** The agent pack slug this peer runs (`pij agent spawn <slug>`), or `"inline"`
+	 *  for a `--prompt` spawn. Absent ⇒ not an agent-pack peer (a plain colleague). */
+	readonly agentPack?: string;
+	/** The resolved pack directory captured at spawn — the discovered pack's dir, or
+	 *  `~/.pij/<id>/pack/` for an inline (`--prompt`) spawn. Lets `pij agent report`
+	 *  and the daemon locate the pack's schema without re-running discovery. */
+	readonly agentPackDir?: string;
+	/** `--once`/pack `lifecycle: once` — the daemon closes this peer's pane after
+	 *  its first report push is durable (T008). Absent/false ⇒ resident (default). */
+	readonly agentOnce?: boolean;
+	/** ISO-8601 — stamped by `pij agent report` the moment a VALID report is pushed
+	 *  to the spawner. Drives the `--once` auto-close latch (`agentOnce && reportedAt`,
+	 *  T005 planOnceClose). Re-stamped on each subsequent report. */
+	readonly reportedAt?: string;
 }
 
 // ─── event stream ─────────────────────────────────────────────────────────

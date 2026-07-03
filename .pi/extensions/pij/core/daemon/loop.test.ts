@@ -9,6 +9,7 @@ import {
 	driveSession,
 	observeActivity,
 	WATCHDOG_TIMEOUT_MS,
+	writeMerged,
 } from "./loop.js";
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
@@ -544,5 +545,39 @@ describe("first-inference gate (T009)", () => {
 		);
 		expect(out.kind).toBe("bound");
 		expect(reg.read("pij-w")?.boundModel).toBe("gpt-4o");
+	});
+});
+
+describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", () => {
+	it("preserves an externally-stamped reportedAt the daemon's computed value lacks", () => {
+		// On-disk descriptor already carries a reportedAt (stamped by `pij agent report`
+		// after the daemon took its tick-start snapshot). The daemon-computed value —
+		// derived from that stale snapshot — has none.
+		const reg = new FakeRegistry([desc({ reportedAt: "2026-06-27T12:00:00.000Z" })]);
+		const written = writeMerged(reg, desc({ state: "idle" }));
+		expect(written.reportedAt).toBe("2026-06-27T12:00:00.000Z");
+		expect(written.state).toBe("idle"); // daemon-owned field still applied
+		expect(reg.read("pij-w")?.reportedAt).toBe("2026-06-27T12:00:00.000Z");
+	});
+
+	it("does NOT re-add a daemon-owned field the write deliberately dropped (failureReason clear)", () => {
+		const reg = new FakeRegistry([desc({ failureReason: "quota" })]);
+		const { failureReason: _dropped, ...recovered } = desc({ failureReason: "quota" });
+		const written = writeMerged(reg, recovered);
+		expect(written.failureReason).toBeUndefined(); // recovery clear survives
+		expect(reg.read("pij-w")?.failureReason).toBeUndefined();
+	});
+
+	it("writes through unchanged for a brand-new descriptor (no prior on disk)", () => {
+		const reg = new FakeRegistry();
+		const written = writeMerged(reg, desc({ state: "working" }));
+		expect(written).toEqual(desc({ state: "working" }));
+		expect(reg.read("pij-w")?.state).toBe("working");
+	});
+
+	it("keeps the daemon-computed reportedAt when both sides have one (idempotent)", () => {
+		const reg = new FakeRegistry([desc({ reportedAt: "2026-06-27T12:00:00.000Z" })]);
+		const written = writeMerged(reg, desc({ reportedAt: "2026-06-27T13:00:00.000Z" }));
+		expect(written.reportedAt).toBe("2026-06-27T13:00:00.000Z");
 	});
 });

@@ -52,6 +52,9 @@ export interface DaemonPorts {
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): void;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
 	sendKey(paneId: string, key: "Escape" | "Enter"): void;
+	/** Kill a pane (tmux `kill-pane`). Idempotent — a gone pane is a no-op. Used by
+	 *  the `--once` agent-peer auto-close (Plan 029 T008). */
+	killPane(paneId: string): void;
 	/** List `*.jsonl` transcript paths currently in a directory (FLAT — claude). */
 	listTranscripts(dir: string): string[];
 	/** List rollout `*.jsonl` paths RECURSIVELY under a dir (codex's date-nested
@@ -137,6 +140,41 @@ export function observeActivity(
 	return { ...descriptor, state, lastEventAt };
 }
 
+/** Descriptor fields the daemon NEVER owns: they are stamped out-of-band by a
+ *  DIFFERENT process. `reportedAt` is written by `pij agent report` running in
+ *  the peer's own pane (`executeAgentReport`). Every daemon write derives from
+ *  the tick-start index snapshot, so a naïve `registry.write` clobbers a stamp
+ *  landed mid-tick — the lost-update that kept `--once` peers open forever
+ *  (rev-0004 Finding 1 / AC-16). Extend this list if another out-of-band writer
+ *  is ever added; the daemon owns everything else (state/lastEventAt/
+ *  failureReason/boundModel/harnessSessionId/lifecycle/initInjectedAt/…). */
+const EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
+
+/** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
+ *  writer stamped after this tick's index snapshot was taken. Re-reads the latest
+ *  on-disk descriptor and carries forward any {@link EXTERNALLY_OWNED_FIELDS} the
+ *  daemon-computed value lacks (the daemon never writes them itself, so "lacks"
+ *  is always the case). Returns the descriptor actually written, so the caller can
+ *  keep threading the merged value through the rest of the tick. Use this for
+ *  EVERY daemon descriptor write — it is a no-op when nothing external is present,
+ *  so it is safe (and behavior-preserving) even on the pending-only bind path. */
+export function writeMerged(
+	registry: RegistryPort,
+	computed: SessionDescriptor,
+): SessionDescriptor {
+	const latest = registry.read(computed.id);
+	let merged = computed;
+	if (latest) {
+		for (const field of EXTERNALLY_OWNED_FIELDS) {
+			if (merged[field] === undefined && latest[field] !== undefined) {
+				merged = { ...merged, [field]: latest[field] };
+			}
+		}
+	}
+	registry.write(merged);
+	return merged;
+}
+
 export function driveSession(
 	descriptor: SessionDescriptor,
 	drive: DriveState,
@@ -208,7 +246,7 @@ export function driveSession(
 		const init = buildInitInjection(descriptor.id, descriptor.branchedFrom != null);
 		ports.sendText(paneId, init.body, harness, descriptor.pid);
 		const at = new Date(ports.now()).toISOString();
-		registry.write(markInitInjected(descriptor, at));
+		writeMerged(registry, markInitInjected(descriptor, at));
 		drive.readyAtMs = ports.now();
 		return { kind: "injected-init" };
 	}
@@ -265,7 +303,7 @@ export function driveSession(
 			...applyBinding(descriptor, descriptor.plannedHarnessSessionId),
 			...(model ? { boundModel: model } : {}),
 		};
-		registry.write(bound);
+		writeMerged(registry, bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
@@ -298,7 +336,7 @@ export function driveSession(
 			...applyBinding(descriptor, harnessSessionId),
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
 		};
-		registry.write(bound);
+		writeMerged(registry, bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
@@ -348,7 +386,7 @@ function fail(
 		...markFailed(descriptor),
 		...(deathReason ? { failureReason: deathReason } : {}),
 	};
-	registry.write(failed);
+	writeMerged(registry, failed);
 	if (!drive.settled && descriptor.spawnedBy) {
 		drive.settled = true;
 		const note = buildFailedNotice(failed, reason);

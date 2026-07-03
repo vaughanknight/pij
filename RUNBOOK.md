@@ -340,6 +340,27 @@ error (harness CLI missing). Full reference:
 > **Test seam:** `PIJ_AGENT_FAKE=1` routes runs through a deterministic fake
 > adapter (no real CLI, no tokens) — used by `scratch/agent-json-consume.sh`.
 
+### Spawn a pack as a pij peer (`pij agent spawn`)
+
+Unlike the one-shot `run`, `pij agent spawn` runs a pack as a **daemon-bound tmux
+peer** you can watch, `pij send` to, and `pij close` — with an explicit report step:
+
+```bash
+pij agent spawn flowspace-search -p query="where is the stall watchdog?"  # resident peer
+pij spawn --agent flowspace-search -p query="…"           # identical alias
+pij agent spawn --prompt "watch the build" --once         # inline peer, auto-closed after 1 report
+pij agent report --json '{"summary":"…","results":[…]}'   # (inside the pane) push a report to the spawner
+```
+
+The packet (pack prompt + instructions + params + the literal report command +
+inlined output schema) is auto-delivered as the peer's first turn after bind. Reports
+are validated synchronously against the pack's `output-schema.json` — valid ones push
+to the spawner + stamp `reportedAt`; invalid ones exit 1 with AJV lines and deliver
+nothing. Resident by default; `--once` (or pack `lifecycle: once`) auto-closes after the
+first report. Daemon-bound peers always run fully permissioned (no human at the pane —
+a declared `permissions:` preset prints one advisory and is ignored). See
+**[`docs/how/pij-agents.md`](docs/how/pij-agents.md) § Spawn mode**.
+
 ## Companion mode (minih)
 
 Every plan-6 implementation (including the one that produced ralph-loop)

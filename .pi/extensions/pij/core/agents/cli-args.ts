@@ -6,7 +6,7 @@
 // `ParsedAgentCommand` or an `E-ARG` error (Pattern P4). No stdout/exit here.
 
 /** The subverbs of `pij agent`. */
-export type AgentSubverb = "list" | "run" | "show" | "new" | "check" | "eject";
+export type AgentSubverb = "list" | "run" | "show" | "new" | "check" | "eject" | "spawn" | "report";
 
 const SUBVERBS: ReadonlySet<string> = new Set<AgentSubverb>([
 	"list",
@@ -15,6 +15,8 @@ const SUBVERBS: ReadonlySet<string> = new Set<AgentSubverb>([
 	"new",
 	"check",
 	"eject",
+	"spawn",
+	"report",
 ]);
 
 /** Subverbs that take exactly one `<slug>` positional and no flags. */
@@ -36,6 +38,15 @@ export interface ParsedAgentCommand {
 	ephemeral: boolean;
 	/** `--json` — machine envelope on stdout, progress on stderr. */
 	json: boolean;
+	/** `spawn --once` (or pack `lifecycle: once`) — auto-close the peer after its
+	 *  first report push (Phase 3). Default false (resident). */
+	once: boolean;
+	/** `spawn --layout right|below|window` (FX001-3 / SUGG-001) — explicit pane
+	 *  placement; unset ⇒ the classic auto split. */
+	layout?: "right" | "below" | "window";
+	/** `report --json '<payload>'` — the raw report JSON string (report subverb).
+	 *  Distinct from the boolean {@link json}; only set for `report`. */
+	reportJson?: string;
 	/** `--quiet` — silence stderr progress stream. */
 	quiet: boolean;
 	model?: string;
@@ -110,10 +121,12 @@ function argErr(message: string): ParseAgentResult {
 export function parseAgentArgs(args: string[]): ParseAgentResult {
 	const first = args[0];
 	if (first === undefined) {
-		return argErr("expected a subverb: list | run | show | new | check | eject");
+		return argErr("expected a subverb: list | run | show | new | check | eject | spawn | report");
 	}
 	if (!SUBVERBS.has(first)) {
-		return argErr(`unknown subverb '${first}' — expected list | run | show | new | check | eject`);
+		return argErr(
+			`unknown subverb '${first}' — expected list | run | show | new | check | eject | spawn | report`,
+		);
 	}
 	const subverb = first as AgentSubverb;
 
@@ -123,6 +136,7 @@ export function parseAgentArgs(args: string[]): ParseAgentResult {
 		params: {},
 		ephemeral: false,
 		json: false,
+		once: false,
 		quiet: false,
 	};
 	const positionals: string[] = [];
@@ -139,7 +153,28 @@ export function parseAgentArgs(args: string[]): ParseAgentResult {
 			continue;
 		}
 		if (tok === "--json") {
-			cmd.json = true;
+			// `report --json '<payload>'` consumes the payload as a VALUE; every other
+			// subverb keeps `--json` as the boolean machine-output flag.
+			if (subverb === "report") {
+				const val = args[++i];
+				if (val === undefined) return argErr("report --json needs a JSON payload");
+				cmd.reportJson = val;
+			} else {
+				cmd.json = true;
+			}
+			continue;
+		}
+		if (tok === "--once") {
+			if (subverb !== "spawn") return argErr("--once is only valid for spawn");
+			cmd.once = true;
+			continue;
+		}
+		if (tok === "--layout") {
+			if (subverb !== "spawn") return argErr("--layout is only valid for spawn");
+			const val = args[++i];
+			if (val !== "right" && val !== "below" && val !== "window")
+				return argErr(`--layout must be right|below|window (got '${val ?? ""}')`);
+			cmd.layout = val;
 			continue;
 		}
 		if (tok === "--ephemeral") {
@@ -226,8 +261,32 @@ function finalize(cmd: ParsedAgentCommand, positionals: string[]): ParseAgentRes
 		return { ok: true, cmd };
 	}
 
-	// subverb === "run"
+	if (subverb === "report") {
+		if (positionals.length > 0) {
+			return argErr(`report takes no positional arguments (got '${positionals[0]}')`);
+		}
+		if (cmd.reportJson === undefined) {
+			return argErr("report needs --json '<payload>' (the report JSON matching the pack's schema)");
+		}
+		return { ok: true, cmd };
+	}
+
+	// spawn + run share the same "slug OR --prompt" positional shape.
 	const hasPrompt = cmd.prompt !== undefined || cmd.promptStdin;
+	if (subverb === "spawn") {
+		if (positionals.length > 1) {
+			return argErr(`spawn takes at most one <slug> (got ${positionals.length})`);
+		}
+		if (positionals.length === 1) {
+			if (hasPrompt) return argErr("spawn takes a <slug> OR --prompt, not both");
+			cmd.slug = positionals[0];
+			return { ok: true, cmd };
+		}
+		if (!hasPrompt) return argErr("spawn needs a <slug> or --prompt <text>");
+		return { ok: true, cmd };
+	}
+
+	// subverb === "run"
 	if (positionals.length > 1) {
 		return argErr(`run takes at most one <slug> (got ${positionals.length})`);
 	}

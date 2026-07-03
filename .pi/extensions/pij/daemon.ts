@@ -20,6 +20,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
 import { IndexState } from "./core/daemon/index-state.js";
@@ -31,6 +32,7 @@ import {
 	driveSession,
 	flushedText,
 	observeActivity,
+	writeMerged,
 } from "./core/daemon/loop.js";
 import { SendBuffer } from "./core/daemon/router.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
@@ -92,6 +94,22 @@ export class Daemon {
 		}
 
 		for (const d of this.index.all()) {
+			// `--once` agent peer that has pushed its report → close its pane + drop its
+			// descriptor (T008 / AC-16). `planOnceClose` is true ONLY for `agentOnce &&
+			// reportedAt`, so a resident peer, an un-reported once peer, and every plain
+			// (non-agent) colleague are left untouched — the stalled/dead watchdog below
+			// is unchanged. The report is already durable in the spawner's inbox before
+			// `reportedAt` is stamped (T007), so closing the reporter never loses it.
+			if (planOnceClose(d)) {
+				if (d.paneId) this.ports.killPane(d.paneId);
+				this.registry.remove(d.id);
+				this.drives.delete(d.id);
+				this.pushed.delete(d.id);
+				this.flushed.delete(d.id);
+				this.paneSig.delete(d.id);
+				this.log(`close ${d.id}: once-mode agent peer reported → pane killed + descriptor removed`);
+				continue;
+			}
 			let current = d;
 			// Delivery is daemon-owned ONLY for bound tmux harnesses (claude/copilot).
 			// pi self-drives its inbox via its in-process receiver, so it is excluded
@@ -131,8 +149,12 @@ export class Daemon {
 						};
 					}
 					if (updated) {
-						current = updated;
-						this.registry.write(updated);
+						// writeMerged re-reads + preserves a reportedAt stamped concurrently by
+						// `pij agent report` between this tick's index rebuild and now, so the
+						// activity write can't clobber the `--once` close latch (Finding 1). It
+						// returns the merged descriptor so `current` (fed to the stall/dead push
+						// below) also carries the preserved stamp.
+						current = writeMerged(this.registry, updated);
 					}
 				}
 				// Whole-life stalled/dead push (T012): detect transitions and push once
@@ -169,7 +191,7 @@ export class Daemon {
 			const pane = d.paneId ? this.ports.capturePane(d.paneId) : "";
 			const reason: DeathReason = classifyDeathReason(pane);
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
-			this.registry.write({ ...d, failureReason: reason });
+			writeMerged(this.registry, { ...d, failureReason: reason });
 			const note = buildDeadNotice(d, reason, { authoritativeDeath: true });
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: dead (${reason})`);
@@ -186,7 +208,7 @@ export class Daemon {
 		if (stalled && !latch.has("stalled")) {
 			latch.add("stalled");
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
-			this.registry.write({ ...d, failureReason: "stalled" });
+			writeMerged(this.registry, { ...d, failureReason: "stalled" });
 			const note = buildStalledNotice(d);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: stalled`);
@@ -219,7 +241,7 @@ export class Daemon {
 			const hadProviderFailureLatch = latch.delete("provider-failure");
 			if (providerFailureReason || hadProviderFailureLatch) {
 				const { failureReason: _failureReason, ...recovered } = d;
-				this.registry.write(recovered);
+				writeMerged(this.registry, recovered);
 				this.log(`push ${d.id}: provider-failure cleared on recovery`);
 			}
 			return;
@@ -232,7 +254,7 @@ export class Daemon {
 		const isFatal = reason === "quota" || reason === "auth" || reason === "model-not-supported";
 		if (!isFatal) return;
 		latch.add("provider-failure");
-		this.registry.write({ ...d, failureReason: reason });
+		writeMerged(this.registry, { ...d, failureReason: reason });
 		const note = buildDeadNotice(d, reason, { authoritativeDeath: false });
 		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: provider-failure (${reason})`);

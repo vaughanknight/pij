@@ -437,8 +437,15 @@ export interface SpawnRequest {
 	/** Branch-from-self (Plan 020): fork the CALLER's own session into the new pane
 	 *  (`--branch`). Default false. Gated + resolved by the bin via {@link planBranch}. */
 	readonly branch: boolean;
+	/** Explicit placement (FX001-3 / SUGG-001): right | below | window. Unset ⇒
+	 *  the classic auto split (first peer right, second stacked below). */
+	readonly layout?: SpawnLayout;
 	readonly json: boolean;
 }
+
+/** Where an explicit `--layout` may place a spawned peer. `headless` is
+ *  deliberately absent — a daemon-bound harness needs a pty pane (deferred). */
+export type SpawnLayout = "right" | "below" | "window";
 
 /** Daemon-bound harnesses: the daemon pre-allocates an id and drives boot→bound
  *  (transcript discovery for claude + codex, deterministic `--session-id` for
@@ -461,6 +468,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let task: string | undefined;
 	let model: string | undefined;
 	let effort: string | undefined;
+	let layout: SpawnLayout | undefined;
 	let branch = false;
 	let json = false;
 	for (let i = 0; i < argv.length; i++) {
@@ -485,6 +493,10 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			harness = value as HarnessKind;
 		} else if (key === "task") {
 			task = value;
+		} else if (key === "layout") {
+			if (value !== "right" && value !== "below" && value !== "window")
+				return err("E-ARG", `--layout must be right|below|window (got '${value}')`);
+			layout = value;
 		} else if (key === "model") {
 			model = value;
 		} else if (key === "effort") {
@@ -498,7 +510,67 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			"E-ARG",
 			"usage: pij spawn --harness pi|claude|copilot|codex [--task …] [--model …] [--effort …]",
 		);
-	return ok({ harness, task, model, effort, branch, json });
+	return ok({ harness, task, model, effort, layout, branch, json });
+}
+
+/** A placement plan: a split (ControlSplitPlan) or a fresh tmux window. */
+export type PlacementPlan = ControlSplitPlan | { readonly ok: true; readonly window: true };
+
+/** Resolve an explicit `--layout` (FX001-3 / SUGG-001) or fall back to the classic
+ *  auto split ({@link planControlSplit}). `right`/`below` split the CALLER's own
+ *  pane (still subject to the main+2 cap); `window` opens a new tmux window in the
+ *  caller's session — exempt from the cap. Pure, shared by `pij spawn` and
+ *  `pij agent spawn`. */
+export function planPlacement(
+	layout: SpawnLayout | undefined,
+	ownPane: string,
+	peerPanes: readonly string[],
+): PlacementPlan {
+	if (layout === "window") return { ok: true, window: true };
+	if (layout === "right" || layout === "below") {
+		if (peerPanes.length >= 2) {
+			return {
+				ok: false,
+				code: "E-FULL",
+				message:
+					"split layout full — 2 workers already in this window; close one or use --layout window",
+			};
+		}
+		return layout === "right"
+			? { ok: true, target: ownPane, direction: "h", percent: 40 }
+			: { ok: true, target: ownPane, direction: "v" };
+	}
+	return planControlSplit(ownPane, peerPanes);
+}
+
+/**
+ * Translate the `pij spawn --agent <slug> …` alias into the argv `pij agent spawn`
+ * parses. Returns `null` when `--agent` is absent (a normal colleague spawn, which
+ * `parseSpawnArgs` owns). The slug becomes the leading positional; every other
+ * token (`-p k=v`, `--once`, `--model`, `--prompt`, …) is forwarded VERBATIM so the
+ * two surfaces stay identical (a bad/missing slug then surfaces the same
+ * `parseAgentArgs` error). Pure — the bin dispatches the result to the agent path.
+ */
+export function aliasAgentSpawnArgs(spawnArgs: readonly string[]): string[] | null {
+	let hasAgent = false;
+	let slug: string | undefined;
+	const rest: string[] = [];
+	for (let i = 0; i < spawnArgs.length; i++) {
+		const tok = spawnArgs[i];
+		if (tok === "--agent") {
+			hasAgent = true;
+			slug = spawnArgs[++i];
+			continue;
+		}
+		if (tok?.startsWith("--agent=")) {
+			hasAgent = true;
+			slug = tok.slice("--agent=".length);
+			continue;
+		}
+		if (tok !== undefined) rest.push(tok);
+	}
+	if (!hasAgent) return null;
+	return ["spawn", ...(slug !== undefined ? [slug] : []), ...rest];
 }
 
 /** Result of planning a branch-from-self spawn (Plan 020). */

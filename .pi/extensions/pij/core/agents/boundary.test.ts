@@ -56,6 +56,14 @@ describe("import boundary — core/agents must not import daemon/telegram/tmux/g
 		expect(files.length).toBeGreaterThan(0);
 	});
 
+	it("covers the Phase-3 peer files (peer-packet + report)", () => {
+		const names = files.map((f) => f.slice(HERE.length + 1));
+		// These pure helpers back the peer-spawn surface; if a future refactor
+		// narrows the scan glob they must not silently drop out of the guard.
+		expect(names).toContain("peer-packet.ts");
+		expect(names).toContain("report.ts");
+	});
+
 	it.each(
 		files.map((f) => [f.slice(HERE.length + 1), f]),
 	)("%s imports only permitted modules", (_label, file) => {

@@ -3,9 +3,9 @@
   "kind": "flight-plan",
   "slug": "pij-agents-minih",
   "nav": {
-    "now": "ship",
+    "now": "phase-3",
     "next": null,
-    "intent": "Adopt minih as pij's agent system: pij agent list/run over ./agents + ~/.pij/agents, minih-compatible input/output/validation, inline+ephemeral agents, built-ins (flowspace search), harness/model/effort pre-select with instantiation override",
+    "intent": "Phase 3: agent pack as peer — next: 5 tasks dossier, then flow-pair implement",
     "bag": {
       "mode": "unknown",
       "status": "active"
@@ -724,6 +724,345 @@
           "comments"
         ]
       }
+    },
+    {
+      "id": "STA-020",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:02:34.493Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-028",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:02:34.587Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-008",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:04:54.888Z",
+      "details": {
+        "node": "workshop-agent-peer",
+        "type": "workshop"
+      }
+    },
+    {
+      "id": "CUR-005",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:04:54.998Z",
+      "details": {
+        "from": "ship",
+        "to": "workshop-agent-peer"
+      }
+    },
+    {
+      "id": "STA-021",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:07:15.407Z",
+      "details": {
+        "node": "workshop-agent-peer",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-029",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:07:15.515Z",
+      "details": {
+        "node": "workshop-agent-peer",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-030",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:10:37.582Z",
+      "details": {
+        "node": "workshop-agent-peer",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-031",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:32:15.396Z",
+      "details": {
+        "node": "workshop-agent-peer",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-009",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:13.664Z",
+      "details": {
+        "node": "phase-3",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "UPD-032",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:13.664Z",
+      "details": {
+        "node": "review-2",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "NOD-010",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:13.773Z",
+      "details": {
+        "node": "review-3",
+        "type": "review"
+      }
+    },
+    {
+      "id": "UPD-033",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:13.773Z",
+      "details": {
+        "node": "phase-3",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "NOD-011",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:13.876Z",
+      "details": {
+        "node": "boot-3",
+        "type": "chore",
+        "chore": {
+          "kind": "command",
+          "importance": "strongly-recommended"
+        }
+      }
+    },
+    {
+      "id": "NOD-012",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:13.983Z",
+      "details": {
+        "node": "observe-3",
+        "type": "observe",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "NOD-013",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:14.109Z",
+      "details": {
+        "node": "retro-3",
+        "type": "chore",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-034",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:29.031Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "CUR-006",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-03T02:40:29.134Z",
+      "details": {
+        "from": "workshop-agent-peer",
+        "to": "phase-3"
+      }
+    },
+    {
+      "id": "UPD-035",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T03:03:22.242Z",
+      "details": {
+        "node": "phase-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-022",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T03:06:07.856Z",
+      "details": {
+        "node": "boot-3",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "strongly-recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-036",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T03:06:07.963Z",
+      "details": {
+        "node": "boot-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-037",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T03:09:39.987Z",
+      "details": {
+        "node": "phase-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-038",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:03:40.294Z",
+      "details": {
+        "node": "phase-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-039",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:10:50.978Z",
+      "details": {
+        "node": "phase-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-023",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:36:58.507Z",
+      "details": {
+        "node": "phase-3",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-024",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:36:58.625Z",
+      "details": {
+        "node": "observe-3",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-025",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:36:58.738Z",
+      "details": {
+        "node": "review-3",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-040",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:36:58.849Z",
+      "details": {
+        "node": "review-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-026",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T04:59:04.953Z",
+      "details": {
+        "node": "retro-3",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
     }
   ],
   "nodes": [
@@ -762,13 +1101,21 @@
         "Run /the-flow 1b plan \"<intent>\" (add --simple for a one-phase flow); it front-loads the clarifying questions, then auto-runs /validate-v2.",
         "Done when <slug>-plan.md carries both halves and reads **Status**: READY — DRAFT means a gate FAILed, so resolve the gaps and re-run."
       ],
-      "modified_at": "2026-07-02T22:07:28.800Z",
+      "modified_at": "2026-07-03T02:40:29.031Z",
       "user_input": "please get the plan generated then validate it with validation-v2 skill",
       "ran_at": "2026-07-02T22:07:28.701Z",
       "note": "Unified plan v1.0.0 READY (Full, CS-4, 2 phases, 17 tasks); validate-v2: VALIDATED WITH FIXES (1 HIGH built-in runs pollution + 3 MEDIUM, all fixed; built-ins run ephemeral un-ejected)",
       "artifacts": [
         "docs/plans/029-pij-agents-minih/pij-agents-minih-plan.md",
         "docs/plans/029-pij-agents-minih/validations/pij-agents-minih-plan-validation.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-03T02:40:29.031Z",
+          "text": "v1.1 amendment 2026-07-03: Phase 3 (agent pack as peer) added per workshop 003; ACs 14-18; validate-v2 re-run VALIDATED (sidecar overwritten); Plan Version 1.1.0.",
+          "source": "agent",
+          "kind": "note"
+        }
       ]
     },
     {
@@ -832,13 +1179,26 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/the-flow 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /the-flow 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
+      ],
+      "modified_at": "2026-07-03T02:02:34.587Z",
+      "ran_at": "2026-07-03T02:02:34.493Z",
+      "comments": [
+        {
+          "at": "2026-07-03T02:02:34.587Z",
+          "text": "Shipped direct-to-main per user instruction: commit 12e74af (64 files, +9823/-201) pushed to origin/main. No PR (repo convention). Telemetry flushed (42 segments). Ship report: ship/2026-07-03/ship-report.md. Local gates green at ship: self-check 1404 pass, consume script 0, AC-01..13 met.",
+          "source": "agent",
+          "kind": "note",
+          "refs": [
+            "12e74af"
+          ]
+        }
       ]
     },
     {
@@ -1052,10 +1412,10 @@
       "label": "Review: P2",
       "status": "done",
       "next": [
-        "ship"
+        "phase-3"
       ],
       "created_at": "2026-07-02T22:07:28.278Z",
-      "modified_at": "2026-07-03T00:55:02.270Z",
+      "modified_at": "2026-07-03T02:40:13.664Z",
       "zone": "flight",
       "command": "/the-flow 7 review",
       "comments": [
@@ -1128,6 +1488,156 @@
       },
       "branch_of": "phase-2",
       "ran_at": "2026-07-03T00:55:55.158Z"
+    },
+    {
+      "id": "workshop-agent-peer",
+      "type": "workshop",
+      "label": "Workshop: agent pack as peer (pij agent spawn)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-07-03T02:04:54.888Z",
+      "modified_at": "2026-07-03T02:32:15.396Z",
+      "branch_of": "plan",
+      "ran_at": "2026-07-03T02:07:15.407Z",
+      "comments": [
+        {
+          "at": "2026-07-03T02:07:15.515Z",
+          "text": "workshops/003-agent-pack-as-peer.md at Contract Ready. D1 verb=pij agent spawn; D2 first-turn packet + done-push relay, minih used for format+validators only; D3 lifecycle default resident with --once auto-close + pack lifecycle: key (OQ1: default awaits Jordan's ratification); D4 permissions enforce-on-claude/warn-on-codex-copilot. Next: plan amendment adds Phase 3 from this workshop.",
+          "source": "agent",
+          "kind": "decision"
+        },
+        {
+          "at": "2026-07-03T02:10:37.582Z",
+          "text": "OQ1-3 ratified by Jordan 2026-07-03: OQ1 lifecycle default = resident; OQ2 = ONE auto re-prompt on output-schema failure (push annotated validated/reprompted/errors, never withheld); OQ3 = add pij spawn --agent alias now (agent spawn stays canonical). Workshop 003 Status: Approved.",
+          "source": "user",
+          "kind": "decision"
+        },
+        {
+          "at": "2026-07-03T02:32:15.396Z",
+          "text": "Grill session 2026-07-03 revisions ratified: value = visible/steerable minih agents + warm resident sidekicks; D2 report seam = explicit 'pij agent report' verb run by the peer (PIJ_SELF env, synchronous AJV validation exit-1 feedback) superseding fence-scraping AND the OQ2 auto re-prompt; D4 = spawn-mode always fully permissioned (pij spawn posture), permissions preset is run-mode-only + advisory stderr note, per-harness sandbox levers recorded as future hardening; Phase 3 ship gate = one PIJ_AGENT_LIVE=1 live scenario (spawn->packet->report->discourse->--once auto-close).",
+          "source": "user",
+          "kind": "decision"
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "type": "phase",
+      "label": "P3: Agent pack as peer (pij agent spawn)",
+      "status": "done",
+      "next": [
+        "review-3"
+      ],
+      "created_at": "2026-07-03T02:40:13.664Z",
+      "modified_at": "2026-07-03T04:36:58.507Z",
+      "command": "/the-flow 6 implement",
+      "comments": [
+        {
+          "at": "2026-07-03T03:03:22.242Z",
+          "text": "Tasks dossier written (T001-T010, tasks/phase-3-agent-pack-as-peer-pij-agent-spawn/tasks.md) grounded by 3 parallel scouts (P1/P2 as-built + control-plane seam map, file:line verified). validate-v2: VALIDATED WITH FIXES — 3 MEDIUM repaired (lifecycleFor->agentOnce wiring + frontmatter-once effect test; T009 self-identity precondition; SendBuffer mis-attribution corrected to inbox-persist-drain-after-bind, also fixed in workshop 003). Sidecar: validations/phase-3-tasks-validation.md. Ready for implementation.",
+          "source": "agent",
+          "kind": "validation"
+        },
+        {
+          "at": "2026-07-03T03:09:39.986Z",
+          "text": "dlg-0003 dispatched 2026-07-03: coder pij-dpmxlr (copilot/claude-opus-4.8 xhigh, pane %498, canary pass) executing whole Phase 3 via packet pointer. Packet patched pre-send: allowed-scope filled, report mechanism = literal 'pij send pij-z4bt25' CLI command (DL-001 lesson), gates = just self-check, fleet addendum (no daemon restart by coder; T009 once-leg may defer to post-restart). Reviewer spawns lazily at first REVIEW.",
+          "source": "agent",
+          "kind": "note"
+        },
+        {
+          "at": "2026-07-03T04:03:40.294Z",
+          "text": "Coder reported COMPLETE (925 pass). Orchestrator ran deferred live legs post daemon-restart (pid 86887): resident+once report round-trips PROVEN live; AC-16 --once auto-close BROKEN live (reportedAt stamp clobbered by daemon stale-copy write, daemon.ts:134-152); peer.live report assertions race the daemon inbox drain. Review dispatched to pij-16vlhw6 (review-dlg-0003.md) with live-evidence addendum."
+        },
+        {
+          "at": "2026-07-03T04:10:50.978Z",
+          "text": "Review verdict rev-0004: FIX_REQUIRED (HIGH: daemon descriptor lost-update clobbers reportedAt -> AC-16 auto-close never latches, daemon.ts:152; HIGH: peer.live polls inbox files the daemon rmSyncs, AC-18 gate racy; LOW: no layout escape on agent spawn -> E-FULL, doc-only now, full placement control queued Phase 4 per user). Verdict hand-persisted reviews/rev-0004.json. Fix packet review-fix-0002.md dispatched to coder pij-dpmxlr."
+        }
+      ],
+      "ran_at": "2026-07-03T04:36:58.507Z"
+    },
+    {
+      "id": "review-3",
+      "type": "review",
+      "label": "Review: P3",
+      "status": "done",
+      "next": [
+        "ship"
+      ],
+      "created_at": "2026-07-03T02:40:13.773Z",
+      "modified_at": "2026-07-03T04:36:58.849Z",
+      "zone": "flight",
+      "command": "/the-flow 7 review",
+      "ran_at": "2026-07-03T04:36:58.738Z",
+      "comments": [
+        {
+          "at": "2026-07-03T04:36:58.849Z",
+          "text": "flow-pair review cycle: rev-0004 FIX_REQUIRED (daemon reportedAt lost-update; live-test drained-inbox race; E-FULL doc gap) -> fix (writeMerged, all 9 sites routed; durable reportedAt anchor; docs) -> rev-0005 APPROVE with 2 load-bearing mutations. Live: both peer.live legs green 69s post daemon-restart, --once auto-close beat the teardown. Verdicts hand-persisted reviews/rev-0004.json + rev-0005.json."
+        }
+      ]
+    },
+    {
+      "id": "boot-3",
+      "type": "chore",
+      "label": "Boot check",
+      "status": "done",
+      "next": [
+        "phase-3"
+      ],
+      "created_at": "2026-07-03T02:40:13.876Z",
+      "modified_at": "2026-07-03T03:06:07.963Z",
+      "command": "run /eng-harness-flow --hook pre-flight",
+      "chore": {
+        "kind": "command",
+        "importance": "strongly-recommended"
+      },
+      "branch_of": "phase-3",
+      "ran_at": "2026-07-03T03:06:07.855Z",
+      "comments": [
+        {
+          "at": "2026-07-03T03:06:07.963Z",
+          "text": "pre-flight boot 2026-07-03: harness boot verdict HEALTHY (typecheck ok, test ok — post-ship main at 12e74af). Env proven before Phase 3 dispatch.",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ]
+    },
+    {
+      "id": "observe-3",
+      "type": "observe",
+      "label": "Observe: P3",
+      "status": "done",
+      "next": [
+        "phase-3"
+      ],
+      "created_at": "2026-07-03T02:40:13.982Z",
+      "modified_at": "2026-07-03T04:36:58.625Z",
+      "command": "harness observe \"<what>\" --kind <kind>",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "branch_of": "phase-3",
+      "ran_at": "2026-07-03T04:36:58.625Z"
+    },
+    {
+      "id": "retro-3",
+      "type": "chore",
+      "label": "Retro: P3 (drain)",
+      "status": "done",
+      "next": [
+        "phase-3"
+      ],
+      "created_at": "2026-07-03T02:40:14.109Z",
+      "modified_at": "2026-07-03T04:59:04.953Z",
+      "command": "run /eng-harness-flow --hook post-coding",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "branch_of": "phase-3",
+      "ran_at": "2026-07-03T04:59:04.953Z"
     }
   ]
 }

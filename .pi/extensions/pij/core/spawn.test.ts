@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModelEntry } from "./models/registry.js";
 import {
+	aliasAgentSpawnArgs,
 	allocatePijId,
 	buildControlSpawnCommand,
 	buildEffortWarning,
@@ -18,6 +19,7 @@ import {
 	parseSpawnArgs,
 	planBranch,
 	planControlSplit,
+	planPlacement,
 	readyBody,
 } from "./spawn.js";
 import type { HarnessKind, SessionDescriptor } from "./types.js";
@@ -755,5 +757,80 @@ describe("parseAdoptArgs (T023)", () => {
 			code: "E-ARG",
 		});
 		expect(parseAdoptArgs(["%72"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+});
+
+describe("aliasAgentSpawnArgs — `pij spawn --agent` forwards to `pij agent spawn`", () => {
+	it("returns null when --agent is absent (a normal colleague spawn)", () => {
+		expect(aliasAgentSpawnArgs(["--harness", "claude", "--model", "sonnet"])).toBeNull();
+	});
+
+	it("puts the slug first and forwards every other flag verbatim", () => {
+		expect(
+			aliasAgentSpawnArgs([
+				"--agent",
+				"flowspace-search",
+				"-p",
+				"query=x",
+				"--once",
+				"--model",
+				"sonnet",
+			]),
+		).toEqual(["spawn", "flowspace-search", "-p", "query=x", "--once", "--model", "sonnet"]);
+	});
+
+	it("supports the --agent=<slug> inline form", () => {
+		expect(aliasAgentSpawnArgs(["--agent=my-pack", "-p", "q=1"])).toEqual([
+			"spawn",
+			"my-pack",
+			"-p",
+			"q=1",
+		]);
+	});
+});
+
+// ─── FX001-3 / SUGG-001: explicit placement ──────────────────────────────────
+describe("planPlacement", () => {
+	it("undefined layout falls back to the classic auto split", () => {
+		expect(planPlacement(undefined, "%1", [])).toEqual({
+			ok: true,
+			target: "%1",
+			direction: "h",
+			percent: 40,
+		});
+		expect(planPlacement(undefined, "%1", ["%2"])).toEqual({
+			ok: true,
+			target: "%2",
+			direction: "v",
+		});
+	});
+	it("right/below split the CALLER's pane", () => {
+		expect(planPlacement("right", "%1", ["%2"])).toEqual({
+			ok: true,
+			target: "%1",
+			direction: "h",
+			percent: 40,
+		});
+		expect(planPlacement("below", "%1", [])).toEqual({ ok: true, target: "%1", direction: "v" });
+	});
+	it("right/below still honour the main+2 cap", () => {
+		const r = planPlacement("right", "%1", ["%2", "%3"]);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.code).toBe("E-FULL");
+	});
+	it("window is cap-exempt", () => {
+		expect(planPlacement("window", "%1", ["%2", "%3"])).toEqual({ ok: true, window: true });
+	});
+});
+
+describe("parseSpawnArgs --layout", () => {
+	it("accepts right|below|window", () => {
+		const r = parseSpawnArgs(["--harness", "claude", "--layout", "window"]);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value.layout).toBe("window");
+	});
+	it("rejects an unknown layout", () => {
+		const r = parseSpawnArgs(["--harness", "claude", "--layout", "floating"]);
+		expect(r.ok).toBe(false);
 	});
 });

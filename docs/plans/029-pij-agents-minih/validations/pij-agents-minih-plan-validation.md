@@ -1,23 +1,18 @@
 # Validation — pij-agents-minih-plan.md
 
-- **Validated**: 2026-07-03T08:15:00+10:00
-- **Target**: `docs/plans/029-pij-agents-minih/pij-agents-minih-plan.md` (post-amendment revision, plan v1.0.0)
-- **Contract sources**: `research-dossier.md`, `workshops/001-minih-reuse.md`, `workshops/002-pij-agent-cli-experience.md`, session directives (2026-07-03)
-- **Checks**: `FakeAgentAdapter` export verified in minih src + dist typings (`src/index.ts:19`, `dist/index.d.ts`); `validateInput/validateOutput/validateSystemOutput` exported via `./runner` (`src/runner/index.ts:390-392`, dist typings); `claude`/`codex` binaries on PATH; minih tag `minih-v0.2.4` present locally; scout-verified pij seams (`loadModels` private `cli.ts:152`, `PROVIDER_HARNESS_MAP` private `core/cli.ts:336`, barrel-less `core/` convention, vitest globs, `*.live.test.ts` gating); AC↔coverage-map cross-check; one independent critic (read-only), all findings lead-verified against sources
-- **Verdict**: VALIDATED WITH FIXES
-- **Thesis / proof**: purpose met — implementable 2-phase plan with contract-sketched seams; target proof (Implementation) supported by fresh source evidence for every load-bearing library claim
-- **Consumers**: 2/2 named (phase-task expansion + implementer) — coverage map complete after AC-03 repair
+**Revalidated**: 2026-07-03 (v1.1 Phase 3 amendment). Supersedes the v1.0.0 record (VALIDATED WITH FIXES, 4 findings all repaired — committed in `12e74af`; git history keeps it).
 
-## Findings
+✅ **VALIDATED** — no material issues.
 
-| Severity | Finding | Evidence | Status |
-|---|---|---|---|
-| HIGH | Recorded run of an un-ejected built-in writes `runs/` into the installed package dir (minih roots runs at pack dir) | minih `src/runner/folder.ts:799`; plan Key Finding 07 + task 2.7 pre-amendment | fixed — rule added (AC-08, 2.7, KF-07): un-ejected built-ins run ephemeral; eject to record. Decision taken by recommended default in Jordan's absence — reversible to a `~/.pij` runs-redirect if preferred |
-| MEDIUM | AC-12 contract test through real `runAgent` would write `runs/<ts>/` under the committed fixture each `just self-check` | same folder.ts mechanic; task 1.2 pre-amendment | fixed — 1.2 copies fixture to temp dir + asserts clean tree |
-| MEDIUM | Temp-tree crash-sweep pinned to daemon start, but inline runs are daemon-independent | AC-05/1.7 pre-amendment; `agent` verb is daemon-less (cli.ts intercept) | fixed — sweep also at every `pij agent run` start (AC-05, 1.7) |
-| MEDIUM | AC-03's CLI-observable half (`E-BADINPUT` exit 1, rendered AJV lines) had no covering task in its map row | Acceptance Coverage Map AC-03 row pre-repair | fixed — row now cites 1.5 + 2.6 |
+- **Target**: `docs/plans/029-pij-agents-minih/pij-agents-minih-plan.md` @ Plan Version 1.1.0 — the Phase 3 amendment only (v1.0.0 scope already shipped in `12e74af` and is not re-validated).
+- **Contract sources**: `workshops/003-agent-pack-as-peer.md` (authoritative, Approved — OQ1–OQ3 user-ratified + grill-revised 2026-07-03), retro DL-001 (2026-07-02 drain), shipped Phase 1/2 code.
+- **Proof**:
+  - AC-14..18 defined in the business half ↔ 5 coverage-map rows ↔ every cited task (3.1–3.8) exists in the Phase 3 table (grep-verified).
+  - Phase Index rows (3) match phase blocks (3); findings 08/09 cited by tasks exist.
+  - Domain Manifest covers every new P3 file referenced in tasks (`peer-packet.ts`, `report.ts`, `daemon.ts` row, `peer.live.test.ts`).
+  - Load-bearing reuse claim grounded by direct source read: `SendBuffer` (pre-bind send buffering) at `daemon.ts:35,52` — "deliver packet after bind" rides existing machinery.
+  - G1–G7 gate verdicts consumed (all PASS/N/A; G5/G6/G7 re-checked for the amendment: TDD ordering 3.1–3.3 before 3.4–3.6; live gate 3.7).
+- **Thesis**: advanced — the amendment transcribes workshop 003's ratified contract (D1–D4, all OQs RESOLVED) into one phase; every decision cites its authoritative source; no invented intent (all four forks explicitly user-ratified same day).
+- **Consumers**: 2/2 satisfied — the tasks stage (Phase 3 dossier) consumes the task table + ACs; the flight plan's phase-3/review-3 nodes consume the Phase Index. Workshop 003 is not contradicted anywhere in the amendment.
 
-## Repairs
-
-- Mechanical: AC-03 coverage row completed (2.6 added).
-- Grounded amendments (each cited to its finding): AC-05, AC-08, tasks 1.2 / 1.7 / 2.7, Key Finding 07. Re-checked: amended rows are internally consistent with workshops 001/002 (ephemeral engine + eject pattern already existed; no new machinery invented).
+**Mode note**: adaptive default — lead + deterministic proof, no independent critic. Rationale: the amendment is a same-session transcription of a user-ratified workshop (near-zero invented-intent risk); the one falsifiable engineering claim (send-after-bind reuse) was settled by source evidence instead.

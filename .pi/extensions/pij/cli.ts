@@ -12,12 +12,20 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeAgentAdapter } from "minih";
+import { validateInput } from "minih/runner";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
+import {
+	type AgentSpawnPaneInfo,
+	buildAgentPeerEnv,
+	executeAgentReport,
+	finalizeAgentSpawn,
+	prepareAgentSpawn,
+} from "./core/agent-peer.js";
 import { ClaudeHeadlessAdapter } from "./core/agents/adapters/claude.js";
 import { CodexExecAdapter } from "./core/agents/adapters/codex.js";
 import {
@@ -25,7 +33,7 @@ import {
 	CopilotSdkMissingError,
 	createCopilotAdapter,
 } from "./core/agents/adapters/copilot.js";
-import { parseAgentArgs } from "./core/agents/cli-args.js";
+import { type ParsedAgentCommand, parseAgentArgs } from "./core/agents/cli-args.js";
 import {
 	type AdapterResolution,
 	dispatchAgent,
@@ -33,6 +41,8 @@ import {
 	renderAgentError,
 	type VerbDeps,
 } from "./core/agents/cli-verbs.js";
+import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
+import { agentsDir } from "./core/agents/paths.js";
 import { applyBinding, resolveAdoptSessionId } from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, PROVIDER_HARNESS_MAP, parseArgs } from "./core/cli.js";
@@ -57,6 +67,7 @@ import { normalizeModelQuery } from "./core/models/match.js";
 import type { ModelEntry } from "./core/models/registry.js";
 import { loadModels } from "./core/models/registry.js";
 import {
+	aliasAgentSpawnArgs,
 	allocatePijId,
 	buildControlSpawnCommand,
 	buildEffortWarning,
@@ -68,8 +79,10 @@ import {
 	parseCompactSelfArgs,
 	parseSpawnArgs,
 	planBranch,
-	planControlSplit,
+	planPlacement,
+	type SpawnLayout,
 } from "./core/spawn.js";
+import type { HarnessKind } from "./core/types.js";
 import { runTelegram } from "./telegram/index.js";
 
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
@@ -131,8 +144,12 @@ FLAGS
                   per harness: claude/copilot \`--effort\`, codex \`-c model_reasoning_effort=\`,
                   pi a \`:<lvl>\` suffix on the model id. Unset ⇒ the colleague's own default.
                   Validated warn-don't-block (an unsupported level warns, never blocks).
-  --task "<t>"    first task, delivered race-free via PIJ_SPAWN_TASK (never a positional
-                  prompt — dodges the announce-vs-prompt race, finding 01).
+  --task "<t>"    first task. pi: rides PIJ_SPAWN_TASK env (finding 01). claude/copilot/
+                  codex: queued to the peer's INBOX — the daemon injects it as the first
+                  turn after bind (FX001-2; env alone was never read by these harnesses).
+  --layout <l>    right | below | window (FX001-3). right/below split YOUR pane (main+2
+                  cap applies); window opens a background window in YOUR session, named
+                  after the peer (cap-exempt). Unset = classic auto split.
   --branch        fork YOUR OWN session into the new pane (branch-from-self), so the
                   colleague inherits your full context. Claude only (pi/copilot/codex reject).
                   Requires: the new harness MATCHES yours and your session is bound.
@@ -426,21 +443,31 @@ function runSpawn(argv: readonly string[]): void {
 		// across the whole mixed fleet): first peer → right 40% column, second →
 		// stacked below; cap = main + 2.
 		const peerPanesPi = livePeerPanes(regPi.list(), tmux.currentWindowPanes(), ownPane);
-		const planPi = planControlSplit(ownPane, peerPanesPi);
+		const planPi = planPlacement(req.value.layout, ownPane, peerPanesPi);
 		if (!planPi.ok) {
 			process.stderr.write(`${planPi.code}: ${planPi.message}\n`);
 			process.exit(2);
 		}
-		const splitPi = tmux.splitWindow({
-			cmd: spawnCmdPi.cmd,
-			args: spawnCmdPi.args,
-			env: spawnCmdPi.env,
-			cwd: cwdPi,
-			target: planPi.target,
-			direction: planPi.direction,
-			percent: planPi.percent,
-			detached: true, // keep focus here; the child boots on its own
-		});
+		const splitPi =
+			"window" in planPi
+				? tmux.newWindow({
+						cmd: spawnCmdPi.cmd,
+						args: spawnCmdPi.args,
+						env: spawnCmdPi.env,
+						cwd: cwdPi,
+						name: "pi-peer",
+						detached: true,
+					})
+				: tmux.splitWindow({
+						cmd: spawnCmdPi.cmd,
+						args: spawnCmdPi.args,
+						env: spawnCmdPi.env,
+						cwd: cwdPi,
+						target: planPi.target,
+						direction: planPi.direction,
+						percent: planPi.percent,
+						detached: true, // keep focus here; the child boots on its own
+					});
 		if (!splitPi.ok) {
 			process.stderr.write(`${splitPi.code}: ${splitPi.message}\n`);
 			process.exit(2);
@@ -550,21 +577,33 @@ function runSpawn(argv: readonly string[]): void {
 		tmux.currentWindowPanes(),
 		ownPane,
 	);
-	const plan = planControlSplit(ownPane, peerPanes);
+	const plan = planPlacement(req.value.layout, ownPane, peerPanes);
 	if (!plan.ok) {
 		process.stderr.write(`${plan.code}: ${plan.message}\n`);
 		process.exit(2);
 	}
-	const split = tmux.splitWindow({
-		cmd: spawnCmd.cmd,
-		args: spawnCmd.args,
-		env: spawnCmd.env,
-		cwd,
-		target: plan.target,
-		direction: plan.direction,
-		percent: plan.percent,
-		detached: true, // keep focus here; the daemon drives the new pane
-	});
+	// FX001-3 / SUGG-001: --layout window opens a background window in the CALLER's
+	// session (named after the peer, so it's findable) instead of splitting.
+	const split =
+		"window" in plan
+			? tmux.newWindow({
+					cmd: spawnCmd.cmd,
+					args: spawnCmd.args,
+					env: spawnCmd.env,
+					cwd,
+					name: pijId,
+					detached: true,
+				})
+			: tmux.splitWindow({
+					cmd: spawnCmd.cmd,
+					args: spawnCmd.args,
+					env: spawnCmd.env,
+					cwd,
+					target: plan.target,
+					direction: plan.direction,
+					percent: plan.percent,
+					detached: true, // keep focus here; the daemon drives the new pane
+				});
 	if (!split.ok) {
 		process.stderr.write(`${split.code}: ${split.message}\n`);
 		process.exit(2);
@@ -602,6 +641,17 @@ function runSpawn(argv: readonly string[]): void {
 			branchedFrom: branchFrom,
 		}),
 	);
+	// FX001-2 / DL-002: a daemon-bound peer never reads PIJ_SPAWN_TASK (only pi
+	// children do), so --task rode env into a void. Queue it in the peer's INBOX
+	// instead — the daemon injects it as the first turn after bind, exactly like
+	// an agent packet pointer (daemon.ts drainInbox). Env stays for the pi path.
+	if (req.value.task !== undefined) {
+		new FsChannel(pijHome).deliver({
+			from: parentId && parentId.trim() !== "" ? parentId : pijId,
+			to: pijId,
+			body: req.value.task,
+		});
+	}
 	if (req.value.json) {
 		process.stdout.write(
 			`${JSON.stringify({ id: pijId, paneId, harness: req.value.harness, lifecycle: "pending", ...(branchFrom ? { branchedFrom: branchFrom } : {}) })}\n`,
@@ -849,6 +899,11 @@ USAGE
   pij agent check <slug>                          validate frontmatter + schemas (exit 1 on failure)
   pij agent eject <slug>                          copy a built-in into ./agents to customise + record
 
+  pij agent spawn <slug> [-p k=v…] [--once] [--layout right|below|window]   run a pack as a daemon-bound pij peer (packet auto-delivered)
+  pij agent spawn --prompt "<text>" [--once]      spawn an inline pack peer
+  pij spawn --agent <slug> [-p k=v…] [--once]     alias for \`pij agent spawn\`
+  pij agent report --json '<payload>'             (inside a peer pane) push a schema-valid report to the spawner
+
   pij agents …                                    alias for \`pij agent list\`
 
 RUN FLAGS (override pack frontmatter — warn, never block)
@@ -957,6 +1012,284 @@ function agentDeps(quiet: boolean): VerbDeps {
 	};
 }
 
+/** The 3-tier agent discovery sources (project → user → built-in), in precedence
+ *  order — the same set the pure verbs use, resolved at the bin for spawn/report. */
+function agentDiscoverySources(cwd: string): DiscoverySource[] {
+	const builtinDir = fileURLToPath(new URL("./builtin-agents", import.meta.url));
+	return [
+		{ dir: join(cwd, "agents"), source: "project" },
+		{ dir: agentsDir(pijHome), source: "user" },
+		{ dir: builtinDir, source: "builtin" },
+	];
+}
+
+interface AgentPaneOutcome {
+	ok: boolean;
+	pane?: AgentSpawnPaneInfo;
+	message?: string;
+	exitCode?: number;
+}
+
+/** Open the tmux pane for a daemon-bound agent peer (mirrors runSpawn's control
+ *  split): snapshot transcripts (claude/codex) or mint a copilot session-id for a
+ *  deterministic bind, build the spawn command with the peer env (PIJ_AGENT_CWD),
+ *  split per the shared layout, and capture the pane's foreground pid. Returns the
+ *  {@link AgentSpawnPaneInfo} the descriptor write needs. */
+function spawnAgentPane(
+	plan: {
+		id: string;
+		harness: HarnessKind;
+		model?: string;
+		effort?: string;
+		spawnedBy?: string;
+		layout?: SpawnLayout;
+	},
+	cwd: string,
+): AgentPaneOutcome {
+	const tmux = new TmuxAdapter();
+	const ownPane = tmux.currentPane();
+	if (!ownPane || !tmux.currentSession()) {
+		return {
+			ok: false,
+			message: "E-NOTMUX: pij agent spawn needs an active tmux session",
+			exitCode: 2,
+		};
+	}
+	const isCopilot = plan.harness === "copilot";
+	const isCodex = plan.harness === "codex";
+	const copilotSessionId = isCopilot ? randomUUID() : undefined;
+	const skipSnapshot = isCopilot;
+	let transcriptsAtSpawn: string[] = [];
+	if (!skipSnapshot) {
+		if (isCodex) {
+			transcriptsAtSpawn = listCodexRollouts((d) => {
+				try {
+					return readdirSync(d);
+				} catch {
+					return [];
+				}
+			}, codexTranscriptRoot(homedir()));
+		} else {
+			const dir = transcriptDir(homedir(), cwd);
+			try {
+				transcriptsAtSpawn = readdirSync(dir)
+					.filter((n) => n.endsWith(".jsonl"))
+					.map((n) => `${dir}/${n}`);
+			} catch {
+				/* dir not created yet → empty before-set */
+			}
+		}
+	}
+	const base = buildControlSpawnCommand({
+		harness: plan.harness,
+		pijId: plan.id,
+		cwd,
+		...(plan.model ? { model: plan.model } : {}),
+		...(plan.effort ? { effort: plan.effort } : {}),
+		...(plan.spawnedBy ? { parentId: plan.spawnedBy } : {}),
+		...(copilotSessionId ? { copilotSessionId } : {}),
+	});
+	const env = buildAgentPeerEnv(base.env, { agentCwd: cwd });
+	const peerPanes = livePeerPanes(
+		new FsRegistry(pijHome).list(),
+		tmux.currentWindowPanes(),
+		ownPane,
+	);
+	const splitPlan = planPlacement(plan.layout, ownPane, peerPanes);
+	if (!splitPlan.ok)
+		return { ok: false, message: `${splitPlan.code}: ${splitPlan.message}`, exitCode: 2 };
+	const split =
+		"window" in splitPlan
+			? tmux.newWindow({ cmd: base.cmd, args: base.args, env, cwd, name: plan.id, detached: true })
+			: tmux.splitWindow({
+					cmd: base.cmd,
+					args: base.args,
+					env,
+					cwd,
+					target: splitPlan.target,
+					direction: splitPlan.direction,
+					percent: splitPlan.percent,
+					detached: true,
+				});
+	if (!split.ok) return { ok: false, message: `${split.code}: ${split.message}`, exitCode: 2 };
+	const paneId = split.value.paneId;
+	let panePid = process.pid;
+	try {
+		const raw = execFileSync("tmux", ["display-message", "-p", "-t", paneId, "#{pane_pid}"], {
+			encoding: "utf8",
+		}).trim();
+		if (/^\d+$/.test(raw)) panePid = Number(raw);
+	} catch {
+		/* fall back to the spawner pid */
+	}
+	const dataDir = join(pijHome, plan.id);
+	return {
+		ok: true,
+		pane: {
+			paneId,
+			panePid,
+			dataDir,
+			eventsPath: join(dataDir, "events.ndjson"),
+			startedAtIso: new Date().toISOString(),
+			...(skipSnapshot ? {} : { transcriptsAtSpawn }),
+			...(copilotSessionId ? { plannedHarnessSessionId: copilotSessionId } : {}),
+		},
+	};
+}
+
+/** `pij agent spawn <slug|--prompt> [-p k=v] [--once]` — run a pack as a
+ *  daemon-bound pij peer (AC-14). Validates `-p` input BEFORE any pane opens,
+ *  splits a control pane, records the peer (with agent + lifecycle fields), and
+ *  delivers the packet pointer to its inbox for the daemon to inject after bind. */
+function runAgentSpawn(cmd: ParsedAgentCommand): void {
+	const cwd = process.cwd();
+	// Export PIJ_AGENT_CWD for this process too (parity with agentDeps); the child
+	// gets it via the spawn env.
+	process.env.PIJ_AGENT_CWD = cwd;
+	const models = loadModels();
+	const token = `s${Date.now()}-${process.pid}`;
+	const id = allocatePijId(token, process.pid);
+
+	// Resolve the caller so the peer is ownership-stamped + can report back.
+	// Pane-first across the FULL registry (FX001-1 / DL-003): the folder filter
+	// starved the pane match on cross-repo spawns (cd other-repo && pij agent spawn),
+	// silently losing spawnedBy — the report then died E-NOREPORTTARGET and a
+	// --once peer never auto-closed.
+	const reg = new FsRegistry(pijHome);
+	const ownPaneEnv = process.env.TMUX_PANE;
+	const byPane = ownPaneEnv ? reg.list().filter((d) => d.paneId === ownPaneEnv) : [];
+	const callerRes =
+		!process.env.PIJ_SESSION_ID && byPane.length === 1 && byPane[0]
+			? { ok: true as const, value: byPane[0].id }
+			: resolveSelf(process.env.PIJ_SESSION_ID, filterByFolder(reg.list(), cwd), ownPaneEnv);
+	const spawnedBy = callerRes.ok ? callerRes.value : undefined;
+	// Fail-fast advisory (FX001-1): without a resolved caller there is NO report
+	// target — `pij agent report` will die E-NOREPORTTARGET and a --once peer can
+	// never auto-close. Warn loudly, never block (register with `pij adopt` first).
+	if (!spawnedBy) {
+		process.stderr.write(
+			"⚠️  caller unresolved — spawnedBy will NOT be stamped: the peer's report has no target " +
+				"(E-NOREPORTTARGET) and --once auto-close cannot fire. Register this pane first: " +
+				'pij adopt "$TMUX_PANE" --harness <h>, or set PIJ_SESSION_ID.\n',
+		);
+	}
+
+	// Prepare = resolve pack + AJV-validate input + derive harness/lifecycle/advisory
+	// + render packet. A bad input fails HERE — before any daemon start or tmux call.
+	const prep = prepareAgentSpawn(
+		{ cmd, id, ...(spawnedBy ? { spawnedBy } : {}) },
+		{
+			pijHome,
+			cwd,
+			discover: () => discoverAgents(agentDiscoverySources(cwd)),
+			validateInput,
+			harnessForModel: (m) => harnessForModel(models, m),
+			defaultHarness: "claude",
+		},
+	);
+	if (!prep.ok) {
+		process.stderr.write(`${renderAgentError(prep.error)}\n`);
+		process.exit(exitCodeFor(prep.error.code));
+	}
+	const plan = prep.plan;
+
+	// Warn-never-block on model/effort (same policy as run), then the one-shot
+	// permissions advisory (KF-09) — printed exactly once on stderr.
+	const mw = buildSpawnWarning(plan.model, models);
+	if (mw) process.stderr.write(`${mw}\n`);
+	const ew = buildEffortWarning(plan.effort, plan.model, models);
+	if (ew) process.stderr.write(`${ew}\n`);
+	if (plan.advisory) process.stderr.write(`${plan.advisory}\n`);
+
+	// A daemon must be up to drive the peer pending→bound (and inject the packet).
+	const daemonNote = ensureDaemonRunning();
+	if (daemonNote) process.stdout.write(`${daemonNote}\n`);
+
+	const paneRes = spawnAgentPane(
+		{
+			id,
+			harness: plan.harness,
+			...(plan.model ? { model: plan.model } : {}),
+			...(plan.effort ? { effort: plan.effort } : {}),
+			...(spawnedBy ? { spawnedBy } : {}),
+			...(cmd.layout ? { layout: cmd.layout } : {}),
+		},
+		cwd,
+	);
+	if (!paneRes.ok || !paneRes.pane) {
+		process.stderr.write(`${paneRes.message ?? "E-SPAWN: could not open pane"}\n`);
+		process.exit(paneRes.exitCode ?? 2);
+	}
+
+	const { packetPath } = finalizeAgentSpawn(plan, paneRes.pane, {
+		pijHome,
+		registry: reg,
+		channel: new FsChannel(pijHome),
+		cwd,
+	});
+
+	if (cmd.json) {
+		process.stdout.write(
+			`${JSON.stringify({
+				id,
+				paneId: paneRes.pane.paneId,
+				harness: plan.harness,
+				agentPack: plan.slug,
+				lifecycle: plan.lifecycle,
+				packet: packetPath,
+			})}\n`,
+		);
+	} else {
+		process.stdout.write(
+			`spawned agent '${plan.slug}' as ${id} (${plan.harness}, ${plan.lifecycle}) in pane ${paneRes.pane.paneId} — ` +
+				`the daemon will inject its packet after bind (track: pij state ${id} · pij tail ${id})\n`,
+		);
+	}
+	process.exit(0);
+}
+
+/** `pij agent report --json '<payload>'` — a spawned peer's synchronous done
+ *  signal (AC-15): resolve self from PIJ_SESSION_ID, validate the payload against
+ *  the pack's output schema, and on success push it to the spawner + stamp
+ *  reportedAt. An invalid report exits 1 with the AJV lines and delivers nothing. */
+function runAgentReport(cmd: ParsedAgentCommand): void {
+	const reg = new FsRegistry(pijHome);
+	const selfRes = resolveSelf(
+		process.env.PIJ_SESSION_ID,
+		filterByFolder(reg.list(), process.cwd()),
+		process.env.TMUX_PANE,
+	);
+	if (!selfRes.ok) {
+		process.stderr.write(
+			`${selfRes.code}: ${selfRes.message}\n` +
+				"pij agent report must run inside the spawned pack's own pane (PIJ_SESSION_ID is set there).\n",
+		);
+		process.exit(1);
+	}
+	let payload: unknown;
+	try {
+		payload = JSON.parse(cmd.reportJson as string);
+	} catch (e) {
+		process.stderr.write(`E-ARG: report --json is not valid JSON: ${(e as Error).message}\n`);
+		process.exit(1);
+	}
+	const res = executeAgentReport(selfRes.value, payload, {
+		pijHome,
+		registry: reg,
+		channel: new FsChannel(pijHome),
+		now: () => Date.now(),
+	});
+	if (!res.ok) {
+		process.stderr.write(`${res.error.code}: ${res.error.message}\n`);
+		if (res.error.code === "E-BADREPORT") {
+			for (const line of res.error.errors) process.stderr.write(`  ${line}\n`);
+		}
+		process.exit(1);
+	}
+	process.stdout.write(`reported to ${res.to}\n`);
+	process.exit(0);
+}
+
 /** Intercept + drive `pij agent <subverb>`. Async (a run awaits minih); resolves by
  *  exiting the process with the verb's exit code. Reachable with a daemon-less home. */
 async function runAgentVerb(args: string[]): Promise<void> {
@@ -970,6 +1303,16 @@ async function runAgentVerb(args: string[]): Promise<void> {
 			`${renderAgentError({ code: "E-ARG", message: parsed.message })}\n\n${AGENT_USAGE}\n`,
 		);
 		process.exit(exitCodeFor("E-ARG"));
+	}
+	// Peer-mode subverbs are impure (tmux split / registry / channel) — the bin owns
+	// them (they never reach the pure dispatchAgent).
+	if (parsed.cmd.subverb === "spawn") {
+		runAgentSpawn(parsed.cmd);
+		return;
+	}
+	if (parsed.cmd.subverb === "report") {
+		runAgentReport(parsed.cmd);
+		return;
 	}
 	try {
 		const res = await dispatchAgent(parsed.cmd, agentDeps(parsed.cmd.quiet));
@@ -998,7 +1341,15 @@ function main(): void {
 	// dispatch path. It writes the registry home itself, so it predates the
 	// E-NOREG guard below.
 	if (process.argv[2] === "spawn") {
-		runSpawn(process.argv.slice(3));
+		// `pij spawn --agent <slug> …` is an alias for `pij agent spawn <slug> …`
+		// (one uniform spawn surface). Detect + forward verbatim; else a colleague spawn.
+		const spawnArgs = process.argv.slice(3);
+		const aliased = aliasAgentSpawnArgs(spawnArgs);
+		if (aliased) {
+			void runAgentVerb(aliased);
+			return;
+		}
+		runSpawn(spawnArgs);
 		return;
 	}
 	if (process.argv[2] === "adopt") {

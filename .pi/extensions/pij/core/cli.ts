@@ -325,11 +325,18 @@ function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
 }
 
 function selfId(deps: CliDeps): Result<SessionId> {
-	return resolveSelf(
-		deps.process.env("PIJ_SESSION_ID"),
-		filterByFolder(deps.registry.list(), deps.cwd),
-		deps.process.env("TMUX_PANE"),
-	);
+	const envId = deps.process.env("PIJ_SESSION_ID");
+	const pane = deps.process.env("TMUX_PANE");
+	// Pane-first across the FULL registry (FX001-1 / DL-003): tmux pane ids are
+	// server-global, so a registered pane identifies the caller regardless of cwd.
+	// The folder filter below starved resolveSelf's pane branch on cross-repo
+	// calls, silently losing spawnedBy (reports then died E-NOREPORTTARGET).
+	if ((!envId || envId.trim() === "") && pane && pane.trim() !== "") {
+		const byPane = deps.registry.list().filter((d) => d.paneId === pane);
+		const only = byPane[0];
+		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
+	}
+	return resolveSelf(envId, filterByFolder(deps.registry.list(), deps.cwd), pane);
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────

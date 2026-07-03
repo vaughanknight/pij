@@ -615,6 +615,16 @@ export async function dispatchAgent(cmd: ParsedAgentCommand, deps: VerbDeps): Pr
 			return checkVerb(cmd, deps);
 		case "eject":
 			return ejectVerb(cmd, deps);
+		case "spawn":
+		case "report":
+			// Peer-mode subverbs are impure (tmux split / registry / channel) and are
+			// intercepted at the bin layer (cli.ts runAgentSpawn/runAgentReport) BEFORE
+			// dispatchAgent. Reaching here means the bin wiring regressed.
+			return {
+				stdout: "",
+				stderr: `E-ARG: '${cmd.subverb}' is handled by the pij bin, not the pure verb dispatcher`,
+				exitCode: exitCodeFor("E-ARG"),
+			};
 	}
 }
 
