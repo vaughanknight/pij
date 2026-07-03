@@ -17,6 +17,7 @@ flowchart LR
     PCP[pij-control-plane\ncontracts: tmux-keys primitives, HarnessKind/selectTransport, classifyReadiness, classifyInterstitial, binding record, daemon switchboard]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
+    PS[pij-skill\ncontracts: /pij route registry, detection signals A-E, shared conventions C1-C7, pij-skill-check gate]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -52,6 +53,11 @@ flowchart LR
     AR -->|validated by contract test/live tests/self-check; *.live.test.ts pattern| H
     PCP -->|Phase 2: agent verb family consumes DiscoveredAgent + runner + inline; daemon calls sweepStaleTmp| AR
     AW -.->|observes minih-format runs/ AR produces; no code coupling| AR
+    PS -->|pair route shells the flow-pair CLI + run ledger; front-door supersession| FP
+    PS -->|peer/ops routes print spawn/daemon/adopt/tail/close CLI| PCP
+    PS -->|peer route prints send/state/list/whoami surface| PIJ
+    PS -->|agent route wraps the pij agent verb family| AR
+    PS -.->|pair route wraps it; never writes flow-state files| TF
 ```
 
 ## Health Summary
@@ -90,6 +96,8 @@ flowchart LR
 | `agent-runtime` → `extension-authoring-harness` | healthy | Rides the `*.live.test.ts` + `describe.skipIf` live-gate pattern, the vitest globs (contract + boundary tests auto-included), and `just self-check` / `harness checks`. |
 | `pij-control-plane` → `agent-runtime` | planned (Phase 2) | The `pij agent` verb family will consume `DiscoveredAgent`, the runner, and the inline engine; the daemon consumes only the `sweepStaleTmp()` crash-sweep hook (added Phase 1). Dependency direction is `cli → core/agents → minih`, never the reverse. |
 | `agent-workbench` ⇢ `agent-runtime` | observes-only | Reads the minih-format `runs/<ts>/` that `agent-runtime` produces; no import, no shared code — run artifacts stay minih-owned. |
+| `pij-skill` → `flow-pair` | planned (Phase 2) | The pair route ports the flow-pair skill's protocol prose and shells the existing `flow-pair` CLI; the engine (lib/schemas/tests/`.flow-pair` ledger root) stays flow-pair-owned and untouched. |
+| `pij-skill` → `pij-control-plane` / `pij-messaging` / `agent-runtime` | prints-only | Route modules print CLI commands in fenced blocks; no imports, no code coupling — the skill layer is pure markdown. |
 
 ## History
 

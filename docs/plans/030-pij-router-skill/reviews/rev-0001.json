@@ -1,0 +1,25 @@
+{
+  "reviewId": "rev-0001",
+  "reviewOf": "plan-030-phase-1",
+  "reviewer": "pij-1jm2t6h (copilot/gpt-5.5 xhigh)",
+  "packet": "reviews/packet-phase-1-review.md",
+  "receivedAt": "2026-07-03T06:20:00Z",
+  "persistedBy": "orchestrator (hand-persisted verbatim — verdict law: CLI review verbs are artifact gates, never code verdicts)",
+  "verdict": "FIX_REQUIRED",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "file": "skills/pij/references/routes/peer.md",
+      "claim": "The peer route says `--task` delivers the first task race-free at boot.",
+      "evidence": "peer.md:29 claims `--task` delivers race-free, but execution.log.md:26-29 records live dogfood failure: `pij spawn --task` silently never delivered to two claude-harness peers. Source shows daemon-bound spawn only sets PIJ_SPAWN_TASK env (.pi/extensions/pij/core/spawn.ts:300-302) while the visible injection code is in the pi session path (.pi/extensions/pij/core/session.ts:162-165). A skill claim contradicted by its own validation log will mislead users.",
+      "fix": "Change peer.md to avoid recommending `--task` for daemon-bound peers until fixed; use spawn then `pij send <id> ...` after bind/canary, or document `--task` as unreliable/known-broken for claude/copilot/codex."
+    }
+  ],
+  "mutationEvidence": [
+    { "mutation": "a", "red": "`just pij-skill-check` exited 1 with `✗ sibling-blind: agent.md references route peer` after appending `see routes/peer.md`; green after byte-identical restore.", "greenAfterRevert": true },
+    { "mutation": "b", "red": "`just pij-skill-check` exited 1 with `✗ verb coverage: compact-self unmapped` and `✗ verb coverage: models unmapped` after deleting the compact-self/models row; green after byte-identical restore.", "greenAfterRevert": true }
+  ],
+  "checks": { "pijSkillCheck": 0, "flowPairTest": "148/148" },
+  "orchestratorSanityPass": "Source claim independently verified: spawn.ts:104 sets PIJ_SPAWN_TASK for control-plane spawns; only session.ts:163 (pi-mode child) reads it — no daemon-bound injection path exists. Matches dogfood DL-002 (2/2 silent non-delivery). Fix applied same-turn: peer.md spawn bullet now marks --task pi-only + prescribes spawn→ready→canary→send; pij-skill-check green; store redeployed + diff-clean.",
+  "fixCommit": "pending (fix in working tree; re-verdict rev-0002 requested)"
+}

@@ -175,6 +175,29 @@ flow-pair-link:
 flow-pair-install:
     npx skills@latest add "$(realpath skills)" -a '*' -g -y -s flow-pair
 
+# Structural gates for the /pij router skill (plan 030): registry↔module parity,
+# sibling-blindness, line budgets, CLI-verb coverage, duplicated-prose scope.
+pij-skill-check:
+    bash harness/scripts/pij-skill-check.sh
+
+# Symlink skills/pij/ into .pi/skills/ so pi auto-discovers it (same Finding 02
+# rationale as flow-pair-link: pi only scans .pi/skills/, not top-level skills/).
+pij-skill-link:
+    mkdir -p .pi/skills
+    ln -sf "$(realpath skills/pij)" .pi/skills/pij
+    @echo "✓ .pi/skills/pij → $(realpath skills/pij)"
+
+# Install skills/pij MACHINE-WIDE to every detected agent via `npx skills`
+# (shared store ~/.agents/skills + per-agent symlink bridges; -a '*' fans out),
+# then swap the store entry for a symlink to the repo — npx copies (DL-001,
+# plan 030 retro: copies drift, flow-pair forked that way); the symlink makes
+# the live skill track this repo with no re-install.
+pij-skill-install:
+    npx skills@latest add "$(realpath skills)" -a '*' -g -y -s pij
+    rm -rf ~/.agents/skills/pij
+    ln -sfn "$(realpath skills/pij)" ~/.agents/skills/pij
+    @echo "✓ ~/.agents/skills/pij → $(realpath skills/pij) (symlink, drift-proof)"
+
 # Install the flow front-door skills GLOBALLY for pi only (machine-wide), via
 # `npx skills`. Mirrors ~/github/tools `install-skills`, but scoped to pi
 # (-a pi) and to just the flow skills (-s) rather than every CLI / every skill.

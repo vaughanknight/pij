@@ -180,3 +180,4 @@ vite.config.ts.timestamp-*
 
 # flow-pair runtime ledger (mutable, gitignored; curated learnings committed separately)
 .flow-pair/
+.pi/skills/pij
