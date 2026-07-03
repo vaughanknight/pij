@@ -333,7 +333,10 @@ function selfId(deps: CliDeps): Result<SessionId> {
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────
-const PROVIDER_HARNESS_MAP: Record<string, string> = {
+/** Map a pi provider key (or harness name) to a pij harness. Exported so the
+ *  `pij agent` CLI surface can derive a pack's HARNESS column from its model's
+ *  provider without re-deriving the mapping (plan 029 T002 / KF-03). */
+export const PROVIDER_HARNESS_MAP: Record<string, string> = {
 	"github-copilot": "copilot",
 	copilot: "copilot",
 	claude: "claude",

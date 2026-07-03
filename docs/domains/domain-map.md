@@ -15,6 +15,8 @@ flowchart LR
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
     PCP[pij-control-plane\ncontracts: tmux-keys primitives, HarnessKind/selectTransport, classifyReadiness, classifyInterstitial, binding record, daemon switchboard]
+    AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
+    MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -46,6 +48,10 @@ flowchart LR
     PCP -->|extends SessionDescriptor/ports/Result; thin receiver keeps pi.sendUserMessage| PIJ
     PCP -->|re-exports shared tmux-keys; validated by tests/smoke/self-check| H
     PCP -->|future spawn/daemon/adopt CLI + pij_spawn --harness presented through| ATI
+    AR -->|embeds runAgent + IAgentAdapter + validators + FakeAgentAdapter; never forks pack format/ledger| MINIH
+    AR -->|validated by contract test/live tests/self-check; *.live.test.ts pattern| H
+    PCP -->|Phase 2: agent verb family consumes DiscoveredAgent + runner + inline; daemon calls sweepStaleTmp| AR
+    AW -.->|observes minih-format runs/ AR produces; no code coupling| AR
 ```
 
 ## Health Summary
@@ -80,6 +86,10 @@ flowchart LR
 | `pij-control-plane` → `pij-messaging` | extends (Plan 019) | Reuses `SessionDescriptor` (+`harness`/`harnessSessionId`/`initInjectedAt`/`state`), the five ports, `Result`, `deriveSelfId`/`resolveSelf`, the `~/.pij/` layout + `FsChannel`. The daemon never imports pi; the in-process `pi.sendUserMessage` seam stays in `pij-messaging`'s thin receiver. |
 | `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate. |
 | `pij-control-plane` → `agent-tooling-interface` | contract-only (future) | The `pij spawn`/`daemon`/`adopt` CLI + `pij_spawn --harness` UX will present through Pi command/tool surfaces. |
+| `agent-runtime` → `minih` (external) | embeds-only | Imports minih's `runAgent`, `IAgentAdapter`, `FakeAgentAdapter`, validators, and `SdkCopilotAdapter` as a library at exact tag `minih-v0.2.4`. The pack format, validators, and `runs/<ts>/` ledger are minih's — **never forked, never extended**; a pack that runs under pij runs under stock minih unchanged. AC-12 contract test guards the API against tag drift. |
+| `agent-runtime` → `extension-authoring-harness` | healthy | Rides the `*.live.test.ts` + `describe.skipIf` live-gate pattern, the vitest globs (contract + boundary tests auto-included), and `just self-check` / `harness checks`. |
+| `pij-control-plane` → `agent-runtime` | planned (Phase 2) | The `pij agent` verb family will consume `DiscoveredAgent`, the runner, and the inline engine; the daemon consumes only the `sweepStaleTmp()` crash-sweep hook (added Phase 1). Dependency direction is `cli → core/agents → minih`, never the reverse. |
+| `agent-workbench` ⇢ `agent-runtime` | observes-only | Reads the minih-format `runs/<ts>/` that `agent-runtime` produces; no import, no shared code — run artifacts stay minih-owned. |
 
 ## History
 
@@ -100,3 +110,4 @@ flowchart LR
 | 2026-06-17 | Plan 015 (tool surface fix) — `FWN` gained the missing LLM-callable `file_watch_notify` tool plus recursive watch option; obsolete slash-command parser/surface removed. |
 | 2026-06-17 | Plan 016 — added `flow-pair` (`FP`) node + external `the-flow` (`TF`) node; three consume edges (`PIJ` delivery, `ATI` surface, `H` validation) + a dashed wraps-only edge to `TF`. Created during planning; domain doc produced by the first manual flow-pair worker-delegation dogfood (`dlg-0001`). |
 | 2026-06-27 | Plan 019 — added `pij-control-plane` (`PCP`) node; three outbound edges (extends `pij-messaging`; validated by `extension-authoring-harness`; future CLI surface through `agent-tooling-interface`). Group A landed the shared `tmux-keys` primitives. Health Summary + edge detail finalized at T028. |
+| 2026-07-03 | Plan 029 Phase 1 — added `agent-runtime` (`AR`) node + external `minih` (`MINIH`) library node; two outbound edges (embeds-only → `MINIH`; validated → `extension-authoring-harness`) plus two inbound: `PCP → AR` (planned Phase-2 `pij agent` CLI + daemon `sweepStaleTmp` hook) and a dashed observes-only `AW ⇢ AR` (workbench reads the minih runs AR produces). Runtime built CLI-free in Phase 1; `pij agent` surface + built-ins + docs land in Phase 2. |

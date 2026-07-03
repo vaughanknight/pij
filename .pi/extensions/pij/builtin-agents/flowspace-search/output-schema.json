@@ -1,0 +1,35 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"summary": {
+			"type": "string",
+			"description": "A 1-3 sentence answer to the query, grounded in the retrieved nodes.",
+			"minLength": 1
+		},
+		"results": {
+			"type": "array",
+			"description": "The graph nodes the answer relied on (empty if the graph was missing).",
+			"items": {
+				"type": "object",
+				"properties": {
+					"node_id": {
+						"type": "string",
+						"description": "The fs2 node locator, e.g. callable:core/daemon.ts:buildStalledNotice."
+					},
+					"lines": {
+						"type": "string",
+						"description": "Line range as \"<start>-<end>\"."
+					},
+					"why": {
+						"type": "string",
+						"description": "One-line note on why this node is relevant to the query."
+					}
+				},
+				"required": ["node_id", "why"],
+				"additionalProperties": false
+			}
+		}
+	},
+	"required": ["summary", "results"]
+}

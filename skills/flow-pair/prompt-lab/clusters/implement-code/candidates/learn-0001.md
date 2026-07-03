@@ -1,23 +1,24 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-06-28T12-30-47Z-github.com-AI-Substr
+- **Run**: 2026-07-02T22-32-26Z-github.com-AI-Substr
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-06-28T13:11:13.186Z
+- **Created at**: 2026-07-02T23:23:57.787Z
 
 ## Summary
 
-Semantic regex split + AND-gated condition: coder left ambiguous tokens (model.*overloaded, resource_exhausted) in the TERMINAL class (should be transient) and implemented a liveness gate on 'not working' alone, dropping the plan's AND-staleness condition. Both needed a fix round.
+minih-integration packets should pre-carry minih's undocumented contract quirks so the coder doesn't rediscover them mid-run
 
 ## Evidence
 
-- plan-024 dlg-0001 APPROVE? no -> FIX_REQUIRED -> dlg-0002 APPROVE_WITH_NOTES. Review: 529/resource_exhausted still classified quota (AC-02)
-- gate keyed on state===working not (not-working AND lastEventAt stale > STALE_AFTER_MS) per AC-03/T004.
+- coder discovered mid-run (execution.log.md): report.json only written when adapter output truthy
+- system envelope retro fields need >=10 chars
+- listAgents requires non-empty frontmatter description
 
 ## Candidate prompt delta
 
-When a packet asks to split a set by semantic class, instruct the worker to enumerate EVERY token's target bucket explicitly and quote the plan's exact transient-vs-terminal lists (no token left ambiguous). When the plan states a condition as 'A AND B' (e.g. not-working AND stale), require BOTH in the impl and a dedicated test for each half (incl. the negative: A-but-not-B must not fire).
+When delegating work that drives minih runAgent: state that FakeAgentAdapter must be seeded with a JSON envelope (stock output '' means no report.json), retrospective fields need >=10 chars, and listAgents skips packs with empty frontmatter description
 
 ## Promotion status
 

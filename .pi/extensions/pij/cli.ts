@@ -11,15 +11,31 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { FakeAgentAdapter } from "minih";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
+import { ClaudeHeadlessAdapter } from "./core/agents/adapters/claude.js";
+import { CodexExecAdapter } from "./core/agents/adapters/codex.js";
+import {
+	COPILOT_SDK_PACKAGE,
+	CopilotSdkMissingError,
+	createCopilotAdapter,
+} from "./core/agents/adapters/copilot.js";
+import { parseAgentArgs } from "./core/agents/cli-args.js";
+import {
+	type AdapterResolution,
+	dispatchAgent,
+	exitCodeFor,
+	renderAgentError,
+	type VerbDeps,
+} from "./core/agents/cli-verbs.js";
 import { applyBinding, resolveAdoptSessionId } from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
-import { dispatch, parseArgs } from "./core/cli.js";
+import { dispatch, PROVIDER_HARNESS_MAP, parseArgs } from "./core/cli.js";
 import { parseCloseArgs, planClose } from "./core/close.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
@@ -37,14 +53,9 @@ import {
 import { sessionEventsPath, summarizeCopilotEvent } from "./core/harness/copilot.js";
 import { supportsBranching } from "./core/harness/types.js";
 import { parseReceiptBody } from "./core/message.js";
-import {
-	claudeAliases,
-	codexConfigModels,
-	codexSnapshot,
-	copilotSeedFromPi,
-	type ModelEntry,
-	parseModelsJson,
-} from "./core/models/registry.js";
+import { normalizeModelQuery } from "./core/models/match.js";
+import type { ModelEntry } from "./core/models/registry.js";
+import { loadModels } from "./core/models/registry.js";
 import {
 	allocatePijId,
 	buildControlSpawnCommand,
@@ -79,6 +90,12 @@ Control plane (spawn colleagues in tmux):
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
   pij telegram <init|start|stop>                     bridge pij sessions to a Telegram bot
+
+Agents (run declarative minih agent packs):
+  pij agent list [--json]                            merged agent inventory (project · user · built-in)
+  pij agent run <slug> [-p k=v…] [--json]            run a named pack (--ephemeral to not record)
+  pij agent run --prompt "<text>" [--json]           inline zero-setup run (nothing recorded)
+  pij agent show|new|check|eject <slug>              inspect · scaffold · validate · customise a pack
 
 Messaging:
   pij whoami [--json]                                your stable session id
@@ -144,40 +161,6 @@ function sleepSync(ms: number): void {
 function write(res: CliResult): void {
 	if (res.stdout) process.stdout.write(`${res.stdout}\n`);
 	if (res.stderr) process.stderr.write(`${res.stderr}\n`);
-}
-
-/** Load the pi model registry from `~/.pi/agent/models.json`, merge with copilot
- *  seed, claude aliases, and codex snapshot. Best-effort: returns empty list on
- *  any I/O error so `pij models` degrades gracefully in CI / offline environments. */
-function loadModels(): ModelEntry[] {
-	const piModelsPath = join(homedir(), ".pi", "agent", "models.json");
-	let piRaw: unknown = null;
-	try {
-		piRaw = JSON.parse(readFileSync(piModelsPath, "utf8"));
-	} catch {
-		/* no pi install or no models.json → fall back to aliases only */
-	}
-	const piModels = parseModelsJson(piRaw);
-	const copilotModels = copilotSeedFromPi(piRaw);
-	const seenIds = new Set(piModels.map((m) => m.id).concat(copilotModels.map((m) => m.id)));
-	const claude = claudeAliases().filter((m) => !seenIds.has(m.id));
-	// Codex (#2): prefer the user's configured default model from ~/.codex/config.toml
-	// (best-effort; empty on any read/parse error), ahead of the thin static snapshot.
-	let codexToml = "";
-	try {
-		codexToml = readFileSync(join(homedir(), ".codex", "config.toml"), "utf8");
-	} catch {
-		/* no codex install / unreadable config → snapshot-only fallback */
-	}
-	const codexConfig = codexConfigModels(codexToml);
-	const codexCfgIds = new Set(codexConfig.map((m) => m.id));
-	// codex is a DISTINCT harness target, so its entries are NOT deduped against
-	// pi/copilot (a `gpt-5.5` under copilot ≠ the codex one — different harness,
-	// different reasoning table). Dedup only WITHIN codex: the config default wins
-	// over the thin snapshot fallback. (claude aliases stay seenIds-deduped above.)
-	const codexFallback = codexSnapshot().filter((m) => !codexCfgIds.has(m.id));
-	const codex = [...codexConfig, ...codexFallback];
-	return [...piModels, ...copilotModels, ...claude, ...codex];
 }
 
 function deps(): CliDeps {
@@ -851,6 +834,154 @@ function tailTranscript(id: string, follow: boolean, linesArg: number | undefine
 	return true;
 }
 
+// ─── `pij agent` verb family (plan 029 Phase 2) ──────────────────────────────
+
+const AGENT_USAGE = `pij agent — run declarative minih agent packs (discover · run · author)
+
+USAGE
+  pij agent list [--json]                         merged inventory: ./agents · ~/.pij/agents · built-ins
+  pij agent run <slug> [-p k=v…] [flags]          run a named pack (records under runs/ by default)
+  pij agent run <slug> --ephemeral                run a named pack without recording (temp-copy path)
+  pij agent run --prompt "<text>"                 inline zero-setup run (nothing left on disk)
+  pij agent run --prompt -                         read the inline prompt from stdin
+  pij agent show <slug>                           pack defaults, schemas, files (+ eject hint)
+  pij agent new <slug>                            scaffold ./agents/<slug> (minih init when on PATH)
+  pij agent check <slug>                          validate frontmatter + schemas (exit 1 on failure)
+  pij agent eject <slug>                          copy a built-in into ./agents to customise + record
+
+  pij agents …                                    alias for \`pij agent list\`
+
+RUN FLAGS (override pack frontmatter — warn, never block)
+  -p key=value        input param (repeatable; JSON-coerced: 20→number, true→bool)
+  --model <m>         override the pack's model              --effort <lvl>   override reasoning effort
+  --harness <h>       claude | codex | copilot              --permissions <p> minih preset
+  --timeout <s>       wall-clock budget in seconds          --cwd <dir>       run cwd
+  --output-schema <f> attach an output schema (inline)      --json            machine envelope on stdout
+  --quiet             silence the stderr progress stream
+
+EXIT CODES  0 success · 1 user/agent error (bad input, run failed) · 2 system error (harness CLI missing)`;
+
+const FAKE_ENVELOPE = JSON.stringify({
+	summary: "Fake agent run (PIJ_AGENT_FAKE=1) — no real harness was invoked.",
+	retrospective: {
+		workedWell: "The deterministic fake-adapter seam kept the run hermetic and free.",
+		confusing: "Nothing — this is a scripted stand-in for a real harness (test seam only).",
+		magicWand: "A first-class record/replay fixture harness upstream in minih.",
+	},
+});
+
+/** Is `cmd` resolvable on PATH? Used to fail fast with E-HARNESSBIN before any LLM session. */
+function onPath(cmd: string): boolean {
+	try {
+		execFileSync("which", [cmd], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Model id → harness via the pi models registry provider + PROVIDER_HARNESS_MAP. */
+function harnessForModel(
+	models: readonly ModelEntry[],
+	model: string | undefined,
+): string | undefined {
+	if (!model) return undefined;
+	const norm = normalizeModelQuery(model);
+	const entry = models.find((e) => normalizeModelQuery(e.id) === norm);
+	return entry ? PROVIDER_HARNESS_MAP[entry.provider] : undefined;
+}
+
+/** Build a harness adapter, or a structured harness error. `PIJ_AGENT_FAKE=1` is a
+ *  test seam: a deterministic FakeAgentAdapter so scripted runs (scratch/, CI) need
+ *  no real CLI + burn no tokens. Copilot's SDK-missing case maps to E-HARNESSBIN. */
+async function makeAgentAdapter(harness: string): Promise<AdapterResolution> {
+	if (process.env.PIJ_AGENT_FAKE === "1") {
+		return { ok: true, adapter: new FakeAgentAdapter({ output: FAKE_ENVELOPE }) };
+	}
+	switch (harness) {
+		case "claude":
+			if (!onPath("claude")) return { ok: false, error: { code: "E-HARNESSBIN", bin: "claude" } };
+			return { ok: true, adapter: new ClaudeHeadlessAdapter() };
+		case "codex":
+			if (!onPath("codex")) return { ok: false, error: { code: "E-HARNESSBIN", bin: "codex" } };
+			return { ok: true, adapter: new CodexExecAdapter() };
+		case "copilot":
+			try {
+				return { ok: true, adapter: await createCopilotAdapter() };
+			} catch (err) {
+				if (err instanceof CopilotSdkMissingError) {
+					return {
+						ok: false,
+						error: { code: "E-HARNESSBIN", bin: COPILOT_SDK_PACKAGE, message: err.message },
+					};
+				}
+				throw err;
+			}
+		default:
+			return { ok: false, error: { code: "E-NOADAPTER", harness } };
+	}
+}
+
+/** Delegate `new` to minih's own scaffolder when the binary is on PATH (byte-compat). */
+function runMinihInit(slug: string, cwd: string): { ok: boolean; stderr: string } {
+	try {
+		execFileSync("minih", ["init", slug], { cwd, stdio: "pipe" });
+		return { ok: true, stderr: "" };
+	} catch (err) {
+		return { ok: false, stderr: (err as Error).message };
+	}
+}
+
+function agentDeps(quiet: boolean): VerbDeps {
+	const models = loadModels();
+	const runCwd = process.cwd();
+	// The adapter subprocess runs in minih's run dir (isolated), so agents can't see
+	// the project by cwd. Export the repo root so packs (e.g. flowspace-search) can
+	// reach it — they read $PIJ_AGENT_CWD to locate this repo's fs2 graph.
+	process.env.PIJ_AGENT_CWD = runCwd;
+	return {
+		pijHome,
+		cwd: runCwd,
+		builtinDir: fileURLToPath(new URL("./builtin-agents", import.meta.url)),
+		defaultHarness: "claude",
+		harnessForModel: (m) => harnessForModel(models, m),
+		modelWarning: (m) => buildSpawnWarning(m, models),
+		effortWarning: (e, m) => buildEffortWarning(e, m, models),
+		makeAdapter: makeAgentAdapter,
+		progress: (line) => {
+			if (!quiet) process.stderr.write(`${line}\n`);
+		},
+		readStdin: () => readFileSync(0, "utf8"),
+		hasMinihBinary: () => onPath("minih"),
+		runMinihInit,
+	};
+}
+
+/** Intercept + drive `pij agent <subverb>`. Async (a run awaits minih); resolves by
+ *  exiting the process with the verb's exit code. Reachable with a daemon-less home. */
+async function runAgentVerb(args: string[]): Promise<void> {
+	if (args.length === 0) {
+		process.stdout.write(`${AGENT_USAGE}\n`);
+		process.exit(0);
+	}
+	const parsed = parseAgentArgs(args);
+	if (!parsed.ok) {
+		process.stderr.write(
+			`${renderAgentError({ code: "E-ARG", message: parsed.message })}\n\n${AGENT_USAGE}\n`,
+		);
+		process.exit(exitCodeFor("E-ARG"));
+	}
+	try {
+		const res = await dispatchAgent(parsed.cmd, agentDeps(parsed.cmd.quiet));
+		if (res.stdout) process.stdout.write(`${res.stdout}\n`);
+		if (res.stderr) process.stderr.write(`${res.stderr}\n`);
+		process.exit(res.exitCode);
+	} catch (err) {
+		process.stderr.write(`E-RUNFAILED: ${(err as Error).message}\n`);
+		process.exit(1);
+	}
+}
+
 function main(): void {
 	// Full-surface usage on no args / --help (the core parser only knows the
 	// messaging verbs; the control-plane verbs live here in the bin).
@@ -890,6 +1021,14 @@ function main(): void {
 	// it never reads the pij registry home, so it predates the E-NOREG guard too.
 	if (process.argv[2] === "telegram") {
 		runTelegram(process.argv.slice(3));
+		return;
+	}
+	// `agent` (+ `agents` alias → `agent list`) drives the declarative-agent surface.
+	// It reads ./agents + ~/.pij/agents + built-ins — no daemon, no registry home —
+	// so it predates the E-NOREG guard. Async: it exits the process itself.
+	if (top === "agent" || top === "agents") {
+		const rest = top === "agents" ? ["list", ...process.argv.slice(3)] : process.argv.slice(3);
+		void runAgentVerb(rest);
 		return;
 	}
 	// E-NOREG: registry home absent => the extension never booted here.

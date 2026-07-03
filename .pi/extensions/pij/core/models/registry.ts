@@ -3,7 +3,15 @@
 // Pi-first: parseModelsJson covers the live ~/.pi/agent/models.json shape.
 // copilotSeedFromPi seeds from pi's github-copilot provider section.
 // claudeAliases + codexSnapshot are honest best-effort/unverified fallbacks.
-// All impure I/O (reading the file) lives in the caller (cli.ts / tests).
+// The pure parsers take already-read text/JSON; `loadModels()` is the single
+// impure composition root that reads pi's models.json + codex's config.toml off
+// disk and merges every source (moved here from the bin in plan 029 T002 so the
+// `pij agent` CLI surface can reuse the exact same registry without importing the
+// bin). All parsing stays pure and separately testable.
+
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export interface ModelEntry {
 	readonly id: string;
@@ -197,4 +205,43 @@ export function codexConfigModels(tomlText: string): ModelEntry[] {
 		if (m?.[1]) return [codexEntry(m[1])];
 	}
 	return [];
+}
+
+/**
+ * Load + merge the full pij model registry from `~/.pi/agent/models.json` (pi +
+ * copilot seed), claude aliases, and the codex default (`~/.codex/config.toml`)
+ * plus its snapshot fallback. Best-effort: any I/O error degrades to the alias
+ * lists so `pij models` / `pij agent` stay usable in CI / offline. Moved here
+ * from the bin (plan 029 T002) — the composition is byte-for-byte the same, this
+ * is the ONLY impure function in the module.
+ */
+export function loadModels(): ModelEntry[] {
+	const piModelsPath = join(homedir(), ".pi", "agent", "models.json");
+	let piRaw: unknown = null;
+	try {
+		piRaw = JSON.parse(readFileSync(piModelsPath, "utf8"));
+	} catch {
+		/* no pi install or no models.json → fall back to aliases only */
+	}
+	const piModels = parseModelsJson(piRaw);
+	const copilotModels = copilotSeedFromPi(piRaw);
+	const seenIds = new Set(piModels.map((m) => m.id).concat(copilotModels.map((m) => m.id)));
+	const claude = claudeAliases().filter((m) => !seenIds.has(m.id));
+	// Codex (#2): prefer the user's configured default model from ~/.codex/config.toml
+	// (best-effort; empty on any read/parse error), ahead of the thin static snapshot.
+	let codexToml = "";
+	try {
+		codexToml = readFileSync(join(homedir(), ".codex", "config.toml"), "utf8");
+	} catch {
+		/* no codex install / unreadable config → snapshot-only fallback */
+	}
+	const codexConfig = codexConfigModels(codexToml);
+	const codexCfgIds = new Set(codexConfig.map((m) => m.id));
+	// codex is a DISTINCT harness target, so its entries are NOT deduped against
+	// pi/copilot (a `gpt-5.5` under copilot ≠ the codex one — different harness,
+	// different reasoning table). Dedup only WITHIN codex: the config default wins
+	// over the thin snapshot fallback. (claude aliases stay seenIds-deduped above.)
+	const codexFallback = codexSnapshot().filter((m) => !codexCfgIds.has(m.id));
+	const codex = [...codexConfig, ...codexFallback];
+	return [...piModels, ...copilotModels, ...claude, ...codex];
 }

@@ -1,0 +1,1133 @@
+{
+  "schema_version": 1,
+  "kind": "flight-plan",
+  "slug": "pij-agents-minih",
+  "nav": {
+    "now": "ship",
+    "next": null,
+    "intent": "Adopt minih as pij's agent system: pij agent list/run over ./agents + ~/.pij/agents, minih-compatible input/output/validation, inline+ephemeral agents, built-ins (flowspace search), harness/model/effort pre-select with instantiation override",
+    "bag": {
+      "mode": "unknown",
+      "status": "active"
+    }
+  },
+  "created_at": "2026-07-02T21:30:30.128Z",
+  "provenance": {
+    "record_kind": "flow",
+    "harness_version": "0.7.0",
+    "branch": "main",
+    "repo": "https://github.com/AI-Substrate/pij.git",
+    "created_at": "2026-07-02T21:30:30.128Z",
+    "agent": "the-flow",
+    "plan_id": null
+  },
+  "events": [
+    {
+      "id": "CRT-001",
+      "kind": "created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:30:30.138Z",
+      "details": {
+        "kind": "flight-plan",
+        "slug": "pij-agents-minih"
+      }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:30:40.603Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:30:40.686Z",
+      "details": {
+        "node": "research",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:30:40.853Z",
+      "details": {
+        "node": "workshop-minih-reuse",
+        "type": "workshop"
+      }
+    },
+    {
+      "id": "UPD-002",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:30:50.357Z",
+      "details": {
+        "node": "workshop-minih-reuse",
+        "fields": [
+          "user_input"
+        ]
+      }
+    },
+    {
+      "id": "STA-002",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:34:53.814Z",
+      "details": {
+        "node": "workshop-minih-reuse",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:34:53.900Z",
+      "details": {
+        "node": "workshop-minih-reuse",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:34:53.984Z",
+      "details": {
+        "node": "workshop-minih-reuse",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-002",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:36:54.563Z",
+      "details": {
+        "node": "workshop-cli-experience",
+        "type": "workshop"
+      }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:36:54.646Z",
+      "details": {
+        "node": "workshop-cli-experience",
+        "fields": [
+          "user_input"
+        ]
+      }
+    },
+    {
+      "id": "STA-003",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:38:22.342Z",
+      "details": {
+        "node": "workshop-cli-experience",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:38:22.440Z",
+      "details": {
+        "node": "workshop-cli-experience",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-007",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:38:22.532Z",
+      "details": {
+        "node": "workshop-cli-experience",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:44:44.973Z",
+      "details": {
+        "from": "research",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "STA-004",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:44:45.058Z",
+      "details": {
+        "node": "plan",
+        "from": "assumed",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T21:44:45.143Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "user_input"
+        ]
+      }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.193Z",
+      "details": {
+        "node": "phase-2",
+        "type": "phase"
+      }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.193Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "NOD-004",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.279Z",
+      "details": {
+        "node": "review-2",
+        "type": "review"
+      }
+    },
+    {
+      "id": "UPD-010",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.279Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "next"
+        ],
+        "edge_op": "splice-after"
+      }
+    },
+    {
+      "id": "NOD-005",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.361Z",
+      "details": {
+        "node": "boot-2",
+        "type": "harness-boot",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "NOD-006",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.443Z",
+      "details": {
+        "node": "observe-2",
+        "type": "observe",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "NOD-007",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.526Z",
+      "details": {
+        "node": "retro-2",
+        "type": "harness-retro",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-011",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.613Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "label"
+        ]
+      }
+    },
+    {
+      "id": "STA-005",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.701Z",
+      "details": {
+        "node": "plan",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-012",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:07:28.800Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:15:28.708Z",
+      "details": {
+        "node": "backpressure",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-013",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:15:28.795Z",
+      "details": {
+        "node": "backpressure",
+        "fields": [
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-014",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:15:28.889Z",
+      "details": {
+        "node": "backpressure",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:21:59.291Z",
+      "details": {
+        "from": "plan",
+        "to": "phase-1"
+      }
+    },
+    {
+      "id": "UPD-015",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:30:49.871Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-016",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:30:49.974Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:30:50.068Z",
+      "details": {
+        "node": "phase-1",
+        "from": "known",
+        "to": "in-progress"
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T22:31:35.320Z",
+      "details": {
+        "node": "boot-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:24:03.618Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in-progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-017",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:24:03.715Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-018",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:24:03.811Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:24:03.907Z",
+      "details": {
+        "node": "review-1",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-019",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:24:04.020Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:24:04.117Z",
+      "details": {
+        "node": "observe-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-012",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:25:30.514Z",
+      "details": {
+        "node": "retro-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "CUR-003",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:25:30.613Z",
+      "details": {
+        "from": "phase-1",
+        "to": "phase-2"
+      }
+    },
+    {
+      "id": "UPD-020",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:35:53.402Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-013",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:35:53.509Z",
+      "details": {
+        "node": "phase-2",
+        "from": "known",
+        "to": "in-progress"
+      }
+    },
+    {
+      "id": "UPD-021",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-02T23:35:53.612Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-022",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:37:51.534Z",
+      "details": {
+        "node": "review-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-014",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:01.835Z",
+      "details": {
+        "node": "phase-2",
+        "from": "in-progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-023",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:01.933Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-024",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:02.037Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-015",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:02.147Z",
+      "details": {
+        "node": "review-2",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-025",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:02.270Z",
+      "details": {
+        "node": "review-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:02.370Z",
+      "details": {
+        "node": "observe-2",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-017",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:02.478Z",
+      "details": {
+        "node": "boot-2",
+        "from": "assumed",
+        "to": "skipped",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-026",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:02.577Z",
+      "details": {
+        "node": "boot-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-018",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:55.158Z",
+      "details": {
+        "node": "retro-2",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "CUR-004",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-03T00:55:55.257Z",
+      "details": {
+        "from": "phase-2",
+        "to": "ship"
+      }
+    },
+    {
+      "id": "STA-019",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-03T01:59:44.185Z",
+      "details": {
+        "node": "retro-ship",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-027",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-03T01:59:58.932Z",
+      "details": {
+        "node": "retro-ship",
+        "fields": [
+          "comments"
+        ]
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "research",
+      "type": "research",
+      "label": "Research",
+      "status": "done",
+      "command": "/the-flow 1a explore",
+      "next": [
+        "plan"
+      ],
+      "instructions": [
+        "Explore how the relevant code works before you plan — start cheap, climb only when the evidence demands it; never jump straight to a plan.",
+        "Run /the-flow 1a explore \"<intent>\" — it produces research-dossier.md, a decision packet (not a transcript) with evidence links.",
+        "Done when the dossier names the core decision the plan must resolve and the findings that bound it."
+      ],
+      "modified_at": "2026-07-02T21:30:40.686Z",
+      "ran_at": "2026-07-02T21:30:40.602Z",
+      "note": "Deep explore done (direct-jump 1a): research-dossier.md — 18 findings, 3 historical, minih embeddable via runAgent+IAgentAdapter; gaps: no ephemeral/inline upstream",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/research-dossier.md"
+      ]
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "label": "Plan",
+      "status": "done",
+      "command": "/the-flow 1b plan",
+      "next": [
+        "phase-1"
+      ],
+      "instructions": [
+        "Write ONE planning document in a single atomic pass — `## Business Specification` (WHAT/WHY) on top, `## Implementation Plan` (HOW: phases, task tables, acceptance criteria, gates G1–G7) below.",
+        "Run /the-flow 1b plan \"<intent>\" (add --simple for a one-phase flow); it front-loads the clarifying questions, then auto-runs /validate-v2.",
+        "Done when <slug>-plan.md carries both halves and reads **Status**: READY — DRAFT means a gate FAILed, so resolve the gaps and re-run."
+      ],
+      "modified_at": "2026-07-02T22:07:28.800Z",
+      "user_input": "please get the plan generated then validate it with validation-v2 skill",
+      "ran_at": "2026-07-02T22:07:28.701Z",
+      "note": "Unified plan v1.0.0 READY (Full, CS-4, 2 phases, 17 tasks); validate-v2: VALIDATED WITH FIXES (1 HIGH built-in runs pollution + 3 MEDIUM, all fixed; built-ins run ephemeral un-ejected)",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/pij-agents-minih-plan.md",
+        "docs/plans/029-pij-agents-minih/validations/pij-agents-minih-plan-validation.md"
+      ]
+    },
+    {
+      "id": "phase-1",
+      "type": "phase",
+      "phase": 1,
+      "label": "P1: Agent runtime + adapters",
+      "status": "done",
+      "command": "/the-flow 6 implement",
+      "next": [
+        "review-1"
+      ],
+      "instructions": [
+        "Implement exactly ONE phase using the plan's testing approach and domain placement rules — keep the task table and execution.log.md live as you go.",
+        "Run /the-flow 6 implement --plan \"<plan path>\" (add --companion for a live review companion); log discoveries, tagging any Deferred/Noteworthy a human must see before ship.",
+        "Done when the phase's acceptance criteria are met, the tests pass, and the execution log records what changed plus the proof."
+      ],
+      "modified_at": "2026-07-02T23:24:03.811Z",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/tasks/phase-1-agent-runtime-harness-adapters/tasks.md",
+        "docs/plans/029-pij-agents-minih/tasks/phase-1-agent-runtime-harness-adapters/execution.log.md",
+        "docs/plans/029-pij-agents-minih/spikes/adapter-headless-spike.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-02T22:30:49.974Z",
+          "text": "Tasks expanded (T001-T013 incl. 2 backpressure-survey sensors: just agent-live recipe, import-boundary test); validate-v2 verdict VALIDATED WITH FIXES (3 MEDIUM, all repaired — key: seed FakeAgentAdapter output or report.json never written, runner.js:1336)"
+        },
+        {
+          "at": "2026-07-02T23:24:03.811Z",
+          "text": "Implemented via flow-pair dlg-0001 (coder copilot/opus-4.8 xhigh): T001-T013 complete, self-check exit 0 (1337 pass), agent-live green (claude 131s codex 117s), red-first proofs for AC-12 alarm + boundary sensor. daemon.ts sweep hook needs daemon restart to take effect."
+        }
+      ],
+      "ran_at": "2026-07-02T23:24:03.618Z"
+    },
+    {
+      "id": "review-1",
+      "type": "review",
+      "label": "Review: P1",
+      "status": "done",
+      "command": "/the-flow 7 review",
+      "next": [
+        "phase-2"
+      ],
+      "zone": "flight",
+      "instructions": [
+        "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in; skippable when a companion already reviewed every commit.",
+        "Run /the-flow 7 review — it inspects the newest reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or ship.",
+        "Done when the verdict is recorded (one finding line) and either accepted or routed to a fix-loop."
+      ],
+      "modified_at": "2026-07-02T23:24:04.020Z",
+      "ran_at": "2026-07-02T23:24:03.907Z",
+      "comments": [
+        {
+          "at": "2026-07-02T23:24:04.020Z",
+          "text": "Cross-model review via flow-pair rev-0001 (reviewer copilot/gpt-5.5 xhigh): APPROVE, 0 findings; Dim-0 mutation evidence real (fail-fast guard runner.ts:121 and inline rmSync both flipped their named tests); reviewer re-ran just self-check exit 0; orchestrator sanity pass confirmed hunks. Record: .flow-pair/runs/2026-07-02T22-32-26Z-github.com-AI-Substr/reviews/rev-0001.json"
+        }
+      ]
+    },
+    {
+      "id": "ship",
+      "type": "ship",
+      "label": "Ship",
+      "status": "assumed",
+      "command": "/the-flow 8 ship",
+      "next": [],
+      "instructions": [
+        "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
+        "Run /the-flow 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
+        "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
+      ]
+    },
+    {
+      "id": "backpressure",
+      "type": "backpressure",
+      "label": "Backpressure survey",
+      "status": "done",
+      "branch_of": "plan",
+      "next": [
+        "plan"
+      ],
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "instructions": [
+        "Optional pre-coding seam: survey what the harness can PROVE about the plan's coverage versus what was only eyeballed, then re-plan informed by it.",
+        "Run /eng-harness-flow --hook pre-coding --json — advisory output only; the plan verb does not auto-read it, so fold the findings in yourself.",
+        "Optional and skippable — never gates. Decline with a real `harness flow status backpressure --to skipped`, never a narrated skip."
+      ],
+      "modified_at": "2026-07-02T22:15:28.889Z",
+      "ran_at": "2026-07-02T22:15:28.708Z",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/backpressure-coverage.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-02T22:15:28.889Z",
+          "text": "Survey verdict: Partial — every machine-provable AC is BUILDABLE inside already-planned tasks (contract test, clean-tree assertions, CLI matrix, PIJ_AGENT_LIVE suite); deterministic done state = just self-check green + live suite pre-ship; AC-11/AC-13 content stay review-tier by design"
+        }
+      ]
+    },
+    {
+      "id": "boot-1",
+      "type": "harness-boot",
+      "label": "Boot check",
+      "status": "done",
+      "branch_of": "phase-1",
+      "next": [
+        "phase-1"
+      ],
+      "command": "run /eng-harness-flow --hook pre-flight --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended pre-flight seam: confirm the harness is healthy before you start coding this phase.",
+        "Run /eng-harness-flow --hook pre-flight --json — read-only/advisory; narrate its envelope verbatim, never fabricate one.",
+        "Skippable — advisory, never gates. Decline with a real `harness flow status boot-1 --to skipped`."
+      ],
+      "modified_at": "2026-07-02T22:31:35.320Z",
+      "ran_at": "2026-07-02T22:31:35.320Z"
+    },
+    {
+      "id": "observe-1",
+      "type": "observe",
+      "label": "Observe: P1",
+      "status": "done",
+      "branch_of": "phase-1",
+      "next": [
+        "phase-1"
+      ],
+      "command": "harness observe \"<what>\" --kind <kind>",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended mid-phase capture: record observations (decisions, gotchas, surprises) AS you code, so they don't evaporate as remembered prose.",
+        "Run harness observe \"<what>\" --kind <kind> — a real capture, repeated through the phase; it stays due the whole time the cursor sits on this phase.",
+        "Drained at phase end by the retro (drain) chore. Skippable — advisory, never gates."
+      ],
+      "modified_at": "2026-07-02T23:24:04.117Z",
+      "ran_at": "2026-07-02T23:24:04.117Z"
+    },
+    {
+      "id": "retro-1",
+      "type": "harness-retro",
+      "label": "Retro: P1 (drain)",
+      "status": "done",
+      "branch_of": "phase-1",
+      "next": [
+        "phase-1"
+      ],
+      "command": "run /eng-harness-flow --hook post-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
+        "Run /eng-harness-flow --hook post-coding --json — read-only/advisory; narrate its envelope verbatim.",
+        "Skippable — advisory, never gates. Decline with a real `harness flow status retro-1 --to skipped`."
+      ],
+      "modified_at": "2026-07-02T23:25:30.514Z",
+      "ran_at": "2026-07-02T23:25:30.514Z"
+    },
+    {
+      "id": "retro-ship",
+      "type": "harness-retro",
+      "label": "Retro: ship (harvest)",
+      "status": "done",
+      "branch_of": "ship",
+      "next": [
+        "ship"
+      ],
+      "command": "run /eng-harness-flow --hook post-flight --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended post-flight seam: the terminal long-horizon harvest — fold this flight's learnings into durable memory at ship.",
+        "Run /eng-harness-flow --hook post-flight --json — read-only/advisory; narrate its envelope verbatim.",
+        "Skippable — advisory, never gates. Decline with a real `harness flow status retro-ship --to skipped`."
+      ],
+      "modified_at": "2026-07-03T01:59:58.932Z",
+      "ran_at": "2026-07-03T01:59:44.184Z",
+      "comments": [
+        {
+          "at": "2026-07-03T01:59:58.932Z",
+          "text": "post-flight harvest 2026-07-03: 29 entries / 3 records. Top clusters: flow-pair skill gaps (9, incl. stub verbs fabricating APPROVE), pij liveness/watchdog misfires (7; SUGG-002 already encoded in 5a702e9), test-quality proofs (4, incl. vacuous stalled-latch INS-008). Improve offer to user: make flow-pair review/fix/accept stubs fail loudly instead of fabricating verdicts.",
+          "source": "agent",
+          "kind": "note"
+        }
+      ]
+    },
+    {
+      "id": "workshop-minih-reuse",
+      "type": "workshop",
+      "label": "Workshop: minih re-use (dep mode, adapters, upstreaming)",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-07-02T21:30:40.853Z",
+      "modified_at": "2026-07-02T21:34:53.984Z",
+      "branch_of": "plan",
+      "user_input": "yeah do the flow workshop also set up the flow nav spine etc",
+      "ran_at": "2026-07-02T21:34:53.814Z",
+      "note": "Preferred Direction reached: library dep (git-pin minih-v0.2.4) + pij-authored IAgentAdapters (claude headless/codex exec/copilot sdk); binary-only rejected (copilot-only, fails harness pre-selection); ephemeral = pij temp-pack layer now, upstream later",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/workshops/001-minih-reuse.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-02T21:34:53.984Z",
+          "text": "D1 library-primary hybrid; D2 headless subprocess adapters (daemon reserved for companions); D3 temp-pack synthesis + upstream ephemeral/inline; D5 upstream list ranked",
+          "kind": "decision"
+        }
+      ]
+    },
+    {
+      "id": "workshop-cli-experience",
+      "type": "workshop",
+      "label": "Workshop: pij agent CLI experience",
+      "status": "done",
+      "next": [
+        "plan"
+      ],
+      "created_at": "2026-07-02T21:36:54.563Z",
+      "modified_at": "2026-07-02T21:38:22.532Z",
+      "branch_of": "plan",
+      "user_input": "yeah workshoop",
+      "ran_at": "2026-07-02T21:38:22.342Z",
+      "note": "Contract Ready: pij agent list/run/show/new/check grammar; 3-tier discovery (project>user>built-in, eject pattern); inline --prompt always-ephemeral; warn-don't-block overrides; E-* errors + fs2 exit codes",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/workshops/002-pij-agent-cli-experience.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-02T21:38:22.532Z",
+          "text": "Canonical 'pij agent' (alias 'pij agents'->list); built-ins served read-only from package dir + eject; named runs record by default, --ephemeral opt-out, inline always-ephemeral",
+          "kind": "decision"
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "type": "phase",
+      "label": "P2: CLI surface, built-ins, docs",
+      "status": "done",
+      "next": [
+        "review-2"
+      ],
+      "created_at": "2026-07-02T22:07:28.192Z",
+      "modified_at": "2026-07-03T00:55:02.037Z",
+      "command": "/the-flow 6 implement",
+      "artifacts": [
+        "docs/plans/029-pij-agents-minih/tasks/phase-2-pij-agent-cli-surface-built-ins-docs/tasks.md",
+        "docs/plans/029-pij-agents-minih/tasks/phase-2-pij-agent-cli-surface-built-ins-docs/execution.log.md",
+        "docs/plans/029-pij-agents-minih/validations/phase-2-tasks-validation.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-02T23:35:53.612Z",
+          "text": "Tasks T001-T009 expanded + validate-v2 VALIDATED WITH FIXES (3 MEDIUM repaired — key: runEphemeralPack gap named, runAgentPack lacks MINIH_NO_AUTO_HARVEST; built-in pinned claude-sonnet-4-6). Dispatched as flow-pair dlg-0002 to coder pij-1e24tgq (compaction confirmed first)."
+        },
+        {
+          "at": "2026-07-03T00:55:02.037Z",
+          "text": "Implemented via flow-pair dlg-0002 + fix-0001 (coder copilot/opus-4.8 xhigh): T001-T009 + the rev-0002 HIGH fix; self-check exit 0 (1404 pass), consume script green, AC-08 proven live against real fs2 graph, all AC-01..13 ticked."
+        }
+      ],
+      "ran_at": "2026-07-03T00:55:01.835Z"
+    },
+    {
+      "id": "review-2",
+      "type": "review",
+      "label": "Review: P2",
+      "status": "done",
+      "next": [
+        "ship"
+      ],
+      "created_at": "2026-07-02T22:07:28.278Z",
+      "modified_at": "2026-07-03T00:55:02.270Z",
+      "zone": "flight",
+      "command": "/the-flow 7 review",
+      "comments": [
+        {
+          "at": "2026-07-03T00:37:51.534Z",
+          "text": "Review round 1 (rev-0002, gpt-5.5 xhigh): FIX_REQUIRED — 1 HIGH: --permissions/--cwd parsed but silently dropped from AgentRunConfig (proven by hermetic probe; orchestrator-confirmed in source). 3 mutations all flipped named tests. Fix dispatched to coder as fix-0001."
+        },
+        {
+          "at": "2026-07-03T00:55:02.270Z",
+          "text": "Cross-model review complete: rev-0002 FIX_REQUIRED (1 HIGH: silent --permissions/--cwd drop, hermetic-probe proven) -> fix-0001 -> rev-0003 APPROVE (probe re-run: preset=yolo, cwd honoured; mutation flipped regression tests). Records: .flow-pair/runs/2026-07-02T22-32-26Z-github.com-AI-Substr/reviews/rev-000{2,3}.json"
+        }
+      ],
+      "ran_at": "2026-07-03T00:55:02.147Z"
+    },
+    {
+      "id": "boot-2",
+      "type": "harness-boot",
+      "label": "Boot check",
+      "status": "skipped",
+      "next": [
+        "phase-2"
+      ],
+      "created_at": "2026-07-02T22:07:28.361Z",
+      "modified_at": "2026-07-03T00:55:02.577Z",
+      "command": "run /eng-harness-flow --hook pre-flight --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "branch_of": "phase-2",
+      "comments": [
+        {
+          "at": "2026-07-03T00:55:02.577Z",
+          "text": "Skipped honestly: environment proven green 4x during the phase (coder + reviewer self-check re-runs); a fresh boot would have raced the live coder and added no signal."
+        }
+      ]
+    },
+    {
+      "id": "observe-2",
+      "type": "observe",
+      "label": "Observe: P2",
+      "status": "done",
+      "next": [
+        "phase-2"
+      ],
+      "created_at": "2026-07-02T22:07:28.443Z",
+      "modified_at": "2026-07-03T00:55:02.370Z",
+      "command": "harness observe \"<what>\" --kind <kind>",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "branch_of": "phase-2",
+      "ran_at": "2026-07-03T00:55:02.370Z"
+    },
+    {
+      "id": "retro-2",
+      "type": "harness-retro",
+      "label": "Retro: P2 (drain)",
+      "status": "done",
+      "next": [
+        "phase-2"
+      ],
+      "created_at": "2026-07-02T22:07:28.526Z",
+      "modified_at": "2026-07-03T00:55:55.158Z",
+      "command": "run /eng-harness-flow --hook post-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "branch_of": "phase-2",
+      "ran_at": "2026-07-03T00:55:55.158Z"
+    }
+  ]
+}

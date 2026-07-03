@@ -1,0 +1,20 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"query": {
+			"type": "string",
+			"description": "Natural-language question or pattern to search the code graph for.",
+			"minLength": 1
+		},
+		"limit": {
+			"type": "integer",
+			"description": "Maximum number of fs2 results to consider.",
+			"default": 20,
+			"minimum": 1,
+			"maximum": 100
+		}
+	},
+	"required": ["query"],
+	"additionalProperties": false
+}

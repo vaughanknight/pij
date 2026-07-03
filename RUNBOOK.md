@@ -317,6 +317,29 @@ Key caveats in v1:
 - AC-05 (`/compact` durability) verified for the replay path; real `/compact`
   pressure-test deferred to a gated smoke (D-005).
 
+## Run agent packs (`pij agent`)
+
+`pij agent` runs declarative [minih](https://github.com/AI-Substrate/minih) agent
+packs (a `prompt.md` + optional schemas) through claude·codex·copilot, with a
+`--json` envelope for scripting.
+
+```bash
+pij agent list                                            # ./agents · ~/.pij/agents · built-ins
+pij agent run flowspace-search -p query="daemon stall watchdog"   # a named built-in pack
+pij agent run flowspace-search -p query=… --json | jq .report.summary   # scriptable
+pij agent run --prompt "List the 3 riskiest TODOs" --json  # inline, zero setup, nothing recorded
+pij agent new my-tool                                     # scaffold ./agents/my-tool
+pij agent eject flowspace-search                          # customise a built-in (then it records)
+```
+
+Named runs record under the pack's `runs/<ts>/`; `--ephemeral` and inline runs
+leave nothing on disk. Exit codes: `0` ok · `1` user/agent error · `2` system
+error (harness CLI missing). Full reference:
+**[`docs/how/pij-agents.md`](docs/how/pij-agents.md)**.
+
+> **Test seam:** `PIJ_AGENT_FAKE=1` routes runs through a deterministic fake
+> adapter (no real CLI, no tokens) — used by `scratch/agent-json-consume.sh`.
+
 ## Companion mode (minih)
 
 Every plan-6 implementation (including the one that produced ralph-loop)

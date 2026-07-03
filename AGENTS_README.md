@@ -128,6 +128,14 @@ The `.pi/extensions/*` product surfaces — the things pij ships as pi extension
   notifications.
 - [`docs/how/image-see.md`](docs/how/image-see.md) — image viewing.
 - [`docs/how/ralph-loop.md`](docs/how/ralph-loop.md) — the ralph loop.
+- [`docs/how/pij-agents.md`](docs/how/pij-agents.md) — **`pij agent`**: run
+  declarative minih agent packs (list/run/inline/new/check/eject) across
+  claude·codex·copilot. Quick start:
+  ```bash
+  pij agent list                                       # merged pack inventory
+  pij agent run flowspace-search -p query="…"           # run a named pack
+  pij agent run --prompt "List risky TODOs" --json       # inline, scriptable
+  ```
 - `skill-runner` — runs skills inside a session (no dedicated article yet).
 
 ## Cross-agent worker system (the other half)

@@ -42,7 +42,13 @@
 		"@earendil-works/pi-ai": "*",
 		"@earendil-works/pi-coding-agent": "*",
 		"@earendil-works/pi-tui": "*",
+		"@github/copilot-sdk": "*",
 		"typebox": "*"
+	},
+	"peerDependenciesMeta": {
+		"@github/copilot-sdk": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.0.0",
@@ -60,6 +66,7 @@
 		"@grammyjs/files": "^1.2.0",
 		"dotenv": "^17.4.2",
 		"grammy": "^1.44.0",
+		"minih": "github:AI-Substrate/minih#minih-v0.2.4",
 		"picomatch": "^4.0.4"
 	}
 }

@@ -137,6 +137,14 @@ snapshots-check:
 vet-live:
     PIJ_VET_LIVE=1 npx vitest run agent.live
 
+# Opt-in live regression for the agent-runtime harness adapters (AC-07).
+# Drives one real `claude` and one real `codex` one-shot through the injected
+# IAgentAdapter → runAgent path, asserting each yields a valid system envelope.
+# Requires `claude`+`codex` on PATH and spends API tokens; NOT part of self-check.
+# MINIH_NO_AUTO_HARVEST=1 keeps the run from writing a retro into this repo.
+agent-live:
+    PIJ_AGENT_LIVE=1 MINIH_NO_AUTO_HARVEST=1 npx vitest run adapters.live
+
 # --- ergonomics ---
 
 # Scaffold a new T2 extension. Never hand-roll the boilerplate.

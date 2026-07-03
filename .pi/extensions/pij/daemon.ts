@@ -20,6 +20,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
@@ -357,6 +358,16 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	log(
 		`pij daemon up (pid ${process.pid}, home ${pijHome}) — watching for pending spawns + tmux inboxes`,
 	);
+
+	// Crash-leftover sweep (agent-runtime AC-05): clear stale inline temp packs
+	// under ~/.pij/tmp/agents on daemon start. Inline-only users who never start
+	// the daemon still get swept at the start of each `pij agent run`.
+	try {
+		const swept = sweepStaleTmp(pijHome);
+		if (swept.length > 0) log(`swept ${swept.length} stale inline temp pack(s)`);
+	} catch (e) {
+		log(`inline temp sweep skipped: ${(e as Error).message}`);
+	}
 	const timer = setInterval(() => {
 		try {
 			daemon.tick();
