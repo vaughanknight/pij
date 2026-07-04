@@ -1,24 +1,23 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-07-02T22-32-26Z-github.com-AI-Substr
+- **Run**: 2026-07-04T00-54-46Z-github.com-Open-Sauc
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-07-02T23:23:57.787Z
+- **Created at**: 2026-07-04T01:40:38.875Z
 
 ## Summary
 
-minih-integration packets should pre-carry minih's undocumented contract quirks so the coder doesn't rediscover them mid-run
+Worker packet template hardcodes just-gates (just flow-pair-test/typecheck/lint) and pij_send tool; neither exists for a non-pi worker in a harness-CLI repo — orchestrator addendum had to override both
 
 ## Evidence
 
-- coder discovered mid-run (execution.log.md): report.json only written when adapter output truthy
-- system envelope retro fields need >=10 chars
-- listAgents requires non-empty frontmatter description
+- dlg-0001 Stop Conditions vs addendum: gate is 'harness checks', transport is 'pij send <id>' CLI
+- coder followed addendum cleanly (review rev-0001 Dim9 clean)
 
 ## Candidate prompt delta
 
-When delegating work that drives minih runAgent: state that FakeAgentAdapter must be seeded with a JSON envelope (stock output '' means no report.json), retrospective fields need >=10 chars, and listAgents skips packs with empty frontmatter description
+Template should parameterize {gate_commands} and {report_transport} from repo signals (harness CLI present? worker harness mode?) at dispatch time
 
 ## Promotion status
 
