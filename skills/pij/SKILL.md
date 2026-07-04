@@ -1,6 +1,6 @@
 ---
 name: pij
-description: Route pij platform jobs — spawn & talk to tmux colleagues (claude/copilot/codex/pi peers), run flow-pair coder+reviewer delegation fleets, delegate single tasks, run pij agent packs (flowspace-search etc.), manage the pij daemon and tmux/registry hygiene. Use when the user says "spawn a peer/colleague/worker", "flow-pair", "delegate this", "run an agent", "pij daemon", or any pij orchestration ask.
+description: Route pij platform jobs — spawn & talk to tmux colleagues (claude/copilot/codex/pi peers), run flow-pair coder+reviewer delegation fleets, delegate single tasks, run pij agent packs (flowspace-search etc.), run an installed skill in a peer (/validate-v2, /thesis…) with the result pushed back, manage the pij daemon and tmux/registry hygiene. Use when the user says "spawn a peer/colleague/worker", "flow-pair", "delegate this", "run an agent", "have a peer run /X", "pij daemon", or any pij orchestration ask.
 ---
 
 # /pij — the pij platform router
@@ -23,6 +23,7 @@ description: Route pij platform jobs — spawn & talk to tmux colleagues (claude
 | `pair` | run a phase with a coder + cross-model reviewer fleet, wrapping the-flow | `references/routes/pair.md` *(lands Phase 2)* |
 | `delegate` | hand ONE bounded task to ONE peer — no review cycle | `references/routes/delegate.md` *(lands Phase 2)* |
 | `agent` | run a packaged agent pack — fire-and-forget or resident | `references/routes/agent.md` |
+| `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
 | `ops` | daemon health, registry & tmux hygiene | `references/routes/ops.md` |
 | `watch` | register for file-change pushes | *(future — awaits daemon fs.watch, plan 029 P4; no module)* |
@@ -56,6 +57,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `/flow-pair start\|dispatch\|observe\|review\|fix\|accept\|ledger\|learn …` | `/pij pair …` (same args) |
 | "spawn a worker / colleague / peer" | `/pij peer` |
 | "run flowspace search" / "ask an agent" | `/pij agent` |
+| "have a peer run /X on …" / "run a skill in a peer" | `/pij skill` |
 
 ## References
 

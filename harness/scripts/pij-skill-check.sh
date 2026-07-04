@@ -27,7 +27,7 @@ done < <(sed -n '/^## Registry/,/^## /p' "$SKILL/SKILL.md" | grep '^| `')
 for f in "$SKILL"/references/routes/*.md; do
   [ -e "$f" ] || continue
   self=$(basename "$f" .md)
-  for r in pair delegate agent peer ops watch; do
+  for r in pair delegate agent skill peer ops watch; do
     [ "$r" = "$self" ] && continue
     if grep -Eq "routes/$r\.md|/pij $r\b" "$f"; then
       err "sibling-blind: $(basename "$f") references route '$r'"
@@ -45,7 +45,7 @@ budget() {
 budget "$SKILL/SKILL.md" 150
 budget "$SKILL/references/00-routing.md" 250
 budget "$SKILL/references/routes/pair.md" 350
-for m in peer agent ops delegate; do budget "$SKILL/references/routes/$m.md" 150; done
+for m in peer agent skill ops delegate; do budget "$SKILL/references/routes/$m.md" 150; done
 
 # 4. CLI-verb coverage: every bin-USAGE verb (+ models) mapped somewhere in SKILL.md
 for v in spawn close adopt daemon compact-self telegram agent whoami list send tail state phonehome path models; do

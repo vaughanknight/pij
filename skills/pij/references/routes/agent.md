@@ -28,6 +28,7 @@ pij agent run <slug> --ephemeral …              # named pack, run not recorded
 
 ```bash
 pij agent spawn <slug> -p key=value [--once] [--json]
+pij agent spawn --prompt "<text>" [--once]   # inline: no pack — your prompt + an auto-appended report contract
 ```
 
 - Your session id is stamped as `spawnedBy` — you are the **report target** (resolve yourself first: `pij whoami`; unregistered → the report round-trip can't complete).
