@@ -129,6 +129,8 @@ export function copilotSeedFromPi(raw: unknown): ModelEntry[] {
 /** Known Claude CLI model aliases (best-effort, unverified — not from a live API). */
 export function claudeAliases(): ModelEntry[] {
 	return [
+		{ id: "claude-fable-5", name: "Claude Fable 5", provider: "claude", verified: false },
+		{ id: "claude-sonnet-5", name: "Claude Sonnet 5", provider: "claude", verified: false },
 		{ id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: "claude", verified: false },
 		{ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "claude", verified: false },
 		{

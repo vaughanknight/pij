@@ -132,6 +132,10 @@ describe("claudeAliases", () => {
 		const ids = claudeAliases().map((e) => e.id);
 		expect(ids.some((id) => id.includes("sonnet"))).toBe(true);
 		expect(ids.some((id) => id.includes("opus"))).toBe(true);
+		// Claude 5 family (fable is the Mythos-class tier above opus) — an agent
+		// hit its absence live: `pij models` showed nothing newer than 4.x.
+		expect(ids).toContain("claude-fable-5");
+		expect(ids).toContain("claude-sonnet-5");
 	});
 });
 
