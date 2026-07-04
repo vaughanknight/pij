@@ -96,10 +96,18 @@ export interface SplitWindowOpts {
 	/** "h" = LEFT/RIGHT (side-by-side column); "v" = UP/DOWN (stacked).
 	 *  NB: bare `split-window` defaults to -v, so -h must be explicit. */
 	direction: "h" | "v";
-	/** Size % for the NEW pane (e.g. 40 → right column ~40% width). */
+	/** Size % for the NEW pane (e.g. 33 → right column ~1/3 width). */
 	percent?: number;
 	/** Pass tmux -d: keep focus on the current pane (don't follow into the new one). */
 	detached?: boolean;
+	/** After the split, even out the new pane's stack (`select-layout -E -t <new>`)
+	 *  — evens the heights of that vertical run. Best-effort cosmetic step;
+	 *  failures are swallowed. */
+	evenOut?: boolean;
+	/** After evening, pin the stack column back to this % of the window width
+	 *  (`resize-pane -x N%` on the new pane) — `-E` can re-spread the root h-split
+	 *  too (seen live on tmux 3.6a). Best-effort; failures are swallowed. */
+	columnPercent?: number;
 }
 
 /** Seam for creating/destroying tmux windows + panes (Pattern P2: impurity

@@ -67,7 +67,7 @@ availability is the definitive signal.)
 |---|---|---|
 | **Prereq** | pi extension loaded | a `pij daemon` (auto-started by `pij spawn`, or `pij daemon start`) + `pij adopt` self once |
 | **Be reachable (inbound)** | automatic (in-process receiver injects into your turn) | `pij adopt "$TMUX_PANE" --harness claude` (peers' sends → `[pij from <id>]` turns in your pane) |
-| **Spawn a colleague** | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude\|copilot --model <m>` — returns the id **immediately**; the daemon drives boot → ready → init → bind asynchronously |
+| **Spawn a colleague** | `pij_spawn({ model })` — side stack by default | `pij spawn --harness claude\|copilot --model <m>` — side stack by default; returns the id **immediately**; the daemon drives boot → ready → init → bind asynchronously |
 | **Deliver a pointer / message** | `pij_send({ to, message })` | `pij send <id> "<text>"` (daemon `send-keys` into the colleague's pane) |
 | **Run a control command** | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` (raw, executes in the pane) |
 | **Peek without disturbing** | `pij tail <id>` | `pij tail <id> [--follow] [--lines N]` (reads the colleague's bound transcript — Claude JSONL or Copilot `events.jsonl`) |

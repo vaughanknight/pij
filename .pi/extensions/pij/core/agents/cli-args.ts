@@ -41,9 +41,9 @@ export interface ParsedAgentCommand {
 	/** `spawn --once` (or pack `lifecycle: once`) — auto-close the peer after its
 	 *  first report push (Phase 3). Default false (resident). */
 	once: boolean;
-	/** `spawn --layout right|below|window` (FX001-3 / SUGG-001) — explicit pane
-	 *  placement; unset ⇒ the classic auto split. */
-	layout?: "right" | "below" | "window";
+	/** `spawn --layout stack|right|below|window` (FX001-3 / SUGG-001) — explicit
+	 *  pane placement; unset ⇒ `stack` (the default side stack). */
+	layout?: "stack" | "right" | "below" | "window";
 	/** `report --json '<payload>'` — the raw report JSON string (report subverb).
 	 *  Distinct from the boolean {@link json}; only set for `report`. */
 	reportJson?: string;
@@ -172,8 +172,8 @@ export function parseAgentArgs(args: string[]): ParseAgentResult {
 		if (tok === "--layout") {
 			if (subverb !== "spawn") return argErr("--layout is only valid for spawn");
 			const val = args[++i];
-			if (val !== "right" && val !== "below" && val !== "window")
-				return argErr(`--layout must be right|below|window (got '${val ?? ""}')`);
+			if (val !== "stack" && val !== "right" && val !== "below" && val !== "window")
+				return argErr(`--layout must be stack|right|below|window (got '${val ?? ""}')`);
 			cmd.layout = val;
 			continue;
 		}

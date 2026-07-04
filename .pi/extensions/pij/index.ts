@@ -125,10 +125,10 @@ export default function (pi: ExtensionAPI): void {
 		name: "pij_spawn",
 		label: "pij spawn",
 		description:
-			"Spawn a new pij worker session running pi in tmux — a new window (default) or a split pane in the current window (layout:'split' → main-left, up to 2 workers stacked on the right, hard cap 3 panes). Returns once the pane opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
-		promptSnippet: "Spawn a pij worker in a new tmux window or split pane",
+			"Spawn a new pij worker session running pi in tmux — by DEFAULT stacked in a ~1/3-width column on your right (main-left; the stack grows downward and evens itself, no cap), or pass layout:'window' for a background tmux window instead. Returns once the pane opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
+		promptSnippet: "Spawn a pij worker into the side stack (default) or a new tmux window",
 		promptGuidelines: [
-			"Use pij_spawn to start a new worker session in a new tmux window (default), or pass layout:'split' to place it as a pane in the current window (main-left, up to 2 workers stacked on the right; a 3rd split returns E-FULL). The child sends a ready-ping via the delivery channel when it has booted.",
+			"Use pij_spawn to start a new worker session. By default it lands in the side stack — a ~1/3-width column on your right that grows downward and evens itself (no pane cap). Pass layout:'window' to open a background tmux window instead. The child sends a ready-ping via the delivery channel when it has booted.",
 		],
 		parameters: Type.Object({
 			task: Type.Optional(
@@ -145,7 +145,7 @@ export default function (pi: ExtensionAPI): void {
 			layout: Type.Optional(
 				Type.Union([Type.Literal("window"), Type.Literal("split")], {
 					description:
-						"Where to place the worker: 'window' (default) opens a new tmux window; 'split' places it as a pane in the CURRENT window (main-left, up to 2 stacked on the right; hard cap 3 panes, else E-FULL).",
+						"Where to place the worker: 'split' (the DEFAULT — omitting behaves the same) stacks it in a ~1/3-width column on the caller's right (uncapped; the stack evens itself); 'window' opens a new background tmux window instead.",
 				}),
 			),
 		}),
@@ -154,7 +154,7 @@ export default function (pi: ExtensionAPI): void {
 			const res = session.spawn({
 				task: typeof params.task === "string" ? params.task : undefined,
 				model: typeof params.model === "string" ? params.model : undefined,
-				layout: params.layout === "split" ? "split" : undefined,
+				layout: params.layout === "window" || params.layout === "split" ? params.layout : undefined,
 				cwd: ctx.cwd, // §M6: cwd from tool execute context
 			});
 			if (!res.ok) {

@@ -107,6 +107,16 @@ export class TmuxAdapter implements TmuxPort {
 			if (!/^%\d+$/.test(paneId)) {
 				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(paneId)}`);
 			}
+			// Stack layout: spread the new pane's vertical run out evenly, then pin
+			// the column width back (-E can re-spread the root h-split too — seen
+			// live on tmux 3.6a: a 2-pane column went 67/33 → 50/50). Cosmetic →
+			// tmuxSafe (never fail the spawn).
+			if (opts.evenOut) {
+				tmuxSafe(["select-layout", "-E", "-t", paneId]);
+			}
+			if (opts.columnPercent !== undefined) {
+				tmuxSafe(["resize-pane", "-t", paneId, "-x", `${opts.columnPercent}%`]);
+			}
 			return ok({ paneId });
 		} catch (e) {
 			return err("E-ARG", `tmux split-window failed: ${(e as Error).message}`);

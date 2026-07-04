@@ -519,28 +519,41 @@ describe("parseCompactSelfArgs", () => {
 	});
 });
 
-describe("planControlSplit (right-then-stack, parity with pi)", () => {
-	it("worker #1 → split the orchestrator pane right (40% column)", () => {
+describe("planControlSplit (default side stack, parity with pi)", () => {
+	it("worker #1 → split the orchestrator pane right (~1/3 column)", () => {
 		expect(planControlSplit("%72", [])).toEqual({
 			ok: true,
 			target: "%72",
 			direction: "h",
-			percent: 40,
+			percent: 33,
 		});
 	});
 
-	it("worker #2 → split worker-1's pane vertically (stacked below)", () => {
+	it("worker #2 → split worker-1's pane vertically (stacked below) + even out + pin width", () => {
 		expect(planControlSplit("%72", ["%80"])).toEqual({
 			ok: true,
 			target: "%80",
 			direction: "v",
+			evenOut: true,
+			columnPercent: 33,
 		});
 	});
 
-	it("worker #3 → E-FULL (cap = main + 2 panes)", () => {
-		const r = planControlSplit("%72", ["%80", "%81"]);
-		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.code).toBe("E-FULL");
+	it("worker #3+ → appends below the NEWEST peer (uncapped, evened)", () => {
+		expect(planControlSplit("%72", ["%80", "%81"])).toEqual({
+			ok: true,
+			target: "%81",
+			direction: "v",
+			evenOut: true,
+			columnPercent: 33,
+		});
+		expect(planControlSplit("%72", ["%80", "%81", "%82", "%83"])).toEqual({
+			ok: true,
+			target: "%83",
+			direction: "v",
+			evenOut: true,
+			columnPercent: 33,
+		});
 	});
 });
 
@@ -791,18 +804,32 @@ describe("aliasAgentSpawnArgs — `pij spawn --agent` forwards to `pij agent spa
 
 // ─── FX001-3 / SUGG-001: explicit placement ──────────────────────────────────
 describe("planPlacement", () => {
-	it("undefined layout falls back to the classic auto split", () => {
+	it("undefined layout defaults to the side stack (uncapped)", () => {
 		expect(planPlacement(undefined, "%1", [])).toEqual({
 			ok: true,
 			target: "%1",
 			direction: "h",
-			percent: 40,
+			percent: 33,
 		});
 		expect(planPlacement(undefined, "%1", ["%2"])).toEqual({
 			ok: true,
 			target: "%2",
 			direction: "v",
+			evenOut: true,
+			columnPercent: 33,
 		});
+		expect(planPlacement(undefined, "%1", ["%2", "%3", "%4"])).toEqual({
+			ok: true,
+			target: "%4",
+			direction: "v",
+			evenOut: true,
+			columnPercent: 33,
+		});
+	});
+	it("explicit 'stack' is the same as the default", () => {
+		expect(planPlacement("stack", "%1", ["%2", "%3"])).toEqual(
+			planPlacement(undefined, "%1", ["%2", "%3"]),
+		);
 	});
 	it("right/below split the CALLER's pane", () => {
 		expect(planPlacement("right", "%1", ["%2"])).toEqual({
@@ -824,10 +851,13 @@ describe("planPlacement", () => {
 });
 
 describe("parseSpawnArgs --layout", () => {
-	it("accepts right|below|window", () => {
+	it("accepts stack|right|below|window", () => {
 		const r = parseSpawnArgs(["--harness", "claude", "--layout", "window"]);
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.value.layout).toBe("window");
+		const s = parseSpawnArgs(["--harness", "claude", "--layout", "stack"]);
+		expect(s.ok).toBe(true);
+		if (s.ok) expect(s.value.layout).toBe("stack");
 	});
 	it("rejects an unknown layout", () => {
 		const r = parseSpawnArgs(["--harness", "claude", "--layout", "floating"]);

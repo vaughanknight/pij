@@ -21,13 +21,13 @@ pij state <id> [--json]  # liveness + working/idle for one peer
 
 ```bash
 pij spawn --harness claude --model claude-sonnet-5 [--effort low|medium|high|xhigh] \
-          [--task "first task"] [--layout right|below|window] [--branch]
+          [--task "first task"] [--layout stack|right|below|window] [--branch]
 ```
 
 - Model names are per-harness — discover with `pij models` (§ C4); an "unknown model" warning is non-blocking, the canary decides (§ C2).
 - Returns the pij id immediately (claude/copilot/codex are daemon-bound: boot → ready → bound happens behind you; pi self-registers).
 - `--task` delivers the first task on every harness: pi reads it at boot (env); daemon-bound peers get it **injected after bind** (it rides the inbox, FX001-2). `--layout` places the pane (§ C5). `--branch` forks YOUR session into the pane (claude→claude only, same harness, bound session).
-- Placement: splits the current window right; cap main + 2 (§ C5).
+- Placement: default = the side stack (~1/3 right column, uncapped, evens itself) — keep it unless told otherwise (§ C5).
 - **Always canary-verify before trusting** (§ C2) — spawned *and* provided peers.
 
 **Converse**

@@ -274,21 +274,22 @@ describe("PijSession.shutdown", () => {
 // ─── T202: PijSession.spawn ───────────────────────────────────────────────────
 
 describe("PijSession.spawn", () => {
-	it("opens exactly one window; returns spawnId + paneId (AC-01)", () => {
+	it("layout:window opens exactly one window; returns spawnId + paneId (AC-01)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo" });
+		const r = h.session.spawn({ cwd: "/repo", layout: "window" });
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		expect(typeof r.value.spawnId).toBe("string");
 		expect(r.value.paneId).toBe("%900"); // FakeTmux starts at 900
 		expect(h.tmux.windows).toHaveLength(1);
+		expect(h.tmux.splits).toHaveLength(0);
 	});
 
 	it("env carries PIJ_ANNOUNCE_TO=self, PIJ_SPAWN_ID, PIJ_ROLE=worker (AC-02)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo" });
+		h.session.spawn({ cwd: "/repo", layout: "window" });
 		const w = h.tmux.windows[0];
 		expect(w?.opts.env.PIJ_ANNOUNCE_TO).toBe("alice");
 		expect(w?.opts.env.PIJ_ROLE).toBe("worker");
@@ -299,7 +300,7 @@ describe("PijSession.spawn", () => {
 	it("threads model via --model argv AND PIJ_SPAWN_MODEL env (§H2 / F003)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", model: "test-model" });
+		h.session.spawn({ cwd: "/repo", model: "test-model", layout: "window" });
 		const w = h.tmux.windows[0];
 		// F003: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand (not post-processed)
 		expect(w?.opts.args).toContain("--model");
@@ -312,7 +313,7 @@ describe("PijSession.spawn", () => {
 	it("does NOT set PIJ_PANE_ID in child env (§H1: child reads $TMUX_PANE)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo" });
+		h.session.spawn({ cwd: "/repo", layout: "window" });
 		const w = h.tmux.windows[0];
 		expect(w?.opts.env.PIJ_PANE_ID).toBeUndefined();
 	});
@@ -320,7 +321,7 @@ describe("PijSession.spawn", () => {
 	it("passes task via PIJ_SPAWN_TASK env (finding 01 / CF-01)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", task: "do the thing" });
+		h.session.spawn({ cwd: "/repo", task: "do the thing", layout: "window" });
 		const w = h.tmux.windows[0];
 		expect(w?.opts.env.PIJ_SPAWN_TASK).toBe("do the thing");
 	});
@@ -348,21 +349,22 @@ describe("PijSession.spawn", () => {
 		spawnedBy: "alice",
 	});
 
-	it("layout:split with 0 pij panes → split -h (left/right) on the current pane @ 40%", () => {
+	it("DEFAULT (no layout) → split -h (~1/3 right column) on the current pane, no window", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r = h.session.spawn({ cwd: "/repo" });
 		expect(r.ok).toBe(true);
-		expect(h.tmux.windows).toHaveLength(0); // no new window in split mode
+		expect(h.tmux.windows).toHaveLength(0); // stack is the default, not a window
 		expect(h.tmux.splits).toHaveLength(1);
 		const s = h.tmux.splits[0];
 		expect(s?.opts.direction).toBe("h");
 		expect(s?.opts.target).toBe("%500"); // FakeTmux default current pane
-		expect(s?.opts.percent).toBe(40);
+		expect(s?.opts.percent).toBe(33);
+		expect(s?.opts.evenOut).toBe(false); // first pane IS the column — nothing to even
 		expect(s?.opts.detached).toBe(true);
 	});
 
-	it("layout:split with 1 worker in-window → split -v (stack) on worker-1's pane", () => {
+	it("layout:split with 1 worker in-window → split -v (stack) on that pane + even out", () => {
 		const h = harness({
 			registry: [mkKid("kid1", "%901")],
 			tmux: new FakeTmux({ currentPane: "%500", windowPanes: ["%901"] }),
@@ -373,19 +375,22 @@ describe("PijSession.spawn", () => {
 		const s = h.tmux.splits[0];
 		expect(s?.opts.direction).toBe("v");
 		expect(s?.opts.target).toBe("%901");
+		expect(s?.opts.evenOut).toBe(true);
+		expect(s?.opts.columnPercent).toBe(33);
 	});
 
-	it("layout:split refuses a 3rd pane with E-FULL (cap = main + 2)", () => {
+	it("a 3rd worker appends below the NEWEST pane (uncapped stack)", () => {
 		const h = harness({
 			registry: [mkKid("k1", "%901"), mkKid("k2", "%902")],
 			tmux: new FakeTmux({ currentPane: "%500", windowPanes: ["%901", "%902"] }),
 		});
 		h.session.boot(bootInput());
 		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
-		expect(r.ok).toBe(false);
-		if (r.ok) return;
-		expect(r.code).toBe("E-FULL");
-		expect(h.tmux.splits).toHaveLength(0);
+		expect(r.ok).toBe(true);
+		const s = h.tmux.splits[0];
+		expect(s?.opts.direction).toBe("v");
+		expect(s?.opts.target).toBe("%902"); // newest kid, bottom of the stack
+		expect(s?.opts.evenOut).toBe(true);
 	});
 
 	it("layout:split counts only CURRENT-window pij panes (window-mode kids ignored)", () => {
@@ -401,7 +406,7 @@ describe("PijSession.spawn", () => {
 
 	it("layout:split tracks panes parent-side across back-to-back spawns (registry lags boot)", () => {
 		// Fire-and-forget: children write their descriptors only on boot, so the
-		// registry is empty here. The parent must still stack #2 on #1 and cap #3.
+		// registry is empty here. The parent must still stack #2 on #1 and #3 on #2.
 		const h = harness();
 		h.session.boot(bootInput());
 		const r1 = h.session.spawn({ cwd: "/repo", layout: "split" });
@@ -412,9 +417,11 @@ describe("PijSession.spawn", () => {
 		expect(h.tmux.splits[1]?.opts.direction).toBe("v"); // #2 = stacked on #1
 		expect(h.tmux.splits[1]?.opts.target).toBe(r1.value.paneId);
 		const r3 = h.session.spawn({ cwd: "/repo", layout: "split" });
-		expect(r3.ok).toBe(false);
-		if (r3.ok) return;
-		expect(r3.code).toBe("E-FULL"); // 3rd refused even before any child booted
+		expect(r3.ok).toBe(true); // uncapped — #3 stacks below #2
+		if (!r3.ok) return;
+		expect(h.tmux.splits[2]?.opts.direction).toBe("v");
+		expect(h.tmux.splits[2]?.opts.target).toBe(r2.value.paneId);
+		expect(h.tmux.splits[2]?.opts.evenOut).toBe(true);
 	});
 });
 

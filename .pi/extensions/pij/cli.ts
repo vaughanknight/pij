@@ -133,7 +133,7 @@ FLAGS
   --model <m>     model id for that harness:
                     pi      -> a pi model/preset (e.g. @preset/glm-1m; pair with the
                                session's configured provider)
-                    claude  -> sonnet | opus | haiku | claude-sonnet-4-6
+                    claude  -> sonnet | opus | haiku | claude-fable-5 | claude-sonnet-5
                     copilot -> gpt-5.5 | claude-sonnet-4.6 | …
                     codex   -> gpt-5.5 | o3 | … (codex -m model id)
                   NOTE: an unknown model is currently passed through to the harness,
@@ -147,9 +147,11 @@ FLAGS
   --task "<t>"    first task. pi: rides PIJ_SPAWN_TASK env (finding 01). claude/copilot/
                   codex: queued to the peer's INBOX — the daemon injects it as the first
                   turn after bind (FX001-2; env alone was never read by these harnesses).
-  --layout <l>    right | below | window (FX001-3). right/below split YOUR pane (main+2
-                  cap applies); window opens a background window in YOUR session, named
-                  after the peer (cap-exempt). Unset = classic auto split.
+  --layout <l>    stack | right | below | window (FX001-3). Unset = stack (the DEFAULT):
+                  peers stack in a ~1/3-width column on YOUR right — first spawn opens the
+                  column, later spawns append below and the stack evens itself (no cap).
+                  right/below split YOUR pane once (main+2 cap applies); window opens a
+                  background window in YOUR session, named after the peer (cap-exempt).
   --branch        fork YOUR OWN session into the new pane (branch-from-self), so the
                   colleague inherits your full context. Claude only (pi/copilot/codex reject).
                   Requires: the new harness MATCHES yours and your session is bound.
@@ -439,9 +441,9 @@ function runSpawn(argv: readonly string[]): void {
 			effort: req.value.effort,
 			task: req.value.task,
 		});
-		// Same split layout as the daemon-bound harnesses (shared helper → one cap
-		// across the whole mixed fleet): first peer → right 40% column, second →
-		// stacked below; cap = main + 2.
+		// Same side-stack layout as the daemon-bound harnesses (shared helper → one
+		// behaviour across the whole mixed fleet): first peer → right ~1/3 column,
+		// later peers append to the stack (uncapped, evens itself).
 		const peerPanesPi = livePeerPanes(regPi.list(), tmux.currentWindowPanes(), ownPane);
 		const planPi = planPlacement(req.value.layout, ownPane, peerPanesPi);
 		if (!planPi.ok) {
@@ -466,6 +468,8 @@ function runSpawn(argv: readonly string[]): void {
 						target: planPi.target,
 						direction: planPi.direction,
 						percent: planPi.percent,
+						evenOut: planPi.evenOut,
+						columnPercent: planPi.columnPercent,
 						detached: true, // keep focus here; the child boots on its own
 					});
 		if (!splitPi.ok) {
@@ -569,9 +573,9 @@ function runSpawn(argv: readonly string[]): void {
 		forkSessionId,
 	});
 	// Layout (parity with pi's pij_spawn): the FIRST peer splits the orchestrator
-	// pane right (a 40% column); the SECOND stacks below it (vertical). The shared
-	// helper derives the live peer panes (registry ∩ this window) — harness-agnostic
-	// so a pi colleague counts toward the same main+2 cap. Cap exceeded → E-FULL.
+	// pane right (a ~1/3 column); every later peer appends to the stack (vertical,
+	// evened out — uncapped). The shared helper derives the live peer panes
+	// (registry ∩ this window) — harness-agnostic, one stack for the mixed fleet.
 	const peerPanes = livePeerPanes(
 		new FsRegistry(pijHome).list(),
 		tmux.currentWindowPanes(),
@@ -602,6 +606,8 @@ function runSpawn(argv: readonly string[]): void {
 					target: plan.target,
 					direction: plan.direction,
 					percent: plan.percent,
+					evenOut: plan.evenOut,
+					columnPercent: plan.columnPercent,
 					detached: true, // keep focus here; the daemon drives the new pane
 				});
 	if (!split.ok) {
@@ -899,7 +905,7 @@ USAGE
   pij agent check <slug>                          validate frontmatter + schemas (exit 1 on failure)
   pij agent eject <slug>                          copy a built-in into ./agents to customise + record
 
-  pij agent spawn <slug> [-p k=v…] [--once] [--layout right|below|window]   run a pack as a daemon-bound pij peer (packet auto-delivered)
+  pij agent spawn <slug> [-p k=v…] [--once] [--layout stack|right|below|window]   run a pack as a daemon-bound pij peer (packet auto-delivered; default = side stack)
   pij agent spawn --prompt "<text>" [--once]      spawn an inline pack peer
   pij spawn --agent <slug> [-p k=v…] [--once]     alias for \`pij agent spawn\`
   pij agent report --json '<payload>'             (inside a peer pane) push a schema-valid report to the spawner
@@ -1109,6 +1115,8 @@ function spawnAgentPane(
 					target: splitPlan.target,
 					direction: splitPlan.direction,
 					percent: splitPlan.percent,
+					evenOut: splitPlan.evenOut,
+					columnPercent: splitPlan.columnPercent,
 					detached: true,
 				});
 	if (!split.ok) return { ok: false, message: `${split.code}: ${split.message}`, exitCode: 2 };

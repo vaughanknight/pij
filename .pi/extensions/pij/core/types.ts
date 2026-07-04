@@ -200,7 +200,7 @@ export type PijErrorCode =
 	| "E-ARG" // bad CLI arguments
 	| "E-AMBIG" // cannot resolve "self" (env unset + multiple local)
 	| "E-NOTMUX" // not inside a tmux session (required for pij_spawn)
-	| "E-FULL" // split layout full — 2 workers already on the right (cap 3 panes)
+	| "E-FULL" // explicit --layout right|below full — 2 workers already split (the default stack is uncapped)
 	| "E-BRANCH" // branch-from-self refused (unsupported harness / unresolved / mismatch / unbound)
 	| "E-OWN"; // close refused: caller does not own the target session (re-run with --force)
 

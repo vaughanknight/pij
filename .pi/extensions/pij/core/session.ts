@@ -25,7 +25,7 @@ import {
 	markDelivered,
 } from "./receipts.js";
 import { SeqCounter } from "./seq.js";
-import { buildSpawnCommand, readyBody } from "./spawn.js";
+import { buildSpawnCommand, readyBody, STACK_COLUMN_PERCENT } from "./spawn.js";
 import {
 	err,
 	type MessageReceipt,
@@ -59,8 +59,9 @@ export interface SpawnOpts {
 	readonly task?: string;
 	/** Absolute working directory for the new pi session. */
 	readonly cwd: string;
-	/** "window" (default) opens a new tmux window; "split" places the worker as a
-	 *  pane in the CURRENT window (main-left, up to 2 stacked right; cap 3). */
+	/** "split" (the DEFAULT — unset behaves the same) stacks the worker in a
+	 *  ~1/3-width column on the caller's right (uncapped; the stack evens itself);
+	 *  "window" opts out into a new background tmux window. */
 	readonly layout?: "window" | "split";
 }
 
@@ -100,11 +101,11 @@ export class PijSession {
 	private seq = new SeqCounter(0);
 	/** Monotonic counter for deterministic spawnId generation (§M4). */
 	private spawnCounter = 0;
-	/** Pane ids this session has split into the current window (layout:"split"),
-	 *  in spawn order. Tracked parent-side because the child's registry descriptor
-	 *  is written only when it boots — a registry-only count would race back-to-back
-	 *  fire-and-forget split spawns (all see 0 kids → all -h, no E-FULL). Pruned to
-	 *  live panes on each use. */
+	/** Pane ids this session has split into the current window (the default side
+	 *  stack), in spawn order. Tracked parent-side because the child's registry
+	 *  descriptor is written only when it boots — a registry-only count would race
+	 *  back-to-back fire-and-forget split spawns (all see 0 kids → all -h, no
+	 *  stack). Pruned to live panes on each use. */
 	private splitPanes: string[] = [];
 	private pending: PendingReceipt[] = [];
 	/** new|reload requests that arrived before a command context was armed; the
@@ -196,10 +197,12 @@ export class PijSession {
 		// §H2: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand itself when
 		// input.model is set — no post-process needed here.
 
-		// layout:"split" — place the worker in the CURRENT window instead of a new
-		// window. #1 splits the orchestrator pane LEFT/RIGHT (-h → right column);
-		// #2 splits worker-1 UP/DOWN (-v → stacked below). Cap = main + 2 panes.
-		if (opts.layout === "split") {
+		// Side stack — the DEFAULT (layout unset or "split"): place the worker in
+		// the CURRENT window. #1 splits the orchestrator pane LEFT/RIGHT (-h → a
+		// ~1/3-width right column); every later worker splits the NEWEST peer pane
+		// UP/DOWN (-v → appended to the stack) and the column is evened out.
+		// UNCAPPED — panes just get shorter. layout:"window" opts out (below).
+		if (opts.layout !== "window") {
 			const here = new Set(this.ports.tmux.currentWindowPanes());
 			// Live split panes in THIS window = parent-recorded panes (known the
 			// instant splitWindow returns — the registry lags the fire-and-forget
@@ -217,17 +220,12 @@ export class PijSession {
 					ordered.push(d.paneId);
 				}
 			}
-			if (ordered.length >= 2) {
-				return err(
-					"E-FULL",
-					"split layout full — 2 workers already on the right; close one or use layout:'window'",
-				);
-			}
-			const first = ordered.length === 0;
-			const target = first ? this.ports.tmux.currentPane() : ordered[0];
+			const newest = ordered[ordered.length - 1];
+			const target = newest ?? this.ports.tmux.currentPane();
 			if (!target) {
 				return err("E-NOTMUX", "cannot resolve the current tmux pane to split");
 			}
+			const first = newest === undefined;
 			const splitResult = this.ports.tmux.splitWindow({
 				cmd: spawnCmd.cmd,
 				args: spawnCmd.args,
@@ -235,14 +233,16 @@ export class PijSession {
 				cwd: opts.cwd,
 				target,
 				direction: first ? "h" : "v",
-				percent: first ? 40 : undefined,
+				percent: first ? STACK_COLUMN_PERCENT : undefined,
+				evenOut: !first,
+				columnPercent: first ? undefined : STACK_COLUMN_PERCENT,
 				detached: true,
 			});
 			if (!splitResult.ok) {
 				return err(splitResult.code, splitResult.message);
 			}
 			// Record parent-side so the NEXT spawn sees this pane before the child
-			// has booted its descriptor (fixes the fire-and-forget cap/target race).
+			// has booted its descriptor (fixes the fire-and-forget stack-target race).
 			this.splitPanes.push(splitResult.value.paneId);
 			return ok({ spawnId, paneId: splitResult.value.paneId });
 		}

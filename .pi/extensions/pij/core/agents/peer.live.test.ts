@@ -21,12 +21,11 @@
 // Finding 1 — never clobbers). reportedAt is stamped only AFTER the report was
 // delivered to the driver's inbox, so it is proof the round-trip completed.
 //
-// SPLIT-CAP CONSTRAINT (rev-0004 Finding 3): `pij agent spawn` always splits the
-// current window to the right (cli.ts spawnAgentPane); with the pane cap already
-// reached (e.g. 2 workers in the window) the spawn E-FULLs. Run this gate from a
-// SCRATCH window (or point TMUX_PANE at one) when the current window is at the
-// split cap — full placement control (right/below/new-window/headless) is queued
-// as Phase 4 scope, not built here.
+// PLACEMENT NOTE: `pij agent spawn` defaults to the side stack (cli.ts
+// spawnAgentPane → planPlacement) — first peer opens a ~1/3 right column, later
+// peers append below (uncapped, evens itself). The old main+2 E-FULL cap now
+// applies only to explicit --layout right|below; a scratch window is no longer
+// required to dodge it.
 //
 // SCOPE NOTE (fleet-context addendum, delegation dlg-0003): the RESIDENT leg rides
 // the ALREADY-RUNNING shared daemon (packet delivery + report transport are generic

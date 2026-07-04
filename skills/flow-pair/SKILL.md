@@ -104,7 +104,7 @@ pij adopt "$TMUX_PANE" --harness claude    # → your pij-id; peers' sends now t
 | Intent | pi mode (tools) | control-plane mode (CLI + daemon) |
 |---|---|---|
 | Prereq | pi extension loaded | a `pij daemon` (auto-started by `pij spawn`; else `pij daemon start`) + `pij adopt` self |
-| Spawn colleague | `pij_spawn({ model, layout:"split" })` | `pij spawn --harness claude\|copilot --model <m>` (returns id at once; daemon drives boot→bind) |
+| Spawn colleague | `pij_spawn({ model })` — side stack by default | `pij spawn --harness claude\|copilot --model <m>` (side stack by default; returns id at once; daemon drives boot→bind) |
 | Deliver pointer / message | `pij_send({ to, message })` | `pij send <id> "<text>"` |
 | Compact a colleague | `pij_send({ to, command:"compact" })` | `pij send <id> "/compact"` |
 | Compact YOURSELF (+ auto-continue) | `pij compact-self [instruction]` | `pij compact-self [instruction]` — same in both modes |
@@ -163,12 +163,13 @@ later `tidy` can find and close our windows even after a crash.
   pre-spawned a phase early quietly burns cache-token writes (plus a tmux pane) the
   entire time, with zero reviews to show for it. Spawn the reviewer at the *moment*
   of the first `REVIEW`, not one step sooner. *pi mode:*
-  `pij_spawn({ model, layout: "split" })`. *Control-plane mode:* `pij spawn
+  `pij_spawn({ model })`. *Control-plane mode:* `pij spawn
   --harness claude --model <m>` (§ Harness mode; the daemon drives boot→bind and
-  returns the id immediately). `layout:"split"` keeps the whole fleet in one window:
-  orchestrator **main-left**, coder + reviewer **stacked on the right** — which is
-  exactly the 3-pane cap (main + 2). Pass `layout:"window"` (the default) to fan
-  the colleagues out into separate tmux windows instead.
+  returns the id immediately). **The default layout IS the side stack** — no flag
+  needed: orchestrator **main-left (~2/3)**, colleagues **stacked evenly in a
+  right column** that grows as the fleet does (uncapped). Keep the default so the
+  operator can see the whole fleet; pass `layout:"window"` / `--layout window`
+  only when explicitly asked to hide colleagues in background windows.
 - **Canary-verify before trusting — a ready-ping is NOT proof.** A wrong `--model`
   is accepted **silently** at startup (the bogus name even shows in the footer);
   the child still boots, registers, and ready-pings — then **400s on its first real

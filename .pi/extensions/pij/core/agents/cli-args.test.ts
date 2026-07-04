@@ -243,6 +243,10 @@ describe("parseAgentArgs --layout", () => {
 		const cmd = ok(["spawn", "pack-x", "--layout", "window"]);
 		expect(cmd.layout).toBe("window");
 	});
+	it("parses spawn --layout stack (the explicit default)", () => {
+		const cmd = ok(["spawn", "pack-x", "--layout", "stack"]);
+		expect(cmd.layout).toBe("stack");
+	});
 	it("rejects a bad layout value", () => {
 		const r = parseAgentArgs(["spawn", "pack-x", "--layout", "sideways"]);
 		expect(r.ok).toBe(false);

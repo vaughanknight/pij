@@ -52,7 +52,7 @@ The instant a worker/reviewer reports done, compact it — **before** doing anyt
 
 ### C5 — Placement & split-cap
 
-Default: spawns auto-split the **current window** (first peer right, second stacked); cap **main + 2 workers** — beyond it E-FULL. Explicit `--layout right|below|window` (spawn + agent spawn, FX001-3): right/below split YOUR pane (cap applies); `window` opens a background window **in your session**, named after the peer — cap-exempt. `headless` is not built. At the cap: `--layout window` or free a slot.
+Default = the **side stack**: the first peer opens a ~1/3-width column on YOUR right; every later peer appends below it and the stack evens itself — **uncapped** (panes just get shorter). Explicit `--layout stack|right|below|window` (spawn + agent spawn, FX001-3): `stack` names the default; right/below split YOUR pane once (main+2 cap, E-FULL beyond); `window` opens a background window **in your session**, named after the peer. `headless` is not built. Prefer the default stack — `window` hides peers from the operator's view (use it only when asked, or for swarms too big to stack).
 
 ### C6 — Daemon restart rule
 

@@ -11,7 +11,7 @@
 
 ```bash
 pij agent spawn --once --prompt "<task>" \
-  [--harness claude|copilot|codex] [--model <m>] [--effort <lvl>] [--layout right|below|window]
+  [--harness claude|copilot|codex] [--model <m>] [--effort <lvl>] [--layout stack|right|below|window]
 ```
 
 - `--prompt` = **inline peer**: pij wraps your prompt in a packet and auto-appends the report contract (`pij agent report --json …`, `summary` field at minimum) — never restate the mechanism in your prompt.
@@ -27,7 +27,7 @@ Three parts, one sentence each where possible:
 3. **Report shape** — short outputs ride inline: `{"summary":"<one line>","output":"<full text>"}`. Long outputs (review tables, dossiers): have the peer write a file and report the path (pointer discipline — dispatch invariant 2): `{"summary","verdict","path"}`.
 
 ```bash
-pij agent spawn --once --model claude-sonnet-5 --layout window --prompt \
+pij agent spawn --once --model claude-sonnet-5 --prompt \
  'Invoke your /thesis skill with args: thing <file> (repo: <abs-repo> — cd there first).
   If the skill is not available, report that instead of improvising.
   Respond per the skill. Report {"summary":"<one line>","output":"<full text>"}.'

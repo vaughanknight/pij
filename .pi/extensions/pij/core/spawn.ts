@@ -369,6 +369,11 @@ export function parseCompactSelfArgs(
 	return { pane, delayMs, ...(instruction ? { instruction } : {}) };
 }
 
+/** The side stack's column width as a % of the window (~1/3 — the orchestrator
+ *  keeps ~2/3 on the left). One constant, shared by the first split (`-p`) and
+ *  the post-append width restore (`resize-pane -x N%`). */
+export const STACK_COLUMN_PERCENT = 33;
+
 /** Where a control-plane spawn should split, mirroring pi's `layout:"split"`. */
 export type ControlSplitPlan =
 	| {
@@ -376,30 +381,37 @@ export type ControlSplitPlan =
 			readonly target: string;
 			readonly direction: "h" | "v";
 			readonly percent?: number;
+			/** After the split, even out the pane's stack (`select-layout -E` on the
+			 *  new pane — evens the heights of that vertical run). */
+			readonly evenOut?: boolean;
+			/** After evening, pin the stack column back to this % of the window width
+			 *  (`resize-pane -x N%`) — `-E` can re-spread the root h-split too
+			 *  (observed live on tmux 3.6a with a 2-pane column: 67/33 → 50/50). */
+			readonly columnPercent?: number;
 	  }
 	| { readonly ok: false; readonly code: "E-FULL"; readonly message: string };
 
-/** Decide where `pij spawn --harness …` splits, mirroring pi's `pij_spawn`
- *  layout (core/session.ts): worker #1 splits the orchestrator pane LEFT/RIGHT
- *  (`-h` → a right column ~40% wide); worker #2 splits worker-1's pane UP/DOWN
- *  (`-v` → stacked below it). Cap = main + 2 panes; a 3rd → E-FULL. `peerPanes`
- *  is the set of LIVE control-plane peer panes already in the orchestrator's
- *  window (a closed pane drops out, freeing its slot). */
+/** Decide where `pij spawn --harness …` splits — the DEFAULT side-stack layout,
+ *  shared with pi's `pij_spawn` (core/session.ts): the first worker splits the
+ *  orchestrator pane LEFT/RIGHT (`-h` → a right column ~1/3 wide); every later
+ *  worker splits the newest peer pane UP/DOWN (`-v` → appended to the stack)
+ *  and the column is then evened out (`evenOut` → `select-layout -E`, verified
+ *  on tmux 3.6a to leave the main pane's width alone). UNCAPPED — the stack
+ *  just gets shorter panes (the old main+2 cap survives only for the explicit
+ *  `--layout right|below` one-shot placements). `peerPanes` is the set of LIVE
+ *  peer panes already in the orchestrator's window, in registry order. */
 export function planControlSplit(ownPane: string, peerPanes: readonly string[]): ControlSplitPlan {
-	if (peerPanes.length >= 2) {
-		return {
-			ok: false,
-			code: "E-FULL",
-			message:
-				"split layout full — 2 workers already on the right; close one or kill its pane first",
-		};
+	const last = peerPanes[peerPanes.length - 1];
+	if (last === undefined) {
+		return { ok: true, target: ownPane, direction: "h", percent: STACK_COLUMN_PERCENT };
 	}
-	const first = peerPanes.length === 0;
-	const firstPeer = peerPanes[0];
-	if (first || firstPeer === undefined) {
-		return { ok: true, target: ownPane, direction: "h", percent: 40 };
-	}
-	return { ok: true, target: firstPeer, direction: "v" };
+	return {
+		ok: true,
+		target: last,
+		direction: "v",
+		evenOut: true,
+		columnPercent: STACK_COLUMN_PERCENT,
+	};
 }
 
 /** The live peer panes sharing the orchestrator's window — the input to
@@ -437,15 +449,17 @@ export interface SpawnRequest {
 	/** Branch-from-self (Plan 020): fork the CALLER's own session into the new pane
 	 *  (`--branch`). Default false. Gated + resolved by the bin via {@link planBranch}. */
 	readonly branch: boolean;
-	/** Explicit placement (FX001-3 / SUGG-001): right | below | window. Unset ⇒
-	 *  the classic auto split (first peer right, second stacked below). */
+	/** Explicit placement (FX001-3 / SUGG-001): stack | right | below | window.
+	 *  Unset ⇒ `stack` (the default side stack — first peer opens a ~1/3 right
+	 *  column, later peers append to it). */
 	readonly layout?: SpawnLayout;
 	readonly json: boolean;
 }
 
-/** Where an explicit `--layout` may place a spawned peer. `headless` is
+/** Where an explicit `--layout` may place a spawned peer. `stack` names the
+ *  default (side stack on the caller's right, uncapped). `headless` is
  *  deliberately absent — a daemon-bound harness needs a pty pane (deferred). */
-export type SpawnLayout = "right" | "below" | "window";
+export type SpawnLayout = "stack" | "right" | "below" | "window";
 
 /** Daemon-bound harnesses: the daemon pre-allocates an id and drives boot→bound
  *  (transcript discovery for claude + codex, deterministic `--session-id` for
@@ -494,8 +508,8 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		} else if (key === "task") {
 			task = value;
 		} else if (key === "layout") {
-			if (value !== "right" && value !== "below" && value !== "window")
-				return err("E-ARG", `--layout must be right|below|window (got '${value}')`);
+			if (value !== "stack" && value !== "right" && value !== "below" && value !== "window")
+				return err("E-ARG", `--layout must be stack|right|below|window (got '${value}')`);
 			layout = value;
 		} else if (key === "model") {
 			model = value;
@@ -516,9 +530,10 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 /** A placement plan: a split (ControlSplitPlan) or a fresh tmux window. */
 export type PlacementPlan = ControlSplitPlan | { readonly ok: true; readonly window: true };
 
-/** Resolve an explicit `--layout` (FX001-3 / SUGG-001) or fall back to the classic
- *  auto split ({@link planControlSplit}). `right`/`below` split the CALLER's own
- *  pane (still subject to the main+2 cap); `window` opens a new tmux window in the
+/** Resolve an explicit `--layout` (FX001-3 / SUGG-001) or fall back to the
+ *  DEFAULT side stack ({@link planControlSplit} — `stack`, also the no-flag
+ *  behaviour). `right`/`below` split the CALLER's own pane (one-shot placements,
+ *  still subject to the main+2 cap); `window` opens a new tmux window in the
  *  caller's session — exempt from the cap. Pure, shared by `pij spawn` and
  *  `pij agent spawn`. */
 export function planPlacement(
@@ -533,7 +548,7 @@ export function planPlacement(
 				ok: false,
 				code: "E-FULL",
 				message:
-					"split layout full — 2 workers already in this window; close one or use --layout window",
+					"split layout full — 2 workers already in this window; close one or use the default stack (drop --layout) or --layout window",
 			};
 		}
 		return layout === "right"
