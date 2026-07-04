@@ -219,3 +219,12 @@
 > - result: failed
 > - magicWand: (unavailable — run terminated as failed)
 > - stderr (last line): permission denied: kind=write blocked by preset/overrides
+
+## 2026-06-19T23:30:13.889Z — package-vetter / 2026-06-19T23-28-08-815Z-67d6
+
+- runId: 2026-06-19T23-28-08-815Z-67d6
+- runDir: /Users/jordanknight/pi-hacking/pij/agents/package-vetter/runs/2026-06-19T23-28-08-815Z-67d6
+- summary: Scanned the pi-vs-claude-code package prompt-bearing surfaces and extension tool descriptions against the package-vetter rubric. The package is warn-level: no override, role-hijack, system-token, exfiltration, authority, or encoded-smuggle attacks were found in loaded prompt files, but three tool descriptions contain imperative tool-use directives that R-07 treats as prompt-surface smuggling risk; README sensitive-path mentions are informational only.
+- **magicWand** (target: project): Add a package-vetter helper command, e.g. `just vetter-scope <packagePath>`, that prints the exact scoped file list, referenced package.json pi assets, and extracted registerTool/defineExtension descriptions with line numbers.
+- difficulties:
+  - [degrading] knowledge: The rubric says to scan only string literals passed to registerTool/defineExtension in TypeScript, but descriptions can be concatenated strings and parameter descriptions appear in the same object, requiring careful manual distinction. (workaround: Used targeted extraction around registerTool calls and reviewed the relevant line ranges before recording only top-level tool-description findings.)

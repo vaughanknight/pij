@@ -60,9 +60,9 @@ scan:
 other_graphs:
   graphs:
     - name: pi-mono
-      path: ~/pi-hacking/pi-mono/.fs2/graph.pickle
-      description: Pi agent harness monorepo (upstream)
-      source_url: https://github.com/earendil-works/pi-mono
+      path: ~/pi-hacking/pi-fork/.fs2/graph.pickle
+      description: Pi agent harness monorepo (jakkaj fork)
+      source_url: https://github.com/jakkaj/pi-mono
     - name: minih
       path: ~/substrate/minih/.fs2/graph.pickle
       description: minih — standalone minih agent runner (harness measurement branch)
