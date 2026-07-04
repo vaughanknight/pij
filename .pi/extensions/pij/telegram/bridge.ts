@@ -16,6 +16,9 @@
 // (`pij-telegram`) via `FsChannel.watch` — exactly like the in-process pi receiver —
 // and forwards each delivered reply to the operator chat, CHUNKED (Finding 07/AC-05).
 // Receipts are recorded-not-forwarded (Finding 08 parity: an ack is not agent output).
+// REPLY THREADING: each inbound delivery records the operator's message id per target
+// (`onDelivered`); the forwarder consumes it (`takeReplyTo`) so a session's next
+// outbound bubble arrives as a Telegram reply QUOTING the message it answers.
 //
 // All I/O is injected via `deps` so tests drive the bot with fake updates + a spy
 // delivery and exercise the forwarder over a temp inbox — no live long-poll, no network.
@@ -91,6 +94,10 @@ export interface BridgeDeps {
 	 *  `ctx.getFile()` → `file.download(dest)` (the downloader owns the fs incl. mkdir).
 	 *  Absent ⇒ inbound media is dropped (the bot still builds for text-only callers). */
 	downloadMedia?: (ctx: Context, dest: string) => Promise<void>;
+	/** Reply-threading seam: called after each inbound delivery with the operator's
+	 *  Telegram message id, so the forwarder can quote it on that session's NEXT
+	 *  outbound bubble (`startBridge` wires both ends to one shared map). */
+	onDelivered?: (to: SessionId, telegramMessageId: number) => void;
 	/** Debug logger for resolution/fallback/drop traces. Defaults to a no-op. */
 	log?: (message: string) => void;
 }
@@ -318,6 +325,7 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 				greeted.add(decision.to);
 				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });
 				sticky.set(chatId, decision.to);
+				deps.onDelivered?.(decision.to, ctx.message.message_id);
 				log(`→ ${decision.to}`);
 				return;
 			}
@@ -330,6 +338,7 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 				const body = framedBody(decision.body, !greeted.has(decision.to));
 				greeted.add(decision.to);
 				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });
+				deps.onDelivered?.(decision.to, ctx.message.message_id);
 				log(`sticky ${decision.to}`);
 				return;
 			}
@@ -410,6 +419,8 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 			}),
 		});
 		sticky.set(chatId, target.to);
+		const mid = ctx.message?.message_id;
+		if (mid !== undefined) deps.onDelivered?.(target.to, mid);
 		log(`media → ${target.to} (${dest})`);
 	});
 
@@ -419,13 +430,24 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 /** I/O the outbound forwarder needs, injected so tests run over a temp inbox. */
 export interface ForwarderDeps {
 	/** Send one already-chunked part to the operator chat; resolves when sent. In
-	 *  production this is `(text) => bot.api.sendMessage(chatId, text)`. */
-	send: (text: string) => Promise<unknown>;
+	 *  production this is `(text, replyTo) => bot.api.sendMessage(chatId, text, …)` —
+	 *  a defined `replyToMessageId` makes the bubble a Telegram reply quoting that
+	 *  operator message (reply threading). */
+	send: (text: string, replyToMessageId?: number) => Promise<unknown>;
 	/** Upload one media file to the operator chat by kind (Plan 026 Phase 5 outbound).
 	 *  Injected so tests use a fake `Bot.api`; production maps to `bot.api.sendPhoto`/
 	 *  `sendAnimation`/`sendDocument` with `InputFile(path)` + caption. Absent ⇒ a media
 	 *  attachment falls back to a text notice (no media sender configured). */
-	sendMedia?: (kind: MediaKind, path: string, caption?: string) => Promise<unknown>;
+	sendMedia?: (
+		kind: MediaKind,
+		path: string,
+		caption?: string,
+		replyToMessageId?: number,
+	) => Promise<unknown>;
+	/** Reply-threading seam (the outbound half of `BridgeDeps.onDelivered`): take —
+	 *  consume, once — the operator message id this session's next reply answers, or
+	 *  undefined when it speaks unprompted. Absent ⇒ no threading (plain bubbles). */
+	takeReplyTo?: (from: SessionId) => number | undefined;
 	/** File size in bytes for the upload-cap pre-check. Defaults to `statSync(path).size`
 	 *  (only called for messages that actually carry attachments). */
 	sizeOf?: (path: string) => number;
@@ -487,10 +509,14 @@ export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => v
 		// (validation MEDIUM fix). Text-only messages are chunked exactly as before.
 		const parts = attachments.length > 0 && dm.body.trim() === "" ? [] : chunk(dm.body);
 		queue = queue.then(async () => {
+			// Quote the operator message this reply presumably answers — taken ONCE, so
+			// only the first bubble of this pij message threads; the rest follow it.
+			let replyTo = deps.takeReplyTo?.(dm.from);
 			for (const part of parts) {
 				try {
 					// Every bubble is prefixed with the sender's pij id (see senderTag).
-					await deps.send(taggedText(dm.from, part));
+					await deps.send(taggedText(dm.from, part), replyTo);
+					replyTo = undefined;
 				} catch (e) {
 					log(`forward error (${dm.messageId}): ${(e as Error).message}`);
 				}
@@ -503,18 +529,22 @@ export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => v
 					const kind = classifyMedia(att.path);
 					const bytes = sizeOf(att.path);
 					if (!withinUploadLimit(bytes, kind)) {
-						await deps.send(taggedText(dm.from, oversizeNotice(att.path, bytes, kind)));
+						await deps.send(taggedText(dm.from, oversizeNotice(att.path, bytes, kind)), replyTo);
+						replyTo = undefined;
 						continue;
 					}
 					if (deps.sendMedia !== undefined) {
 						// Tag the caption with the sender id too, so a media bubble is identifiable.
 						const caption =
 							att.caption !== undefined ? taggedText(dm.from, att.caption) : senderTag(dm.from);
-						await deps.sendMedia(kind, att.path, caption);
+						await deps.sendMedia(kind, att.path, caption, replyTo);
+						replyTo = undefined;
 					} else {
 						await deps.send(
 							taggedText(dm.from, `[attachment ${att.path}] (no media sender configured)`),
+							replyTo,
 						);
+						replyTo = undefined;
 					}
 				} catch (e) {
 					log(`media forward error (${dm.messageId}): ${(e as Error).message}`);

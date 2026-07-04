@@ -219,6 +219,7 @@ function makeBridge(
 	downloadMedia?: (ctx: unknown, dest: string) => Promise<void>,
 	isAlive?: (pid: number) => boolean,
 	now?: () => number,
+	onDelivered?: (to: SessionId, telegramMessageId: number) => void,
 ) {
 	const deliver = vi.fn();
 	const log = vi.fn();
@@ -228,6 +229,7 @@ function makeBridge(
 		isAlive,
 		now,
 		deliver,
+		onDelivered,
 		readEvents,
 		downloadMedia: downloadMedia as ((ctx: never, dest: string) => Promise<void>) | undefined,
 		log,
@@ -515,6 +517,79 @@ describe("createBot swipe-reply routing", () => {
 		expect(downloads).toHaveLength(1);
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-abc123" });
+	});
+});
+
+// ─── reply threading (operator msg id → quoted outbound bubble) ──────────────────
+describe("reply threading", () => {
+	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
+
+	it("onDelivered reports the operator message id for addressed AND sticky deliveries", async () => {
+		const delivered: Array<[SessionId, number]> = [];
+		const { bot } = makeBridge(
+			[...sessions],
+			[ALLOWED],
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			(to, mid) => delivered.push([to, mid]),
+		);
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn hello" }));
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and another thing" }));
+		expect(delivered).toHaveLength(2);
+		expect(delivered[0]?.[0]).toBe("pij-osn81b");
+		expect(delivered[1]?.[0]).toBe("pij-osn81b"); // sticky delivery reports too
+		expect(delivered[0]?.[1]).not.toBe(delivered[1]?.[1]); // distinct telegram message ids
+	});
+
+	it("forwarder quotes the pending operator message on the FIRST bubble only, then consumes it", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: Array<{ text: string; replyTo?: number }> = [];
+			const pending = new Map<string, number>([["pij-osn81b", 42]]);
+			const dispose = startForwarder(channel, {
+				send: async (text, replyTo) => {
+					sent.push({ text, replyTo });
+				},
+				takeReplyTo: (from) => {
+					const mid = pending.get(from);
+					pending.delete(from);
+					return mid;
+				},
+			});
+			const body = "x".repeat(9000); // ≥3 chunked parts — only the first may quote
+			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body });
+			await waitFor(() => sent.length >= 3);
+			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "unprompted follow-up" });
+			await waitFor(() => sent.length >= 4);
+			dispose();
+			expect(sent[0]?.replyTo).toBe(42);
+			for (const s of sent.slice(1)) expect(s.replyTo).toBeUndefined();
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("a session that speaks unprompted sends a plain (unquoted) bubble", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: Array<{ text: string; replyTo?: number }> = [];
+			const dispose = startForwarder(channel, {
+				send: async (text, replyTo) => {
+					sent.push({ text, replyTo });
+				},
+				takeReplyTo: () => undefined,
+			});
+			channel.deliver({ from: "pij-abc123", to: TELEGRAM_PEER_ID, body: "status: all green" });
+			await waitFor(() => sent.length >= 1);
+			dispose();
+			expect(sent[0]?.replyTo).toBeUndefined();
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 });
 

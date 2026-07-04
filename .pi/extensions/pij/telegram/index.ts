@@ -119,12 +119,20 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 
 	rt.registry.write(buildTelegramDescriptor(rt.pijHome, rt.cwd, rt.pid, rt.startedAt));
 
+	// Reply threading: inbound delivery records the operator's Telegram message id per
+	// target session; the forwarder takes it (once) so that session's next outbound
+	// bubble quotes the message it answers. One shared map is the whole seam.
+	const pendingReply = new Map<SessionId, number>();
+
 	const bot = createBot(config, {
 		listSessions: () => rt.registry.list(),
 		isAlive: rt.isAlive,
 		now: () => Date.now(),
 		deliver: (message) => {
 			rt.channel.deliver(message);
+		},
+		onDelivered: (to, telegramMessageId) => {
+			pendingReply.set(to, telegramMessageId);
 		},
 		readEvents: rt.readEvents,
 		// Inbound media (Phase 5): download via @grammyjs/files into the target session's own
@@ -145,14 +153,28 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 	let disposeForwarder: (() => void) | undefined;
 	const chatId = config.chatId;
 	if (chatId !== undefined) {
+		// A defined replyTo threads the bubble under the operator's message; sending
+		// must survive that message having been deleted (allow_sending_without_reply).
+		const replyOpts = (replyTo?: number) =>
+			replyTo === undefined
+				? {}
+				: { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } };
 		disposeForwarder = startForwarder(rt.channel, {
 			seen: seenInbox(rt.pijHome),
 			log: rt.log,
-			send: (text) => bot.api.sendMessage(chatId, text),
+			takeReplyTo: (from) => {
+				const mid = pendingReply.get(from);
+				pendingReply.delete(from);
+				return mid;
+			},
+			send: (text, replyTo) => bot.api.sendMessage(chatId, text, replyOpts(replyTo)),
 			// Outbound media (Phase 5): upload each attached file by kind via grammY InputFile.
-			sendMedia: (kind, path, caption) => {
+			sendMedia: (kind, path, caption, replyTo) => {
 				const input = new InputFile(path);
-				const opts = caption !== undefined ? { caption } : undefined;
+				const opts = {
+					...(caption !== undefined ? { caption } : {}),
+					...replyOpts(replyTo),
+				};
 				switch (kind) {
 					case "photo":
 						return bot.api.sendPhoto(chatId, input, opts);
