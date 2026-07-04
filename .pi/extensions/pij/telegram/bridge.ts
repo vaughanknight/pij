@@ -7,7 +7,10 @@
 // could drive a session). Allowlisted text is routed by `routeMessage` (pure): an
 // addressed `<tok> <text>` delivers the remainder to the matched session and makes it
 // sticky; unaddressed text goes to the chat's sticky target; with no target we reply
-// guidance. `/list` + `/tail` are registered before the relay so commands aren't relayed.
+// guidance. A SWIPE-REPLY on a forwarded bubble outranks both: the quoted bubble's
+// leading `[pij-…]` sender tag names the target, and the WHOLE text is delivered there
+// (the leading word is prose, never re-parsed as an address). `/list` + `/tail` are
+// registered before the relay so commands aren't relayed.
 //
 // OUTBOUND (Phase 3): `startForwarder(channel, deps)` drains the bridge's OWN inbox
 // (`pij-telegram`) via `FsChannel.watch` — exactly like the in-process pi receiver —
@@ -101,22 +104,56 @@ export type Routing =
 	/** No address but a sticky target exists → deliver the whole text there. */
 	| { readonly kind: "sticky"; readonly to: SessionId; readonly body: string }
 	/** No address and no sticky target → nothing to deliver, reply guidance. */
-	| { readonly kind: "guidance" };
+	| { readonly kind: "guidance" }
+	/** Swipe-reply on a forwarded bubble whose tagged sender is no longer live →
+	 *  tell the operator honestly; NEVER silently fall through to the sticky target. */
+	| { readonly kind: "gone"; readonly id: SessionId };
+
+/**
+ * Parse the sender tag off a forwarded bubble — the inverse of `senderTag`. Every
+ * bubble the forwarder sends leads with `[<pij-id>]` (text parts and media captions
+ * alike), so a swipe-reply's quoted text identifies exactly which session was talking.
+ * Returns null for bot-authored non-forwarded text (guidance, `/list` output,
+ * "Now addressing…") and the operator's own quoted messages — those carry no tag.
+ */
+export function parseSenderTag(quoted: string): SessionId | null {
+	const m = /^\[(pij-[a-z0-9][a-z0-9-]*)\]/.exec(quoted.trim());
+	return m ? (m[1] as SessionId) : null;
+}
 
 /**
  * Decide where an inbound text goes. Pure — no I/O, no sticky mutation — so the
  * routing rules (Findings 05/06) are exhaustively unit-testable in isolation.
  *
+ * Precedence: swipe-reply tag → address token → sticky → guidance. The reply gesture
+ * is the operator's most explicit targeting act, so when `quoted` carries a sender
+ * tag the WHOLE text goes to that session — the leading word is prose there, never
+ * re-parsed as an address (`"5l is the answer"` in a reply to `[pij-abc]` must not
+ * route to `pij-5l…`).
+ *
  * @param text     the raw inbound message text
  * @param sticky   the chat's current sticky target, if any
  * @param sessions the live session snapshot to resolve an address against
+ * @param quoted   the swipe-replied bubble's visible text/caption, when this is a reply
  */
 export function routeMessage(
 	text: string,
 	sticky: SessionId | undefined,
 	sessions: readonly SessionDescriptor[],
+	quoted?: string,
 ): Routing {
 	const trimmed = text.trim();
+	if (quoted !== undefined) {
+		const tagged = parseSenderTag(quoted);
+		if (tagged !== null) {
+			if (!sessions.some((s) => s.id === tagged)) return { kind: "gone", id: tagged };
+			// An empty reply body (a media reply with no caption) just retargets, like a
+			// bare address; the media handler still delivers the file to the target.
+			return trimmed === ""
+				? { kind: "address", to: tagged }
+				: { kind: "deliver", to: tagged, body: trimmed };
+		}
+	}
 	// First whitespace splits the address token from the remainder; keep the
 	// remainder's internal formatting (only the inter-token gap is dropped).
 	const gap = trimmed.search(/\s/);
@@ -153,8 +190,23 @@ function mediaTarget(
 		case "address":
 			return { to: decision.to, caption: "" };
 		case "guidance":
+		case "gone":
 			return undefined;
 	}
+}
+
+/** The quoted bubble's visible text when this update is a swipe-reply: forwarded text
+ *  parts carry the sender tag in `text`, forwarded media carry it in `caption`. */
+function quotedOf(
+	msg: { reply_to_message?: { text?: string; caption?: string } } | undefined,
+): string | undefined {
+	const q = msg?.reply_to_message;
+	return q === undefined ? undefined : (q.text ?? q.caption);
+}
+
+/** Reply shown when a swipe-reply targets a session that has since gone away. */
+function goneNotice(id: SessionId): string {
+	return `${id} isn't live any more — /list to see who's around.`;
 }
 
 /** The fields the bridge needs from an inbound media update, normalised across the three
@@ -251,10 +303,15 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 		guidance: GUIDANCE,
 	});
 
-	// (3) Text relay — address→deliver with sticky fallback.
+	// (3) Text relay — swipe-reply tag → address token → sticky fallback.
 	bot.on("message:text", async (ctx) => {
 		const chatId = ctx.chat.id;
-		const decision = routeMessage(ctx.message.text, sticky.get(chatId), deps.listSessions());
+		const decision = routeMessage(
+			ctx.message.text,
+			sticky.get(chatId),
+			deps.listSessions(),
+			quotedOf(ctx.message),
+		);
 		switch (decision.kind) {
 			case "deliver": {
 				const body = framedBody(decision.body, !greeted.has(decision.to));
@@ -280,6 +337,10 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 				log("no target");
 				await ctx.reply(GUIDANCE);
 				return;
+			case "gone":
+				log(`reply target ${decision.id} gone`);
+				await ctx.reply(goneNotice(decision.id));
+				return;
 		}
 	});
 
@@ -296,7 +357,18 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 		if (media === undefined) return;
 
 		const caption = ctx.message?.caption ?? "";
-		const target = mediaTarget(routeMessage(caption, sticky.get(chatId), deps.listSessions()));
+		const decision = routeMessage(
+			caption,
+			sticky.get(chatId),
+			deps.listSessions(),
+			quotedOf(ctx.message),
+		);
+		if (decision.kind === "gone") {
+			log(`media: reply target ${decision.id} gone`);
+			await ctx.reply(goneNotice(decision.id));
+			return;
+		}
+		const target = mediaTarget(decision);
 		if (target === undefined) {
 			log("media: no target");
 			await ctx.reply(GUIDANCE);

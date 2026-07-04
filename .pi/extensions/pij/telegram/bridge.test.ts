@@ -17,6 +17,7 @@ import {
 	createBot,
 	firstContactNote,
 	framedBody,
+	parseSenderTag,
 	routeMessage,
 	senderTag,
 	startForwarder,
@@ -107,15 +108,80 @@ describe("routeMessage", () => {
 	});
 });
 
+describe("parseSenderTag", () => {
+	it("extracts the id from a forwarded bubble's leading tag", () => {
+		expect(parseSenderTag("[pij-osn81b] here's the diff")).toBe("pij-osn81b");
+	});
+
+	it("round-trips senderTag", () => {
+		expect(parseSenderTag(`${senderTag("pij-abc123" as SessionId)} hello`)).toBe("pij-abc123");
+	});
+
+	it("returns null for untagged text (guidance, /list output, operator messages)", () => {
+		expect(parseSenderTag("Address a session to start…")).toBeNull();
+		expect(parseSenderTag("• pij-osn81b — /repo")).toBeNull();
+		expect(parseSenderTag("osn hello")).toBeNull();
+	});
+});
+
+describe("routeMessage (swipe-reply)", () => {
+	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
+
+	it("routes the WHOLE text to the quoted bubble's tagged sender", () => {
+		expect(
+			routeMessage("yes go ahead", undefined, sessions, "[pij-abc123] shall I merge?"),
+		).toEqual({ kind: "deliver", to: "pij-abc123", body: "yes go ahead" });
+	});
+
+	it("reply tag beats an address-token-looking leading word", () => {
+		// "osn" would resolve to pij-osn81b as a token — but in a reply it is prose.
+		expect(
+			routeMessage("osn is the one to keep", undefined, sessions, "[pij-abc123] which session?"),
+		).toEqual({ kind: "deliver", to: "pij-abc123", body: "osn is the one to keep" });
+	});
+
+	it("reply tag beats the sticky target", () => {
+		expect(routeMessage("do it", "pij-osn81b", sessions, "[pij-abc123] ready?")).toEqual({
+			kind: "deliver",
+			to: "pij-abc123",
+			body: "do it",
+		});
+	});
+
+	it("falls through to normal routing when the quoted text carries no tag", () => {
+		expect(routeMessage("more context", "pij-abc123", sessions, "my own earlier msg")).toEqual({
+			kind: "sticky",
+			to: "pij-abc123",
+			body: "more context",
+		});
+	});
+
+	it("is honest (never misroutes) when the tagged session is gone", () => {
+		expect(routeMessage("hello?", "pij-osn81b", sessions, "[pij-dead99] bye")).toEqual({
+			kind: "gone",
+			id: "pij-dead99",
+		});
+	});
+
+	it("an empty reply body just retargets (media-with-no-caption case)", () => {
+		expect(routeMessage("", undefined, sessions, "[pij-osn81b] look at this")).toEqual({
+			kind: "address",
+			to: "pij-osn81b",
+		});
+	});
+});
+
 // ─── bot wiring (fake updates) ─────────────────────────────────────────────────
 let updateSeq = 0;
 
-/** Build a fake Telegram text update. `command:true` adds the bot_command entity. */
+/** Build a fake Telegram text update. `command:true` adds the bot_command entity;
+ *  `replyTo` makes it a swipe-reply quoting a bubble with that text/caption. */
 function textUpdate(opts: {
 	fromId: number;
 	chatId?: number;
 	text: string;
 	command?: boolean;
+	replyTo?: { text?: string; caption?: string };
 }): Update {
 	updateSeq += 1;
 	const firstWord = opts.text.split(/\s/)[0] ?? "";
@@ -131,6 +197,16 @@ function textUpdate(opts: {
 			from: { id: opts.fromId, is_bot: false, first_name: "Op" },
 			text: opts.text,
 			...(entities ? { entities } : {}),
+			...(opts.replyTo
+				? {
+						reply_to_message: {
+							message_id: updateSeq - 1,
+							date: 0,
+							chat: { id: opts.chatId ?? 1000, type: "private", first_name: "Op" },
+							...opts.replyTo,
+						},
+					}
+				: {}),
 		},
 	} as unknown as Update;
 }
@@ -185,6 +261,7 @@ function mediaUpdate(opts: {
 	caption?: string;
 	fileSize?: number;
 	fileName?: string;
+	replyTo?: { text?: string; caption?: string };
 }): Update {
 	updateSeq += 1;
 	const size = opts.fileSize ?? 1024;
@@ -194,6 +271,16 @@ function mediaUpdate(opts: {
 		chat: { id: opts.chatId ?? 1000, type: "private", first_name: "Op" },
 		from: { id: opts.fromId, is_bot: false, first_name: "Op" },
 		...(opts.caption !== undefined ? { caption: opts.caption } : {}),
+		...(opts.replyTo
+			? {
+					reply_to_message: {
+						message_id: updateSeq - 1,
+						date: 0,
+						chat: { id: opts.chatId ?? 1000, type: "private", first_name: "Op" },
+						...opts.replyTo,
+					},
+				}
+			: {}),
 	};
 	let media: Record<string, unknown>;
 	if (opts.kind === "photo") {
@@ -345,6 +432,89 @@ describe("createBot (inbound bridge)", () => {
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/list", command: true }));
 		expect(replies()[0]).toContain("pij-live");
 		expect(replies()[0]).not.toContain("pij-dead");
+	});
+});
+
+// ─── swipe-reply routing (bot wiring) ────────────────────────────────────────────
+describe("createBot swipe-reply routing", () => {
+	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
+
+	it("delivers a swipe-reply to the quoted bubble's sender and makes it sticky", async () => {
+		const { bot, deliver } = makeBridge([...sessions]);
+		await bot.handleUpdate(
+			textUpdate({
+				fromId: ALLOWED,
+				text: "yes merge it",
+				replyTo: { text: "[pij-abc123] shall I merge?" },
+			}),
+		);
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-abc123" });
+		expect(deliver.mock.calls[0]?.[0].body).toContain("yes merge it");
+		// Sticky followed the reply: a later bare text continues with pij-abc123.
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and push please" }));
+		expect(deliver).toHaveBeenCalledTimes(2);
+		expect(deliver.mock.calls[1]?.[0]).toMatchObject({ to: "pij-abc123", body: "and push please" });
+	});
+
+	it("routes a reply to a MEDIA bubble via its caption tag", async () => {
+		const { bot, deliver } = makeBridge([...sessions]);
+		await bot.handleUpdate(
+			textUpdate({
+				fromId: ALLOWED,
+				text: "nice screenshot",
+				replyTo: { caption: "[pij-osn81b]" },
+			}),
+		);
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-osn81b" });
+	});
+
+	it("replies the gone notice (and delivers nothing) when the tagged session vanished", async () => {
+		const { bot, deliver, replies } = makeBridge([...sessions]);
+		await bot.handleUpdate(
+			textUpdate({
+				fromId: ALLOWED,
+				text: "hello?",
+				replyTo: { text: "[pij-dead99] last words" },
+			}),
+		);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()[0]).toContain("pij-dead99");
+		expect(replies()[0]).toContain("isn't live");
+	});
+
+	it("a reply to an untagged bot message falls through to normal routing", async () => {
+		const { bot, deliver } = makeBridge([...sessions]);
+		// Establish sticky first, then reply to a guidance-style (untagged) bubble.
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn hi" }));
+		await bot.handleUpdate(
+			textUpdate({
+				fromId: ALLOWED,
+				text: "carry on",
+				replyTo: { text: "Address a session to start…" },
+			}),
+		);
+		expect(deliver).toHaveBeenCalledTimes(2);
+		expect(deliver.mock.calls[1]?.[0]).toMatchObject({ to: "pij-osn81b", body: "carry on" });
+	});
+
+	it("routes inbound MEDIA sent as a swipe-reply to the tagged sender", async () => {
+		const downloads: string[] = [];
+		const downloadMedia = async (_ctx: unknown, dest: string) => {
+			downloads.push(dest);
+		};
+		const { bot, deliver } = makeBridge([...sessions], [ALLOWED], undefined, downloadMedia);
+		await bot.handleUpdate(
+			mediaUpdate({
+				kind: "photo",
+				fromId: ALLOWED,
+				replyTo: { text: "[pij-abc123] which layout?" },
+			}),
+		);
+		expect(downloads).toHaveLength(1);
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-abc123" });
 	});
 });
 
