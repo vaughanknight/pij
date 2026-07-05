@@ -49,8 +49,9 @@ const READY_RE =
  *  why this (not the rotating `Use /skills` placeholder) is the codex idle anchor. */
 const CODEX_COMPOSER_FOOTER = /·\s+~?\/\S/;
 /** A live turn — the negative guard so an in-progress turn isn't read as idle.
- *  `esc to interrupt` = claude (WIDE pane); `esc cancel` (the `◎ Working` footer)
- *  = copilot. In a NARROW split pane (how pij spawns), claude truncates
+ *  `esc to interrupt` = claude (WIDE pane); copilot's `◎ Working` footer shows
+ *  `esc interrupt` (copilot CLI ≥1.0.69 — the older `esc cancel` is still matched
+ *  for back-compat). In a NARROW split pane (how pij spawns), claude truncates
  *  `(esc to interrupt · …)` off the spinner line, so we also match the
  *  truncation-robust busy markers that survive at the LEFT of the line: the
  *  capitalized gerund spinner (`✽ Percolating…`, `Wandering…`) and the live
@@ -58,7 +59,7 @@ const CODEX_COMPOSER_FOOTER = /·\s+~?\/\S/;
  *  (`✻ Churned for 16s`) with no ellipsis/counter, so it never matches. Order
  *  matters: classifyReadiness checks BUSY before READY, so a working pane whose
  *  status bar still reads `bypass permissions on` is correctly read as busy. */
-const BUSY_RE = /esc to interrupt|esc cancel|↓\s*\d+\s*tokens?|\b(?!Loading…)[A-Z][a-z]+ing…/u;
+const BUSY_RE = /esc (?:to )?interrupt|esc cancel|↓\s*\d+\s*tokens?|\b(?!Loading…)[A-Z][a-z]+ing…/u;
 /** Best-effort text death signal; the authoritative one is tmux `pane_dead`
  *  (the daemon's `inspect`), which this pure classifier cannot see. */
 const DEAD_RE = /\[exited\]|pane is dead|process completed|command not found/i;

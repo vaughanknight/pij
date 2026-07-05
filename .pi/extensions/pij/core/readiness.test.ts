@@ -45,6 +45,20 @@ const COPILOT_BUSY = `
  ◎ Working esc cancel                                GPT-5.5
 `;
 
+// Copilot CLI >=1.0.69 renders the live-turn footer as `Working … esc interrupt`
+// (NO "to", and the older `esc cancel` is gone) — captured live from a pij-spawned
+// gpt-5.5 pane. The pre-fix BUSY_RE (`esc to interrupt|esc cancel`) matched NEITHER,
+// so the daemon never read the pane as busy → `firstInferenceSeen` never flipped →
+// the deterministic copilot bind never promoted (`harnessSessionId` stuck null,
+// lifecycle `pending` forever). Regression guard for that never-bind bug.
+const COPILOT_BUSY_ESC_INTERRUPT = `
+ ~/pi-hacking/pij [⎇ main*%]             Session: 22 AIC used
+─────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────
+ ◎ Working · 241 B esc interrupt                     GPT-5.5
+`;
+
 // Live capture of a pij-spawned claude MID-TURN in a narrow split pane: the
 // `(esc to interrupt · …)` hint is truncated off the spinner line, so busy must
 // be read from the capitalized gerund (`Percolating…`) + the streaming token
@@ -158,6 +172,10 @@ describe("classifyReadiness", () => {
 
 	it("copilot '◎ Working esc cancel' → busy", () => {
 		expect(classifyReadiness(COPILOT_BUSY)).toBe("busy");
+	});
+
+	it("copilot >=1.0.69 '◎ Working … esc interrupt' → busy (never-bind regression)", () => {
+		expect(classifyReadiness(COPILOT_BUSY_ESC_INTERRUPT)).toBe("busy");
 	});
 
 	// ─── codex (Plan 022, T013 — R-1 resolved against the live pane) ────────────
