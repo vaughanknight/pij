@@ -10,6 +10,7 @@ import {
 	markFailed,
 	markInitInjected,
 	resolveAdoptSessionId,
+	resolveAdoptSessionIdForHarness,
 	shouldInjectInit,
 } from "./binding.js";
 import type { SessionDescriptor } from "./types.js";
@@ -94,6 +95,77 @@ describe("resolveAdoptSessionId (adopt's own binding rule, AC-14)", () => {
 	});
 	it("returns null when nothing resolves (caller writes pending + asks phonehome)", () => {
 		expect(resolveAdoptSessionId(undefined, [])).toBeNull();
+	});
+});
+
+describe("resolveAdoptSessionIdForHarness (harness-aware adopt, findings 02/02b/03)", () => {
+	const CLAUDE_STEM = "claude-stem-uuid";
+	const CODEX_PATH =
+		"/Users/jo/.codex/sessions/2026/07/04/rollout-2026-07-04T00-00-00-abcdef01-2222-3333-4444-555555555555.jsonl";
+	const COPILOT_UUID = "9a8f8be6-3670-4e5c-b43e-09f46fe4dfad";
+
+	const base = {
+		envSessionId: undefined,
+		claudeStemsNewestFirst: [] as readonly string[],
+		codexRolloutPathsNewestFirst: [] as readonly string[],
+		copilotSessionId: null as string | null,
+	};
+
+	it("claude → env id when present (byte-for-byte the existing rule)", () => {
+		const r = resolveAdoptSessionIdForHarness({
+			...base,
+			harness: "claude",
+			envSessionId: "sess-self",
+			claudeStemsNewestFirst: ["newest"],
+		});
+		expect(r).toEqual({ harnessSessionId: "sess-self" });
+	});
+
+	it("claude → newest stem when no env id", () => {
+		const r = resolveAdoptSessionIdForHarness({
+			...base,
+			harness: "claude",
+			claudeStemsNewestFirst: [CLAUDE_STEM, "older"],
+		});
+		expect(r).toEqual({ harnessSessionId: CLAUDE_STEM });
+	});
+
+	it("codex → newest rollout's trailing UUID + its absolute transcriptPath", () => {
+		const r = resolveAdoptSessionIdForHarness({
+			...base,
+			harness: "codex",
+			codexRolloutPathsNewestFirst: [CODEX_PATH],
+		});
+		expect(r).toEqual({
+			harnessSessionId: "abcdef01-2222-3333-4444-555555555555",
+			transcriptPath: CODEX_PATH,
+		});
+	});
+
+	it("copilot → the scanned session-state uuid (NEVER a claude stem, finding 02b)", () => {
+		const r = resolveAdoptSessionIdForHarness({
+			...base,
+			harness: "copilot",
+			// A claude transcript sits in-cwd — it must NOT be picked for copilot.
+			claudeStemsNewestFirst: [CLAUDE_STEM],
+			copilotSessionId: COPILOT_UUID,
+		});
+		expect(r).toEqual({ harnessSessionId: COPILOT_UUID });
+	});
+
+	it("copilot with no session-state dir → null (never falls through to claude)", () => {
+		const r = resolveAdoptSessionIdForHarness({
+			...base,
+			harness: "copilot",
+			claudeStemsNewestFirst: [CLAUDE_STEM],
+			copilotSessionId: null,
+		});
+		expect(r).toEqual({ harnessSessionId: null });
+	});
+
+	it("codex with no rollout → null, no transcriptPath (pending preserved, AC-4)", () => {
+		const r = resolveAdoptSessionIdForHarness({ ...base, harness: "codex" });
+		expect(r).toEqual({ harnessSessionId: null });
 	});
 });
 

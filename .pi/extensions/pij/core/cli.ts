@@ -14,6 +14,7 @@ import { filterByFolder, resolveSelf } from "./discovery.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
+import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
 import {
 	err,
@@ -43,8 +44,9 @@ export interface CliDeps {
 
 // ─── parsed command (discriminated per verb) ────────────────────────────────
 export type ParsedCommand =
-	| { readonly verb: "whoami"; readonly json: boolean }
+	| { readonly verb: "whoami"; readonly json: boolean; readonly env?: boolean }
 	| { readonly verb: "list"; readonly here: boolean; readonly json: boolean }
+	| { readonly verb: "sessions"; readonly here: boolean; readonly json: boolean }
 	| {
 			readonly verb: "models";
 			readonly filter?: string;
@@ -143,12 +145,13 @@ function lex(argv: readonly string[], booleans: ReadonlySet<string>) {
 	return { pos, flags };
 }
 
-const BOOLEAN_FLAGS = new Set(["here", "json", "follow", "events", "state", "dir"]);
+const BOOLEAN_FLAGS = new Set(["here", "json", "follow", "events", "state", "dir", "env"]);
 
 /** Flags each verb accepts — anything else is E-ARG. */
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
-	whoami: new Set(["json"]),
+	whoami: new Set(["json", "env"]),
 	list: new Set(["here", "json"]),
+	sessions: new Set(["here", "json"]),
 	models: new Set(["harness", "json"]),
 	send: new Set(["command", "file", "caption", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
@@ -160,6 +163,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 const MAX_POS: Record<string, number> = {
 	whoami: 0,
 	list: 0,
+	sessions: 0,
 	models: 1,
 	send: 2,
 	tail: 1,
@@ -171,12 +175,15 @@ const MAX_POS: Record<string, number> = {
 export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	const verb = argv[0];
 	if (verb === undefined)
-		return err("E-ARG", "usage: pij <whoami|list|models|send|tail|state|phonehome|path> …");
+		return err(
+			"E-ARG",
+			"usage: pij <whoami|list|sessions|models|send|tail|state|phonehome|path> …",
+		);
 	const allowed = ALLOWED_FLAGS[verb];
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|models|send|tail|state|phonehome|path)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|path)`,
 		);
 	const { pos, flags } = lex(argv.slice(1), BOOLEAN_FLAGS);
 	// strict: reject unknown flags and extra arity (finding F001).
@@ -191,9 +198,11 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 
 	switch (verb) {
 		case "whoami":
-			return ok({ verb: "whoami", json });
+			return ok({ verb: "whoami", json, env: flags.env === true });
 		case "list":
 			return ok({ verb: "list", here: flags.here === true, json });
+		case "sessions":
+			return ok({ verb: "sessions", here: flags.here === true, json });
 		case "models": {
 			const filter = pos[0];
 			const harnessFilter = typeof flags.harness === "string" ? flags.harness : undefined;
@@ -291,7 +300,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		default:
 			return err(
 				"E-ARG",
-				`unknown command '${verb}' (whoami|list|models|send|tail|state|phonehome|path)`,
+				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|path)`,
 			);
 	}
 }
@@ -405,6 +414,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
 			const d = deps.registry.read(s.value);
 			if (!d) return fail("E-NOID", `no session '${s.value}' in registry`, cmd.json);
+			// `--env` (AC-5): the eval-able self-identity block is the ONLY stdout.
+			if (cmd.env) return okOut(buildExportLines(d));
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({
@@ -462,6 +473,26 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					"\n",
 				),
 			);
+		}
+		case "sessions": {
+			// The telemetry join-table verb (AC-1/AC-2): a stable projection of the
+			// already-persisted harness↔pij join keys (Finding 01/05) — no daemon, a
+			// pure sibling of `list` decoupled from its human/live-state view.
+			let descs = deps.registry.list();
+			if (cmd.here) descs = filterByFolder(descs, deps.cwd);
+			const rows = buildSessionJoinRows(descs);
+			if (cmd.json) return okOut(JSON.stringify(rows));
+			if (rows.length === 0)
+				return okOut(cmd.here ? "no pij sessions in this folder" : "no pij sessions");
+			// transcriptPath is LAST (longest, most-variable — codex-only) so the
+			// aligned columns stay readable; `—` marks a null, same as the others.
+			// Same-tuple parity with the `--json` projection above (AC-2).
+			const lines = rows.map(
+				(r) =>
+					`${pad(r.pijId, 16)} ${pad(r.harness ?? "—", 8)} ${pad(r.harnessSessionId ?? "—", 38)} ${pad(r.lifecycle ?? "—", 8)} ${pad(r.boundModel ?? "—", 20)} ${pad(r.spawnedBy ?? "—", 14)} ${r.transcriptPath ?? "—"}`,
+			);
+			const header = `${pad("pij-id", 16)} ${pad("harness", 8)} ${pad("harness-session", 38)} ${pad("lifecycle", 8)} ${pad("model", 20)} ${pad("parent", 14)} transcript`;
+			return okOut([header, ...lines, `${rows.length} session(s)`].join("\n"));
 		}
 		case "send": {
 			const s = selfId(deps);

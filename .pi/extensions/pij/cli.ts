@@ -43,7 +43,7 @@ import {
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir } from "./core/agents/paths.js";
-import { applyBinding, resolveAdoptSessionId } from "./core/binding.js";
+import { applyBinding, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, PROVIDER_HARNESS_MAP, parseArgs } from "./core/cli.js";
 import { parseCloseArgs, planClose } from "./core/close.js";
@@ -60,12 +60,18 @@ import {
 	listCodexRollouts,
 	summarizeCodexEvent,
 } from "./core/harness/codex.js";
-import { sessionEventsPath, summarizeCopilotEvent } from "./core/harness/copilot.js";
+import {
+	type CopilotSessionDir,
+	copilotSessionStateScan,
+	sessionEventsPath,
+	summarizeCopilotEvent,
+} from "./core/harness/copilot.js";
 import { supportsBranching } from "./core/harness/types.js";
 import { parseReceiptBody } from "./core/message.js";
 import { normalizeModelQuery } from "./core/models/match.js";
 import type { ModelEntry } from "./core/models/registry.js";
 import { loadModels } from "./core/models/registry.js";
+import { buildExportLines } from "./core/session-join.js";
 import {
 	aliasAgentSpawnArgs,
 	allocatePijId,
@@ -99,7 +105,7 @@ const USAGE = `pij — session messaging + tmux control plane
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
-  pij adopt "$TMUX_PANE" --harness <h>               register your own pane so peers can reach you
+  pij adopt "$TMUX_PANE" --harness <h> [--export]    register your own pane so peers can reach you (--export: eval-able PIJ_SESSION_ID — self-resolution sugar, NOT the telemetry fix)
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
   pij telegram <init|start|stop>                     bridge pij sessions to a Telegram bot
@@ -111,8 +117,9 @@ Agents (run declarative minih agent packs):
   pij agent show|new|check|eject <slug>              inspect · scaffold · validate · customise a pack
 
 Messaging:
-  pij whoami [--json]                                your stable session id
+  pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
   pij list [--here] [--json]                         known sessions
+  pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
   pij send <id> "<text>" | --command <name> [--wait] deliver a message / control command
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
@@ -708,19 +715,51 @@ function runCompactSelf(argv: readonly string[]): void {
 	process.exit(0);
 }
 
-/** `pij adopt <pane> --harness claude` (T023, AC-14): register an ALREADY-running
- *  tmux agent (e.g. this orchestrator's own pane) as a bound pij peer so other
- *  sessions can `pij send` to it and the daemon dumps the message into its pane.
- *  Adopt has no post-spawn new-file event, so it binds by its OWN rule
- *  (`resolveAdoptSessionId`): the adopting shell's CLAUDE_CODE_SESSION_ID, else
- *  the newest transcript in the cwd, else pending + `pij phonehome`. */
+/** Best-effort mtime (ms) of a path — `-1` if unreadable, so it sorts last. */
+function statMtime(path: string): number {
+	try {
+		return statSync(path).mtimeMs;
+	} catch {
+		return -1;
+	}
+}
+
+/** Best-effort listing of `~/.copilot/session-state/*` child dirs with mtimes for
+ *  the copilot adopt scanner (finding 02b). Returns `[]` if the root is unreadable
+ *  (copilot never ran here). Impure — passed into the pure `copilotSessionStateScan`. */
+function listCopilotStateDirs(root: string): CopilotSessionDir[] {
+	try {
+		return readdirSync(root).map((name) => ({ name, mtimeMs: statMtime(join(root, name)) }));
+	} catch {
+		return [];
+	}
+}
+
+/** `pij adopt <pane> --harness <h> [--export]` (T023, AC-14; harness-aware per
+ *  Plan 031): register an ALREADY-running tmux agent (e.g. this orchestrator's
+ *  own pane) as a bound pij peer so other sessions can `pij send` to it and the
+ *  daemon dumps the message into its pane. Adopt has no post-spawn new-file event,
+ *  so it binds by its OWN harness-aware rule (`resolveAdoptSessionIdForHarness`):
+ *    - claude → the adopting shell's CLAUDE_CODE_SESSION_ID, else the newest
+ *      transcript stem in the cwd (unchanged);
+ *    - codex → the newest rollout's trailing UUID + its absolute transcriptPath;
+ *    - copilot → the newest `~/.copilot/session-state/*` uuid (NEW scan; never the
+ *      claude dir — finding 02b);
+ *  else pending + `pij phonehome`. `--export` prints ONLY the eval-able
+ *  `export PIJ_SESSION_ID=…` block (ergonomic self-resolution sugar — NOT the
+ *  telemetry fix; finding 04). */
 function runAdopt(argv: readonly string[]): void {
-	const req = parseAdoptArgs(argv);
+	// `--export` is not a parseAdoptArgs flag (that parser lives in core/spawn.ts);
+	// strip it here so the rest parses cleanly, then emit the eval block instead of
+	// the human confirmation line.
+	const wantExport = argv.includes("--export");
+	const req = parseAdoptArgs(argv.filter((a) => a !== "--export"));
 	if (!req.ok) {
 		process.stderr.write(`${req.code}: ${req.message}\n`);
 		process.exit(64);
 	}
 	const pane = req.value.pane;
+	const harness = req.value.harness;
 	// Resolve the pane's cwd + foreground pid from tmux.
 	let cwd = process.cwd();
 	let panePid = process.pid;
@@ -737,41 +776,81 @@ function runAdopt(argv: readonly string[]): void {
 		process.stderr.write(`E-ARG: cannot resolve pane ${pane} (is it a live tmux pane?)\n`);
 		process.exit(2);
 	}
-	// Newest-first transcript stems in the cwd's project dir (pane-start-time proxy).
-	const dir = transcriptDir(homedir(), cwd);
-	let stemsNewestFirst: string[] = [];
-	try {
-		stemsNewestFirst = readdirSync(dir)
-			.filter((n) => n.endsWith(".jsonl"))
-			.map((n) => ({ n, t: statSync(join(dir, n)).mtimeMs }))
+	// Harness-aware newest-first listings (the impure readdir/mtime-sort lives here;
+	// the decision is the pure resolver). Only the relevant harness's listing runs.
+	let claudeStemsNewestFirst: string[] = [];
+	let codexRolloutPathsNewestFirst: string[] = [];
+	let copilotSessionId: string | null = null;
+	if (harness === "codex") {
+		// Codex's rollouts live in the GLOBAL date-nested tree ~/.codex/sessions/**;
+		// deep-list then mtime-sort newest-first (the pane-start-time proxy).
+		const paths = listCodexRollouts((d) => {
+			try {
+				return readdirSync(d);
+			} catch {
+				return [];
+			}
+		}, codexTranscriptRoot(homedir()));
+		codexRolloutPathsNewestFirst = paths
+			.map((p) => ({ p, t: statMtime(p) }))
 			.sort((a, b) => b.t - a.t)
-			.map(({ n }) => n.slice(0, -".jsonl".length));
-	} catch {
-		/* no transcripts yet */
+			.map(({ p }) => p);
+	} else if (harness === "copilot") {
+		// finding 02b: NEW scan of ~/.copilot/session-state/* (dir-name = uuid),
+		// newest by mtime. NEVER the claude dir.
+		copilotSessionId = copilotSessionStateScan(listCopilotStateDirs, homedir());
+	} else {
+		// claude (+ pi): unchanged — newest transcript stems in the cwd's project dir.
+		const dir = transcriptDir(homedir(), cwd);
+		try {
+			claudeStemsNewestFirst = readdirSync(dir)
+				.filter((n) => n.endsWith(".jsonl"))
+				.map((n) => ({ n, t: statSync(join(dir, n)).mtimeMs }))
+				.sort((a, b) => b.t - a.t)
+				.map(({ n }) => n.slice(0, -".jsonl".length));
+		} catch {
+			/* no transcripts yet */
+		}
 	}
-	const harnessSessionId =
-		resolveAdoptSessionId(process.env.CLAUDE_CODE_SESSION_ID, stemsNewestFirst) ?? undefined;
+	const resolution = resolveAdoptSessionIdForHarness({
+		harness,
+		envSessionId: process.env.CLAUDE_CODE_SESSION_ID,
+		claudeStemsNewestFirst,
+		codexRolloutPathsNewestFirst,
+		copilotSessionId,
+	});
+	const harnessSessionId = resolution.harnessSessionId ?? undefined;
 	const pijId = req.value.id ?? allocatePijId(`adopt-${pane}`, panePid);
 	const dataDir = join(pijHome, pijId);
 	let descriptor = buildPendingDescriptor({
 		pijId,
 		paneId: pane,
 		cwd,
-		harness: req.value.harness,
+		harness,
 		dataDir,
 		eventsPath: join(dataDir, "events.ndjson"),
 		pid: panePid,
 		startedAtIso: new Date().toISOString(),
 	});
-	if (harnessSessionId) descriptor = applyBinding(descriptor, harnessSessionId);
+	if (harnessSessionId) {
+		descriptor = applyBinding(descriptor, harnessSessionId);
+		// codex needs the ABSOLUTE rollout path persisted (a bare uuid can't
+		// reconstruct the date-nested path) — mirror loop.ts:337.
+		if (resolution.transcriptPath) {
+			descriptor = { ...descriptor, transcriptPath: resolution.transcriptPath };
+		}
+	}
 	new FsRegistry(pijHome).write(descriptor);
-	if (req.value.json) {
+	if (wantExport) {
+		// AC-5: the eval-able block is the ONLY stdout, safe to `eval`.
+		process.stdout.write(`${buildExportLines(descriptor)}\n`);
+	} else if (req.value.json) {
 		process.stdout.write(
-			`${JSON.stringify({ id: pijId, paneId: pane, harness: req.value.harness, harnessSessionId: harnessSessionId ?? null, lifecycle: descriptor.lifecycle })}\n`,
+			`${JSON.stringify({ id: pijId, paneId: pane, harness, harnessSessionId: harnessSessionId ?? null, transcriptPath: descriptor.transcriptPath ?? null, lifecycle: descriptor.lifecycle })}\n`,
 		);
 	} else if (harnessSessionId) {
 		process.stdout.write(
-			`adopted ${pijId} ↔ ${req.value.harness} session ${harnessSessionId} (pane ${pane}, bound) — peers can now: pij send ${pijId} "<text>"\n`,
+			`adopted ${pijId} ↔ ${harness} session ${harnessSessionId} (pane ${pane}, bound) — peers can now: pij send ${pijId} "<text>"\n`,
 		);
 	} else {
 		process.stdout.write(

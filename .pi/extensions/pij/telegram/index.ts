@@ -37,7 +37,13 @@ const TELEGRAM_USAGE = `pij telegram — bridge pij sessions to a Telegram bot
 Subcommands:
   pij telegram init    one-time setup: register the bot token + operator allowlist (Phase 4)
   pij telegram start   run the bridge (foreground): relay Telegram ⇄ pij sessions
-  pij telegram stop    stop the running bridge (signal it / clear a stale lock)`;
+  pij telegram stop    stop the running bridge (signal it / clear a stale lock)
+
+Send a message TO the operator's Telegram — there is NO "telegram send" subcommand.
+It's just a normal channel send to the special peer id "pij-telegram":
+  pij send pij-telegram "your message here"
+The running bridge forwards it to Telegram; the operator's swipe-replies come back as
+injected turns in your session. Keep messages phone-short. (Requires: pij telegram start.)`;
 
 /** PIJ_HOME (default ~/.pij) — same resolution the rest of the extension uses. */
 function pijHomeOf(): string {
@@ -477,6 +483,8 @@ export function runTelegram(argv: readonly string[]): void {
 			telegramStop(rest);
 			return;
 		case undefined:
+		case "--help":
+		case "-h":
 			process.stdout.write(`${TELEGRAM_USAGE}\n`);
 			return;
 		default:

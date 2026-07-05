@@ -5,7 +5,8 @@
 // exactly-once, and run the watchdog that re-sends the confirm line once then
 // fails the spawn (notifying the creator) — no silent dead spawn (AC-03/04/05).
 
-import type { DeathReason, SessionDescriptor, SessionId } from "./types.js";
+import { transcriptLayout } from "./harness/transcript.js";
+import type { DeathReason, HarnessKind, SessionDescriptor, SessionId } from "./types.js";
 
 /** Apply a discovered/confirmed harness session id to a (pending) descriptor,
  *  producing the BOUND descriptor — the binding `pij-id ↔ harnessSessionId ↔
@@ -50,6 +51,62 @@ export function resolveAdoptSessionId(
 ): string | null {
 	if (claudeCodeSessionId && claudeCodeSessionId.trim() !== "") return claudeCodeSessionId;
 	return transcriptStemsNewestFirst[0] ?? null;
+}
+
+/** Pre-resolved, newest-first adopt inputs (the impure listing/mtime-sort lives
+ *  in the bin) for {@link resolveAdoptSessionIdForHarness}. */
+export interface AdoptResolveInput {
+	readonly harness: HarnessKind;
+	/** The adopting shell's own env session id (claude: `CLAUDE_CODE_SESSION_ID`). */
+	readonly envSessionId: string | undefined;
+	/** Newest-first transcript STEMS in the cwd (claude's pane-start proxy). */
+	readonly claudeStemsNewestFirst: readonly string[];
+	/** Newest-first codex rollout ABSOLUTE paths (deep-listed, mtime-sorted). */
+	readonly codexRolloutPathsNewestFirst: readonly string[];
+	/** The scanned copilot session-state uuid (newest `~/.copilot/session-state/*`
+	 *  by mtime), or `null` — from `copilotSessionStateScan`. NEVER a claude stem. */
+	readonly copilotSessionId: string | null;
+}
+
+/** The resolved adopt binding: the harness session id (`null` ⇒ write `pending`)
+ *  and, codex only, its absolute rollout path (a bare uuid can't reconstruct the
+ *  date-nested path — Finding 06). */
+export interface AdoptResolution {
+	readonly harnessSessionId: string | null;
+	/** Codex only: absolute rollout `*.jsonl` for `pij tail` (mirror `loop.ts:337`). */
+	readonly transcriptPath?: string;
+}
+
+/** Harness-aware adopt resolution (findings 02/02b/03). Adopt has no post-spawn
+ *  new-file event, so it resolves the harness session id per harness:
+ *    - **claude** → env id else newest stem — TODAY's rule, byte-for-byte
+ *      (`resolveAdoptSessionId`); the `pi` fallback shares it.
+ *    - **codex** → the newest rollout's trailing UUID (`transcriptLayout('codex')
+ *      .sessionIdOf`) PLUS its absolute `transcriptPath` (Finding 03).
+ *    - **copilot** → the scanned `~/.copilot/session-state` uuid ONLY (Finding
+ *      02b) — it NEVER falls through to the claude dir, so a claude transcript in
+ *      the cwd can never mis-bind a copilot adopt.
+ *  Returns `harnessSessionId: null` when a harness can't resolve — the caller
+ *  writes `pending` (no crash, no wrong-harness id — AC-4). */
+export function resolveAdoptSessionIdForHarness(input: AdoptResolveInput): AdoptResolution {
+	switch (input.harness) {
+		case "codex": {
+			const path = input.codexRolloutPathsNewestFirst[0];
+			if (!path) return { harnessSessionId: null };
+			return {
+				harnessSessionId: transcriptLayout("codex").sessionIdOf(path),
+				transcriptPath: path,
+			};
+		}
+		case "copilot":
+			// finding 02b: the scanner is the ONLY source — never the claude stem.
+			return { harnessSessionId: input.copilotSessionId };
+		default:
+			// claude (+ pi): unchanged — env id, else newest transcript stem.
+			return {
+				harnessSessionId: resolveAdoptSessionId(input.envSessionId, input.claudeStemsNewestFirst),
+			};
+	}
 }
 
 // ─── watchdog ────────────────────────────────────────────────────────────────
