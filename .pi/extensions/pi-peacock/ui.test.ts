@@ -10,8 +10,12 @@ import {
 	visibleWidthWithoutAnsi,
 } from "./ui.js";
 
+// Derive cwd from the real HOME (the same source footerPath reads) so the
+// $HOME->~ collapse is exercised deterministically wherever the suite runs —
+// e.g. a self-hosted CI runner whose HOME differs from the checkout path.
+const homeDir = process.env.HOME || process.env.USERPROFILE || "";
 const snapshot = {
-	cwd: "/Users/jordanknight/pi-hacking/pij",
+	cwd: `${homeDir}/pi-hacking/pij`,
 	branch: "main",
 	provider: "github-copilot",
 	model: "gpt-5.5",

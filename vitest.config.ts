@@ -1,6 +1,35 @@
+import { createRequire } from "node:module";
+
 import { defineConfig } from "vitest/config";
 
 const NODE_SQLITE_SHIM = "\0node-sqlite-shim";
+
+const nodeRequire = createRequire(import.meta.url);
+
+// `node:sqlite` is a built-in only on Node >= 22.5. On older runtimes — notably
+// the CI matrix's Node 20 leg — it cannot be required at all, so every test file
+// that imports the SQLite-backed store crashes at load (store.ts:10 statically
+// imports it), which a per-test `describe.skipIf` cannot prevent. Probe once here
+// and, when node:sqlite is absent, exclude exactly the two store tests so the
+// suite stays green instead of erroring at collection time.
+//
+// This is a DELIBERATE, HONEST coverage gap, not a silent one: these two store
+// tests still run in full on Node >= 22.5 (local dev today, and CI once the Node
+// matrix is bumped — a separate call for Jordan). Everything else runs on every
+// Node version.
+function hasNodeSqlite(): boolean {
+	try {
+		nodeRequire("node:sqlite");
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+const SQLITE_DEPENDENT_TESTS = [
+	".pi/extensions/session-sql/store.test.ts",
+	".pi/extensions/todo/store.test.ts",
+];
 
 export default defineConfig({
 	plugins: [
@@ -24,7 +53,12 @@ export default defineConfig({
 	],
 	test: {
 		include: [".pi/extensions/**/*.test.ts", "harness/**/*.test.ts", "skills/**/*.test.ts"],
-		exclude: ["node_modules", ".pi/git", ".pi/npm"],
+		exclude: [
+			"node_modules",
+			".pi/git",
+			".pi/npm",
+			...(hasNodeSqlite() ? [] : SQLITE_DEPENDENT_TESTS),
+		],
 		testTimeout: 5000,
 		reporters: process.env.CI ? ["default", "github-actions"] : ["default"],
 		// A fresh clone with no extensions yet (and post-demo-teardown at
