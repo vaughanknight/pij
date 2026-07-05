@@ -30,18 +30,17 @@ The [`justfile`](../../justfile) wraps the `npx skills` installer:
 
 | Recipe | Scope | Source(s) | `justfile` |
 |--------|-------|-----------|-----------|
-| `just flow-pair-install` | **Machine-wide, every agent** (`-a '*'`) | `skills/flow-pair` from this repo (engine + `/flow-pair` shim) | `167-168` |
-| `just pij-skill-install` | **Machine-wide, every agent** (`-a '*'`) | `skills/pij` from this repo — the `/pij` router front door | `195-199` |
-| `just install-flow-skills` | **pi only** (`-a pi`), global | `the-flow` ← `jakkaj/tools`; `eng-harness-flow` (+ its peer harnessability-assessment) ← `@ai-substrate/engineering-harness` | `181-191` |
-| `just flow-pair-link` | in-repo dogfooding | symlinks `skills/flow-pair` into `.pi/skills/` so pi auto-discovers it | `155-158` |
-| `just pij-skill-link` | in-repo dogfooding | symlinks `skills/pij` into `.pi/skills/` so pi auto-discovers it | `185-188` |
+| `just pij-skill-install` | **Machine-wide, every agent** (`-a '*'`) | `skills/pij` from this repo — the `/pij` router front door | `178-182` |
+| `just install-flow-skills` | **pi only** (`-a pi`), global | `the-flow` ← `jakkaj/tools`; `eng-harness-flow` (+ its peer harnessability-assessment) ← `@ai-substrate/engineering-harness` | `195-206` |
+| `just pij-skill-link` | in-repo dogfooding | symlinks `skills/pij` into `.pi/skills/` so pi auto-discovers it | `168-172` |
 
 Notes:
 
-- `just flow-pair-install` runs `npx skills@latest add "$(realpath skills)" -a
+- `just pij-skill-install` runs `npx skills@latest add "$(realpath skills)" -a
   '*' …` — it fans out to **every** detected agent (Claude Code, Copilot CLI,
   codex, pi), managing the shared `~/.agents/skills` store + the per-agent
-  symlink bridges, all tracked in `~/.agents/.skill-lock.json` (`justfile:160-168`).
+  symlink bridges (tracked in `~/.agents/.skill-lock.json`), then swaps the store
+  entry for a repo symlink so it can't drift (`justfile:178-182`).
 - `just install-flow-skills` is pi-scoped and pulls the flow front-door skills:
   `the-flow` from the `jakkaj/tools` repo, and `eng-harness-flow` from the
   globally-installed `@ai-substrate/engineering-harness` package's `skills/` dir
@@ -55,10 +54,11 @@ Notes:
 For a fresh agent getting productive in pij, the three that matter most:
 
 - **`the-flow`** — the SDD pipeline front door (see [`workflow.md`](workflow.md)).
-- **`pij`** — the unified router front door (routes: pair · delegate · agent · peer · ops);
-  pairing is `/pij pair`, and `/flow-pair` is a supersession alias to it.
-- **`flow-pair`** — the orchestrator/worker/reviewer delegation **engine** behind `/pij pair`
-  (CLI, ledger, schemas, prompt-lab; see [`flow-pair.md`](flow-pair.md)).
+- **`pij`** — the unified router front door (routes: pair · delegate · agent · peer · ops · skill);
+  pairing is `/pij pair`. (The old `/flow-pair` skill was removed; saying "flow-pair" still routes here.)
+- **flow-pair engine** — *not* an installed skill, but the orchestrator/worker/reviewer delegation
+  **engine** (`skills/flow-pair/lib`) behind `/pij pair` (CLI, ledger, schemas, prompt-lab; see
+  [`flow-pair.md`](flow-pair.md)).
 - **`eng-harness-flow`** — the engineering-harness loop (boot / checks / improve;
   see [`build.md`](build.md) and
   [`.harness/engineering-harness.md`](../../.harness/engineering-harness.md)).

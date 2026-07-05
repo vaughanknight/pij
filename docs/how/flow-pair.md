@@ -1,10 +1,11 @@
 # How: flow-pair
 
-> **Front door moved.** Pairing is now invoked via **`/pij pair`** — the pij router skill
-> (`skills/pij/`). `/flow-pair` still works as a thin supersession pointer to `/pij pair`
-> (its NL trigger phrases are preserved), but the skill front door lives in `skills/pij/`
-> now. **The engine described below — the `flow-pair` CLI, `.flow-pair/` ledger, schemas,
-> and prompt-lab — is unchanged and still owned by this domain.**
+> **Front door removed.** Pairing is invoked via **`/pij pair`** — the pij router skill
+> (`skills/pij/`). The old `/flow-pair` **skill** has been removed (`skills/flow-pair/SKILL.md`
+> deleted, uninstalled from `~/.agents/skills` + `~/.claude/skills`); saying "flow-pair" still
+> routes, because `/pij`'s own description carries those trigger phrases. **The engine described
+> below — the `flow-pair` CLI (`skills/flow-pair/lib`), `.flow-pair/` ledger, schemas, and
+> prompt-lab — is unchanged and still drives `/pij pair`.**
 
 `flow-pair` wraps `the-flow` SDD pipeline in a **three-session orchestrator/worker/reviewer
 delegation seam** with a central prompt-learning ledger. An expensive orchestrator session plans,
@@ -12,8 +13,7 @@ routes, delegates, reviews, and learns; a cheap worker session executes one boun
 time; an independent cross-model reviewer runs clean-room code review. `the-flow` remains the inner
 route authority — `flow-pair` is the delegation wrapper, never a replacement.
 
-It is invoked via `/pij pair` (routed by the `/pij` skill, `skills/pij/`; `/flow-pair` remains a
-supersession alias that still triggers it) and shells out to the
+It is invoked via `/pij pair` (routed by the `/pij` skill, `skills/pij/`) and shells out to the
 `flow-pair` CLI (`skills/flow-pair/lib/cli.ts`) for all state-mutating operations. The CLI is never
 imported into pi (P2 boundary).
 

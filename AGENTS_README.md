@@ -80,22 +80,23 @@ Install via the `justfile` (it wraps `npx skills` — never call `npx skills` by
 hand for a cold start):
 
 ```bash
-just flow-pair-install     # flow-pair engine + /flow-pair shim → EVERY agent (`-a '*'`):
+just pij-skill-install     # the /pij router front door (pair/delegate/agent/peer/ops/skill) → EVERY agent (`-a '*'`):
                            #   Claude (~/.claude/skills) AND Copilot/codex/pi (~/.agents/skills)
-just pij-skill-install     # the /pij router skill — the front door (pair/delegate/agent/peer/ops)
 just install-flow-skills   # the-flow + eng-harness-flow, pi-scoped, global
-just flow-pair-link        # (in-repo dogfood) symlink flow-pair into .pi/skills/
+just pij-skill-link        # (in-repo dogfood) symlink /pij into .pi/skills/
 ```
 
-`flow-pair-install` fans out to Claude **and** Copilot at once (it populates
-`~/.agents/skills/` and the per-agent symlink bridge into `~/.claude/skills/`);
-you do **not** install per-agent. For cold start the skills that matter are
-`the-flow`, `pij` (the router front door), `flow-pair` (the pairing engine behind
-`/pij pair`), and `eng-harness-flow`.
+`pij-skill-install` fans out to Claude **and** Copilot at once (it populates
+`~/.agents/skills/` and the per-agent symlink bridge into `~/.claude/skills/`, then
+symlinks the store entry back to the repo so it can't drift); you do **not** install
+per-agent. For cold start the skills that matter are `the-flow`, `pij` (the router
+front door — its `pair` route drives the repo-local **flow-pair engine**
+(`skills/flow-pair/lib`), which is no longer a separately-installed skill), and
+`eng-harness-flow`.
 
 **Front door**: `/pij` routes every pij job by intent — `pair` (coder+reviewer fleet),
-`delegate` (one task → one peer), `agent`, `peer`, `ops`. `/flow-pair` is a supersession
-alias to `/pij pair`; both still trigger the same protocol.
+`delegate` (one task → one peer), `agent`, `peer`, `ops`, `skill`. The old `/flow-pair`
+skill has been removed — say "flow-pair" or run `/pij pair` (both route the same protocol).
 
 ### `the-flow` from the source repo (`jakkaj/tools`)
 

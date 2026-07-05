@@ -158,30 +158,13 @@ link:
 unlink:
     npm run link -- --remove
 
-# Symlink skills/flow-pair/ into .pi/skills/ so pi auto-discovers it (Finding 02:
-# pi only scans .pi/skills/, not the bare top-level skills/ dir).
-flow-pair-link:
-    mkdir -p .pi/skills
-    ln -sf "$(realpath skills/flow-pair)" .pi/skills/flow-pair
-    @echo "✓ .pi/skills/flow-pair → $(realpath skills/flow-pair)"
-
-# Install skills/flow-pair MACHINE-WIDE to EVERY detected agent (Claude Code +
-# Copilot CLI + codex + pi + …) via `npx skills` — the canonical installer that
-# manages ~/.agents/skills (the shared store) + per-agent symlink bridges, tracked
-# in ~/.agents/.skill-lock.json. `-a '*'` fans out to all agents (codex included,
-# which the old hand-rolled ~/.claude+~/.copilot loop missed); default is symlink
-# (no --copy) so the live skill always tracks this repo. Supersedes the manual
-# per-dir symlink loop. Run after a build stage when dogfooding from any harness.
-flow-pair-install:
-    npx skills@latest add "$(realpath skills)" -a '*' -g -y -s flow-pair
-
 # Structural gates for the /pij router skill (plan 030): registry↔module parity,
 # sibling-blindness, line budgets, CLI-verb coverage, duplicated-prose scope.
 pij-skill-check:
     bash harness/scripts/pij-skill-check.sh
 
-# Symlink skills/pij/ into .pi/skills/ so pi auto-discovers it (same Finding 02
-# rationale as flow-pair-link: pi only scans .pi/skills/, not top-level skills/).
+# Symlink skills/pij/ into .pi/skills/ so pi auto-discovers it (Finding 02:
+# pi only scans .pi/skills/, not the bare top-level skills/ dir).
 pij-skill-link:
     mkdir -p .pi/skills
     ln -sf "$(realpath skills/pij)" .pi/skills/pij
