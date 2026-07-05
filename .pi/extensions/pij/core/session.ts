@@ -32,6 +32,7 @@ import {
 	ok,
 	type PijErrorCode,
 	type PijMessage,
+	type ReceiptState,
 	type Result,
 	type Role,
 	type SessionDescriptor,
@@ -84,7 +85,7 @@ export interface BootResult {
 }
 
 export type InboundResult =
-	| { readonly kind: "delivered"; readonly state: "queued" | "delivered" }
+	| { readonly kind: "delivered"; readonly state: ReceiptState }
 	| { readonly kind: "command-executed"; readonly command: string }
 	| { readonly kind: "command-deferred"; readonly command: string }
 	| { readonly kind: "command-rejected"; readonly code: PijErrorCode }

@@ -30,12 +30,12 @@ export function roleLabel(role: Role | undefined): string {
 }
 
 /** Body of an extension-issued delivery receipt, framed for the sender's
- *  event log (spec AC-13): `[pij receipt <messageId>] queued|delivered`. */
+ *  event log (spec AC-13): `[pij receipt <messageId>] queued|delivered|unverified`. */
 export function receiptBody(messageId: string, state: ReceiptState): string {
 	return `[pij receipt ${messageId}] ${state}`;
 }
 
-const RECEIPT_RE = /^\[pij receipt ([^\]]+)\] (queued|delivered)$/;
+const RECEIPT_RE = /^\[pij receipt ([^\]]+)\] (queued|delivered|unverified)$/;
 
 /** Parse a receipt body back into { messageId, state }, or null if not a
  *  receipt (used by `pij send --wait` to correlate the delivered receipt and

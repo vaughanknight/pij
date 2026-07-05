@@ -12,6 +12,11 @@ import { selectTransport } from "../harness/types.js";
 import { frame } from "../message.js";
 import type { PijMessage, SessionDescriptor, SessionId } from "../types.js";
 
+export interface BufferedMessage {
+	readonly messageId: string;
+	readonly message: PijMessage;
+}
+
 export type RouteDecision =
 	| { readonly kind: "inject"; readonly paneId: string; readonly text: string }
 	| { readonly kind: "buffer"; readonly reason: string }
@@ -49,12 +54,12 @@ export function route(target: SessionDescriptor, message: PijMessage): RouteDeci
  *  daemon holds one for its lifetime; nothing persists (a restart re-derives
  *  unsent work from the inbox files it has not yet consumed). */
 export class SendBuffer {
-	private readonly byTarget = new Map<SessionId, PijMessage[]>();
+	private readonly byTarget = new Map<SessionId, BufferedMessage[]>();
 
 	/** Buffer a message for its target. */
-	enqueue(message: PijMessage): void {
+	enqueue(messageId: string, message: PijMessage): void {
 		const q = this.byTarget.get(message.to) ?? [];
-		q.push(message);
+		q.push({ messageId, message });
 		this.byTarget.set(message.to, q);
 	}
 
@@ -64,7 +69,7 @@ export class SendBuffer {
 	}
 
 	/** Remove and return all buffered messages for a target, in arrival order. */
-	flush(target: SessionId): PijMessage[] {
+	flush(target: SessionId): BufferedMessage[] {
 		const q = this.byTarget.get(target) ?? [];
 		this.byTarget.delete(target);
 		return q;

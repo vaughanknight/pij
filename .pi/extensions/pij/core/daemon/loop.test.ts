@@ -58,7 +58,10 @@ function world(opts: { pane?: string; transcripts?: string[]; dead?: boolean } =
 	const ports: DaemonPorts = {
 		capturePane: () => pane,
 		isPaneDead: () => dead,
-		sendText: (p, t) => sentText.push({ pane: p, text: t }),
+		sendText: (p, t) => {
+			sentText.push({ pane: p, text: t });
+			return "confirmed";
+		},
 		sendKey: (p, k) => sentKeys.push({ pane: p, key: k }),
 		listTranscripts: () => transcripts,
 		// Codex (Plan 022): the deep lister backs onto the SAME fake transcript set;

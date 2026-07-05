@@ -18,7 +18,6 @@ import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
 import {
 	err,
-	type HarnessKind,
 	ok,
 	type PijErrorCode,
 	type PijEvent,
@@ -114,6 +113,10 @@ const EXIT: Record<PijErrorCode, number> = {
 	"E-BRANCH": 64,
 	"E-OWN": 2,
 };
+
+function daemonReceiptAuthoritative(target: SessionDescriptor): boolean {
+	return target.harness === "claude" || target.harness === "copilot" || target.harness === "codex";
+}
 
 // ─── argv parsing ───────────────────────────────────────────────────────────
 /** Split argv into positionals + flags. `--k v` consumes the next token unless
@@ -545,7 +548,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							: "file"
 						: "text";
 			}
-			const initial = (target.state ?? "idle") === "working" ? "queued" : "delivered";
+			const initial = daemonReceiptAuthoritative(target)
+				? "queued"
+				: (target.state ?? "idle") === "working"
+					? "queued"
+					: "delivered";
 			// Informational "quiet peer" note keys on event AGE, not the liveness
 			// label: an idle/done peer is now `active` (INS-001), but a long-quiet
 			// peer is still worth flagging to the sender. The send lands regardless.
@@ -573,7 +580,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				};
 			const recvHint =
 				initial === "queued"
-					? "queued: peer is busy, will steer after current turn"
+					? daemonReceiptAuthoritative(target)
+						? "queued: awaiting daemon delivery confirmation"
+						: "queued: peer is busy, will steer after current turn"
 					: "delivered: peer was idle";
 			const tail = cmd.wait
 				? ""

@@ -38,6 +38,7 @@ interface FakePortsOptions {
 	readonly alive?: boolean;
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
+	readonly sendOutcome?: "confirmed" | "unverified";
 }
 
 function fakePorts(
@@ -51,7 +52,10 @@ function fakePorts(
 		killed,
 		capturePane: () => (typeof paneText === "function" ? paneText() : (paneText ?? READY)),
 		isPaneDead: () => false,
-		sendText: (pane, text) => sent.push({ pane, text }),
+		sendText: (pane, text) => {
+			sent.push({ pane, text });
+			return options.sendOutcome ?? "confirmed";
+		},
 		sendKey: () => {},
 		killPane: (pane) => killed.push(pane),
 		listTranscripts: () => [],
@@ -97,7 +101,12 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 				harnessSessionId: "sess",
 			}),
 		);
-		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-c", body: "review the diff" });
+		const delivered = new FsChannel(home).deliver({
+			from: "pij-boss",
+			to: "pij-c",
+			body: "review the diff",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
 		const ports = fakePorts();
 		new Daemon(home, ports, registry, new FsChannel(home)).tick();
 		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] review the diff" });
@@ -105,6 +114,33 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(
 			readdirSync(join(home, "pij-c", "inbox")).filter((n) => n.startsWith("msg-")),
 		).toHaveLength(0);
+		expect(messageBodies("pij-boss")).toContain(
+			`[pij receipt ${delivered.value.messageId}] delivered`,
+		);
+	});
+
+	it("emits an unverified receipt when daemon injection cannot confirm delivery", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const delivered = new FsChannel(home).deliver({
+			from: "pij-boss",
+			to: "pij-c",
+			body: "review the diff",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts({ sendOutcome: "unverified" });
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(messageBodies("pij-boss")).toContain(
+			`[pij receipt ${delivered.value.messageId}] unverified`,
+		);
 	});
 
 	it("delivery ownership: a PI target's inbox is NEVER drained (left for its in-process receiver)", () => {

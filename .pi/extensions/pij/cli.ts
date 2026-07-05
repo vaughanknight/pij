@@ -218,8 +218,8 @@ function followTail(cmd: ParsedCommand & { verb: "tail" }, d: CliDeps, fromSeq: 
 	setTimeout(tick, FOLLOW_MS);
 }
 
-/** --wait: poll self's receipt events until the delivered receipt for this
- *  messageId lands (F3 — parse receiptBody), or the timeout elapses. */
+/** --wait: poll self's receipt events until a terminal receipt for this
+ *  messageId lands (delivered or unverified), or the timeout elapses. */
 function waitReceipt(
 	d: CliDeps,
 	self: string,
@@ -238,7 +238,7 @@ function waitReceipt(
 			if (seen.has(key)) continue;
 			seen.add(key);
 			process.stdout.write(`receipt → ${r.state}\n`);
-			if (r.state === "delivered") process.exit(0);
+			if (r.state === "delivered" || r.state === "unverified") process.exit(0);
 		}
 		if (Date.now() - started > timeoutMs) {
 			process.stdout.write("receipt → (timeout; check `pij tail` later)\n");

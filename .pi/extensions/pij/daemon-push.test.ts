@@ -44,7 +44,7 @@ function makePorts(opts: {
 	return {
 		capturePane: () => opts.pane ?? "⏵ bypass permissions on",
 		isPaneDead: () => opts.dead ?? false,
-		sendText: () => {},
+		sendText: () => "confirmed",
 		sendKey: () => {},
 		listTranscripts: () => [],
 		home: () => HOME,
@@ -247,7 +247,7 @@ describe("bad-model smoke (T014 — mocked pane, no live harness)", () => {
 		const ports: DaemonPorts = {
 			capturePane: () => BAD_PANE,
 			isPaneDead: () => false,
-			sendText: () => {},
+			sendText: () => "confirmed",
 			sendKey: () => {},
 			listTranscripts: () => [],
 			home: () => HOME,

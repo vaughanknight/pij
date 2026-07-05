@@ -72,12 +72,13 @@ describe("route (delivery ownership, AC-07/08)", () => {
 describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 	it("buffers per target and flushes FIFO, clearing the queue", () => {
 		const b = new SendBuffer();
-		b.enqueue(msg("w", "one"));
-		b.enqueue(msg("w", "two"));
-		b.enqueue(msg("other", "z"));
+		b.enqueue("m1", msg("w", "one"));
+		b.enqueue("m2", msg("w", "two"));
+		b.enqueue("m3", msg("other", "z"));
 		expect(b.pending("w")).toBe(2);
 		const flushed = b.flush("w");
-		expect(flushed.map((m) => m.body)).toEqual(["one", "two"]);
+		expect(flushed.map((m) => m.message.body)).toEqual(["one", "two"]);
+		expect(flushed.map((m) => m.messageId)).toEqual(["m1", "m2"]);
 		expect(b.pending("w")).toBe(0); // cleared
 		expect(b.pending("other")).toBe(1); // untouched
 	});

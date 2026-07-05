@@ -23,7 +23,7 @@ import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js"
 import { buildInitInjection, discoverNewTranscript } from "../harness/claude.js";
 import { type TranscriptListing, transcriptLayout } from "../harness/transcript.js";
 import { classifyInterstitial } from "../interstitial.js";
-import type { DeliveryPort, RegistryPort } from "../ports.js";
+import type { DeliveryPort, RegistryPort, SendOutcome } from "../ports.js";
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import { classifyDeathReason } from "../state.js";
 import type {
@@ -49,7 +49,7 @@ export interface DaemonPorts {
 	 *  typing (focus-IN injection + a secondary SIGWINCH) so its Enter submits instead
 	 *  of stranding the message in the composer. Both optional — absent falls back to
 	 *  the Claude default settle and no wake. */
-	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): void;
+	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
 	sendKey(paneId: string, key: "Escape" | "Enter"): void;
 	/** Kill a pane (tmux `kill-pane`). Idempotent — a gone pane is a no-op. Used by
@@ -399,6 +399,12 @@ function fail(
  *  via a wrapped port set; kept here as the documented default. */
 export const WATCHDOG_TIMEOUT_MS = 20_000;
 
+export interface DrainedTmuxMessage {
+	readonly messageId: string;
+	readonly from: SessionId;
+	readonly outcome?: SendOutcome;
+}
+
 /** Drain one bound tmux target's inbox: inject each message and return the
  *  messageIds consumed (the bin unlinks them). Delivery ownership (AC-08): the
  *  daemon ONLY drains tmux targets — pi targets route to `observe` and are left
@@ -413,19 +419,19 @@ export function drainTmuxInbox(
 	}>,
 	ports: DaemonPorts,
 	buffer: SendBuffer,
-): string[] {
-	const consumed: string[] = [];
+): DrainedTmuxMessage[] {
+	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
 		// Preserve the REAL sender so the injected text is framed `[pij from <from>]`
 		// and the receiving agent knows who messaged it (parity with the pi receiver).
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
-			ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
-			consumed.push(m.messageId);
+			const outcome = ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
+			consumed.push({ messageId: m.messageId, from: m.from, outcome });
 		} else if (decision.kind === "buffer") {
-			buffer.enqueue(msg);
-			consumed.push(m.messageId); // moved into the in-memory buffer; file can go
+			buffer.enqueue(m.messageId, msg);
+			consumed.push({ messageId: m.messageId, from: m.from }); // final receipt emits on flush
 		}
 		// `observe` (pi target) — never reached here; the bin doesn't drain pi inboxes.
 	}

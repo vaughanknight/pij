@@ -265,11 +265,12 @@ describe("dispatch send", () => {
 		expect(d.delivery.outbox[2]?.message).toEqual({ from: "a1", to: "w3", body: "just text" });
 	});
 
-	it("queued vs delivered receipt hint follows the peer's state", () => {
+	it("queued vs delivered receipt hint follows the pi peer's state", () => {
 		const busy = deps({
 			self: "a1",
 			descs: [desc({ id: "a1" }), desc({ id: "w3", state: "working" })],
 		});
+
 		expect(
 			JSON.parse(
 				dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, busy).stdout,
@@ -284,6 +285,15 @@ describe("dispatch send", () => {
 				dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, idle).stdout,
 			).receipt,
 		).toBe("delivered");
+	});
+
+	it("control-plane peers wait for the daemon's authoritative receipt", () => {
+		const idle = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3", harness: "copilot", state: "idle" })],
+		});
+		const result = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, idle);
+		expect(JSON.parse(result.stdout).receipt).toBe("queued");
 	});
 
 	it("codes: E-SELF, E-NOID, E-CMD, E-DEAD; stale warns + sends", () => {

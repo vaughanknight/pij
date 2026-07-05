@@ -7,7 +7,16 @@
 // the table back to one value and these go RED.
 
 import { describe, expect, it } from "vitest";
-import { composerPending, composerRegion, enterSettleMs, needsInputWake } from "./daemon-tmux.js";
+import {
+	composerHasTextTail,
+	composerIsEmpty,
+	composerPending,
+	composerRegion,
+	enterSettleMs,
+	freshTranscriptEvent,
+	needsInputWake,
+	submissionConfirmed,
+} from "./daemon-tmux.js";
 
 // Real copilot pane shapes (composer boxed between two ──── rules).
 const STUCK_PANE = [
@@ -22,6 +31,33 @@ const STUCK_PANE = [
 
 const EMPTY_PANE = [
 	" ~/pi-hacking/pij [⎇ main*%]   Session: 16 AIC used",
+	"────────────────────────────────────────────",
+	"❯",
+	"────────────────────────────────────────────",
+	" / commands · ? help · tab next tab   GPT-5.5 · 1.1M context",
+].join("\n");
+
+const BUSY_PANE = [
+	" ~/pi-hacking/pij [⎇ main*%]   Session: 17 AIC used",
+	"────────────────────────────────────────────",
+	"❯",
+	"────────────────────────────────────────────",
+	" ◎ Working · 241 B esc interrupt   GPT-5.5 · 1.1M context",
+].join("\n");
+
+const BUSY_TRANSCRIPT_CHANGED_EMPTY_PANE = [
+	" ~/pi-hacking/pij [⎇ main*%]   Session: 17 AIC used",
+	"Unrelated prior turn is still streaming.",
+	"────────────────────────────────────────────",
+	"❯",
+	"────────────────────────────────────────────",
+	" ◎ Working · 391 B esc interrupt   GPT-5.5 · 1.1M context",
+].join("\n");
+
+const SHORT_TURN_DONE = [
+	" ~/pi-hacking/pij [⎇ main*%]   Session: 17 AIC used",
+	"[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)",
+	"Done.",
 	"────────────────────────────────────────────",
 	"❯",
 	"────────────────────────────────────────────",
@@ -73,6 +109,32 @@ describe("composerPending — submit verification (the cause-independent retry g
 	it("detects a STILL-PENDING line stranded in the composer (the wedge) → retry", () => {
 		// If this flips false, the daemon stops retrying a wedged send → message lost.
 		expect(composerPending(STUCK_PANE, SENT)).toBe(true);
+	});
+
+	describe("positive send confirmation helpers", () => {
+		const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)";
+
+		it("detects typed text vs total-loss empty composer before Enter", () => {
+			expect(composerHasTextTail(STUCK_PANE, SENT)).toBe(true);
+			expect(composerIsEmpty(EMPTY_PANE)).toBe(true);
+			expect(composerHasTextTail(EMPTY_PANE, SENT)).toBe(false);
+		});
+
+		it("confirms a busy transition after submit, but not an already-busy pane", () => {
+			expect(submissionConfirmed(STUCK_PANE, BUSY_PANE, SENT)).toBe(true);
+			expect(submissionConfirmed(BUSY_PANE, BUSY_PANE, SENT)).toBe(false);
+		});
+
+		it("confirms a short ready→busy→ready turn by fresh transcript fallback", () => {
+			expect(freshTranscriptEvent(STUCK_PANE, SHORT_TURN_DONE, SENT)).toBe(true);
+			expect(submissionConfirmed(STUCK_PANE, SHORT_TURN_DONE, SENT)).toBe(true);
+		});
+
+		it("does not confirm changed transcript fallback when the pre-submit pane was already busy", () => {
+			expect(freshTranscriptEvent(BUSY_PANE, BUSY_TRANSCRIPT_CHANGED_EMPTY_PANE, SENT)).toBe(false);
+			expect(submissionConfirmed(BUSY_PANE, BUSY_TRANSCRIPT_CHANGED_EMPTY_PANE, SENT)).toBe(false);
+			expect(freshTranscriptEvent(STUCK_PANE, SHORT_TURN_DONE, SENT)).toBe(true);
+		});
 	});
 
 	it("an EMPTY composer (a real submit) is NOT pending → no spurious re-Enter", () => {

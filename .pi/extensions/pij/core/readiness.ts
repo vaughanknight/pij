@@ -59,7 +59,8 @@ const CODEX_COMPOSER_FOOTER = /·\s+~?\/\S/;
  *  (`✻ Churned for 16s`) with no ellipsis/counter, so it never matches. Order
  *  matters: classifyReadiness checks BUSY before READY, so a working pane whose
  *  status bar still reads `bypass permissions on` is correctly read as busy. */
-const BUSY_RE = /esc (?:to )?interrupt|esc cancel|↓\s*\d+\s*tokens?|\b(?!Loading…)[A-Z][a-z]+ing…/u;
+export const BUSY_RE =
+	/esc (?:to )?interrupt|esc cancel|↓\s*\d+\s*tokens?|\b(?!Loading…)[A-Z][a-z]+ing…/u;
 /** Best-effort text death signal; the authoritative one is tmux `pane_dead`
  *  (the daemon's `inspect`), which this pure classifier cannot see. */
 const DEAD_RE = /\[exited\]|pane is dead|process completed|command not found/i;
@@ -75,4 +76,10 @@ export function classifyReadiness(paneText: string): ReadinessState {
 	if (BUSY_RE.test(paneText)) return "busy";
 	if (READY_RE.test(paneText) || CODEX_COMPOSER_FOOTER.test(paneText)) return "ready";
 	return "booting";
+}
+
+/** Positive send-confirmation oracle: the pane must transition from not-busy to
+ *  busy. An already-busy pre-sample never confirms a later send. */
+export function paneWentBusy(preSample: string, postSample: string): boolean {
+	return !BUSY_RE.test(preSample) && BUSY_RE.test(postSample);
 }

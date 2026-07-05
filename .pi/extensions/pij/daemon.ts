@@ -36,7 +36,8 @@ import {
 } from "./core/daemon/loop.js";
 import { SendBuffer } from "./core/daemon/router.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
-import type { DeliveryPort, RegistryPort } from "./core/ports.js";
+import { receiptBody } from "./core/message.js";
+import type { DeliveryPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
 import type { DeathReason, SessionDescriptor } from "./core/types.js";
@@ -122,7 +123,13 @@ export class Daemon {
 				if (current.paneId && !this.flushed.has(current.id)) {
 					this.flushed.add(current.id);
 					for (const m of this.buffer.flush(current.id)) {
-						this.ports.sendText(current.paneId, flushedText(m));
+						const outcome = this.ports.sendText(
+							current.paneId,
+							flushedText(m.message),
+							current.harness,
+							current.pid,
+						);
+						this.emitSendReceipt(current.id, m.message.from, m.messageId, outcome);
 					}
 				}
 				this.drainInbox(current.id);
@@ -291,8 +298,8 @@ export class Daemon {
 		const target = this.index.get(id);
 		if (!target) return;
 		const consumed = drainTmuxInbox(target, messages, this.ports, this.buffer);
-		for (const mid of consumed) {
-			const p = pathById.get(mid);
+		for (const item of consumed) {
+			const p = pathById.get(item.messageId);
 			if (p) {
 				try {
 					rmSync(p);
@@ -300,8 +307,26 @@ export class Daemon {
 					/* already gone */
 				}
 			}
+			if (target.lifecycle === "bound" && item.outcome !== undefined) {
+				this.emitSendReceipt(target.id, item.from, item.messageId, item.outcome);
+			}
 		}
 		if (consumed.length > 0) this.log(`route ${id}: injected ${consumed.length} message(s)`);
+	}
+
+	private emitSendReceipt(
+		peer: string,
+		sender: string,
+		messageId: string,
+		outcome: SendOutcome,
+	): void {
+		const state = outcome === "confirmed" ? "delivered" : "unverified";
+		this.channel.deliver({
+			from: peer,
+			to: sender,
+			body: receiptBody(messageId, state),
+			kind: "receipt",
+		});
 	}
 }
 

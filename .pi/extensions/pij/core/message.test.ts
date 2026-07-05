@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { announceText, frame, parseFrame, roleLabel } from "./message.js";
+import {
+	announceText,
+	frame,
+	parseFrame,
+	parseReceiptBody,
+	receiptBody,
+	roleLabel,
+} from "./message.js";
+import type { ReceiptState } from "./types.js";
 
 describe("frame/parseFrame", () => {
 	it("round-trips sender id + body", () => {
@@ -33,6 +41,16 @@ describe("announceText", () => {
 		expect(t).toContain("w3");
 		expect(t).toContain("pij_send");
 		expect(t).toContain("WORKER");
+	});
+
+	describe("receiptBody/parseReceiptBody", () => {
+		it("round-trips every receipt state, including unverified", () => {
+			const states: ReceiptState[] = ["queued", "delivered", "unverified"];
+			for (const state of states) {
+				const body = receiptBody("msg-1", state);
+				expect(parseReceiptBody(body)).toEqual({ messageId: "msg-1", state });
+			}
+		});
 	});
 
 	it("is non-imperative and warns against acting on the inbox (D-040)", () => {

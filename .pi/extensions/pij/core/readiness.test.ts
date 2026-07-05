@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyReadiness } from "./readiness.js";
+import { classifyReadiness, paneWentBusy } from "./readiness.js";
 
 // Fixtures lifted from the live prototype (scratch/tmux-claude-ready/findings.md),
 // captured against Claude Code v2.1.195 / Sonnet 4.6.
@@ -211,5 +211,13 @@ describe("classifyReadiness", () => {
 		// glyph a claude/copilot pane can emit in its own output.
 		expect(classifyReadiness(STRAY_CHEVRON_NON_CODEX)).not.toBe("ready");
 		expect(classifyReadiness(STRAY_CHEVRON_NON_CODEX)).toBe("booting");
+	});
+});
+
+describe("paneWentBusy", () => {
+	it("confirms only an idle→busy transition", () => {
+		expect(paneWentBusy(COPILOT_READY, COPILOT_BUSY_ESC_INTERRUPT)).toBe(true);
+		expect(paneWentBusy(COPILOT_BUSY_ESC_INTERRUPT, COPILOT_BUSY_ESC_INTERRUPT)).toBe(false);
+		expect(paneWentBusy(COPILOT_READY, COPILOT_READY)).toBe(false);
 	});
 });

@@ -13,6 +13,9 @@ import type {
 	SessionId,
 } from "./types.js";
 
+/** Outcome of a daemon-owned tmux text injection. */
+export type SendOutcome = "confirmed" | "unverified";
+
 /** Reads/writes the ~/.pij/ peer registry (one descriptor per session). */
 export interface RegistryPort {
 	/** All known session descriptors. */

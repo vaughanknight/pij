@@ -177,7 +177,7 @@ export interface PijMessage {
 }
 
 // ─── delivery receipts (finding 08; spec AC-13) ───────────────────────────
-export type ReceiptState = "queued" | "delivered";
+export type ReceiptState = "queued" | "delivered" | "unverified";
 
 export interface MessageReceipt {
 	readonly messageId: string;
@@ -188,6 +188,8 @@ export interface MessageReceipt {
 	readonly queuedAt?: string;
 	/** ISO-8601 — set when the peer consumed it (next turn_start). */
 	readonly deliveredAt?: string;
+	/** ISO-8601 — set when daemon-owned tmux injection could not positively confirm. */
+	readonly unverifiedAt?: string;
 }
 
 // ─── error codes (workshop 001 CLI surface) ───────────────────────────────
