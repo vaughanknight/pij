@@ -44,10 +44,10 @@ Subcommands:
   start      Start a new flow-pair run          (Phase 1 functional)
   dispatch   Compile a context pack for a delegation      (Phase 3)
   observe    Capture diffs after worker execution     (Phase 5)
-  review     Run review rubric on output        [stub — Phase 6]
-  fix        Generate a fix packet              [stub — Phase 6]
+  review     Emit verdict from supplied findings (contract gate — not a code review)  (Phase 6)
+  fix        Generate a fix packet from a review        (Phase 6)
   learn      Record a prompt-learning candidate         (Phase 7)
-  accept     Accept and close a run             [stub — Phase 7]
+  accept     Accept and close a run             [stub — not implemented]
   ledger     Print run.json for --run-id                (Phase 2)
 
 Options:

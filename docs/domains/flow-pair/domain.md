@@ -17,6 +17,12 @@ the **single flow-state-writer invariant**: `the-flow` guided mode is the sole
 writer of `.the-flow-state.json` / `the-flow.json` / `the-flow.md`; worker
 packets hard-forbid those paths.
 
+> **Front door → pij-skill.** The operator-facing skill front door is now the **`/pij`
+> router** (`skills/pij/`, domain `pij-skill`); pairing is invoked as **`/pij pair`** and the
+> protocol prose lives in `skills/pij/references/routes/pair.md`. `skills/flow-pair/SKILL.md`
+> is reduced to a supersession shim. **This domain still owns the engine** — the `flow-pair`
+> CLI, `lib/`, `schemas/`, `test/`, `prompt-lab/`, `references/`, and the `.flow-pair/` ledger.
+
 ## Source Locations
 
 > **Phases 1–5 are built**; Phases 6–8 (`review.ts`, `learning.ts` + wiring) are
@@ -26,7 +32,7 @@ packets hard-forbid those paths.
 
 | Path | Role |
 |------|------|
-| `skills/flow-pair/SKILL.md` | Router skill: intents, invariants, orchestrator decision protocol (ASK_USER/RUN_LOCAL/DELEGATE/REVIEW/FIX/ACCEPT), procedure. |
+| `skills/flow-pair/SKILL.md` | **Supersession shim** (≤20 lines) → `/pij pair`; keeps flow-pair's NL trigger phrases. The protocol (invariants, decision FSM, procedure) now lives in `skills/pij/references/routes/pair.md`. |
 | `skills/flow-pair/references/*.md` | Reference documents: architecture, orchestrator/worker protocol, ledger schema, prompt taxonomy, context-pack spec, review rubrics. |
 | `skills/flow-pair/references/templates/*.md` | Stage-bound prompt templates: `worker-implement`, `worker-fix`, `review-synthesis`, `learning-synthesis`, `orchestrator-stage`. |
 | `skills/flow-pair/prompt-lab/clusters/*/active.md` | Versioned active prompt templates per cluster (`implement-code`, `fix-code`, `review-code`, `docs-writing`, `codebase-research`, `validation-runner`, …). Each cluster also has `candidates/` and `changelog.md`. |
@@ -47,10 +53,10 @@ packets hard-forbid those paths.
 | Run | Top-level work unit started by `flow-pair start`. | Creates `run.json` + `events.jsonl` with a `run.started` event. Run id is stable; repo identity is derived from git remote → `host-owner-repo` or basename+path-hash fallback. |
 | Context pack | The minimal excerpt of the plan/tasks/logs the worker needs to succeed. | `context-pack.ts` includes only the stage contract + template + relevant plan sections + same-cluster learnings. Excludes unrelated clusters, other phases, secrets. |
 | Observe / diff | Snapshot of what the worker changed after execution. | `observe.ts` writes `diff-NNNN.{patch,stat.txt,changed-files.json}` and appends a `files.changed` event. Guard: asserts no flow-state files in changed-files (defense-in-depth for AC-08). |
-| Review verdict | Outcome of applying the 10-dimension rubric to the worker's output. | Dimensions: scope, contract, plan, ACs, tests, domain docs, progress log, regression, prompt-follow, learning. Possible verdicts: `ACCEPT` / `FIX_REQUIRED`. Missing `execution.log.md` ⇒ `FIX_REQUIRED` + `artifact_contract` finding. |
+| Review verdict | Outcome of applying the 10-dimension rubric to the worker's output. | Dimensions: scope, contract, plan, ACs, tests, domain docs, progress log, regression, prompt-follow, learning. Possible verdicts: `APPROVE` / `APPROVE_WITH_NOTES` / `FIX_REQUIRED`. Missing `execution.log.md` ⇒ `FIX_REQUIRED` + `artifact_contract` finding. |
 | Fix dossier / fix packet | A narrowed follow-up packet when review returns `FIX_REQUIRED`. | Allowed scope in the fix packet is **restricted to the files named in the review findings** — never broader than the original delegation. |
 | Prompt cluster | A named category of delegation work whose learnings are isolated from all other clusters. | Each cluster has an `active.md` template, a `candidates/` folder, and a `changelog.md`. A learning note lands **only** in the cluster it was tagged to; manual promotion to `active.md` requires explicit approval. |
-| Orchestrator decision protocol | The finite-state loop the orchestrator follows per turn. | States: `ASK_USER` / `RUN_LOCAL` / `DELEGATE` / `REVIEW` / `FIX` / `ACCEPT`. Encoded in `SKILL.md`; the expensive session never drops below this level of guidance. |
+| Orchestrator decision protocol | The finite-state loop the orchestrator follows per turn. | States: `ASK_USER` / `RUN_LOCAL` / `DELEGATE` / `REVIEW` / `FIX` / `APPROVE`. Encoded in `skills/pij/references/routes/pair.md`; the expensive session never drops below this level of guidance. |
 | Repo identity | A stable cross-session identifier for the target repo. | `identity.ts`: git remote → `host-owner-repo`; else `basename + path-hash`. Stable across cwd changes and session replacements. |
 
 ## Contracts
@@ -75,9 +81,9 @@ packets hard-forbid those paths.
 - Repo-identity derivation and the run-dir / path layout.
 - The context-pack manifest contract (inclusion/exclusion rules, section extraction).
 - The prompt-cluster taxonomy: cluster set, template lifecycle (`active` / `candidates` / `changelog`), isolation rule.
-- The review rubric (10 dimensions) and verdict model (`ACCEPT` / `FIX_REQUIRED`).
+- The review rubric (10 dimensions) and verdict model (`APPROVE` / `APPROVE_WITH_NOTES` / `FIX_REQUIRED`).
 - The fix-dossier shape and the narrow-scope fix-packet generation.
-- The orchestrator decision protocol (`ASK_USER` / `RUN_LOCAL` / `DELEGATE` / `REVIEW` / `FIX` / `ACCEPT`).
+- The orchestrator decision protocol (`ASK_USER` / `RUN_LOCAL` / `DELEGATE` / `REVIEW` / `FIX` / `APPROVE`).
 - The `flow-pair` CLI entrypoint (the skill's only invocation surface into logic).
 - The runtime ledger root layout and gitignore contract.
 

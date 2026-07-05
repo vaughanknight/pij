@@ -30,9 +30,11 @@ The [`justfile`](../../justfile) wraps the `npx skills` installer:
 
 | Recipe | Scope | Source(s) | `justfile` |
 |--------|-------|-----------|-----------|
-| `just flow-pair-install` | **Machine-wide, every agent** (`-a '*'`) | `skills/flow-pair` from this repo | `167-168` |
+| `just flow-pair-install` | **Machine-wide, every agent** (`-a '*'`) | `skills/flow-pair` from this repo (engine + `/flow-pair` shim) | `167-168` |
+| `just pij-skill-install` | **Machine-wide, every agent** (`-a '*'`) | `skills/pij` from this repo — the `/pij` router front door | `195-199` |
 | `just install-flow-skills` | **pi only** (`-a pi`), global | `the-flow` ← `jakkaj/tools`; `eng-harness-flow` (+ its peer harnessability-assessment) ← `@ai-substrate/engineering-harness` | `181-191` |
 | `just flow-pair-link` | in-repo dogfooding | symlinks `skills/flow-pair` into `.pi/skills/` so pi auto-discovers it | `155-158` |
+| `just pij-skill-link` | in-repo dogfooding | symlinks `skills/pij` into `.pi/skills/` so pi auto-discovers it | `185-188` |
 
 Notes:
 
@@ -53,8 +55,10 @@ Notes:
 For a fresh agent getting productive in pij, the three that matter most:
 
 - **`the-flow`** — the SDD pipeline front door (see [`workflow.md`](workflow.md)).
-- **`flow-pair`** — the orchestrator/worker/reviewer delegation seam (see
-  [`flow-pair.md`](flow-pair.md)).
+- **`pij`** — the unified router front door (routes: pair · delegate · agent · peer · ops);
+  pairing is `/pij pair`, and `/flow-pair` is a supersession alias to it.
+- **`flow-pair`** — the orchestrator/worker/reviewer delegation **engine** behind `/pij pair`
+  (CLI, ledger, schemas, prompt-lab; see [`flow-pair.md`](flow-pair.md)).
 - **`eng-harness-flow`** — the engineering-harness loop (boot / checks / improve;
   see [`build.md`](build.md) and
   [`.harness/engineering-harness.md`](../../.harness/engineering-harness.md)).

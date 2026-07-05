@@ -1,12 +1,19 @@
 # How: flow-pair
 
+> **Front door moved.** Pairing is now invoked via **`/pij pair`** — the pij router skill
+> (`skills/pij/`). `/flow-pair` still works as a thin supersession pointer to `/pij pair`
+> (its NL trigger phrases are preserved), but the skill front door lives in `skills/pij/`
+> now. **The engine described below — the `flow-pair` CLI, `.flow-pair/` ledger, schemas,
+> and prompt-lab — is unchanged and still owned by this domain.**
+
 `flow-pair` wraps `the-flow` SDD pipeline in a **three-session orchestrator/worker/reviewer
 delegation seam** with a central prompt-learning ledger. An expensive orchestrator session plans,
 routes, delegates, reviews, and learns; a cheap worker session executes one bounded packet at a
 time; an independent cross-model reviewer runs clean-room code review. `the-flow` remains the inner
 route authority — `flow-pair` is the delegation wrapper, never a replacement.
 
-It is invoked as `/flow-pair` (the skill at `skills/flow-pair/SKILL.md`) and shells out to the
+It is invoked via `/pij pair` (routed by the `/pij` skill, `skills/pij/`; `/flow-pair` remains a
+supersession alias that still triggers it) and shells out to the
 `flow-pair` CLI (`skills/flow-pair/lib/cli.ts`) for all state-mutating operations. The CLI is never
 imported into pi (P2 boundary).
 
@@ -46,13 +53,13 @@ the full packet is saved to the ledger first, then only a short path pointer is 
 | Start a run | `flow-pair start "<request>" [--repo <p>] [--ledger-root <p>]` | Opens a run, writes `run.json` + `run.started` event |
 | Dispatch a packet | `flow-pair dispatch --run-id <id> --plan-path <p> --phase <text> --tasks-dir <p> [--allowed-paths <p1,...>]` | Compiles the context pack, renders the packet, writes it to the ledger, prints `[flow-pair <dlgId>] Packet at: <rel-path>` |
 | Observe a diff | `flow-pair observe [--run-id <id>]` | Captures the worker's diff + changed files (Phase 5; flow-state guard enforced) |
-| Review | `flow-pair review --delegation <id>` | Runs the deterministic artifact-contract verdict (Phase 6) |
-| Fix | `flow-pair fix --review <id>` | Generates a narrow fix packet scoped to the review's findings (Phase 6) |
-| Accept | `flow-pair accept --delegation <id>` | Accepts + closes a run |
+| Review | `flow-pair review --delegation <id>` | **Stub — do not rely.** Emits an artifact-**presence** verdict only (never code correctness); the real verdict is the cross-model reviewer peer's, hand-persisted by the orchestrator. |
+| Fix | `flow-pair fix --review <id>` | **Stub (unimplemented).** Fix packets are hand-rendered from the reviewer's findings and dispatched via `dispatch`. |
+| Accept | `flow-pair accept --delegation <id>` | **Stub (unimplemented).** Acceptance is the orchestrator's recorded decision, not this command. |
 | Learn | `flow-pair learn --run-id <id> --delegation-id <id> --cluster <c> --miss-type <t> --summary <text> [--evidence <text>] [--candidate-delta <text>] [--prompt-lab-root <p>] [--json]` | Records a prompt-learning candidate into one cluster's `candidates/` + a per-run ledger record (Phase 7) |
 | Ledger | `flow-pair ledger [--run-id <id>]` | Prints `run.json` for a run |
 
-The orchestrator drives these through the skill's Procedure (`skills/flow-pair/SKILL.md`).
+The orchestrator drives these through the **`/pij pair`** route (`skills/pij/references/routes/pair.md`) — the front door that superseded the `/flow-pair` skill.
 
 ## The per-stage cycle (CODE stages)
 
@@ -155,8 +162,8 @@ These came out of dogfooding flow-pair on its own 8-phase build and are now stan
 
 ## References
 
-- [`skills/flow-pair/SKILL.md`](../skills/flow-pair/SKILL.md) — the skill (hard invariants, decision
-  protocol, compact-early rule, procedure)
+- [`skills/pij/references/routes/pair.md`](../skills/pij/references/routes/pair.md) — the `/pij pair` route:
+  hard invariants, decision protocol, compact-early rule, fleet lifecycle, procedure (superseded `/flow-pair`)
 - [`skills/flow-pair/references/architecture.md`](../skills/flow-pair/references/architecture.md) —
   system architecture + CLI → lib → ledger call chain
 - [`skills/flow-pair/references/orchestrator-worker-protocol.md`](../skills/flow-pair/references/orchestrator-worker-protocol.md)

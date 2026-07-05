@@ -80,8 +80,9 @@ Install via the `justfile` (it wraps `npx skills` — never call `npx skills` by
 hand for a cold start):
 
 ```bash
-just flow-pair-install     # flow-pair → EVERY agent (`-a '*'`): Claude (~/.claude/skills)
-                           #   AND Copilot/codex/pi (~/.agents/skills), in one pass
+just flow-pair-install     # flow-pair engine + /flow-pair shim → EVERY agent (`-a '*'`):
+                           #   Claude (~/.claude/skills) AND Copilot/codex/pi (~/.agents/skills)
+just pij-skill-install     # the /pij router skill — the front door (pair/delegate/agent/peer/ops)
 just install-flow-skills   # the-flow + eng-harness-flow, pi-scoped, global
 just flow-pair-link        # (in-repo dogfood) symlink flow-pair into .pi/skills/
 ```
@@ -89,7 +90,12 @@ just flow-pair-link        # (in-repo dogfood) symlink flow-pair into .pi/skills
 `flow-pair-install` fans out to Claude **and** Copilot at once (it populates
 `~/.agents/skills/` and the per-agent symlink bridge into `~/.claude/skills/`);
 you do **not** install per-agent. For cold start the skills that matter are
-`the-flow`, `flow-pair`, and `eng-harness-flow`.
+`the-flow`, `pij` (the router front door), `flow-pair` (the pairing engine behind
+`/pij pair`), and `eng-harness-flow`.
+
+**Front door**: `/pij` routes every pij job by intent — `pair` (coder+reviewer fleet),
+`delegate` (one task → one peer), `agent`, `peer`, `ops`. `/flow-pair` is a supersession
+alias to `/pij pair`; both still trigger the same protocol.
 
 ### `the-flow` from the source repo (`jakkaj/tools`)
 

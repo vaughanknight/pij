@@ -20,8 +20,8 @@ description: Route pij platform jobs — spawn & talk to tmux colleagues (claude
 
 | route | job — "I want to…" | module |
 |---|---|---|
-| `pair` | run a phase with a coder + cross-model reviewer fleet, wrapping the-flow | `references/routes/pair.md` *(lands Phase 2)* |
-| `delegate` | hand ONE bounded task to ONE peer — no review cycle | `references/routes/delegate.md` *(lands Phase 2)* |
+| `pair` | run a phase with a coder + cross-model reviewer fleet, wrapping the-flow | `references/routes/pair.md` |
+| `delegate` | hand ONE bounded task to ONE peer — no review cycle | `references/routes/delegate.md` |
 | `agent` | run a packaged agent pack — fire-and-forget or resident | `references/routes/agent.md` |
 | `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
