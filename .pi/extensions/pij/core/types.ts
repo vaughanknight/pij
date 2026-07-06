@@ -131,6 +131,20 @@ export interface SessionDescriptor {
 	readonly reportedAt?: string;
 }
 
+// ─── peer file-watch subscriptions ─────────────────────────────────────────
+/** One CLI-authored watch subscription in ~/.pij/<id>/watches.json. */
+export interface WatchSubscription {
+	readonly dir: string;
+	readonly patterns: readonly string[];
+	readonly recursive?: boolean;
+	readonly addedAt: string;
+}
+
+/** Sidecar shape owned by the CLI and read-only to the daemon. */
+export interface WatchSidecar {
+	readonly watches: readonly WatchSubscription[];
+}
+
 // ─── event stream ─────────────────────────────────────────────────────────
 /** Event categories captured into events.ndjson (open-ended string at the
  *  boundary; these are the known-at-minimum kinds — spec AC-7). */

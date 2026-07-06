@@ -19,6 +19,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
+import { FsWatchStore } from "./adapters/watch-store.js";
 import {
 	type AgentSpawnPaneInfo,
 	buildAgentPeerEnv,
@@ -89,6 +90,7 @@ import {
 	type SpawnLayout,
 } from "./core/spawn.js";
 import type { HarnessKind } from "./core/types.js";
+import { addWatch, removeWatch } from "./core/watch-subscription.js";
 import { runTelegram } from "./telegram/index.js";
 
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
@@ -121,10 +123,23 @@ Messaging:
   pij list [--here] [--json]                         known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
   pij send <id> "<text>" | --command <name> [--wait] deliver a message / control command
+  pij watch <glob...>                               watch files and inject [file-watch] notices into this non-pi peer
+  pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
+
+const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch <glob...>
+  pij unwatch [<glob...>]
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch`;
 
 const SPAWN_USAGE = `pij spawn — spawn a colleague in a tmux pane (one uniform surface for every harness)
 
@@ -694,6 +709,7 @@ function runCompactSelf(argv: readonly string[]): void {
 		);
 		process.exit(2);
 	}
+
 	typeLiteral(pane, "/compact", execFileRunner);
 	// Settle so the paste/slash-menu detection resolves before Enter (same lesson
 	// as the daemon's send-keys — fire Enter too soon and it's swallowed).
@@ -713,6 +729,61 @@ function runCompactSelf(argv: readonly string[]): void {
 		process.stdout.write(`compact-self → fired /compact into ${pane}\n`);
 	}
 	process.exit(0);
+}
+
+function resolveWatchSelf(): { id: string; harness: HarnessKind | undefined } {
+	const reg = new FsRegistry(pijHome);
+	const self = resolveSelf(
+		process.env.PIJ_SESSION_ID,
+		filterByFolder(reg.list(), process.cwd()),
+		process.env.TMUX_PANE,
+	);
+	if (!self.ok) {
+		process.stderr.write(
+			`${self.code}: ${self.message}; set PIJ_SESSION_ID or run inside an adopted/spawned pane\n`,
+		);
+		process.exit(2);
+	}
+	const descriptor = reg.read(self.value);
+	if (!descriptor) {
+		process.stderr.write(`E-NOID: no such session '${self.value}'\n`);
+		process.exit(2);
+	}
+	if ((descriptor.harness ?? "pi") === "pi") {
+		process.stderr.write(
+			"E-ARG: pij watch is for non-pi peers only; use the file-watch-notify extension inside pi sessions\n",
+		);
+		process.exit(64);
+	}
+	return { id: descriptor.id, harness: descriptor.harness };
+}
+
+function runWatch(argv: readonly string[]): void {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		process.stdout.write(`${WATCH_USAGE}\n`);
+		process.exit(0);
+	}
+	if (argv.length === 0) {
+		process.stderr.write(`E-ARG: watch requires at least one glob\n${WATCH_USAGE}\n`);
+		process.exit(64);
+	}
+	const self = resolveWatchSelf();
+	const store = new FsWatchStore(pijHome);
+	const watches = addWatch(store.readWatches(self.id), argv);
+	store.writeWatches(self.id, watches);
+	process.stdout.write(`watching ${watches.length} subscription(s) for ${self.id}\n`);
+}
+
+function runUnwatch(argv: readonly string[]): void {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		process.stdout.write(`${WATCH_USAGE}\n`);
+		process.exit(0);
+	}
+	const self = resolveWatchSelf();
+	const store = new FsWatchStore(pijHome);
+	const watches = removeWatch(store.readWatches(self.id), argv);
+	store.writeWatches(self.id, watches);
+	process.stdout.write(`watching ${watches.length} subscription(s) for ${self.id}\n`);
 }
 
 /** Best-effort mtime (ms) of a path — `-1` if unreadable, so it sorts last. */
@@ -1449,6 +1520,14 @@ function main(): void {
 	}
 	if (process.argv[2] === "compact-self") {
 		runCompactSelf(process.argv.slice(3));
+		return;
+	}
+	if (process.argv[2] === "watch") {
+		runWatch(process.argv.slice(3));
+		return;
+	}
+	if (process.argv[2] === "unwatch") {
+		runUnwatch(process.argv.slice(3));
 		return;
 	}
 	if (process.argv[2] === "daemon") {

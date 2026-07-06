@@ -20,6 +20,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { FsWatchStore } from "./adapters/watch-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
@@ -35,6 +36,7 @@ import {
 	writeMerged,
 } from "./core/daemon/loop.js";
 import { SendBuffer } from "./core/daemon/router.js";
+import { PeerWatchManager } from "./core/daemon/watch.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import { receiptBody } from "./core/message.js";
 import type { DeliveryPort, RegistryPort, SendOutcome } from "./core/ports.js";
@@ -63,6 +65,7 @@ export class Daemon {
 	 *  (raw tool output) rather than a `busy` marker. Feeds the stall guard so a
 	 *  deep-thinking / long-tool xhigh peer isn't false-flagged stalled. */
 	private readonly paneSig = new Map<string, string>();
+	private readonly watchManager: PeerWatchManager;
 
 	constructor(
 		private readonly pijHome: string,
@@ -70,11 +73,22 @@ export class Daemon {
 		private readonly registry: RegistryPort,
 		private readonly channel: DeliveryPort,
 		private readonly log: (line: string) => void = () => {},
-	) {}
+		watchManager?: PeerWatchManager,
+	) {
+		this.watchManager =
+			watchManager ??
+			new PeerWatchManager({
+				store: new FsWatchStore(pijHome),
+				channel,
+				isAlive: (pid) => this.ports.isAlive(pid),
+				log,
+			});
+	}
 
 	/** One pass: rebuild the index, drive pending tmux spawns, drain bound inboxes. */
 	tick(): void {
 		this.index.rebuild(this.registry.list());
+		this.watchManager.reconcile(this.index.all());
 
 		for (const d of this.index.pending()) {
 			if (!daemonOwnsDelivery(d.harness ?? "pi")) continue; // pi self-drives
@@ -108,6 +122,7 @@ export class Daemon {
 				this.pushed.delete(d.id);
 				this.flushed.delete(d.id);
 				this.paneSig.delete(d.id);
+				this.watchManager.disposeSession(d.id);
 				this.log(`close ${d.id}: once-mode agent peer reported → pane killed + descriptor removed`);
 				continue;
 			}
@@ -320,6 +335,7 @@ export class Daemon {
 		messageId: string,
 		outcome: SendOutcome,
 	): void {
+		if (!this.registry.read(sender)) return;
 		const state = outcome === "confirmed" ? "delivered" : "unverified";
 		this.channel.deliver({
 			from: peer,
@@ -327,6 +343,10 @@ export class Daemon {
 			body: receiptBody(messageId, state),
 			kind: "receipt",
 		});
+	}
+
+	dispose(): void {
+		this.watchManager.disposeAll();
 	}
 }
 
@@ -432,6 +452,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 
 	return () => {
 		clearInterval(timer);
+		daemon.dispose();
 		stopBridge();
 		try {
 			const held = parseLockFile(readFileSync(lockPath, "utf8"));

@@ -92,6 +92,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 	it("drains a BOUND claude target's inbox: injects the body + removes the file", () => {
 		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
 			desc({
 				id: "pij-c",
@@ -121,6 +122,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 	it("emits an unverified receipt when daemon injection cannot confirm delivery", () => {
 		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
 			desc({
 				id: "pij-c",

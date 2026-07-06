@@ -160,4 +160,38 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(r.code).toBe(0);
 		expect(r.out).toContain("receipt");
 	});
+
+	it("peer watch CLI mutates the caller sidecar via PIJ_SESSION_ID", () => {
+		new FsRegistry(HOME).write({
+			id: "pij-C",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-C"),
+			eventsPath: join(HOME, "pij-C", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-06T00:00:00.000Z",
+			harness: "claude",
+			lifecycle: "bound",
+		});
+		const watched = pij(["watch", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-C" });
+		expect(watched.code).toBe(0);
+		const sidecarPath = join(HOME, "pij-C", "watches.json");
+		const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8")) as {
+			watches: Array<{ dir: string; patterns: string[] }>;
+		};
+		expect(sidecar.watches).toHaveLength(1);
+		expect(sidecar.watches[0]).toMatchObject({ dir: "src", patterns: ["**/*.ts"] });
+
+		const unwatched = pij(["unwatch", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-C" });
+		expect(unwatched.code).toBe(0);
+		const after = JSON.parse(readFileSync(sidecarPath, "utf8")) as { watches: unknown[] };
+		expect(after.watches).toEqual([]);
+	});
+
+	it("peer watch CLI errors for unresolved self, missing args, and pi sessions", () => {
+		expect(pij(["watch", "src/**/*.ts"], { PIJ_SESSION_ID: "missing" }).code).not.toBe(0);
+		expect(pij(["watch"], { PIJ_SESSION_ID: "pij-A" }).code).not.toBe(0);
+		expect(pij(["watch", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-A" }).out).toContain(
+			"non-pi peers only",
+		);
+	});
 });

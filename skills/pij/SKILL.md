@@ -26,7 +26,7 @@ description: Route pij platform jobs — spawn & talk to tmux colleagues (claude
 | `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
 | `ops` | daemon health, registry & tmux hygiene | `references/routes/ops.md` |
-| `watch` | register for file-change pushes | *(future — awaits daemon fs.watch, plan 029 P4; no module)* |
+| `watch` | subscribe a non-pi peer to file-change notices — `pij watch`/`pij unwatch` (self-serve) | *(shipped, plan 033 — CLI verbs; see `docs/how/pij-peer-watch.md`; no route module)* |
 
 Module missing at its path → say so and stop. Never improvise a route from memory.
 
@@ -38,7 +38,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `agent` (`list/run/spawn/show/new/check/eject`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
-| *(file-watch registration)* | watch (future) |
+| `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
 
 ## Global invariants (every route)
 
