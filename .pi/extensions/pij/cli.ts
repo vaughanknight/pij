@@ -1,4 +1,4 @@
-#!/usr/bin/env -S npx tsx
+#!/usr/bin/env -S NODE_NO_WARNINGS=1 npx tsx
 // pij-messaging — the `pij` CLI bin. THIN: wires the real fs adapters to the
 // pure core/cli.ts, owns Node I/O (argv, stdout/stderr, exit) and the only two
 // imperative loops (--follow tail, --wait receipt poll). Pi-free by design —

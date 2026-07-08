@@ -141,4 +141,21 @@ describe("buildInitInjection", () => {
 		expect(init.body).toContain("pij phonehome");
 		expect(init.phonehomeLine).toBe("pij phonehome");
 	});
+
+	it("names the spawner and gives the concrete reply form when spawnedBy is set", () => {
+		const init = buildInitInjection("pij-child", false, "pij-parent");
+		expect(init.body).toContain("spawned by pij-parent");
+		// the peer boots pij-blind, so it must be handed the exact reply command
+		expect(init.body).toContain('pij send pij-parent "<text>"');
+		// self id + phonehome confirmatory line still present
+		expect(init.body).toContain("pij-child");
+		expect(init.body).toContain("pij phonehome");
+	});
+
+	it("omits the spawner clause for an adopted/root peer (no spawnedBy)", () => {
+		const init = buildInitInjection("pij-root");
+		expect(init.body).not.toMatch(/spawned by/i);
+		expect(init.body).not.toMatch(/reply to your spawner/i);
+		expect(init.body.startsWith("You are now a pij peer")).toBe(true);
+	});
 });

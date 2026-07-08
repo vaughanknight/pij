@@ -243,7 +243,11 @@ export function driveSession(
 	// readiness is `ready` or `busy` — the pane exists and is interactive.
 	// 1) Inject the init exactly once (only when truly ready, not mid-turn busy).
 	if (readiness === "ready" && shouldInjectInit(descriptor)) {
-		const init = buildInitInjection(descriptor.id, descriptor.branchedFrom != null);
+		const init = buildInitInjection(
+			descriptor.id,
+			descriptor.branchedFrom != null,
+			descriptor.spawnedBy,
+		);
 		ports.sendText(paneId, init.body, harness, descriptor.pid);
 		const at = new Date(ports.now()).toISOString();
 		writeMerged(registry, markInitInjected(descriptor, at));

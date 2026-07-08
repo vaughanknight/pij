@@ -129,16 +129,27 @@ export interface InitInjection {
  *  resume — otherwise the fork acts on the parent's "continue where you left off"
  *  prompt and autonomously continues the parent's agenda (it once stood up a
  *  runaway peer). The reframe stops it cold and tells it new instructions follow. */
-export function buildInitInjection(pijId: SessionId, branched = false): InitInjection {
+export function buildInitInjection(
+	pijId: SessionId,
+	branched = false,
+	spawnedBy?: SessionId,
+): InitInjection {
 	const phonehomeLine = "pij phonehome";
 	const forkReframe = branched
 		? "You are a FORK of another session — its prior conversation is yours for CONTEXT only, " +
 			"NOT a task to resume. Do NOT continue the parent's previous work, and do NOT spawn or " +
 			"message other sessions; new instructions are coming. First, "
 		: "";
+	// Name the pij instance that spawned this peer (control-plane peers boot
+	// pij-blind), and give the concrete reply form so it can reach its spawner
+	// without being told. Omitted for adopted/root peers (no known spawner).
+	const spawnedByClause = spawnedBy ? `, spawned by ${spawnedBy}` : "";
+	const replyHint = spawnedBy
+		? ` (reply to your spawner with \`pij send ${spawnedBy} "<text>"\`)`
+		: "";
 	const body =
-		`${forkReframe}You are now a pij peer (id: ${pijId}). ` +
-		`Message other sessions with \`pij send <id> "<text>"\` and list peers with \`pij list\`. ` +
+		`${forkReframe}You are now a pij peer (id: ${pijId})${spawnedByClause}. ` +
+		`Message other sessions with \`pij send <id> "<text>"\`${replyHint} and list peers with \`pij list\`. ` +
 		`To confirm your binding, run: ${phonehomeLine}`;
 	return { pijId, phonehomeLine, body };
 }

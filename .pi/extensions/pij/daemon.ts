@@ -1,4 +1,4 @@
-#!/usr/bin/env -S npx tsx
+#!/usr/bin/env -S NODE_NO_WARNINGS=1 npx tsx
 // pij-control-plane — the daemon bin (impure orchestrator, Plan 019, T016).
 //
 // THIN glue: it owns the single-instance lock, the tick timer, and inbox-file
