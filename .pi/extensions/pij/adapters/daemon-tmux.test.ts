@@ -12,11 +12,17 @@ import {
 	composerIsEmpty,
 	composerPending,
 	composerRegion,
+	DaemonTmux,
 	enterSettleMs,
 	freshTranscriptEvent,
 	needsInputWake,
 	submissionConfirmed,
 } from "./daemon-tmux.js";
+import type { TmuxRunner } from "./tmux-keys.js";
+
+const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)";
+const NON_BMP_SENT = "[pij from pij-x] hi 😀";
+const PANE_ID = "%42";
 
 // Real copilot pane shapes (composer boxed between two ──── rules).
 const STUCK_PANE = [
@@ -104,16 +110,12 @@ describe("needsInputWake — per-harness focus-IN input-wake before send (the we
 });
 
 describe("composerPending — submit verification (the cause-independent retry gate)", () => {
-	const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)";
-
 	it("detects a STILL-PENDING line stranded in the composer (the wedge) → retry", () => {
 		// If this flips false, the daemon stops retrying a wedged send → message lost.
 		expect(composerPending(STUCK_PANE, SENT)).toBe(true);
 	});
 
 	describe("positive send confirmation helpers", () => {
-		const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)";
-
 		it("detects typed text vs total-loss empty composer before Enter", () => {
 			expect(composerHasTextTail(STUCK_PANE, SENT)).toBe(true);
 			expect(composerIsEmpty(EMPTY_PANE)).toBe(true);
@@ -134,6 +136,100 @@ describe("composerPending — submit verification (the cause-independent retry g
 			expect(freshTranscriptEvent(BUSY_PANE, BUSY_TRANSCRIPT_CHANGED_EMPTY_PANE, SENT)).toBe(false);
 			expect(submissionConfirmed(BUSY_PANE, BUSY_TRANSCRIPT_CHANGED_EMPTY_PANE, SENT)).toBe(false);
 			expect(freshTranscriptEvent(STUCK_PANE, SHORT_TURN_DONE, SENT)).toBe(true);
+		});
+	});
+
+	function repeatedCapture(pane: string, count: number): string[] {
+		return Array.from({ length: count }, () => pane);
+	}
+
+	function scriptedTmux(captures: string[]): { calls: string[][]; runner: TmuxRunner } {
+		const calls: string[][] = [];
+		let captureIndex = 0;
+		return {
+			calls,
+			runner: (args) => {
+				calls.push(args);
+				if (args[0] !== "capture-pane") return "";
+				const captured = captures[captureIndex] ?? captures.at(-1) ?? "";
+				captureIndex++;
+				return captured;
+			},
+		};
+	}
+
+	function typeArgv(): string[] {
+		return ["send-keys", "-t", PANE_ID, "-l", SENT];
+	}
+
+	function clearArgv(text = SENT): string[] {
+		return ["send-keys", "-t", PANE_ID, "-N", String(text.length), "BSpace"];
+	}
+
+	function indexesOf(calls: string[][], expected: string[]): number[] {
+		const encoded = JSON.stringify(expected);
+		return calls.flatMap((call, index) => (JSON.stringify(call) === encoded ? [index] : []));
+	}
+
+	describe("DaemonTmux.sendText — composer redraw and idempotent re-type", () => {
+		it("(a) waits through redraw lag and types the payload exactly once", () => {
+			const tmux = scriptedTmux([EMPTY_PANE, EMPTY_PANE, STUCK_PANE, STUCK_PANE, BUSY_PANE]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("confirmed");
+			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
+		});
+
+		it("(b) clears immediately before re-typing after a full empty poll window", () => {
+			const tmux = scriptedTmux([
+				...repeatedCapture(EMPTY_PANE, 8),
+				STUCK_PANE,
+				STUCK_PANE,
+				BUSY_PANE,
+			]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			adapter.sendText(PANE_ID, SENT, "copilot");
+			const typed = indexesOf(tmux.calls, typeArgv());
+			expect(typed).toHaveLength(2);
+			expect(tmux.calls[typed[1] - 1]).toEqual(clearArgv());
+		});
+
+		it("(b) clears a framed non-BMP payload by its UTF-16 unit count", () => {
+			const typedPane = STUCK_PANE.replace(SENT, NON_BMP_SENT);
+			const tmux = scriptedTmux([
+				...repeatedCapture(EMPTY_PANE, 8),
+				typedPane,
+				typedPane,
+				BUSY_PANE,
+			]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			adapter.sendText(PANE_ID, NON_BMP_SENT, "copilot");
+			const typed = indexesOf(tmux.calls, ["send-keys", "-t", PANE_ID, "-l", NON_BMP_SENT]);
+			expect(typed).toHaveLength(2);
+			expect(tmux.calls[typed[1] - 1]).toEqual(clearArgv(NON_BMP_SENT));
+		});
+
+		it("(d) caps typing at exactly three total attempts per outer submit attempt", () => {
+			const tmux = scriptedTmux(repeatedCapture(EMPTY_PANE, 90));
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
+			const typed = indexesOf(tmux.calls, typeArgv());
+			expect(typed).toHaveLength(9);
+			for (const index of typed.slice(1)) expect(tmux.calls[index - 1]).toEqual(clearArgv());
+		});
+
+		it("(c) clears immediately before every outer submit retry", () => {
+			const captures = Array.from({ length: 3 }, () => repeatedCapture(STUCK_PANE, 7)).flat();
+			const tmux = scriptedTmux(captures);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
+			const typed = indexesOf(tmux.calls, typeArgv());
+			expect(typed).toHaveLength(3);
+			for (const index of typed.slice(1)) expect(tmux.calls[index - 1]).toEqual(clearArgv());
 		});
 	});
 

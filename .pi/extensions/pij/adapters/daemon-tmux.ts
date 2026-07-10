@@ -16,7 +16,14 @@ import type { SendOutcome } from "../core/ports.js";
 import { BUSY_RE, paneWentBusy } from "../core/readiness.js";
 import type { HarnessKind } from "../core/types.js";
 import { NodeProcess } from "./process.js";
-import { capturePane, execFileRunner, pressKey, sendFocusIn, typeLiteral } from "./tmux-keys.js";
+import {
+	capturePane,
+	execFileRunner,
+	pressKey,
+	sendFocusIn,
+	type TmuxRunner,
+	typeLiteral,
+} from "./tmux-keys.js";
 
 /** Debounce window a harness applies to a pasted/burst input before the line is
  *  submittable — the settle the daemon waits out BEFORE pressing Enter so the
@@ -68,8 +75,8 @@ function wakeRenderLoop(pid: number): void {
 /** Wake a backgrounded copilot so its next Enter submits: inject a focus-IN escape
  *  (CSI I — the PROVEN fix: a focus-OUT'd copilot ignores Enter until it sees focus-
  *  IN) and, secondarily, SIGWINCH the app for a redraw. Best-effort, copilot-only. */
-function wakeCopilotInput(paneId: string, pid?: number): void {
-	sendFocusIn(paneId, execFileRunner);
+function wakeCopilotInput(paneId: string, runner: TmuxRunner, pid?: number): void {
+	sendFocusIn(paneId, runner);
 	if (pid !== undefined) wakeRenderLoop(pid);
 }
 
@@ -85,8 +92,12 @@ const SUBMIT_VERIFY_POLLS = 5;
 const SUBMIT_VERIFY_MS = 250;
 /** Settle between a WINCH-wake and the retry Enter. */
 const WAKE_SETTLE_MS = 200;
-/** Number of times to recover a total-loss composer by re-typing before Enter. */
-const TYPE_CONFIRM_RETRIES = 3;
+/** Total type attempts, including the first, when the composer remains empty.
+ *  Each attempt polls for up to 2s, so a pathological pane can synchronously
+ *  block for 3 × 2s = 6s per outer submit attempt. */
+export const TYPE_CONFIRM_ATTEMPTS = 3;
+export const TYPE_CONFIRM_POLLS = 8;
+export const TYPE_CONFIRM_POLL_MS = 250;
 
 /** The composer box's contents from a captured pane. Copilot boxes its input between
  *  two horizontal-rule lines (`────`); the `❯` prompt + any typed text live inside.
@@ -166,12 +177,28 @@ function sleepSync(ms: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function clearTypedText(paneId: string, text: string, runner: TmuxRunner): void {
+	pressKey(paneId, "BSpace", Math.max(text.length, 1), runner);
+}
+
+export interface DaemonTmuxOptions {
+	runner?: TmuxRunner;
+	sleep?: (ms: number) => void;
+}
+
 export class DaemonTmux implements DaemonPorts {
 	private readonly proc = new NodeProcess();
+	private readonly runner: TmuxRunner;
+	private readonly sleep: (ms: number) => void;
+
+	constructor(options: DaemonTmuxOptions = {}) {
+		this.runner = options.runner ?? execFileRunner;
+		this.sleep = options.sleep ?? sleepSync;
+	}
 
 	capturePane(paneId: string): string {
 		try {
-			return capturePane(paneId, {}, execFileRunner);
+			return capturePane(paneId, {}, this.runner);
 		} catch {
 			return ""; // pane unreadable → treat as no signal (booting)
 		}
@@ -196,34 +223,43 @@ export class DaemonTmux implements DaemonPorts {
 			// copilot then swallows Enter-as-submit, stranding the message in the composer.
 			// A focus-IN (CSI I) injection flips it back to focused-input mode so the Return
 			// below actually submits (proven live). Copilot-only, best-effort.
-			if (wake) wakeCopilotInput(paneId, pid);
-			typeLiteral(paneId, text, execFileRunner);
+			if (wake) wakeCopilotInput(paneId, this.runner, pid);
+			if (wake && attempt > 0) clearTypedText(paneId, text, this.runner);
+			typeLiteral(paneId, text, this.runner);
 			if (wake) {
-				for (let typedAttempt = 0; typedAttempt < TYPE_CONFIRM_RETRIES; typedAttempt++) {
-					const typedPane = this.capturePane(paneId);
-					if (composerHasTextTail(typedPane, text)) break;
-					if (!composerIsEmpty(typedPane)) break;
-					wakeCopilotInput(paneId, pid);
-					typeLiteral(paneId, text, execFileRunner);
+				for (let typedAttempt = 0; typedAttempt < TYPE_CONFIRM_ATTEMPTS; typedAttempt++) {
+					let shouldRetype = true;
+					for (let poll = 0; poll < TYPE_CONFIRM_POLLS; poll++) {
+						this.sleep(TYPE_CONFIRM_POLL_MS);
+						const typedPane = this.capturePane(paneId);
+						if (composerHasTextTail(typedPane, text) || !composerIsEmpty(typedPane)) {
+							shouldRetype = false;
+							break;
+						}
+					}
+					if (!shouldRetype || typedAttempt + 1 >= TYPE_CONFIRM_ATTEMPTS) break;
+					wakeCopilotInput(paneId, this.runner, pid);
+					clearTypedText(paneId, text, this.runner);
+					typeLiteral(paneId, text, this.runner);
 				}
 			}
 			// Settle before Enter (T020/R-02): a literal burst can trip the harness's paste
 			// detection + a short idle-debounce; an Enter fired mid-debounce is swallowed, so
 			// the submit lags or strands the text. Wait it out (synchronously — the daemon tick
 			// is single-threaded). The window is HARNESS-SPECIFIC (Copilot's needs longer).
-			sleepSync(enterSettleMs(harness));
+			this.sleep(enterSettleMs(harness));
 			const preSubmit = this.capturePane(paneId);
 			// Re-assert focus-IN right before the Return (a focus-OUT can arrive between the
 			// type and the Enter), then submit.
-			if (wake) sendFocusIn(paneId, execFileRunner);
-			pressKey(paneId, "Enter", 1, execFileRunner);
+			if (wake) sendFocusIn(paneId, this.runner);
+			pressKey(paneId, "Enter", 1, this.runner);
 			if (!wake) return "confirmed";
 			for (let poll = 0; poll < SUBMIT_VERIFY_POLLS; poll++) {
-				sleepSync(SUBMIT_VERIFY_MS);
+				this.sleep(SUBMIT_VERIFY_MS);
 				if (submissionConfirmed(preSubmit, this.capturePane(paneId), text)) return "confirmed";
 			}
-			wakeCopilotInput(paneId, pid);
-			sleepSync(WAKE_SETTLE_MS);
+			wakeCopilotInput(paneId, this.runner, pid);
+			this.sleep(WAKE_SETTLE_MS);
 		}
 		try {
 			const tail = text.replace(/\s+/g, " ").slice(-48);
@@ -237,7 +273,7 @@ export class DaemonTmux implements DaemonPorts {
 	}
 
 	sendKey(paneId: string, key: "Escape" | "Enter"): void {
-		pressKey(paneId, key, 1, execFileRunner);
+		pressKey(paneId, key, 1, this.runner);
 	}
 
 	killPane(paneId: string): void {
