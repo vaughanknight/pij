@@ -89,7 +89,7 @@ import {
 	planPlacement,
 	type SpawnLayout,
 } from "./core/spawn.js";
-import type { HarnessKind } from "./core/types.js";
+import type { HarnessKind, WatchMode } from "./core/types.js";
 import { addWatch, removeWatch } from "./core/watch-subscription.js";
 import { runTelegram } from "./telegram/index.js";
 
@@ -123,7 +123,7 @@ Messaging:
   pij list [--here] [--json]                         known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
   pij send <id> "<text>" | --command <name> [--wait] deliver a message / control command
-  pij watch <glob...>                               watch files and inject [file-watch] notices into this non-pi peer
+  pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
@@ -133,11 +133,24 @@ Messaging:
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
 
 USAGE
-  pij watch <glob...>
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
   pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
 
 EXAMPLES
   pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
   pij unwatch "src/**/*.ts"
   pij unwatch`;
 
@@ -763,15 +776,79 @@ function runWatch(argv: readonly string[]): void {
 		process.stdout.write(`${WATCH_USAGE}\n`);
 		process.exit(0);
 	}
-	if (argv.length === 0) {
+	const { mode, debounceMs, globs, error } = splitWatchFlags(argv);
+	if (error) {
+		process.stderr.write(`E-ARG: ${error}\n${WATCH_USAGE}\n`);
+		process.exit(64);
+	}
+	if (globs.length === 0) {
 		process.stderr.write(`E-ARG: watch requires at least one glob\n${WATCH_USAGE}\n`);
 		process.exit(64);
 	}
 	const self = resolveWatchSelf();
 	const store = new FsWatchStore(pijHome);
-	const watches = addWatch(store.readWatches(self.id), argv);
+	const watches = addWatch(
+		store.readWatches(self.id),
+		globs,
+		new Date().toISOString(),
+		mode,
+		debounceMs,
+	);
 	store.writeWatches(self.id, watches);
-	process.stdout.write(`watching ${watches.length} subscription(s) for ${self.id}\n`);
+	process.stdout.write(
+		`watching ${watches.length} subscription(s) for ${self.id} (mode: ${mode}, debounce: ${debounceMs === undefined ? "default" : `${debounceMs}ms`})\n`,
+	);
+}
+
+/** Split watch flags from globs (`notify` mode and daemon default cadence when absent). */
+function splitWatchFlags(argv: readonly string[]): {
+	mode: WatchMode;
+	debounceMs?: number;
+	globs: string[];
+	error?: string;
+} {
+	let mode: WatchMode = "notify";
+	let debounceMs: number | undefined;
+	const globs: string[] = [];
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i];
+		if (arg === "--diff") {
+			mode = "diff";
+		} else if (arg === "--notify") {
+			mode = "notify";
+		} else if (arg === "--mode") {
+			const next = argv[i + 1];
+			if (next !== "notify" && next !== "diff") {
+				return { mode, globs, error: "--mode must be notify or diff" };
+			}
+			mode = next;
+			i++;
+		} else if (arg === "--debounce") {
+			const next = argv[i + 1];
+			const parsed = next === undefined ? undefined : parseDebounceMs(next);
+			if (parsed === undefined) {
+				return {
+					mode,
+					debounceMs,
+					globs,
+					error: "--debounce must be a positive duration in ms or s (for example 750ms or 2s)",
+				};
+			}
+			debounceMs = parsed;
+			i++;
+		} else if (arg !== undefined) {
+			globs.push(arg);
+		}
+	}
+	return { mode, debounceMs, globs };
+}
+
+function parseDebounceMs(value: string): number | undefined {
+	const match = /^(\d+)(ms|s)?$/u.exec(value);
+	if (!match) return undefined;
+	const amount = Number(match[1]);
+	const result = amount * (match[2] === "s" ? 1000 : 1);
+	return Number.isSafeInteger(result) && result > 0 ? result : undefined;
 }
 
 function runUnwatch(argv: readonly string[]): void {

@@ -10,7 +10,7 @@
 // `.pi/extensions/pij/smoke.ts` (`/pij` status line via the Driver SDK).
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -185,6 +185,64 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(unwatched.code).toBe(0);
 		const after = JSON.parse(readFileSync(sidecarPath, "utf8")) as { watches: unknown[] };
 		expect(after.watches).toEqual([]);
+	});
+
+	it("peer watch CLI parses and upserts --debounce values", () => {
+		new FsRegistry(HOME).write({
+			id: "pij-D",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-D"),
+			eventsPath: join(HOME, "pij-D", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-10T00:00:00.000Z",
+			harness: "copilot",
+			lifecycle: "bound",
+		});
+		const sidecarPath = join(HOME, "pij-D", "watches.json");
+		const readDebounce = (): number | undefined => {
+			const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8")) as {
+				watches: Array<{ debounceMs?: number }>;
+			};
+			expect(sidecar.watches).toHaveLength(1);
+			return sidecar.watches[0]?.debounceMs;
+		};
+
+		expect(
+			pij(["watch", "--debounce", "750", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-D" }).code,
+		).toBe(0);
+		expect(readDebounce()).toBe(750);
+
+		expect(
+			pij(["watch", "--debounce", "2s", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-D" }).code,
+		).toBe(0);
+		expect(readDebounce()).toBe(2000);
+
+		expect(
+			pij(["watch", "--debounce", "750ms", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-D" }).code,
+		).toBe(0);
+		expect(readDebounce()).toBe(750);
+	});
+
+	it("peer watch CLI rejects invalid debounce values before writing a sidecar", () => {
+		new FsRegistry(HOME).write({
+			id: "pij-E",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-E"),
+			eventsPath: join(HOME, "pij-E", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-10T00:00:00.000Z",
+			harness: "claude",
+			lifecycle: "bound",
+		});
+		const sidecarPath = join(HOME, "pij-E", "watches.json");
+		for (const value of ["0", "-1", "NaN", "1m"]) {
+			const result = pij(["watch", "--debounce", value, "src/**/*.ts"], {
+				PIJ_SESSION_ID: "pij-E",
+			});
+			expect(result.code).toBe(64);
+			expect(result.out).toContain("--debounce");
+			expect(existsSync(sidecarPath)).toBe(false);
+		}
 	});
 
 	it("peer watch CLI errors for unresolved self, missing args, and pi sessions", () => {

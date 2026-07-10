@@ -6,6 +6,7 @@
 // trap). The watcher adapter (watcher.ts) supplies snapshots; this module
 // decides what changed and how to phrase it.
 
+import { createPatch, structuredPatch } from "diff";
 import picomatch from "picomatch";
 
 // ─── domain types ──────────────────────────────────────────────────────────
@@ -16,16 +17,40 @@ export interface FileMeta {
 	readonly size: number;
 	/** Resolved physical file identity; used only for cross-watch dedup keys. */
 	readonly identityPath?: string;
+	/**
+	 * Under-cap textual content captured at snapshot time — the self-snapshot
+	 * baseline the reconciler diffs against. `undefined` when the file is
+	 * over the cap (`MAX_CONTENT_BYTES`) or binary (Key Finding 01); such a
+	 * `modified` still reports, but without a textual delta.
+	 */
+	readonly content?: string;
 }
 
 /** path (relative to a watch dir) → file metadata. */
 export type Snapshot = Map<string, FileMeta>;
+
+/** A contiguous run of changed lines in the *new* file (1-based, inclusive). */
+export interface LineRange {
+	readonly start: number;
+	readonly end: number;
+}
 
 export interface Change {
 	readonly path: string;
 	readonly kind: ChangeKind;
 	/** Resolved physical file identity; rendered notices still use `path`. */
 	readonly identityPath?: string;
+	/**
+	 * Changed-line ranges in the new file — present for `created`/`modified`
+	 * only when content was captured on both baselines. Absent → no textual
+	 * delta was computable (over-cap/binary/`deleted`).
+	 */
+	readonly lineRanges?: readonly LineRange[];
+	/** Unified diff body (hunks only, no `---`/`+++` preamble). */
+	readonly diff?: string;
+	/** Added / removed line counts for the `(+A/-R)` stat summary. */
+	readonly added?: number;
+	readonly removed?: number;
 }
 
 export interface WatchConfig {
@@ -50,7 +75,90 @@ export const DEFAULT_IGNORE = ["4913", "*~", ".goutputstream*", ".tmp*", ".*"];
 export const DEFAULT_NOTICE = "[file-watch] {path} {kind}";
 /** a re-add this soon after a delete is reclassified "modified" (not "created"). */
 export const REDELETE_COALESCE_MS = 100;
+/**
+ * Cap for content capture. Files larger than this are snapshotted without
+ * content (over-cap → plain notice, no textual delta), bounding memory (Risk:
+ * memory growth from the content cache).
+ */
+export const MAX_CONTENT_BYTES = 256 * 1024;
 const ALL_KINDS: readonly ChangeKind[] = ["created", "modified", "deleted"];
+
+// ─── textual delta (self-snapshot baseline, findings 01/02) ─────────────────
+export interface Delta {
+	readonly lineRanges: LineRange[];
+	readonly added: number;
+	readonly removed: number;
+	/** Unified diff body (hunks only). */
+	readonly diff: string;
+}
+
+function mergeRanges(lines: number[]): LineRange[] {
+	if (lines.length === 0) return [];
+	const sorted = [...new Set(lines)].sort((a, b) => a - b);
+	const ranges: LineRange[] = [];
+	let start = sorted[0] as number;
+	let end = start;
+	for (let i = 1; i < sorted.length; i++) {
+		const n = sorted[i] as number;
+		if (n === end + 1) {
+			end = n;
+		} else {
+			ranges.push({ start, end });
+			start = n;
+			end = n;
+		}
+	}
+	ranges.push({ start, end });
+	return ranges;
+}
+
+/** Strip jsdiff's `Index:`/`===`/`---`/`+++` preamble, leaving the `@@` hunks. */
+function stripPatchHeader(patch: string): string {
+	const lines = patch.split("\n");
+	const firstHunk = lines.findIndex((l) => l.startsWith("@@"));
+	if (firstHunk === -1) return "";
+	return lines.slice(firstHunk).join("\n").replace(/\n$/u, "");
+}
+
+/**
+ * Compute changed-line ranges + a unified diff from old/new text. Returns
+ * `null` when the two texts are byte-identical (AC-03: an mtime-only touch has
+ * an empty textual delta and must be suppressed). A `created` file is diffed
+ * against `""` so the whole file renders as additions (AC-11).
+ */
+export function computeDelta(oldText: string, newText: string, path = "file"): Delta | null {
+	if (oldText === newText) return null;
+	const structured = structuredPatch(path, path, oldText, newText, "", "", { context: 3 });
+	const changedNewLines: number[] = [];
+	let added = 0;
+	let removed = 0;
+	for (const hunk of structured.hunks) {
+		let newLine = hunk.newStart;
+		let sawAdd = false;
+		for (const line of hunk.lines) {
+			const tag = line[0];
+			if (tag === "+") {
+				changedNewLines.push(newLine);
+				newLine++;
+				added++;
+				sawAdd = true;
+			} else if (tag === "-") {
+				removed++;
+			} else {
+				newLine++;
+			}
+		}
+		// A pure-deletion hunk contributes no new line; anchor it at newStart so
+		// the range still points the reader at where content vanished.
+		if (!sawAdd && removed > 0) changedNewLines.push(Math.max(1, hunk.newStart));
+	}
+	return {
+		lineRanges: mergeRanges(changedNewLines),
+		added,
+		removed,
+		diff: stripPatchHeader(createPatch(path, oldText, newText, "", "", { context: 3 })),
+	};
+}
 
 // ─── config parsing (Pattern P4: tagged-union over throws) ──────────────────
 export type ConfigResult = { ok: true; config: Config } | { ok: false; reason: string };
@@ -182,15 +290,35 @@ export function reconcile(prev: Snapshot, next: Snapshot): Change[] {
 	for (const [path, meta] of next) {
 		const before = prev.get(path);
 		if (before === undefined) {
-			changes.push({ path, kind: "created", identityPath: meta.identityPath });
+			const delta = meta.content !== undefined ? computeDelta("", meta.content, path) : null;
+			changes.push(withDelta({ path, kind: "created", identityPath: meta.identityPath }, delta));
 		} else if (before.mtimeMs !== meta.mtimeMs || before.size !== meta.size) {
-			changes.push({ path, kind: "modified", identityPath: meta.identityPath });
+			if (before.content !== undefined && meta.content !== undefined) {
+				const delta = computeDelta(before.content, meta.content, path);
+				// Empty textual delta (mtime-only touch) → suppress (AC-03).
+				if (delta === null) continue;
+				changes.push(withDelta({ path, kind: "modified", identityPath: meta.identityPath }, delta));
+			} else {
+				changes.push({ path, kind: "modified", identityPath: meta.identityPath });
+			}
 		}
 	}
 	for (const [path, meta] of prev) {
 		if (!next.has(path)) changes.push({ path, kind: "deleted", identityPath: meta.identityPath });
 	}
 	return changes;
+}
+
+/** Attach a computed delta to a change (no-op when `delta` is null). */
+function withDelta(change: Change, delta: Delta | null): Change {
+	if (delta === null) return change;
+	return {
+		...change,
+		lineRanges: delta.lineRanges,
+		diff: delta.diff,
+		added: delta.added,
+		removed: delta.removed,
+	};
 }
 
 /**
@@ -234,7 +362,7 @@ export class WatchReconciler {
 			if (kind === "deleted") this.recentDeletes.set(c.path, now);
 			else this.recentDeletes.delete(c.path);
 			if (this.compiled.events.has(kind)) {
-				out.push({ path: c.path, kind, identityPath: c.identityPath });
+				out.push({ ...c, kind });
 			}
 		}
 
@@ -250,6 +378,17 @@ export class WatchReconciler {
 	}
 }
 
+/** Render `[{start,end}]` as a compact `"40-42,88"` (single-line ranges collapse). */
+export function formatRanges(ranges: readonly LineRange[] | undefined): string {
+	if (!ranges || ranges.length === 0) return "";
+	return ranges.map((r) => (r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`)).join(",");
+}
+
 export function formatNotice(template: string, change: Change): string {
-	return template.replaceAll("{path}", change.path).replaceAll("{kind}", change.kind);
+	return template
+		.replaceAll("{path}", change.path)
+		.replaceAll("{kind}", change.kind)
+		.replaceAll("{ranges}", formatRanges(change.lineRanges))
+		.replaceAll("{added}", String(change.added ?? 0))
+		.replaceAll("{removed}", String(change.removed ?? 0));
 }

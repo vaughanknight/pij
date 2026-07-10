@@ -2,17 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
 	compileWatch,
+	computeDelta,
 	DEFAULT_IGNORE,
 	DEFAULT_NOTICE,
 	formatNotice,
+	formatRanges,
 	parseConfig,
 	reconcile,
 	type Snapshot,
 	WatchReconciler,
 } from "./store.js";
 
-function meta(mtimeMs: number, size: number) {
-	return { mtimeMs, size };
+function meta(mtimeMs: number, size: number, content?: string) {
+	return content === undefined ? { mtimeMs, size } : { mtimeMs, size, content };
 }
 function snap(entries: Record<string, { mtimeMs: number; size: number }>): Snapshot {
 	return new Map(Object.entries(entries));
@@ -176,5 +178,94 @@ describe("formatNotice", () => {
 		expect(formatNotice("{kind} -> {path}", { path: "a/b.md", kind: "deleted" })).toBe(
 			"deleted -> a/b.md",
 		);
+	});
+
+	it("substitutes {ranges} {added} {removed} from a delta-bearing change", () => {
+		const change = {
+			path: "a.ts",
+			kind: "modified" as const,
+			lineRanges: [
+				{ start: 40, end: 42 },
+				{ start: 88, end: 88 },
+			],
+			added: 12,
+			removed: 3,
+		};
+		expect(formatNotice("{path} {kind} (+{added}/-{removed}) {ranges}", change)).toBe(
+			"a.ts modified (+12/-3) 40-42,88",
+		);
+	});
+});
+
+describe("computeDelta — ranges + unified diff (AC-01, AC-03)", () => {
+	it("returns null for byte-identical text (empty-delta suppression)", () => {
+		expect(computeDelta("a\nb\nc\n", "a\nb\nc\n")).toBeNull();
+	});
+
+	it("extracts changed-line ranges on the new-file side", () => {
+		const oldText = "1\n2\n3\n4\n5\n";
+		const newText = "1\n2\nCHANGED\n4\n5\n";
+		const delta = computeDelta(oldText, newText, "f.txt");
+		expect(delta).not.toBeNull();
+		if (!delta) return;
+		expect(delta.added).toBe(1);
+		expect(delta.removed).toBe(1);
+		expect(delta.lineRanges).toEqual([{ start: 3, end: 3 }]);
+		expect(delta.diff).toContain("@@");
+		expect(delta.diff).toContain("+CHANGED");
+		expect(delta.diff).not.toContain("+++"); // header stripped
+	});
+
+	it("renders a created file (old = '') as whole-file additions", () => {
+		const delta = computeDelta("", "x\ny\nz\n", "new.txt");
+		expect(delta).not.toBeNull();
+		if (!delta) return;
+		expect(delta.added).toBe(3);
+		expect(delta.removed).toBe(0);
+		expect(formatRanges(delta.lineRanges)).toBe("1-3");
+	});
+
+	it("collapses multiple contiguous edits into merged ranges", () => {
+		const oldText = "a\nb\nc\nd\ne\nf\ng\n";
+		const newText = "a\nB\nC\nd\ne\nf\nG\n"; // lines 2,3 and 7 changed
+		const delta = computeDelta(oldText, newText, "f.txt");
+		expect(delta).not.toBeNull();
+		if (!delta) return;
+		expect(formatRanges(delta.lineRanges)).toBe("2-3,7");
+	});
+});
+
+describe("reconcile — content baseline delta + empty-delta suppression (AC-01, AC-03)", () => {
+	it("attaches lineRanges/diff/added/removed to a modified change when content is captured", () => {
+		const prev = snap({ "a.ts": meta(100, 5, "one\ntwo\n") });
+		const next = snap({ "a.ts": meta(200, 6, "one\nTWO\n") });
+		const changes = reconcile(prev, next);
+		expect(changes).toHaveLength(1);
+		const c = changes[0];
+		expect(c?.kind).toBe("modified");
+		expect(c?.added).toBe(1);
+		expect(c?.removed).toBe(1);
+		expect(c?.lineRanges).toEqual([{ start: 2, end: 2 }]);
+		expect(c?.diff).toContain("+TWO");
+	});
+
+	it("suppresses a modified change whose content is byte-identical (mtime-only touch)", () => {
+		const prev = snap({ "a.ts": meta(100, 5, "same\n") });
+		const next = snap({ "a.ts": meta(999, 5, "same\n") }); // mtime bumped, content equal
+		expect(reconcile(prev, next)).toEqual([]);
+	});
+
+	it("still reports a modified without content (over-cap/binary → plain notice)", () => {
+		const prev = snap({ "a.ts": meta(100, 5) });
+		const next = snap({ "a.ts": meta(200, 6) });
+		expect(reconcile(prev, next)).toEqual([{ path: "a.ts", kind: "modified" }]);
+	});
+
+	it("attaches whole-file additions to a created change with content", () => {
+		const next = snap({ "a.ts": meta(100, 5, "hi\nthere\n") });
+		const changes = reconcile(new Map(), next);
+		expect(changes[0]?.kind).toBe("created");
+		expect(changes[0]?.added).toBe(2);
+		expect(formatRanges(changes[0]?.lineRanges)).toBe("1-2");
 	});
 });

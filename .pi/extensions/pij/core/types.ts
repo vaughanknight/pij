@@ -132,12 +132,20 @@ export interface SessionDescriptor {
 }
 
 // ─── peer file-watch subscriptions ─────────────────────────────────────────
+/** Notice richness for a watch: `notify` = changed-line ranges (default);
+ *  `diff` = a unified diff delivered through a pointer file. */
+export type WatchMode = "notify" | "diff";
+
 /** One CLI-authored watch subscription in ~/.pij/<id>/watches.json. */
 export interface WatchSubscription {
 	readonly dir: string;
 	readonly patterns: readonly string[];
 	readonly recursive?: boolean;
 	readonly addedAt: string;
+	/** Notice mode; absent ⇒ `notify` (back-compat with pre-034 sidecars). */
+	readonly mode?: WatchMode;
+	/** Per-subscription collate window in milliseconds; absent ⇒ pij's peer-watch default. */
+	readonly debounceMs?: number;
 }
 
 /** Sidecar shape owned by the CLI and read-only to the daemon. */

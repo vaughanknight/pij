@@ -34,14 +34,14 @@ packages:
     enabled: true
     note: MCP bridge
     vetted:
-      date: 2026-07-05T04:30:45.778Z
+      date: 2026-07-10T00:36:15.921Z
       score: 100
       agentRubric: cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720
   - source: git:https://github.com/hasit/pi-community-themes@v0.3.0
     enabled: true
     note: Community pi themes
     vetted:
-      date: 2026-07-05T04:30:48.571Z
+      date: 2026-07-10T00:36:18.482Z
       score: 100
       agentRubric: cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720
   - source: npm:pi-lean-ctx
@@ -54,7 +54,7 @@ packages:
       # /opt/homebrew/bin which isn't searched — symlink into ~/.local/bin.
       install: brew tap yvgude/lean-ctx && brew install lean-ctx && mkdir -p ~/.local/bin && ln -sf "$(brew --prefix)/bin/lean-ctx" ~/.local/bin/lean-ctx
     vetted:
-      date: 2026-07-05T04:30:49.505Z
+      date: 2026-07-10T00:36:19.068Z
       score: 100
   - source: git:github.com/ghoseb/pi-askuserquestion
     enabled: true
@@ -84,13 +84,13 @@ packages:
     enabled: true
     note: subagent delegation extension per plan 007
     vetted:
-      date: 2026-07-05T04:30:55.882Z
+      date: 2026-07-10T00:36:22.584Z
       score: 100
       agentRubric: cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720
   - source: npm:pi-smart-fetch
     enabled: true
     note: smart web_fetch with desktop-browser TLS impersonation; markdown/html/text/json/raw output
     vetted:
-      date: 2026-07-05T04:30:56.783Z
+      date: 2026-07-10T00:36:23.170Z
       score: 100
       agentRubric: cdf5f5b250017754e9fcc746ec303d5f99fe8868eedbfd2b218dff32bb79e720

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +15,7 @@ import {
 	compileWatch,
 	DEFAULT_IGNORE,
 	DEFAULT_NOTICE,
+	MAX_CONTENT_BYTES,
 	WatchReconciler,
 } from "./store.js";
 import { FolderWatcher, nodeWatchDeps, type WatchDeps } from "./watcher.js";
@@ -134,6 +135,93 @@ describe("FolderWatcher — real fs integration", () => {
 		await writeFile(join(dir, ".hidden"), "x"); // dotfile
 		await w.scan();
 		expect(seen).toEqual([]);
+
+		w.dispose();
+	});
+
+	it("captures under-cap text content → a modified reports a textual delta (AC-06)", async () => {
+		const seen: Change[] = [];
+		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		await writeFile(join(dir, "a.md"), "line1\nline2\n");
+		await w.start(); // primes WITH content
+
+		await writeFile(join(dir, "a.md"), "line1\nCHANGED\n");
+		await w.scan();
+		const c = seen.at(-1);
+		expect(c?.kind).toBe("modified");
+		expect(c?.added).toBe(1);
+		expect(c?.removed).toBe(1);
+		expect(c?.lineRanges).toEqual([{ start: 2, end: 2 }]);
+		expect(c?.diff).toContain("+CHANGED");
+
+		w.dispose();
+	});
+
+	it("suppresses an mtime-only touch once content is captured (AC-03)", async () => {
+		const seen: Change[] = [];
+		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		await writeFile(join(dir, "a.md"), "same\n");
+		await w.start();
+
+		// rewrite identical bytes but bump mtime
+		const future = new Date(Date.now() + 5000);
+		await writeFile(join(dir, "a.md"), "same\n");
+		await utimes(join(dir, "a.md"), future, future);
+		await w.scan();
+		expect(seen).toEqual([]); // empty textual delta → no notice
+
+		w.dispose();
+	});
+
+	it("skips content for a binary file → modified reports without a delta (AC-06)", async () => {
+		const seen: Change[] = [];
+		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		await writeFile(join(dir, "a.md"), Buffer.from([1, 2, 0, 3, 4])); // NUL byte
+		await w.start();
+
+		await writeFile(join(dir, "a.md"), Buffer.from([1, 2, 0, 3, 4, 5]));
+		await w.scan();
+		const c = seen.at(-1);
+		expect(c?.kind).toBe("modified");
+		expect(c?.diff).toBeUndefined();
+		expect(c?.lineRanges).toBeUndefined();
+
+		w.dispose();
+	});
+
+	it("skips content for an over-cap file → modified reports without a delta (AC-06)", async () => {
+		const seen: Change[] = [];
+		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const big = "x".repeat(MAX_CONTENT_BYTES + 10);
+		await writeFile(join(dir, "a.md"), big);
+		await w.start();
+
+		await writeFile(join(dir, "a.md"), `${big}y`);
+		await w.scan();
+		const c = seen.at(-1);
+		expect(c?.kind).toBe("modified");
+		expect(c?.diff).toBeUndefined();
+
+		w.dispose();
+	});
+
+	it("advances the baseline exactly once per wake — successive edits are delta-only (AC-04, F-11)", async () => {
+		const seen: Change[] = [];
+		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		await writeFile(join(dir, "a.md"), "v1\n");
+		await w.start();
+
+		await writeFile(join(dir, "a.md"), "v2\n");
+		await w.scan();
+		expect(seen.at(-1)?.diff).toContain("+v2");
+		expect(seen.at(-1)?.diff).toContain("-v1");
+
+		await writeFile(join(dir, "a.md"), "v3\n");
+		await w.scan();
+		// delta is v2→v3 (baseline advanced past v1), NOT cumulative v1→v3
+		expect(seen.at(-1)?.diff).toContain("+v3");
+		expect(seen.at(-1)?.diff).toContain("-v2");
+		expect(seen.at(-1)?.diff).not.toContain("-v1");
 
 		w.dispose();
 	});

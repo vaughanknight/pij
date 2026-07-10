@@ -5,16 +5,25 @@
 // WatchReconciler. We never read fs.watch's event type (Key Finding 01).
 
 import { watch } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
-import type { Change, CompiledWatch, Snapshot, WatchReconciler } from "./store.js";
+import {
+	type Change,
+	type CompiledWatch,
+	MAX_CONTENT_BYTES,
+	type Snapshot,
+	type WatchReconciler,
+} from "./store.js";
 
 export interface FileEntry {
 	readonly rel: string;
 	readonly mtimeMs: number;
 	readonly size: number;
 	readonly abs?: string;
+	/** Under-cap, non-binary text content — the self-snapshot diff baseline.
+	 *  Absent for over-cap/binary files (they still report, sans textual delta). */
+	readonly content?: string;
 }
 
 /** Injected side effects (Pattern P3) — node-backed by default, faked in tests. */
@@ -89,6 +98,7 @@ export class FolderWatcher {
 				mtimeMs: f.mtimeMs,
 				size: f.size,
 				identityPath: f.abs ?? resolve(this.compiled.dir, f.rel),
+				content: f.content,
 			});
 		}
 		return snap;
@@ -137,6 +147,7 @@ async function listFilesNode(dir: string, recursive: boolean): Promise<FileEntry
 					abs,
 					mtimeMs: s.mtimeMs,
 					size: s.size,
+					content: await readTextContent(abs, s.size),
 				});
 			} catch {
 				// file vanished between readdir and stat — skip
@@ -145,4 +156,20 @@ async function listFilesNode(dir: string, recursive: boolean): Promise<FileEntry
 	}
 	await walk(dir);
 	return out;
+}
+
+/**
+ * Capture a file's text content for the diff baseline. Skipped (→ `undefined`)
+ * when the file is over `MAX_CONTENT_BYTES` (memory bound) or binary (a NUL byte
+ * in the bytes). A skipped file still snapshots by {mtimeMs,size} → plain notice.
+ */
+async function readTextContent(abs: string, size: number): Promise<string | undefined> {
+	if (size > MAX_CONTENT_BYTES) return undefined;
+	try {
+		const buf = await readFile(abs);
+		if (buf.includes(0)) return undefined; // NUL byte ⇒ treat as binary
+		return buf.toString("utf8");
+	} catch {
+		return undefined;
+	}
 }

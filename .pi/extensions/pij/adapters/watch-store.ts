@@ -11,6 +11,8 @@ function isWatchSubscription(v: unknown): v is WatchSubscription {
 		Array.isArray(obj.patterns) &&
 		obj.patterns.every((p) => typeof p === "string") &&
 		(obj.recursive === undefined || typeof obj.recursive === "boolean") &&
+		(obj.mode === undefined || obj.mode === "notify" || obj.mode === "diff") &&
+		(obj.debounceMs === undefined || typeof obj.debounceMs === "number") &&
 		typeof obj.addedAt === "string"
 	);
 }
