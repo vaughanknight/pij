@@ -1,23 +1,23 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-07-04T00-54-46Z-github.com-Open-Sauc
+- **Run**: 2026-07-09T01-36-49Z-github.com-AI-Substr
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-07-04T01:40:38.875Z
+- **Created at**: 2026-07-09T02:12:59.549Z
 
 ## Summary
 
-Worker packet template hardcodes just-gates (just flow-pair-test/typecheck/lint) and pij_send tool; neither exists for a non-pi worker in a harness-CLI repo — orchestrator addendum had to override both
+Tested one of two AND-ed thresholds: the pointer-vs-inline decision guards on (lineCount<=MAX && byteCount<=MAX), but only the line-cap branch had a test — the byte-cap branch was vacuous (a mutation survived GREEN).
 
 ## Evidence
 
-- dlg-0001 Stop Conditions vs addendum: gate is 'harness checks', transport is 'pij send <id>' CLI
-- coder followed addendum cleanly (review rev-0001 Dim9 clean)
+- review-dlg-0001: mutating 'byteCount<=DIFF_INLINE_MAX_BYTES'->true left all tests green
+- fix added a <=60-line but >4KiB diff test asserting pointer delivery (AC-05).
 
 ## Candidate prompt delta
 
-Template should parameterize {gate_commands} and {report_transport} from repo signals (harness CLI present? worker harness mode?) at dispatch time
+When a decision ANDs two independent thresholds, write a test that trips EACH guard in isolation (one case that exceeds only threshold A, one only B) — a case that trips the first short-circuits the second.
 
 ## Promotion status
 
