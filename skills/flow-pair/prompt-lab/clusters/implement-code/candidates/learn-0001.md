@@ -1,23 +1,22 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-07-09T01-36-49Z-github.com-AI-Substr
+- **Run**: 2026-07-10T03-15-51Z-github.com-AI-Substr
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-07-09T02:12:59.549Z
+- **Created at**: 2026-07-10T03:29:06.662Z
 
 ## Summary
 
-Tested one of two AND-ed thresholds: the pointer-vs-inline decision guards on (lineCount<=MAX && byteCount<=MAX), but only the line-cap branch had a test — the byte-cap branch was vacuous (a mutation survived GREEN).
+Worker packet template names just recipes (flow-pair-test/typecheck/lint) that do not exist in target repos; coder burned a discovery loop (CONF-002)
 
 ## Evidence
 
-- review-dlg-0001: mutating 'byteCount<=DIFF_INLINE_MAX_BYTES'->true left all tests green
-- fix added a <=60-line but >4KiB diff test asserting pointer delivery (AC-05).
+- 057 P2 dlg-0001 coder notes + execution.log.md CONF-002
 
 ## Candidate prompt delta
 
-When a decision ANDs two independent thresholds, write a test that trips EACH guard in isolation (one case that exceeds only threshold A, one only B) — a case that trips the first short-circuits the second.
+Packet template: replace named recipes with 'discover the repo's authoritative gates (justfile/harness checks) and record which you ran' or accept gates as dispatch input
 
 ## Promotion status
 

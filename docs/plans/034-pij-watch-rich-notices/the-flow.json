@@ -3,8 +3,8 @@
   "kind": "flight-plan",
   "slug": "pij-watch-rich-notices",
   "nav": {
-    "now": "review-1",
-    "next": "ship",
+    "now": "ship",
+    "next": null,
     "intent": "Rich file-watch notices for pij peer watch (plan 033): changed-line ranges + optional diff mode (self-snapshot baseline, pointer-delivery for large diffs) + .gitignore honoring.",
     "bag": {
       "mode": "unknown",
@@ -319,6 +319,39 @@
         "from": "p1-followups",
         "to": "review-1"
       }
+    },
+    {
+      "id": "UPD-011",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-10T02:27:01.078Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-10T02:27:01.161Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-006",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-10T02:27:01.244Z",
+      "details": {
+        "from": "review-1",
+        "to": "ship"
+      }
     }
   ],
   "nodes": [
@@ -412,14 +445,17 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "note": "Shipped 2026-07-10: direct commits to main (repo convention) — 9288d3d feat plan 034, d03bac3 models fix, 44fbca1 bookkeeping; pushed origin/main. No PR (user-directed commit+push).",
+      "modified_at": "2026-07-10T02:27:01.161Z",
+      "ran_at": "2026-07-10T02:27:01.161Z"
     },
     {
       "id": "backpressure",
