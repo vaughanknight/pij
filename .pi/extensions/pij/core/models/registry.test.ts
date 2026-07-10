@@ -10,6 +10,7 @@ import {
 	codexConfigModels,
 	codexSnapshot,
 	copilotSeedFromPi,
+	copilotSnapshot,
 	parseModelsJson,
 } from "./registry.js";
 
@@ -152,12 +153,33 @@ describe("codexSnapshot", () => {
 		for (const e of codexSnapshot()) expect(e.provider).toBe("codex");
 	});
 
-	// Task 2.2: the snapshot is now only a THIN fallback (the real source is the
-	// user's ~/.codex/config.toml default model, read in cli.ts loadModels).
-	it("is a thin fallback whose entries carry curated thinking levels", () => {
-		const snap = codexSnapshot();
-		expect(snap.length).toBeLessThanOrEqual(3);
-		for (const e of snap) expect(Array.isArray(e.levels)).toBe(true);
+	// The snapshot is a curated best-effort alias list (the config default still
+	// wins via loadModels dedup); every entry carries a levels array.
+	it("entries carry curated thinking levels", () => {
+		for (const e of codexSnapshot()) expect(Array.isArray(e.levels)).toBe(true);
+	});
+
+	it("advertises the gpt-5.6 trio (sol/terra/luna) with gpt-5 thinking levels", () => {
+		const ids = codexSnapshot().map((e) => e.id);
+		for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+			expect(ids).toContain(id);
+			const e = codexSnapshot().find((m) => m.id === id);
+			expect(e?.levels).toContain("xhigh"); // gpt-5 family honors minimal→xhigh
+		}
+	});
+});
+
+describe("copilotSnapshot", () => {
+	it("advertises the gpt-5.6 trio as unverified copilot aliases", () => {
+		const snap = copilotSnapshot();
+		const ids = snap.map((e) => e.id);
+		for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+			expect(ids).toContain(id);
+		}
+		for (const e of snap) {
+			expect(e.provider).toBe("copilot");
+			expect(e.verified).toBe(false); // best-effort until canaried
+		}
 	});
 });
 

@@ -182,7 +182,37 @@ function codexEntry(id: string, name?: string): ModelEntry {
  *  {@link codexConfigModels} / cli.ts loadModels); this just keeps `pij models`
  *  non-empty for codex when no config is readable. */
 export function codexSnapshot(): ModelEntry[] {
-	return [codexEntry("gpt-5.5"), codexEntry("o3")];
+	return [
+		// gpt-5.6 trio (sol/terra/luna) — served by the codex client but not
+		// CLI-enumerable, so they only appear here as best-effort aliases (the
+		// config default still wins via loadModels dedup when set).
+		codexEntry("gpt-5.6-sol"),
+		codexEntry("gpt-5.6-terra"),
+		codexEntry("gpt-5.6-luna"),
+		codexEntry("gpt-5.5"),
+		codexEntry("o3"),
+	];
+}
+
+/** Build a copilot ModelEntry (best-effort/unverified alias). Copilot's CLI takes a
+ *  freeform `--model` and does NOT enumerate, so newer ids won't be in pi's models.json
+ *  seed yet. No reasoning-level data for an unverified alias → empty (pass-through). */
+function copilotEntry(id: string, name?: string): ModelEntry {
+	return {
+		id,
+		name: name ?? id,
+		provider: "copilot",
+		verified: false,
+		reasoning: false,
+		levels: [],
+	};
+}
+
+/** Thin fallback of newer copilot model ids not yet in pi's `models.json` seed
+ *  (best-effort, unverified — e.g. the gpt-5.6 trio). Deduped against the pi seed in
+ *  {@link loadModels}, so a later VERIFIED pi entry always wins over these aliases. */
+export function copilotSnapshot(): ModelEntry[] {
+	return [copilotEntry("gpt-5.6-sol"), copilotEntry("gpt-5.6-terra"), copilotEntry("gpt-5.6-luna")];
 }
 
 /**
@@ -226,7 +256,14 @@ export function loadModels(): ModelEntry[] {
 		/* no pi install or no models.json → fall back to aliases only */
 	}
 	const piModels = parseModelsJson(piRaw);
-	const copilotModels = copilotSeedFromPi(piRaw);
+	const copilotSeed = copilotSeedFromPi(piRaw);
+	// Merge in the best-effort copilot snapshot (newer ids absent from pi's seed),
+	// deduped by id so a VERIFIED pi entry always wins over an unverified alias.
+	const copilotSeedIds = new Set(copilotSeed.map((m) => m.id));
+	const copilotModels = [
+		...copilotSeed,
+		...copilotSnapshot().filter((m) => !copilotSeedIds.has(m.id)),
+	];
 	const seenIds = new Set(piModels.map((m) => m.id).concat(copilotModels.map((m) => m.id)));
 	const claude = claudeAliases().filter((m) => !seenIds.has(m.id));
 	// Codex (#2): prefer the user's configured default model from ~/.codex/config.toml
