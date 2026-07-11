@@ -1,23 +1,24 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-07-11T03-49-50Z-github.com-jakkaj-Fr
+- **Run**: 2026-07-11T05-56-25Z-github.com-jakkaj-Fr
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-07-11T04:16:52.188Z
+- **Created at**: 2026-07-11T06:29:34.719Z
 
 ## Summary
 
-Coder self-invoked a code-review skill over its own diff mid-packet; human stopped it in-pane. Worker-implement packets must explicitly forbid review-skill invocation and state the role boundary: tests+gates green is the coder's bar; review happens in a separate clean agent.
+Coder placed a config-snapshot read (TerrainTuning.Current) on a public blind-query path (CanUse/CanDig) callable outside SimHost.Step — violating the platform's declared-read-points rule; caught by cold review one hop downstream of the contract doc
 
 ## Evidence
 
-- pane showed Code-review(gpt-5.6-sol) 'Review config platform phase' + git show HEAD diffing during dlg-0001
-- Jordan ruling 2026-07-11
+- rev-0001 HIGH
+- consumer-guide-draft-s020.md:72-78
+- fix-0001 subtractive
 
 ## Candidate prompt delta
 
-Add to worker-implement template forbidden-actions: 'Do NOT invoke code-review or any review skill — your own tests/gates are your only quality bar; the fleet's cold reviewer owns review.'
+Packet template line: config/tuning snapshots may be read ONLY at declared deterministic seams (command-drain resolutions); blind/availability queries must stay snapshot-free or route through a declared query seam
 
 ## Promotion status
 

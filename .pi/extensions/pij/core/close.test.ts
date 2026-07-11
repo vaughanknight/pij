@@ -123,6 +123,19 @@ describe("planClose — ownership guard", () => {
 		if (!r.ok) expect(r.code).toBe("E-NOID");
 	});
 
+	it("is a successful no-op when the session is already dissolved", () => {
+		const r = planClose(
+			desc({ lifecycle: "dissolved", spawnedBy: "pij-someone-else" }),
+			"pij-worker",
+			"pij-boss",
+			false,
+		);
+		expect(r).toEqual({
+			ok: true,
+			value: { id: "pij-worker", paneId: "%7", alreadyDissolved: true },
+		});
+	});
+
 	it("errors when the target has no pane (E-NOID)", () => {
 		const r = planClose(desc({ paneId: undefined }), "pij-worker", "pij-boss", true);
 		expect(r.ok).toBe(false);

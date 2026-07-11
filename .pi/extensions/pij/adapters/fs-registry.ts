@@ -79,7 +79,7 @@ export class FsRegistry implements RegistryPort {
 		for (const name of names) {
 			if (!name.endsWith(".json")) continue;
 			const descriptor = this.readFile(join(this.pijHome, name));
-			if (descriptor) out.push(descriptor);
+			if (descriptor && descriptor.lifecycle !== "dissolved") out.push(descriptor);
 		}
 		return out;
 	}
@@ -89,6 +89,15 @@ export class FsRegistry implements RegistryPort {
 	}
 
 	write(descriptor: SessionDescriptor): void {
+		const existing = this.read(descriptor.id);
+		if (
+			existing?.lifecycle === "dissolved" &&
+			descriptor.lifecycle !== undefined &&
+			descriptor.lifecycle !== "dissolved" &&
+			descriptor.pid === existing.pid
+		) {
+			return;
+		}
 		const identity = this.claimDescriptorIdentity(descriptor);
 		if (!identity.ok) throw new Error(identity.message);
 		try {
@@ -186,6 +195,12 @@ export class FsRegistry implements RegistryPort {
 		} catch {
 			// already gone — durable identity and snapshot intentionally remain.
 		}
+	}
+
+	dissolve(id: SessionId): void {
+		const existing = this.read(id);
+		if (!existing || existing.lifecycle === "dissolved") return;
+		this.write({ ...existing, lifecycle: "dissolved", state: "idle" });
 	}
 
 	private claimDescriptorIdentity(

@@ -311,7 +311,7 @@ describe("finalizeAgentSpawn — descriptor + packet + pointer (AC-14)", () => {
 	}
 
 	it("writes a descriptor carrying agentPack/agentPackDir/spawnedBy + packet + pointer", () => {
-		const plan = planFor("ok");
+		const plan = planFor("ok", { model: "gpt-5.6-sol", effort: "xhigh" });
 		const deps = finDeps();
 		finalizeAgentSpawn(plan, paneInfo(), deps);
 
@@ -320,6 +320,8 @@ describe("finalizeAgentSpawn — descriptor + packet + pointer (AC-14)", () => {
 		expect(d?.agentPackDir).toBe(plan.packDir);
 		expect(d?.spawnedBy).toBe("pij-boss");
 		expect(d?.paneId).toBe("%9");
+		expect(d?.boundModel).toBe("gpt-5.6-sol");
+		expect(d?.effort).toBe("xhigh");
 		// packet.md written + names the report command
 		expect(readFileSync(join(peerHome, "pij-new", "packet.md"), "utf8")).toContain(
 			"pij agent report --json",

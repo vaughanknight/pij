@@ -14,6 +14,7 @@ import { filterByFolder, resolveSelf } from "./discovery.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
+import { daemonTickStatus } from "./receipts.js";
 import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
 import {
@@ -460,6 +461,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							liveness: live,
 							lastEventAt: d.lastEventAt ?? null,
 							boundModel: d.boundModel ?? null,
+							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
 						})),
 					),
@@ -468,9 +470,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				return okOut(cmd.here ? "no pij sessions in this folder" : "no pij sessions");
 			const lines = rows.map(
 				({ d, live }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${d.folder}`,
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundModel ?? "—", 20)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
 			);
-			const header = `  ${pad("id", 14)} ${pad("activity", 8)} ${pad("liveness", 7)} folder`;
+			const header = `  ${pad("id", 14)} ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("model", 20)} ${pad("effort", 7)} folder`;
 			return okOut(
 				[header, ...lines, `${rows.length} session(s)${self ? ` · ★ = you (${self})` : ""}`].join(
 					"\n",
@@ -505,7 +507,10 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const target = deps.registry.read(cmd.to);
 			if (!target) return fail("E-NOID", `no session '${cmd.to}' in registry`, cmd.json);
 			const live = liveOf(deps, target, now);
-			if (live === "dead") return fail("E-DEAD", `session ${cmd.to} is dead (pid gone)`, cmd.json);
+			if (live === "dead" || live === "dissolved") {
+				const why = live === "dissolved" ? "dissolved (closed)" : "dead (pid gone)";
+				return fail("E-DEAD", `session ${cmd.to} is ${why}`, cmd.json);
+			}
 
 			let messageId: string;
 			let kindNote: string;
@@ -553,6 +558,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				: (target.state ?? "idle") === "working"
 					? "queued"
 					: "delivered";
+			const tickStatus = daemonReceiptAuthoritative(target)
+				? daemonTickStatus(target.lastTickAt, now)
+				: undefined;
 			// Informational "quiet peer" note keys on event AGE, not the liveness
 			// label: an idle/done peer is now `active` (INS-001), but a long-quiet
 			// peer is still worth flagging to the sender. The send lands regardless.
@@ -573,6 +581,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						kind: kindNote,
 						receipt: initial,
 						liveness: live,
+						...(tickStatus ?? {}),
 					}),
 					stderr: "",
 					exitCode: 0,
@@ -581,7 +590,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const recvHint =
 				initial === "queued"
 					? daemonReceiptAuthoritative(target)
-						? "queued: awaiting daemon delivery confirmation"
+						? tickStatus?.daemonTickStale
+							? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
+							: "queued: awaiting daemon delivery confirmation"
 						: "queued: peer is busy, will steer after current turn"
 					: "delivered: peer was idle";
 			const tail = cmd.wait
@@ -628,10 +639,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const ageMs = descAgeMs(d, now);
 			const live = liveOf(deps, d, now);
 			const alive = deps.process.isAlive(d.pid);
+			const tickStatus =
+				d.lastTickAt !== undefined || daemonReceiptAuthoritative(d)
+					? daemonTickStatus(d.lastTickAt, now)
+					: null;
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({
 						id: d.id,
+						lifecycle: d.lifecycle ?? null,
 						state: d.state ?? "idle",
 						activity: activityOf(d.state, d.lastEventAt != null),
 						liveness: live,
@@ -644,13 +660,23 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						harness: d.harness ?? null,
 						// Fail-loud model layer (T013): surface actual bound model + reason
 						boundModel: d.boundModel ?? null,
+						effort: d.effort ?? null,
+						daemonLastTickAt: tickStatus?.daemonLastTickAt ?? null,
+						daemonTickAgeMs: tickStatus?.daemonTickAgeMs ?? null,
+						daemonTickStale: tickStatus?.daemonTickStale ?? null,
 						failureReason: d.failureReason ?? null,
 					}),
 				);
 			const modelLine = d.boundModel ? `  ·  model: ${d.boundModel}` : "";
+			const effortLine = d.effort ? `  ·  effort: ${d.effort}` : "";
+			const tickLine = tickStatus
+				? `  ·  daemon tick: ${tickStatus.daemonTickStale ? "stale" : "fresh"} (${humanAge(
+						tickStatus.daemonTickAgeMs,
+					)} old)`
+				: "";
 			const failLine = d.failureReason ? `  ·  failure: ${d.failureReason}` : "";
 			return okOut(
-				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${failLine}`,
+				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${effortLine}${tickLine}${failLine}`,
 			);
 		}
 		case "phonehome": {
@@ -711,7 +737,12 @@ function pad(s: string, n: number): string {
 	return s.length >= n ? s : s + " ".repeat(n - s.length);
 }
 
-function liveOf(deps: CliDeps, d: SessionDescriptor, nowMs: number): "active" | "stale" | "dead" {
+function liveOf(
+	deps: CliDeps,
+	d: SessionDescriptor,
+	nowMs: number,
+): "active" | "stale" | "dead" | "dissolved" {
+	if (d.lifecycle === "dissolved") return "dissolved";
 	// `stale` is reserved for a peer that claims to be working but has gone quiet
 	// (a stall). An idle/done peer that is simply quiet stays `active` (INS-001).
 	return liveness(

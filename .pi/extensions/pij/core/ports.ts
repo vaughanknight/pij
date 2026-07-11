@@ -26,6 +26,9 @@ export interface RegistryPort {
 	write(descriptor: SessionDescriptor): void;
 	/** Remove a session's descriptor (on shutdown). */
 	remove(id: SessionId): void;
+	/** Persist a terminal tombstone so stale queued writes cannot resurrect a
+	 *  session after close. Dissolved descriptors are hidden from list(). */
+	dissolve(id: SessionId): void;
 }
 
 /** Appends/reads a single session's events.ndjson. */

@@ -41,6 +41,7 @@ export interface ClosePlan {
 	readonly id: SessionId;
 	readonly paneId: string;
 	readonly warning?: string;
+	readonly alreadyDissolved?: true;
 }
 
 /**
@@ -62,6 +63,9 @@ export function planClose(
 ): Result<ClosePlan> {
 	if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
 	if (id === self) return err("E-SELF", `refusing to close yourself (${id})`);
+	if (descriptor.lifecycle === "dissolved") {
+		return ok({ id, paneId: descriptor.paneId ?? "", alreadyDissolved: true });
+	}
 	if (!descriptor.paneId) {
 		return err("E-NOID", `session '${id}' has no pane — not a spawned/adopted tmux session`);
 	}

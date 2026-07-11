@@ -8,6 +8,38 @@
 
 import type { MessageReceipt, ReceiptState, SessionId } from "./types.js";
 
+/** A daemon ticks every 600ms; five missed seconds is unambiguously wedged
+ *  without making brief scheduler jitter look unhealthy. */
+export const DAEMON_TICK_STALE_AFTER_MS = 5_000;
+
+export interface DaemonTickStatus {
+	readonly daemonLastTickAt: string | null;
+	readonly daemonTickAgeMs: number | null;
+	readonly daemonTickStale: boolean;
+}
+
+/** Derive daemon heartbeat health without changing the existing ReceiptState
+ *  vocabulary (`queued|delivered|unverified`). */
+export function daemonTickStatus(
+	lastTickAt: string | undefined,
+	nowMs: number,
+	staleAfterMs: number = DAEMON_TICK_STALE_AFTER_MS,
+): DaemonTickStatus {
+	if (!lastTickAt) {
+		return { daemonLastTickAt: null, daemonTickAgeMs: null, daemonTickStale: true };
+	}
+	const tickMs = Date.parse(lastTickAt);
+	if (Number.isNaN(tickMs)) {
+		return { daemonLastTickAt: null, daemonTickAgeMs: null, daemonTickStale: true };
+	}
+	const ageMs = Math.max(0, nowMs - tickMs);
+	return {
+		daemonLastTickAt: lastTickAt,
+		daemonTickAgeMs: ageMs,
+		daemonTickStale: ageMs > staleAfterMs,
+	};
+}
+
 /** Classify a message at inject time from the peer's idle state. */
 export function classifyOnInject(idle: boolean): ReceiptState {
 	return idle ? "delivered" : "queued";
@@ -21,11 +53,21 @@ export function initialReceipt(
 	to: SessionId,
 	idle: boolean,
 	atIso: string,
+	daemonLastTickAt?: string,
 ): MessageReceipt {
 	if (idle) {
 		return { messageId, from, to, state: "delivered", deliveredAt: atIso };
 	}
-	return { messageId, from, to, state: "queued", queuedAt: atIso };
+	return {
+		messageId,
+		from,
+		to,
+		state: "queued",
+		queuedAt: atIso,
+		...(daemonLastTickAt !== undefined
+			? daemonTickStatus(daemonLastTickAt, Date.parse(atIso))
+			: {}),
+	};
 }
 
 /** Transition a queued receipt to delivered. */

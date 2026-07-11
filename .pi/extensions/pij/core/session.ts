@@ -56,6 +56,8 @@ export interface PijPorts {
 export interface SpawnOpts {
 	/** Optional model override for the worker (passed via --model + PIJ_SPAWN_MODEL). */
 	readonly model?: string;
+	/** Optional reasoning effort pinned for the worker. */
+	readonly effort?: string;
 	/** Optional first task (delivered via PIJ_SPAWN_TASK env; finding 01 / CF-01). */
 	readonly task?: string;
 	/** Absolute working directory for the new pi session. */
@@ -131,7 +133,8 @@ export class PijSession {
 	boot(input: BootInput): BootResult {
 		const liveDescriptor = this.ports.registry.read(input.id);
 		const existing = liveDescriptor ?? input.durableDescriptor ?? null;
-		const fresh = liveDescriptor === null;
+		const wasDissolved = liveDescriptor?.lifecycle === "dissolved";
+		const fresh = liveDescriptor === null || wasDissolved;
 		const descriptor: SessionDescriptor = {
 			// Durable identity/history metadata survives a process or machine restart.
 			// Runtime attachment fields below deliberately replace the prior incarnation.
@@ -147,7 +150,7 @@ export class PijSession {
 			lastEventAt: existing?.lastEventAt,
 			harness: input.harness ?? existing?.harness,
 			harnessSessionId: input.harnessSessionId ?? existing?.harnessSessionId,
-			lifecycle: input.resetRuntimeState ? undefined : existing?.lifecycle,
+			lifecycle: input.resetRuntimeState || wasDissolved ? undefined : existing?.lifecycle,
 			failureReason: input.resetRuntimeState ? undefined : existing?.failureReason,
 			// Runtime pane comes from this incarnation; creator relation is durable.
 			paneId: input.resetRuntimeState ? input.paneId : (input.paneId ?? existing?.paneId),
@@ -167,14 +170,25 @@ export class PijSession {
 				const tmuxPane = this.ports.process.env("TMUX_PANE");
 				const spawnId = this.ports.process.env("PIJ_SPAWN_ID") ?? "";
 				// §H2: model via PIJ_SPAWN_MODEL (set by spawner); "" = default model
-				const model = this.ports.process.env("PIJ_SPAWN_MODEL") ?? "";
+				const spawnModel = this.ports.process.env("PIJ_SPAWN_MODEL") ?? "";
+				const effort = this.ports.process.env("PIJ_SPAWN_EFFORT");
+				const effortSuffix = effort ? `:${effort}` : "";
+				const model =
+					effortSuffix && spawnModel.endsWith(effortSuffix)
+						? spawnModel.slice(0, -effortSuffix.length)
+						: spawnModel;
 				// P9: persist paneId/spawnedBy BEFORE the ready-ping
-				this.persist({ paneId: tmuxPane, spawnedBy: announceTo });
+				this.persist({
+					paneId: tmuxPane,
+					spawnedBy: announceTo,
+					...(model ? { boundModel: model } : {}),
+					...(effort ? { effort } : {}),
+				});
 				// Deliver the ready-ping via channel (event — never an inject)
 				this.ports.delivery.deliver({
 					from: this.self,
 					to: announceTo,
-					body: readyBody(spawnId, model, input.folder),
+					body: readyBody(spawnId, model, input.folder, effort),
 				});
 				// Finding 07: exactly ONE inject at boot — suppress announceText
 				// when a task is present (the CF-01 mitigation; finding 01).
@@ -204,6 +218,7 @@ export class PijSession {
 		const spawnId = `s${this.ports.process.now()}-${this.spawnCounter++}`;
 		const spawnCmd = buildSpawnCommand({
 			model: opts.model,
+			effort: opts.effort,
 			task: opts.task,
 			spawnId,
 			announceTo: this.self,
@@ -285,6 +300,7 @@ export class PijSession {
 		if (!descriptor) {
 			return err("E-NOID", `no such session '${id}'`);
 		}
+		if (descriptor.lifecycle === "dissolved") return ok({});
 		// §H3: descriptor.paneId is string|undefined; guard before killWindow
 		if (!descriptor.paneId) {
 			return err("E-NOID", `session '${id}' has no paneId — not a spawned window`);
@@ -311,7 +327,7 @@ export class PijSession {
 		if (!killResult.ok) {
 			return err(killResult.code, killResult.message);
 		}
-		this.ports.registry.remove(id);
+		this.ports.registry.dissolve(id);
 		return ok({ warning });
 	}
 
@@ -411,7 +427,7 @@ export class PijSession {
 	/** session_shutdown: drop this session's descriptor so `pij list` stops
 	 *  showing it active. */
 	shutdown(): void {
-		this.ports.registry.remove(this.self);
+		this.ports.registry.dissolve(this.self);
 	}
 
 	/** Drain queued new|reload requests now that a command context is armed
@@ -437,7 +453,10 @@ export class PijSession {
 	 *  boot. */
 	private persist(
 		patch: Partial<
-			Pick<SessionDescriptor, "state" | "lastEventAt" | "pid" | "paneId" | "spawnedBy">
+			Pick<
+				SessionDescriptor,
+				"state" | "lastEventAt" | "pid" | "paneId" | "spawnedBy" | "boundModel" | "effort"
+			>
 		>,
 	): void {
 		if (!this.descriptor) return;

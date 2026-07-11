@@ -143,6 +143,11 @@ export default function (pi: ExtensionAPI): void {
 					description: "Model override for the child session (passed as --model).",
 				}),
 			),
+			effort: Type.Optional(
+				Type.String({
+					description: "Reasoning effort override for the child session.",
+				}),
+			),
 			layout: Type.Optional(
 				Type.Union([Type.Literal("window"), Type.Literal("split")], {
 					description:
@@ -155,6 +160,7 @@ export default function (pi: ExtensionAPI): void {
 			const res = session.spawn({
 				task: typeof params.task === "string" ? params.task : undefined,
 				model: typeof params.model === "string" ? params.model : undefined,
+				effort: typeof params.effort === "string" ? params.effort : undefined,
 				layout: params.layout === "window" || params.layout === "split" ? params.layout : undefined,
 				cwd: ctx.cwd, // §M6: cwd from tool execute context
 			});

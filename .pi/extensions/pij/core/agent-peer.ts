@@ -336,6 +336,8 @@ export function finalizeAgentSpawn(
 		...(pane.plannedHarnessSessionId
 			? { plannedHarnessSessionId: pane.plannedHarnessSessionId }
 			: {}),
+		...(plan.model !== undefined ? { model: plan.model } : {}),
+		...(plan.effort !== undefined ? { effort: plan.effort } : {}),
 	});
 	const descriptor: SessionDescriptor = {
 		...base,

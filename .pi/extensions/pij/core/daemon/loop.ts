@@ -154,10 +154,11 @@ const EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
  *  writer stamped after this tick's index snapshot was taken. Re-reads the latest
  *  on-disk descriptor and carries forward any {@link EXTERNALLY_OWNED_FIELDS} the
  *  daemon-computed value lacks (the daemon never writes them itself, so "lacks"
- *  is always the case). Returns the descriptor actually written, so the caller can
- *  keep threading the merged value through the rest of the tick. Use this for
- *  EVERY daemon descriptor write — it is a no-op when nothing external is present,
- *  so it is safe (and behavior-preserving) even on the pending-only bind path. */
+ *  is always the case). Re-reads after the write and returns registry truth, which
+ *  may be a concurrent dissolved tombstone when the registry rejects this stale
+ *  daemon write. Use this for EVERY daemon descriptor write — it is a no-op when
+ *  nothing external is present, so it is safe (and behavior-preserving) even on
+ *  the pending-only bind path. */
 export function writeMerged(
 	registry: RegistryPort,
 	computed: SessionDescriptor,
@@ -172,7 +173,9 @@ export function writeMerged(
 		}
 	}
 	registry.write(merged);
-	return merged;
+	const persisted = registry.read(merged.id);
+	if (!persisted) throw new Error(`daemon write for ${merged.id} did not persist`);
+	return persisted;
 }
 
 export function driveSession(

@@ -234,6 +234,35 @@ describe("FsRegistry", () => {
 		expect(() => reg.remove("bob")).not.toThrow();
 	});
 
+	it("dissolve persists a hidden terminal tombstone and blocks stale bound writes", () => {
+		const reg = new FsRegistry(home);
+		const live: SessionDescriptor = {
+			...descriptor("bob"),
+			harness: "claude",
+			harnessSessionId: "native-bob",
+			lifecycle: "bound",
+			paneId: "%7",
+		};
+		reg.write(live);
+
+		reg.dissolve("bob");
+
+		expect(reg.read("bob")).toMatchObject({
+			id: "bob",
+			lifecycle: "dissolved",
+			paneId: "%7",
+		});
+		expect(reg.list()).toEqual([]);
+
+		// Simulate a queued daemon activity write derived from its pre-close snapshot.
+		reg.write({ ...live, state: "idle", lastEventAt: "2026-06-16T00:00:01.000Z" });
+		expect(reg.read("bob")?.lifecycle).toBe("dissolved");
+		expect(reg.list()).toEqual([]);
+
+		expect(() => reg.dissolve("bob")).not.toThrow();
+		expect(reg.read("bob")?.lifecycle).toBe("dissolved");
+	});
+
 	it("read of an absent id is null; list of an empty home is []", () => {
 		const reg = new FsRegistry(join(home, "nope"));
 		expect(reg.read("ghost")).toBeNull();

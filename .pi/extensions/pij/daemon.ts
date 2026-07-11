@@ -87,6 +87,12 @@ export class Daemon {
 
 	/** One pass: rebuild the index, drive pending tmux spawns, drain bound inboxes. */
 	tick(): void {
+		const tickAt = new Date(this.ports.now()).toISOString();
+		for (const snapshot of this.registry.list()) {
+			if (!daemonOwnsDelivery(snapshot.harness ?? "pi")) continue;
+			const latest = this.registry.read(snapshot.id);
+			if (latest) this.registry.write({ ...latest, lastTickAt: tickAt });
+		}
 		this.index.rebuild(this.registry.list());
 		this.watchManager.reconcile(this.index.all());
 
@@ -123,14 +129,14 @@ export class Daemon {
 				// `reportedAt` is stamped (T007), so closing the reporter never loses it.
 				if (planOnceClose(d)) {
 					if (d.paneId) this.ports.killPane(d.paneId);
-					this.registry.remove(d.id);
+					this.registry.dissolve(d.id);
 					this.drives.delete(d.id);
 					this.pushed.delete(d.id);
 					this.flushed.delete(d.id);
 					this.paneSig.delete(d.id);
 					this.watchManager.disposeSession(d.id);
 					this.log(
-						`close ${d.id}: once-mode agent peer reported → pane killed + descriptor removed`,
+						`close ${d.id}: once-mode agent peer reported → pane killed + descriptor dissolved`,
 					);
 					continue;
 				}
@@ -185,6 +191,7 @@ export class Daemon {
 							// returns the merged descriptor so `current` (fed to the stall/dead push
 							// below) also carries the preserved stamp.
 							current = writeMerged(this.registry, updated);
+							if (current.lifecycle === "dissolved") continue;
 						}
 					}
 					// Whole-life stalled/dead push (T012): detect transitions and push once
@@ -225,8 +232,9 @@ export class Daemon {
 			const pane = d.paneId ? this.ports.capturePane(d.paneId) : "";
 			const reason: DeathReason = classifyDeathReason(pane);
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
-			writeMerged(this.registry, { ...d, failureReason: reason });
-			const note = buildDeadNotice(d, reason, { authoritativeDeath: true });
+			const persisted = writeMerged(this.registry, { ...d, failureReason: reason });
+			if (persisted.lifecycle === "dissolved") return;
+			const note = buildDeadNotice(persisted, reason, { authoritativeDeath: true });
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: dead (${reason})`);
 			return;
@@ -242,8 +250,9 @@ export class Daemon {
 		if (stalled && !latch.has("stalled")) {
 			latch.add("stalled");
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
-			writeMerged(this.registry, { ...d, failureReason: "stalled" });
-			const note = buildStalledNotice(d);
+			const persisted = writeMerged(this.registry, { ...d, failureReason: "stalled" });
+			if (persisted.lifecycle === "dissolved") return;
+			const note = buildStalledNotice(persisted);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: stalled`);
 		}
@@ -288,8 +297,9 @@ export class Daemon {
 		const isFatal = reason === "quota" || reason === "auth" || reason === "model-not-supported";
 		if (!isFatal) return;
 		latch.add("provider-failure");
-		writeMerged(this.registry, { ...d, failureReason: reason });
-		const note = buildDeadNotice(d, reason, { authoritativeDeath: false });
+		const persisted = writeMerged(this.registry, { ...d, failureReason: reason });
+		if (persisted.lifecycle === "dissolved") return;
+		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false });
 		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: provider-failure (${reason})`);
 	}

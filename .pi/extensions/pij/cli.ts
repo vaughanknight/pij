@@ -94,6 +94,7 @@ import {
 	buildEffortWarning,
 	buildPendingDescriptor,
 	buildSpawnCommand,
+	buildSpawnOutput,
 	buildSpawnWarning,
 	livePeerPanes,
 	parseAdoptArgs,
@@ -528,15 +529,19 @@ function runSpawn(argv: readonly string[]): void {
 		const panePi = splitPi.value.paneId;
 		if (req.value.json) {
 			process.stdout.write(
-				`${JSON.stringify({
-					harness: "pi",
-					paneId: panePi,
-					note: "pi self-registers; its id is assigned by the child at boot — watch for its ready-ping or `pij list`",
-				})}\n`,
+				`${JSON.stringify(
+					buildSpawnOutput({
+						paneId: panePi,
+						harness: "pi",
+						model: req.value.model,
+						effort: req.value.effort,
+						note: "pi self-registers; its id is assigned by the child at boot — watch for its ready-ping or `pij list`",
+					}),
+				)}\n`,
 			);
 		} else {
 			process.stdout.write(
-				`spawned pi worker in pane ${panePi} — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
+				`spawned pi worker in pane ${panePi} (model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
 			);
 		}
 		return;
@@ -694,6 +699,8 @@ function runSpawn(argv: readonly string[]): void {
 			transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
 			plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
 			branchedFrom: branchFrom,
+			model: req.value.model,
+			effort: req.value.effort,
 		}),
 	);
 	// FX001-2 / DL-002: a daemon-bound peer never reads PIJ_SPAWN_TASK (only pi
@@ -709,12 +716,22 @@ function runSpawn(argv: readonly string[]): void {
 	}
 	if (req.value.json) {
 		process.stdout.write(
-			`${JSON.stringify({ id: pijId, paneId, harness: req.value.harness, lifecycle: "pending", ...(branchFrom ? { branchedFrom: branchFrom } : {}) })}\n`,
+			`${JSON.stringify(
+				buildSpawnOutput({
+					id: pijId,
+					paneId,
+					harness: req.value.harness,
+					lifecycle: "pending",
+					model: req.value.model,
+					effort: req.value.effort,
+					branchedFrom: branchFrom,
+				}),
+			)}\n`,
 		);
 	} else {
 		const branchNote = branchFrom ? ` — branched from ${branchFrom}` : "";
 		process.stdout.write(
-			`spawned ${pijId} (${req.value.harness})${branchNote} in pane ${paneId} — daemon will drive it to ready→bound (track: pij state ${pijId} · pij tail ${pijId})\n`,
+			`spawned ${pijId} (${req.value.harness}, model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"})${branchNote} in pane ${paneId} — daemon will drive it to ready→bound (track: pij state ${pijId} · pij tail ${pijId})\n`,
 		);
 	}
 	process.exit(0);
@@ -1214,15 +1231,19 @@ function runClose(argv: readonly string[]): void {
 		process.exit(2);
 	}
 	if (plan.value.warning) process.stderr.write(`${plan.value.warning}\n`);
+	if (plan.value.alreadyDissolved) {
+		process.stdout.write(`closed ${plan.value.id} — already dissolved\n`);
+		process.exit(0);
+	}
 	const tmux = new TmuxAdapter();
 	const killed = tmux.killPane(plan.value.paneId); // idempotent: swallows "already gone"
 	if (!killed.ok) {
 		process.stderr.write(`${killed.code}: ${killed.message}\n`);
 		process.exit(2);
 	}
-	reg.remove(plan.value.id);
+	reg.dissolve(plan.value.id);
 	process.stdout.write(
-		`closed ${plan.value.id} — killed pane ${plan.value.paneId}, removed descriptor\n`,
+		`closed ${plan.value.id} — killed pane ${plan.value.paneId}, descriptor dissolved\n`,
 	);
 	process.exit(0);
 }

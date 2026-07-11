@@ -6,6 +6,12 @@ message bus + activity stream — no server, no daemon. Sessions discover each o
 through `~/.pij/`, message via a fire-and-forget channel, and read each other's
 event streams.
 
+## Related workflow guides
+
+| Guide | Use it when |
+|---|---|
+| [pij prime](./pij-prime.md) | Govern multiple plan-owning streams through one o-prime seat and file-backed government |
+
 ## The point: cheap generation, expensive review
 
 ```

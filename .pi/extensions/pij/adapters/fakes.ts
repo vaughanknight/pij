@@ -31,16 +31,30 @@ export class FakeRegistry implements RegistryPort {
 	}
 
 	list(): SessionDescriptor[] {
-		return [...this.map.values()];
+		return [...this.map.values()].filter((d) => d.lifecycle !== "dissolved");
 	}
 	read(id: SessionId): SessionDescriptor | null {
 		return this.map.get(id) ?? null;
 	}
 	write(descriptor: SessionDescriptor): void {
+		const existing = this.map.get(descriptor.id);
+		if (
+			existing?.lifecycle === "dissolved" &&
+			descriptor.lifecycle !== undefined &&
+			descriptor.lifecycle !== "dissolved" &&
+			descriptor.pid === existing.pid
+		) {
+			return;
+		}
 		this.map.set(descriptor.id, descriptor);
 	}
 	remove(id: SessionId): void {
 		this.map.delete(id);
+	}
+	dissolve(id: SessionId): void {
+		const existing = this.map.get(id);
+		if (!existing || existing.lifecycle === "dissolved") return;
+		this.map.set(id, { ...existing, lifecycle: "dissolved", state: "idle" });
 	}
 }
 

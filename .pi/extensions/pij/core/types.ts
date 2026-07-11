@@ -23,7 +23,7 @@ export type HarnessKind = "pi" | "claude" | "copilot" | "codex";
  *  `SessionDescriptor.state` (working/idle of a live turn): this tracks the
  *  pre-bind handoff `pending` → `ready` → `bound`, or `failed` on watchdog
  *  timeout. Absent ⇒ a session that never went through control-plane spawn. */
-export type SessionLifecycle = "pending" | "ready" | "bound" | "failed";
+export type SessionLifecycle = "pending" | "ready" | "bound" | "failed" | "dissolved";
 
 // ─── fail-loud death-reason vocabulary ───────────────────────────────────────
 /** Machine-stable reason a spawned session failed to bind or died after binding.
@@ -41,7 +41,7 @@ export type DeathReason =
 export type SessionState = "idle" | "in-progress" | "paused" | "reviewing" | "complete" | "error";
 
 /** Liveness verdict derived from pid probe + latest-event age. */
-export type LivenessVerdict = "active" | "stale" | "dead";
+export type LivenessVerdict = "active" | "stale" | "dead" | "dissolved";
 
 // ─── registry descriptor (the ~/.pij/<id>.json a peer reads) ──────────────
 export interface SessionDescriptor {
@@ -64,6 +64,9 @@ export interface SessionDescriptor {
 	/** ISO-8601 timestamp of this session's newest captured event (D-A) — the
 	 *  cheap age source for liveness/stall, read straight from the descriptor. */
 	readonly lastEventAt?: string;
+	/** ISO-8601 timestamp of the daemon's latest pass over this control-plane
+	 *  session. Absent for legacy descriptors and pi-owned delivery. */
+	readonly lastTickAt?: string;
 	/** Tmux pane id (%N) of this session's window, self-recorded by the child
 	 *  from $TMUX_PANE at fresh boot (§H1). Present iff spawned via pij_spawn.
 	 *  Used by PijSession.close() to killPane. */
@@ -107,10 +110,14 @@ export interface SessionDescriptor {
 	 *  only — binding keys on `plannedHarnessSessionId`. Absent for a normal spawn. */
 	readonly branchedFrom?: string;
 	// ─── fail-loud model layer (additive — migration-safe) ────────────────
-	/** The actual model reported by the harness footer after first inference
-	 *  (may differ from the --model arg if the harness substituted a fallback).
-	 *  Absent until the daemon captures it from the pane. */
+	/** Model pinned by spawn, replaced by the actual harness-footer model once
+	 *  captured (which may differ if the harness substituted a fallback).
+	 *  Absent for legacy/default-model descriptors. */
 	readonly boundModel?: string;
+	/** Reasoning effort pinned by spawn. Unlike a model footer this cannot be
+	 *  inferred reliably after launch, so the registry is authoritative.
+	 *  Absent for legacy/default-effort descriptors. */
+	readonly effort?: string;
 	/** Machine-stable failure reason set by the daemon when lifecycle → failed.
 	 *  model-not-supported|auth|quota|stalled|dead|unknown. Absent until failed. */
 	readonly failureReason?: DeathReason;
@@ -212,6 +219,11 @@ export interface MessageReceipt {
 	readonly deliveredAt?: string;
 	/** ISO-8601 — set when daemon-owned tmux injection could not positively confirm. */
 	readonly unverifiedAt?: string;
+	/** Daemon heartbeat observed when this receipt was classified. Additive so
+	 *  legacy receipt consumers can continue reading `state` alone. */
+	readonly daemonLastTickAt?: string | null;
+	readonly daemonTickAgeMs?: number | null;
+	readonly daemonTickStale?: boolean;
 }
 
 // ─── error codes (workshop 001 CLI surface) ───────────────────────────────

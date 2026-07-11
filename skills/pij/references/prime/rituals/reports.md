@@ -1,0 +1,46 @@
+# Reports — evidence one hop up
+
+Every report is a file inside the sender's fence, persisted before its pointer is
+sent. File at preamble, each phase checkpoint, and ship.
+
+## Contract
+
+| Field | Required content |
+|---|---|
+| `claim` | One line naming exactly what is claimed |
+| `artifacts[]` | Exact paths to plans, flows, logs, reviews, and outputs |
+| `shas[]` | Commit or content hashes supporting the claim |
+| `gates[]` | Exact command, verdict, and evidence-output path |
+| `observations[]` | `id / kind / layer / one-liner / suggested encoding` |
+| `open[]` | Unresolved decisions, risks, escalations, and skips |
+
+Paths carry the detail; the report does not replace its artifacts. Send one
+short pointer message after the file exists.
+
+## Receiver duty
+
+1. Treat every green, completion message, and claimed verification as a claim.
+2. Read one load-bearing artifact or re-run one cheap gate from the report.
+3. Record the verification note before acting, granting a baton, or relaying.
+4. If an artifact is missing or contradicts the claim, reopen the report.
+5. Transcribe observations into the receiver's own single-writer ledger.
+
+A resumed subagent once claimed completion and invented an o-prime sign-off; the
+owning stream looked at the file and caught both. That is why verification also
+applies to statements that say "verified."
+
+When a target can mutate during review, freeze it first: record its hash, verify
+that exact version, and name the hash in the verdict.
+
+## Top-layer evidence and digest
+
+If no layer exists above the o-prime:
+
+- the spine, baton grant log, prime-flow history, rulings, and encode candidates
+  are the evidence record;
+- send the human only main-event digests: phase ships, stream unblocks or
+  dissolutions, incidents/collisions, and rulings needed;
+- keep digests short, phone-readable, and self-identified.
+
+Numbered `prime-NNNN` reports resume only when an actual optional overseer exists
+to receive and verify them. Do not create reports for a dead audience.

@@ -197,19 +197,30 @@ describe("dispatch whoami / list", () => {
 		const d = deps({
 			self: "a1",
 			descs: [
-				desc({ id: "a1" }),
+				desc({ id: "a1", boundModel: "gpt-5.6-sol", effort: "xhigh" }),
 				desc({ id: "w3", pid: 200 }),
 				desc({ id: "z9", folder: "/other" }),
 			],
 			alive: [100], // a1 alive; w3 pid200 dead
 		});
 		const r = dispatch({ verb: "list", here: true, json: true }, d);
-		const arr = JSON.parse(r.stdout) as Array<{ id: string; liveness: string }>;
+		const arr = JSON.parse(r.stdout) as Array<{
+			id: string;
+			liveness: string;
+			boundModel: string | null;
+			effort: string | null;
+		}>;
 		expect(arr.map((x) => x.id).sort()).toEqual(["a1", "w3"]); // z9 filtered out
 		expect(arr.find((x) => x.id === "a1")?.liveness).toBe("active");
+		expect(arr.find((x) => x.id === "a1")).toMatchObject({
+			boundModel: "gpt-5.6-sol",
+			effort: "xhigh",
+		});
 		expect(arr.find((x) => x.id === "w3")?.liveness).toBe("dead");
 		const human = dispatch({ verb: "list", here: true, json: false }, d);
 		expect(human.stdout).toContain("★ a1");
+		expect(human.stdout).toContain("gpt-5.6-sol");
+		expect(human.stdout).toContain("xhigh");
 	});
 });
 
@@ -287,13 +298,49 @@ describe("dispatch send", () => {
 		).toBe("delivered");
 	});
 
-	it("control-plane peers wait for the daemon's authoritative receipt", () => {
-		const idle = deps({
+	it("busy control-plane peers with a fresh tick wait for the daemon's authoritative receipt", () => {
+		const busy = deps({
 			self: "a1",
-			descs: [desc({ id: "a1" }), desc({ id: "w3", harness: "copilot", state: "idle" })],
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "w3",
+					harness: "copilot",
+					state: "working",
+					lastTickAt: new Date(T - 1000).toISOString(),
+				}),
+			],
 		});
-		const result = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, idle);
-		expect(JSON.parse(result.stdout).receipt).toBe("queued");
+		const result = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, busy);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			receipt: "queued",
+			daemonLastTickAt: new Date(T - 1000).toISOString(),
+			daemonTickAgeMs: 1000,
+			daemonTickStale: false,
+		});
+	});
+
+	it("marks a queued receipt as daemon-stale when the daemon tick is wedged", () => {
+		const wedged = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "w3",
+					harness: "claude",
+					state: "idle",
+					lastTickAt: new Date(T - 10_000).toISOString(),
+				}),
+			],
+		});
+		const json = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, wedged);
+		expect(JSON.parse(json.stdout)).toMatchObject({
+			receipt: "queued",
+			daemonTickAgeMs: 10_000,
+			daemonTickStale: true,
+		});
+		const human = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: false }, wedged);
+		expect(human.stdout).toContain("daemon tick stale");
 	});
 
 	it("codes: E-SELF, E-NOID, E-CMD, E-DEAD; stale warns + sends", () => {
@@ -368,7 +415,16 @@ describe("dispatch tail / state / path", () => {
 
 	it("state reports state + liveness + age; stall = working + stale", () => {
 		const d = deps({
-			descs: [desc({ id: "w3", state: "working", lastEventAt: old })],
+			descs: [
+				desc({
+					id: "w3",
+					state: "working",
+					lastEventAt: old,
+					lastTickAt: new Date(T - 10_000).toISOString(),
+					boundModel: "gpt-5.6-sol",
+					effort: "xhigh",
+				}),
+			],
 			alive: [100],
 		});
 		const r = dispatch({ verb: "state", id: "w3", json: true }, d);
@@ -378,8 +434,19 @@ describe("dispatch tail / state / path", () => {
 		// without scraping the tmux footer (feedback #4).
 		expect(j).toHaveProperty("cwd");
 		expect(j).toHaveProperty("harness");
+		expect(j).toMatchObject({
+			boundModel: "gpt-5.6-sol",
+			effort: "xhigh",
+			daemonLastTickAt: new Date(T - 10_000).toISOString(),
+			daemonTickAgeMs: 10_000,
+			daemonTickStale: true,
+		});
 		// working|idle|done activity for the orchestrator (feedback round 3).
 		expect(j.activity).toBe("working"); // state:working → working
+		const human = dispatch({ verb: "state", id: "w3", json: false }, d);
+		expect(human.stdout).toContain("model: gpt-5.6-sol");
+		expect(human.stdout).toContain("effort: xhigh");
+		expect(human.stdout).toContain("daemon tick: stale");
 	});
 
 	it("path prints events/state/dir", () => {
@@ -393,6 +460,22 @@ describe("dispatch tail / state / path", () => {
 		expect(dispatch({ verb: "path", id: "w3", which: "dir", json: false }, d).stdout).toBe(
 			"/home/.pij/w3",
 		);
+	});
+
+	it("state reports dissolved distinctly from a dead process", () => {
+		const d = deps({
+			descs: [desc({ id: "w3", lifecycle: "dissolved", pid: 777, paneId: "%7" })],
+			alive: [],
+		});
+		const json = dispatch({ verb: "state", id: "w3", json: true }, d);
+		expect(JSON.parse(json.stdout)).toMatchObject({
+			id: "w3",
+			lifecycle: "dissolved",
+			liveness: "dissolved",
+		});
+		const human = dispatch({ verb: "state", id: "w3", json: false }, d);
+		expect(human.stdout).toContain("dissolved");
+		expect(human.stdout).not.toContain("· dead");
 	});
 
 	it("tail/state E-NOID for an unknown id", () => {

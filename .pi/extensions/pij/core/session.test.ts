@@ -340,12 +340,13 @@ describe("PijSession descriptor state (D-A / AC-9, AC-7a)", () => {
 });
 
 describe("PijSession.shutdown", () => {
-	it("removes the descriptor from the registry", () => {
+	it("dissolves the descriptor without leaving it in the live registry list", () => {
 		const h = harness();
 		h.session.boot(bootInput());
 		expect(h.registry.read("alice")).not.toBeNull();
 		h.session.shutdown();
-		expect(h.registry.read("alice")).toBeNull();
+		expect(h.registry.read("alice")?.lifecycle).toBe("dissolved");
+		expect(h.registry.list()).toEqual([]);
 	});
 });
 
@@ -378,12 +379,13 @@ describe("PijSession.spawn", () => {
 	it("threads model via --model argv AND PIJ_SPAWN_MODEL env (§H2 / F003)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", model: "test-model", layout: "window" });
+		h.session.spawn({ cwd: "/repo", model: "test-model", effort: "xhigh", layout: "window" });
 		const w = h.tmux.windows[0];
 		// F003: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand (not post-processed)
 		expect(w?.opts.args).toContain("--model");
-		expect(w?.opts.args).toContain("test-model");
-		expect(w?.opts.env.PIJ_SPAWN_MODEL).toBe("test-model");
+		expect(w?.opts.args).toContain("test-model:xhigh");
+		expect(w?.opts.env.PIJ_SPAWN_MODEL).toBe("test-model:xhigh");
+		expect(w?.opts.env.PIJ_SPAWN_EFFORT).toBe("xhigh");
 		// No post-processing remnant: env is spawnCmd.env directly
 		expect(Object.keys(w?.opts.env ?? {}).filter((k) => k === "PIJ_SPAWN_MODEL")).toHaveLength(1);
 	});
@@ -518,13 +520,23 @@ describe("PijSession.close", () => {
 		spawnedBy: "alice",
 	};
 
-	it("kills the pane by paneId and removes the descriptor (AC-05)", () => {
+	it("kills the pane by paneId and dissolves the descriptor (AC-05)", () => {
 		const h = harness({ registry: [spawnedDescriptor] });
 		h.session.boot(bootInput());
 		const r = h.session.close("bob");
 		expect(r.ok).toBe(true);
 		expect(h.tmux.killedPanes).toEqual(["%901"]);
-		expect(h.registry.read("bob")).toBeNull();
+		expect(h.registry.read("bob")?.lifecycle).toBe("dissolved");
+		expect(h.registry.list().map((d) => d.id)).not.toContain("bob");
+	});
+
+	it("is idempotent after dissolve — a second close is a no-op", () => {
+		const h = harness({ registry: [spawnedDescriptor] });
+		h.session.boot(bootInput());
+		expect(h.session.close("bob").ok).toBe(true);
+		expect(h.session.close("bob")).toEqual({ ok: true, value: {} });
+		expect(h.tmux.killedPanes).toEqual(["%901"]);
+		expect(h.registry.read("bob")?.lifecycle).toBe("dissolved");
 	});
 
 	it("missing session → E-NOID, no killPane call", () => {
@@ -555,7 +567,7 @@ describe("PijSession.close", () => {
 		const r = h.session.close("bob");
 		expect(r.ok).toBe(true);
 		expect(h.tmux.killedPanes).toEqual(["%901"]);
-		expect(h.registry.read("bob")).toBeNull();
+		expect(h.registry.read("bob")?.lifecycle).toBe("dissolved");
 		// Internal event captured
 		const warnEvents = h.eventLog.read({ type: "receipt" });
 		expect(
@@ -636,18 +648,26 @@ describe("PijSession.boot — spawned child path (T204)", () => {
 		expect(h.delivery.outbox).toHaveLength(1);
 	});
 
-	it("model threads via PIJ_SPAWN_MODEL into ready-ping body (§H2)", () => {
+	it("model + effort become registry truth and thread into the ready-ping body (§H2)", () => {
 		const h = harness({
 			vars: {
 				PIJ_ANNOUNCE_TO: "parent",
 				PIJ_SPAWN_ID: "s-test-003",
-				PIJ_SPAWN_MODEL: "claude-opus",
+				PIJ_SPAWN_MODEL: "claude-opus:xhigh",
+				PIJ_SPAWN_EFFORT: "xhigh",
 			},
 		});
 		h.session.boot(bootInput());
 		expect(h.delivery.outbox).toHaveLength(1);
-		const body = JSON.parse(h.delivery.outbox[0]?.message.body ?? "") as { model: string };
-		expect(body.model).toBe("claude-opus");
+		const body = JSON.parse(h.delivery.outbox[0]?.message.body ?? "") as {
+			model: string;
+			effort: string;
+		};
+		expect(body).toMatchObject({ model: "claude-opus", effort: "xhigh" });
+		expect(h.registry.read("alice")).toMatchObject({
+			boundModel: "claude-opus",
+			effort: "xhigh",
+		});
 	});
 
 	it("reload (not fresh) does NOT re-ping (finding 04 / AC-04)", () => {

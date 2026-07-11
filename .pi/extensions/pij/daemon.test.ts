@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
+import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
@@ -83,6 +84,30 @@ function messageBodies(to: string): string[] {
 }
 
 describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
+	it("persists lastTickAt so an unticked/wedged daemon becomes mechanically stale", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const ports = fakePorts({ nowMs: NOW_MS });
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
+
+		daemon.tick();
+
+		const lastTickAt = registry.read("pij-c")?.lastTickAt;
+		expect(lastTickAt).toBe(new Date(NOW_MS).toISOString());
+		// Simulate a wedged daemon: wall time advances but no second tick occurs.
+		expect(daemonTickStatus(lastTickAt, NOW_MS + DAEMON_TICK_STALE_AFTER_MS + 1)).toMatchObject({
+			daemonTickStale: true,
+		});
+	});
+
 	it("drives a pending claude session: ready pane → init injected + marker persisted", () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-c", harness: "claude", lifecycle: "pending", paneId: "%4" }));
@@ -182,6 +207,66 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(messageBodies("pij-z-live")).toHaveLength(0);
 		expect(log.join("\n")).toContain("pij-a-stale");
 		expect(log.join("\n")).toContain("can't find pane: %dead");
+	});
+
+	it("does not resurrect or notify for a descriptor dissolved during a queued activity drain", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+				spawnedBy: "pij-boss",
+				state: "working",
+				lastEventAt: FRESH_AT,
+			}),
+		);
+		const ports = fakePorts({
+			alive: false,
+			nowMs: NOW_MS,
+			paneText: () => {
+				registry.dissolve("pij-c");
+				return READY;
+			},
+		});
+
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+
+		expect(registry.read("pij-c")?.lifecycle).toBe("dissolved");
+		expect(registry.list()).toEqual([]);
+		expect(messageBodies("pij-boss")).toHaveLength(0);
+	});
+
+	it("does not notify when an already-idle descriptor is dissolved during activity capture", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+				spawnedBy: "pij-boss",
+				state: "idle",
+				lastEventAt: FRESH_AT,
+			}),
+		);
+		const ports = fakePorts({
+			alive: false,
+			nowMs: NOW_MS,
+			paneText: () => {
+				registry.dissolve("pij-c");
+				return READY;
+			},
+		});
+
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+
+		expect(registry.read("pij-c")?.lifecycle).toBe("dissolved");
+		expect(registry.list()).toEqual([]);
+		expect(messageBodies("pij-boss")).toHaveLength(0);
 	});
 
 	it("delivery ownership: a PI target's inbox is NEVER drained (left for its in-process receiver)", () => {
@@ -334,7 +419,7 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 		const ports = fakePorts();
 		new Daemon(home, ports, registry, new FsChannel(home)).tick();
 		expect(ports.killed).toContain("%7");
-		expect(registry.read("pij-agent")).toBeNull();
+		expect(registry.read("pij-agent")?.lifecycle).toBe("dissolved");
 	});
 
 	it("does NOT close a once-mode peer that has not reported yet (the load-bearing latch)", () => {
@@ -434,6 +519,6 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 		// descriptor removed.
 		daemon.tick();
 		expect(ports.killed).toContain("%7");
-		expect(registry.read("pij-agent")).toBeNull();
+		expect(registry.read("pij-agent")?.lifecycle).toBe("dissolved");
 	});
 });

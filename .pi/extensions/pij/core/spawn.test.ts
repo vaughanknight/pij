@@ -12,6 +12,7 @@ import {
 	buildEffortWarning,
 	buildPendingDescriptor,
 	buildSpawnCommand,
+	buildSpawnOutput,
 	livePeerPanes,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
@@ -148,18 +149,21 @@ describe("buildSpawnCommand", () => {
 		const r = buildSpawnCommand({ ...base, model: "github-copilot/gpt-5.5", effort: "xhigh" });
 		expect(r.args).toEqual(["--model", "github-copilot/gpt-5.5:xhigh"]);
 		expect(r.env.PIJ_SPAWN_MODEL).toBe("github-copilot/gpt-5.5:xhigh");
+		expect(r.env.PIJ_SPAWN_EFFORT).toBe("xhigh");
 	});
 
 	it("--effort without a model is a no-op for pi (nothing to suffix)", () => {
 		const r = buildSpawnCommand({ ...base, effort: "high" });
 		expect(r.args).toEqual([]);
 		expect(r.env).not.toHaveProperty("PIJ_SPAWN_MODEL");
+		expect(r.env.PIJ_SPAWN_EFFORT).toBe("high");
 	});
 
 	it("no --effort → model rides unchanged (default-to-agent)", () => {
 		const r = buildSpawnCommand({ ...base, model: "fugu" });
 		expect(r.args).toEqual(["--model", "fugu"]);
 		expect(r.env.PIJ_SPAWN_MODEL).toBe("fugu");
+		expect(r.env).not.toHaveProperty("PIJ_SPAWN_EFFORT");
 	});
 });
 
@@ -167,9 +171,14 @@ describe("buildSpawnCommand", () => {
 
 describe("readyBody + parseReadyBody round-trip", () => {
 	it("round-trips a basic payload", () => {
-		const body = readyBody("spawn-1", "gpt-4", "/tmp/project");
+		const body = readyBody("spawn-1", "gpt-4", "/tmp/project", "xhigh");
 		const parsed = parseReadyBody(body);
-		expect(parsed).toEqual({ spawnId: "spawn-1", model: "gpt-4", cwd: "/tmp/project" });
+		expect(parsed).toEqual({
+			spawnId: "spawn-1",
+			model: "gpt-4",
+			effort: "xhigh",
+			cwd: "/tmp/project",
+		});
 	});
 
 	it("round-trips payload with slashes/dots in model name", () => {
@@ -179,6 +188,16 @@ describe("readyBody + parseReadyBody round-trip", () => {
 			spawnId: "sid",
 			model: "openai/gpt-4o-mini",
 			cwd: "/path/with spaces/project",
+		});
+	});
+
+	it("keeps effort additive when parsing a legacy ready payload", () => {
+		expect(
+			parseReadyBody(JSON.stringify({ spawnId: "legacy", model: "gpt-4", cwd: "/repo" })),
+		).toEqual({
+			spawnId: "legacy",
+			model: "gpt-4",
+			cwd: "/repo",
 		});
 	});
 
@@ -484,6 +503,58 @@ describe("buildPendingDescriptor", () => {
 
 	it("omits branchedFrom for a normal (non-branch) spawn", () => {
 		expect(buildPendingDescriptor(input)).not.toHaveProperty("branchedFrom");
+	});
+
+	it("persists the pinned model + effort before first inference (registry truth)", () => {
+		expect(
+			buildPendingDescriptor({
+				...input,
+				model: "gpt-5.6-sol",
+				effort: "xhigh",
+			}),
+		).toMatchObject({
+			boundModel: "gpt-5.6-sol",
+			effort: "xhigh",
+		});
+	});
+
+	it("keeps model + effort additive for legacy/default spawns", () => {
+		const descriptor = buildPendingDescriptor(input);
+		expect(descriptor.boundModel).toBeUndefined();
+		expect(descriptor.effort).toBeUndefined();
+	});
+});
+
+describe("buildSpawnOutput", () => {
+	it("reports pinned model + effort for a daemon-bound spawn", () => {
+		expect(
+			buildSpawnOutput({
+				id: "pij-worker",
+				paneId: "%42",
+				harness: "copilot",
+				lifecycle: "pending",
+				model: "gpt-5.6-sol",
+				effort: "xhigh",
+			}),
+		).toEqual({
+			id: "pij-worker",
+			paneId: "%42",
+			harness: "copilot",
+			lifecycle: "pending",
+			model: "gpt-5.6-sol",
+			effort: "xhigh",
+		});
+	});
+
+	it("reports explicit nulls for a pi/default spawn whose id is assigned at boot", () => {
+		expect(buildSpawnOutput({ paneId: "%43", harness: "pi" })).toEqual({
+			id: null,
+			paneId: "%43",
+			harness: "pi",
+			lifecycle: null,
+			model: null,
+			effort: null,
+		});
 	});
 });
 

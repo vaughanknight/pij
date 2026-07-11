@@ -13,7 +13,7 @@
 import { deriveSelfId } from "./discovery.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
-import type { HarnessKind, Role, SessionDescriptor, SessionId } from "./types.js";
+import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
 import { err, ok, type Result } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ export interface SpawnCommand {
 export interface ReadyPayload {
 	readonly spawnId: string;
 	readonly model: string;
+	readonly effort?: string;
 	readonly cwd: string;
 }
 
@@ -99,6 +100,9 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	if (piModel !== undefined) {
 		env.PIJ_SPAWN_MODEL = piModel;
 	}
+	if (input.effort !== undefined) {
+		env.PIJ_SPAWN_EFFORT = input.effort;
+	}
 
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;
@@ -115,8 +119,13 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
  * Build the ready-ping body string that a spawned child sends to the
  * parent once it is initialised. Encodes spawnId, model, and cwd.
  */
-export function readyBody(spawnId: string, model: string, cwd: string): string {
-	return JSON.stringify({ spawnId, model, cwd });
+export function readyBody(spawnId: string, model: string, cwd: string, effort?: string): string {
+	return JSON.stringify({
+		spawnId,
+		model,
+		...(effort !== undefined ? { effort } : {}),
+		cwd,
+	});
 }
 
 /**
@@ -137,6 +146,7 @@ export function parseReadyBody(body: string): ReadyPayload | null {
 			return {
 				spawnId: p.spawnId as string,
 				model: p.model as string,
+				...(typeof p.effort === "string" ? { effort: p.effort } : {}),
 				cwd: p.cwd as string,
 			};
 		}
@@ -214,6 +224,10 @@ export interface PendingDescriptorInput {
 	/** Branch-from-self (Plan 020): the source harness session id this pane was
 	 *  forked from. Observability only — the bind keys on `plannedHarnessSessionId`. */
 	readonly branchedFrom?: string;
+	/** Model pinned on the spawn command, persisted before first inference. */
+	readonly model?: string;
+	/** Reasoning effort pinned on the spawn command, persisted as registry truth. */
+	readonly effort?: string;
 }
 
 /**
@@ -320,12 +334,48 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		harness: input.harness,
 		paneId: input.paneId,
 		lifecycle: "pending",
+		...(input.model !== undefined ? { boundModel: input.model } : {}),
+		...(input.effort !== undefined ? { effort: input.effort } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.transcriptsAtSpawn ? { transcriptsAtSpawn: input.transcriptsAtSpawn } : {}),
 		...(input.plannedHarnessSessionId
 			? { plannedHarnessSessionId: input.plannedHarnessSessionId }
 			: {}),
 		...(input.branchedFrom ? { branchedFrom: input.branchedFrom } : {}),
+	};
+}
+
+export interface SpawnOutputInput {
+	readonly id?: SessionId;
+	readonly paneId: string;
+	readonly harness: HarnessKind;
+	readonly lifecycle?: SessionLifecycle;
+	readonly model?: string;
+	readonly effort?: string;
+	readonly branchedFrom?: string;
+	readonly note?: string;
+}
+
+/** Stable machine-readable spawn result shared by every harness. */
+export function buildSpawnOutput(input: SpawnOutputInput): {
+	readonly id: SessionId | null;
+	readonly paneId: string;
+	readonly harness: HarnessKind;
+	readonly lifecycle: SessionLifecycle | null;
+	readonly model: string | null;
+	readonly effort: string | null;
+	readonly branchedFrom?: string;
+	readonly note?: string;
+} {
+	return {
+		id: input.id ?? null,
+		paneId: input.paneId,
+		harness: input.harness,
+		lifecycle: input.lifecycle ?? null,
+		model: input.model ?? null,
+		effort: input.effort ?? null,
+		...(input.branchedFrom !== undefined ? { branchedFrom: input.branchedFrom } : {}),
+		...(input.note !== undefined ? { note: input.note } : {}),
 	};
 }
 
