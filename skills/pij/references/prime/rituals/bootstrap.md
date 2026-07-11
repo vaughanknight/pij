@@ -17,6 +17,10 @@ ritual; role operation belongs in the orient files and protocol.
    [`kickoff.md`](./kickoff.md#canary).
 3. Run the orient's boot audit: channel, dead descriptors, inherited government
    if any, and the human status channel.
+4. Persist the proved seat before creating government:
+   `pij orchestration prime set --json`, then confirm the current id appears in
+   `pij list --prime --here --json`. An ambiguous self is a seating failure, not
+   permission to target `"operator"`.
 
 ## 2. Derive the per-repo contract
 

@@ -140,25 +140,21 @@ export function observeActivity(
 	return { ...descriptor, state, lastEventAt };
 }
 
-/** Descriptor fields the daemon NEVER owns: they are stamped out-of-band by a
- *  DIFFERENT process. `reportedAt` is written by `pij agent report` running in
- *  the peer's own pane (`executeAgentReport`). Every daemon write derives from
- *  the tick-start index snapshot, so a naïve `registry.write` clobbers a stamp
- *  landed mid-tick — the lost-update that kept `--once` peers open forever
- *  (rev-0004 Finding 1 / AC-16). Extend this list if another out-of-band writer
- *  is ever added; the daemon owns everything else (state/lastEventAt/
- *  failureReason/boundModel/harnessSessionId/lifecycle/initInjectedAt/…). */
-const EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
+/** Append-only external fields carry forward only when the stale daemon
+ *  snapshot lacks them. A computed value still wins when both sides have one. */
+const APPEND_ONLY_EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
+
+/** Mutable external fields are always latest-disk-authoritative when present.
+ *  `prime:false` is meaningful state, so truthiness/fill-only merging is wrong. */
+const MUTABLE_EXTERNALLY_OWNED_FIELDS = ["prime"] as const;
 
 /** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
  *  writer stamped after this tick's index snapshot was taken. Re-reads the latest
- *  on-disk descriptor and carries forward any {@link EXTERNALLY_OWNED_FIELDS} the
- *  daemon-computed value lacks (the daemon never writes them itself, so "lacks"
- *  is always the case). Re-reads after the write and returns registry truth, which
- *  may be a concurrent dissolved tombstone when the registry rejects this stale
- *  daemon write. Use this for EVERY daemon descriptor write — it is a no-op when
- *  nothing external is present, so it is safe (and behavior-preserving) even on
- *  the pending-only bind path. */
+ *  on-disk descriptor and merges externally-owned fields according to their
+ *  ownership semantics: append-only values fill gaps, while mutable values
+ *  override stale daemon snapshots. Re-reads after the write and returns registry
+ *  truth, which may be a concurrent dissolved tombstone when the registry rejects
+ *  this stale daemon write. Use this for EVERY daemon descriptor write. */
 export function writeMerged(
 	registry: RegistryPort,
 	computed: SessionDescriptor,
@@ -166,8 +162,13 @@ export function writeMerged(
 	const latest = registry.read(computed.id);
 	let merged = computed;
 	if (latest) {
-		for (const field of EXTERNALLY_OWNED_FIELDS) {
+		for (const field of APPEND_ONLY_EXTERNALLY_OWNED_FIELDS) {
 			if (merged[field] === undefined && latest[field] !== undefined) {
+				merged = { ...merged, [field]: latest[field] };
+			}
+		}
+		for (const field of MUTABLE_EXTERNALLY_OWNED_FIELDS) {
+			if (latest[field] !== undefined) {
 				merged = { ...merged, [field]: latest[field] };
 			}
 		}

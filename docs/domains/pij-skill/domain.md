@@ -19,12 +19,13 @@ The operator/agent-facing skill layer over the pij platform — a router (`/pij`
 | Detection Signals | `references/00-routing.md` § Detection signals | deterministic probes A–E, precedence, hint validation |
 | Shared Conventions | `references/00-routing.md` § Shared conventions | C1 harness modes … C7 push-not-poll; single-owner prose |
 | Structural gate | `harness/scripts/pij-skill-check.sh` (`just pij-skill-check`) | registry↔module parity, sibling-blindness, line budgets, CLI-verb coverage, dup-prose scope |
+| Registry-first prime triage | `references/routes/prime.md` | resolves self, checks `pij list --prime --here --json`, then falls back to government/human evidence. |
 
 ## Consumes
 
 - `flow-pair` — pair route shells the `flow-pair` CLI + run ledger (engine untouched)
 - `pij-control-plane` — spawn/daemon/adopt/tail/close verbs the routes print
-- `pij-messaging` — send/state/list/whoami surface
+- `pij-messaging` — send/state/list/whoami surface, including `list --prime`
 - `agent-runtime` — the `pij agent` verb family
 - `the-flow` (external) — pair route wraps it; never writes its state files
 
@@ -33,3 +34,4 @@ The operator/agent-facing skill layer over the pij platform — a router (`/pij`
 - Skill ≠ CLI: routes print `pij` commands in fenced blocks, never import lib code
 - Sibling-blind route modules; convention prose single-owner in 00-routing.md
 - Line budgets enforced mechanically: SKILL.md ≤150 · 00-routing ≤250 · pair ≤350 · other routes ≤150
+- Bootstrap/handover persist incoming prime designation before writer-line mutation; handover unsets the outgoing live seat after its final relay.

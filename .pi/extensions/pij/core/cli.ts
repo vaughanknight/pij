@@ -10,7 +10,7 @@
 
 import { applyBinding } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
-import { filterByFolder, resolveSelf } from "./discovery.js";
+import { filterByFolder, filterPrime, resolveSelf } from "./discovery.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
@@ -46,7 +46,12 @@ export interface CliDeps {
 // ─── parsed command (discriminated per verb) ────────────────────────────────
 export type ParsedCommand =
 	| { readonly verb: "whoami"; readonly json: boolean; readonly env?: boolean }
-	| { readonly verb: "list"; readonly here: boolean; readonly json: boolean }
+	| {
+			readonly verb: "list";
+			readonly here: boolean;
+			readonly prime: boolean;
+			readonly json: boolean;
+	  }
 	| { readonly verb: "sessions"; readonly here: boolean; readonly json: boolean }
 	| {
 			readonly verb: "models";
@@ -207,13 +212,13 @@ function lex(
 	return { pos, flags, repeated };
 }
 
-const BOOLEAN_FLAGS = new Set(["here", "json", "follow", "events", "state", "dir", "env"]);
+const BOOLEAN_FLAGS = new Set(["here", "prime", "json", "follow", "events", "state", "dir", "env"]);
 const REPEATABLE_FLAGS = new Set(["to"]);
 
 /** Flags each verb accepts — anything else is E-ARG. */
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	whoami: new Set(["json", "env"]),
-	list: new Set(["here", "json"]),
+	list: new Set(["here", "prime", "json"]),
 	sessions: new Set(["here", "json"]),
 	models: new Set(["harness", "json"]),
 	send: new Set(["to", "command", "file", "caption", "wait", "json"]),
@@ -248,7 +253,14 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			"E-ARG",
 			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|path)`,
 		);
-	const { pos, flags, repeated } = lex(argv.slice(1), BOOLEAN_FLAGS, REPEATABLE_FLAGS);
+	const args = argv.slice(1);
+	for (const token of args) {
+		const equals = token.startsWith("--") ? token.indexOf("=") : -1;
+		if (equals === -1) continue;
+		const key = token.slice(2, equals);
+		if (BOOLEAN_FLAGS.has(key)) return err("E-ARG", `--${key} does not take a value`);
+	}
+	const { pos, flags, repeated } = lex(args, BOOLEAN_FLAGS, REPEATABLE_FLAGS);
 	// strict: reject unknown flags and extra arity (finding F001).
 	for (const k of [...Object.keys(flags), ...Object.keys(repeated)]) {
 		if (!allowed.has(k)) return err("E-ARG", `unknown flag --${k} for '${verb}'`);
@@ -263,7 +275,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		case "whoami":
 			return ok({ verb: "whoami", json, env: flags.env === true });
 		case "list":
-			return ok({ verb: "list", here: flags.here === true, json });
+			return ok({ verb: "list", here: flags.here === true, prime: flags.prime === true, json });
 		case "sessions":
 			return ok({ verb: "sessions", here: flags.here === true, json });
 		case "models": {
@@ -626,6 +638,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "list": {
 			let descs = deps.registry.list();
 			if (cmd.here) descs = filterByFolder(descs, deps.cwd);
+			if (cmd.prime) descs = filterPrime(descs);
 			const s = selfId(deps);
 			const self = s.ok ? s.value : undefined;
 			const rows = descs.map((d) => {
@@ -647,16 +660,25 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							boundModel: d.boundModel ?? null,
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
+							prime: d.prime === true,
 						})),
 					),
 				);
 			if (rows.length === 0)
-				return okOut(cmd.here ? "no pij sessions in this folder" : "no pij sessions");
+				return okOut(
+					cmd.prime
+						? cmd.here
+							? "no prime pij sessions in this folder"
+							: "no prime pij sessions"
+						: cmd.here
+							? "no pij sessions in this folder"
+							: "no pij sessions",
+				);
 			const lines = rows.map(
 				({ d, live }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundModel ?? "—", 20)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : " "} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundModel ?? "—", 20)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
 			);
-			const header = `  ${pad("id", 14)} ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("model", 20)} ${pad("effort", 7)} folder`;
+			const header = `  ${pad("id", 14)} P ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("model", 20)} ${pad("effort", 7)} folder`;
 			return okOut(
 				[header, ...lines, `${rows.length} session(s)${self ? ` · ★ = you (${self})` : ""}`].join(
 					"\n",

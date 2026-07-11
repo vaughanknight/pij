@@ -36,6 +36,37 @@ generated `government/orient-local.md`.
 
 The ritual pages own procedure. This guide intentionally does not duplicate it.
 
+## Registry designation
+
+The o-prime seat is marked directly on its pij session descriptor:
+
+```bash
+pij orchestration prime set [<id>] [--json]
+pij orchestration prime unset [<id>] [--json]
+pij list --prime [--here] [--json]
+```
+
+Without `<id>`, set/unset requires exact self-resolution through
+`PIJ_SESSION_ID`, the registered tmux pane, or a lone local descriptor.
+Ambiguity returns `E-AMBIG`; an unknown explicit target returns `E-NOID`.
+Neither error writes anything, and pij never substitutes the baton's
+`operator` actor fallback.
+
+Mutation JSON is `{id,prime,changed}`. Set/unset are idempotent, and unset
+persists explicit `false`. Ordinary human `pij list` marks prime rows in the
+`P` column; list JSON always projects `prime:boolean`, including `false` for a
+legacy descriptor with no field.
+
+The marker survives reload, restart, durable native-identity snapshots, and
+reattachment. It is mutable external registry state: before daemon writes, the
+latest persisted `true` or `false` overrides the daemon's stale tick snapshot.
+This differs from append-only external fields such as `reportedAt`.
+
+Designation is an honor-system coordination signal, not an ACL or uniqueness
+lock. Bootstrap marks the proved seat before government creation. Handover
+marks the incoming seat before writer-line transfer, then unsets the live
+outgoing seat after its final relay and before descriptor teardown.
+
 ## Distribution and local state
 
 Portable levers and the prime-flow schema ship under

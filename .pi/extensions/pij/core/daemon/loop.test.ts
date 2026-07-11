@@ -583,4 +583,21 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		const written = writeMerged(reg, desc({ reportedAt: "2026-06-27T13:00:00.000Z" }));
 		expect(written.reportedAt).toBe("2026-06-27T13:00:00.000Z");
 	});
+
+	it("lets the latest persisted prime=false beat a stale daemon prime=true snapshot", () => {
+		const reg = new FakeRegistry([desc({ prime: false })]);
+		const written = writeMerged(reg, desc({ prime: true, state: "working" }));
+		expect(written.prime).toBe(false);
+		expect(written.state).toBe("working");
+	});
+
+	it.each([
+		false,
+		undefined,
+	])("lets the latest persisted prime=true beat a stale daemon prime=%s snapshot", (stalePrime) => {
+		const reg = new FakeRegistry([desc({ prime: true })]);
+		const written = writeMerged(reg, desc({ prime: stalePrime, state: "idle" }));
+		expect(written.prime).toBe(true);
+		expect(written.state).toBe("idle");
+	});
 });

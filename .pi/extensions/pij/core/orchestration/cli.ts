@@ -1,6 +1,8 @@
 // pij-orchestration — pure verb-family grammar, dispatch, and rendering.
 
+import type { PijErrorCode, Result, SessionId } from "../types.js";
 import type { BatonErrorCode, BatonResult, BatonService, BatonView } from "./baton.js";
+import type { PrimeService } from "./prime.js";
 
 export const ORCHESTRATION_USAGE = `pij orchestration — machine-wide coordination primitives
 
@@ -12,12 +14,21 @@ USAGE
   pij orchestration baton grant <name> --to <request-id> [--repin] [--json]
   pij orchestration baton return <name> [--evidence <text>] [--json]
   pij orchestration baton reclaim <name> --evidence <text> [--json]
+  pij orchestration prime set [<id>] [--json]
+  pij orchestration prime unset [<id>] [--json]
 
 POSTURE
-  Honor system: any peer may grant or reclaim. The lease file enforces one holder.
+  Honor system: any peer may designate any session prime, grant, or reclaim.
+  The lease file enforces one baton holder.
   Dead/stalled holders alert the granter but are never auto-reclaimed.`;
 
 export type ParsedOrchestrationCommand =
+	| {
+			readonly primitive: "prime";
+			readonly verb: "set" | "unset";
+			readonly id?: SessionId;
+			readonly json: boolean;
+	  }
 	| { readonly primitive: "baton"; readonly verb: "help"; readonly json: false }
 	| {
 			readonly primitive: "baton";
@@ -71,7 +82,9 @@ export type ParseOrchestrationResult =
 	| { readonly ok: true; readonly command: ParsedOrchestrationCommand }
 	| { readonly ok: false; readonly code: "E-ARG"; readonly message: string };
 
-export const ORCHESTRATION_EXIT: Record<BatonErrorCode, 1 | 2 | 64> = {
+export type OrchestrationErrorCode = BatonErrorCode | PijErrorCode;
+
+export const ORCHESTRATION_EXIT: Record<OrchestrationErrorCode, 1 | 2 | 3 | 64> = {
 	"E-ARG": 64,
 	"E-NOBATON": 1,
 	"E-NOREQUEST": 1,
@@ -79,9 +92,19 @@ export const ORCHESTRATION_EXIT: Record<BatonErrorCode, 1 | 2 | 64> = {
 	"E-HELD": 1,
 	"E-PIN": 1,
 	"E-STORE": 2,
+	"E-NOID": 2,
+	"E-SELF": 2,
+	"E-CMD": 2,
+	"E-DEAD": 1,
+	"E-NOREG": 3,
+	"E-AMBIG": 2,
+	"E-NOTMUX": 2,
+	"E-FULL": 2,
+	"E-BRANCH": 64,
+	"E-OWN": 2,
 };
 
-export function exitCodeForOrchestration(code: BatonErrorCode): 1 | 2 | 64 {
+export function exitCodeForOrchestration(code: OrchestrationErrorCode): 1 | 2 | 3 | 64 {
 	return ORCHESTRATION_EXIT[code];
 }
 
@@ -180,10 +203,41 @@ function oneName(verb: string, positionals: readonly string[]): ParseOrchestrati
 }
 
 export function parseOrchestrationArgs(args: readonly string[]): ParseOrchestrationResult {
+	if (args[0] === "prime") {
+		const verb = args[1];
+		if (verb !== "set" && verb !== "unset") {
+			return argError(
+				verb === undefined ? "expected a prime verb" : `unknown prime verb '${verb}'`,
+			);
+		}
+		const lexed = lex(args.slice(2));
+		if ("ok" in lexed) return lexed;
+		for (const flag of Object.keys(lexed.flags)) {
+			if (flag !== "json") return argError(`unknown flag '--${flag}' for prime ${verb}`);
+		}
+		if (lexed.positionals.length > 1) {
+			return argError(`prime ${verb} takes at most one <id>`);
+		}
+		const id = lexed.positionals[0];
+		if (id !== undefined && !NAME_RE.test(id)) {
+			return argError(
+				`invalid session id '${id}' (use letters, digits, dot, underscore, or hyphen)`,
+			);
+		}
+		return {
+			ok: true,
+			command: {
+				primitive: "prime",
+				verb,
+				...(id ? { id } : {}),
+				json: lexed.flags.json === true,
+			},
+		};
+	}
 	if (args[0] !== "baton") {
 		return argError(
 			args[0] === undefined
-				? "expected primitive 'baton'"
+				? "expected primitive 'baton' or 'prime'"
 				: `unknown orchestration primitive '${args[0]}'`,
 		);
 	}
@@ -308,9 +362,13 @@ export interface OrchestrationDeps {
 	readonly service: BatonService;
 	readonly actor: string;
 	readonly currentHead: (baton: string) => string | null;
+	readonly primeService?: PrimeService;
+	readonly resolveSelf?: () => Result<SessionId>;
 }
 
-function resultError<T>(result: Extract<BatonResult<T>, { ok: false }>): OrchestrationVerbResult {
+function resultError<T>(
+	result: Extract<BatonResult<T>, { ok: false }> | Extract<Result<T>, { ok: false }>,
+): OrchestrationVerbResult {
 	return {
 		stdout: "",
 		stderr: `${result.code}: ${result.message}`,
@@ -368,6 +426,31 @@ export function dispatchOrchestration(
 	command: ParsedOrchestrationCommand,
 	deps: OrchestrationDeps,
 ): OrchestrationVerbResult {
+	if (command.primitive === "prime") {
+		const resolved = command.id
+			? ({ ok: true, value: command.id } as const)
+			: (deps.resolveSelf?.() ?? {
+					ok: false,
+					code: "E-AMBIG",
+					message: "cannot resolve self for prime designation",
+				});
+		if (!resolved.ok) return resultError(resolved);
+		if (!deps.primeService) {
+			return resultError({
+				ok: false,
+				code: "E-STORE",
+				message: "prime service is unavailable",
+			});
+		}
+		const result =
+			command.verb === "set"
+				? deps.primeService.set(resolved.value)
+				: deps.primeService.unset(resolved.value);
+		if (!result.ok) return resultError(result);
+		return success(
+			command.json ? JSON.stringify(result.value) : `prime ${command.verb}: ${result.value.id}`,
+		);
+	}
 	if (command.verb === "help") return success(ORCHESTRATION_USAGE);
 	switch (command.verb) {
 		case "define": {

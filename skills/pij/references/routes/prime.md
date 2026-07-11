@@ -9,16 +9,19 @@ below it, and government as single-writer files.
 ## Role triage
 
 Use the first matching deterministic probe. Do not choose by persona or intent.
+Resolve the current id with `pij whoami --json`, then run
+`pij list --prime --here --json` and compare the `id` fields mechanically.
 
 | Probe | Role | Load exactly this next |
 |---|---|---|
 | No `government/` directory exists in the consuming repo | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
-| `government/spine.md` names my pij id as the o-prime seat, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
+| My current id appears in `pij list --prime --here --json` | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
+| Fallback: `government/spine.md` names my pij id as the o-prime seat, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
 | The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orient-global.md`](../prime/orient-global.md), then read the consuming repo's generated `government/orient-local.md`; stop |
 | I am a fleet worker with a bounded packet | worker | Stop here; use `/pij pair` for a fleet or `/pij peer` for one colleague. |
 
-If probes conflict, trust the government row only after reconciling it with
-`pij whoami` and `pij state <id>`; identity is mechanical, not self-described.
+If probes conflict, registry designation is the seat signal; reconcile stale
+government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 
 ## Ritual index
 

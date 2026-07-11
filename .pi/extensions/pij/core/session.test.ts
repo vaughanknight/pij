@@ -106,6 +106,7 @@ describe("PijSession.boot", () => {
 			spawnedBy: "pij-parent",
 			lastEventAt: "2026-06-15T01:00:00.000Z",
 			boundModel: "model-before-restart",
+			prime: true,
 		};
 		const h = harness({ registry: [existing], now: T0 });
 		h.session.boot(bootInput({ folder: "/new-repo", paneId: "%9", resetRuntimeState: true }));
@@ -122,6 +123,7 @@ describe("PijSession.boot", () => {
 			spawnedBy: "pij-parent",
 			lastEventAt: "2026-06-15T01:00:00.000Z",
 			boundModel: "model-before-restart",
+			prime: true,
 		});
 	});
 
@@ -138,6 +140,7 @@ describe("PijSession.boot", () => {
 			harnessSessionId: "pi-native-alice",
 			spawnedBy: "pij-creator",
 			boundModel: "model-before-restart",
+			prime: false,
 			paneId: "%dead",
 			lifecycle: "failed",
 			failureReason: "dead",
@@ -158,6 +161,7 @@ describe("PijSession.boot", () => {
 			startedAt: "2026-06-15T00:00:00.000Z",
 			spawnedBy: "pij-creator",
 			boundModel: "model-before-restart",
+			prime: false,
 			paneId: "%new",
 			state: "idle",
 			lifecycle: undefined,

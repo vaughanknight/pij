@@ -10,15 +10,15 @@ flowchart LR
     RL[agentic-loops\ncontracts: StopReason, IterationRunner, PlanModel]
     AW[agent-workbench\ncontracts: MinihRunSummary, MinihViewSnapshot, MinihAdapterResult, persistence facade]
     MH[Minih artifacts\ncontracts: run.json, events.ndjson, inbox/state/history, output/report.json]
-    PIJ[pij-messaging\ncontracts: SessionDescriptor, PijEvent+EventQuery, 5 ports, MessageReceipt, resolveSelf, Result]
+    PIJ[pij-messaging\ncontracts: SessionDescriptor+prime, PijEvent+EventQuery, 5 ports, MessageReceipt, resolveSelf/filterPrime, Result]
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
     PCP[pij-control-plane\ncontracts: tmux-keys primitives, HarnessKind/selectTransport, classifyReadiness, classifyInterstitial, binding record, daemon switchboard]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
-    PS[pij-skill\ncontracts: /pij route registry, detection signals A-E, shared conventions C1-C7, pij-skill-check gate]
-    PO[pij-orchestration\ncontracts: BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time, holder-transition decision]
+    PS[pij-skill\ncontracts: /pij route registry, registry-first prime triage, detection signals A-E, shared conventions C1-C7, pij-skill-check gate]
+    PO[pij-orchestration\ncontracts: PrimeService, BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time, holder-transition decision]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -60,6 +60,7 @@ flowchart LR
     PS -->|agent route wraps the pij agent verb family| AR
     PS -.->|pair route wraps it; never writes flow-state files| TF
     PO -->|pushes notices through delivery + receipt vocabulary| PIJ
+    PO -->|mutates SessionDescriptor.prime through RegistryPort| PIJ
     PO -->|validated by core/store/sweep tests + harness checks| H
     PCP -->|hosts orchestration CLI intercept + daemon sweep| PO
     PS -.->|rituals teach the primitive; no code imports| PO
@@ -107,6 +108,9 @@ flowchart LR
 | `pij-orchestration` → `extension-authoring-harness` | healthy | Pure lifecycle/sweep tests, real-filesystem store tests, the full pij regression suite, skill check, and harness sensors provide backpressure. |
 | `pij-control-plane` → `pij-orchestration` | hosts | The bin intercept owns process I/O and git HEAD probing; the daemon owns periodic holder-liveness sweep wiring. The orchestration core remains pi-free. |
 | `pij-skill` ⇢ `pij-orchestration` | teaches-only | Prime rituals explain the primitive beside the human evidence workflow; no code or state dependency. |
+| `pij-orchestration` → `pij-messaging` prime contract | healthy | `PrimeService` preserves full descriptors through `RegistryPort`; `list --prime` consumes only explicit `prime:true`, while legacy absence projects as `false`. |
+| `pij-control-plane` → prime designation | healthy | The CLI supplies exact self resolution and the daemon gives latest persisted mutable prime state authority over stale tick snapshots. |
+| `pij-skill` ⇢ prime designation | teaches-only | Route triage reads `pij list --prime --here --json`; bootstrap/handover print write-side set/unset commands without importing product code. |
 
 ## History
 
@@ -129,3 +133,4 @@ flowchart LR
 | 2026-06-27 | Plan 019 — added `pij-control-plane` (`PCP`) node; three outbound edges (extends `pij-messaging`; validated by `extension-authoring-harness`; future CLI surface through `agent-tooling-interface`). Group A landed the shared `tmux-keys` primitives. Health Summary + edge detail finalized at T028. |
 | 2026-07-03 | Plan 029 Phase 1 — added `agent-runtime` (`AR`) node + external `minih` (`MINIH`) library node; two outbound edges (embeds-only → `MINIH`; validated → `extension-authoring-harness`) plus two inbound: `PCP → AR` (planned Phase-2 `pij agent` CLI + daemon `sweepStaleTmp` hook) and a dashed observes-only `AW ⇢ AR` (workbench reads the minih runs AR produces). Runtime built CLI-free in Phase 1; `pij agent` surface + built-ins + docs land in Phase 2. |
 | 2026-07-11 | Plan 036 — added `pij-orchestration` (`PO`) with outbound notice/receipt consumption from `pij-messaging`, harness validation, and inbound hosting edges from `pij-control-plane` plus the teaching-only `pij-skill` relationship. |
+| 2026-07-11 | Plan 038 — extended existing PIJ/PO/PCP/PS relationships for descriptor-backed prime designation, list filtering, mutable merge ownership, and registry-first skill triage. |

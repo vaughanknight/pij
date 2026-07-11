@@ -9,7 +9,11 @@
 ## Boot path for the incoming seat
 
 1. `pij adopt "$TMUX_PANE" --harness <h>` FIRST (fresh seats always E-AMBIG),
-   then lever 0.
+   then lever 0. Persist the incoming seat with
+   `pij orchestration prime set --json`; confirm its id appears in
+   `pij list --prime --here --json` before changing any writer line.
+   Until step 5 unsets the outgoing marker, both seats are intentionally prime;
+   this bounded overlap prevents a discovery gap during writer transfer.
 2. Read: spine → baton book → prime-flow (CLI-only) → briefs → THIS PACK →
    local orient. Check the spine `Seq:` counter against this pack's
    `spine-seq at write:` line — a mismatch means you are reading mid-write.
@@ -20,6 +24,9 @@
    - [ ] anything this repo added (grep `Writer:` under government/)
 4. Announce to the human and to every live stream **citing this pack** —
    streams do not know your id; say so explicitly per stream.
+5. After the outgoing seat's FINAL send, unset its live marker with
+   `pij orchestration prime unset <outgoing-pij-id> --json`, verify it is absent
+   from `pij list --prime --here --json`, then perform descriptor teardown.
 
 ## Live state inherited
 
@@ -34,10 +41,10 @@
 
 ## Outgoing-descriptor lifecycle (one rule, no synthesis needed)
 
-The outgoing seat's descriptor is purged **by the incoming seat, after the
-outgoing seat's FINAL send** (all relay contracts discharged, stand-down
-announced). Track it as a sequencing watch until then. Ownership-aware
-teardown is not violated: the pack + stand-down note constitute the owner's
-explicit ask.
+The outgoing seat's prime marker is unset and its descriptor is purged **by the
+incoming seat, after the outgoing seat's FINAL send** (all relay contracts
+discharged, stand-down announced). Track both as a sequencing watch until then.
+Ownership-aware teardown is not violated: the pack + stand-down note constitute
+the owner's explicit ask.
 
 **spine-seq at write**: <spine Seq value when this pack was finished>

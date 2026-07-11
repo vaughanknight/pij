@@ -5,6 +5,7 @@ import {
 	deriveSelfId,
 	excludeSelf,
 	filterByFolder,
+	filterPrime,
 	isSubagentChild,
 	resolveSelf,
 } from "./discovery.js";
@@ -28,6 +29,21 @@ const c = desc("c", "/work/other");
 describe("filterByFolder", () => {
 	it("keeps only descriptors in the folder", () => {
 		expect(filterByFolder([a, b, c], "/work/proj").map((d) => d.id)).toEqual(["a", "b"]);
+	});
+
+	describe("filterPrime", () => {
+		it("keeps only explicit prime=true descriptors and composes with folder filtering", () => {
+			const primeHere = { ...a, prime: true };
+			const notPrime = { ...b, prime: false };
+			const primeElsewhere = { ...c, prime: true };
+			expect(filterPrime([primeHere, notPrime, primeElsewhere]).map((d) => d.id)).toEqual([
+				"a",
+				"c",
+			]);
+			expect(
+				filterPrime(filterByFolder([primeHere, notPrime, primeElsewhere], "/work/proj")),
+			).toEqual([primeHere]);
+		});
 	});
 });
 

@@ -245,6 +245,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 			state: "working",
 			lastEventAt: "2026-07-10T00:00:00.000Z",
 			failureReason: "dead",
+			prime: false,
 		});
 		const reattached = reattachIdentity(existing, {
 			harness: "claude",
@@ -264,6 +265,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 			pid: 99,
 			state: "idle",
 			lifecycle: "bound",
+			prime: false,
 		});
 		expect(reattached.failureReason).toBeUndefined();
 	});

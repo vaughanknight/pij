@@ -1,10 +1,9 @@
 # pij — peer pi-session messaging
 
-`pij` lets two (or more) running **pi sessions** in the same project talk to each
+`pij` lets two (or more) running agent sessions in the same project talk to each
 other and observe each other's work in near-real-time. It is a thin file-backed
-message bus + activity stream — no server, no daemon. Sessions discover each other
-through `~/.pij/`, message via a fire-and-forget channel, and read each other's
-event streams.
+registry, message bus, and activity stream. Pi sessions use the files directly;
+tmux-bound Claude, Copilot, and Codex peers are driven by the pij daemon.
 
 ## Related workflow guides
 
@@ -61,7 +60,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 | Verb | Usage | Does |
 |------|-------|------|
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
-| `list` | `pij list [--here]` | List known sessions (id, state, liveness, folder). `--here` filters to the current folder; self is marked `★`. |
+| `list` | `pij list [--prime] [--here]` | List known sessions (id, prime marker, state, liveness, folder). `--prime` keeps only explicit prime sessions and composes with `--here`; self is marked `★`, prime rows `P`. JSON always includes `prime:boolean`. |
 | `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
@@ -69,6 +68,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 | `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>]` | Register an existing external-client pane. For restart re-attachment, `--session-id` is authoritative and recovers the prior pij-id; newest-artifact discovery is only an initial-adopt fallback. |
 | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
+| `orchestration prime` | `pij orchestration prime set\|unset [<id>]` | Set or clear the durable honor-system prime marker on self or another session. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
 
 ### Exit codes
 
@@ -100,6 +100,10 @@ publication; duplicate, colliding, or occupied ids fail with `E-AMBIG` instead o
 overwriting a peer. Omitting `--session-id` retains newest-artifact discovery for
 initial adoption only. For Codex, an authoritative id must resolve to an exact readable
 rollout path or adoption fails with `E-NOID`.
+
+Prime designation is part of the descriptor snapshot and survives this same
+restart/reattachment path. `unset` writes explicit `false`; legacy absence reads
+as not prime. See [pij prime](./pij-prime.md#registry-designation).
 
 ---
 

@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { exitCodeForOrchestration, ORCHESTRATION_EXIT, parseOrchestrationArgs } from "./cli.js";
+import { FakeBatonNoticeSink, FakeBatonStore, FakeRegistry } from "../../adapters/fakes.js";
+import type { Result, SessionDescriptor } from "../types.js";
+import { err as resultErr, ok as resultOk } from "../types.js";
+import { BatonService } from "./baton.js";
+import {
+	dispatchOrchestration,
+	exitCodeForOrchestration,
+	ORCHESTRATION_EXIT,
+	parseOrchestrationArgs,
+} from "./cli.js";
+import { PrimeService } from "./prime.js";
 
 function ok(args: string[]) {
 	const parsed = parseOrchestrationArgs(args);
@@ -14,6 +24,25 @@ function err(args: string[]) {
 }
 
 describe("parseOrchestrationArgs", () => {
+	it("parses prime set/unset with an optional target and JSON", () => {
+		expect(ok(["prime", "set"])).toEqual({
+			primitive: "prime",
+			verb: "set",
+			json: false,
+		});
+		expect(ok(["prime", "set", "pij-a", "--json"])).toEqual({
+			primitive: "prime",
+			verb: "set",
+			id: "pij-a",
+			json: true,
+		});
+		expect(ok(["prime", "unset", "--json"])).toEqual({
+			primitive: "prime",
+			verb: "unset",
+			json: true,
+		});
+	});
+
 	it("parses baton help", () => {
 		expect(ok(["baton", "--help"])).toEqual({
 			primitive: "baton",
@@ -130,6 +159,11 @@ describe("parseOrchestrationArgs", () => {
 		[["baton", "show", "x", "--wat"]],
 		[["baton", "list", "--json=true"]],
 		[["baton", "grant", "x", "--to", "request-1", "--repin=yes"]],
+		[["prime"]],
+		[["prime", "show"]],
+		[["prime", "set", "a", "b"]],
+		[["prime", "set", "--wat"]],
+		[["prime", "unset", "--json=true"]],
 	])("rejects malformed invocation %j", (args) => {
 		expect(err(args).code).toBe("E-ARG");
 	});
@@ -150,11 +184,112 @@ describe("orchestration exit codes", () => {
 		expect(exitCodeForOrchestration("E-NOREQUEST")).toBe(1);
 		expect(exitCodeForOrchestration("E-NOLEASE")).toBe(1);
 		expect(exitCodeForOrchestration("E-STORE")).toBe(2);
+		expect(exitCodeForOrchestration("E-NOID")).toBe(2);
+		expect(exitCodeForOrchestration("E-AMBIG")).toBe(2);
 	});
 
 	it("defines an exit mapping for every orchestration error", () => {
 		for (const code of Object.keys(ORCHESTRATION_EXIT)) {
 			expect(typeof ORCHESTRATION_EXIT[code as keyof typeof ORCHESTRATION_EXIT]).toBe("number");
 		}
+	});
+});
+
+function descriptor(id: string, prime?: boolean): SessionDescriptor {
+	return {
+		id,
+		folder: "/repo",
+		dataDir: `/home/.pij/${id}`,
+		eventsPath: `/home/.pij/${id}/events.ndjson`,
+		pid: 100,
+		startedAt: "2026-07-11T00:00:00.000Z",
+		...(prime === undefined ? {} : { prime }),
+	};
+}
+
+function dispatchPrime(
+	args: string[],
+	options: {
+		descriptors?: SessionDescriptor[];
+		resolveSelf?: () => Result<string>;
+	} = {},
+) {
+	const parsed = parseOrchestrationArgs(args);
+	if (!parsed.ok) throw new Error(parsed.message);
+	const registry = new FakeRegistry(options.descriptors ?? []);
+	const result = dispatchOrchestration(parsed.command, {
+		service: new BatonService({
+			store: new FakeBatonStore(),
+			notices: new FakeBatonNoticeSink(),
+			now: () => 0,
+			newId: () => "id",
+		}),
+		actor: "operator",
+		currentHead: () => null,
+		primeService: new PrimeService(registry),
+		resolveSelf: options.resolveSelf ?? (() => resultOk("pij-a")),
+	});
+	return { result, registry };
+}
+
+describe("prime orchestration dispatch", () => {
+	it("sets the exact resolved self and renders human output", () => {
+		const { result, registry } = dispatchPrime(["prime", "set"], {
+			descriptors: [descriptor("pij-a")],
+		});
+		expect(result).toEqual({
+			stdout: "prime set: pij-a",
+			stderr: "",
+			exitCode: 0,
+		});
+		expect(registry.read("pij-a")?.prime).toBe(true);
+	});
+
+	it("uses an explicit target without consulting ambiguous self resolution", () => {
+		const { result, registry } = dispatchPrime(["prime", "set", "pij-b", "--json"], {
+			descriptors: [descriptor("pij-a"), descriptor("pij-b")],
+			resolveSelf: () => resultErr("E-AMBIG", "ambiguous"),
+		});
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-b",
+			prime: true,
+			changed: true,
+		});
+		expect(registry.read("pij-a")?.prime).toBeUndefined();
+		expect(registry.read("pij-b")?.prime).toBe(true);
+	});
+
+	it("unsets idempotently and reports changed=false in JSON", () => {
+		const { result, registry } = dispatchPrime(["prime", "unset", "pij-a", "--json"], {
+			descriptors: [descriptor("pij-a", false)],
+		});
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-a",
+			prime: false,
+			changed: false,
+		});
+		expect(registry.read("pij-a")?.prime).toBe(false);
+	});
+
+	it("maps E-NOID and E-AMBIG without mutating descriptors", () => {
+		const unknown = dispatchPrime(["prime", "set", "missing"], {
+			descriptors: [descriptor("pij-a")],
+		});
+		expect(unknown.result).toMatchObject({
+			exitCode: 2,
+			stderr: expect.stringContaining("E-NOID"),
+		});
+		expect(unknown.registry.read("pij-a")?.prime).toBeUndefined();
+
+		const ambiguous = dispatchPrime(["prime", "set"], {
+			descriptors: [descriptor("pij-a"), descriptor("pij-b")],
+			resolveSelf: () => resultErr("E-AMBIG", "cannot resolve self"),
+		});
+		expect(ambiguous.result).toMatchObject({
+			exitCode: 2,
+			stderr: expect.stringContaining("E-AMBIG"),
+		});
+		expect(ambiguous.registry.list().every((item) => item.prime === undefined)).toBe(true);
 	});
 });

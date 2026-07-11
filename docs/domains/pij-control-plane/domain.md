@@ -24,6 +24,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice. |
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
+| `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `prime` is latest-disk-authoritative before daemon writes. |
 | `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims plus two-way durable identity ownership and metadata snapshots used to recover the same pij-id after restart. |
 | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
@@ -42,6 +43,7 @@ thin receiver). Plan 019.
 | Deterministic binding | The daemon discovers the new Claude transcript under `~/.claude/projects/<mangled cwd>/` (a path absent at spawn) to derive `harnessSessionId` with no agent cooperation. | `bind()`; phone-home confirmatory; watchdog (AC-03/04/05). |
 | Init-exactly-once | The init (pij-id + `pij phonehome` line) is injected once, after ready, idempotent across daemon restart. | persisted `initInjectedAt` (AC-02/12). |
 | Fire-and-forget injection | tmux targets receive `send-keys`+Enter, ungated; the caller never blocks. | router → `tmux-keys` (AC-07/13). |
+| External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `prime:true\|false` overrides stale daemon snapshots; append-only `reportedAt` retains fill-only semantics. |
 | Delivery ownership | Senders write the target inbox; the daemon consumes+injects ONLY tmux inboxes and merely observes pi inboxes. | router rules; pi thin receiver sole pi-inbox consumer (AC-08). |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
 | Single-instance daemon | A second `pij daemon` refuses/attaches — never a second injector. | PID/lockfile (AC-10). |
@@ -55,6 +57,7 @@ thin receiver). Plan 019.
 | `classifyReadiness` | daemon readiness loop | pure `string → ReadinessState`; version-sensitive markers isolated here. |
 | `classifyInterstitial` | daemon readiness loop | pure `string → { kind: "dismiss" \| "needs-human" \| "none" }`. |
 | Binding record | daemon, `pij tail`, creator notice | Durable `(harness,harnessSessionId) ↔ pij-id` plus replaceable `paneId ↔ pid ↔ cwd`; exact zero/one/many resolution, no silent overwrite. |
+| Prime CLI wiring | orchestration core | Omitted target uses exact env/pane/lone-local self resolution; explicit ids bypass it; baton actor fallback remains baton-only. |
 
 ## Boundary Owns
 
@@ -99,3 +102,4 @@ thin receiver). Plan 019.
 | 024-fix-false-provider-death | Provider-failure push now suppresses working-session false positives, clears stale provider-failure state on working recovery, and uses provider-stuck wording instead of claiming live sessions exited. | 2026-06-28 |
 | 026-pij-telegram-bridge | Added the `pij-telegram` bridge peer (`pij telegram init\|start\|stop`): a foreground, single-instance grammY long-poll relaying a Telegram bot ⇄ pij sessions (allowlist-gated, addressed/sticky routing, `/list` + `/tail`, chunked outbound). Registers a `harness:"pi"` + `lifecycle:"bound"` descriptor so the daemon observes (never drains) it — no daemon/core contract change. `init` validates the token (`getMe`), captures the operator id as the allowlist, and merges the scoped `.env` without clobbering existing keys. | 2026-06-29 |
 | 026-pij-telegram-bridge (Phase 5: media) | Media relay **both ways** by reference-passing — bytes never touch the pij wire. New pure `telegram/media.ts` (`classifyMedia`, `withinUploadLimit`/`withinDownloadLimit`, `safeMediaName`, `buildInboundNotice`). `PijMessage.attachments?` (additive) + `pij send --file/--caption` (in `core/cli.ts`). Outbound: `startForwarder` classifies each attachment → `sendPhoto`/`sendAnimation`/`sendDocument` via grammY `InputFile` in the existing ordered queue (10/50 MB caps → text-notice fallback, never a throw; attachment-only skips the blank text send). Inbound: allowlist-gated `message:photo\|animation\|document` handlers resolve the target by caption, 20 MB download pre-check, then `@grammyjs/files` download (behind an injected seam) into the target session's own `<dataDir>/attachments/<safe-name>`, delivering a text path notice. Added `@grammyjs/files` dep. | 2026-06-30 |
+| 038-pij-prime-designation | Added exact-self production wiring and latest-disk-authoritative mutable prime merging in the daemon write coordinator. | 2026-07-11 |

@@ -71,6 +71,11 @@ export function filterByFolder(
 	return descriptors.filter((d) => d.folder === folder);
 }
 
+/** Descriptors explicitly designated prime. Legacy absence and false are excluded. */
+export function filterPrime(descriptors: readonly SessionDescriptor[]): SessionDescriptor[] {
+	return descriptors.filter((d) => d.prime === true);
+}
+
 /** Drop this session from a peer list (a session never messages itself). */
 export function excludeSelf(
 	descriptors: readonly SessionDescriptor[],

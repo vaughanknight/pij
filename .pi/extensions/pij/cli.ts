@@ -109,6 +109,7 @@ import {
 	ORCHESTRATION_USAGE,
 	parseOrchestrationArgs,
 } from "./core/orchestration/cli.js";
+import { PrimeService } from "./core/orchestration/prime.js";
 import { daemonTickStatus } from "./core/receipts.js";
 import { buildExportLines } from "./core/session-join.js";
 import {
@@ -159,10 +160,11 @@ Agents (run declarative minih agent packs):
 
 Orchestration (machine-wide coordination):
   pij orchestration baton <define|list|show|request|grant|return|reclaim>   atomic resource leases + pushed notices
+  pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
 
 Messaging:
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
-  pij list [--here] [--json]                         known sessions
+  pij list [--here] [--prime] [--json]               known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
   pij send <id> "<text>" | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
                                                         deliver one message, broadcast text, or run a control command
@@ -1418,6 +1420,17 @@ function orchestrationActor(registry: FsRegistry): string {
 	return resolved.ok ? resolved.value : "operator";
 }
 
+function orchestrationSelf(registry: FsRegistry) {
+	const envId = process.env.PIJ_SESSION_ID;
+	const pane = process.env.TMUX_PANE;
+	if ((!envId || envId.trim() === "") && pane && pane.trim() !== "") {
+		const byPane = registry.list().filter((descriptor) => descriptor.paneId === pane);
+		const only = byPane[0];
+		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
+	}
+	return resolveSelf(envId, filterByFolder(registry.list(), process.cwd()), pane);
+}
+
 function batonHead(store: FsBatonStore, name: string): string | null {
 	const definition = store.readDefinition(name);
 	if (!definition.ok || !definition.value?.repo) return null;
@@ -1455,6 +1468,8 @@ function runOrchestrationVerb(args: string[]): void {
 		service,
 		actor: orchestrationActor(registry),
 		currentHead: (name) => batonHead(store, name),
+		primeService: new PrimeService(registry),
+		resolveSelf: () => orchestrationSelf(registry),
 	});
 	if (result.stdout) process.stdout.write(`${result.stdout}\n`);
 	if (result.stderr) process.stderr.write(`${result.stderr}\n`);

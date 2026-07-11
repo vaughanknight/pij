@@ -19,6 +19,7 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FakePiRuntime } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { reattachIdentity } from "./core/binding.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
 import type { PijMessage } from "./core/types.js";
@@ -85,6 +86,98 @@ afterAll(() => {
 });
 
 describe("pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME)", () => {
+	it("top-level help advertises the prime list filter", () => {
+		const result = pij(["--help"]);
+		expect(result.code).toBe(0);
+		expect(result.out).toContain("pij list [--here] [--prime] [--json]");
+	});
+
+	it("sets, filters, unsets, and durably reattaches prime designations through the real CLI", () => {
+		const selfSet = pij(["orchestration", "prime", "set", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(selfSet.code).toBe(0);
+		expect(JSON.parse(selfSet.out)).toEqual({
+			id: "pij-A",
+			prime: true,
+			changed: true,
+		});
+
+		const explicitOther = pij(["orchestration", "prime", "set", "pij-B", "--json"], {
+			PIJ_SESSION_ID: "",
+		});
+		expect(explicitOther.code).toBe(0);
+		expect(JSON.parse(explicitOther.out)).toMatchObject({ id: "pij-B", prime: true });
+
+		const primesHere = pij(["list", "--prime", "--here", "--json"]);
+		expect(primesHere.code).toBe(0);
+		expect(
+			(JSON.parse(primesHere.out) as Array<{ id: string; prime: boolean }>).map(
+				({ id, prime }) => ({
+					id,
+					prime,
+				}),
+			),
+		).toEqual([
+			{ id: "pij-A", prime: true },
+			{ id: "pij-B", prime: true },
+		]);
+
+		const unset = pij(["orchestration", "prime", "unset", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(JSON.parse(unset.out)).toMatchObject({ id: "pij-A", prime: false, changed: true });
+		expect(new FsRegistry(HOME).read("pij-A")?.prime).toBe(false);
+
+		const beforeUnknown = readFileSync(join(HOME, "pij-B.json"), "utf8");
+		const unknown = pij(["orchestration", "prime", "set", "missing"], {
+			PIJ_SESSION_ID: "",
+		});
+		expect(unknown.code).toBe(2);
+		expect(unknown.out).toContain("E-NOID");
+		expect(readFileSync(join(HOME, "pij-B.json"), "utf8")).toBe(beforeUnknown);
+
+		const ambiguous = pij(["orchestration", "prime", "set"], { PIJ_SESSION_ID: "" });
+		expect(ambiguous.code).toBe(2);
+		expect(ambiguous.out).toContain("E-AMBIG");
+
+		const registry = new FsRegistry(HOME);
+		registry.write({
+			id: "pij-durable",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-durable"),
+			eventsPath: join(HOME, "pij-durable", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-11T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: "native-prime",
+			lifecycle: "bound",
+		});
+		expect(pij(["orchestration", "prime", "set", "pij-durable"]).code).toBe(0);
+		registry.remove("pij-durable");
+		const snapshot = new FsRegistry(HOME).resolveIdentitySnapshot("claude", "native-prime");
+		expect(snapshot).toMatchObject({ ok: true, value: { id: "pij-durable", prime: true } });
+		if (!snapshot.ok || !snapshot.value) throw new Error("expected durable descriptor snapshot");
+		new FsRegistry(HOME).write(
+			reattachIdentity(snapshot.value, {
+				harness: "claude",
+				harnessSessionId: "native-prime",
+				folder: FOLDER,
+				pid: process.pid,
+				paneId: "%99",
+			}),
+		);
+		expect(new FsRegistry(HOME).read("pij-durable")?.prime).toBe(true);
+	});
+
+	it("rejects valued --prime=false instead of silently disabling the filter", () => {
+		const result = pij(["list", "--prime=false", "--json"]);
+		expect(result.code).toBe(64);
+		expect(result.out).toContain("E-ARG");
+		expect(result.out).toContain("--prime does not take a value");
+		expect(result.out).not.toContain('"id":"pij-A"');
+	});
+
 	it("AC-1 discovery: list --here sees both peers in this folder", () => {
 		const r = pij(["list", "--here"]);
 		expect(r.code).toBe(0);

@@ -71,7 +71,11 @@ describe("parseArgs", () => {
 		});
 		expect(parseArgs(["list", "--here"])).toMatchObject({
 			ok: true,
-			value: { verb: "list", here: true },
+			value: { verb: "list", here: true, prime: false },
+		});
+		expect(parseArgs(["list", "--prime", "--here", "--json"])).toMatchObject({
+			ok: true,
+			value: { verb: "list", here: true, prime: true, json: true },
 		});
 		expect(parseArgs(["send", "w3", "hello"])).toMatchObject({
 			ok: true,
@@ -126,6 +130,7 @@ describe("parseArgs", () => {
 		// unknown flag
 		expect(parseArgs(["list", "--bogus"])).toMatchObject({ ok: false, code: "E-ARG" });
 		expect(parseArgs(["whoami", "--here"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["sessions", "--prime"])).toMatchObject({ ok: false, code: "E-ARG" });
 		// extra positionals
 		expect(parseArgs(["whoami", "extra"])).toMatchObject({ ok: false, code: "E-ARG" });
 		expect(parseArgs(["state", "a", "b"])).toMatchObject({ ok: false, code: "E-ARG" });
@@ -145,6 +150,17 @@ describe("parseArgs", () => {
 			ok: false,
 			code: "E-ARG",
 		});
+	});
+
+	it.each([
+		["--prime=false", "--prime"],
+		["--prime=true", "--prime"],
+		["--here=false", "--here"],
+		["--json=true", "--json"],
+	])("rejects valued boolean flag %s", (flag, name) => {
+		const result = parseArgs(["list", flag]);
+		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
+		if (!result.ok) expect(result.message).toContain(`${name} does not take a value`);
 	});
 
 	it("--wait carries an optional ms; bare --wait is a boolean", () => {
@@ -246,12 +262,13 @@ describe("dispatch whoami / list", () => {
 			],
 			alive: [100], // a1 alive; w3 pid200 dead
 		});
-		const r = dispatch({ verb: "list", here: true, json: true }, d);
+		const r = dispatch({ verb: "list", here: true, prime: false, json: true }, d);
 		const arr = JSON.parse(r.stdout) as Array<{
 			id: string;
 			liveness: string;
 			boundModel: string | null;
 			effort: string | null;
+			prime: boolean;
 		}>;
 		expect(arr.map((x) => x.id).sort()).toEqual(["a1", "w3"]); // z9 filtered out
 		expect(arr.find((x) => x.id === "a1")?.liveness).toBe("active");
@@ -260,10 +277,43 @@ describe("dispatch whoami / list", () => {
 			effort: "xhigh",
 		});
 		expect(arr.find((x) => x.id === "w3")?.liveness).toBe("dead");
-		const human = dispatch({ verb: "list", here: true, json: false }, d);
+		expect(arr.every((x) => x.prime === false)).toBe(true);
+		const human = dispatch({ verb: "list", here: true, prime: false, json: false }, d);
 		expect(human.stdout).toContain("★ a1");
 		expect(human.stdout).toContain("gpt-5.6-sol");
 		expect(human.stdout).toContain("xhigh");
+	});
+
+	it("list --prime composes with --here and ordinary output marks prime rows", () => {
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1", prime: true }),
+				desc({ id: "w3", prime: false }),
+				desc({ id: "legacy" }),
+				desc({ id: "elsewhere", folder: "/other", prime: true }),
+			],
+		});
+		const filtered = dispatch({ verb: "list", here: true, prime: true, json: true }, d);
+		expect(JSON.parse(filtered.stdout)).toEqual([
+			expect.objectContaining({ id: "a1", prime: true }),
+		]);
+
+		const allJson = JSON.parse(
+			dispatch({ verb: "list", here: false, prime: false, json: true }, d).stdout,
+		) as Array<{ id: string; prime: boolean }>;
+		expect(allJson.map(({ id, prime }) => ({ id, prime }))).toEqual([
+			{ id: "a1", prime: true },
+			{ id: "w3", prime: false },
+			{ id: "legacy", prime: false },
+			{ id: "elsewhere", prime: true },
+		]);
+
+		const human = dispatch({ verb: "list", here: true, prime: false, json: false }, d);
+		const primeRow = human.stdout.split("\n").find((line) => line.includes("a1"));
+		const normalRow = human.stdout.split("\n").find((line) => line.includes("w3"));
+		expect(primeRow).toMatch(/a1\s+P\s/);
+		expect(normalRow).not.toMatch(/w3\s+P\s/);
 	});
 });
 

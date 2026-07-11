@@ -47,6 +47,8 @@ export type LivenessVerdict = "active" | "stale" | "dead" | "dissolved";
 export interface SessionDescriptor {
 	readonly id: SessionId;
 	readonly role?: Role;
+	/** Honor-system orchestration designation. Absent means legacy/not prime. */
+	readonly prime?: boolean;
 	/** Absolute project folder the session runs in (used by --here filter). */
 	readonly folder: string;
 	/** Absolute data dir: ~/.pij/<id>/ holding events.ndjson + state.json. */
