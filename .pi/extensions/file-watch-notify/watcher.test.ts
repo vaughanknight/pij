@@ -26,6 +26,19 @@ function makeWatcher(dir: string, deps: WatchDeps, onNotices: (n: string[], c: C
 	return new FolderWatcher(compiled, reconciler, 20, onNotices, deps);
 }
 
+/** Deterministic deps for the scan()-driven integration tests: real fs listing, but
+ *  NO live fs.watch events and NO debounce timers. Background debounce scans racing
+ *  the explicit scan() calls under machine load were the flake (plan-036 ruling #8,
+ *  DL-002/DL-003); these tests exercise scan-reconcile behaviour, not the event
+ *  plumbing — the debounce path keeps its own fake-deps suite below. */
+function scanOnlyDeps(): WatchDeps {
+	return {
+		...nodeWatchDeps(),
+		watch: () => ({ close: () => {} }),
+		setTimer: () => () => {},
+	};
+}
+
 describe("FolderWatcher — real fs integration", () => {
 	let dir: string;
 	beforeEach(async () => {
@@ -37,7 +50,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("detects create / modify / delete of a matching file via scan()", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		await w.start(); // primes empty baseline
 
 		await writeFile(join(dir, "a.md"), "hello");
@@ -103,14 +116,14 @@ describe("FolderWatcher — real fs integration", () => {
 			new WatchReconciler(skillsCompiled, DEFAULT_NOTICE),
 			20,
 			onNotices,
-			nodeWatchDeps(),
+			scanOnlyDeps(),
 		);
 		const nestedWatch = new FolderWatcher(
 			flowPairCompiled,
 			new WatchReconciler(flowPairCompiled, DEFAULT_NOTICE),
 			20,
 			onNotices,
-			nodeWatchDeps(),
+			scanOnlyDeps(),
 		);
 		await rootWatch.start();
 		await nestedWatch.start();
@@ -127,7 +140,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("ignores non-matching files and editor artifacts", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		await w.start();
 
 		await writeFile(join(dir, "note.txt"), "x"); // not *.md
@@ -141,7 +154,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("captures under-cap text content → a modified reports a textual delta (AC-06)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), "line1\nline2\n");
 		await w.start(); // primes WITH content
 
@@ -159,7 +172,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("suppresses an mtime-only touch once content is captured (AC-03)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), "same\n");
 		await w.start();
 
@@ -175,7 +188,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("skips content for a binary file → modified reports without a delta (AC-06)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), Buffer.from([1, 2, 0, 3, 4])); // NUL byte
 		await w.start();
 
@@ -191,7 +204,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("skips content for an over-cap file → modified reports without a delta (AC-06)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		const big = "x".repeat(MAX_CONTENT_BYTES + 10);
 		await writeFile(join(dir, "a.md"), big);
 		await w.start();
@@ -207,20 +220,22 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("advances the baseline exactly once per wake — successive edits are delta-only (AC-04, F-11)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, nodeWatchDeps(), (_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), "v1\n");
 		await w.start();
 
-		await writeFile(join(dir, "a.md"), "v2\n");
+		// distinct sizes per write: a same-size rewrite inside one mtime tick is invisible
+		// to the {mtimeMs,size} snapshot — the load-flake's second class (ruling #8)
+		await writeFile(join(dir, "a.md"), "v2 second\n");
 		await w.scan();
-		expect(seen.at(-1)?.diff).toContain("+v2");
+		expect(seen.at(-1)?.diff).toContain("+v2 second");
 		expect(seen.at(-1)?.diff).toContain("-v1");
 
-		await writeFile(join(dir, "a.md"), "v3\n");
+		await writeFile(join(dir, "a.md"), "v3 third pass\n");
 		await w.scan();
 		// delta is v2→v3 (baseline advanced past v1), NOT cumulative v1→v3
-		expect(seen.at(-1)?.diff).toContain("+v3");
-		expect(seen.at(-1)?.diff).toContain("-v2");
+		expect(seen.at(-1)?.diff).toContain("+v3 third pass");
+		expect(seen.at(-1)?.diff).toContain("-v2 second");
 		expect(seen.at(-1)?.diff).not.toContain("-v1");
 
 		w.dispose();
