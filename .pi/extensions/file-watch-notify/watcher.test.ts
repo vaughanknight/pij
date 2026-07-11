@@ -50,7 +50,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("detects create / modify / delete of a matching file via scan()", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		await w.start(); // primes empty baseline
 
 		await writeFile(join(dir, "a.md"), "hello");
@@ -140,7 +140,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("ignores non-matching files and editor artifacts", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		await w.start();
 
 		await writeFile(join(dir, "note.txt"), "x"); // not *.md
@@ -154,7 +154,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("captures under-cap text content → a modified reports a textual delta (AC-06)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), "line1\nline2\n");
 		await w.start(); // primes WITH content
 
@@ -172,7 +172,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("suppresses an mtime-only touch once content is captured (AC-03)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), "same\n");
 		await w.start();
 
@@ -188,7 +188,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("skips content for a binary file → modified reports without a delta (AC-06)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), Buffer.from([1, 2, 0, 3, 4])); // NUL byte
 		await w.start();
 
@@ -204,7 +204,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("skips content for an over-cap file → modified reports without a delta (AC-06)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		const big = "x".repeat(MAX_CONTENT_BYTES + 10);
 		await writeFile(join(dir, "a.md"), big);
 		await w.start();
@@ -220,7 +220,7 @@ describe("FolderWatcher — real fs integration", () => {
 
 	it("advances the baseline exactly once per wake — successive edits are delta-only (AC-04, F-11)", async () => {
 		const seen: Change[] = [];
-		const w = makeWatcher(dir, scanOnlyDeps(),(_n, c) => seen.push(...c));
+		const w = makeWatcher(dir, scanOnlyDeps(), (_n, c) => seen.push(...c));
 		await writeFile(join(dir, "a.md"), "v1\n");
 		await w.start();
 
