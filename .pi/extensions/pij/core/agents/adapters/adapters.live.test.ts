@@ -59,43 +59,35 @@ describe.skipIf(!LIVE)("agent-runtime adapters — live (AC-07)", () => {
 		if (agentsDir) rmSync(agentsDir, { recursive: true, force: true });
 	});
 
-	it(
-		"claude one-shot yields a valid system envelope",
-		async () => {
-			const res = await runAgentPack({
-				slug: "live-smoke",
-				agentsDir,
-				adapter: new ClaudeHeadlessAdapter(),
-				params: {},
-			});
-			expect(res.ok, res.ok ? "" : JSON.stringify(res)).toBe(true);
-			if (!res.ok) throw new Error("run failed");
-			const reportPath = join(res.runResult.runDir, "output", "report.json");
-			expect(existsSync(reportPath)).toBe(true);
-			const v = validateSystemOutput(reportPath);
-			expect(v.valid, v.errors.join("; ")).toBe(true);
-		},
-		{ timeout: 180_000 },
-	);
+	it("claude one-shot yields a valid system envelope", { timeout: 180_000 }, async () => {
+		const res = await runAgentPack({
+			slug: "live-smoke",
+			agentsDir,
+			adapter: new ClaudeHeadlessAdapter(),
+			params: {},
+		});
+		expect(res.ok, res.ok ? "" : JSON.stringify(res)).toBe(true);
+		if (!res.ok) throw new Error("run failed");
+		const reportPath = join(res.runResult.runDir, "output", "report.json");
+		expect(existsSync(reportPath)).toBe(true);
+		const v = validateSystemOutput(reportPath);
+		expect(v.valid, v.errors.join("; ")).toBe(true);
+	});
 
-	it(
-		"codex one-shot yields a valid system envelope",
-		async () => {
-			const res = await runAgentPack({
-				slug: "live-smoke",
-				agentsDir,
-				adapter: new CodexExecAdapter(),
-				params: {},
-			});
-			expect(res.ok, res.ok ? "" : JSON.stringify(res)).toBe(true);
-			if (!res.ok) throw new Error("run failed");
-			const reportPath = join(res.runResult.runDir, "output", "report.json");
-			expect(existsSync(reportPath)).toBe(true);
-			const v = validateSystemOutput(reportPath);
-			expect(v.valid, v.errors.join("; ")).toBe(true);
-		},
-		{ timeout: 180_000 },
-	);
+	it("codex one-shot yields a valid system envelope", { timeout: 180_000 }, async () => {
+		const res = await runAgentPack({
+			slug: "live-smoke",
+			agentsDir,
+			adapter: new CodexExecAdapter(),
+			params: {},
+		});
+		expect(res.ok, res.ok ? "" : JSON.stringify(res)).toBe(true);
+		if (!res.ok) throw new Error("run failed");
+		const reportPath = join(res.runResult.runDir, "output", "report.json");
+		expect(existsSync(reportPath)).toBe(true);
+		const v = validateSystemOutput(reportPath);
+		expect(v.valid, v.errors.join("; ")).toBe(true);
+	});
 });
 
 if (!LIVE) {

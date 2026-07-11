@@ -33,18 +33,14 @@ describe.skipIf(!LIVE)("package-vetter live regression (FX001-4)", () => {
 		if (stagedDir) rmSync(stagedDir, { recursive: true, force: true });
 	});
 
-	it(
-		"R-01 override corpus file is classified with rule R-01",
-		async () => {
-			expect(existsSync(CORPUS)).toBe(true);
-			stagedDir = mkdtempSync(resolve(tmpdir(), "pij-live-"));
-			cpSync(CORPUS, resolve(stagedDir, "r01-override.md"));
-			const verdict = await vet(stagedDir, "live-test:r01");
-			expect(verdict.vetter).toBe("agent");
-			expect(verdict.findings.some((f) => f.rule === "R-01")).toBe(true);
-		},
-		{ timeout: 600_000 },
-	);
+	it("R-01 override corpus file is classified with rule R-01", { timeout: 600_000 }, async () => {
+		expect(existsSync(CORPUS)).toBe(true);
+		stagedDir = mkdtempSync(resolve(tmpdir(), "pij-live-"));
+		cpSync(CORPUS, resolve(stagedDir, "r01-override.md"));
+		const verdict = await vet(stagedDir, "live-test:r01");
+		expect(verdict.vetter).toBe("agent");
+		expect(verdict.findings.some((f) => f.rule === "R-01")).toBe(true);
+	});
 });
 
 if (!LIVE) {
