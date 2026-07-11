@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [20, 22]
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,9 +25,9 @@ jobs:
       # against the real cli.ts over a sandboxed PIJ_HOME, deterministic + in-CI.
       - run: npm test
       # npm audit runs REPORT-ONLY (`|| true`) — the repo's Plan-009 security
-      # posture is report-and-continue, and the current advisories are devDep
-      # toolchain (esbuild via vite/vitest/tsx) needing a breaking bump. Surfaces
-      # findings in the log without failing CI. Hard gate on demand: `npm audit`.
+      # posture is report-and-continue. The remaining 26 findings are transitive
+      # through pinned minih 0.2.4, with no green released upstream fix. Surface
+      # them without failing CI; hard gate on demand: `npm audit`.
       - run: npm audit --audit-level=high || true
       # The live two-window Driver smoke (.pi/extensions/pij/smoke.ts, /pij status
       # line) stays local-only — needs tmux + the pi binary, absent on hosted
