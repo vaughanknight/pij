@@ -2,6 +2,18 @@
 // not the wiring). Mock-free: real small implementations of every port.
 
 import { filterEvents } from "../core/events.js";
+import {
+	type BatonDefinition,
+	type BatonLease,
+	type BatonLogEntry,
+	type BatonNotice,
+	type BatonNoticeReceipt,
+	type BatonNoticeSink,
+	type BatonResult,
+	type BatonStorePort,
+	batonErr,
+	batonOk,
+} from "../core/orchestration/baton.js";
 import type {
 	DeliveryPort,
 	EventLogPort,
@@ -18,10 +30,104 @@ import {
 	ok,
 	type PijEvent,
 	type PijMessage,
+	type ReceiptState,
 	type Result,
 	type SessionDescriptor,
 	type SessionId,
 } from "../core/types.js";
+
+export class FakeBatonStore implements BatonStorePort {
+	readonly definitions = new Map<string, BatonDefinition>();
+	readonly leases = new Map<string, BatonLease>();
+	readonly logs: BatonLogEntry[] = [];
+	private readonly failures = new Map<
+		"appendLog" | "writeDefinition" | "claimLease" | "releaseLease",
+		number
+	>();
+
+	constructor(
+		definitions: readonly BatonDefinition[] = [],
+		leases: readonly (readonly [string, BatonLease])[] = [],
+	) {
+		for (const definition of definitions) this.definitions.set(definition.name, definition);
+		for (const [name, lease] of leases) this.leases.set(name, lease);
+	}
+
+	failNext(operation: "appendLog" | "writeDefinition" | "claimLease" | "releaseLease"): void {
+		this.failures.set(operation, (this.failures.get(operation) ?? 0) + 1);
+	}
+
+	private shouldFail(
+		operation: "appendLog" | "writeDefinition" | "claimLease" | "releaseLease",
+	): boolean {
+		const remaining = this.failures.get(operation) ?? 0;
+		if (remaining === 0) return false;
+		if (remaining === 1) this.failures.delete(operation);
+		else this.failures.set(operation, remaining - 1);
+		return true;
+	}
+
+	listDefinitions(): BatonResult<readonly BatonDefinition[]> {
+		return batonOk([...this.definitions.values()]);
+	}
+
+	readDefinition(name: string): BatonResult<BatonDefinition | null> {
+		return batonOk(this.definitions.get(name) ?? null);
+	}
+
+	writeDefinition(definition: BatonDefinition): BatonResult<void> {
+		if (this.shouldFail("writeDefinition")) {
+			return batonErr("E-STORE", "injected fake definition write failure");
+		}
+		this.definitions.set(definition.name, definition);
+		return batonOk(undefined);
+	}
+
+	readLease(name: string): BatonResult<BatonLease | null> {
+		return batonOk(this.leases.get(name) ?? null);
+	}
+
+	claimLease(name: string, lease: BatonLease): BatonResult<"claimed" | "held"> {
+		if (this.shouldFail("claimLease")) {
+			return batonErr("E-STORE", "injected fake lease claim failure");
+		}
+		if (this.leases.has(name)) return batonOk("held");
+		this.leases.set(name, lease);
+		return batonOk("claimed");
+	}
+
+	releaseLease(name: string, leaseId: string): BatonResult<"released" | "missing" | "mismatch"> {
+		if (this.shouldFail("releaseLease")) {
+			return batonErr("E-STORE", "injected fake lease release failure");
+		}
+		const lease = this.leases.get(name);
+		if (!lease) return batonOk("missing");
+		if (lease.leaseId !== leaseId) return batonOk("mismatch");
+		this.leases.delete(name);
+		return batonOk("released");
+	}
+
+	appendLog(entry: BatonLogEntry): BatonResult<void> {
+		if (this.shouldFail("appendLog")) {
+			return batonErr("E-STORE", "injected fake log append failure");
+		}
+		this.logs.push(entry);
+		return batonOk(undefined);
+	}
+}
+
+export class FakeBatonNoticeSink implements BatonNoticeSink {
+	readonly outbox: BatonNotice[] = [];
+	private sequence = 0;
+
+	constructor(private readonly state: ReceiptState = "delivered") {}
+
+	push(notice: BatonNotice): BatonNoticeReceipt {
+		this.sequence += 1;
+		this.outbox.push(notice);
+		return { state: this.state, messageId: `baton-fake-${this.sequence}` };
+	}
+}
 
 export class FakeRegistry implements RegistryPort {
 	private readonly map = new Map<SessionId, SessionDescriptor>();

@@ -18,6 +18,7 @@ flowchart LR
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
     PS[pij-skill\ncontracts: /pij route registry, detection signals A-E, shared conventions C1-C7, pij-skill-check gate]
+    PO[pij-orchestration\ncontracts: BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time, holder-transition decision]
 
     ATI -->|uses current-session store + todo contracts| SWS
     ATI -->|registers tool/command/lifecycle handlers| PI
@@ -58,6 +59,10 @@ flowchart LR
     PS -->|peer route prints send/state/list/whoami surface| PIJ
     PS -->|agent route wraps the pij agent verb family| AR
     PS -.->|pair route wraps it; never writes flow-state files| TF
+    PO -->|pushes notices through delivery + receipt vocabulary| PIJ
+    PO -->|validated by core/store/sweep tests + harness checks| H
+    PCP -->|hosts orchestration CLI intercept + daemon sweep| PO
+    PS -.->|rituals teach the primitive; no code imports| PO
 ```
 
 ## Health Summary
@@ -98,6 +103,10 @@ flowchart LR
 | `agent-workbench` ⇢ `agent-runtime` | observes-only | Reads the minih-format `runs/<ts>/` that `agent-runtime` produces; no import, no shared code — run artifacts stay minih-owned. |
 | `pij-skill` → `flow-pair` | planned (Phase 2) | The pair route ports the flow-pair skill's protocol prose and shells the existing `flow-pair` CLI; the engine (lib/schemas/tests/`.flow-pair` ledger root) stays flow-pair-owned and untouched. |
 | `pij-skill` → `pij-control-plane` / `pij-messaging` / `agent-runtime` | prints-only | Route modules print CLI commands in fenced blocks; no imports, no code coupling — the skill layer is pure markdown. |
+| `pij-orchestration` → `pij-messaging` | consumes | Uses session ids, the existing delivery channel, registry descriptors, and `queued\|delivered\|unverified` receipt vocabulary; it introduces no transport. |
+| `pij-orchestration` → `extension-authoring-harness` | healthy | Pure lifecycle/sweep tests, real-filesystem store tests, the full pij regression suite, skill check, and harness sensors provide backpressure. |
+| `pij-control-plane` → `pij-orchestration` | hosts | The bin intercept owns process I/O and git HEAD probing; the daemon owns periodic holder-liveness sweep wiring. The orchestration core remains pi-free. |
+| `pij-skill` ⇢ `pij-orchestration` | teaches-only | Prime rituals explain the primitive beside the human evidence workflow; no code or state dependency. |
 
 ## History
 
@@ -119,3 +128,4 @@ flowchart LR
 | 2026-06-17 | Plan 016 — added `flow-pair` (`FP`) node + external `the-flow` (`TF`) node; three consume edges (`PIJ` delivery, `ATI` surface, `H` validation) + a dashed wraps-only edge to `TF`. Created during planning; domain doc produced by the first manual flow-pair worker-delegation dogfood (`dlg-0001`). |
 | 2026-06-27 | Plan 019 — added `pij-control-plane` (`PCP`) node; three outbound edges (extends `pij-messaging`; validated by `extension-authoring-harness`; future CLI surface through `agent-tooling-interface`). Group A landed the shared `tmux-keys` primitives. Health Summary + edge detail finalized at T028. |
 | 2026-07-03 | Plan 029 Phase 1 — added `agent-runtime` (`AR`) node + external `minih` (`MINIH`) library node; two outbound edges (embeds-only → `MINIH`; validated → `extension-authoring-harness`) plus two inbound: `PCP → AR` (planned Phase-2 `pij agent` CLI + daemon `sweepStaleTmp` hook) and a dashed observes-only `AW ⇢ AR` (workbench reads the minih runs AR produces). Runtime built CLI-free in Phase 1; `pij agent` surface + built-ins + docs land in Phase 2. |
+| 2026-07-11 | Plan 036 — added `pij-orchestration` (`PO`) with outbound notice/receipt consumption from `pij-messaging`, harness validation, and inbound hosting edges from `pij-control-plane` plus the teaching-only `pij-skill` relationship. |

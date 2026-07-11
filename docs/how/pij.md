@@ -11,6 +11,7 @@ event streams.
 | Guide | Use it when |
 |---|---|
 | [pij prime](./pij-prime.md) | Govern multiple plan-owning streams through one o-prime seat and file-backed government |
+| [pij orchestration batons](./pij-orchestration-baton.md) | Serialize shared resources with atomic leases, pushed grants, explicit return/reclaim, and holder alerts |
 
 ## The point: cheap generation, expensive review
 
@@ -61,12 +62,13 @@ pij list --here               # bare `pij` on PATH from any cwd
 |------|-------|------|
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
 | `list` | `pij list [--here]` | List known sessions (id, state, liveness, folder). `--here` filters to the current folder; self is marked `★`. |
-| `send` | `pij send <id> "<text>"` · `pij send <id> --command <name>` | Message a peer (your id is stamped automatically). `--command <compact\|new\|reload>` runs an allow-listed session-control command on the peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks for the delivery receipt. |
+| `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 | `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>]` | Register an existing external-client pane. For restart re-attachment, `--session-id` is authoritative and recovers the prior pij-id; newest-artifact discovery is only an initial-adopt fallback. |
+| `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
 
 ### Exit codes
 
@@ -74,7 +76,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 |------|---------|
 | `0` | OK |
 | `2` | bad target: `E-NOID` (no such session) / `E-SELF` (sent to self) / `E-CMD` (unknown command) / `E-AMBIG` (can't resolve self) |
-| `1` | `E-DEAD` (peer's process is gone) |
+| `1` | `E-DEAD` (peer's process is gone), or at least one preflight-valid broadcast delivery failed |
 | `3` | `E-NOREG` (no `~/.pij` registry yet) |
 | `64` | `E-ARG` (malformed invocation — unknown flag, bad arity, non-numeric `--since`, `text` + `--command` together, …) |
 
@@ -106,6 +108,12 @@ rollout path or adoption fails with `E-NOID`.
 - **Raw body, framed once on receipt.** `pij send w3 "hi"` writes the raw text; the
   *receiver* frames it as `[pij from <senderId>] hi` when it injects — so a reply
   needs no lookup (the sender id is right there).
+- **Ordered broadcast.** `pij send --to w3 --to z9 "hi"` preflights the full target
+  set before delivering anything, then writes the identical raw body once to each
+  recipient in flag order. Human output prints one recipient row; JSON is
+  `{"from":"…","results":[…]}` with independent message ids, receipt/liveness
+  metadata, or per-target errors. A later target is still attempted after a
+  delivery-port failure.
 - **Idle vs busy.** An idle peer receives the message immediately (triggers a turn);
   a busy/streaming peer receives it via *steer* after its current turn (never a
   mid-stream interrupt).
@@ -116,7 +124,9 @@ rollout path or adoption fails with `E-NOID`.
   peer) or `queued` → `delivered` (busy peer). Receipts ride back as ordinary
   `kind:"receipt"` messages and are **recorded as events** on the sender — they are
   never injected, so they never wake or bill the parent. See them with
-  `pij tail <self> --type receipt`.
+  `pij tail <self> --type receipt`. Broadcast `--wait` correlates each recipient's
+  message id, prefixes receipt changes with the target, and names any unresolved
+  targets if the single global timeout expires.
 
 ---
 
@@ -257,6 +267,7 @@ the runtime boot announce fires:
 If another pi session is running in this repo, you can message and observe it:
 - `pij list --here` — discover peer sessions in this folder (★ = you)
 - `pij send <id> "<text>"` — message a peer (your id is stamped automatically)
+- `pij send --to <id> --to <id> "<text>"` — send the same text once to each named peer
 - `pij send <id> --command <compact\|new\|reload>` — run an allow-listed session-control command on a peer
 - `pij tail <id> --since N` — read a peer's new events (cheap incremental review)
 - `pij state <id>` — a peer's working/idle + liveness + latest-event age

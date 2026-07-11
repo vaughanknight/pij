@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeAgentAdapter } from "minih";
 import { validateInput } from "minih/runner";
+import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
@@ -86,6 +87,19 @@ import { parseReceiptBody } from "./core/message.js";
 import { normalizeModelQuery } from "./core/models/match.js";
 import type { ModelEntry } from "./core/models/registry.js";
 import { loadModels } from "./core/models/registry.js";
+import {
+	type BatonNotice,
+	type BatonNoticeReceipt,
+	type BatonNoticeSink,
+	BatonService,
+	renderBatonNotice as renderBatonNoticeBody,
+} from "./core/orchestration/baton.js";
+import {
+	dispatchOrchestration,
+	ORCHESTRATION_USAGE,
+	parseOrchestrationArgs,
+} from "./core/orchestration/cli.js";
+import { daemonTickStatus } from "./core/receipts.js";
 import { buildExportLines } from "./core/session-join.js";
 import {
 	aliasAgentSpawnArgs,
@@ -132,6 +146,9 @@ Agents (run declarative minih agent packs):
   pij agent run <slug> [-p k=v…] [--json]            run a named pack (--ephemeral to not record)
   pij agent run --prompt "<text>" [--json]           inline zero-setup run (nothing recorded)
   pij agent show|new|check|eject <slug>              inspect · scaffold · validate · customise a pack
+
+Orchestration (machine-wide coordination):
+  pij orchestration baton <define|list|show|request|grant|return|reclaim>   atomic resource leases + pushed notices
 
 Messaging:
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
@@ -1338,6 +1355,95 @@ RUN FLAGS (override pack frontmatter — warn, never block)
 
 EXIT CODES  0 success · 1 user/agent error (bad input, run failed) · 2 system error (harness CLI missing)`;
 
+function renderBatonNotice(notice: BatonNotice): string {
+	return renderBatonNoticeBody(notice);
+}
+
+class CliBatonNoticeSink implements BatonNoticeSink {
+	constructor(
+		private readonly registry: FsRegistry,
+		private readonly channel: FsChannel,
+		private readonly proc: NodeProcess,
+	) {}
+
+	push(notice: BatonNotice): BatonNoticeReceipt {
+		const delivered = this.channel.deliver({
+			from: notice.from,
+			to: notice.to,
+			body: renderBatonNotice(notice),
+		});
+		if (!delivered.ok) return { state: "unverified" };
+		const target = this.registry.read(notice.to);
+		if (!target || !this.proc.isAlive(target.pid)) {
+			return { state: "unverified", messageId: delivered.value.messageId };
+		}
+		if (target.harness === "claude" || target.harness === "copilot" || target.harness === "codex") {
+			const tick = daemonTickStatus(target.lastTickAt, this.proc.now());
+			return {
+				state: tick.daemonTickStale ? "unverified" : "queued",
+				messageId: delivered.value.messageId,
+			};
+		}
+		return {
+			state: target.state === "working" ? "queued" : "delivered",
+			messageId: delivered.value.messageId,
+		};
+	}
+}
+
+function orchestrationActor(registry: FsRegistry): string {
+	if (process.env.PIJ_SESSION_ID) return process.env.PIJ_SESSION_ID;
+	const resolved = resolveSelf(
+		undefined,
+		filterByFolder(registry.list(), process.cwd()),
+		process.env.TMUX_PANE,
+	);
+	return resolved.ok ? resolved.value : "operator";
+}
+
+function batonHead(store: FsBatonStore, name: string): string | null {
+	const definition = store.readDefinition(name);
+	if (!definition.ok || !definition.value?.repo) return null;
+	try {
+		return execFileSync("git", ["-C", definition.value.repo, "rev-parse", "HEAD"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+	} catch {
+		return null;
+	}
+}
+
+function runOrchestrationVerb(args: string[]): void {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+		process.stdout.write(`${ORCHESTRATION_USAGE}\n`);
+		process.exit(0);
+	}
+	const parsed = parseOrchestrationArgs(args);
+	if (!parsed.ok) {
+		process.stderr.write(`E-ARG: ${parsed.message}\n\n${ORCHESTRATION_USAGE}\n`);
+		process.exit(64);
+	}
+	const store = new FsBatonStore(pijHome);
+	const registry = new FsRegistry(pijHome);
+	const channel = new FsChannel(pijHome);
+	const proc = new NodeProcess();
+	const service = new BatonService({
+		store,
+		notices: new CliBatonNoticeSink(registry, channel, proc),
+		now: () => proc.now(),
+		newId: () => randomUUID(),
+	});
+	const result = dispatchOrchestration(parsed.command, {
+		service,
+		actor: orchestrationActor(registry),
+		currentHead: (name) => batonHead(store, name),
+	});
+	if (result.stdout) process.stdout.write(`${result.stdout}\n`);
+	if (result.stderr) process.stderr.write(`${result.stderr}\n`);
+	process.exit(result.exitCode);
+}
+
 const FAKE_ENVELOPE = JSON.stringify({
 	summary: "Fake agent run (PIJ_AGENT_FAKE=1) — no real harness was invoked.",
 	retrospective: {
@@ -1812,6 +1918,10 @@ function main(): void {
 	if (top === "agent" || top === "agents") {
 		const rest = top === "agents" ? ["list", ...process.argv.slice(3)] : process.argv.slice(3);
 		void runAgentVerb(rest);
+		return;
+	}
+	if (top === "orchestration") {
+		runOrchestrationVerb(process.argv.slice(3));
 		return;
 	}
 	// E-NOREG: registry home absent => the extension never booted here.

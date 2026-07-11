@@ -6,3 +6,5 @@ Bound rulings 1–4 from kickoff live in `original-ask.md` (recorded by the o-pr
 
 6. 2026-07-11 (Jordan, in-pane): **Work authorized — assignment confirmed** (ends the provisional window). Directive: create a fresh the-flow flight plan for plan 036, get the spine in, then complete the explore stage. This serves as the preamble; no scope changes to the four kickoff rulings.
 
+7. 2026-07-11 (Jordan, plan-pass Q&A): **v1 design posture — honor system.** Any peer may grant (no keeper ACL; "the prime will keep things in order generally"); the primitive's rules are "firm guides" that must never hard-block. `return` = free + notify (verify stays human/book layer). v1 extras: `--pin` re-verify + blocked-time measurement IN; `with` wrapper + mid-hold windows OUT. Mode: Simple; Full TDD with targeted fakes; docs/how only.
+

@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
+import { FsBatonStore } from "./adapters/baton-store.js";
 import type { DeliveredMessage } from "./adapters/channel.js";
 import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
@@ -24,6 +24,7 @@ import { FsWatchStore } from "./adapters/watch-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
+import { BatonSweep } from "./core/daemon/baton-sweep.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
 import {
@@ -39,6 +40,12 @@ import { SendBuffer } from "./core/daemon/router.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import { receiptBody } from "./core/message.js";
+import {
+	type BatonNotice,
+	type BatonNoticeReceipt,
+	type BatonNoticeSink,
+	renderBatonNotice,
+} from "./core/orchestration/baton.js";
 import type { DeliveryPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
@@ -47,6 +54,21 @@ import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
+
+class DaemonBatonNoticeSink implements BatonNoticeSink {
+	constructor(private readonly channel: DeliveryPort) {}
+
+	push(notice: BatonNotice): BatonNoticeReceipt {
+		const delivered = this.channel.deliver({
+			from: notice.from,
+			to: notice.to,
+			body: renderBatonNotice(notice),
+		});
+		return delivered.ok
+			? { state: "queued", messageId: delivered.value.messageId }
+			: { state: "unverified" };
+	}
+}
 
 /** One daemon, holding the cross-tick drive state. Pure-ish: `tick()` is
  *  synchronous and side-effects only through the injected ports/registry, so a
@@ -66,6 +88,7 @@ export class Daemon {
 	 *  deep-thinking / long-tool xhigh peer isn't false-flagged stalled. */
 	private readonly paneSig = new Map<string, string>();
 	private readonly watchManager: PeerWatchManager;
+	private readonly batonSweep: BatonSweep;
 
 	constructor(
 		private readonly pijHome: string,
@@ -74,6 +97,7 @@ export class Daemon {
 		private readonly channel: DeliveryPort,
 		private readonly log: (line: string) => void = () => {},
 		watchManager?: PeerWatchManager,
+		batonSweep?: BatonSweep,
 	) {
 		this.watchManager =
 			watchManager ??
@@ -82,6 +106,15 @@ export class Daemon {
 				channel,
 				isAlive: (pid) => this.ports.isAlive(pid),
 				log,
+			});
+		this.batonSweep =
+			batonSweep ??
+			new BatonSweep({
+				store: new FsBatonStore(pijHome),
+				registry,
+				notices: new DaemonBatonNoticeSink(channel),
+				isAlive: (pid) => this.ports.isAlive(pid),
+				now: () => this.ports.now(),
 			});
 	}
 
@@ -95,6 +128,12 @@ export class Daemon {
 		}
 		this.index.rebuild(this.registry.list());
 		this.watchManager.reconcile(this.index.all());
+		const batonSweep = this.batonSweep.tick();
+		if (!batonSweep.ok) {
+			this.log(`baton sweep error: ${batonSweep.code}: ${batonSweep.message}`);
+		} else if (batonSweep.value.alerts > 0) {
+			this.log(`baton sweep: pushed ${batonSweep.value.alerts} holder alert(s)`);
+		}
 
 		for (const d of this.index.pending()) {
 			if (!daemonOwnsDelivery(d.harness ?? "pi")) continue; // pi self-drives

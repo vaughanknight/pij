@@ -3,11 +3,11 @@
   "kind": "flight-plan",
   "slug": "pij-orchestration-baton",
   "nav": {
-    "now": "research",
+    "now": "phase-1",
     "next": null,
     "intent": "i think 07 here is a good opportunity to dogfood. we can set up an orchestrator and have it work through adding baton. i think it should be pij orchestration baton though, so we can add more orchestration primitives later.",
     "bag": {
-      "mode": "unknown",
+      "mode": "Simple",
       "status": "active"
     }
   },
@@ -31,6 +31,186 @@
         "kind": "flight-plan",
         "slug": "pij-orchestration-baton"
       }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:51:14.463Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "STA-002",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:53:50.196Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:53:50.281Z",
+      "details": {
+        "node": "research",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-003",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:14:44.520Z",
+      "details": {
+        "node": "plan",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-002",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:14:44.597Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:14:44.679Z",
+      "details": {
+        "from": "research",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "STA-004",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:17:44.962Z",
+      "details": {
+        "node": "backpressure",
+        "from": "assumed",
+        "to": "skipped",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:21:41.993Z",
+      "details": {
+        "from": "plan",
+        "to": "phase-1"
+      }
+    },
+    {
+      "id": "STA-005",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:21:42.083Z",
+      "details": {
+        "node": "phase-1",
+        "from": "known",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:22:17.608Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:24:21.844Z",
+      "details": {
+        "node": "boot-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:42:39.780Z",
+      "details": {
+        "node": "observe-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T09:57:03.872Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:17:33.060Z",
+      "details": {
+        "node": "review-1",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:17:33.152Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "note"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -38,7 +218,7 @@
       "id": "research",
       "type": "research",
       "label": "Research",
-      "status": "in_progress",
+      "status": "done",
       "command": "/builder 1a explore",
       "next": [
         "plan"
@@ -47,13 +227,16 @@
         "Explore how the relevant code works before you plan — start cheap, climb only when the evidence demands it; never jump straight to a plan.",
         "Run /builder 1a explore \"<intent>\" — it produces research-dossier.md, a decision packet (not a transcript) with evidence links.",
         "Done when the dossier names the core decision the plan must resolve and the findings that bound it."
-      ]
+      ],
+      "modified_at": "2026-07-11T08:53:50.281Z",
+      "ran_at": "2026-07-11T08:53:50.196Z",
+      "note": "research-dossier.md — 9 findings, 6 historical learnings; watch-family = implementation template; run-01 interview evidence folded in"
     },
     {
       "id": "plan",
       "type": "plan",
       "label": "Plan",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 1b plan",
       "next": [
         "phase-1"
@@ -62,14 +245,17 @@
         "Write ONE planning document in a single atomic pass — `## Business Specification` (WHAT/WHY) on top, `## Implementation Plan` (HOW: phases, task tables, acceptance criteria, gates G1–G7) below.",
         "Run /builder 1b plan \"<intent>\" (add --simple for a one-phase flow); it front-loads the clarifying questions, then auto-runs /validate-v2.",
         "Done when <slug>-plan.md carries both halves and reads **Status**: READY — DRAFT means a gate FAILed, so resolve the gaps and re-run."
-      ]
+      ],
+      "modified_at": "2026-07-11T09:14:44.597Z",
+      "ran_at": "2026-07-11T09:14:44.520Z",
+      "note": "pij-orchestration-baton-plan.md — Simple, CS-3, READY, 14 tasks, NEW domain pij-orchestration; validate-v2 (Opus subagent) VALIDATED, 0 material findings"
     },
     {
       "id": "phase-1",
       "type": "phase",
       "phase": 1,
       "label": "P1: Implementation",
-      "status": "known",
+      "status": "in_progress",
       "command": "/builder 6 implement",
       "next": [
         "review-1"
@@ -81,13 +267,28 @@
         "Spend tokens where they can change the outcome; use `--quiet` for routine flow mutations.",
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
+      ],
+      "modified_at": "2026-07-11T09:57:03.872Z",
+      "comments": [
+        {
+          "at": "2026-07-11T09:22:17.608Z",
+          "text": "Fleet roster (P9 fallback — run.json lacks a roster verb): coder=pij-1vstguw (copilot gpt-5.6-sol xhigh, pane %260, pid-args-verified, spawnedByUs=true, dlg-0001); reviewer=lazy at first REVIEW (planned: claude-opus-4.7-1m-internal xhigh)",
+          "source": "agent",
+          "kind": "note"
+        },
+        {
+          "at": "2026-07-11T09:57:03.872Z",
+          "text": "Baton/commit choreography APPROVED by o-prime: fix → re-review → APPROVE → request daemon-restart + git-index TOGETHER; cli.ts window closes at the pathspec commit (E-16). Riders: ① daemon-restart grant carries a quiescence beat (s037 fleet delivery affected); ② attach the reviewer's unified-0 additive proof (reviews/review.phase-1.dlg-0001.md § Mandatory conformance evidence) to the window-close report — pre-satisfies the E-16 check.",
+          "source": "agent",
+          "kind": "note"
+        }
       ]
     },
     {
       "id": "review-1",
       "type": "review",
       "label": "Review: P1",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 7 review",
       "next": [
         "ship"
@@ -97,7 +298,10 @@
         "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in; skippable when a companion already reviewed every commit.",
         "Run /builder 7 review — it inspects the newest reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or ship.",
         "Done when the verdict is recorded (one finding line) and either accepted or routed to a fix-loop."
-      ]
+      ],
+      "modified_at": "2026-07-11T10:17:33.152Z",
+      "ran_at": "2026-07-11T10:17:33.060Z",
+      "note": "Fulfilled by flow-pair 3-round cross-model review (reviews/review.phase-1.dlg-0001.md): R1 FIX_REQUIRED 4 HIGH (2 live defects), R2 FIX_REQUIRED residues, R3 APPROVE; Dim-0 mutation-gated every round; orchestrator sanity pass held"
     },
     {
       "id": "ship",
@@ -116,7 +320,7 @@
       "id": "backpressure",
       "type": "backpressure",
       "label": "Backpressure survey",
-      "status": "assumed",
+      "status": "skipped",
       "branch_of": "plan",
       "next": [
         "plan"
@@ -130,13 +334,14 @@
         "Optional pre-coding seam: survey what the harness can PROVE about the plan's coverage versus what was only eyeballed, then re-plan informed by it.",
         "Run /eng-harness-flow --hook pre-coding --json — advisory output only; the plan verb does not auto-read it, so fold the findings in yourself.",
         "Optional and skippable — never gates. Decline with a real `harness flow status backpressure --to skipped`, never a narrated skip."
-      ]
+      ],
+      "modified_at": "2026-07-11T09:17:44.962Z"
     },
     {
       "id": "boot-1",
       "type": "harness-boot",
       "label": "Boot check",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "phase-1",
       "next": [
         "phase-1"
@@ -152,13 +357,15 @@
         "Spend tokens where they can change the outcome; use `--quiet` for routine flow mutations.",
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Skippable — advisory, never gates. Decline with a real `harness flow status boot-1 --to skipped`."
-      ]
+      ],
+      "modified_at": "2026-07-11T09:24:21.844Z",
+      "ran_at": "2026-07-11T09:24:21.844Z"
     },
     {
       "id": "observe-1",
       "type": "observe",
       "label": "Observe: P1",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "phase-1",
       "next": [
         "phase-1"
@@ -175,7 +382,9 @@
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Drained at phase end by the retro (drain) chore. Skippable — advisory, never gates.",
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
-      ]
+      ],
+      "modified_at": "2026-07-11T09:42:39.780Z",
+      "ran_at": "2026-07-11T09:42:39.780Z"
     },
     {
       "id": "retro-1",
