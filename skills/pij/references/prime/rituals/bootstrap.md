@@ -84,6 +84,7 @@ Node status is concurrent truth; `nav.now` is only the seat's attention.
 | Event | Recovery |
 |---|---|
 | Seat death or machine restart | Fresh seat loads lever 0 + government; audit dead holders, stale roster rows, orphan descriptors, then record the new identity |
+| Planned seat rotation (ruled) | Outgoing seat instantiates [`../templates/seat-handover.md`](../templates/seat-handover.md) BEFORE incoming contact; incoming runs its checklist — writer lines, spine-Seq check, descriptor purge-on-final-send |
 | Sends queue but never deliver | Check daemon ticks and every dead descriptor; one stale corpse once wedged the whole fabric |
 | Stream dies mid-work | Adopt a fresh orchestrator onto its plan folder; disk is the handover |
 | Stream is dissolved | Follow kickoff teardown: close, verify after queue drain, strike row, tombstone ordinal, transplant insights |

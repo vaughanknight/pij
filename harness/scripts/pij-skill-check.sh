@@ -109,6 +109,7 @@ prime_required=(
   "$SKILL/references/prime/templates/baton-book.md"
   "$SKILL/references/prime/templates/stream-brief.md"
   "$SKILL/references/prime/templates/orient-local.md"
+  "$SKILL/references/prime/templates/seat-handover.md"
   "$SKILL/references/prime/protocol.md"
   "$SKILL/references/prime/exemplars/canary-record.md"
   "$SKILL/references/prime/exemplars/grant-log.md"

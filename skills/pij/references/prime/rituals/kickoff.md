@@ -77,3 +77,6 @@ in opposite directions within one hour.
    nearly shipped referencing a sibling's untracked sources).
 3. A non-owner never repairs a sibling's broken file. Stop and send an
    **urgent owner-fix** with the failing command and exact path.
+4. The rule cuts upward and beyond compilers: the o-prime's own untracked
+   CLI-generated file once redded a stream's FORMAT gate — ignore-list
+   generated files (`.prettierignore` etc.); never hand-format them.

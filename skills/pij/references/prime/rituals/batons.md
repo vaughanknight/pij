@@ -39,6 +39,9 @@ Grant-log format:
 - **Queued stream posture**: pre-stage the whole batch in scratch and land it
   inside the granted window (a 21-file migration landed in ~5 minutes, green on
   first compile) — waiting is for the window, never for the work.
+- **Writing docs while another seat holds git-index**: unstaged-only edits,
+  disclosed to the holder — it folds them or leaves them; never stage into a
+  held index (INC-004's cousin).
 - **Restart**: audit the book before new grants; dead holders and live processes
   are reconciled into explicit `RECLAIMED` or still-held records.
 - **Breach**: stop competing use, tell the current holder, record exact command,
