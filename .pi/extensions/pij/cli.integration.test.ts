@@ -73,6 +73,7 @@ beforeAll(() => {
 	FOLDER = realpathSync(mkdtempSync(join(tmpdir(), "pij-folder-")));
 	A = boot("pij-A", "parent");
 	B = boot("pij-B", "worker");
+	boot("pij-C2", "worker");
 	// Seed B with a couple of activity events so tail/state have content.
 	B.capture("tool_call", { toolName: "bash" });
 	B.capture("message", { role: "assistant" });
@@ -104,6 +105,73 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(inbox.length).toBeGreaterThan(0);
 		const msg = JSON.parse(readFileSync(join(HOME, "pij-B", "inbox", inbox[0] as string), "utf8"));
 		expect(msg).toMatchObject({ from: "pij-A", to: "pij-B", body: "hello from A" });
+	});
+
+	it("broadcast send writes the same raw body once to each target inbox", () => {
+		const r = pij(["send", "--to", "pij-B", "--to", "pij-C2", "hello both", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(r.code).toBe(0);
+		const output = JSON.parse(r.out) as {
+			from: string;
+			results: Array<{ to: string; messageId: string }>;
+		};
+		expect(output).toMatchObject({
+			from: "pij-A",
+			results: [{ to: "pij-B" }, { to: "pij-C2" }],
+		});
+		expect(output.results.map(({ to }) => to)).toEqual(["pij-B", "pij-C2"]);
+		expect(new Set(output.results.map(({ messageId }) => messageId)).size).toBe(2);
+
+		for (const target of ["pij-B", "pij-C2"]) {
+			const messages = readdirSync(join(HOME, target, "inbox")).map(
+				(file) => JSON.parse(readFileSync(join(HOME, target, "inbox", file), "utf8")) as PijMessage,
+			);
+			expect(
+				messages.filter(
+					(message) =>
+						message.from === "pij-A" && message.to === target && message.body === "hello both",
+				),
+			).toHaveLength(1);
+		}
+	});
+
+	it("broadcast --wait timeout names every unresolved target", () => {
+		const r = pij(["send", "--to", "pij-B", "--to", "pij-C2", "wait for both", "--wait", "10"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(r.code).toBe(0);
+		const timeoutLine = r.out.split("\n").find((line) => line.includes("timeout"));
+		expect(timeoutLine).toContain("unresolved");
+		expect(timeoutLine).toContain("pij-B");
+		expect(timeoutLine).toContain("pij-C2");
+	});
+
+	it("single-target --wait timeout output remains byte-identical", () => {
+		const r = pij(["send", "pij-B", "wait for one", "--wait", "10"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(r.code).toBe(0);
+		const timeoutLine = r.out.split("\n").find((line) => line.includes("timeout"));
+		expect(timeoutLine).toBe("receipt → (timeout; check `pij tail` later)");
+	});
+
+	it("broadcast preflights the full target set before writing any inbox", () => {
+		const before = new Map(
+			["pij-B", "pij-C2"].map((target) => [
+				target,
+				readdirSync(join(HOME, target, "inbox")).length,
+			]),
+		);
+		const r = pij(["send", "--to", "pij-B", "--to", "pij-MISSING", "must not land"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+
+		expect(r.code).toBe(2);
+		expect(r.out).toContain("E-NOID");
+		for (const target of ["pij-B", "pij-C2"]) {
+			expect(readdirSync(join(HOME, target, "inbox"))).toHaveLength(before.get(target) ?? 0);
+		}
 	});
 
 	it("AC-7/8 tail: --since filters to seq>N, events are ordered + timestamped", () => {

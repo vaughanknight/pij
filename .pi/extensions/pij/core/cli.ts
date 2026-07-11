@@ -22,6 +22,7 @@ import {
 	ok,
 	type PijErrorCode,
 	type PijEvent,
+	type ReceiptState,
 	type Result,
 	type SessionDescriptor,
 	type SessionId,
@@ -57,6 +58,9 @@ export type ParsedCommand =
 	| {
 			readonly verb: "send";
 			readonly to: SessionId;
+			/** Ordered broadcast targets. Absent means the legacy positional single-target form. */
+			readonly targets?: readonly SessionId[];
+			readonly broadcast?: true;
 			readonly text?: string;
 			readonly command?: string;
 			/** Reference-passing attachment (Plan 026 Phase 5): a local file path. */
@@ -95,9 +99,49 @@ export interface CliResult {
 		| {
 				readonly kind: "wait";
 				readonly self: SessionId;
-				readonly messageId: string;
+				readonly targets: readonly WaitTarget[];
 				readonly timeoutMs?: number;
+				/** Exit after waiting with the dispatch result (partial broadcast failures stay non-zero). */
+				readonly exitCode: number;
 		  };
+}
+
+export interface WaitTarget {
+	readonly to: SessionId;
+	readonly messageId: string;
+}
+
+export interface WaitReceiptUpdate {
+	readonly target?: WaitTarget;
+	readonly pending: readonly WaitTarget[];
+}
+
+/** Apply one parsed receipt to the pending target set. Queued receipts retain the
+ * target; delivered/unverified receipts remove only their correlated message. */
+export function applyWaitReceipt(
+	pending: readonly WaitTarget[],
+	receipt: { readonly messageId: string; readonly state: ReceiptState },
+): WaitReceiptUpdate {
+	const target = pending.find(({ messageId }) => messageId === receipt.messageId);
+	if (!target) return { pending };
+	if (receipt.state === "queued") return { target, pending };
+	return {
+		target,
+		pending: pending.filter(({ messageId }) => messageId !== receipt.messageId),
+	};
+}
+
+export function renderWaitReceipt(
+	target: SessionId,
+	state: ReceiptState,
+	broadcast: boolean,
+): string {
+	return broadcast ? `receipt ${target} → ${state}` : `receipt → ${state}`;
+}
+
+export function renderWaitTimeout(pending: readonly WaitTarget[], broadcast: boolean): string {
+	if (!broadcast) return "receipt → (timeout; check `pij tail` later)";
+	return `receipt → (timeout; unresolved: ${pending.map(({ to }) => to).join(", ")}; check \`pij tail\` later)`;
 }
 
 /** Workshop-001 exit codes. */
@@ -122,23 +166,37 @@ function daemonReceiptAuthoritative(target: SessionDescriptor): boolean {
 // ─── argv parsing ───────────────────────────────────────────────────────────
 /** Split argv into positionals + flags. `--k v` consumes the next token unless
  *  it is a known boolean flag; `--k=v` is also accepted. */
-function lex(argv: readonly string[], booleans: ReadonlySet<string>) {
+function lex(
+	argv: readonly string[],
+	booleans: ReadonlySet<string>,
+	repeatables: ReadonlySet<string>,
+) {
 	const pos: string[] = [];
 	const flags: Record<string, string | true> = {};
+	const repeated: Record<string, string[]> = {};
+	const setFlag = (key: string, value: string | true): void => {
+		if (repeatables.has(key) && typeof value === "string") {
+			const values = repeated[key] ?? [];
+			values.push(value);
+			repeated[key] = values;
+			return;
+		}
+		flags[key] = value;
+	};
 	for (let i = 0; i < argv.length; i++) {
 		const tok = argv[i];
 		if (tok === undefined) continue;
 		if (tok.startsWith("--")) {
 			const eq = tok.indexOf("=");
 			if (eq !== -1) {
-				flags[tok.slice(2, eq)] = tok.slice(eq + 1);
+				setFlag(tok.slice(2, eq), tok.slice(eq + 1));
 			} else {
 				const key = tok.slice(2);
 				const next = argv[i + 1];
 				if (booleans.has(key) || next === undefined || next.startsWith("--")) {
-					flags[key] = true;
+					setFlag(key, true);
 				} else {
-					flags[key] = next;
+					setFlag(key, next);
 					i++;
 				}
 			}
@@ -146,10 +204,11 @@ function lex(argv: readonly string[], booleans: ReadonlySet<string>) {
 			pos.push(tok);
 		}
 	}
-	return { pos, flags };
+	return { pos, flags, repeated };
 }
 
 const BOOLEAN_FLAGS = new Set(["here", "json", "follow", "events", "state", "dir", "env"]);
+const REPEATABLE_FLAGS = new Set(["to"]);
 
 /** Flags each verb accepts — anything else is E-ARG. */
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
@@ -157,7 +216,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	list: new Set(["here", "json"]),
 	sessions: new Set(["here", "json"]),
 	models: new Set(["harness", "json"]),
-	send: new Set(["command", "file", "caption", "wait", "json"]),
+	send: new Set(["to", "command", "file", "caption", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
@@ -189,9 +248,9 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			"E-ARG",
 			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|path)`,
 		);
-	const { pos, flags } = lex(argv.slice(1), BOOLEAN_FLAGS);
+	const { pos, flags, repeated } = lex(argv.slice(1), BOOLEAN_FLAGS, REPEATABLE_FLAGS);
 	// strict: reject unknown flags and extra arity (finding F001).
-	for (const k of Object.keys(flags)) {
+	for (const k of [...Object.keys(flags), ...Object.keys(repeated)]) {
 		if (!allowed.has(k)) return err("E-ARG", `unknown flag --${k} for '${verb}'`);
 	}
 	if (pos.length > (MAX_POS[verb] ?? 0)) return err("E-ARG", `too many arguments for '${verb}'`);
@@ -213,6 +272,40 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			return ok({ verb: "models", filter, harnessFilter, json });
 		}
 		case "send": {
+			const broadcastTargets = repeated.to ?? [];
+			if (flags.to === true) return err("E-ARG", "--to needs a session id");
+			if (broadcastTargets.length > 0) {
+				if (broadcastTargets.some((target) => target.length === 0))
+					return err("E-ARG", "--to needs a session id");
+				if (broadcastTargets.length < 2)
+					return err("E-ARG", "broadcast requires at least two --to <id> targets");
+				if (new Set(broadcastTargets).size !== broadcastTargets.length)
+					return err("E-ARG", "broadcast targets must be unique");
+				if (pos.length !== 1) return err("E-ARG", 'usage: pij send --to <id> --to <id> "<text>"');
+				if (flags.command !== undefined || flags.file !== undefined || flags.caption !== undefined)
+					return err(
+						"E-ARG",
+						"broadcast supports text only; --command and --file are single-target",
+					);
+				let waitMs: number | undefined;
+				if (typeof flags.wait === "string") {
+					if (!/^\d+$/.test(flags.wait))
+						return err("E-ARG", "--wait takes an optional milliseconds value");
+					waitMs = Number(flags.wait);
+				}
+				const first = broadcastTargets[0];
+				if (first === undefined) return err("E-ARG", "broadcast requires at least two targets");
+				return ok({
+					verb: "send",
+					to: first,
+					targets: broadcastTargets,
+					broadcast: true,
+					text: pos[0],
+					wait: flags.wait !== undefined,
+					waitMs,
+					json,
+				});
+			}
 			const to = pos[0];
 			if (to === undefined) return err("E-ARG", 'usage: pij send <id> "<text>" | --command <name>');
 			if (flags.command === true)
@@ -369,6 +462,97 @@ function providerMatchesHarness(provider: string, harness: string): boolean {
 	return mapped === harness || provider === harness;
 }
 
+type SendLiveness = "active" | "stale" | "dead" | "dissolved";
+
+interface PreflightTarget {
+	readonly id: SessionId;
+	readonly descriptor: SessionDescriptor;
+	readonly liveness: SendLiveness;
+}
+
+interface SendSuccess {
+	readonly to: SessionId;
+	readonly messageId: string;
+	readonly kind: string;
+	readonly receipt: "queued" | "delivered";
+	readonly liveness: SendLiveness;
+	readonly daemonLastTickAt?: string | null;
+	readonly daemonTickAgeMs?: number | null;
+	readonly daemonTickStale?: boolean;
+}
+
+interface SendFailure {
+	readonly to: SessionId;
+	readonly error: PijErrorCode;
+	readonly message: string;
+}
+
+function preflightSendTargets(
+	targetIds: readonly SessionId[],
+	self: SessionId,
+	deps: CliDeps,
+	now: number,
+): Result<readonly PreflightTarget[]> {
+	const targets: PreflightTarget[] = [];
+	for (const id of targetIds) {
+		if (id === self) return err("E-SELF", `cannot send to yourself (${self})`);
+		const descriptor = deps.registry.read(id);
+		if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
+		const targetLiveness = liveOf(deps, descriptor, now);
+		if (targetLiveness === "dead" || targetLiveness === "dissolved") {
+			const why = targetLiveness === "dissolved" ? "dissolved (closed)" : "dead (pid gone)";
+			return err("E-DEAD", `session ${id} is ${why}`);
+		}
+		targets.push({ id, descriptor, liveness: targetLiveness });
+	}
+	return ok(targets);
+}
+
+function sendSuccess(
+	target: PreflightTarget,
+	messageId: string,
+	kind: string,
+	now: number,
+): SendSuccess {
+	const receipt = daemonReceiptAuthoritative(target.descriptor)
+		? "queued"
+		: (target.descriptor.state ?? "idle") === "working"
+			? "queued"
+			: "delivered";
+	const tickStatus = daemonReceiptAuthoritative(target.descriptor)
+		? daemonTickStatus(target.descriptor.lastTickAt, now)
+		: undefined;
+	return {
+		to: target.id,
+		messageId,
+		kind,
+		receipt,
+		liveness: target.liveness,
+		...(tickStatus ?? {}),
+	};
+}
+
+function renderBroadcastSuccess(
+	result: SendSuccess,
+	target: SessionDescriptor,
+	now: number,
+): string {
+	const recvHint =
+		result.receipt === "queued"
+			? daemonReceiptAuthoritative(target)
+				? result.daemonTickStale
+					? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
+					: "queued: awaiting daemon delivery confirmation"
+				: "queued: peer is busy, will steer after current turn"
+			: "delivered: peer was idle";
+	const targetAgeMs = descAgeMs(target, now);
+	const warn =
+		targetAgeMs === null || targetAgeMs > STALE_AFTER_MS
+			? " (note: no recent pij events from peer — normal for a control-plane peer; the send still lands)"
+			: "";
+	return `sent → ${result.to}  ${result.kind}${warn}  (${recvHint})`;
+}
+
 // ─── dispatch ───────────────────────────────────────────────────────────────
 export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 	const now = deps.process.now();
@@ -503,15 +687,58 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const s = selfId(deps);
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
 			const self = s.value;
-			if (cmd.to === self) return fail("E-SELF", `cannot send to yourself (${self})`, cmd.json);
-			const target = deps.registry.read(cmd.to);
-			if (!target) return fail("E-NOID", `no session '${cmd.to}' in registry`, cmd.json);
-			const live = liveOf(deps, target, now);
-			if (live === "dead" || live === "dissolved") {
-				const why = live === "dissolved" ? "dissolved (closed)" : "dead (pid gone)";
-				return fail("E-DEAD", `session ${cmd.to} is ${why}`, cmd.json);
+			const preflight = preflightSendTargets(cmd.targets ?? [cmd.to], self, deps, now);
+			if (!preflight.ok) return fail(preflight.code, preflight.message, cmd.json);
+
+			if (cmd.broadcast) {
+				const results: Array<SendSuccess | SendFailure> = [];
+				const humanLines: string[] = [];
+				const waitTargets: WaitTarget[] = [];
+				let deliveryFailed = false;
+				for (const target of preflight.value) {
+					const delivered = deps.delivery.deliver({
+						from: self,
+						to: target.id,
+						body: cmd.text ?? "",
+					});
+					if (!delivered.ok) {
+						deliveryFailed = true;
+						results.push({
+							to: target.id,
+							error: delivered.code,
+							message: delivered.message,
+						});
+						humanLines.push(`failed → ${target.id}  ${delivered.code}: ${delivered.message}`);
+						continue;
+					}
+					const result = sendSuccess(target, delivered.value.messageId, "text", now);
+					results.push(result);
+					waitTargets.push({ to: target.id, messageId: delivered.value.messageId });
+					humanLines.push(renderBroadcastSuccess(result, target.descriptor, now));
+				}
+				const exitCode = deliveryFailed ? 1 : 0;
+				const follow =
+					cmd.wait && waitTargets.length > 0
+						? ({
+								kind: "wait",
+								self,
+								targets: waitTargets,
+								timeoutMs: cmd.waitMs,
+								exitCode,
+							} as const)
+						: undefined;
+				return {
+					stdout: cmd.json ? JSON.stringify({ from: self, results }) : humanLines.join("\n"),
+					stderr: "",
+					exitCode,
+					follow,
+				};
 			}
 
+			const firstTarget = preflight.value[0];
+			if (!firstTarget) return fail("E-NOID", `no session '${cmd.to}' in registry`, cmd.json);
+			const target = firstTarget.descriptor;
+			const live = firstTarget.liveness;
 			let messageId: string;
 			let kindNote: string;
 			if (cmd.command !== undefined) {
@@ -570,7 +797,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					? " (note: no recent pij events from peer — normal for a control-plane peer; the send still lands)"
 					: "";
 			const follow = cmd.wait
-				? ({ kind: "wait", self, messageId, timeoutMs: cmd.waitMs } as const)
+				? ({
+						kind: "wait",
+						self,
+						targets: [{ to: cmd.to, messageId }],
+						timeoutMs: cmd.waitMs,
+						exitCode: 0,
+					} as const)
 				: undefined;
 			if (cmd.json)
 				return {

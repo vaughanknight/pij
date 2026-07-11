@@ -5,8 +5,15 @@
 import { describe, expect, it } from "vitest";
 import { FakeDelivery, FakeEventLog, FakeProcess, FakeRegistry } from "../adapters/fakes.js";
 import type { CliDeps } from "./cli.js";
-import { dispatch, parseArgs } from "./cli.js";
-import type { PijEvent, SessionDescriptor } from "./types.js";
+import {
+	applyWaitReceipt,
+	dispatch,
+	parseArgs,
+	renderWaitReceipt,
+	renderWaitTimeout,
+} from "./cli.js";
+import type { DeliveryPort } from "./ports.js";
+import { err, ok, type PijEvent, type PijMessage, type SessionDescriptor } from "./types.js";
 
 const T = Date.parse("2026-06-16T12:00:00.000Z");
 const recent = new Date(T - 2000).toISOString();
@@ -48,6 +55,12 @@ function deps(opts: {
 		pijHome: "/home/.pij",
 		eventLogFor: (id) => logMap.get(id) ?? new FakeEventLog([]),
 	};
+}
+
+function parsed(argv: readonly string[]) {
+	const result = parseArgs(argv);
+	if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
+	return result.value;
 }
 
 describe("parseArgs", () => {
@@ -147,6 +160,36 @@ describe("parseArgs", () => {
 			ok: true,
 			value: { verb: "send", wait: false },
 		});
+	});
+
+	it("parses repeatable --to broadcast syntax in target order", () => {
+		expect(parseArgs(["send", "--to", "w3", "--to=z9", "same message", "--wait"])).toEqual({
+			ok: true,
+			value: {
+				verb: "send",
+				broadcast: true,
+				to: "w3",
+				targets: ["w3", "z9"],
+				text: "same message",
+				wait: true,
+				waitMs: undefined,
+				json: false,
+			},
+		});
+	});
+
+	it("rejects invalid broadcast forms before dispatch", () => {
+		for (const argv of [
+			["send", "--to", "w3", "same message"],
+			["send", "--to", "w3", "--to", "w3", "same message"],
+			["send", "w3", "same message", "--to", "z9", "--to", "q2"],
+			["send", "--to", "w3", "--to", "z9"],
+			["send", "--to=", "--to", "z9", "same message"],
+			["send", "--to", "w3", "--to", "z9", "--command", "compact"],
+			["send", "--to", "w3", "--to", "z9", "--file", "./a.txt"],
+		]) {
+			expect(parseArgs(argv)).toMatchObject({ ok: false, code: "E-ARG" });
+		}
 	});
 
 	it("--file/--caption attach a reference-passing file (Plan 026 Phase 5)", () => {
@@ -384,6 +427,211 @@ describe("dispatch send", () => {
 		// Stale peer (no recent pij events — normal for control-plane) still gets a
 		// note and the send lands; wording reworded to read as idle, not alarming.
 		expect(staleR.stdout.toLowerCase()).toContain("no recent pij events");
+	});
+
+	it("fans one raw body out in target order with independent results", () => {
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({ id: "w3" }),
+				desc({
+					id: "z9",
+					harness: "copilot",
+					lifecycle: "bound",
+					lastTickAt: new Date(T - 1000).toISOString(),
+				}),
+			],
+		});
+		const result = dispatch(
+			parsed(["send", "--to", "w3", "--to", "z9", "same message", "--json"]),
+			d,
+		);
+
+		expect(result.exitCode).toBe(0);
+		expect(d.delivery.outbox.map(({ message }) => message)).toEqual([
+			{ from: "a1", to: "w3", body: "same message" },
+			{ from: "a1", to: "z9", body: "same message" },
+		]);
+		expect(JSON.parse(result.stdout)).toEqual({
+			from: "a1",
+			results: [
+				{
+					to: "w3",
+					messageId: "fake-1",
+					kind: "text",
+					receipt: "delivered",
+					liveness: "active",
+				},
+				{
+					to: "z9",
+					messageId: "fake-2",
+					kind: "text",
+					receipt: "queued",
+					liveness: "active",
+					daemonLastTickAt: new Date(T - 1000).toISOString(),
+					daemonTickAgeMs: 1000,
+					daemonTickStale: false,
+				},
+			],
+		});
+	});
+
+	it("preflights every broadcast target before the first delivery", () => {
+		for (const invalid of [
+			{
+				id: "a1",
+				descs: [desc({ id: "a1" }), desc({ id: "w3" })],
+				code: "E-SELF",
+			},
+			{
+				id: "missing",
+				descs: [desc({ id: "a1" }), desc({ id: "w3" })],
+				code: "E-NOID",
+			},
+			{
+				id: "dead",
+				descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "dead", pid: 777 })],
+				code: "E-DEAD",
+			},
+			{
+				id: "closed",
+				descs: [
+					desc({ id: "a1" }),
+					desc({ id: "w3" }),
+					desc({ id: "closed", lifecycle: "dissolved" }),
+				],
+				code: "E-DEAD",
+			},
+		]) {
+			const d = deps({ self: "a1", descs: invalid.descs });
+			const result = dispatch(
+				parsed(["send", "--to", "w3", "--to", invalid.id, "same message"]),
+				d,
+			);
+
+			expect(result).toMatchObject({ exitCode: invalid.code === "E-DEAD" ? 1 : 2 });
+			expect(result.stderr).toContain(invalid.code);
+			expect(d.delivery.outbox).toHaveLength(0);
+		}
+	});
+
+	it("prints one human result row per broadcast target", () => {
+		const d = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9", state: "working" })],
+		});
+		const result = dispatch(parsed(["send", "--to", "w3", "--to", "z9", "same message"]), d);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout.split("\n")).toEqual([
+			expect.stringContaining("sent → w3"),
+			expect.stringContaining("sent → z9"),
+		]);
+		expect(result.stdout).toContain("delivered");
+		expect(result.stdout).toContain("queued");
+	});
+
+	it("reports a delivery failure but continues later broadcast targets", () => {
+		const attempted: string[] = [];
+		const delivery: DeliveryPort = {
+			deliver(message: PijMessage) {
+				attempted.push(message.to);
+				return message.to === "w3"
+					? err("E-DEAD", "w3 delivery failed")
+					: ok({ messageId: "delivered-z9" });
+			},
+		};
+		const base = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+		});
+		const result = dispatch(
+			parsed(["send", "--to", "w3", "--to", "z9", "same message", "--json", "--wait"]),
+			{ ...base, delivery },
+		);
+
+		expect(attempted).toEqual(["w3", "z9"]);
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stdout)).toEqual({
+			from: "a1",
+			results: [
+				{ to: "w3", error: "E-DEAD", message: "w3 delivery failed" },
+				{
+					to: "z9",
+					messageId: "delivered-z9",
+					kind: "text",
+					receipt: "delivered",
+					liveness: "active",
+				},
+			],
+		});
+		expect(result.follow).toEqual({
+			kind: "wait",
+			self: "a1",
+			targets: [{ to: "z9", messageId: "delivered-z9" }],
+			timeoutMs: undefined,
+			exitCode: 1,
+		});
+	});
+
+	it("returns every successful target/message pair to the wait loop", () => {
+		const d = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+		});
+		const result = dispatch(
+			parsed(["send", "--to", "w3", "--to", "z9", "same message", "--wait"]),
+			d,
+		);
+
+		expect(result.follow).toEqual({
+			kind: "wait",
+			self: "a1",
+			targets: [
+				{ to: "w3", messageId: "fake-1" },
+				{ to: "z9", messageId: "fake-2" },
+			],
+			timeoutMs: undefined,
+			exitCode: 0,
+		});
+	});
+
+	it("keeps waiting until every correlated message reaches a terminal receipt", () => {
+		const targets = [
+			{ to: "w3", messageId: "m1" },
+			{ to: "z9", messageId: "m2" },
+		];
+
+		expect(applyWaitReceipt(targets, { messageId: "other", state: "delivered" })).toEqual({
+			pending: targets,
+		});
+		expect(applyWaitReceipt(targets, { messageId: "m1", state: "queued" })).toEqual({
+			target: targets[0],
+			pending: targets,
+		});
+		const firstDone = applyWaitReceipt(targets, { messageId: "m1", state: "delivered" });
+		expect(firstDone).toEqual({ target: targets[0], pending: [targets[1]] });
+		expect(applyWaitReceipt(firstDone.pending, { messageId: "m2", state: "unverified" })).toEqual({
+			target: targets[1],
+			pending: [],
+		});
+	});
+
+	it("prefixes broadcast receipt changes while preserving legacy single-target text", () => {
+		const targets = [
+			{ to: "w3", messageId: "m1" },
+			{ to: "z9", messageId: "m2" },
+		];
+
+		expect(renderWaitReceipt("w3", "delivered", false)).toBe("receipt → delivered");
+		expect(renderWaitTimeout(targets.slice(0, 1), false)).toBe(
+			"receipt → (timeout; check `pij tail` later)",
+		);
+		expect(renderWaitReceipt("w3", "queued", true)).toBe("receipt w3 → queued");
+		expect(renderWaitTimeout(targets, true)).toBe(
+			"receipt → (timeout; unresolved: w3, z9; check `pij tail` later)",
+		);
 	});
 });
 

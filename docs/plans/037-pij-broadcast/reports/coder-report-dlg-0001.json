@@ -1,0 +1,22 @@
+{
+  "delegationId": "dlg-0001",
+  "outcome": "COMPLETE",
+  "summary": "Implemented the full Simple phase T001-T005: repeatable --to parsing, ordered all-target preflight and fan-out, independent recipient results, multi-message wait completion, real-CLI integration, live two-peer smoke, and operator/domain/peer-route documentation. The canonical harness checks gate is fully green.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/cli.ts",
+    ".pi/extensions/pij/core/cli.test.ts",
+    ".pi/extensions/pij/cli.ts",
+    ".pi/extensions/pij/cli.integration.test.ts",
+    "docs/how/pij.md",
+    "docs/domains/pij-messaging/domain.md",
+    "skills/pij/references/routes/peer.md",
+    "docs/plans/037-pij-broadcast/pij-broadcast-plan.md",
+    "docs/plans/037-pij-broadcast/execution.log.md",
+    "docs/plans/037-pij-broadcast/reports/peer-route-evidence.md",
+    "docs/plans/037-pij-broadcast/reports/coder-report-dlg-0001.json"
+  ],
+  "testsRun": 1721,
+  "testsPassed": 1711,
+  "gatesClean": true,
+  "notes": "No files were staged or committed. Live-smoke attestations are at docs/plans/037-pij-broadcast/reports/live-smoke-attestations.md. Harness observation DL-005 records the oversized malformed pij list --json output encountered during smoke peer selection."
+}

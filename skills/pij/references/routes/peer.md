@@ -33,9 +33,11 @@ pij spawn --harness claude --model claude-sonnet-5 [--effort low|medium|high|xhi
 **Converse**
 
 ```bash
-pij send <id> "message text"          # lands as an injected turn in the peer's pane
-pij send <id> --command compact       # control command (compact/reload/…) [--wait]
-pij tail <id> [--since N] [--follow]  # peek its transcript without disturbing it
+pij send <id> "message text"                         # lands as an injected turn in one peer
+pij send --to <id> --to <id> "message text"          # same text once to each peer, in flag order
+pij send --to <id> --to <id> "message text" --wait   # wait for every successful recipient
+pij send <id> --command compact                      # control command (compact/reload/…) [--wait]
+pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
 
 Replies arrive in YOUR pane as `[pij from <id>]` turns — pushed, never polled (§ C7). Long content: write a file, send the path (pointer delivery — dispatch invariant 2).

@@ -4,8 +4,9 @@
 
 Own the product contract for two (or more) live pi sessions discovering each
 other, exchanging fire-and-forget self-identifying messages + remote commands,
-and observing each other's work through a per-session event stream with
-state/liveness signals. Phase 1 establishes the **pi-free core** (types, port
+fanning one text message out to an ordered recipient set, and observing each
+other's work through a per-session event stream with state/liveness signals.
+Phase 1 establishes the **pi-free core** (types, port
 contracts, monotonic seq, event build/filter/age, state + liveness, command
 allow-list, peer discovery + self-resolution, message framing, and delivery
 receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
@@ -25,6 +26,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, `filterByFolder`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
 | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
+| `.pi/extensions/pij/core/cli.ts` | Send grammar, ordered broadcast preflight/fan-out/result projection, and target/message wait correlation. |
 | `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of all five ports (Pattern P8: tests target these). |
 | `.pi/extensions/pij/core/*.test.ts`, `adapters/fakes.test.ts` | Unit coverage for every core module + fakes (50 tests). |
 | `.pi/extensions/pij/index.ts` | Extension wiring — **stub in Phase 1**; real registry write + announce + delivery + capture land in Phase 3. |
@@ -43,6 +45,8 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | Self-resolution | "Which session am I?" when parent+worker share a cwd. | `resolveSelf(envId, local)` — env wins, lone-local fallback, else `E-AMBIG`. |
 | Framed message | Sender id rides inline for zero-lookup replies. | `frame`/`parseFrame` → `[pij from <id>] <body>`. |
 | Delivery receipt | Sender learns queued-vs-delivered. | `MessageReceipt` (`queued`/`delivered`); steered delivery = next `turn_start` after `input(steer)` (finding 08). |
+| Broadcast send | One raw text body is delivered once to each ordered target with independent outcomes. | Two or more unique repeatable `--to` targets; all-target preflight before the first delivery; per-target result/message id; later targets continue after a delivery-port failure. |
+| Multi-message wait | A broadcast sender can wait honestly for every successful recipient. | Ordered `{to,messageId}` tracking; `queued` retains a target, `delivered`/`unverified` removes only that target, and one global timeout names unresolved recipients. |
 
 ## Contracts
 
@@ -52,6 +56,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | Five ports | Phase 2/3 adapters, tests | `RegistryPort`, `EventLogPort(+lastSeq/count)`, `DeliveryPort`, `PiRuntimePort`, `ProcessPort`. Only `PiRuntimePort`'s real adapter imports pi. |
 | `PijEvent` + `EventQuery` | event log adapter, `pij tail` | seq+ISO-timestamp lines; filters compose deterministically. |
 | `MessageReceipt` + correlation | Phase 3 receiver wiring, `pij send` | queued/delivered lifecycle; pure correlation to the runtime turn stream. |
+| Broadcast send result | CLI users and automation | Human output has one recipient row; JSON is `{from,results:[...]}` with ordered per-target successes or errors. Preflight failure produces no deliveries; runtime partial failure exits non-zero after attempting later targets. |
 | Error codes | CLI surface (workshop 001) | `E-NOID/E-SELF/E-CMD/E-DEAD/E-NOREG/E-ARG/E-AMBIG`; duplicate/colliding native identity mappings fail as `E-AMBIG`. |
 
 ## Boundary Owns
@@ -60,6 +65,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
 - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
 - Fire-and-forget message framing + delivery-receipt lifecycle.
+- Ordered one-to-many text fan-out, all-target preflight, per-recipient outcomes, and multi-message wait completion.
 - Remote-command allow-list.
 - The five port contracts the adapters implement.
 
@@ -67,7 +73,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 
 - The pi runtime SDK details (event hooks, `sendUserMessage`, `compact`) — isolated in `adapters/pi-runtime.ts` (Phase 3).
 - Filesystem layout/atomic-write mechanics of `~/.pij/` — `adapters/` (Phase 2).
-- CLI argument parsing/printing — the `pij` CLI (Phase 4).
+- Process argv/stdout wiring and imperative polling timers — the top-level `pij` CLI; the pure messaging grammar, dispatch, and result contracts remain owned here.
 - Pi command/tool/UI registration — belongs to `agent-tooling-interface`.
 - Generator/smoke/self-check orchestration — belongs to `extension-authoring-harness`.
 
@@ -94,3 +100,4 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | 014-pi-session-messaging / Phase 1 | Created `pij-messaging` domain; pi-free core (8 modules) + fake adapters + 50 unit tests; ports incl. `EventLogPort.lastSeq/count`; receipts (finding 08) + self-resolution (finding 07) modelled pure. | 2026-06-16 |
 | 014-pi-session-messaging / Phases 2–5 | Shipped the domain end-to-end: fs adapters (registry/event-log/channel/process/pi-runtime); the `PijSession` coordinator + thin `index.ts` extension (boot announce, capture, inbound serve, receipts); the `pij` CLI (6 verbs, exit codes, `PIJ_HOME` override); two-peer integration smoke (AC-1..11+13) in CI + the Driver `/pij` smoke; report-only `npm audit` in CI; `docs/how/pij.md` + README + AGENTS.md self-announce + `npm link` PATH. Single-pi-importer invariant holds (`index.ts` + `adapters/pi-runtime.ts` only). | 2026-06-16 |
 | 019-pij-tmux-control-plane / T029 | Added presence-independent native identity records, deterministic harness-scoped candidate ids, Pi exact native-id persistence, and durable-field-preserving session boot. | 2026-07-11 |
+| 037-pij-broadcast / Phase 1 | Added repeatable `--to` text fan-out with ordered all-target preflight, independent recipient results, continued delivery after partial runtime failure, and terminal-set receipt waiting. | 2026-07-11 |

@@ -59,8 +59,18 @@ import {
 	resolveAdoptSessionIdForHarness,
 	resolveStableIdentity,
 } from "./core/binding.js";
-import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
-import { dispatch, PROVIDER_HARNESS_MAP, parseArgs } from "./core/cli.js";
+import {
+	applyWaitReceipt,
+	type CliDeps,
+	type CliResult,
+	dispatch,
+	type ParsedCommand,
+	PROVIDER_HARNESS_MAP,
+	parseArgs,
+	renderWaitReceipt,
+	renderWaitTimeout,
+	type WaitTarget,
+} from "./core/cli.js";
 import { parseCloseArgs, planClose } from "./core/close.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
@@ -154,7 +164,8 @@ Messaging:
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
   pij list [--here] [--json]                         known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
-  pij send <id> "<text>" | --command <name> [--wait] deliver a message / control command
+  pij send <id> "<text>" | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
+                                                        deliver one message, broadcast text, or run a control command
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
@@ -278,31 +289,37 @@ function followTail(cmd: ParsedCommand & { verb: "tail" }, d: CliDeps, fromSeq: 
 	setTimeout(tick, FOLLOW_MS);
 }
 
-/** --wait: poll self's receipt events until a terminal receipt for this
- *  messageId lands (delivered or unverified), or the timeout elapses. */
-function waitReceipt(
+/** --wait: poll self's receipt events until every target/message pair reaches a
+ * terminal receipt (delivered or unverified), or the single timeout elapses. */
+function waitReceipts(
 	d: CliDeps,
 	self: string,
-	messageId: string,
+	targets: readonly WaitTarget[],
 	timeoutMs = WAIT_TIMEOUT_MS,
+	exitCode = 0,
+	broadcast = false,
 ): void {
 	const started = Date.now();
 	const log = d.eventLogFor(self);
 	const seen = new Set<string>();
+	let pending = targets;
 	const tick = (): void => {
 		for (const e of log.read({ type: "receipt" })) {
 			const body = (e.data as { body?: string } | undefined)?.body;
 			const r = body ? parseReceiptBody(body) : null;
-			if (!r || r.messageId !== messageId) continue;
-			const key = `${r.state}`;
+			if (!r) continue;
+			const update = applyWaitReceipt(pending, r);
+			if (!update.target) continue;
+			const key = `${r.messageId}:${r.state}`;
 			if (seen.has(key)) continue;
 			seen.add(key);
-			process.stdout.write(`receipt → ${r.state}\n`);
-			if (r.state === "delivered" || r.state === "unverified") process.exit(0);
+			process.stdout.write(`${renderWaitReceipt(update.target.to, r.state, broadcast)}\n`);
+			pending = update.pending;
+			if (pending.length === 0) process.exit(exitCode);
 		}
 		if (Date.now() - started > timeoutMs) {
-			process.stdout.write("receipt → (timeout; check `pij tail` later)\n");
-			process.exit(0);
+			process.stdout.write(`${renderWaitTimeout(pending, broadcast)}\n`);
+			process.exit(exitCode);
 		}
 		setTimeout(tick, FOLLOW_MS);
 	};
@@ -1956,7 +1973,15 @@ function main(): void {
 		return; // loops until killed
 	}
 	if (res.follow?.kind === "wait") {
-		waitReceipt(d, res.follow.self, res.follow.messageId, res.follow.timeoutMs);
+		const broadcast = parsed.value.verb === "send" && parsed.value.broadcast === true;
+		waitReceipts(
+			d,
+			res.follow.self,
+			res.follow.targets,
+			res.follow.timeoutMs,
+			res.follow.exitCode,
+			broadcast,
+		);
 		return;
 	}
 	process.exit(res.exitCode);
