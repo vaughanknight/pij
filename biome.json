@@ -12,7 +12,8 @@
 			"!agents",
 			"!docs/plans",
 			"!scratch",
-			"!.harness"
+			"!.harness",
+			"!**/prime-flow.json"
 		]
 	},
 	"formatter": {
