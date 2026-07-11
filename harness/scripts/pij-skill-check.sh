@@ -78,7 +78,7 @@ soft_budget() {
   fi
 }
 soft_budget "$SKILL/references/routes/prime.md" 90
-for m in bootstrap kickoff batons reports; do
+for m in bootstrap kickoff batons reports incidents; do
   soft_budget "$SKILL/references/prime/rituals/$m.md" 90
 done
 soft_budget "$SKILL/references/prime/protocol.md" 170
@@ -104,6 +104,7 @@ prime_required=(
   "$SKILL/references/prime/rituals/kickoff.md"
   "$SKILL/references/prime/rituals/batons.md"
   "$SKILL/references/prime/rituals/reports.md"
+  "$SKILL/references/prime/rituals/incidents.md"
   "$SKILL/references/prime/templates/spine.md"
   "$SKILL/references/prime/templates/baton-book.md"
   "$SKILL/references/prime/templates/stream-brief.md"

@@ -28,6 +28,7 @@ If probes conflict, trust the government row only after reconciling it with
 | Spawn, adopt, canary, brief, or tear down a stream | [`../prime/rituals/kickoff.md`](../prime/rituals/kickoff.md) |
 | Request, grant, return, reclaim, or audit a baton | [`../prime/rituals/batons.md`](../prime/rituals/batons.md) |
 | File, verify, relay, or digest a report | [`../prime/rituals/reports.md`](../prime/rituals/reports.md) |
+| Something just went wrong across seats — record, repair, rule, encode | [`../prime/rituals/incidents.md`](../prime/rituals/incidents.md) |
 
 ## Prime invariants
 
