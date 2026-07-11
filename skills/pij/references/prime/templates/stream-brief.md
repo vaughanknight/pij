@@ -16,6 +16,10 @@ human
 - **Human ask, verbatim**: <quote or durable pointer>
 - **Current flow state**: <pointer>
 - **Prior art**: <paths only>
+- **Cross-repo artifacts** (include whenever foreseeable): vendor VERBATIM into
+  your plan folder + record sha256 in a PROVENANCE file BEFORE citing — source
+  repos may be severance-ruled; a citation into one rots the day it goes dark.
+  Never prepend headers to a verbatim vendor (breaks byte-identity).
 
 ## Fences
 

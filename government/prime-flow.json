@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "kind": "prime-flow",
+  "slug": "pij-orchestration-portfolio",
+  "created_at": "2026-07-11T08:34:26.225Z",
+  "provenance": {
+    "record_kind": "flow",
+    "harness_version": "0.11.0",
+    "branch": "main",
+    "repo": "https://github.com/AI-Substrate/pij.git",
+    "created_at": "2026-07-11T08:34:26.225Z",
+    "agent": "o-prime",
+    "plan_id": null
+  },
+  "events": [
+    {
+      "id": "CRT-001",
+      "kind": "created",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:34:26.235Z",
+      "details": {
+        "kind": "prime-flow",
+        "slug": "pij-orchestration-portfolio"
+      }
+    },
+    {
+      "id": "NOD-001",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:35:08.850Z",
+      "details": {
+        "node": "wi-036",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:35:08.945Z",
+      "details": {
+        "from": "",
+        "to": "wi-036"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:35:09.355Z",
+      "details": {
+        "node": "wi-036",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:49:34.283Z",
+      "details": {
+        "node": "wi-036",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "UPD-002",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T08:49:34.500Z",
+      "details": {
+        "node": "wi-036",
+        "fields": [
+          "comments"
+        ]
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "wi-036",
+      "type": "work-item",
+      "label": "pij orchestration baton — P-07 primitive (plan 036)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-11T08:35:08.850Z",
+      "modified_at": "2026-07-11T08:49:34.500Z",
+      "comments": [
+        {
+          "at": "2026-07-11T08:35:09.355Z",
+          "text": "s036 pij-1khprxk (Fable 5, Jordan-spawned, ADOPTING — canary a+b PASS, brief delivered pending ack). Namespace ruled: pij orchestration baton. Seed: 035 R9.7 + E-22."
+        },
+        {
+          "at": "2026-07-11T08:49:34.500Z",
+          "text": "2026-07-11 09:15Z: preamble checkpoint VERIFIED (reports/preamble-checkpoint.md; ruling #6 work-authorized). IN FLIGHT — builder guided: fresh flight plan + explore, interview corpus as research input. OBS-1/OBS-2 encoded to payload same-hour."
+        }
+      ]
+    }
+  ],
+  "nav": {
+    "now": "wi-036",
+    "next": null
+  }
+}

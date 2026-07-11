@@ -51,7 +51,7 @@ Write `government/canaries/s<ord>.md` while the evidence is fresh:
 | Leg | Mechanical proof |
 |---|---|
 | (a) round-trip | Send a nonce challenge; ack must arrive as a daemon-injected turn |
-| (b) identity | Read registry/state for harness, model, effort, parent, and native session; if a field is absent/unbound, capture the pane footer as the explicit fallback — never accept bare self-assertion |
+| (b) identity | Read registry/state for harness, model, effort, parent, and native session; if a field is absent/unbound, capture the pane footer as the explicit fallback — never accept bare self-assertion. An UNPINNED peer can only honestly self-report "default" (its args carry nothing to verify) — the prover of actual model/effort is YOUR footer/registry probe, so don't demand self-confidence the peer cannot have |
 | (c) input reliability | A second send lands; use the brief-pointer send and require `brief-ack`. Adopting a mid-flight peer: legs (a)+(b) may be satisfied by the orientation exchange itself; record (c) as PENDING-on-brief-ack and close it in the record when the ack lands |
 
 The first run did all three and still failed its audit because the record lived
