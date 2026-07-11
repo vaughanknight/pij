@@ -62,8 +62,11 @@ never erase).
 
 ## Your boot sequence
 
-1. Confirm your channel: `pij phonehome` (re-adopt the pane if the registry lost
-   you); purge any dead descriptor of your own prior seat — a stale descriptor can
+1. Confirm your channel — **a fresh seat is always un-registered: lead with
+   `pij adopt "$TMUX_PANE" --harness <h>`** (`E-AMBIG` from `phonehome`/`whoami`
+   means exactly this; the pane binding survives per-call shells where an
+   exported `PIJ_SESSION_ID` does not). Then `pij phonehome` to confirm; purge
+   any dead descriptor of your own prior seat — a stale descriptor can
    wedge delivery for EVERYONE (INC-001 class).
 2. Read the government you inherit: spine → baton book → prime-flow → open briefs →
    latest reports. Audit for restart drift: dead holders in the baton book, stale

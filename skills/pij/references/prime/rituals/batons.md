@@ -34,6 +34,11 @@ Grant-log format:
   anyone else. The first real self-grant made the book law instead of decor.
 - **Silent holder**: verify both liveness and whether the purpose completed.
   A dead holder's commit may already exist; evidence, not silence, decides.
+- **Stale pins**: re-verify any SHA-pinned grant or claim when the tree has
+  advanced past it — two same-hour run-01 cases pinned against superseded HEADs.
+- **Queued stream posture**: pre-stage the whole batch in scratch and land it
+  inside the granted window (a 21-file migration landed in ~5 minutes, green on
+  first compile) — waiting is for the window, never for the work.
 - **Restart**: audit the book before new grants; dead holders and live processes
   are reconciled into explicit `RECLAIMED` or still-held records.
 - **Breach**: stop competing use, tell the current holder, record exact command,

@@ -39,8 +39,10 @@ does not.
     task paths outside fences and fenced paths no task uses. Amend or fix.
 16. **Adoption variant.** For a human-spawned peer, skip step 6 only. Unknown
     provenance makes the same canary more important; record no-parent/spawner,
-    deliver an adoption brief pointing at the orient stack, roster `ADOPTED`,
-    and hold provisional until the human preamble.
+    **instantiate the same stream-brief template — every section, the Orient
+    stack included** (the first outside run freelanced its adoption brief and
+    dropped the levers), roster `ADOPTED`, and hold provisional until the
+    human preamble.
 
 ## Canary
 
@@ -50,7 +52,7 @@ Write `government/canaries/s<ord>.md` while the evidence is fresh:
 |---|---|
 | (a) round-trip | Send a nonce challenge; ack must arrive as a daemon-injected turn |
 | (b) identity | Read registry/state for harness, model, effort, parent, and native session; if a field is absent/unbound, capture the pane footer as the explicit fallback — never accept bare self-assertion |
-| (c) input reliability | A second send lands; use the brief-pointer send and require `brief-ack` |
+| (c) input reliability | A second send lands; use the brief-pointer send and require `brief-ack`. Adopting a mid-flight peer: legs (a)+(b) may be satisfied by the orientation exchange itself; record (c) as PENDING-on-brief-ack and close it in the record when the ack lands |
 
 The first run did all three and still failed its audit because the record lived
 only in transcript. **Pass-time file first, claim second.**
@@ -69,7 +71,9 @@ Fences protect ownership, not siblings' build windows. Two streams proved that
 in opposite directions within one hour.
 
 1. Author uncompilable work in scratch; move it in-tree only when it builds.
-2. Every pause, handoff, or yield includes the repo's compilation/typecheck
-   probe.
+2. Every pause, handoff, yield — and every **commit**, the strongest yield
+   point — includes the repo's compilation/typecheck probe: a commit's
+   transitive type closure must compile at checkout (a run-01 phase commit
+   nearly shipped referencing a sibling's untracked sources).
 3. A non-owner never repairs a sibling's broken file. Stop and send an
    **urgent owner-fix** with the failing command and exact path.
