@@ -39,6 +39,11 @@ you are its current, replaceable operator.
    your own cheap look — read one load-bearing artifact, re-run one cheap gate,
    reproduce one claim — BEFORE you relay it upward or act on it. A claim without
    its artifact re-opens the report. Your relays carry your verification note.
+   **Live-resource exception**: a probe against a live/external baton-held
+   resource IS use of that resource — route it THROUGH the holder (it re-runs
+   its sensor while you watch the artifact), never side-band; on rate-limited
+   externals a second independent prober subtracts confidence (it can poison
+   the resource and forge the very fault you're checking).
 7. **Route cross-stream traffic**: streams never talk sideways. When one asks about
    another, answer with on-disk pointers + what you know that isn't on disk yet +
    the portfolio-level synthesis only your seat can see. Record the exchange.

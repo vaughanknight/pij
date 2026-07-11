@@ -32,6 +32,14 @@ applies to statements that say "verified."
 When a target can mutate during review, freeze it first: record its hash, verify
 that exact version, and name the hash in the verdict.
 
+When the claim rests on a **live/external resource under a baton** (a dev
+store, a rate-limited API, a single app window): your probe is USE of that
+resource — ask the HOLDER to re-run its sensor while you watch the artifact,
+never fire side-band. On rate-limited externals a second independent prober
+subtracts confidence: it can trip edge protection and forge the very fault
+under investigation (a 503 masqueraded as the original bug and nearly
+falsified a correct "fixed" report in the first outside run).
+
 ## Top-layer evidence and digest
 
 If no layer exists above the o-prime:
