@@ -40,9 +40,10 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
+| `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
 
-`prime` is a skill route, not a CLI verb; its rituals compose the existing peer,
-messaging, close, state, and flow surfaces.
+`/pij prime` selects the skill route; `pij orchestration prime` invokes its CLI
+primitive. `baton` is the other orchestration subcommand.
 
 ## Global invariants (every route)
 

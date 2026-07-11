@@ -83,9 +83,11 @@ for m in bootstrap kickoff batons reports incidents; do
 done
 soft_budget "$SKILL/references/prime/protocol.md" 170
 
-# 4. CLI-verb coverage: every bin-USAGE verb (+ models) mapped somewhere in SKILL.md
-for v in spawn close adopt daemon compact-self telegram agent whoami list send tail state phonehome path models; do
-  grep -q "\b$v\b" "$SKILL/SKILL.md" || err "verb coverage: '$v' unmapped in SKILL.md"
+# 4. CLI-verb coverage: every required bin family is mapped in the coverage table.
+cli_rows=$(sed -n '/^## CLI-verb coverage/,/^## /p' "$SKILL/SKILL.md" | grep '^| `' || true)
+for v in spawn close adopt daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime; do
+  printf '%s\n' "$cli_rows" | grep -Fq "\`$v\`" \
+    || err "verb coverage: '$v' unmapped in CLI-verb coverage table"
 done
 ok "CLI-verb coverage scanned"
 
