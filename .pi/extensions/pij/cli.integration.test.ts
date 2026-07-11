@@ -92,7 +92,8 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.out).toContain("pij list [--here] [--prime] [--json]");
 	});
 
-	it("sets, filters, unsets, and durably reattaches prime designations through the real CLI", () => {
+	// ~6 sequential real-CLI subprocess spawns; exceeds the 5s default on slow CI runners.
+	it("sets, filters, unsets, and durably reattaches prime designations through the real CLI", { timeout: 30_000 }, () => {
 		const selfSet = pij(["orchestration", "prime", "set", "--json"], {
 			PIJ_SESSION_ID: "pij-A",
 		});
