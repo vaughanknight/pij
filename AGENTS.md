@@ -8,8 +8,8 @@
 > of** the engineering one and cannot exist without it. Every extension is
 > an exercise; every difficulty is a gift to encode; every agent run is a
 > usability study. **If a session ends without one of the harnesses
-> improving, something went wrong.** Run the `harness-is-the-product-v2`
-> skill at session start to ground on this before touching code.
+> improving, something went wrong.** Ground on this at session start with
+> `/eng-harness-flow` (or `harness boot`) before touching code.
 
 ## Inherited from pi-mono (do not violate without explicit user approval)
 
@@ -260,8 +260,8 @@ from your most honest user. Treat it that way.
 
 ## When something is unclear
 
-- Run `/harness-is-the-product-v2` to re-ground on philosophy + the
-  self-improvement contract.
+- Run `/eng-harness-flow` (or `harness boot`) to re-ground on the
+  philosophy + the self-improvement contract.
 - Check `docs/retros/` for prior agent runs against the same surface
   — magic wands and difficulties from earlier sessions often pre-answer
   the question.
