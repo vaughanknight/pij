@@ -98,6 +98,91 @@
         "from": "preparing",
         "to": "in_flight"
       }
+    },
+    {
+      "id": "STA-003",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:55:23.785Z",
+      "details": {
+        "node": "wi-036",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-004",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:55:23.897Z",
+      "details": {
+        "node": "wi-037",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "NOD-003",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:56:03.517Z",
+      "details": {
+        "node": "wi-038",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "NOD-004",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:56:03.610Z",
+      "details": {
+        "node": "wi-039",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "NOD-005",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-11T11:07:52.979Z",
+      "details": {
+        "node": "wi-040",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "STA-005",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T11:12:29.187Z",
+      "details": {
+        "node": "wi-040",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T11:14:29.372Z",
+      "details": {
+        "node": "wi-039",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T11:17:30.318Z",
+      "details": {
+        "node": "wi-038",
+        "from": "preparing",
+        "to": "in_flight"
+      }
     }
   ],
   "nodes": [
@@ -105,10 +190,10 @@
       "id": "wi-036",
       "type": "work-item",
       "label": "pij orchestration baton — P-07 primitive (plan 036)",
-      "status": "in_flight",
+      "status": "done",
       "next": [],
       "created_at": "2026-07-11T08:35:08.850Z",
-      "modified_at": "2026-07-11T08:49:34.500Z",
+      "modified_at": "2026-07-11T10:55:23.785Z",
       "comments": [
         {
           "at": "2026-07-11T08:35:09.355Z",
@@ -118,16 +203,45 @@
           "at": "2026-07-11T08:49:34.500Z",
           "text": "2026-07-11 09:15Z: preamble checkpoint VERIFIED (reports/preamble-checkpoint.md; ruling #6 work-authorized). IN FLIGHT — builder guided: fresh flight plan + explore, interview corpus as research input. OBS-1/OBS-2 encoded to payload same-hour."
         }
-      ]
+      ],
+      "ran_at": "2026-07-11T10:55:23.785Z"
     },
     {
       "id": "wi-037",
       "type": "work-item",
       "label": "pij broadcast — one-to-many send (plan 037)",
-      "status": "in_flight",
+      "status": "done",
       "next": [],
       "created_at": "2026-07-11T09:23:02.309Z",
-      "modified_at": "2026-07-11T09:39:45.138Z"
+      "modified_at": "2026-07-11T10:55:23.897Z",
+      "ran_at": "2026-07-11T10:55:23.897Z"
+    },
+    {
+      "id": "wi-038",
+      "type": "work-item",
+      "label": "pij prime designation — set/list/filter primes (plan 038)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-11T10:56:03.516Z",
+      "modified_at": "2026-07-11T11:17:30.318Z"
+    },
+    {
+      "id": "wi-039",
+      "type": "work-item",
+      "label": "dependabot chores audit — dependency updates (plan 039)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-11T10:56:03.610Z",
+      "modified_at": "2026-07-11T11:14:29.372Z"
+    },
+    {
+      "id": "wi-040",
+      "type": "work-item",
+      "label": "memorable pij session ids (plan 040, Jordan-tasked direct)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-11T11:07:52.979Z",
+      "modified_at": "2026-07-11T11:12:29.187Z"
     }
   ],
   "nav": {

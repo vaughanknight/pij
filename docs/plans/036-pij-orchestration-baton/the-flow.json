@@ -3,12 +3,12 @@
   "kind": "flight-plan",
   "slug": "pij-orchestration-baton",
   "nav": {
-    "now": "phase-1",
+    "now": "ship",
     "next": null,
     "intent": "i think 07 here is a good opportunity to dogfood. we can set up an orchestrator and have it work through adding baton. i think it should be pij orchestration baton though, so we can add more orchestration primitives later.",
     "bag": {
       "mode": "Simple",
-      "status": "active"
+      "status": "complete"
     }
   },
   "created_at": "2026-07-11T08:49:27.070Z",
@@ -211,6 +211,92 @@
           "note"
         ]
       }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:22:57.065Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:22:57.156Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-003",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:22:57.242Z",
+      "details": {
+        "from": "phase-1",
+        "to": "ship"
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:39:12.385Z",
+      "details": {
+        "node": "retro-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:54:24.443Z",
+      "details": {
+        "node": "retro-ship",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-012",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:54:24.534Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-007",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T10:54:24.619Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "note"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -255,7 +341,7 @@
       "type": "phase",
       "phase": 1,
       "label": "P1: Implementation",
-      "status": "in_progress",
+      "status": "done",
       "command": "/builder 6 implement",
       "next": [
         "review-1"
@@ -268,7 +354,7 @@
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
       ],
-      "modified_at": "2026-07-11T09:57:03.872Z",
+      "modified_at": "2026-07-11T10:22:57.156Z",
       "comments": [
         {
           "at": "2026-07-11T09:22:17.608Z",
@@ -282,7 +368,9 @@
           "source": "agent",
           "kind": "note"
         }
-      ]
+      ],
+      "ran_at": "2026-07-11T10:22:57.064Z",
+      "note": "T001-T013 shipped @ 1813803: 3-round mutation-gated review to APPROVE, live-verified E2E (real dead-holder alert), both batons returned with evidence"
     },
     {
       "id": "review-1",
@@ -307,14 +395,17 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "modified_at": "2026-07-11T10:54:24.619Z",
+      "ran_at": "2026-07-11T10:54:24.534Z",
+      "note": "Shipped on local main: 1813803 + b412f7d + 953258a + 9a85852; full harness checks 6/6 green incl smoke; ship report reports/ship-report.md; push-main = o-prime double-gate"
     },
     {
       "id": "backpressure",
@@ -390,7 +481,7 @@
       "id": "retro-1",
       "type": "harness-retro",
       "label": "Retro: P1 (drain)",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "phase-1",
       "next": [
         "phase-1"
@@ -404,13 +495,15 @@
         "Recommended post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
         "Run /eng-harness-flow --hook post-coding --json — read-only/advisory; narrate its envelope verbatim.",
         "Skippable — advisory, never gates. Decline with a real `harness flow status retro-1 --to skipped`."
-      ]
+      ],
+      "modified_at": "2026-07-11T10:39:12.385Z",
+      "ran_at": "2026-07-11T10:39:12.385Z"
     },
     {
       "id": "retro-ship",
       "type": "harness-retro",
       "label": "Retro: ship (harvest)",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "ship",
       "next": [
         "ship"
@@ -424,7 +517,9 @@
         "Recommended post-flight seam: the terminal long-horizon harvest — fold this flight's learnings into durable memory at ship.",
         "Run /eng-harness-flow --hook post-flight --json — read-only/advisory; narrate its envelope verbatim.",
         "Skippable — advisory, never gates. Decline with a real `harness flow status retro-ship --to skipped`."
-      ]
+      ],
+      "modified_at": "2026-07-11T10:54:24.443Z",
+      "ran_at": "2026-07-11T10:54:24.443Z"
     }
   ]
 }

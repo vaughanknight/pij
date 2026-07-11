@@ -3,12 +3,12 @@
   "kind": "flight-plan",
   "slug": "pij-prime-designation",
   "nav": {
-    "now": "review-2",
-    "next": "ship",
+    "now": "ship",
+    "next": null,
     "intent": "I want a first class way to for a pij session to set itself or another as 'prime' then we can list all primes or filter by primes in a folder etc.",
     "bag": {
       "mode": "Full",
-      "status": "active"
+      "status": "complete"
     }
   },
   "created_at": "2026-07-11T11:08:20.948Z",
@@ -458,6 +458,66 @@
         "from": "phase-2",
         "to": "review-2"
       }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T12:42:30.985Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-011",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T12:42:31.757Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-006",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-11T12:42:32.552Z",
+      "details": {
+        "from": "review-2",
+        "to": "ship"
+      }
+    },
+    {
+      "id": "STA-017",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-11T12:43:20.495Z",
+      "details": {
+        "node": "retro-ship",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-012",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-11T12:43:21.275Z",
+      "details": {
+        "node": "retro-ship",
+        "fields": [
+          "note"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -544,14 +604,17 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "modified_at": "2026-07-11T12:42:31.757Z",
+      "ran_at": "2026-07-11T12:42:30.985Z",
+      "note": "Local trunk complete: commits 6067b07 + fc98f83; all gates green; consolidated push-main remains o-prime/Jordan double-gated"
     },
     {
       "id": "backpressure",
@@ -649,7 +712,7 @@
       "id": "retro-ship",
       "type": "harness-retro",
       "label": "Retro: ship (harvest)",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "ship",
       "next": [
         "ship"
@@ -663,7 +726,10 @@
         "Recommended post-flight seam: the terminal long-horizon harvest — fold this flight's learnings into durable memory at ship.",
         "Run /eng-harness-flow --hook post-flight --json — read-only/advisory; narrate its envelope verbatim.",
         "Skippable — advisory, never gates. Decline with a real `harness flow status retro-ship --to skipped`."
-      ]
+      ],
+      "modified_at": "2026-07-11T12:43:21.275Z",
+      "ran_at": "2026-07-11T12:43:20.495Z",
+      "note": "Harvested day observations into reports/ship-report.md; highest leverage = flow-pair model/roster + pathscoped observe repair (o-prime Seq 25 backlog)"
     },
     {
       "id": "phase-2",

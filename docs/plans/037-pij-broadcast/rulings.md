@@ -52,3 +52,9 @@ pij send --to pij-a --to pij-b "same message" --wait
 ## 7. peer route ship-time edit
 
 **O-prime, 2026-07-11**: `skills/pij/references/routes/peer.md` edit approved after T004 E-16. Add broadcast syntax only in the existing Converse code block, stay under 150 lines, preserve sibling-blindness, and provide `pij-skill-check` plus diff for o-prime look before commit.
+
+## 8. Consolidated push-main authorization
+
+**Jordan, 2026-07-11**: `PUSH MAIN`
+
+This authorizes the single o-prime-deconflicted push event carrying the governed 13-commit main stack after s036's ship report lands.
