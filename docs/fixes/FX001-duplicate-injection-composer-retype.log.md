@@ -78,3 +78,27 @@ as the clear primitive.
 - The test was RED with an exact argv mismatch: 21 backspaces received versus
   22 required.
 - Changed the clear count to `text.length`; the test and full suite are green.
+
+## 2026-07-11 — FX001-6 at-most-once follow-up
+
+- User screenshot `scratch/paste/20260711T032222.png` showed the same packet-pointer
+  message as three consecutive Copilot user turns in `pij-1sv6auo`.
+- Forensics ruled out queue replay and multiple sends without reading inbox transport
+  logs: the durable transcript contained three turns, while daemon output recorded
+  exactly `route pij-1sv6auo: injected 1 message(s)`.
+- Root cause: the outer `SUBMIT_RETRIES = 3` loop retyped after Enter whenever the
+  positive busy/transcript heuristic missed. If Copilot had already accepted the
+  prior Enter, the composer was empty; the BSpace clear did nothing, and the retry
+  created a fresh duplicate submission.
+- RED regression: scripted `STUCK → ambiguous empty` captures expected one type call
+  and observed **7** under the nested inner/outer retry loops.
+- GREEN contract:
+  - type-loss retries remain capped at three and occur only before the first Enter;
+  - after Enter, pending visible text may receive another Enter, but the payload is
+    never cleared/retyped;
+  - empty composer + inconclusive telemetry returns `unverified` rather than replaying.
+- Focused adapter suite: **24/24 passed**; `just typecheck` clean.
+- Restarted the owned daemon and spawned throwaway Copilot GPT-5.6 Sol peer
+  `pij-kf9wu6`. Live pane showed exactly one onboarding turn and exactly one
+  `PIJ_DUPLICATION_PROBE_20260711` turn; peer returned exactly one `PROBE_ACK`.
+- Closed the throwaway pane and removed its descriptor (`pij state` → `E-NOID`).

@@ -60,6 +60,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
+| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>]` | Register an existing external-client pane. For restart re-attachment, `--session-id` is authoritative and recovers the prior pij-id; newest-artifact discovery is only an initial-adopt fallback. |
 
 ### Exit codes
 
@@ -70,6 +71,27 @@ pij list --here               # bare `pij` on PATH from any cwd
 | `1` | `E-DEAD` (peer's process is gone) |
 | `3` | `E-NOREG` (no `~/.pij` registry yet) |
 | `64` | `E-ARG` (malformed invocation — unknown flag, bad arity, non-numeric `--since`, `text` + `--command` together, …) |
+
+---
+
+## Restart and re-adoption identity
+
+A pij identity belongs to the underlying native session, not its temporary process
+or tmux pane. Pi supplies its exact native session id through the extension; external
+clients use `(harness, native session id)`:
+
+```bash
+pij adopt "$TMUX_PANE" --harness claude --session-id "$CLAUDE_CODE_SESSION_ID"
+```
+
+The first attachment atomically claims a two-way durable mapping under `PIJ_HOME`
+and snapshots role/creator/history metadata; a later attachment of the same exact
+native identity reuses the original `pij-id` and metadata while replacing
+pane/PID/cwd/lifecycle. Claims stage and fsync complete temp files before no-replace
+publication; duplicate, colliding, or occupied ids fail with `E-AMBIG` instead of
+overwriting a peer. Omitting `--session-id` retains newest-artifact discovery for
+initial adoption only. For Codex, an authoritative id must resolve to an exact readable
+rollout path or adoption fails with `E-NOID`.
 
 ---
 

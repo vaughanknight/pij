@@ -22,7 +22,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | `.pi/extensions/pij/core/events.ts` | `buildEvent` (seq + ISO timestamp), `filterEvents` (since/type/last), `eventAgeMs`/`latestEventAgeMs`. |
 | `.pi/extensions/pij/core/state.ts` | `isWorking`, `liveness` (active/stale/dead), `isStalled`; `STALE_AFTER_MS`. |
 | `.pi/extensions/pij/core/commands.ts` | Remote-command allow-list (`compact`) + `validateCommand`. |
-| `.pi/extensions/pij/core/discovery.ts` | `filterByFolder`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
+| `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, `filterByFolder`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
 | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
 | `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of all five ports (Pattern P8: tests target these). |
@@ -33,7 +33,8 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 
 | Concept | Description | Contract |
 |---------|-------------|----------|
-| Session descriptor | What a peer reads to find + address a session. | `SessionDescriptor` (id, role, folder, dataDir, eventsPath, pid, startedAt) — written to `~/.pij/<id>.json`. |
+| Session descriptor | Live presence/attachment data used to find and address a session. | `SessionDescriptor` — written to `~/.pij/<id>.json`; runtime fields may be refreshed without replacing durable identity/history. |
+| Durable native identity | The same exact native session recovers the same pij-id and metadata after descriptor removal or machine restart. | Two-way `FsRegistry` ownership records keyed by native tuple and pij-id, with durable descriptor snapshots and no-replace publication; Pi persists its exact native id. |
 | Monotonic seq | Each event has a strictly-increasing `seq`, recoverable after `/reload`. | `SeqCounter(lastSeq)`; `EventLogPort.lastSeq()` is the recovery source. |
 | Event line | One `events.ndjson` row carrying activity. | `PijEvent { seq, timestamp(ISO), type, data? }` — age computed from the stream alone. |
 | Incremental follow | Read only what's new / of-interest / recent. | `EventQuery { since, type, last }` composed since→type→last. |
@@ -51,11 +52,11 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | Five ports | Phase 2/3 adapters, tests | `RegistryPort`, `EventLogPort(+lastSeq/count)`, `DeliveryPort`, `PiRuntimePort`, `ProcessPort`. Only `PiRuntimePort`'s real adapter imports pi. |
 | `PijEvent` + `EventQuery` | event log adapter, `pij tail` | seq+ISO-timestamp lines; filters compose deterministically. |
 | `MessageReceipt` + correlation | Phase 3 receiver wiring, `pij send` | queued/delivered lifecycle; pure correlation to the runtime turn stream. |
-| Error codes | CLI surface (workshop 001) | `E-NOID/E-SELF/E-CMD/E-DEAD/E-NOREG/E-ARG/E-AMBIG`. |
+| Error codes | CLI surface (workshop 001) | `E-NOID/E-SELF/E-CMD/E-DEAD/E-NOREG/E-ARG/E-AMBIG`; duplicate/colliding native identity mappings fail as `E-AMBIG`. |
 
 ## Boundary Owns
 
-- Peer registry descriptor vocabulary + discovery/self-resolution rules.
+- Peer registry descriptor vocabulary + durable native-identity binding + discovery/self-resolution rules.
 - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
 - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
 - Fire-and-forget message framing + delivery-receipt lifecycle.
@@ -92,3 +93,4 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 |------|--------|------|
 | 014-pi-session-messaging / Phase 1 | Created `pij-messaging` domain; pi-free core (8 modules) + fake adapters + 50 unit tests; ports incl. `EventLogPort.lastSeq/count`; receipts (finding 08) + self-resolution (finding 07) modelled pure. | 2026-06-16 |
 | 014-pi-session-messaging / Phases 2–5 | Shipped the domain end-to-end: fs adapters (registry/event-log/channel/process/pi-runtime); the `PijSession` coordinator + thin `index.ts` extension (boot announce, capture, inbound serve, receipts); the `pij` CLI (6 verbs, exit codes, `PIJ_HOME` override); two-peer integration smoke (AC-1..11+13) in CI + the Driver `/pij` smoke; report-only `npm audit` in CI; `docs/how/pij.md` + README + AGENTS.md self-announce + `npm link` PATH. Single-pi-importer invariant holds (`index.ts` + `adapters/pi-runtime.ts` only). | 2026-06-16 |
+| 019-pij-tmux-control-plane / T029 | Added presence-independent native identity records, deterministic harness-scoped candidate ids, Pi exact native-id persistence, and durable-field-preserving session boot. | 2026-07-11 |

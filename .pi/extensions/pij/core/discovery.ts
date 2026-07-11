@@ -1,6 +1,13 @@
 // pij-messaging — peer discovery + self-resolution (pure).
 
-import { err, ok, type Result, type SessionDescriptor, type SessionId } from "./types.js";
+import {
+	err,
+	type HarnessKind,
+	ok,
+	type Result,
+	type SessionDescriptor,
+	type SessionId,
+} from "./types.js";
 
 /** Derive this session's stable pij id from pi's own session identity.
  *
@@ -16,6 +23,14 @@ import { err, ok, type Result, type SessionDescriptor, type SessionId } from "./
 export function deriveSelfId(piSessionId: string | undefined, pid: number): SessionId {
 	const slug = sessionSlug(piSessionId);
 	return slug ? `pij-${slug}` : `pij-${pid}`;
+}
+
+/** Deterministic candidate id for a harness-native identity. The harness prefix
+ *  prevents the same provider UUID in two clients from collapsing together.
+ *  Existing bindings still win via `resolveStableIdentity`; this candidate is
+ *  used only for a zero-match claim, so concurrent claims converge on one id. */
+export function deriveHarnessPijId(harness: HarnessKind, harnessSessionId: string): SessionId {
+	return deriveSelfId(`${harness}\0${harnessSessionId}`, 0);
 }
 
 /** Short, stable, low-collision token for a pi session id. Uses FNV-1a (32-bit)

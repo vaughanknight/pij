@@ -51,6 +51,17 @@ const BUSY_PANE = [
 	" ◎ Working · 241 B esc interrupt   GPT-5.5 · 1.1M context",
 ].join("\n");
 
+// The message left the composer, but Copilot completed too quickly (or redraw lag
+// hid the transcript change), so neither positive confirmation signal is visible.
+const AMBIGUOUS_EMPTY_AFTER_ENTER = [
+	" ~/substrate/harness-engineering",
+	" Session: 1729 AIC used",
+	"────────────────────────────────────────────",
+	"❯",
+	"────────────────────────────────────────────",
+	" @ files · # issues                  GPT-5.5 · 1.1M context",
+].join("\n");
+
 const BUSY_TRANSCRIPT_CHANGED_EMPTY_PANE = [
 	" ~/pi-hacking/pij [⎇ main*%]   Session: 17 AIC used",
 	"Unrelated prior turn is still streaming.",
@@ -166,17 +177,45 @@ describe("composerPending — submit verification (the cause-independent retry g
 		return ["send-keys", "-t", PANE_ID, "-N", String(text.length), "BSpace"];
 	}
 
+	function enterArgv(): string[] {
+		return ["send-keys", "-t", PANE_ID, "Enter"];
+	}
+
 	function indexesOf(calls: string[][], expected: string[]): number[] {
 		const encoded = JSON.stringify(expected);
 		return calls.flatMap((call, index) => (JSON.stringify(call) === encoded ? [index] : []));
 	}
 
-	describe("DaemonTmux.sendText — composer redraw and idempotent re-type", () => {
+	describe("DaemonTmux.sendText — pre-Enter recovery and at-most-once submission", () => {
+		it("returns unverified instead of throwing when the target pane disappeared", () => {
+			const adapter = new DaemonTmux({
+				runner: () => {
+					throw new Error("can't find pane: %42");
+				},
+				sleep: () => undefined,
+			});
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
+		});
+
 		it("(a) waits through redraw lag and types the payload exactly once", () => {
 			const tmux = scriptedTmux([EMPTY_PANE, EMPTY_PANE, STUCK_PANE, STUCK_PANE, BUSY_PANE]);
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
 			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("confirmed");
+			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
+		});
+
+		it("never retypes after Enter when an accepted send has ambiguous confirmation", () => {
+			const tmux = scriptedTmux([
+				STUCK_PANE,
+				STUCK_PANE,
+				...repeatedCapture(AMBIGUOUS_EMPTY_AFTER_ENTER, 100),
+			]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(submissionConfirmed(STUCK_PANE, AMBIGUOUS_EMPTY_AFTER_ENTER, SENT)).toBe(false);
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
 			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
 		});
 
@@ -211,25 +250,24 @@ describe("composerPending — submit verification (the cause-independent retry g
 			expect(tmux.calls[typed[1] - 1]).toEqual(clearArgv(NON_BMP_SENT));
 		});
 
-		it("(d) caps typing at exactly three total attempts per outer submit attempt", () => {
+		it("(d) caps pre-Enter typing at exactly three total attempts", () => {
 			const tmux = scriptedTmux(repeatedCapture(EMPTY_PANE, 90));
-			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
-
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
-			const typed = indexesOf(tmux.calls, typeArgv());
-			expect(typed).toHaveLength(9);
-			for (const index of typed.slice(1)) expect(tmux.calls[index - 1]).toEqual(clearArgv());
-		});
-
-		it("(c) clears immediately before every outer submit retry", () => {
-			const captures = Array.from({ length: 3 }, () => repeatedCapture(STUCK_PANE, 7)).flat();
-			const tmux = scriptedTmux(captures);
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
 			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
 			const typed = indexesOf(tmux.calls, typeArgv());
 			expect(typed).toHaveLength(3);
 			for (const index of typed.slice(1)) expect(tmux.calls[index - 1]).toEqual(clearArgv());
+		});
+
+		it("(c) retries Enter against visibly pending text without retyping it", () => {
+			const tmux = scriptedTmux(repeatedCapture(STUCK_PANE, 21));
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
+			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
+			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
 		});
 	});
 

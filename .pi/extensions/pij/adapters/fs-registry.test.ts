@@ -2,6 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { reattachIdentity, resolveStableIdentity } from "../core/binding.js";
+import { deriveHarnessPijId } from "../core/discovery.js";
 import type { SessionDescriptor } from "../core/types.js";
 import { FsRegistry } from "./fs-registry.js";
 
@@ -31,6 +33,197 @@ describe("FsRegistry", () => {
 		reg.write(descriptor("alice"));
 		expect(reg.read("alice")?.id).toBe("alice");
 		expect(reg.list().map((d) => d.id)).toEqual(["alice"]);
+	});
+
+	it("claim creates once and returns the existing descriptor to concurrent claimers", () => {
+		const first = new FsRegistry(home).claim(descriptor("stable"));
+		expect(first).toMatchObject({ ok: true, value: { kind: "claimed" } });
+
+		const competing = { ...descriptor("stable"), pid: 9999 };
+		const second = new FsRegistry(home).claim(competing);
+		expect(second).toMatchObject({
+			ok: true,
+			value: { kind: "exists", descriptor: { id: "stable", pid: 4242 } },
+		});
+		expect(new FsRegistry(home).list().map((d) => d.id)).toEqual(["stable"]);
+	});
+
+	it("fresh registry instances re-attach an external native session to the same pij id", () => {
+		const original: SessionDescriptor = {
+			...descriptor("pij-original"),
+			harness: "claude",
+			harnessSessionId: "native-session",
+			paneId: "%1",
+			pid: 10,
+			lifecycle: "bound",
+			lastEventAt: "2026-07-10T00:00:00.000Z",
+		};
+		new FsRegistry(home).write(original);
+
+		// Simulate a full restart: discard every object, then reconstruct from disk.
+		const afterRestart = new FsRegistry(home);
+		const resolved = resolveStableIdentity(
+			afterRestart.list(),
+			"claude",
+			"native-session",
+			deriveHarnessPijId("claude", "native-session"),
+		);
+		expect(resolved).toMatchObject({
+			ok: true,
+			value: { kind: "reuse", descriptor: { id: "pij-original" } },
+		});
+		if (!resolved.ok || resolved.value.kind !== "reuse") throw new Error("expected reuse");
+		afterRestart.write(
+			reattachIdentity(resolved.value.descriptor, {
+				harness: "claude",
+				harnessSessionId: "native-session",
+				folder: "/repo-after-restart",
+				pid: 99,
+				paneId: "%9",
+			}),
+		);
+
+		const verified = new FsRegistry(home).read("pij-original");
+		expect(verified).toMatchObject({
+			id: "pij-original",
+			dataDir: "/home/.pij/pij-original",
+			eventsPath: "/home/.pij/pij-original/events.ndjson",
+			lastEventAt: "2026-07-10T00:00:00.000Z",
+			folder: "/repo-after-restart",
+			pid: 99,
+			paneId: "%9",
+			lifecycle: "bound",
+		});
+		expect(new FsRegistry(home).list()).toHaveLength(1);
+	});
+
+	it("a first bound-descriptor write automatically claims durable identity", () => {
+		new FsRegistry(home).write({
+			...descriptor("spawned-claude"),
+			harness: "claude",
+			harnessSessionId: "spawn-native",
+			lifecycle: "bound",
+		});
+		new FsRegistry(home).remove("spawned-claude");
+		expect(new FsRegistry(home).resolveIdentity("claude", "spawn-native")).toEqual({
+			ok: true,
+			value: "spawned-claude",
+		});
+	});
+
+	it("a conflicting first bound write fails before replacing the live descriptor", () => {
+		const registry = new FsRegistry(home);
+		registry.write({
+			...descriptor("shared"),
+			harness: "claude",
+			harnessSessionId: "native-a",
+			lifecycle: "bound",
+		});
+		expect(() =>
+			registry.write({
+				...descriptor("shared"),
+				harness: "claude",
+				harnessSessionId: "native-b",
+				lifecycle: "bound",
+			}),
+		).toThrow(/already owned|identity/i);
+		expect(registry.read("shared")?.harnessSessionId).toBe("native-a");
+	});
+
+	it("rolls back provisional identity when a live descriptor claim is incompatible", () => {
+		const registry = new FsRegistry(home);
+		registry.write({
+			...descriptor("pending-peer"),
+			harness: "claude",
+			lifecycle: "pending",
+		});
+		const failed = registry.claim({
+			...descriptor("pending-peer"),
+			harness: "claude",
+			harnessSessionId: "wrong-native",
+			lifecycle: "bound",
+		});
+		expect(failed).toMatchObject({ ok: false, code: "E-AMBIG" });
+		expect(registry.resolveIdentity("claude", "wrong-native")).toEqual({
+			ok: true,
+			value: undefined,
+		});
+		// The pending peer can still bind to its real native identity.
+		expect(() =>
+			registry.write({
+				...descriptor("pending-peer"),
+				harness: "claude",
+				harnessSessionId: "real-native",
+				lifecycle: "bound",
+			}),
+		).not.toThrow();
+	});
+
+	it("durable native-identity bindings survive descriptor removal and adapter restart", () => {
+		const first = new FsRegistry(home).claimIdentity("pi", "pi-native", "pij-original");
+		expect(first).toEqual({
+			ok: true,
+			value: { kind: "claimed", id: "pij-original" },
+		});
+		new FsRegistry(home).write({
+			...descriptor("pij-original"),
+			role: "parent",
+			harness: "pi",
+			harnessSessionId: "pi-native",
+			spawnedBy: "pij-creator",
+			boundModel: "model-before-restart",
+		});
+		new FsRegistry(home).remove("pij-original");
+
+		expect(new FsRegistry(home).resolveIdentity("pi", "pi-native")).toEqual({
+			ok: true,
+			value: "pij-original",
+		});
+		expect(new FsRegistry(home).resolveIdentitySnapshot("pi", "pi-native")).toMatchObject({
+			ok: true,
+			value: {
+				id: "pij-original",
+				role: "parent",
+				spawnedBy: "pij-creator",
+				boundModel: "model-before-restart",
+			},
+		});
+	});
+
+	it("a second id cannot claim an already-owned native tuple", () => {
+		new FsRegistry(home).claimIdentity("claude", "native", "pij-first");
+		expect(new FsRegistry(home).claimIdentity("claude", "native", "pij-second")).toMatchObject({
+			ok: false,
+			code: "E-AMBIG",
+		});
+	});
+
+	it("distinct native tuples cannot claim the same pij id", () => {
+		new FsRegistry(home).claimIdentity("claude", "native-a", "pij-shared");
+		expect(new FsRegistry(home).claimIdentity("claude", "native-b", "pij-shared")).toMatchObject({
+			ok: false,
+			code: "E-AMBIG",
+		});
+	});
+
+	it("rejects a concrete collision from the legacy 32-bit candidate derivation", () => {
+		const nativeA = "1bhrg2q-45e";
+		const nativeB = "1f04tud-e0v";
+		const candidate = deriveHarnessPijId("claude", nativeA);
+		expect(deriveHarnessPijId("claude", nativeB)).toBe(candidate);
+		new FsRegistry(home).claimIdentity("claude", nativeA, candidate);
+		expect(new FsRegistry(home).claimIdentity("claude", nativeB, candidate)).toMatchObject({
+			ok: false,
+			code: "E-AMBIG",
+		});
+	});
+
+	it("repeating the same tuple and pij id is idempotent", () => {
+		new FsRegistry(home).claimIdentity("claude", "native", "pij-first");
+		expect(new FsRegistry(home).claimIdentity("claude", "native", "pij-first")).toEqual({
+			ok: true,
+			value: { kind: "exists", id: "pij-first" },
+		});
 	});
 
 	it("remove deletes the descriptor (idempotent)", () => {

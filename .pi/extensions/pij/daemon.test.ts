@@ -39,6 +39,7 @@ interface FakePortsOptions {
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
 	readonly sendOutcome?: "confirmed" | "unverified";
+	readonly sendErrorForPane?: string;
 }
 
 function fakePorts(
@@ -53,6 +54,7 @@ function fakePorts(
 		capturePane: () => (typeof paneText === "function" ? paneText() : (paneText ?? READY)),
 		isPaneDead: () => false,
 		sendText: (pane, text) => {
+			if (pane === options.sendErrorForPane) throw new Error(`can't find pane: ${pane}`);
 			sent.push({ pane, text });
 			return options.sendOutcome ?? "confirmed";
 		},
@@ -143,6 +145,43 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(messageBodies("pij-boss")).toContain(
 			`[pij receipt ${delivered.value.messageId}] unverified`,
 		);
+	});
+
+	it("isolates one target's send failure so unrelated live inboxes still drain", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-a-stale",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%dead",
+				harnessSessionId: "stale-session",
+			}),
+		);
+		registry.write(
+			desc({
+				id: "pij-z-live",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%live",
+				harnessSessionId: "live-session",
+			}),
+		);
+		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-a-stale", body: "old" });
+		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-z-live", body: "new" });
+		const ports = fakePorts({ sendErrorForPane: "%dead" });
+		const log: string[] = [];
+
+		expect(() =>
+			new Daemon(home, ports, registry, new FsChannel(home), (line) => log.push(line)).tick(),
+		).not.toThrow();
+
+		expect(ports.sent).toContainEqual({ pane: "%live", text: "[pij from pij-boss] new" });
+		expect(messageBodies("pij-a-stale")).toContain("old");
+		expect(messageBodies("pij-z-live")).toHaveLength(0);
+		expect(log.join("\n")).toContain("pij-a-stale");
+		expect(log.join("\n")).toContain("can't find pane: %dead");
 	});
 
 	it("delivery ownership: a PI target's inbox is NEVER drained (left for its in-process receiver)", () => {

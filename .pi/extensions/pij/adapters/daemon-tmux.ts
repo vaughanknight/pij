@@ -81,20 +81,21 @@ function wakeCopilotInput(paneId: string, runner: TmuxRunner, pid?: number): voi
 }
 
 // ─── submit verification (the cause-independent wedge fix) ──────────────────
-/** Re-check the composer this many times after Enter; WINCH+re-Enter each time the
- *  line is still pending. 3 is enough to ride out a parked loop without blocking the
- *  single-threaded daemon tick for long. */
-const SUBMIT_RETRIES = 3;
-/** Poll every 250ms for up to 1.25s after Enter. With 3 submit attempts and the
- *  900ms copilot enter-settle, worst-case copilot latency is about 6.45s before
- *  returning `unverified` (3 * (900 + 5*250)). */
+/** Re-check the composer this many times after Enter; re-press Enter only while
+ *  the same typed payload is visibly still pending. The payload itself is NEVER
+ *  retyped after the first Enter: an empty composer with inconclusive telemetry is
+ *  an ambiguous success, and at-most-once delivery wins over speculative replay. */
+const SUBMIT_ATTEMPTS = 3;
+/** Poll every 250ms for up to 1.25s after Enter. With three Enter attempts,
+ *  one 900ms Copilot type-settle, and two 200ms retry wakes, the post-type
+ *  verification ceiling is about 5.05s before returning `unverified`. */
 const SUBMIT_VERIFY_POLLS = 5;
 const SUBMIT_VERIFY_MS = 250;
 /** Settle between a WINCH-wake and the retry Enter. */
 const WAKE_SETTLE_MS = 200;
-/** Total type attempts, including the first, when the composer remains empty.
- *  Each attempt polls for up to 2s, so a pathological pane can synchronously
- *  block for 3 × 2s = 6s per outer submit attempt. */
+/** Total pre-Enter type attempts, including the first, when the composer remains
+ *  empty. Each attempt polls for up to 2s, so a pathological pane can block the
+ *  synchronous delivery call for up to 6s before submission verification begins. */
 export const TYPE_CONFIRM_ATTEMPTS = 3;
 export const TYPE_CONFIRM_POLLS = 8;
 export const TYPE_CONFIRM_POLL_MS = 250;
@@ -216,55 +217,82 @@ export class DaemonTmux implements DaemonPorts {
 	}
 
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome {
-		const wake = needsInputWake(harness);
-		for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
-			// Wake a BACKGROUNDED copilot BEFORE typing (the real wedge fix): with tmux
-			// `focus-events on`, a pane you've switched away from is in focus-OUT state and
-			// copilot then swallows Enter-as-submit, stranding the message in the composer.
-			// A focus-IN (CSI I) injection flips it back to focused-input mode so the Return
-			// below actually submits (proven live). Copilot-only, best-effort.
-			if (wake) wakeCopilotInput(paneId, this.runner, pid);
-			if (wake && attempt > 0) clearTypedText(paneId, text, this.runner);
-			typeLiteral(paneId, text, this.runner);
-			if (wake) {
-				for (let typedAttempt = 0; typedAttempt < TYPE_CONFIRM_ATTEMPTS; typedAttempt++) {
-					let shouldRetype = true;
-					for (let poll = 0; poll < TYPE_CONFIRM_POLLS; poll++) {
-						this.sleep(TYPE_CONFIRM_POLL_MS);
-						const typedPane = this.capturePane(paneId);
-						if (composerHasTextTail(typedPane, text) || !composerIsEmpty(typedPane)) {
-							shouldRetype = false;
-							break;
-						}
-					}
-					if (!shouldRetype || typedAttempt + 1 >= TYPE_CONFIRM_ATTEMPTS) break;
-					wakeCopilotInput(paneId, this.runner, pid);
-					clearTypedText(paneId, text, this.runner);
-					typeLiteral(paneId, text, this.runner);
-				}
+		try {
+			return this.sendTextUnchecked(paneId, text, harness, pid);
+		} catch (error) {
+			try {
+				const detail = error instanceof Error ? error.message : String(error);
+				process.stderr.write(
+					`⚠️  tmux UNVERIFIED: send to pane ${paneId} failed before submission confirmation — ${detail}\n`,
+				);
+			} catch {
+				// logging is diagnostic-only — a write failure must not break delivery.
 			}
-			// Settle before Enter (T020/R-02): a literal burst can trip the harness's paste
-			// detection + a short idle-debounce; an Enter fired mid-debounce is swallowed, so
-			// the submit lags or strands the text. Wait it out (synchronously — the daemon tick
-			// is single-threaded). The window is HARNESS-SPECIFIC (Copilot's needs longer).
-			this.sleep(enterSettleMs(harness));
-			const preSubmit = this.capturePane(paneId);
-			// Re-assert focus-IN right before the Return (a focus-OUT can arrive between the
-			// type and the Enter), then submit.
+			return "unverified";
+		}
+	}
+
+	/** The actual tmux interaction. The public boundary above converts every pane
+	 *  race/disappearance into the port's non-throwing `unverified` outcome so one
+	 *  stale descriptor cannot abort the daemon's whole delivery tick. */
+	private sendTextUnchecked(
+		paneId: string,
+		text: string,
+		harness?: HarnessKind,
+		pid?: number,
+	): SendOutcome {
+		const wake = needsInputWake(harness);
+		// Wake a BACKGROUNDED copilot BEFORE typing (the real wedge fix): with tmux
+		// `focus-events on`, a pane you've switched away from is in focus-OUT state and
+		// copilot then swallows Enter-as-submit, stranding the message in the composer.
+		if (wake) wakeCopilotInput(paneId, this.runner, pid);
+		typeLiteral(paneId, text, this.runner);
+		if (wake) {
+			// Retyping is safe only BEFORE the first Enter: no submission can have happened.
+			for (let typedAttempt = 0; typedAttempt < TYPE_CONFIRM_ATTEMPTS; typedAttempt++) {
+				let shouldRetype = true;
+				for (let poll = 0; poll < TYPE_CONFIRM_POLLS; poll++) {
+					this.sleep(TYPE_CONFIRM_POLL_MS);
+					const typedPane = this.capturePane(paneId);
+					if (composerHasTextTail(typedPane, text) || !composerIsEmpty(typedPane)) {
+						shouldRetype = false;
+						break;
+					}
+				}
+				if (!shouldRetype || typedAttempt + 1 >= TYPE_CONFIRM_ATTEMPTS) break;
+				wakeCopilotInput(paneId, this.runner, pid);
+				clearTypedText(paneId, text, this.runner);
+				typeLiteral(paneId, text, this.runner);
+			}
+		}
+		// Settle before Enter (T020/R-02): a literal burst can trip the harness's paste
+		// detection + a short idle-debounce; an Enter fired mid-debounce is swallowed.
+		this.sleep(enterSettleMs(harness));
+		const preSubmit = this.capturePane(paneId);
+		let lastPane = preSubmit;
+		for (let attempt = 0; attempt < SUBMIT_ATTEMPTS; attempt++) {
+			// Re-assert focus-IN right before Return. On retries, press Enter against the
+			// SAME visible payload; never clear/retype after submission became possible.
+			if (attempt > 0) {
+				wakeCopilotInput(paneId, this.runner, pid);
+				this.sleep(WAKE_SETTLE_MS);
+			}
 			if (wake) sendFocusIn(paneId, this.runner);
 			pressKey(paneId, "Enter", 1, this.runner);
 			if (!wake) return "confirmed";
 			for (let poll = 0; poll < SUBMIT_VERIFY_POLLS; poll++) {
 				this.sleep(SUBMIT_VERIFY_MS);
-				if (submissionConfirmed(preSubmit, this.capturePane(paneId), text)) return "confirmed";
+				lastPane = this.capturePane(paneId);
+				if (submissionConfirmed(preSubmit, lastPane, text)) return "confirmed";
 			}
-			wakeCopilotInput(paneId, this.runner, pid);
-			this.sleep(WAKE_SETTLE_MS);
+			// Empty means the payload left the composer. Even without a visible busy or
+			// transcript transition, replaying could duplicate an already-accepted turn.
+			if (composerIsEmpty(lastPane)) break;
 		}
 		try {
 			const tail = text.replace(/\s+/g, " ").slice(-48);
 			process.stderr.write(
-				`⚠️  copilot UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) never showed a busy transition or fresh transcript event after ${SUBMIT_RETRIES} submit attempts — text tail «…${tail}».\n`,
+				`⚠️  copilot UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) lacked positive submission confirmation; payload was typed once — text tail «…${tail}».\n`,
 			);
 		} catch {
 			// logging is diagnostic-only — a write failure must not break delivery.

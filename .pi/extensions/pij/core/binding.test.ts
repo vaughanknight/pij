@@ -9,8 +9,10 @@ import {
 	evaluateWatchdog,
 	markFailed,
 	markInitInjected,
+	reattachIdentity,
 	resolveAdoptSessionId,
 	resolveAdoptSessionIdForHarness,
+	resolveStableIdentity,
 	shouldInjectInit,
 } from "./binding.js";
 import type { SessionDescriptor } from "./types.js";
@@ -166,6 +168,104 @@ describe("resolveAdoptSessionIdForHarness (harness-aware adopt, findings 02/02b/
 	it("codex with no rollout → null, no transcriptPath (pending preserved, AC-4)", () => {
 		const r = resolveAdoptSessionIdForHarness({ ...base, harness: "codex" });
 		expect(r).toEqual({ harnessSessionId: null });
+	});
+});
+
+describe("restart-stable identity resolution (T029 / AC-15)", () => {
+	const bound = (over: Partial<SessionDescriptor> = {}): SessionDescriptor => ({
+		...PENDING,
+		id: "pij-original",
+		harness: "claude",
+		harnessSessionId: "native-1",
+		lifecycle: "bound",
+		dataDir: "/Users/jo/.pij/pij-original",
+		eventsPath: "/Users/jo/.pij/pij-original/events.ndjson",
+		...over,
+	});
+
+	it("one exact tuple match reuses its existing pij id", () => {
+		expect(resolveStableIdentity([bound()], "claude", "native-1", "pij-derived")).toEqual({
+			ok: true,
+			value: { kind: "reuse", descriptor: bound() },
+		});
+	});
+
+	it("zero matches claims the deterministic candidate id", () => {
+		expect(resolveStableIdentity([], "claude", "native-1", "pij-derived")).toEqual({
+			ok: true,
+			value: { kind: "claim", id: "pij-derived" },
+		});
+	});
+
+	it("the same native id in another harness is not a match", () => {
+		const copilot = bound({ id: "pij-copilot", harness: "copilot" });
+		expect(resolveStableIdentity([copilot], "claude", "native-1", "pij-derived")).toEqual({
+			ok: true,
+			value: { kind: "claim", id: "pij-derived" },
+		});
+	});
+
+	it("multiple exact matches fail loudly instead of minting another identity", () => {
+		const result = resolveStableIdentity(
+			[bound(), bound({ id: "pij-duplicate" })],
+			"claude",
+			"native-1",
+			"pij-derived",
+		);
+		expect(result).toMatchObject({ ok: false, code: "E-AMBIG" });
+	});
+
+	it("a deterministic candidate occupied by another tuple is a collision", () => {
+		const result = resolveStableIdentity(
+			[bound({ id: "pij-derived", harnessSessionId: "someone-else" })],
+			"claude",
+			"native-1",
+			"pij-derived",
+		);
+		expect(result).toMatchObject({ ok: false, code: "E-AMBIG" });
+	});
+
+	it("a legacy untagged Pi descriptor at its derived id is upgraded in place", () => {
+		const legacy = bound({
+			id: "pij-derived",
+			harness: undefined,
+			harnessSessionId: undefined,
+		});
+		expect(resolveStableIdentity([legacy], "pi", "pi-native-1", "pij-derived")).toEqual({
+			ok: true,
+			value: { kind: "reuse", descriptor: legacy },
+		});
+	});
+
+	it("reattachment preserves identity/history and replaces runtime attachment fields", () => {
+		const existing = bound({
+			paneId: "%1",
+			pid: 10,
+			folder: "/old",
+			state: "working",
+			lastEventAt: "2026-07-10T00:00:00.000Z",
+			failureReason: "dead",
+		});
+		const reattached = reattachIdentity(existing, {
+			harness: "claude",
+			harnessSessionId: "native-1",
+			paneId: "%9",
+			pid: 99,
+			folder: "/new",
+		});
+		expect(reattached).toMatchObject({
+			id: "pij-original",
+			dataDir: "/Users/jo/.pij/pij-original",
+			eventsPath: "/Users/jo/.pij/pij-original/events.ndjson",
+			startedAt: PENDING.startedAt,
+			lastEventAt: "2026-07-10T00:00:00.000Z",
+			folder: "/new",
+			paneId: "%9",
+			pid: 99,
+			state: "idle",
+			lifecycle: "bound",
+		});
+		expect(reattached.failureReason).toBeUndefined();
 	});
 });
 

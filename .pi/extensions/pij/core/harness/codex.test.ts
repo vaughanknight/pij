@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	codexCwdFromMeta,
+	codexRolloutForSession,
 	codexSessionIdFromPath,
 	codexTranscriptRoot,
 	listCodexRollouts,
@@ -31,6 +32,21 @@ describe("codexSessionIdFromPath", () => {
 	it("matches the live convention: filename UUID == session_meta.id (POC)", () => {
 		const p = `/x/y/rollout-2026-04-30T13-14-22-019ddc61-1234-7abc-8def-0123456789ab.jsonl`;
 		expect(codexSessionIdFromPath(p)).toBe("019ddc61-1234-7abc-8def-0123456789ab");
+	});
+});
+
+describe("codexRolloutForSession", () => {
+	it("finds the rollout whose trailing UUID exactly matches an explicit native id", () => {
+		const other = "/x/rollout-2026-06-28T00-00-00-aaaaaaaa-1111-7222-8333-bbbbbbbbbbbb.jsonl";
+		expect(codexRolloutForSession([other, ROLLOUT], UUID)).toBe(ROLLOUT);
+	});
+
+	it("returns null when an authoritative id has no matching rollout", () => {
+		expect(codexRolloutForSession([ROLLOUT], "aaaaaaaa-1111-7222-8333-bbbbbbbbbbbb")).toBeNull();
+	});
+
+	it("rejects an exact rollout path when the caller cannot read it", () => {
+		expect(codexRolloutForSession([ROLLOUT], UUID, () => false)).toBeNull();
 	});
 });
 

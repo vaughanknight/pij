@@ -4,8 +4,7 @@
 
 A machine-wide **control plane** that spawns, addresses, messages, deterministically
 binds, verifies, and tails coding-agent sessions across heterogeneous harnesses
-(pi today, Claude Code now over tmux, Copilot later) under a **single pre-allocated
-identity** and a file-backed **switchboard daemon**. It extends `pij-messaging` from
+(pi today, Claude Code now over tmux, Copilot later) under a **single durable identity** and a file-backed **switchboard daemon**. It extends `pij-messaging` from
 "two live pi sessions" to "any harness pij can drive", without disturbing the one
 immovable seam — `pi.sendUserMessage` stays in-process (owned by `pij-messaging`'s
 thin receiver). Plan 019.
@@ -24,7 +23,8 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/harness/pi.ts` | Pi transport: observe-only routing (delivery owned by the thin receiver). |
 | `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice. |
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
-| `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`); rebuild on start. |
+| `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
+| `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims plus two-way durable identity ownership and metadata snapshots used to recover the same pij-id after restart. |
 | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
 | `.pi/extensions/pij/daemon.ts` | Daemon bin: lock → watch pending+inboxes → readiness/interstitial → init-once → route → render. |
@@ -34,7 +34,7 @@ thin receiver). Plan 019.
 
 | Concept | Description | Contract |
 |---------|-------------|----------|
-| Pre-allocated identity | The `pij-id` is computed BEFORE launch and threaded into the child env, so spawn returns it immediately (caller never blocks). | `deriveSelfId` reused; id known pre-launch (AC-01). |
+| Durable identity | Spawn computes a `pij-id` before launch; restart re-attachment resolves the exact harness-native identity, hydrates durable metadata, and reuses the original id while runtime presence is replaced. | `resolveStableIdentity`; descriptor-owned two-way `FsRegistry` claim; `adopt --session-id` (AC-01/15). |
 | Pending descriptor | Spawn atomically writes `(pij-id, paneId, cwd, harness, state:pending)` under `~/.pij/`; the daemon dir-watch picks it up. | `SessionDescriptor` += `harness`/`state` (F2 / AC-01). |
 | Transport selection | A target's harness decides how a message reaches it. | `selectTransport(harness)` → `inbox` (pi) \| `sendkeys` (claude/copilot/codex). |
 | Readiness | The daemon reads the pane and classifies idle-ready vs busy vs booting vs interstitial — no agent in the loop. | `classifyReadiness(paneText)`; R-01 footer markers (AC-02). |
@@ -54,7 +54,7 @@ thin receiver). Plan 019.
 | `HarnessKind` + `selectTransport` | router, spawn, CLI | `"pi" \| "claude" \| "copilot" \| "codex"` → `"inbox" \| "sendkeys"`. |
 | `classifyReadiness` | daemon readiness loop | pure `string → ReadinessState`; version-sensitive markers isolated here. |
 | `classifyInterstitial` | daemon readiness loop | pure `string → { kind: "dismiss" \| "needs-human" \| "none" }`. |
-| Binding record | daemon, `pij tail`, creator notice | `pij-id ↔ harnessSessionId ↔ paneId ↔ cwd`, deterministic + confirmatory. |
+| Binding record | daemon, `pij tail`, creator notice | Durable `(harness,harnessSessionId) ↔ pij-id` plus replaceable `paneId ↔ pid ↔ cwd`; exact zero/one/many resolution, no silent overwrite. |
 
 ## Boundary Owns
 
@@ -63,7 +63,7 @@ thin receiver). Plan 019.
 - The tmux key/paste/capture primitives (shared lib).
 - Readiness detection + interstitial handling.
 - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
-- pij-id pre-allocation + the pending-descriptor handoff; init idempotency.
+- pij-id pre-allocation + restart-stable exact native-identity recovery + the pending-descriptor handoff; init idempotency.
 - Claude/codex transcript-path resolution + tailing (harness-selected `transcriptLayout`).
 
 ## Boundary Excludes
@@ -93,6 +93,7 @@ thin receiver). Plan 019.
 | Plan | Change | Date |
 |------|--------|------|
 | 019-pij-tmux-control-plane | Created `pij-control-plane` domain. Group A: extracted the shared `tmux-keys` send-keys/paste/capture lib (argv-only, injectable `TmuxRunner`) from `harness/driver/tmux.ts` and re-delegated the driver to it for parity. | 2026-06-27 |
+| 019-pij-tmux-control-plane / T029 | Added restart-stable identity: authoritative external native ids, exact tuple cardinality, atomic durable identity claims, runtime re-attachment, and Pi exact native-id persistence. | 2026-07-11 |
 | 021-unify-spawn-harness | `pij spawn` is now one uniform surface for `pi\|claude\|copilot` (`SPAWNABLE_HARNESSES`). pi dispatches down a self-registering path in the bin (pure `buildSpawnCommand` + same registry-tracked split layout) — no daemon, no pre-allocated id, no pending descriptor, no binding; claude/copilot daemon-bound path unchanged. | 2026-06-28 |
 | 022-codex-spawn-support | Added `codex` as the 4th spawnable harness — a second DISCOVERY-bound harness (`--dangerously-bypass-approvals-and-sandbox`, `sendkeys`). New pure `core/harness/codex.ts` (date-nested global rollout layout: `~/.codex/sessions/YYYY/MM/DD/rollout-<ISO>-<uuid>.jsonl`, trailing-UUID id, `session_meta.cwd` confirm, tail summarizer) + `core/harness/transcript.ts` (`transcriptLayout(harness)` selector — claude byte-unchanged). Daemon discovery derives the id via `layout.sessionIdOf(path)` (the UUID, not the stem — Finding 06) and persists the rollout path as `SessionDescriptor.transcriptPath` for tail. | 2026-06-28 |
 | 024-fix-false-provider-death | Provider-failure push now suppresses working-session false positives, clears stale provider-failure state on working recovery, and uses provider-stuck wording instead of claiming live sessions exited. | 2026-06-28 |

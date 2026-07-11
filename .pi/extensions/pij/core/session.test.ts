@@ -24,6 +24,8 @@ function bootInput(over: Partial<BootInput> = {}): BootInput {
 		folder: "/repo",
 		dataDir: "/home/.pij/alice",
 		eventsPath: "/home/.pij/alice/events.ndjson",
+		harness: "pi",
+		harnessSessionId: "pi-native-alice",
 		...over,
 	};
 }
@@ -85,6 +87,82 @@ describe("PijSession.boot", () => {
 		expect(h.pi.injects).toHaveLength(0); // no replay of the announce
 		expect(h.registry.read("alice")?.startedAt).toBe("2026-06-15T00:00:00.000Z");
 		expect(h.registry.read("alice")?.pid).toBe(4242); // pid refreshed
+	});
+
+	it("resume preserves durable fields while replacing stale runtime attachment", () => {
+		const existing: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			folder: "/old-repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			lifecycle: "failed",
+			failureReason: "dead",
+			paneId: "%1",
+			spawnedBy: "pij-parent",
+			lastEventAt: "2026-06-15T01:00:00.000Z",
+			boundModel: "model-before-restart",
+		};
+		const h = harness({ registry: [existing], now: T0 });
+		h.session.boot(bootInput({ folder: "/new-repo", paneId: "%9", resetRuntimeState: true }));
+		expect(h.registry.read("alice")).toMatchObject({
+			id: "alice",
+			folder: "/new-repo",
+			pid: 4242,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			lifecycle: undefined,
+			failureReason: undefined,
+			paneId: "%9",
+			spawnedBy: "pij-parent",
+			lastEventAt: "2026-06-15T01:00:00.000Z",
+			boundModel: "model-before-restart",
+		});
+	});
+
+	it("hydrates durable metadata when the live descriptor was removed", () => {
+		const durable: SessionDescriptor = {
+			id: "alice",
+			role: "parent",
+			folder: "/old-repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			spawnedBy: "pij-creator",
+			boundModel: "model-before-restart",
+			paneId: "%dead",
+			lifecycle: "failed",
+			failureReason: "dead",
+		};
+		const h = harness({ now: T0 });
+		const result = h.session.boot(
+			bootInput({
+				role: undefined,
+				paneId: "%new",
+				durableDescriptor: durable,
+				resetRuntimeState: true,
+			}),
+		);
+		expect(result).toMatchObject({ fresh: true, role: "parent" });
+		expect(h.registry.read("alice")).toMatchObject({
+			id: "alice",
+			role: "parent",
+			startedAt: "2026-06-15T00:00:00.000Z",
+			spawnedBy: "pij-creator",
+			boundModel: "model-before-restart",
+			paneId: "%new",
+			state: "idle",
+			lifecycle: undefined,
+			failureReason: undefined,
+		});
 	});
 
 	it("reseeds the seq counter from lastSeq() (crash-safe, finding 04)", () => {

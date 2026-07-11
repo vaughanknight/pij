@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	deriveHarnessPijId,
 	deriveSelfId,
 	excludeSelf,
 	filterByFolder,
@@ -107,6 +108,20 @@ describe("deriveSelfId", () => {
 		expect(deriveSelfId(undefined, 4242)).toBe("pij-4242");
 		expect(deriveSelfId("", 4242)).toBe("pij-4242");
 		expect(deriveSelfId("   ", 4242)).toBe("pij-4242");
+	});
+});
+
+describe("deriveHarnessPijId", () => {
+	it("is deterministic for an exact harness-native identity tuple", () => {
+		const id = deriveHarnessPijId("claude", "native-session-1");
+		expect(id).toMatch(/^pij-[a-z0-9]+$/);
+		expect(deriveHarnessPijId("claude", "native-session-1")).toBe(id);
+	});
+
+	it("namespaces the same native id by harness", () => {
+		expect(deriveHarnessPijId("claude", "shared-id")).not.toBe(
+			deriveHarnessPijId("copilot", "shared-id"),
+		);
 	});
 });
 

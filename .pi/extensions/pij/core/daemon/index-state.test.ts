@@ -37,6 +37,32 @@ describe("IndexState", () => {
 		expect(ix.all()).toHaveLength(3);
 	});
 
+	it("indexes exact harness-native tuples without cross-harness collisions", () => {
+		const ix = IndexState.from([
+			desc({ id: "claude-x", harness: "claude", harnessSessionId: "shared" }),
+			desc({ id: "copilot-x", harness: "copilot", harnessSessionId: "shared" }),
+		]);
+		expect(ix.resolveHarnessIdentity("claude", "shared")).toEqual({
+			ok: true,
+			value: "claude-x",
+		});
+		expect(ix.resolveHarnessIdentity("copilot", "shared")).toEqual({
+			ok: true,
+			value: "copilot-x",
+		});
+	});
+
+	it("fails loudly when one exact tuple maps to multiple pij ids", () => {
+		const ix = IndexState.from([
+			desc({ id: "claude-a", harness: "claude", harnessSessionId: "duplicate" }),
+			desc({ id: "claude-b", harness: "claude", harnessSessionId: "duplicate" }),
+		]);
+		expect(ix.resolveHarnessIdentity("claude", "duplicate")).toMatchObject({
+			ok: false,
+			code: "E-AMBIG",
+		});
+	});
+
 	it("lists only pending sessions for the daemon to drive", () => {
 		const ix = IndexState.from(SNAPSHOT);
 		expect(ix.pending().map((d) => d.id)).toEqual(["claude-c"]);

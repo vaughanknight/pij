@@ -92,108 +92,120 @@ export class Daemon {
 
 		for (const d of this.index.pending()) {
 			if (!daemonOwnsDelivery(d.harness ?? "pi")) continue; // pi self-drives
-			const drive = this.drives.get(d.id) ?? {};
-			this.drives.set(d.id, drive);
-			const out = driveSession(d, drive, this.ports, this.registry, this.channel);
-			if (out.kind !== "waiting" && out.kind !== "boot") {
-				const extra =
-					out.kind === "bound"
-						? ` ↔ ${out.harnessSessionId}`
-						: out.kind === "failed"
-							? ` (${out.reason})`
-							: out.kind === "dismissed" || out.kind === "needs-human"
-								? ` (${out.label})`
-								: "";
-				this.log(`spawn ${d.id}: ${out.kind}${extra}`);
+			try {
+				const drive = this.drives.get(d.id) ?? {};
+				this.drives.set(d.id, drive);
+				const out = driveSession(d, drive, this.ports, this.registry, this.channel);
+				if (out.kind !== "waiting" && out.kind !== "boot") {
+					const extra =
+						out.kind === "bound"
+							? ` ↔ ${out.harnessSessionId}`
+							: out.kind === "failed"
+								? ` (${out.reason})`
+								: out.kind === "dismissed" || out.kind === "needs-human"
+									? ` (${out.label})`
+									: "";
+					this.log(`spawn ${d.id}: ${out.kind}${extra}`);
+				}
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				this.log(`session ${d.id} tick error: ${detail}`);
 			}
 		}
 
 		for (const d of this.index.all()) {
-			// `--once` agent peer that has pushed its report → close its pane + drop its
-			// descriptor (T008 / AC-16). `planOnceClose` is true ONLY for `agentOnce &&
-			// reportedAt`, so a resident peer, an un-reported once peer, and every plain
-			// (non-agent) colleague are left untouched — the stalled/dead watchdog below
-			// is unchanged. The report is already durable in the spawner's inbox before
-			// `reportedAt` is stamped (T007), so closing the reporter never loses it.
-			if (planOnceClose(d)) {
-				if (d.paneId) this.ports.killPane(d.paneId);
-				this.registry.remove(d.id);
-				this.drives.delete(d.id);
-				this.pushed.delete(d.id);
-				this.flushed.delete(d.id);
-				this.paneSig.delete(d.id);
-				this.watchManager.disposeSession(d.id);
-				this.log(`close ${d.id}: once-mode agent peer reported → pane killed + descriptor removed`);
-				continue;
-			}
-			let current = d;
-			// Delivery is daemon-owned ONLY for bound tmux harnesses (claude/copilot).
-			// pi self-drives its inbox via its in-process receiver, so it is excluded
-			// from flush/drain/observe — the daemon must never touch a pi inbox.
-			const owns = current.lifecycle === "bound" && daemonOwnsDelivery(current.harness ?? "pi");
-			if (owns) {
-				// Flush buffered pre-bind sends — but ONLY once we have a pane to send to.
-				// `SendBuffer.flush` deletes the queue unconditionally, so guarding the
-				// flush (not just the send) avoids silently dropping them (review M1).
-				if (current.paneId && !this.flushed.has(current.id)) {
-					this.flushed.add(current.id);
-					for (const m of this.buffer.flush(current.id)) {
-						const outcome = this.ports.sendText(
-							current.paneId,
-							flushedText(m.message),
-							current.harness,
-							current.pid,
-						);
-						this.emitSendReceipt(current.id, m.message.from, m.messageId, outcome);
-					}
+			try {
+				// `--once` agent peer that has pushed its report → close its pane + drop its
+				// descriptor (T008 / AC-16). `planOnceClose` is true ONLY for `agentOnce &&
+				// reportedAt`, so a resident peer, an un-reported once peer, and every plain
+				// (non-agent) colleague are left untouched — the stalled/dead watchdog below
+				// is unchanged. The report is already durable in the spawner's inbox before
+				// `reportedAt` is stamped (T007), so closing the reporter never loses it.
+				if (planOnceClose(d)) {
+					if (d.paneId) this.ports.killPane(d.paneId);
+					this.registry.remove(d.id);
+					this.drives.delete(d.id);
+					this.pushed.delete(d.id);
+					this.flushed.delete(d.id);
+					this.paneSig.delete(d.id);
+					this.watchManager.disposeSession(d.id);
+					this.log(
+						`close ${d.id}: once-mode agent peer reported → pane killed + descriptor removed`,
+					);
+					continue;
 				}
-				this.drainInbox(current.id);
-				// Persist footer activity → working|idle (+ fresh last-activity ts) so
-				// `pij state`/`list` report real liveness instead of `idle · never`
-				// (control-plane peers write no pij events). Writes only on a change.
-				if (current.paneId) {
-					const pane = this.ports.capturePane(current.paneId);
-					const readiness = classifyReadiness(pane);
-					let updated = observeActivity(current, readiness, this.ports.now());
-					// Pane-content heartbeat: while WORKING, treat any visible change since
-					// last tick as activity — refresh lastEventAt. `observeActivity` only
-					// refreshes on a `busy` footer, but a deep-think / long-tool xhigh peer
-					// renders streaming reasoning or scrolling tool output that classifies as
-					// `booting` (no footer marker); its pane is still CHANGING, so this keeps
-					// its liveness fresh and stops the stall watchdog false-firing (SUGG-002).
-					const prevSig = this.paneSig.get(current.id);
-					this.paneSig.set(current.id, pane);
-					const effectiveState = updated?.state ?? current.state;
-					if (prevSig !== undefined && pane !== prevSig && effectiveState === "working") {
-						updated = {
-							...(updated ?? current),
-							lastEventAt: new Date(this.ports.now()).toISOString(),
-						};
+				let current = d;
+				// Delivery is daemon-owned ONLY for bound tmux harnesses (claude/copilot).
+				// pi self-drives its inbox via its in-process receiver, so it is excluded
+				// from flush/drain/observe — the daemon must never touch a pi inbox.
+				const owns = current.lifecycle === "bound" && daemonOwnsDelivery(current.harness ?? "pi");
+				if (owns) {
+					// Flush buffered pre-bind sends — but ONLY once we have a pane to send to.
+					// `SendBuffer.flush` deletes the queue unconditionally, so guarding the
+					// flush (not just the send) avoids silently dropping them (review M1).
+					if (current.paneId && !this.flushed.has(current.id)) {
+						this.flushed.add(current.id);
+						for (const m of this.buffer.flush(current.id)) {
+							const outcome = this.ports.sendText(
+								current.paneId,
+								flushedText(m.message),
+								current.harness,
+								current.pid,
+							);
+							this.emitSendReceipt(current.id, m.message.from, m.messageId, outcome);
+						}
 					}
-					if (updated) {
-						// writeMerged re-reads + preserves a reportedAt stamped concurrently by
-						// `pij agent report` between this tick's index rebuild and now, so the
-						// activity write can't clobber the `--once` close latch (Finding 1). It
-						// returns the merged descriptor so `current` (fed to the stall/dead push
-						// below) also carries the preserved stamp.
-						current = writeMerged(this.registry, updated);
+					this.drainInbox(current.id);
+					// Persist footer activity → working|idle (+ fresh last-activity ts) so
+					// `pij state`/`list` report real liveness instead of `idle · never`
+					// (control-plane peers write no pij events). Writes only on a change.
+					if (current.paneId) {
+						const pane = this.ports.capturePane(current.paneId);
+						const readiness = classifyReadiness(pane);
+						let updated = observeActivity(current, readiness, this.ports.now());
+						// Pane-content heartbeat: while WORKING, treat any visible change since
+						// last tick as activity — refresh lastEventAt. `observeActivity` only
+						// refreshes on a `busy` footer, but a deep-think / long-tool xhigh peer
+						// renders streaming reasoning or scrolling tool output that classifies as
+						// `booting` (no footer marker); its pane is still CHANGING, so this keeps
+						// its liveness fresh and stops the stall watchdog false-firing (SUGG-002).
+						const prevSig = this.paneSig.get(current.id);
+						this.paneSig.set(current.id, pane);
+						const effectiveState = updated?.state ?? current.state;
+						if (prevSig !== undefined && pane !== prevSig && effectiveState === "working") {
+							updated = {
+								...(updated ?? current),
+								lastEventAt: new Date(this.ports.now()).toISOString(),
+							};
+						}
+						if (updated) {
+							// writeMerged re-reads + preserves a reportedAt stamped concurrently by
+							// `pij agent report` between this tick's index rebuild and now, so the
+							// activity write can't clobber the `--once` close latch (Finding 1). It
+							// returns the merged descriptor so `current` (fed to the stall/dead push
+							// below) also carries the preserved stamp.
+							current = writeMerged(this.registry, updated);
+						}
 					}
+					// Whole-life stalled/dead push (T012): detect transitions and push once
+					// per transition to the creator. The latch (`this.pushed`) ensures each
+					// transition (stalled, dead) fires exactly one creator notification. Pass
+					// the JUST-OBSERVED snapshot (`current`), not the tick-start `d`, or the
+					// stall check reads a stale state/lastEventAt and false-fires (SUGG-002).
+					this.pushWholeLifeTransition(current);
 				}
-				// Whole-life stalled/dead push (T012): detect transitions and push once
-				// per transition to the creator. The latch (`this.pushed`) ensures each
-				// transition (stalled, dead) fires exactly one creator notification. Pass
-				// the JUST-OBSERVED snapshot (`current`), not the tick-start `d`, or the
-				// stall check reads a stale state/lastEventAt and false-fires (SUGG-002).
-				this.pushWholeLifeTransition(current);
+				// Provider-failure peek (FIX-A / DL-005) — read-only and HARNESS-AGNOSTIC
+				// (pi INCLUDED). A spawned worker can sit idle on a fatal provider error
+				// (quota/credit/auth/400) without ever dying or stalling, so the owned
+				// branch above never sees it — and a pi worker never enters that branch at
+				// all (no lifecycle/sendkeys). `capture-pane` is read-only, so pi keeps
+				// owning its inbox, delivery, and self-written state — we only peek.
+				const providerView = current.state === "working" ? current : d;
+				if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				this.log(`session ${d.id} tick error: ${detail}`);
 			}
-			// Provider-failure peek (FIX-A / DL-005) — read-only and HARNESS-AGNOSTIC
-			// (pi INCLUDED). A spawned worker can sit idle on a fatal provider error
-			// (quota/credit/auth/400) without ever dying or stalling, so the owned
-			// branch above never sees it — and a pi worker never enters that branch at
-			// all (no lifecycle/sendkeys). `capture-pane` is read-only, so pi keeps
-			// owning its inbox, delivery, and self-written state — we only peek.
-			const providerView = current.state === "working" ? current : d;
-			if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
 		}
 	}
 

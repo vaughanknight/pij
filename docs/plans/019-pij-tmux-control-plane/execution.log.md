@@ -1,6 +1,6 @@
 # Execution Log — pij tmux Control Plane (Plan 019, Simple mode)
 
-One Simple-mode phase, implemented by task group (A–G). Each entry: what changed,
+One Simple-mode phase, implemented by task group (A–H). Each entry: what changed,
 the proof, and any discovery. Testing approach: Hybrid — TDD (real fakes) for the
 pure core (ⓣ), lightweight Driver smoke for impure seams (ⓢ).
 
@@ -320,6 +320,17 @@ harness (v1.0.66), live-verified end-to-end against the daemon.
   names, `--yolo`, the `events.jsonl` tail source, deterministic-bind gotcha).
 - **Tooling**: `just flow-pair-install` symlinks `skills/flow-pair` into `~/.claude/skills`
   + `~/.copilot/skills` (machine-wide, for control-plane dogfooding).
+
+## Group H — restart-stable identity re-attachment (T029)
+
+### T029 — ⓣ Restart-safe identity for Pi and external harnesses
+- **Status**: complete (2026-07-11).
+- **Files**: `core/discovery.ts`, `core/binding.ts`, `core/daemon/index-state.ts`, `core/spawn.ts`, `core/session.ts`, `adapters/fs-registry.ts`, `cli.ts`, `index.ts` and focused tests; `docs/how/pij.md`; both pij domain docs.
+- **What**: external restart re-adoption accepts authoritative `--session-id`; two-way durable identity records under `PIJ_HOME/identities/` survive live-descriptor removal; exact `(harness,harnessSessionId)` lookup uses zero/one/many semantics; zero-match claims are deterministic and first-writer-wins; candidate collisions and duplicate mappings fail `E-AMBIG`. Claims stage+fsync a temp then atomically hard-link no-replace; provisional owner/tuple records roll back on incompatible publication. Pi persists `harness:"pi"` + its exact native id, hydrates durable metadata, restores role, and refreshes pane/state while clearing stale lifecycle/failure on non-reload starts. Codex authoritative adoption requires an exact readable rollout path.
+- **Proof (TDD)**: initial RED = 14 missing-behavior failures; every peer-review finding added its own RED→GREEN regression. Final reviewer packet-scope suite = **231/231 green**; `just typecheck` clean; full `harness checks` green for typecheck, lint, test, smoke, package audit, and snapshots. Temp-`PIJ_HOME` proofs covered descriptor-delete/re-adopt identity+metadata recovery, occupied pending-id preservation, conflicting tuple rejection, and missing Codex rollout with zero persisted files.
+- **Review**: Copilot CLI GPT-5.6 Sol xhigh (`pij-1qiec0g`) completed five findings rounds plus a final approval pass, raised 12 material findings, and returned **APPROVE — no material findings** after all were addressed. Reconciliation: `reviews/t029-restart-identity-review.md`. The reviewer was compacted after the final verdict.
+- **Noteworthy discovery**: a live descriptor alone is not durable identity because Pi removes it on clean shutdown. T029 therefore split presence from identity with a durable metadata snapshot; runtime descriptors remain disposable, avoiding a return to registry corpses.
+- **Coordination**: FX002 remained isolated to `pij-rtxerq`'s daemon/adapter paths; T029 did not touch them or alter `Daemon.tick()` iteration/continue-after-failure behavior.
 
 ### EXT — daemon lifecycle: auto-start on demand + `pij daemon` verb (post-plan extension)
 A control-plane spawn is inert without a daemon. Made the daemon self-managing so an

@@ -6,7 +6,15 @@
 // fails the spawn (notifying the creator) — no silent dead spawn (AC-03/04/05).
 
 import { transcriptLayout } from "./harness/transcript.js";
-import type { DeathReason, HarnessKind, SessionDescriptor, SessionId } from "./types.js";
+import {
+	type DeathReason,
+	err,
+	type HarnessKind,
+	ok,
+	type Result,
+	type SessionDescriptor,
+	type SessionId,
+} from "./types.js";
 
 /** Apply a discovered/confirmed harness session id to a (pending) descriptor,
  *  producing the BOUND descriptor — the binding `pij-id ↔ harnessSessionId ↔
@@ -107,6 +115,84 @@ export function resolveAdoptSessionIdForHarness(input: AdoptResolveInput): Adopt
 				harnessSessionId: resolveAdoptSessionId(input.envSessionId, input.claudeStemsNewestFirst),
 			};
 	}
+}
+
+// ─── restart-stable identity (T029 / AC-15) ────────────────────────────────
+
+export type StableIdentityResolution =
+	| { readonly kind: "claim"; readonly id: SessionId }
+	| { readonly kind: "reuse"; readonly descriptor: SessionDescriptor };
+
+/** Resolve an exact harness-native identity against durable descriptors.
+ *
+ * - zero exact matches → claim the deterministic candidate;
+ * - one → reuse the original pij identity;
+ * - many → fail loudly (never mint a third identity);
+ * - candidate occupied by another tuple → collision, also fail loudly.
+ *
+ * A legacy untagged Pi descriptor at Pi's historical derived id is the one
+ * migration exception: upgrade it in place so installing T029 does not rename
+ * an existing Pi peer. */
+export function resolveStableIdentity(
+	descriptors: readonly SessionDescriptor[],
+	harness: HarnessKind,
+	harnessSessionId: string,
+	candidateId: SessionId,
+): Result<StableIdentityResolution> {
+	const matches = descriptors.filter(
+		(d) => d.harness === harness && d.harnessSessionId === harnessSessionId,
+	);
+	if (matches.length > 1) {
+		return err(
+			"E-AMBIG",
+			`identity ${harness}:${harnessSessionId} maps to multiple pij ids: ${matches
+				.map((d) => d.id)
+				.join(", ")}`,
+		);
+	}
+	const match = matches[0];
+	if (match) return ok({ kind: "reuse", descriptor: match });
+
+	const occupied = descriptors.find((d) => d.id === candidateId);
+	if (occupied) {
+		const legacyPi =
+			harness === "pi" && occupied.harness === undefined && occupied.harnessSessionId === undefined;
+		if (legacyPi) return ok({ kind: "reuse", descriptor: occupied });
+		return err(
+			"E-AMBIG",
+			`derived pij id ${candidateId} is already bound to ${occupied.harness ?? "legacy"}:${occupied.harnessSessionId ?? "unknown"}`,
+		);
+	}
+	return ok({ kind: "claim", id: candidateId });
+}
+
+export interface ReattachIdentityInput {
+	readonly harness: HarnessKind;
+	readonly harnessSessionId: string;
+	readonly folder: string;
+	readonly pid: number;
+	readonly paneId?: string;
+	readonly transcriptPath?: string;
+}
+
+/** Replace one runtime incarnation's attachment data while preserving the
+ * durable pij identity, history paths, creator relation, and prior metadata. */
+export function reattachIdentity(
+	existing: SessionDescriptor,
+	input: ReattachIdentityInput,
+): SessionDescriptor {
+	const { failureReason: _failureReason, ...durable } = existing;
+	return {
+		...durable,
+		folder: input.folder,
+		pid: input.pid,
+		state: "idle",
+		paneId: input.paneId,
+		harness: input.harness,
+		harnessSessionId: input.harnessSessionId,
+		lifecycle: "bound",
+		...(input.transcriptPath !== undefined ? { transcriptPath: input.transcriptPath } : {}),
+	};
 }
 
 // ─── watchdog ────────────────────────────────────────────────────────────────

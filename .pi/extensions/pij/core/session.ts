@@ -74,6 +74,14 @@ export interface BootInput {
 	readonly folder: string;
 	readonly dataDir: string;
 	readonly eventsPath: string;
+	/** Exact native identity persisted by Pi so hash collisions can be detected. */
+	readonly harness?: "pi";
+	readonly harnessSessionId?: string;
+	readonly paneId?: string;
+	/** Presence-independent metadata restored when shutdown removed the descriptor. */
+	readonly durableDescriptor?: SessionDescriptor;
+	/** Startup/resume/new/fork replace a prior process incarnation; reload does not. */
+	readonly resetRuntimeState?: boolean;
 }
 
 /** Boot outcome — the (id, role) the wiring exports to PIJ_SESSION_ID/PIJ_ROLE,
@@ -121,26 +129,34 @@ export class PijSession {
 	 *  boot, reuses it on reload (no duplicate, no replay), seeds the seq counter
 	 *  from the log, and announces once on a fresh session. */
 	boot(input: BootInput): BootResult {
-		const existing = this.ports.registry.read(input.id);
-		const fresh = existing === null;
+		const liveDescriptor = this.ports.registry.read(input.id);
+		const existing = liveDescriptor ?? input.durableDescriptor ?? null;
+		const fresh = liveDescriptor === null;
 		const descriptor: SessionDescriptor = {
+			// Durable identity/history metadata survives a process or machine restart.
+			// Runtime attachment fields below deliberately replace the prior incarnation.
+			...existing,
 			id: input.id,
-			role: input.role,
+			role: input.role ?? existing?.role,
 			folder: input.folder,
 			dataDir: input.dataDir,
 			eventsPath: input.eventsPath,
 			pid: this.ports.process.pid(),
 			startedAt: existing?.startedAt ?? this.nowIso(),
-			state: existing?.state ?? "idle",
+			state: input.resetRuntimeState ? "idle" : (existing?.state ?? "idle"),
 			lastEventAt: existing?.lastEventAt,
-			// preserve spawn fields across reload (§H1/T204)
-			paneId: existing?.paneId,
+			harness: input.harness ?? existing?.harness,
+			harnessSessionId: input.harnessSessionId ?? existing?.harnessSessionId,
+			lifecycle: input.resetRuntimeState ? undefined : existing?.lifecycle,
+			failureReason: input.resetRuntimeState ? undefined : existing?.failureReason,
+			// Runtime pane comes from this incarnation; creator relation is durable.
+			paneId: input.resetRuntimeState ? input.paneId : (input.paneId ?? existing?.paneId),
 			spawnedBy: existing?.spawnedBy,
 		};
 		this.ports.registry.write(descriptor);
 		this.descriptor = descriptor;
 		this.self = input.id;
-		this.role = input.role;
+		this.role = descriptor.role;
 		this.seq = new SeqCounter(this.ports.eventLog.lastSeq());
 		if (fresh) {
 			const announceTo = this.ports.process.env("PIJ_ANNOUNCE_TO");
@@ -166,14 +182,14 @@ export class PijSession {
 				if (task) {
 					this.ports.pi.inject(task, "immediate");
 				} else {
-					this.ports.pi.inject(announceText(input.id, input.role), "immediate");
+					this.ports.pi.inject(announceText(input.id, descriptor.role), "immediate");
 				}
 			} else {
 				// Normal fresh boot: announce to peers (no spawner context)
-				this.ports.pi.inject(announceText(input.id, input.role), "immediate");
+				this.ports.pi.inject(announceText(input.id, descriptor.role), "immediate");
 			}
 		}
-		return { id: input.id, role: input.role, fresh };
+		return { id: input.id, role: descriptor.role, fresh };
 	}
 
 	/** Open a new tmux window running a pij worker and return immediately

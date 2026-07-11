@@ -28,6 +28,15 @@ Reviewed the working-tree diff and relevant unchanged control flow in:
 
 ## Handover Brief
 
-FX001 code and unit proof are approved.
-FX001-5, the coordinated live Copilot and Claude regression after daemon restart, remains outstanding.
-Do not close the fix until boot onboarding and ordinary sends each arrive exactly once.
+FX001 code and unit proof were approved. FX001-5 subsequently passed its coordinated
+Copilot + Claude live regression.
+
+## 2026-07-11 Follow-up
+
+The original approval predates FX001-6. A live recurrence exposed a distinct
+post-Enter ambiguity: the outer retry cleared and retyped after Copilot had already
+accepted the prior submission, producing three turns from one routed message.
+FX001-6 moves the idempotency boundary to the first Enter—retyping is permitted only
+before Enter; afterward, only Enter itself may be retried while payload text remains
+visible. The new RED test observed seven type calls before the fix and one afterward;
+24/24 focused tests, full `harness checks`, and a fresh GPT-5.6 Sol live probe passed.

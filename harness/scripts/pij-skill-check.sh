@@ -15,7 +15,7 @@ while IFS= read -r line; do
   route=$(printf '%s' "$line" | sed -n 's/^| `\([a-z]*\)`.*/\1/p')
   [ -z "$route" ] && continue
   mod="$SKILL/references/routes/$route.md"
-  if printf '%s' "$line" | grep -q 'lands Phase 2\|future'; then
+  if printf '%s' "$line" | grep -q 'lands Phase 2\|future\|no route module'; then
     [ -f "$mod" ] && err "registry: '$route' marked pending but module EXISTS ($mod) — unmark the row" \
                   || ok "registry: '$route' pending (no module, as marked)"
   else

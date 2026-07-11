@@ -1,6 +1,6 @@
 # pij tmux Control Plane + Machine-Wide Daemon
 **Mode**: Simple
-**Plan Version**: 1.1.1
+**Plan Version**: 1.2.0
 **Created**: 2026-06-27
 **Status**: READY
 **Spec source**: unified (this file)
@@ -14,13 +14,13 @@ The explore pass (`research-dossier.md`, 10 findings) established that pij's spa
 
 A **live prototype** (`scratch/tmux-claude-ready/probe.sh`) then validated the riskiest mechanic end-to-end against Claude Code v2.1.195 / Sonnet 4.6: split a pane right, launch claude, detect readiness from `capture-pane`, inject text + Enter → Claude replied `⏺ ACK` in ~5s total. It corrected two assumptions and surfaced one new requirement — folded in below (F-07, F-08, and the deterministic-binding insight).
 
-This revision (v1.1.0) also closes the four HIGH gaps from the v1.0.0 validation (`validations/…`): deterministic binding, the pending-descriptor handoff, init idempotency, and pi-target delivery ownership.
+Revision v1.1.0 closed the four HIGH gaps from the v1.0.0 validation (`validations/…`): deterministic binding, the pending-descriptor handoff, init idempotency, and pi-target delivery ownership. Revision v1.2.0 adds the missing restart-continuity contract: a resumed native session must recover its existing pij identity rather than allocate a duplicate.
 
 ### Summary
 Turn pij into a **harness-agnostic control plane**. A machine-wide **pij daemon** (a CLI you run in a tmux window, with a chalk log TUI) is the switchboard: it centralizes inbox watching, message routing, the session registry, and a live view. pij **spawns any harness** — pi today, Claude Code now via tmux, Copilot later — by allocating a **pij-id before launch**, opening a tmux window/pane (which hands back the paneId), writing a **pending descriptor**, and then — daemon-side, asynchronously — handling boot **interstitials**, detecting **readiness** from the pane, and injecting the init once. Identity binding is **deterministic**: the daemon discovers the new Claude transcript under `~/.claude/projects/<mangled cwd>/` to derive the session id with no agent cooperation; `pij phonehome` is confirmatory, with a watchdog fallback. The binding (`pij-id ↔ harness-session-id ↔ pane ↔ cwd`) lets the daemon **tail** the linked session and notifies the creator asynchronously — it never blocked. Messaging is **fire-and-forget**: senders write to the target inbox; the daemon **injects** for tmux targets (`send-keys`+Enter, including `/compact`), while pi targets are self-injected by a thin in-process receiver.
 
 ### Goals
-- One stable identity (`pij-id`), allocated **before** launch, routing to a pi-native or tmux-native target identically.
+- One stable identity (`pij-id`), keyed by the underlying native session and surviving process, pane, daemon, and full-machine restarts; runtime attachment details are replaceable.
 - A machine-wide, **single-instance** daemon owning watch + route + registry + chalk TUI; rebuildable from `~/.pij/` (UI is a view).
 - Spawn that **returns the pij-id immediately** (caller never blocks); the daemon dismisses interstitials, detects readiness, and injects the init exactly once.
 - **Deterministic** `pij-id ↔ harness-session-id` binding (transcript-discovery), phone-home confirmatory, watchdog on failure — enabling out-of-band tailing.
@@ -70,7 +70,7 @@ Turn pij into a **harness-agnostic control plane**. A machine-wide **pij daemon*
 - **Assumptions**: `harness/driver/tmux.ts` primitives extract cheaply (argv-only); Claude Code queues `send-keys` input natively (R-02, to confirm); the telemetry cwd-mangle is current (confirmed by the transcript path).
 - **Dependencies**: tmux; a live `claude` binary on PATH; the existing `~/.pij/` layout + `FsChannel`.
 - **Risks**: see `### Risks & Assumptions`.
-- **Phases**: **Simple mode chosen deliberately** for lean ceremony despite CS-4 — one internally-grouped phase (Groups A–G). T008 freezes the readiness marker as an explicit gate before the daemon/transport tasks (F6). If the implement turn runs long, it can be chunked by task group.
+- **Phases**: **Simple mode chosen deliberately** for lean ceremony despite CS-4 — one internally-grouped phase (Groups A–H). T008 freezes the readiness marker as an explicit gate before the daemon/transport tasks (F6). If the implement turn runs long, it can be chunked by task group.
 
 ### Acceptance Criteria
 - **AC-01**: `pij spawn --harness claude [--layout split|window] [--task "…"]` returns a `pij-id` immediately (caller non-blocking) and opens a tmux window/pane running `claude --model …` in the target cwd; the paneId is captured at split time.
@@ -87,6 +87,7 @@ Turn pij into a **harness-agnostic control plane**. A machine-wide **pij daemon*
 - **AC-12**: Killing and restarting the daemon rebuilds its live view + `initInjectedAt` markers from `~/.pij/` with no lost bindings and no duplicate init.
 - **AC-13**: `pij send <pij-id>` behaves identically from a pi session or a claude session (CLI), proving pi↔claude cross-compat.
 - **AC-14**: `pij adopt <pane> --harness claude` assigns a `pij-id` + binds an already-running tmux agent via **adopt's own discovery** — resolve `paneId → cwd`, then require a `pij phonehome` from the adopted agent (or disambiguate by the pane's tmux start-time), since adopt has no post-spawn new-file event — producing an equivalent binding to AC-03.
+- **AC-15**: After a full machine restart, resuming the same Pi-native session or re-adopting an external client with an authoritative native id (`pij adopt … --session-id <native-id>`, with authoritative harness env as equivalent input) recovers the **same `pij-id`** by exact `(harness, harnessSessionId)` lookup, refreshes its pane/PID/cwd/lifecycle attachment, preserves its data directory/history, and creates no duplicate descriptor. Zero matches claims one deterministic tuple-derived id; one match reuses it; multiple matches or a derived-id collision fail loudly. Heuristic newest-transcript/session-state discovery remains initial-adopt fallback only, never restart identity authority; a different native session id remains a different peer.
 
 ### Risks & Assumptions
 
@@ -98,10 +99,11 @@ Turn pij into a **harness-agnostic control plane**. A machine-wide **pij daemon*
 | R-04 `send-keys` literal/paste mangling of multi-line bodies | Low | Med | Use the driver's bracketed-`paste` for bodies; `press Enter` to submit. |
 | R-05 Binding never fires (agent ignores phonehome) | Low | High | **Deterministic transcript-discovery is primary** (T012), phonehome confirmatory, watchdog on timeout (T013/AC-04). |
 | R-06 Daemon offline / double-started | Med | Med | Single-instance lock (T017); files are source of truth, daemon reconciles on start (T016); guide documents the start step. |
+| R-07 Resumed session gets a new pij identity | High | High | Treat `(harness, harnessSessionId)` as the durable external lookup key; Pi keeps deriving from its native session id. Reattach runtime fields to the existing descriptor and fail loudly on duplicate mappings (T029/AC-15). |
 
 ### Open Questions
 - R-02 exact mid-turn `send-keys` behaviour — resolve with a quick smoke (extend `probe.sh`) during Group F; not blocking.
-- Whether `pij adopt` should also adopt a **pi** tmux pane — deferred; claude-first.
+- Pi restart continuity is extension-owned: resume from the same Pi native session id must recover the same pij-id; a separate `pij adopt --harness pi` path is not required for AC-15.
 
 ### Workshop Opportunities
 
@@ -132,6 +134,13 @@ Turn pij into a **harness-agnostic control plane**. A machine-wide **pij daemon*
 - **Watchdog vs init-once reconciled**: the watchdog re-sends **only the confirmatory `pij phonehome` line**, never the init body, so `initInjectedAt` and "init-exactly-once" hold (T011/AC-04).
 - **Adopt has its own binding rule**: required `pij phonehome` or pane-start-time disambiguation, since adopt has no post-spawn new-file event (T023/AC-14).
 
+#### Session 2026-07-11 (revision v1.2.0 — restart identity continuity)
+- **Durable identity key**: external peers recover by exact `(harness, harnessSessionId)`; Pi peers recover from Pi's native session id.
+- **Re-attachment semantics**: machine restart replaces pane/PID/cwd/lifecycle fields but not the pij-id, data directory, or history.
+- **Anti-duplication**: re-adoption resolves exact tuple cardinality (`0 → deterministic claim`, `1 → reuse`, `many → fail`) so concurrent zero-match claims converge on one id instead of minting duplicates.
+- **Authoritative input**: restart re-adoption accepts an explicit native `--session-id`; newest-artifact heuristics are initial-adopt fallback only.
+- **Pi durability**: Pi persists `harness:"pi"` plus the exact native session id, collision-checks its derived pij-id, and preserves durable descriptor fields when refreshing runtime attachment data.
+
 ## Planning Seam
 _Refinement opportunities still open — recorded as evidence; the flow surfaces and offers these, none gate:_
 - Open Workshop Opportunities: **Spawn→bind state machine** (optional; the plan encodes a workable default).
@@ -148,7 +157,7 @@ _Refinement opportunities still open — recorded as evidence; the flow surfaces
 
 | Gate | Check | Status | Notes |
 |------|-------|--------|-------|
-| G1 | Clarify | PASS | Questions answered; v1.1.0 folds in validation + prototype; no `[NEEDS CLARIFICATION]`. |
+| G1 | Clarify | PASS | Questions answered through the v1.2.0 restart-continuity clarification; no `[NEEDS CLARIFICATION]`. |
 | G2 | Constitution | N/A | No `docs/project-rules/constitution.md`. |
 | G3 | Architecture | N/A | No `docs/project-rules/architecture.md`. |
 | G4 | ADR Compliance | N/A | `docs/adr/` empty. |
@@ -157,7 +166,7 @@ _Refinement opportunities still open — recorded as evidence; the flow surfaces
 | G7 | Domain Completeness | PASS | Target Domains present; NEW `pij-control-plane` has a setup task (T001); Domain Manifest covers every file in the task table. |
 
 ### Summary
-Build a machine-wide, single-instance pij daemon switchboard plus a tmux transport so pij controls Claude Code (and later Copilot) under one pre-allocated identity. Identity binds deterministically by discovering the Claude transcript (phone-home confirms, watchdog backstops). The pure core (transport selection, readiness/interstitial classifiers, transcript-path + discovery, binding, pending-descriptor, init-idempotency, router/buffer) is TDD'd behind ports/fakes; the impure seams (tmux send-keys/capture, daemon watch, lockfile, chalk TUI) are smoke-tested, building on the validated `probe.sh`. Delivered as one Simple-mode phase grouped A–G.
+Build a machine-wide, single-instance pij daemon switchboard plus a tmux transport so pij controls Claude Code (and later Copilot) under one durable identity. Identity binds deterministically by discovering the Claude transcript (phone-home confirms, watchdog backstops), and restart re-attachment reuses that binding instead of allocating another pij-id. The pure core (transport selection, readiness/interstitial classifiers, transcript-path + discovery, binding, pending-descriptor, init-idempotency, router/buffer) is TDD'd behind ports/fakes; the impure seams (tmux send-keys/capture, daemon watch, lockfile, chalk TUI) are smoke-tested, building on the validated `probe.sh`. Delivered as one Simple-mode phase grouped A–H.
 
 ### Domain Manifest
 
@@ -179,6 +188,8 @@ Build a machine-wide, single-instance pij daemon switchboard plus a tmux transpo
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | pij-control-plane | internal | chalk event-line renderer. |
 | `.pi/extensions/pij/daemon.ts` | pij-control-plane | internal | Daemon bin: lock → watch-pending+inboxes → readiness/interstitial → init-once → route → render. |
 | `.pi/extensions/pij/core/spawn.ts` | pij-messaging | internal | Pre-allocate `pij-id`; write the pending descriptor (paneId from split `-P`); harness-aware launch cmd. |
+| `.pi/extensions/pij/core/discovery.ts`, `core/session.ts`, `core/binding.ts` | pij-messaging, pij-control-plane | contract | Derive/collision-check Pi identity from its exact native session id; resolve external tuple cardinality; preserve durable fields while refreshing runtime attachment after restart. |
+| `.pi/extensions/pij/adapters/fs-registry.ts`, `core/daemon/index-state.ts` | pij-messaging, pij-control-plane | internal | Atomically claim/reuse a deterministic tuple-derived id and index by exact `(harness,harnessSessionId)` without silent overwrite. |
 | `.pi/extensions/pij/core/types.ts` | pij-messaging | contract | `SessionDescriptor` += `harness`,`harnessSessionId`,`initInjectedAt`,`state`. |
 | `.pi/extensions/pij/core/cli.ts`, `core/commands.ts`, `cli.ts` | pij-messaging | internal | `phonehome`/`daemon`/`adopt` verbs + allow-list; extend `tail`. |
 | `.pi/extensions/pij/index.ts` | pij-messaging | internal | Thin in-process receiver (sole consumer of own pi inbox); pre-alloc id at spawn. |
@@ -195,10 +206,13 @@ Build a machine-wide, single-instance pij daemon switchboard plus a tmux transpo
 | 05 | High | Real v2.1.195 idle signal is footer-based (`auto mode on`/`shift+tab to cycle`), **not** "? for shortcuts"; boot interstitials block readiness. | Freeze fixtures (T008); add interstitial handler (T009) — corrects dossier R-01. |
 | 06 | High | `FsChannel.watch()` is portable (`channel.ts:63-110`), wired per-session at `index.ts:266`; daemon can't inject into pi (F-06). | Daemon owns cross-session watch + tmux injection; thin `index.ts` to own-inbox only; explicit delivery ownership (closes F4). |
 | 07 | High | Identity/CLI seam via `PIJ_SESSION_ID` (`discovery.ts:16,73`) + pure `dispatch()` (`cli.ts:266`); Claude transcript mangle (`claude-adapter.ts:59-66`). | Slot `phonehome`/`daemon`/`adopt`; reuse the mangle for discovery + tailing. |
+| 08 | High | The durable harness↔pij join is persisted, but `adopt` currently allocates from transient pane/PID data instead of first reusing an existing `(harness,harnessSessionId)` mapping. | Add restart-safe re-attachment (T029): authoritative native-id input, exact reverse lookup, same pij-id, refreshed runtime fields, no duplicate. |
+| 09 | High | Adopt's newest-artifact heuristics can select another live session after restart; `IndexState` keys only by bare native id and silently overwrites duplicate mappings. | Add `--session-id` as restart authority and exact tuple cardinality (`zero|one|many`); include `index-state.ts`, with `many` an explicit ambiguity error. |
+| 10 | High | Pi hashes its native id to 32 bits but does not persist the exact native join, and `PijSession.boot` reconstructs a partial descriptor that can drop durable fields. | Persist `harness:"pi"` + exact native id, collision-check the derived pij-id, and merge durable identity/history fields while replacing only runtime attachment fields. |
 
 ### Implementation
 
-**Objective**: Ship the pij control plane — single-instance daemon switchboard, tmux transport, harness adapters, readiness + interstitial handling, deterministic binding, ungated messaging, tailing, and a chalk TUI — as one grouped Simple-mode phase.
+**Objective**: Ship the pij control plane — single-instance daemon switchboard, tmux transport, harness adapters, readiness + interstitial handling, deterministic and restart-stable identity binding, ungated messaging, tailing, and a chalk TUI — as one grouped Simple-mode phase.
 **Testing Approach**: Hybrid — TDD (real fakes) for pure-core tasks (ⓣ); lightweight Driver smoke (building on `probe.sh`) for impure seams (ⓢ).
 
 #### Tasks
@@ -233,6 +247,7 @@ Build a machine-wide, single-instance pij daemon switchboard plus a tmux transpo
 | [ ] | T026 | ⓢ Two-harness smoke: pi↔claude round-trip (spawn→ready→bind→send→tail) | pij-control-plane | (smoke) | a Driver scenario exercises AC-01..09,13 end-to-end | G · validation |
 | [ ] | T027 | Operator guide | pij-control-plane | `docs/how/pij-daemon.md` | run/spawn/adopt/send/tail/TUI/recovery documented | G · docs |
 | [ ] | T028 | Update domain-map Health Summary + registry History | pij-control-plane | `docs/domains/*` | edges + this plan recorded | G · G7 |
+| [x] | T029 | ⓣ Restart-safe identity re-attachment for Pi and external harnesses | pij-control-plane, pij-messaging | `core/discovery.ts`, `core/session.ts`, `core/binding.ts`, `core/spawn.ts`, `core/daemon/index-state.ts`, `core/harness/codex.ts`, `adapters/fs-registry.ts`, `cli.ts`, `index.ts` (+ tests) | Add authoritative `adopt --session-id`; resolve exact tuple cardinality (`0 → deterministic tuple-derived claim`, `1 → reuse`, `many → E-AMBIG`) so concurrent zero-match claims converge; refresh pane/PID/cwd/lifecycle while preserving id/data/history; persist Pi's exact native join, collision-check its derived id, and preserve durable fields on boot. Temp-`PIJ_HOME` integration reconstructs fresh registry/index instances after simulated restart and proves Pi resume + external re-adopt reuse, ambiguity/collision failure, and no duplicate descriptors | H · findings 08–10 · AC-15 |
 
 ### Acceptance Coverage Map
 
@@ -252,6 +267,7 @@ Build a machine-wide, single-instance pij daemon switchboard plus a tmux transpo
 | AC-12 | T014, T016 | rebuild + no duplicate init |
 | AC-13 | T019, T026 | identical pi↔claude send |
 | AC-14 | T023 | adopt → binding |
+| AC-15 | T029 | fresh-process temp-registry integration proves Pi resume + authoritative external re-adoption reuse identity, preserve history, refresh attachment, converge concurrent claims, and reject ambiguous/colliding mappings |
 
 ### Risks
 
@@ -260,5 +276,6 @@ Build a machine-wide, single-instance pij daemon switchboard plus a tmux transpo
 | Readiness marker drift across Claude versions | Med | Med | Isolated to `core/readiness.ts`; fixtures from live capture (T008); footer markers are stable across recent versions. |
 | Mid-turn send garbles input (R-02) | Med | Med | Confirm by smoke (T020); router buffers pre-bind; native queueing assumed, adjusted to observation. |
 | Transcript-discovery picks the wrong jsonl (pre-existing active session / concurrent boots same cwd) | Low | Med | Discover by **new path appearance** (a jsonl absent at spawn — file-create event / birthtime), **not** mtime; phone-home confirms (T011/T012). |
-| Single large Simple phase heavy to implement in one turn | Med | Med | Implement by group A–G; each is independently reviewable. |
+| Single large Simple phase heavy to implement in one turn | Med | Med | Implement by group A–H; each is independently reviewable. |
 | Daemon offline / double-started (R-06) | Med | Med | Lock (T015); files are source of truth; reconcile on start (T014/T016). |
+| Re-adoption allocates a duplicate pij-id after restart | Med | High | Authoritative `--session-id`; exact tuple cardinality before allocation; deterministic zero-match claim; Pi persists its exact native join; ambiguous/colliding mappings fail loudly (T029/AC-15). |

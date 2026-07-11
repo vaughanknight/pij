@@ -7,7 +7,15 @@
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+	accessSync,
+	constants,
+	existsSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,19 +52,25 @@ import {
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir } from "./core/agents/paths.js";
-import { applyBinding, resolveAdoptSessionIdForHarness } from "./core/binding.js";
+import {
+	applyBinding,
+	reattachIdentity,
+	resolveAdoptSessionIdForHarness,
+	resolveStableIdentity,
+} from "./core/binding.js";
 import type { CliDeps, CliResult, ParsedCommand } from "./core/cli.js";
 import { dispatch, PROVIDER_HARNESS_MAP, parseArgs } from "./core/cli.js";
 import { parseCloseArgs, planClose } from "./core/close.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
-import { filterByFolder, resolveSelf } from "./core/discovery.js";
+import { deriveHarnessPijId, filterByFolder, resolveSelf } from "./core/discovery.js";
 import {
 	summarizeTranscriptLine,
 	transcriptDir,
 	transcriptPathFor,
 } from "./core/harness/claude.js";
 import {
+	codexRolloutForSession,
 	codexTranscriptRoot,
 	listCodexRollouts,
 	summarizeCodexEvent,
@@ -89,7 +103,7 @@ import {
 	planPlacement,
 	type SpawnLayout,
 } from "./core/spawn.js";
-import type { HarnessKind, WatchMode } from "./core/types.js";
+import type { HarnessKind, SessionDescriptor, WatchMode } from "./core/types.js";
 import { addWatch, removeWatch } from "./core/watch-subscription.js";
 import { runTelegram } from "./telegram/index.js";
 
@@ -107,7 +121,7 @@ const USAGE = `pij — session messaging + tmux control plane
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
-  pij adopt "$TMUX_PANE" --harness <h> [--export]    register your own pane so peers can reach you (--export: eval-able PIJ_SESSION_ID — self-resolution sugar, NOT the telemetry fix)
+  pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>] [--export]    register/re-attach your pane (--session-id: authoritative restart identity)
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
   pij telegram <init|start|stop>                     bridge pij sessions to a Telegram bot
@@ -863,6 +877,16 @@ function runUnwatch(argv: readonly string[]): void {
 	process.stdout.write(`watching ${watches.length} subscription(s) for ${self.id}\n`);
 }
 
+function readableRegularFile(path: string): boolean {
+	try {
+		if (!statSync(path).isFile()) return false;
+		accessSync(path, constants.R_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /** Best-effort mtime (ms) of a path — `-1` if unreadable, so it sorts last. */
 function statMtime(path: string): number {
 	try {
@@ -883,8 +907,9 @@ function listCopilotStateDirs(root: string): CopilotSessionDir[] {
 	}
 }
 
-/** `pij adopt <pane> --harness <h> [--export]` (T023, AC-14; harness-aware per
- *  Plan 031): register an ALREADY-running tmux agent (e.g. this orchestrator's
+/** `pij adopt <pane> --harness <h> [--session-id <native-id>] [--export]`
+ *  (T023/T029, AC-14/15; harness-aware per Plan 031): register or re-attach an
+ *  ALREADY-running tmux agent (e.g. this orchestrator's
  *  own pane) as a bound pij peer so other sessions can `pij send` to it and the
  *  daemon dumps the message into its pane. Adopt has no post-spawn new-file event,
  *  so it binds by its OWN harness-aware rule (`resolveAdoptSessionIdForHarness`):
@@ -967,28 +992,171 @@ function runAdopt(argv: readonly string[]): void {
 		codexRolloutPathsNewestFirst,
 		copilotSessionId,
 	});
-	const harnessSessionId = resolution.harnessSessionId ?? undefined;
-	const pijId = req.value.id ?? allocatePijId(`adopt-${pane}`, panePid);
-	const dataDir = join(pijHome, pijId);
-	let descriptor = buildPendingDescriptor({
-		pijId,
-		paneId: pane,
-		cwd,
-		harness,
-		dataDir,
-		eventsPath: join(dataDir, "events.ndjson"),
-		pid: panePid,
-		startedAtIso: new Date().toISOString(),
-	});
+	// An explicit --session-id is authoritative for restart re-attachment.
+	// Harness artifact discovery remains an initial-adopt fallback only.
+	const harnessSessionId = req.value.sessionId ?? resolution.harnessSessionId ?? undefined;
+	const registry = new FsRegistry(pijHome);
+	let durablePijId: string | undefined;
+	let durableDescriptor: SessionDescriptor | undefined;
 	if (harnessSessionId) {
-		descriptor = applyBinding(descriptor, harnessSessionId);
-		// codex needs the ABSOLUTE rollout path persisted (a bare uuid can't
-		// reconstruct the date-nested path) — mirror loop.ts:337.
-		if (resolution.transcriptPath) {
-			descriptor = { ...descriptor, transcriptPath: resolution.transcriptPath };
+		const durable = registry.resolveIdentity(harness, harnessSessionId);
+		if (!durable.ok) {
+			process.stderr.write(`${durable.code}: ${durable.message}\n`);
+			process.exit(2);
 		}
+		durablePijId = durable.value;
+		const snapshot = registry.resolveIdentitySnapshot(harness, harnessSessionId);
+		if (!snapshot.ok) {
+			process.stderr.write(`${snapshot.code}: ${snapshot.message}\n`);
+			process.exit(2);
+		}
+		durableDescriptor = snapshot.value;
 	}
-	new FsRegistry(pijHome).write(descriptor);
+	const candidateId =
+		req.value.id ??
+		durablePijId ??
+		(harnessSessionId
+			? deriveHarnessPijId(harness, harnessSessionId)
+			: allocatePijId(`adopt-${pane}`, panePid));
+	let descriptor: SessionDescriptor;
+	if (harnessSessionId) {
+		const stable = resolveStableIdentity(registry.list(), harness, harnessSessionId, candidateId);
+		if (!stable.ok) {
+			process.stderr.write(`${stable.code}: ${stable.message}\n`);
+			process.exit(2);
+		}
+		if (
+			req.value.id !== undefined &&
+			stable.value.kind === "reuse" &&
+			stable.value.descriptor.id !== req.value.id
+		) {
+			process.stderr.write(
+				`E-AMBIG: ${harness}:${harnessSessionId} is already ${stable.value.descriptor.id}, not requested ${req.value.id}\n`,
+			);
+			process.exit(2);
+		}
+		const stableId = stable.value.kind === "reuse" ? stable.value.descriptor.id : stable.value.id;
+		if (durablePijId && durablePijId !== stableId) {
+			process.stderr.write(
+				`E-AMBIG: durable ${harness}:${harnessSessionId} identity is ${durablePijId}, descriptor resolves to ${stableId}\n`,
+			);
+			process.exit(2);
+		}
+		let transcriptPath =
+			resolution.harnessSessionId === harnessSessionId ? resolution.transcriptPath : undefined;
+		if (harness === "codex" && req.value.sessionId) {
+			const storedPath =
+				(stable.value.kind === "reuse" ? stable.value.descriptor.transcriptPath : undefined) ??
+				durableDescriptor?.transcriptPath;
+			transcriptPath =
+				(storedPath && readableRegularFile(storedPath) ? storedPath : undefined) ??
+				codexRolloutForSession(
+					codexRolloutPathsNewestFirst,
+					harnessSessionId,
+					readableRegularFile,
+				) ??
+				undefined;
+			if (!transcriptPath) {
+				process.stderr.write(
+					`E-NOID: no Codex rollout found for authoritative session ${harnessSessionId}\n`,
+				);
+				process.exit(2);
+			}
+		}
+		const reusable = stable.value.kind === "reuse" ? stable.value.descriptor : durableDescriptor;
+		if (reusable && reusable.id !== stableId) {
+			process.stderr.write(
+				`E-AMBIG: durable metadata belongs to ${reusable.id}, not resolved ${stableId}\n`,
+			);
+			process.exit(2);
+		}
+		if (reusable) {
+			descriptor = reattachIdentity(reusable, {
+				harness,
+				harnessSessionId,
+				folder: cwd,
+				pid: panePid,
+				paneId: pane,
+				transcriptPath,
+			});
+		} else {
+			const dataDir = join(pijHome, stableId);
+			descriptor = applyBinding(
+				buildPendingDescriptor({
+					pijId: stableId,
+					paneId: pane,
+					cwd,
+					harness,
+					dataDir,
+					eventsPath: join(dataDir, "events.ndjson"),
+					pid: panePid,
+					startedAtIso: new Date().toISOString(),
+				}),
+				harnessSessionId,
+			);
+			if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
+		}
+
+		if (stable.value.kind === "reuse") {
+			registry.write(descriptor);
+		} else {
+			const claim = registry.claim(descriptor);
+			if (!claim.ok) {
+				process.stderr.write(`${claim.code}: ${claim.message}\n`);
+				process.exit(2);
+			}
+			if (claim.value.kind === "exists") {
+				const raced = resolveStableIdentity(
+					[claim.value.descriptor],
+					harness,
+					harnessSessionId,
+					candidateId,
+				);
+				if (!raced.ok || raced.value.kind !== "reuse") {
+					const message = raced.ok
+						? `identity ${candidateId} was claimed incompatibly`
+						: raced.message;
+					process.stderr.write(`E-AMBIG: ${message}\n`);
+					process.exit(2);
+				}
+				descriptor = reattachIdentity(raced.value.descriptor, {
+					harness,
+					harnessSessionId,
+					folder: cwd,
+					pid: panePid,
+					paneId: pane,
+					transcriptPath,
+				});
+				registry.write(descriptor);
+			}
+		}
+	} else {
+		const pijId = candidateId;
+		const dataDir = join(pijHome, pijId);
+		descriptor = buildPendingDescriptor({
+			pijId,
+			paneId: pane,
+			cwd,
+			harness,
+			dataDir,
+			eventsPath: join(dataDir, "events.ndjson"),
+			pid: panePid,
+			startedAtIso: new Date().toISOString(),
+		});
+		const pendingClaim = registry.claim(descriptor);
+		if (!pendingClaim.ok) {
+			process.stderr.write(`${pendingClaim.code}: ${pendingClaim.message}\n`);
+			process.exit(2);
+		}
+		if (pendingClaim.value.kind === "exists") {
+			process.stderr.write(
+				`E-AMBIG: pij id ${pijId} already exists; use --session-id for authoritative re-attachment\n`,
+			);
+			process.exit(2);
+		}
+		descriptor = pendingClaim.value.descriptor;
+	}
+	const pijId = descriptor.id;
 	if (wantExport) {
 		// AC-5: the eval-able block is the ONLY stdout, safe to `eval`.
 		process.stdout.write(`${buildExportLines(descriptor)}\n`);

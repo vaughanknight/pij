@@ -1,32 +1,42 @@
 # Validation — pij-tmux-control-plane-plan
 
-**Verdict**: ✅ VALIDATED WITH FIXES (v1.1.1)
+**Verdict**: ✅ VALIDATED WITH FIXES (v1.2.0)
 **Target**: `docs/plans/019-pij-tmux-control-plane/pij-tmux-control-plane-plan.md` (Status: READY, Simple, CS-4)
-**Validated**: 2026-06-27 · adaptive (lead + 1 critic) · 2 rounds
-**Deterministic proof**: PASS — structure intact (1× Business Spec / Planning Seam / Implementation Plan / Status READY); all 14 ACs defined and mapped; 28 tasks, no dangling coverage-map refs; transcript mangle still matches telemetry source (`claude-adapter.ts:60`); prototype paths exist.
+**Validated**: 2026-07-11 · adaptive (lead + independent critic)
 
-**Thesis**: advanced — the plan is grounded, the prototype resolved the load-bearing readiness risk, and the v1.0.0→v1.1.0 revision closed all four HIGH gaps; v1.1.1 hardened the new binding machinery.
+## Validation Contract
 
-## Round 1 (v1.0.0) — 4 HIGH + 2 MED → all CLOSED in v1.1.0
-- **F1** binding over-trusted the agent → CLOSED: deterministic transcript-discovery primary (T010/T011), phone-home confirmatory, watchdog (AC-03/04).
-- **F2** no pending-descriptor task → CLOSED: T006 writes `(pij-id,paneId,cwd,harness,state:pending)` atomically; daemon dir-watches it (T016).
-- **F3** init not idempotent across restart → CLOSED: `initInjectedAt` persisted (T004), rebuilt (T014), asserted (T016/AC-02).
-- **F4** pi-target delivery ownership ambiguous → CLOSED & consistent: sender writes target inbox; pi thin receiver is sole pi-inbox consumer; daemon observes pi inboxes, injects only tmux inboxes; claude→pi test (T021/AC-08).
-- **F5** no single-instance lock → CLOSED: T015/AC-10.
-- **F6** readiness resolved mid-phase, no gate → CLOSED: T008 is an explicit gate freezing the R-01 marker before Group D+.
+- **Purpose**: restore Plan 019's identity-first promise after a full machine restart.
+- **Promise**: the same Pi native session, or the same exact external `(harness, harnessSessionId)`, recovers the same `pij-id` while pane/PID/cwd/lifecycle are replaceable attachment data.
+- **Proof target**: implementation-ready plan amendment, not implemented behavior.
+- **Consumers**: T029 / Build H and its AC-15 tests.
+- **Constraints**: no heuristic newest-artifact lookup may establish restart identity; no duplicate identity may be minted; different native sessions remain different peers.
+- **Sources**: Plan 019 original ask + AC-12/14; Plan 031 join-key work; current `discovery.ts`, `session.ts`, `binding.ts`, `index-state.ts`, `fs-registry.ts`, `cli.ts`, and `index.ts`.
 
-## Round 2 (v1.1.0) — 3 new MEDIUM in the new binding machinery → FIXED in v1.1.1
-| # | Finding | Fix applied (v1.1.1) |
-|---|---------|----------------------|
-| N1 | Discovery by *newest-mtime* mis-binds when a pre-existing active session shares the cwd (mtime advances on every turn). | Changed key to **new-path appearance** (a jsonl absent at spawn / birthtime), explicitly NOT mtime — AC-03, T010 (with a pre-existing-transcript fixture that must not be chosen), T011, Risks line. |
-| N2 | Watchdog "re-inject once" contradicts `initInjectedAt` init-exactly-once. | Watchdog re-sends **only the confirmatory `pij phonehome` line**, `initInjectedAt` untouched — AC-04, T011. |
-| N3 | `pij adopt` (AC-14/T023) unverifiable — no post-spawn new-file event for an already-running agent. | Adopt gets **its own discovery** (required `pij phonehome` or pane-start-time disambiguation) — AC-14, T023. |
+## Deterministic proof
 
-Re-check (targeted): all `mtime` mentions now negated; no stray "re-inject once" / "same binding as spawn"; version 1.1.1. PASS.
+- PASS — required unified-plan sections present.
+- PASS — 29 unique task ids; T029 present.
+- PASS — 15 acceptance criteria; every AC has exactly a coverage-map row; AC-15 maps to T029.
+- PASS — `harness flow render --check` reports no drift; Build H is on the spine after Build G.
+- PASS — `harness checks --quick`: typecheck, lint, test, package audit, and snapshots green; smoke intentionally skipped by the quick gate.
 
-## Consumers
-- Immediate consumer = the implement step. STANDALONE otherwise.
+## Findings adjudicated and fixed in v1.2.0
 
-## Open (non-blocking, recorded — not gating)
-- R-02 exact mid-turn `send-keys` behaviour: confirm by smoke (T020) during implementation.
-- Optional **Spawn→bind state machine** workshop if the lifecycle wants formalizing before build.
+| # | Finding | Plan repair |
+|---|---------|-------------|
+| F1 | External adopt had no authoritative restart session-id input; newest transcript/session-state can select another live client. | AC-15/T029 now require `adopt --session-id <native-id>` (authoritative harness env equivalent); heuristics are initial-adopt fallback only. |
+| F2 | `IndexState` keyed only by bare native id and silently overwrote duplicates, contradicting the exact tuple and fail-loud promise. | Finding 09/T029 now require exact `(harness,harnessSessionId)` cardinality: zero claims, one reuses, many returns ambiguity; `index-state.ts` is in scope. |
+| F3 | A lookup-then-random-allocation race could mint duplicates. | Zero matches now claim one deterministic tuple-derived pij-id, so concurrent claims converge; a derived-id collision fails loudly. Atomic filesystem replacement remains the descriptor write seam. |
+| F4 | Pi used only a 32-bit derived slug and `PijSession.boot` could drop durable descriptor fields. | Finding 10/T029 now require persisting `harness:"pi"` + exact native id, collision-checking the derived id, and preserving durable fields while refreshing runtime fields. |
+| F5 | Pure fixtures could not prove full-restart persistence. | T029/coverage now require a temp-`PIJ_HOME` integration that discards and reconstructs registry/index instances, then proves reuse, attachment refresh, history preservation, ambiguity/collision handling, and no duplicate descriptors. |
+
+## Thesis and consumers
+
+**Thesis**: advanced — the amendment now treats the harness-native session as durable identity and the process/pane as replaceable presence, matching the original Plan 019 promise.
+
+**Consumers**: T029 and the generated Build H flight-plan node have the exact authority, cardinality, persistence, collision, and fresh-process proof needed to implement AC-15 without another identity-design decision.
+
+## Residual boundary
+
+Deleting both the live descriptor and every durable binding record is outside AC-15; a normal full-machine restart preserves `PIJ_HOME`. Implementation behavior remains unproven until T029 lands and its fresh-process integration passes.

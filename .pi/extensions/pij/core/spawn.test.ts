@@ -752,14 +752,35 @@ describe("planBranch (branch-from-self gating, Plan 020)", () => {
 });
 
 describe("parseAdoptArgs (T023)", () => {
-	it("parses <pane> + --harness + optional --id/--json", () => {
+	it("parses <pane> + --harness + optional --id/--session-id/--json", () => {
 		expect(parseAdoptArgs(["%72", "--harness", "claude"])).toEqual({
 			ok: true,
-			value: { pane: "%72", harness: "claude", id: undefined, json: false },
+			value: {
+				pane: "%72",
+				harness: "claude",
+				id: undefined,
+				sessionId: undefined,
+				json: false,
+			},
 		});
-		expect(parseAdoptArgs(["%5", "--harness=claude", "--id=pij-x", "--json"])).toMatchObject({
+		expect(
+			parseAdoptArgs(["%5", "--harness=claude", "--id=pij-x", "--session-id=native-x", "--json"]),
+		).toMatchObject({
 			ok: true,
-			value: { pane: "%5", harness: "claude", id: "pij-x", json: true },
+			value: {
+				pane: "%5",
+				harness: "claude",
+				id: "pij-x",
+				sessionId: "native-x",
+				json: true,
+			},
+		});
+	});
+
+	it("rejects a missing --session-id value instead of consuming the next flag", () => {
+		expect(parseAdoptArgs(["%7", "--harness", "claude", "--session-id", "--json"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
 		});
 	});
 

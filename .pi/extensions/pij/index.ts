@@ -15,11 +15,12 @@ import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
+import { resolveStableIdentity } from "./core/binding.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild } from "./core/discovery.js";
 import { PijSession } from "./core/session.js";
-import type { Role } from "./core/types.js";
+import type { Role, SessionDescriptor } from "./core/types.js";
 
 // pij — peer session messaging + observability.
 //
@@ -209,7 +210,7 @@ export default function (pi: ExtensionAPI): void {
 	// Pattern P10: ONE session_start handler for every reason
 	// (startup/reload/new/resume/fork). Boot is idempotent — reload reuses the
 	// descriptor (no duplicate, no replay) and refreshes the live ctx.
-	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
+	pi.on("session_start", async (event, ctx: ExtensionContext) => {
 		// Derive a stable self-id from pi's OWN session identity (changes on /new
 		// and /fork, stable across /reload and /resume) so a /new session becomes a
 		// new peer instead of reusing this process's id (D-041). Falls back to the
@@ -222,14 +223,51 @@ export default function (pi: ExtensionAPI): void {
 		} catch {
 			piSessionId = undefined; // stale/unavailable session manager
 		}
-		self = deriveSelfId(piSessionId, process.pid);
+		registry = new FsRegistry(pijHome);
+		const derivedId = deriveSelfId(piSessionId, process.pid);
+		let durableDescriptor: SessionDescriptor | undefined;
+		if (piSessionId) {
+			const durable = registry.resolveIdentity("pi", piSessionId);
+			if (!durable.ok) {
+				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+				ctx.ui.notify(`pij: ${durable.code} ${durable.message}`, "error");
+				throw new Error(`pij durable identity error: ${durable.message}`);
+			}
+			const snapshot = registry.resolveIdentitySnapshot("pi", piSessionId);
+			if (!snapshot.ok) {
+				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+				ctx.ui.notify(`pij: ${snapshot.code} ${snapshot.message}`, "error");
+				throw new Error(`pij durable metadata error: ${snapshot.message}`);
+			}
+			durableDescriptor = snapshot.value;
+			const candidateId = durable.value ?? derivedId;
+			const stable = resolveStableIdentity(registry.list(), "pi", piSessionId, candidateId);
+			if (!stable.ok) {
+				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+				ctx.ui.notify(`pij: ${stable.code} ${stable.message}`, "error");
+				throw new Error(`pij identity collision: ${stable.message}`);
+			}
+			const descriptorId =
+				stable.value.kind === "reuse" ? stable.value.descriptor.id : stable.value.id;
+			if (durable.value && descriptorId !== durable.value) {
+				throw new Error(
+					`pij identity conflict: durable ${durable.value}, descriptor ${descriptorId}`,
+				);
+			}
+			if (durableDescriptor && durableDescriptor.id !== descriptorId) {
+				throw new Error(
+					`pij metadata conflict: durable snapshot ${durableDescriptor.id}, identity ${descriptorId}`,
+				);
+			}
+			self = descriptorId;
+		} else {
+			self = derivedId;
+		}
 		ctx.ui.setStatus(PIJ_STATUS_KEY, self);
 		const envRole = process.env.PIJ_ROLE;
 		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const dataDir = join(pijHome, self);
 		const eventsPath = join(dataDir, "events.ndjson");
-
-		registry = new FsRegistry(pijHome);
 		// /new and /fork mint a fresh id => drop the prior session's descriptor so it
 		// does not linger as a duplicate live peer (same pid, stale id). /reload keeps
 		// the same id, so this is a no-op there.
@@ -247,7 +285,18 @@ export default function (pi: ExtensionAPI): void {
 			tmux: new TmuxAdapter(),
 		});
 
-		const boot = session.boot({ id: self, role, folder: process.cwd(), dataDir, eventsPath });
+		const boot = session.boot({
+			id: self,
+			role,
+			folder: process.cwd(),
+			dataDir,
+			eventsPath,
+			harness: "pi",
+			harnessSessionId: piSessionId,
+			paneId: process.env.TMUX_PANE,
+			durableDescriptor,
+			resetRuntimeState: event.reason !== "reload",
+		});
 
 		// Export self-id (+ role) so a child `pij` CLI under a shared cwd resolves
 		// "self" unambiguously (finding 07). NB: env->child inheritance itself is

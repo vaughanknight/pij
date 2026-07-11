@@ -47,6 +47,19 @@ export function codexSessionIdFromPath(path: string): string {
 	return base.endsWith(".jsonl") ? base.slice(0, -".jsonl".length) : base;
 }
 
+/** Resolve an authoritative Codex native id to its date-nested rollout path. */
+export function codexRolloutForSession(
+	rolloutPaths: readonly string[],
+	harnessSessionId: string,
+	isReadable: (path: string) => boolean = () => true,
+): string | null {
+	return (
+		rolloutPaths.find(
+			(path) => codexSessionIdFromPath(path) === harnessSessionId && isReadable(path),
+		) ?? null
+	);
+}
+
 /** Recursively collect rollout `*.jsonl` ABSOLUTE paths under `root` (codex's
  *  date-nested `YYYY/MM/DD` tree). `readDir(dir)` returns the entry NAMES in a
  *  dir (`[]` if unreadable — a file, a missing dir). Recurses into non-`.jsonl`

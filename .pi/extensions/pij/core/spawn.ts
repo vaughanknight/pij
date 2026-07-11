@@ -644,20 +644,24 @@ export function planBranch(
 	return ok({ from: self.harnessSessionId, newSessionId });
 }
 
-/** A parsed `pij adopt <pane> --harness <h> [--id <pij-id>] [--json]` request. */
+/** A parsed `pij adopt <pane> --harness <h> [--id <pij-id>]
+ *  [--session-id <native-id>] [--json]` request. */
 export interface AdoptRequest {
 	readonly pane: string;
 	readonly harness: HarnessKind;
 	readonly id?: SessionId;
+	/** Authoritative harness-native id for restart re-attachment (AC-15). */
+	readonly sessionId?: string;
 	readonly json: boolean;
 }
 
 /** Parse the `adopt` verb: a positional `<pane>` (%N) + `--harness` (required,
- *  a control harness) + optional `--id` (else allocate) + `--json`. */
+ *  a control harness) + optional `--id`, authoritative `--session-id`, + `--json`. */
 export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 	let pane: string | undefined;
 	let harness: HarnessKind | undefined;
 	let id: SessionId | undefined;
+	let sessionId: string | undefined;
 	let json = false;
 	for (let i = 0; i < argv.length; i++) {
 		const tok = argv[i];
@@ -681,14 +685,22 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 			harness = value as HarnessKind;
 		} else if (key === "id") {
 			id = value;
+		} else if (key === "session-id") {
+			if (value.trim() === "" || value.startsWith("--")) {
+				return err("E-ARG", "--session-id needs a non-empty native id value");
+			}
+			sessionId = value;
 		} else {
 			return err("E-ARG", `unknown flag --${key} for adopt`);
 		}
 	}
 	if (!pane || !/^%\d+$/.test(pane))
-		return err("E-ARG", "usage: pij adopt <pane:%N> --harness claude [--id <pij-id>]");
+		return err(
+			"E-ARG",
+			"usage: pij adopt <pane:%N> --harness claude [--id <pij-id>] [--session-id <native-id>]",
+		);
 	if (!harness) return err("E-ARG", "adopt needs --harness claude|copilot|codex");
-	return ok({ pane, harness, id, json });
+	return ok({ pane, harness, id, sessionId, json });
 }
 
 // ─── Spawn-time model validation (warn-don't-block, T006) ───────────────────

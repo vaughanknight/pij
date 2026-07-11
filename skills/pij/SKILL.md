@@ -26,6 +26,7 @@ description: Route pij platform jobs — spawn & talk to tmux colleagues (claude
 | `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
 | `ops` | daemon health, registry & tmux hygiene | `references/routes/ops.md` |
+| `prime` | govern many agents in one repo: one o-prime seat, stream orchestrators below, government as single-writer files | `references/routes/prime.md` |
 | `watch` | subscribe a non-pi peer to file-change notices — `pij watch`/`pij unwatch` (self-serve) | *(shipped, plan 033 — CLI verbs; see `docs/how/pij-peer-watch.md`; no route module)* |
 
 Module missing at its path → say so and stop. Never improvise a route from memory.
@@ -39,6 +40,9 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
+
+`prime` is a skill route, not a CLI verb; its rituals compose the existing peer,
+messaging, close, state, and flow surfaces.
 
 ## Global invariants (every route)
 
@@ -58,6 +62,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | "spawn a worker / colleague / peer" | `/pij peer` |
 | "run flowspace search" / "ask an agent" | `/pij agent` |
 | "have a peer run /X on …" / "run a skill in a peer" | `/pij skill` |
+| "stand up an o-prime" / "govern this repo" | `/pij prime` |
 
 ## References
 
