@@ -11,14 +11,15 @@ contracts, monotonic seq, event build/filter/age, state + liveness, command
 allow-list, peer discovery + self-resolution, message framing, and delivery
 receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 (fs registry/event-log/channel, pi-runtime), the extension wiring, and the
-`pij` CLI land in Phases 2–5.
+`pij` CLI land in Phases 2–5. Plan 041 adds immutable inbox envelopes,
+atomic read markers, and a pull consumer for sessions without tmux.
 
 ## Source Locations
 
 | Path | Role |
 |------|------|
 | `.pi/extensions/pij/core/types.ts` | Pi-free domain vocabulary: ids, roles, optional prime designation, state/liveness, descriptor, event/query, message, receipt, error codes, `Result` tagged union. |
-| `.pi/extensions/pij/core/ports.ts` | Hexagonal port interfaces: `RegistryPort`, `EventLogPort` (`+lastSeq/count`), `DeliveryPort`, `PiRuntimePort`, `ProcessPort`. |
+| `.pi/extensions/pij/core/ports.ts` | Hexagonal port interfaces: `RegistryPort`, `EventLogPort` (`+lastSeq/count/appendOnce`), `DeliveryPort`, `InboxPort`, `PiRuntimePort`, `ProcessPort`. |
 | `.pi/extensions/pij/core/seq.ts` | `SeqCounter` — strictly-monotonic allocator with crash-safe recovery from `lastSeq()`. |
 | `.pi/extensions/pij/core/events.ts` | `buildEvent` (seq + ISO timestamp), `filterEvents` (since/type/last), `eventAgeMs`/`latestEventAgeMs`. |
 | `.pi/extensions/pij/core/state.ts` | `isWorking`, `liveness` (active/stale/dead), `isStalled`; `STALE_AFTER_MS`. |
@@ -28,9 +29,11 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
 | `.pi/extensions/pij/core/cli.ts` | Send grammar, ordered broadcast preflight/fan-out/result projection, and target/message wait correlation. |
+| `.pi/extensions/pij/core/inbox.ts` | Pull inbox grammar, claim projection, hidden receipt preparation, and event-before-marker persistence. |
 | `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of all five ports (Pattern P8: tests target these). |
 | `.pi/extensions/pij/core/*.test.ts`, `adapters/fakes.test.ts` | Unit coverage for every core module + fakes (50 tests). |
-| `.pi/extensions/pij/index.ts` | Extension wiring — **stub in Phase 1**; real registry write + announce + delivery + capture land in Phase 3. |
+| `.pi/extensions/pij/adapters/channel.ts` | Immutable `msg-*` publication plus exclusive/idempotent `read-*` markers, unread listing, and pi watcher watermarking. |
+| `.pi/extensions/pij/index.ts` | Pi wiring: durable unread-derived watcher watermark, `PijSession.onInbound`, then post-callback `markRead`. |
 
 ## Concepts
 
@@ -51,16 +54,22 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | Delivery receipt | Sender learns queued-vs-delivered. | `MessageReceipt` (`queued`/`delivered`); steered delivery = next `turn_start` after `input(steer)` (finding 08). |
 | Broadcast send | One raw text body is delivered once to each ordered target with independent outcomes. | Two or more unique repeatable `--to` targets; all-target preflight before the first delivery; per-target result/message id; later targets continue after a delivery-port failure. |
 | Multi-message wait | A broadcast sender can wait honestly for every successful recipient. | Ordered `{to,messageId}` tracking; `queued` retains a target, `delivered`/`unverified` removes only that target, and one global timeout names unresolved recipients. |
+| Immutable inbox | Message payload and read state are separate durable facts. | `msg-<id>.json` is retained; `read-<id>.json` existence is authoritative and marker publication is atomic/idempotent. |
+| Delivery ownership | Push and pull consumers share one unread/marker contract without double consumption. | Pi marks after `onInbound`; daemon-owned tmux marks after injection outcome; `deliveryMode:"pull"` is never daemon-owned. |
+| Pull inbox | A non-tmux external session can register and block for messages without a daemon. | `pij inbox --wait [ms]`; first use auto-registers current ambient identity as pull-owned. |
+| Durable receipt envelope | Receipt history resolves waits without waking peers or relying on a live process. | Persist/reuse the receipt event before publishing its read marker; receipt envelopes remain retained and hidden. |
 
 ## Contracts
 
 | Contract | Consumer | Shape / Guarantee |
 |----------|----------|-------------------|
 | `Result<T>` | whole core, CLI, tests | Tagged union `{ok:true,value}` / `{ok:false,code,message}` (Pattern P4 — no throws). |
-| Five ports | Phase 2/3 adapters, tests | `RegistryPort`, `EventLogPort(+lastSeq/count)`, `DeliveryPort`, `PiRuntimePort`, `ProcessPort`. Only `PiRuntimePort`'s real adapter imports pi. |
+| Six ports | Phase 2/3 adapters, tests | `RegistryPort`, `EventLogPort(+lastSeq/count/appendOnce)`, `DeliveryPort`, `InboxPort`, `PiRuntimePort`, `ProcessPort`. Only `PiRuntimePort`'s real adapter imports pi. |
 | `PijEvent` + `EventQuery` | event log adapter, `pij tail` | seq+ISO-timestamp lines; filters compose deterministically. |
 | `MessageReceipt` + correlation | Phase 3 receiver wiring, `pij send` | queued/delivered lifecycle; pure correlation to the runtime turn stream. |
 | Broadcast send result | CLI users and automation | Human output has one recipient row; JSON is `{from,results:[...]}` with ordered per-target successes or errors. Preflight failure produces no deliveries; runtime partial failure exits non-zero after attempting later targets. |
+| Inbox read contract | pi watcher, daemon, pull CLI | List durable unread envelopes; publish read markers only after the owning consumer outcome; marked history is skipped across ticks/reloads. |
+| Receipt persistence | pull CLI, daemon | Atomic `appendOnce(receipt-envelope:<envelopeId>)` happens before `markRead`; retries reuse the event and finish the marker. |
 | Error codes | CLI surface (workshop 001) | `E-NOID/E-SELF/E-CMD/E-DEAD/E-NOREG/E-ARG/E-AMBIG`; duplicate/colliding native identity mappings fail as `E-AMBIG`. |
 
 ## Boundary Owns
@@ -71,9 +80,10 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
 - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
 - Fire-and-forget message framing + delivery-receipt lifecycle.
+- Immutable inbox envelopes, atomic read markers, and push/pull delivery ownership.
 - Ordered one-to-many text fan-out, all-target preflight, per-recipient outcomes, and multi-message wait completion.
 - Remote-command allow-list.
-- The five port contracts the adapters implement.
+- The six port contracts the adapters implement.
 
 ## Boundary Excludes
 
@@ -109,3 +119,4 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | 037-pij-broadcast / Phase 1 | Added repeatable `--to` text fan-out with ordered all-target preflight, independent recipient results, continued delivery after partial runtime failure, and terminal-set receipt waiting. | 2026-07-11 |
 | 038-pij-prime-designation | Added optional `SessionDescriptor.prime`, `filterPrime`, `pij list --prime`, ordinary-list `P` visibility, and JSON `prime:boolean` compatibility. | 2026-07-11 |
 | 040-memorable-pij-session-ids | New identities now use collision-safe two-word primary ids; exact native and legacy opaque identities reuse their stored id, and `prime` survives allocation, snapshots, and reattachment. | 2026-07-11 |
+| 041-pij-inbox-no-tmux | Added `InboxPort`, immutable `msg-*` plus atomic `read-*`, ambient pull registration/`pij inbox --wait`, durable receipt-event convergence, and post-outcome tmux/pi read ownership. | 2026-07-12 |

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -57,5 +57,47 @@ describe("FsEventLog", () => {
 		expect(log.lastSeq()).toBe(0);
 		expect(log.count()).toBe(0);
 		expect(log.read()).toEqual([]);
+	});
+
+	it("appendOnce publishes one event per key and merges sequence order after reopen", () => {
+		const log = new FsEventLog(home, id);
+		log.append(ev(1));
+		expect(log.appendOnce("receipt:m3", ev(3, "receipt"))).toBe("appended");
+		expect(log.appendOnce("receipt:m3", ev(99, "receipt"))).toBe("existing");
+		log.append(ev(2));
+		expect(log.read().map((event) => event.seq)).toEqual([1, 2, 3]);
+		expect(log.read({ last: 2 }).map((event) => event.seq)).toEqual([2, 3]);
+		expect(log.count()).toBe(3);
+		expect(log.lastSeq()).toBe(3);
+
+		const reopened = new FsEventLog(home, id);
+		expect(reopened.appendOnce("receipt:m3", ev(100, "receipt"))).toBe("existing");
+		expect(reopened.read().map((event) => event.seq)).toEqual([1, 2, 3]);
+	});
+
+	it("appendOnce removes temp files and propagates non-EEXIST publication failures", () => {
+		const log = new FsEventLog(home, id);
+		expect(log.appendOnce("receipt:m1", ev(1, "receipt"))).toBe("appended");
+		expect(readdirSync(join(home, id)).filter((name) => name.startsWith(".event-once-"))).toEqual(
+			[],
+		);
+
+		const blocked = new FsEventLog(home, "blocked");
+		const blockedDir = join(home, "blocked");
+		rmSync(blockedDir, { recursive: true, force: true });
+		writeFileSync(blockedDir, "not a directory");
+		expect(() => blocked.appendOnce("receipt:m2", ev(2, "receipt"))).toThrow();
+		expect(readdirSync(home).filter((name) => name.startsWith(".event-once-"))).toEqual([]);
+	});
+
+	it("preserves append/file order for legacy NDJSON-only out-of-order sequences", () => {
+		const log = new FsEventLog(home, id);
+		log.append(ev(3));
+		log.append(ev(1));
+		log.append(ev(2));
+		expect(log.read().map((event) => event.seq)).toEqual([3, 1, 2]);
+		expect(log.read({ last: 2 }).map((event) => event.seq)).toEqual([1, 2]);
+		expect(log.count()).toBe(3);
+		expect(log.lastSeq()).toBe(3);
 	});
 });

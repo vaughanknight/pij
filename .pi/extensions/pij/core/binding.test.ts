@@ -173,6 +173,7 @@ describe("resolveAdoptSessionIdForHarness (harness-aware adopt, findings 02/02b/
 
 describe("resolvePhonehomeSessionId", () => {
 	const COPILOT_UUID = "df4f1111-2222-4333-8444-555555555555";
+	const CODEX_UUID = "ABCDEF01-2222-4333-8444-555555555555";
 
 	it("selects the harness-specific current-session env variable", () => {
 		expect(
@@ -187,14 +188,21 @@ describe("resolvePhonehomeSessionId", () => {
 				CLAUDE_CODE_SESSION_ID: "claude-current",
 			}),
 		).toBe("claude-current");
+		expect(
+			resolvePhonehomeSessionId("codex", {
+				CODEX_THREAD_ID: CODEX_UUID,
+				CLAUDE_CODE_SESSION_ID: "claude-old",
+			}),
+		).toBe(CODEX_UUID.toLowerCase());
 	});
 
-	it("rejects a malformed Copilot uuid and returns null for unsupported env-less harnesses", () => {
+	it("rejects malformed Copilot/Codex UUIDs and returns null for env-less harnesses", () => {
 		expect(
 			resolvePhonehomeSessionId("copilot", {
 				COPILOT_AGENT_SESSION_ID: "not-a-uuid",
 			}),
 		).toBeNull();
+		expect(resolvePhonehomeSessionId("codex", { CODEX_THREAD_ID: "not-a-uuid" })).toBeNull();
 		expect(resolvePhonehomeSessionId("codex", {})).toBeNull();
 	});
 });
@@ -281,6 +289,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 			paneId: "%9",
 			pid: 99,
 			folder: "/new",
+			deliveryMode: "pull",
 		});
 		expect(reattached).toMatchObject({
 			id: "pij-original",
@@ -293,6 +302,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 			pid: 99,
 			state: "idle",
 			lifecycle: "bound",
+			deliveryMode: "pull",
 			prime: true,
 		});
 		expect(reattached.failureReason).toBeUndefined();

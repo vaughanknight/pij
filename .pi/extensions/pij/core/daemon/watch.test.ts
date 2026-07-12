@@ -449,10 +449,17 @@ describe("Daemon receipt guard for synthetic watch sender", () => {
 				names = [];
 			}
 			expect(names).toEqual([]);
-			const consumed = readdirSync(join(home, "pij-c", "inbox")).filter((n) =>
-				n.startsWith("msg-"),
-			);
-			expect(consumed).toHaveLength(0);
+			const targetInbox = join(home, "pij-c", "inbox");
+			const targetNames = readdirSync(targetInbox);
+			const retained = targetNames.filter((n) => n.startsWith("msg-"));
+			expect(retained).toHaveLength(1);
+			const message = JSON.parse(readFileSync(join(targetInbox, retained[0] ?? ""), "utf8")) as {
+				messageId: string;
+			};
+			expect(targetNames).toContain(`read-${message.messageId}.json`);
+			const unread = new FsChannel(home).listUnread("pij-c");
+			if (!unread.ok) throw new Error(unread.message);
+			expect(unread.value).toEqual([]);
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}

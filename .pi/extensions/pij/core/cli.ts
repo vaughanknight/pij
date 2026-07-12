@@ -11,9 +11,10 @@
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, filterPrime, resolveSelf } from "./discovery.js";
+import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
-import type { DeliveryPort, EventLogPort, ProcessPort, RegistryPort } from "./ports.js";
+import type { DeliveryPort, EventLogPort, InboxPort, ProcessPort, RegistryPort } from "./ports.js";
 import { daemonTickStatus } from "./receipts.js";
 import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
@@ -34,6 +35,8 @@ export interface CliDeps {
 	/** A per-target event log (the bin builds `FsEventLog(pijHome, id)`). */
 	readonly eventLogFor: (id: SessionId) => EventLogPort;
 	readonly delivery: DeliveryPort;
+	/** Shared read side of the delivery channel; supplied by the standalone CLI. */
+	readonly inbox?: InboxPort;
 	readonly process: ProcessPort;
 	/** The invoking shell's cwd (ProcessPort has no cwd seam). */
 	readonly cwd: string;
@@ -41,6 +44,8 @@ export interface CliDeps {
 	readonly pijHome: string;
 	/** Model entries loaded by the bin (for pij models verb). Empty when absent. */
 	readonly models?: readonly ModelEntry[];
+	/** Exact ambient native-identity reverse lookup, supplied by the bin. */
+	readonly resolveAmbientSelf?: () => Result<SessionId | undefined>;
 }
 
 // ─── parsed command (discriminated per verb) ────────────────────────────────
@@ -121,6 +126,15 @@ export interface WaitReceiptUpdate {
 	readonly pending: readonly WaitTarget[];
 }
 
+export interface WaitReceiptSourcesResult {
+	readonly pending: readonly WaitTarget[];
+	readonly seen: readonly string[];
+	readonly updates: ReadonlyArray<{
+		readonly target: WaitTarget;
+		readonly state: ReceiptState;
+	}>;
+}
+
 /** Apply one parsed receipt to the pending target set. Queued receipts retain the
  * target; delivered/unverified receipts remove only their correlated message. */
 export function applyWaitReceipt(
@@ -134,6 +148,34 @@ export function applyWaitReceipt(
 		target,
 		pending: pending.filter(({ messageId }) => messageId !== receipt.messageId),
 	};
+}
+
+/** Merge durable receipt events first, then prepared receipt envelopes. A state
+ * is emitted once; receipt durability/marking is handled before this reduction. */
+export function applyWaitReceiptSources(
+	pendingInput: readonly WaitTarget[],
+	seenInput: readonly string[],
+	eventReceipts: readonly {
+		readonly messageId: string;
+		readonly state: ReceiptState;
+	}[],
+	envelopeReceipts: readonly PersistReceiptEnvelopeAction[],
+): WaitReceiptSourcesResult {
+	let pending = pendingInput;
+	const seen = new Set(seenInput);
+	const updates: Array<{ target: WaitTarget; state: ReceiptState }> = [];
+	const accept = (receipt: { readonly messageId: string; readonly state: ReceiptState }): void => {
+		const update = applyWaitReceipt(pending, receipt);
+		if (!update.target) return;
+		const key = `${receipt.messageId}:${receipt.state}`;
+		if (seen.has(key)) return;
+		seen.add(key);
+		updates.push({ target: update.target, state: receipt.state });
+		pending = update.pending;
+	};
+	for (const receipt of eventReceipts) accept(receipt);
+	for (const envelope of envelopeReceipts) accept(envelope.receipt);
+	return { pending, seen: [...seen], updates };
 }
 
 export function renderWaitReceipt(
@@ -165,7 +207,10 @@ const EXIT: Record<PijErrorCode, number> = {
 };
 
 function daemonReceiptAuthoritative(target: SessionDescriptor): boolean {
-	return target.harness === "claude" || target.harness === "copilot" || target.harness === "codex";
+	return (
+		target.deliveryMode !== "pull" &&
+		(target.harness === "claude" || target.harness === "copilot" || target.harness === "codex")
+	);
 }
 
 // ─── argv parsing ───────────────────────────────────────────────────────────
@@ -445,16 +490,31 @@ function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
 function selfId(deps: CliDeps): Result<SessionId> {
 	const envId = deps.process.env("PIJ_SESSION_ID");
 	const pane = deps.process.env("TMUX_PANE");
+	const explicitId = envId?.trim() || undefined;
+	const ambient = deps.resolveAmbientSelf?.();
+	if (ambient) {
+		if (!ambient.ok) return ambient;
+		if (ambient.value) {
+			if (explicitId && explicitId !== ambient.value) {
+				return err(
+					"E-AMBIG",
+					`PIJ_SESSION_ID ${explicitId} does not match ambient session ${ambient.value}`,
+				);
+			}
+			return ok(ambient.value);
+		}
+	}
+	if (explicitId) return resolveSelf(explicitId, [], pane);
 	// Pane-first across the FULL registry (FX001-1 / DL-003): tmux pane ids are
 	// server-global, so a registered pane identifies the caller regardless of cwd.
 	// The folder filter below starved resolveSelf's pane branch on cross-repo
 	// calls, silently losing spawnedBy (reports then died E-NOREPORTTARGET).
-	if ((!envId || envId.trim() === "") && pane && pane.trim() !== "") {
+	if (pane && pane.trim() !== "") {
 		const byPane = deps.registry.list().filter((d) => d.paneId === pane);
 		const only = byPane[0];
 		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
 	}
-	return resolveSelf(envId, filterByFolder(deps.registry.list(), deps.cwd), pane);
+	return resolveSelf(undefined, filterByFolder(deps.registry.list(), deps.cwd), pane);
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────
@@ -511,7 +571,10 @@ function preflightSendTargets(
 		const descriptor = deps.registry.read(id);
 		if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
 		const targetLiveness = liveOf(deps, descriptor, now);
-		if (targetLiveness === "dead" || targetLiveness === "dissolved") {
+		if (
+			targetLiveness === "dissolved" ||
+			(targetLiveness === "dead" && descriptor.deliveryMode !== "pull")
+		) {
 			const why = targetLiveness === "dissolved" ? "dissolved (closed)" : "dead (pid gone)";
 			return err("E-DEAD", `session ${id} is ${why}`);
 		}
@@ -526,11 +589,14 @@ function sendSuccess(
 	kind: string,
 	now: number,
 ): SendSuccess {
-	const receipt = daemonReceiptAuthoritative(target.descriptor)
-		? "queued"
-		: (target.descriptor.state ?? "idle") === "working"
+	const receipt =
+		target.descriptor.deliveryMode === "pull"
 			? "queued"
-			: "delivered";
+			: daemonReceiptAuthoritative(target.descriptor)
+				? "queued"
+				: (target.descriptor.state ?? "idle") === "working"
+					? "queued"
+					: "delivered";
 	const tickStatus = daemonReceiptAuthoritative(target.descriptor)
 		? daemonTickStatus(target.descriptor.lastTickAt, now)
 		: undefined;
@@ -551,11 +617,13 @@ function renderBroadcastSuccess(
 ): string {
 	const recvHint =
 		result.receipt === "queued"
-			? daemonReceiptAuthoritative(target)
-				? result.daemonTickStale
-					? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
-					: "queued: awaiting daemon delivery confirmation"
-				: "queued: peer is busy, will steer after current turn"
+			? target.deliveryMode === "pull"
+				? "queued: awaiting inbox check"
+				: daemonReceiptAuthoritative(target)
+					? result.daemonTickStale
+						? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
+						: "queued: awaiting daemon delivery confirmation"
+					: "queued: peer is busy, will steer after current turn"
 			: "delivered: peer was idle";
 	const targetAgeMs = descAgeMs(target, now);
 	const warn =
@@ -802,11 +870,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							: "file"
 						: "text";
 			}
-			const initial = daemonReceiptAuthoritative(target)
-				? "queued"
-				: (target.state ?? "idle") === "working"
+			const initial =
+				target.deliveryMode === "pull"
 					? "queued"
-					: "delivered";
+					: daemonReceiptAuthoritative(target)
+						? "queued"
+						: (target.state ?? "idle") === "working"
+							? "queued"
+							: "delivered";
 			const tickStatus = daemonReceiptAuthoritative(target)
 				? daemonTickStatus(target.lastTickAt, now)
 				: undefined;
@@ -844,11 +915,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				};
 			const recvHint =
 				initial === "queued"
-					? daemonReceiptAuthoritative(target)
-						? tickStatus?.daemonTickStale
-							? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
-							: "queued: awaiting daemon delivery confirmation"
-						: "queued: peer is busy, will steer after current turn"
+					? target.deliveryMode === "pull"
+						? "queued: awaiting inbox check"
+						: daemonReceiptAuthoritative(target)
+							? tickStatus?.daemonTickStale
+								? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
+								: "queued: awaiting daemon delivery confirmation"
+							: "queued: peer is busy, will steer after current turn"
 					: "delivered: peer was idle";
 			const tail = cmd.wait
 				? ""
@@ -936,14 +1009,21 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		}
 		case "phonehome": {
 			// Confirmatory binding: the agent self-reports the current native id from
-			// its own harness-specific env. Never read another harness's variable.
-			const s = selfId(deps);
+			// its own harness-specific env. A pending peer cannot pass ambient reverse-
+			// join validation until this operation binds it, so the spawn-provided
+			// explicit id remains the bootstrap identity for phonehome only.
+			const explicitId = deps.process.env("PIJ_SESSION_ID");
+			const s =
+				explicitId && explicitId.trim() !== ""
+					? resolveSelf(explicitId, [], deps.process.env("TMUX_PANE"))
+					: selfId(deps);
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
 			const d = deps.registry.read(s.value);
 			if (!d) return fail("E-NOID", `no session '${s.value}' in registry`, cmd.json);
 			const harnessSessionId = resolvePhonehomeSessionId(d.harness ?? "pi", {
 				CLAUDE_CODE_SESSION_ID: deps.process.env("CLAUDE_CODE_SESSION_ID"),
 				COPILOT_AGENT_SESSION_ID: deps.process.env("COPILOT_AGENT_SESSION_ID"),
+				CODEX_THREAD_ID: deps.process.env("CODEX_THREAD_ID"),
 			});
 			let bound = d;
 			if (harnessSessionId && harnessSessionId.trim() !== "") {
@@ -966,7 +1046,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			return okOut(
 				confirmed
 					? `phoned home: ${bound.id} ↔ ${bound.harness ?? "?"} session ${bound.harnessSessionId} (${bound.lifecycle ?? "?"})`
-					: `phoned home: ${bound.id} — no valid current-session env for ${bound.harness ?? "unknown"} (expected ${bound.harness === "copilot" ? "COPILOT_AGENT_SESSION_ID UUID" : "CLAUDE_CODE_SESSION_ID"})`,
+					: `phoned home: ${bound.id} — no valid current-session env for ${bound.harness ?? "unknown"} (expected ${
+							bound.harness === "copilot"
+								? "COPILOT_AGENT_SESSION_ID UUID"
+								: bound.harness === "codex"
+									? "CODEX_THREAD_ID UUID"
+									: "CLAUDE_CODE_SESSION_ID"
+						})`,
 			);
 		}
 		case "path": {

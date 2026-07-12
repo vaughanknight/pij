@@ -3,9 +3,9 @@
 // HarnessKind itself lives in core/types.ts (shared SessionDescriptor vocab);
 // this module owns the transport-selection CONTRACT the router depends on.
 
-import type { HarnessKind } from "../types.js";
+import type { DeliveryMode, HarnessKind } from "../types.js";
 
-export type { HarnessKind } from "../types.js";
+export type { DeliveryMode, HarnessKind } from "../types.js";
 
 /** How a message reaches a session.
  *  - `inbox`   — write the peer's ~/.pij inbox; the peer self-injects (pi).
@@ -17,7 +17,8 @@ export type Transport = "inbox" | "sendkeys";
  * seam — `pi.sendUserMessage` — keeps pi on the in-process `inbox` path; every
  * other harness (claude/copilot/codex) is driven over tmux `send-keys`.
  */
-export function selectTransport(harness: HarnessKind): Transport {
+export function selectTransport(harness: HarnessKind, deliveryMode?: DeliveryMode): Transport {
+	if (deliveryMode === "pull") return "inbox";
 	switch (harness) {
 		case "pi":
 			return "inbox";

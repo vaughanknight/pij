@@ -9,6 +9,7 @@ import { isCopilotSessionId } from "./harness/copilot.js";
 import { transcriptLayout } from "./harness/transcript.js";
 import {
 	type DeathReason,
+	type DeliveryMode,
 	err,
 	type HarnessKind,
 	ok,
@@ -123,6 +124,7 @@ export function resolveAdoptSessionIdForHarness(input: AdoptResolveInput): Adopt
 export interface PhonehomeSessionEnv {
 	readonly CLAUDE_CODE_SESSION_ID?: string;
 	readonly COPILOT_AGENT_SESSION_ID?: string;
+	readonly CODEX_THREAD_ID?: string;
 }
 
 /** Current native identity exposed by the session's own harness process. */
@@ -137,6 +139,10 @@ export function resolvePhonehomeSessionId(
 	if (harness === "claude") {
 		const value = env.CLAUDE_CODE_SESSION_ID?.trim();
 		return value || null;
+	}
+	if (harness === "codex") {
+		const value = env.CODEX_THREAD_ID?.trim();
+		return isCopilotSessionId(value) ? value.toLowerCase() : null;
 	}
 	return null;
 }
@@ -197,6 +203,7 @@ export interface ReattachIdentityInput {
 	readonly pid: number;
 	readonly paneId?: string;
 	readonly transcriptPath?: string;
+	readonly deliveryMode?: DeliveryMode;
 }
 
 /** Replace one runtime incarnation's attachment data while preserving the
@@ -215,6 +222,7 @@ export function reattachIdentity(
 		harness: input.harness,
 		harnessSessionId: input.harnessSessionId,
 		lifecycle: "bound",
+		...(input.deliveryMode !== undefined ? { deliveryMode: input.deliveryMode } : {}),
 		...(input.transcriptPath !== undefined ? { transcriptPath: input.transcriptPath } : {}),
 	};
 }

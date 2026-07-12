@@ -26,6 +26,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
 | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `prime` is latest-disk-authoritative before daemon writes. |
+| `.pi/extensions/pij/core/inbox.ts` | Shared durable inbox actions used by daemon-owned receipt consumption: prepare hidden receipt envelopes, append/reuse their event, then mark read. |
 | `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims, memorable-id allocation, pre-bind reservation ownership, two-way durable identity ownership, and metadata snapshots. |
 | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
@@ -50,6 +51,8 @@ thin receiver). Plan 019.
 | Fire-and-forget injection | tmux targets receive `send-keys`+Enter, ungated; the caller never blocks. | router → `tmux-keys` (AC-07/13). |
 | External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `prime:true\|false` overrides stale daemon snapshots; append-only `reportedAt` retains fill-only semantics. |
 | Delivery ownership | Senders write the target inbox; the daemon consumes+injects ONLY tmux inboxes and merely observes pi inboxes. | router rules; pi thin receiver sole pi-inbox consumer (AC-08). |
+| Durable push ownership | The daemon consumes only push-owned tmux unread envelopes, marks after an injection outcome, and leaves `deliveryMode:"pull"` plus pi inboxes untouched. | `daemonOwnsDelivery`; marker-aware `listUnread`; pi thin receiver/pull CLI own their inboxes. |
+| Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
 | Telegram conversation routing | Bare text/captionless media follows the last session whose non-receipt bubble successfully reached that normalized chat id; explicit selection remains separate for `/tail`. | reply tag > explicit name > last speaker; `onSpoke` after first successful send; process-local maps in `startBridge`. |
 | Telegram sender context | Every agent bubble keeps `[pij-id]` first, then adds stable repository identity from the sender descriptor folder. | `[pij-id] [repo]` on `main`; `[pij-id] [repo/branch]` otherwise; bounded git failure or missing descriptor falls back to `[pij-id]`. |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
@@ -65,6 +68,7 @@ thin receiver). Plan 019.
 | `classifyInterstitial` | daemon readiness loop | pure `string → { kind: "dismiss" \| "needs-human" \| "none" }`. |
 | Binding record | daemon, `pij tail`, creator notice | Durable `(harness,harnessSessionId) ↔ pij-id` plus replaceable `paneId ↔ pid ↔ cwd`; exact zero/one/many resolution, no silent overwrite. |
 | Prime CLI wiring | orchestration core | Omitted target uses exact env/pane/lone-local self resolution; explicit ids bypass it; baton actor fallback remains baton-only. |
+| Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
 | Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
 
@@ -72,6 +76,7 @@ thin receiver). Plan 019.
 
 - The single-instance daemon lifecycle + chalk TUI.
 - The harness-type → transport seam (`pi`→inbox, `claude`/`copilot`/`codex`→send-keys).
+- Daemon ownership of push tmux unread/marker outcomes; pull and pi inboxes remain externally owned.
 - The tmux key/paste/capture primitives (shared lib).
 - Readiness detection + interstitial handling.
 - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
@@ -121,3 +126,4 @@ thin receiver). Plan 019.
 | 040-memorable-pij-session-ids / F004 | Removed global newest-by-mtime Copilot adoption. Current env UUID + matching state metadata is authoritative; absent/invalid env stays pending and harness-aware phonehome completes recovery without touching another session's descriptor. | 2026-07-12 |
 | 043-telegram-last-speaker-routing | Replaced inbound sticky fallback with strict per-chat last-speaker routing observed at the first successful non-receipt Telegram send. Reply/name precedence, captionless media, threading, and sender tags remain; `/tail` now explicitly uses separate selected-target state, and both maps reset with the bridge process. | 2026-07-12 |
 | 043-telegram-last-speaker-routing / R8 | Added stable sender repository context to every agent-originated Telegram text/media bubble: `[pij-id] [repo]` on `main`, `[pij-id] [repo/branch]` otherwise. Resolution uses the sender descriptor folder, git common-dir identity, and bounded injected subprocess effects; failures preserve the original sender tag. | 2026-07-12 |
+| 041-pij-inbox-no-tmux | Replaced tmux delete-on-consume/raw scans with marker-aware retained history, post-outcome read markers, event-before-marker receipt handling, and explicit pull non-ownership at every daemon gate. | 2026-07-12 |
