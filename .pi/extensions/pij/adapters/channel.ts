@@ -242,7 +242,7 @@ export class FsChannel {
 		};
 
 		const mkWatcher = this.watchOpts.watchFactory ?? ((d, cb) => watch(d, cb));
-		const watcher = mkWatcher(realpathSync(dir), () => {
+		const watcher = mkWatcher(realpathSync.native(dir), () => {
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(scan, DEBOUNCE_MS);
 		});

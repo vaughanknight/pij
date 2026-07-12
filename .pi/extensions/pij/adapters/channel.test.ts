@@ -260,7 +260,7 @@ describe("FsChannel", () => {
 
 		disposers.push(ch.watch("bob", () => {}));
 
-		expect(watchedDir).toBe(realpathSync(join(realHome, "bob", "inbox")));
+		expect(watchedDir).toBe(realpathSync.native(join(realHome, "bob", "inbox")));
 	});
 
 	it("a watcher only sees its own inbox (routes by message.to)", async () => {

@@ -104,3 +104,11 @@ Local proof:
 - `just windows-compat` — typecheck, lint, focused 25/25 PASS.
 
 Hosted Windows remains the condition-precedent.
+
+### Third-run refinement
+
+The first canonicalization used `realpathSync`, whose compatibility resolver can
+preserve an 8.3 alias on Windows. The third hosted run therefore hit the same
+libuv assertion. The watcher boundary now uses `realpathSync.native`, which asks
+the OS for the canonical long path. The junction regression compares against the
+same native resolver.
