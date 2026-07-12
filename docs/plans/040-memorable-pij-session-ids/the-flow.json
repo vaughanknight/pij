@@ -3,12 +3,12 @@
   "kind": "flight-plan",
   "slug": "memorable-pij-session-ids",
   "nav": {
-    "now": "review-1",
-    "next": "ship",
+    "now": "ship",
+    "next": null,
     "intent": "you know how some apps like docker and others get cool random but not random names like cool-barista or alpha-pinetree etc... how they do that? could we do that for pij names instead of the random ones? pij-grifting-lamp",
     "bag": {
       "mode": "Simple",
-      "status": "active"
+      "status": "complete"
     }
   },
   "created_at": "2026-07-11T11:06:55.940Z",
@@ -247,6 +247,55 @@
         "from": "phase-1",
         "to": "review-1"
       }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:38:41.490Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:38:42.326Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-012",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:38:43.143Z",
+      "details": {
+        "node": "retro-ship",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "CUR-005",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:38:44.083Z",
+      "details": {
+        "from": "review-1",
+        "to": "ship"
+      }
     }
   ],
   "nodes": [
@@ -348,14 +397,20 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "note": "Local trunk complete in 18b7421 + 9575976; ship report filed; consolidated push-main remains o-prime/Jordan gated.",
+      "artifacts": [
+        "docs/plans/040-memorable-pij-session-ids/reports/ship-report.md"
+      ],
+      "modified_at": "2026-07-12T00:38:42.326Z",
+      "ran_at": "2026-07-12T00:38:42.326Z"
     },
     {
       "id": "backpressure",
@@ -452,7 +507,7 @@
       "id": "retro-ship",
       "type": "harness-retro",
       "label": "Retro: ship (harvest)",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "ship",
       "next": [
         "ship"
@@ -466,7 +521,9 @@
         "Recommended post-flight seam: the terminal long-horizon harvest — fold this flight's learnings into durable memory at ship.",
         "Run /eng-harness-flow --hook post-flight --json — read-only/advisory; narrate its envelope verbatim.",
         "Skippable — advisory, never gates. Decline with a real `harness flow status retro-ship --to skipped`."
-      ]
+      ],
+      "modified_at": "2026-07-12T00:38:43.143Z",
+      "ran_at": "2026-07-12T00:38:43.143Z"
     }
   ]
 }
