@@ -183,6 +183,347 @@
         "from": "preparing",
         "to": "in_flight"
       }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:40:48.273Z",
+      "details": {
+        "node": "wi-038",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:40:50.826Z",
+      "details": {
+        "node": "wi-039",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:40:53.456Z",
+      "details": {
+        "node": "wi-040",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "NOD-006",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:40:56.033Z",
+      "details": {
+        "node": "wi-041",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "NOD-007",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:40:58.712Z",
+      "details": {
+        "node": "wi-042",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "NOD-008",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:41:01.341Z",
+      "details": {
+        "node": "wi-043",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:41:03.890Z",
+      "details": {
+        "from": "wi-036",
+        "to": "wi-041"
+      }
+    },
+    {
+      "id": "NOD-009",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:00:58.203Z",
+      "details": {
+        "node": "wi-044",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:18:17.325Z",
+      "details": {
+        "node": "wi-044",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:18:19.777Z",
+      "details": {
+        "node": "wi-044",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-012",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T11:41:09.080Z",
+      "details": {
+        "node": "wi-044",
+        "from": "in_flight",
+        "to": "blocked"
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T11:41:11.365Z",
+      "details": {
+        "node": "wi-044",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-010",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:35:11.953Z",
+      "details": {
+        "node": "wi-copilot-effort-advertisement",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:35:14.398Z",
+      "details": {
+        "node": "wi-copilot-effort-advertisement",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-013",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:41:55.027Z",
+      "details": {
+        "node": "wi-copilot-effort-advertisement",
+        "from": "proposed",
+        "to": "preparing"
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:41:57.397Z",
+      "details": {
+        "node": "wi-copilot-effort-advertisement",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-011",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:53:21.135Z",
+      "details": {
+        "node": "wi-046",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "STA-014",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:53:49.395Z",
+      "details": {
+        "node": "wi-copilot-effort-advertisement",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "UPD-007",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T20:53:51.781Z",
+      "details": {
+        "node": "wi-copilot-effort-advertisement",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-015",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T21:25:56.036Z",
+      "details": {
+        "node": "wi-046",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T21:25:58.372Z",
+      "details": {
+        "node": "wi-046",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T21:26:00.931Z",
+      "details": {
+        "node": "wi-043",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "NOD-012",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T21:50:10.579Z",
+      "details": {
+        "node": "wi-portable-models-config",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T21:50:12.937Z",
+      "details": {
+        "node": "wi-portable-models-config",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-013",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T21:59:55.103Z",
+      "details": {
+        "node": "wi-047",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "STA-017",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:03:44.796Z",
+      "details": {
+        "node": "wi-047",
+        "from": "preparing",
+        "to": "in_flight"
+      }
+    },
+    {
+      "id": "UPD-010",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:03:49.125Z",
+      "details": {
+        "node": "wi-047",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "NOD-014",
+      "kind": "node-created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:12:42.936Z",
+      "details": {
+        "node": "wi-min-release-age",
+        "type": "work-item"
+      }
+    },
+    {
+      "id": "UPD-011",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:12:45.336Z",
+      "details": {
+        "node": "wi-min-release-age",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-018",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:16:46.905Z",
+      "details": {
+        "node": "wi-min-release-age",
+        "from": "proposed",
+        "to": "preparing"
+      }
+    },
+    {
+      "id": "UPD-012",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:16:49.537Z",
+      "details": {
+        "node": "wi-min-release-age",
+        "fields": [
+          "comments"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -220,32 +561,171 @@
       "id": "wi-038",
       "type": "work-item",
       "label": "pij prime designation — set/list/filter primes (plan 038)",
-      "status": "in_flight",
+      "status": "done",
       "next": [],
       "created_at": "2026-07-11T10:56:03.516Z",
-      "modified_at": "2026-07-11T11:17:30.318Z"
+      "modified_at": "2026-07-12T09:40:48.273Z",
+      "ran_at": "2026-07-12T09:40:48.273Z"
     },
     {
       "id": "wi-039",
       "type": "work-item",
       "label": "dependabot chores audit — dependency updates (plan 039)",
-      "status": "in_flight",
+      "status": "done",
       "next": [],
       "created_at": "2026-07-11T10:56:03.610Z",
-      "modified_at": "2026-07-11T11:14:29.372Z"
+      "modified_at": "2026-07-12T09:40:50.826Z",
+      "ran_at": "2026-07-12T09:40:50.826Z"
     },
     {
       "id": "wi-040",
       "type": "work-item",
       "label": "memorable pij session ids (plan 040, Jordan-tasked direct)",
-      "status": "in_flight",
+      "status": "done",
       "next": [],
       "created_at": "2026-07-11T11:07:52.979Z",
-      "modified_at": "2026-07-11T11:12:29.187Z"
+      "modified_at": "2026-07-12T09:40:53.456Z",
+      "ran_at": "2026-07-12T09:40:53.456Z"
+    },
+    {
+      "id": "wi-041",
+      "type": "work-item",
+      "label": "pij inbox without tmux (plan 041)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-12T09:40:56.033Z",
+      "modified_at": "2026-07-12T09:40:56.033Z"
+    },
+    {
+      "id": "wi-042",
+      "type": "work-item",
+      "label": "pij orchestrator routing skill (plan 042)",
+      "status": "done",
+      "next": [],
+      "created_at": "2026-07-12T09:40:58.712Z",
+      "modified_at": "2026-07-12T09:40:58.712Z"
+    },
+    {
+      "id": "wi-043",
+      "type": "work-item",
+      "label": "Telegram last-speaker routing (plan 043)",
+      "status": "done",
+      "next": [],
+      "created_at": "2026-07-12T09:41:01.341Z",
+      "modified_at": "2026-07-12T21:26:00.931Z",
+      "ran_at": "2026-07-12T21:26:00.931Z"
+    },
+    {
+      "id": "wi-044",
+      "type": "work-item",
+      "label": "compact-before-redispatch enforcement (plan 044)",
+      "status": "blocked",
+      "next": [],
+      "created_at": "2026-07-12T10:00:58.203Z",
+      "modified_at": "2026-07-12T11:41:11.365Z",
+      "comments": [
+        {
+          "at": "2026-07-12T10:18:19.777Z",
+          "text": "2026-07-12 10:18Z: canary 3/3 and preamble checkpoint verified; Jordan direct spin-one preamble authorizes explore/plan; planning fence only; stop at WAITING_FOR_BUILD_CONFIG."
+        },
+        {
+          "at": "2026-07-12T11:41:11.365Z",
+          "text": "2026-07-12 11:41Z: Plan v1.4 cold VALIDATED; WAITING_FOR_BUILD_CONFIG and s041 convergence on three overlapping skill/domain paths. No implementation."
+        }
+      ],
+      "ran_at": "2026-07-12T11:41:09.080Z"
+    },
+    {
+      "id": "wi-copilot-effort-advertisement",
+      "type": "work-item",
+      "label": "Correct Copilot Sol/Terra/Luna effort advertisement",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-12T20:35:11.953Z",
+      "modified_at": "2026-07-12T20:53:51.781Z",
+      "comments": [
+        {
+          "at": "2026-07-12T20:35:14.398Z",
+          "text": "Jordan ruling Seq 86: each supports none, low, medium, high, xhigh, max; current pij models advertises minimal,xhigh,max."
+        },
+        {
+          "at": "2026-07-12T20:41:57.397Z",
+          "text": "2026-07-12 20:42Z: s045 allocated at origin/main@347b6dd; worktree boot green; planning-only fence; spawn next."
+        },
+        {
+          "at": "2026-07-12T20:53:51.781Z",
+          "text": "2026-07-12 20:54Z: canary 3/3 and preamble checkpoint verified; planning authorized; stop at WAITING_FOR_BUILD_CONFIG."
+        }
+      ]
+    },
+    {
+      "id": "wi-046",
+      "type": "work-item",
+      "label": "Real pij parent-child trees and adoption linkage (plan 046)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-12T20:53:21.135Z",
+      "modified_at": "2026-07-12T21:25:58.372Z",
+      "comments": [
+        {
+          "at": "2026-07-12T21:25:58.372Z",
+          "text": "Jordan pipeline ruling Seq 102: preamble verified; research complete; Builder planning/cold validation released. No product edits/fleet before build config."
+        }
+      ]
+    },
+    {
+      "id": "wi-portable-models-config",
+      "type": "work-item",
+      "label": "Repo-managed portable Pi models catalog",
+      "status": "proposed",
+      "next": [],
+      "created_at": "2026-07-12T21:50:10.579Z",
+      "modified_at": "2026-07-12T21:50:12.937Z",
+      "comments": [
+        {
+          "at": "2026-07-12T21:50:12.937Z",
+          "text": "Human boundary: version portable models.json catalog; exclude local provider, auth, general skills, sessions/runtime; no implementation yet."
+        }
+      ]
+    },
+    {
+      "id": "wi-047",
+      "type": "work-item",
+      "label": "Repo-managed portable Pi models catalog (plan 047)",
+      "status": "in_flight",
+      "next": [],
+      "created_at": "2026-07-12T21:59:55.103Z",
+      "modified_at": "2026-07-12T22:03:49.125Z",
+      "comments": [
+        {
+          "at": "2026-07-12T22:03:49.125Z",
+          "text": "2026-07-12 22:03Z: preamble checkpoint verified; Builder research/plan/cold validation active; implementation unauthorized."
+        }
+      ]
+    },
+    {
+      "id": "wi-min-release-age",
+      "type": "work-item",
+      "label": "Supply-chain min-release-age=7 policy",
+      "status": "preparing",
+      "next": [],
+      "created_at": "2026-07-12T22:12:42.935Z",
+      "modified_at": "2026-07-12T22:16:49.537Z",
+      "comments": [
+        {
+          "at": "2026-07-12T22:12:45.336Z",
+          "text": "Human: check in only, no more. No scope/acceptance/files yet; read-only proposed item."
+        },
+        {
+          "at": "2026-07-12T22:16:49.537Z",
+          "text": "2026-07-12 22:17Z: s048 allocated at main@3b1a47b; worktree boot green; planning-only fence; adopted Pi seat canary next."
+        }
+      ]
     }
   ],
   "nav": {
-    "now": "wi-036",
-    "next": null
+    "now": "wi-041",
+    "next": "wi-043",
+    "intent": "Prioritize s041 Phase 3 delivery while s043 closes R8 under merge hold"
   }
 }

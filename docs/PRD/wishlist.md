@@ -17,4 +17,14 @@
 - intervidw pij-uec99o nad ask it to interview its workers on how the user has been working through this flow.
 - It shoould ask and record at the top which peer config user woudl like to use with copilot gpt 5.6 sol being default.
 - Also orchestraotrs get new tmux windows, then their peers are splits in that. Orchestraotrs should not pop in the prime's window.  
+
+## Pij session and inbox retention / cleanup
+- Current cleanup is logical only: `pij close`/shutdown dissolves the descriptor, but `~/.pij/` event logs, inbox messages, read markers, attachments, durable identity records, and snapshots remain.
+- Add a first-class `pij prune` or `pij gc` command. It must be dry-run by default, require an explicit apply flag, and support stable JSON output.
+- Never prune live sessions, unread messages, active reservations, or data still referenced by a durable native-session identity.
+- Read messages should remain immutable while retained. When eligible for deletion, remove the message and its read marker as one cleanup unit.
+- Support configurable age/status policies for dissolved sessions, read inbox history, event logs, attachments, stale temp files, and safe orphaned sidecars.
+- Report exactly what would be removed, why it is eligible, item counts, and reclaimed bytes before applying.
+- Make cleanup restart-safe and idempotent; interruption must not convert unread mail into read/lost mail or break future identity reattachment.
+- Add deterministic fixtures for live, dissolved, dead, unread, read, orphaned, and partially-cleaned states before enabling deletion.
   

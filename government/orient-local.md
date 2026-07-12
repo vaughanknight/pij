@@ -1,6 +1,6 @@
 # Orient — local (lever 2)
 **Scope**: THIS REPO (pij). Written fresh 2026-07-11 by pij-3vetx8; the o-prime's live tuning surface.
-**Writer**: pij-3vetx8
+**Writer**: pij-primary-carp
 
 ## What this project is
 
@@ -19,6 +19,9 @@ pij is the **peer fabric itself**: a pi extension + `pij` CLI + machine-wide dae
 ## The harness surface
 
 - Cheap gate: `npx vitest run .pi/extensions/pij/` + `just pij-skill-check`. Full pre-ship: `harness checks`.
+- **New worktree pre-spawn gate**: after `git worktree add`, run `npm ci --no-audit --no-fund` in that worktree and require `harness boot` green before `pij spawn`. Missing `node_modules` caused the same TS2688 boot failure in s042 and s044; do not make a new agent diagnose its own unbootstrapped environment.
+- **Live government root**: stream worktrees can branch from an older base, so their checked-out `government/` snapshot is not authoritative. Briefs, spine, baton book, and local orient resolve from `/Users/jordanknight/pi-hacking/pij/government/` until the branch has merged current government.
+- **Worktree live-proof CLI binding**: bare `pij` is installed by `npm link` and resolves to the **main checkout**, not the current worktree. Never run `npm link` from a worktree (it repoints the machine-wide CLI). Before any pre-merge live proof, bind commands explicitly to reviewed worktree code using `just pij` where suitable or an isolated PATH shim to that worktree's CLI/tsx; record `command -v pij` plus the resolved source path. After merge/main update, the existing global link naturally sees the shipped code.
 - Flows: builder flight-plans via `harness flow` only. The o-prime's portfolio: `government/prime-flow.json` (read-only to streams).
 - Capture friction the moment it bites: `harness observe "<what>" --kind <friction|win|…>`; ride your reports' `observations[]`.
 
@@ -27,6 +30,7 @@ pij is the **peer fabric itself**: a pi extension + `pij` CLI + machine-wide dae
 - **Batons**: daemon-restart · git-index (pathspec-mandatory commits; commit-slot when apply windows live) · push-main. Book: `government/baton-book.md`.
 - **Never stage**: `.flow-pair/**` (gitignored ledger), `scratch/**`, `node_modules`, `session-store.db`, `government/prime-flow.json` render artifacts follow flow rules.
 - **Fleet defaults**: coder + reviewer via `/pij pair`, copilot `gpt-5.6-sol` xhigh (canary the effort mechanically — self-reports have lied; process args are truth).
+- **Compaction is fire-and-forget**: on a reusable peer's completion, send compact immediately **without `--wait`** and continue useful report/review/fix preparation. Never block the orchestrator on compact latency. One-shot auto-dissolved peers remain the documented E-DEAD exception.
 - **Human channel**: Jordan works in-pane; `pij-telegram` exists for one-liners (main events only).
 
 ## Current portfolio
