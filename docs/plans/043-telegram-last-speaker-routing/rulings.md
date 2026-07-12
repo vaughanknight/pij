@@ -80,3 +80,27 @@
 - Coder: separate Copilot peer, model `gpt-5.6-sol`, effort `xhigh`.
 - Reviewer: separate Copilot peer, model `gpt-5.6-sol`, effort `xhigh`.
 - Reviewer independence comes from a cold separate session even though Jordan selected the same model family.
+
+## R8 — Telegram agent bubbles include repository context
+
+**Source**: Jordan · **Date**: 2026-07-12
+
+> In each telegram thing, please include the git root folder name and, if branch isn't main, include branch at start of every telegram message.
+
+**Selected format**:
+
+- Non-main: `[pij-id] [repo/branch] message`
+- Main: `[pij-id] [repo] message`
+- The pij id remains first so Telegram reply-tag routing continues to parse the sender.
+
+## R9 — Canonical prefix is idempotent
+
+**Source**: Jordan · **Date**: 2026-07-12
+
+> hrm, bit messy [pij-primary-carp] [pij] [pij-primary-carp] [pij] Restart done...
+
+**Binding decision**:
+
+- If an agent body/caption already begins with its exact canonical `[pij-id] [repo[/branch]]` prefix, the bridge emits that prefix once.
+- If it begins with its own `[pij-id]` only, the bridge upgrades it to the canonical prefix once.
+- Prefix normalization applies before Telegram text/caption budgeting.

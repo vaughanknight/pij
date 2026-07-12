@@ -78,6 +78,7 @@ Bare Telegram text and captionless media must route to the last agent whose bubb
 10. **AC-10 `/tail` selection**: Explicit address/reply selects that recipient for `/tail`; a later bare fallback delivery selects its actual recipient for `/tail` without changing the strict last-speaker rule.
 11. **AC-11 Restart boundary**: After bridge restart, no speaker is assumed until a new outbound bubble succeeds; a bare message receives guidance rather than using stale or inferred history.
 12. **AC-12 Documentation**: README and the Telegram guide describe reply-to > name match > last-speaker precedence, captionless media, threaded speech, strict silent-address behavior, and process-local state.
+13. **AC-13 Repository context prefix**: Every agent-originated Telegram text bubble and media caption starts `[pij-id] [repo]` on `main`, or `[pij-id] [repo/branch]` otherwise; missing git context degrades to the existing `[pij-id]` prefix.
 
 ### Risks & Assumptions
 
@@ -167,10 +168,10 @@ Introduce a process-local per-chat last-speaker map in `startBridge`, injected i
 
 | Status | ID | Task | Domain | Path(s) | Done When | Notes |
 |--------|-----|------|--------|---------|-----------|-------|
-| [ ] | T001 | Add RED regressions for reply/name/last-speaker precedence, strict silent-address behavior, captionless media, threaded speech, partial/all send failures, receipts, chat-key isolation, missing speaker, `/tail`, and restart-unknown behavior. | `pij-control-plane` | `.pi/extensions/pij/telegram/bridge.test.ts`, `.pi/extensions/pij/telegram/index.test.ts` | Targeted tests fail only because last-speaker state/callbacks are not implemented; watcher cases retain explicit bounded timeouts. | AC-01 through AC-11; Findings 01-06. |
-| [ ] | T002 | Implement separate selected-target and per-chat last-speaker seams: rename routing/command terminology, inject `getLastSpeaker` and `onSpoke`, normalize chat keys, update on first successful non-receipt send, preserve reply/name precedence, and return honest guidance/gone behavior. | `pij-control-plane` | `.pi/extensions/pij/telegram/bridge.ts`, `.pi/extensions/pij/telegram/index.ts`, `.pi/extensions/pij/telegram/commands.ts` | T001 is GREEN; `match.ts`, reply threading, sender tags, allowlist, media limits, and pij wire behavior remain unchanged. | Persist side effects through injected closures only; no global mutable state. |
-| [ ] | T003 | Update operator and domain documentation for the new precedence, examples, captionless media, threaded speech, strict silent-address rule, `/tail` selection, and restart boundary. | `pij-control-plane` | `README.md`, `docs/how/pij-telegram.md`, `docs/domains/pij-control-plane/domain.md` | All three docs agree with AC-01 through AC-12 and no longer promise sticky bare-message routing. | R3-R6. |
-| [ ] | T004 | Run targeted Telegram tests, typecheck/lint/test through existing recipes, and the full `harness checks` signal inventory; inspect the load-bearing diff against the granted fence. | `extension-authoring-harness` | N/A - existing commands only | All deterministic gates pass; any optional live phone proof is separately baton-granted and not required for acceptance. | No new tooling; no daemon restart for deterministic proof. |
+| [x] | T001 | Add RED regressions for reply/name/last-speaker precedence, strict silent-address behavior, captionless media, threaded speech, partial/all send failures, receipts, chat-key isolation, missing speaker, `/tail`, and restart-unknown behavior. | `pij-control-plane` | `.pi/extensions/pij/telegram/bridge.test.ts`, `.pi/extensions/pij/telegram/index.test.ts` | Targeted tests fail only because last-speaker state/callbacks are not implemented; watcher cases retain explicit bounded timeouts. | AC-01 through AC-11; Findings 01-06. |
+| [x] | T002 | Implement separate selected-target and per-chat last-speaker seams: rename routing/command terminology, inject `getLastSpeaker` and `onSpoke`, normalize chat keys, update on first successful non-receipt send, preserve reply/name precedence, and return honest guidance/gone behavior. | `pij-control-plane` | `.pi/extensions/pij/telegram/bridge.ts`, `.pi/extensions/pij/telegram/index.ts`, `.pi/extensions/pij/telegram/commands.ts` | T001 is GREEN; `match.ts`, reply threading, sender tags, allowlist, media limits, and pij wire behavior remain unchanged. | Persist side effects through injected closures only; no global mutable state. |
+| [x] | T003 | Update operator and domain documentation for the new precedence, examples, captionless media, threaded speech, strict silent-address rule, `/tail` selection, and restart boundary. | `pij-control-plane` | `README.md`, `docs/how/pij-telegram.md`, `docs/domains/pij-control-plane/domain.md` | All three docs agree with AC-01 through AC-12 and no longer promise sticky bare-message routing. | R3-R6. |
+| [x] | T004 | Run targeted Telegram tests, typecheck/lint/test through existing recipes, and the full `harness checks` signal inventory; inspect the load-bearing diff against the granted fence. | `extension-authoring-harness` | N/A - existing commands only | All deterministic gates pass; any optional live phone proof is separately baton-granted and not required for acceptance. | No new tooling; no daemon restart for deterministic proof. |
 
 ### Acceptance Coverage Map
 
@@ -188,6 +189,7 @@ Introduce a process-local per-chat last-speaker map in `startBridge`, injected i
 | AC-10 | T001, T002 | `/tail` selection before and after last-speaker fallback delivery. |
 | AC-11 | T001, T002, T003 | Fresh bridge has no assumed speaker; docs state process-local boundary. |
 | AC-12 | T003 | README/how/domain text review plus final diff inspection. |
+| AC-13 | C001, C002 | Main/non-main/fallback text/media tests and operator documentation. |
 
 ### Risks
 
@@ -200,3 +202,23 @@ Introduce a process-local per-chat last-speaker map in `startBridge`, injected i
 | Recorded speaker disappears | Low | Medium | Check the current registry snapshot; honest no-target response, never selected-target fallback. |
 | Restart loses context | Medium | Low | Preserve existing process-local boundary and document guidance until a new speaker appears. |
 | Live bridge validation interrupts shared peers | Low | High | Offline acceptance by default; optional live proof requires `daemon-restart` baton. |
+
+### Post-ship Change: Telegram Repository Context
+
+**Objective**: Add R8's repository/branch prefix to every agent-originated Telegram bubble without changing sender-tag parsing or routing.
+
+| Status | ID | Task | Domain | Path(s) | Done When |
+|--------|----|------|--------|---------|-----------|
+| [x] | C001 | Add RED tests for main/non-main repository context, missing git fallback, text chunks, oversize notices, attachment fallbacks, media captions, and unchanged sender-tag parsing. | `pij-control-plane` | `telegram/bridge.test.ts`, `telegram/index.test.ts` | Tests fail only because repository context is absent. |
+| [x] | C002 | Inject bounded git-context resolution from the sending descriptor folder; format `[pij-id] [repo/branch]`, omitting `/main`, once per delivered message. | `pij-control-plane` | `telegram/bridge.ts`, `telegram/index.ts` | C001 is green; no routing/wire behavior changes. |
+| [x] | C003 | Update README, Telegram guide, domain history, execution log, and rerun targeted + isolated full gates. | `pij-control-plane` | `README.md`, `docs/how/pij-telegram.md`, `docs/domains/pij-control-plane/domain.md`, `execution.log.md` | Docs match AC-13 and all gates pass. |
+
+### Post-ship Change: Idempotent Telegram Prefix
+
+**Objective**: Canonicalize an agent-supplied leading sender/repository prefix so the bridge never duplicates it.
+
+| Status | ID | Task | Domain | Path(s) | Done When |
+|--------|----|------|--------|---------|-----------|
+| [x] | D001 | Add RED tests for an existing full canonical prefix, sender-id-only prefix, ordinary unprefixed text, media captions, and payload limits after normalization. | `pij-control-plane` | `telegram/bridge.test.ts` | The observed double-prefix case is RED before implementation. |
+| [x] | D002 | Normalize only the exact sending agent's leading tag and exact canonical context before prefixing/chunking; preserve other bracketed message content. | `pij-control-plane` | `telegram/bridge.ts` | Every output has exactly one canonical prefix; parser/routing unchanged. |
+| [x] | D003 | Record the live regression, update execution evidence, cold-review, rerun isolated full gates, and update PR #11. | `pij-control-plane` | `execution.log.md`, Plan 043 evidence | Review APPROVE and CI green. |
