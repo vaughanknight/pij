@@ -5,9 +5,9 @@
 // grammY bot whose FIRST middleware is the allowlist (Finding 02: it is the ONLY access
 // control — a non-allowlisted update must never reach routing, or any Telegram user
 // could drive a session). Allowlisted text is routed by `routeMessage` (pure): an
-// addressed `<tok> <text>` delivers the remainder to the matched session and makes it
-// sticky; unaddressed text goes to the chat's sticky target; with no target we reply
-// guidance. A SWIPE-REPLY on a forwarded bubble outranks both: the quoted bubble's
+// addressed `<tok> <text>` delivers the remainder to the matched session and selects it
+// for `/tail`; unaddressed text goes to the chat's last successful speaker; with no
+// speaker we reply guidance. A SWIPE-REPLY on a forwarded bubble outranks both: the quoted bubble's
 // leading `[pij-…]` sender tag names the target, and the WHOLE text is delivered there
 // (the leading word is prose, never re-parsed as an address). `/list` + `/tail` are
 // registered before the relay so commands aren't relayed.
@@ -45,9 +45,11 @@ import {
  *  descriptor id, and the inbox the forwarder drains. One constant, three uses. */
 export const TELEGRAM_PEER_ID: SessionId = "pij-telegram";
 
-/** Reply shown when text arrives with no address and no sticky target yet. */
+/** Reply shown when text arrives with no address and no last speaker yet. */
 const GUIDANCE =
 	"Address a session to start, e.g. `osn hello` — or send /list to see who's around.";
+const TELEGRAM_TEXT_LIMIT = 4096;
+const TELEGRAM_CAPTION_LIMIT = 1024;
 
 /**
  * One-time orientation PREPENDED to the first message relayed to a given session in this
@@ -98,22 +100,26 @@ export interface BridgeDeps {
 	 *  Telegram message id, so the forwarder can quote it on that session's NEXT
 	 *  outbound bubble (`startBridge` wires both ends to one shared map). */
 	onDelivered?: (to: SessionId, telegramMessageId: number) => void;
+	/** Per-chat fallback source: the most recent session whose non-receipt message
+	 *  produced a successful Telegram send. Chat ids are normalized strings so the
+	 *  configured outbound id and grammY's numeric inbound id share one key. */
+	getLastSpeaker?: (chatId: string) => SessionId | undefined;
 	/** Debug logger for resolution/fallback/drop traces. Defaults to a no-op. */
 	log?: (message: string) => void;
 }
 
 /** What `routeMessage` decided to do with one inbound text message. */
 export type Routing =
-	/** Addressed a matched session AND carried text → deliver it, make it sticky. */
+	/** Addressed a matched session AND carried text → deliver it and select it for `/tail`. */
 	| { readonly kind: "deliver"; readonly to: SessionId; readonly body: string }
-	/** Addressed a matched session with no text → just switch the sticky target. */
+	/** Addressed a matched session with no text → just select it for `/tail`. */
 	| { readonly kind: "address"; readonly to: SessionId }
-	/** No address but a sticky target exists → deliver the whole text there. */
-	| { readonly kind: "sticky"; readonly to: SessionId; readonly body: string }
-	/** No address and no sticky target → nothing to deliver, reply guidance. */
+	/** No address but a current last speaker exists → deliver the whole text there. */
+	| { readonly kind: "last-speaker"; readonly to: SessionId; readonly body: string }
+	/** No address and no last speaker → nothing to deliver, reply guidance. */
 	| { readonly kind: "guidance" }
 	/** Swipe-reply on a forwarded bubble whose tagged sender is no longer live →
-	 *  tell the operator honestly; NEVER silently fall through to the sticky target. */
+	 *  tell the operator honestly; also used when the recorded last speaker vanished. */
 	| { readonly kind: "gone"; readonly id: SessionId };
 
 /**
@@ -129,23 +135,23 @@ export function parseSenderTag(quoted: string): SessionId | null {
 }
 
 /**
- * Decide where an inbound text goes. Pure — no I/O, no sticky mutation — so the
+ * Decide where an inbound text goes. Pure — no I/O, no state mutation — so the
  * routing rules (Findings 05/06) are exhaustively unit-testable in isolation.
  *
- * Precedence: swipe-reply tag → address token → sticky → guidance. The reply gesture
+ * Precedence: swipe-reply tag → address token → last speaker → guidance. The reply gesture
  * is the operator's most explicit targeting act, so when `quoted` carries a sender
  * tag the WHOLE text goes to that session — the leading word is prose there, never
  * re-parsed as an address (`"5l is the answer"` in a reply to `[pij-abc]` must not
  * route to `pij-5l…`).
  *
  * @param text     the raw inbound message text
- * @param sticky   the chat's current sticky target, if any
+ * @param lastSpeaker the chat's current successful speaker, if any
  * @param sessions the live session snapshot to resolve an address against
  * @param quoted   the swipe-replied bubble's visible text/caption, when this is a reply
  */
 export function routeMessage(
 	text: string,
-	sticky: SessionId | undefined,
+	lastSpeaker: SessionId | undefined,
 	sessions: readonly SessionDescriptor[],
 	quoted?: string,
 ): Routing {
@@ -173,9 +179,14 @@ export function routeMessage(
 			? { kind: "address", to: match.id }
 			: { kind: "deliver", to: match.id, body: rest };
 	}
-	// Unaddressed: fall back to the sticky target with the WHOLE text (the leading
-	// word was not an address, so it is part of the message).
-	if (sticky !== undefined) return { kind: "sticky", to: sticky, body: trimmed };
+	// Unaddressed: fall back only to the last successful speaker with the WHOLE text.
+	// A selected-but-silent target never enters this decision.
+	if (lastSpeaker !== undefined) {
+		if (!sessions.some((session) => session.id === lastSpeaker)) {
+			return { kind: "gone", id: lastSpeaker };
+		}
+		return { kind: "last-speaker", to: lastSpeaker, body: trimmed };
+	}
 	return { kind: "guidance" };
 }
 
@@ -183,7 +194,7 @@ export function routeMessage(
  * Resolve the inbound media's target session + the caption-after-address from a routing
  * decision. A media message is addressed by its caption exactly like text: `osn look` →
  * deliver to osn with rest "look"; a bare address → that session, no caption; no
- * caption → the sticky target with the whole caption; no target at all → `undefined`
+ * caption → the last speaker with the whole caption; no target at all → `undefined`
  * (the caller replies guidance and downloads NOTHING). Pure — no I/O.
  */
 function mediaTarget(
@@ -192,7 +203,7 @@ function mediaTarget(
 	switch (decision.kind) {
 		case "deliver":
 			return { to: decision.to, caption: decision.body };
-		case "sticky":
+		case "last-speaker":
 			return { to: decision.to, caption: decision.body };
 		case "address":
 			return { to: decision.to, caption: "" };
@@ -280,8 +291,9 @@ function extractInboundMedia(ctx: Context): InboundMedia | undefined {
 export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 	const bot = new Bot(config.token);
 	const allow = new Set(config.allowedUserIds);
-	// Sticky target per chat id; persists across messages within this process run.
-	const sticky = new Map<number, SessionId>();
+	// Selected target is intentionally separate from last-speaker state: it powers `/tail`
+	// and follows successful inbound routing, but never decides a bare-message fallback.
+	const selectedTarget = new Map<number, SessionId>();
 	// Sessions already handed a first-contact note this run — so each gets the Telegram
 	// orientation exactly once, on the first message we relay to it (not on every message).
 	const greeted = new Set<SessionId>();
@@ -301,21 +313,21 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 
 	// (2) Commands — registered before the text relay so a `/list` or `/tail` message
 	// is answered by its command and never falls through to be relayed as an address.
-	// `/tail` shares THIS closure's sticky map so it peeks the same target the relay
-	// is talking to, and reuses the relay's GUIDANCE when no target is set (T003).
+	// `/tail` shares THIS closure's selected-target map and reuses the relay's
+	// GUIDANCE when no target has been selected (T003).
 	registerListCommand(bot, deps.listSessions, deps.isAlive ?? (() => true), deps.now ?? Date.now);
 	registerTailCommand(bot, {
-		getStickyTarget: (chatId) => sticky.get(chatId),
+		getSelectedTarget: (chatId) => selectedTarget.get(chatId),
 		readEvents: deps.readEvents ?? (() => []),
 		guidance: GUIDANCE,
 	});
 
-	// (3) Text relay — swipe-reply tag → address token → sticky fallback.
+	// (3) Text relay — swipe-reply tag → address token → last-speaker fallback.
 	bot.on("message:text", async (ctx) => {
 		const chatId = ctx.chat.id;
 		const decision = routeMessage(
 			ctx.message.text,
-			sticky.get(chatId),
+			deps.getLastSpeaker?.(String(chatId)),
 			deps.listSessions(),
 			quotedOf(ctx.message),
 		);
@@ -324,22 +336,23 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 				const body = framedBody(decision.body, !greeted.has(decision.to));
 				greeted.add(decision.to);
 				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });
-				sticky.set(chatId, decision.to);
+				selectedTarget.set(chatId, decision.to);
 				deps.onDelivered?.(decision.to, ctx.message.message_id);
 				log(`→ ${decision.to}`);
 				return;
 			}
 			case "address":
-				sticky.set(chatId, decision.to);
+				selectedTarget.set(chatId, decision.to);
 				log(`address ${decision.to}`);
 				await ctx.reply(`Now addressing ${decision.to}. Send a message and I'll relay it.`);
 				return;
-			case "sticky": {
+			case "last-speaker": {
 				const body = framedBody(decision.body, !greeted.has(decision.to));
 				greeted.add(decision.to);
 				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });
+				selectedTarget.set(chatId, decision.to);
 				deps.onDelivered?.(decision.to, ctx.message.message_id);
-				log(`sticky ${decision.to}`);
+				log(`last speaker ${decision.to}`);
 				return;
 			}
 			case "guidance":
@@ -368,7 +381,7 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 		const caption = ctx.message?.caption ?? "";
 		const decision = routeMessage(
 			caption,
-			sticky.get(chatId),
+			deps.getLastSpeaker?.(String(chatId)),
 			deps.listSessions(),
 			quotedOf(ctx.message),
 		);
@@ -418,7 +431,7 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 				size: media.size,
 			}),
 		});
-		sticky.set(chatId, target.to);
+		selectedTarget.set(chatId, target.to);
 		const mid = ctx.message?.message_id;
 		if (mid !== undefined) deps.onDelivered?.(target.to, mid);
 		log(`media → ${target.to} (${dest})`);
@@ -448,6 +461,12 @@ export interface ForwarderDeps {
 	 *  consume, once — the operator message id this session's next reply answers, or
 	 *  undefined when it speaks unprompted. Absent ⇒ no threading (plain bubbles). */
 	takeReplyTo?: (from: SessionId) => number | undefined;
+	/** Successful-speech observer: called once per non-receipt delivered message, after
+	 *  its first text/media/fallback-notice Telegram send resolves successfully. */
+	onSpoke?: (from: SessionId) => void;
+	/** Repository context for the sender (`repo` or `repo/branch`). Called once per
+	 *  delivered message and reused across every text/media bubble it produces. */
+	senderContext?: (from: SessionId) => string | undefined;
 	/** File size in bytes for the upload-cap pre-check. Defaults to `statSync(path).size`
 	 *  (only called for messages that actually carry attachments). */
 	sizeOf?: (path: string) => number;
@@ -487,9 +506,36 @@ export function senderTag(from: SessionId): string {
 	return `[${from}]`;
 }
 
-/** Compose one outgoing text bubble: the sender tag, then the body. */
-function taggedText(from: SessionId, text: string): string {
-	return `${senderTag(from)} ${text}`;
+/** Compose the stable bubble prefix while keeping `[pij-id]` first for reply parsing. */
+export function senderPrefix(from: SessionId, context?: string): string {
+	return context ? `${senderTag(from)} [${context}]` : senderTag(from);
+}
+
+/** Compose one outgoing text bubble: the sender prefix, then the body. */
+function taggedText(prefix: string, text: string): string {
+	return `${prefix} ${text}`;
+}
+
+function boundedSenderPrefix(from: SessionId, context?: string): string {
+	const prefix = senderPrefix(from, context);
+	return prefix.length <= TELEGRAM_CAPTION_LIMIT ? prefix : senderTag(from);
+}
+
+function prefixedTextParts(prefix: string, text: string): string[] {
+	const budget = Math.max(1, TELEGRAM_TEXT_LIMIT - prefix.length - 1);
+	return chunk(text, budget).map((part) => taggedText(prefix, part));
+}
+
+function stripExactLeadingPrefix(text: string, prefix: string): string | undefined {
+	if (text === prefix) return "";
+	const withSeparator = `${prefix} `;
+	return text.startsWith(withSeparator) ? text.slice(withSeparator.length) : undefined;
+}
+
+function normalizeSenderContent(from: SessionId, prefix: string, text: string): string {
+	return (
+		stripExactLeadingPrefix(text, prefix) ?? stripExactLeadingPrefix(text, senderTag(from)) ?? text
+	);
 }
 
 export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => void {
@@ -504,54 +550,74 @@ export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => v
 			return;
 		}
 		const attachments = dm.attachments ?? [];
-		// Skip a blank text send for an attachment-only message: chunk("") would emit one
-		// empty part, so the operator would get a stray blank line before the media
-		// (validation MEDIUM fix). Text-only messages are chunked exactly as before.
-		const parts = attachments.length > 0 && dm.body.trim() === "" ? [] : chunk(dm.body);
 		queue = queue.then(async () => {
+			const prefix = boundedSenderPrefix(dm.from, deps.senderContext?.(dm.from));
+			let spoke = false;
+			const noteSpoke = (): void => {
+				if (spoke) return;
+				spoke = true;
+				deps.onSpoke?.(dm.from);
+			};
 			// Quote the operator message this reply presumably answers — taken ONCE, so
 			// only the first bubble of this pij message threads; the rest follow it.
 			let replyTo = deps.takeReplyTo?.(dm.from);
-			for (const part of parts) {
-				try {
-					// Every bubble is prefixed with the sender's pij id (see senderTag).
-					await deps.send(taggedText(dm.from, part), replyTo);
-					replyTo = undefined;
-				} catch (e) {
-					log(`forward error (${dm.messageId}): ${(e as Error).message}`);
+			const sendText = async (text: string, errorLabel: string): Promise<number> => {
+				const bubbles = prefixedTextParts(prefix, text);
+				for (const bubble of bubbles) {
+					try {
+						await deps.send(bubble, replyTo);
+						noteSpoke();
+						replyTo = undefined;
+					} catch (e) {
+						log(`${errorLabel} (${dm.messageId}): ${(e as Error).message}`);
+					}
 				}
-			}
-			// Outbound media: classify each file, enforce the per-kind upload cap (oversize →
-			// text notice, NEVER a throw), and upload via the injected media sender — all in
-			// THIS queue tick so a message's text + media + later messages stay in order (AC-11).
+				return bubbles.length;
+			};
+
+			// Skip a blank text send for an attachment-only message. Text-only blank
+			// messages keep the existing one-bubble behavior.
+			const textPartCount =
+				attachments.length > 0 && dm.body.trim() === ""
+					? 0
+					: await sendText(normalizeSenderContent(dm.from, prefix, dm.body), "forward error");
+
+			// Outbound media: classify each file, enforce the per-kind upload cap, and
+			// keep every fallback/caption within Telegram's text/caption limits.
 			for (const att of attachments) {
 				try {
 					const kind = classifyMedia(att.path);
 					const bytes = sizeOf(att.path);
 					if (!withinUploadLimit(bytes, kind)) {
-						await deps.send(taggedText(dm.from, oversizeNotice(att.path, bytes, kind)), replyTo);
-						replyTo = undefined;
+						await sendText(oversizeNotice(att.path, bytes, kind), "media forward error");
 						continue;
 					}
 					if (deps.sendMedia !== undefined) {
-						// Tag the caption with the sender id too, so a media bubble is identifiable.
-						const caption =
-							att.caption !== undefined ? taggedText(dm.from, att.caption) : senderTag(dm.from);
+						let caption = prefix;
+						if (att.caption !== undefined && att.caption !== "") {
+							const normalizedCaption = normalizeSenderContent(dm.from, prefix, att.caption);
+							const prefixedCaption = taggedText(prefix, normalizedCaption);
+							if (prefixedCaption.length <= TELEGRAM_CAPTION_LIMIT) {
+								caption = prefixedCaption;
+							} else {
+								await sendText(normalizedCaption, "media forward error");
+							}
+						}
 						await deps.sendMedia(kind, att.path, caption, replyTo);
+						noteSpoke();
 						replyTo = undefined;
 					} else {
-						await deps.send(
-							taggedText(dm.from, `[attachment ${att.path}] (no media sender configured)`),
-							replyTo,
+						await sendText(
+							`[attachment ${att.path}] (no media sender configured)`,
+							"media forward error",
 						);
-						replyTo = undefined;
 					}
 				} catch (e) {
 					log(`media forward error (${dm.messageId}): ${(e as Error).message}`);
 				}
 			}
 			log(
-				`forwarded ${dm.from} → chat (${parts.length} text part${parts.length === 1 ? "" : "s"}` +
+				`forwarded ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
 					`${attachments.length > 0 ? `, ${attachments.length} media` : ""})`,
 			);
 		});

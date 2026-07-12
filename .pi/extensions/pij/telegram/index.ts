@@ -15,9 +15,10 @@
 // `chunk` (chunk.ts), `loadConfig` (config.ts), `createBot`/`startForwarder` (bridge.ts),
 // `/list`+`/tail` (commands.ts), the lockfile (lockfile.ts) — all exist and are tested.
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { type FileFlavor, hydrateFiles } from "@grammyjs/files";
 import { type Bot, type Context, InputFile } from "grammy";
 import { FsChannel } from "../adapters/channel.js";
@@ -31,6 +32,34 @@ import { acquireLock, isProcessAlive, readLockPid, releaseLock } from "./lockfil
 
 /** Single-instance lockfile name under PIJ_HOME (`~/.pij/pij-telegram.lock`). */
 const LOCK_NAME = "pij-telegram.lock";
+const GIT_CONTEXT_TIMEOUT_MS = 2000;
+
+export type GitRunner = (cwd: string, args: readonly string[], timeoutMs: number) => string;
+
+/** Resolve stable repo identity from git's common dir so linked worktrees use the
+ *  repository name, not the worktree folder name. Any git failure degrades safely. */
+export function resolveRepositoryContext(folder: string, git: GitRunner): string | undefined {
+	try {
+		const commonDir = git(
+			folder,
+			["rev-parse", "--path-format=absolute", "--git-common-dir"],
+			GIT_CONTEXT_TIMEOUT_MS,
+		).trim();
+		const branch = git(
+			folder,
+			["symbolic-ref", "--quiet", "--short", "HEAD"],
+			GIT_CONTEXT_TIMEOUT_MS,
+		).trim();
+		if (commonDir === "" || branch === "") return undefined;
+
+		const repoDir = basename(commonDir) === ".git" ? dirname(commonDir) : commonDir;
+		const repo = basename(repoDir).replace(/\.git$/, "");
+		if (repo === "") return undefined;
+		return branch === "main" ? repo : `${repo}/${branch}`;
+	} catch {
+		return undefined;
+	}
+}
 
 const TELEGRAM_USAGE = `pij telegram — bridge pij sessions to a Telegram bot
 
@@ -94,6 +123,7 @@ export interface BridgeRuntime {
 	readonly channel: FsChannel;
 	/** Read the last `n` events of a session, for `/tail`. */
 	readonly readEvents: (id: SessionId, last: number) => readonly PijEvent[];
+	readonly git: GitRunner;
 	readonly log: (message: string) => void;
 }
 
@@ -129,6 +159,10 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 	// target session; the forwarder takes it (once) so that session's next outbound
 	// bubble quotes the message it answers. One shared map is the whole seam.
 	const pendingReply = new Map<SessionId, number>();
+	// Successful outbound speech is per configured chat and process-local. Keep it
+	// separate from createBot's selected `/tail` target so addressing a silent session
+	// cannot steal the bare-message fallback.
+	const lastSpeaker = new Map<string, SessionId>();
 
 	const bot = createBot(config, {
 		listSessions: () => rt.registry.list(),
@@ -140,6 +174,7 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 		onDelivered: (to, telegramMessageId) => {
 			pendingReply.set(to, telegramMessageId);
 		},
+		getLastSpeaker: (chatId) => lastSpeaker.get(chatId),
 		readEvents: rt.readEvents,
 		// Inbound media (Phase 5): download via @grammyjs/files into the target session's own
 		// attachments dir. The downloader owns the fs (mkdir + write) so createBot stays I/O-free
@@ -172,6 +207,13 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 				const mid = pendingReply.get(from);
 				pendingReply.delete(from);
 				return mid;
+			},
+			onSpoke: (from) => {
+				lastSpeaker.set(String(chatId), from);
+			},
+			senderContext: (from) => {
+				const sender = rt.registry.read(from);
+				return sender === null ? undefined : resolveRepositoryContext(sender.folder, rt.git);
 			},
 			send: (text, replyTo) => bot.api.sendMessage(chatId, text, replyOpts(replyTo)),
 			// Outbound media (Phase 5): upload each attached file by kind via grammY InputFile.
@@ -228,6 +270,12 @@ function runtimeFor(pijHome: string, log: (message: string) => void): BridgeRunt
 		registry: new FsRegistry(pijHome),
 		channel: new FsChannel(pijHome),
 		readEvents: (id, last) => new FsEventLog(pijHome, id).read({ last }),
+		git: (cwd, args, timeoutMs) =>
+			execFileSync("git", ["-C", cwd, ...args], {
+				encoding: "utf8",
+				timeout: timeoutMs,
+				stdio: ["ignore", "pipe", "ignore"],
+			}),
 		log,
 	};
 }

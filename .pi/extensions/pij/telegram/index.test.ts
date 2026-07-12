@@ -9,8 +9,8 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { InputFile } from "grammy";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { type Bot, InputFile, type Update } from "grammy";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsChannel } from "../adapters/channel.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
 import type { PijEvent, SessionId } from "../core/types.js";
@@ -33,6 +33,7 @@ const LOCK = "pij-telegram.lock";
 // No chatId → the outbound forwarder is disabled, so no fs watcher lingers between
 // tests (the lock + descriptor lifecycle is what these assert).
 const config: TelegramConfig = { token: "test-token", allowedUserIds: [777] };
+let updateSeq = 1000;
 
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "pij-tg-index-"));
@@ -52,9 +53,66 @@ function runtime(over: Partial<BridgeRuntime> = {}): BridgeRuntime {
 		registry: new FsRegistry(home),
 		channel: new FsChannel(home, { pollMs: 50 }),
 		readEvents: (_id: SessionId, _n: number): readonly PijEvent[] => [],
+		git: () => {
+			throw new Error("not a git worktree");
+		},
 		log: () => {},
 		...over,
 	};
+}
+
+function session(id: SessionId, folder = `/work/${id}`) {
+	return {
+		id,
+		folder,
+		dataDir: join(home, id),
+		eventsPath: join(home, id, "events.ndjson"),
+		pid: 5150,
+		startedAt: "2026-07-12T00:00:00.000Z",
+	};
+}
+
+function initOfflineBot(bot: Bot): void {
+	bot.botInfo = {
+		id: 1,
+		is_bot: true,
+		first_name: "pij",
+		username: "pijbot",
+		can_join_groups: true,
+		can_read_all_group_messages: false,
+		supports_inline_queries: false,
+	} as unknown as Bot["botInfo"];
+}
+
+function textUpdate(chatId: number, text: string): Update {
+	updateSeq += 1;
+	return {
+		update_id: updateSeq,
+		message: {
+			message_id: updateSeq,
+			date: 0,
+			chat: { id: chatId, type: "private", first_name: "Op" },
+			from: { id: 777, is_bot: false, first_name: "Op" },
+			text,
+		},
+	} as Update;
+}
+
+async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
+	const start = Date.now();
+	while (!pred()) {
+		if (Date.now() - start > timeoutMs) throw new Error("waitFor: condition never held");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
+
+async function settleWhile(pred: () => boolean, timeoutMs = 200): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		expect(pred()).toBe(true);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	expect(pred()).toBe(true);
 }
 
 describe("buildTelegramDescriptor (T001 / AC-08)", () => {
@@ -174,6 +232,171 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 			.map((p) => p.replace(/^\[[^\]]+\] /, "").replace(/^\(\d+\/\d+\) /, ""))
 			.join("");
 		expect(reassembled).toBe(body);
+	});
+
+	it("derives stable main/non-main repository prefixes from sender folders with bounded fake git", async () => {
+		const withChat: TelegramConfig = { ...config, chatId: "555000" };
+		const channel = new FsChannel(home, { pollMs: 25 });
+		const mainFolder = "/repos/pij-worktrees/main";
+		const branchFolder = "/repos/pij-worktrees/feature";
+		const git = vi.fn((cwd: string, args: readonly string[], timeoutMs: number) => {
+			if (args.includes("--git-common-dir")) return "/repos/pij/.git\n";
+			if (args[0] === "symbolic-ref") {
+				return cwd === mainFolder ? "main\n" : "feature/repo-context\n";
+			}
+			throw new Error(`unexpected git args: ${args.join(" ")}`);
+		});
+		const rt = runtime({ channel, git });
+		rt.registry.write(session("pij-agent-a", mainFolder));
+		rt.registry.write(session("pij-agent-b", branchFolder));
+		const res = startBridge(withChat, rt);
+		expect(res.kind).toBe("started");
+		if (res.kind !== "started") return;
+
+		const texts: string[] = [];
+		res.bot.api.config.use((_prev, method, payload) => {
+			if (method === "sendMessage") texts.push(String((payload as { text?: string }).text ?? ""));
+			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+		});
+		channel.deliver({ from: "pij-agent-a", to: TELEGRAM_PEER_ID, body: "main bubble" });
+		channel.deliver({ from: "pij-agent-b", to: TELEGRAM_PEER_ID, body: "branch bubble" });
+		await waitFor(() => texts.length === 2);
+		res.stop();
+
+		expect(texts).toEqual([
+			"[pij-agent-a] [pij] main bubble",
+			"[pij-agent-b] [pij/feature/repo-context] branch bubble",
+		]);
+		expect(git).toHaveBeenCalledTimes(4);
+		for (const [cwd, _args, timeoutMs] of git.mock.calls) {
+			expect([mainFolder, branchFolder]).toContain(cwd);
+			expect(timeoutMs).toBe(2000);
+		}
+	});
+
+	it("degrades to the sender tag for missing descriptors and non-git folders", async () => {
+		const withChat: TelegramConfig = { ...config, chatId: "555000" };
+		const channel = new FsChannel(home, { pollMs: 25 });
+		const git = vi.fn(() => {
+			throw new Error("not a git worktree");
+		});
+		const rt = runtime({ channel, git });
+		rt.registry.write(session("pij-agent-a", "/tmp/not-git"));
+		const res = startBridge(withChat, rt);
+		expect(res.kind).toBe("started");
+		if (res.kind !== "started") return;
+
+		const texts: string[] = [];
+		res.bot.api.config.use((_prev, method, payload) => {
+			if (method === "sendMessage") texts.push(String((payload as { text?: string }).text ?? ""));
+			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+		});
+		channel.deliver({ from: "pij-agent-a", to: TELEGRAM_PEER_ID, body: "non-git" });
+		channel.deliver({ from: "pij-missing", to: TELEGRAM_PEER_ID, body: "missing descriptor" });
+		await waitFor(() => texts.length === 2);
+		res.stop();
+
+		expect(texts).toEqual(["[pij-agent-a] non-git", "[pij-missing] missing descriptor"]);
+		expect(git).toHaveBeenCalledTimes(1);
+	});
+
+	it("shares successful outbound speech with numeric inbound chat ids and isolates other chats", async () => {
+		const withChat: TelegramConfig = { ...config, chatId: "555000" };
+		const channel = new FsChannel(home, { pollMs: 25 });
+		const rt = runtime({ channel, isAlive: () => true });
+		rt.registry.write(session("pij-agent-a"));
+		rt.registry.write(session("pij-agent-b"));
+		const res = startBridge(withChat, rt);
+		expect(res.kind).toBe("started");
+		if (res.kind !== "started") return;
+		initOfflineBot(res.bot);
+
+		const sentTexts: string[] = [];
+		res.bot.api.config.use((_prev, method, payload) => {
+			if (method === "sendMessage") {
+				sentTexts.push(String((payload as { text?: string }).text ?? ""));
+			}
+			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+		});
+		const receivedA: string[] = [];
+		const receivedB: string[] = [];
+		const disposeA = channel.watch("pij-agent-a", (message) => {
+			receivedA.push(message.body);
+		});
+		const disposeB = channel.watch("pij-agent-b", (message) => {
+			receivedB.push(message.body);
+		});
+
+		channel.deliver({
+			from: "pij-agent-a",
+			to: TELEGRAM_PEER_ID,
+			body: "I spoke successfully",
+		});
+		await waitFor(() => sentTexts.some((text) => text.includes("[pij-agent-a]")));
+
+		await res.bot.handleUpdate(textUpdate(555000, "bare follows A"));
+		await waitFor(() => receivedA.length === 1);
+		expect(receivedA[0]).toContain("bare follows A");
+		expect(receivedB).toEqual([]);
+
+		channel.deliver({
+			from: "pij-agent-b",
+			to: TELEGRAM_PEER_ID,
+			body: "B spoke successfully",
+		});
+		await waitFor(() => sentTexts.some((text) => text.includes("[pij-agent-b]")));
+
+		await res.bot.handleUpdate(textUpdate(555000, "bare follows B"));
+		await waitFor(() => receivedB.length === 1);
+		expect(receivedB[0]).toContain("bare follows B");
+		expect(receivedA).toHaveLength(1);
+		await settleWhile(() => receivedA.length === 1 && receivedB.length === 1);
+		expect(receivedA).toHaveLength(1);
+		expect(receivedB).toHaveLength(1);
+
+		await res.bot.handleUpdate(textUpdate(555001, "other chat has no speaker"));
+		await waitFor(() => sentTexts.some((text) => text.includes("/list")));
+		expect(receivedA).toHaveLength(1);
+		expect(receivedB).toHaveLength(1);
+
+		disposeA();
+		disposeB();
+		res.stop();
+	});
+
+	it("forgets last-speaker state across a bridge restart", async () => {
+		const withChat: TelegramConfig = { ...config, chatId: "555000" };
+		const channel = new FsChannel(home, { pollMs: 25 });
+		const firstRuntime = runtime({ channel, isAlive: () => true });
+		firstRuntime.registry.write(session("pij-agent-a"));
+		const first = startBridge(withChat, firstRuntime);
+		expect(first.kind).toBe("started");
+		if (first.kind !== "started") return;
+		const firstCalls: string[] = [];
+		first.bot.api.config.use((_prev, method) => {
+			firstCalls.push(method);
+			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+		});
+		channel.deliver({ from: "pij-agent-a", to: TELEGRAM_PEER_ID, body: "before restart" });
+		await waitFor(() => firstCalls.includes("sendMessage"));
+		first.stop();
+
+		const second = startBridge(
+			withChat,
+			runtime({ channel, pid: 4243, startedAt: "2026-07-12T00:01:00.000Z", isAlive: () => true }),
+		);
+		expect(second.kind).toBe("started");
+		if (second.kind !== "started") return;
+		initOfflineBot(second.bot);
+		const replies: string[] = [];
+		second.bot.api.config.use((_prev, method, payload) => {
+			if (method === "sendMessage") replies.push(String((payload as { text?: string }).text ?? ""));
+			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+		});
+
+		await second.bot.handleUpdate(textUpdate(555000, "bare after restart"));
+		expect(replies.at(-1)).toMatch(/\/list/);
+		second.stop();
 	});
 });
 

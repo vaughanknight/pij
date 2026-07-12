@@ -52,8 +52,15 @@ daemon — stop the **daemon** to stop a daemon-hosted bridge.
 
 ## Addressing rules
 
-Every inbound message's **first word** is treated as an address token; the rest is the
-message body.
+Inbound text and media captions use this precedence:
+
+1. **Swipe-reply sender tag.** Replying to a forwarded `[pij-…]` bubble routes the whole
+   message to that session, even when the first word looks like another session name.
+2. **Explicit first-word name.** A recognized full or partial session id routes the
+   remainder to that session.
+3. **Last successful speaker.** Otherwise the whole text, or captionless media, routes to
+   the last session whose non-receipt outbound message produced a successful Telegram API
+   send in this chat.
 
 - **Start-of-name, case-insensitive match.** The token matches any live session when it is
   a **start prefix** of a natural form of that session's id. For `pij-5lztp8` the forms are
@@ -66,18 +73,21 @@ message body.
 - **Ties break newest-active first.** When a token matches more than one session, the one
   with the most recent activity (`lastEventAt`, falling back to `startedAt`) wins;
   equal-recency ties keep registry order (first listed wins).
-- **Sticky target.** After you address a session, it becomes the chat's **sticky** target:
-  subsequent messages with no recognized address are delivered to it automatically, so you
-  can hold a back-and-forth without re-typing the name each time.
-- **No address, no sticky yet.** If your first word isn't a known session and nothing is
-  sticky, the bridge replies with guidance instead of guessing.
+- **Selection is not speech.** Explicitly addressing silent session B selects B for `/tail`
+  but does not replace prior speaker A as the bare-message fallback. B becomes the fallback
+  only after one of B's bubbles successfully reaches Telegram; threaded replies count too.
+- **No known speaker.** On a fresh bridge, or when the recorded speaker is no longer in the
+  registry, bare text/media receives honest guidance instead of falling back to the selected
+  `/tail` target. Nothing is downloaded for untargeted media.
 
-Examples (assuming a live `pij-osn81b`):
+Examples (assuming live A and B):
 
 ```
-osn run the tests          → delivers "run the tests" to pij-osn81b, makes it sticky
-osn                        → just switches the sticky target to pij-osn81b
-looks good, ship it        → (sticky) delivers the whole line to pij-osn81b
+A sends "ready"            → A becomes the last speaker
+B run the tests            → explicitly delivers to B; /tail now selects B
+looks good, ship it        → still delivers the whole line to A while B is silent
+B sends "done"             → B becomes the last speaker
+one more thing             → delivers the whole line to B
 ```
 
 ---
@@ -86,9 +96,10 @@ looks good, ship it        → (sticky) delivers the whole line to pij-osn81b
 
 - **`/list`** — the newest live pij sessions (up to 10), each as `id — folder`. Use it to
   discover who's around and what to address.
-- **`/tail [N]`** — the last `N` events of the **current sticky** session (default 10,
-  clamped to `[1, 50]`; a non-numeric or ≤0 `N` falls back to the default). With no sticky
-  target yet, it replies with the same addressing guidance as a bare message. This is the
+- **`/tail [N]`** — the last `N` events of the **selected** session (default 10, clamped
+  to `[1, 50]`; a non-numeric or ≤0 `N` falls back to the default). Explicit address/reply
+  selects that recipient; a later bare fallback selects its actual recipient. With no
+  selected target, `/tail` replies with the same guidance as a bare message. This is the
   cheap "what's it been doing" peek — one compact `seq · type — summary` line per event.
 
 Commands are matched before the relay, so a `/list` or `/tail` is never delivered to a
@@ -110,6 +121,24 @@ that simply replies to its sender automatically reaches you — no Telegram-spec
 the session. Long replies are split into ordered chunks under Telegram's 4096-char cap.
 Delivery **receipts** are recorded but not forwarded (an ack is not agent output), so your
 chat stays signal, not noise.
+
+Every agent-originated text bubble and media caption starts with the sender id plus the
+repository context resolved from that sender's registered folder:
+
+```text
+[pij-planned-tiglon] [pij] tests are green
+[pij-planned-tiglon] [pij/s043/telegram-last-speaker-routing] tests are green
+```
+
+`main` is omitted; every other branch is included verbatim. The `[pij-id]` stays first so
+swipe-reply routing still identifies the sender. If the descriptor is missing or git cannot
+be resolved within the bounded probe, the bridge keeps the existing `[pij-id] message`
+shape. One context lookup is reused across all chunks, media captions, oversize notices,
+and attachment fallbacks produced by the same delivered pij message.
+
+The sender becomes that chat's last speaker after the **first successful** text, media, or
+upload-limit notice send for a delivered message. Threaded and unthreaded bubbles count the
+same. Receipts and messages whose every Telegram API send fails do not change the fallback.
 
 **First-contact orientation.** The *first* message the bridge relays to a given session in a
 run is prefixed with a short one-time note telling the agent it's now talking to a live human
@@ -148,8 +177,9 @@ Send media to the bot from your phone, addressing it by the **caption** exactly 
 
 - *Photo with caption* `osn look at this` → addressed to session `osn`; the rest of the
   caption (`look at this`) travels with it.
-- *No caption* → goes to the current **sticky** target.
-- *No target at all* → you get the usual addressing guidance and **nothing is downloaded**.
+- *No caption* → goes to the current **last successful speaker**.
+- *No recorded/live speaker* → you get honest guidance and **nothing is downloaded**; the
+  selected `/tail` target is never used as a substitute.
 
 The bridge pre-checks the **20 MB download cap** before fetching (over-cap → a "too big"
 reply, no download), then saves the file into the **target session's own data dir** —
@@ -202,6 +232,9 @@ the bridge on its own.
   reclaimed automatically.
 - **Clean shutdown.** `Ctrl-C` (SIGINT) or SIGTERM stops the bot, releases the lock, and
   removes the `pij-telegram` peer descriptor.
+- **Process-local conversation state.** Last-speaker and `/tail` selection state reset when
+  the bridge/daemon restarts. Until a new outbound bubble succeeds, bare text/media receives
+  guidance; address or reply explicitly to resume immediately.
 - **`stop` from elsewhere.** `pij telegram stop` reads the lockfile and signals a live
   bridge to shut down, or clears a stale lock if the holder is already dead.
 - **409 Conflict.** If another `getUpdates` consumer is already live (e.g. a duplicate
