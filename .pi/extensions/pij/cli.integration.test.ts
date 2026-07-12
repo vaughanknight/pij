@@ -37,6 +37,7 @@ import type { PijMessage } from "./core/types.js";
 
 const CLI = join(import.meta.dirname, "cli.ts");
 const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
+const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 
 let HOME: string;
 let FOLDER: string;
@@ -151,6 +152,42 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
 		expect(result.out).toContain("pij list [--here] [--prime] [--json]");
+	});
+
+	it("top-level help and skill guidance distinguish pull from push delivery", () => {
+		const result = pij(["--help"]);
+		expect(result.code).toBe(0);
+		expect(result.out).toContain("non-tmux external peers use 'pij inbox --wait'");
+		expect(result.out).toContain("tmux/pi stay push-first");
+
+		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
+		const peer = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/peer.md"), "utf8");
+		const tableCells = (prefix: string): string[] => {
+			const row = routing.split("\n").find((line) => line.startsWith(prefix));
+			if (!row) throw new Error(`missing routing row: ${prefix}`);
+			return row
+				.split("|")
+				.slice(1, -1)
+				.map((cell) => cell.trim());
+		};
+		expect(tableCells("| Intent |")).toEqual([
+			"Intent",
+			"pi push",
+			"tmux control-plane push",
+			"external pull",
+		]);
+		expect(tableCells("| receive |")).toEqual([
+			"receive",
+			"automatic injected turn",
+			"automatic daemon-injected turn",
+			"`pij inbox --wait [ms]`",
+		]);
+		expect(routing).toContain("Pi injects in-process.");
+		expect(peer).toContain(
+			"pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers",
+		);
+		expect(peer).toContain("Pi/tmux replies arrive as `[pij from <id>]` injected turns.");
+		expect(peer).toContain("This is pull delivery, not `pij state` polling (§ C7).");
 	});
 
 	it("auto-registers an ambient session before E-NOREG and aliases adopt --current", {

@@ -13,6 +13,7 @@ All probes are deterministic files/commands; remember nothing between calls.
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
 | D | Daemon alive | `pij daemon status` | down + any spawn intent → `ops` boot first (spawn also auto-starts it) |
 | E | Self adopted | `pij whoami` (E-NOID / empty = not registered) | control-plane precondition: adopt before anything conversational (C1) |
+| F | Delivery owner | in-process `pij_spawn` callable → pi push; else non-empty `$TMUX_PANE` → tmux push; else → external pull | `peer` uses the matching receive path in C1/C7 |
 
 **Precedence**: A > B > C > D/E (D/E are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
 
@@ -22,21 +23,21 @@ All probes are deterministic files/commands; remember nothing between calls.
 
 Cited by route modules as "§ C*n*" — prose lives here only.
 
-### C1 — Harness modes (pi tools vs control plane)
+### C1 — Harness and delivery modes
 
-Detect **once per run**: if the in-process `pij_spawn` tool is callable → **pi mode** (use `pij_spawn`/`pij_send`/`pij_close` tools; inbound messages inject automatically). Otherwise → **control-plane mode** (Claude Code / any non-pi client): drive the `pij` CLI + a running daemon; the daemon spawns/binds colleagues in tmux panes and relays via send-keys.
+Detect **once per run**, in order: callable in-process `pij_spawn` → **pi push mode**; otherwise non-empty `$TMUX_PANE` → **tmux control-plane push mode**; otherwise → **external pull mode**. Pi injects in-process. Tmux peers use the CLI plus daemon/send-keys. External Claude/Copilot/Codex sessions have no pane for the daemon to inject, so they receive through the durable inbox CLI.
 
-| Intent | pi mode | control-plane mode |
-|---|---|---|
-| prereq | pi extension loaded | daemon (auto-started by `pij spawn`) + **self-adopt once**: `pij adopt "$TMUX_PANE" --harness claude` |
-| spawn | `pij_spawn({model, layout})` | `pij spawn --harness claude\|copilot\|codex\|pi [--model <m>] [--effort <lvl>] [--task "<t>"]` |
-| message | `pij_send({to, message})` | `pij send <id> "<text>"` |
-| compact a peer | `pij_send({to, command:"compact"})` | `pij send <id> "/compact"` |
-| compact yourself | `pij compact-self [instruction]` | same — both modes |
-| peek (non-disturbing) | `pij tail <id>` | `pij tail <id> [--follow]` |
-| close | `pij_close({to})` | `pij close <id> [--force]` |
+| Intent | pi push | tmux control-plane push | external pull |
+|---|---|---|---|
+| prereq | pi extension loaded | daemon (spawn auto-starts it) + self-adopt once: `pij adopt "$TMUX_PANE" --harness <h>` | `pij inbox --wait` — first use auto-registers the ambient session as pull-owned |
+| spawn | `pij_spawn({model, layout})` | `pij spawn --harness claude\|copilot\|codex\|pi …` | unavailable without tmux; converse with existing peers |
+| message | `pij_send({to, message})` | `pij send <id> "<text>"` | register/inbox first, then `pij send <id> "<text>"` |
+| receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms]` |
+| compact peer | `pij_send({to, command:"compact"})` | `pij send <id> "/compact"` | `pij send <id> "/compact"` |
+| peek | `pij tail <id>` | `pij tail <id> [--follow]` | `pij tail <id>` |
+| close | `pij_close({to})` | `pij close <id> [--force]` | ownership-aware CLI close only |
 
-Without self-adopt in control-plane mode, peer replies have nowhere to land. Model names differ per harness (claude: `sonnet`/`opus`/full ids; copilot: `gpt-5.5`, `claude-sonnet-4.6`…; codex: `gpt-5.5`, `o3`…; pi: models/presets like `@preset/glm-1m`). `pij spawn` auto-applies each harness's blanket-permission flag — a daemon-driven pane has no human to approve prompts.
+Without self-adopt in tmux mode, replies have nowhere to land. In external pull mode, `pij inbox` registration creates that durable address without a daemon or pane. Model names differ per harness; `pij spawn` auto-applies each harness's blanket-permission flag.
 
 ### C2 — Canary-verify (a ready-ping is NOT proof)
 
@@ -58,6 +59,6 @@ Default = the **side stack**: the first peer opens a ~1/3-width column on YOUR r
 
 The daemon runs `tsx` off source with **no hot-reload**: after ANY edit to daemon/core extension code, restart it (`pij daemon stop && pij daemon start`) or the change silently doesn't take effect. Freshly-spawned peers are unaffected; the daemon process itself is what goes stale.
 
-### C7 — Push, not poll
+### C7 — Push when owned; block on inbox when pull-owned
 
-The daemon owns liveness and pushes it: a peer's **done-report**, **stalled** (idle without finishing), and **dead** (crashed/quota) all arrive as injected turns that re-invoke you. After dispatch: do independent prep, let the push wake you. Do not confirm a peer flipped to `working`, do not nudge idle-looking peers. One exception: a peer on a known-broken transport (keystrokes not landing, no events flowing) never pushes — for those only, use a slow periodic `pij tail <id>` spot-check.
+In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that re-invoke you. After dispatch: do independent prep and let the push wake you; never poll `pij state`. In external pull mode there is deliberately no injector: use `pij inbox --wait` (first use auto-registers; optional milliseconds make it finite). This blocking inbox read is the delivery primitive, not a liveness poll. A known-broken push transport may use one slow `pij tail <id>` spot-check.

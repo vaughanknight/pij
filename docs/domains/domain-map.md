@@ -10,14 +10,14 @@ flowchart LR
     RL[agentic-loops\ncontracts: StopReason, IterationRunner, PlanModel]
     AW[agent-workbench\ncontracts: MinihRunSummary, MinihViewSnapshot, MinihAdapterResult, persistence facade]
     MH[Minih artifacts\ncontracts: run.json, events.ndjson, inbox/state/history, output/report.json]
-    PIJ[pij-messaging\ncontracts: SessionDescriptor+prime, PijEvent+EventQuery, 5 ports, MessageReceipt, resolveSelf/filterPrime, Result]
+    PIJ[pij-messaging\ncontracts: SessionDescriptor+prime+deliveryMode, PijEvent+EventQuery, 6 ports incl. InboxPort, immutable msg/read markers, MessageReceipt, Result]
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
-    PCP[pij-control-plane\ncontracts: tmux-keys primitives, HarnessKind/selectTransport, classifyReadiness, classifyInterstitial, binding record, daemon switchboard]
+    PCP[pij-control-plane\ncontracts: tmux-keys, HarnessKind/selectTransport, binding record, daemon switchboard, push ownership + post-outcome markers]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
-    PS[pij-skill\ncontracts: /pij route registry, registry-first prime triage, detection signals A-E, shared conventions C1-C7, pij-skill-check gate]
+    PS[pij-skill\ncontracts: /pij route registry, delivery-mode detection, registry-first prime triage, shared conventions C1-C7, pij-skill-check gate]
     PO[pij-orchestration\ncontracts: PrimeService, BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time, holder-transition decision]
 
     ATI -->|uses current-session store + todo contracts| SWS
@@ -56,7 +56,7 @@ flowchart LR
     AW -.->|observes minih-format runs/ AR produces; no code coupling| AR
     PS -->|pair route shells the flow-pair CLI + run ledger; front-door supersession| FP
     PS -->|peer/ops routes print spawn/daemon/adopt/tail/close CLI| PCP
-    PS -->|peer route prints send/state/list/whoami surface| PIJ
+    PS -->|peer route prints send/state/list/whoami plus non-tmux inbox pull surface| PIJ
     PS -->|agent route wraps the pij agent verb family| AR
     PS -.->|pair route wraps it; never writes flow-state files| TF
     PO -->|pushes notices through delivery + receipt vocabulary| PIJ
@@ -95,7 +95,7 @@ flowchart LR
 | `flow-pair` → `agent-tooling-interface` | planned | Skill + `flow-pair` CLI present through Pi skill/tool UX; not yet built. |
 | `flow-pair` → `extension-authoring-harness` | planned | `just`/vitest/self-check will validate the pi-free helper lib; retros/difficulty/velocity feed the learning loop. |
 | `flow-pair` ⇢ `the-flow` (external) | wraps-only | Wrapper-level delegation seam; **never** edits `the-flow` or writes `.the-flow-state.json`/`the-flow.json`/`the-flow.md`. Single flow-state-writer invariant. |
-| `pij-control-plane` → `pij-messaging` | extends (Plan 019) | Reuses `SessionDescriptor` (+`harness`/`harnessSessionId`/`initInjectedAt`/`state`), the five ports, `Result`, `deriveSelfId`/`resolveSelf`, the `~/.pij/` layout + `FsChannel`. The daemon never imports pi; the in-process `pi.sendUserMessage` seam stays in `pij-messaging`'s thin receiver. |
+| `pij-control-plane` → `pij-messaging` | extends (Plans 019/041) | Reuses `SessionDescriptor` (+`deliveryMode`), the six ports including `InboxPort`, immutable `msg-*`/`read-*`, receipt event persistence, and `FsChannel`. The daemon marks only push-owned tmux outcomes; pi and pull consumers retain ownership. |
 | `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate. |
 | `pij-control-plane` → `agent-tooling-interface` | contract-only (future) | The `pij spawn`/`daemon`/`adopt` CLI + `pij_spawn --harness` UX will present through Pi command/tool surfaces. |
 | `agent-runtime` → `minih` (external) | embeds-only | Imports minih's `runAgent`, `IAgentAdapter`, `FakeAgentAdapter`, validators, and `SdkCopilotAdapter` as a library at exact tag `minih-v0.2.4`. The pack format, validators, and `runs/<ts>/` ledger are minih's — **never forked, never extended**; a pack that runs under pij runs under stock minih unchanged. AC-12 contract test guards the API against tag drift. |
@@ -103,7 +103,7 @@ flowchart LR
 | `pij-control-plane` → `agent-runtime` | planned (Phase 2) | The `pij agent` verb family will consume `DiscoveredAgent`, the runner, and the inline engine; the daemon consumes only the `sweepStaleTmp()` crash-sweep hook (added Phase 1). Dependency direction is `cli → core/agents → minih`, never the reverse. |
 | `agent-workbench` ⇢ `agent-runtime` | observes-only | Reads the minih-format `runs/<ts>/` that `agent-runtime` produces; no import, no shared code — run artifacts stay minih-owned. |
 | `pij-skill` → `flow-pair` | planned (Phase 2) | The pair route ports the flow-pair skill's protocol prose and shells the existing `flow-pair` CLI; the engine (lib/schemas/tests/`.flow-pair` ledger root) stays flow-pair-owned and untouched. |
-| `pij-skill` → `pij-control-plane` / `pij-messaging` / `agent-runtime` | prints-only | Route modules print CLI commands in fenced blocks; no imports, no code coupling — the skill layer is pure markdown. |
+| `pij-skill` → `pij-control-plane` / `pij-messaging` / `agent-runtime` | prints-only | Route modules print CLI commands in fenced blocks; delivery-mode detection keeps tmux/pi push-first and routes non-tmux peers to `pij inbox --wait`; no imports or code coupling. |
 | `pij-orchestration` → `pij-messaging` | consumes | Uses session ids, the existing delivery channel, registry descriptors, and `queued\|delivered\|unverified` receipt vocabulary; it introduces no transport. |
 | `pij-orchestration` → `extension-authoring-harness` | healthy | Pure lifecycle/sweep tests, real-filesystem store tests, the full pij regression suite, skill check, and harness sensors provide backpressure. |
 | `pij-control-plane` → `pij-orchestration` | hosts | The bin intercept owns process I/O and git HEAD probing; the daemon owns periodic holder-liveness sweep wiring. The orchestration core remains pi-free. |
@@ -134,3 +134,4 @@ flowchart LR
 | 2026-07-03 | Plan 029 Phase 1 — added `agent-runtime` (`AR`) node + external `minih` (`MINIH`) library node; two outbound edges (embeds-only → `MINIH`; validated → `extension-authoring-harness`) plus two inbound: `PCP → AR` (planned Phase-2 `pij agent` CLI + daemon `sweepStaleTmp` hook) and a dashed observes-only `AW ⇢ AR` (workbench reads the minih runs AR produces). Runtime built CLI-free in Phase 1; `pij agent` surface + built-ins + docs land in Phase 2. |
 | 2026-07-11 | Plan 036 — added `pij-orchestration` (`PO`) with outbound notice/receipt consumption from `pij-messaging`, harness validation, and inbound hosting edges from `pij-control-plane` plus the teaching-only `pij-skill` relationship. |
 | 2026-07-11 | Plan 038 — extended existing PIJ/PO/PCP/PS relationships for descriptor-backed prime designation, list filtering, mutable merge ownership, and registry-first skill triage. |
+| 2026-07-12 | Plan 041 — extended PIJ/PCP/PS contracts with immutable inbox/read markers, pull delivery ownership, post-outcome tmux/pi markers, durable receipt convergence, and non-tmux inbox guidance. |

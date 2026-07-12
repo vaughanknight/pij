@@ -28,6 +28,7 @@ hypotheses.
 | 13 — Minih Workbench Phase 3 (`minih-workbench`) | 2026-05-17 | T0 = `2026-05-17T04:55:31Z` (companion boot); T1 = `2026-05-17T05:31:29Z` (`just self-check` green); Δ ≈ 36 min | Phase 3 interaction/push hardening: capability contracts, session-backed audit/cursors, adapter send/stop wrappers, `/minih send`, modal composer, `/minih stop`, pushed context, per-event dedupe, safety/tool-ordering tests, fake-writer smoke, and docs. | Companion run `2026-05-17T14-55-31-573Z-53a4`; findings F001–F011 fixed/reconciled inline. No new package dependency. |
 
 | 14 — Plan 041 Phase 2 (`pij inbox`) | 2026-07-12 | T0 = `2026-07-12T06:19Z`; T1 = `2026-07-12T08:50Z`; Δ ≈ 2h 31m | Pull ownership, ambient registration, grouped inbox CLI, waits/receipts, and atomic per-envelope receipt events; 203 targeted tests plus Windows two-process race. | Long wall-clock reflects two deliberate review gates and four real correctness defects found after green happy-path gates; D-034 encodes the adversarial proof gained. |
+| 15 — Plan 041 Phase 3 (`pij inbox`) | 2026-07-12 | T0 = `2026-07-12T10:40Z`; T1 = `2026-07-12T21:09Z`; Δ ≈ 10h 29m | Durable tmux/pi push consumption, retained envelopes, post-outcome markers, push/pull guidance, cold review, and genuine no-tmux Terra/medium live proof; 1,850 tests. | Wall-clock includes the overnight live-proof pause, model-effort ruling, formal daemon baton, and one three-finding review/fix cycle; active implementation/review time was a minority of the window. |
 
 ## Hypothesis (measurement-anchored)
 

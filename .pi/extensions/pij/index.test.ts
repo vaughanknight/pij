@@ -9,14 +9,17 @@
 // Non-vacuous: removing the ctx.ui.setStatus(PIJ_STATUS_KEY, self) call from
 // index.ts causes this test to fail (no "pij" entry in captured statuses).
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FsChannel } from "./adapters/channel.js";
+import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
-import { deriveSelfId } from "./core/discovery.js";
+import { deriveSelfId, memorableIdentitySeed } from "./core/discovery.js";
+import { receiptBody } from "./core/message.js";
 import pijExtension from "./index.js";
 
 // ---------------------------------------------------------------------------
@@ -25,8 +28,9 @@ import pijExtension from "./index.js";
 
 /** Minimal fake ExtensionAPI — captures only what index.ts needs at wiring
  *  time + what session_start triggers (sendUserMessage for the boot announce). */
-function makeFakePi() {
+function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 	const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
+	const sentUserMessages: string[] = [];
 	const pi = {
 		on: (event: string, handler: (...args: unknown[]) => Promise<void>) => {
 			handlers.set(event, handler);
@@ -34,9 +38,12 @@ function makeFakePi() {
 		registerTool: () => {},
 		registerCommand: () => {},
 		events: { on: () => {}, emit: () => {} },
-		sendUserMessage: () => {}, // called by PiRuntimeAdapter.inject on fresh boot
+		sendUserMessage: (message: string) => {
+			sentUserMessages.push(message);
+			onSendUserMessage(message);
+		},
 	} as unknown as ExtensionAPI;
-	return { pi, handlers };
+	return { pi, handlers, sentUserMessages };
 }
 
 /** Minimal fake ExtensionContext — captures setStatus calls. */
@@ -53,6 +60,21 @@ function makeFakeCtx(initialSessionId: string | undefined = "test-session-status
 		},
 	} as unknown as ExtensionContext;
 	return { ctx, statuses, setSessionId: (next: string | undefined) => (sessionId = next) };
+}
+
+function allocatePiIdentity(pijHome: string, nativeSessionId: string): string {
+	const allocated = new FsRegistry(pijHome).allocateIdentity(
+		"pi",
+		nativeSessionId,
+		memorableIdentitySeed("pi", nativeSessionId),
+		deriveSelfId(nativeSessionId, process.pid),
+	);
+	if (!allocated.ok) throw new Error(allocated.message);
+	return allocated.value.id;
+}
+
+function inboxPath(pijHome: string, id: string, name: string): string {
+	return join(pijHome, id, "inbox", name);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +175,71 @@ describe("pij index — footer status bar", () => {
 		expect(id).toMatch(/^pij-[a-z]+-[a-z]+$/);
 		expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({ id });
 
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("marks a retained unread message only after onInbound injects it, then reload skips it", async () => {
+		const nativeSessionId = "native-post-inbound";
+		const id = allocatePiIdentity(pijHome, nativeSessionId);
+		const channel = new FsChannel(pijHome);
+		const delivered = channel.deliver({ from: "pij-boss", to: id, body: "post-outcome message" });
+		if (!delivered.ok) throw new Error(delivered.message);
+		const marker = inboxPath(pijHome, id, `read-${delivered.value.messageId}.json`);
+		const message = inboxPath(pijHome, id, `msg-${delivered.value.messageId}.json`);
+		const markerStateDuringInbound: boolean[] = [];
+		const { pi, handlers, sentUserMessages } = makeFakePi((text) => {
+			if (text.includes("post-outcome message")) {
+				markerStateDuringInbound.push(existsSync(marker));
+			}
+		});
+		const { ctx } = makeFakeCtx(nativeSessionId);
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(markerStateDuringInbound).toEqual([false]);
+		expect(existsSync(message)).toBe(true);
+		expect(existsSync(marker)).toBe(true);
+		expect(channel.listUnread(id)).toEqual({ ok: true, value: [] });
+		expect(sentUserMessages.filter((text) => text.includes("post-outcome message"))).toHaveLength(
+			1,
+		);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+		expect(sentUserMessages.filter((text) => text.includes("post-outcome message"))).toHaveLength(
+			1,
+		);
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("records and marks receipt history without injecting or replaying it", async () => {
+		const nativeSessionId = "native-receipt-history";
+		const id = allocatePiIdentity(pijHome, nativeSessionId);
+		const channel = new FsChannel(pijHome);
+		const body = receiptBody("original-message", "delivered");
+		const delivered = channel.deliver({
+			from: "pij-boss",
+			to: id,
+			body,
+			kind: "receipt",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const marker = inboxPath(pijHome, id, `read-${delivered.value.messageId}.json`);
+		const { pi, handlers, sentUserMessages } = makeFakePi();
+		const { ctx } = makeFakeCtx(nativeSessionId);
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(sentUserMessages.some((text) => text.includes(body))).toBe(false);
+		expect(existsSync(marker)).toBe(true);
+		expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHaveLength(1);
+		expect(
+			readdirSync(join(pijHome, id, "inbox")).filter((name) => name.startsWith("msg-")),
+		).toHaveLength(1);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+		expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHaveLength(1);
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 });

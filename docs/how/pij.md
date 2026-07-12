@@ -2,8 +2,9 @@
 
 `pij` lets two (or more) running agent sessions in the same project talk to each
 other and observe each other's work in near-real-time. It is a thin file-backed
-registry, message bus, and activity stream. Pi sessions use the files directly;
-tmux-bound Claude, Copilot, and Codex peers are driven by the pij daemon.
+registry, durable message bus, and activity stream. Pi sessions consume their
+inbox in-process; tmux-bound Claude, Copilot, and Codex peers are pushed by the
+pij daemon; external sessions without tmux pull through `pij inbox`.
 
 ## Related workflow guides
 
@@ -54,6 +55,21 @@ pij list --here               # bare `pij` on PATH from any cwd
   step — uniform across `pi`, `claude`, `copilot`, and `codex` spawns. Absent on a
   session with no resolvable spawner (e.g. a top-level boot).
 
+### Push and pull delivery
+
+Delivery ownership is explicit:
+
+- **Pi** is push-first through its in-process receiver.
+- **Tmux-bound Claude/Copilot/Codex** are push-first through the daemon.
+- **External sessions without tmux** are pull-owned. Run `pij inbox --wait`;
+  the first inbox command auto-registers the current Claude, Copilot, or Codex
+  session as `deliveryMode:"pull"`. Use `--wait <ms>` for a finite wait or omit
+  the value to block indefinitely.
+
+The daemon never drains, buffers, heartbeats, or injects a pull-owned inbox.
+For an explicit setup step before sending, run `pij inbox register`; subsequent
+`pij inbox`, `pij inbox check`, and `pij inbox --wait` reuse that identity.
+
 ---
 
 ## CLI reference
@@ -62,6 +78,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 
 | Verb | Usage | Does |
 |------|-------|------|
+| `inbox` | `pij inbox [check\|register] [--wait [ms]]` | Pull unread messages for the current external session. First use auto-registers it as pull-owned; `--wait` blocks indefinitely and `--wait <ms>` uses one finite timeout. Receipt envelopes become events and never print as user messages. |
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
 | `list` | `pij list [--prime] [--here]` | List known sessions (id, prime marker, state, liveness, folder). `--prime` keeps only explicit prime sessions and composes with `--here`; self is marked `★`, prime rows `P`. JSON always includes `prime:boolean`. |
 | `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
@@ -126,6 +143,11 @@ as not prime. See [pij prime](./pij-prime.md#registry-designation).
 
 ## The message + receipt protocol
 
+- **Immutable inbox history.** Every send publishes `msg-<messageId>.json`.
+  Consumption never rewrites or deletes it; `read-<messageId>.json` is the
+  authoritative read state. Tmux and pi push consumers publish that marker only
+  after their injection/`onInbound` outcome. Pull consumers claim the same marker
+  contract, so all delivery modes skip marked history after restart or reload.
 - **Raw body, framed once on receipt.** `pij send w3 "hi"` writes the raw text; the
   *receiver* frames it as `[pij from <senderId>] hi` when it injects — so a reply
   needs no lookup (the sender id is right there).
@@ -148,6 +170,10 @@ as not prime. See [pij prime](./pij-prime.md#registry-designation).
   `pij tail <self> --type receipt`. Broadcast `--wait` correlates each recipient's
   message id, prefixes receipt changes with the target, and names any unresolved
   targets if the single global timeout expires.
+- **Receipt durability.** A receipt envelope is retained like every other message,
+  but it is hidden from user output and peer injection. Its receipt event is
+  atomically appended/reused before its read marker is published, so
+  `pij send --wait` can resolve terminal state after process or daemon restarts.
 
 ---
 

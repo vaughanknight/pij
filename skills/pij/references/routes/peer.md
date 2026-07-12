@@ -5,7 +5,7 @@
 
 **Job**: talk to colleagues — stand up a NEW live session (claude / copilot / codex / pi) in a tmux pane, **or converse with peers that already exist**: identity/list/send/tail/state need no spawn. Nothing here delegates work products — this is the raw colleague seam.
 
-**Preconditions**: inside tmux; mode detected per § C1 (control-plane mode additionally needs the one-time self-adopt so replies can reach you). The daemon auto-starts on first spawn.
+**Preconditions**: mode detected per § C1. Spawning requires tmux; tmux control-plane mode also needs one-time self-adopt. A non-tmux external session can converse with existing peers after its first `pij inbox` auto-registers pull ownership.
 
 ## Verbs
 
@@ -15,6 +15,7 @@
 pij whoami [--json]      # your stable session id (E-NOID → adopt first, § C1)
 pij list [--here]        # known sessions (--here: this tmux server only)
 pij state <id> [--json]  # liveness + working/idle for one peer
+pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers
 ```
 
 **Spawn**
@@ -40,7 +41,14 @@ pij send <id> --command compact                      # control command (compact/
 pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
 
-Replies arrive in YOUR pane as `[pij from <id>]` turns — pushed, never polled (§ C7). Long content: write a file, send the path (pointer delivery — dispatch invariant 2).
+Pi/tmux replies arrive as `[pij from <id>]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
+
+```bash
+pij inbox --wait          # block indefinitely
+pij inbox --wait 30000    # or one finite 30s wait
+```
+
+This is pull delivery, not `pij state` polling (§ C7). Long content: write a file and send the path (pointer delivery — dispatch invariant 2).
 
 **Teardown**
 
@@ -53,6 +61,8 @@ Keep a healthy peer across work items: compact and reuse instead of close-and-re
 
 ## Smoke sequence (prove the seam end-to-end)
 
+Tmux/pi push:
+
 ```bash
 pij whoami                                    # self resolves (else adopt, § C1)
 pij spawn --harness claude --model sonnet     # → pij-xxxxx
@@ -61,11 +71,20 @@ pij send pij-xxxxx "reply with exactly: ok"   # round-trip lands back as [pij fr
 pij close pij-xxxxx                           # pane + descriptor gone
 ```
 
+Non-tmux pull:
+
+```bash
+pij inbox register                            # durable pull-owned self
+pij send pij-xxxxx "reply with exactly: ok"
+pij inbox --wait 30000                        # prints [pij from pij-xxxxx] ok
+```
+
 ## Failure modes
 
 | Symptom | Meaning / move |
 |---|---|
 | `E-NOID` on send/close | id not in registry — `pij list`, or the peer already closed |
+| `E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`; first use auto-registers the ambient session |
 | `E-FULL` on spawn | window at split cap — free a slot or spawn from a scratch window (§ C5) |
 | Ready but 400 on first message | wrong model id — close, re-spawn with a `pij models` id (§ C2/C4) |
 | Send "lands" but nothing happens | peer wedged in its input box — daemon auto-retries focus; if persistent, `pij tail` to inspect, then escalate to a human |

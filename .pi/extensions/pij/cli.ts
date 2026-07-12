@@ -191,7 +191,8 @@ Orchestration (machine-wide coordination):
   pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
 
 Messaging:
-  pij inbox [check|register] [--wait [ms]] [--json]   pull messages or register this ambient session
+  pij inbox [check|register] [--wait [ms]] [--json]   pull messages; first use auto-registers this ambient session
+                                                        non-tmux external peers use 'pij inbox --wait'; tmux/pi stay push-first
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
   pij list [--here] [--prime] [--json]               known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)

@@ -1,11 +1,13 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FsChannel } from "./adapters/channel.js";
+import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
+import { receiptBody } from "./core/message.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
@@ -83,6 +85,20 @@ function messageBodies(to: string): string[] {
 	}
 }
 
+function unreadBodies(to: string): string[] {
+	const unread = new FsChannel(home).listUnread(to);
+	if (!unread.ok) throw new Error(unread.message);
+	return unread.value.map((message) => message.body);
+}
+
+function messagePath(to: string, messageId: string): string {
+	return join(home, to, "inbox", `msg-${messageId}.json`);
+}
+
+function markerPath(to: string, messageId: string): string {
+	return join(home, to, "inbox", `read-${messageId}.json`);
+}
+
 describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 	it("persists lastTickAt so an unticked/wedged daemon becomes mechanically stale", () => {
 		const registry = new FsRegistry(home);
@@ -117,7 +133,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(registry.read("pij-c")?.initInjectedAt).toBeTruthy();
 	});
 
-	it("drains a BOUND claude target's inbox: injects the body + removes the file", () => {
+	it("retains a BOUND tmux message, marks it after injection outcome, and skips replay", () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -136,15 +152,75 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		});
 		if (!delivered.ok) throw new Error(delivered.message);
 		const ports = fakePorts();
-		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		const baseSendText = ports.sendText;
+		let markerDuringInjection: boolean | undefined;
+		ports.sendText = (pane, text, harness, pid) => {
+			markerDuringInjection = existsSync(markerPath("pij-c", delivered.value.messageId));
+			return baseSendText(pane, text, harness, pid);
+		};
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
+		daemon.tick();
 		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] review the diff" });
-		// inbox file consumed
-		expect(
-			readdirSync(join(home, "pij-c", "inbox")).filter((n) => n.startsWith("msg-")),
-		).toHaveLength(0);
+		expect(markerDuringInjection).toBe(false);
+		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
+		expect(unreadBodies("pij-c")).toEqual([]);
 		expect(messageBodies("pij-boss")).toContain(
 			`[pij receipt ${delivered.value.messageId}] delivered`,
 		);
+		daemon.tick();
+		expect(ports.sent.filter((sent) => sent.text.includes("review the diff"))).toHaveLength(1);
+	});
+
+	it("preserves same-target progress when a later tmux injection fails", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const first = channel.deliver({ from: "pij-boss", to: "pij-c", body: "first message" });
+		const second = channel.deliver({ from: "pij-boss", to: "pij-c", body: "second message" });
+		if (!first.ok) throw new Error(first.message);
+		if (!second.ok) throw new Error(second.message);
+		const ports = fakePorts();
+		const baseSendText = ports.sendText;
+		const attempts: string[] = [];
+		let firstProgressVisibleOnFailure = false;
+		ports.sendText = (pane, text, harness, pid) => {
+			attempts.push(text);
+			if (text.includes("second message")) {
+				firstProgressVisibleOnFailure =
+					existsSync(markerPath("pij-c", first.value.messageId)) &&
+					messageBodies("pij-boss").includes(receiptBody(first.value.messageId, "delivered"));
+				throw new Error("injected second-message failure");
+			}
+			return baseSendText(pane, text, harness, pid);
+		};
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+
+		expect(firstProgressVisibleOnFailure).toBe(true);
+		expect(existsSync(markerPath("pij-c", first.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-c", second.value.messageId))).toBe(false);
+		expect(unreadBodies("pij-c")).toEqual(["second message"]);
+		expect(messageBodies("pij-boss")).toContain(receiptBody(first.value.messageId, "delivered"));
+		expect(messageBodies("pij-boss")).not.toContain(
+			receiptBody(second.value.messageId, "delivered"),
+		);
+
+		daemon.tick();
+
+		expect(attempts.filter((text) => text.includes("first message"))).toHaveLength(1);
+		expect(attempts.filter((text) => text.includes("second message"))).toHaveLength(2);
+		expect(unreadBodies("pij-c")).toEqual(["second message"]);
 	});
 
 	it("emits an unverified receipt when daemon injection cannot confirm delivery", () => {
@@ -167,6 +243,8 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		if (!delivered.ok) throw new Error(delivered.message);
 		const ports = fakePorts({ sendOutcome: "unverified" });
 		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
 		expect(messageBodies("pij-boss")).toContain(
 			`[pij receipt ${delivered.value.messageId}] unverified`,
 		);
@@ -203,10 +281,91 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		).not.toThrow();
 
 		expect(ports.sent).toContainEqual({ pane: "%live", text: "[pij from pij-boss] new" });
-		expect(messageBodies("pij-a-stale")).toContain("old");
-		expect(messageBodies("pij-z-live")).toHaveLength(0);
+		expect(unreadBodies("pij-a-stale")).toContain("old");
+		expect(unreadBodies("pij-z-live")).toHaveLength(0);
 		expect(log.join("\n")).toContain("pij-a-stale");
 		expect(log.join("\n")).toContain("can't find pane: %dead");
+	});
+
+	it("does not drain or repeatedly buffer a bound tmux inbox until the target has a pane", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const delivered = channel.deliver({ from: "pij-boss", to: "pij-c", body: "wait for pane" });
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts();
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+		daemon.tick();
+		expect(ports.sent).toHaveLength(0);
+		expect(unreadBodies("pij-c")).toEqual(["wait for pane"]);
+
+		const target = registry.read("pij-c");
+		if (!target) throw new Error("missing target");
+		registry.write({ ...target, paneId: "%4" });
+		daemon.tick();
+		daemon.tick();
+		expect(ports.sent.filter((sent) => sent.text.includes("wait for pane"))).toHaveLength(1);
+		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
+	});
+
+	it("persists a receipt event before marking its retained envelope and never injects it", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const base = new FsChannel(home);
+		const delivered = base.deliver({
+			from: "pij-boss",
+			to: "pij-c",
+			body: receiptBody("original-message", "delivered"),
+			kind: "receipt",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		let eventVisibleBeforeMarker = false;
+		const channel = {
+			deliver: (message: Parameters<FsChannel["deliver"]>[0]) => base.deliver(message),
+			listUnread: (id: string) => base.listUnread(id),
+			claimUnread: (
+				id: string,
+				messageId: string,
+				marker?: Parameters<FsChannel["claimUnread"]>[2],
+			) => base.claimUnread(id, messageId, marker),
+			markRead: (id: string, messageId: string, marker?: Parameters<FsChannel["markRead"]>[2]) => {
+				if (messageId === delivered.value.messageId) {
+					eventVisibleBeforeMarker =
+						new FsEventLog(home, id).read({ type: "receipt" }).length === 1;
+				}
+				return base.markRead(id, messageId, marker);
+			},
+		};
+		const ports = fakePorts();
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+
+		expect(eventVisibleBeforeMarker).toBe(true);
+		expect(ports.sent).toHaveLength(0);
+		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
+		expect(new FsEventLog(home, "pij-c").read({ type: "receipt" })).toHaveLength(1);
+		daemon.tick();
+		expect(new FsEventLog(home, "pij-c").read({ type: "receipt" })).toHaveLength(1);
 	});
 
 	it("does not resurrect or notify for a descriptor dissolved during a queued activity drain", () => {
