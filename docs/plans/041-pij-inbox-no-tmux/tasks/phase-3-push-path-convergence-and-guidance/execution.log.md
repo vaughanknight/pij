@@ -254,4 +254,16 @@ restart, live canary, commit, push, merge, or ship action occurred.
 - Flight plan advanced through Phase 3/review to `ship`; phase observations were
   drained to
   `.harness/records/retro/2026-07-12/004-041-pij-inbox-no-tmux-phase-3.md`.
-- Hosted Node 22/24/Windows evidence remains pending the PR #9 branch update.
+- PR #9 was updated to `03baeadb5b85a43acfdac280b96e40d23fcde5da`
+  with a force-with-lease pinned to the prior remote
+  `a798bf269a79b01bcccff80ebbfadb00eaabc7e1`.
+- Hosted workflow run:
+  `https://github.com/AI-Substrate/pij/actions/runs/29209203506`.
+- Node 22: PASS in 3m34s.
+- Node 24: PASS in 3m38s.
+- Windows compatibility: PASS in 4m29s.
+- PR #9 remains unmerged by ruling. PR #11 must merge first, then PR #9 must
+  rebase `origin/main` so the s043 control-plane document baseline becomes
+  ancestry.
+- Post-merge handoff: update the main checkout, verify bare `pij inbox --help`
+  and the machine-wide `/pij` skill guidance, then complete the `ship` node.
