@@ -1,15 +1,17 @@
 # Ship Report — pij-orchestrator-routing-skill
 
 **Generated**: 2026-07-12T16:25:00+10:00
+**Closed**: 2026-07-12T16:38:00+10:00
 **Branch**: `s042/orchestrator-routing-skill` → **Base**: `main`
-**PR**: https://github.com/AI-Substrate/pij/pull/10 (#10) · **State**: open
+**PR**: https://github.com/AI-Substrate/pij/pull/10 (#10) · **State**: merged
+**Merge commit**: `347b6dd732110bc76b3d421e61a401cc228149d6`
 
 ## Checks
 
 | Check | Status | Details |
 |-------|--------|---------|
-| Node 22 | ✅ pass | https://github.com/AI-Substrate/pij/actions/runs/29182591333/job/86622937787 |
-| Node 24 | ✅ pass | https://github.com/AI-Substrate/pij/actions/runs/29182591333/job/86622937799 |
+| Node 22 | ✅ pass | https://github.com/AI-Substrate/pij/actions/runs/29182713896/job/86623264815 |
+| Node 24 | ✅ pass | https://github.com/AI-Substrate/pij/actions/runs/29182713896/job/86623264814 |
 
 **Verdict**: all green
 
@@ -49,11 +51,26 @@ shipped diff.
 - Commits:
   - `154c23c` — stream orchestrator workflow
   - `772e8c7` — duplicate s041 timeout fix by design; converges at merge
+  - `9ea0ab0` — ship report and completed Builder flight
+- Squash landing:
+  - branch commits above landed as content in merge commit `347b6dd`;
+  - branch commit identities do not survive the squash;
+  - the duplicate s041 timeout fix still converged content-wise, whichever PR
+    lands first.
 
-## Resume
+## Landing datum
 
-- PR is open and mergeable (`CLEAN`).
-- CI is green.
-- Merge is **not** performed.
-- Await Jordan's explicit merge confirmation; anything other than typed
-  `PROCEED` leaves PR #10 open.
+Jordan's observed repository merge style is squash. Prime protocol guidance
+should treat branch commit SHAs as construction evidence and the squash commit
+as the durable landing identity. Worktree/PR isolation and duplicate-fix
+convergence remain valid because Git merges content even when branch commit
+identity is rewritten.
+
+## Final state
+
+- PR merged after Jordan typed `PROCEED`.
+- Local `main` reconciled to `347b6dd`, matching origin.
+- Machine-wide `pij` skill and Pi's project-local skill link point to local
+  main; structural skill check is green.
+- Owned coder/reviewer sessions are dissolved.
+- s042 worktree and branch are cleared after this report handoff.

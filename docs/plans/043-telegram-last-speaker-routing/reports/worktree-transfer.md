@@ -1,0 +1,1 @@
+2026-07-12 · AUTHORIZED TRANSFER to `/Users/jordanknight/pi-hacking/pij-worktrees/s043-telegram-last-speaker-routing` at `347b6dd`: `diff -qr` clean; SHA-256 plan `167178342…630949`, validation `491efbbd…dbeed`, backpressure `9cb3d711…5e9da`, fences `daf1c609…5ff7`, flow JSON `e583bcec…bcbb1b`, flow MD `c7537a8a…21257`, rulings `1dab15bf…84219` (post-checkpoint R7).

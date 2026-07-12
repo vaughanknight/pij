@@ -43,3 +43,17 @@
 **Selected**: Allow `--id` only to reattach an already-existing id; unknown ids fail `E-NOID`.
 
 **Effect**: Manual first adoption without an existing descriptor omits `--id` and receives an allocated memorable id. `--id` no longer mints arbitrary caller-chosen primary identities; conflicting native tuples remain `E-AMBIG`.
+
+## 8. Push-main authorization
+
+**Jordan, typed in the s040 pane at 2026-07-12T11:06:28+10:00**: "push"
+
+**Scope**: Authorizes the already-deconflicted fast-forward of local `main` commits
+`40528df..4bc5ab0` to `origin/main`:
+
+- `18b7421` - memorable session ids
+- `9575976` - Plan 040 phase completion
+- `4bc5ab0` - government/ship close snapshot
+
+**Effect**: This is the human half of the push-main double gate. The push executes only
+after o-prime grants baton request `request-b5138923-f767-4f6d-9378-683c51241cfd`.
