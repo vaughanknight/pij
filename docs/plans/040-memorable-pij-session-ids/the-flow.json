@@ -3,8 +3,8 @@
   "kind": "flight-plan",
   "slug": "memorable-pij-session-ids",
   "nav": {
-    "now": "phase-1",
-    "next": "review-1",
+    "now": "review-1",
+    "next": "ship",
     "intent": "you know how some apps like docker and others get cool random but not random names like cool-barista or alpha-pinetree etc... how they do that? could we do that for pij names instead of the random ones? pij-grifting-lamp",
     "bag": {
       "mode": "Simple",
@@ -159,6 +159,94 @@
           "importance": "recommended"
         }
       }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:12.654Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:13.526Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:14.423Z",
+      "details": {
+        "node": "observe-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:15.294Z",
+      "details": {
+        "node": "retro-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:16.150Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:17.021Z",
+      "details": {
+        "node": "review-1",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-004",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T00:36:17.882Z",
+      "details": {
+        "from": "phase-1",
+        "to": "review-1"
+      }
     }
   ],
   "nodes": [
@@ -213,7 +301,7 @@
       "type": "phase",
       "phase": 1,
       "label": "P1: Implementation",
-      "status": "in_progress",
+      "status": "done",
       "command": "/builder 6 implement",
       "next": [
         "review-1"
@@ -226,13 +314,19 @@
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
       ],
-      "modified_at": "2026-07-11T12:49:41.382Z"
+      "modified_at": "2026-07-12T00:36:13.526Z",
+      "note": "Implemented memorable primary ids; commit 18b7421; F001-F004 resolved; T009 live proof and all six sensors green.",
+      "artifacts": [
+        "docs/plans/040-memorable-pij-session-ids/execution.log.md",
+        "docs/plans/040-memorable-pij-session-ids/reports/t009-live-proof.md"
+      ],
+      "ran_at": "2026-07-12T00:36:13.526Z"
     },
     {
       "id": "review-1",
       "type": "review",
       "label": "Review: P1",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 7 review",
       "next": [
         "ship"
@@ -242,7 +336,13 @@
         "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in; skippable when a companion already reviewed every commit.",
         "Run /builder 7 review — it inspects the newest reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or ship.",
         "Done when the verdict is recorded (one finding line) and either accepted or routed to a fix-loop."
-      ]
+      ],
+      "note": "Cold GPT-5.6 Sol review APPROVE after three rounds; F001-F004 closed with mutation and live boundary proof.",
+      "artifacts": [
+        "docs/plans/040-memorable-pij-session-ids/reviews/review.phase-1.md"
+      ],
+      "modified_at": "2026-07-12T00:36:17.021Z",
+      "ran_at": "2026-07-12T00:36:17.021Z"
     },
     {
       "id": "ship",
@@ -305,7 +405,7 @@
       "id": "observe-1",
       "type": "observe",
       "label": "Observe: P1",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "phase-1",
       "next": [
         "phase-1"
@@ -322,13 +422,15 @@
         "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
         "Drained at phase end by the retro (drain) chore. Skippable — advisory, never gates.",
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
-      ]
+      ],
+      "modified_at": "2026-07-12T00:36:14.423Z",
+      "ran_at": "2026-07-12T00:36:14.423Z"
     },
     {
       "id": "retro-1",
       "type": "harness-retro",
       "label": "Retro: P1 (drain)",
-      "status": "assumed",
+      "status": "done",
       "branch_of": "phase-1",
       "next": [
         "phase-1"
@@ -342,7 +444,9 @@
         "Recommended post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
         "Run /eng-harness-flow --hook post-coding --json — read-only/advisory; narrate its envelope verbatim.",
         "Skippable — advisory, never gates. Decline with a real `harness flow status retro-1 --to skipped`."
-      ]
+      ],
+      "modified_at": "2026-07-12T00:36:15.294Z",
+      "ran_at": "2026-07-12T00:36:15.294Z"
     },
     {
       "id": "retro-ship",
