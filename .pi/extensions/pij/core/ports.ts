@@ -5,7 +5,11 @@
 // adapters/pi-runtime.ts (Phase 2) may import @earendil-works/* — never here.
 
 import type {
+	DeliveredMessage,
 	EventQuery,
+	InboxClaim,
+	InboxMark,
+	InboxReadMarker,
 	PijEvent,
 	PijMessage,
 	Result,
@@ -48,6 +52,16 @@ export interface EventLogPort {
 export interface DeliveryPort {
 	/** Deliver a message to the peer named by message.to. */
 	deliver(message: PijMessage): Result<{ messageId: string }>;
+}
+
+/** Reads and durably claims immutable inbox envelopes. */
+export interface InboxPort {
+	/** List currently unread messages in lexical message-id order. */
+	listUnread(id: SessionId): Result<readonly DeliveredMessage[]>;
+	/** Exclusively claim a message by atomically publishing its read marker. */
+	claimUnread(id: SessionId, messageId: string, marker?: InboxReadMarker): Result<InboxClaim>;
+	/** Idempotently mark a known message read without returning its envelope. */
+	markRead(id: SessionId, messageId: string, marker?: InboxReadMarker): Result<InboxMark>;
 }
 
 /** The ONLY port whose real adapter imports pi (adapters/pi-runtime.ts,

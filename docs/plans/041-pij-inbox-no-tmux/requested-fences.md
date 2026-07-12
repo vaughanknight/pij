@@ -1,0 +1,77 @@
+# Requested fences — s041 inbox without tmux
+
+**Requested from**: o-prime `pij-3vetx8`
+**Status**:
+- Planning fence: GRANTED.
+- Phase 1: GRANTED OUTRIGHT at government spine Seq 43.
+- Phase 2/3: OPEN; request at their phase checkpoints.
+
+## Planning fence
+
+| Path | Action | Ownership / condition |
+|------|--------|-----------------------|
+| `docs/plans/041-pij-inbox-no-tmux/**` | modify/new | s041 single-writer |
+| `.harness/temp/s041/**` | transient new | s041 scratch; never commit |
+
+## Phase 1 — Portable Backpressure and Durable Inbox
+
+| Path | Action | Ownership / condition |
+|------|--------|-----------------------|
+| `.pi/extensions/pij/core/{types,ports}.ts` | modify | s041 |
+| `.pi/extensions/pij/adapters/{channel,channel.test,fakes,fakes.test}.ts` | modify | s041; `fakes.test.ts` addendum requested after task validation identified the canonical test home |
+| `.pi/extensions/pij/cli.inbox.integration.test.ts` | new | s041; platform-neutral, no fake tmux |
+| `harness/scripts/windows-compat.ts` | new | s041 |
+| `.harness/extensions/checks/{extension.ts,instructions.md}` | modify | shared harness contract; s041 requested |
+| `justfile` | modify | shared composite surface; add one thin `windows-compat` recipe + compose into `self-check` |
+| `package.json` | modify | **shared/pinned surface**; scripts-only change requested; preserve s040 dependency pins; no dependency or lockfile edit planned |
+| `.github/workflows/ci.yml` | modify | **shared/history surface**; s039 previously changed it; add isolated Windows portable job without rewriting existing Linux job |
+
+### Phase 1 grant conditions
+
+- `package.json` is scripts-only; prove dependency sections unchanged.
+- `.github/workflows/ci.yml` adds an isolated Windows job and preserves the s039
+  Linux flow.
+- Every NEW-labelled path is existence-probed before creation.
+- Any test that spawns real subprocesses declares an explicit Vitest timeout at
+  authoring time.
+
+## Phase 2 — Inbox CLI and Ambient Registration
+
+| Path | Action | Ownership / condition |
+|------|--------|-----------------------|
+| `.pi/extensions/pij/core/{inbox,inbox.test,current-session,current-session.test}.ts` | new | s041 |
+| `.pi/extensions/pij/core/{types,ports,harness/types,harness/pi}.ts` | modify | s041 |
+| `.pi/extensions/pij/core/daemon/{router,router.test}.ts` | modify | s041 |
+| `.pi/extensions/pij/{core/cli.ts,core/cli.test.ts,core/binding.ts,core/binding.test.ts,cli.ts,cli.integration.test.ts}` | modify | s040 is CLOSED; ordinary s041 ownership unless o-prime reports a new claimant |
+| `.pi/extensions/pij/adapters/fs-registry.ts` | no planned write | s040-owned; consume existing APIs |
+| `.pi/extensions/pij/core/{discovery,spawn}.ts` | no planned write | s040-owned |
+| `.pi/extensions/pij/core/harness/copilot.ts` | no planned write | s040-owned |
+
+## Phase 3 — Push-Path Convergence and Guidance
+
+| Path | Action | Ownership / condition |
+|------|--------|-----------------------|
+| `.pi/extensions/pij/{daemon.ts,daemon.test.ts,index.ts,index.test.ts}` | modify | s041 |
+| `.pi/extensions/pij/core/daemon/{loop,loop.test}.ts` | modify | s041 |
+| `skills/pij/{SKILL.md,references/00-routing.md,references/routes/peer.md}` | modify | live-deployed shared skill; edit last; `just pij-skill-check` required |
+| `docs/how/pij.md` | modify | shared operator contract |
+| `docs/domains/{pij-messaging,pij-control-plane,pij-skill}/domain.md` | modify | shared domain contracts |
+| `docs/domains/{registry.md,domain-map.md}` | modify | shared domain indexes |
+
+## Shared-resource requests
+
+| Resource | Window requested | Release proof |
+|----------|------------------|---------------|
+| `git-index` | Pathspec-only commits for the granted phase; never stage unrelated s040/s039 changes | commit sha + exact path list + gates |
+| `daemon-restart` | Phase 2 after pull-ownership review approval; Phase 3 after final daemon change approval | restart + post-restart canary |
+| `package.json` | Phase 1 scripts-only serialized edit | diff proves dependencies unchanged |
+| `.github/workflows/ci.yml` | Phase 1 isolated Windows-job edit, preserving s039 Linux flow | diff + YAML/CI proof |
+
+## Explicit exclusions
+
+- No `package-lock.json` change is planned.
+- No dependency addition or version change is planned.
+- No write to `government/**`, `.the-flow-state.json`, or hand-edited
+  `the-flow.json` / `the-flow.md`.
+- No daemon restart without the baton.
+- No public push without o-prime + Jordan gates.

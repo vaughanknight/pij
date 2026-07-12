@@ -17,6 +17,7 @@ import {
 import type {
 	DeliveryPort,
 	EventLogPort,
+	InboxPort,
 	NewWindowOpts,
 	PiRuntimePort,
 	ProcessPort,
@@ -25,8 +26,12 @@ import type {
 	TmuxPort,
 } from "../core/ports.js";
 import {
+	type DeliveredMessage,
 	type EventQuery,
 	err,
+	type InboxClaim,
+	type InboxMark,
+	type InboxReadMarker,
 	ok,
 	type PijEvent,
 	type PijMessage,
@@ -203,6 +208,55 @@ export class FakeDelivery implements DeliveryPort {
 		const messageId = `fake-${this.seq}`;
 		this.outbox.push({ messageId, message });
 		return ok({ messageId });
+	}
+}
+
+export class FakeInbox implements InboxPort {
+	readonly messages = new Map<string, DeliveredMessage>();
+	readonly markers = new Map<string, InboxReadMarker>();
+
+	constructor(initial: readonly DeliveredMessage[] = []) {
+		for (const message of initial)
+			this.messages.set(this.key(message.to, message.messageId), message);
+	}
+
+	listUnread(id: SessionId): Result<readonly DeliveredMessage[]> {
+		const unread = [...this.messages.values()]
+			.filter((message) => message.to === id && !this.markers.has(this.key(id, message.messageId)))
+			.sort((a, b) => (a.messageId < b.messageId ? -1 : a.messageId > b.messageId ? 1 : 0));
+		return ok(unread);
+	}
+
+	claimUnread(
+		id: SessionId,
+		messageId: string,
+		marker: InboxReadMarker = { messageId },
+	): Result<InboxClaim> {
+		const key = this.key(id, messageId);
+		const message = this.messages.get(key);
+		if (!message) return err("E-NOREG", `no inbox message '${messageId}' for '${id}'`);
+		if (this.markers.has(key)) return ok({ kind: "already-read", messageId });
+		this.markers.set(key, { ...marker, messageId });
+		return ok({ kind: "claimed", message });
+	}
+
+	markRead(
+		id: SessionId,
+		messageId: string,
+		marker: InboxReadMarker = { messageId },
+	): Result<InboxMark> {
+		const key = this.key(id, messageId);
+		if (!this.messages.has(key)) {
+			return err("E-NOREG", `no inbox message '${messageId}' for '${id}'`);
+		}
+		if (this.markers.has(key)) return ok({ kind: "already-read", messageId });
+		const persisted = { ...marker, messageId };
+		this.markers.set(key, persisted);
+		return ok({ kind: "marked", marker: persisted });
+	}
+
+	private key(id: SessionId, messageId: string): string {
+		return `${id}\0${messageId}`;
 	}
 }
 

@@ -207,6 +207,30 @@ export interface PijMessage {
 	readonly attachments?: ReadonlyArray<{ readonly path: string; readonly caption?: string }>;
 }
 
+/** A message envelope persisted in a peer inbox. The delivery payload remains
+ * immutable; durable read state is recorded in a separate marker. */
+export interface DeliveredMessage extends PijMessage {
+	readonly messageId: string;
+}
+
+/** Optional metadata written into `read-<messageId>.json`. Marker existence,
+ * not metadata contents, is authoritative for read state. */
+export interface InboxReadMarker {
+	readonly messageId: string;
+	readonly readAt?: string;
+	readonly reader?: SessionId;
+}
+
+/** Result of an exclusive attempt to claim one unread message. */
+export type InboxClaim =
+	| { readonly kind: "claimed"; readonly message: DeliveredMessage }
+	| { readonly kind: "already-read"; readonly messageId: string };
+
+/** Idempotent result of marking one message read. */
+export type InboxMark =
+	| { readonly kind: "marked"; readonly marker: InboxReadMarker }
+	| { readonly kind: "already-read"; readonly messageId: string };
+
 // ─── delivery receipts (finding 08; spec AC-13) ───────────────────────────
 export type ReceiptState = "queued" | "delivered" | "unverified";
 

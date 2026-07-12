@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { buildEvent } from "../core/events.js";
-import type { SessionDescriptor } from "../core/types.js";
-import { FakeDelivery, FakeEventLog, FakePiRuntime, FakeProcess, FakeRegistry } from "./fakes.js";
+import type { DeliveredMessage, SessionDescriptor } from "../core/types.js";
+import {
+	FakeDelivery,
+	FakeEventLog,
+	FakeInbox,
+	FakePiRuntime,
+	FakeProcess,
+	FakeRegistry,
+} from "./fakes.js";
 
 function desc(id: string): SessionDescriptor {
 	return {
@@ -12,6 +19,16 @@ function desc(id: string): SessionDescriptor {
 		eventsPath: `/home/u/.pij/${id}/events.ndjson`,
 		pid: 100,
 		startedAt: "2026-06-16T00:00:00.000Z",
+	};
+}
+
+function delivered(messageId: string, body: string, kind?: "receipt"): DeliveredMessage {
+	return {
+		messageId,
+		from: "alice",
+		to: "bob",
+		body,
+		...(kind === undefined ? {} : { kind }),
 	};
 }
 
@@ -59,6 +76,55 @@ describe("FakeDelivery", () => {
 	it("accepts all when no known set given", () => {
 		const d = new FakeDelivery();
 		expect(d.deliver({ from: "p1", to: "anyone", body: "hi" }).ok).toBe(true);
+	});
+});
+
+describe("FakeInbox", () => {
+	it("lists unread envelopes in message-id order and keeps receipts classifiable", () => {
+		const inbox = new FakeInbox([
+			delivered("003", "three"),
+			delivered("001", "receipt", "receipt"),
+			delivered("002", "two"),
+		]);
+
+		expect(inbox.listUnread("bob")).toEqual({
+			ok: true,
+			value: [
+				delivered("001", "receipt", "receipt"),
+				delivered("002", "two"),
+				delivered("003", "three"),
+			],
+		});
+	});
+
+	it("gives exclusive first-writer ownership and idempotent marks", async () => {
+		const inbox = new FakeInbox([delivered("001", "one")]);
+
+		const [first, second] = await Promise.all([
+			Promise.resolve().then(() => inbox.claimUnread("bob", "001")),
+			Promise.resolve().then(() => inbox.claimUnread("bob", "001")),
+		]);
+
+		expect(
+			[first, second].filter((result) => result.ok && result.value.kind === "claimed"),
+		).toHaveLength(1);
+		expect(
+			[first, second].filter((result) => result.ok && result.value.kind === "already-read"),
+		).toHaveLength(1);
+		expect(inbox.markRead("bob", "001")).toEqual({
+			ok: true,
+			value: { kind: "already-read", messageId: "001" },
+		});
+	});
+
+	it("marks an unread envelope without returning it", () => {
+		const inbox = new FakeInbox([delivered("001", "one")]);
+
+		expect(inbox.markRead("bob", "001")).toEqual({
+			ok: true,
+			value: { kind: "marked", marker: { messageId: "001" } },
+		});
+		expect(inbox.listUnread("bob")).toEqual({ ok: true, value: [] });
 	});
 });
 

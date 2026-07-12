@@ -92,6 +92,10 @@ check-file-watch-notify:
 smoke:
     npm run smoke
 
+# Cross-platform static + focused inbox/CLI proof used by the Windows CI lane.
+windows-compat:
+    npm run windows:check
+
 # Run the pij CLI in-repo (no global link needed): `just pij list --here`.
 # Quote message bodies normally: `just pij send pij-X "hello (world)"`.
 pij *ARGS:
@@ -118,6 +122,7 @@ self-check:
     just typecheck
     just lint
     just test
+    just windows-compat
     just smoke
     PIJ_VET_SKIP_AGENT=1 just pkg audit
     just snapshots-check

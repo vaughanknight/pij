@@ -8,13 +8,58 @@
 // message id (finding 03 — the proven prototype path; `fs.watch` is flaky on
 // file targets, reliable on directories).
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, watch, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	fsyncSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	watch,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
-import { ok, type PijMessage, type Result, type SessionId } from "../core/types.js";
+import {
+	type DeliveredMessage,
+	err,
+	type InboxClaim,
+	type InboxMark,
+	type InboxReadMarker,
+	ok,
+	type PijMessage,
+	type Result,
+	type SessionId,
+} from "../core/types.js";
 
-/** A message as persisted in the inbox (the wire payload + its id). */
-export interface DeliveredMessage extends PijMessage {
-	readonly messageId: string;
+export type { DeliveredMessage } from "../core/types.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAttachment(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		typeof value.path === "string" &&
+		(value.caption === undefined || typeof value.caption === "string")
+	);
+}
+
+function isDeliveredMessage(value: unknown): value is DeliveredMessage {
+	return (
+		isRecord(value) &&
+		typeof value.messageId === "string" &&
+		typeof value.from === "string" &&
+		typeof value.to === "string" &&
+		typeof value.body === "string" &&
+		(value.command === undefined || typeof value.command === "string") &&
+		(value.kind === undefined || value.kind === "receipt") &&
+		(value.attachments === undefined ||
+			(Array.isArray(value.attachments) && value.attachments.every(isAttachment)))
+	);
 }
 
 const DEBOUNCE_MS = 20;
@@ -39,6 +84,54 @@ export class FsChannel {
 		return join(this.pijHome, id, "inbox");
 	}
 
+	private messagePath(id: SessionId, messageId: string): string {
+		return join(this.inboxDir(id), `msg-${messageId}.json`);
+	}
+
+	private markerPath(id: SessionId, messageId: string): string {
+		return join(this.inboxDir(id), `read-${messageId}.json`);
+	}
+
+	private readMessage(id: SessionId, messageId: string): Result<DeliveredMessage> {
+		const path = this.messagePath(id, messageId);
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(readFileSync(path, "utf8"));
+		} catch (error) {
+			return err("E-NOREG", `cannot read inbox message ${path}: ${String(error)}`);
+		}
+		if (!isDeliveredMessage(parsed) || parsed.messageId !== messageId || parsed.to !== id) {
+			return err("E-NOREG", `malformed inbox message ${path}`);
+		}
+		return ok(parsed);
+	}
+
+	private publishMarker(
+		id: SessionId,
+		messageId: string,
+		marker: InboxReadMarker,
+	): Result<"marked" | "exists"> {
+		const path = this.markerPath(id, messageId);
+		mkdirSync(this.inboxDir(id), { recursive: true });
+		let fd: number | undefined;
+		try {
+			fd = openSync(path, "wx");
+			writeFileSync(fd, JSON.stringify({ ...marker, messageId }));
+			fsyncSync(fd);
+			return ok("marked");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "EEXIST") return ok("exists");
+			if (fd !== undefined) {
+				closeSync(fd);
+				fd = undefined;
+				rmSync(path, { force: true });
+			}
+			return err("E-NOREG", `cannot publish inbox read marker ${path}: ${String(error)}`);
+		} finally {
+			if (fd !== undefined) closeSync(fd);
+		}
+	}
+
 	/** DeliveryPort.deliver — atomic write into the recipient's inbox. */
 	deliver(message: PijMessage): Result<{ messageId: string }> {
 		const dir = this.inboxDir(message.to);
@@ -52,6 +145,62 @@ export class FsChannel {
 		writeFileSync(tmpPath, JSON.stringify(payload));
 		renameSync(tmpPath, finalPath); // atomic; watcher only reacts to msg-*.json
 		return ok({ messageId });
+	}
+
+	listUnread(id: SessionId): Result<readonly DeliveredMessage[]> {
+		const dir = this.inboxDir(id);
+		mkdirSync(dir, { recursive: true });
+		let names: string[];
+		try {
+			names = readdirSync(dir);
+		} catch (error) {
+			return err("E-NOREG", `cannot list inbox ${dir}: ${String(error)}`);
+		}
+		const unread: DeliveredMessage[] = [];
+		for (const name of names
+			.filter((entry) => entry.startsWith("msg-") && entry.endsWith(".json"))
+			.sort()) {
+			const messageId = name.slice("msg-".length, -".json".length);
+			if (existsSync(this.markerPath(id, messageId))) continue;
+			const message = this.readMessage(id, messageId);
+			if (!message.ok) return message;
+			unread.push(message.value);
+		}
+		return ok(unread);
+	}
+
+	claimUnread(
+		id: SessionId,
+		messageId: string,
+		marker: InboxReadMarker = { messageId },
+	): Result<InboxClaim> {
+		if (existsSync(this.markerPath(id, messageId))) {
+			return ok({ kind: "already-read", messageId });
+		}
+		const message = this.readMessage(id, messageId);
+		if (!message.ok) return message;
+		const published = this.publishMarker(id, messageId, marker);
+		if (!published.ok) return published;
+		return published.value === "exists"
+			? ok({ kind: "already-read", messageId })
+			: ok({ kind: "claimed", message: message.value });
+	}
+
+	markRead(
+		id: SessionId,
+		messageId: string,
+		marker: InboxReadMarker = { messageId },
+	): Result<InboxMark> {
+		if (existsSync(this.markerPath(id, messageId))) {
+			return ok({ kind: "already-read", messageId });
+		}
+		const message = this.readMessage(id, messageId);
+		if (!message.ok) return message;
+		const published = this.publishMarker(id, messageId, marker);
+		if (!published.ok) return published;
+		return published.value === "exists"
+			? ok({ kind: "already-read", messageId })
+			: ok({ kind: "marked", marker: { ...marker, messageId } });
 	}
 
 	/**
