@@ -36,7 +36,8 @@
 		"link": "tsx harness/scripts/link-global.ts",
 		"pkg": "tsx harness/scripts/packages.ts",
 		"snapshots:refresh": "tsx harness/scripts/snapshot-refresh.ts",
-		"snapshots:check": "tsx harness/scripts/snapshot-check.ts"
+		"snapshots:check": "tsx harness/scripts/snapshot-check.ts",
+		"windows:check": "tsx harness/scripts/windows-compat.ts"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": "*",

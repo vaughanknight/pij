@@ -12,9 +12,11 @@ failure), so one invocation surfaces every problem:
 1. `typecheck` — `just typecheck` (the TS surface compiles)
 2. `lint` — `just lint` (Biome errors + warnings clean)
 3. `test` — `just test` (vitest suite passes)
-4. `smoke` — `just smoke` (tmux-driven driver scenarios) — **heavy**
-5. `pkg-audit` — `PIJ_VET_SKIP_AGENT=1 just pkg audit` (no new package findings)
-6. `snapshots` — `just snapshots-check` (agent-pack snapshots not drifted)
+4. `windows-compat` — `just windows-compat` (portable typecheck, lint, focused
+   inbox/fake tests, and the no-tmux CLI baseline)
+5. `smoke` — `just smoke` (tmux-driven driver scenarios) — **heavy**
+6. `pkg-audit` — `PIJ_VET_SKIP_AGENT=1 just pkg audit` (no new package findings)
+7. `snapshots` — `just snapshots-check` (agent-pack snapshots not drifted)
 
 Envelope `data` carries `{ ok, ran[], skipped[], results[] }`; each `results[]`
 entry is `{ name, status: pass|fail|skipped, code, proves }`. On failure,

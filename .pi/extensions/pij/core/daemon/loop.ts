@@ -413,10 +413,10 @@ export interface DrainedTmuxMessage {
 	readonly outcome?: SendOutcome;
 }
 
-/** Drain one bound tmux target's inbox: inject each message and return the
- *  messageIds consumed (the bin unlinks them). Delivery ownership (AC-08): the
- *  daemon ONLY drains tmux targets — pi targets route to `observe` and are left
- *  for the in-process receiver. A not-yet-bound tmux target buffers (R-02). */
+/** Route one bound tmux target's unread messages and return each completed
+ *  injection outcome. The impure caller owns the post-outcome read marker.
+ *  Delivery ownership (AC-08): pi targets route to `observe` and remain for the
+ *  in-process receiver. A not-yet-bound tmux target buffers (R-02). */
 export function drainTmuxInbox(
 	target: SessionDescriptor,
 	messages: ReadonlyArray<{

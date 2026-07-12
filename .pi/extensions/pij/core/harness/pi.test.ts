@@ -12,4 +12,11 @@ describe("daemonOwnsDelivery (the immovable seam, AC-08)", () => {
 		const sendkeys: HarnessKind[] = ["claude", "copilot"];
 		for (const h of sendkeys) expect(daemonOwnsDelivery(h)).toBe(true);
 	});
+
+	it("the daemon never owns an explicitly pull-delivered external peer", () => {
+		for (const harness of ["claude", "copilot", "codex"] as const) {
+			expect(daemonOwnsDelivery(harness, "pull")).toBe(false);
+			expect(daemonOwnsDelivery(harness, "push")).toBe(true);
+		}
+	});
 });

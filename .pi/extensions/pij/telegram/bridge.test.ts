@@ -53,6 +53,14 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 }
 
 const ALLOWED = 777;
+const TELEGRAM_TEXT_LIMIT = 4096;
+const TELEGRAM_CAPTION_LIMIT = 1024;
+const BUDGET_CONTEXT = `repo/${"b".repeat(76)}`;
+const BUDGET_PREFIX = `[pij-osn81b] [${BUDGET_CONTEXT}]`;
+
+function reassemblePrefixedText(parts: readonly string[], prefix: string): string {
+	return parts.map((part) => part.replace(`${prefix} `, "").replace(/^\(\d+\/\d+\) /, "")).join("");
+}
 
 // ─── pure routing ────────────────────────────────────────────────────────────
 describe("routeMessage", () => {
@@ -74,24 +82,40 @@ describe("routeMessage", () => {
 		});
 	});
 
-	it("switches sticky (no delivery) when a matched address carries no text", () => {
+	it("selects a matched target (no delivery) when an address carries no text", () => {
 		expect(routeMessage("osn", undefined, sessions)).toEqual({
 			kind: "address",
 			to: "pij-osn81b",
 		});
 	});
 
-	it("falls back to the sticky target with the WHOLE text when unaddressed", () => {
+	it("falls back to the last speaker with the WHOLE text when unaddressed", () => {
 		// "more" matches no session → the leading word is part of the message.
 		expect(routeMessage("more context here", "pij-abc123", sessions)).toEqual({
-			kind: "sticky",
+			kind: "last-speaker",
 			to: "pij-abc123",
 			body: "more context here",
 		});
 	});
 
-	it("replies guidance when there is no address and no sticky target", () => {
+	it("returns gone when the recorded last speaker is absent from the registry snapshot", () => {
+		expect(routeMessage("hello?", "pij-missing", sessions)).toEqual({
+			kind: "gone",
+			id: "pij-missing",
+		});
+	});
+
+	it("replies guidance when there is no address and no last speaker", () => {
 		expect(routeMessage("hello nobody", undefined, sessions)).toEqual({ kind: "guidance" });
+	});
+
+	it("an explicit memorable partial name beats the last speaker", () => {
+		const memorable = [desc({ id: "pij-rigid-minnow" }), desc({ id: "pij-planned-tiglon" })];
+		expect(routeMessage("planned ship it", "pij-rigid-minnow", memorable)).toEqual({
+			kind: "deliver",
+			to: "pij-planned-tiglon",
+			body: "ship it",
+		});
 	});
 
 	it("resolves a multi-match deterministically (newest activity wins)", () => {
@@ -117,6 +141,10 @@ describe("parseSenderTag", () => {
 		expect(parseSenderTag(`${senderTag("pij-abc123" as SessionId)} hello`)).toBe("pij-abc123");
 	});
 
+	it("still parses the sender when repository context follows the first tag", () => {
+		expect(parseSenderTag("[pij-abc123] [pij/feature/repo-context] hello")).toBe("pij-abc123");
+	});
+
 	it("returns null for untagged text (guidance, /list output, operator messages)", () => {
 		expect(parseSenderTag("Address a session to start…")).toBeNull();
 		expect(parseSenderTag("• pij-osn81b — /repo")).toBeNull();
@@ -140,7 +168,7 @@ describe("routeMessage (swipe-reply)", () => {
 		).toEqual({ kind: "deliver", to: "pij-abc123", body: "osn is the one to keep" });
 	});
 
-	it("reply tag beats the sticky target", () => {
+	it("reply tag beats the last speaker", () => {
 		expect(routeMessage("do it", "pij-osn81b", sessions, "[pij-abc123] ready?")).toEqual({
 			kind: "deliver",
 			to: "pij-abc123",
@@ -150,7 +178,7 @@ describe("routeMessage (swipe-reply)", () => {
 
 	it("falls through to normal routing when the quoted text carries no tag", () => {
 		expect(routeMessage("more context", "pij-abc123", sessions, "my own earlier msg")).toEqual({
-			kind: "sticky",
+			kind: "last-speaker",
 			to: "pij-abc123",
 			body: "more context",
 		});
@@ -220,6 +248,7 @@ function makeBridge(
 	isAlive?: (pid: number) => boolean,
 	now?: () => number,
 	onDelivered?: (to: SessionId, telegramMessageId: number) => void,
+	getLastSpeaker?: (chatId: string) => SessionId | undefined,
 ) {
 	const deliver = vi.fn();
 	const log = vi.fn();
@@ -230,6 +259,7 @@ function makeBridge(
 		now,
 		deliver,
 		onDelivered,
+		getLastSpeaker,
 		readEvents,
 		downloadMedia: downloadMedia as ((ctx: never, dest: string) => Promise<void>) | undefined,
 		log,
@@ -346,36 +376,53 @@ describe("createBot (inbound bridge)", () => {
 		expect(replies()).toEqual([]);
 	});
 
-	it("relays unaddressed follow-ups to the sticky target (AC-03)", async () => {
-		const { bot, deliver } = makeBridge([desc({ id: "pij-osn81b" })]);
-		// 1) address sets the sticky target …
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn hello" }));
-		// 2) … a follow-up with no address goes to that same target, whole text
+	it("relays bare text to the injected per-chat last speaker (AC-03)", async () => {
+		const { bot, deliver } = makeBridge(
+			[desc({ id: "pij-osn81b" })],
+			[ALLOWED],
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			(chatId) => (chatId === "1000" ? ("pij-osn81b" as SessionId) : undefined),
+		);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and one more thing" }));
-		expect(deliver).toHaveBeenNthCalledWith(1, {
+		expect(deliver).toHaveBeenCalledWith({
 			from: "pij-telegram",
 			to: "pij-osn81b",
-			body: framedBody("hello", true), // first contact carries the note …
-		});
-		expect(deliver).toHaveBeenNthCalledWith(2, {
-			from: "pij-telegram",
-			to: "pij-osn81b",
-			body: "and one more thing", // … the follow-up is the raw text, no repeat note
+			body: framedBody("and one more thing", true),
 		});
 	});
 
-	it("addressing with no text switches the sticky target and confirms", async () => {
+	it("addressing with no text selects the /tail target but does not create a speaker", async () => {
 		const { bot, deliver, replies } = makeBridge([desc({ id: "pij-osn81b" })]);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn" }));
 		expect(deliver).not.toHaveBeenCalled();
 		expect(replies()[0]).toContain("pij-osn81b");
-		// the switch sticks: the next bare message is relayed there (first real delivery →
-		// first contact, so it carries the note)
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "now this" }));
-		expect(deliver).toHaveBeenCalledWith({
-			from: "pij-telegram",
-			to: "pij-osn81b",
-			body: framedBody("now this", true),
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies().at(-1)).toMatch(/\/list/);
+	});
+
+	it("keeps silent explicit target B separate from last speaker A (AC-06)", async () => {
+		const sessions = [desc({ id: "pij-agent-a" }), desc({ id: "pij-agent-b" })];
+		const { bot, deliver } = makeBridge(
+			sessions,
+			[ALLOWED],
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => "pij-agent-a" as SessionId,
+		);
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b work on this" }));
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "what is the status?" }));
+		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-agent-b" });
+		expect(deliver.mock.calls[1]?.[0]).toMatchObject({
+			to: "pij-agent-a",
+			body: expect.stringContaining("what is the status?"),
 		});
 	});
 
@@ -393,7 +440,7 @@ describe("createBot (inbound bridge)", () => {
 		});
 	});
 
-	it("replies guidance when unaddressed with no sticky target", async () => {
+	it("replies guidance when unaddressed with no last speaker", async () => {
 		const { bot, deliver, replies } = makeBridge([desc({ id: "pij-osn81b" })]);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "hello there" }));
 		expect(deliver).not.toHaveBeenCalled();
@@ -441,8 +488,17 @@ describe("createBot (inbound bridge)", () => {
 describe("createBot swipe-reply routing", () => {
 	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
 
-	it("delivers a swipe-reply to the quoted bubble's sender and makes it sticky", async () => {
-		const { bot, deliver } = makeBridge([...sessions]);
+	it("delivers a swipe-reply to the quoted sender without replacing last-speaker fallback", async () => {
+		const { bot, deliver } = makeBridge(
+			[...sessions],
+			[ALLOWED],
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => "pij-osn81b" as SessionId,
+		);
 		await bot.handleUpdate(
 			textUpdate({
 				fromId: ALLOWED,
@@ -453,10 +509,13 @@ describe("createBot swipe-reply routing", () => {
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0]).toMatchObject({ to: "pij-abc123" });
 		expect(deliver.mock.calls[0]?.[0].body).toContain("yes merge it");
-		// Sticky followed the reply: a later bare text continues with pij-abc123.
+		// B was selected but has not spoken; the strict fallback remains A.
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and push please" }));
 		expect(deliver).toHaveBeenCalledTimes(2);
-		expect(deliver.mock.calls[1]?.[0]).toMatchObject({ to: "pij-abc123", body: "and push please" });
+		expect(deliver.mock.calls[1]?.[0]).toMatchObject({
+			to: "pij-osn81b",
+			body: expect.stringContaining("and push please"),
+		});
 	});
 
 	it("routes a reply to a MEDIA bubble via its caption tag", async () => {
@@ -487,9 +546,16 @@ describe("createBot swipe-reply routing", () => {
 	});
 
 	it("a reply to an untagged bot message falls through to normal routing", async () => {
-		const { bot, deliver } = makeBridge([...sessions]);
-		// Establish sticky first, then reply to a guidance-style (untagged) bubble.
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn hi" }));
+		const { bot, deliver } = makeBridge(
+			[...sessions],
+			[ALLOWED],
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => "pij-osn81b" as SessionId,
+		);
 		await bot.handleUpdate(
 			textUpdate({
 				fromId: ALLOWED,
@@ -497,8 +563,11 @@ describe("createBot swipe-reply routing", () => {
 				replyTo: { text: "Address a session to start…" },
 			}),
 		);
-		expect(deliver).toHaveBeenCalledTimes(2);
-		expect(deliver.mock.calls[1]?.[0]).toMatchObject({ to: "pij-osn81b", body: "carry on" });
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(deliver.mock.calls[0]?.[0]).toMatchObject({
+			to: "pij-osn81b",
+			body: expect.stringContaining("carry on"),
+		});
 	});
 
 	it("routes inbound MEDIA sent as a swipe-reply to the tagged sender", async () => {
@@ -524,7 +593,7 @@ describe("createBot swipe-reply routing", () => {
 describe("reply threading", () => {
 	const sessions = [desc({ id: "pij-osn81b" }), desc({ id: "pij-abc123" })];
 
-	it("onDelivered reports the operator message id for addressed AND sticky deliveries", async () => {
+	it("onDelivered reports the operator message id for addressed AND last-speaker deliveries", async () => {
 		const delivered: Array<[SessionId, number]> = [];
 		const { bot } = makeBridge(
 			[...sessions],
@@ -534,12 +603,13 @@ describe("reply threading", () => {
 			undefined,
 			undefined,
 			(to, mid) => delivered.push([to, mid]),
+			() => "pij-osn81b" as SessionId,
 		);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn hello" }));
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "and another thing" }));
 		expect(delivered).toHaveLength(2);
 		expect(delivered[0]?.[0]).toBe("pij-osn81b");
-		expect(delivered[1]?.[0]).toBe("pij-osn81b"); // sticky delivery reports too
+		expect(delivered[1]?.[0]).toBe("pij-osn81b"); // fallback delivery reports too
 		expect(delivered[0]?.[1]).not.toBe(delivered[1]?.[1]); // distinct telegram message ids
 	});
 
@@ -548,6 +618,7 @@ describe("reply threading", () => {
 		try {
 			const channel = new FsChannel(home, { pollMs: 25 });
 			const sent: Array<{ text: string; replyTo?: number }> = [];
+			const onSpoke = vi.fn();
 			const pending = new Map<string, number>([["pij-osn81b", 42]]);
 			const dispose = startForwarder(channel, {
 				send: async (text, replyTo) => {
@@ -558,15 +629,19 @@ describe("reply threading", () => {
 					pending.delete(from);
 					return mid;
 				},
+				onSpoke,
 			});
 			const body = "x".repeat(9000); // ≥3 chunked parts — only the first may quote
 			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body });
 			await waitFor(() => sent.length >= 3);
+			expect(onSpoke).toHaveBeenCalledTimes(1); // threaded message counts once, not per chunk
 			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "unprompted follow-up" });
 			await waitFor(() => sent.length >= 4);
 			dispose();
 			expect(sent[0]?.replyTo).toBe(42);
 			for (const s of sent.slice(1)) expect(s.replyTo).toBeUndefined();
+			expect(onSpoke).toHaveBeenCalledTimes(2); // one callback per delivered message
+			expect(onSpoke).toHaveBeenCalledWith("pij-osn81b");
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
@@ -614,7 +689,7 @@ describe("createBot first-contact preamble (relayed once per session)", () => {
 	it("frames the FIRST relayed message to a session, then relays raw text after", async () => {
 		const { bot, deliver } = makeBridge([desc({ id: "pij-osn81b" })]);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn first message" }));
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "second message" }));
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn second message" }));
 
 		const first = String(deliver.mock.calls[0][0].body);
 		const second = String(deliver.mock.calls[1][0].body);
@@ -642,11 +717,11 @@ const ev = (over: Partial<PijEvent> & { seq: number }): PijEvent => ({
 });
 
 describe("createBot /tail", () => {
-	it("tails the sticky target's last 10 events by default", async () => {
+	it("tails the selected target's last 10 events by default", async () => {
 		const events = [ev({ seq: 7, type: "message", data: { body: "build is green" } })];
 		const readEvents = vi.fn((_id: SessionId, _n: number) => events);
 		const { bot, replies } = makeBridge([desc({ id: "pij-osn81b" })], [ALLOWED], readEvents);
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn" })); // set sticky
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn" })); // select target
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/tail", command: true }));
 		expect(readEvents).toHaveBeenCalledWith("pij-osn81b", 10);
 		expect(replies().at(-1)).toContain("message");
@@ -661,7 +736,27 @@ describe("createBot /tail", () => {
 		expect(readEvents).toHaveBeenCalledWith("pij-osn81b", 20);
 	});
 
-	it("replies guidance (not an empty tail) when no sticky target is set", async () => {
+	it("a bare fallback selects its actual recipient for /tail", async () => {
+		const readEvents = vi.fn((_id: SessionId, _n: number) => [] as PijEvent[]);
+		const { bot } = makeBridge(
+			[desc({ id: "pij-agent-a" }), desc({ id: "pij-agent-b" })],
+			[ALLOWED],
+			readEvents,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => "pij-agent-a" as SessionId,
+		);
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b" }));
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/tail", command: true }));
+		expect(readEvents).toHaveBeenLastCalledWith("pij-agent-b", 10);
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "bare follow-up" }));
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/tail", command: true }));
+		expect(readEvents).toHaveBeenLastCalledWith("pij-agent-a", 10);
+	});
+
+	it("replies guidance (not an empty tail) when no selected target is set", async () => {
 		const readEvents = vi.fn((_id: SessionId, _n: number) => [] as PijEvent[]);
 		const { bot, replies } = makeBridge([desc({ id: "pij-osn81b" })], [ALLOWED], readEvents);
 		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "/tail", command: true }));
@@ -682,15 +777,134 @@ describe("senderTag", () => {
 
 // ─── outbound forwarder (Phase 3 / AC-05·08) ────────────────────────────────────
 describe("startForwarder (inbox → chat)", () => {
-	it("forwards a >4096-char reply chunked AND untruncated (AC-05)", async () => {
+	it("subtracts the 96-character sender prefix from the 4096 text budget", async () => {
+		expect(BUDGET_PREFIX).toHaveLength(96);
 		const home = tmpHome();
 		try {
 			const channel = new FsChannel(home, { pollMs: 25 });
 			const sent: string[] = [];
 			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				senderContext: () => BUDGET_CONTEXT,
+			});
+			const body = "x".repeat(4000);
+			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body });
+			await waitFor(() => sent.length === 2);
+			dispose();
+
+			for (const part of sent) expect(part.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+			expect(reassemblePrefixedText(sent, BUDGET_PREFIX)).toBe(body);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("normalizes an existing exact canonical prefix to one", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				senderContext: () => "pij",
+			});
+			channel.deliver({
+				from: "pij-primary-carp",
+				to: TELEGRAM_PEER_ID,
+				body: "[pij-primary-carp] [pij] Restart done on the approved Telegram update",
+			});
+			await waitFor(() => sent.length === 1);
+			dispose();
+
+			expect(sent).toEqual([
+				"[pij-primary-carp] [pij] Restart done on the approved Telegram update",
+			]);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("upgrades an exact same-sender tag to canonical and preserves other bracketed content", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				senderContext: () => "pij/feature/idempotent-prefix",
+			});
+			channel.deliver({
+				from: "pij-primary-carp",
+				to: TELEGRAM_PEER_ID,
+				body: "[pij-primary-carp] sender-only",
+			});
+			channel.deliver({
+				from: "pij-primary-carp",
+				to: TELEGRAM_PEER_ID,
+				body: "[pij-other-agent] different sender",
+			});
+			channel.deliver({
+				from: "pij-primary-carp",
+				to: TELEGRAM_PEER_ID,
+				body: "[status] arbitrary bracket",
+			});
+			await waitFor(() => sent.length === 3);
+			dispose();
+
+			expect(sent).toEqual([
+				"[pij-primary-carp] [pij/feature/idempotent-prefix] sender-only",
+				"[pij-primary-carp] [pij/feature/idempotent-prefix] [pij-other-agent] different sender",
+				"[pij-primary-carp] [pij/feature/idempotent-prefix] [status] arbitrary bracket",
+			]);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("normalizes before applying the prefix-aware text budget", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				senderContext: () => BUDGET_CONTEXT,
+			});
+			const content = "z".repeat(4000);
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: `${BUDGET_PREFIX} ${content}`,
+			});
+			await waitFor(() => sent.length === 2);
+			dispose();
+
+			for (const part of sent) expect(part.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+			expect(reassemblePrefixedText(sent, BUDGET_PREFIX)).toBe(content);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("forwards a >4096-char reply chunked AND untruncated (AC-05)", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const senderContext = vi.fn(() => "pij/feature/repo-context");
+			const dispose = startForwarder(channel, {
 				send: async (t) => {
 					sent.push(t);
 				},
+				senderContext,
 			});
 			const body = "x".repeat(9000); // forces ≥3 parts at the 4000 budget
 			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body });
@@ -700,17 +914,20 @@ describe("startForwarder (inbox → chat)", () => {
 			// strip the `(i/n) ` prefixes → the parts reassemble to the original, lossless.
 			// strip the `[sender-id] ` tag then the `(i/n) ` chunk prefix to reassemble.
 			const reassembled = sent
-				.map((p) => p.replace(/^\[[^\]]+\] /, "").replace(/^\(\d+\/\d+\) /, ""))
+				.map((p) => p.replace(/^\[[^\]]+\] \[[^\]]+\] /, "").replace(/^\(\d+\/\d+\) /, ""))
 				.join("");
 			expect(reassembled).toBe(body);
-			// every bubble is tagged with the sender id
-			for (const p of sent) expect(p.startsWith("[pij-osn81b] ")).toBe(true);
+			for (const p of sent) {
+				expect(p.startsWith("[pij-osn81b] [pij/feature/repo-context] ")).toBe(true);
+			}
+			expect(senderContext).toHaveBeenCalledTimes(1);
+			expect(senderContext).toHaveBeenCalledWith("pij-osn81b");
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
 	});
 
-	it("forwards a short reply as one unprefixed part", async () => {
+	it("omits /main from the repository context prefix", async () => {
 		const home = tmpHome();
 		try {
 			const channel = new FsChannel(home, { pollMs: 25 });
@@ -719,27 +936,99 @@ describe("startForwarder (inbox → chat)", () => {
 				send: async (t) => {
 					sent.push(t);
 				},
+				senderContext: () => "pij",
 			});
 			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "all done ✅" });
 			await waitFor(() => sent.length >= 1);
 			dispose();
-			expect(sent).toEqual(["[pij-osn81b] all done ✅"]);
+			expect(sent).toEqual(["[pij-osn81b] [pij] all done ✅"]);
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
 	});
 
-	it("records-but-never-forwards a receipt (Finding 08 parity)", async () => {
+	it("degrades to the existing sender tag when repository context is unavailable", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				senderContext: () => undefined,
+			});
+			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "fallback" });
+			await waitFor(() => sent.length === 1);
+			dispose();
+			expect(sent).toEqual(["[pij-osn81b] fallback"]);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("does not record speech when every Telegram send fails", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			let attempts = 0;
+			const onSpoke = vi.fn();
+			const dispose = startForwarder(channel, {
+				send: async () => {
+					attempts += 1;
+					throw new Error("telegram unavailable");
+				},
+				onSpoke,
+			});
+			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "not delivered" });
+			await waitFor(() => attempts === 1);
+			dispose();
+			expect(onSpoke).not.toHaveBeenCalled();
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("records speech once on the first successful part after an earlier failure", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			let attempts = 0;
+			const onSpoke = vi.fn();
+			const dispose = startForwarder(channel, {
+				send: async () => {
+					attempts += 1;
+					if (attempts === 1) throw new Error("first chunk failed");
+				},
+				onSpoke,
+			});
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "x".repeat(9000),
+			});
+			await waitFor(() => attempts >= 3);
+			dispose();
+			expect(onSpoke).toHaveBeenCalledTimes(1);
+			expect(onSpoke).toHaveBeenCalledWith("pij-osn81b");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("records-but-never-forwards a receipt and never treats the receipt as speech", async () => {
 		const home = tmpHome();
 		try {
 			const channel = new FsChannel(home, { pollMs: 25 });
 			const sent: string[] = [];
 			const log: string[] = [];
+			const onSpoke = vi.fn();
 			const dispose = startForwarder(channel, {
 				send: async (t) => {
 					sent.push(t);
 				},
 				log: (m) => log.push(m),
+				onSpoke,
 			});
 			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "ack", kind: "receipt" });
 			channel.deliver({ from: "pij-osn81b", to: TELEGRAM_PEER_ID, body: "real reply" });
@@ -747,6 +1036,8 @@ describe("startForwarder (inbox → chat)", () => {
 			dispose();
 			expect(sent).toEqual(["[pij-osn81b] real reply"]); // the receipt was skipped, the reply forwarded
 			expect(log.some((l) => l.includes("skip receipt"))).toBe(true);
+			expect(onSpoke).toHaveBeenCalledTimes(1);
+			expect(onSpoke).toHaveBeenCalledWith("pij-osn81b");
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
@@ -800,24 +1091,26 @@ describe("createBot inbound media", () => {
 		expect(log).toHaveBeenCalledWith(expect.stringContaining("media → pij-osn81b"));
 	});
 
-	it("routes a captionless photo to the sticky target (no caption ⇒ sticky)", async () => {
+	it("routes captionless media to the last speaker, not the selected silent target", async () => {
 		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
 		const { bot, deliver } = makeBridge(
-			[desc({ id: "pij-osn81b" })],
+			[desc({ id: "pij-agent-a" }), desc({ id: "pij-agent-b" })],
 			[ALLOWED],
 			undefined,
 			download,
+			undefined,
+			undefined,
+			undefined,
+			() => "pij-agent-a" as SessionId,
 		);
-		// set the sticky target with a text address first …
-		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "osn" }));
-		// … then a photo with NO caption follows it there.
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b" }));
 		await bot.handleUpdate(mediaUpdate({ kind: "photo", fromId: ALLOWED }));
 		expect(download).toHaveBeenCalledTimes(1);
-		expect(String(download.mock.calls[0]?.[1])).toContain("/pij-osn81b/attachments/");
-		expect((deliver.mock.calls[0]?.[0] as { to: string }).to).toBe("pij-osn81b");
+		expect(String(download.mock.calls[0]?.[1])).toContain("/pij-agent-a/attachments/");
+		expect((deliver.mock.calls[0]?.[0] as { to: string }).to).toBe("pij-agent-a");
 	});
 
-	it("with no target (no caption, no sticky) replies guidance and downloads NOTHING", async () => {
+	it("with no target (no caption, no last speaker) replies guidance and downloads NOTHING", async () => {
 		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
 		const { bot, deliver, replies } = makeBridge(
 			[desc({ id: "pij-osn81b" })],
@@ -831,6 +1124,25 @@ describe("createBot inbound media", () => {
 		expect(deliver).not.toHaveBeenCalled();
 		expect(replies()).toHaveLength(1);
 		expect(replies()[0]).toMatch(/\/list/);
+	});
+
+	it("a missing recorded speaker replies honestly and downloads NOTHING", async () => {
+		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
+		const { bot, deliver, replies } = makeBridge(
+			[desc({ id: "pij-agent-b" })],
+			[ALLOWED],
+			undefined,
+			download,
+			undefined,
+			undefined,
+			undefined,
+			() => "pij-agent-a" as SessionId,
+		);
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "agent-b" }));
+		await bot.handleUpdate(mediaUpdate({ kind: "photo", fromId: ALLOWED }));
+		expect(download).not.toHaveBeenCalled();
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies().at(-1)).toMatch(/pij-agent-a|live/i);
 	});
 
 	it("refuses an over-cap file: a 'too big' reply and NO download (AC-12 pre-check)", async () => {
@@ -897,9 +1209,15 @@ describe("startForwarder media (outbound)", () => {
 	 *  real method (`sendPhoto`/`sendAnimation`/`sendDocument`/`sendMessage`) + payload, and
 	 *  `sendMedia` builds a grammY `InputFile(path)` — so the kind→method mapping + InputFile
 	 *  usage are asserted on the production path, never the network. */
-	function mediaForwarder(home: string, sizeOf?: (path: string) => number) {
+	function mediaForwarder(
+		home: string,
+		sizeOf?: (path: string) => number,
+		context = "pij/feature/repo-context",
+	) {
 		const channel = new FsChannel(home, { pollMs: 25 });
 		const calls: Array<{ method: string; payload: Record<string, unknown> }> = [];
+		const onSpoke = vi.fn();
+		const senderContext = vi.fn(() => context);
 		const bot = new Bot("test-token");
 		bot.api.config.use((_prev, method, payload) => {
 			calls.push({ method, payload: payload as Record<string, unknown> });
@@ -908,6 +1226,8 @@ describe("startForwarder media (outbound)", () => {
 		const dispose = startForwarder(channel, {
 			send: (text) => bot.api.sendMessage(CHAT, text),
 			sizeOf,
+			onSpoke,
+			senderContext,
 			sendMedia: (kind, path, caption) => {
 				const input = new InputFile(path);
 				const opts = caption !== undefined ? { caption } : undefined;
@@ -921,7 +1241,7 @@ describe("startForwarder media (outbound)", () => {
 				}
 			},
 		});
-		return { channel, calls, dispose };
+		return { channel, calls, dispose, onSpoke, senderContext };
 	}
 
 	it("classifies png→sendPhoto, gif→sendAnimation, pdf→sendDocument (each captioned, in order), no blank text", async () => {
@@ -930,7 +1250,7 @@ describe("startForwarder media (outbound)", () => {
 			for (const n of ["chart.png", "loop.gif", "report.pdf"]) {
 				writeFileSync(join(home, n), "x"); // real temp files for InputFile
 			}
-			const { channel, calls, dispose } = mediaForwarder(home);
+			const { channel, calls, dispose, onSpoke, senderContext } = mediaForwarder(home);
 			// One attachment-only message (empty body) carrying all three, in order.
 			channel.deliver({
 				from: "pij-osn81b",
@@ -945,15 +1265,48 @@ describe("startForwarder media (outbound)", () => {
 			await waitFor(() => calls.length >= 3);
 			dispose();
 			expect(calls.map((c) => c.method)).toEqual(["sendPhoto", "sendAnimation", "sendDocument"]);
-			expect(calls[0]?.payload.caption).toBe("[pij-osn81b] a photo");
-			expect(calls[1]?.payload.caption).toBe("[pij-osn81b] a gif");
-			expect(calls[2]?.payload.caption).toBe("[pij-osn81b] a doc");
+			expect(calls[0]?.payload.caption).toBe("[pij-osn81b] [pij/feature/repo-context] a photo");
+			expect(calls[1]?.payload.caption).toBe("[pij-osn81b] [pij/feature/repo-context] a gif");
+			expect(calls[2]?.payload.caption).toBe("[pij-osn81b] [pij/feature/repo-context] a doc");
 			expect(calls[0]?.payload.photo).toBeInstanceOf(InputFile);
 			expect(calls[1]?.payload.animation).toBeInstanceOf(InputFile);
 			expect(calls[2]?.payload.document).toBeInstanceOf(InputFile);
+			expect(onSpoke).toHaveBeenCalledTimes(1);
+			expect(onSpoke).toHaveBeenCalledWith("pij-osn81b");
+			expect(senderContext).toHaveBeenCalledTimes(1);
 			// attachment-only (empty body) → NO blank sendMessage. Mutation: chunk("") unconditionally
 			// would add a sendMessage("") here.
 			expect(calls.some((c) => c.method === "sendMessage")).toBe(false);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("normalizes exact canonical and sender-only media captions but preserves other senders", async () => {
+		const home = tmpHome();
+		try {
+			for (const name of ["canonical.png", "tag.png", "other.png"]) {
+				writeFileSync(join(home, name), "x");
+			}
+			const { channel, calls, dispose } = mediaForwarder(home, undefined, "pij");
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [
+					{ path: join(home, "canonical.png"), caption: "[pij-osn81b] [pij] canonical" },
+					{ path: join(home, "tag.png"), caption: "[pij-osn81b] sender-only" },
+					{ path: join(home, "other.png"), caption: "[pij-other] keep me" },
+				],
+			});
+			await waitFor(() => calls.length === 3);
+			dispose();
+
+			expect(calls.map((call) => call.payload.caption)).toEqual([
+				"[pij-osn81b] [pij] canonical",
+				"[pij-osn81b] [pij] sender-only",
+				"[pij-osn81b] [pij] [pij-other] keep me",
+			]);
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
@@ -964,7 +1317,11 @@ describe("startForwarder media (outbound)", () => {
 		try {
 			writeFileSync(join(home, "huge.png"), "x");
 			// Force the upload-cap check to see 11 MB without a real 11 MB file.
-			const { channel, calls, dispose } = mediaForwarder(home, () => 11 * 1024 * 1024);
+			const { channel, calls, dispose, onSpoke } = mediaForwarder(
+				home,
+				() => 11 * 1024 * 1024,
+				"pij",
+			);
 			channel.deliver({
 				from: "pij-osn81b",
 				to: TELEGRAM_PEER_ID,
@@ -977,6 +1334,39 @@ describe("startForwarder media (outbound)", () => {
 			const notice = calls.find((c) => c.method === "sendMessage");
 			expect(notice).toBeDefined();
 			expect(String(notice?.payload.text)).toMatch(/exceeds/i);
+			expect(String(notice?.payload.text)).toMatch(/^\[pij-osn81b\] \[pij\] /);
+			expect(onSpoke).toHaveBeenCalledTimes(1);
+			expect(onSpoke).toHaveBeenCalledWith("pij-osn81b");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("chunks an oversize notice against the prefixed 4096-character budget without loss", async () => {
+		const home = tmpHome();
+		try {
+			const path = `/tmp/${"n".repeat(5000)}.png`;
+			const { channel, calls, dispose } = mediaForwarder(
+				home,
+				() => 11 * 1024 * 1024,
+				BUDGET_CONTEXT,
+			);
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path }],
+			});
+			await waitFor(() => calls.length >= 2);
+			dispose();
+
+			const textParts = calls
+				.filter((call) => call.method === "sendMessage")
+				.map((call) => String(call.payload.text));
+			expect(textParts.length).toBeGreaterThan(1);
+			for (const text of textParts) expect(text.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+			expect(reassemblePrefixedText(textParts, BUDGET_PREFIX)).toContain(path);
+			expect(calls.some((call) => call.method === "sendPhoto")).toBe(false);
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
@@ -986,7 +1376,7 @@ describe("startForwarder media (outbound)", () => {
 		const home = tmpHome();
 		try {
 			writeFileSync(join(home, "shot.png"), "x");
-			const { channel, calls, dispose } = mediaForwarder(home);
+			const { channel, calls, dispose, senderContext } = mediaForwarder(home);
 			channel.deliver({
 				from: "pij-osn81b",
 				to: TELEGRAM_PEER_ID,
@@ -996,8 +1386,123 @@ describe("startForwarder media (outbound)", () => {
 			await waitFor(() => calls.length >= 2);
 			dispose();
 			expect(calls[0]?.method).toBe("sendMessage");
-			expect(String(calls[0]?.payload.text)).toBe("[pij-osn81b] here is the screenshot");
+			expect(String(calls[0]?.payload.text)).toBe(
+				"[pij-osn81b] [pij/feature/repo-context] here is the screenshot",
+			);
 			expect(calls[1]?.method).toBe("sendPhoto");
+			expect(calls[1]?.payload.caption).toBe("[pij-osn81b] [pij/feature/repo-context] shot");
+			expect(senderContext).toHaveBeenCalledTimes(1);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("prefixes the no-media-sender attachment fallback with repository context", async () => {
+		const home = tmpHome();
+		try {
+			const path = join(home, "artifact.bin");
+			writeFileSync(path, "x");
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				senderContext: () => "pij/feature/repo-context",
+			});
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path }],
+			});
+			await waitFor(() => sent.length === 1);
+			dispose();
+			expect(sent[0]).toBe(
+				`[pij-osn81b] [pij/feature/repo-context] [attachment ${path}] (no media sender configured)`,
+			);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("chunks a long attachment fallback against the prefixed text budget without loss", async () => {
+		const home = tmpHome();
+		try {
+			const path = `/tmp/${"f".repeat(5000)}.bin`;
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			const dispose = startForwarder(channel, {
+				send: async (text) => {
+					sent.push(text);
+				},
+				sizeOf: () => 1,
+				senderContext: () => BUDGET_CONTEXT,
+			});
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path }],
+			});
+			await waitFor(() => sent.length >= 2);
+			dispose();
+
+			for (const text of sent) expect(text.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+			const reassembled = reassemblePrefixedText(sent, BUDGET_PREFIX);
+			expect(reassembled).toBe(`[attachment ${path}] (no media sender configured)`);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("moves an overflowing media caption to lossless text bubbles before prefix-only media", async () => {
+		expect(BUDGET_PREFIX).toHaveLength(96);
+		const home = tmpHome();
+		try {
+			const path = join(home, "caption.png");
+			writeFileSync(path, "x");
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: Array<{ text: string; replyTo?: number }> = [];
+			const media: Array<{ caption?: string; replyTo?: number }> = [];
+			const onSpoke = vi.fn();
+			const senderContext = vi.fn(() => BUDGET_CONTEXT);
+			const captionContent = "c".repeat(TELEGRAM_CAPTION_LIMIT - BUDGET_PREFIX.length);
+			const caption = `${BUDGET_PREFIX} ${captionContent}`;
+			const dispose = startForwarder(channel, {
+				send: async (text, replyTo) => {
+					sent.push({ text, replyTo });
+				},
+				sendMedia: async (_kind, _path, mediaCaption, replyTo) => {
+					media.push({ caption: mediaCaption, replyTo });
+				},
+				takeReplyTo: () => 42,
+				onSpoke,
+				senderContext,
+			});
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path, caption }],
+			});
+			await waitFor(() => media.length === 1);
+			dispose();
+
+			expect(sent.length).toBeGreaterThan(0);
+			for (const part of sent) expect(part.text.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+			expect(
+				reassemblePrefixedText(
+					sent.map((part) => part.text),
+					BUDGET_PREFIX,
+				),
+			).toBe(captionContent);
+			expect(sent[0]?.replyTo).toBe(42);
+			for (const part of sent.slice(1)) expect(part.replyTo).toBeUndefined();
+			expect(media).toEqual([{ caption: BUDGET_PREFIX, replyTo: undefined }]);
+			expect(media[0]?.caption?.length).toBeLessThanOrEqual(TELEGRAM_CAPTION_LIMIT);
+			expect(onSpoke).toHaveBeenCalledTimes(1);
+			expect(senderContext).toHaveBeenCalledTimes(1);
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}

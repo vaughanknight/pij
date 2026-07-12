@@ -11,13 +11,13 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { FsBatonStore } from "./adapters/baton-store.js";
-import type { DeliveredMessage } from "./adapters/channel.js";
 import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
+import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
@@ -39,6 +39,7 @@ import {
 import { SendBuffer } from "./core/daemon/router.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
+import { persistReceiptEnvelope, prepareReceiptEnvelopes } from "./core/inbox.js";
 import { receiptBody } from "./core/message.js";
 import {
 	type BatonNotice,
@@ -46,7 +47,7 @@ import {
 	type BatonNoticeSink,
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
-import type { DeliveryPort, RegistryPort, SendOutcome } from "./core/ports.js";
+import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
 import type { DeathReason, SessionDescriptor } from "./core/types.js";
@@ -94,7 +95,7 @@ export class Daemon {
 		private readonly pijHome: string,
 		private readonly ports: DaemonPorts,
 		private readonly registry: RegistryPort,
-		private readonly channel: DeliveryPort,
+		private readonly channel: DeliveryPort & InboxPort,
 		private readonly log: (line: string) => void = () => {},
 		watchManager?: PeerWatchManager,
 		batonSweep?: BatonSweep,
@@ -122,7 +123,7 @@ export class Daemon {
 	tick(): void {
 		const tickAt = new Date(this.ports.now()).toISOString();
 		for (const snapshot of this.registry.list()) {
-			if (!daemonOwnsDelivery(snapshot.harness ?? "pi")) continue;
+			if (!daemonOwnsDelivery(snapshot.harness ?? "pi", snapshot.deliveryMode)) continue;
 			const latest = this.registry.read(snapshot.id);
 			if (latest) this.registry.write({ ...latest, lastTickAt: tickAt });
 		}
@@ -136,7 +137,7 @@ export class Daemon {
 		}
 
 		for (const d of this.index.pending()) {
-			if (!daemonOwnsDelivery(d.harness ?? "pi")) continue; // pi self-drives
+			if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) continue; // pi/pull self-drive
 			try {
 				const drive = this.drives.get(d.id) ?? {};
 				this.drives.set(d.id, drive);
@@ -183,7 +184,9 @@ export class Daemon {
 				// Delivery is daemon-owned ONLY for bound tmux harnesses (claude/copilot).
 				// pi self-drives its inbox via its in-process receiver, so it is excluded
 				// from flush/drain/observe — the daemon must never touch a pi inbox.
-				const owns = current.lifecycle === "bound" && daemonOwnsDelivery(current.harness ?? "pi");
+				const owns =
+					current.lifecycle === "bound" &&
+					daemonOwnsDelivery(current.harness ?? "pi", current.deliveryMode);
 				if (owns) {
 					// Flush buffered pre-bind sends — but ONLY once we have a pane to send to.
 					// `SendBuffer.flush` deletes the queue unconditionally, so guarding the
@@ -200,7 +203,6 @@ export class Daemon {
 							this.emitSendReceipt(current.id, m.message.from, m.messageId, outcome);
 						}
 					}
-					this.drainInbox(current.id);
 					// Persist footer activity → working|idle (+ fresh last-activity ts) so
 					// `pij state`/`list` report real liveness instead of `idle · never`
 					// (control-plane peers write no pij events). Writes only on a change.
@@ -248,6 +250,7 @@ export class Daemon {
 				// owning its inbox, delivery, and self-written state — we only peek.
 				const providerView = current.state === "working" ? current : d;
 				if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
+				if (owns) this.drainInbox(current.id);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : String(error);
 				this.log(`session ${d.id} tick error: ${detail}`);
@@ -343,51 +346,69 @@ export class Daemon {
 		this.log(`push ${d.id}: provider-failure (${reason})`);
 	}
 
-	/** Read a bound tmux session's inbox, inject each message, unlink consumed.
-	 *  The pane is re-resolved per message via `route` (review L3 — no pane arg). */
+	/** Read a bound tmux session's durable unread inbox, inject each user message,
+	 *  then mark it read after the injection outcome. Receipt envelopes are
+	 *  persisted as events before marking and are never injected. */
 	private drainInbox(id: string): void {
-		const inbox = join(this.pijHome, id, "inbox");
-		let names: string[];
-		try {
-			names = readdirSync(inbox);
-		} catch {
-			return; // no inbox yet
-		}
-		const files = names.filter((n) => n.startsWith("msg-") && n.endsWith(".json")).sort();
-		const messages: Array<{ messageId: string; from: string; body: string; command?: string }> = [];
-		const pathById = new Map<string, string>();
-		for (const n of files) {
-			const p = join(inbox, n);
-			try {
-				const m = JSON.parse(readFileSync(p, "utf8")) as DeliveredMessage;
-				if (m.kind === "receipt") {
-					rmSync(p); // receipts are never injected (would wake/bill the peer)
-					continue;
-				}
-				messages.push({ messageId: m.messageId, from: m.from, body: m.body, command: m.command });
-				pathById.set(m.messageId, p);
-			} catch {
-				/* malformed → skip */
-			}
-		}
-		if (messages.length === 0) return;
 		const target = this.index.get(id);
-		if (!target) return;
-		const consumed = drainTmuxInbox(target, messages, this.ports, this.buffer);
-		for (const item of consumed) {
-			const p = pathById.get(item.messageId);
-			if (p) {
-				try {
-					rmSync(p);
-				} catch {
-					/* already gone */
+		if (!target?.paneId) return;
+
+		const nowMs = this.ports.now();
+		const readAt = new Date(nowMs).toISOString();
+		const prepared = prepareReceiptEnvelopes({
+			inbox: this.channel,
+			self: id,
+			readAt,
+		});
+		if (!prepared.ok) {
+			throw new Error(`${prepared.code}: ${prepared.message}`);
+		}
+		if (prepared.value.length > 0) {
+			const eventLog = new FsEventLog(this.pijHome, id);
+			for (const action of prepared.value) {
+				const persisted = persistReceiptEnvelope({
+					inbox: this.channel,
+					eventLog,
+					self: id,
+					action,
+					nowMs,
+				});
+				if (!persisted.ok) {
+					throw new Error(`${persisted.code}: ${persisted.message}`);
 				}
 			}
-			if (target.lifecycle === "bound" && item.outcome !== undefined) {
-				this.emitSendReceipt(target.id, item.from, item.messageId, item.outcome);
+		}
+
+		const listed = this.channel.listUnread(id);
+		if (!listed.ok) throw new Error(`${listed.code}: ${listed.message}`);
+		const messages = listed.value
+			.filter((message) => message.kind !== "receipt")
+			.map((message) => ({
+				messageId: message.messageId,
+				from: message.from,
+				body: message.body,
+				command: message.command,
+			}));
+		if (messages.length === 0) return;
+		let consumedCount = 0;
+		for (const message of messages) {
+			const consumed = drainTmuxInbox(target, [message], this.ports, this.buffer);
+			for (const item of consumed) {
+				const marked = this.channel.markRead(id, item.messageId, {
+					messageId: item.messageId,
+					readAt,
+					reader: id,
+				});
+				if (!marked.ok) {
+					throw new Error(`${marked.code}: ${marked.message}`);
+				}
+				if (target.lifecycle === "bound" && item.outcome !== undefined) {
+					this.emitSendReceipt(target.id, item.from, item.messageId, item.outcome);
+				}
+				consumedCount += 1;
 			}
 		}
-		if (consumed.length > 0) this.log(`route ${id}: injected ${consumed.length} message(s)`);
+		if (consumedCount > 0) this.log(`route ${id}: injected ${consumedCount} message(s)`);
 	}
 
 	private emitSendReceipt(

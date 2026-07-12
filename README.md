@@ -143,9 +143,16 @@ orchestrator reviews) for zero-wait dispatch.
 ## Telegram bridge
 
 `telegram` relays your pi sessions to a Telegram bot, so you can drive and observe
-peers from your phone. Address a session by name (`osn ship it`); it sticks as the
-default target and replies stream back chunked. The id captured at setup is the **only**
-access control — only your Telegram account can talk to the bridge.
+peers from your phone. Swipe-reply to a session bubble or address it by name
+(`osn ship it`); otherwise bare text and captionless media follow the last session
+whose non-receipt bubble successfully reached that chat. `/tail` separately follows
+the most recently selected or routed session. Conversation state is process-local and
+resets with the bridge. The id captured at setup is the **only** access control — only
+your Telegram account can talk to the bridge.
+
+Every agent-originated text or media bubble keeps the sender id first and adds repository
+context: `[pij-id] [repo]` on `main`, or `[pij-id] [repo/branch]` on another branch.
+If the sender descriptor or git context is unavailable, it falls back to `[pij-id]`.
 
 ```bash
 pij telegram init     # one-time: paste a BotFather token, then message your bot once

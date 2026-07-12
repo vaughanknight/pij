@@ -310,12 +310,19 @@ export default function (pi: ExtensionAPI): void {
 		process.env.PIJ_SESSION_ID = boot.id;
 		if (boot.role) process.env.PIJ_ROLE = boot.role;
 
-		// Receive loop. Seed `seen` with the inbox's current contents so a reload
-		// does not replay history; the watcher drains new msg-*.json thereafter.
+		// Receive loop. Durable read markers own cross-start/reload history; the
+		// process-local `seen` set remains only the fs.watch/poll watermark.
 		const inbox = join(dataDir, "inbox");
 		mkdirSync(inbox, { recursive: true });
+		const unread = channel.listUnread(self);
+		if (!unread.ok) {
+			throw new Error(`pij inbox initialization error: ${unread.message}`);
+		}
+		const unreadNames = new Set(unread.value.map((message) => `msg-${message.messageId}.json`));
 		const seen = new Set(
-			readdirSync(inbox).filter((n) => n.startsWith("msg-") && n.endsWith(".json")),
+			readdirSync(inbox).filter(
+				(name) => name.startsWith("msg-") && name.endsWith(".json") && !unreadNames.has(name),
+			),
 		);
 		disposeWatch?.(); // reload: drop the prior watcher before opening a new one
 		// Delivery ownership (Plan 019, finding 01/06, AC-08): this in-process
@@ -323,7 +330,22 @@ export default function (pi: ExtensionAPI): void {
 		// a pi session's inbox — `pi.sendUserMessage` is the one immovable seam. The
 		// daemon never injects into pi (it `observe`s pi inboxes for the TUI and
 		// consumes only tmux harnesses' inboxes), so there is no double-processing.
-		disposeWatch = channel.watch(self, (dm) => session?.onInbound(dm, dm.messageId), seen);
+		const receiver = session;
+		disposeWatch = channel.watch(
+			self,
+			(dm) => {
+				receiver.onInbound(dm, dm.messageId);
+				const marked = channel.markRead(self, dm.messageId, {
+					messageId: dm.messageId,
+					readAt: new Date().toISOString(),
+					reader: self,
+				});
+				if (!marked.ok) {
+					throw new Error(`pij inbox mark-read error: ${marked.message}`);
+				}
+			},
+			seen,
+		);
 	});
 
 	// Event capture (registered once, top-level — reload-safe). Each pi event maps

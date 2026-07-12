@@ -33,3 +33,15 @@ jobs:
       # line) stays local-only — needs tmux + the pi binary, absent on hosted
       # runners. Run via `just smoke` / `just self-check`. AC-12: gates +
       # integration smoke green in CI; live Driver smoke green locally.
+
+  windows-compat:
+    runs-on: windows-latest
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run windows:check

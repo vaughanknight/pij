@@ -6,11 +6,13 @@ import type { SessionDescriptor } from "../types.js";
 import {
 	type DaemonPorts,
 	type DriveState,
+	drainTmuxInbox,
 	driveSession,
 	observeActivity,
 	WATCHDOG_TIMEOUT_MS,
 	writeMerged,
 } from "./loop.js";
+import { SendBuffer } from "./router.js";
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
 const READY = "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
@@ -599,5 +601,40 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		const written = writeMerged(reg, desc({ prime: stalePrime, state: "idle" }));
 		expect(written.prime).toBe(true);
 		expect(written.state).toBe("idle");
+	});
+});
+
+describe("drainTmuxInbox — post-outcome contract", () => {
+	it.each([
+		"confirmed",
+		"unverified",
+	] as const)("returns the %s injection outcome only after sendText completes", (outcome) => {
+		const w = world({ pane: READY });
+		let sendCompleted = false;
+		w.ports.sendText = () => {
+			sendCompleted = true;
+			return outcome;
+		};
+
+		const consumed = drainTmuxInbox(
+			desc({ lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "review" }],
+			w.ports,
+			new SendBuffer(),
+		);
+
+		expect(sendCompleted).toBe(true);
+		expect(consumed).toEqual([{ messageId: "m1", from: "pij-boss", outcome }]);
+	});
+
+	it("does not consume a pi-owned message", () => {
+		const consumed = drainTmuxInbox(
+			desc({ harness: "pi", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "leave for pi" }],
+			world({ pane: READY }).ports,
+			new SendBuffer(),
+		);
+
+		expect(consumed).toEqual([]);
 	});
 });

@@ -32,6 +32,12 @@ const SENSORS: Sensor[] = [
 	{ name: "lint", cmd: "just", args: ["lint"], proves: "Biome (errors + warnings) is clean" },
 	{ name: "test", cmd: "just", args: ["test"], proves: "the vitest suite passes" },
 	{
+		name: "windows-compat",
+		cmd: "just",
+		args: ["windows-compat"],
+		proves: "portable typecheck, lint, inbox, fake, and no-tmux CLI checks pass",
+	},
+	{
 		name: "smoke",
 		cmd: "just",
 		args: ["smoke"],
@@ -72,7 +78,7 @@ const checks: HarnessVerb = {
 		"Run pij's full deterministic gate (the signal inventory) and report a ship/done verdict.",
 	description:
 		'The single "are we done?" gate. Runs every sensor in the engineering-harness signal inventory ' +
-		"(mirrors `just self-check`: typecheck, lint, test, smoke, pkg-audit, snapshots) as individual " +
+		"(mirrors `just self-check`: typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots) as individual " +
 		"stages, reports a per-sensor verdict, and — unlike self-check — runs ALL of them so you see every " +
 		"failure in one pass. Run it before ship and before declaring any non-trivial task done. " +
 		"`--quick` skips heavy sensors (smoke) for a fast static+unit gate.",

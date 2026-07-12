@@ -38,7 +38,7 @@ export function injectionText(message: PijMessage): string {
  *  - bound tmux target      → `inject` into its pane;
  *  - unbound tmux target    → `buffer` until it binds. */
 export function route(target: SessionDescriptor, message: PijMessage): RouteDecision {
-	const transport = selectTransport(target.harness ?? "pi");
+	const transport = selectTransport(target.harness ?? "pi", target.deliveryMode);
 	if (transport === "inbox") return { kind: "observe" };
 	if (target.lifecycle === "bound" && target.paneId) {
 		return { kind: "inject", paneId: target.paneId, text: injectionText(message) };

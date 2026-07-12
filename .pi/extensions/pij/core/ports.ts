@@ -5,7 +5,11 @@
 // adapters/pi-runtime.ts (Phase 2) may import @earendil-works/* — never here.
 
 import type {
+	DeliveredMessage,
 	EventQuery,
+	InboxClaim,
+	InboxMark,
+	InboxReadMarker,
 	PijEvent,
 	PijMessage,
 	Result,
@@ -35,6 +39,9 @@ export interface RegistryPort {
 export interface EventLogPort {
 	/** Append one event line (persist before mutate — Pattern P9). */
 	append(event: PijEvent): void;
+	/** Atomically publish one event per idempotence key. Optional so existing
+	 * structural consumers remain source-compatible until they opt in. */
+	appendOnce?(key: string, event: PijEvent): "appended" | "existing";
 	/** Read events, optionally filtered (since/type/last). */
 	read(query?: EventQuery): PijEvent[];
 	/** Highest seq written so far, or 0 if empty. Drives crash-safe seq
@@ -48,6 +55,16 @@ export interface EventLogPort {
 export interface DeliveryPort {
 	/** Deliver a message to the peer named by message.to. */
 	deliver(message: PijMessage): Result<{ messageId: string }>;
+}
+
+/** Reads and durably claims immutable inbox envelopes. */
+export interface InboxPort {
+	/** List currently unread messages in lexical message-id order. */
+	listUnread(id: SessionId): Result<readonly DeliveredMessage[]>;
+	/** Exclusively claim a message by atomically publishing its read marker. */
+	claimUnread(id: SessionId, messageId: string, marker?: InboxReadMarker): Result<InboxClaim>;
+	/** Idempotently mark a known message read without returning its envelope. */
+	markRead(id: SessionId, messageId: string, marker?: InboxReadMarker): Result<InboxMark>;
 }
 
 /** The ONLY port whose real adapter imports pi (adapters/pi-runtime.ts,

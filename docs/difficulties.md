@@ -144,3 +144,19 @@ and an encoded fix (durable). Severity guides priority.
   subagent canary returns OK with no restart (`bb3e40e`). **Lesson:** any globally
   linked extension that injects at `session_start` will break subagent children
   spawned via `-p`; guard `session_start` injectors on the subagent-child env.
+
+- **D-032 [medium, open] Fresh-worktree smoke stalls at Pi trust** (2026-07-12).
+  Pi stops at `Do not trust (this session only)` and the Driver SDK has no
+  deterministic trust/approve option. A temporary tmux-global PATH wrapper works
+  but mutates shared machine state. Encode a Driver `BootOpts` trust/argv seam.
+
+- **D-033 [medium, open] Pi-peacock smoke pins the main checkout** (2026-07-12).
+  Its cwd/branch assertion hardcodes `~/pi-hacking/pij`, so healthy worktrees fail
+  the full gate. Derive expected cwd/branch from the scenario environment.
+
+- **D-034 [high, encoded] Happy-path messaging gates missed destructive races**
+  (2026-07-12). Green tests did not catch partial batch message loss,
+  uncorrelated receipt loss, invalid ambient fallback, or duplicate receipt
+  publication under stale consumers. Cold review found all four; permanent
+  malformed-batch, invalid-identity, stale-consumer, and real two-process
+  hard-link regressions now encode the missing back-pressure.

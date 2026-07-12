@@ -1,0 +1,42 @@
+# Execution Log
+
+## 2026-07-12
+
+- Harness boot passed before implementation (`just typecheck`, `just test`).
+- T001 complete: added the last-speaker routing, speech-success, media, `/tail`, per-chat composition, and restart-boundary regression matrix.
+- RED proof: targeted Telegram run reported 17 expected failures and 74 passes; failures isolate the missing `getLastSpeaker`, `onSpoke`, strict fallback, and production chat-key seams.
+- T002 complete: targeted Telegram suite is GREEN (91/91) and `just typecheck` passes with separate selected-target/last-speaker maps and first-success `onSpoke`.
+- T003 complete: README, Telegram operator guide, and control-plane domain contract now agree on reply > name > last-speaker precedence, captionless media, selected `/tail`, and process-local restart behavior.
+- T004 in progress: inspect the fenced diff, then run targeted and full deterministic repository gates.
+- Full gate surfaced a pre-existing worktree-only `pi-peacock` smoke failure: its footer regex pinned `~/pi-hacking/pij (main)`. The main-checkout probe passed, isolating the sensor defect.
+- Fence addendum granted for `.pi/extensions/pi-peacock/smoke.ts`; the sensor now derives and still asserts the exact current cwd and branch with existing bounded timeouts.
+- T004 complete: targeted Telegram tests passed 91/91; full suite passed 1781 tests with 10 skips; isolated worktree smoke passed all scenarios; final `harness checks` passed typecheck, lint, test, smoke, package audit, and snapshots.
+- Restored `.pi/packages.yaml` vet timestamps to HEAD after the final package-audit sensor, as required by the fence addendum.
+- Fix round 1 in progress: F-01 bounds the smoke sensor's git probe; F-02 proves production last-speaker replacement from A to B with separate real-channel watchers.
+- Fix round 1 complete: `execFileSync("git", ...)` now has a 2-second timeout; the production composition test proves A → bare-to-A, then B → bare-to-B, with numeric/string chat normalization and isolated watchers.
+- Mutation proof: changing the production setter to first-write-only made exactly the strengthened index test fail (90/91 passed); restoration matched SHA-256 `5a50db6330224b3bc866048d2f7345027859a64ae9b1e550793f2d64e24ccb6a`, then targeted tests returned 91/91 GREEN.
+- Targeted pi-peacock smoke passed; final isolated `harness checks` passed typecheck, lint, test, all smoke scenarios, package audit, and snapshots. Restored `.pi/packages.yaml` vet timestamps to HEAD again.
+- Fix round 2 in progress: keep both production-composition watchers live for a bounded negative settle-poll after B receives the fallback, proving no delayed duplicate reaches A.
+- Fix round 2 complete: the canonical `settleWhile` helper polls A/B exclusivity every 10 ms for a bounded 200 ms window before watcher disposal.
+- Canonical delayed-duplicate mutation proof: scheduling `"bare follows B"` to A after 100 ms made `settleWhile` fail while both watchers were live (90/91 passed). Restoring `index.ts` returned SHA-256 `5a50db6330224b3bc866048d2f7345027859a64ae9b1e550793f2d64e24ccb6a`, then targeted tests passed 91/91.
+- Post-ship C001 in progress: add RED coverage for stable main/non-main repository prefixes, git fallback, all outbound text/media surfaces, once-per-message context resolution, and unchanged sender-tag parsing.
+- Post-ship C001 complete: targeted Telegram run reported 8 expected repository-context failures and 88 passes; sender-tag parsing and existing fallback assertions remained green.
+- Post-ship C002 in progress: inject a bounded fakeable git seam from each sender descriptor folder and reuse one resolved prefix across the delivered message.
+- Post-ship C002 complete: targeted tests passed 96/96 with stable git-common-dir repository names, exact main/non-main prefixes, 2-second fake git bounds, once-per-message reuse, and descriptor/non-git fallback.
+- Named branch-format mutation: swapping the main conditional rendered `[pij/main]` and omitted the feature branch, making exactly the rendered-prefix test fail (95/96 passed). Restoration matched SHA-256 `613f89524dc3c49365976f50347f0386338ba2b84e2e93cb679bdd0edcdc7e1b`, then targeted tests returned 96/96 GREEN.
+- Post-ship C003 in progress: align README, operator guide, domain contract/history, and run the full isolated signal inventory.
+- Post-ship C003 complete: documented `[pij-id] [repo]` and `[pij-id] [repo/branch]`, formatted all touched TypeScript, and passed final isolated `harness checks` across typecheck, lint, test, all smoke scenarios, package audit, and snapshots.
+- Restored `.pi/packages.yaml` vet timestamps to HEAD after the final package-audit sensor.
+- R8 budget fix in progress: add 96-character-prefix boundaries for 4096 text and 1024 captions, plus lossless overflow handling for notices, attachment fallbacks, and media captions.
+- R8 budget fix complete: prefix-aware chunking caps every text bubble at 4096 and media caption at 1024; overflowing captions move losslessly into threaded text bubbles before prefix-only media.
+- RED proof: corrected boundary tests failed in four expected surfaces (ordinary text, oversize notice, attachment fallback, media caption) with 96/100 passing. GREEN: targeted Telegram tests passed 100/100 and typecheck passed.
+- Prefix-budget mutation: restoring the full 4096 body budget made four limit tests fail (96/100 passed), including 4136/4193-character payloads. Restoring `bridge.ts` returned SHA-256 `312b3d7ab5486f50d83ce5a20731796e8f73dd862ad649d71607059393499eed`, then targeted tests returned 100/100 GREEN.
+- Post-ship D001 in progress: add RED coverage for the observed canonical double-prefix, same-sender tag upgrade, preservation of different/arbitrary brackets, media captions, and normalization-before-budgeting.
+- Post-ship D001 complete: targeted Telegram tests reported five expected prefix-normalization failures and 99 passes.
+- Post-ship D002 in progress: strip only the exact canonical prefix or exact same-sender tag before prefix-aware text/caption budgeting.
+- Post-ship D002 complete: text and media captions normalize the exact canonical prefix to one, upgrade only the exact same-sender tag, and preserve different sender tags/arbitrary brackets before all budgets.
+- Normalization mutation: bypassing normalization recreated the five exact RED cases (99/104 passed). Restoring `bridge.ts` matched SHA-256 `43249de69d6beb66919f2301b6308941682ff6d2ccbbcc4779ba72fdcf1f6c38`, then targeted tests returned 104/104 GREEN.
+- Post-ship D003 in progress: record the observed duplicate regression and run the isolated full signal inventory for cold review.
+- Post-ship D003 implementation/gates complete: formatted the touched files and passed final isolated `harness checks` across typecheck, lint, test, all smoke scenarios, package audit, and snapshots. Cold review returned `APPROVE_WITH_NOTES` only because PR #11 update/CI are still pending; D003 remains in progress until landing evidence exists.
+- Restored `.pi/packages.yaml` vet timestamps to HEAD after the final package-audit sensor; no commit created.
+- Post-ship D003 complete: evidence-state re-review returned APPROVE; commit `7beb516` updated draft PR #11; Node 22 and Node 24 checks passed.

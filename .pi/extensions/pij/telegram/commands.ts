@@ -3,8 +3,8 @@
 // `/list` answers "which sessions can I address?" — the newest few live sessions
 // with their project folders. Ordering reuses `recencyKey` (match.ts) so the list
 // and the address-matcher agree on what "newest" means. `/tail [N]` (Phase 3) peeks
-// the last N events of the chat's STICKY target — the same target the text relay
-// uses — so the operator can read a session's recent output without leaving Telegram.
+// the last N events of the chat's selected target, so the operator can read the
+// most recently addressed or routed session without changing bare-message fallback.
 // All formatters are pure (data in, text out) so they unit-test without a live bot;
 // the `register*Command` functions are the thin grammY wiring.
 
@@ -154,27 +154,27 @@ export function formatTail(events: readonly PijEvent[]): string {
 		.join("\n");
 }
 
-/** I/O `/tail` needs, injected so it reads the live sticky store + event log. */
+/** I/O `/tail` needs, injected so it reads the selected-target store + event log. */
 export interface TailDeps {
-	/** The chat's current sticky target, or `undefined` if none is set yet. */
-	readonly getStickyTarget: (chatId: number) => SessionId | undefined;
+	/** The chat's current selected target, or `undefined` if none is set yet. */
+	readonly getSelectedTarget: (chatId: number) => SessionId | undefined;
 	/** Read the last `n` events of a session — `FsEventLog.read({last:n})` in prod. */
 	readonly readEvents: (id: SessionId, last: number) => readonly PijEvent[];
-	/** Reply shown when the chat has no sticky target (same text as the relay's). */
+	/** Reply shown when the chat has no selected target (same text as the relay's). */
 	readonly guidance: string;
 }
 
 /**
  * Wire `/tail [N]` onto a grammY bot. Registered (like `/list`) before the text
- * relay so a `/tail` message is answered, not relayed. With no sticky target it
+ * relay so a `/tail` message is answered, not relayed. With no selected target it
  * replies the SAME guidance the text handler gives (Plan T003).
  *
  * @param bot  the grammY bot (allowlist middleware already registered first)
- * @param deps the sticky-target accessor + event reader + guidance text
+ * @param deps the selected-target accessor + event reader + guidance text
  */
 export function registerTailCommand(bot: Bot, deps: TailDeps): void {
 	bot.command("tail", async (ctx) => {
-		const target = deps.getStickyTarget(ctx.chat.id);
+		const target = deps.getSelectedTarget(ctx.chat.id);
 		if (target === undefined) {
 			await ctx.reply(deps.guidance);
 			return;

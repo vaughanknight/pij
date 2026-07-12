@@ -26,10 +26,14 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
 | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `prime` is latest-disk-authoritative before daemon writes. |
+| `.pi/extensions/pij/core/inbox.ts` | Shared durable inbox actions used by daemon-owned receipt consumption: prepare hidden receipt envelopes, append/reuse their event, then mark read. |
 | `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims, memorable-id allocation, pre-bind reservation ownership, two-way durable identity ownership, and metadata snapshots. |
 | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
 | `.pi/extensions/pij/daemon.ts` | Daemon bin: lock → watch pending+inboxes → readiness/interstitial → init-once → route → render. |
+| `.pi/extensions/pij/telegram/bridge.ts` | Telegram inbound precedence, selected `/tail` target, successful-speech observation, and once-per-message sender/repository prefixing across text/media forwarding. |
+| `.pi/extensions/pij/telegram/index.ts` | Bridge lifecycle, process-local per-chat last-speaker composition, normalized chat keys, and bounded fakeable git-context resolution from sender descriptors. |
+| `.pi/extensions/pij/telegram/commands.ts` | `/list` and `/tail`; `/tail` reads selected-target state, never last-speaker fallback state. |
 | `docs/how/pij-daemon.md` | Operator guide (run/spawn/adopt/send/tail/TUI/recovery). |
 
 ## Concepts
@@ -47,6 +51,10 @@ thin receiver). Plan 019.
 | Fire-and-forget injection | tmux targets receive `send-keys`+Enter, ungated; the caller never blocks. | router → `tmux-keys` (AC-07/13). |
 | External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `prime:true\|false` overrides stale daemon snapshots; append-only `reportedAt` retains fill-only semantics. |
 | Delivery ownership | Senders write the target inbox; the daemon consumes+injects ONLY tmux inboxes and merely observes pi inboxes. | router rules; pi thin receiver sole pi-inbox consumer (AC-08). |
+| Durable push ownership | The daemon consumes only push-owned tmux unread envelopes, marks after an injection outcome, and leaves `deliveryMode:"pull"` plus pi inboxes untouched. | `daemonOwnsDelivery`; marker-aware `listUnread`; pi thin receiver/pull CLI own their inboxes. |
+| Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
+| Telegram conversation routing | Bare text/captionless media follows the last session whose non-receipt bubble successfully reached that normalized chat id; explicit selection remains separate for `/tail`. | reply tag > explicit name > last speaker; `onSpoke` after first successful send; process-local maps in `startBridge`. |
+| Telegram sender context | Every agent bubble keeps `[pij-id]` first, then adds stable repository identity from the sender descriptor folder. | `[pij-id] [repo]` on `main`; `[pij-id] [repo/branch]` otherwise; bounded git failure or missing descriptor falls back to `[pij-id]`. |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
 | Single-instance daemon | A second `pij daemon` refuses/attaches — never a second injector. | PID/lockfile (AC-10). |
 
@@ -60,17 +68,25 @@ thin receiver). Plan 019.
 | `classifyInterstitial` | daemon readiness loop | pure `string → { kind: "dismiss" \| "needs-human" \| "none" }`. |
 | Binding record | daemon, `pij tail`, creator notice | Durable `(harness,harnessSessionId) ↔ pij-id` plus replaceable `paneId ↔ pid ↔ cwd`; exact zero/one/many resolution, no silent overwrite. |
 | Prime CLI wiring | orchestration core | Omitted target uses exact env/pane/lone-local self resolution; explicit ids bypass it; baton actor fallback remains baton-only. |
+| Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
+| Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
+| Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
 
 ## Boundary Owns
 
 - The single-instance daemon lifecycle + chalk TUI.
 - The harness-type → transport seam (`pi`→inbox, `claude`/`copilot`/`codex`→send-keys).
+- Daemon ownership of push tmux unread/marker outcomes; pull and pi inboxes remain externally owned.
 - The tmux key/paste/capture primitives (shared lib).
 - Readiness detection + interstitial handling.
 - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
 - pij-id pre-allocation + restart-stable exact native-identity recovery + the pending-descriptor handoff; init idempotency.
 - Reattachment-only `adopt --id`: existing descriptor/reservation required, unknown ids fail `E-NOID`.
 - Claude/codex transcript-path resolution + tailing (harness-selected `transcriptLayout`).
+- Telegram reply/name/last-speaker precedence, process-local per-chat state, and separate
+  selected-target semantics for `/tail`.
+- Telegram agent-bubble identity: sender tag first, stable repository/branch context second,
+  with safe fallback when descriptor/git context is unavailable.
 
 ## Boundary Excludes
 
@@ -103,8 +119,11 @@ thin receiver). Plan 019.
 | 021-unify-spawn-harness | `pij spawn` is now one uniform surface for `pi\|claude\|copilot` (`SPAWNABLE_HARNESSES`). pi dispatches down a self-registering path in the bin (pure `buildSpawnCommand` + same registry-tracked split layout) — no daemon, no pre-allocated id, no pending descriptor, no binding; claude/copilot daemon-bound path unchanged. | 2026-06-28 |
 | 022-codex-spawn-support | Added `codex` as the 4th spawnable harness — a second DISCOVERY-bound harness (`--dangerously-bypass-approvals-and-sandbox`, `sendkeys`). New pure `core/harness/codex.ts` (date-nested global rollout layout: `~/.codex/sessions/YYYY/MM/DD/rollout-<ISO>-<uuid>.jsonl`, trailing-UUID id, `session_meta.cwd` confirm, tail summarizer) + `core/harness/transcript.ts` (`transcriptLayout(harness)` selector — claude byte-unchanged). Daemon discovery derives the id via `layout.sessionIdOf(path)` (the UUID, not the stem — Finding 06) and persists the rollout path as `SessionDescriptor.transcriptPath` for tail. | 2026-06-28 |
 | 024-fix-false-provider-death | Provider-failure push now suppresses working-session false positives, clears stale provider-failure state on working recovery, and uses provider-stuck wording instead of claiming live sessions exited. | 2026-06-28 |
-| 026-pij-telegram-bridge | Added the `pij-telegram` bridge peer (`pij telegram init\|start\|stop`): a foreground, single-instance grammY long-poll relaying a Telegram bot ⇄ pij sessions (allowlist-gated, addressed/sticky routing, `/list` + `/tail`, chunked outbound). Registers a `harness:"pi"` + `lifecycle:"bound"` descriptor so the daemon observes (never drains) it — no daemon/core contract change. `init` validates the token (`getMe`), captures the operator id as the allowlist, and merges the scoped `.env` without clobbering existing keys. | 2026-06-29 |
+| 026-pij-telegram-bridge | Added the `pij-telegram` bridge peer (`pij telegram init\|start\|stop`): a foreground, single-instance grammY long-poll relaying a Telegram bot ⇄ pij sessions (allowlist-gated routing, `/list` + `/tail`, chunked outbound). Registers a `harness:"pi"` + `lifecycle:"bound"` descriptor so the daemon observes (never drains) it — no daemon/core contract change. `init` validates the token (`getMe`), captures the operator id as the allowlist, and merges the scoped `.env` without clobbering existing keys. | 2026-06-29 |
 | 026-pij-telegram-bridge (Phase 5: media) | Media relay **both ways** by reference-passing — bytes never touch the pij wire. New pure `telegram/media.ts` (`classifyMedia`, `withinUploadLimit`/`withinDownloadLimit`, `safeMediaName`, `buildInboundNotice`). `PijMessage.attachments?` (additive) + `pij send --file/--caption` (in `core/cli.ts`). Outbound: `startForwarder` classifies each attachment → `sendPhoto`/`sendAnimation`/`sendDocument` via grammY `InputFile` in the existing ordered queue (10/50 MB caps → text-notice fallback, never a throw; attachment-only skips the blank text send). Inbound: allowlist-gated `message:photo\|animation\|document` handlers resolve the target by caption, 20 MB download pre-check, then `@grammyjs/files` download (behind an injected seam) into the target session's own `<dataDir>/attachments/<safe-name>`, delivering a text path notice. Added `@grammyjs/files` dep. | 2026-06-30 |
 | 038-pij-prime-designation | Added exact-self production wiring and latest-disk-authoritative mutable prime merging in the daemon write coordinator. | 2026-07-11 |
 | 040-memorable-pij-session-ids | Replaced new control-plane and agent-spawn ids with atomic memorable reservations; added collision retry, known-failure release, crash-orphan retention, and explicit reservation recovery through adopt. | 2026-07-11 |
 | 040-memorable-pij-session-ids / F004 | Removed global newest-by-mtime Copilot adoption. Current env UUID + matching state metadata is authoritative; absent/invalid env stays pending and harness-aware phonehome completes recovery without touching another session's descriptor. | 2026-07-12 |
+| 043-telegram-last-speaker-routing | Replaced inbound sticky fallback with strict per-chat last-speaker routing observed at the first successful non-receipt Telegram send. Reply/name precedence, captionless media, threading, and sender tags remain; `/tail` now explicitly uses separate selected-target state, and both maps reset with the bridge process. | 2026-07-12 |
+| 043-telegram-last-speaker-routing / R8 | Added stable sender repository context to every agent-originated Telegram text/media bubble: `[pij-id] [repo]` on `main`, `[pij-id] [repo/branch]` otherwise. Resolution uses the sender descriptor folder, git common-dir identity, and bounded injected subprocess effects; failures preserve the original sender tag. | 2026-07-12 |
+| 041-pij-inbox-no-tmux | Replaced tmux delete-on-consume/raw scans with marker-aware retained history, post-outcome read markers, event-before-marker receipt handling, and explicit pull non-ownership at every daemon gate. | 2026-07-12 |
