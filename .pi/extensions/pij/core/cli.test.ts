@@ -255,11 +255,46 @@ describe("dispatch whoami / list", () => {
 		expect(dispatch({ verb: "whoami", json: false }, d)).toMatchObject({ exitCode: 2 });
 	});
 
-	it("PIJ_SESSION_ID overrides an ambient resolver conflict", () => {
+	it("propagates ambient resolver failures even when PIJ_SESSION_ID is set", () => {
 		const d = deps({
 			self: "a1",
 			descs: [desc({ id: "a1" }), desc({ id: "w3" })],
 			resolveAmbientSelf: () => err("E-AMBIG", "multiple ambient identities"),
+		});
+		const result = dispatch({ verb: "whoami", json: false }, d);
+		expect(result).toMatchObject({
+			exitCode: 2,
+		});
+		expect(result.stderr).toContain("multiple ambient identities");
+	});
+
+	it("requires PIJ_SESSION_ID to match a validated ambient identity", () => {
+		const exact = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" })],
+			resolveAmbientSelf: () => ok("a1"),
+		});
+		expect(JSON.parse(dispatch({ verb: "whoami", json: true }, exact).stdout)).toMatchObject({
+			id: "a1",
+		});
+
+		const mismatch = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3" })],
+			resolveAmbientSelf: () => ok("w3"),
+		});
+		const result = dispatch({ verb: "whoami", json: false }, mismatch);
+		expect(result).toMatchObject({ exitCode: 2 });
+		expect(result.stderr).toContain("E-AMBIG");
+		expect(result.stderr).toContain("a1");
+		expect(result.stderr).toContain("w3");
+	});
+
+	it("preserves direct PIJ_SESSION_ID compatibility when no ambient identity exists", () => {
+		const d = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" })],
+			resolveAmbientSelf: () => ok(undefined),
 		});
 		expect(JSON.parse(dispatch({ verb: "whoami", json: true }, d).stdout)).toMatchObject({
 			id: "a1",
@@ -947,6 +982,8 @@ describe("dispatch phonehome (confirmatory binding, AC-03)", () => {
 			descs: [desc({ id: "pij-w", harness: "claude", lifecycle: "pending" })],
 			self: "pij-w",
 			env: { CLAUDE_CODE_SESSION_ID: "claude-abc" },
+			resolveAmbientSelf: () =>
+				err("E-NOID", "pending peer has no ambient reverse join before phonehome"),
 		});
 		const r = dispatch({ verb: "phonehome", json: true }, d);
 		const j = JSON.parse(r.stdout);

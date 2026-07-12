@@ -393,7 +393,12 @@ function resolveAmbientSelf(registry: FsRegistry): Result<SessionId | undefined>
 		identity.value.harnessSessionId,
 	);
 	if (!resolved.ok) return resolved;
-	return resolveRegisteredAmbientSelf(identity.value, registry.list(), resolved.value);
+	return resolveRegisteredAmbientSelf(
+		identity.value,
+		registry.list(),
+		resolved.value,
+		process.env.TMUX_PANE,
+	);
 }
 
 interface CurrentRegistration {
@@ -410,6 +415,32 @@ function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistra
 			"E-AMBIG",
 			"cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell",
 		);
+	}
+	const currentPane =
+		process.env.TMUX_PANE && process.env.TMUX_PANE.trim() !== ""
+			? process.env.TMUX_PANE
+			: undefined;
+	if (currentPane) {
+		const resolved = registry.resolveIdentity(
+			identity.value.harness,
+			identity.value.harnessSessionId,
+		);
+		if (!resolved.ok) return resolved;
+		const registered = resolveRegisteredAmbientSelf(
+			identity.value,
+			registry.list(),
+			resolved.value,
+			currentPane,
+		);
+		if (!registered.ok) return registered;
+		const descriptor = registry.read(registered.value);
+		if (!descriptor) {
+			return err(
+				"E-NOID",
+				`current ${identity.value.harness} session descriptor disappeared; run pij adopt "$TMUX_PANE" --harness ${identity.value.harness} from this exact pane`,
+			);
+		}
+		return ok({ descriptor, identity: identity.value, existing: true });
 	}
 	const allocated = registry.allocateIdentity(
 		identity.value.harness,

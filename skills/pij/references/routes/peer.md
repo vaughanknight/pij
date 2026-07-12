@@ -5,14 +5,30 @@
 
 **Job**: talk to colleagues — stand up a NEW live session (claude / copilot / codex / pi) in a tmux pane, **or converse with peers that already exist**: identity/list/send/tail/state need no spawn. Nothing here delegates work products — this is the raw colleague seam.
 
-**Preconditions**: mode detected per § C1. Spawning requires tmux; tmux control-plane mode also needs one-time self-adopt. A non-tmux external session can converse with existing peers after its first `pij inbox` auto-registers pull ownership.
+**Preconditions**: detect the delivery owner before giving any self-registration advice (§ C1). Spawning requires tmux. Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. A non-tmux external session can converse with existing peers after `pij inbox register` (or its first `pij inbox --wait`) auto-registers pull ownership.
+
+Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers).
 
 ## Verbs
 
-**Identity & views**
+**External pull identity — first action**
 
 ```bash
-pij whoami [--json]      # your stable session id (E-NOID → adopt first, § C1)
+pij inbox register --json  # run before whoami/list/state/tail; repairs exact ambient identity to pull
+pij inbox --wait [ms]      # equivalent first-use auto-registration, then receive
+pij whoami [--json]        # valid confirmation only after external registration succeeds
+```
+
+**Tmux push identity**
+
+```bash
+pij whoami [--json]                     # your stable session id
+pij adopt "$TMUX_PANE" --harness <h>    # E-NOID only; exact non-empty current-process pane
+```
+
+**Views**
+
+```bash
 pij list [--here]        # known sessions (--here: this tmux server only)
 pij state <id> [--json]  # liveness + working/idle for one peer
 pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers
@@ -64,7 +80,8 @@ Keep a healthy peer across work items: compact and reuse instead of close-and-re
 Tmux/pi push:
 
 ```bash
-pij whoami                                    # self resolves (else adopt, § C1)
+pij whoami                                    # self resolves; E-NOID uses the tmux action in § C1
+pij adopt "$TMUX_PANE" --harness <h>           # only the exact non-empty current-process pane
 pij spawn --harness claude --model sonnet     # → pij-xxxxx
 pij tail pij-xxxxx                            # canary: footer shows expected model, no 400 (§ C2)
 pij send pij-xxxxx "reply with exactly: ok"   # round-trip lands back as [pij from pij-xxxxx]
@@ -84,6 +101,7 @@ pij inbox --wait 30000                        # prints [pij from pij-xxxxx] ok
 | Symptom | Meaning / move |
 |---|---|
 | `E-NOID` on send/close | id not in registry — `pij list`, or the peer already closed |
+| `E-NOID` for self in tmux control-plane mode | use only `pij adopt "$TMUX_PANE" --harness <h>` with the current process's exact non-empty pane |
 | `E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`; first use auto-registers the ambient session |
 | `E-FULL` on spawn | window at split cap — free a slot or spawn from a scratch window (§ C5) |
 | Ready but 400 on first message | wrong model id — close, re-spawn with a `pij models` id (§ C2/C4) |

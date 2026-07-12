@@ -75,6 +75,8 @@
 | `.pi/extensions/pij/{cli.ts,cli.integration.test.ts}` | modify | CLI help and regression proof |
 | `.pi/extensions/pij/core/daemon/{loop,loop.test}.ts` | modify | s041 |
 | `.pi/extensions/pij/core/daemon/watch.test.ts` | modify | **TEST-ONLY addendum granted at government spine Seq 81**: retained `msg-*`, matching `read-*`, and `listUnread()=[]`; preserve phantom `pij-watch` assertion; no production watcher change |
+| `.pi/extensions/pij/core/{current-session,current-session.test}.ts` | modify | **Mode-aware repair addendum granted at Spine Seq 113**: reject stale ambient attachment, repair same durable id to pull, preserve history |
+| `.pi/extensions/pij/core/{cli,cli.test}.ts` | modify | **Final residual addendum granted at Spine Seq 127**: explicit `PIJ_SESSION_ID` still validates detectable ambient identity/transport; no-ambient compatibility preserved |
 | `skills/pij/{SKILL.md,references/00-routing.md,references/routes/peer.md}` | modify | live-deployed shared skill; edit last; `just pij-skill-check` required |
 | `docs/how/pij.md` | modify | shared operator contract |
 | `docs/domains/{pij-messaging,pij-skill}/domain.md` | modify | shared domain contracts |

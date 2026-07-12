@@ -170,6 +170,13 @@ restart, live canary, commit, push, merge, or ship action occurred.
 - Orchestrator sanity pass confirmed per-message marker/receipt finalization
   before advancing and the exact C1 receive-mode association.
 
+### Peer compact protocol correction
+
+Spine Seq 128 supersedes the earlier blocking compact practice. For reusable
+coder/reviewer peers, the orchestrator sends compact immediately **without**
+`--wait` and continues report/review/fix work; compact latency never blocks the
+critical path. The one-shot E-DEAD exception remains.
+
 ## T012 — Reviewed-Daemon and Genuine External Pull Proof
 
 ### Baton and deployment
@@ -285,3 +292,195 @@ restart, live canary, commit, push, merge, or ship action occurred.
   `d2a37184c5cba01ba496f65105006588b0afcb34`.
 - Post-rebase `harness checks --quick`: all stages passed.
 - Full smoke remains governed by R-004; no smoke-harness scope was added.
+
+## Post-Green External Identity Guard
+
+### Human-found failure
+
+Jordan's blind no-tmux test exposed a wrong-session takeover path: an agent with
+no `TMUX_PANE` listed a shared tmux server, guessed `%0`, and adopted another
+session's pane. A skill-only hard ban prevented new pane discovery but a second
+blind run proved an already contaminated descriptor could still be trusted by
+`whoami` and preserved by registration.
+
+`pij-grieving-gibbon` was quarantined at Spine Seq 111 and was not used for
+subsequent evidence.
+
+### Review/fix sequence
+
+- Seq 106: skill/test hard-ban packet granted.
+- Initial skill-only review approval was withdrawn after the contaminated blind
+  evidence.
+- Seq 113: mode-aware `current-session`/CLI repair granted.
+- Re-review found two residuals: explicit `PIJ_SESSION_ID` bypass and deletion
+  of append-only `reportedAt`.
+- Seq 127: final `core/cli.ts/.test.ts` residual addendum granted.
+- Final cold re-review:
+  `../../reviews/phase-3-final-identity-rereview.md` — **APPROVE**.
+- Independent mutations:
+  - explicit-id early bypass → RED, byte-identical GREEN;
+  - `reportedAt` deletion → RED, byte-identical GREEN.
+- Final full suite: 1,878 passed, 10 skipped.
+- Focused final review suite: 132 passed.
+- Skill check, typecheck, lint, and `harness checks --quick` passed.
+
+### Final contract
+
+- Delivery owner is resolved before identity advice.
+- No/empty `TMUX_PANE` never discovers or adopts a pane.
+- External identity begins with `pij inbox register --json`.
+- External `whoami` accepts only a paneless pull descriptor.
+- Tmux ambient identity accepts only the exact current process pane.
+- Detectable ambient identity validates even when `PIJ_SESSION_ID` is set; ids
+  must match. With no ambient native identity, explicit-id compatibility remains.
+- Registration repairs the same durable id to paneless pull, clears stale
+  pane/push/spawn and `agentOnce` runtime, and preserves append-only
+  `reportedAt` plus durable identity/history.
+
+### Ordered machine-wide deployment and final proof
+
+- Early dual deployment evidence was preserved but rejected for ordering at
+  Spine Seq 124; both links were restored to main and verified at Seq 125.
+- After final cold APPROVE, Seq 129 authorized dual deployment:
+  - `~/.agents/skills/pij` →
+    `/Users/jordanknight/pi-hacking/pij-worktrees/s041-inbox-no-tmux/skills/pij`;
+  - global `pij` →
+    `/Users/jordanknight/pi-hacking/pij-worktrees/s041-inbox-no-tmux/.pi/extensions/pij/cli.ts`.
+- Genuine no-tmux Copilot proof:
+  - UUID `38358490-1a46-43dd-8582-32ac41bdafb6`;
+  - model `gpt-5.6-terra`, reasoning effort `medium`;
+  - isolated `PIJ_HOME`;
+  - initial id `pij-constitutional-dormouse`;
+  - controlled stale pane/push contamination;
+  - explicit whoami rejected `E-NOID` with `pij inbox register`;
+  - registration repaired the same id to pull, `existing:true`;
+  - repeat remained idempotent;
+  - explicit whoami then succeeded;
+  - final descriptor was paneless pull, stale runtime absent, and
+    `reportedAt:"2026-07-13T00:00:00.000Z"` preserved.
+- Proof client exited 0. No old/quarantined id was used.
+
+### Peer compact protocol
+
+Spine Seq 128 makes reusable-peer compact fire-and-forget: send immediately
+without `--wait` and continue review/fix work. The one-shot E-DEAD exception
+remains.
+
+## Post-Green Fix — External Adopt Guard
+
+- Delivery-owner detection now precedes self-registration guidance.
+- Empty or absent `TMUX_PANE` is explicitly external pull mode. Both `/pij`
+  routing and the peer route hard-ban `tmux list-panes`, `tmux
+  display-message`, every other pane-discovery command, and any inferred,
+  guessed, selected, or adopted pane id.
+- External `/pij adopt` intent redirects to `pij inbox register` or the first
+  auto-registering `pij inbox --wait`. Tmux self-adopt is restricted to the
+  current process's exact non-empty `$TMUX_PANE`.
+- Every unconditional `E-NOID -> adopt first` instruction was removed or made
+  mode-specific. Pi/tmux push-first and external pull guidance remain
+  load-bearing in the integration test.
+- **Focused GREEN**: named CLI/skill guidance test passed, 1 passed and 34
+  skipped.
+- **Mutation RED**: removed the external no-pane command-ban sentence from
+  `skills/pij/references/00-routing.md`; the named test failed exactly on the
+  missing hard-ban clause, 1 failed and 34 skipped.
+- **Restore/GREEN**: restored byte-identically; the named test passed again.
+  Routing SHA-256 before/after:
+  `0e47700933e57b34792c26101aaf2e7d93aabfeab222e630b539fb7c987dbfb2`.
+- `just pij-skill-check`: passed; routing/peer budgets are 68/250 and 96/150.
+- `just typecheck`: passed.
+- `just lint`: exited 0 with the same 10 pre-existing warnings and Biome schema
+  informational notice.
+- `harness checks --quick`: typecheck, lint, test, Windows compatibility,
+  package audit, and snapshots passed; smoke skipped by `--quick`.
+- Package-audit-only `.pi/packages.yaml` timestamp drift was restored; the
+  manifest has no final diff. `git diff --check` passed.
+- No CLI production behavior, daemon restart, live proof, package/lock,
+  harness, flow-state, commit, push, merge, or full-smoke action occurred.
+
+## Post-Green Production Repair — Contaminated External Identity
+
+- **F-001 fixed**: ambient registered-self validation now receives the exact
+  current-process `TMUX_PANE`. Tmux accepts only the exact attached pane when
+  the descriptor is not pull-owned; external mode accepts only a paneless
+  `deliveryMode:"pull"` descriptor. Missing, contradictory, stale-pane, and
+  non-pull external joins fail before pane/cwd fallback with
+  `pij inbox register` guidance.
+- **F-002 fixed**: external `pij inbox register` reuses the exact durable pij id
+  and rewrites it to paneless pull with current folder/pid and idle state.
+  `dataDir`, `eventsPath`, `startedAt`, `prime`, identity, event/model, branch,
+  spawn-parent, and agent-pack metadata remain durable. Pane/tick/failure,
+  pending-init, transcript-snapshot, and once-close runtime fields are removed;
+  clearing `agentOnce` prevents the daemon from dissolving the repaired pull
+  peer while append-only `reportedAt` history remains durable.
+- Tmux `inbox register` is read-only for the exact current pane and refuses a
+  different pane; it never repairs or takes over a tmux descriptor.
+- **F-003 fixed**: production regression
+  `rejects and repairs a contaminated external ambient identity in place`
+  seeds `paneId:"%0"` with no delivery mode, proves exact-pane tmux resolution
+  and registration, rejects no-tmux `whoami`, refuses pane takeover, repairs
+  the same id to pull, proves repeat registration, and resolves no-tmux
+  `whoami` afterward. The focused current-session + CLI suites passed
+  49 tests.
+- **Independent mutation proof** against the named production regression:
+  inverting external mode validation failed 1 test with 35 skipped because
+  contaminated `whoami` returned 0 instead of 2; removing the pull-delivery
+  repair failed 1 test with 35 skipped on missing `deliveryMode:"pull"`.
+  Each restore returned 1 passed/35 skipped and restored
+  `.pi/extensions/pij/core/current-session.ts` byte-identically to SHA-256
+  `16939544a7999f9143e5c829d7eb09114a4f011a8beda1203bb0dd1ba3a6137e`.
+- `just test`: 1,876 passed, 10 skipped. `just pij-skill-check`: passed
+  (routing 70/250; peer 108/150). `just typecheck`: passed. `just lint`:
+  exited 0 with the same 10 pre-existing warnings and Biome schema notice.
+- `harness checks --quick`: typecheck, lint, test, Windows compatibility,
+  package audit, and snapshots passed; smoke skipped by `--quick`.
+- Package-audit-only `.pi/packages.yaml` timestamp drift was restored.
+  `git diff --check` passed. Final content changes are restricted to the seven
+  packet-allowed production/test/skill/log files; review packets remain
+  untracked and unchanged.
+- No registry adapter, descriptor type, daemon, package/lock, harness,
+  workflow, persistence migration, daemon restart, machine-wide deployment,
+  commit, push, merge, or quarantined-peer action occurred.
+
+## Final Residual Repair — Explicit Identity and Append-Only Report History
+
+- Explicit `PIJ_SESSION_ID` no longer short-circuits detectable ambient identity
+  validation in the shared CLI core. Ambient validation failures propagate;
+  a validated ambient id must equal the explicit id or fail `E-AMBIG`; when no
+  ambient native identity exists, direct explicit-id compatibility remains.
+- `phonehome` retains its binding-only bootstrap exception: a pending spawned
+  peer uses its explicit pij id before the ambient reverse join that phonehome
+  itself establishes. CLI subprocess tests now blank inherited host ambient
+  identity variables by default so no-ambient compatibility proof is isolated.
+- External repair preserves append-only `reportedAt` while still clearing
+  `agentOnce`, pane, tick, failure, planned-id, init, and spawn-transcript
+  runtime. The once-close latch therefore remains disabled without deleting
+  report history.
+- Production regression now rejects explicit `PIJ_SESSION_ID` before repair,
+  repairs the same durable id, preserves `reportedAt`, and then resolves the
+  explicit id successfully. Complete residual suites passed 99 tests; the named
+  focused selection passed 18 with 81 skipped.
+- **Independent mutation proof** against the named production regression:
+  moving the explicit-id return ahead of ambient validation failed 1 test with
+  35 skipped because contaminated explicit `whoami` returned 0 instead of 2;
+  deleting `reportedAt` during repair failed 1 test with 35 skipped because the
+  repaired history field was absent. Each restore returned 1 passed/35 skipped.
+  Final byte-identical SHA-256 values:
+  `.pi/extensions/pij/core/cli.ts`
+  `b6f95a832fd96fe58999aaabf56143055b2b39ab75f3b7ecae93480edf960501`;
+  `.pi/extensions/pij/core/current-session.ts`
+  `bfc2be7d3332acee4d51421806e6995b0f8db7f31f951fccfabe6336a83c2ceb`.
+- `just test`: 127 files passed, 4 skipped; 1,878 tests passed, 10 skipped.
+  `just pij-skill-check`, `just typecheck`, and `just lint` passed; lint retained
+  the same 10 pre-existing warnings and Biome schema notice.
+- `harness checks --quick`: typecheck, lint, test, Windows compatibility,
+  package audit, and snapshots passed; smoke skipped by `--quick`.
+  Package-audit-only `.pi/packages.yaml` timestamp drift was restored and
+  `git diff --check` passed.
+- Residual-authored changes are restricted to the Seq 113 scope plus
+  `.pi/extensions/pij/core/cli.ts` and `.pi/extensions/pij/core/cli.test.ts`.
+  A concurrent, unowned one-line compact-discipline update is present in the
+  Phase 3 `tasks.md`; this repair did not author or alter it. Review packets
+  remain untracked and unchanged.
+- No daemon restart, deployment, manual test, commit, push, merge, package/lock,
+  registry/type/daemon migration, or quarantined-identity action occurred.

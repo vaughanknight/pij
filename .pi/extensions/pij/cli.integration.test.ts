@@ -51,6 +51,9 @@ function pij(args: string[], extraEnv: Record<string, string> = {}): { out: stri
 		PIJ_HOME: HOME,
 		PATH: `${BIN}:${process.env.PATH ?? ""}`,
 		TMUX_PANE: "%1",
+		CLAUDE_CODE_SESSION_ID: "",
+		COPILOT_AGENT_SESSION_ID: "",
+		CODEX_THREAD_ID: "",
 		FAKE_TMUX_CWD: FOLDER,
 		FAKE_TMUX_PID: String(process.pid),
 		FAKE_TMUX_LOG: TMUX_LOG,
@@ -162,6 +165,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 
 		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
 		const peer = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/peer.md"), "utf8");
+		const skillGuidance = `${routing}\n${peer}`;
 		const tableCells = (prefix: string): string[] => {
 			const row = routing.split("\n").find((line) => line.startsWith(prefix));
 			if (!row) throw new Error(`missing routing row: ${prefix}`);
@@ -188,6 +192,50 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		);
 		expect(peer).toContain("Pi/tmux replies arrive as `[pij from <id>]` injected turns.");
 		expect(peer).toContain("This is pull delivery, not `pij state` polling (§ C7).");
+		const deliveryOwner = routing.indexOf("| E | Delivery owner |");
+		const selfRegistration = routing.indexOf("| F | Self registration |");
+		expect(deliveryOwner).toBeGreaterThanOrEqual(0);
+		expect(selfRegistration).toBeGreaterThan(deliveryOwner);
+		expect(routing).toContain(
+			"Delivery-owner detection happens before any self-registration advice.",
+		);
+		expect(tableCells("| prereq |")).toEqual([
+			"prereq",
+			"pi extension loaded",
+			'daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h>`',
+			"`pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned",
+		]);
+
+		const externalPullBan = [
+			"Empty or absent `TMUX_PANE` means external pull mode.",
+			"In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command.",
+			"Never infer, guess, select, or adopt any pane id.",
+			"Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers).",
+		];
+		for (const clause of externalPullBan) {
+			expect(routing).toContain(clause);
+			expect(peer).toContain(clause);
+		}
+		const exactTmuxAdopt =
+			'Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.';
+		expect(routing).toContain(exactTmuxAdopt);
+		expect(peer).toContain(
+			'Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.',
+		);
+		expect(peer).toContain(
+			"`E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`",
+		);
+		const externalIdentity = peer.indexOf("**External pull identity — first action**");
+		const externalRegister = peer.indexOf("pij inbox register --json", externalIdentity);
+		const externalWhoami = peer.indexOf("pij whoami [--json]", externalIdentity);
+		expect(externalIdentity).toBeGreaterThanOrEqual(0);
+		expect(externalRegister).toBeGreaterThan(externalIdentity);
+		expect(externalWhoami).toBeGreaterThan(externalRegister);
+		expect(routing).toContain(
+			"In external pull mode, `pij inbox register --json` is the first identity action",
+		);
+		expect(skillGuidance).not.toMatch(/E-NOID[^\n]*adopt first/i);
+		expect(skillGuidance).not.toContain("adopt before anything conversational");
 	});
 
 	it("auto-registers an ambient session before E-NOREG and aliases adopt --current", {
@@ -242,6 +290,154 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			expect(pij(["--help"], env).out).toContain("pij inbox [check|register]");
 		} finally {
 			rmSync(registrationHome, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects and repairs a contaminated external ambient identity in place", {
+		timeout: 30_000,
+	}, () => {
+		const repairHome = mkdtempSync(join(tmpdir(), "pij-contaminated-identity-"));
+		const nativeId = "claude-contaminated-current";
+		const id = "pij-contaminated";
+		const dataDir = join(repairHome, id);
+		const eventsPath = join(dataDir, "events.ndjson");
+		const startedAt = "2026-07-01T00:00:00.000Z";
+		const lastEventAt = "2026-07-12T00:00:00.000Z";
+		const reportedAt = "2026-07-11T01:00:00.000Z";
+		const env = {
+			PIJ_HOME: repairHome,
+			PIJ_SESSION_ID: "",
+			TMUX_PANE: "",
+			CLAUDE_CODE_SESSION_ID: nativeId,
+			COPILOT_AGENT_SESSION_ID: "",
+			CODEX_THREAD_ID: "",
+		};
+		try {
+			const registry = new FsRegistry(repairHome);
+			registry.write({
+				id,
+				role: "worker",
+				prime: true,
+				folder: "/stale",
+				dataDir,
+				eventsPath,
+				pid: 7,
+				startedAt,
+				state: "working",
+				lastEventAt,
+				lastTickAt: "2026-07-12T00:00:01.000Z",
+				paneId: "%0",
+				spawnedBy: "pij-parent",
+				harness: "claude",
+				harnessSessionId: nativeId,
+				plannedHarnessSessionId: nativeId,
+				initInjectedAt: "2026-07-01T00:00:01.000Z",
+				lifecycle: "bound",
+				transcriptsAtSpawn: ["/stale/before.jsonl"],
+				branchedFrom: "claude-source",
+				boundModel: "claude-sonnet-5",
+				effort: "xhigh",
+				failureReason: "dead",
+				agentPack: "flowspace-search",
+				agentPackDir: join(dataDir, "pack"),
+				agentOnce: true,
+				reportedAt,
+			});
+
+			const exactPane = pij(["whoami", "--json"], { ...env, TMUX_PANE: "%0" });
+			expect(exactPane.code).toBe(0);
+			expect(JSON.parse(exactPane.out)).toMatchObject({ id });
+			const exactRegistration = pij(["inbox", "register", "--json"], {
+				...env,
+				TMUX_PANE: "%0",
+			});
+			expect(exactRegistration.code).toBe(0);
+			expect(JSON.parse(exactRegistration.out)).toMatchObject({
+				id,
+				deliveryMode: "push",
+				existing: true,
+			});
+			expect(registry.read(id)).toMatchObject({ paneId: "%0", state: "working" });
+			const takeover = pij(["inbox", "register", "--json"], { ...env, TMUX_PANE: "%9" });
+			expect(takeover.code).toBe(2);
+			expect(takeover.out).toContain('pij adopt "$TMUX_PANE"');
+			expect(registry.read(id)).toMatchObject({ paneId: "%0", state: "working" });
+
+			const rejected = pij(["whoami", "--json"], env);
+			expect(rejected.code).toBe(2);
+			expect(rejected.out).toContain("E-NOID");
+			expect(rejected.out).toContain("pij inbox register");
+			expect(rejected.out).not.toContain(`"id":"${id}"`);
+
+			const explicitEnv = { ...env, PIJ_SESSION_ID: id };
+			const explicitRejected = pij(["whoami", "--json"], explicitEnv);
+			expect(explicitRejected.code).toBe(2);
+			expect(explicitRejected.out).toContain("E-NOID");
+			expect(explicitRejected.out).toContain("pij inbox register");
+			expect(explicitRejected.out).not.toContain(`"id":"${id}"`);
+
+			const repairedResult = pij(["inbox", "register", "--json"], env);
+			expect(repairedResult.code).toBe(0);
+			expect(JSON.parse(repairedResult.out)).toMatchObject({
+				id,
+				deliveryMode: "pull",
+				existing: true,
+			});
+			const repaired = registry.read(id);
+			expect(repaired).toMatchObject({
+				id,
+				role: "worker",
+				prime: true,
+				folder: FOLDER,
+				dataDir,
+				eventsPath,
+				startedAt,
+				state: "idle",
+				lastEventAt,
+				spawnedBy: "pij-parent",
+				harness: "claude",
+				harnessSessionId: nativeId,
+				lifecycle: "bound",
+				deliveryMode: "pull",
+				branchedFrom: "claude-source",
+				boundModel: "claude-sonnet-5",
+				effort: "xhigh",
+				agentPack: "flowspace-search",
+				agentPackDir: join(dataDir, "pack"),
+			});
+			expect(repaired?.pid).toBeGreaterThan(1);
+			expect(repaired?.pid).not.toBe(7);
+			expect(repaired?.paneId).toBeUndefined();
+			expect(repaired?.lastTickAt).toBeUndefined();
+			expect(repaired?.failureReason).toBeUndefined();
+			expect(repaired?.plannedHarnessSessionId).toBeUndefined();
+			expect(repaired?.initInjectedAt).toBeUndefined();
+			expect(repaired?.transcriptsAtSpawn).toBeUndefined();
+			expect(repaired?.agentOnce).toBeUndefined();
+			expect(repaired?.reportedAt).toBe(reportedAt);
+
+			const repeat = pij(["inbox", "register", "--json"], env);
+			expect(repeat.code).toBe(0);
+			expect(JSON.parse(repeat.out)).toMatchObject({
+				id,
+				deliveryMode: "pull",
+				existing: true,
+			});
+			const repeated = registry.read(id);
+			if (!repaired || !repeated) throw new Error("missing repaired descriptor");
+			const { pid: _firstPid, ...firstStable } = repaired;
+			const { pid: _repeatPid, ...repeatStable } = repeated;
+			expect(repeatStable).toEqual(firstStable);
+
+			const resolved = pij(["whoami", "--json"], env);
+			expect(resolved.code).toBe(0);
+			expect(JSON.parse(resolved.out)).toMatchObject({ id });
+
+			const explicitResolved = pij(["whoami", "--json"], explicitEnv);
+			expect(explicitResolved.code).toBe(0);
+			expect(JSON.parse(explicitResolved.out)).toMatchObject({ id });
+		} finally {
+			rmSync(repairHome, { recursive: true, force: true });
 		}
 	});
 

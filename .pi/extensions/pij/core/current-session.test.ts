@@ -84,38 +84,22 @@ describe("planCurrentSessionDescriptor", () => {
 		lifecycle: "bound",
 		prime: true,
 		failureReason: "dead",
+		lastEventAt: "2026-07-11T00:00:00.000Z",
+		lastTickAt: "2026-07-12T00:00:00.000Z",
+		spawnedBy: "pij-parent",
+		plannedHarnessSessionId: CODEX_UUID.toLowerCase(),
+		initInjectedAt: "2026-07-01T00:00:01.000Z",
+		transcriptsAtSpawn: ["/old/before.jsonl"],
+		boundModel: "openai/gpt-5.6-sol",
+		effort: "xhigh",
+		branchedFrom: "codex-source",
+		agentPack: "flowspace-search",
+		agentPackDir: "/home/.pij/pij-durable/pack",
+		agentOnce: true,
+		reportedAt: "2026-07-11T01:00:00.000Z",
 	};
 
-	it("preserves an existing pane-bound descriptor's push attachment", () => {
-		expect(
-			planCurrentSessionDescriptor({
-				id: existing.id,
-				identity: {
-					harness: "codex",
-					harnessSessionId: CODEX_UUID.toLowerCase(),
-					transcriptPath: CODEX_PATH,
-				},
-				pijHome: "/home/.pij",
-				folder: "/repo",
-				pid: 99,
-				startedAt: "2026-07-12T00:00:00.000Z",
-				existing,
-			}),
-		).toMatchObject({
-			id: "pij-durable",
-			folder: "/old",
-			dataDir: existing.dataDir,
-			eventsPath: existing.eventsPath,
-			pid: 10,
-			startedAt: existing.startedAt,
-			state: "working",
-			harness: "codex",
-			harnessSessionId: CODEX_UUID.toLowerCase(),
-			transcriptPath: CODEX_PATH,
-			lifecycle: "bound",
-			prime: true,
-			paneId: "%7",
-		});
+	it("repairs a pane-bound descriptor to external pull while preserving durable history", () => {
 		const planned = planCurrentSessionDescriptor({
 			id: existing.id,
 			identity: {
@@ -129,14 +113,42 @@ describe("planCurrentSessionDescriptor", () => {
 			startedAt: "2026-07-12T00:00:00.000Z",
 			existing,
 		});
-		expect(planned.deliveryMode).toBeUndefined();
+		expect(planned).toMatchObject({
+			id: "pij-durable",
+			folder: "/repo",
+			dataDir: existing.dataDir,
+			eventsPath: existing.eventsPath,
+			pid: 99,
+			startedAt: existing.startedAt,
+			state: "idle",
+			harness: "codex",
+			harnessSessionId: CODEX_UUID.toLowerCase(),
+			transcriptPath: CODEX_PATH,
+			lifecycle: "bound",
+			deliveryMode: "pull",
+			prime: true,
+			lastEventAt: existing.lastEventAt,
+			spawnedBy: existing.spawnedBy,
+			boundModel: existing.boundModel,
+			effort: existing.effort,
+			branchedFrom: existing.branchedFrom,
+			agentPack: existing.agentPack,
+			agentPackDir: existing.agentPackDir,
+			reportedAt: existing.reportedAt,
+		});
+		expect(planned.paneId).toBeUndefined();
+		expect(planned.lastTickAt).toBeUndefined();
 		expect(planned.failureReason).toBeUndefined();
+		expect(planned.plannedHarnessSessionId).toBeUndefined();
+		expect(planned.initInjectedAt).toBeUndefined();
+		expect(planned.transcriptsAtSpawn).toBeUndefined();
+		expect(planned.agentOnce).toBeUndefined();
+		expect(planned.reportedAt).toBe(existing.reportedAt);
 	});
 
-	it("plans pull delivery when the reusable descriptor has no pane attachment", () => {
-		const { paneId: _paneId, ...detached } = existing;
-		const planned = planCurrentSessionDescriptor({
-			id: detached.id,
+	it("is idempotent when planning an already repaired external descriptor", () => {
+		const input = {
+			id: existing.id,
 			identity: {
 				harness: "codex",
 				harnessSessionId: CODEX_UUID.toLowerCase(),
@@ -146,14 +158,11 @@ describe("planCurrentSessionDescriptor", () => {
 			folder: "/repo",
 			pid: 99,
 			startedAt: "2026-07-12T00:00:00.000Z",
-			existing: detached,
-		});
-		expect(planned).toMatchObject({
-			id: "pij-durable",
-			deliveryMode: "pull",
-			lifecycle: "bound",
-		});
-		expect(planned.paneId).toBeUndefined();
+			existing,
+		} as const;
+		const first = planCurrentSessionDescriptor(input);
+		const repeat = planCurrentSessionDescriptor({ ...input, existing: first });
+		expect(repeat).toEqual(first);
 	});
 });
 
@@ -162,7 +171,10 @@ describe("resolveRegisteredAmbientSelf", () => {
 		harness: "claude",
 		harnessSessionId: "claude-current",
 	} as const;
-	const descriptor = (id: string): SessionDescriptor => ({
+	const descriptor = (
+		id: string,
+		overrides: Partial<SessionDescriptor> = {},
+	): SessionDescriptor => ({
 		id,
 		folder: "/repo",
 		dataDir: `/home/.pij/${id}`,
@@ -171,14 +183,26 @@ describe("resolveRegisteredAmbientSelf", () => {
 		startedAt: "2026-07-12T00:00:00.000Z",
 		harness: identity.harness,
 		harnessSessionId: identity.harnessSessionId,
+		deliveryMode: "pull",
 		lifecycle: "bound",
+		...overrides,
 	});
 
-	it("returns the durable reverse join when live metadata agrees", () => {
-		expect(resolveRegisteredAmbientSelf(identity, [descriptor("pij-exact")], "pij-exact")).toEqual({
-			ok: true,
-			value: "pij-exact",
-		});
+	it("accepts a paneless pull descriptor outside tmux", () => {
+		expect(
+			resolveRegisteredAmbientSelf(identity, [descriptor("pij-exact")], "pij-exact", undefined),
+		).toEqual({ ok: true, value: "pij-exact" });
+	});
+
+	it("accepts only the exact current pane when the descriptor is not pull-owned", () => {
+		expect(
+			resolveRegisteredAmbientSelf(
+				identity,
+				[descriptor("pij-exact", { paneId: "%7", deliveryMode: undefined })],
+				"pij-exact",
+				"%7",
+			),
+		).toEqual({ ok: true, value: "pij-exact" });
 	});
 
 	it("fails loudly for duplicate or contradictory exact joins", () => {
@@ -187,19 +211,53 @@ describe("resolveRegisteredAmbientSelf", () => {
 				identity,
 				[descriptor("pij-first"), descriptor("pij-second")],
 				"pij-first",
+				undefined,
 			),
 		).toMatchObject({ ok: false, code: "E-AMBIG" });
-		expect(
-			resolveRegisteredAmbientSelf(identity, [descriptor("pij-live")], "pij-durable"),
-		).toMatchObject({
+		const contradictory = resolveRegisteredAmbientSelf(
+			identity,
+			[descriptor("pij-live")],
+			"pij-durable",
+			undefined,
+		);
+		expect(contradictory).toMatchObject({
 			ok: false,
 			code: "E-AMBIG",
 		});
+		if (!contradictory.ok) expect(contradictory.message).toContain("pij inbox register");
 	});
 
 	it("returns E-NOID when the ambient native tuple has no durable registration", () => {
-		const result = resolveRegisteredAmbientSelf(identity, [], undefined);
+		const result = resolveRegisteredAmbientSelf(identity, [], undefined, undefined);
 		expect(result).toMatchObject({ ok: false, code: "E-NOID" });
 		if (!result.ok) expect(result.message).toContain("pij inbox register");
+	});
+
+	it("rejects stale push attachment outside tmux and mismatched attachment inside tmux", () => {
+		const stale = descriptor("pij-stale", { paneId: "%0", deliveryMode: undefined });
+		const external = resolveRegisteredAmbientSelf(identity, [stale], stale.id, undefined);
+		expect(external).toMatchObject({ ok: false, code: "E-NOID" });
+		if (!external.ok) expect(external.message).toContain("pij inbox register");
+
+		const tmux = resolveRegisteredAmbientSelf(identity, [stale], stale.id, "%7");
+		expect(tmux).toMatchObject({ ok: false, code: "E-NOID" });
+		if (!tmux.ok) {
+			expect(tmux.message).toContain('pij adopt "$TMUX_PANE"');
+			expect(tmux.message).toContain("%7");
+		}
+	});
+
+	it("rejects missing or non-pull external descriptors", () => {
+		const missing = resolveRegisteredAmbientSelf(identity, [], "pij-missing", undefined);
+		expect(missing).toMatchObject({ ok: false, code: "E-NOID" });
+		if (!missing.ok) expect(missing.message).toContain("pij inbox register");
+
+		const nonPull = resolveRegisteredAmbientSelf(
+			identity,
+			[descriptor("pij-push", { deliveryMode: "push" })],
+			"pij-push",
+			undefined,
+		);
+		expect(nonPull).toMatchObject({ ok: false, code: "E-NOID" });
 	});
 });

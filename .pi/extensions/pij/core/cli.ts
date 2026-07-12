@@ -490,22 +490,31 @@ function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
 function selfId(deps: CliDeps): Result<SessionId> {
 	const envId = deps.process.env("PIJ_SESSION_ID");
 	const pane = deps.process.env("TMUX_PANE");
-	if (envId && envId.trim() !== "") return resolveSelf(envId, [], pane);
+	const explicitId = envId?.trim() || undefined;
 	const ambient = deps.resolveAmbientSelf?.();
 	if (ambient) {
 		if (!ambient.ok) return ambient;
-		if (ambient.value) return ok(ambient.value);
+		if (ambient.value) {
+			if (explicitId && explicitId !== ambient.value) {
+				return err(
+					"E-AMBIG",
+					`PIJ_SESSION_ID ${explicitId} does not match ambient session ${ambient.value}`,
+				);
+			}
+			return ok(ambient.value);
+		}
 	}
+	if (explicitId) return resolveSelf(explicitId, [], pane);
 	// Pane-first across the FULL registry (FX001-1 / DL-003): tmux pane ids are
 	// server-global, so a registered pane identifies the caller regardless of cwd.
 	// The folder filter below starved resolveSelf's pane branch on cross-repo
 	// calls, silently losing spawnedBy (reports then died E-NOREPORTTARGET).
-	if ((!envId || envId.trim() === "") && pane && pane.trim() !== "") {
+	if (pane && pane.trim() !== "") {
 		const byPane = deps.registry.list().filter((d) => d.paneId === pane);
 		const only = byPane[0];
 		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
 	}
-	return resolveSelf(envId, filterByFolder(deps.registry.list(), deps.cwd), pane);
+	return resolveSelf(undefined, filterByFolder(deps.registry.list(), deps.cwd), pane);
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────
@@ -1000,8 +1009,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		}
 		case "phonehome": {
 			// Confirmatory binding: the agent self-reports the current native id from
-			// its own harness-specific env. Never read another harness's variable.
-			const s = selfId(deps);
+			// its own harness-specific env. A pending peer cannot pass ambient reverse-
+			// join validation until this operation binds it, so the spawn-provided
+			// explicit id remains the bootstrap identity for phonehome only.
+			const explicitId = deps.process.env("PIJ_SESSION_ID");
+			const s =
+				explicitId && explicitId.trim() !== ""
+					? resolveSelf(explicitId, [], deps.process.env("TMUX_PANE"))
+					: selfId(deps);
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
 			const d = deps.registry.read(s.value);
 			if (!d) return fail("E-NOID", `no session '${s.value}' in registry`, cmd.json);

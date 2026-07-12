@@ -67,14 +67,21 @@ export function resolveRegisteredAmbientSelf(
 	identity: AmbientNativeIdentity,
 	descriptors: readonly SessionDescriptor[],
 	durableId: SessionId | undefined,
+	currentPane: string | undefined,
 ): Result<SessionId> {
+	const pane = currentPane && currentPane.trim() !== "" ? currentPane : undefined;
+	const action = pane
+		? `run pij adopt "$TMUX_PANE" --harness ${identity.harness} from this exact pane`
+		: "run pij inbox register";
+	const reject = (code: "E-AMBIG" | "E-NOID", message: string): Result<SessionId> =>
+		err(code, `${message}; ${action}`);
 	const exact = descriptors.filter(
 		(descriptor) =>
 			descriptor.harness === identity.harness &&
 			descriptor.harnessSessionId === identity.harnessSessionId,
 	);
 	if (exact.length > 1) {
-		return err(
+		return reject(
 			"E-AMBIG",
 			`identity ${identity.harness}:${identity.harnessSessionId} maps to multiple pij ids: ${exact
 				.map(({ id }) => id)
@@ -83,15 +90,44 @@ export function resolveRegisteredAmbientSelf(
 	}
 	const live = exact[0];
 	if (durableId && live && live.id !== durableId) {
-		return err(
+		return reject(
 			"E-AMBIG",
 			`durable identity ${identity.harness}:${identity.harnessSessionId} is ${durableId}, but live descriptor is ${live.id}`,
 		);
 	}
+	const durableDescriptor = durableId
+		? descriptors.find((descriptor) => descriptor.id === durableId)
+		: undefined;
+	if (
+		durableDescriptor &&
+		(durableDescriptor.harness !== identity.harness ||
+			durableDescriptor.harnessSessionId !== identity.harnessSessionId)
+	) {
+		return reject(
+			"E-AMBIG",
+			`durable identity ${identity.harness}:${identity.harnessSessionId} points to contradictory descriptor ${durableId}`,
+		);
+	}
 	if (!durableId) {
-		return err(
+		return reject("E-NOID", `current ${identity.harness} session is not registered`);
+	}
+	if (!live) {
+		return reject(
 			"E-NOID",
-			`current ${identity.harness} session is not registered; run pij inbox register`,
+			`current ${identity.harness} session has no live descriptor for ${durableId}`,
+		);
+	}
+	if (pane) {
+		if (live.paneId !== pane || live.deliveryMode === "pull") {
+			return reject(
+				"E-NOID",
+				`current ${identity.harness} session is not push-attached to the current process pane ${pane}`,
+			);
+		}
+	} else if (live.paneId !== undefined || live.deliveryMode !== "pull") {
+		return reject(
+			"E-NOID",
+			`current ${identity.harness} session is not registered as a paneless pull peer`,
 		);
 	}
 	return ok(durableId);
@@ -107,17 +143,21 @@ export interface CurrentSessionDescriptorInput {
 	readonly existing?: SessionDescriptor;
 }
 
-/** Build the descriptor shape used by first-use ambient registration. Runtime
- * attachment fields are refreshed; durable identity metadata and history stay. */
+/** Build the descriptor shape used by external ambient registration. Pane/push
+ * runtime is scrubbed while durable identity metadata and history stay. */
 export function planCurrentSessionDescriptor(
 	input: CurrentSessionDescriptorInput,
 ): SessionDescriptor {
 	const {
+		agentOnce: _agentOnce,
 		deliveryMode: _deliveryMode,
 		failureReason: _failureReason,
+		initInjectedAt: _initInjectedAt,
 		lastTickAt: _lastTickAt,
 		paneId: _paneId,
+		plannedHarnessSessionId: _plannedHarnessSessionId,
 		transcriptPath: _transcriptPath,
+		transcriptsAtSpawn: _transcriptsAtSpawn,
 		...durable
 	} = input.existing ?? {
 		id: input.id,
@@ -127,30 +167,19 @@ export function planCurrentSessionDescriptor(
 		pid: input.pid,
 		startedAt: input.startedAt,
 	};
-	const paneBound = input.existing?.paneId !== undefined;
 	return {
 		...durable,
 		id: input.id,
-		folder: paneBound ? input.existing.folder : input.folder,
+		folder: input.folder,
 		dataDir: input.existing?.dataDir ?? join(input.pijHome, input.id),
 		eventsPath: input.existing?.eventsPath ?? join(input.pijHome, input.id, "events.ndjson"),
-		pid: paneBound ? input.existing.pid : input.pid,
+		pid: input.pid,
 		startedAt: input.existing?.startedAt ?? input.startedAt,
-		state: paneBound ? (input.existing.state ?? "idle") : "idle",
+		state: "idle",
 		harness: input.identity.harness,
 		harnessSessionId: input.identity.harnessSessionId,
 		lifecycle: "bound",
-		...(paneBound
-			? {
-					paneId: input.existing.paneId,
-					...(input.existing.deliveryMode !== undefined
-						? { deliveryMode: input.existing.deliveryMode }
-						: {}),
-					...(input.existing.lastTickAt !== undefined
-						? { lastTickAt: input.existing.lastTickAt }
-						: {}),
-				}
-			: { deliveryMode: "pull" as const }),
+		deliveryMode: "pull",
 		...(input.identity.transcriptPath ? { transcriptPath: input.identity.transcriptPath } : {}),
 	};
 }

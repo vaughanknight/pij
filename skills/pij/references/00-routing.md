@@ -12,10 +12,10 @@ All probes are deterministic files/commands; remember nothing between calls.
 | B | Live fleet roster | that same newest `run.json` → `roster.<role>.{pijId, spawnedByUs}`; liveness per id via `pij state <id>` or presence of `~/.pij/<id>.json` | `pair` reattach (live) or `ops` heal/teardown (dead, spawnedByUs) |
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
 | D | Daemon alive | `pij daemon status` | down + any spawn intent → `ops` boot first (spawn also auto-starts it) |
-| E | Self adopted | `pij whoami` (E-NOID / empty = not registered) | control-plane precondition: adopt before anything conversational (C1) |
-| F | Delivery owner | in-process `pij_spawn` callable → pi push; else non-empty `$TMUX_PANE` → tmux push; else → external pull | `peer` uses the matching receive path in C1/C7 |
+| E | Delivery owner | in-process `pij_spawn` callable → pi push; else exact non-empty `$TMUX_PANE` → tmux push; else empty/absent `TMUX_PANE` → external pull | detect before self-registration advice; `peer` uses the matching identity and receive path in C1/C7 |
+| F | Self registration | after E: pi is already owned; tmux may probe `pij whoami`; external runs `pij inbox register --json` first | tmux adopts only exact `$TMUX_PANE`; external registration repairs stale push attachment before any other identity/view action (C1) |
 
-**Precedence**: A > B > C > D/E (D/E are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
+**Precedence**: A > B > C > D/F (D/F are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
 
 **A hint is never a command**: `/pij pair` with no daemon → boot first; `/pij pair` with no open run and no active flow → confirm intent to start fresh. Validate the precondition, redirect with one line of why.
 
@@ -25,11 +25,11 @@ Cited by route modules as "§ C*n*" — prose lives here only.
 
 ### C1 — Harness and delivery modes
 
-Detect **once per run**, in order: callable in-process `pij_spawn` → **pi push mode**; otherwise non-empty `$TMUX_PANE` → **tmux control-plane push mode**; otherwise → **external pull mode**. Pi injects in-process. Tmux peers use the CLI plus daemon/send-keys. External Claude/Copilot/Codex sessions have no pane for the daemon to inject, so they receive through the durable inbox CLI.
+Delivery-owner detection happens before any self-registration advice. Detect **once per run**, in order: callable in-process `pij_spawn` → **pi push mode**; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push mode**; otherwise empty or absent `TMUX_PANE` → **external pull mode**. Pi injects in-process. Tmux peers use the CLI plus daemon/send-keys. External Claude/Copilot/Codex sessions have no pane for the daemon to inject, so they receive through the durable inbox CLI.
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|
-| prereq | pi extension loaded | daemon (spawn auto-starts it) + self-adopt once: `pij adopt "$TMUX_PANE" --harness <h>` | `pij inbox --wait` — first use auto-registers the ambient session as pull-owned |
+| prereq | pi extension loaded | daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h>` | `pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned |
 | spawn | `pij_spawn({model, layout})` | `pij spawn --harness claude\|copilot\|codex\|pi …` | unavailable without tmux; converse with existing peers |
 | message | `pij_send({to, message})` | `pij send <id> "<text>"` | register/inbox first, then `pij send <id> "<text>"` |
 | receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms]` |
@@ -37,7 +37,13 @@ Detect **once per run**, in order: callable in-process `pij_spawn` → **pi push
 | peek | `pij tail <id>` | `pij tail <id> [--follow]` | `pij tail <id>` |
 | close | `pij_close({to})` | `pij close <id> [--force]` | ownership-aware CLI close only |
 
-Without self-adopt in tmux mode, replies have nowhere to land. In external pull mode, `pij inbox` registration creates that durable address without a daemon or pane. Model names differ per harness; `pij spawn` auto-applies each harness's blanket-permission flag.
+Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. Without that exact self-adopt in tmux mode, replies have nowhere to land.
+
+Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers). That registration creates the durable address without a daemon or pane.
+
+In external pull mode, `pij inbox register --json` is the first identity action — before `pij whoami`, `pij list`, `pij state`, `pij tail`, or any manual acknowledgement path. It repairs an exact durable ambient identity to paneless pull ownership; after it succeeds, `pij whoami` is a valid confirmation.
+
+Model names differ per harness; `pij spawn` auto-applies each harness's blanket-permission flag.
 
 ### C2 — Canary-verify (a ready-ping is NOT proof)
 
