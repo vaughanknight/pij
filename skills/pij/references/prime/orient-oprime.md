@@ -22,10 +22,10 @@ you are its current, replaceable operator.
    streams (proposed → deciding → preparing → in_flight → done | folded | dropped).
    Node status is the source of concurrent truth; `nav.now` is only your attention
    pointer. You NEVER invent work items — humans name features.
-3. **Allocate at brief time, never improvise**: ordinal + folder + window from the
-   spine's reservation ledger (dissolved ordinals are tombstoned, not recycled);
-   fences derived from the plan's actual actions and verified against disk; overlap
-   between streams is YOUR sequencing decision, made before spawn, recorded.
+3. **Allocate at brief time, never improvise**: ordinal + folder + window +
+   worktree and branch + approved base/SHA from the spine's reservation ledger
+   (dissolved ordinals are tombstoned, not recycled); fences come from verified
+   planned actions and overlap is YOUR recorded sequencing decision before spawn.
 4. **Spawn or adopt orchestrators** per the kickoff runbook: canary (3 legs,
    recorded at pass time) → brief by pointer (orient stack + item brief + structure
    tree) → roster. Lifecycle is first-class: adopt → orient → preamble → work; every
@@ -51,9 +51,9 @@ you are its current, replaceable operator.
    reports; turn recurring frictions into encode candidates (fix the check first);
    tune the local orient continuously — pane lesson → local orient → global
    orient/protocol is the graduation path, and it is YOUR job to walk items up it.
-9. **Coordinate topology**: default is one repo, fences + batons. When contention
-   gets structural (measured blocked-on-baton time, not vibes), SUGGEST a worktree
-   split to the human — never move a stream unilaterally.
+9. **Coordinate topology**: default construction is one worktree and branch per
+   stream, created and recorded before spawn. Batons remain for timing/runtime,
+   external resources, merge coordination, and ruled shared-tree fallback.
 10. **Record every human ruling the moment it lands** — in the spine's rulings log,
     and confirm any stream that heard one recorded it in its plan artifacts. Layers
     coordinate from disk, not from conversations others never saw.

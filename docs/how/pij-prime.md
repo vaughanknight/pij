@@ -17,15 +17,17 @@ The route runs deterministic role triage and points to one next file:
 
 - [prime route](../../skills/pij/references/routes/prime.md)
 - [o-prime orient](../../skills/pij/references/prime/orient-oprime.md)
-- [stream orient](../../skills/pij/references/prime/orient-global.md)
+- [stream orchestrator landing](../../skills/pij/references/prime/orchestrator.md)
 
 Load only the selected rung. The consuming repo's stream path also reads its
-generated `government/orient-local.md`.
+portable orient, generated `government/orient-local.md`, and item brief through
+the landing module.
 
 ## Operator index
 
 | Need | Canonical page |
 |---|---|
+| Enter the stream-orchestrator role and journey | [orchestrator landing](../../skills/pij/references/prime/orchestrator.md) |
 | Stand up a government and seat | [bootstrap ritual](../../skills/pij/references/prime/rituals/bootstrap.md) |
 | Spawn/adopt, canary, brief, or tear down a stream | [kickoff ritual](../../skills/pij/references/prime/rituals/kickoff.md) |
 | Serialize an exclusive resource | [baton ritual](../../skills/pij/references/prime/rituals/batons.md) |
@@ -35,6 +37,20 @@ generated `government/orient-local.md`.
 | See labeled historical evidence | [exemplars](../../skills/pij/references/prime/exemplars/) |
 
 The ritual pages own procedure. This guide intentionally does not duplicate it.
+
+## Stream lifecycle
+
+The o-prime allocates and records one worktree/branch/base per stream, then runs
+peer spawn from that worktree into a new orchestrator window. `/pij prime` lands
+the stream on its role module; after thesis, preamble, guided Builder planning,
+and cold validation, it waits for the human's fleet configuration.
+
+Implementation runs through `/pij pair`: coder and separate reviewer are splits
+inside the orchestrator window and inherit the stream cwd. Approved work lands
+through `/builder 8 ship` (confirm-gated push and PR, watched CI, optional merge).
+Remove the worktree only after merge or an explicit abandonment ruling. Batons
+remain for timing/runtime purity, external resources, merge coordination, and
+shared-tree fallback.
 
 ## Registry designation
 
@@ -74,5 +90,5 @@ Portable levers and the prime-flow schema ship under
 and prime-flow instance inside the repo; it does not fork the portable levers.
 
 Run `just pij-skill-check` after changing the route or payload. The gate checks
-registry parity, pointer integrity, portability, sibling-blindness, expected
-evidence, and advisory line budgets.
+registry parity, pointer integrity, the orchestrator journey, worktree lifecycle,
+portability, sibling-blindness, expected evidence, and line budgets.

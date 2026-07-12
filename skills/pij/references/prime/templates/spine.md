@@ -6,8 +6,8 @@
 
 ## Roster
 
-| Stream | Plan | Window | Peer | Lifecycle/status | Fences | Batons held | Last report |
-|---|---|---|---|---|---|---|---|
+| Stream | Plan | Worktree | Branch / Base | Window | Peer | Lifecycle/status | Fences | Batons held | Last report |
+|---|---|---|---|---|---|---|---|---|---|
 
 ## Fences — <stream id>
 
@@ -28,7 +28,11 @@
 ## Allocation ledger
 
 - <ISO>: scanned existing ordinals; next free = <NNN>.
-- <ISO>: reserved/tombstoned <ordinal>, `<folder>`, `<window>`.
+- <ISO>: reserved <ordinal>, `<folder>`, `<window>`, Worktree `<path>`, Branch
+  `<branch>`, Base `<branch>@<SHA>`; status `preparing`.
+- <ISO>: created/verified worktree before spawn.
+- <ISO>: after PR merge or explicit abandonment, removed worktree and tombstoned
+  <ordinal>, `<folder>`, `<window>`, and `<branch>`.
 
 ## Rulings
 

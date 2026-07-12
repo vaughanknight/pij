@@ -339,7 +339,10 @@ describe("FsRegistry", () => {
 		});
 	});
 
-	it("overlapping processes claiming one free native identity all converge on attempt zero", async () => {
+	// 4 rounds of real overlapping process spawns; exceeds the 5s default on slow CI runners.
+	it("overlapping processes claiming one free native identity all converge on attempt zero", {
+		timeout: 30_000,
+	}, async () => {
 		const seed = "multiprocess-free";
 		for (let round = 0; round < 4; round++) {
 			const raceHome = join(home, `free-${round}`);
@@ -359,7 +362,9 @@ describe("FsRegistry", () => {
 		}
 	});
 
-	it("overlapping processes skip an unowned legacy attempt zero without changing its bytes", async () => {
+	it("overlapping processes skip an unowned legacy attempt zero without changing its bytes", {
+		timeout: 30_000,
+	}, async () => {
 		const seed = "multiprocess-legacy";
 		for (let round = 0; round < 4; round++) {
 			const raceHome = join(home, `legacy-${round}`);

@@ -60,26 +60,31 @@ done | folded | dropped`, plus `blocked`. Node status is concurrent truth;
 Every orchestrator moves through `adopt → orient → preamble → work`:
 
 - adoption takes governance and proves the channel;
-- orientation is read-only and loads global orient, repo-local orient, item
-  brief;
+- orientation enters through `/pij prime`, loads the orchestrator module, global
+  orient, repo-local orient, item brief, and invokes `/thesis`;
 - the human preamble confirms the provisional assignment;
-- work starts after the preamble report.
+- work starts after the preamble report; validated plans stop at
+  `WAITING_FOR_BUILD_CONFIG` until the human confirms the fleet.
 
 Kickoff and teardown live in [`rituals/kickoff.md`](./rituals/kickoff.md).
 
-## Fences and batons
+## Construction, fences, batons, and landing
 
-Fences partition files. Derive them from planned actions, verify paths on disk,
-name scratch explicitly, and record overlap as a sequencing decision. Any new
-path is an escalation with independent verification and a recorded grant.
+The worktree-primary construction path gives each stream one recorded branch and working
+tree based on an approved SHA. Create and verify it before spawn; run peer spawn
+from that cwd so descriptor and pane inherit it. Worktrees isolate trees/indexes,
+not dependency claims, runtime interference, or merge collisions.
 
-Batons serialize time on resources that fail under two users. The book binds
-its keeper; self-grant is a real logged cycle. Reclaim checks whether the
-purpose completed, not merely whether the holder died. The full lifecycle is in
+Fences still partition files. Derive them from planned actions, verify paths on
+disk, name scratch explicitly, and escalate any new path. Batons serialize
+timing/runtime, external resources, merge coordination, and the ruled
+shared-tree fallback; the full lifecycle is in
 [`rituals/batons.md`](./rituals/batons.md).
 
-The shared tree must compile at every yield. Scratch holds work until it builds;
-a non-owner never fixes a sibling's broken file — route an urgent owner-fix.
+Approved work lands through `/builder 8 ship`: confirm-gated branch push, PR open,
+watched CI, then optional typed-confirm merge. Remove the worktree only after PR
+merge or explicit abandonment. In shared-tree fallback, scratch/staging,
+pathspec commits, staged-set checks, and commit slots remain mandatory.
 
 ## Reports and verification
 

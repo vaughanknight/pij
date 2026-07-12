@@ -33,6 +33,8 @@ Inspect the repo; do not copy the worked example's answers.
 | Batons | What breaks under two concurrent users? Add a probe for "free" | dotnet, Godot window, push-main |
 | Never-stage | Generated/local state missed by ignore rules | `.fs2/`, `.flow-pair/**`, scratch |
 | Flow-state rule | Which files have CLI-only, single-writer mutation? | `the-flow.json` via `harness flow` |
+| Worktree root/naming | Where isolated stream worktrees live; deterministic path pattern | sibling directory + `s<ord>-<slug>` |
+| Base + landing | Approved base/SHA; branch push/PR/CI/merge surface | `main`; `/builder 8 ship` |
 | Fleet defaults | Cheapest harness/model that clears the repo bar | copilot coder + cold reviewer |
 | Human digest | Where short main-event notices land | self-identified pij/Telegram message |
 | Ceremony tier | Cheapest safe add/commit/push worker | small ceremony peer |
@@ -75,8 +77,10 @@ Node status is concurrent truth; `nav.now` is only the seat's attention.
 ## 5. Open intake and govern
 
 1. Human-named items enter the prime-flow as `proposed` or `deciding`.
-2. At `preparing`, reserve ordinal/folder/window, derive fences from actions,
-   record overlap decisions, then run [`kickoff.md`](./kickoff.md).
+2. At `preparing`, reserve ordinal/folder/window/worktree/branch/base, derive
+   fences, and persist the row, then delegate to [`kickoff.md`](./kickoff.md).
+   Kickoff is the sole construction owner; bootstrap only derives and reserves
+   the inputs.
 3. Assignment stays provisional through `adopt → orient → preamble`; move the
    node to `in_flight` only after the preamble report lands.
 4. In steady state: verify then relay, serialize batons, route cross-stream

@@ -11,7 +11,9 @@ no code path ever writes the book.
 
 Start from [`../templates/baton-book.md`](../templates/baton-book.md). A baton is
 anything that breaks under two concurrent users: shared build locks, one editor
-window, a shared-trunk push, or a timing run polluted by sibling activity.
+window, an external service, merge coordination, a timing run polluted by sibling
+activity, or git/index use during a ruled shared-tree fallback. Routine per-stream
+worktree construction is not a baton.
 
 ## Lifecycle (ritual step → primitive verb)
 
@@ -53,9 +55,10 @@ Worked examples of the reclaim and breach records: [`../exemplars/grant-log.md`]
   completed is a human read of the evidence (a dead holder's commit may exist).
 - **Stale pins**: mechanized — grant compares pin vs current HEAD and demands
   `--repin`; an unverifiable HEAD demands it too.
-- **Queued posture**: pre-stage the whole batch in scratch and land it inside the
-  granted window — waiting is for the window, never for the work.
-- **Writing docs while another seat holds git-index**: unstaged-only edits,
+- **Queued posture**: for a shared-tree fallback, pre-stage the whole batch in
+  scratch and land it inside the granted window. For timing/external batons,
+  prepare every non-contending input while waiting.
+- **Writing docs while another seat holds fallback git-index**: unstaged-only edits,
   disclosed to the holder — a bare `git add -A` during a sibling's window once
   swept 24 of its staged files into a stranger's commit (INC-004's class; it keeps
   recurring, which is why the index is a named baton surface).
@@ -63,7 +66,8 @@ Worked examples of the reclaim and breach records: [`../exemplars/grant-log.md`]
   explicit reclaims.
 - **Breach**: stop competing use, tell the holder, record it, then fix the paved
   path that invited it. Honor system means the record is the enforcement.
-- **Contention**: `show --json` blocked-time is the datum; persistent contention
-  supports a worktree suggestion to the human — never a unilateral move.
+- **Contention**: `show --json` blocked-time is the datum. Worktrees are already
+  the construction default; persistent timing/runtime contention informs a new
+  sensor, resource split, or human sequencing ruling.
 
 Fences partition files; batons serialize time. Neither replaces the other.

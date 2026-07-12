@@ -40,19 +40,17 @@ every one shipped a standing rule the same hour.
    (lesson → proposed encoding → INC-NNN receipt) riding the normal
    graduation path — ritual text, template, check, or tooling patch.
 
-## Worked exemplar — INC-004, the swept index (run-01, 08:12Z)
+## Worked exemplar — INC-004, shared-tree fallback swept index (run-01, 08:12Z)
 
-A stream ran a bare `git commit` during a sibling's apply window; the shared
-index swept **24 of the sibling's staged files** into the commit. Detected in
-seconds — by the committer, reading its own commit stat. Repair: soft-reset
-preserving the victim's staged index, path-limited recommit; closer re-counted
-the swept set against the orphan commit before closing. Root cause named: the
-index/HEAD is a serialized surface *distinct from build locks*, and the "no
-baton needed" authorization had scoped builds but not commit timing. Standing
-rules shipped within minutes and adopted by all three live streams:
-**pathspec-mandatory commits** (`git commit -- <paths>`; never bare) and a
-**commit-slot convention** (announce → ack → commit → confirm) while any apply
-window is live — inherited into fleet packet templates the same day.
+Before worktree-primary construction, a stream ran a bare `git commit` during a
+sibling's apply window; the shared index swept **24 of the sibling's staged
+files** into the commit. The committer detected it from the commit stat. Repair:
+soft-reset preserving the victim's staged index, path-limited recommit, then a
+closer re-counted the swept set. Root cause: index/HEAD was an unserialized
+surface distinct from build locks. The standing rules remain mandatory whenever
+a ruled shared-tree fallback is active: pathspec commits (`git commit -- <paths>`)
+plus announce → ack → commit → confirm slots. The primary prevention is now a
+separate worktree and branch per stream.
 
 ## Wiring into the rest of the government
 

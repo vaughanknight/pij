@@ -8,7 +8,7 @@ The operator/agent-facing skill layer over the pij platform — a router (`/pij`
 
 ## Boundary
 
-- **Owns**: `skills/pij/**` — `SKILL.md` dispatch (route registry, grammar, global invariants, aliases), `references/00-routing.md` (deterministic detection signals + shared conventions C1–C7), `references/routes/*.md` (peer, agent, ops live; pair + delegate land in plan 030 Phase 2); the flow-pair skill **front-door** supersession (shim + doc pointers, Phase 2).
+- **Owns**: `skills/pij/**` — `SKILL.md` dispatch (registry, grammar, invariants, aliases), `references/00-routing.md` (detection + C1–C7), route modules, and the portable prime/orchestrator payload; plus the flow-pair front-door supersession.
 - **Excludes**: the pij CLI itself (→ `pij-control-plane` / `pij-messaging` / `agent-runtime`); the delegation engine, ledger, schemas, prompt-lab (→ `flow-pair`); the SDD pipeline (→ `the-flow`, external).
 
 ## Concepts
@@ -20,6 +20,7 @@ The operator/agent-facing skill layer over the pij platform — a router (`/pij`
 | Shared Conventions | `references/00-routing.md` § Shared conventions | C1 harness modes … C7 push-not-poll; single-owner prose |
 | Structural gate | `harness/scripts/pij-skill-check.sh` (`just pij-skill-check`) | registry↔module parity, sibling-blindness, line budgets, CLI-verb coverage, dup-prose scope |
 | Registry-first prime triage | `references/routes/prime.md` | resolves self, checks `pij list --prime --here --json`, then falls back to government/human evidence. |
+| Stream Orchestrator Landing | `references/prime/orchestrator.md` | module-first role boundary and ordered thesis → preamble → Builder → pair → ship journey. |
 
 ## Consumes
 
@@ -27,7 +28,7 @@ The operator/agent-facing skill layer over the pij platform — a router (`/pij`
 - `pij-control-plane` — spawn/daemon/adopt/tail/close verbs the routes print
 - `pij-messaging` — send/state/list/whoami surface, including `list --prime`
 - `agent-runtime` — the `pij agent` verb family
-- `the-flow` (external) — pair route wraps it; never writes its state files
+- Builder / `the-flow` (external) — orchestrator planning and ship plus pair-wrapped implementation; never hand-writes flow state
 
 ## Invariants
 

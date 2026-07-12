@@ -17,7 +17,7 @@ Resolve the current id with `pij whoami --json`, then run
 | No `government/` directory exists in the consuming repo | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
 | My current id appears in `pij list --prime --here --json` | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
 | Fallback: `government/spine.md` names my pij id as the o-prime seat, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
-| The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orient-global.md`](../prime/orient-global.md), then read the consuming repo's generated `government/orient-local.md`; stop |
+| The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orchestrator.md`](../prime/orchestrator.md), then stop |
 | I am a fleet worker with a bounded packet | worker | Stop here; use `/pij pair` for a fleet or `/pij peer` for one colleague. |
 
 If probes conflict, registry designation is the seat signal; reconcile stale

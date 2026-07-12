@@ -42,6 +42,11 @@ orientation/preamble:
 | Batons: what breaks under two concurrent users? | <resource + free probe> |
 | Never-stage list | <generated/local paths> |
 | Flow-state rule | <CLI-only single-writer files> |
+| Worktree root | <absolute parent directory for stream worktrees> |
+| Worktree naming | <path pattern derived from stream id/slug> |
+| Base branch | <approved default base + how to resolve its SHA> |
+| Landing policy | `/builder 8 ship` → PR/CI/confirmed merge |
+| Shared-tree fallback | <who may rule it + required index/commit discipline> |
 | Fleet defaults | <harness/model/review route> |
 | Human digest channel | <destination + self-id format> |
 | Ceremony tier | <safe cheap worker/process> |
@@ -59,5 +64,7 @@ orientation/preamble:
 - [ ] Commands mechanically discovered, not guessed
 - [ ] Batons include "free" probes
 - [ ] Never-stage and flow-writer rules explicit
+- [ ] Worktree root/naming/base and Landing policy mechanically derived
+- [ ] Shared-tree fallback is explicit, not the construction default
 - [ ] Portfolio section reflects the live spine
 - [ ] Portable lessons proposed upstream instead of copied into this repo

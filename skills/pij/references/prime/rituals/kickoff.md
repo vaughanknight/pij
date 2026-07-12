@@ -1,43 +1,48 @@
 # Kickoff — spawn or adopt one stream
 
-Run steps in order. The artifacts make the process reconstructable; conversation
-does not.
+Run steps in order. Artifacts make the process reconstructable; conversation does not.
 
-## Steps 1–16
+## Steps 1–18
 
 1. **Record the ruling.** Put the human's named work item in the spine rulings
    log, dated and as close to verbatim as possible.
-2. **Allocate.** Scan existing plan ordinals; reserve ordinal, folder, and
-   `s<ord>-<slug>` window in the allocation ledger. Tombstones stay burned.
+2. **Allocate.** Scan plan ordinals; reserve ordinal, folder, `s<ord>-<slug>`
+   window, branch, worktree path, approved base/SHA. Tombstones stay burned.
 3. **Derive fences from actions.** Enumerate paths the plan will touch, verify
    them on disk, name scratch space, and resolve every overlap before spawn.
-4. **Add the roster row.** Status `allocating`; update the row and UTC stamp
-   before prose. A polished note beside a stale row fooled readers twice.
-5. **Write the brief before spawning.** Instantiate
-   [`../templates/stream-brief.md`](../templates/stream-brief.md) with ask,
-   fences, structure tree, prior art, report cadence, and provisional status.
-6. **Spawn.** `pij spawn --harness <h> --model <m> --effort <e> --layout window`;
-   capture id and pane, name the window, and disable accidental automatic rename.
-7. **Wait for the daemon's ready push.** Never poll a booting peer.
-8. **Canary.** Complete all three legs below and write the record at pass time.
-9. **Deliver the brief by pointer.** One send, no inline body. Its ack closes
-   canary leg (c).
-10. **Sync the spine.** Fill peer id, status `briefed`, and stamp. Push the
+4. **Add the roster row.** Status `preparing`; record worktree, branch, base, and
+   UTC stamp before prose. A polished note beside a stale row fooled readers twice.
+5. **Write the brief before spawning.** Instantiate the
+   [`stream brief`](../templates/stream-brief.md) with ask, fences,
+   worktree/branch/base, tree, prior art, cadence, and provisional status.
+6. **Construct before spawn.** New: `git worktree add -b <branch> <worktree>
+   <approved-base>`; resumed: `git worktree add <worktree> <branch>`. Verify base
+   SHA/branch. Shared-tree construction requires an explicit fallback ruling.
+7. **Spawn from the worktree.** `(cd <worktree> && pij spawn --harness <h>
+   --model <m> --effort <e> --layout window)`. Peer descriptor/pane cwd comes
+   from `process.cwd()`; there is no peer `--cwd`. Keep it out of the o-prime window.
+8. **Wait for the daemon's ready push.** Never poll a booting peer.
+9. **Verify placement.** From the worktree, inspect `pij list --here --json`,
+   `git branch --show-current`, and the tmux window/panes. Descriptor cwd, branch,
+   and window must match the brief before readiness.
+10. **Canary.** Complete all three legs below and write the record at pass time.
+11. **Deliver the brief by pointer.** Its first instruction is `/pij prime`;
+   one send, no inline body. Its ack closes canary leg (c).
+12. **Sync the spine.** Fill peer id, status `briefed`, and stamp. Push the
     updated structure tree to every live stream.
-11. **Report one hop up.** Use [`reports.md`](./reports.md); if this is a
+13. **Report one hop up.** Use [`reports.md`](./reports.md); if this is a
     topless o-prime, the government record + human digest replaces numbering.
-12. **Orient and preamble.** The stream reads portable orient, repo-local
-    orient, and item brief read-only; the human confirms the assignment; the
-    preamble report lands before planning mutation.
-13. **Teardown.** Send the stand-down ruling, `pij close <id>`, wait for queue
-    drain, verify state is dissolved or `E-NOID`, re-close if it reappears,
-    strike the roster row, tombstone the ordinal, release batons, transplant
-    useful findings.
-14. **Keep the structure tree live.** Every brief names o-prime and sibling
+14. **Orient and preamble.** The stream invokes `/pij prime`, follows the
+    module-first journey, and lands its preamble report before planning mutation.
+15. **Land before teardown.** Require `/builder 8 ship` evidence of PR merge, or
+    record an explicit abandonment ruling. Then send stand-down, `pij close <id>`,
+    drain the queue, verify `E-NOID`, remove the worktree, strike the roster row,
+    tombstone the ordinal, release batons, and transplant useful findings.
+16. **Keep the structure tree live.** Every brief names o-prime and sibling
     streams with ids/windows; every roster change triggers a tree push.
-15. **Diff manifest against fences.** At plan validation compare both ways:
+17. **Diff manifest against fences.** At plan validation compare both ways:
     task paths outside fences and fenced paths no task uses. Amend or fix.
-16. **Adoption variant.** For a human-spawned peer, skip step 6 only. Unknown
+18. **Adoption variant.** For a human-spawned peer, skip steps 6–7 only. Unknown
     provenance makes the same canary more important; record no-parent/spawner,
     **instantiate the same stream-brief template — every section, the Orient
     stack included** (the first outside run freelanced its adoption brief and
@@ -65,10 +70,11 @@ only in transcript. **Pass-time file first, claim second.**
 - Human direct-go defaults to "after o-prime deconfliction" unless the human
   says now-regardless; cc the o-prime before first execution.
 
-## Yield rule — shared tree must compile
+## Shared-tree fallback yield rule
 
-Fences protect ownership, not siblings' build windows. Two streams proved that
-in opposite directions within one hour.
+Worktree-primary construction removes routine tree/index collisions. If a ruled
+shared-tree fallback is unavoidable, fences still do not protect siblings' build
+windows; two streams proved that in opposite directions within one hour.
 
 1. Author uncompilable work in scratch; move it in-tree only when it builds.
 2. Every pause, handoff, yield — and every **commit**, the strongest yield
