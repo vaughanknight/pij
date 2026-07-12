@@ -67,13 +67,17 @@
 
 ## Phase 3 — Push-Path Convergence and Guidance
 
+**Status**: GRANTED at government spine Seq 53.
+
 | Path | Action | Ownership / condition |
 |------|--------|-----------------------|
 | `.pi/extensions/pij/{daemon.ts,daemon.test.ts,index.ts,index.test.ts}` | modify | s041 |
+| `.pi/extensions/pij/{cli.ts,cli.integration.test.ts}` | modify | CLI help and regression proof |
 | `.pi/extensions/pij/core/daemon/{loop,loop.test}.ts` | modify | s041 |
 | `skills/pij/{SKILL.md,references/00-routing.md,references/routes/peer.md}` | modify | live-deployed shared skill; edit last; `just pij-skill-check` required |
 | `docs/how/pij.md` | modify | shared operator contract |
-| `docs/domains/{pij-messaging,pij-control-plane,pij-skill}/domain.md` | modify | shared domain contracts |
+| `docs/domains/{pij-messaging,pij-skill}/domain.md` | modify | shared domain contracts |
+| `docs/domains/pij-control-plane/domain.md` | modify | HELD until s043 R8 is APPROVED and pushed to PR #11; refresh/rebase before additive edit |
 | `docs/domains/{registry.md,domain-map.md}` | modify | shared domain indexes |
 
 ## Shared-resource requests
@@ -84,6 +88,9 @@
 | `daemon-restart` | Phase 2 after pull-ownership review approval; Phase 3 after final daemon change approval | restart + post-restart canary |
 | `package.json` | Phase 1 scripts-only serialized edit | diff proves dependencies unchanged |
 | `.github/workflows/ci.yml` | Phase 1 isolated Windows-job edit, preserving s039 Linux flow | diff + YAML/CI proof |
+
+Phase 3 daemon restart remains baton-gated after cold review APPROVE. Skill edits
+land last.
 
 ## Explicit exclusions
 

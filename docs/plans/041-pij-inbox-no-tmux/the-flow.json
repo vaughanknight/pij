@@ -649,6 +649,33 @@
         "from": "phase-2",
         "to": "phase-3"
       }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:27:39.086Z",
+      "details": {
+        "node": "boot-3",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-021",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:27:40.529Z",
+      "details": {
+        "node": "boot-3",
+        "fields": [
+          "note"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -1034,12 +1061,12 @@
       "id": "boot-3",
       "type": "harness-boot",
       "label": "Boot check",
-      "status": "assumed",
+      "status": "done",
       "next": [
         "phase-3"
       ],
       "created_at": "2026-07-12T01:53:14.595Z",
-      "modified_at": "2026-07-12T01:53:14.595Z",
+      "modified_at": "2026-07-12T10:27:40.529Z",
       "branch_of": "phase-3",
       "instructions": [
         "Recommended pre-flight seam: confirm the harness is healthy before you start coding this phase.",
@@ -1052,7 +1079,9 @@
       "chore": {
         "kind": "command",
         "importance": "recommended"
-      }
+      },
+      "ran_at": "2026-07-12T10:27:39.086Z",
+      "note": "Phase 3 boot HEALTHY: typecheck and full test readiness stages passed."
     },
     {
       "id": "observe-3",
