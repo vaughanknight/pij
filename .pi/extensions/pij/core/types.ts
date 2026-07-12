@@ -18,6 +18,9 @@ export type Role = "parent" | "worker";
  *  `codex` (Plan 022) is the 4th spawnable harness — a discovery-bound,
  *  send-keys-driven, claude-style harness with its own transcript layout. */
 export type HarnessKind = "pi" | "claude" | "copilot" | "codex";
+/** Delivery ownership for an external harness. Absent preserves legacy behavior:
+ * pi self-consumes its inbox; claude/copilot/codex use daemon tmux push. */
+export type DeliveryMode = "push" | "pull";
 
 /** Spawn→bind lifecycle of a control-plane session (Plan 019). DISTINCT from
  *  `SessionDescriptor.state` (working/idle of a live turn): this tracks the
@@ -80,6 +83,8 @@ export interface SessionDescriptor {
 	/** Which harness this session runs (`pi`/`claude`/`copilot`). Absent ⇒
 	 *  legacy pi session. Decides the message transport (inbox vs send-keys). */
 	readonly harness?: HarnessKind;
+	/** Explicit pull peers keep durable mail for `pij inbox`; absent is legacy. */
+	readonly deliveryMode?: DeliveryMode;
 	/** The harness-native session id bound to this pij-id — for Claude, the
 	 *  transcript stem under ~/.claude/projects/<mangled cwd>/<this>.jsonl,
 	 *  discovered deterministically by the daemon (AC-03). Drives `pij tail`. */

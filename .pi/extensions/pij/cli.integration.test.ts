@@ -56,7 +56,12 @@ function pij(args: string[], extraEnv: Record<string, string> = {}): { out: stri
 		...extraEnv,
 	};
 	try {
-		const out = execFileSync(TSX, [CLI, ...args], { cwd: FOLDER, env, encoding: "utf8" });
+		const out = execFileSync(TSX, [CLI, ...args], {
+			cwd: FOLDER,
+			env,
+			encoding: "utf8",
+			timeout: 10_000,
+		});
 		return { out, code: 0 };
 	} catch (e) {
 		const err = e as { status?: number; stdout?: string; stderr?: string };
@@ -146,6 +151,118 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
 		expect(result.out).toContain("pij list [--here] [--prime] [--json]");
+	});
+
+	it("auto-registers an ambient session before E-NOREG and aliases adopt --current", {
+		timeout: 30_000,
+	}, () => {
+		const registrationHome = mkdtempSync(join(tmpdir(), "pij-current-registration-"));
+		const nativeId = "claude-current-registration";
+		const env = {
+			PIJ_HOME: registrationHome,
+			PIJ_SESSION_ID: "",
+			TMUX_PANE: "",
+			CLAUDE_CODE_SESSION_ID: nativeId,
+			COPILOT_AGENT_SESSION_ID: "",
+			CODEX_THREAD_ID: "",
+		};
+		try {
+			const first = pij(["inbox", "register", "--json"], env);
+			expect(first.code).toBe(0);
+			const registered = JSON.parse(first.out) as {
+				id: string;
+				harness: string;
+				harnessSessionId: string;
+				deliveryMode: string;
+				existing: boolean;
+			};
+			expect(registered).toMatchObject({
+				harness: "claude",
+				harnessSessionId: nativeId,
+				deliveryMode: "pull",
+				existing: false,
+			});
+
+			const registry = new FsRegistry(registrationHome);
+			const descriptor = registry.read(registered.id);
+			expect(descriptor).toMatchObject({
+				id: registered.id,
+				harness: "claude",
+				harnessSessionId: nativeId,
+				deliveryMode: "pull",
+				lifecycle: "bound",
+				folder: FOLDER,
+			});
+			if (!descriptor) throw new Error("missing registered descriptor");
+			registry.write({ ...descriptor, prime: true });
+
+			const repeat = JSON.parse(pij(["inbox", "register", "--json"], env).out);
+			expect(repeat).toMatchObject({ id: registered.id, existing: true });
+			expect(registry.read(registered.id)?.prime).toBe(true);
+
+			const alias = JSON.parse(pij(["adopt", "--current", "--json"], env).out);
+			expect(alias).toMatchObject({ id: registered.id, existing: true });
+			expect(pij(["--help"], env).out).toContain("pij inbox [check|register]");
+		} finally {
+			rmSync(registrationHome, { recursive: true, force: true });
+		}
+	});
+
+	it.each([
+		{
+			label: "invalid Copilot UUID",
+			signals: { COPILOT_AGENT_SESSION_ID: "not-a-uuid" },
+			error: "E-AMBIG",
+		},
+		{
+			label: "Copilot UUID without matching session-state metadata",
+			signals: {
+				COPILOT_AGENT_SESSION_ID: "11111111-2222-4333-8444-555555555555",
+			},
+			error: "E-NOID",
+		},
+		{
+			label: "invalid Codex UUID",
+			signals: { CODEX_THREAD_ID: "not-a-uuid" },
+			error: "E-AMBIG",
+		},
+		{
+			label: "Codex UUID without matching rollout",
+			signals: { CODEX_THREAD_ID: "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb" },
+			error: "E-NOID",
+		},
+	])("$label prevents pane/cwd fallback", { timeout: 30_000 }, ({ signals, error }) => {
+		const probeHome = mkdtempSync(join(tmpdir(), "pij-invalid-ambient-"));
+		const unrelatedId = "pij-unrelated-pane";
+		try {
+			new FsRegistry(probeHome).write({
+				id: unrelatedId,
+				folder: FOLDER,
+				dataDir: join(probeHome, unrelatedId),
+				eventsPath: join(probeHome, unrelatedId, "events.ndjson"),
+				pid: process.pid,
+				startedAt: "2026-07-12T00:00:00.000Z",
+				paneId: "%1",
+				harness: "claude",
+				harnessSessionId: "unrelated-native",
+				lifecycle: "bound",
+			});
+			const result = pij(["whoami", "--json"], {
+				PIJ_HOME: probeHome,
+				HOME: probeHome,
+				USERPROFILE: probeHome,
+				PIJ_SESSION_ID: "",
+				CLAUDE_CODE_SESSION_ID: "",
+				COPILOT_AGENT_SESSION_ID: "",
+				CODEX_THREAD_ID: "",
+				...signals,
+			});
+			expect(result.code).toBe(2);
+			expect(result.out).toContain(error);
+			expect(result.out).not.toContain(`"id":"${unrelatedId}"`);
+		} finally {
+			rmSync(probeHome, { recursive: true, force: true });
+		}
 	});
 
 	// ~6 sequential real-CLI subprocess spawns; exceeds the 5s default on slow CI runners.

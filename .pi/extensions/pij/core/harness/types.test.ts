@@ -21,6 +21,19 @@ describe("selectTransport", () => {
 		expect(selectTransport("pi")).toBe("inbox");
 		expect(selectTransport("claude")).not.toBe("inbox");
 	});
+
+	it("explicit pull mode routes every external harness through its durable inbox", () => {
+		for (const harness of ["claude", "copilot", "codex"] as const) {
+			expect(selectTransport(harness, "pull")).toBe("inbox");
+			expect(selectTransport(harness, "push")).toBe("sendkeys");
+		}
+	});
+
+	it("delivery mode absence preserves the legacy transport matrix", () => {
+		for (const [harness, transport] of cases) {
+			expect(selectTransport(harness, undefined)).toBe(transport);
+		}
+	});
 });
 
 describe("supportsBranching (branch-from-self capability seam, Plan 020)", () => {

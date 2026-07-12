@@ -7,6 +7,7 @@ import { FakeDelivery, FakeEventLog, FakeProcess, FakeRegistry } from "../adapte
 import type { CliDeps } from "./cli.js";
 import {
 	applyWaitReceipt,
+	applyWaitReceiptSources,
 	dispatch,
 	parseArgs,
 	renderWaitReceipt,
@@ -40,6 +41,7 @@ function deps(opts: {
 	alive?: number[];
 	logs?: Record<string, PijEvent[]>;
 	env?: Record<string, string>;
+	resolveAmbientSelf?: CliDeps["resolveAmbientSelf"];
 }): CliDeps & { delivery: FakeDelivery; registry: FakeRegistry } {
 	const registry = new FakeRegistry(opts.descs ?? []);
 	const delivery = new FakeDelivery();
@@ -54,6 +56,7 @@ function deps(opts: {
 		cwd: opts.cwd ?? "/repo",
 		pijHome: "/home/.pij",
 		eventLogFor: (id) => logMap.get(id) ?? new FakeEventLog([]),
+		...(opts.resolveAmbientSelf ? { resolveAmbientSelf: opts.resolveAmbientSelf } : {}),
 	};
 }
 
@@ -250,6 +253,39 @@ describe("dispatch whoami / list", () => {
 	it("whoami E-AMBIG when env unset + multiple local", () => {
 		const d = deps({ descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
 		expect(dispatch({ verb: "whoami", json: false }, d)).toMatchObject({ exitCode: 2 });
+	});
+
+	it("PIJ_SESSION_ID overrides an ambient resolver conflict", () => {
+		const d = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3" })],
+			resolveAmbientSelf: () => err("E-AMBIG", "multiple ambient identities"),
+		});
+		expect(JSON.parse(dispatch({ verb: "whoami", json: true }, d).stdout)).toMatchObject({
+			id: "a1",
+		});
+	});
+
+	it("reverse-resolves ambient self before pane and cwd fallbacks", () => {
+		const d = deps({
+			descs: [desc({ id: "ambient" }), desc({ id: "pane-peer", paneId: "%7" })],
+			env: { TMUX_PANE: "%7" },
+			resolveAmbientSelf: () => ok("ambient"),
+		});
+		expect(JSON.parse(dispatch({ verb: "whoami", json: true }, d).stdout)).toMatchObject({
+			id: "ambient",
+		});
+	});
+
+	it("propagates an unregistered ambient identity before compatibility fallbacks", () => {
+		const d = deps({
+			descs: [desc({ id: "cwd-peer" })],
+			resolveAmbientSelf: () =>
+				err("E-NOID", "current codex session is not registered; run pij inbox register"),
+		});
+		const result = dispatch({ verb: "whoami", json: false }, d);
+		expect(result).toMatchObject({ exitCode: 2 });
+		expect(result.stderr).toContain("pij inbox register");
 	});
 
 	it("list --here filters to cwd, stars self, reports liveness", () => {
@@ -479,6 +515,71 @@ describe("dispatch send", () => {
 		expect(staleR.stdout.toLowerCase()).toContain("no recent pij events");
 	});
 
+	it("accepts a durable send to a dead pull peer and queues it for inbox check", () => {
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "pull-peer",
+					harness: "copilot",
+					deliveryMode: "pull",
+					lifecycle: "bound",
+					pid: 777,
+				}),
+			],
+			alive: [100],
+		});
+		const json = dispatch(
+			{ verb: "send", to: "pull-peer", text: "durable", wait: false, json: true },
+			d,
+		);
+		expect(json.exitCode).toBe(0);
+		expect(JSON.parse(json.stdout)).toMatchObject({
+			to: "pull-peer",
+			receipt: "queued",
+			liveness: "dead",
+		});
+		expect(d.delivery.outbox).toHaveLength(1);
+
+		const human = dispatch(
+			{ verb: "send", to: "pull-peer", text: "durable", wait: false, json: false },
+			d,
+		);
+		expect(human.stdout).toContain("awaiting inbox check");
+	});
+
+	it("still rejects dead push peers and dissolved pull peers", () => {
+		for (const target of [
+			desc({
+				id: "dead-push",
+				harness: "copilot",
+				deliveryMode: "push",
+				lifecycle: "bound",
+				pid: 777,
+			}),
+			desc({
+				id: "closed-pull",
+				harness: "copilot",
+				deliveryMode: "pull",
+				lifecycle: "dissolved",
+			}),
+		]) {
+			const d = deps({
+				self: "a1",
+				descs: [desc({ id: "a1" }), target],
+				alive: [100],
+			});
+			const result = dispatch(
+				{ verb: "send", to: target.id, text: "no", wait: false, json: false },
+				d,
+			);
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr).toContain("E-DEAD");
+			expect(d.delivery.outbox).toHaveLength(0);
+		}
+	});
+
 	it("fans one raw body out in target order with independent results", () => {
 		const d = deps({
 			self: "a1",
@@ -656,6 +757,7 @@ describe("dispatch send", () => {
 		expect(applyWaitReceipt(targets, { messageId: "other", state: "delivered" })).toEqual({
 			pending: targets,
 		});
+
 		expect(applyWaitReceipt(targets, { messageId: "m1", state: "queued" })).toEqual({
 			target: targets[0],
 			pending: targets,
@@ -665,6 +767,50 @@ describe("dispatch send", () => {
 		expect(applyWaitReceipt(firstDone.pending, { messageId: "m2", state: "unverified" })).toEqual({
 			target: targets[1],
 			pending: [],
+		});
+	});
+
+	it("merges event-first and envelope-first terminal receipt races exactly once", () => {
+		const targets = [{ to: "w3", messageId: "m1" }];
+		const envelope = {
+			kind: "persist-receipt-envelope",
+			envelopeMessageId: "receipt-envelope",
+			from: "w3",
+			body: "[pij receipt m1] delivered",
+			receipt: { messageId: "m1", state: "delivered" },
+			readAt: "2026-07-12T00:55:00.000Z",
+			reader: "a1",
+		} as const;
+
+		const eventFirst = applyWaitReceiptSources(
+			targets,
+			[],
+			[{ messageId: "m1", state: "delivered" }],
+			[envelope],
+		);
+		expect(eventFirst).toMatchObject({
+			pending: [],
+			updates: [{ target: targets[0], state: "delivered" }],
+		});
+
+		const envelopeFirst = applyWaitReceiptSources(targets, [], [], [envelope]);
+		expect(envelopeFirst).toMatchObject({
+			pending: [],
+			updates: [{ target: targets[0], state: "delivered" }],
+		});
+	});
+
+	it("later waits can resolve an uncorrelated receipt after it becomes relevant", () => {
+		const receipt = { messageId: "later", state: "delivered" as const };
+		expect(applyWaitReceiptSources([], [], [receipt], [])).toMatchObject({
+			pending: [],
+			updates: [],
+		});
+		expect(
+			applyWaitReceiptSources([{ to: "w3", messageId: "later" }], [], [receipt], []),
+		).toMatchObject({
+			pending: [],
+			updates: [{ target: { to: "w3", messageId: "later" }, state: "delivered" }],
 		});
 	});
 

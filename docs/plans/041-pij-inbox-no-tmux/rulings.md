@@ -39,6 +39,16 @@ supersede earlier relayed defaults; superseded text remains recorded verbatim.
 - **Disposition**: SUPERSEDED. Platform-neutral tests, a real `windows-latest`
   job, and a named engineering-harness sensor are in Plan 041 now.
 
+## R-004 — Shared smoke debt is non-blocking for s041
+
+- **Priority ruling (verbatim)**:
+  `unblock and deliver the inbox work first. Your Phase 2 inbox implementation/review is approved; the Pi folder-trust smoke timeout is shared, unowned harness debt and is NON-BLOCKING for s041. Do not spend further s041 time modifying the smoke harness or wait for its assignment.`
+- **Ruled by**: Jordan via o-prime `pij-primary-carp`
+- **Ruling timestamp**: `2026-07-12T09:35:17.887Z`
+- **Disposition**: ACTIVE. D-032/D-033 remain shared harness debt; Phase 2 closes
+  on its approved review, targeted/full non-smoke sensors, Windows proof, and
+  quick harness inventory. No s041 smoke-harness scope expansion is permitted.
+
 ## Source evidence
 
 Exact direct selections and timestamps are preserved in:

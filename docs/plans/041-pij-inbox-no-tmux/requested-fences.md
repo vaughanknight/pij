@@ -4,7 +4,9 @@
 **Status**:
 - Planning fence: GRANTED.
 - Phase 1: GRANTED OUTRIGHT at government spine Seq 43.
-- Phase 2/3: OPEN; request at their phase checkpoints.
+- Phase 2: GRANTED, including the daemon ownership and portable-integration
+  addenda below.
+- Phase 3: OPEN; request at its phase checkpoint.
 
 ## Planning fence
 
@@ -40,12 +42,28 @@
 | Path | Action | Ownership / condition |
 |------|--------|-----------------------|
 | `.pi/extensions/pij/core/{inbox,inbox.test,current-session,current-session.test}.ts` | new | s041 |
-| `.pi/extensions/pij/core/{types,ports,harness/types,harness/pi}.ts` | modify | s041 |
+| `.pi/extensions/pij/core/{types,ports,harness/types,harness/types.test,harness/pi,harness/pi.test}.ts` | modify | s041; harness test siblings added after task validation |
 | `.pi/extensions/pij/core/daemon/{router,router.test}.ts` | modify | s041 |
 | `.pi/extensions/pij/{core/cli.ts,core/cli.test.ts,core/binding.ts,core/binding.test.ts,cli.ts,cli.integration.test.ts}` | modify | s040 is CLOSED; ordinary s041 ownership unless o-prime reports a new claimant |
+| `.pi/extensions/pij/cli.inbox.integration.test.ts` | modify | addendum granted for the portable two-shell Windows proof; explicit subprocess timeouts required |
+| `.pi/extensions/pij/orchestration-notice.integration.test.ts` | modify | F-001 addendum: dissolved/live pull production rows only; explicit timeout on the subprocess table |
+| `.pi/extensions/pij/{daemon.ts,daemon.test.ts}` | modify | addendum granted for delivery-mode ownership filtering/tests/live proof only; delete-to-marker remains Phase 3 |
+| `.pi/extensions/pij/adapters/{event-log,event-log.test,fakes,fakes.test}.ts` | modify | residual F-002 addendum: additive atomic `appendOnce` API and dual-consumer proof only |
 | `.pi/extensions/pij/adapters/fs-registry.ts` | no planned write | s040-owned; consume existing APIs |
 | `.pi/extensions/pij/core/{discovery,spawn}.ts` | no planned write | s040-owned |
 | `.pi/extensions/pij/core/harness/copilot.ts` | no planned write | s040-owned |
+
+### Phase 2 grant conditions
+
+- Worktree-first on branch `s041/inbox-no-tmux`.
+- New Phase 2 worker/reviewer seats start with the worktree as cwd.
+- Every subprocess test declares an explicit timeout at authoring.
+- Pull ownership receives cold review approval before the daemon restart.
+- Daemon restart uses the baton; o-prime sends the machine-wide heads-up.
+- Existing tmux-bound delivery is regression-proved before restart.
+- `EventLogPort.appendOnce` is additive; legacy `append()` behavior is unchanged.
+- Atomic publication uses one fsync and one hard-link attempt with no retry loop.
+- The real hard-link path runs in the Windows compatibility lane.
 
 ## Phase 3 — Push-Path Convergence and Guidance
 

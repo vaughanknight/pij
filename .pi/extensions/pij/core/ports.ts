@@ -39,6 +39,9 @@ export interface RegistryPort {
 export interface EventLogPort {
 	/** Append one event line (persist before mutate — Pattern P9). */
 	append(event: PijEvent): void;
+	/** Atomically publish one event per idempotence key. Optional so existing
+	 * structural consumers remain source-compatible until they opt in. */
+	appendOnce?(key: string, event: PijEvent): "appended" | "existing";
 	/** Read events, optionally filtered (since/type/last). */
 	read(query?: EventQuery): PijEvent[];
 	/** Highest seq written so far, or 0 if empty. Drives crash-safe seq

@@ -55,7 +55,7 @@ import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir } from "./core/agents/paths.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import {
-	applyWaitReceipt,
+	applyWaitReceiptSources,
 	type CliDeps,
 	type CliResult,
 	dispatch,
@@ -67,6 +67,12 @@ import {
 	type WaitTarget,
 } from "./core/cli.js";
 import { parseCloseArgs, planClose } from "./core/close.js";
+import {
+	type AmbientNativeIdentity,
+	planCurrentSessionDescriptor,
+	resolveAmbientNativeIdentity,
+	resolveRegisteredAmbientSelf,
+} from "./core/current-session.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
 import {
@@ -88,12 +94,25 @@ import {
 } from "./core/harness/codex.js";
 import {
 	type CopilotSessionDir,
+	isCopilotSessionId,
 	resolveCopilotCurrentSession,
 	sessionEventsPath,
 	summarizeCopilotEvent,
 } from "./core/harness/copilot.js";
 import { supportsBranching } from "./core/harness/types.js";
-import { parseReceiptBody } from "./core/message.js";
+import {
+	consumeInbox,
+	type InboxAction,
+	type InboxResult,
+	inboxTimeoutResult,
+	parseInboxArgs,
+	persistReceiptEnvelope,
+	prepareReceiptEnvelopes,
+	renderInboxRegistration,
+	renderInboxResult,
+	renderInboxWaiting,
+} from "./core/inbox.js";
+import { parseReceiptBody, receiptBody } from "./core/message.js";
 import { normalizeModelQuery } from "./core/models/match.js";
 import type { ModelEntry } from "./core/models/registry.js";
 import { loadModels } from "./core/models/registry.js";
@@ -129,7 +148,16 @@ import {
 	type SpawnLayout,
 	spawnIdentitySeed,
 } from "./core/spawn.js";
-import type { HarnessKind, SessionDescriptor, WatchMode } from "./core/types.js";
+import {
+	err,
+	type HarnessKind,
+	ok,
+	type ReceiptState,
+	type Result,
+	type SessionDescriptor,
+	type SessionId,
+	type WatchMode,
+} from "./core/types.js";
 import { addWatch, removeWatch } from "./core/watch-subscription.js";
 import { runTelegram } from "./telegram/index.js";
 
@@ -163,6 +191,7 @@ Orchestration (machine-wide coordination):
   pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
 
 Messaging:
+  pij inbox [check|register] [--wait [ms]] [--json]   pull messages or register this ambient session
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
   pij list [--here] [--prime] [--json]               known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
@@ -251,6 +280,43 @@ function pijVersion(): string {
 	}
 }
 
+function consumeCurrentInbox(self: SessionId, channel: FsChannel) {
+	const consumed = consumeInbox({
+		inbox: channel,
+		self,
+		readAt: new Date().toISOString(),
+	});
+	if (!consumed.ok) failInbox(consumed.code, consumed.message);
+	return consumed.value;
+}
+
+function waitForInbox(
+	self: SessionId,
+	channel: FsChannel,
+	waitMs: number | undefined,
+	json: boolean,
+): void {
+	const started = Date.now();
+	if (!json) process.stdout.write(`${renderInboxWaiting(waitMs)}\n`);
+	const tick = (): void => {
+		const result = consumeCurrentInbox(self, channel);
+		if (result.messages.length > 0) {
+			process.stdout.write(`${renderInboxResult(result, json)}\n`);
+			executeInboxActions(self, result.actions, channel);
+			if (result.failure) failInbox(result.failure.code, result.failure.message);
+			process.exit(0);
+		}
+		executeInboxActions(self, result.actions, channel);
+		if (result.failure) failInbox(result.failure.code, result.failure.message);
+		if (waitMs !== undefined && Date.now() - started >= waitMs) {
+			process.stdout.write(`${renderInboxResult(inboxTimeoutResult(self), json)}\n`);
+			process.exit(0);
+		}
+		setTimeout(tick, FOLLOW_MS);
+	};
+	setTimeout(tick, FOLLOW_MS);
+}
+
 /** Block the current thread for `ms` without spawning a process (no async). Used
  *  by compact-self to settle between keystrokes and to wait out compaction. */
 function sleepSync(ms: number): void {
@@ -263,15 +329,203 @@ function write(res: CliResult): void {
 }
 
 function deps(): CliDeps {
+	const registry = new FsRegistry(pijHome);
+	const channel = new FsChannel(pijHome);
 	return {
-		registry: new FsRegistry(pijHome),
+		registry,
 		eventLogFor: (id) => new FsEventLog(pijHome, id),
-		delivery: new FsChannel(pijHome),
+		delivery: channel,
+		inbox: channel,
 		process: new NodeProcess(),
 		cwd: process.cwd(),
 		pijHome,
 		models: loadModels(),
+		resolveAmbientSelf: () => resolveAmbientSelf(registry),
 	};
+}
+
+function resolveAmbientIdentity(): Result<AmbientNativeIdentity | null> {
+	let copilotCurrentSessionId: string | null = null;
+	const copilotSignal = process.env.COPILOT_AGENT_SESSION_ID;
+	if (copilotSignal?.trim()) {
+		const current = resolveCopilotCurrentSession(copilotSignal, listCopilotStateDirs, homedir());
+		if (!current.ok) {
+			return err(current.reason === "invalid-env" ? "E-AMBIG" : "E-NOID", current.message);
+		}
+		copilotCurrentSessionId = current.sessionId;
+	}
+
+	let codexCurrentSession: { threadId: string; transcriptPath: string } | null = null;
+	const codexThreadId = process.env.CODEX_THREAD_ID?.trim();
+	if (codexThreadId) {
+		if (!isCopilotSessionId(codexThreadId)) {
+			return err("E-AMBIG", `CODEX_THREAD_ID is not a UUID: ${codexThreadId}`);
+		}
+		const normalized = codexThreadId.toLowerCase();
+		const rollouts = listCodexRollouts((dir) => {
+			try {
+				return readdirSync(dir);
+			} catch {
+				return [];
+			}
+		}, codexTranscriptRoot(homedir()));
+		const transcriptPath = codexRolloutForSession(rollouts, normalized, readableRegularFile);
+		if (!transcriptPath) {
+			return err("E-NOID", `CODEX_THREAD_ID ${normalized} has no matching readable rollout`);
+		}
+		codexCurrentSession = { threadId: normalized, transcriptPath };
+	}
+
+	return resolveAmbientNativeIdentity({
+		claudeCodeSessionId: process.env.CLAUDE_CODE_SESSION_ID,
+		copilotCurrentSessionId,
+		codexCurrentSession,
+	});
+}
+
+function resolveAmbientSelf(registry: FsRegistry): Result<SessionId | undefined> {
+	const identity = resolveAmbientIdentity();
+	if (!identity.ok) return identity;
+	if (!identity.value) return ok(undefined);
+	const resolved = registry.resolveIdentity(
+		identity.value.harness,
+		identity.value.harnessSessionId,
+	);
+	if (!resolved.ok) return resolved;
+	return resolveRegisteredAmbientSelf(identity.value, registry.list(), resolved.value);
+}
+
+interface CurrentRegistration {
+	readonly descriptor: SessionDescriptor;
+	readonly identity: AmbientNativeIdentity;
+	readonly existing: boolean;
+}
+
+function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistration> {
+	const identity = resolveAmbientIdentity();
+	if (!identity.ok) return identity;
+	if (!identity.value) {
+		return err(
+			"E-AMBIG",
+			"cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell",
+		);
+	}
+	const allocated = registry.allocateIdentity(
+		identity.value.harness,
+		identity.value.harnessSessionId,
+		memorableIdentitySeed(identity.value.harness, identity.value.harnessSessionId),
+		deriveHarnessPijId(identity.value.harness, identity.value.harnessSessionId),
+	);
+	if (!allocated.ok) return allocated;
+	const descriptor = planCurrentSessionDescriptor({
+		id: allocated.value.id,
+		identity: identity.value,
+		pijHome,
+		folder: process.cwd(),
+		pid: process.ppid > 1 ? process.ppid : process.pid,
+		startedAt: new Date().toISOString(),
+		...(allocated.value.descriptor ? { existing: allocated.value.descriptor } : {}),
+	});
+	try {
+		registry.write(descriptor);
+	} catch (error) {
+		return err("E-AMBIG", error instanceof Error ? error.message : String(error));
+	}
+	return ok({
+		descriptor,
+		identity: identity.value,
+		existing: allocated.value.kind === "reuse",
+	});
+}
+
+function exitCodeForCore(code: string): number {
+	if (code === "E-ARG") return 64;
+	if (code === "E-NOREG") return 3;
+	if (code === "E-DEAD") return 1;
+	return 2;
+}
+
+function failInbox(code: string, message: string): never {
+	process.stderr.write(`${code}: ${message}\n`);
+	process.exit(exitCodeForCore(code));
+}
+
+function executeInboxActions(
+	self: SessionId,
+	actions: readonly InboxAction[],
+	channel: FsChannel,
+): void {
+	const log = new FsEventLog(pijHome, self);
+	for (const action of actions) {
+		if (action.kind === "persist-receipt-envelope") {
+			const persisted = persistReceiptEnvelope({
+				inbox: channel,
+				eventLog: log,
+				self,
+				action,
+				nowMs: Date.now(),
+			});
+			if (!persisted.ok) failInbox(persisted.code, persisted.message);
+			continue;
+		}
+		const delivered = channel.deliver({
+			from: self,
+			to: action.to,
+			body: receiptBody(action.messageId, "delivered"),
+			kind: "receipt",
+		});
+		if (!delivered.ok) failInbox(delivered.code, delivered.message);
+	}
+}
+
+function settleInboxResult(
+	result: InboxResult,
+	json: boolean,
+	channel: FsChannel,
+	renderEmpty: boolean,
+): boolean {
+	const hasMessages = result.messages.length > 0;
+	if (hasMessages || renderEmpty) {
+		process.stdout.write(`${renderInboxResult(result, json)}\n`);
+	}
+	executeInboxActions(result.self, result.actions, channel);
+	if (result.failure) failInbox(result.failure.code, result.failure.message);
+	return hasMessages;
+}
+
+function runInbox(argv: readonly string[]): void {
+	const parsed = parseInboxArgs(argv);
+	if (!parsed.ok) failInbox(parsed.code, parsed.message);
+	const registry = new FsRegistry(pijHome);
+	const registration = ensureCurrentRegistration(registry);
+	if (!registration.ok) failInbox(registration.code, registration.message);
+	const output = {
+		id: registration.value.descriptor.id,
+		harness: registration.value.identity.harness,
+		harnessSessionId: registration.value.identity.harnessSessionId,
+		deliveryMode:
+			registration.value.descriptor.deliveryMode ??
+			(registration.value.descriptor.paneId ? "push" : "pull"),
+		existing: registration.value.existing,
+	};
+	if (parsed.value.verb === "register") {
+		process.stdout.write(`${renderInboxRegistration(output, parsed.value.json)}\n`);
+		process.exit(0);
+	}
+	const channel = new FsChannel(pijHome);
+	const consumed = consumeCurrentInbox(registration.value.descriptor.id, channel);
+	if (consumed.messages.length > 0) {
+		settleInboxResult(consumed, parsed.value.json, channel, false);
+		process.exit(0);
+	}
+	executeInboxActions(consumed.self, consumed.actions, channel);
+	if (consumed.failure) failInbox(consumed.failure.code, consumed.failure.message);
+	if (parsed.value.wait) {
+		waitForInbox(registration.value.descriptor.id, channel, parsed.value.waitMs, parsed.value.json);
+		return;
+	}
+	process.stdout.write(`${renderInboxResult(consumed, parsed.value.json)}\n`);
+	process.exit(0);
 }
 
 /** --follow: poll the peer's log from the trailer cursor, print only new batches. */
@@ -303,22 +557,45 @@ function waitReceipts(
 ): void {
 	const started = Date.now();
 	const log = d.eventLogFor(self);
-	const seen = new Set<string>();
+	let seen: readonly string[] = [];
 	let pending = targets;
 	const tick = (): void => {
+		const eventReceipts: Array<{ messageId: string; state: ReceiptState }> = [];
 		for (const e of log.read({ type: "receipt" })) {
 			const body = (e.data as { body?: string } | undefined)?.body;
 			const r = body ? parseReceiptBody(body) : null;
-			if (!r) continue;
-			const update = applyWaitReceipt(pending, r);
-			if (!update.target) continue;
-			const key = `${r.messageId}:${r.state}`;
-			if (seen.has(key)) continue;
-			seen.add(key);
-			process.stdout.write(`${renderWaitReceipt(update.target.to, r.state, broadcast)}\n`);
-			pending = update.pending;
-			if (pending.length === 0) process.exit(exitCode);
+			if (r) eventReceipts.push(r);
 		}
+		let envelopeReceipts: readonly Extract<
+			InboxAction,
+			{ readonly kind: "persist-receipt-envelope" }
+		>[] = [];
+		if (d.inbox) {
+			const prepared = prepareReceiptEnvelopes({
+				inbox: d.inbox,
+				self,
+				readAt: new Date().toISOString(),
+			});
+			if (!prepared.ok) failInbox(prepared.code, prepared.message);
+			envelopeReceipts = prepared.value;
+			for (const action of envelopeReceipts) {
+				const persisted = persistReceiptEnvelope({
+					inbox: d.inbox,
+					eventLog: log,
+					self,
+					action,
+					nowMs: Date.now(),
+				});
+				if (!persisted.ok) failInbox(persisted.code, persisted.message);
+			}
+		}
+		const merged = applyWaitReceiptSources(pending, seen, eventReceipts, envelopeReceipts);
+		for (const update of merged.updates) {
+			process.stdout.write(`${renderWaitReceipt(update.target.to, update.state, broadcast)}\n`);
+		}
+		pending = merged.pending;
+		seen = merged.seen;
+		if (pending.length === 0) process.exit(exitCode);
 		if (Date.now() - started > timeoutMs) {
 			process.stdout.write(`${renderWaitTimeout(pending, broadcast)}\n`);
 			process.exit(exitCode);
@@ -1494,14 +1771,20 @@ class CliBatonNoticeSink implements BatonNoticeSink {
 	) {}
 
 	push(notice: BatonNotice): BatonNoticeReceipt {
+		const target = this.registry.read(notice.to);
+		if (!target || target.lifecycle === "dissolved") {
+			return { state: "unverified" };
+		}
 		const delivered = this.channel.deliver({
 			from: notice.from,
 			to: notice.to,
 			body: renderBatonNotice(notice),
 		});
 		if (!delivered.ok) return { state: "unverified" };
-		const target = this.registry.read(notice.to);
-		if (!target || !this.proc.isAlive(target.pid)) {
+		if (target.deliveryMode === "pull") {
+			return { state: "queued", messageId: delivered.value.messageId };
+		}
+		if (!this.proc.isAlive(target.pid)) {
 			return { state: "unverified", messageId: delivered.value.messageId };
 		}
 		if (target.harness === "claude" || target.harness === "copilot" || target.harness === "codex") {
@@ -2024,6 +2307,16 @@ function main(): void {
 	if (top === "--version" || top === "-v" || top === "version") {
 		process.stdout.write(`pij ${pijVersion()}\n`);
 		process.exit(0);
+	}
+	// Inbox registration is the one messaging surface allowed to create PIJ_HOME,
+	// so it must run before the ordinary E-NOREG guard.
+	if (top === "inbox") {
+		runInbox(process.argv.slice(3));
+		return;
+	}
+	if (top === "adopt" && process.argv[3] === "--current") {
+		runInbox(["register", ...process.argv.slice(4)]);
+		return;
 	}
 	// `spawn` is impure (tmux split + pending write) — intercept before the pure
 	// dispatch path. It writes the registry home itself, so it predates the

@@ -27,6 +27,8 @@ hypotheses.
 | 12 — Minih Workbench Phase 2 (`minih-workbench`) | 2026-05-16 | T0 = `2026-05-16T06:32:48Z` (companion boot); T1 = `2026-05-16T07:22:19Z` (`just self-check` green after companion fixes); Δ ≈ 50 min | Phase 2 read-only native viewer: keybinding contracts, pure list/modal state helpers, native run-list and full modal components, read-only feed lifecycle, `/minih` list/view/report wiring, store/feed/UI tests, and modal smoke. | Companion run `2026-05-16T16-32-48-636Z-fb2e`; findings F001–F006 fixed inline. No new package dependency. |
 | 13 — Minih Workbench Phase 3 (`minih-workbench`) | 2026-05-17 | T0 = `2026-05-17T04:55:31Z` (companion boot); T1 = `2026-05-17T05:31:29Z` (`just self-check` green); Δ ≈ 36 min | Phase 3 interaction/push hardening: capability contracts, session-backed audit/cursors, adapter send/stop wrappers, `/minih send`, modal composer, `/minih stop`, pushed context, per-event dedupe, safety/tool-ordering tests, fake-writer smoke, and docs. | Companion run `2026-05-17T14-55-31-573Z-53a4`; findings F001–F011 fixed/reconciled inline. No new package dependency. |
 
+| 14 — Plan 041 Phase 2 (`pij inbox`) | 2026-07-12 | T0 = `2026-07-12T06:19Z`; T1 = `2026-07-12T08:50Z`; Δ ≈ 2h 31m | Pull ownership, ambient registration, grouped inbox CLI, waits/receipts, and atomic per-envelope receipt events; 203 targeted tests plus Windows two-process race. | Long wall-clock reflects two deliberate review gates and four real correctness defects found after green happy-path gates; D-034 encodes the adversarial proof gained. |
+
 ## Hypothesis (measurement-anchored)
 
 After the harness ships (end of phase 5 above), **extension #2's

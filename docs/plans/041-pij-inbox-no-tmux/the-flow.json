@@ -3,8 +3,8 @@
   "kind": "flight-plan",
   "slug": "pij-inbox-no-tmux",
   "nav": {
-    "now": "review-1",
-    "next": "phase-2",
+    "now": "phase-3",
+    "next": "phase-3",
     "intent": "Pij inboxes for when we don't have TMUX (mostly for when we on windows)",
     "bag": {
       "mode": "Full",
@@ -479,6 +479,176 @@
         "from": "phase-1",
         "to": "review-1"
       }
+    },
+    {
+      "id": "UPD-015",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T06:18:26.415Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-004",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T06:18:28.055Z",
+      "details": {
+        "from": "review-1",
+        "to": "phase-2"
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T06:18:56.357Z",
+      "details": {
+        "node": "boot-2",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-016",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T06:18:58.000Z",
+      "details": {
+        "node": "boot-2",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T06:20:09.873Z",
+      "details": {
+        "node": "phase-2",
+        "from": "known",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "STA-012",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:10:15.170Z",
+      "details": {
+        "node": "observe-2",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-017",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:10:16.903Z",
+      "details": {
+        "node": "observe-2",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-013",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:10:18.645Z",
+      "details": {
+        "node": "retro-2",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-018",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:10:20.520Z",
+      "details": {
+        "node": "retro-2",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-014",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:36:11.274Z",
+      "details": {
+        "node": "phase-2",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-019",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:36:12.955Z",
+      "details": {
+        "node": "phase-2",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-015",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:36:14.647Z",
+      "details": {
+        "node": "review-2",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-020",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:36:16.314Z",
+      "details": {
+        "node": "review-2",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "CUR-005",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T09:36:17.940Z",
+      "details": {
+        "from": "phase-2",
+        "to": "phase-3"
+      }
     }
   ],
   "nodes": [
@@ -705,12 +875,12 @@
       "id": "phase-2",
       "type": "phase",
       "label": "P2: Inbox CLI and Ambient Registration",
-      "status": "known",
+      "status": "done",
       "next": [
         "review-2"
       ],
       "created_at": "2026-07-12T01:53:14.595Z",
-      "modified_at": "2026-07-12T01:53:14.595Z",
+      "modified_at": "2026-07-12T09:36:12.955Z",
       "instructions": [
         "Implement exactly ONE phase using the plan's testing approach and domain placement rules — keep the task table and execution.log.md live as you go.",
         "Run /builder 6 implement --plan \"<plan path>\" (add --companion for a live review companion); log discoveries, tagging any Deferred/Noteworthy a human must see before ship.",
@@ -720,36 +890,40 @@
         "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
       ],
       "command": "/builder 6 implement",
-      "phase": 2
+      "phase": 2,
+      "note": "Phase 2 COMPLETE: T001-T012, ownership live gate, inbox/addendum review APPROVE, 203 targeted tests and Windows hard-link race; shared smoke debt non-blocking by R-004.",
+      "ran_at": "2026-07-12T09:36:11.274Z"
     },
     {
       "id": "review-2",
       "type": "review",
       "label": "Review: P2",
-      "status": "known",
+      "status": "done",
       "next": [
         "phase-3"
       ],
       "created_at": "2026-07-12T01:53:14.595Z",
-      "modified_at": "2026-07-12T01:53:14.595Z",
+      "modified_at": "2026-07-12T09:36:16.314Z",
       "instructions": [
         "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in; skippable when a companion already reviewed every commit.",
         "Run /builder 7 review — it inspects the newest reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or ship.",
         "Done when the verdict is recorded (one finding line) and either accepted or routed to a fix-loop."
       ],
       "zone": "flight",
-      "command": "/builder 7 review"
+      "command": "/builder 7 review",
+      "ran_at": "2026-07-12T09:36:14.647Z",
+      "note": "Cold review APPROVE: F-001/F-002/F-003 resolved; no required re-review."
     },
     {
       "id": "boot-2",
       "type": "harness-boot",
       "label": "Boot check",
-      "status": "assumed",
+      "status": "done",
       "next": [
         "phase-2"
       ],
       "created_at": "2026-07-12T01:53:14.595Z",
-      "modified_at": "2026-07-12T01:53:14.595Z",
+      "modified_at": "2026-07-12T06:18:58.000Z",
       "branch_of": "phase-2",
       "instructions": [
         "Recommended pre-flight seam: confirm the harness is healthy before you start coding this phase.",
@@ -762,18 +936,20 @@
       "chore": {
         "kind": "command",
         "importance": "recommended"
-      }
+      },
+      "ran_at": "2026-07-12T06:18:56.357Z",
+      "note": "Phase 2 worktree boot healthy: typecheck + tests green."
     },
     {
       "id": "observe-2",
       "type": "observe",
       "label": "Observe: P2",
-      "status": "assumed",
+      "status": "done",
       "next": [
         "phase-2"
       ],
       "created_at": "2026-07-12T01:53:14.595Z",
-      "modified_at": "2026-07-12T01:53:14.595Z",
+      "modified_at": "2026-07-12T09:10:16.903Z",
       "branch_of": "phase-2",
       "instructions": [
         "Recommended mid-phase capture: record observations (decisions, gotchas, surprises) AS you code, so they don't evaporate as remembered prose.",
@@ -787,18 +963,20 @@
       "chore": {
         "kind": "command",
         "importance": "recommended"
-      }
+      },
+      "ran_at": "2026-07-12T09:10:15.170Z",
+      "note": "Captured D-032/D-033 smoke gaps and D-034 adversarial messaging proof gap; regressions encoded."
     },
     {
       "id": "retro-2",
       "type": "harness-retro",
       "label": "Retro: P2 (drain)",
-      "status": "assumed",
+      "status": "done",
       "next": [
         "phase-2"
       ],
       "created_at": "2026-07-12T01:53:14.595Z",
-      "modified_at": "2026-07-12T01:53:14.595Z",
+      "modified_at": "2026-07-12T09:10:20.520Z",
       "branch_of": "phase-2",
       "instructions": [
         "Recommended post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
@@ -809,7 +987,9 @@
       "chore": {
         "kind": "command",
         "importance": "recommended"
-      }
+      },
+      "ran_at": "2026-07-12T09:10:18.645Z",
+      "note": "Saved six observations to .harness/records/retro/2026-07-12/003-041-phase-2-inbox-cli.md and docs/retros/s041-inbox-no-tmux.md."
     },
     {
       "id": "phase-3",

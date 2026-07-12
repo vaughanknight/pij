@@ -280,6 +280,45 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			readdirSync(join(home, "pij-p", "inbox")).filter((n) => n.startsWith("msg-")),
 		).toHaveLength(1); // message left for the pi receiver
 	});
+
+	it("delivery ownership: an external pull target is never tick-owned, driven, buffered, or drained", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-pull",
+				harness: "copilot",
+				deliveryMode: "pull",
+				lifecycle: "bound",
+				paneId: "%5",
+				harnessSessionId: "df4f1111-2222-4333-8444-555555555555",
+			}),
+		);
+		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-pull", body: "stay durable" });
+		const ports = fakePorts({ nowMs: NOW_MS });
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+
+		expect(ports.sent).toHaveLength(0);
+		expect(registry.read("pij-pull")?.lastTickAt).toBeUndefined();
+		expect(messageBodies("pij-pull")).toEqual(["stay durable"]);
+	});
+
+	it("does not drive a pending external pull descriptor", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-pull",
+				harness: "claude",
+				deliveryMode: "pull",
+				lifecycle: "pending",
+				paneId: "%5",
+			}),
+		);
+		const ports = fakePorts();
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(ports.sent).toHaveLength(0);
+		expect(registry.read("pij-pull")?.initInjectedAt).toBeUndefined();
+	});
 });
 
 describe("Daemon.tick provider-failure peek", () => {

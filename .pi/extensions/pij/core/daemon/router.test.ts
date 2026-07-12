@@ -41,6 +41,27 @@ describe("route (delivery ownership, AC-07/08)", () => {
 		expect(route(d, msg("legacy", "hi")).kind).toBe("observe");
 	});
 
+	it("bound external pull target → observe, never inject", () => {
+		const d = target({
+			id: "pull-peer",
+			harness: "copilot",
+			deliveryMode: "pull",
+			lifecycle: "bound",
+			paneId: "%7",
+		});
+		expect(route(d, msg("pull-peer", "go"))).toEqual({ kind: "observe" });
+	});
+
+	it("unbound external pull target → observe, never buffer", () => {
+		const d = target({
+			id: "pull-peer",
+			harness: "claude",
+			deliveryMode: "pull",
+			lifecycle: "pending",
+		});
+		expect(route(d, msg("pull-peer", "go"))).toEqual({ kind: "observe" });
+	});
+
 	it("bound claude target → inject into its pane", () => {
 		const d = target({ id: "claude-w", harness: "claude", lifecycle: "bound", paneId: "%7" });
 		expect(route(d, msg("claude-w", "go"))).toEqual({

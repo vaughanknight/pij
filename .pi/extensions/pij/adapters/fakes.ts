@@ -171,6 +171,7 @@ export class FakeRegistry implements RegistryPort {
 
 export class FakeEventLog implements EventLogPort {
 	private readonly events: PijEvent[] = [];
+	private readonly onceKeys = new Set<string>();
 
 	constructor(initial: readonly PijEvent[] = []) {
 		this.events.push(...initial);
@@ -178,6 +179,12 @@ export class FakeEventLog implements EventLogPort {
 
 	append(event: PijEvent): void {
 		this.events.push(event);
+	}
+	appendOnce(key: string, event: PijEvent): "appended" | "existing" {
+		if (this.onceKeys.has(key)) return "existing";
+		this.onceKeys.add(key);
+		this.events.push(event);
+		return "appended";
 	}
 	read(query?: EventQuery): PijEvent[] {
 		return filterEvents(this.events, query);

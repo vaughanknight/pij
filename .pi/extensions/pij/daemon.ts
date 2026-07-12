@@ -122,7 +122,7 @@ export class Daemon {
 	tick(): void {
 		const tickAt = new Date(this.ports.now()).toISOString();
 		for (const snapshot of this.registry.list()) {
-			if (!daemonOwnsDelivery(snapshot.harness ?? "pi")) continue;
+			if (!daemonOwnsDelivery(snapshot.harness ?? "pi", snapshot.deliveryMode)) continue;
 			const latest = this.registry.read(snapshot.id);
 			if (latest) this.registry.write({ ...latest, lastTickAt: tickAt });
 		}
@@ -136,7 +136,7 @@ export class Daemon {
 		}
 
 		for (const d of this.index.pending()) {
-			if (!daemonOwnsDelivery(d.harness ?? "pi")) continue; // pi self-drives
+			if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) continue; // pi/pull self-drive
 			try {
 				const drive = this.drives.get(d.id) ?? {};
 				this.drives.set(d.id, drive);
@@ -183,7 +183,9 @@ export class Daemon {
 				// Delivery is daemon-owned ONLY for bound tmux harnesses (claude/copilot).
 				// pi self-drives its inbox via its in-process receiver, so it is excluded
 				// from flush/drain/observe — the daemon must never touch a pi inbox.
-				const owns = current.lifecycle === "bound" && daemonOwnsDelivery(current.harness ?? "pi");
+				const owns =
+					current.lifecycle === "bound" &&
+					daemonOwnsDelivery(current.harness ?? "pi", current.deliveryMode);
 				if (owns) {
 					// Flush buffered pre-bind sends — but ONLY once we have a pane to send to.
 					// `SendBuffer.flush` deletes the queue unconditionally, so guarding the

@@ -58,6 +58,13 @@ describe("FakeEventLog", () => {
 		expect(log.lastSeq()).toBe(2);
 		expect(log.read({ type: "message" }).map((e) => e.seq)).toEqual([2]);
 	});
+
+	it("appendOnce gives exact first-writer ownership per key", () => {
+		const log = new FakeEventLog();
+		expect(log.appendOnce("receipt:m1", buildEvent(1, "receipt", 0))).toBe("appended");
+		expect(log.appendOnce("receipt:m1", buildEvent(2, "receipt", 0))).toBe("existing");
+		expect(log.read().map((event) => event.seq)).toEqual([1]);
+	});
 });
 
 describe("FakeDelivery", () => {
