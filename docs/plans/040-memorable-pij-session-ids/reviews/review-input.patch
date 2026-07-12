@@ -1,0 +1,2235 @@
+diff --git a/.pi/extensions/pij/adapters/fs-registry.test.ts b/.pi/extensions/pij/adapters/fs-registry.test.ts
+index 3e1590f..d0f486f 100644
+--- a/.pi/extensions/pij/adapters/fs-registry.test.ts
++++ b/.pi/extensions/pij/adapters/fs-registry.test.ts
+@@ -4,6 +4,7 @@ import { join } from "node:path";
+ import { afterEach, beforeEach, describe, expect, it } from "vitest";
+ import { reattachIdentity, resolveStableIdentity } from "../core/binding.js";
+ import { deriveHarnessPijId } from "../core/discovery.js";
++import { memorablePijIdCandidate } from "../core/memorable-id.js";
+ import type { SessionDescriptor } from "../core/types.js";
+ import { FsRegistry } from "./fs-registry.js";
+ 
+@@ -19,6 +20,12 @@ function descriptor(id: string): SessionDescriptor {
+ 	};
+ }
+ 
++function candidate(seed: string, attempt: number): string {
++	const result = memorablePijIdCandidate(seed, attempt);
++	if (!result.ok) throw new Error(result.message);
++	return result.value;
++}
++
+ describe("FsRegistry", () => {
+ 	let home: string;
+ 	beforeEach(() => {
+@@ -226,6 +233,185 @@ describe("FsRegistry", () => {
+ 		});
+ 	});
+ 
++	it("allocates the next memorable candidate when attempt zero belongs to another tuple", () => {
++		const seed = "forced-collision";
++		const first = candidate(seed, 0);
++		const second = candidate(seed, 1);
++		const registry = new FsRegistry(home);
++		expect(registry.claimIdentity("claude", "native-owner", first).ok).toBe(true);
++
++		expect(registry.allocateIdentity("claude", "native-new", seed)).toEqual({
++			ok: true,
++			value: { kind: "claimed", id: second },
++		});
++		expect(registry.resolveIdentity("claude", "native-owner")).toEqual({
++			ok: true,
++			value: first,
++		});
++	});
++
++	it("concurrent registry instances converge for one native tuple and diverge for different tuples", () => {
++		const seed = "same-start";
++		const first = new FsRegistry(home).allocateIdentity("copilot", "native-same", seed);
++		const same = new FsRegistry(home).allocateIdentity("copilot", "native-same", seed);
++		const different = new FsRegistry(home).allocateIdentity("copilot", "native-other", seed);
++
++		expect(first).toMatchObject({ ok: true, value: { kind: "claimed", id: candidate(seed, 0) } });
++		expect(same).toMatchObject({ ok: true, value: { kind: "reuse", id: candidate(seed, 0) } });
++		expect(different).toMatchObject({
++			ok: true,
++			value: { kind: "claimed", id: candidate(seed, 1) },
++		});
++	});
++
++	it("fails loudly when durable identity coexists with multiple live descriptors for one tuple", () => {
++		const registry = new FsRegistry(home);
++		expect(registry.claimIdentity("claude", "native-corrupt", "pij-first").ok).toBe(true);
++		for (const id of ["pij-first", "pij-duplicate"]) {
++			writeFileSync(
++				join(home, `${id}.json`),
++				JSON.stringify({
++					...descriptor(id),
++					harness: "claude",
++					harnessSessionId: "native-corrupt",
++					lifecycle: "bound",
++				}),
++			);
++		}
++		expect(registry.allocateIdentity("claude", "native-corrupt", "unused")).toMatchObject({
++			ok: false,
++			code: "E-AMBIG",
++		});
++	});
++
++	it("upgrades and preserves an existing opaque Pi descriptor instead of renaming it", () => {
++		const legacy = {
++			...descriptor("pij-1opaque"),
++			prime: true,
++		};
++		new FsRegistry(home).write(legacy);
++
++		const allocated = new FsRegistry(home).allocateIdentity(
++			"pi",
++			"native-legacy",
++			"new-memorable-seed",
++			legacy.id,
++		);
++		expect(allocated).toMatchObject({
++			ok: true,
++			value: { kind: "reuse", id: legacy.id, descriptor: { prime: true } },
++		});
++		expect(new FsRegistry(home).resolveIdentity("pi", "native-legacy")).toEqual({
++			ok: true,
++			value: legacy.id,
++		});
++	});
++
++	it("reserves before bind, retries collisions, and never reclaims an orphan from pid death alone", () => {
++		const seed = "pre-bind";
++		const first = new FsRegistry(home).reserveMemorableId(seed, "owner-a", 111);
++		const second = new FsRegistry(home).reserveMemorableId(seed, "owner-b", 999_999);
++
++		expect(first).toEqual({
++			ok: true,
++			value: { kind: "claimed", id: candidate(seed, 0) },
++		});
++		expect(second).toEqual({
++			ok: true,
++			value: { kind: "claimed", id: candidate(seed, 1) },
++		});
++		expect(new FsRegistry(home).hasReservation(candidate(seed, 0))).toEqual({
++			ok: true,
++			value: true,
++		});
++	});
++
++	it("releases only a known owner's unconsumed reservation", () => {
++		const seed = "known-failure";
++		const id = candidate(seed, 0);
++		const registry = new FsRegistry(home);
++		expect(registry.reserveMemorableId(seed, "owner-a", 111).ok).toBe(true);
++		expect(registry.releaseReservation(id, "owner-b")).toMatchObject({
++			ok: false,
++			code: "E-OWN",
++		});
++		expect(registry.releaseReservation(id, "owner-a")).toEqual({ ok: true, value: true });
++		expect(registry.reserveMemorableId(seed, "owner-c", 333)).toEqual({
++			ok: true,
++			value: { kind: "claimed", id },
++		});
++	});
++
++	it("promotes a reservation into a descriptor and refuses stale release afterward", () => {
++		const seed = "promotion";
++		const registry = new FsRegistry(home);
++		const reserved = registry.reserveMemorableId(seed, "owner-a", 111);
++		if (!reserved.ok) throw new Error(reserved.message);
++		const pending = {
++			...descriptor(reserved.value.id),
++			harness: "claude" as const,
++			lifecycle: "pending" as const,
++		};
++
++		expect(registry.promoteReservation(pending, "owner-a")).toMatchObject({
++			ok: true,
++			value: { kind: "claimed", descriptor: { id: reserved.value.id } },
++		});
++		expect(registry.read(reserved.value.id)).toMatchObject({ id: reserved.value.id });
++		expect(registry.hasReservation(reserved.value.id)).toEqual({ ok: true, value: false });
++		expect(registry.releaseReservation(reserved.value.id, "owner-a")).toEqual({
++			ok: true,
++			value: false,
++		});
++	});
++
++	it("consumes a reservation after an existing writer publishes the descriptor", () => {
++		const registry = new FsRegistry(home);
++		const reserved = registry.reserveMemorableId("agent-finalize", "owner-agent", 222);
++		if (!reserved.ok) throw new Error(reserved.message);
++		registry.write({ ...descriptor(reserved.value.id), harness: "copilot", lifecycle: "pending" });
++
++		expect(registry.consumeReservation(reserved.value.id, "owner-agent")).toEqual({
++			ok: true,
++			value: true,
++		});
++		expect(registry.hasReservation(reserved.value.id)).toEqual({ ok: true, value: false });
++	});
++
++	it("explicitly recovers a crash-orphan reservation without automatic reclamation", () => {
++		const registry = new FsRegistry(home);
++		const reserved = registry.reserveMemorableId("operator-recovery", "dead-owner", 999_999);
++		if (!reserved.ok) throw new Error(reserved.message);
++		const pending = {
++			...descriptor(reserved.value.id),
++			harness: "codex" as const,
++			lifecycle: "pending" as const,
++		};
++
++		expect(registry.recoverReservation(pending)).toMatchObject({
++			ok: true,
++			value: { descriptor: { id: reserved.value.id } },
++		});
++		expect(registry.read(reserved.value.id)).toMatchObject({ id: reserved.value.id });
++	});
++
++	it("rolls back a provisional reservation when a legacy descriptor already owns the candidate", () => {
++		const seed = "legacy-live-collision";
++		const first = candidate(seed, 0);
++		const registry = new FsRegistry(home);
++		registry.write(descriptor(first));
++
++		expect(registry.reserveMemorableId(seed, "owner-a", 111)).toMatchObject({
++			ok: true,
++			value: { id: candidate(seed, 1) },
++		});
++		registry.remove(first);
++		expect(registry.reserveMemorableId(seed, "owner-b", 222)).toEqual({
++			ok: true,
++			value: { kind: "claimed", id: first },
++		});
++	});
++
+ 	it("remove deletes the descriptor (idempotent)", () => {
+ 		const reg = new FsRegistry(home);
+ 		reg.write(descriptor("bob"));
+diff --git a/.pi/extensions/pij/adapters/fs-registry.ts b/.pi/extensions/pij/adapters/fs-registry.ts
+index 66a0a29..93afd2b 100644
+--- a/.pi/extensions/pij/adapters/fs-registry.ts
++++ b/.pi/extensions/pij/adapters/fs-registry.ts
+@@ -18,6 +18,7 @@ import {
+ 	writeFileSync,
+ } from "node:fs";
+ import { dirname, join } from "node:path";
++import { memorablePijIdCandidates } from "../core/memorable-id.js";
+ import type { RegistryPort } from "../core/ports.js";
+ import {
+ 	err,
+@@ -29,6 +30,7 @@ import {
+ } from "../core/types.js";
+ 
+ interface IdentityRecord {
++	readonly kind?: "identity";
+ 	readonly harness: HarnessKind;
+ 	readonly harnessSessionId: string;
+ 	readonly pijId: SessionId;
+@@ -36,6 +38,24 @@ interface IdentityRecord {
+ 	readonly snapshot?: SessionDescriptor;
+ }
+ 
++interface ReservationRecord {
++	readonly kind: "reservation";
++	readonly pijId: SessionId;
++	readonly ownerToken: string;
++	readonly ownerPid: number;
++	readonly createdAt: string;
++}
++
++interface DescriptorOwnerRecord {
++	readonly kind: "descriptor";
++	readonly pijId: SessionId;
++	readonly ownerToken: string;
++	readonly ownerPid: number;
++	readonly createdAt: string;
++}
++
++type OwnerRecord = IdentityRecord | ReservationRecord | DescriptorOwnerRecord;
++
+ interface DetailedIdentityClaim {
+ 	readonly kind: "claimed" | "exists";
+ 	readonly id: SessionId;
+@@ -51,6 +71,7 @@ function isIdentityRecord(value: unknown): value is IdentityRecord {
+ 	const record = value as Record<string, unknown>;
+ 	const snapshot = record.snapshot;
+ 	return (
++		(record.kind === undefined || record.kind === "identity") &&
+ 		isHarnessKind(record.harness) &&
+ 		typeof record.harnessSessionId === "string" &&
+ 		typeof record.pijId === "string" &&
+@@ -61,6 +82,34 @@ function isIdentityRecord(value: unknown): value is IdentityRecord {
+ 	);
+ }
+ 
++function isReservationRecord(value: unknown): value is ReservationRecord {
++	if (typeof value !== "object" || value === null) return false;
++	const record = value as Record<string, unknown>;
++	return (
++		record.kind === "reservation" &&
++		typeof record.pijId === "string" &&
++		typeof record.ownerToken === "string" &&
++		typeof record.ownerPid === "number" &&
++		typeof record.createdAt === "string"
++	);
++}
++
++function isDescriptorOwnerRecord(value: unknown): value is DescriptorOwnerRecord {
++	if (typeof value !== "object" || value === null) return false;
++	const record = value as Record<string, unknown>;
++	return (
++		record.kind === "descriptor" &&
++		typeof record.pijId === "string" &&
++		typeof record.ownerToken === "string" &&
++		typeof record.ownerPid === "number" &&
++		typeof record.createdAt === "string"
++	);
++}
++
++function isOwnerRecord(value: unknown): value is OwnerRecord {
++	return isIdentityRecord(value) || isReservationRecord(value) || isDescriptorOwnerRecord(value);
++}
++
+ export class FsRegistry implements RegistryPort {
+ 	constructor(private readonly pijHome: string) {}
+ 
+@@ -189,6 +238,237 @@ export class FsRegistry implements RegistryPort {
+ 		return ok({ kind: detailed.value.kind, id: detailed.value.id });
+ 	}
+ 
++	/** Resolve an existing exact/legacy identity or atomically claim the first free
++	 * memorable candidate. Exact native identity always wins over candidate order. */
++	allocateIdentity(
++		harness: HarnessKind,
++		harnessSessionId: string,
++		seed: string,
++		legacyId?: SessionId,
++	): Result<{
++		readonly kind: "claimed" | "reuse";
++		readonly id: SessionId;
++		readonly descriptor?: SessionDescriptor;
++	}> {
++		const durable = this.resolveIdentity(harness, harnessSessionId);
++		if (!durable.ok) return durable;
++		const exact = this.list().filter(
++			(descriptor) =>
++				descriptor.harness === harness && descriptor.harnessSessionId === harnessSessionId,
++		);
++		if (exact.length > 1) {
++			return err(
++				"E-AMBIG",
++				`identity ${harness}:${harnessSessionId} maps to multiple pij ids: ${exact
++					.map((descriptor) => descriptor.id)
++					.join(", ")}`,
++			);
++		}
++		const exactDescriptor = exact[0];
++		if (durable.value) {
++			if (exactDescriptor && exactDescriptor.id !== durable.value) {
++				return err(
++					"E-AMBIG",
++					`durable identity ${harness}:${harnessSessionId} is ${durable.value}, but live descriptor is ${exactDescriptor.id}`,
++				);
++			}
++			const snapshot = this.resolveIdentitySnapshot(harness, harnessSessionId);
++			if (!snapshot.ok) return snapshot;
++			const descriptor = this.read(durable.value) ?? snapshot.value;
++			if (descriptor && descriptor.id !== durable.value) {
++				return err(
++					"E-AMBIG",
++					`durable identity ${harness}:${harnessSessionId} points to ${durable.value}, but metadata belongs to ${descriptor.id}`,
++				);
++			}
++			return ok({
++				kind: "reuse",
++				id: durable.value,
++				...(descriptor ? { descriptor } : {}),
++			});
++		}
++		if (exactDescriptor) {
++			const claimed = this.claimIdentityDetailed(
++				harness,
++				harnessSessionId,
++				exactDescriptor.id,
++				true,
++			);
++			if (!claimed.ok) return claimed;
++			return ok({ kind: "reuse", id: exactDescriptor.id, descriptor: exactDescriptor });
++		}
++
++		if (legacyId) {
++			const legacy = this.read(legacyId);
++			if (legacy && legacy.harness === undefined && legacy.harnessSessionId === undefined) {
++				const claimed = this.claimIdentity(harness, harnessSessionId, legacy.id);
++				if (!claimed.ok) return claimed;
++				return ok({ kind: "reuse", id: legacy.id, descriptor: legacy });
++			}
++		}
++
++		for (const id of memorablePijIdCandidates(seed)) {
++			const claimed = this.claimIdentityDetailed(harness, harnessSessionId, id);
++			if (claimed.ok) {
++				const descriptor = this.read(id);
++				if (descriptor) {
++					if (descriptor.harness === harness && descriptor.harnessSessionId === harnessSessionId) {
++						return ok({ kind: "reuse", id, descriptor });
++					}
++					this.rollbackIdentity(claimed.value.createdPaths);
++					continue;
++				}
++				return ok({
++					kind: claimed.value.kind === "claimed" ? "claimed" : "reuse",
++					id,
++				});
++			}
++			if (claimed.code !== "E-AMBIG") return claimed;
++			const raced = this.resolveIdentity(harness, harnessSessionId);
++			if (!raced.ok) return raced;
++			if (raced.value) {
++				const snapshot = this.resolveIdentitySnapshot(harness, harnessSessionId);
++				if (!snapshot.ok) return snapshot;
++				const descriptor = this.read(raced.value) ?? snapshot.value;
++				return ok({
++					kind: "reuse",
++					id: raced.value,
++					...(descriptor ? { descriptor } : {}),
++				});
++			}
++		}
++		return err("E-FULL", "memorable pij id space exhausted");
++	}
++
++	/** Atomically reserve the first free memorable id for a pre-bind launch owner. */
++	reserveMemorableId(
++		seed: string,
++		ownerToken: string,
++		ownerPid: number,
++	): Result<{ readonly kind: "claimed" | "exists"; readonly id: SessionId }> {
++		if (!ownerToken.trim()) return err("E-ARG", "reservation owner token must be non-empty");
++		for (const id of memorablePijIdCandidates(seed)) {
++			const record: ReservationRecord = {
++				kind: "reservation",
++				pijId: id,
++				ownerToken,
++				ownerPid,
++				createdAt: new Date().toISOString(),
++			};
++			const path = this.identityOwnerPath(id);
++			const owner = this.claimOwnerRecord(path, record);
++			if (!owner.ok) return owner;
++			if (owner.value.kind === "exists") {
++				const existing = owner.value.record;
++				if (
++					isReservationRecord(existing) &&
++					existing.pijId === id &&
++					existing.ownerToken === ownerToken
++				) {
++					return ok({ kind: "exists", id });
++				}
++				continue;
++			}
++			if (this.read(id)) {
++				rmSync(path, { force: true });
++				continue;
++			}
++			return ok({ kind: "claimed", id });
++		}
++		return err("E-FULL", "memorable pij id space exhausted");
++	}
++
++	/** Release only an unconsumed reservation owned by the caller. */
++	releaseReservation(id: SessionId, ownerToken: string): Result<boolean> {
++		const path = this.identityOwnerPath(id);
++		const owner = this.readOwnerRecord(path);
++		if (!owner.ok) return owner;
++		if (!owner.value || isIdentityRecord(owner.value) || isDescriptorOwnerRecord(owner.value)) {
++			return ok(false);
++		}
++		if (owner.value.ownerToken !== ownerToken) {
++			return err("E-OWN", `reservation ${id} belongs to another launch owner`);
++		}
++		const descriptor = this.read(id);
++		if (descriptor) {
++			this.writeAtomic(path, descriptorOwner(owner.value));
++			return ok(false);
++		}
++		rmSync(path, { force: true });
++		return ok(true);
++	}
++
++	hasReservation(id: SessionId): Result<boolean> {
++		const owner = this.readOwnerRecord(this.identityOwnerPath(id));
++		return owner.ok ? ok(isReservationRecord(owner.value)) : owner;
++	}
++
++	/** Publish the pending descriptor while retaining atomic by-id ownership. */
++	promoteReservation(
++		descriptor: SessionDescriptor,
++		ownerToken: string,
++	): Result<
++		| { readonly kind: "claimed"; readonly descriptor: SessionDescriptor }
++		| { readonly kind: "exists"; readonly descriptor: SessionDescriptor }
++	> {
++		const ownerPath = this.identityOwnerPath(descriptor.id);
++		const owner = this.readOwnerRecord(ownerPath);
++		if (!owner.ok) return owner;
++		if (!owner.value || isIdentityRecord(owner.value)) {
++			return err("E-NOID", `no pre-bind reservation exists for ${descriptor.id}`);
++		}
++		if (owner.value.ownerToken !== ownerToken) {
++			return err("E-OWN", `reservation ${descriptor.id} belongs to another launch owner`);
++		}
++		const published = this.publishNoReplace(this.pathFor(descriptor.id), descriptor);
++		if (!published.ok) return published;
++		let persisted = descriptor;
++		if (published.value === "exists") {
++			const existing = this.read(descriptor.id);
++			if (!existing) return err("E-NOREG", `pij identity ${descriptor.id} is unreadable`);
++			if (!sameDescriptorIdentity(existing, descriptor)) {
++				return err(
++					"E-AMBIG",
++					`pij identity ${descriptor.id} is already attached to an incompatible descriptor`,
++				);
++			}
++			persisted = existing;
++		}
++		this.writeAtomic(ownerPath, descriptorOwner(owner.value));
++		return ok({ kind: published.value, descriptor: persisted });
++	}
++
++	/** Mark a reservation consumed after another writer published its descriptor. */
++	consumeReservation(id: SessionId, ownerToken: string): Result<boolean> {
++		const ownerPath = this.identityOwnerPath(id);
++		const owner = this.readOwnerRecord(ownerPath);
++		if (!owner.ok) return owner;
++		if (!owner.value || isIdentityRecord(owner.value) || isDescriptorOwnerRecord(owner.value)) {
++			return ok(false);
++		}
++		if (owner.value.ownerToken !== ownerToken) {
++			return err("E-OWN", `reservation ${id} belongs to another launch owner`);
++		}
++		if (!this.read(id)) return err("E-NOID", `cannot consume reservation ${id}: descriptor absent`);
++		this.writeAtomic(ownerPath, descriptorOwner(owner.value));
++		return ok(true);
++	}
++
++	/** Explicit operator recovery for an orphaned reservation. Never called automatically. */
++	recoverReservation(
++		descriptor: SessionDescriptor,
++	): Result<{ readonly descriptor: SessionDescriptor }> {
++		const ownerPath = this.identityOwnerPath(descriptor.id);
++		const owner = this.readOwnerRecord(ownerPath);
++		if (!owner.ok) return owner;
++		if (!owner.value || isIdentityRecord(owner.value)) {
++			return err("E-NOID", `no recoverable reservation exists for ${descriptor.id}`);
++		}
++		const promoted = this.promoteReservation(descriptor, owner.value.ownerToken);
++		if (!promoted.ok) return promoted;
++		return ok({ descriptor: promoted.value.descriptor });
++	}
++
+ 	remove(id: SessionId): void {
+ 		try {
+ 			rmSync(this.pathFor(id));
+@@ -211,6 +491,7 @@ export class FsRegistry implements RegistryPort {
+ 			descriptor.harness,
+ 			descriptor.harnessSessionId,
+ 			descriptor.id,
++			true,
+ 		);
+ 	}
+ 
+@@ -218,19 +499,42 @@ export class FsRegistry implements RegistryPort {
+ 		harness: HarnessKind,
+ 		harnessSessionId: string,
+ 		pijId: SessionId,
++		allowDescriptorOwner = false,
+ 	): Result<DetailedIdentityClaim> {
+-		const record: IdentityRecord = { harness, harnessSessionId, pijId };
++		const record: IdentityRecord = { kind: "identity", harness, harnessSessionId, pijId };
+ 		const createdPaths: string[] = [];
+ 		const ownerPath = this.identityOwnerPath(pijId);
+-		const owner = this.claimIdentityRecord(ownerPath, record);
++		const owner = this.claimOwnerRecord(ownerPath, record);
+ 		if (!owner.ok) return owner;
+ 		if (owner.value.kind === "claimed") createdPaths.push(ownerPath);
+-		if (!sameIdentity(owner.value.record, record)) {
+-			this.rollbackIdentity(createdPaths);
+-			return err(
+-				"E-AMBIG",
+-				`pij id ${pijId} is already owned by ${owner.value.record.harness}:${owner.value.record.harnessSessionId}`,
+-			);
++		const existingOwner = owner.value.record;
++		let upgradeOwner = false;
++		if (isIdentityRecord(existingOwner)) {
++			if (!sameIdentity(existingOwner, record)) {
++				this.rollbackIdentity(createdPaths);
++				return err(
++					"E-AMBIG",
++					`pij id ${pijId} is already owned by ${existingOwner.harness}:${existingOwner.harnessSessionId}`,
++				);
++			}
++		} else {
++			if (!allowDescriptorOwner) {
++				this.rollbackIdentity(createdPaths);
++				return err("E-AMBIG", `pij id ${pijId} is reserved by another launch owner`);
++			}
++			const descriptor = this.read(pijId);
++			const compatible =
++				descriptor?.id === pijId &&
++				descriptor.harness === harness &&
++				(descriptor.harnessSessionId === undefined ||
++					descriptor.harnessSessionId === harnessSessionId) &&
++				(descriptor.plannedHarnessSessionId === undefined ||
++					descriptor.plannedHarnessSessionId === harnessSessionId);
++			if (!compatible) {
++				this.rollbackIdentity(createdPaths);
++				return err("E-AMBIG", `pij id ${pijId} is reserved by another launch owner`);
++			}
++			upgradeOwner = true;
+ 		}
+ 
+ 		const tuplePath = this.identityPath(harness, harnessSessionId);
+@@ -247,6 +551,14 @@ export class FsRegistry implements RegistryPort {
+ 				`identity ${harness}:${harnessSessionId} is already mapped to ${tuple.value.record.pijId}`,
+ 			);
+ 		}
++		if (upgradeOwner) {
++			try {
++				this.writeAtomic(ownerPath, record);
++			} catch (error) {
++				this.rollbackIdentity(createdPaths);
++				return err("E-NOREG", `cannot promote pij owner ${pijId}: ${String(error)}`);
++			}
++		}
+ 		return ok({
+ 			kind: tuple.value.kind === "claimed" ? "claimed" : "exists",
+ 			id: tuple.value.record.pijId,
+@@ -275,6 +587,23 @@ export class FsRegistry implements RegistryPort {
+ 			: err("E-NOREG", `durable identity record ${path} disappeared`);
+ 	}
+ 
++	private claimOwnerRecord(
++		path: string,
++		record: OwnerRecord,
++	): Result<
++		| { readonly kind: "claimed"; readonly record: OwnerRecord }
++		| { readonly kind: "exists"; readonly record: OwnerRecord }
++	> {
++		const published = this.publishNoReplace(path, record);
++		if (!published.ok) return published;
++		if (published.value === "claimed") return ok({ kind: "claimed", record });
++		const existing = this.readOwnerRecord(path);
++		if (!existing.ok) return existing;
++		return existing.value
++			? ok({ kind: "exists", record: existing.value })
++			: err("E-NOREG", `durable owner record ${path} disappeared`);
++	}
++
+ 	private syncIdentitySnapshot(descriptor: SessionDescriptor): void {
+ 		if (!descriptor.harness || !descriptor.harnessSessionId) return;
+ 		const tuplePath = this.identityPath(descriptor.harness, descriptor.harnessSessionId);
+@@ -324,6 +653,19 @@ export class FsRegistry implements RegistryPort {
+ 			: err("E-NOREG", `malformed durable identity record ${path}`);
+ 	}
+ 
++	private readOwnerRecord(path: string): Result<OwnerRecord | undefined> {
++		let parsed: unknown;
++		try {
++			parsed = JSON.parse(readFileSync(path, "utf8"));
++		} catch (error) {
++			if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok(undefined);
++			return err("E-NOREG", `cannot read durable owner record ${path}`);
++		}
++		return isOwnerRecord(parsed)
++			? ok(parsed)
++			: err("E-NOREG", `malformed durable owner record ${path}`);
++	}
++
+ 	private publishNoReplace(path: string, value: unknown): Result<"claimed" | "exists"> {
+ 		mkdirSync(dirname(path), { recursive: true });
+ 		const tmpPath = `${path}.claim-${process.pid}-${randomUUID()}`;
+@@ -381,10 +723,27 @@ function sameIdentity(left: IdentityRecord, right: IdentityRecord): boolean {
+ }
+ 
+ function sameDescriptorIdentity(existing: SessionDescriptor, proposed: SessionDescriptor): boolean {
+-	if (!proposed.harness || !proposed.harnessSessionId) return existing.id === proposed.id;
++	if (!proposed.harness) return existing.id === proposed.id;
++	if (!proposed.harnessSessionId) {
++		return (
++			existing.id === proposed.id &&
++			existing.harness === proposed.harness &&
++			existing.harnessSessionId === undefined
++		);
++	}
+ 	return (
+ 		existing.id === proposed.id &&
+ 		existing.harness === proposed.harness &&
+ 		existing.harnessSessionId === proposed.harnessSessionId
+ 	);
+ }
++
++function descriptorOwner(record: ReservationRecord | DescriptorOwnerRecord): DescriptorOwnerRecord {
++	return {
++		kind: "descriptor",
++		pijId: record.pijId,
++		ownerToken: record.ownerToken,
++		ownerPid: record.ownerPid,
++		createdAt: record.createdAt,
++	};
++}
+diff --git a/.pi/extensions/pij/cli.integration.test.ts b/.pi/extensions/pij/cli.integration.test.ts
+index 565125f..1ad367f 100644
+--- a/.pi/extensions/pij/cli.integration.test.ts
++++ b/.pi/extensions/pij/cli.integration.test.ts
+@@ -10,7 +10,16 @@
+ // `.pi/extensions/pij/smoke.ts` (`/pij` status line via the Driver SDK).
+ 
+ import { execFileSync } from "node:child_process";
+-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
++import {
++	chmodSync,
++	existsSync,
++	mkdtempSync,
++	readdirSync,
++	readFileSync,
++	realpathSync,
++	rmSync,
++	writeFileSync,
++} from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { afterAll, beforeAll, describe, expect, it } from "vitest";
+@@ -29,10 +38,21 @@ const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin",
+ 
+ let HOME: string;
+ let FOLDER: string;
++let BIN: string;
++let TMUX_LOG: string;
+ 
+ /** Run the real cli.ts bin in the sandbox. Returns stdout + exit code. */
+ function pij(args: string[], extraEnv: Record<string, string> = {}): { out: string; code: number } {
+-	const env = { ...process.env, PIJ_HOME: HOME, ...extraEnv };
++	const env = {
++		...process.env,
++		PIJ_HOME: HOME,
++		PATH: `${BIN}:${process.env.PATH ?? ""}`,
++		TMUX_PANE: "%1",
++		FAKE_TMUX_CWD: FOLDER,
++		FAKE_TMUX_PID: String(process.pid),
++		FAKE_TMUX_LOG: TMUX_LOG,
++		...extraEnv,
++	};
+ 	try {
+ 		const out = execFileSync(TSX, [CLI, ...args], { cwd: FOLDER, env, encoding: "utf8" });
+ 		return { out, code: 0 };
+@@ -72,6 +92,32 @@ beforeAll(() => {
+ 	// realpath: on macOS mkdtemp returns a /var symlink; the CLI's `--here` reads
+ 	// the real cwd, so the descriptor folder must be the resolved path to match.
+ 	FOLDER = realpathSync(mkdtempSync(join(tmpdir(), "pij-folder-")));
++	BIN = mkdtempSync(join(tmpdir(), "pij-bin-"));
++	TMUX_LOG = join(HOME, "tmux.log");
++	const tmux = join(BIN, "tmux");
++	writeFileSync(
++		tmux,
++		`#!/bin/sh
++printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
++if [ "$FAKE_TMUX_FAIL" = "1" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
++	exit 1
++fi
++case "$1" in
++	display-message)
++		case "$*" in
++			*pane_current_path*) printf '%s\t%s\n' "$FAKE_TMUX_CWD" "$FAKE_TMUX_PID" ;;
++			*pane_pid*) printf '%s\n' "$FAKE_TMUX_PID" ;;
++			*session_name*) printf 'pij-test\n' ;;
++		esac
++		;;
++	list-panes) printf '%s\n' "\${TMUX_PANE:-%1}" ;;
++	list-windows) exit 0 ;;
++	split-window) printf '%%91\n' ;;
++	new-window) printf '%%90\n' ;;
++esac
++`,
++	);
++	chmodSync(tmux, 0o755);
+ 	A = boot("pij-A", "parent");
+ 	B = boot("pij-B", "worker");
+ 	boot("pij-C2", "worker");
+@@ -83,6 +129,7 @@ beforeAll(() => {
+ afterAll(() => {
+ 	rmSync(HOME, { recursive: true, force: true });
+ 	rmSync(FOLDER, { recursive: true, force: true });
++	rmSync(BIN, { recursive: true, force: true });
+ });
+ 
+ describe("pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME)", () => {
+@@ -292,6 +339,189 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
+ 		expect(r.code).toBe(2);
+ 	});
+ 
++	it("control-plane spawn reserves a memorable id before launch and publishes that exact id", () => {
++		writeFileSync(TMUX_LOG, "");
++		const result = pij(["spawn", "--harness", "claude", "--json"], {
++			PIJ_SESSION_ID: "pij-A",
++		});
++		expect(result.code).toBe(0);
++		const jsonLine = result.out
++			.trim()
++			.split("\n")
++			.findLast((line) => line.startsWith("{"));
++		const output = JSON.parse(jsonLine ?? "{}") as { id: string; paneId: string };
++		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
++		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
++			id: output.id,
++			paneId: output.paneId,
++			spawnedBy: "pij-A",
++			lifecycle: "pending",
++		});
++		expect(readFileSync(TMUX_LOG, "utf8")).toContain(`PIJ_SESSION_ID=${output.id}`);
++		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
++			ok: true,
++			value: false,
++		});
++	});
++
++	it("known pane-launch failure releases only the reservation it owns", () => {
++		writeFileSync(TMUX_LOG, "");
++		const result = pij(["spawn", "--harness", "claude", "--json"], {
++			PIJ_SESSION_ID: "pij-A",
++			FAKE_TMUX_FAIL: "1",
++		});
++		expect(result.code).toBe(2);
++		const log = readFileSync(TMUX_LOG, "utf8");
++		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+-[a-z]+)/)?.[1];
++		expect(id).toBeDefined();
++		expect(new FsRegistry(HOME).read(id as string)).toBeNull();
++		expect(new FsRegistry(HOME).hasReservation(id as string)).toEqual({
++			ok: true,
++			value: false,
++		});
++	});
++
++	it("agent spawn uses and consumes the same pre-bind memorable reservation", () => {
++		writeFileSync(TMUX_LOG, "");
++		const result = pij(
++			["agent", "spawn", "--prompt", "Inspect the current diff.", "--harness", "claude", "--json"],
++			{ PIJ_SESSION_ID: "pij-A" },
++		);
++		expect(result.code).toBe(0);
++		const jsonLine = result.out
++			.trim()
++			.split("\n")
++			.findLast((line) => line.startsWith("{"));
++		const output = JSON.parse(jsonLine ?? "{}") as { id: string; agentPack: string };
++		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
++		expect(output.agentPack).toBe("inline");
++		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
++			id: output.id,
++			agentPack: "inline",
++			lifecycle: "pending",
++		});
++		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
++			ok: true,
++			value: false,
++		});
++	});
++
++	it("adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation", () => {
++		const registry = new FsRegistry(HOME);
++		const opaque = "pij-existing-opaque";
++		registry.write({
++			id: opaque,
++			prime: true,
++			folder: FOLDER,
++			dataDir: join(HOME, opaque),
++			eventsPath: join(HOME, opaque, "events.ndjson"),
++			pid: process.pid,
++			startedAt: "2026-07-11T00:00:00.000Z",
++		});
++		const existing = pij([
++			"adopt",
++			"%7",
++			"--harness",
++			"claude",
++			"--id",
++			opaque,
++			"--session-id",
++			"native-existing",
++			"--json",
++		]);
++		expect(existing.code).toBe(0);
++		expect(JSON.parse(existing.out)).toMatchObject({
++			id: opaque,
++			harnessSessionId: "native-existing",
++		});
++		expect(registry.read(opaque)?.prime).toBe(true);
++		const conflict = pij([
++			"adopt",
++			"%7",
++			"--harness",
++			"claude",
++			"--id",
++			opaque,
++			"--session-id",
++			"native-conflict",
++		]);
++		expect(conflict.code).toBe(2);
++		expect(conflict.out).toContain("E-AMBIG");
++
++		const unknown = pij([
++			"adopt",
++			"%7",
++			"--harness",
++			"claude",
++			"--id",
++			"pij-caller-chosen",
++			"--session-id",
++			"native-unknown",
++		]);
++		expect(unknown.code).toBe(2);
++		expect(unknown.out).toContain("E-NOID");
++		expect(registry.read("pij-caller-chosen")).toBeNull();
++
++		const reserved = registry.reserveMemorableId("crash-orphan", "dead-owner", 999_999);
++		if (!reserved.ok) throw new Error(reserved.message);
++		const recovered = pij([
++			"adopt",
++			"%7",
++			"--harness",
++			"claude",
++			"--id",
++			reserved.value.id,
++			"--session-id",
++			"native-recovered",
++			"--json",
++		]);
++		expect(recovered.code).toBe(0);
++		expect(JSON.parse(recovered.out)).toMatchObject({
++			id: reserved.value.id,
++			harnessSessionId: "native-recovered",
++		});
++		expect(registry.hasReservation(reserved.value.id)).toEqual({ ok: true, value: false });
++	});
++
++	it("first adopt without --id allocates a memorable primary id", () => {
++		const result = pij([
++			"adopt",
++			"%7",
++			"--harness",
++			"claude",
++			"--session-id",
++			"native-first-adopt",
++			"--json",
++		]);
++		expect(result.code).toBe(0);
++		const output = JSON.parse(result.out) as { id: string; harnessSessionId: string };
++		expect(output).toMatchObject({ harnessSessionId: "native-first-adopt" });
++		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
++	});
++
++	it("no-native adopt reserves then publishes one memorable pending descriptor", () => {
++		const result = pij(["adopt", "%8", "--harness", "claude", "--json"], {
++			CLAUDE_CODE_SESSION_ID: "",
++		});
++		expect(result.code).toBe(0);
++		const output = JSON.parse(result.out) as {
++			id: string;
++			harnessSessionId: null;
++			lifecycle: string;
++		};
++		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
++		expect(output).toMatchObject({ harnessSessionId: null, lifecycle: "pending" });
++		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
++			id: output.id,
++			paneId: "%8",
++			lifecycle: "pending",
++		});
++		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
++			ok: true,
++			value: false,
++		});
++	});
++
+ 	it("AC-6 command: send --command compact is accepted + the peer executes it", () => {
+ 		const r = pij(["send", "pij-B", "--command", "compact"], { PIJ_SESSION_ID: "pij-A" });
+ 		expect(r.code).toBe(0);
+diff --git a/.pi/extensions/pij/cli.ts b/.pi/extensions/pij/cli.ts
+index b6049fa..db2ed07 100755
+--- a/.pi/extensions/pij/cli.ts
++++ b/.pi/extensions/pij/cli.ts
+@@ -53,12 +53,7 @@ import {
+ } from "./core/agents/cli-verbs.js";
+ import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
+ import { agentsDir } from "./core/agents/paths.js";
+-import {
+-	applyBinding,
+-	reattachIdentity,
+-	resolveAdoptSessionIdForHarness,
+-	resolveStableIdentity,
+-} from "./core/binding.js";
++import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
+ import {
+ 	applyWaitReceipt,
+ 	type CliDeps,
+@@ -74,7 +69,12 @@ import {
+ import { parseCloseArgs, planClose } from "./core/close.js";
+ import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
+ import { parseLockFile } from "./core/daemon/lock.js";
+-import { deriveHarnessPijId, filterByFolder, resolveSelf } from "./core/discovery.js";
++import {
++	deriveHarnessPijId,
++	filterByFolder,
++	memorableIdentitySeed,
++	resolveSelf,
++} from "./core/discovery.js";
+ import {
+ 	summarizeTranscriptLine,
+ 	transcriptDir,
+@@ -114,7 +114,6 @@ import { daemonTickStatus } from "./core/receipts.js";
+ import { buildExportLines } from "./core/session-join.js";
+ import {
+ 	aliasAgentSpawnArgs,
+-	allocatePijId,
+ 	buildControlSpawnCommand,
+ 	buildEffortWarning,
+ 	buildPendingDescriptor,
+@@ -128,6 +127,7 @@ import {
+ 	planBranch,
+ 	planPlacement,
+ 	type SpawnLayout,
++	spawnIdentitySeed,
+ } from "./core/spawn.js";
+ import type { HarnessKind, SessionDescriptor, WatchMode } from "./core/types.js";
+ import { addWatch, removeWatch } from "./core/watch-subscription.js";
+@@ -649,7 +649,17 @@ function runSpawn(argv: readonly string[]): void {
+ 		}
+ 	}
+ 	const token = `s${Date.now()}-${process.pid}`;
+-	const pijId = allocatePijId(token, process.pid);
++	const reservationOwnerToken = `spawn:${token}:${randomUUID()}`;
++	const reserved = reg0.reserveMemorableId(
++		spawnIdentitySeed(token, process.pid),
++		reservationOwnerToken,
++		process.pid,
++	);
++	if (!reserved.ok) {
++		process.stderr.write(`${reserved.code}: ${reserved.message}\n`);
++		process.exit(2);
++	}
++	const pijId = reserved.value.id;
+ 	const spawnCmd = buildControlSpawnCommand({
+ 		harness: req.value.harness,
+ 		pijId,
+@@ -673,6 +683,7 @@ function runSpawn(argv: readonly string[]): void {
+ 	);
+ 	const plan = planPlacement(req.value.layout, ownPane, peerPanes);
+ 	if (!plan.ok) {
++		reg0.releaseReservation(pijId, reservationOwnerToken);
+ 		process.stderr.write(`${plan.code}: ${plan.message}\n`);
+ 		process.exit(2);
+ 	}
+@@ -701,6 +712,7 @@ function runSpawn(argv: readonly string[]): void {
+ 					detached: true, // keep focus here; the daemon drives the new pane
+ 				});
+ 	if (!split.ok) {
++		reg0.releaseReservation(pijId, reservationOwnerToken);
+ 		process.stderr.write(`${split.code}: ${split.message}\n`);
+ 		process.exit(2);
+ 	}
+@@ -719,26 +731,29 @@ function runSpawn(argv: readonly string[]): void {
+ 		/* fall back to the spawner pid */
+ 	}
+ 	const dataDir = join(pijHome, pijId);
+-	new FsRegistry(pijHome).write(
+-		buildPendingDescriptor({
+-			pijId,
+-			paneId,
+-			cwd,
+-			harness: req.value.harness,
+-			dataDir,
+-			eventsPath: join(dataDir, "events.ndjson"),
+-			pid: panePid,
+-			startedAtIso: new Date().toISOString(),
+-			// Record who spawned this worker so `pij close` is ownership-aware (a pi
+-			// child self-registers spawnedBy; claude/copilot get it written here).
+-			spawnedBy: parentId,
+-			transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
+-			plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
+-			branchedFrom: branchFrom,
+-			model: req.value.model,
+-			effort: req.value.effort,
+-		}),
+-	);
++	const pending = buildPendingDescriptor({
++		pijId,
++		paneId,
++		cwd,
++		harness: req.value.harness,
++		dataDir,
++		eventsPath: join(dataDir, "events.ndjson"),
++		pid: panePid,
++		startedAtIso: new Date().toISOString(),
++		// Record who spawned this worker so `pij close` is ownership-aware (a pi
++		// child self-registers spawnedBy; claude/copilot get it written here).
++		spawnedBy: parentId,
++		transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
++		plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
++		branchedFrom: branchFrom,
++		model: req.value.model,
++		effort: req.value.effort,
++	});
++	const promoted = reg0.promoteReservation(pending, reservationOwnerToken);
++	if (!promoted.ok) {
++		process.stderr.write(`${promoted.code}: ${promoted.message}\n`);
++		process.exit(2);
++	}
+ 	// FX001-2 / DL-002: a daemon-bound peer never reads PIJ_SPAWN_TASK (only pi
+ 	// children do), so --task rode env into a void. Queue it in the peer's INBOX
+ 	// instead — the daemon injects it as the first turn after bind, exactly like
+@@ -1065,42 +1080,33 @@ function runAdopt(argv: readonly string[]): void {
+ 		}
+ 		durableDescriptor = snapshot.value;
+ 	}
+-	const candidateId =
+-		req.value.id ??
+-		durablePijId ??
+-		(harnessSessionId
+-			? deriveHarnessPijId(harness, harnessSessionId)
+-			: allocatePijId(`adopt-${pane}`, panePid));
+-	let descriptor: SessionDescriptor;
+-	if (harnessSessionId) {
+-		const stable = resolveStableIdentity(registry.list(), harness, harnessSessionId, candidateId);
+-		if (!stable.ok) {
+-			process.stderr.write(`${stable.code}: ${stable.message}\n`);
++	const requestedId = req.value.id;
++	const requestedDescriptor = requestedId ? registry.read(requestedId) : null;
++	let requestedReservation = false;
++	if (requestedId) {
++		const reservation = registry.hasReservation(requestedId);
++		if (!reservation.ok) {
++			process.stderr.write(`${reservation.code}: ${reservation.message}\n`);
+ 			process.exit(2);
+ 		}
+-		if (
+-			req.value.id !== undefined &&
+-			stable.value.kind === "reuse" &&
+-			stable.value.descriptor.id !== req.value.id
+-		) {
+-			process.stderr.write(
+-				`E-AMBIG: ${harness}:${harnessSessionId} is already ${stable.value.descriptor.id}, not requested ${req.value.id}\n`,
+-			);
++		requestedReservation = reservation.value;
++		if (!requestedDescriptor && !requestedReservation) {
++			process.stderr.write(`E-NOID: pij id ${requestedId} does not exist\n`);
+ 			process.exit(2);
+ 		}
+-		const stableId = stable.value.kind === "reuse" ? stable.value.descriptor.id : stable.value.id;
+-		if (durablePijId && durablePijId !== stableId) {
++		if (durablePijId && durablePijId !== requestedId) {
+ 			process.stderr.write(
+-				`E-AMBIG: durable ${harness}:${harnessSessionId} identity is ${durablePijId}, descriptor resolves to ${stableId}\n`,
++				`E-AMBIG: durable ${harness}:${harnessSessionId} identity is ${durablePijId}, not requested ${requestedId}\n`,
+ 			);
+ 			process.exit(2);
+ 		}
++	}
++	let descriptor: SessionDescriptor;
++	if (harnessSessionId) {
+ 		let transcriptPath =
+ 			resolution.harnessSessionId === harnessSessionId ? resolution.transcriptPath : undefined;
+ 		if (harness === "codex" && req.value.sessionId) {
+-			const storedPath =
+-				(stable.value.kind === "reuse" ? stable.value.descriptor.transcriptPath : undefined) ??
+-				durableDescriptor?.transcriptPath;
++			const storedPath = requestedDescriptor?.transcriptPath ?? durableDescriptor?.transcriptPath;
+ 			transcriptPath =
+ 				(storedPath && readableRegularFile(storedPath) ? storedPath : undefined) ??
+ 				codexRolloutForSession(
+@@ -1116,63 +1122,81 @@ function runAdopt(argv: readonly string[]): void {
+ 				process.exit(2);
+ 			}
+ 		}
+-		const reusable = stable.value.kind === "reuse" ? stable.value.descriptor : durableDescriptor;
+-		if (reusable && reusable.id !== stableId) {
+-			process.stderr.write(
+-				`E-AMBIG: durable metadata belongs to ${reusable.id}, not resolved ${stableId}\n`,
+-			);
+-			process.exit(2);
+-		}
+-		if (reusable) {
+-			descriptor = reattachIdentity(reusable, {
+-				harness,
+-				harnessSessionId,
+-				folder: cwd,
+-				pid: panePid,
+-				paneId: pane,
+-				transcriptPath,
+-			});
+-		} else {
+-			const dataDir = join(pijHome, stableId);
+-			descriptor = applyBinding(
+-				buildPendingDescriptor({
+-					pijId: stableId,
+-					paneId: pane,
+-					cwd,
++
++		if (requestedId) {
++			if (requestedDescriptor) {
++				if (
++					(requestedDescriptor.harness && requestedDescriptor.harness !== harness) ||
++					(requestedDescriptor.harnessSessionId &&
++						requestedDescriptor.harnessSessionId !== harnessSessionId)
++				) {
++					process.stderr.write(
++						`E-AMBIG: pij id ${requestedId} is already bound to ${requestedDescriptor.harness ?? "legacy"}:${requestedDescriptor.harnessSessionId ?? "unknown"}\n`,
++					);
++					process.exit(2);
++				}
++				descriptor = reattachIdentity(requestedDescriptor, {
+ 					harness,
+-					dataDir,
+-					eventsPath: join(dataDir, "events.ndjson"),
++					harnessSessionId,
++					folder: cwd,
+ 					pid: panePid,
+-					startedAtIso: new Date().toISOString(),
+-				}),
++					paneId: pane,
++					transcriptPath,
++				});
++				try {
++					registry.write(descriptor);
++				} catch (error) {
++					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
++					process.exit(2);
++				}
++			} else {
++				const dataDir = join(pijHome, requestedId);
++				descriptor = applyBinding(
++					buildPendingDescriptor({
++						pijId: requestedId,
++						paneId: pane,
++						cwd,
++						harness,
++						dataDir,
++						eventsPath: join(dataDir, "events.ndjson"),
++						pid: panePid,
++						startedAtIso: new Date().toISOString(),
++					}),
++					harnessSessionId,
++				);
++				if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
++				const recovered = registry.recoverReservation(descriptor);
++				if (!recovered.ok) {
++					process.stderr.write(`${recovered.code}: ${recovered.message}\n`);
++					process.exit(2);
++				}
++				try {
++					registry.write(descriptor);
++				} catch (error) {
++					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
++					process.exit(2);
++				}
++			}
++		} else {
++			const allocated = registry.allocateIdentity(
++				harness,
+ 				harnessSessionId,
++				memorableIdentitySeed(harness, harnessSessionId),
++				deriveHarnessPijId(harness, harnessSessionId),
+ 			);
+-			if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
+-		}
+-
+-		if (stable.value.kind === "reuse") {
+-			registry.write(descriptor);
+-		} else {
+-			const claim = registry.claim(descriptor);
+-			if (!claim.ok) {
+-				process.stderr.write(`${claim.code}: ${claim.message}\n`);
++			if (!allocated.ok) {
++				process.stderr.write(`${allocated.code}: ${allocated.message}\n`);
+ 				process.exit(2);
+ 			}
+-			if (claim.value.kind === "exists") {
+-				const raced = resolveStableIdentity(
+-					[claim.value.descriptor],
+-					harness,
+-					harnessSessionId,
+-					candidateId,
++			const reusable = allocated.value.descriptor ?? durableDescriptor;
++			if (reusable && reusable.id !== allocated.value.id) {
++				process.stderr.write(
++					`E-AMBIG: durable metadata belongs to ${reusable.id}, not resolved ${allocated.value.id}\n`,
+ 				);
+-				if (!raced.ok || raced.value.kind !== "reuse") {
+-					const message = raced.ok
+-						? `identity ${candidateId} was claimed incompatibly`
+-						: raced.message;
+-					process.stderr.write(`E-AMBIG: ${message}\n`);
+-					process.exit(2);
+-				}
+-				descriptor = reattachIdentity(raced.value.descriptor, {
++				process.exit(2);
++			}
++			if (reusable) {
++				descriptor = reattachIdentity(reusable, {
+ 					harness,
+ 					harnessSessionId,
+ 					folder: cwd,
+@@ -1180,34 +1204,104 @@ function runAdopt(argv: readonly string[]): void {
+ 					paneId: pane,
+ 					transcriptPath,
+ 				});
++			} else {
++				const dataDir = join(pijHome, allocated.value.id);
++				descriptor = applyBinding(
++					buildPendingDescriptor({
++						pijId: allocated.value.id,
++						paneId: pane,
++						cwd,
++						harness,
++						dataDir,
++						eventsPath: join(dataDir, "events.ndjson"),
++						pid: panePid,
++						startedAtIso: new Date().toISOString(),
++					}),
++					harnessSessionId,
++				);
++				if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
++			}
++			try {
+ 				registry.write(descriptor);
++			} catch (error) {
++				process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
++				process.exit(2);
+ 			}
+ 		}
+ 	} else {
+-		const pijId = candidateId;
+-		const dataDir = join(pijHome, pijId);
+-		descriptor = buildPendingDescriptor({
+-			pijId,
+-			paneId: pane,
+-			cwd,
+-			harness,
+-			dataDir,
+-			eventsPath: join(dataDir, "events.ndjson"),
+-			pid: panePid,
+-			startedAtIso: new Date().toISOString(),
+-		});
+-		const pendingClaim = registry.claim(descriptor);
+-		if (!pendingClaim.ok) {
+-			process.stderr.write(`${pendingClaim.code}: ${pendingClaim.message}\n`);
+-			process.exit(2);
+-		}
+-		if (pendingClaim.value.kind === "exists") {
+-			process.stderr.write(
+-				`E-AMBIG: pij id ${pijId} already exists; use --session-id for authoritative re-attachment\n`,
++		if (requestedId && requestedDescriptor) {
++			if (requestedDescriptor.harness && requestedDescriptor.harness !== harness) {
++				process.stderr.write(
++					`E-AMBIG: pij id ${requestedId} belongs to ${requestedDescriptor.harness}, not ${harness}\n`,
++				);
++				process.exit(2);
++			}
++			if (requestedDescriptor.harnessSessionId) {
++				descriptor = reattachIdentity(requestedDescriptor, {
++					harness,
++					harnessSessionId: requestedDescriptor.harnessSessionId,
++					folder: cwd,
++					pid: panePid,
++					paneId: pane,
++					transcriptPath: requestedDescriptor.transcriptPath,
++				});
++			} else {
++				descriptor = {
++					...requestedDescriptor,
++					folder: cwd,
++					pid: panePid,
++					state: "idle",
++					paneId: pane,
++					harness,
++					lifecycle: "pending",
++				};
++			}
++			registry.write(descriptor);
++		} else if (requestedId && requestedReservation) {
++			const dataDir = join(pijHome, requestedId);
++			descriptor = buildPendingDescriptor({
++				pijId: requestedId,
++				paneId: pane,
++				cwd,
++				harness,
++				dataDir,
++				eventsPath: join(dataDir, "events.ndjson"),
++				pid: panePid,
++				startedAtIso: new Date().toISOString(),
++			});
++			const recovered = registry.recoverReservation(descriptor);
++			if (!recovered.ok) {
++				process.stderr.write(`${recovered.code}: ${recovered.message}\n`);
++				process.exit(2);
++			}
++		} else {
++			const ownerToken = `adopt:${harness}:${pane}:${randomUUID()}`;
++			const reserved = registry.reserveMemorableId(
++				`adopt\0${harness}\0${pane}\0${panePid}`,
++				ownerToken,
++				process.pid,
+ 			);
+-			process.exit(2);
++			if (!reserved.ok) {
++				process.stderr.write(`${reserved.code}: ${reserved.message}\n`);
++				process.exit(2);
++			}
++			const dataDir = join(pijHome, reserved.value.id);
++			descriptor = buildPendingDescriptor({
++				pijId: reserved.value.id,
++				paneId: pane,
++				cwd,
++				harness,
++				dataDir,
++				eventsPath: join(dataDir, "events.ndjson"),
++				pid: panePid,
++				startedAtIso: new Date().toISOString(),
++			});
++			const promoted = registry.promoteReservation(descriptor, ownerToken);
++			if (!promoted.ok) {
++				process.stderr.write(`${promoted.code}: ${promoted.message}\n`);
++				process.exit(2);
++			}
+ 		}
+-		descriptor = pendingClaim.value.descriptor;
+ 	}
+ 	const pijId = descriptor.id;
+ 	if (wantExport) {
+@@ -1710,7 +1804,18 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
+ 	process.env.PIJ_AGENT_CWD = cwd;
+ 	const models = loadModels();
+ 	const token = `s${Date.now()}-${process.pid}`;
+-	const id = allocatePijId(token, process.pid);
++	const reservationOwnerToken = `agent-spawn:${token}:${randomUUID()}`;
++	const reservationRegistry = new FsRegistry(pijHome);
++	const reserved = reservationRegistry.reserveMemorableId(
++		spawnIdentitySeed(token, process.pid),
++		reservationOwnerToken,
++		process.pid,
++	);
++	if (!reserved.ok) {
++		process.stderr.write(`${reserved.code}: ${reserved.message}\n`);
++		process.exit(2);
++	}
++	const id = reserved.value.id;
+ 
+ 	// Resolve the caller so the peer is ownership-stamped + can report back.
+ 	// Pane-first across the FULL registry (FX001-1 / DL-003): the folder filter
+@@ -1750,6 +1855,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
+ 		},
+ 	);
+ 	if (!prep.ok) {
++		reservationRegistry.releaseReservation(id, reservationOwnerToken);
+ 		process.stderr.write(`${renderAgentError(prep.error)}\n`);
+ 		process.exit(exitCodeFor(prep.error.code));
+ 	}
+@@ -1779,6 +1885,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
+ 		cwd,
+ 	);
+ 	if (!paneRes.ok || !paneRes.pane) {
++		reservationRegistry.releaseReservation(id, reservationOwnerToken);
+ 		process.stderr.write(`${paneRes.message ?? "E-SPAWN: could not open pane"}\n`);
+ 		process.exit(paneRes.exitCode ?? 2);
+ 	}
+@@ -1789,6 +1896,11 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
+ 		channel: new FsChannel(pijHome),
+ 		cwd,
+ 	});
++	const consumed = reg.consumeReservation(id, reservationOwnerToken);
++	if (!consumed.ok) {
++		process.stderr.write(`${consumed.code}: ${consumed.message}\n`);
++		process.exit(2);
++	}
+ 
+ 	if (cmd.json) {
+ 		process.stdout.write(
+diff --git a/.pi/extensions/pij/core/binding.test.ts b/.pi/extensions/pij/core/binding.test.ts
+index fa22af0..fb31665 100644
+--- a/.pi/extensions/pij/core/binding.test.ts
++++ b/.pi/extensions/pij/core/binding.test.ts
+@@ -245,7 +245,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
+ 			state: "working",
+ 			lastEventAt: "2026-07-10T00:00:00.000Z",
+ 			failureReason: "dead",
+-			prime: false,
++			prime: true,
+ 		});
+ 		const reattached = reattachIdentity(existing, {
+ 			harness: "claude",
+@@ -265,7 +265,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
+ 			pid: 99,
+ 			state: "idle",
+ 			lifecycle: "bound",
+-			prime: false,
++			prime: true,
+ 		});
+ 		expect(reattached.failureReason).toBeUndefined();
+ 	});
+diff --git a/.pi/extensions/pij/core/discovery.test.ts b/.pi/extensions/pij/core/discovery.test.ts
+index b487dca..fd5f80d 100644
+--- a/.pi/extensions/pij/core/discovery.test.ts
++++ b/.pi/extensions/pij/core/discovery.test.ts
+@@ -7,6 +7,7 @@ import {
+ 	filterByFolder,
+ 	filterPrime,
+ 	isSubagentChild,
++	memorableIdentitySeed,
+ 	resolveSelf,
+ } from "./discovery.js";
+ import type { SessionDescriptor } from "./types.js";
+@@ -141,6 +142,24 @@ describe("deriveHarnessPijId", () => {
+ 	});
+ });
+ 
++describe("memorableIdentitySeed", () => {
++	it("is stable and namespaces the same native id by harness", () => {
++		expect(memorableIdentitySeed("claude", "native-1")).toBe(
++			memorableIdentitySeed("claude", "native-1"),
++		);
++		expect(memorableIdentitySeed("claude", "shared")).not.toBe(
++			memorableIdentitySeed("copilot", "shared"),
++		);
++	});
++
++	it("keeps the legacy FNV id available only as a migration lookup candidate", () => {
++		expect(deriveHarnessPijId("claude", "native-1")).toMatch(/^pij-[a-z0-9]+$/);
++		expect(memorableIdentitySeed("claude", "native-1")).not.toBe(
++			deriveHarnessPijId("claude", "native-1"),
++		);
++	});
++});
++
+ describe("isSubagentChild", () => {
+ 	it("false for a top-level session (neither env set)", () => {
+ 		expect(isSubagentChild({})).toBe(false);
+diff --git a/.pi/extensions/pij/core/discovery.ts b/.pi/extensions/pij/core/discovery.ts
+index 1f82be0..1ab3cbd 100644
+--- a/.pi/extensions/pij/core/discovery.ts
++++ b/.pi/extensions/pij/core/discovery.ts
+@@ -9,7 +9,7 @@ import {
+ 	type SessionId,
+ } from "./types.js";
+ 
+-/** Derive this session's stable pij id from pi's own session identity.
++/** Derive Pi's legacy opaque candidate from its native session identity.
+  *
+  *  pi mints a fresh session id on `/new` and `/fork`, but keeps it stable across
+  *  `/reload` and `/resume` — exactly pij's desired identity semantics (a `/new`
+@@ -18,21 +18,23 @@ import {
+  *  which the old `pij-${pid}` scheme could not: `/new` reuses the OS process, so
+  *  the pid never changes.
+  *
+- *  Falls back to the OS `pid` when pi does not surface a session id (SDK / test
+- *  contexts), preserving the legacy id shape so nothing downstream breaks. */
++ *  New identities use the memorable allocator; this remains only for discovering
++ *  and upgrading pre-Plan-040 descriptors without renaming them. */
+ export function deriveSelfId(piSessionId: string | undefined, pid: number): SessionId {
+ 	const slug = sessionSlug(piSessionId);
+ 	return slug ? `pij-${slug}` : `pij-${pid}`;
+ }
+ 
+-/** Deterministic candidate id for a harness-native identity. The harness prefix
+- *  prevents the same provider UUID in two clients from collapsing together.
+- *  Existing bindings still win via `resolveStableIdentity`; this candidate is
+- *  used only for a zero-match claim, so concurrent claims converge on one id. */
++/** Legacy harness-scoped opaque candidate, retained only for migration lookup. */
+ export function deriveHarnessPijId(harness: HarnessKind, harnessSessionId: string): SessionId {
+ 	return deriveSelfId(`${harness}\0${harnessSessionId}`, 0);
+ }
+ 
++/** Stable seed for memorable allocation. The harness prefix preserves tuple namespacing. */
++export function memorableIdentitySeed(harness: HarnessKind, harnessSessionId: string): string {
++	return `${harness}\0${harnessSessionId}`;
++}
++
+ /** Short, stable, low-collision token for a pi session id. Uses FNV-1a (32-bit)
+  *  → base36 so the token is deterministic across `/reload` (same input → same
+  *  output) and well-distributed regardless of the id's internal structure. */
+diff --git a/.pi/extensions/pij/core/spawn.test.ts b/.pi/extensions/pij/core/spawn.test.ts
+index b3792d0..e38ee76 100644
+--- a/.pi/extensions/pij/core/spawn.test.ts
++++ b/.pi/extensions/pij/core/spawn.test.ts
+@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
+ import type { ModelEntry } from "./models/registry.js";
+ import {
+ 	aliasAgentSpawnArgs,
+-	allocatePijId,
+ 	buildControlSpawnCommand,
+ 	buildEffortWarning,
+ 	buildPendingDescriptor,
+@@ -22,6 +21,7 @@ import {
+ 	planControlSplit,
+ 	planPlacement,
+ 	readyBody,
++	spawnIdentitySeed,
+ } from "./spawn.js";
+ import type { HarnessKind, SessionDescriptor } from "./types.js";
+ 
+@@ -242,21 +242,21 @@ describe("readyBody + parseReadyBody round-trip", () => {
+ 
+ // ─── Control plane (Plan 019) ────────────────────────────────────────────────
+ 
+-describe("allocatePijId", () => {
+-	it("is known BEFORE launch and deterministic for the same token+pid (AC-01)", () => {
+-		const a = allocatePijId("s1700000000000-0", 4242);
+-		const b = allocatePijId("s1700000000000-0", 4242);
++describe("spawnIdentitySeed", () => {
++	it("is known before launch and deterministic for the same token+pid", () => {
++		const a = spawnIdentitySeed("s1700000000000-0", 4242);
++		const b = spawnIdentitySeed("s1700000000000-0", 4242);
+ 		expect(a).toBe(b);
+-		expect(a).toMatch(/^pij-/);
++		expect(a).toContain("s1700000000000-0");
+ 	});
+ 
+-	it("distinct spawn tokens yield distinct ids", () => {
+-		expect(allocatePijId("s1-0", 4242)).not.toBe(allocatePijId("s1-1", 4242));
++	it("distinct spawn tokens yield distinct allocation seeds", () => {
++		expect(spawnIdentitySeed("s1-0", 4242)).not.toBe(spawnIdentitySeed("s1-1", 4242));
+ 	});
+ });
+ 
+ describe("buildControlSpawnCommand", () => {
+-	const base = { harness: "claude" as const, pijId: "pij-abc", cwd: "/repo" };
++	const base = { harness: "claude" as const, pijId: "pij-bright-otter", cwd: "/repo" };
+ 
+ 	it("claude: cmd is 'claude', --dangerously-skip-permissions always (driven pane, no human to approve)", () => {
+ 		const r = buildControlSpawnCommand(base);
+@@ -271,7 +271,7 @@ describe("buildControlSpawnCommand", () => {
+ 
+ 	it("threads the pre-allocated id via PIJ_SESSION_ID + harness via PIJ_HARNESS", () => {
+ 		const r = buildControlSpawnCommand(base);
+-		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc");
++		expect(r.env.PIJ_SESSION_ID).toBe("pij-bright-otter");
+ 		expect(r.env.PIJ_HARNESS).toBe("claude");
+ 	});
+ 
+@@ -282,7 +282,7 @@ describe("buildControlSpawnCommand", () => {
+ 	it("sets PIJ_PARENT_ID to the spawner id when parentId given (who spawned me)", () => {
+ 		const r = buildControlSpawnCommand({ ...base, parentId: "pij-boss01" });
+ 		expect(r.env.PIJ_PARENT_ID).toBe("pij-boss01");
+-		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc"); // self id unchanged
++		expect(r.env.PIJ_SESSION_ID).toBe("pij-bright-otter"); // self id unchanged
+ 	});
+ 
+ 	it("sets PIJ_SPAWN_TASK only when a task is given", () => {
+@@ -446,12 +446,12 @@ describe("buildControlSpawnCommand", () => {
+ 
+ describe("buildPendingDescriptor", () => {
+ 	const input = {
+-		pijId: "pij-abc",
++		pijId: "pij-bright-otter",
+ 		paneId: "%42",
+ 		cwd: "/repo",
+ 		harness: "claude" as const,
+-		dataDir: "/home/.pij/pij-abc",
+-		eventsPath: "/home/.pij/pij-abc/events.ndjson",
++		dataDir: "/home/.pij/pij-bright-otter",
++		eventsPath: "/home/.pij/pij-bright-otter/events.ndjson",
+ 		pid: 4242,
+ 		startedAtIso: "2026-06-27T00:00:00.000Z",
+ 	};
+@@ -459,7 +459,7 @@ describe("buildPendingDescriptor", () => {
+ 	it("carries (id, paneId, cwd, harness) with lifecycle 'pending' (F2/AC-01)", () => {
+ 		const d = buildPendingDescriptor(input);
+ 		expect(d).toMatchObject({
+-			id: "pij-abc",
++			id: "pij-bright-otter",
+ 			paneId: "%42",
+ 			folder: "/repo",
+ 			harness: "claude",
+diff --git a/.pi/extensions/pij/core/spawn.ts b/.pi/extensions/pij/core/spawn.ts
+index c0748f2..ed198fe 100644
+--- a/.pi/extensions/pij/core/spawn.ts
++++ b/.pi/extensions/pij/core/spawn.ts
+@@ -10,7 +10,6 @@
+ //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
+ //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
+ 
+-import { deriveSelfId } from "./discovery.js";
+ import type { ModelEntry } from "./models/registry.js";
+ import { validateEffort, validateModel } from "./models/validate.js";
+ import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
+@@ -169,7 +168,7 @@ export function parseReadyBody(body: string): ReadyPayload | null {
+ export interface ControlSpawnInput {
+ 	/** The harness to launch (`claude` now; `copilot` reserved). */
+ 	readonly harness: HarnessKind;
+-	/** The PRE-ALLOCATED pij-id ({@link allocatePijId}) — rides PIJ_SESSION_ID so
++	/** The registry-claimed pre-bind pij-id — rides PIJ_SESSION_ID so
+ 	 *  the agent's `pij phonehome` self-resolves to the same id. */
+ 	readonly pijId: SessionId;
+ 	/** Absolute working directory for the new session. */
+@@ -230,14 +229,9 @@ export interface PendingDescriptorInput {
+ 	readonly effort?: string;
+ }
+ 
+-/**
+- * Pre-allocate a control-plane pij-id BEFORE the pane exists (AC-01). A non-pi
+- * harness has no pi session id, so we seed {@link deriveSelfId} with the spawn
+- * token (the daemon's `s<now>-<counter>`): deterministic, collision-resistant,
+- * and known before launch — the value spawn returns to its caller immediately.
+- */
+-export function allocatePijId(spawnToken: string, pid: number): SessionId {
+-	return deriveSelfId(spawnToken, pid);
++/** Stable input for the registry-owned pre-bind memorable-id reservation. */
++export function spawnIdentitySeed(spawnToken: string, pid: number): string {
++	return `spawn\0${spawnToken}\0${pid}`;
+ }
+ 
+ /**
+diff --git a/.pi/extensions/pij/index.test.ts b/.pi/extensions/pij/index.test.ts
+index c31aee8..e6598d2 100644
+--- a/.pi/extensions/pij/index.test.ts
++++ b/.pi/extensions/pij/index.test.ts
+@@ -15,7 +15,7 @@ import { join } from "node:path";
+ 
+ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+ import { afterEach, beforeEach, describe, expect, it } from "vitest";
+-
++import { FsRegistry } from "./adapters/fs-registry.js";
+ import { deriveSelfId } from "./core/discovery.js";
+ import pijExtension from "./index.js";
+ 
+@@ -40,10 +40,11 @@ function makeFakePi() {
+ }
+ 
+ /** Minimal fake ExtensionContext — captures setStatus calls. */
+-function makeFakeCtx() {
++function makeFakeCtx(initialSessionId: string | undefined = "test-session-statusbar-018") {
+ 	const statuses: Array<{ key: string; value: string | undefined }> = [];
++	let sessionId = initialSessionId;
+ 	const ctx = {
+-		sessionManager: { getSessionId: () => "test-session-statusbar-018" },
++		sessionManager: { getSessionId: () => sessionId },
+ 		isIdle: () => true,
+ 		compact: () => {},
+ 		ui: {
+@@ -51,7 +52,7 @@ function makeFakeCtx() {
+ 			notify: () => {},
+ 		},
+ 	} as unknown as ExtensionContext;
+-	return { ctx, statuses };
++	return { ctx, statuses, setSessionId: (next: string | undefined) => (sessionId = next) };
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -95,9 +96,7 @@ describe("pij index — footer status bar", () => {
+ 
+ 		const pijStatus = statuses.find((s) => s.key === "pij");
+ 		expect(pijStatus).toBeDefined();
+-		// deriveSelfId produces a deterministic id from the injected session id + pid.
+-		// toBe (exact match) ensures neither a static bogus value nor a missing setStatus call passes.
+-		expect(pijStatus?.value).toBe(deriveSelfId("test-session-statusbar-018", process.pid));
++		expect(pijStatus?.value).toMatch(/^pij-[a-z]+-[a-z]+$/);
+ 
+ 		// Best-effort cleanup of any FS watcher opened by session_start.
+ 		try {
+@@ -106,4 +105,54 @@ describe("pij index — footer status bar", () => {
+ 			// ignore
+ 		}
+ 	});
++
++	it("reuses on reload, mints on new, and preserves an existing opaque id with prime metadata", async () => {
++		const { pi, handlers } = makeFakePi();
++		const { ctx, statuses, setSessionId } = makeFakeCtx("native-start");
++		pijExtension(pi);
++
++		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
++		const first = statuses.at(-1)?.value;
++		expect(first).toMatch(/^pij-[a-z]+-[a-z]+$/);
++
++		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
++		expect(statuses.at(-1)?.value).toBe(first);
++
++		setSessionId("native-new");
++		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
++		const second = statuses.at(-1)?.value;
++		expect(second).toMatch(/^pij-[a-z]+-[a-z]+$/);
++		expect(second).not.toBe(first);
++
++		const opaqueNative = "native-existing-opaque";
++		const opaqueId = deriveSelfId(opaqueNative, process.pid);
++		new FsRegistry(pijHome).write({
++			id: opaqueId,
++			prime: true,
++			folder: process.cwd(),
++			dataDir: join(pijHome, opaqueId),
++			eventsPath: join(pijHome, opaqueId, "events.ndjson"),
++			pid: process.pid,
++			startedAt: "2026-07-11T00:00:00.000Z",
++		});
++		setSessionId(opaqueNative);
++		await handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, ctx);
++		expect(statuses.at(-1)?.value).toBe(opaqueId);
++		expect(new FsRegistry(pijHome).read(opaqueId)?.prime).toBe(true);
++
++		await handlers.get("session_shutdown")?.({}, ctx);
++	});
++
++	it("allocates a memorable SDK/test fallback when Pi exposes no native session id", async () => {
++		const { pi, handlers } = makeFakePi();
++		const { ctx, statuses } = makeFakeCtx(undefined);
++		pijExtension(pi);
++
++		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
++		const id = statuses.at(-1)?.value;
++		expect(id).toMatch(/^pij-[a-z]+-[a-z]+$/);
++		expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({ id });
++
++		await handlers.get("session_shutdown")?.({}, ctx);
++	});
+ });
+diff --git a/.pi/extensions/pij/index.ts b/.pi/extensions/pij/index.ts
+index 9ec8970..29ba850 100644
+--- a/.pi/extensions/pij/index.ts
++++ b/.pi/extensions/pij/index.ts
+@@ -15,10 +15,9 @@ import type { CommandControl } from "./adapters/pi-runtime.js";
+ import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
+ import { NodeProcess } from "./adapters/process.js";
+ import { TmuxAdapter } from "./adapters/tmux.js";
+-import { resolveStableIdentity } from "./core/binding.js";
+ import { type CliDeps, dispatch } from "./core/cli.js";
+ import { ALLOWED_COMMANDS } from "./core/commands.js";
+-import { deriveSelfId, isSubagentChild } from "./core/discovery.js";
++import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
+ import { PijSession } from "./core/session.js";
+ import type { Role, SessionDescriptor } from "./core/types.js";
+ 
+@@ -26,7 +25,7 @@ import type { Role, SessionDescriptor } from "./core/types.js";
+ //
+ // Thin pi-event -> coordinator translator (Patterns P2/P8/P10): owns NO logic.
+ 
+-/** Footer status key — shows the session's pij id (e.g. `pij-abc123`) in pi's
++/** Footer status key — shows the session's pij id (e.g. `pij-arbitrary-locust`) in pi's
+  *  bottom bar so the operator knows which peer this terminal is at a glance. */
+ const PIJ_STATUS_KEY = "pij";
+ // All boot/announce/capture/inject/command/receipt/shutdown behaviour lives in
+@@ -114,6 +113,7 @@ export default function (pi: ExtensionAPI): void {
+ 	let self = "";
+ 	let role: Role | undefined;
+ 	let disposeWatch: (() => void) | undefined;
++	let fallbackGeneration = 0;
+ 	// Captured from pi's ExtensionCommandContext on each `/pij` run (the only
+ 	// instant pi exposes newSession/reload). The receive watcher re-routes remote
+ 	// new|reload onto this; undefined until armed / after a consuming op.
+@@ -230,44 +230,38 @@ export default function (pi: ExtensionAPI): void {
+ 			piSessionId = undefined; // stale/unavailable session manager
+ 		}
+ 		registry = new FsRegistry(pijHome);
+-		const derivedId = deriveSelfId(piSessionId, process.pid);
+ 		let durableDescriptor: SessionDescriptor | undefined;
++		let reservationOwnerToken: string | undefined;
+ 		if (piSessionId) {
+-			const durable = registry.resolveIdentity("pi", piSessionId);
+-			if (!durable.ok) {
+-				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+-				ctx.ui.notify(`pij: ${durable.code} ${durable.message}`, "error");
+-				throw new Error(`pij durable identity error: ${durable.message}`);
+-			}
+-			const snapshot = registry.resolveIdentitySnapshot("pi", piSessionId);
+-			if (!snapshot.ok) {
++			const allocated = registry.allocateIdentity(
++				"pi",
++				piSessionId,
++				memorableIdentitySeed("pi", piSessionId),
++				deriveSelfId(piSessionId, process.pid),
++			);
++			if (!allocated.ok) {
+ 				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+-				ctx.ui.notify(`pij: ${snapshot.code} ${snapshot.message}`, "error");
+-				throw new Error(`pij durable metadata error: ${snapshot.message}`);
++				ctx.ui.notify(`pij: ${allocated.code} ${allocated.message}`, "error");
++				throw new Error(`pij identity allocation error: ${allocated.message}`);
+ 			}
+-			durableDescriptor = snapshot.value;
+-			const candidateId = durable.value ?? derivedId;
+-			const stable = resolveStableIdentity(registry.list(), "pi", piSessionId, candidateId);
+-			if (!stable.ok) {
++			self = allocated.value.id;
++			durableDescriptor = allocated.value.descriptor;
++		} else if (previousSelf && event.reason !== "new" && event.reason !== "fork") {
++			self = previousSelf;
++		} else {
++			fallbackGeneration += 1;
++			reservationOwnerToken = `pi-fallback:${process.pid}:${fallbackGeneration}`;
++			const reserved = registry.reserveMemorableId(
++				`pi-fallback\0${process.pid}\0${fallbackGeneration}`,
++				reservationOwnerToken,
++				process.pid,
++			);
++			if (!reserved.ok) {
+ 				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+-				ctx.ui.notify(`pij: ${stable.code} ${stable.message}`, "error");
+-				throw new Error(`pij identity collision: ${stable.message}`);
++				ctx.ui.notify(`pij: ${reserved.code} ${reserved.message}`, "error");
++				throw new Error(`pij fallback identity allocation error: ${reserved.message}`);
+ 			}
+-			const descriptorId =
+-				stable.value.kind === "reuse" ? stable.value.descriptor.id : stable.value.id;
+-			if (durable.value && descriptorId !== durable.value) {
+-				throw new Error(
+-					`pij identity conflict: durable ${durable.value}, descriptor ${descriptorId}`,
+-				);
+-			}
+-			if (durableDescriptor && durableDescriptor.id !== descriptorId) {
+-				throw new Error(
+-					`pij metadata conflict: durable snapshot ${durableDescriptor.id}, identity ${descriptorId}`,
+-				);
+-			}
+-			self = descriptorId;
+-		} else {
+-			self = derivedId;
++			self = reserved.value.id;
+ 		}
+ 		ctx.ui.setStatus(PIJ_STATUS_KEY, self);
+ 		const envRole = process.env.PIJ_ROLE;
+@@ -303,6 +297,12 @@ export default function (pi: ExtensionAPI): void {
+ 			durableDescriptor,
+ 			resetRuntimeState: event.reason !== "reload",
+ 		});
++		if (reservationOwnerToken) {
++			const consumed = registry.consumeReservation(boot.id, reservationOwnerToken);
++			if (!consumed.ok) {
++				throw new Error(`pij fallback reservation error: ${consumed.message}`);
++			}
++		}
+ 
+ 		// Export self-id (+ role) so a child `pij` CLI under a shared cwd resolves
+ 		// "self" unambiguously (finding 07). NB: env->child inheritance itself is
+diff --git a/.pi/extensions/pij/telegram/match.test.ts b/.pi/extensions/pij/telegram/match.test.ts
+index 05c4955..a508617 100644
+--- a/.pi/extensions/pij/telegram/match.test.ts
++++ b/.pi/extensions/pij/telegram/match.test.ts
+@@ -43,6 +43,19 @@ describe("resolveTarget", () => {
+ 		expect(resolveTarget("pij-5lztp8", sessions)).toEqual({ id: "pij-5lztp8" }); // whole id
+ 	});
+ 
++	it("resolves memorable multi-hyphen ids through full, bare, and de-hyphenated forms", () => {
++		const sessions = [
++			desc({ id: "pij-arbitrary-locust" }),
++			desc({ id: "pij-appropriate-wildebeest" }),
++		];
++		expect(resolveTarget("pij-arbitrary-locust", sessions)).toEqual({
++			id: "pij-arbitrary-locust",
++		});
++		expect(resolveTarget("arbitrary-loc", sessions)).toEqual({ id: "pij-arbitrary-locust" });
++		expect(resolveTarget("pijarbitraryloc", sessions)).toEqual({ id: "pij-arbitrary-locust" });
++		expect(resolveTarget("parbitrary-loc", sessions)).toEqual({ id: "pij-arbitrary-locust" });
++	});
++
+ 	it("matches only the START of a name, not a mid-string substring", () => {
+ 		const sessions = [desc({ id: "pij-5lztp8" })];
+ 		// "ztp8" is inside the id but not a start-prefix of any form → no match
+diff --git a/docs/domains/pij-control-plane/domain.md b/docs/domains/pij-control-plane/domain.md
+index 245710c..aed4719 100644
+--- a/docs/domains/pij-control-plane/domain.md
++++ b/docs/domains/pij-control-plane/domain.md
+@@ -25,7 +25,7 @@ thin receiver). Plan 019.
+ | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
+ | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
+ | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `prime` is latest-disk-authoritative before daemon writes. |
+-| `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims plus two-way durable identity ownership and metadata snapshots used to recover the same pij-id after restart. |
++| `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims, memorable-id allocation, pre-bind reservation ownership, two-way durable identity ownership, and metadata snapshots. |
+ | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
+ | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
+ | `.pi/extensions/pij/daemon.ts` | Daemon bin: lock → watch pending+inboxes → readiness/interstitial → init-once → route → render. |
+@@ -35,7 +35,8 @@ thin receiver). Plan 019.
+ 
+ | Concept | Description | Contract |
+ |---------|-------------|----------|
+-| Durable identity | Spawn computes a `pij-id` before launch; restart re-attachment resolves the exact harness-native identity, hydrates durable metadata, and reuses the original id while runtime presence is replaced. | `resolveStableIdentity`; descriptor-owned two-way `FsRegistry` claim; `adopt --session-id` (AC-01/15). |
++| Durable identity | Spawn atomically reserves a memorable `pij-id` before launch; restart re-attachment resolves the exact harness-native identity, hydrates durable metadata, and reuses the original id while runtime presence is replaced. | Shared by-pij ownership record; two-way `FsRegistry` native claim; `adopt --session-id`. |
++| Reservation lifecycle | A launch owns its candidate before pane creation and transfers ownership to the pending descriptor after publication. | Owner-token release on known launch failure; no PID-death reclamation; explicit `adopt --id` recovery for retained crash-orphans. |
+ | Pending descriptor | Spawn atomically writes `(pij-id, paneId, cwd, harness, state:pending)` under `~/.pij/`; the daemon dir-watch picks it up. | `SessionDescriptor` += `harness`/`state` (F2 / AC-01). |
+ | Transport selection | A target's harness decides how a message reaches it. | `selectTransport(harness)` → `inbox` (pi) \| `sendkeys` (claude/copilot/codex). |
+ | Readiness | The daemon reads the pane and classifies idle-ready vs busy vs booting vs interstitial — no agent in the loop. | `classifyReadiness(paneText)`; R-01 footer markers (AC-02). |
+@@ -67,6 +68,7 @@ thin receiver). Plan 019.
+ - Readiness detection + interstitial handling.
+ - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
+ - pij-id pre-allocation + restart-stable exact native-identity recovery + the pending-descriptor handoff; init idempotency.
++- Reattachment-only `adopt --id`: existing descriptor/reservation required, unknown ids fail `E-NOID`.
+ - Claude/codex transcript-path resolution + tailing (harness-selected `transcriptLayout`).
+ 
+ ## Boundary Excludes
+@@ -103,3 +105,4 @@ thin receiver). Plan 019.
+ | 026-pij-telegram-bridge | Added the `pij-telegram` bridge peer (`pij telegram init\|start\|stop`): a foreground, single-instance grammY long-poll relaying a Telegram bot ⇄ pij sessions (allowlist-gated, addressed/sticky routing, `/list` + `/tail`, chunked outbound). Registers a `harness:"pi"` + `lifecycle:"bound"` descriptor so the daemon observes (never drains) it — no daemon/core contract change. `init` validates the token (`getMe`), captures the operator id as the allowlist, and merges the scoped `.env` without clobbering existing keys. | 2026-06-29 |
+ | 026-pij-telegram-bridge (Phase 5: media) | Media relay **both ways** by reference-passing — bytes never touch the pij wire. New pure `telegram/media.ts` (`classifyMedia`, `withinUploadLimit`/`withinDownloadLimit`, `safeMediaName`, `buildInboundNotice`). `PijMessage.attachments?` (additive) + `pij send --file/--caption` (in `core/cli.ts`). Outbound: `startForwarder` classifies each attachment → `sendPhoto`/`sendAnimation`/`sendDocument` via grammY `InputFile` in the existing ordered queue (10/50 MB caps → text-notice fallback, never a throw; attachment-only skips the blank text send). Inbound: allowlist-gated `message:photo\|animation\|document` handlers resolve the target by caption, 20 MB download pre-check, then `@grammyjs/files` download (behind an injected seam) into the target session's own `<dataDir>/attachments/<safe-name>`, delivering a text path notice. Added `@grammyjs/files` dep. | 2026-06-30 |
+ | 038-pij-prime-designation | Added exact-self production wiring and latest-disk-authoritative mutable prime merging in the daemon write coordinator. | 2026-07-11 |
++| 040-memorable-pij-session-ids | Replaced new control-plane and agent-spawn ids with atomic memorable reservations; added collision retry, known-failure release, crash-orphan retention, and explicit reservation recovery through adopt. | 2026-07-11 |
+diff --git a/docs/domains/pij-messaging/domain.md b/docs/domains/pij-messaging/domain.md
+index 2835d2b..9eb3fa4 100644
+--- a/docs/domains/pij-messaging/domain.md
++++ b/docs/domains/pij-messaging/domain.md
+@@ -24,6 +24,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
+ | `.pi/extensions/pij/core/state.ts` | `isWorking`, `liveness` (active/stale/dead), `isStalled`; `STALE_AFTER_MS`. |
+ | `.pi/extensions/pij/core/commands.ts` | Remote-command allow-list (`compact`) + `validateCommand`. |
+ | `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, `filterByFolder`, `filterPrime`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
++| `.pi/extensions/pij/core/memorable-id.ts` | Exact-pinned adjective/animal candidate sequence: PoC-compatible first vector plus deterministic full-space linear probing. |
+ | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
+ | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
+ | `.pi/extensions/pij/core/cli.ts` | Send grammar, ordered broadcast preflight/fan-out/result projection, and target/message wait correlation. |
+@@ -38,6 +39,8 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
+ | Session descriptor | Live presence/attachment data used to find and address a session. | `SessionDescriptor` — written to `~/.pij/<id>.json`; runtime fields may be refreshed without replacing durable identity/history. |
+ | Prime designation | Optional honor-system marker consumed by orchestration and list filters. | `SessionDescriptor.prime?: boolean`; only explicit `true` is prime, while `false` and legacy absence are not. |
+ | Durable native identity | The same exact native session recovers the same pij-id and metadata after descriptor removal or machine restart. | Two-way `FsRegistry` ownership records keyed by native tuple and pij-id, with durable descriptor snapshots and no-replace publication; Pi persists its exact native id. |
++| Memorable primary id | Newly minted identities use the actual `pij-<adjective>-<animal>` value everywhere; existing opaque ids are immutable. | Exact-pinned 1,202 x 355 corpus; deterministic non-repeating candidates; native/durable/legacy lookup precedes allocation. |
++| Pre-bind reservation | A control-plane id is owned before its pane or descriptor exists. | The same atomic by-pij owner record arbitrates native claims and reservation claims; known failure releases only the owner token, while crash-orphans are retained. |
+ | Monotonic seq | Each event has a strictly-increasing `seq`, recoverable after `/reload`. | `SeqCounter(lastSeq)`; `EventLogPort.lastSeq()` is the recovery source. |
+ | Event line | One `events.ndjson` row carrying activity. | `PijEvent { seq, timestamp(ISO), type, data? }` — age computed from the stream alone. |
+ | Incremental follow | Read only what's new / of-interest / recent. | `EventQuery { since, type, last }` composed since→type→last. |
+@@ -63,6 +66,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
+ ## Boundary Owns
+ 
+ - Peer registry descriptor vocabulary + durable native-identity binding + discovery/self-resolution rules.
++- Memorable primary-id sequence, collision retry, legacy opaque-id preservation, and reservation ownership.
+ - Prime filter/projection semantics on the shared descriptor and `pij list`.
+ - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
+ - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
+@@ -104,3 +108,4 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
+ | 019-pij-tmux-control-plane / T029 | Added presence-independent native identity records, deterministic harness-scoped candidate ids, Pi exact native-id persistence, and durable-field-preserving session boot. | 2026-07-11 |
+ | 037-pij-broadcast / Phase 1 | Added repeatable `--to` text fan-out with ordered all-target preflight, independent recipient results, continued delivery after partial runtime failure, and terminal-set receipt waiting. | 2026-07-11 |
+ | 038-pij-prime-designation | Added optional `SessionDescriptor.prime`, `filterPrime`, `pij list --prime`, ordinary-list `P` visibility, and JSON `prime:boolean` compatibility. | 2026-07-11 |
++| 040-memorable-pij-session-ids | New identities now use collision-safe two-word primary ids; exact native and legacy opaque identities reuse their stored id, and `prime` survives allocation, snapshots, and reattachment. | 2026-07-11 |
+diff --git a/docs/how/pij.md b/docs/how/pij.md
+index 7bf4a58..3e637c2 100644
+--- a/docs/how/pij.md
++++ b/docs/how/pij.md
+@@ -31,6 +31,9 @@ expensive model.
+ 
+ The extension (`.pi/extensions/pij/`) auto-loads in any pi session started from
+ this repo. It announces the session's id at boot and serves inbound messages.
++New identities use `pij-<adjective>-<animal>` (for example
++`pij-arbitrary-locust`). Existing opaque ids are never renamed and remain fully
++addressable.
+ 
+ The **`pij` CLI** is the act+observe surface:
+ 
+@@ -66,7 +69,7 @@ pij list --here               # bare `pij` on PATH from any cwd
+ | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
+ | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
+ | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
+-| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>]` | Register an existing external-client pane. For restart re-attachment, `--session-id` is authoritative and recovers the prior pij-id; newest-artifact discovery is only an initial-adopt fallback. |
++| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. For restart re-attachment, `--session-id` is authoritative and recovers the prior pij-id; newest-artifact discovery is only an initial-adopt fallback. |
+ | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
+ | `orchestration prime` | `pij orchestration prime set\|unset [<id>]` | Set or clear the durable honor-system prime marker on self or another session. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
+ 
+@@ -92,14 +95,19 @@ clients use `(harness, native session id)`:
+ pij adopt "$TMUX_PANE" --harness claude --session-id "$CLAUDE_CODE_SESSION_ID"
+ ```
+ 
+-The first attachment atomically claims a two-way durable mapping under `PIJ_HOME`
+-and snapshots role/creator/history metadata; a later attachment of the same exact
+-native identity reuses the original `pij-id` and metadata while replacing
+-pane/PID/cwd/lifecycle. Claims stage and fsync complete temp files before no-replace
+-publication; duplicate, colliding, or occupied ids fail with `E-AMBIG` instead of
+-overwriting a peer. Omitting `--session-id` retains newest-artifact discovery for
+-initial adoption only. For Codex, an authoritative id must resolve to an exact readable
+-rollout path or adoption fails with `E-NOID`.
++The first attachment atomically claims a memorable primary id and a two-way durable
++mapping under `PIJ_HOME`; a later attachment of the same exact native identity reuses
++the original id and metadata while replacing pane/PID/cwd/lifecycle. Existing opaque
++descriptors and durable mappings win before allocation, so upgrades never rename them.
++
++Candidates come from the exact-pinned adjective/animal corpus. A collision advances
++deterministically to the next two-word pair; no suffix or overwrite is allowed.
++Control-plane and agent spawns reserve the id before opening the pane. Known launch
++failure releases only that launch owner's reservation. A crash-orphan reservation is
++retained even if the short-lived spawner PID is dead, because the child may already be
++running; recover it explicitly with `adopt --id <reserved-id>`. Omitting `--session-id`
++retains newest-artifact discovery for initial adoption only. For Codex, an authoritative
++id must resolve to an exact readable rollout path or adoption fails with `E-NOID`.
+ 
+ Prime designation is part of the descriptor snapshot and survives this same
+ restart/reattachment path. `unset` writes explicit `false`; legacy absence reads
+@@ -233,10 +241,11 @@ context.
+ 
+ ## Parent/worker workflow
+ 
+-> **Session identity.** A session's `pij-<id>` is derived from pi's own session
+-> id, so it is stable across `/reload` and `/resume` but a **fresh id on `/new`
+-> and `/fork`** (a `/new` session is a new peer, not the old one). When pi
+-> exposes no session id (SDK/tests) it falls back to `pij-<pid>`.
++> **Session identity.** A new session gets a collision-safe
++> `pij-<adjective>-<animal>` primary id. Pi's native session identity keeps it
++> stable across `/reload` and `/resume`, while `/new` and `/fork` mint a fresh
++> memorable id. SDK/test fallback also allocates from the memorable sequence.
++> Existing opaque ids remain unchanged.
+ 
+ The canonical loop (roles are fixed per session at boot):
+ 
+diff --git a/package-lock.json b/package-lock.json
+index bda2728..f414b44 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -13,7 +13,8 @@
+ 				"dotenv": "^17.4.2",
+ 				"grammy": "^1.44.0",
+ 				"minih": "github:AI-Substrate/minih#minih-v0.2.4",
+-				"picomatch": "^4.0.4"
++				"picomatch": "^4.0.4",
++				"unique-names-generator": "4.7.1"
+ 			},
+ 			"bin": {
+ 				"flow-pair": "skills/flow-pair/lib/cli.ts",
+@@ -7661,6 +7662,15 @@
+ 			"integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==",
+ 			"license": "MIT"
+ 		},
++		"node_modules/unique-names-generator": {
++			"version": "4.7.1",
++			"resolved": "https://registry.npmjs.org/unique-names-generator/-/unique-names-generator-4.7.1.tgz",
++			"integrity": "sha512-lMx9dX+KRmG8sq6gulYYpKWZc9RlGsgBR6aoO8Qsm3qvkSJ+3rAymr+TnV8EDMrIrwuFJ4kruzMWM/OpYzPoow==",
++			"license": "MIT",
++			"engines": {
++				"node": ">=8"
++			}
++		},
+ 		"node_modules/unpipe": {
+ 			"version": "1.0.0",
+ 			"resolved": "https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz",
+diff --git a/package.json b/package.json
+index add686d..d50e333 100644
+--- a/package.json
++++ b/package.json
+@@ -68,6 +68,7 @@
+ 		"dotenv": "^17.4.2",
+ 		"grammy": "^1.44.0",
+ 		"minih": "github:AI-Substrate/minih#minih-v0.2.4",
+-		"picomatch": "^4.0.4"
++		"picomatch": "^4.0.4",
++		"unique-names-generator": "4.7.1"
+ 	}
+ }
+diff --git a/.pi/extensions/pij/core/memorable-id.ts b/.pi/extensions/pij/core/memorable-id.ts
+new file mode 100644
+index 0000000..8cdfa03
+--- /dev/null
++++ b/.pi/extensions/pij/core/memorable-id.ts
+@@ -0,0 +1,51 @@
++import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
++
++import { err, ok, type Result, type SessionId } from "./types.js";
++
++export const MEMORABLE_PIJ_ID_SPACE = adjectives.length * animals.length;
++
++function initialPairIndex(seed: string): number | null {
++	const first = uniqueNamesGenerator({
++		dictionaries: [adjectives, animals],
++		separator: "\0",
++		length: 2,
++		style: "lowerCase",
++		seed,
++	});
++	const separator = first.indexOf("\0");
++	if (separator < 1) return null;
++	const adjectiveIndex = adjectives.indexOf(first.slice(0, separator));
++	const animalIndex = animals.indexOf(first.slice(separator + 1));
++	if (adjectiveIndex < 0 || animalIndex < 0) return null;
++	return adjectiveIndex * animals.length + animalIndex;
++}
++
++function idAt(index: number): SessionId | null {
++	const adjective = adjectives[Math.floor(index / animals.length)];
++	const animal = animals[index % animals.length];
++	return adjective && animal ? `pij-${adjective}-${animal}` : null;
++}
++
++/** One deterministic, non-repeating candidate from the pinned adjective-animal space. */
++export function memorablePijIdCandidate(seed: string, attempt: number): Result<SessionId> {
++	if (!Number.isInteger(attempt) || attempt < 0) {
++		return err("E-ARG", `memorable id attempt must be a non-negative integer (got ${attempt})`);
++	}
++	if (attempt >= MEMORABLE_PIJ_ID_SPACE) {
++		return err("E-FULL", `memorable id space exhausted after ${MEMORABLE_PIJ_ID_SPACE} attempts`);
++	}
++	const start = initialPairIndex(seed);
++	if (start === null) return err("E-NOREG", "pinned memorable-id corpus returned an invalid pair");
++	const id = idAt((start + attempt) % MEMORABLE_PIJ_ID_SPACE);
++	return id ? ok(id) : err("E-NOREG", "pinned memorable-id corpus index is invalid");
++}
++
++/** Full deterministic candidate sequence. Linear probing guarantees no repeats before exhaustion. */
++export function* memorablePijIdCandidates(seed: string): Generator<SessionId> {
++	const start = initialPairIndex(seed);
++	if (start === null) return;
++	for (let attempt = 0; attempt < MEMORABLE_PIJ_ID_SPACE; attempt++) {
++		const id = idAt((start + attempt) % MEMORABLE_PIJ_ID_SPACE);
++		if (id) yield id;
++	}
++}
+diff --git a/.pi/extensions/pij/core/memorable-id.test.ts b/.pi/extensions/pij/core/memorable-id.test.ts
+new file mode 100644
+index 0000000..ffe37b7
+--- /dev/null
++++ b/.pi/extensions/pij/core/memorable-id.test.ts
+@@ -0,0 +1,56 @@
++import { adjectives, animals } from "unique-names-generator";
++import { describe, expect, it } from "vitest";
++
++import {
++	MEMORABLE_PIJ_ID_SPACE,
++	memorablePijIdCandidate,
++	memorablePijIdCandidates,
++} from "./memorable-id.js";
++
++function candidate(seed: string, attempt: number): string {
++	const result = memorablePijIdCandidate(seed, attempt);
++	if (!result.ok) throw new Error(result.message);
++	return result.value;
++}
++
++describe("memorable pij id candidates", () => {
++	it("pins the exact lowercase, duplicate-free corpus contract", () => {
++		expect(adjectives).toHaveLength(1202);
++		expect(animals).toHaveLength(355);
++		expect(new Set(adjectives).size).toBe(adjectives.length);
++		expect(new Set(animals).size).toBe(animals.length);
++		expect(adjectives.every((word) => /^[a-z]+$/.test(word))).toBe(true);
++		expect(animals.every((word) => /^[a-z]+$/.test(word))).toBe(true);
++		expect(MEMORABLE_PIJ_ID_SPACE).toBe(426_710);
++	});
++
++	it("preserves the proved PoC first-candidate vectors", () => {
++		expect(candidate("4dffbee3-5d42-4b02-a739-74be162940bc", 0)).toBe("pij-arbitrary-locust");
++		expect(candidate("copilot-session-alpha", 0)).toBe("pij-sure-cuckoo");
++		expect(candidate("claude-session-beta", 0)).toBe("pij-appropriate-wildebeest");
++		expect(candidate("pi-session-gamma", 0)).toBe("pij-flaky-leech");
++	});
++
++	it("is deterministic and always emits exactly two lowercase words", () => {
++		for (const attempt of [0, 1, 17, MEMORABLE_PIJ_ID_SPACE - 1]) {
++			const id = candidate("stable-seed", attempt);
++			expect(candidate("stable-seed", attempt)).toBe(id);
++			expect(id).toMatch(/^pij-[a-z]+-[a-z]+$/);
++		}
++	});
++
++	it("walks the full Cartesian space without repeating", () => {
++		const ids = new Set(memorablePijIdCandidates("full-space-seed"));
++		expect(ids.size).toBe(MEMORABLE_PIJ_ID_SPACE);
++		expect(candidate("full-space-seed", MEMORABLE_PIJ_ID_SPACE - 1)).toMatch(/^pij-[a-z]+-[a-z]+$/);
++	});
++
++	it("fails loudly for invalid attempts and exhaustion", () => {
++		expect(memorablePijIdCandidate("seed", -1)).toMatchObject({ ok: false, code: "E-ARG" });
++		expect(memorablePijIdCandidate("seed", 1.5)).toMatchObject({ ok: false, code: "E-ARG" });
++		expect(memorablePijIdCandidate("seed", MEMORABLE_PIJ_ID_SPACE)).toMatchObject({
++			ok: false,
++			code: "E-FULL",
++		});
++	});
++});

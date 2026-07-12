@@ -68,6 +68,7 @@
 		"dotenv": "^17.4.2",
 		"grammy": "^1.44.0",
 		"minih": "github:AI-Substrate/minih#minih-v0.2.4",
-		"picomatch": "^4.0.4"
+		"picomatch": "^4.0.4",
+		"unique-names-generator": "4.7.1"
 	}
 }

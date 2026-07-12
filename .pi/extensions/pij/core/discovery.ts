@@ -9,7 +9,7 @@ import {
 	type SessionId,
 } from "./types.js";
 
-/** Derive this session's stable pij id from pi's own session identity.
+/** Derive Pi's legacy opaque candidate from its native session identity.
  *
  *  pi mints a fresh session id on `/new` and `/fork`, but keeps it stable across
  *  `/reload` and `/resume` — exactly pij's desired identity semantics (a `/new`
@@ -18,19 +18,21 @@ import {
  *  which the old `pij-${pid}` scheme could not: `/new` reuses the OS process, so
  *  the pid never changes.
  *
- *  Falls back to the OS `pid` when pi does not surface a session id (SDK / test
- *  contexts), preserving the legacy id shape so nothing downstream breaks. */
+ *  New identities use the memorable allocator; this remains only for discovering
+ *  and upgrading pre-Plan-040 descriptors without renaming them. */
 export function deriveSelfId(piSessionId: string | undefined, pid: number): SessionId {
 	const slug = sessionSlug(piSessionId);
 	return slug ? `pij-${slug}` : `pij-${pid}`;
 }
 
-/** Deterministic candidate id for a harness-native identity. The harness prefix
- *  prevents the same provider UUID in two clients from collapsing together.
- *  Existing bindings still win via `resolveStableIdentity`; this candidate is
- *  used only for a zero-match claim, so concurrent claims converge on one id. */
+/** Legacy harness-scoped opaque candidate, retained only for migration lookup. */
 export function deriveHarnessPijId(harness: HarnessKind, harnessSessionId: string): SessionId {
 	return deriveSelfId(`${harness}\0${harnessSessionId}`, 0);
+}
+
+/** Stable seed for memorable allocation. The harness prefix preserves tuple namespacing. */
+export function memorableIdentitySeed(harness: HarnessKind, harnessSessionId: string): string {
+	return `${harness}\0${harnessSessionId}`;
 }
 
 /** Short, stable, low-collision token for a pi session id. Uses FNV-1a (32-bit)

@@ -43,6 +43,19 @@ describe("resolveTarget", () => {
 		expect(resolveTarget("pij-5lztp8", sessions)).toEqual({ id: "pij-5lztp8" }); // whole id
 	});
 
+	it("resolves memorable multi-hyphen ids through full, bare, and de-hyphenated forms", () => {
+		const sessions = [
+			desc({ id: "pij-arbitrary-locust" }),
+			desc({ id: "pij-appropriate-wildebeest" }),
+		];
+		expect(resolveTarget("pij-arbitrary-locust", sessions)).toEqual({
+			id: "pij-arbitrary-locust",
+		});
+		expect(resolveTarget("arbitrary-loc", sessions)).toEqual({ id: "pij-arbitrary-locust" });
+		expect(resolveTarget("pijarbitraryloc", sessions)).toEqual({ id: "pij-arbitrary-locust" });
+		expect(resolveTarget("parbitrary-loc", sessions)).toEqual({ id: "pij-arbitrary-locust" });
+	});
+
 	it("matches only the START of a name, not a mid-string substring", () => {
 		const sessions = [desc({ id: "pij-5lztp8" })];
 		// "ztp8" is inside the id but not a start-prefix of any form → no match

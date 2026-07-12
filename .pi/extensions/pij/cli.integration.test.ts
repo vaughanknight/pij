@@ -10,7 +10,18 @@
 // `.pi/extensions/pij/smoke.ts` (`/pij` status line via the Driver SDK).
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -29,10 +40,21 @@ const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", 
 
 let HOME: string;
 let FOLDER: string;
+let BIN: string;
+let TMUX_LOG: string;
 
 /** Run the real cli.ts bin in the sandbox. Returns stdout + exit code. */
 function pij(args: string[], extraEnv: Record<string, string> = {}): { out: string; code: number } {
-	const env = { ...process.env, PIJ_HOME: HOME, ...extraEnv };
+	const env = {
+		...process.env,
+		PIJ_HOME: HOME,
+		PATH: `${BIN}:${process.env.PATH ?? ""}`,
+		TMUX_PANE: "%1",
+		FAKE_TMUX_CWD: FOLDER,
+		FAKE_TMUX_PID: String(process.pid),
+		FAKE_TMUX_LOG: TMUX_LOG,
+		...extraEnv,
+	};
 	try {
 		const out = execFileSync(TSX, [CLI, ...args], { cwd: FOLDER, env, encoding: "utf8" });
 		return { out, code: 0 };
@@ -64,6 +86,13 @@ function boot(id: string, role: "parent" | "worker", idle = true): PijSession {
 	return s;
 }
 
+function createCopilotState(home: string, sessionId: string, mtimeMs: number): void {
+	const dir = join(home, ".copilot", "session-state", sessionId);
+	mkdirSync(dir, { recursive: true });
+	const at = new Date(mtimeMs);
+	utimesSync(dir, at, at);
+}
+
 let A: PijSession;
 let B: PijSession;
 
@@ -72,6 +101,32 @@ beforeAll(() => {
 	// realpath: on macOS mkdtemp returns a /var symlink; the CLI's `--here` reads
 	// the real cwd, so the descriptor folder must be the resolved path to match.
 	FOLDER = realpathSync(mkdtempSync(join(tmpdir(), "pij-folder-")));
+	BIN = mkdtempSync(join(tmpdir(), "pij-bin-"));
+	TMUX_LOG = join(HOME, "tmux.log");
+	const tmux = join(BIN, "tmux");
+	writeFileSync(
+		tmux,
+		`#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
+if [ "$FAKE_TMUX_FAIL" = "1" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
+	exit 1
+fi
+case "$1" in
+	display-message)
+		case "$*" in
+			*pane_current_path*) printf '%s\t%s\n' "$FAKE_TMUX_CWD" "$FAKE_TMUX_PID" ;;
+			*pane_pid*) printf '%s\n' "$FAKE_TMUX_PID" ;;
+			*session_name*) printf 'pij-test\n' ;;
+		esac
+		;;
+	list-panes) printf '%s\n' "\${TMUX_PANE:-%1}" ;;
+	list-windows) exit 0 ;;
+	split-window) printf '%%91\n' ;;
+	new-window) printf '%%90\n' ;;
+esac
+`,
+	);
+	chmodSync(tmux, 0o755);
 	A = boot("pij-A", "parent");
 	B = boot("pij-B", "worker");
 	boot("pij-C2", "worker");
@@ -83,6 +138,7 @@ beforeAll(() => {
 afterAll(() => {
 	rmSync(HOME, { recursive: true, force: true });
 	rmSync(FOLDER, { recursive: true, force: true });
+	rmSync(BIN, { recursive: true, force: true });
 });
 
 describe("pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME)", () => {
@@ -293,6 +349,333 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 	it("AC-6 errors: invalid target exit codes are honored (E-NOID exit 2)", () => {
 		const r = pij(["send", "pij-MISSING", "hi"], { PIJ_SESSION_ID: "pij-A" });
 		expect(r.code).toBe(2);
+	});
+
+	it("control-plane spawn reserves a memorable id before launch and publishes that exact id", () => {
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(["spawn", "--harness", "claude", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(result.code).toBe(0);
+		const jsonLine = result.out
+			.trim()
+			.split("\n")
+			.findLast((line) => line.startsWith("{"));
+		const output = JSON.parse(jsonLine ?? "{}") as { id: string; paneId: string };
+		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+			id: output.id,
+			paneId: output.paneId,
+			spawnedBy: "pij-A",
+			lifecycle: "pending",
+		});
+		expect(readFileSync(TMUX_LOG, "utf8")).toContain(`PIJ_SESSION_ID=${output.id}`);
+		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
+			ok: true,
+			value: false,
+		});
+	});
+
+	it("known pane-launch failure releases only the reservation it owns", () => {
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(["spawn", "--harness", "claude", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			FAKE_TMUX_FAIL: "1",
+		});
+		expect(result.code).toBe(2);
+		const log = readFileSync(TMUX_LOG, "utf8");
+		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+-[a-z]+)/)?.[1];
+		expect(id).toBeDefined();
+		expect(new FsRegistry(HOME).read(id as string)).toBeNull();
+		expect(new FsRegistry(HOME).hasReservation(id as string)).toEqual({
+			ok: true,
+			value: false,
+		});
+	});
+
+	it("agent spawn uses and consumes the same pre-bind memorable reservation", () => {
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(
+			["agent", "spawn", "--prompt", "Inspect the current diff.", "--harness", "claude", "--json"],
+			{ PIJ_SESSION_ID: "pij-A" },
+		);
+		expect(result.code).toBe(0);
+		const jsonLine = result.out
+			.trim()
+			.split("\n")
+			.findLast((line) => line.startsWith("{"));
+		const output = JSON.parse(jsonLine ?? "{}") as { id: string; agentPack: string };
+		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.agentPack).toBe("inline");
+		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+			id: output.id,
+			agentPack: "inline",
+			lifecycle: "pending",
+		});
+		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
+			ok: true,
+			value: false,
+		});
+	});
+
+	it("Copilot adopt uses only the validated current env uuid, never the global newest session", () => {
+		const registry = new FsRegistry(HOME);
+		const oldId = "pij-old-copilot";
+		const oldUuid = "2a870000-1111-4222-8333-444444444444";
+		const currentUuid = "df4f0000-5555-4666-8777-888888888888";
+		const copilotHome = join(HOME, "copilot-current-home");
+		createCopilotState(copilotHome, currentUuid, 1000);
+		createCopilotState(copilotHome, oldUuid, 9000);
+		registry.write({
+			id: oldId,
+			folder: FOLDER,
+			dataDir: join(HOME, oldId),
+			eventsPath: join(HOME, oldId, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-11T00:00:00.000Z",
+			harness: "copilot",
+			harnessSessionId: oldUuid,
+			paneId: "%66",
+			lifecycle: "bound",
+		});
+		const oldPath = join(HOME, `${oldId}.json`);
+		const oldBytes = readFileSync(oldPath, "utf8");
+
+		const current = pij(["adopt", "%7", "--harness", "copilot", "--json"], {
+			HOME: copilotHome,
+			COPILOT_AGENT_SESSION_ID: currentUuid,
+		});
+		expect(current.code).toBe(0);
+		const output = JSON.parse(current.out) as { id: string; harnessSessionId: string };
+		expect(output.harnessSessionId).toBe(currentUuid);
+		expect(output.id).not.toBe(oldId);
+		expect(registry.read(output.id)).toMatchObject({
+			harness: "copilot",
+			harnessSessionId: currentUuid,
+			paneId: "%7",
+			lifecycle: "bound",
+		});
+		expect(readFileSync(oldPath, "utf8")).toBe(oldBytes);
+		expect(registry.read(oldId)).toMatchObject({
+			harnessSessionId: oldUuid,
+			paneId: "%66",
+		});
+
+		const explicitUuid = "61f70000-9999-4aaa-8bbb-cccccccccccc";
+		const explicit = pij(
+			["adopt", "%9", "--harness", "copilot", "--session-id", explicitUuid, "--json"],
+			{
+				HOME: copilotHome,
+				COPILOT_AGENT_SESSION_ID: currentUuid,
+			},
+		);
+		expect(explicit.code).toBe(0);
+		expect(JSON.parse(explicit.out)).toMatchObject({ harnessSessionId: explicitUuid });
+	});
+
+	it("Copilot adopt ignores global newest when env is absent, then phonehome binds the pending id", () => {
+		const registry = new FsRegistry(HOME);
+		const oldId = "pij-old-copilot-pending";
+		const oldUuid = "2a871111-1111-4222-8333-444444444444";
+		const currentUuid = "df4f1111-5555-4666-8777-888888888888";
+		const copilotHome = join(HOME, "copilot-pending-home");
+		createCopilotState(copilotHome, oldUuid, 9000);
+		registry.write({
+			id: oldId,
+			folder: FOLDER,
+			dataDir: join(HOME, oldId),
+			eventsPath: join(HOME, oldId, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-11T00:00:00.000Z",
+			harness: "copilot",
+			harnessSessionId: oldUuid,
+			paneId: "%77",
+			lifecycle: "bound",
+		});
+		const oldPath = join(HOME, `${oldId}.json`);
+		const oldBytes = readFileSync(oldPath, "utf8");
+
+		const adopted = pij(["adopt", "%8", "--harness", "copilot", "--json"], {
+			HOME: copilotHome,
+			COPILOT_AGENT_SESSION_ID: "",
+		});
+		expect(adopted.code).toBe(0);
+		const pending = JSON.parse(adopted.out) as {
+			id: string;
+			harnessSessionId: null;
+			lifecycle: string;
+			bindingIssue?: string;
+		};
+		expect(pending.id).not.toBe(oldId);
+		expect(pending).toMatchObject({ harnessSessionId: null, lifecycle: "pending" });
+		expect(pending.bindingIssue).toContain("COPILOT_AGENT_SESSION_ID");
+		expect(readFileSync(oldPath, "utf8")).toBe(oldBytes);
+
+		createCopilotState(copilotHome, currentUuid, 1000);
+		const phoned = pij(["phonehome", "--json"], {
+			HOME: copilotHome,
+			PIJ_SESSION_ID: pending.id,
+			COPILOT_AGENT_SESSION_ID: currentUuid,
+			CLAUDE_CODE_SESSION_ID: "claude-wrong",
+		});
+		expect(phoned.code).toBe(0);
+		expect(JSON.parse(phoned.out)).toMatchObject({
+			id: pending.id,
+			harness: "copilot",
+			harnessSessionId: currentUuid,
+			lifecycle: "bound",
+			confirmed: true,
+		});
+		expect(registry.read(pending.id)).toMatchObject({
+			harnessSessionId: currentUuid,
+			lifecycle: "bound",
+		});
+		expect(readFileSync(oldPath, "utf8")).toBe(oldBytes);
+	});
+
+	it("adopt --id renders the stored final binding when no native artifact is discoverable", () => {
+		const id = "pij-existing-bound";
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-11T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: "native-stored",
+			lifecycle: "bound",
+		});
+		const env = { CLAUDE_CODE_SESSION_ID: "" };
+		const json = pij(["adopt", "%7", "--harness", "claude", "--id", id, "--json"], env);
+		expect(json.code).toBe(0);
+		expect(JSON.parse(json.out)).toMatchObject({
+			id,
+			harnessSessionId: "native-stored",
+			lifecycle: "bound",
+		});
+
+		const human = pij(["adopt", "%7", "--harness", "claude", "--id", id], env);
+		expect(human.code).toBe(0);
+		expect(human.out).toContain(`adopted ${id} ↔ claude session native-stored`);
+		expect(human.out).toContain("(pane %7, bound)");
+		expect(human.out).not.toContain("pending");
+	});
+
+	it("adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation", () => {
+		const registry = new FsRegistry(HOME);
+		const opaque = "pij-existing-opaque";
+		registry.write({
+			id: opaque,
+			prime: true,
+			folder: FOLDER,
+			dataDir: join(HOME, opaque),
+			eventsPath: join(HOME, opaque, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-11T00:00:00.000Z",
+		});
+		const existing = pij([
+			"adopt",
+			"%7",
+			"--harness",
+			"claude",
+			"--id",
+			opaque,
+			"--session-id",
+			"native-existing",
+			"--json",
+		]);
+		expect(existing.code).toBe(0);
+		expect(JSON.parse(existing.out)).toMatchObject({
+			id: opaque,
+			harnessSessionId: "native-existing",
+		});
+		expect(registry.read(opaque)?.prime).toBe(true);
+		const conflict = pij([
+			"adopt",
+			"%7",
+			"--harness",
+			"claude",
+			"--id",
+			opaque,
+			"--session-id",
+			"native-conflict",
+		]);
+		expect(conflict.code).toBe(2);
+		expect(conflict.out).toContain("E-AMBIG");
+
+		const unknown = pij([
+			"adopt",
+			"%7",
+			"--harness",
+			"claude",
+			"--id",
+			"pij-caller-chosen",
+			"--session-id",
+			"native-unknown",
+		]);
+		expect(unknown.code).toBe(2);
+		expect(unknown.out).toContain("E-NOID");
+		expect(registry.read("pij-caller-chosen")).toBeNull();
+
+		const reserved = registry.reserveMemorableId("crash-orphan", "dead-owner", 999_999);
+		if (!reserved.ok) throw new Error(reserved.message);
+		const recovered = pij([
+			"adopt",
+			"%7",
+			"--harness",
+			"claude",
+			"--id",
+			reserved.value.id,
+			"--session-id",
+			"native-recovered",
+			"--json",
+		]);
+		expect(recovered.code).toBe(0);
+		expect(JSON.parse(recovered.out)).toMatchObject({
+			id: reserved.value.id,
+			harnessSessionId: "native-recovered",
+		});
+		expect(registry.hasReservation(reserved.value.id)).toEqual({ ok: true, value: false });
+	});
+
+	it("first adopt without --id allocates a memorable primary id", () => {
+		const result = pij([
+			"adopt",
+			"%7",
+			"--harness",
+			"claude",
+			"--session-id",
+			"native-first-adopt",
+			"--json",
+		]);
+		expect(result.code).toBe(0);
+		const output = JSON.parse(result.out) as { id: string; harnessSessionId: string };
+		expect(output).toMatchObject({ harnessSessionId: "native-first-adopt" });
+		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+	});
+
+	it("no-native adopt reserves then publishes one memorable pending descriptor", () => {
+		const result = pij(["adopt", "%8", "--harness", "claude", "--json"], {
+			CLAUDE_CODE_SESSION_ID: "",
+		});
+		expect(result.code).toBe(0);
+		const output = JSON.parse(result.out) as {
+			id: string;
+			harnessSessionId: null;
+			lifecycle: string;
+		};
+		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output).toMatchObject({ harnessSessionId: null, lifecycle: "pending" });
+		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+			id: output.id,
+			paneId: "%8",
+			lifecycle: "pending",
+		});
+		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
+			ok: true,
+			value: false,
+		});
 	});
 
 	it("AC-6 command: send --command compact is accepted + the peer executes it", () => {

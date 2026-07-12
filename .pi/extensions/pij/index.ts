@@ -15,10 +15,9 @@ import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
-import { resolveStableIdentity } from "./core/binding.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
-import { deriveSelfId, isSubagentChild } from "./core/discovery.js";
+import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
 import { PijSession } from "./core/session.js";
 import type { Role, SessionDescriptor } from "./core/types.js";
 
@@ -26,7 +25,7 @@ import type { Role, SessionDescriptor } from "./core/types.js";
 //
 // Thin pi-event -> coordinator translator (Patterns P2/P8/P10): owns NO logic.
 
-/** Footer status key — shows the session's pij id (e.g. `pij-abc123`) in pi's
+/** Footer status key — shows the session's pij id (e.g. `pij-arbitrary-locust`) in pi's
  *  bottom bar so the operator knows which peer this terminal is at a glance. */
 const PIJ_STATUS_KEY = "pij";
 // All boot/announce/capture/inject/command/receipt/shutdown behaviour lives in
@@ -114,6 +113,7 @@ export default function (pi: ExtensionAPI): void {
 	let self = "";
 	let role: Role | undefined;
 	let disposeWatch: (() => void) | undefined;
+	let fallbackGeneration = 0;
 	// Captured from pi's ExtensionCommandContext on each `/pij` run (the only
 	// instant pi exposes newSession/reload). The receive watcher re-routes remote
 	// new|reload onto this; undefined until armed / after a consuming op.
@@ -230,44 +230,38 @@ export default function (pi: ExtensionAPI): void {
 			piSessionId = undefined; // stale/unavailable session manager
 		}
 		registry = new FsRegistry(pijHome);
-		const derivedId = deriveSelfId(piSessionId, process.pid);
 		let durableDescriptor: SessionDescriptor | undefined;
+		let reservationOwnerToken: string | undefined;
 		if (piSessionId) {
-			const durable = registry.resolveIdentity("pi", piSessionId);
-			if (!durable.ok) {
+			const allocated = registry.allocateIdentity(
+				"pi",
+				piSessionId,
+				memorableIdentitySeed("pi", piSessionId),
+				deriveSelfId(piSessionId, process.pid),
+			);
+			if (!allocated.ok) {
 				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
-				ctx.ui.notify(`pij: ${durable.code} ${durable.message}`, "error");
-				throw new Error(`pij durable identity error: ${durable.message}`);
+				ctx.ui.notify(`pij: ${allocated.code} ${allocated.message}`, "error");
+				throw new Error(`pij identity allocation error: ${allocated.message}`);
 			}
-			const snapshot = registry.resolveIdentitySnapshot("pi", piSessionId);
-			if (!snapshot.ok) {
-				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
-				ctx.ui.notify(`pij: ${snapshot.code} ${snapshot.message}`, "error");
-				throw new Error(`pij durable metadata error: ${snapshot.message}`);
-			}
-			durableDescriptor = snapshot.value;
-			const candidateId = durable.value ?? derivedId;
-			const stable = resolveStableIdentity(registry.list(), "pi", piSessionId, candidateId);
-			if (!stable.ok) {
-				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
-				ctx.ui.notify(`pij: ${stable.code} ${stable.message}`, "error");
-				throw new Error(`pij identity collision: ${stable.message}`);
-			}
-			const descriptorId =
-				stable.value.kind === "reuse" ? stable.value.descriptor.id : stable.value.id;
-			if (durable.value && descriptorId !== durable.value) {
-				throw new Error(
-					`pij identity conflict: durable ${durable.value}, descriptor ${descriptorId}`,
-				);
-			}
-			if (durableDescriptor && durableDescriptor.id !== descriptorId) {
-				throw new Error(
-					`pij metadata conflict: durable snapshot ${durableDescriptor.id}, identity ${descriptorId}`,
-				);
-			}
-			self = descriptorId;
+			self = allocated.value.id;
+			durableDescriptor = allocated.value.descriptor;
+		} else if (previousSelf && event.reason !== "new" && event.reason !== "fork") {
+			self = previousSelf;
 		} else {
-			self = derivedId;
+			fallbackGeneration += 1;
+			reservationOwnerToken = `pi-fallback:${process.pid}:${fallbackGeneration}`;
+			const reserved = registry.reserveMemorableId(
+				`pi-fallback\0${process.pid}\0${fallbackGeneration}`,
+				reservationOwnerToken,
+				process.pid,
+			);
+			if (!reserved.ok) {
+				ctx.ui.setStatus(PIJ_STATUS_KEY, "identity error");
+				ctx.ui.notify(`pij: ${reserved.code} ${reserved.message}`, "error");
+				throw new Error(`pij fallback identity allocation error: ${reserved.message}`);
+			}
+			self = reserved.value.id;
 		}
 		ctx.ui.setStatus(PIJ_STATUS_KEY, self);
 		const envRole = process.env.PIJ_ROLE;
@@ -303,6 +297,12 @@ export default function (pi: ExtensionAPI): void {
 			durableDescriptor,
 			resetRuntimeState: event.reason !== "reload",
 		});
+		if (reservationOwnerToken) {
+			const consumed = registry.consumeReservation(boot.id, reservationOwnerToken);
+			if (!consumed.ok) {
+				throw new Error(`pij fallback reservation error: ${consumed.message}`);
+			}
+		}
 
 		// Export self-id (+ role) so a child `pij` CLI under a shared cwd resolves
 		// "self" unambiguously (finding 07). NB: env->child inheritance itself is

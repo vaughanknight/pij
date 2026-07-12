@@ -12,6 +12,7 @@ import {
 	reattachIdentity,
 	resolveAdoptSessionId,
 	resolveAdoptSessionIdForHarness,
+	resolvePhonehomeSessionId,
 	resolveStableIdentity,
 	shouldInjectInit,
 } from "./binding.js";
@@ -110,7 +111,7 @@ describe("resolveAdoptSessionIdForHarness (harness-aware adopt, findings 02/02b/
 		envSessionId: undefined,
 		claudeStemsNewestFirst: [] as readonly string[],
 		codexRolloutPathsNewestFirst: [] as readonly string[],
-		copilotSessionId: null as string | null,
+		copilotCurrentSessionId: null as string | null,
 	};
 
 	it("claude → env id when present (byte-for-byte the existing rule)", () => {
@@ -144,23 +145,22 @@ describe("resolveAdoptSessionIdForHarness (harness-aware adopt, findings 02/02b/
 		});
 	});
 
-	it("copilot → the scanned session-state uuid (NEVER a claude stem, finding 02b)", () => {
+	it("copilot → the validated current env uuid (never a global mtime winner or claude stem)", () => {
 		const r = resolveAdoptSessionIdForHarness({
 			...base,
 			harness: "copilot",
-			// A claude transcript sits in-cwd — it must NOT be picked for copilot.
 			claudeStemsNewestFirst: [CLAUDE_STEM],
-			copilotSessionId: COPILOT_UUID,
+			copilotCurrentSessionId: COPILOT_UUID,
 		});
 		expect(r).toEqual({ harnessSessionId: COPILOT_UUID });
 	});
 
-	it("copilot with no session-state dir → null (never falls through to claude)", () => {
+	it("copilot with no validated current env uuid → null (never falls through)", () => {
 		const r = resolveAdoptSessionIdForHarness({
 			...base,
 			harness: "copilot",
 			claudeStemsNewestFirst: [CLAUDE_STEM],
-			copilotSessionId: null,
+			copilotCurrentSessionId: null,
 		});
 		expect(r).toEqual({ harnessSessionId: null });
 	});
@@ -168,6 +168,34 @@ describe("resolveAdoptSessionIdForHarness (harness-aware adopt, findings 02/02b/
 	it("codex with no rollout → null, no transcriptPath (pending preserved, AC-4)", () => {
 		const r = resolveAdoptSessionIdForHarness({ ...base, harness: "codex" });
 		expect(r).toEqual({ harnessSessionId: null });
+	});
+});
+
+describe("resolvePhonehomeSessionId", () => {
+	const COPILOT_UUID = "df4f1111-2222-4333-8444-555555555555";
+
+	it("selects the harness-specific current-session env variable", () => {
+		expect(
+			resolvePhonehomeSessionId("copilot", {
+				COPILOT_AGENT_SESSION_ID: COPILOT_UUID,
+				CLAUDE_CODE_SESSION_ID: "claude-old",
+			}),
+		).toBe(COPILOT_UUID);
+		expect(
+			resolvePhonehomeSessionId("claude", {
+				COPILOT_AGENT_SESSION_ID: COPILOT_UUID,
+				CLAUDE_CODE_SESSION_ID: "claude-current",
+			}),
+		).toBe("claude-current");
+	});
+
+	it("rejects a malformed Copilot uuid and returns null for unsupported env-less harnesses", () => {
+		expect(
+			resolvePhonehomeSessionId("copilot", {
+				COPILOT_AGENT_SESSION_ID: "not-a-uuid",
+			}),
+		).toBeNull();
+		expect(resolvePhonehomeSessionId("codex", {})).toBeNull();
 	});
 });
 
@@ -245,7 +273,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 			state: "working",
 			lastEventAt: "2026-07-10T00:00:00.000Z",
 			failureReason: "dead",
-			prime: false,
+			prime: true,
 		});
 		const reattached = reattachIdentity(existing, {
 			harness: "claude",
@@ -265,7 +293,7 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 			pid: 99,
 			state: "idle",
 			lifecycle: "bound",
-			prime: false,
+			prime: true,
 		});
 		expect(reattached.failureReason).toBeUndefined();
 	});

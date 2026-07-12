@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	copilotSessionStateScan,
 	copilotStateRoot,
+	resolveCopilotCurrentSession,
 	sessionEventsPath,
 	summarizeCopilotEvent,
 } from "./copilot.js";
@@ -75,7 +75,7 @@ describe("summarizeCopilotEvent", () => {
 	});
 });
 
-// ─── Plan 031: copilot adopt session-state scanner (finding 02b) ─────────────
+// ─── Plan 040 F004: current Copilot identity resolution ─────────────────────
 
 describe("copilotStateRoot", () => {
 	it("is ~/.copilot/session-state", () => {
@@ -83,34 +83,50 @@ describe("copilotStateRoot", () => {
 	});
 });
 
-describe("copilotSessionStateScan", () => {
+describe("resolveCopilotCurrentSession", () => {
 	const U1 = "9a8f8be6-3670-4e5c-b43e-09f46fe4dfad";
 	const U2 = "11111111-2222-3333-4444-555555555555";
 
-	it("returns the newest uuid dir by mtime (dir-name = uuid)", () => {
+	it("uses COPILOT_AGENT_SESSION_ID even when another global session is newer", () => {
 		const listState = (root: string) => {
 			expect(root).toBe("/Users/jo/.copilot/session-state");
 			return [
-				{ name: U1, mtimeMs: 1000 },
-				{ name: U2, mtimeMs: 2000 },
+				{ name: U1, mtimeMs: 1000, isDirectory: true },
+				{ name: U2, mtimeMs: 2000, isDirectory: true },
 			];
 		};
-		expect(copilotSessionStateScan(listState, "/Users/jo")).toBe(U2);
+		expect(resolveCopilotCurrentSession(U1, listState, "/Users/jo")).toEqual({
+			ok: true,
+			sessionId: U1,
+		});
 	});
 
-	it("ignores non-uuid entries (.DS_Store, stray files)", () => {
-		const listState = () => [
-			{ name: ".DS_Store", mtimeMs: 9999 },
-			{ name: "not-a-uuid", mtimeMs: 9998 },
-			{ name: U1, mtimeMs: 100 },
-		];
-		expect(copilotSessionStateScan(listState, "/Users/jo")).toBe(U1);
+	it("rejects missing or invalid env ids without selecting a global directory", () => {
+		const listState = () => [{ name: U2, mtimeMs: 9999, isDirectory: true }];
+		expect(resolveCopilotCurrentSession(undefined, listState, "/Users/jo")).toMatchObject({
+			ok: false,
+			reason: "missing-env",
+		});
+		expect(resolveCopilotCurrentSession("not-a-uuid", listState, "/Users/jo")).toMatchObject({
+			ok: false,
+			reason: "invalid-env",
+		});
 	});
 
-	it("returns null when the dir is empty / unreadable (no uuid dirs)", () => {
-		expect(copilotSessionStateScan(() => [], "/Users/jo")).toBeNull();
+	it("requires matching session-state directory metadata for the env uuid", () => {
 		expect(
-			copilotSessionStateScan(() => [{ name: ".DS_Store", mtimeMs: 1 }], "/Users/jo"),
-		).toBeNull();
+			resolveCopilotCurrentSession(
+				U1,
+				() => [{ name: U2, mtimeMs: 9999, isDirectory: true }],
+				"/Users/jo",
+			),
+		).toMatchObject({ ok: false, reason: "missing-state" });
+		expect(
+			resolveCopilotCurrentSession(
+				U1,
+				() => [{ name: U1, mtimeMs: 1, isDirectory: false }],
+				"/Users/jo",
+			),
+		).toMatchObject({ ok: false, reason: "missing-state" });
 	});
 });

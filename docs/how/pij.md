@@ -31,6 +31,9 @@ expensive model.
 
 The extension (`.pi/extensions/pij/`) auto-loads in any pi session started from
 this repo. It announces the session's id at boot and serves inbound messages.
+New identities use `pij-<adjective>-<animal>` (for example
+`pij-arbitrary-locust`). Existing opaque ids are never renamed and remain fully
+addressable.
 
 The **`pij` CLI** is the act+observe surface:
 
@@ -66,7 +69,7 @@ pij list --here               # bare `pij` on PATH from any cwd
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
-| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>]` | Register an existing external-client pane. For restart re-attachment, `--session-id` is authoritative and recovers the prior pij-id; newest-artifact discovery is only an initial-adopt fallback. |
+| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. Explicit `--session-id` is authoritative. Copilot otherwise uses only its validated `COPILOT_AGENT_SESSION_ID`; global newest session-state is never identity. |
 | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
 | `orchestration prime` | `pij orchestration prime set\|unset [<id>]` | Set or clear the durable honor-system prime marker on self or another session. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
 
@@ -92,14 +95,28 @@ clients use `(harness, native session id)`:
 pij adopt "$TMUX_PANE" --harness claude --session-id "$CLAUDE_CODE_SESSION_ID"
 ```
 
-The first attachment atomically claims a two-way durable mapping under `PIJ_HOME`
-and snapshots role/creator/history metadata; a later attachment of the same exact
-native identity reuses the original `pij-id` and metadata while replacing
-pane/PID/cwd/lifecycle. Claims stage and fsync complete temp files before no-replace
-publication; duplicate, colliding, or occupied ids fail with `E-AMBIG` instead of
-overwriting a peer. Omitting `--session-id` retains newest-artifact discovery for
-initial adoption only. For Codex, an authoritative id must resolve to an exact readable
-rollout path or adoption fails with `E-NOID`.
+The first attachment atomically claims a memorable primary id and a two-way durable
+mapping under `PIJ_HOME`; a later attachment of the same exact native identity reuses
+the original id and metadata while replacing pane/PID/cwd/lifecycle. Existing opaque
+descriptors and durable mappings win before allocation, so upgrades never rename them.
+
+Candidates come from the exact-pinned adjective/animal corpus. A collision advances
+deterministically to the next two-word pair; no suffix or overwrite is allowed.
+Control-plane and agent spawns reserve the id before opening the pane. Known launch
+failure releases only that launch owner's reservation. A crash-orphan reservation is
+retained even if the short-lived spawner PID is dead, because the child may already be
+running; recover it explicitly with `adopt --id <reserved-id>`. Omitting `--session-id`
+retains newest-artifact discovery for initial adoption only. For Codex, an authoritative
+id must resolve to an exact readable rollout path or adoption fails with `E-NOID`.
+
+Copilot adoption never guesses from the globally newest
+`~/.copilot/session-state/<uuid>` directory: `/new` leaves older global sessions
+present, so mtime cannot identify the current pane. The current Copilot process must
+provide a UUID in `COPILOT_AGENT_SESSION_ID`, and that UUID must have matching
+session-state directory metadata. If it is absent or invalid, adoption stays pending
+with an actionable message. Run `pij phonehome` inside that Copilot pane once the env
+signal is available; phonehome reads `COPILOT_AGENT_SESSION_ID` for Copilot and
+`CLAUDE_CODE_SESSION_ID` for Claude.
 
 Prime designation is part of the descriptor snapshot and survives this same
 restart/reattachment path. `unset` writes explicit `false`; legacy absence reads
@@ -233,10 +250,11 @@ context.
 
 ## Parent/worker workflow
 
-> **Session identity.** A session's `pij-<id>` is derived from pi's own session
-> id, so it is stable across `/reload` and `/resume` but a **fresh id on `/new`
-> and `/fork`** (a `/new` session is a new peer, not the old one). When pi
-> exposes no session id (SDK/tests) it falls back to `pij-<pid>`.
+> **Session identity.** A new session gets a collision-safe
+> `pij-<adjective>-<animal>` primary id. Pi's native session identity keeps it
+> stable across `/reload` and `/resume`, while `/new` and `/fork` mint a fresh
+> memorable id. SDK/test fallback also allocates from the memorable sequence.
+> Existing opaque ids remain unchanged.
 
 The canonical loop (roles are fixed per session at boot):
 

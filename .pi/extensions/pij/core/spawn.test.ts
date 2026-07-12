@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import type { ModelEntry } from "./models/registry.js";
 import {
 	aliasAgentSpawnArgs,
-	allocatePijId,
 	buildControlSpawnCommand,
 	buildEffortWarning,
 	buildPendingDescriptor,
@@ -22,6 +21,7 @@ import {
 	planControlSplit,
 	planPlacement,
 	readyBody,
+	spawnIdentitySeed,
 } from "./spawn.js";
 import type { HarnessKind, SessionDescriptor } from "./types.js";
 
@@ -242,21 +242,21 @@ describe("readyBody + parseReadyBody round-trip", () => {
 
 // ─── Control plane (Plan 019) ────────────────────────────────────────────────
 
-describe("allocatePijId", () => {
-	it("is known BEFORE launch and deterministic for the same token+pid (AC-01)", () => {
-		const a = allocatePijId("s1700000000000-0", 4242);
-		const b = allocatePijId("s1700000000000-0", 4242);
+describe("spawnIdentitySeed", () => {
+	it("is known before launch and deterministic for the same token+pid", () => {
+		const a = spawnIdentitySeed("s1700000000000-0", 4242);
+		const b = spawnIdentitySeed("s1700000000000-0", 4242);
 		expect(a).toBe(b);
-		expect(a).toMatch(/^pij-/);
+		expect(a).toContain("s1700000000000-0");
 	});
 
-	it("distinct spawn tokens yield distinct ids", () => {
-		expect(allocatePijId("s1-0", 4242)).not.toBe(allocatePijId("s1-1", 4242));
+	it("distinct spawn tokens yield distinct allocation seeds", () => {
+		expect(spawnIdentitySeed("s1-0", 4242)).not.toBe(spawnIdentitySeed("s1-1", 4242));
 	});
 });
 
 describe("buildControlSpawnCommand", () => {
-	const base = { harness: "claude" as const, pijId: "pij-abc", cwd: "/repo" };
+	const base = { harness: "claude" as const, pijId: "pij-bright-otter", cwd: "/repo" };
 
 	it("claude: cmd is 'claude', --dangerously-skip-permissions always (driven pane, no human to approve)", () => {
 		const r = buildControlSpawnCommand(base);
@@ -271,7 +271,7 @@ describe("buildControlSpawnCommand", () => {
 
 	it("threads the pre-allocated id via PIJ_SESSION_ID + harness via PIJ_HARNESS", () => {
 		const r = buildControlSpawnCommand(base);
-		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc");
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-bright-otter");
 		expect(r.env.PIJ_HARNESS).toBe("claude");
 	});
 
@@ -282,7 +282,7 @@ describe("buildControlSpawnCommand", () => {
 	it("sets PIJ_PARENT_ID to the spawner id when parentId given (who spawned me)", () => {
 		const r = buildControlSpawnCommand({ ...base, parentId: "pij-boss01" });
 		expect(r.env.PIJ_PARENT_ID).toBe("pij-boss01");
-		expect(r.env.PIJ_SESSION_ID).toBe("pij-abc"); // self id unchanged
+		expect(r.env.PIJ_SESSION_ID).toBe("pij-bright-otter"); // self id unchanged
 	});
 
 	it("sets PIJ_SPAWN_TASK only when a task is given", () => {
@@ -446,12 +446,12 @@ describe("buildControlSpawnCommand", () => {
 
 describe("buildPendingDescriptor", () => {
 	const input = {
-		pijId: "pij-abc",
+		pijId: "pij-bright-otter",
 		paneId: "%42",
 		cwd: "/repo",
 		harness: "claude" as const,
-		dataDir: "/home/.pij/pij-abc",
-		eventsPath: "/home/.pij/pij-abc/events.ndjson",
+		dataDir: "/home/.pij/pij-bright-otter",
+		eventsPath: "/home/.pij/pij-bright-otter/events.ndjson",
 		pid: 4242,
 		startedAtIso: "2026-06-27T00:00:00.000Z",
 	};
@@ -459,7 +459,7 @@ describe("buildPendingDescriptor", () => {
 	it("carries (id, paneId, cwd, harness) with lifecycle 'pending' (F2/AC-01)", () => {
 		const d = buildPendingDescriptor(input);
 		expect(d).toMatchObject({
-			id: "pij-abc",
+			id: "pij-bright-otter",
 			paneId: "%42",
 			folder: "/repo",
 			harness: "claude",

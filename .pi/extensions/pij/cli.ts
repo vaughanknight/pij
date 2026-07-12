@@ -53,12 +53,7 @@ import {
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir } from "./core/agents/paths.js";
-import {
-	applyBinding,
-	reattachIdentity,
-	resolveAdoptSessionIdForHarness,
-	resolveStableIdentity,
-} from "./core/binding.js";
+import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import {
 	applyWaitReceipt,
 	type CliDeps,
@@ -74,7 +69,12 @@ import {
 import { parseCloseArgs, planClose } from "./core/close.js";
 import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
-import { deriveHarnessPijId, filterByFolder, resolveSelf } from "./core/discovery.js";
+import {
+	deriveHarnessPijId,
+	filterByFolder,
+	memorableIdentitySeed,
+	resolveSelf,
+} from "./core/discovery.js";
 import {
 	summarizeTranscriptLine,
 	transcriptDir,
@@ -88,7 +88,7 @@ import {
 } from "./core/harness/codex.js";
 import {
 	type CopilotSessionDir,
-	copilotSessionStateScan,
+	resolveCopilotCurrentSession,
 	sessionEventsPath,
 	summarizeCopilotEvent,
 } from "./core/harness/copilot.js";
@@ -114,7 +114,6 @@ import { daemonTickStatus } from "./core/receipts.js";
 import { buildExportLines } from "./core/session-join.js";
 import {
 	aliasAgentSpawnArgs,
-	allocatePijId,
 	buildControlSpawnCommand,
 	buildEffortWarning,
 	buildPendingDescriptor,
@@ -128,6 +127,7 @@ import {
 	planBranch,
 	planPlacement,
 	type SpawnLayout,
+	spawnIdentitySeed,
 } from "./core/spawn.js";
 import type { HarnessKind, SessionDescriptor, WatchMode } from "./core/types.js";
 import { addWatch, removeWatch } from "./core/watch-subscription.js";
@@ -649,7 +649,17 @@ function runSpawn(argv: readonly string[]): void {
 		}
 	}
 	const token = `s${Date.now()}-${process.pid}`;
-	const pijId = allocatePijId(token, process.pid);
+	const reservationOwnerToken = `spawn:${token}:${randomUUID()}`;
+	const reserved = reg0.reserveMemorableId(
+		spawnIdentitySeed(token, process.pid),
+		reservationOwnerToken,
+		process.pid,
+	);
+	if (!reserved.ok) {
+		process.stderr.write(`${reserved.code}: ${reserved.message}\n`);
+		process.exit(2);
+	}
+	const pijId = reserved.value.id;
 	const spawnCmd = buildControlSpawnCommand({
 		harness: req.value.harness,
 		pijId,
@@ -673,6 +683,7 @@ function runSpawn(argv: readonly string[]): void {
 	);
 	const plan = planPlacement(req.value.layout, ownPane, peerPanes);
 	if (!plan.ok) {
+		reg0.releaseReservation(pijId, reservationOwnerToken);
 		process.stderr.write(`${plan.code}: ${plan.message}\n`);
 		process.exit(2);
 	}
@@ -701,6 +712,7 @@ function runSpawn(argv: readonly string[]): void {
 					detached: true, // keep focus here; the daemon drives the new pane
 				});
 	if (!split.ok) {
+		reg0.releaseReservation(pijId, reservationOwnerToken);
 		process.stderr.write(`${split.code}: ${split.message}\n`);
 		process.exit(2);
 	}
@@ -719,26 +731,29 @@ function runSpawn(argv: readonly string[]): void {
 		/* fall back to the spawner pid */
 	}
 	const dataDir = join(pijHome, pijId);
-	new FsRegistry(pijHome).write(
-		buildPendingDescriptor({
-			pijId,
-			paneId,
-			cwd,
-			harness: req.value.harness,
-			dataDir,
-			eventsPath: join(dataDir, "events.ndjson"),
-			pid: panePid,
-			startedAtIso: new Date().toISOString(),
-			// Record who spawned this worker so `pij close` is ownership-aware (a pi
-			// child self-registers spawnedBy; claude/copilot get it written here).
-			spawnedBy: parentId,
-			transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
-			plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
-			branchedFrom: branchFrom,
-			model: req.value.model,
-			effort: req.value.effort,
-		}),
-	);
+	const pending = buildPendingDescriptor({
+		pijId,
+		paneId,
+		cwd,
+		harness: req.value.harness,
+		dataDir,
+		eventsPath: join(dataDir, "events.ndjson"),
+		pid: panePid,
+		startedAtIso: new Date().toISOString(),
+		// Record who spawned this worker so `pij close` is ownership-aware (a pi
+		// child self-registers spawnedBy; claude/copilot get it written here).
+		spawnedBy: parentId,
+		transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
+		plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
+		branchedFrom: branchFrom,
+		model: req.value.model,
+		effort: req.value.effort,
+	});
+	const promoted = reg0.promoteReservation(pending, reservationOwnerToken);
+	if (!promoted.ok) {
+		process.stderr.write(`${promoted.code}: ${promoted.message}\n`);
+		process.exit(2);
+	}
 	// FX001-2 / DL-002: a daemon-bound peer never reads PIJ_SPAWN_TASK (only pi
 	// children do), so --task rode env into a void. Queue it in the peer's INBOX
 	// instead — the daemon injects it as the first turn after bind, exactly like
@@ -949,12 +964,18 @@ function statMtime(path: string): number {
 	}
 }
 
-/** Best-effort listing of `~/.copilot/session-state/*` child dirs with mtimes for
- *  the copilot adopt scanner (finding 02b). Returns `[]` if the root is unreadable
- *  (copilot never ran here). Impure — passed into the pure `copilotSessionStateScan`. */
+/** Best-effort metadata for `~/.copilot/session-state/*`. Identity selection is
+ * env-correlated; mtime is diagnostic metadata only and never a winner rule. */
 function listCopilotStateDirs(root: string): CopilotSessionDir[] {
 	try {
-		return readdirSync(root).map((name) => ({ name, mtimeMs: statMtime(join(root, name)) }));
+		return readdirSync(root).flatMap((name) => {
+			try {
+				const stat = statSync(join(root, name));
+				return [{ name, mtimeMs: stat.mtimeMs, isDirectory: stat.isDirectory() }];
+			} catch {
+				return [];
+			}
+		});
 	} catch {
 		return [];
 	}
@@ -969,8 +990,8 @@ function listCopilotStateDirs(root: string): CopilotSessionDir[] {
  *    - claude → the adopting shell's CLAUDE_CODE_SESSION_ID, else the newest
  *      transcript stem in the cwd (unchanged);
  *    - codex → the newest rollout's trailing UUID + its absolute transcriptPath;
- *    - copilot → the newest `~/.copilot/session-state/*` uuid (NEW scan; never the
- *      claude dir — finding 02b);
+ *    - copilot → validated current `COPILOT_AGENT_SESSION_ID` with matching
+ *      session-state directory metadata; global newest-by-mtime is forbidden;
  *  else pending + `pij phonehome`. `--export` prints ONLY the eval-able
  *  `export PIJ_SESSION_ID=…` block (ergonomic self-resolution sugar — NOT the
  *  telemetry fix; finding 04). */
@@ -1006,7 +1027,8 @@ function runAdopt(argv: readonly string[]): void {
 	// the decision is the pure resolver). Only the relevant harness's listing runs.
 	let claudeStemsNewestFirst: string[] = [];
 	let codexRolloutPathsNewestFirst: string[] = [];
-	let copilotSessionId: string | null = null;
+	let copilotCurrentSessionId: string | null = null;
+	let copilotBindingIssue: string | undefined;
 	if (harness === "codex") {
 		// Codex's rollouts live in the GLOBAL date-nested tree ~/.codex/sessions/**;
 		// deep-list then mtime-sort newest-first (the pane-start-time proxy).
@@ -1022,9 +1044,13 @@ function runAdopt(argv: readonly string[]): void {
 			.sort((a, b) => b.t - a.t)
 			.map(({ p }) => p);
 	} else if (harness === "copilot") {
-		// finding 02b: NEW scan of ~/.copilot/session-state/* (dir-name = uuid),
-		// newest by mtime. NEVER the claude dir.
-		copilotSessionId = copilotSessionStateScan(listCopilotStateDirs, homedir());
+		const current = resolveCopilotCurrentSession(
+			process.env.COPILOT_AGENT_SESSION_ID,
+			listCopilotStateDirs,
+			homedir(),
+		);
+		if (current.ok) copilotCurrentSessionId = current.sessionId;
+		else copilotBindingIssue = current.message;
 	} else {
 		// claude (+ pi): unchanged — newest transcript stems in the cwd's project dir.
 		const dir = transcriptDir(homedir(), cwd);
@@ -1043,11 +1069,12 @@ function runAdopt(argv: readonly string[]): void {
 		envSessionId: process.env.CLAUDE_CODE_SESSION_ID,
 		claudeStemsNewestFirst,
 		codexRolloutPathsNewestFirst,
-		copilotSessionId,
+		copilotCurrentSessionId,
 	});
 	// An explicit --session-id is authoritative for restart re-attachment.
 	// Harness artifact discovery remains an initial-adopt fallback only.
 	const harnessSessionId = req.value.sessionId ?? resolution.harnessSessionId ?? undefined;
+	const bindingIssue = req.value.sessionId ? undefined : copilotBindingIssue;
 	const registry = new FsRegistry(pijHome);
 	let durablePijId: string | undefined;
 	let durableDescriptor: SessionDescriptor | undefined;
@@ -1065,42 +1092,33 @@ function runAdopt(argv: readonly string[]): void {
 		}
 		durableDescriptor = snapshot.value;
 	}
-	const candidateId =
-		req.value.id ??
-		durablePijId ??
-		(harnessSessionId
-			? deriveHarnessPijId(harness, harnessSessionId)
-			: allocatePijId(`adopt-${pane}`, panePid));
+	const requestedId = req.value.id;
+	const requestedDescriptor = requestedId ? registry.read(requestedId) : null;
+	let requestedReservation = false;
+	if (requestedId) {
+		const reservation = registry.hasReservation(requestedId);
+		if (!reservation.ok) {
+			process.stderr.write(`${reservation.code}: ${reservation.message}\n`);
+			process.exit(2);
+		}
+		requestedReservation = reservation.value;
+		if (!requestedDescriptor && !requestedReservation) {
+			process.stderr.write(`E-NOID: pij id ${requestedId} does not exist\n`);
+			process.exit(2);
+		}
+		if (durablePijId && durablePijId !== requestedId) {
+			process.stderr.write(
+				`E-AMBIG: durable ${harness}:${harnessSessionId} identity is ${durablePijId}, not requested ${requestedId}\n`,
+			);
+			process.exit(2);
+		}
+	}
 	let descriptor: SessionDescriptor;
 	if (harnessSessionId) {
-		const stable = resolveStableIdentity(registry.list(), harness, harnessSessionId, candidateId);
-		if (!stable.ok) {
-			process.stderr.write(`${stable.code}: ${stable.message}\n`);
-			process.exit(2);
-		}
-		if (
-			req.value.id !== undefined &&
-			stable.value.kind === "reuse" &&
-			stable.value.descriptor.id !== req.value.id
-		) {
-			process.stderr.write(
-				`E-AMBIG: ${harness}:${harnessSessionId} is already ${stable.value.descriptor.id}, not requested ${req.value.id}\n`,
-			);
-			process.exit(2);
-		}
-		const stableId = stable.value.kind === "reuse" ? stable.value.descriptor.id : stable.value.id;
-		if (durablePijId && durablePijId !== stableId) {
-			process.stderr.write(
-				`E-AMBIG: durable ${harness}:${harnessSessionId} identity is ${durablePijId}, descriptor resolves to ${stableId}\n`,
-			);
-			process.exit(2);
-		}
 		let transcriptPath =
 			resolution.harnessSessionId === harnessSessionId ? resolution.transcriptPath : undefined;
 		if (harness === "codex" && req.value.sessionId) {
-			const storedPath =
-				(stable.value.kind === "reuse" ? stable.value.descriptor.transcriptPath : undefined) ??
-				durableDescriptor?.transcriptPath;
+			const storedPath = requestedDescriptor?.transcriptPath ?? durableDescriptor?.transcriptPath;
 			transcriptPath =
 				(storedPath && readableRegularFile(storedPath) ? storedPath : undefined) ??
 				codexRolloutForSession(
@@ -1116,63 +1134,20 @@ function runAdopt(argv: readonly string[]): void {
 				process.exit(2);
 			}
 		}
-		const reusable = stable.value.kind === "reuse" ? stable.value.descriptor : durableDescriptor;
-		if (reusable && reusable.id !== stableId) {
-			process.stderr.write(
-				`E-AMBIG: durable metadata belongs to ${reusable.id}, not resolved ${stableId}\n`,
-			);
-			process.exit(2);
-		}
-		if (reusable) {
-			descriptor = reattachIdentity(reusable, {
-				harness,
-				harnessSessionId,
-				folder: cwd,
-				pid: panePid,
-				paneId: pane,
-				transcriptPath,
-			});
-		} else {
-			const dataDir = join(pijHome, stableId);
-			descriptor = applyBinding(
-				buildPendingDescriptor({
-					pijId: stableId,
-					paneId: pane,
-					cwd,
-					harness,
-					dataDir,
-					eventsPath: join(dataDir, "events.ndjson"),
-					pid: panePid,
-					startedAtIso: new Date().toISOString(),
-				}),
-				harnessSessionId,
-			);
-			if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
-		}
 
-		if (stable.value.kind === "reuse") {
-			registry.write(descriptor);
-		} else {
-			const claim = registry.claim(descriptor);
-			if (!claim.ok) {
-				process.stderr.write(`${claim.code}: ${claim.message}\n`);
-				process.exit(2);
-			}
-			if (claim.value.kind === "exists") {
-				const raced = resolveStableIdentity(
-					[claim.value.descriptor],
-					harness,
-					harnessSessionId,
-					candidateId,
-				);
-				if (!raced.ok || raced.value.kind !== "reuse") {
-					const message = raced.ok
-						? `identity ${candidateId} was claimed incompatibly`
-						: raced.message;
-					process.stderr.write(`E-AMBIG: ${message}\n`);
+		if (requestedId) {
+			if (requestedDescriptor) {
+				if (
+					(requestedDescriptor.harness && requestedDescriptor.harness !== harness) ||
+					(requestedDescriptor.harnessSessionId &&
+						requestedDescriptor.harnessSessionId !== harnessSessionId)
+				) {
+					process.stderr.write(
+						`E-AMBIG: pij id ${requestedId} is already bound to ${requestedDescriptor.harness ?? "legacy"}:${requestedDescriptor.harnessSessionId ?? "unknown"}\n`,
+					);
 					process.exit(2);
 				}
-				descriptor = reattachIdentity(raced.value.descriptor, {
+				descriptor = reattachIdentity(requestedDescriptor, {
 					harness,
 					harnessSessionId,
 					folder: cwd,
@@ -1180,50 +1155,183 @@ function runAdopt(argv: readonly string[]): void {
 					paneId: pane,
 					transcriptPath,
 				});
+				try {
+					registry.write(descriptor);
+				} catch (error) {
+					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+					process.exit(2);
+				}
+			} else {
+				const dataDir = join(pijHome, requestedId);
+				descriptor = applyBinding(
+					buildPendingDescriptor({
+						pijId: requestedId,
+						paneId: pane,
+						cwd,
+						harness,
+						dataDir,
+						eventsPath: join(dataDir, "events.ndjson"),
+						pid: panePid,
+						startedAtIso: new Date().toISOString(),
+					}),
+					harnessSessionId,
+				);
+				if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
+				const recovered = registry.recoverReservation(descriptor);
+				if (!recovered.ok) {
+					process.stderr.write(`${recovered.code}: ${recovered.message}\n`);
+					process.exit(2);
+				}
+				try {
+					registry.write(descriptor);
+				} catch (error) {
+					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+					process.exit(2);
+				}
+			}
+		} else {
+			const allocated = registry.allocateIdentity(
+				harness,
+				harnessSessionId,
+				memorableIdentitySeed(harness, harnessSessionId),
+				deriveHarnessPijId(harness, harnessSessionId),
+			);
+			if (!allocated.ok) {
+				process.stderr.write(`${allocated.code}: ${allocated.message}\n`);
+				process.exit(2);
+			}
+			const reusable = allocated.value.descriptor ?? durableDescriptor;
+			if (reusable && reusable.id !== allocated.value.id) {
+				process.stderr.write(
+					`E-AMBIG: durable metadata belongs to ${reusable.id}, not resolved ${allocated.value.id}\n`,
+				);
+				process.exit(2);
+			}
+			if (reusable) {
+				descriptor = reattachIdentity(reusable, {
+					harness,
+					harnessSessionId,
+					folder: cwd,
+					pid: panePid,
+					paneId: pane,
+					transcriptPath,
+				});
+			} else {
+				const dataDir = join(pijHome, allocated.value.id);
+				descriptor = applyBinding(
+					buildPendingDescriptor({
+						pijId: allocated.value.id,
+						paneId: pane,
+						cwd,
+						harness,
+						dataDir,
+						eventsPath: join(dataDir, "events.ndjson"),
+						pid: panePid,
+						startedAtIso: new Date().toISOString(),
+					}),
+					harnessSessionId,
+				);
+				if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
+			}
+			try {
 				registry.write(descriptor);
+			} catch (error) {
+				process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+				process.exit(2);
 			}
 		}
 	} else {
-		const pijId = candidateId;
-		const dataDir = join(pijHome, pijId);
-		descriptor = buildPendingDescriptor({
-			pijId,
-			paneId: pane,
-			cwd,
-			harness,
-			dataDir,
-			eventsPath: join(dataDir, "events.ndjson"),
-			pid: panePid,
-			startedAtIso: new Date().toISOString(),
-		});
-		const pendingClaim = registry.claim(descriptor);
-		if (!pendingClaim.ok) {
-			process.stderr.write(`${pendingClaim.code}: ${pendingClaim.message}\n`);
-			process.exit(2);
-		}
-		if (pendingClaim.value.kind === "exists") {
-			process.stderr.write(
-				`E-AMBIG: pij id ${pijId} already exists; use --session-id for authoritative re-attachment\n`,
+		if (requestedId && requestedDescriptor) {
+			if (requestedDescriptor.harness && requestedDescriptor.harness !== harness) {
+				process.stderr.write(
+					`E-AMBIG: pij id ${requestedId} belongs to ${requestedDescriptor.harness}, not ${harness}\n`,
+				);
+				process.exit(2);
+			}
+			if (requestedDescriptor.harnessSessionId) {
+				descriptor = reattachIdentity(requestedDescriptor, {
+					harness,
+					harnessSessionId: requestedDescriptor.harnessSessionId,
+					folder: cwd,
+					pid: panePid,
+					paneId: pane,
+					transcriptPath: requestedDescriptor.transcriptPath,
+				});
+			} else {
+				descriptor = {
+					...requestedDescriptor,
+					folder: cwd,
+					pid: panePid,
+					state: "idle",
+					paneId: pane,
+					harness,
+					lifecycle: "pending",
+				};
+			}
+			registry.write(descriptor);
+		} else if (requestedId && requestedReservation) {
+			const dataDir = join(pijHome, requestedId);
+			descriptor = buildPendingDescriptor({
+				pijId: requestedId,
+				paneId: pane,
+				cwd,
+				harness,
+				dataDir,
+				eventsPath: join(dataDir, "events.ndjson"),
+				pid: panePid,
+				startedAtIso: new Date().toISOString(),
+			});
+			const recovered = registry.recoverReservation(descriptor);
+			if (!recovered.ok) {
+				process.stderr.write(`${recovered.code}: ${recovered.message}\n`);
+				process.exit(2);
+			}
+		} else {
+			const ownerToken = `adopt:${harness}:${pane}:${randomUUID()}`;
+			const reserved = registry.reserveMemorableId(
+				`adopt\0${harness}\0${pane}\0${panePid}`,
+				ownerToken,
+				process.pid,
 			);
-			process.exit(2);
+			if (!reserved.ok) {
+				process.stderr.write(`${reserved.code}: ${reserved.message}\n`);
+				process.exit(2);
+			}
+			const dataDir = join(pijHome, reserved.value.id);
+			descriptor = buildPendingDescriptor({
+				pijId: reserved.value.id,
+				paneId: pane,
+				cwd,
+				harness,
+				dataDir,
+				eventsPath: join(dataDir, "events.ndjson"),
+				pid: panePid,
+				startedAtIso: new Date().toISOString(),
+			});
+			const promoted = registry.promoteReservation(descriptor, ownerToken);
+			if (!promoted.ok) {
+				process.stderr.write(`${promoted.code}: ${promoted.message}\n`);
+				process.exit(2);
+			}
 		}
-		descriptor = pendingClaim.value.descriptor;
 	}
 	const pijId = descriptor.id;
+	const finalHarnessSessionId = descriptor.harnessSessionId ?? null;
+	const finalBindingIssue = finalHarnessSessionId ? undefined : bindingIssue;
 	if (wantExport) {
 		// AC-5: the eval-able block is the ONLY stdout, safe to `eval`.
 		process.stdout.write(`${buildExportLines(descriptor)}\n`);
 	} else if (req.value.json) {
 		process.stdout.write(
-			`${JSON.stringify({ id: pijId, paneId: pane, harness, harnessSessionId: harnessSessionId ?? null, transcriptPath: descriptor.transcriptPath ?? null, lifecycle: descriptor.lifecycle })}\n`,
+			`${JSON.stringify({ id: pijId, paneId: pane, harness, harnessSessionId: finalHarnessSessionId, transcriptPath: descriptor.transcriptPath ?? null, lifecycle: descriptor.lifecycle, ...(finalBindingIssue ? { bindingIssue: finalBindingIssue } : {}) })}\n`,
 		);
-	} else if (harnessSessionId) {
+	} else if (finalHarnessSessionId) {
 		process.stdout.write(
-			`adopted ${pijId} ↔ ${harness} session ${harnessSessionId} (pane ${pane}, bound) — peers can now: pij send ${pijId} "<text>"\n`,
+			`adopted ${pijId} ↔ ${harness} session ${finalHarnessSessionId} (pane ${pane}, bound) — peers can now: pij send ${pijId} "<text>"\n`,
 		);
 	} else {
 		process.stdout.write(
-			`adopted ${pijId} (pane ${pane}, pending) — run \`pij phonehome\` in that pane to confirm the binding\n`,
+			`adopted ${pijId} (pane ${pane}, pending) — ${finalBindingIssue ? `${finalBindingIssue}; ` : ""}run \`pij phonehome\` in that pane to confirm the binding\n`,
 		);
 	}
 	process.exit(0);
@@ -1710,7 +1818,18 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	process.env.PIJ_AGENT_CWD = cwd;
 	const models = loadModels();
 	const token = `s${Date.now()}-${process.pid}`;
-	const id = allocatePijId(token, process.pid);
+	const reservationOwnerToken = `agent-spawn:${token}:${randomUUID()}`;
+	const reservationRegistry = new FsRegistry(pijHome);
+	const reserved = reservationRegistry.reserveMemorableId(
+		spawnIdentitySeed(token, process.pid),
+		reservationOwnerToken,
+		process.pid,
+	);
+	if (!reserved.ok) {
+		process.stderr.write(`${reserved.code}: ${reserved.message}\n`);
+		process.exit(2);
+	}
+	const id = reserved.value.id;
 
 	// Resolve the caller so the peer is ownership-stamped + can report back.
 	// Pane-first across the FULL registry (FX001-1 / DL-003): the folder filter
@@ -1750,6 +1869,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		},
 	);
 	if (!prep.ok) {
+		reservationRegistry.releaseReservation(id, reservationOwnerToken);
 		process.stderr.write(`${renderAgentError(prep.error)}\n`);
 		process.exit(exitCodeFor(prep.error.code));
 	}
@@ -1779,6 +1899,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		cwd,
 	);
 	if (!paneRes.ok || !paneRes.pane) {
+		reservationRegistry.releaseReservation(id, reservationOwnerToken);
 		process.stderr.write(`${paneRes.message ?? "E-SPAWN: could not open pane"}\n`);
 		process.exit(paneRes.exitCode ?? 2);
 	}
@@ -1789,6 +1910,11 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		channel: new FsChannel(pijHome),
 		cwd,
 	});
+	const consumed = reg.consumeReservation(id, reservationOwnerToken);
+	if (!consumed.ok) {
+		process.stderr.write(`${consumed.code}: ${consumed.message}\n`);
+		process.exit(2);
+	}
 
 	if (cmd.json) {
 		process.stdout.write(

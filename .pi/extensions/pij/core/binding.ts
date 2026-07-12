@@ -5,6 +5,7 @@
 // exactly-once, and run the watchdog that re-sends the confirm line once then
 // fails the spawn (notifying the creator) — no silent dead spawn (AC-03/04/05).
 
+import { isCopilotSessionId } from "./harness/copilot.js";
 import { transcriptLayout } from "./harness/transcript.js";
 import {
 	type DeathReason,
@@ -71,9 +72,8 @@ export interface AdoptResolveInput {
 	readonly claudeStemsNewestFirst: readonly string[];
 	/** Newest-first codex rollout ABSOLUTE paths (deep-listed, mtime-sorted). */
 	readonly codexRolloutPathsNewestFirst: readonly string[];
-	/** The scanned copilot session-state uuid (newest `~/.copilot/session-state/*`
-	 *  by mtime), or `null` — from `copilotSessionStateScan`. NEVER a claude stem. */
-	readonly copilotSessionId: string | null;
+	/** UUID from validated `COPILOT_AGENT_SESSION_ID` + matching session-state metadata. */
+	readonly copilotCurrentSessionId: string | null;
 }
 
 /** The resolved adopt binding: the harness session id (`null` ⇒ write `pending`)
@@ -91,9 +91,8 @@ export interface AdoptResolution {
  *      (`resolveAdoptSessionId`); the `pi` fallback shares it.
  *    - **codex** → the newest rollout's trailing UUID (`transcriptLayout('codex')
  *      .sessionIdOf`) PLUS its absolute `transcriptPath` (Finding 03).
- *    - **copilot** → the scanned `~/.copilot/session-state` uuid ONLY (Finding
- *      02b) — it NEVER falls through to the claude dir, so a claude transcript in
- *      the cwd can never mis-bind a copilot adopt.
+ *    - **copilot** → validated current `COPILOT_AGENT_SESSION_ID` ONLY. Global
+ *      newest-by-mtime and Claude transcript fallbacks are forbidden.
  *  Returns `harnessSessionId: null` when a harness can't resolve — the caller
  *  writes `pending` (no crash, no wrong-harness id — AC-4). */
 export function resolveAdoptSessionIdForHarness(input: AdoptResolveInput): AdoptResolution {
@@ -107,14 +106,39 @@ export function resolveAdoptSessionIdForHarness(input: AdoptResolveInput): Adopt
 			};
 		}
 		case "copilot":
-			// finding 02b: the scanner is the ONLY source — never the claude stem.
-			return { harnessSessionId: input.copilotSessionId };
+			return {
+				harnessSessionId:
+					input.copilotCurrentSessionId && isCopilotSessionId(input.copilotCurrentSessionId)
+						? input.copilotCurrentSessionId.toLowerCase()
+						: null,
+			};
 		default:
 			// claude (+ pi): unchanged — env id, else newest transcript stem.
 			return {
 				harnessSessionId: resolveAdoptSessionId(input.envSessionId, input.claudeStemsNewestFirst),
 			};
 	}
+}
+
+export interface PhonehomeSessionEnv {
+	readonly CLAUDE_CODE_SESSION_ID?: string;
+	readonly COPILOT_AGENT_SESSION_ID?: string;
+}
+
+/** Current native identity exposed by the session's own harness process. */
+export function resolvePhonehomeSessionId(
+	harness: HarnessKind,
+	env: PhonehomeSessionEnv,
+): string | null {
+	if (harness === "copilot") {
+		const value = env.COPILOT_AGENT_SESSION_ID?.trim();
+		return isCopilotSessionId(value) ? value.toLowerCase() : null;
+	}
+	if (harness === "claude") {
+		const value = env.CLAUDE_CODE_SESSION_ID?.trim();
+		return value || null;
+	}
+	return null;
 }
 
 // ─── restart-stable identity (T029 / AC-15) ────────────────────────────────

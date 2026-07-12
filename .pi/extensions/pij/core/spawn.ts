@@ -10,7 +10,6 @@
 //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
-import { deriveSelfId } from "./discovery.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
@@ -169,7 +168,7 @@ export function parseReadyBody(body: string): ReadyPayload | null {
 export interface ControlSpawnInput {
 	/** The harness to launch (`claude` now; `copilot` reserved). */
 	readonly harness: HarnessKind;
-	/** The PRE-ALLOCATED pij-id ({@link allocatePijId}) — rides PIJ_SESSION_ID so
+	/** The registry-claimed pre-bind pij-id — rides PIJ_SESSION_ID so
 	 *  the agent's `pij phonehome` self-resolves to the same id. */
 	readonly pijId: SessionId;
 	/** Absolute working directory for the new session. */
@@ -230,14 +229,9 @@ export interface PendingDescriptorInput {
 	readonly effort?: string;
 }
 
-/**
- * Pre-allocate a control-plane pij-id BEFORE the pane exists (AC-01). A non-pi
- * harness has no pi session id, so we seed {@link deriveSelfId} with the spawn
- * token (the daemon's `s<now>-<counter>`): deterministic, collision-resistant,
- * and known before launch — the value spawn returns to its caller immediately.
- */
-export function allocatePijId(spawnToken: string, pid: number): SessionId {
-	return deriveSelfId(spawnToken, pid);
+/** Stable input for the registry-owned pre-bind memorable-id reservation. */
+export function spawnIdentitySeed(spawnToken: string, pid: number): string {
+	return `spawn\0${spawnToken}\0${pid}`;
 }
 
 /**

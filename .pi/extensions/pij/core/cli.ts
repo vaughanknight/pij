@@ -8,7 +8,7 @@
 // liveness/validateCommand/filterEvents via the ports) — no new logic. Node I/O
 // (fs, argv, exit) and the imperative --follow / --wait loops live in the bin.
 
-import { applyBinding } from "./binding.js";
+import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { filterByFolder, filterPrime, resolveSelf } from "./discovery.js";
 import { closestModel } from "./models/match.js";
@@ -935,16 +935,16 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			);
 		}
 		case "phonehome": {
-			// Confirmatory binding (AC-03): the agent self-reports its harness-native
-			// session id (Claude exposes CLAUDE_CODE_SESSION_ID — the transcript stem
-			// the daemon discovers deterministically). Deterministic discovery is
-			// primary; this converges on the SAME id and resolves the ambiguous
-			// (concurrent-boot) case. Idempotent: re-running is a no-op confirm.
+			// Confirmatory binding: the agent self-reports the current native id from
+			// its own harness-specific env. Never read another harness's variable.
 			const s = selfId(deps);
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
 			const d = deps.registry.read(s.value);
 			if (!d) return fail("E-NOID", `no session '${s.value}' in registry`, cmd.json);
-			const harnessSessionId = deps.process.env("CLAUDE_CODE_SESSION_ID");
+			const harnessSessionId = resolvePhonehomeSessionId(d.harness ?? "pi", {
+				CLAUDE_CODE_SESSION_ID: deps.process.env("CLAUDE_CODE_SESSION_ID"),
+				COPILOT_AGENT_SESSION_ID: deps.process.env("COPILOT_AGENT_SESSION_ID"),
+			});
 			let bound = d;
 			if (harnessSessionId && harnessSessionId.trim() !== "") {
 				if (d.harnessSessionId !== harnessSessionId) {
@@ -966,7 +966,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			return okOut(
 				confirmed
 					? `phoned home: ${bound.id} ↔ ${bound.harness ?? "?"} session ${bound.harnessSessionId} (${bound.lifecycle ?? "?"})`
-					: `phoned home: ${bound.id} — no harness session id yet (CLAUDE_CODE_SESSION_ID unset); deterministic discovery will bind`,
+					: `phoned home: ${bound.id} — no valid current-session env for ${bound.harness ?? "unknown"} (expected ${bound.harness === "copilot" ? "COPILOT_AGENT_SESSION_ID UUID" : "CLAUDE_CODE_SESSION_ID"})`,
 			);
 		}
 		case "path": {

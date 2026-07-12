@@ -7,6 +7,7 @@ import {
 	filterByFolder,
 	filterPrime,
 	isSubagentChild,
+	memorableIdentitySeed,
 	resolveSelf,
 } from "./discovery.js";
 import type { SessionDescriptor } from "./types.js";
@@ -137,6 +138,24 @@ describe("deriveHarnessPijId", () => {
 	it("namespaces the same native id by harness", () => {
 		expect(deriveHarnessPijId("claude", "shared-id")).not.toBe(
 			deriveHarnessPijId("copilot", "shared-id"),
+		);
+	});
+});
+
+describe("memorableIdentitySeed", () => {
+	it("is stable and namespaces the same native id by harness", () => {
+		expect(memorableIdentitySeed("claude", "native-1")).toBe(
+			memorableIdentitySeed("claude", "native-1"),
+		);
+		expect(memorableIdentitySeed("claude", "shared")).not.toBe(
+			memorableIdentitySeed("copilot", "shared"),
+		);
+	});
+
+	it("keeps the legacy FNV id available only as a migration lookup candidate", () => {
+		expect(deriveHarnessPijId("claude", "native-1")).toMatch(/^pij-[a-z0-9]+$/);
+		expect(memorableIdentitySeed("claude", "native-1")).not.toBe(
+			deriveHarnessPijId("claude", "native-1"),
 		);
 	});
 });

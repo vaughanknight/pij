@@ -24,6 +24,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | `.pi/extensions/pij/core/state.ts` | `isWorking`, `liveness` (active/stale/dead), `isStalled`; `STALE_AFTER_MS`. |
 | `.pi/extensions/pij/core/commands.ts` | Remote-command allow-list (`compact`) + `validateCommand`. |
 | `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, `filterByFolder`, `filterPrime`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
+| `.pi/extensions/pij/core/memorable-id.ts` | Exact-pinned adjective/animal candidate sequence: PoC-compatible first vector plus deterministic full-space linear probing. |
 | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
 | `.pi/extensions/pij/core/cli.ts` | Send grammar, ordered broadcast preflight/fan-out/result projection, and target/message wait correlation. |
@@ -38,6 +39,8 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | Session descriptor | Live presence/attachment data used to find and address a session. | `SessionDescriptor` — written to `~/.pij/<id>.json`; runtime fields may be refreshed without replacing durable identity/history. |
 | Prime designation | Optional honor-system marker consumed by orchestration and list filters. | `SessionDescriptor.prime?: boolean`; only explicit `true` is prime, while `false` and legacy absence are not. |
 | Durable native identity | The same exact native session recovers the same pij-id and metadata after descriptor removal or machine restart. | Two-way `FsRegistry` ownership records keyed by native tuple and pij-id, with durable descriptor snapshots and no-replace publication; Pi persists its exact native id. |
+| Memorable primary id | Newly minted identities use the actual `pij-<adjective>-<animal>` value everywhere; existing opaque ids are immutable. | Exact-pinned 1,202 x 355 corpus; deterministic non-repeating candidates; native/durable/legacy lookup precedes allocation. |
+| Pre-bind reservation | A control-plane id is owned before its pane or descriptor exists. | The same atomic by-pij owner record arbitrates native claims and reservation claims; known failure releases only the owner token, while crash-orphans are retained. |
 | Monotonic seq | Each event has a strictly-increasing `seq`, recoverable after `/reload`. | `SeqCounter(lastSeq)`; `EventLogPort.lastSeq()` is the recovery source. |
 | Event line | One `events.ndjson` row carrying activity. | `PijEvent { seq, timestamp(ISO), type, data? }` — age computed from the stream alone. |
 | Incremental follow | Read only what's new / of-interest / recent. | `EventQuery { since, type, last }` composed since→type→last. |
@@ -63,6 +66,7 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 ## Boundary Owns
 
 - Peer registry descriptor vocabulary + durable native-identity binding + discovery/self-resolution rules.
+- Memorable primary-id sequence, collision retry, legacy opaque-id preservation, and reservation ownership.
 - Prime filter/projection semantics on the shared descriptor and `pij list`.
 - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
 - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
@@ -104,3 +108,4 @@ receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 | 019-pij-tmux-control-plane / T029 | Added presence-independent native identity records, deterministic harness-scoped candidate ids, Pi exact native-id persistence, and durable-field-preserving session boot. | 2026-07-11 |
 | 037-pij-broadcast / Phase 1 | Added repeatable `--to` text fan-out with ordered all-target preflight, independent recipient results, continued delivery after partial runtime failure, and terminal-set receipt waiting. | 2026-07-11 |
 | 038-pij-prime-designation | Added optional `SessionDescriptor.prime`, `filterPrime`, `pij list --prime`, ordinary-list `P` visibility, and JSON `prime:boolean` compatibility. | 2026-07-11 |
+| 040-memorable-pij-session-ids | New identities now use collision-safe two-word primary ids; exact native and legacy opaque identities reuse their stored id, and `prime` survives allocation, snapshots, and reattachment. | 2026-07-11 |

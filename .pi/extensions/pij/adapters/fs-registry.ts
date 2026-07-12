@@ -18,6 +18,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { memorablePijIdCandidates } from "../core/memorable-id.js";
 import type { RegistryPort } from "../core/ports.js";
 import {
 	err,
@@ -29,6 +30,7 @@ import {
 } from "../core/types.js";
 
 interface IdentityRecord {
+	readonly kind?: "identity";
 	readonly harness: HarnessKind;
 	readonly harnessSessionId: string;
 	readonly pijId: SessionId;
@@ -36,11 +38,37 @@ interface IdentityRecord {
 	readonly snapshot?: SessionDescriptor;
 }
 
+interface ReservationRecord {
+	readonly kind: "reservation";
+	readonly pijId: SessionId;
+	readonly ownerToken: string;
+	readonly ownerPid: number;
+	readonly createdAt: string;
+}
+
+interface DescriptorOwnerRecord {
+	readonly kind: "descriptor";
+	readonly pijId: SessionId;
+	readonly ownerToken: string;
+	readonly ownerPid: number;
+	readonly createdAt: string;
+}
+
+type OwnerRecord = IdentityRecord | ReservationRecord | DescriptorOwnerRecord;
+
 interface DetailedIdentityClaim {
 	readonly kind: "claimed" | "exists";
 	readonly id: SessionId;
 	readonly createdPaths: readonly string[];
 }
+
+type CandidateAllocation =
+	| {
+			readonly kind: "claimed" | "reuse";
+			readonly id: SessionId;
+			readonly descriptor?: SessionDescriptor;
+	  }
+	| { readonly kind: "occupied" };
 
 function isHarnessKind(value: unknown): value is HarnessKind {
 	return value === "pi" || value === "claude" || value === "copilot" || value === "codex";
@@ -51,6 +79,7 @@ function isIdentityRecord(value: unknown): value is IdentityRecord {
 	const record = value as Record<string, unknown>;
 	const snapshot = record.snapshot;
 	return (
+		(record.kind === undefined || record.kind === "identity") &&
 		isHarnessKind(record.harness) &&
 		typeof record.harnessSessionId === "string" &&
 		typeof record.pijId === "string" &&
@@ -59,6 +88,34 @@ function isIdentityRecord(value: unknown): value is IdentityRecord {
 				snapshot !== null &&
 				typeof (snapshot as Record<string, unknown>).id === "string"))
 	);
+}
+
+function isReservationRecord(value: unknown): value is ReservationRecord {
+	if (typeof value !== "object" || value === null) return false;
+	const record = value as Record<string, unknown>;
+	return (
+		record.kind === "reservation" &&
+		typeof record.pijId === "string" &&
+		typeof record.ownerToken === "string" &&
+		typeof record.ownerPid === "number" &&
+		typeof record.createdAt === "string"
+	);
+}
+
+function isDescriptorOwnerRecord(value: unknown): value is DescriptorOwnerRecord {
+	if (typeof value !== "object" || value === null) return false;
+	const record = value as Record<string, unknown>;
+	return (
+		record.kind === "descriptor" &&
+		typeof record.pijId === "string" &&
+		typeof record.ownerToken === "string" &&
+		typeof record.ownerPid === "number" &&
+		typeof record.createdAt === "string"
+	);
+}
+
+function isOwnerRecord(value: unknown): value is OwnerRecord {
+	return isIdentityRecord(value) || isReservationRecord(value) || isDescriptorOwnerRecord(value);
 }
 
 export class FsRegistry implements RegistryPort {
@@ -189,6 +246,212 @@ export class FsRegistry implements RegistryPort {
 		return ok({ kind: detailed.value.kind, id: detailed.value.id });
 	}
 
+	/** Resolve an existing exact/legacy identity or atomically claim the first free
+	 * memorable candidate. Exact native identity always wins over candidate order. */
+	allocateIdentity(
+		harness: HarnessKind,
+		harnessSessionId: string,
+		seed: string,
+		legacyId?: SessionId,
+	): Result<{
+		readonly kind: "claimed" | "reuse";
+		readonly id: SessionId;
+		readonly descriptor?: SessionDescriptor;
+	}> {
+		const durable = this.resolveIdentity(harness, harnessSessionId);
+		if (!durable.ok) return durable;
+		const exact = this.list().filter(
+			(descriptor) =>
+				descriptor.harness === harness && descriptor.harnessSessionId === harnessSessionId,
+		);
+		if (exact.length > 1) {
+			return err(
+				"E-AMBIG",
+				`identity ${harness}:${harnessSessionId} maps to multiple pij ids: ${exact
+					.map((descriptor) => descriptor.id)
+					.join(", ")}`,
+			);
+		}
+		const exactDescriptor = exact[0];
+		if (durable.value) {
+			if (exactDescriptor && exactDescriptor.id !== durable.value) {
+				return err(
+					"E-AMBIG",
+					`durable identity ${harness}:${harnessSessionId} is ${durable.value}, but live descriptor is ${exactDescriptor.id}`,
+				);
+			}
+			const resolved = this.validateResolvedIdentity(
+				harness,
+				harnessSessionId,
+				durable.value,
+				legacyId === durable.value,
+			);
+			if (!resolved.ok) return resolved;
+			if (resolved.value.kind !== "occupied") {
+				return ok({
+					kind: "reuse",
+					id: durable.value,
+					...(resolved.value.descriptor ? { descriptor: resolved.value.descriptor } : {}),
+				});
+			}
+		}
+		if (exactDescriptor) {
+			const claimed = this.claimIdentityDetailed(
+				harness,
+				harnessSessionId,
+				exactDescriptor.id,
+				true,
+			);
+			if (!claimed.ok) return claimed;
+			return ok({ kind: "reuse", id: exactDescriptor.id, descriptor: exactDescriptor });
+		}
+
+		if (legacyId) {
+			const legacy = this.read(legacyId);
+			if (legacy && legacy.harness === undefined && legacy.harnessSessionId === undefined) {
+				const allocated = this.allocateCandidate(harness, harnessSessionId, legacy.id, true);
+				if (!allocated.ok) return allocated;
+				if (allocated.value.kind !== "occupied") return ok(allocated.value);
+			}
+		}
+
+		for (const id of memorablePijIdCandidates(seed)) {
+			const allocated = this.allocateCandidate(harness, harnessSessionId, id, false);
+			if (!allocated.ok) return allocated;
+			if (allocated.value.kind !== "occupied") return ok(allocated.value);
+		}
+		return err("E-FULL", "memorable pij id space exhausted");
+	}
+
+	/** Atomically reserve the first free memorable id for a pre-bind launch owner. */
+	reserveMemorableId(
+		seed: string,
+		ownerToken: string,
+		ownerPid: number,
+	): Result<{ readonly kind: "claimed" | "exists"; readonly id: SessionId }> {
+		if (!ownerToken.trim()) return err("E-ARG", "reservation owner token must be non-empty");
+		for (const id of memorablePijIdCandidates(seed)) {
+			const record: ReservationRecord = {
+				kind: "reservation",
+				pijId: id,
+				ownerToken,
+				ownerPid,
+				createdAt: new Date().toISOString(),
+			};
+			const path = this.identityOwnerPath(id);
+			const owner = this.claimOwnerRecord(path, record);
+			if (!owner.ok) return owner;
+			if (owner.value.kind === "exists") {
+				const existing = owner.value.record;
+				if (
+					isReservationRecord(existing) &&
+					existing.pijId === id &&
+					existing.ownerToken === ownerToken
+				) {
+					return ok({ kind: "exists", id });
+				}
+				continue;
+			}
+			if (this.read(id)) {
+				rmSync(path, { force: true });
+				continue;
+			}
+			return ok({ kind: "claimed", id });
+		}
+		return err("E-FULL", "memorable pij id space exhausted");
+	}
+
+	/** Release only an unconsumed reservation owned by the caller. */
+	releaseReservation(id: SessionId, ownerToken: string): Result<boolean> {
+		const path = this.identityOwnerPath(id);
+		const owner = this.readOwnerRecord(path);
+		if (!owner.ok) return owner;
+		if (!owner.value || isIdentityRecord(owner.value) || isDescriptorOwnerRecord(owner.value)) {
+			return ok(false);
+		}
+		if (owner.value.ownerToken !== ownerToken) {
+			return err("E-OWN", `reservation ${id} belongs to another launch owner`);
+		}
+		const descriptor = this.read(id);
+		if (descriptor) {
+			this.writeAtomic(path, descriptorOwner(owner.value));
+			return ok(false);
+		}
+		rmSync(path, { force: true });
+		return ok(true);
+	}
+
+	hasReservation(id: SessionId): Result<boolean> {
+		const owner = this.readOwnerRecord(this.identityOwnerPath(id));
+		return owner.ok ? ok(isReservationRecord(owner.value)) : owner;
+	}
+
+	/** Publish the pending descriptor while retaining atomic by-id ownership. */
+	promoteReservation(
+		descriptor: SessionDescriptor,
+		ownerToken: string,
+	): Result<
+		| { readonly kind: "claimed"; readonly descriptor: SessionDescriptor }
+		| { readonly kind: "exists"; readonly descriptor: SessionDescriptor }
+	> {
+		const ownerPath = this.identityOwnerPath(descriptor.id);
+		const owner = this.readOwnerRecord(ownerPath);
+		if (!owner.ok) return owner;
+		if (!owner.value || isIdentityRecord(owner.value)) {
+			return err("E-NOID", `no pre-bind reservation exists for ${descriptor.id}`);
+		}
+		if (owner.value.ownerToken !== ownerToken) {
+			return err("E-OWN", `reservation ${descriptor.id} belongs to another launch owner`);
+		}
+		const published = this.publishNoReplace(this.pathFor(descriptor.id), descriptor);
+		if (!published.ok) return published;
+		let persisted = descriptor;
+		if (published.value === "exists") {
+			const existing = this.read(descriptor.id);
+			if (!existing) return err("E-NOREG", `pij identity ${descriptor.id} is unreadable`);
+			if (!sameDescriptorIdentity(existing, descriptor)) {
+				return err(
+					"E-AMBIG",
+					`pij identity ${descriptor.id} is already attached to an incompatible descriptor`,
+				);
+			}
+			persisted = existing;
+		}
+		this.writeAtomic(ownerPath, descriptorOwner(owner.value));
+		return ok({ kind: published.value, descriptor: persisted });
+	}
+
+	/** Mark a reservation consumed after another writer published its descriptor. */
+	consumeReservation(id: SessionId, ownerToken: string): Result<boolean> {
+		const ownerPath = this.identityOwnerPath(id);
+		const owner = this.readOwnerRecord(ownerPath);
+		if (!owner.ok) return owner;
+		if (!owner.value || isIdentityRecord(owner.value) || isDescriptorOwnerRecord(owner.value)) {
+			return ok(false);
+		}
+		if (owner.value.ownerToken !== ownerToken) {
+			return err("E-OWN", `reservation ${id} belongs to another launch owner`);
+		}
+		if (!this.read(id)) return err("E-NOID", `cannot consume reservation ${id}: descriptor absent`);
+		this.writeAtomic(ownerPath, descriptorOwner(owner.value));
+		return ok(true);
+	}
+
+	/** Explicit operator recovery for an orphaned reservation. Never called automatically. */
+	recoverReservation(
+		descriptor: SessionDescriptor,
+	): Result<{ readonly descriptor: SessionDescriptor }> {
+		const ownerPath = this.identityOwnerPath(descriptor.id);
+		const owner = this.readOwnerRecord(ownerPath);
+		if (!owner.ok) return owner;
+		if (!owner.value || isIdentityRecord(owner.value)) {
+			return err("E-NOID", `no recoverable reservation exists for ${descriptor.id}`);
+		}
+		const promoted = this.promoteReservation(descriptor, owner.value.ownerToken);
+		if (!promoted.ok) return promoted;
+		return ok({ descriptor: promoted.value.descriptor });
+	}
+
 	remove(id: SessionId): void {
 		try {
 			rmSync(this.pathFor(id));
@@ -203,6 +466,105 @@ export class FsRegistry implements RegistryPort {
 		this.write({ ...existing, lifecycle: "dissolved", state: "idle" });
 	}
 
+	private allocateCandidate(
+		harness: HarnessKind,
+		harnessSessionId: string,
+		pijId: SessionId,
+		allowLegacyDescriptor: boolean,
+	): Result<CandidateAllocation> {
+		const record: IdentityRecord = { kind: "identity", harness, harnessSessionId, pijId };
+		const ownerPath = this.identityOwnerPath(pijId);
+		const owner = this.claimOwnerRecord(ownerPath, record);
+		if (!owner.ok) {
+			return owner.code === "E-NOREG" && owner.message.includes("disappeared")
+				? ok({ kind: "occupied" })
+				: owner;
+		}
+		const ownerCreated = owner.value.kind === "claimed";
+		if (!isIdentityRecord(owner.value.record) || !sameIdentity(owner.value.record, record)) {
+			return ok({ kind: "occupied" });
+		}
+
+		const descriptor = this.read(pijId);
+		if (descriptor) {
+			const exact =
+				descriptor.harness === harness && descriptor.harnessSessionId === harnessSessionId;
+			const legacy =
+				allowLegacyDescriptor &&
+				descriptor.harness === undefined &&
+				descriptor.harnessSessionId === undefined;
+			if (!exact && !legacy) {
+				this.releaseProvisionalOwner(ownerPath, record, ownerCreated);
+				return ok({ kind: "occupied" });
+			}
+		}
+
+		const tuple = this.claimIdentityRecord(this.identityPath(harness, harnessSessionId), record);
+		if (!tuple.ok) {
+			this.releaseProvisionalOwner(ownerPath, record, ownerCreated);
+			return tuple;
+		}
+		if (sameIdentity(tuple.value.record, record)) {
+			return ok({
+				kind: descriptor ? "reuse" : tuple.value.kind === "claimed" ? "claimed" : "reuse",
+				id: pijId,
+				...(descriptor ? { descriptor } : {}),
+			});
+		}
+
+		this.releaseProvisionalOwner(ownerPath, record, ownerCreated);
+		return this.validateResolvedIdentity(
+			harness,
+			harnessSessionId,
+			tuple.value.record.pijId,
+			false,
+		);
+	}
+
+	private validateResolvedIdentity(
+		harness: HarnessKind,
+		harnessSessionId: string,
+		pijId: SessionId,
+		allowLegacyDescriptor: boolean,
+	): Result<CandidateAllocation> {
+		const snapshot = this.resolveIdentitySnapshot(harness, harnessSessionId);
+		if (!snapshot.ok) return snapshot;
+		const descriptor = this.read(pijId) ?? snapshot.value;
+		if (!descriptor) return ok({ kind: "reuse", id: pijId });
+		if (descriptor.id !== pijId) {
+			return err(
+				"E-AMBIG",
+				`durable identity ${harness}:${harnessSessionId} points to ${pijId}, but metadata belongs to ${descriptor.id}`,
+			);
+		}
+		if (descriptor.harness === harness && descriptor.harnessSessionId === harnessSessionId) {
+			return ok({ kind: "reuse", id: pijId, descriptor });
+		}
+		if (descriptor.harness === undefined && descriptor.harnessSessionId === undefined) {
+			return allowLegacyDescriptor
+				? ok({ kind: "reuse", id: pijId, descriptor })
+				: ok({ kind: "occupied" });
+		}
+		return err(
+			"E-AMBIG",
+			`identity ${harness}:${harnessSessionId} resolves to incompatible descriptor ${pijId} (${descriptor.harness ?? "legacy"}:${descriptor.harnessSessionId ?? "unknown"})`,
+		);
+	}
+
+	private releaseProvisionalOwner(
+		ownerPath: string,
+		record: IdentityRecord,
+		ownerCreated: boolean,
+	): void {
+		if (!ownerCreated) return;
+		const committed = this.resolveIdentity(record.harness, record.harnessSessionId);
+		if (!committed.ok || committed.value === record.pijId) return;
+		const current = this.readOwnerRecord(ownerPath);
+		if (current.ok && current.value && isIdentityRecord(current.value)) {
+			if (sameIdentity(current.value, record)) rmSync(ownerPath, { force: true });
+		}
+	}
+
 	private claimDescriptorIdentity(
 		descriptor: SessionDescriptor,
 	): Result<DetailedIdentityClaim | undefined> {
@@ -211,6 +573,7 @@ export class FsRegistry implements RegistryPort {
 			descriptor.harness,
 			descriptor.harnessSessionId,
 			descriptor.id,
+			true,
 		);
 	}
 
@@ -218,19 +581,42 @@ export class FsRegistry implements RegistryPort {
 		harness: HarnessKind,
 		harnessSessionId: string,
 		pijId: SessionId,
+		allowDescriptorOwner = false,
 	): Result<DetailedIdentityClaim> {
-		const record: IdentityRecord = { harness, harnessSessionId, pijId };
+		const record: IdentityRecord = { kind: "identity", harness, harnessSessionId, pijId };
 		const createdPaths: string[] = [];
 		const ownerPath = this.identityOwnerPath(pijId);
-		const owner = this.claimIdentityRecord(ownerPath, record);
+		const owner = this.claimOwnerRecord(ownerPath, record);
 		if (!owner.ok) return owner;
 		if (owner.value.kind === "claimed") createdPaths.push(ownerPath);
-		if (!sameIdentity(owner.value.record, record)) {
-			this.rollbackIdentity(createdPaths);
-			return err(
-				"E-AMBIG",
-				`pij id ${pijId} is already owned by ${owner.value.record.harness}:${owner.value.record.harnessSessionId}`,
-			);
+		const existingOwner = owner.value.record;
+		let upgradeOwner = false;
+		if (isIdentityRecord(existingOwner)) {
+			if (!sameIdentity(existingOwner, record)) {
+				this.rollbackIdentity(createdPaths);
+				return err(
+					"E-AMBIG",
+					`pij id ${pijId} is already owned by ${existingOwner.harness}:${existingOwner.harnessSessionId}`,
+				);
+			}
+		} else {
+			if (!allowDescriptorOwner) {
+				this.rollbackIdentity(createdPaths);
+				return err("E-AMBIG", `pij id ${pijId} is reserved by another launch owner`);
+			}
+			const descriptor = this.read(pijId);
+			const compatible =
+				descriptor?.id === pijId &&
+				descriptor.harness === harness &&
+				(descriptor.harnessSessionId === undefined ||
+					descriptor.harnessSessionId === harnessSessionId) &&
+				(descriptor.plannedHarnessSessionId === undefined ||
+					descriptor.plannedHarnessSessionId === harnessSessionId);
+			if (!compatible) {
+				this.rollbackIdentity(createdPaths);
+				return err("E-AMBIG", `pij id ${pijId} is reserved by another launch owner`);
+			}
+			upgradeOwner = true;
 		}
 
 		const tuplePath = this.identityPath(harness, harnessSessionId);
@@ -246,6 +632,14 @@ export class FsRegistry implements RegistryPort {
 				"E-AMBIG",
 				`identity ${harness}:${harnessSessionId} is already mapped to ${tuple.value.record.pijId}`,
 			);
+		}
+		if (upgradeOwner) {
+			try {
+				this.writeAtomic(ownerPath, record);
+			} catch (error) {
+				this.rollbackIdentity(createdPaths);
+				return err("E-NOREG", `cannot promote pij owner ${pijId}: ${String(error)}`);
+			}
 		}
 		return ok({
 			kind: tuple.value.kind === "claimed" ? "claimed" : "exists",
@@ -273,6 +667,23 @@ export class FsRegistry implements RegistryPort {
 		return existing.value
 			? ok({ kind: "exists", record: existing.value })
 			: err("E-NOREG", `durable identity record ${path} disappeared`);
+	}
+
+	private claimOwnerRecord(
+		path: string,
+		record: OwnerRecord,
+	): Result<
+		| { readonly kind: "claimed"; readonly record: OwnerRecord }
+		| { readonly kind: "exists"; readonly record: OwnerRecord }
+	> {
+		const published = this.publishNoReplace(path, record);
+		if (!published.ok) return published;
+		if (published.value === "claimed") return ok({ kind: "claimed", record });
+		const existing = this.readOwnerRecord(path);
+		if (!existing.ok) return existing;
+		return existing.value
+			? ok({ kind: "exists", record: existing.value })
+			: err("E-NOREG", `durable owner record ${path} disappeared`);
 	}
 
 	private syncIdentitySnapshot(descriptor: SessionDescriptor): void {
@@ -322,6 +733,19 @@ export class FsRegistry implements RegistryPort {
 		return isIdentityRecord(parsed)
 			? ok(parsed)
 			: err("E-NOREG", `malformed durable identity record ${path}`);
+	}
+
+	private readOwnerRecord(path: string): Result<OwnerRecord | undefined> {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(readFileSync(path, "utf8"));
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok(undefined);
+			return err("E-NOREG", `cannot read durable owner record ${path}`);
+		}
+		return isOwnerRecord(parsed)
+			? ok(parsed)
+			: err("E-NOREG", `malformed durable owner record ${path}`);
 	}
 
 	private publishNoReplace(path: string, value: unknown): Result<"claimed" | "exists"> {
@@ -381,10 +805,27 @@ function sameIdentity(left: IdentityRecord, right: IdentityRecord): boolean {
 }
 
 function sameDescriptorIdentity(existing: SessionDescriptor, proposed: SessionDescriptor): boolean {
-	if (!proposed.harness || !proposed.harnessSessionId) return existing.id === proposed.id;
+	if (!proposed.harness) return existing.id === proposed.id;
+	if (!proposed.harnessSessionId) {
+		return (
+			existing.id === proposed.id &&
+			existing.harness === proposed.harness &&
+			existing.harnessSessionId === undefined
+		);
+	}
 	return (
 		existing.id === proposed.id &&
 		existing.harness === proposed.harness &&
 		existing.harnessSessionId === proposed.harnessSessionId
 	);
+}
+
+function descriptorOwner(record: ReservationRecord | DescriptorOwnerRecord): DescriptorOwnerRecord {
+	return {
+		kind: "descriptor",
+		pijId: record.pijId,
+		ownerToken: record.ownerToken,
+		ownerPid: record.ownerPid,
+		createdAt: record.createdAt,
+	};
 }

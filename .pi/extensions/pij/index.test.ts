@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
+import { FsRegistry } from "./adapters/fs-registry.js";
 import { deriveSelfId } from "./core/discovery.js";
 import pijExtension from "./index.js";
 
@@ -40,10 +40,11 @@ function makeFakePi() {
 }
 
 /** Minimal fake ExtensionContext — captures setStatus calls. */
-function makeFakeCtx() {
+function makeFakeCtx(initialSessionId: string | undefined = "test-session-statusbar-018") {
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
+	let sessionId = initialSessionId;
 	const ctx = {
-		sessionManager: { getSessionId: () => "test-session-statusbar-018" },
+		sessionManager: { getSessionId: () => sessionId },
 		isIdle: () => true,
 		compact: () => {},
 		ui: {
@@ -51,7 +52,7 @@ function makeFakeCtx() {
 			notify: () => {},
 		},
 	} as unknown as ExtensionContext;
-	return { ctx, statuses };
+	return { ctx, statuses, setSessionId: (next: string | undefined) => (sessionId = next) };
 }
 
 // ---------------------------------------------------------------------------
@@ -95,9 +96,7 @@ describe("pij index — footer status bar", () => {
 
 		const pijStatus = statuses.find((s) => s.key === "pij");
 		expect(pijStatus).toBeDefined();
-		// deriveSelfId produces a deterministic id from the injected session id + pid.
-		// toBe (exact match) ensures neither a static bogus value nor a missing setStatus call passes.
-		expect(pijStatus?.value).toBe(deriveSelfId("test-session-statusbar-018", process.pid));
+		expect(pijStatus?.value).toMatch(/^pij-[a-z]+-[a-z]+$/);
 
 		// Best-effort cleanup of any FS watcher opened by session_start.
 		try {
@@ -105,5 +104,55 @@ describe("pij index — footer status bar", () => {
 		} catch {
 			// ignore
 		}
+	});
+
+	it("reuses on reload, mints on new, and preserves an existing opaque id with prime metadata", async () => {
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses, setSessionId } = makeFakeCtx("native-start");
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		const first = statuses.at(-1)?.value;
+		expect(first).toMatch(/^pij-[a-z]+-[a-z]+$/);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+		expect(statuses.at(-1)?.value).toBe(first);
+
+		setSessionId("native-new");
+		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
+		const second = statuses.at(-1)?.value;
+		expect(second).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(second).not.toBe(first);
+
+		const opaqueNative = "native-existing-opaque";
+		const opaqueId = deriveSelfId(opaqueNative, process.pid);
+		new FsRegistry(pijHome).write({
+			id: opaqueId,
+			prime: true,
+			folder: process.cwd(),
+			dataDir: join(pijHome, opaqueId),
+			eventsPath: join(pijHome, opaqueId, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-11T00:00:00.000Z",
+		});
+		setSessionId(opaqueNative);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, ctx);
+		expect(statuses.at(-1)?.value).toBe(opaqueId);
+		expect(new FsRegistry(pijHome).read(opaqueId)?.prime).toBe(true);
+
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("allocates a memorable SDK/test fallback when Pi exposes no native session id", async () => {
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx(undefined);
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		const id = statuses.at(-1)?.value;
+		expect(id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({ id });
+
+		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 });

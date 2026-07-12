@@ -833,6 +833,27 @@ describe("dispatch phonehome (confirmatory binding, AC-03)", () => {
 		expect(JSON.parse(r.stdout)).toMatchObject({ harnessSessionId: "claude-abc", confirmed: true });
 	});
 
+	it("binds a pending Copilot peer from COPILOT_AGENT_SESSION_ID, never the Claude variable", () => {
+		const copilotId = "df4f1111-2222-4333-8444-555555555555";
+		const d = deps({
+			descs: [desc({ id: "pij-copilot", harness: "copilot", lifecycle: "pending" })],
+			self: "pij-copilot",
+			env: {
+				COPILOT_AGENT_SESSION_ID: copilotId,
+				CLAUDE_CODE_SESSION_ID: "claude-wrong",
+			},
+		});
+		const r = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(r.stdout)).toMatchObject({
+			id: "pij-copilot",
+			harness: "copilot",
+			harnessSessionId: copilotId,
+			lifecycle: "bound",
+			confirmed: true,
+		});
+		expect(d.registry.read("pij-copilot")?.harnessSessionId).toBe(copilotId);
+	});
+
 	it("without CLAUDE_CODE_SESSION_ID, confirms self but reports no binding yet", () => {
 		const d = deps({
 			descs: [desc({ id: "pij-w", harness: "claude", lifecycle: "pending" })],

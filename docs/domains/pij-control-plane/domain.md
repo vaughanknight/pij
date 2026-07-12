@@ -18,6 +18,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/readiness.ts` | Pure pane-text → `{ booting, interstitial, ready, busy, dead }` classifier; R-01 footer markers frozen from the live prototype. |
 | `.pi/extensions/pij/core/interstitial.ts` | Known one-time boot prompts → `dismiss` (Esc) / `needs-human` classification. |
 | `.pi/extensions/pij/core/harness/claude.ts` | Claude transport: init template, `claudeTranscriptPath` cwd-mangle, new-transcript discovery (path absent at spawn), send-keys plan. |
+| `.pi/extensions/pij/core/harness/copilot.ts` | Copilot transport + current-session identity validation: `COPILOT_AGENT_SESSION_ID` must be a UUID with matching session-state directory metadata; global mtime scanning is forbidden. |
 | `.pi/extensions/pij/core/harness/codex.ts` | Codex transport (Plan 022): global date-nested rollout layout, trailing-UUID id (`codexSessionIdFromPath`), recursive `listCodexRollouts`, `session_meta.cwd` confirm (`codexCwdFromMeta`), `summarizeCodexEvent` tail. |
 | `.pi/extensions/pij/core/harness/transcript.ts` | `transcriptLayout(harness)` selector (Plan 022): harness-selected `dir`/`list`/`sessionIdOf` so the daemon's discovery bind works for claude (flat, cwd-scoped, stem) AND codex (deep, global, UUID) from one code path; claude byte-unchanged. |
 | `.pi/extensions/pij/core/harness/pi.ts` | Pi transport: observe-only routing (delivery owned by the thin receiver). |
@@ -25,7 +26,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
 | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `prime` is latest-disk-authoritative before daemon writes. |
-| `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims plus two-way durable identity ownership and metadata snapshots used to recover the same pij-id after restart. |
+| `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims, memorable-id allocation, pre-bind reservation ownership, two-way durable identity ownership, and metadata snapshots. |
 | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
 | `.pi/extensions/pij/daemon.ts` | Daemon bin: lock → watch pending+inboxes → readiness/interstitial → init-once → route → render. |
@@ -35,12 +36,13 @@ thin receiver). Plan 019.
 
 | Concept | Description | Contract |
 |---------|-------------|----------|
-| Durable identity | Spawn computes a `pij-id` before launch; restart re-attachment resolves the exact harness-native identity, hydrates durable metadata, and reuses the original id while runtime presence is replaced. | `resolveStableIdentity`; descriptor-owned two-way `FsRegistry` claim; `adopt --session-id` (AC-01/15). |
+| Durable identity | Spawn atomically reserves a memorable `pij-id` before launch; restart re-attachment resolves the exact harness-native identity, hydrates durable metadata, and reuses the original id while runtime presence is replaced. | Shared by-pij ownership record; two-way `FsRegistry` native claim; `adopt --session-id`. |
+| Reservation lifecycle | A launch owns its candidate before pane creation and transfers ownership to the pending descriptor after publication. | Owner-token release on known launch failure; no PID-death reclamation; explicit `adopt --id` recovery for retained crash-orphans. |
 | Pending descriptor | Spawn atomically writes `(pij-id, paneId, cwd, harness, state:pending)` under `~/.pij/`; the daemon dir-watch picks it up. | `SessionDescriptor` += `harness`/`state` (F2 / AC-01). |
 | Transport selection | A target's harness decides how a message reaches it. | `selectTransport(harness)` → `inbox` (pi) \| `sendkeys` (claude/copilot/codex). |
 | Readiness | The daemon reads the pane and classifies idle-ready vs busy vs booting vs interstitial — no agent in the loop. | `classifyReadiness(paneText)`; R-01 footer markers (AC-02). |
 | Interstitial handling | Known one-time boot prompts are auto-dismissed (Esc); trust/login are surfaced as needs-human. | `classifyInterstitial` → `dismiss`/`needs-human` (AC-06). |
-| Deterministic binding | The daemon discovers the new Claude transcript under `~/.claude/projects/<mangled cwd>/` (a path absent at spawn) to derive `harnessSessionId` with no agent cooperation. | `bind()`; phone-home confirmatory; watchdog (AC-03/04/05). |
+| Deterministic binding | Claude/Codex use harness-specific transcript discovery; Copilot spawn uses its chosen UUID and Copilot adopt uses only validated `COPILOT_AGENT_SESSION_ID`. | `bind()`; harness-aware phonehome (`COPILOT_AGENT_SESSION_ID` / `CLAUDE_CODE_SESSION_ID`); watchdog. |
 | Init-exactly-once | The init (pij-id + `pij phonehome` line) is injected once, after ready, idempotent across daemon restart. | persisted `initInjectedAt` (AC-02/12). |
 | Fire-and-forget injection | tmux targets receive `send-keys`+Enter, ungated; the caller never blocks. | router → `tmux-keys` (AC-07/13). |
 | External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `prime:true\|false` overrides stale daemon snapshots; append-only `reportedAt` retains fill-only semantics. |
@@ -67,6 +69,7 @@ thin receiver). Plan 019.
 - Readiness detection + interstitial handling.
 - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
 - pij-id pre-allocation + restart-stable exact native-identity recovery + the pending-descriptor handoff; init idempotency.
+- Reattachment-only `adopt --id`: existing descriptor/reservation required, unknown ids fail `E-NOID`.
 - Claude/codex transcript-path resolution + tailing (harness-selected `transcriptLayout`).
 
 ## Boundary Excludes
@@ -103,3 +106,5 @@ thin receiver). Plan 019.
 | 026-pij-telegram-bridge | Added the `pij-telegram` bridge peer (`pij telegram init\|start\|stop`): a foreground, single-instance grammY long-poll relaying a Telegram bot ⇄ pij sessions (allowlist-gated, addressed/sticky routing, `/list` + `/tail`, chunked outbound). Registers a `harness:"pi"` + `lifecycle:"bound"` descriptor so the daemon observes (never drains) it — no daemon/core contract change. `init` validates the token (`getMe`), captures the operator id as the allowlist, and merges the scoped `.env` without clobbering existing keys. | 2026-06-29 |
 | 026-pij-telegram-bridge (Phase 5: media) | Media relay **both ways** by reference-passing — bytes never touch the pij wire. New pure `telegram/media.ts` (`classifyMedia`, `withinUploadLimit`/`withinDownloadLimit`, `safeMediaName`, `buildInboundNotice`). `PijMessage.attachments?` (additive) + `pij send --file/--caption` (in `core/cli.ts`). Outbound: `startForwarder` classifies each attachment → `sendPhoto`/`sendAnimation`/`sendDocument` via grammY `InputFile` in the existing ordered queue (10/50 MB caps → text-notice fallback, never a throw; attachment-only skips the blank text send). Inbound: allowlist-gated `message:photo\|animation\|document` handlers resolve the target by caption, 20 MB download pre-check, then `@grammyjs/files` download (behind an injected seam) into the target session's own `<dataDir>/attachments/<safe-name>`, delivering a text path notice. Added `@grammyjs/files` dep. | 2026-06-30 |
 | 038-pij-prime-designation | Added exact-self production wiring and latest-disk-authoritative mutable prime merging in the daemon write coordinator. | 2026-07-11 |
+| 040-memorable-pij-session-ids | Replaced new control-plane and agent-spawn ids with atomic memorable reservations; added collision retry, known-failure release, crash-orphan retention, and explicit reservation recovery through adopt. | 2026-07-11 |
+| 040-memorable-pij-session-ids / F004 | Removed global newest-by-mtime Copilot adoption. Current env UUID + matching state metadata is authoritative; absent/invalid env stays pending and harness-aware phonehome completes recovery without touching another session's descriptor. | 2026-07-12 |

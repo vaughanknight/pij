@@ -22,6 +22,10 @@ import type { TranscriptEntry } from "./claude.js";
 /** Canonical 8-4-4-4-12 UUID matcher (a copilot session-state dir IS a uuid). */
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
+export function isCopilotSessionId(value: string | undefined): value is string {
+	return Boolean(value && UUID_RE.test(value.trim()));
+}
+
 /** Absolute root of copilot's session-state tree: `~/.copilot/session-state`.
  *  Each immediate child is a session dir named by its UUID. GLOBAL — every cwd's
  *  sessions live here (unlike claude's per-cwd project dir). */
@@ -33,24 +37,56 @@ export function copilotStateRoot(home: string): string {
 export interface CopilotSessionDir {
 	readonly name: string;
 	readonly mtimeMs: number;
+	readonly isDirectory: boolean;
 }
 
-/** Adopt-resolution for a COPILOT orchestrator (finding 02b): the harness session
- *  id is the newest `~/.copilot/session-state/<uuid>` dir by mtime (dir-name =
- *  uuid), a pane-start-time proxy. This is NEW code, NOT a reuse of
- *  `transcriptLayout('copilot')` (which is the inert CLAUDE_LAYOUT that would
- *  mis-bind a copilot adopt to the newest *claude* stem in the cwd). Non-uuid
- *  entries (`.DS_Store`, stray files) are ignored; returns `null` when no uuid
- *  dir exists — the caller then writes `pending` (never a wrong-harness id).
- *  Pure: the impure readdir+stat is injected via `listState`. */
-export function copilotSessionStateScan(
+export type CopilotCurrentSessionResolution =
+	| { readonly ok: true; readonly sessionId: string }
+	| {
+			readonly ok: false;
+			readonly reason: "missing-env" | "invalid-env" | "missing-state";
+			readonly message: string;
+	  };
+
+/** Resolve only the CURRENT Copilot session named by COPILOT_AGENT_SESSION_ID.
+ * Global newest-by-mtime is intentionally never a source of identity: `/new`
+ * creates another session while older global directories remain live. */
+export function resolveCopilotCurrentSession(
+	envSessionId: string | undefined,
 	listState: (root: string) => readonly CopilotSessionDir[],
 	home: string,
-): string | null {
-	const dirs = listState(copilotStateRoot(home))
-		.filter((d) => UUID_RE.test(d.name))
-		.sort((a, b) => b.mtimeMs - a.mtimeMs);
-	return dirs[0]?.name ?? null;
+): CopilotCurrentSessionResolution {
+	const raw = envSessionId?.trim();
+	if (!raw) {
+		return {
+			ok: false,
+			reason: "missing-env",
+			message: "COPILOT_AGENT_SESSION_ID is unset; refusing global session-state discovery",
+		};
+	}
+	if (!isCopilotSessionId(raw)) {
+		return {
+			ok: false,
+			reason: "invalid-env",
+			message: `COPILOT_AGENT_SESSION_ID is not a UUID: ${raw}`,
+		};
+	}
+	const sessionId = raw.toLowerCase();
+	const current = listState(copilotStateRoot(home)).find(
+		(entry) =>
+			entry.isDirectory &&
+			Number.isFinite(entry.mtimeMs) &&
+			entry.name.toLowerCase() === sessionId &&
+			UUID_RE.test(entry.name),
+	);
+	if (!current) {
+		return {
+			ok: false,
+			reason: "missing-state",
+			message: `COPILOT_AGENT_SESSION_ID ${sessionId} has no matching session-state directory`,
+		};
+	}
+	return { ok: true, sessionId };
 }
 
 /** Absolute live event-stream file for a bound Copilot session (`pij tail`):

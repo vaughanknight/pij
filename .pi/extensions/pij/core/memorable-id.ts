@@ -1,0 +1,51 @@
+import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
+
+import { err, ok, type Result, type SessionId } from "./types.js";
+
+export const MEMORABLE_PIJ_ID_SPACE = adjectives.length * animals.length;
+
+function initialPairIndex(seed: string): number | null {
+	const first = uniqueNamesGenerator({
+		dictionaries: [adjectives, animals],
+		separator: "\0",
+		length: 2,
+		style: "lowerCase",
+		seed,
+	});
+	const separator = first.indexOf("\0");
+	if (separator < 1) return null;
+	const adjectiveIndex = adjectives.indexOf(first.slice(0, separator));
+	const animalIndex = animals.indexOf(first.slice(separator + 1));
+	if (adjectiveIndex < 0 || animalIndex < 0) return null;
+	return adjectiveIndex * animals.length + animalIndex;
+}
+
+function idAt(index: number): SessionId | null {
+	const adjective = adjectives[Math.floor(index / animals.length)];
+	const animal = animals[index % animals.length];
+	return adjective && animal ? `pij-${adjective}-${animal}` : null;
+}
+
+/** One deterministic, non-repeating candidate from the pinned adjective-animal space. */
+export function memorablePijIdCandidate(seed: string, attempt: number): Result<SessionId> {
+	if (!Number.isInteger(attempt) || attempt < 0) {
+		return err("E-ARG", `memorable id attempt must be a non-negative integer (got ${attempt})`);
+	}
+	if (attempt >= MEMORABLE_PIJ_ID_SPACE) {
+		return err("E-FULL", `memorable id space exhausted after ${MEMORABLE_PIJ_ID_SPACE} attempts`);
+	}
+	const start = initialPairIndex(seed);
+	if (start === null) return err("E-NOREG", "pinned memorable-id corpus returned an invalid pair");
+	const id = idAt((start + attempt) % MEMORABLE_PIJ_ID_SPACE);
+	return id ? ok(id) : err("E-NOREG", "pinned memorable-id corpus index is invalid");
+}
+
+/** Full deterministic candidate sequence. Linear probing guarantees no repeats before exhaustion. */
+export function* memorablePijIdCandidates(seed: string): Generator<SessionId> {
+	const start = initialPairIndex(seed);
+	if (start === null) return;
+	for (let attempt = 0; attempt < MEMORABLE_PIJ_ID_SPACE; attempt++) {
+		const id = idAt((start + attempt) % MEMORABLE_PIJ_ID_SPACE);
+		if (id) yield id;
+	}
+}
