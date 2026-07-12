@@ -267,3 +267,21 @@ restart, live canary, commit, push, merge, or ship action occurred.
   ancestry.
 - Post-merge handoff: update the main checkout, verify bare `pij inbox --help`
   and the machine-wide `/pij` skill guidance, then complete the `ship` node.
+
+## PR #11 Convergence
+
+- PR #11 merged to main as
+  `3b1a47beaed0455611e443ae8e2827cfb1aa460d`.
+- The clean s041 branch rebased onto that commit as required by Seq 74/101.
+- Exactly one conflict occurred:
+  `docs/domains/pij-control-plane/domain.md`.
+- Resolution preserved the merged s043 blob
+  `844464ee03dcbc54e3a660245ddac93095b0a5a7` and added only the six s041
+  lines: durable push ownership, retained tmux history, push delivery marker,
+  and the Plan 041 history row.
+- Shared-document delta versus merged main: 6 additions, 0 deletions; every
+  s043 and s041 row occurs exactly once.
+- Rebased Phase 3 implementation commit:
+  `d2a37184c5cba01ba496f65105006588b0afcb34`.
+- Post-rebase `harness checks --quick`: all stages passed.
+- Full smoke remains governed by R-004; no smoke-harness scope was added.

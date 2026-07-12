@@ -1,9 +1,9 @@
 # Phase 3 Push-Path Cold Review
 
-**Plan**: `../pij-inbox-no-tmux-plan.md`  
-**Scope**: Phase 3 T001-T010 against base `e6f36be`  
-**Reviewer**: `pij-vicious-swift` (Copilot GPT-5.6 Sol xhigh)  
-**Date**: 2026-07-12  
+**Plan**: `../pij-inbox-no-tmux-plan.md`
+**Scope**: Phase 3 T001-T010 against base `e6f36be`
+**Reviewer**: `pij-vicious-swift` (Copilot GPT-5.6 Sol xhigh)
+**Date**: 2026-07-12
 **Review mode**: read-only except reversible mutations/probes and this artifact
 
 ## A) Verdict

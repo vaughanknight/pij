@@ -1,7 +1,7 @@
 # Phase 3 Push-Path Targeted Re-Review
 
-**Scope**: F-001 through F-003 only, against fixed capture `diff-0002.patch`  
-**Reviewer**: `pij-vicious-swift` (Copilot GPT-5.6 Sol xhigh)  
+**Scope**: F-001 through F-003 only, against fixed capture `diff-0002.patch`
+**Reviewer**: `pij-vicious-swift` (Copilot GPT-5.6 Sol xhigh)
 **Date**: 2026-07-12
 
 ## Verdict
@@ -70,4 +70,3 @@ goes RED when the exact receive-mode association is inverted.
 The package-audit timestamp-only drift in `.pi/packages.yaml` was restored and
 the manifest has no final diff. Scope remains within the original Phase 3 fence
 plus the government Spine Seq 81 `watch.test.ts` test-only addendum.
-
