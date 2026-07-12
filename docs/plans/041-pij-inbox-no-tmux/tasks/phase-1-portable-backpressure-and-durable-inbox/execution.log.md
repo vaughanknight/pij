@@ -48,3 +48,30 @@ The `windows-compat` job is committed in workflow source but cannot run against 
 - No dependency or lockfile changes.
 - No writes to `.the-flow-state.json`, `the-flow.json`, `the-flow.md`, government files, or flow-pair ledger files.
 - Audit-authored `.pi/packages.yaml` timestamp drift was removed; no out-of-scope implementation drift remains.
+
+## Hosted CI Reopen — PR #9
+
+The first pull-request run correctly reopened Phase 1:
+
+- Windows lint failed because the default checkout converted repository files to
+  CRLF before Biome ran.
+- Linux Node 24 timed out in the existing four-round multiprocess registry race
+  at the 5-second Vitest default; the adjacent sibling race already declared
+  30 seconds.
+- Linux Node 22 was cancelled by the matrix fail-fast after Node 24 failed.
+
+Approved fixes:
+
+- Configure `core.autocrlf=false` before the Windows checkout.
+- Add the options-second-argument `timeout: 30_000` declaration to every
+  remaining `runAllocationRace()` test in `fs-registry.test.ts` missing one. The
+  sweep found exactly one.
+
+Local proof after the fixes:
+
+- `just test .pi/extensions/pij/adapters/fs-registry.test.ts` — 31/31 passed;
+  both four-round multiprocess races completed.
+- `just windows-compat` — typecheck, lint, and focused 24/24 portable tests
+  passed.
+
+The hosted rerun remains the condition-precedent.
