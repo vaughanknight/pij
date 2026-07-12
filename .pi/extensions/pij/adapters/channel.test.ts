@@ -1,5 +1,14 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -234,6 +243,24 @@ describe("FsChannel", () => {
 		ch.deliver(msg("stranded"));
 		await waitFor(() => got.length === 1);
 		expect(got.map((m) => m.body)).toEqual(["stranded"]);
+	});
+
+	it("passes a canonical inbox path to fs.watch", () => {
+		let watchedDir = "";
+		const realHome = join(home, "real-home");
+		const linkedHome = join(home, "linked-home");
+		mkdirSync(realHome);
+		symlinkSync(realHome, linkedHome, "junction");
+		const ch = new FsChannel(linkedHome, {
+			watchFactory: (dir) => {
+				watchedDir = dir;
+				return { close() {} };
+			},
+		});
+
+		disposers.push(ch.watch("bob", () => {}));
+
+		expect(watchedDir).toBe(realpathSync(join(realHome, "bob", "inbox")));
 	});
 
 	it("a watcher only sees its own inbox (routes by message.to)", async () => {

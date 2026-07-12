@@ -75,3 +75,32 @@ Local proof after the fixes:
   passed.
 
 The hosted rerun remains the condition-precedent.
+
+## Hosted CI Reopen — Windows fs.watch
+
+The second run cleared both Linux jobs. Windows reached the focused test stage,
+then the `channel.test.ts` Vitest worker aborted in libuv:
+
+```text
+Assertion failed: !_wcsnicmp(filename, dir, dirlen), file src\win\fs-event.c
+```
+
+GitHub's Windows temp directory can use a short/alias path whose resolved long
+path differs. Passing that alias directly to `fs.watch` triggers libuv's
+directory-prefix assertion.
+
+Fix:
+
+- Canonicalize the existing inbox directory with `realpathSync(dir)` before
+  passing it to `fs.watch`.
+- Add a symlink/junction-backed test proving the watcher receives the real path,
+  so removing canonicalization goes RED on every platform rather than relying
+  only on hosted Windows.
+
+Local proof:
+
+- Focused canonical-path test — PASS.
+- Channel + registry + fake + portable CLI set — 56/56 PASS.
+- `just windows-compat` — typecheck, lint, focused 25/25 PASS.
+
+Hosted Windows remains the condition-precedent.

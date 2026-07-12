@@ -16,6 +16,7 @@ import {
 	openSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	renameSync,
 	rmSync,
 	watch,
@@ -241,7 +242,7 @@ export class FsChannel {
 		};
 
 		const mkWatcher = this.watchOpts.watchFactory ?? ((d, cb) => watch(d, cb));
-		const watcher = mkWatcher(dir, () => {
+		const watcher = mkWatcher(realpathSync(dir), () => {
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(scan, DEBOUNCE_MS);
 		});
