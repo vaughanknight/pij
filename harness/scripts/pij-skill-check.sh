@@ -44,7 +44,7 @@ done <<< "$registry_rows"
 for f in "$SKILL"/references/routes/*.md; do
   [ -e "$f" ] || continue
   self=$(basename "$f" .md)
-  for r in pair delegate agent skill peer ops prime watch; do
+  for r in ready pair delegate agent skill peer ops prime watch; do
     [ "$r" = "$self" ] && continue
     hits=$(grep -En "routes/$r\.md|/pij $r\b" "$f" 2>/dev/null || true)
     if [ "$self" = prime ] && { [ "$r" = pair ] || [ "$r" = peer ]; }; then
@@ -66,7 +66,7 @@ budget() {
 budget "$SKILL/SKILL.md" 150
 budget "$SKILL/references/00-routing.md" 250
 budget "$SKILL/references/routes/pair.md" 350
-for m in peer agent skill ops delegate; do budget "$SKILL/references/routes/$m.md" 150; done
+for m in ready peer agent skill ops delegate; do budget "$SKILL/references/routes/$m.md" 150; done
 
 soft_budget() {
   [ -f "$1" ] || return 0
@@ -243,7 +243,21 @@ for marker in \
     || err "completion C7: missing '$marker'"
 done
 
-# 7. real-tree skill contracts: peer operations, current-seat triage, and handover order.
+# 7. ready route stays terminal: register, report, and wait without work discovery.
+ready_route="$SKILL/references/routes/ready.md"
+for marker in \
+  'pij adopt "$TMUX_PANE" --harness <h>' \
+  'pij inbox register --json' \
+  'reply with exactly:' \
+  'Ready.' \
+  '**STOP.**' \
+  'ending the turn is the wait' \
+  'Do not read plans, briefs, government files, repository docs, git state, task' \
+  'Do not run a harness boot, inspect peers, spawn, send,'; do
+  completion_marker "$ready_route" "$marker" "ready terminal: $marker"
+done
+
+# 8. real-tree skill contracts: peer operations, current-seat triage, and handover order.
 peer_route="$SKILL/references/routes/peer.md"
 prime_route="$SKILL/references/routes/prime.md"
 kickoff="$SKILL/references/prime/rituals/kickoff.md"
@@ -286,7 +300,7 @@ require_order "$handover" "real-tree handover: set before writers, retire after 
 completion_marker "$handover" '`oldPrime: true`' \
   "real-tree handover: retired seat remains old-prime history"
 
-# 8. prime payload: exact tree + every relative markdown pointer resolves.
+# 9. prime payload: exact tree + every relative markdown pointer resolves.
 prime_required=(
   "$SKILL/references/routes/prime.md"
   "$SKILL/references/prime/orchestrator.md"
@@ -328,7 +342,7 @@ check_links "$SKILL/references/routes/prime.md"
 while IFS= read -r f; do check_links "$f"; done < <(find "$SKILL/references/prime" -type f -name '*.md' | sort)
 ok "prime pointer-integrity scanned"
 
-# 9. stream-orchestrator route, ordered journey, and lifecycle markers.
+# 10. stream-orchestrator route, ordered journey, and lifecycle markers.
 orchestrator="$SKILL/references/prime/orchestrator.md"
 prime_route="$SKILL/references/routes/prime.md"
 
@@ -548,7 +562,7 @@ require_marker "docs/how/pij-prime.md" "/builder 8 ship" \
 require_marker "docs/domains/pij-skill/domain.md" "Stream Orchestrator Landing" \
   "pij-skill domain: names orchestrator landing concept"
 
-# 10. frozen evidence expected by the route's provenance contract.
+# 11. frozen evidence expected by the route's provenance contract.
 for f in \
   bootstrap.md encode-candidates.md kickoff-runbook.md map.md \
   orient-local.secondcrack.md pij-prime-answers-r1.md \
@@ -559,7 +573,7 @@ for f in \
     || err "prime evidence missing: docs/plans/035-o-prime-routing-skill/vendored/$f"
 done
 
-# 11. runtime payload must stand alone after the transitional source repo disappears.
+# 12. runtime payload must stand alone after the transitional source repo disappears.
 severance_paths=("$SKILL")
 [ -f docs/how/pij-prime.md ] && severance_paths+=(docs/how/pij-prime.md)
 # local-path-check: allow -- literal is the forbidden transitional source path.

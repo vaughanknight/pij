@@ -1,6 +1,6 @@
 ---
 name: pij
-description: Route pij platform jobs — spawn & talk to tmux colleagues (claude/copilot/codex/pi peers), run flow-pair coder+reviewer delegation fleets, delegate single tasks, run pij agent packs (flowspace-search etc.), run an installed skill in a peer (/validate-v2, /thesis…) with the result pushed back, manage the pij daemon and tmux/registry hygiene. Use when the user says "spawn a peer/colleague/worker", "flow-pair", "delegate this", "run an agent", "have a peer run /X", "pij daemon", or any pij orchestration ask.
+description: Route pij platform jobs — adopt a seat and wait (/pij ready), spawn & talk to tmux colleagues (claude/copilot/codex/pi peers), run flow-pair coder+reviewer delegation fleets, delegate single tasks, run pij agent packs (flowspace-search etc.), run an installed skill in a peer (/validate-v2, /thesis…) with the result pushed back, manage the pij daemon and tmux/registry hygiene. Use when the user says "pij ready", "adopt and wait", "spawn a peer/colleague/worker", "flow-pair", "delegate this", "run an agent", "have a peer run /X", "pij daemon", or any pij orchestration ask.
 ---
 
 # /pij — the pij platform router
@@ -20,6 +20,7 @@ description: Route pij platform jobs — spawn & talk to tmux colleagues (claude
 
 | route | job — "I want to…" | module |
 |---|---|---|
+| `ready` | adopt/register this seat, report ready, then wait without starting work | `references/routes/ready.md` |
 | `pair` | run a phase with a coder + cross-model reviewer fleet, wrapping the-flow | `references/routes/pair.md` |
 | `delegate` | hand ONE bounded task to ONE peer — no review cycle | `references/routes/delegate.md` |
 | `agent` | run a packaged agent pack — fire-and-forget or resident | `references/routes/agent.md` |
@@ -60,6 +61,7 @@ primitive. `baton` is the other orchestration subcommand.
 
 | typed / intent | resolves to |
 |---|---|
+| "adopt your window and wait" / "report ready; prime will contact shortly" | `/pij ready` |
 | `/flow-pair start\|dispatch\|observe\|review\|fix\|accept\|ledger\|learn …` | `/pij pair …` (same args) |
 | "spawn a worker / colleague / peer" | `/pij peer` |
 | "run flowspace search" / "ask an agent" | `/pij agent` |
