@@ -1,0 +1,630 @@
+{
+  "schema_version": 1,
+  "kind": "flight-plan",
+  "slug": "compact-before-redispatch",
+  "nav": {
+    "now": "review-1",
+    "next": "ship",
+    "intent": "Investigate and plan a mechanical compact-before-redispatch guarantee at the dispatch seam without assuming the implementation shape.",
+    "bag": {
+      "mode": "Simple",
+      "status": "active",
+      "wait_state": "PHASE_1_APPROVED"
+    }
+  },
+  "created_at": "2026-07-12T10:19:27.641Z",
+  "provenance": {
+    "record_kind": "flow",
+    "harness_version": "0.11.0",
+    "branch": "s044/compact-before-redispatch",
+    "repo": "https://github.com/AI-Substrate/pij.git",
+    "created_at": "2026-07-12T10:19:27.641Z",
+    "agent": "the-flow",
+    "plan_id": null
+  },
+  "events": [
+    {
+      "id": "CRT-001",
+      "kind": "created",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:19:27.662Z",
+      "details": {
+        "kind": "flight-plan",
+        "slug": "compact-before-redispatch"
+      }
+    },
+    {
+      "id": "STA-001",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:19:37.346Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "UPD-001",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:19:39.889Z",
+      "details": {
+        "node": "research",
+        "fields": [
+          "user_input"
+        ]
+      }
+    },
+    {
+      "id": "STA-002",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:23:20.559Z",
+      "details": {
+        "node": "research",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-002",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:23:23.025Z",
+      "details": {
+        "node": "research",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-003",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:23:25.570Z",
+      "details": {
+        "node": "plan",
+        "from": "assumed",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "CUR-001",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:23:28.024Z",
+      "details": {
+        "from": "research",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "STA-004",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:26:41.456Z",
+      "details": {
+        "node": "backpressure",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "optional"
+        }
+      }
+    },
+    {
+      "id": "UPD-003",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T10:26:43.924Z",
+      "details": {
+        "node": "backpressure",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-005",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-12T11:38:54.686Z",
+      "details": {
+        "node": "plan",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-004",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T11:38:57.073Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "CUR-002",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-12T11:39:04.163Z",
+      "details": {
+        "from": "plan",
+        "to": "plan"
+      }
+    },
+    {
+      "id": "UPD-005",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T22:30:01.709Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-006",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-12T23:22:41.581Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "UPD-007",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:01:35.252Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "UPD-008",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:29:31.963Z",
+      "details": {
+        "node": "plan",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-006",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:36:58.428Z",
+      "details": {
+        "node": "boot-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:37:00.779Z",
+      "details": {
+        "node": "boot-1",
+        "fields": [
+          "note"
+        ]
+      }
+    },
+    {
+      "id": "STA-007",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:37:03.036Z",
+      "details": {
+        "node": "phase-1",
+        "from": "known",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "CUR-003",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:37:07.680Z",
+      "details": {
+        "from": "plan",
+        "to": "phase-1"
+      }
+    },
+    {
+      "id": "STA-008",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:12:55.975Z",
+      "details": {
+        "node": "phase-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-010",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:12:57.963Z",
+      "details": {
+        "node": "phase-1",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-009",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:12:59.964Z",
+      "details": {
+        "node": "review-1",
+        "from": "assumed",
+        "to": "in_progress"
+      }
+    },
+    {
+      "id": "CUR-004",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:13:03.959Z",
+      "details": {
+        "from": "phase-1",
+        "to": "review-1"
+      }
+    },
+    {
+      "id": "UPD-011",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:19:39.128Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:33:19.387Z",
+      "details": {
+        "node": "retro-1",
+        "from": "assumed",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-012",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:33:21.419Z",
+      "details": {
+        "node": "retro-1",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:33:23.391Z",
+      "details": {
+        "node": "review-1",
+        "from": "in_progress",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-013",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:33:25.386Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "note",
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "id": "CUR-005",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-13T03:33:29.427Z",
+      "details": {
+        "from": "review-1",
+        "to": "review-1"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "research",
+      "type": "research",
+      "label": "Research",
+      "status": "done",
+      "command": "/builder 1a explore",
+      "next": [
+        "plan"
+      ],
+      "instructions": [
+        "Explore how the relevant code works before you plan — start cheap, climb only when the evidence demands it; never jump straight to a plan.",
+        "Run /builder 1a explore \"<intent>\" — it produces research-dossier.md, a decision packet (not a transcript) with evidence links.",
+        "Done when the dossier names the core decision the plan must resolve and the findings that bound it."
+      ],
+      "modified_at": "2026-07-12T10:23:23.025Z",
+      "user_input": "Investigate and plan a mechanical compact-before-redispatch guarantee at the dispatch seam without assuming the implementation shape.",
+      "ran_at": "2026-07-12T10:23:20.559Z",
+      "note": "Research found a skill-salience regression at the flow-pair to /pij pair port; existing compact mechanics are sufficient.",
+      "artifacts": [
+        "docs/plans/044-compact-before-redispatch/research-dossier.md"
+      ]
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "label": "Plan",
+      "status": "done",
+      "command": "/builder 1b plan",
+      "next": [
+        "phase-1"
+      ],
+      "instructions": [
+        "Write ONE planning document in a single atomic pass — `## Business Specification` (WHAT/WHY) on top, `## Implementation Plan` (HOW: phases, task tables, acceptance criteria, gates G1–G7) below.",
+        "Run /builder 1b plan \"<intent>\" (add --simple for a one-phase flow); it front-loads the clarifying questions, then auto-runs /validate-v2.",
+        "Done when <slug>-plan.md carries both halves and reads **Status**: READY — DRAFT means a gate FAILed, so resolve the gaps and re-run."
+      ],
+      "modified_at": "2026-07-13T00:29:31.963Z",
+      "ran_at": "2026-07-12T11:38:54.685Z",
+      "note": "Post-PR9 plan v1.8 VALIDATED by R9 at sha a422da9f on base 1336291a; exact five-file grant and build-profile confirmation pending.",
+      "artifacts": [
+        "docs/plans/044-compact-before-redispatch/compact-before-redispatch-plan.md",
+        "docs/plans/044-compact-before-redispatch/validation/compact-before-redispatch-plan-validation-r9.md"
+      ],
+      "comments": [
+        {
+          "at": "2026-07-12T22:30:01.709Z",
+          "text": "Jordan R5 superseded receipt gating: compact is fire-and-forget with no --wait; plan v1.5 requires cold revalidation.",
+          "kind": "decision"
+        },
+        {
+          "at": "2026-07-13T00:01:35.252Z",
+          "text": "Post-PR9 reread found material C7 push-vs-pull drift; plan v1.7 preserves inbox waiting and requires cold revalidation.",
+          "kind": "validation"
+        }
+      ]
+    },
+    {
+      "id": "phase-1",
+      "type": "phase",
+      "phase": 1,
+      "label": "P1: Implementation",
+      "status": "done",
+      "command": "/builder 6 implement",
+      "next": [
+        "review-1"
+      ],
+      "instructions": [
+        "Implement exactly ONE phase using the plan's testing approach and domain placement rules — keep the task table and execution.log.md live as you go.",
+        "Run /builder 6 implement --plan \"<plan path>\" (add --companion for a live review companion); log discoveries, tagging any Deferred/Noteworthy a human must see before ship.",
+        "Done when the phase's acceptance criteria are met, the tests pass, and the execution log records what changed plus the proof.",
+        "Spend tokens where they can change the outcome; use `--quiet` for routine flow mutations.",
+        "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
+        "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
+      ],
+      "modified_at": "2026-07-13T03:12:57.963Z",
+      "ran_at": "2026-07-13T03:12:55.975Z",
+      "note": "Coder dlg-0002 COMPLETE; exact five-file diff; structural/mutation/cold canary gates complete; D-032 smoke debt ruled non-blocking.",
+      "artifacts": [
+        "docs/plans/044-compact-before-redispatch/reports/coder-completion-dlg-0002.md",
+        "docs/plans/044-compact-before-redispatch/validation/cold-completion-canary.md"
+      ]
+    },
+    {
+      "id": "review-1",
+      "type": "review",
+      "label": "Review: P1",
+      "status": "done",
+      "command": "/builder 7 review",
+      "next": [
+        "ship"
+      ],
+      "zone": "flight",
+      "instructions": [
+        "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in; skippable when a companion already reviewed every commit.",
+        "Run /builder 7 review — it inspects the newest reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or ship.",
+        "Done when the verdict is recorded (one finding line) and either accepted or routed to a fix-loop."
+      ],
+      "modified_at": "2026-07-13T03:33:25.386Z",
+      "comments": [
+        {
+          "at": "2026-07-13T03:19:39.128Z",
+          "text": "Cold review FIX_REQUIRED: F-001 execution/progress artifact absent; F-002 additive receipt-gate mutation stayed green.",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-07-13T03:33:23.391Z",
+      "note": "Cold re-review APPROVE; F-001/F-002 resolved with independent additive mutation proof.",
+      "artifacts": [
+        "docs/plans/044-compact-before-redispatch/reviews/review.phase-1.md"
+      ]
+    },
+    {
+      "id": "ship",
+      "type": "ship",
+      "label": "Ship",
+      "status": "assumed",
+      "command": "/builder 8 ship",
+      "next": [],
+      "instructions": [
+        "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
+        "Run /builder 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
+        "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
+      ]
+    },
+    {
+      "id": "backpressure",
+      "type": "backpressure",
+      "label": "Backpressure survey",
+      "status": "done",
+      "branch_of": "plan",
+      "next": [
+        "plan"
+      ],
+      "command": "run /eng-harness-flow --hook pre-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "optional"
+      },
+      "instructions": [
+        "Optional pre-coding seam: survey what the harness can PROVE about the plan's coverage versus what was only eyeballed, then re-plan informed by it.",
+        "Run /eng-harness-flow --hook pre-coding --json — advisory output only; the plan verb does not auto-read it, so fold the findings in yourself.",
+        "Optional and skippable — never gates. Decline with a real `harness flow status backpressure --to skipped`, never a narrated skip."
+      ],
+      "modified_at": "2026-07-12T10:26:43.924Z",
+      "ran_at": "2026-07-12T10:26:41.456Z",
+      "note": "Partial: structural and cold event-order sensors are buildable and already included in the plan.",
+      "artifacts": [
+        "docs/plans/044-compact-before-redispatch/backpressure-coverage.md"
+      ]
+    },
+    {
+      "id": "boot-1",
+      "type": "harness-boot",
+      "label": "Boot check",
+      "status": "done",
+      "branch_of": "phase-1",
+      "next": [
+        "phase-1"
+      ],
+      "command": "run /eng-harness-flow --hook pre-flight --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended pre-flight seam: confirm the harness is healthy before you start coding this phase.",
+        "Run /eng-harness-flow --hook pre-flight --json — read-only/advisory; narrate its envelope verbatim, never fabricate one.",
+        "Spend tokens where they can change the outcome; use `--quiet` for routine flow mutations.",
+        "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
+        "Skippable — advisory, never gates. Decline with a real `harness flow status boot-1 --to skipped`."
+      ],
+      "modified_at": "2026-07-13T00:37:00.779Z",
+      "ran_at": "2026-07-13T00:36:58.428Z",
+      "note": "Pre-flight harness boot ready: typecheck + tests green."
+    },
+    {
+      "id": "observe-1",
+      "type": "observe",
+      "label": "Observe: P1",
+      "status": "assumed",
+      "branch_of": "phase-1",
+      "next": [
+        "phase-1"
+      ],
+      "command": "harness observe \"<what>\" --kind <kind>",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended mid-phase capture: record observations (decisions, gotchas, surprises) AS you code, so they don't evaporate as remembered prose.",
+        "Run harness observe \"<what>\" --kind <kind> — a real capture, repeated through the phase; it stays due the whole time the cursor sits on this phase.",
+        "Spend tokens where they can change the outcome; use `--quiet` for routine flow mutations.",
+        "Match model tier to work: chores -> cheap subagent, analysis -> Opus-class, judgement -> lead; context may override (§ Shared conventions).",
+        "Drained at phase end by the retro (drain) chore. Skippable — advisory, never gates.",
+        "Environment friction is work, not an apology: fix small things, otherwise `harness observe` it — is this environment working for us? (builder SKILL.md invariant #14)"
+      ]
+    },
+    {
+      "id": "retro-1",
+      "type": "harness-retro",
+      "label": "Retro: P1 (drain)",
+      "status": "done",
+      "branch_of": "phase-1",
+      "next": [
+        "phase-1"
+      ],
+      "command": "run /eng-harness-flow --hook post-coding --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
+        "Run /eng-harness-flow --hook post-coding --json — read-only/advisory; narrate its envelope verbatim.",
+        "Skippable — advisory, never gates. Decline with a real `harness flow status retro-1 --to skipped`."
+      ],
+      "modified_at": "2026-07-13T03:33:21.419Z",
+      "ran_at": "2026-07-13T03:33:19.387Z",
+      "note": "Four observations drained into the single authorized Phase 1 retro record.",
+      "artifacts": [
+        ".harness/records/retro/2026-07-13/001-044-compact-before-redispatch-phase-1.md"
+      ]
+    },
+    {
+      "id": "retro-ship",
+      "type": "harness-retro",
+      "label": "Retro: ship (harvest)",
+      "status": "assumed",
+      "branch_of": "ship",
+      "next": [
+        "ship"
+      ],
+      "command": "run /eng-harness-flow --hook post-flight --json",
+      "chore": {
+        "kind": "command",
+        "importance": "recommended"
+      },
+      "instructions": [
+        "Recommended post-flight seam: the terminal long-horizon harvest — fold this flight's learnings into durable memory at ship.",
+        "Run /eng-harness-flow --hook post-flight --json — read-only/advisory; narrate its envelope verbatim.",
+        "Skippable — advisory, never gates. Decline with a real `harness flow status retro-ship --to skipped`."
+      ]
+    }
+  ]
+}

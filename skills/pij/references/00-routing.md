@@ -51,7 +51,11 @@ A wrong `--model` is accepted **silently** at startup; the child boots, register
 
 ### C3 — Compact discipline (early, not late)
 
-The instant a worker/reviewer reports done, compact it — **before** doing anything else with its report. The 30–90s compact latency then overlaps work you're doing anyway; compacting late has caused post-dispatch stalls. Confirm `command:compact, executed:true` via `pij tail <id>` before the next pointer. Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. For your own context: `pij compact-self [instruction]` (queues a follow-up so work continues after the compact).
+The instant a reusable/live coder reports completion or a reviewer returns a verdict, send compact as the **first tool action** — before reading, synthesising, or acting on the report. Trigger only on a terminal completion/verdict, never while the peer is still responding. The 30–90s compact latency overlaps report/review/fix work that must happen anyway; compacting late has caused post-dispatch stalls.
+
+Dispatch compact **fire-and-forget** with `pij_send({to, command:"compact"})` or `pij send <id> "/compact"` without `--wait`. **Continue immediately** with report/review/fix work; `executed:true`, receipt delivery, and compact completion are observe-only diagnostics, never progress gates. A one-shot `--once` peer auto-dissolves when its report lands, so an immediate `E-DEAD` is the expected boundary: it has no reusable context left to compact.
+
+Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. For your own context: `pij compact-self [instruction]` (queues a follow-up so work continues after the compact).
 
 ### C4 — Model discovery
 
