@@ -169,15 +169,14 @@ something the user added by hand-editing settings.json.
 
 ```bash
 git clone <pij-url> && cd pij
-npm install
-npm run pkg bootstrap   # install every third-party extension (gated on vetted: freshness)
-npm run link            # symlink pij's own extensions into ~/.pi/extensions/
+just install
 ```
 
-Everything pij knows about (own extensions + curated third-party + MCP
-servers in `.mcp.json`) is now restored. If any entry's `vetted.date`
-is stale, `bootstrap` refuses with an explicit message — re-run
-`npm run pkg audit` to refresh, then bootstrap.
+Everything pij manages is now restored: dependencies, official Pi, prefs/MCP
+configuration, the portable model catalog, own extensions, and curated
+third-party packages. The models sync replaces only the repo-managed provider
+objects and preserves machine-local providers already present in the global
+registry.
 
 ## Where things are
 
@@ -190,6 +189,8 @@ is stale, `bootstrap` refuses with an explicit message — re-run
 | Driver SDK (typed smoke) | `harness/driver/` |
 | Smoke runner (adapter) | `harness/scripts/smoke.ts` |
 | Link script | `harness/scripts/link-global.ts` |
+| Portable model catalog | `.pi/models.json` |
+| Model sync script | `harness/scripts/sync-models.ts` |
 | Package manifest script | `harness/scripts/packages.ts` |
 | Vetters (Plan 009) | `harness/scripts/vetters/` |
 | Vetter agent pack | `agents/package-vetter/` |
@@ -205,10 +206,20 @@ is stale, `bootstrap` refuses with an explicit message — re-run
 
 Pi's `/model` selector only accepts models from its built-in registry —
 typing an arbitrary id (e.g. a new GitHub Copilot model not yet in pi's
-generated list) shows "No matching models". Workaround: add the model
-to `~/.pi/agent/models.json`. Pi reloads this file every time `/model`
-opens, no restart needed. See [D-020](./docs/difficulties.md) for the
-underlying cause.
+generated list) shows "No matching models". Add portable entries to the
+repo-owned `.pi/models.json`, then run:
+
+```bash
+just sync-models
+```
+
+The sync replaces the `github-copilot`, `sakana`, and `openrouter` provider
+objects wholesale in `~/.pi/agent/models.json`, so removed repo entries do not
+linger. Every other provider is preserved; machine-local providers belong only
+in the global target. `auth.json`, resolved credentials, and skills remain
+outside this catalog. Pi reloads the global file every time `/model` opens, so
+no restart is needed. See [D-020](./docs/difficulties.md) for the underlying
+cause.
 
 ### GitHub Copilot Claude template
 
@@ -249,7 +260,7 @@ pi --list-models claude-opus-4.7-1m-internal
 pi --model github-copilot/claude-opus-4.7-1m-internal
 ```
 
-Known Copilot long-context customizations in `~/.pi/agent/models.json`:
+Known Copilot long-context customizations in `.pi/models.json`:
 
 - `github-copilot/gpt-5.5` — built-in Copilot entry exists, but `modelOverrides` bumps it to `contextWindow: 1050000`.
 - `github-copilot/claude-opus-4.8` — Copilot's supported slug for Opus 4.8. `modelOverrides` labels it `Claude Opus 4.8-1M (Copilot)` and sets `contextWindow: 1000000` / `maxTokens: 64000`. Do **not** create a `-1m` custom-model alias unless pi gains an upstream-model-id field: custom ids are sent to Copilot as-is and Copilot rejects unknown ids with `model_not_supported`.
@@ -390,4 +401,3 @@ Fire-and-forget; reply only on findings.
 Full reference (BIO contract, lifecycle diagram, still-needed protocol,
 farewell envelope shape, D-025 workaround details, layering vs
 engineering harness): **[`docs/project-rules/agent-harness.md`](docs/project-rules/agent-harness.md)**.
-

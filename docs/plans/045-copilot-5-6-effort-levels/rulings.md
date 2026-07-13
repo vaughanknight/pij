@@ -1,0 +1,11 @@
+# S045 rulings
+
+1. **2026-07-12 · Jordan all-go pipeline ruling (Spine Seq 102)**: build configuration is separate Copilot `gpt-5.6-sol` xhigh coder and reviewer.
+2. **Implementation fence**: `.pi/extensions/pij/core/models/registry.ts`, `.pi/extensions/pij/core/models/registry.test.ts`, `.pi/extensions/pij/core/models/validate.test.ts`, `.pi/extensions/pij/core/spawn.test.ts`, `.pi/extensions/pij/core/models/cli-models.test.ts`, and `docs/how/pij-models-discovery.md`.
+3. **Held path**: `docs/domains/pij-control-plane/domain.md` remains read-only until PR #9 merges and this branch rebases.
+4. **Execution**: start the authorized implementation through `/pij pair`; reviewer remains lazy until first review; compact each peer immediately on completion.
+5. **2026-07-12 · Jordan direct in-pane ruling**: checking the `pi` client in pij for the correct effort levels is also in scope. This adds Pi-filter advertisement, shared bare-id validation, and unchanged Pi effort-suffix verification through the existing `cli-models.test.ts` and `spawn.test.ts` fence. Provider-prefix normalization requires a separate production-file grant.
+6. **2026-07-12 · Checkpoint commit/draft PR authorization (Spine Seq 122)**: commit the exact six reviewed product/docs files plus owned S045 plan/review evidence; rebase current `origin/main`; push and open a draft PR for CI. Do not add the held domain contract, claim Phase 1 done, or merge. The shared `pi-peacock` smoke remains an honest blocker.
+7. **2026-07-12 · Peer compact policy (Spine Seq 128)**: compact reusable peers fire-and-forget. Send `pij send <id> --command compact` immediately on completion without `--wait`, then continue report/review/fix work; never block on compact latency. The one-shot `E-DEAD` exception remains.
+8. **2026-07-12 · PR #9 hold released (Spine Seq 141)**: rebase and reread current main, then integrate `docs/domains/pij-control-plane/domain.md` additively for the S045 model registry/effort contract. Rerun final gates/review as needed and report PR #12 readiness; shared smoke remains explicit until green.
+9. **2026-07-13 · Higher-layer shared-smoke ruling (Spine Seq 144)**: S045-owned content and Phase 1 are ready; PR #12 may be marked ready for review. Shared tmux pane-lifetime smoke debt remains recorded and non-blocking for S045. No merge until Jordan confirms.

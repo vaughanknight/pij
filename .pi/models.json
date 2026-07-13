@@ -1,0 +1,225 @@
+{
+	"providers": {
+		"github-copilot": {
+			"modelOverrides": {
+				"gpt-5.5": {
+					"name": "GPT-5.5 Long Context (Copilot)",
+					"contextWindow": 1050000,
+					"maxTokens": 128000
+				},
+				"claude-opus-4.8": {
+					"name": "Claude Opus 4.8-1M (Copilot)",
+					"contextWindow": 1000000,
+					"maxTokens": 64000
+				}
+			},
+			"models": [
+				{
+					"id": "mai-code-1-flash-internal",
+					"name": "MAI-Code-1-Flash (Copilot)",
+					"api": "openai-responses",
+					"baseUrl": "https://api.enterprise.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"low": "low",
+						"medium": "medium",
+						"high": "high"
+					},
+					"input": ["text"],
+					"contextWindow": 256000,
+					"maxTokens": 128000
+				},
+				{
+					"id": "claude-opus-4.7-1m-internal",
+					"name": "Claude Opus 4.7 1M Internal",
+					"api": "anthropic-messages",
+					"baseUrl": "https://api.individual.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"xhigh": "xhigh"
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1000000,
+					"maxTokens": 64000
+				},
+				{
+					"id": "gpt-5.6-luna",
+					"name": "GPT-5.6 Luna (Copilot)",
+					"api": "openai-responses",
+					"baseUrl": "https://api.individual.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": "low",
+						"xhigh": "xhigh",
+						"max": "max"
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1050000,
+					"maxTokens": 128000
+				},
+				{
+					"id": "gpt-5.6-sol",
+					"name": "GPT-5.6 Sol (Copilot)",
+					"api": "openai-responses",
+					"baseUrl": "https://api.individual.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": "low",
+						"xhigh": "xhigh",
+						"max": "max"
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1050000,
+					"maxTokens": 128000
+				},
+				{
+					"id": "gpt-5.6-terra",
+					"name": "GPT-5.6 Terra (Copilot)",
+					"api": "openai-responses",
+					"baseUrl": "https://api.individual.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": "low",
+						"xhigh": "xhigh",
+						"max": "max"
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1050000,
+					"maxTokens": 128000
+				}
+			]
+		},
+		"sakana": {
+			"name": "Sakana API",
+			"baseUrl": "https://api.sakana.ai/v1",
+			"api": "openai-responses",
+			"apiKey": "!python3 -c \"import json,os;print(json.load(open(os.path.expanduser('~/.pi/agent/auth.json')))['sakana']['key'])\"",
+			"models": [
+				{
+					"id": "fugu",
+					"name": "Sakana Fugu",
+					"reasoning": true,
+					"input": ["text", "image"],
+					"contextWindow": 1000000,
+					"maxTokens": 32000,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "high",
+						"xhigh": "max"
+					}
+				},
+				{
+					"id": "fugu-ultra",
+					"name": "Sakana Fugu Ultra",
+					"reasoning": true,
+					"input": ["text", "image"],
+					"contextWindow": 1000000,
+					"maxTokens": 32000,
+					"thinkingLevelMap": {
+						"off": null,
+						"minimal": null,
+						"low": null,
+						"medium": null,
+						"high": "high",
+						"xhigh": null
+					}
+				}
+			]
+		},
+		"openrouter": {
+			"baseUrl": "https://openrouter.ai/api/v1",
+			"api": "openai-completions",
+			"models": [
+				{
+					"id": "sakana/fugu-ultra",
+					"name": "Sakana Fugu Ultra (OpenRouter)",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1000000,
+					"maxTokens": 32000,
+					"compat": {
+						"thinkingFormat": "openrouter"
+					}
+				},
+				{
+					"id": "google/gemini-3.5-flash",
+					"name": "Gemini 3.5 Flash (OpenRouter)",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1000000,
+					"maxTokens": 65536,
+					"compat": {
+						"thinkingFormat": "openrouter"
+					}
+				},
+				{
+					"id": "z-ai/glm-5.2",
+					"name": "GLM-5.2 (OpenRouter)",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null
+					},
+					"input": ["text"],
+					"contextWindow": 200000,
+					"maxTokens": 128000,
+					"compat": {
+						"thinkingFormat": "openrouter"
+					}
+				},
+				{
+					"id": "@preset/glm-1m",
+					"name": "GLM-1M (OpenRouter Preset)",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"off": null
+					},
+					"input": ["text"],
+					"contextWindow": 1048576,
+					"maxTokens": 128000,
+					"compat": {
+						"thinkingFormat": "openrouter"
+					}
+				}
+			]
+		}
+	}
+}

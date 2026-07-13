@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { FakeDelivery, FakeProcess, FakeRegistry } from "../../adapters/fakes.js";
 import type { CliDeps } from "../cli.js";
 import { dispatch, parseArgs } from "../cli.js";
-import type { ModelEntry } from "./registry.js";
+import { copilotSeedFromPi, type ModelEntry, parseModelsJson } from "./registry.js";
 
 const T = Date.parse("2026-06-28T12:00:00.000Z");
 
@@ -23,6 +23,22 @@ const MODELS: ModelEntry[] = [
 		verified: true,
 	},
 ];
+
+const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
+const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+const PI_GPT56_JSON = {
+	providers: {
+		"github-copilot": {
+			models: GPT56_IDS.map((id) => ({
+				id,
+				name: id,
+				reasoning: true,
+				thinkingLevelMap: { xhigh: "xhigh", max: "max" },
+			})),
+		},
+	},
+};
+const GPT56_MODELS = [...parseModelsJson(PI_GPT56_JSON), ...copilotSeedFromPi(PI_GPT56_JSON)];
 
 function deps(models: ModelEntry[]): CliDeps {
 	return {
@@ -127,6 +143,43 @@ describe("dispatch models", () => {
 		expect(r.exitCode).toBe(0);
 		expect(r.stdout).toContain("m1");
 		expect(r.stdout).toContain("m2");
+	});
+
+	it("--harness copilot JSON advertises corrected raw and cloned rows without deduping", () => {
+		const r = dispatch(
+			{ verb: "models", json: true, harnessFilter: "copilot" } as Parameters<typeof dispatch>[0],
+			deps(GPT56_MODELS),
+		);
+		const parsed = JSON.parse(r.stdout) as ModelEntry[];
+		expect(parsed).toHaveLength(GPT56_IDS.length * 2);
+		for (const id of GPT56_IDS) {
+			const rows = parsed.filter((entry) => entry.id === id);
+			expect(rows.map((entry) => entry.provider)).toEqual(["github-copilot", "copilot"]);
+			for (const row of rows) expect(row.levels).toEqual(GPT56_LEVELS);
+		}
+	});
+
+	it("--harness copilot table renders the corrected levels for both provider projections", () => {
+		const r = dispatch(
+			{ verb: "models", json: false, harnessFilter: "copilot" } as Parameters<typeof dispatch>[0],
+			deps(GPT56_MODELS),
+		);
+		expect(r.stdout.match(/none\/low\/medium\/high\/xhigh\/max/g)).toHaveLength(
+			GPT56_IDS.length * 2,
+		);
+	});
+
+	it("--harness pi JSON preserves the corrected raw github-copilot row", () => {
+		const r = dispatch(
+			{ verb: "models", json: true, harnessFilter: "pi" } as Parameters<typeof dispatch>[0],
+			deps(GPT56_MODELS),
+		);
+		const parsed = JSON.parse(r.stdout) as ModelEntry[];
+		const raw = parsed.find(
+			(entry) => entry.provider === "github-copilot" && entry.id === "gpt-5.6-sol",
+		);
+		expect(raw?.levels).toEqual(GPT56_LEVELS);
+		expect(parsed.some((entry) => entry.provider === "copilot")).toBe(true);
 	});
 });
 

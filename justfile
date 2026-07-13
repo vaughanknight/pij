@@ -26,9 +26,10 @@ default:
 # What it does:
 #   1. Install repo dependencies (`npm ci`)
 #   2. Install/update the official global `pi` binary from npm
-#   3. Sync user-personal prefs to the pi global agent dir:
+#   3. Sync repo-managed global pi config:
 #        .pi/APPEND_SYSTEM.md  → ~/.pi/agent/APPEND_SYSTEM.md
 #        .pi/mcp.json          → ~/.pi/agent/mcp.json
+#        .pi/models.json       → managed providers in ~/.pi/agent/models.json
 #   4. Symlink pij's local extensions into ~/.pi/agent/extensions/
 #   5. Install every vetted package from .pi/packages.yaml globally
 #      via `pi install` (uses cmdBootstrap; refuses stale entries)
@@ -36,7 +37,7 @@ default:
 #
 # After install, `pi` from ANY cwd on this machine gets the same
 # extensions, MCP servers, voice-input prefs, response-mode prefs,
-# and global packages that pij configures.
+# portable model catalog, and global packages that pij configures.
 
 install:
     @echo "=== 1/6 npm dependencies ==="
@@ -46,11 +47,12 @@ install:
     just pi-official-install
     @mkdir -p ~/.pi/agent
     @echo
-    @echo "=== 3/6 sync global pi prefs ==="
+    @echo "=== 3/6 sync global pi config ==="
     cp .pi/APPEND_SYSTEM.md ~/.pi/agent/APPEND_SYSTEM.md
     @echo "  → ~/.pi/agent/APPEND_SYSTEM.md"
     cp .pi/mcp.json ~/.pi/agent/mcp.json
     @echo "  → ~/.pi/agent/mcp.json"
+    just sync-models
     @echo
     @echo "=== 4/6 link pij extensions globally ==="
     just link
@@ -108,6 +110,11 @@ pij *ARGS:
 # Manage third-party pi-extensions via .pi/packages.yaml.
 pkg *ARGS:
     npm run pkg -- "$@"
+
+# Replace repo-managed provider objects in the global pi model registry while
+# preserving machine-local and otherwise unmanaged providers.
+sync-models *ARGS:
+    npx tsx harness/scripts/sync-models.ts "$@"
 
 # List the GitHub Copilot models your account is actually entitled to.
 # Auto-selects the correct API host from the token's proxy-ep claim
@@ -317,16 +324,16 @@ pi-fork-build:
 #
 # `just update-pi` is the canonical way to refresh pi runtime state from
 # this repo. Pi itself comes from the official npm package; pij contributes
-# global prefs, MCP config, local extension symlinks, and vetted extension
-# packages from this checkout.
+# global prefs, MCP config, the portable model catalog, local extension
+# symlinks, and vetted extension packages from this checkout.
 #
 # Important: use `pi update --extensions` after the npm install. Bare
 # `pi update` also self-updates pi, which can fight with the explicit npm
 # install step above.
 
-# Install/update official Pi globally, sync pij prefs, globally link pij's
-# local extensions, ensure vetted packages are installed, update extension
-# packages, then run pi-doctor.
+# Install/update official Pi globally, sync pij config/models, globally link
+# pij's local extensions, ensure vetted packages are installed, update
+# extension packages, then run pi-doctor.
 update-pi:
     @echo "=== current pi ===" && pi --version | head -1 || true
     @echo
@@ -334,11 +341,12 @@ update-pi:
     just pi-official-install
     @mkdir -p ~/.pi/agent
     @echo
-    @echo "=== sync global pi prefs from pij ==="
+    @echo "=== sync global pi config from pij ==="
     cp .pi/APPEND_SYSTEM.md ~/.pi/agent/APPEND_SYSTEM.md
     @echo "  → ~/.pi/agent/APPEND_SYSTEM.md"
     cp .pi/mcp.json ~/.pi/agent/mcp.json
     @echo "  → ~/.pi/agent/mcp.json"
+    just sync-models
     @echo
     @echo "=== link pij extensions globally ==="
     just link

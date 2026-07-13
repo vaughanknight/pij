@@ -4,7 +4,7 @@
 // paneId ±, required env vars, argv array shape, ready-body round-trip.
 
 import { describe, expect, it } from "vitest";
-import type { ModelEntry } from "./models/registry.js";
+import { type ModelEntry, parseModelsJson } from "./models/registry.js";
 import {
 	aliasAgentSpawnArgs,
 	buildControlSpawnCommand,
@@ -150,6 +150,17 @@ describe("buildSpawnCommand", () => {
 		expect(r.args).toEqual(["--model", "github-copilot/gpt-5.5:xhigh"]);
 		expect(r.env.PIJ_SPAWN_MODEL).toBe("github-copilot/gpt-5.5:xhigh");
 		expect(r.env.PIJ_SPAWN_EFFORT).toBe("xhigh");
+	});
+
+	it("keeps the Pi provider prefix unchanged when suffixing GPT-5.6 effort", () => {
+		const r = buildSpawnCommand({
+			...base,
+			model: "github-copilot/gpt-5.6-sol",
+			effort: "max",
+		});
+		expect(r.args).toEqual(["--model", "github-copilot/gpt-5.6-sol:max"]);
+		expect(r.env.PIJ_SPAWN_MODEL).toBe("github-copilot/gpt-5.6-sol:max");
+		expect(r.env.PIJ_SPAWN_EFFORT).toBe("max");
 	});
 
 	it("--effort without a model is a no-op for pi (nothing to suffix)", () => {
@@ -730,6 +741,31 @@ describe("buildEffortWarning (warn-don't-block vs a model's levels, #3)", () => 
 		const w = buildEffortWarning("medium", "fugu", KNOWN);
 		expect(w).toMatch(/medium/);
 		expect(w).toMatch(/high/);
+	});
+
+	const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
+	const GPT56 = parseModelsJson({
+		providers: {
+			"github-copilot": {
+				models: [
+					{
+						id: "gpt-5.6-sol",
+						reasoning: true,
+						thinkingLevelMap: { xhigh: "xhigh", max: "max" },
+					},
+				],
+			},
+		},
+	});
+
+	it.each(GPT56_LEVELS)("does not warn for supported GPT-5.6 effort %s", (level) => {
+		expect(buildEffortWarning(level, "gpt-5.6-sol", GPT56)).toBeNull();
+	});
+
+	it("warns and continues for unsupported GPT-5.6 minimal with the corrected levels", () => {
+		expect(buildEffortWarning("minimal", "gpt-5.6-sol", GPT56)).toBe(
+			"warning: effort 'minimal' may be unsupported for 'gpt-5.6-sol' — gpt-5.6-sol supports: none, low, medium, high, xhigh, max; spawn continues",
+		);
 	});
 });
 

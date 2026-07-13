@@ -32,6 +32,24 @@ it never reimplements it, never imports it into pi (P2), and never writes the le
 6. **Cluster isolation** — a prompt learning writes ONLY to the cluster it was tagged to,
    never cross-cluster.
 
+## Completion interrupt — compact EARLY
+
+Treat a terminal completion or verdict as an interrupt, not a step to remember at redispatch:
+
+1. **Coder completion**
+2. For a reusable/live peer, compact the coder FIRST (§ C3).
+3. Then handle the report, acquire/canary the reviewer if needed, and dispatch review.
+4. **Reviewer verdict**
+5. For a reusable/live peer, compact the reviewer FIRST (§ C3).
+6. Then follow the `FIX` or `APPROVE` path.
+7. **Buggy-extension safety**
+8. If the peer still has a known-crashy extension loaded, reload FIRST and confirm it
+   survives; then compact. Fresh spawns already carry the fix.
+
+Both compact sends are fire-and-forget: use the § C3 command without `--wait`.
+Never wait for compact receipts or completion; continue immediately with report/review/fix work.
+The one-shot auto-dissolve boundary remains owned by § C3.
+
 ## Orchestrator Decision Protocol
 
 **You own the deliverable — delegation moves the work, not the accountability.**
@@ -109,9 +127,8 @@ exact ids with `pij models`, § C4):
   need; **persist the updated roster before** re-delivering the packet (P9).
 - **Teardown — end only** — close **only** peers with `spawnedByUs === true` (§ C1 verb); leave
   *provided* peers for their owner. Close is ownership-aware either way.
-- **Buggy-extension safety** — if a running session still has a known-crashy extension loaded,
-  `reload` it onto the fix and confirm it survives *before* compacting (a compact triggers a
-  render that can crash it). Fresh spawns already have the fix.
+- **Completion safety** — use the compact-EARLY interrupt above; fresh spawns already carry
+  the current payload.
 
 > **Real peers, not builtin subagents.** Builtin subagents are **read-blind** here (they cannot
 > read files), so a coder/reviewer must be a real pij peer (spawned or provided) — never a

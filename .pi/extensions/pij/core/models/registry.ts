@@ -61,6 +61,20 @@ function levelsFromThinkingMap(map: unknown): string[] {
 		.map(([k]) => k);
 }
 
+const COPILOT_GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
+const COPILOT_GPT56_IDS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+
+function isCopilotGpt56(id: string): boolean {
+	return COPILOT_GPT56_IDS.has(id);
+}
+
+function piModelLevels(provider: string, id: string, thinkingLevelMap: unknown): string[] {
+	if (provider === "github-copilot" && isCopilotGpt56(id)) {
+		return [...COPILOT_GPT56_LEVELS];
+	}
+	return levelsFromThinkingMap(thinkingLevelMap);
+}
+
 /**
  * Parse `~/.pi/agent/models.json` (the live pi model registry). Returns one
  * `ModelEntry` per model/override across all providers. Pure: the caller reads
@@ -87,8 +101,9 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 					name: typeof m.name === "string" ? m.name : id,
 					provider,
 					verified: true,
-					reasoning: m.reasoning === true,
-					levels: levelsFromThinkingMap(m.thinkingLevelMap),
+					reasoning:
+						isCopilotGpt56(id) && provider === "github-copilot" ? true : m.reasoning === true,
+					levels: piModelLevels(provider, id, m.thinkingLevelMap),
 				});
 			}
 		}
@@ -102,8 +117,9 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 					name,
 					provider,
 					verified: true,
-					reasoning: ov.reasoning === true,
-					levels: levelsFromThinkingMap(ov.thinkingLevelMap),
+					reasoning:
+						isCopilotGpt56(id) && provider === "github-copilot" ? true : ov.reasoning === true,
+					levels: piModelLevels(provider, id, ov.thinkingLevelMap),
 				});
 			}
 		}
@@ -196,15 +212,17 @@ export function codexSnapshot(): ModelEntry[] {
 
 /** Build a copilot ModelEntry (best-effort/unverified alias). Copilot's CLI takes a
  *  freeform `--model` and does NOT enumerate, so newer ids won't be in pi's models.json
- *  seed yet. No reasoning-level data for an unverified alias → empty (pass-through). */
+ *  seed yet. The GPT-5.6 trio carries curated capability data independently of whether
+ *  the alias has been verified through a live registry. */
 function copilotEntry(id: string, name?: string): ModelEntry {
+	const levels = isCopilotGpt56(id) ? [...COPILOT_GPT56_LEVELS] : [];
 	return {
 		id,
 		name: name ?? id,
 		provider: "copilot",
 		verified: false,
-		reasoning: false,
-		levels: [],
+		reasoning: levels.length > 0,
+		levels,
 	};
 }
 

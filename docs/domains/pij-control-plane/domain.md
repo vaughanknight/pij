@@ -22,6 +22,9 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/harness/codex.ts` | Codex transport (Plan 022): global date-nested rollout layout, trailing-UUID id (`codexSessionIdFromPath`), recursive `listCodexRollouts`, `session_meta.cwd` confirm (`codexCwdFromMeta`), `summarizeCodexEvent` tail. |
 | `.pi/extensions/pij/core/harness/transcript.ts` | `transcriptLayout(harness)` selector (Plan 022): harness-selected `dir`/`list`/`sessionIdOf` so the daemon's discovery bind works for claude (flat, cwd-scoped, stem) AND codex (deep, global, UUID) from one code path; claude byte-unchanged. |
 | `.pi/extensions/pij/core/harness/pi.ts` | Pi transport: observe-only routing (delivery owned by the thin receiver). |
+| `.pi/extensions/pij/core/models/registry.ts` | Shared model registry: pure Pi/Copilot/Codex/Claude source parsers and snapshots plus the single impure `loadModels()` composition root. Owns `ModelEntry.reasoning`/`levels`, verified-vs-curated semantics, and the exact Copilot GPT-5.6 effort correction. |
+| `.pi/extensions/pij/core/models/validate.ts` | Pure model and effort validation against registry entries; reports only positive contradictions and never blocks spawn. |
+| `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
 | `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice. |
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
@@ -55,6 +58,9 @@ thin receiver). Plan 019.
 | Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
 | Telegram conversation routing | Bare text/captionless media follows the last session whose non-receipt bubble successfully reached that normalized chat id; explicit selection remains separate for `/tail`. | reply tag > explicit name > last speaker; `onSpoke` after first successful send; process-local maps in `startBridge`. |
 | Telegram sender context | Every agent bubble keeps `[pij-id]` first, then adds stable repository identity from the sender descriptor folder. | `[pij-id] [repo]` on `main`; `[pij-id] [repo/branch]` otherwise; bounded git failure or missing descriptor falls back to `[pij-id]`. |
+| Model registry | One shared registry composes source-derived rows and best-effort aliases for model discovery and spawn validation. | Raw `github-copilot` rows and `provider:"copilot"` seed clones remain distinct projections; `verified:false` means not live-confirmed, independently of curated capability knowledge. |
+| Model effort capability | `ModelEntry.levels` is the canonical ordered effort set used by every current validation/advertisement consumer. | Exact Copilot ids `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` use `none, low, medium, high, xhigh, max` only under `github-copilot` parsing and Copilot fallback construction; same-id rows under other providers retain source data. |
+| Warn-don't-block validation | Unknown models or unsupported known effort values produce guidance without refusing the launch. | `validateModel`/`validateEffort` report tagged results; warnings list known levels, then spawn continues with the supplied model/effort. |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
 | Single-instance daemon | A second `pij daemon` refuses/attaches — never a second injector. | PID/lockfile (AC-10). |
 
@@ -71,6 +77,8 @@ thin receiver). Plan 019.
 | Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
 | Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
+| Model registry entry | `pij models`, peer spawn, agent spawn | `{ id, name, provider, verified, reasoning?, levels? }`; source-derived data is preferred over same-harness fallbacks, while provider projections remain separate. |
+| Copilot GPT-5.6 effort correction | registry + validation consumers | The exact trio exposes ordered levels `none\|low\|medium\|high\|xhigh\|max`; fallback aliases retain `verified:false`; unsupported `minimal` is reported but does not block. |
 
 ## Boundary Owns
 
@@ -87,12 +95,19 @@ thin receiver). Plan 019.
   selected-target semantics for `/tail`.
 - Telegram agent-bubble identity: sender tag first, stable repository/branch context second,
   with safe fallback when descriptor/git context is unavailable.
+- Shared model discovery, verification metadata, and effort capability data consumed by
+  `pij models`, peer spawn, and agent spawn.
+- Warn-don't-block model/effort validation and harness-specific spawn effort translation.
 
 ## Boundary Excludes
 
 - The pi in-process inject (`pi.sendUserMessage`) — stays in `pij-messaging`'s thin receiver.
 - The wire framing / receipts / event-stream contracts — owned by `pij-messaging`.
 - User-file watching — owned by `file-watch-notify`.
+- Provider-prefix normalization for registry validation; matching remains against the supplied
+  registry id, while Pi continues to pass provider-prefixed model ids through unchanged.
+- Live harness usability guarantees for best-effort aliases; `verified:false` entries require a
+  first-use canary.
 
 ## Dependencies
 
@@ -103,6 +118,7 @@ thin receiver). Plan 019.
 | `pij-messaging` | extend | `SessionDescriptor`, `Result`, the five ports, `deriveSelfId`/`resolveSelf`, `FsChannel`/registry layout. |
 | `extension-authoring-harness` | consume | `harness/driver/tmux.ts` primitives (now re-exported from the shared lib); vitest/Biome/Driver smoke. |
 | tmux + `claude` CLI | consume (impure) | `split-window -P`, `send-keys`, `capture-pane`; Claude Code v2.1.x footer/transcript surface. |
+| Pi/Codex user configuration | consume (impure) | `~/.pi/agent/models.json` provider models/overrides and the top-level model in `~/.codex/config.toml`; unreadable sources degrade to curated aliases. |
 
 ### Domains That Depend On This
 
@@ -127,3 +143,4 @@ thin receiver). Plan 019.
 | 043-telegram-last-speaker-routing | Replaced inbound sticky fallback with strict per-chat last-speaker routing observed at the first successful non-receipt Telegram send. Reply/name precedence, captionless media, threading, and sender tags remain; `/tail` now explicitly uses separate selected-target state, and both maps reset with the bridge process. | 2026-07-12 |
 | 043-telegram-last-speaker-routing / R8 | Added stable sender repository context to every agent-originated Telegram text/media bubble: `[pij-id] [repo]` on `main`, `[pij-id] [repo/branch]` otherwise. Resolution uses the sender descriptor folder, git common-dir identity, and bounded injected subprocess effects; failures preserve the original sender tag. | 2026-07-12 |
 | 041-pij-inbox-no-tmux | Replaced tmux delete-on-consume/raw scans with marker-aware retained history, post-outcome read markers, event-before-marker receipt handling, and explicit pull non-ownership at every daemon gate. | 2026-07-12 |
+| 045-copilot-5-6-effort-levels | Corrected the exact Copilot GPT-5.6 trio to `none, low, medium, high, xhigh, max` at provider-guarded Pi parsing and Copilot fallback construction. Preserved raw/clone projections, `verified:false` fallback semantics, warn-don't-block validation, unrelated-provider data, and existing harness effort translation. | 2026-07-13 |

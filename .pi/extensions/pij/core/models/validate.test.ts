@@ -1,7 +1,7 @@
 // pij-control-plane — validateModel + spawn warn-don't-block tests (T005).
 
 import { describe, expect, it } from "vitest";
-import type { ModelEntry } from "./registry.js";
+import { type ModelEntry, parseModelsJson } from "./registry.js";
 import { type ValidationResult, validateEffort, validateModel } from "./validate.js";
 
 const KNOWN: ModelEntry[] = [
@@ -70,6 +70,20 @@ const LEVELED: ModelEntry[] = [
 	{ id: "sonnet", name: "Claude Sonnet", provider: "claude", verified: false }, // no level data
 ];
 
+const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
+const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+const GPT56_ENTRIES = parseModelsJson({
+	providers: {
+		"github-copilot": {
+			models: GPT56_IDS.map((id) => ({
+				id,
+				reasoning: true,
+				thinkingLevelMap: { xhigh: "xhigh", max: "max" },
+			})),
+		},
+	},
+});
+
 describe("validateEffort", () => {
 	it("ok when the effort is one of the model's levels (case-insensitive)", () => {
 		expect(validateEffort("high", "fugu", LEVELED).ok).toBe(true);
@@ -93,5 +107,23 @@ describe("validateEffort", () => {
 	it("ok when no effort requested or no model given", () => {
 		expect(validateEffort("", "fugu", LEVELED).ok).toBe(true);
 		expect(validateEffort("high", undefined, LEVELED).ok).toBe(true);
+	});
+
+	it.each(GPT56_IDS)("validates the shared registry by exact bare id: %s", (id) => {
+		expect(validateModel(id, GPT56_ENTRIES).ok).toBe(true);
+	});
+
+	it.each(
+		GPT56_IDS.flatMap((id) => GPT56_LEVELS.map((level) => [id, level] as const)),
+	)("accepts GPT-5.6 effort %s:%s", (id, level) => {
+		expect(validateEffort(level, id, GPT56_ENTRIES).ok).toBe(true);
+	});
+
+	it.each(GPT56_IDS)("rejects unsupported minimal for %s with the exact level list", (id) => {
+		expect(validateEffort("minimal", id, GPT56_ENTRIES)).toEqual({
+			ok: false,
+			unsupported: true,
+			levels: GPT56_LEVELS,
+		});
 	});
 });

@@ -53,10 +53,11 @@
 
 0. **Fresh clone / new machine: `just install`** — single-command
    bootstrap. Installs deps, installs/updates official Pi from npm, syncs
-   `.pi/APPEND_SYSTEM.md` + `.pi/mcp.json` to `~/.pi/agent/`, symlinks
-   local extensions globally, installs every vetted manifest package, then
-   runs `just pi-doctor` to verify. Re-run any time pi's global state drifts
-   (after `pi update`, after switching machines).
+   `.pi/APPEND_SYSTEM.md`, `.pi/mcp.json`, and the managed providers from
+   `.pi/models.json` to `~/.pi/agent/`, symlinks local extensions globally,
+   installs every vetted manifest package, then runs `just pi-doctor` to
+   verify. Re-run any time pi's global state drifts (after `pi update`, after
+   switching machines).
 1. New extension: **`just new <name>`** — never hand-roll the T2
    boilerplate.
 2. Iterate: `pi` from pij root + `/reload`. Type-check in another tab
@@ -90,10 +91,10 @@
   but is silently ignored.)
 - **`just update-pi`** — installs/updates the official pi binary from npm
   (`@earendil-works/pi-coding-agent@latest`) and re-applies pij's global
-  harness state: prefs/MCP sync, `just link`, vetted package bootstrap,
-  `pi update --extensions`, and `just pi-doctor`. Always update pi through
-  this recipe so the global CLI stays official while pij's local extensions
-  and config remain globally visible.
+  harness state: prefs/MCP sync, portable model sync, `just link`, vetted
+  package bootstrap, `pi update --extensions`, and `just pi-doctor`. Always
+  update pi through this recipe so the global CLI stays official while pij's
+  local extensions and config remain globally visible.
 - **`just pi-doctor`** — read-only audit of pi's global state: binary
   version, extension symlinks at the correct path, packages in
   `~/.pi/agent/settings.json`, and MCP servers in `~/.pi/agent/mcp.json`.
@@ -102,9 +103,9 @@
   `.pi/packages.yaml` (source of truth) → `.pi/settings.json#packages`
   (generated). Subcommands: `list` / `add <src> [note...]` / `enable <s>`
   / `disable <s>` (runs `pi remove`) / `sync`.
-- **Global pi prefs and MCP config** are checked into pij as the
-  source of truth — `just install` syncs them out to the global
-  agent dir on every run:
+- **Global pi prefs, MCP config, and portable models** are checked into pij as
+  sources of truth — `just install` syncs them out to the global agent dir on
+  every run:
     - `.pi/APPEND_SYSTEM.md` → `~/.pi/agent/APPEND_SYSTEM.md`
       (voice-input rules, response-mode prefs, SQL prefs, etc. —
       personal, applies to every pi session on the machine).
@@ -112,10 +113,17 @@
       MCP servers). Config holds env-var references like
       `${PERPLEXITY_API_KEY}`, never plaintext secrets — the actual key
       lives in `~/.zshenv`.
+    - `.pi/models.json` → the `github-copilot`, `sakana`, and `openrouter`
+      objects in `~/.pi/agent/models.json`. `just sync-models` replaces those
+      three objects exactly while preserving `local` and every other unmanaged
+      provider. The source may reference auth lookup commands, but resolved
+      credentials, `auth.json`, skills, and machine-local providers stay out of
+      Git.
   Per-project pi-specific MCP overrides would still go in `.pi/mcp.json`
   (which is what pij has — and `just install` reuses that file as the
-  global template). Don't edit `~/.pi/agent/*` by hand; edit `.pi/*` here
-  and re-run `just install`.
+  global template). Edit repo-managed values under `.pi/` and re-run
+  `just install` or `just sync-models`; use the global models file only for
+  machine-local providers that must remain outside repository ownership.
 - **`agents/extension-validator/`** — minih agent pack that drives the
   Driver SDK to validate extensions; used in plan-004 pilot flow.
 - **Engineering harness (`harness` CLI + `.harness/`)** — pij has adopted the

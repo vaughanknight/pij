@@ -96,7 +96,154 @@ ok "CLI-verb coverage scanned"
 dups=$(grep -rl '^### C[0-9] — ' "$SKILL" --include='*.md' 2>/dev/null | grep -v '00-routing.md' || true)
 [ -n "$dups" ] && err "dup-prose: convention headings outside 00-routing.md: $dups" || ok "dup-prose: conventions single-owner"
 
-# 6. prime payload: exact tree + every relative markdown pointer resolves.
+# 6. completion-first compaction: root interrupt, C3 ownership, pair order, and C7 delivery.
+root_skill="$SKILL/SKILL.md"
+routing="$SKILL/references/00-routing.md"
+pair_route="$SKILL/references/routes/pair.md"
+
+section() {
+  file=$1
+  heading=$2
+  awk -v heading="$heading" '
+    $0 == heading { found=1; print; next }
+    found && /^##[#]? / { exit }
+    found { print }
+  ' "$file"
+}
+
+completion_marker() {
+  file=$1
+  marker=$2
+  label=$3
+  if [ -f "$file" ] && grep -Fq "$marker" "$file"; then
+    ok "$label"
+  else
+    err "$label — missing '$marker' in $file"
+  fi
+}
+
+require_count() {
+  file=$1
+  marker=$2
+  expected=$3
+  label=$4
+  count=$(grep -Fc "$marker" "$file" 2>/dev/null || true)
+  [ "$count" -eq "$expected" ] \
+    && ok "$label" \
+    || err "$label — expected $expected occurrence(s) of '$marker' in $file, found $count"
+}
+
+require_order() {
+  file=$1
+  label=$2
+  shift 2
+  previous=0
+  for marker in "$@"; do
+    line=$(grep -nF "$marker" "$file" | head -1 | cut -d: -f1 || true)
+    if [ -z "$line" ]; then
+      err "$label — missing '$marker'"
+      return
+    elif [ "$line" -le "$previous" ]; then
+      err "$label — '$marker' is out of order"
+      return
+    fi
+    previous=$line
+  done
+  ok "$label"
+}
+
+reject_compact_progress_gate() {
+  contract=$1
+  label=$2
+  hits=$(printf '%s\n' "$contract" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[.!?;]+/\n/g; s/[[:space:]]+(but|however)[[:space:]]+/\n/g' \
+    | grep -Ev '(never|do not|don.t|without)[^.!?;]*(wait|block|gate|delay|require|depend)' \
+    | grep -E '(receipt|executed[[:space:]]*:[[:space:]]*`?true|acknowledg|confirmation|compact(ion)?.*(complete|completion|finish|done|return|confirm|ack|deliver|succeed)|(complete|completion|finish|done|return|confirm|ack|deliver)[[:space:]]+(of|from)[[:space:]]+(the[[:space:]]+)?compact(ion)?)' \
+    | grep -E '(wait|until|before|after|once|block|gate|delay|require|depend|must.*(arrive|complete|confirm|ack))' \
+    | grep -E '(report|review|fix|next[- ]pointer|progress|continue|proceed|dispatch|handle|process|advance)' \
+    || true)
+  if [ -n "$hits" ]; then
+    err "$label — compact receipt/completion cannot gate progress"
+  else
+    ok "$label"
+  fi
+}
+
+require_count "$root_skill" "**Completion interrupt**" 1 \
+  "completion root: exactly one always-loaded interrupt"
+completion_marker "$root_skill" "§ C3 owns the lifecycle boundary and command contract." \
+  "completion root: interrupt points to C3"
+completion_marker "$root_skill" "**Delivery-owned waiting**" \
+  "completion root: delivery-owned waiting invariant preserved"
+completion_marker "$root_skill" 'non-tmux external peers block on `pij inbox --wait`' \
+  "completion root: external inbox waiting preserved"
+completion_marker "$root_skill" 'Never sit in a `pij state` wait loop.' \
+  "completion root: state wait loop forbidden"
+
+require_count "$routing" "### C3 — Compact discipline (early, not late)" 1 \
+  "completion C3: exactly one convention owner"
+c3=$(section "$routing" '### C3 — Compact discipline (early, not late)')
+for marker in \
+  "reusable/live" \
+  "first tool action" \
+  "30–90s compact latency overlaps" \
+  "fire-and-forget" \
+  'without `--wait`' \
+  "Continue immediately" \
+  'one-shot `--once`' \
+  '`E-DEAD`' \
+  "observe-only diagnostics, never progress gates" \
+  "compact, keep, reuse"; do
+  printf '%s\n' "$c3" | grep -Fq "$marker" \
+    && ok "completion C3: $marker" \
+    || err "completion C3: missing '$marker'"
+done
+printf '%s\n' "$c3" \
+  | grep -Eq '`pij send [^`]*(--command compact|"/compact")[^`]*--wait[^`]*`' \
+  && err "completion C3: compact command must not include --wait" \
+  || ok "completion C3: compact command is non-blocking"
+reject_compact_progress_gate "$c3" \
+  "completion C3: no additive receipt/completion progress gate"
+
+require_count "$pair_route" "## Completion interrupt — compact EARLY" 1 \
+  "completion pair: exactly one compact-early block"
+require_order "$pair_route" "completion pair: coder compact precedes report handling" \
+  "**Coder completion**" "compact the coder FIRST" "handle the report"
+require_order "$pair_route" "completion pair: reviewer compact precedes verdict handling" \
+  "**Reviewer verdict**" "compact the reviewer FIRST" 'follow the `FIX` or `APPROVE` path'
+require_order "$pair_route" "completion pair: reload-first safety precedes compact" \
+  "**Buggy-extension safety**" "reload FIRST" "then compact"
+pair_completion=$(section "$pair_route" '## Completion interrupt — compact EARLY')
+printf '%s\n' "$pair_completion" | grep -Fq 'without `--wait`' \
+  && ok "completion pair: compact dispatch forbids --wait" \
+  || err "completion pair: missing no-compact-wait marker"
+printf '%s\n' "$pair_completion" | grep -Fq "continue immediately" \
+  && ok "completion pair: report/review/fix work continues immediately" \
+  || err "completion pair: missing immediate-continuation marker"
+printf '%s\n' "$pair_completion" | grep -Fq "Never wait for compact receipts or completion" \
+  && ok "completion pair: compact receipt/completion cannot gate progress" \
+  || err "completion pair: missing no-receipt-gate marker"
+printf '%s\n' "$pair_completion" \
+  | grep -Eq '`pij send [^`]*(--command compact|"/compact")[^`]*--wait[^`]*`' \
+  && err "completion pair: compact command must not include --wait" \
+  || ok "completion pair: compact command is non-blocking"
+reject_compact_progress_gate "$pair_completion" \
+  "completion pair: no additive receipt/completion progress gate"
+
+c7=$(section "$routing" '### C7 — Push when owned; block on inbox when pull-owned')
+for marker in \
+  "pi/tmux push modes" \
+  'never poll `pij state`' \
+  "external pull mode" \
+  '`pij inbox --wait`' \
+  "This blocking inbox read is the delivery primitive"; do
+  printf '%s\n' "$c7" | grep -Fq "$marker" \
+    && ok "completion C7: $marker" \
+    || err "completion C7: missing '$marker'"
+done
+
+# 7. prime payload: exact tree + every relative markdown pointer resolves.
 prime_required=(
   "$SKILL/references/routes/prime.md"
   "$SKILL/references/prime/orchestrator.md"
@@ -138,7 +285,7 @@ check_links "$SKILL/references/routes/prime.md"
 while IFS= read -r f; do check_links "$f"; done < <(find "$SKILL/references/prime" -type f -name '*.md' | sort)
 ok "prime pointer-integrity scanned"
 
-# 7. stream-orchestrator route, ordered journey, and lifecycle markers.
+# 8. stream-orchestrator route, ordered journey, and lifecycle markers.
 orchestrator="$SKILL/references/prime/orchestrator.md"
 prime_route="$SKILL/references/routes/prime.md"
 
@@ -358,7 +505,7 @@ require_marker "docs/how/pij-prime.md" "/builder 8 ship" \
 require_marker "docs/domains/pij-skill/domain.md" "Stream Orchestrator Landing" \
   "pij-skill domain: names orchestrator landing concept"
 
-# 8. frozen evidence expected by the route's provenance contract.
+# 9. frozen evidence expected by the route's provenance contract.
 for f in \
   bootstrap.md encode-candidates.md kickoff-runbook.md map.md \
   orient-local.secondcrack.md pij-prime-answers-r1.md \
@@ -369,7 +516,7 @@ for f in \
     || err "prime evidence missing: docs/plans/035-o-prime-routing-skill/vendored/$f"
 done
 
-# 9. runtime payload must stand alone after the transitional source repo disappears.
+# 10. runtime payload must stand alone after the transitional source repo disappears.
 severance_paths=("$SKILL")
 [ -f docs/how/pij-prime.md ] && severance_paths+=(docs/how/pij-prime.md)
 # local-path-check: allow -- literal is the forbidden transitional source path.

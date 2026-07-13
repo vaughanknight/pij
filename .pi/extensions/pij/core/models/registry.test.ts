@@ -39,6 +39,43 @@ const PI_JSON = {
 	},
 };
 
+const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
+const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+const PI_GPT56_JSON = {
+	providers: {
+		"github-copilot": {
+			models: [
+				{
+					id: "gpt-5.6-sol",
+					reasoning: true,
+					thinkingLevelMap: { xhigh: "xhigh", max: "max" },
+				},
+				{ id: "gpt-5.6-terra", reasoning: true, thinkingLevelMap: { high: "high" } },
+				{
+					id: "gpt-5.6-preview",
+					reasoning: true,
+					thinkingLevelMap: { medium: "medium", high: "high" },
+				},
+			],
+			modelOverrides: {
+				"gpt-5.6-luna": {
+					reasoning: true,
+					thinkingLevelMap: { xhigh: "xhigh" },
+				},
+			},
+		},
+		sakana: {
+			models: [
+				{
+					id: "gpt-5.6-sol",
+					reasoning: true,
+					thinkingLevelMap: { high: "high" },
+				},
+			],
+		},
+	},
+};
+
 describe("parseModelsJson", () => {
 	it("extracts models from all providers", () => {
 		const entries = parseModelsJson(PI_JSON);
@@ -94,6 +131,27 @@ describe("parseModelsJson", () => {
 		expect(parseModelsJson(undefined)).toEqual([]);
 		expect(parseModelsJson("bad")).toEqual([]);
 	});
+
+	it("corrects only the exact GPT-5.6 trio under the github-copilot provider", () => {
+		const entries = parseModelsJson(PI_GPT56_JSON);
+		for (const id of GPT56_IDS) {
+			const entry = entries.find(
+				(candidate) => candidate.provider === "github-copilot" && candidate.id === id,
+			);
+			expect(entry?.reasoning).toBe(true);
+			expect(entry?.levels).toEqual(GPT56_LEVELS);
+		}
+		expect(
+			entries.find(
+				(candidate) =>
+					candidate.provider === "github-copilot" && candidate.id === "gpt-5.6-preview",
+			)?.levels,
+		).toEqual(["medium", "high"]);
+		expect(
+			entries.find((candidate) => candidate.provider === "sakana" && candidate.id === "gpt-5.6-sol")
+				?.levels,
+		).toEqual(["high"]);
+	});
 });
 
 describe("copilotSeedFromPi", () => {
@@ -112,6 +170,19 @@ describe("copilotSeedFromPi", () => {
 	it("returns empty array when github-copilot section is absent", () => {
 		expect(copilotSeedFromPi({ providers: {} })).toEqual([]);
 		expect(copilotSeedFromPi(null)).toEqual([]);
+	});
+
+	it("preserves the corrected GPT-5.6 levels on Copilot seed clones", () => {
+		const entries = copilotSeedFromPi(PI_GPT56_JSON);
+		for (const id of GPT56_IDS) {
+			expect(entries.find((entry) => entry.id === id)).toMatchObject({
+				id,
+				provider: "copilot",
+				verified: true,
+				reasoning: true,
+				levels: GPT56_LEVELS,
+			});
+		}
 	});
 });
 
@@ -179,6 +250,8 @@ describe("copilotSnapshot", () => {
 		for (const e of snap) {
 			expect(e.provider).toBe("copilot");
 			expect(e.verified).toBe(false); // best-effort until canaried
+			expect(e.reasoning).toBe(true);
+			expect(e.levels).toEqual(GPT56_LEVELS);
 		}
 	});
 });
