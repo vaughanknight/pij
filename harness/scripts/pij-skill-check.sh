@@ -519,6 +519,7 @@ done
 # 10. runtime payload must stand alone after the transitional source repo disappears.
 severance_paths=("$SKILL")
 [ -f docs/how/pij-prime.md ] && severance_paths+=(docs/how/pij-prime.md)
+# local-path-check: allow -- literal is the forbidden transitional source path.
 leaks=$(grep -rIl '/Users/jordanknight/games/SecondCrack' "${severance_paths[@]}" 2>/dev/null || true)
 [ -n "$leaks" ] && err "prime portability: transitional SecondCrack path leaked into runtime docs: $leaks" \
                   || ok "prime portability: transitional source path severed"

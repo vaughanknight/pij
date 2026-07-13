@@ -66,8 +66,9 @@
 4. Smoke: `just smoke` before merging.
 5. **Before declaring any task done — or before ship — run `harness checks`.**
    The engineering-harness gate: it runs the full deterministic **signal
-   inventory** (typecheck → lint → test → smoke → `pkg audit` with
-   `PIJ_VET_SKIP_AGENT=1` → `snapshots-check`) as individual stages and reports a
+   inventory** (local-path portability → typecheck → lint → test → smoke →
+   `pkg audit` with `PIJ_VET_SKIP_AGENT=1` → `snapshots-check`) as individual
+   stages and reports a
    per-sensor verdict — and unlike `just self-check` it runs **all** sensors, so
    one invocation surfaces every failure (`--quick` skips heavy smoke for a fast
    static+unit gate). It mirrors `just self-check` (the same composite, run
