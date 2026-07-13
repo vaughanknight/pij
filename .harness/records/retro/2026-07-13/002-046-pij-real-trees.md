@@ -47,5 +47,4 @@ system:
 # Retro — 046 pij real trees
 
 Detailed timings, failed approaches, permanent encodings, and the eight prime-captured
-observations are mirrored in
-`docs/plans/046-pij-real-trees/reports/t012-ship-retro.md`.
+observations are mirrored in `reports/t012-ship-retro.md`.
