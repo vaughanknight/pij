@@ -524,6 +524,27 @@
           "comments"
         ]
       }
+    },
+    {
+      "id": "STA-019",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:02:30.496Z",
+      "details": {
+        "node": "wi-041",
+        "from": "in_flight",
+        "to": "done"
+      }
+    },
+    {
+      "id": "CUR-003",
+      "kind": "cursor-moved",
+      "origin": "engine",
+      "fired_at": "2026-07-13T00:02:32.821Z",
+      "details": {
+        "from": "wi-041",
+        "to": "wi-copilot-effort-advertisement"
+      }
     }
   ],
   "nodes": [
@@ -591,10 +612,11 @@
       "id": "wi-041",
       "type": "work-item",
       "label": "pij inbox without tmux (plan 041)",
-      "status": "in_flight",
+      "status": "done",
       "next": [],
       "created_at": "2026-07-12T09:40:56.033Z",
-      "modified_at": "2026-07-12T09:40:56.033Z"
+      "modified_at": "2026-07-13T00:02:30.496Z",
+      "ran_at": "2026-07-13T00:02:30.496Z"
     },
     {
       "id": "wi-042",
@@ -724,8 +746,8 @@
     }
   ],
   "nav": {
-    "now": "wi-041",
-    "next": "wi-043",
-    "intent": "Prioritize s041 Phase 3 delivery while s043 closes R8 under merge hold"
+    "now": "wi-copilot-effort-advertisement",
+    "next": "wi-046",
+    "intent": "Ship effort-level correction while real-trees, portable-models, and supply-chain streams pipeline in parallel"
   }
 }

@@ -1,11 +1,11 @@
 # Baton book
-**Writer**: pij-primary-carp (o-prime; single writer) · **Updated**: 2026-07-12T09:40:00Z
+**Writer**: pij-primary-carp (o-prime; single writer) · **Updated**: 2026-07-13T07:26:00Z
 Request: `pij send pij-primary-carp "baton-request <baton> — <purpose>"`. Grants are pushed. One holder; the book binds the o-prime too.
 
 | Baton | Resource + free probe | Holder | Since | Purpose | Queue |
 |---|---|---|---|---|---|
 | daemon-restart | The machine-wide pij daemon (restart interrupts delivery for EVERY live peer, all repos) · probe: `pij daemon status` | — free | — | — | — |
-| git-index | This repo's staging area + local commits · probe: `git diff --cached --quiet` exits 0 | **pij-primary-carp (o-prime)** · lease-f8d30f0b | 2026-07-12T23:53Z | Government snapshot + non-rewriting origin/main merge | — |
+| git-index | This repo's staging area + local commits · probe: `git diff --cached --quiet` exits 0 | **pij-primary-carp** · `lease-4bf86702-042a-4d1d-b9c3-c68c7aabb124` | 2026-07-13T07:26Z | government snapshot + non-rewriting PR15/17 main reconciliation + skill deployment | — |
 | push-main | `git push` to main (shared trunk) · probe: no unpushed release-bearing commits | — free | — | — | — |
 | cli-ts-window | `.pi/extensions/pij/cli.ts` edit window (SW-3 serialized surface) · probe: `git diff --name-only .pi/extensions/pij/cli.ts` empty | **pij-aa756x (s037)** — pushed 11:26Z after s036's commit closed its hold | 2026-07-11T11:26Z | T004 polling change; FIRST ACT (ruled): bin bridge cli.ts:1959 vs reshaped wait-follow union | — |
 
@@ -16,6 +16,10 @@ Request: `pij send pij-primary-carp "baton-request <baton> — <purpose>"`. Gran
 _Append only: ISO · baton · holder · action — note._
 
 ```text
+- 2026-07-13T07:26:00Z · git-index · pij-primary-carp (o-prime) · GRANTED via primitive with repin — request-b2cf8b80-4dce-400c-b1fe-a8476b2c50a1 → lease-4bf86702-042a-4d1d-b9c3-c68c7aabb124, blocked=6s. Scope: exact government snapshot, ordinary origin/main merge, preserve unrelated dirt, deploy/verify shared skill links.
+- 2026-07-13T00:05:00Z · daemon-restart · pij-primary-carp (o-prime) · RETURNED — lease-bf5c0a3e FREE. Canonical main daemon pid 92943/@916, source main daemon.ts; skill/global CLI main links verified; merged identity guard suites 99/99 pass. DONE-NOTICE + SPAWN FREEZE lift broadcast.
+- 2026-07-13T00:03:00Z · daemon-restart · pij-primary-carp (o-prime) · PRE-GRANT VERIFIED / AUTHORIZED — request-06dc438b-d077-4ae4-8a02-293dae2acbee; move daemon from s041 worktree pid 67500 to canonical merged main. Skill/CLI main links verified; baton free. Broadcast SPAWN FREEZE first. Return: main daemon pid/source + inbox identity guard smoke + freeze lift.
+- 2026-07-13T00:02:00Z · git-index · pij-primary-carp (o-prime) · RETURNED — lease-f8d30f0b FREE. Government snapshot 2a9e688; s043 alignment b2cde9e; non-rewriting main merge d5108cc; origin/main 1336291 ancestor; Seq138 preserved; index empty; skill/global CLI relinked to canonical main. No push.
 - 2026-07-12T23:53:00Z · git-index · pij-primary-carp (o-prime) · GRANTED via primitive — request-a6f84464-f460-48b6-ad05-993d37825cb0 → lease-f8d30f0b-656d-4c0f-81a9-18e326ef1fba, blocked=10s. Exact snapshot/merge/no-push scope per Seq138.
 - 2026-07-12T23:52:00Z · git-index · pij-primary-carp (o-prime) · PRE-GRANT AUTHORIZED — preserve exact live government/records snapshot before non-rewriting merge of origin/main PR #9. Index currently empty. Pathspec excludes prompt-lab and unrelated docs/reports. Hold covers snapshot commit + origin/main merge/conflict resolution + verification; no push.
 - 2026-07-12T21:04:00Z · daemon-restart · pij-concrete-reptile (s041) · RETURNED — lease-f46643fc FREE. Reviewed daemon pid 67500 from s041 worktree; genuine non-tmux Terra medium receiver got tmux message exactly once; retained envelope + post-consumption marker + atomic terminal receipt event/envelope/marker verified; sender wait delivered; replacement client exited. DONE-NOTICE + SPAWN FREEZE lift broadcast.
