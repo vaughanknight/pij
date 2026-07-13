@@ -1,0 +1,19 @@
+whoami:
+pij session: pij-condemned-cockroach
+folder:      /Users/jordanknight/pi-hacking/pij
+data dir:    /Users/jordanknight/.pij/pij-condemned-cockroach
+state:       working
+
+current subtree:
+
+prime subtree:
+P pij-primary-carp  done/active/bound
+    pij-condemned-cockroach  working/active/bound
+      pij-concrete-roadrunner  done/active/bound
+        pij-minimal-whale  done/active/bound
+    pij-pregnant-dragon  done/active/—
+
+daemon:
+running (pid 320, window @1102); pij-daemon window(s): @1102
+
+  320 /opt/homebrew/Cellar/node/24.7.0/bin/node --require /Users/jordanknight/pi-hacking/pij-canonical-deploy/node_modules/tsx/dist/preflight.cjs --import file:///Users/jordanknight/pi-hacking/pij-canonical-deploy/node_modules/tsx/dist/loader.mjs /Users/jordanknight/pi-hacking/pij-canonical-deploy/.pi/extensions/pij/daemon.ts

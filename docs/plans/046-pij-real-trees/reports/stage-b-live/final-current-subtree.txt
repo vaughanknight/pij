@@ -1,0 +1,4 @@
+self=pij-condemned-cockroach
+  pij-condemned-cockroach  working/active/bound [filtered-parent:pij-primary-carp]
+    pij-concrete-roadrunner  done/active/bound
+      pij-minimal-whale  done/active/bound

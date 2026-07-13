@@ -1,0 +1,53 @@
+{
+  "id": "pij-condemned-cockroach",
+  "changedKeys": [
+    "lastEventAt",
+    "lastTickAt",
+    "parentId"
+  ],
+  "beforeParent": null,
+  "afterParent": "pij-primary-carp",
+  "beforeSpawnedBy": null,
+  "afterSpawnedBy": null
+}
+{
+  "id": "pij-pregnant-dragon",
+  "changedKeys": [
+    "parentId"
+  ],
+  "beforeParent": null,
+  "afterParent": "pij-primary-carp",
+  "beforeSpawnedBy": null,
+  "afterSpawnedBy": null
+}
+{
+  "id": "pij-concrete-roadrunner",
+  "changedKeys": [
+    "lastTickAt",
+    "parentId"
+  ],
+  "beforeParent": null,
+  "afterParent": "pij-condemned-cockroach",
+  "beforeSpawnedBy": null,
+  "afterSpawnedBy": null
+}
+{
+  "id": "pij-minimal-whale",
+  "changedKeys": [
+    "lastTickAt"
+  ],
+  "beforeParent": null,
+  "afterParent": null,
+  "beforeSpawnedBy": "pij-concrete-roadrunner",
+  "afterSpawnedBy": "pij-concrete-roadrunner"
+}
+{
+  "id": "pij-primary-carp",
+  "changedKeys": [
+    "lastTickAt"
+  ],
+  "beforeParent": null,
+  "afterParent": null,
+  "beforeSpawnedBy": null,
+  "afterSpawnedBy": null
+}
