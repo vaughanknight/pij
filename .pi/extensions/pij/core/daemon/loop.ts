@@ -145,8 +145,8 @@ export function observeActivity(
 const APPEND_ONLY_EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
 
 /** Mutable external fields are always latest-disk-authoritative when present.
- *  `prime:false` is meaningful state, so truthiness/fill-only merging is wrong. */
-const MUTABLE_EXTERNALLY_OWNED_FIELDS = ["prime"] as const;
+ *  `prime:false` and `oldPrime:false` are meaningful state, so truthiness/fill-only merging is wrong. */
+const MUTABLE_EXTERNALLY_OWNED_FIELDS = ["prime", "oldPrime", "parentId", "gitCommonDir"] as const;
 
 /** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
  *  writer stamped after this tick's index snapshot was taken. Re-reads the latest

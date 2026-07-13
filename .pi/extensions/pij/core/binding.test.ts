@@ -307,6 +307,49 @@ describe("restart-stable identity resolution (T029 / AC-15)", () => {
 		});
 		expect(reattached.failureReason).toBeUndefined();
 	});
+
+	it("refreshes repository identity while preserving structural parent, owner, and delivery metadata", () => {
+		const existing = bound({
+			harness: "codex",
+			harnessSessionId: "abcdef01-2222-4333-8444-555555555555",
+			transcriptPath: "/old/rollout.jsonl",
+			parentId: null,
+			gitCommonDir: "/old/.git",
+			spawnedBy: "pij-close-owner",
+			deliveryMode: "pull",
+		});
+		const refreshed = reattachIdentity(existing, {
+			harness: "codex",
+			harnessSessionId: "abcdef01-2222-4333-8444-555555555555",
+			folder: "/new",
+			pid: 99,
+			paneId: "%9",
+			transcriptPath: "/new/rollout.jsonl",
+			gitCommonDir: "/new/.git",
+		});
+		expect(refreshed).toMatchObject({
+			parentId: null,
+			gitCommonDir: "/new/.git",
+			spawnedBy: "pij-close-owner",
+			deliveryMode: "pull",
+			transcriptPath: "/new/rollout.jsonl",
+		});
+
+		expect(
+			reattachIdentity(refreshed, {
+				harness: "codex",
+				harnessSessionId: "abcdef01-2222-4333-8444-555555555555",
+				folder: "/newer",
+				pid: 100,
+				paneId: "%10",
+			}),
+		).toMatchObject({
+			parentId: null,
+			gitCommonDir: "/new/.git",
+			spawnedBy: "pij-close-owner",
+			deliveryMode: "pull",
+		});
+	});
 });
 
 describe("creator notices", () => {

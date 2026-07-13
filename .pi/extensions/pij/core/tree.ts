@@ -1,0 +1,270 @@
+import {
+	err,
+	ok,
+	type Result,
+	type SessionDescriptor,
+	type SessionForest,
+	type SessionId,
+	type SessionTreeNode,
+	type TreeFilters,
+	type TreeProblem,
+	type TreeProjectionOptions,
+	type TreeSession,
+} from "./types.js";
+
+export function effectiveParent(descriptor: SessionDescriptor): SessionId | null {
+	return descriptor.parentId !== undefined ? descriptor.parentId : (descriptor.spawnedBy ?? null);
+}
+
+export function planLink(
+	descriptors: readonly SessionDescriptor[],
+	childId: SessionId,
+	parentId: SessionId | null,
+): Result<SessionDescriptor> {
+	const byId = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+	const child = byId.get(childId);
+	if (!child) return err("E-NOID", `no session '${childId}' in registry`);
+	if (parentId === childId) return err("E-SELF", `session '${childId}' cannot parent itself`);
+	if (parentId !== null && !byId.has(parentId)) {
+		return err("E-NOID", `no parent session '${parentId}' in registry`);
+	}
+
+	const updated = { ...child, parentId };
+	if (parentId !== null) {
+		const visited = new Set<SessionId>();
+		let cursor: SessionId | null = parentId;
+		while (cursor !== null) {
+			if (cursor === childId) {
+				return err("E-ARG", `link '${childId}' → '${parentId}' would create a cycle`);
+			}
+			if (visited.has(cursor)) {
+				return err("E-ARG", `parent chain for '${parentId}' already contains a cycle`);
+			}
+			visited.add(cursor);
+			const descriptor = byId.get(cursor);
+			if (!descriptor) break;
+			cursor = effectiveParent(descriptor);
+		}
+	}
+
+	return ok(updated);
+}
+
+export function projectSessionForest(
+	sessions: readonly TreeSession[],
+	options: TreeProjectionOptions = {},
+): Result<SessionForest> {
+	const byId = new Map<SessionId, TreeSession>();
+	for (const session of sessions) byId.set(session.descriptor.id, session);
+
+	const selected = options.selectedIds
+		? new Set(options.selectedIds.filter((id) => byId.has(id)))
+		: new Set(byId.keys());
+
+	if (options.rootId !== undefined) {
+		if (!byId.has(options.rootId) || !selected.has(options.rootId)) {
+			return err("E-NOID", `no session '${options.rootId}' in selected tree`);
+		}
+		const descendants = descendantsOf(options.rootId, selected, byId);
+		selected.clear();
+		for (const id of descendants) selected.add(id);
+	}
+
+	const visible = new Set<SessionId>();
+	for (const id of selected) {
+		const session = byId.get(id);
+		if (session && matchesFilters(session, options.filters)) visible.add(id);
+	}
+
+	const children = new Map<SessionId, SessionId[]>();
+	const roots = new Map<SessionId, TreeProblem | undefined>();
+	for (const id of visible) {
+		const session = byId.get(id);
+		if (!session) continue;
+		const parentId = effectiveParent(session.descriptor);
+		if (parentId === null) {
+			roots.set(id, undefined);
+			continue;
+		}
+		if (!byId.has(parentId)) {
+			roots.set(id, "orphan");
+			continue;
+		}
+		if (!selected.has(parentId) || !visible.has(parentId)) {
+			roots.set(id, "filtered-parent");
+			continue;
+		}
+		const siblings = children.get(parentId) ?? [];
+		siblings.push(id);
+		children.set(parentId, siblings);
+	}
+	for (const siblings of children.values()) siblings.sort(compareIds);
+
+	const emitted = new Set<SessionId>();
+	const projectedRoots: SessionTreeNode[] = [];
+	for (const id of [...roots.keys()].sort(compareIds)) {
+		const node = renderNode(id, roots.get(id), undefined, byId, children, emitted);
+		if (node) projectedRoots.push(node);
+	}
+
+	for (const id of [...visible].sort(compareIds)) {
+		if (emitted.has(id)) continue;
+		const session = byId.get(id);
+		if (!session) continue;
+		const node = renderNode(
+			id,
+			"cycle",
+			effectiveParent(session.descriptor) ?? undefined,
+			byId,
+			children,
+			emitted,
+		);
+		if (node) projectedRoots.push(node);
+	}
+
+	return ok({ roots: projectedRoots });
+}
+
+function compareIds(a: SessionId, b: SessionId): number {
+	return a.localeCompare(b);
+}
+
+function descendantsOf(
+	rootId: SessionId,
+	selected: ReadonlySet<SessionId>,
+	byId: ReadonlyMap<SessionId, TreeSession>,
+): Set<SessionId> {
+	const children = new Map<SessionId, SessionId[]>();
+	for (const id of selected) {
+		const session = byId.get(id);
+		if (!session) continue;
+		const parentId = effectiveParent(session.descriptor);
+		if (parentId === null || !selected.has(parentId)) continue;
+		const siblings = children.get(parentId) ?? [];
+		siblings.push(id);
+		children.set(parentId, siblings);
+	}
+
+	const descendants = new Set<SessionId>();
+	const pending = [rootId];
+	while (pending.length > 0) {
+		const id = pending.shift();
+		if (id === undefined || descendants.has(id)) continue;
+		descendants.add(id);
+		for (const childId of children.get(id) ?? []) pending.push(childId);
+	}
+	return descendants;
+}
+
+function matchesFilters(session: TreeSession, filters: TreeFilters | undefined): boolean {
+	if (!filters) return !isHistorical(session);
+	const explicitHistoryFilter =
+		(filters.liveness?.length ?? 0) > 0 || (filters.lifecycle?.length ?? 0) > 0;
+	if (filters.all !== true && !explicitHistoryFilter && isHistorical(session)) return false;
+	if (filters.activity && !filters.activity.includes(session.activity)) return false;
+	if (filters.liveness && !filters.liveness.includes(session.liveness)) return false;
+	if (
+		filters.lifecycle &&
+		(session.descriptor.lifecycle === undefined ||
+			!filters.lifecycle.includes(session.descriptor.lifecycle))
+	) {
+		return false;
+	}
+	return true;
+}
+
+function isHistorical(session: TreeSession): boolean {
+	return (
+		session.liveness === "dead" ||
+		session.liveness === "dissolved" ||
+		session.descriptor.lifecycle === "dissolved"
+	);
+}
+
+interface RenderFrame {
+	id: SessionId;
+	session: TreeSession;
+	problem: TreeProblem | undefined;
+	cycleTo: SessionId | undefined;
+	childIds: readonly SessionId[];
+	nextChildIndex: number;
+	projectedChildren: SessionTreeNode[];
+}
+
+function renderNode(
+	id: SessionId,
+	problem: TreeProblem | undefined,
+	cycleTo: SessionId | undefined,
+	byId: ReadonlyMap<SessionId, TreeSession>,
+	children: ReadonlyMap<SessionId, readonly SessionId[]>,
+	emitted: Set<SessionId>,
+): SessionTreeNode | null {
+	const session = byId.get(id);
+	if (!session) return null;
+	emitted.add(id);
+	const active = new Set<SessionId>([id]);
+	const stack: RenderFrame[] = [
+		{
+			id,
+			session,
+			problem,
+			cycleTo,
+			childIds: children.get(id) ?? [],
+			nextChildIndex: 0,
+			projectedChildren: [],
+		},
+	];
+
+	while (stack.length > 0) {
+		const frame = stack.at(-1);
+		if (!frame) break;
+		const childId = frame.childIds[frame.nextChildIndex];
+		if (childId !== undefined) {
+			frame.nextChildIndex += 1;
+			const childSession = byId.get(childId);
+			if (!childSession) continue;
+			if (active.has(childId)) {
+				frame.projectedChildren.push(toNode(childSession, [], "cycle", childId));
+				continue;
+			}
+			emitted.add(childId);
+			active.add(childId);
+			stack.push({
+				id: childId,
+				session: childSession,
+				problem: undefined,
+				cycleTo: undefined,
+				childIds: children.get(childId) ?? [],
+				nextChildIndex: 0,
+				projectedChildren: [],
+			});
+			continue;
+		}
+
+		const node = toNode(frame.session, frame.projectedChildren, frame.problem, frame.cycleTo);
+		stack.pop();
+		active.delete(frame.id);
+		const parent = stack.at(-1);
+		if (!parent) return node;
+		parent.projectedChildren.push(node);
+	}
+
+	return null;
+}
+
+function toNode(
+	session: TreeSession,
+	children: readonly SessionTreeNode[],
+	problem?: TreeProblem,
+	cycleTo?: SessionId,
+): SessionTreeNode {
+	return {
+		...session.descriptor,
+		effectiveParentId: effectiveParent(session.descriptor),
+		activity: session.activity,
+		liveness: session.liveness,
+		...(problem !== undefined ? { problem } : {}),
+		...(cycleTo !== undefined ? { cycleTo } : {}),
+		children,
+	};
+}

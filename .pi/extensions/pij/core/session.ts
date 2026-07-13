@@ -80,6 +80,10 @@ export interface BootInput {
 	readonly harness?: "pi";
 	readonly harnessSessionId?: string;
 	readonly paneId?: string;
+	/** Structural parent from PIJ_PARENT_ID; null is an explicit root. */
+	readonly parentId?: SessionId | null;
+	/** Fresh canonical git common directory for this registration. */
+	readonly gitCommonDir?: string;
 	/** Presence-independent metadata restored when shutdown removed the descriptor. */
 	readonly durableDescriptor?: SessionDescriptor;
 	/** Startup/resume/new/fork replace a prior process incarnation; reload does not. */
@@ -155,6 +159,8 @@ export class PijSession {
 			// Runtime pane comes from this incarnation; creator relation is durable.
 			paneId: input.resetRuntimeState ? input.paneId : (input.paneId ?? existing?.paneId),
 			spawnedBy: existing?.spawnedBy,
+			...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+			...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
 		};
 		this.ports.registry.write(descriptor);
 		this.descriptor = descriptor;

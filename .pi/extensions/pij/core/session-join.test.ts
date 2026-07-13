@@ -28,6 +28,9 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 				harnessSessionId: "9a8f8be6-3670-4e5c-b43e-09f46fe4dfad",
 				boundModel: "gpt-5.5",
 				spawnedBy: "pij-parent",
+				parentId: "pij-structural-parent",
+				gitCommonDir: "/repo/.git",
+				prime: true,
 				lifecycle: "bound",
 			}),
 		]);
@@ -38,6 +41,10 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 				harnessSessionId: "9a8f8be6-3670-4e5c-b43e-09f46fe4dfad",
 				boundModel: "gpt-5.5",
 				spawnedBy: "pij-parent",
+				parentId: "pij-structural-parent",
+				gitCommonDir: "/repo/.git",
+				prime: true,
+				oldPrime: false,
 				lifecycle: "bound",
 			},
 		]);
@@ -52,6 +59,7 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 				harness: "codex",
 				harnessSessionId: "11111111-2222-3333-4444-555555555555",
 				transcriptPath: "/Users/jo/.codex/sessions/2026/07/04/rollout-x.jsonl",
+				oldPrime: true,
 				lifecycle: "bound",
 			}),
 		]);
@@ -60,6 +68,8 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 			harness: "codex",
 			harnessSessionId: "11111111-2222-3333-4444-555555555555",
 			transcriptPath: "/Users/jo/.codex/sessions/2026/07/04/rollout-x.jsonl",
+			prime: false,
+			oldPrime: true,
 			lifecycle: "bound",
 		});
 	});
@@ -72,6 +82,8 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 			pijId: "pij-pend",
 			harness: "claude",
 			harnessSessionId: null,
+			prime: false,
+			oldPrime: false,
 			lifecycle: "pending",
 		});
 		const r = rows[0] as object;
@@ -86,7 +98,20 @@ describe("buildSessionJoinRows (the telemetry join tuple, AC-1)", () => {
 			pijId: "pij-legacy",
 			harness: null,
 			harnessSessionId: null,
+			prime: false,
+			oldPrime: false,
 		});
+	});
+
+	it("retains explicit-root null while omitting an absent parent/repository", () => {
+		const rows = buildSessionJoinRows([
+			desc({ id: "pij-root", parentId: null }),
+			desc({ id: "pij-absent" }),
+		]);
+		expect(rows[0]).toMatchObject({ parentId: null, prime: false, oldPrime: false });
+		expect(Object.hasOwn(rows[0] as object, "gitCommonDir")).toBe(false);
+		expect(Object.hasOwn(rows[1] as object, "parentId")).toBe(false);
+		expect(Object.hasOwn(rows[1] as object, "gitCommonDir")).toBe(false);
 	});
 
 	it("preserves input order across multiple descriptors", () => {
@@ -114,6 +139,21 @@ describe("buildExportLines (eval-able self-identity, AC-5)", () => {
 				"export PIJ_ROLE='worker'",
 			].join("\n"),
 		);
+	});
+
+	it("prefers structural parent and lets explicit root suppress legacy spawnedBy", () => {
+		expect(
+			buildExportLines(
+				desc({
+					id: "pij-child",
+					parentId: "pij-structural-parent",
+					spawnedBy: "pij-close-owner",
+				}),
+			),
+		).toContain("export PIJ_PARENT_ID='pij-structural-parent'");
+		expect(
+			buildExportLines(desc({ id: "pij-root", parentId: null, spawnedBy: "pij-close-owner" })),
+		).toBe("export PIJ_SESSION_ID='pij-root'");
 	});
 
 	it("single-quotes and escapes embedded single quotes (eval-safe)", () => {
@@ -159,6 +199,7 @@ describe("dispatch('sessions') smoke", () => {
 		const rows = JSON.parse(res.stdout) as Array<Record<string, unknown>>;
 		expect(rows).toHaveLength(2);
 		expect(rows[0]).toMatchObject({ pijId: "pij-cop", harness: "copilot", boundModel: "gpt-5.5" });
+		expect(rows[0]).toMatchObject({ prime: false, oldPrime: false });
 		expect(rows[1]).toMatchObject({
 			pijId: "pij-cx",
 			harness: "codex",

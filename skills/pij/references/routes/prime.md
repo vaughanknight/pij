@@ -11,6 +11,9 @@ below it, and government as single-writer files.
 Use the first matching deterministic probe. Do not choose by persona or intent.
 Resolve the current id with `pij whoami --json`, then run
 `pij list --prime --here --json` and compare the `id` fields mechanically.
+`pij list --prime --here --json` is current-prime-only. `oldPrime` is history,
+never an active-seat signal; audit retired seats with
+`pij tree --global --all --json`.
 
 | Probe | Role | Load exactly this next |
 |---|---|---|

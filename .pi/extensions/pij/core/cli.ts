@@ -10,23 +10,38 @@
 
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
-import { filterByFolder, filterPrime, resolveSelf } from "./discovery.js";
+import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
-import type { DeliveryPort, EventLogPort, InboxPort, ProcessPort, RegistryPort } from "./ports.js";
+import type {
+	DeliveryPort,
+	EventLogPort,
+	InboxPort,
+	ProcessPort,
+	RegistryPort,
+	RepositoryIdentityPort,
+} from "./ports.js";
 import { daemonTickStatus } from "./receipts.js";
 import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
+import { planLink, projectSessionForest } from "./tree.js";
 import {
 	err,
+	type LivenessVerdict,
 	ok,
 	type PijErrorCode,
 	type PijEvent,
 	type ReceiptState,
 	type Result,
 	type SessionDescriptor,
+	type SessionForest,
 	type SessionId,
+	type SessionLifecycle,
+	type SessionTreeNode,
+	type TreeActivity,
+	type TreeFilters,
+	type TreeSession,
 } from "./types.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
@@ -46,6 +61,10 @@ export interface CliDeps {
 	readonly models?: readonly ModelEntry[];
 	/** Exact ambient native-identity reverse lookup, supplied by the bin. */
 	readonly resolveAmbientSelf?: () => Result<SessionId | undefined>;
+	/** Repository identity is needed only by bare `tree`; optional for legacy callers. */
+	readonly repository?: RepositoryIdentityPort;
+	/** Full tree source, including dissolved descriptors hidden by RegistryPort.list(). */
+	readonly treeDescriptors?: readonly SessionDescriptor[];
 }
 
 // ─── parsed command (discriminated per verb) ────────────────────────────────
@@ -92,6 +111,19 @@ export type ParsedCommand =
 	  }
 	| { readonly verb: "state"; readonly id: SessionId; readonly json: boolean }
 	| { readonly verb: "phonehome"; readonly json: boolean }
+	| {
+			readonly verb: "tree";
+			readonly rootId?: SessionId;
+			readonly global: boolean;
+			readonly filters: TreeFilters;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "link";
+			readonly childId: SessionId;
+			readonly parentId: SessionId | null;
+			readonly json: boolean;
+	  }
 	| {
 			readonly verb: "path";
 			readonly id: SessionId;
@@ -257,8 +289,20 @@ function lex(
 	return { pos, flags, repeated };
 }
 
-const BOOLEAN_FLAGS = new Set(["here", "prime", "json", "follow", "events", "state", "dir", "env"]);
-const REPEATABLE_FLAGS = new Set(["to"]);
+const BOOLEAN_FLAGS = new Set([
+	"here",
+	"prime",
+	"json",
+	"follow",
+	"events",
+	"state",
+	"dir",
+	"env",
+	"global",
+	"all",
+	"root",
+]);
+const REPEATABLE_FLAGS = new Set(["to", "activity", "liveness", "lifecycle"]);
 
 /** Flags each verb accepts — anything else is E-ARG. */
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
@@ -270,6 +314,8 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
+	tree: new Set(["global", "activity", "liveness", "lifecycle", "all", "json"]),
+	link: new Set(["parent", "root", "json"]),
 	path: new Set(["events", "state", "dir", "json"]),
 };
 /** Max positionals per verb (send allows id + text; models allows optional filter). */
@@ -282,6 +328,8 @@ const MAX_POS: Record<string, number> = {
 	tail: 1,
 	state: 1,
 	phonehome: 0,
+	tree: 1,
+	link: 1,
 	path: 1,
 };
 
@@ -290,13 +338,13 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|tail|state|phonehome|path> …",
+			"usage: pij <whoami|list|sessions|models|send|tail|state|phonehome|tree|link|path> …",
 		);
 	const allowed = ALLOWED_FLAGS[verb];
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|path)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|tree|link|path)`,
 		);
 	const args = argv.slice(1);
 	for (const token of args) {
@@ -445,6 +493,69 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		}
 		case "phonehome":
 			return ok({ verb: "phonehome", json });
+		case "tree": {
+			const rootId = pos[0];
+			const global = flags.global === true;
+			if (rootId !== undefined && global) {
+				return err("E-ARG", "pij tree takes a positional <id> OR --global, not both");
+			}
+			const activities = repeated.activity ?? [];
+			const livenessValues = repeated.liveness ?? [];
+			const lifecycles = repeated.lifecycle ?? [];
+			if (flags.activity === true || activities.some((value) => value.length === 0)) {
+				return err("E-ARG", "--activity needs working|idle|done");
+			}
+			if (flags.liveness === true || livenessValues.some((value) => value.length === 0)) {
+				return err("E-ARG", "--liveness needs active|stale|dead|dissolved");
+			}
+			if (flags.lifecycle === true || lifecycles.some((value) => value.length === 0)) {
+				return err("E-ARG", "--lifecycle needs pending|ready|bound|failed|dissolved");
+			}
+			const validActivities = new Set<TreeActivity>(["working", "idle", "done"]);
+			const validLiveness = new Set<LivenessVerdict>(["active", "stale", "dead", "dissolved"]);
+			const validLifecycles = new Set<SessionLifecycle>([
+				"pending",
+				"ready",
+				"bound",
+				"failed",
+				"dissolved",
+			]);
+			const invalidActivity = activities.find(
+				(value) => !validActivities.has(value as TreeActivity),
+			);
+			if (invalidActivity) return err("E-ARG", `invalid --activity '${invalidActivity}'`);
+			const invalidLiveness = livenessValues.find(
+				(value) => !validLiveness.has(value as LivenessVerdict),
+			);
+			if (invalidLiveness) return err("E-ARG", `invalid --liveness '${invalidLiveness}'`);
+			const invalidLifecycle = lifecycles.find(
+				(value) => !validLifecycles.has(value as SessionLifecycle),
+			);
+			if (invalidLifecycle) return err("E-ARG", `invalid --lifecycle '${invalidLifecycle}'`);
+			const filters: TreeFilters = {
+				...(activities.length > 0 ? { activity: activities as TreeActivity[] } : {}),
+				...(livenessValues.length > 0 ? { liveness: livenessValues as LivenessVerdict[] } : {}),
+				...(lifecycles.length > 0 ? { lifecycle: lifecycles as SessionLifecycle[] } : {}),
+				...(flags.all === true ? { all: true } : {}),
+			};
+			return ok({ verb: "tree", rootId, global, filters, json });
+		}
+		case "link": {
+			const childId = pos[0];
+			if (childId === undefined) {
+				return err("E-ARG", "usage: pij link <child> --parent <parent> | --root");
+			}
+			if (flags.parent === true) return err("E-ARG", "--parent needs a session id");
+			const parentId = typeof flags.parent === "string" ? flags.parent : undefined;
+			if (parentId !== undefined && parentId.trim() === "") {
+				return err("E-ARG", "--parent needs a non-empty session id");
+			}
+			const root = flags.root === true;
+			if ((parentId === undefined) === !root) {
+				return err("E-ARG", "pij link requires exactly one of --parent <parent> or --root");
+			}
+			return ok({ verb: "link", childId, parentId: root ? null : (parentId as string), json });
+		}
 		case "path": {
 			const id = pos[0];
 			if (id === undefined) return err("E-ARG", "usage: pij path <id> [--events|--state|--dir]");
@@ -454,7 +565,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		default:
 			return err(
 				"E-ARG",
-				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|path)`,
+				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|tree|link|path)`,
 			);
 	}
 }
@@ -729,6 +840,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
 							prime: d.prime === true,
+							oldPrime: d.oldPrime === true,
 						})),
 					),
 				);
@@ -744,7 +856,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			const lines = rows.map(
 				({ d, live }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : " "} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundModel ?? "—", 20)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : " "} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundModel ?? "—", 20)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
 			);
 			const header = `  ${pad("id", 14)} P ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("model", 20)} ${pad("effort", 7)} folder`;
 			return okOut(
@@ -772,6 +884,60 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			);
 			const header = `${pad("pij-id", 16)} ${pad("harness", 8)} ${pad("harness-session", 38)} ${pad("lifecycle", 8)} ${pad("model", 20)} ${pad("parent", 14)} transcript`;
 			return okOut([header, ...lines, `${rows.length} session(s)`].join("\n"));
+		}
+		case "tree": {
+			const descriptors = [...(deps.treeDescriptors ?? deps.registry.list())];
+			let selectedIds: readonly SessionId[] | undefined;
+			if (!cmd.global && cmd.rootId === undefined) {
+				if (!deps.repository) {
+					return fail(
+						"E-ARG",
+						"repository identity is unavailable; use pij tree --global",
+						cmd.json,
+					);
+				}
+				const selection = selectByRepository(descriptors, deps.cwd, deps.repository);
+				if (selection.gitCommonDir === null) {
+					return fail(
+						"E-ARG",
+						"current folder is not in a git repository; use pij tree --global or pij tree <id>",
+						cmd.json,
+					);
+				}
+				selectedIds = selection.descriptors.map((descriptor) => descriptor.id);
+			}
+			const sessions: TreeSession[] = descriptors.map((descriptor) => ({
+				descriptor,
+				activity: activityOf(descriptor.state, descriptor.lastEventAt !== undefined),
+				liveness: liveOf(deps, descriptor, now),
+			}));
+			const projection = projectSessionForest(sessions, {
+				selectedIds,
+				rootId: cmd.rootId,
+				filters: cmd.filters,
+			});
+			if (!projection.ok) return fail(projection.code, projection.message, cmd.json);
+			return okOut(
+				cmd.json
+					? renderSessionForestJson(projection.value)
+					: renderSessionForestHuman(projection.value),
+			);
+		}
+		case "link": {
+			const descriptors = [...(deps.treeDescriptors ?? deps.registry.list())];
+			const current = deps.registry.read(cmd.childId);
+			const planned = planLink(descriptors, cmd.childId, cmd.parentId);
+			if (!planned.ok) return fail(planned.code, planned.message, cmd.json);
+			const changed = current?.parentId !== cmd.parentId;
+			if (changed) deps.registry.write(planned.value);
+			if (cmd.json) {
+				return okOut(JSON.stringify({ id: cmd.childId, parentId: cmd.parentId, changed }));
+			}
+			return okOut(
+				cmd.parentId === null
+					? `${changed ? "linked" : "unchanged"} ${cmd.childId} → root`
+					: `${changed ? "linked" : "unchanged"} ${cmd.childId} → ${cmd.parentId}`,
+			);
 		}
 		case "send": {
 			const s = selfId(deps);
@@ -1076,6 +1242,70 @@ function okOut(stdout: string): CliResult {
 
 function pad(s: string, n: number): string {
 	return s.length >= n ? s : s + " ".repeat(n - s.length);
+}
+
+function renderSessionForestHuman(forest: SessionForest): string {
+	if (forest.roots.length === 0) return "no pij sessions";
+	const lines: string[] = [];
+	const pending: Array<{ readonly node: SessionTreeNode; readonly depth: number }> = [];
+	for (let index = forest.roots.length - 1; index >= 0; index--) {
+		const node = forest.roots[index];
+		if (node) pending.push({ node, depth: 0 });
+	}
+	while (pending.length > 0) {
+		const current = pending.pop();
+		if (!current) continue;
+		const { node, depth } = current;
+		const indentDepth = Math.min(depth, 32);
+		const indent = `${"  ".repeat(indentDepth)}${depth > indentDepth ? "… " : ""}`;
+		const prime = node.prime === true ? "P" : node.oldPrime === true ? "O" : " ";
+		const lifecycle = node.lifecycle === "dissolved" ? "closed" : (node.lifecycle ?? "—");
+		const problem =
+			node.problem === undefined
+				? ""
+				: node.problem === "cycle"
+					? ` [cycle${node.cycleTo ? `→${node.cycleTo}` : ""}]`
+					: ` [${node.problem}${node.effectiveParentId ? `:${node.effectiveParentId}` : ""}]`;
+		lines.push(
+			`${indent}${prime} ${node.id}  ${node.activity}/${node.liveness}/${lifecycle}${problem}`,
+		);
+		for (let index = node.children.length - 1; index >= 0; index--) {
+			const child = node.children[index];
+			if (child) pending.push({ node: child, depth: depth + 1 });
+		}
+	}
+	return lines.join("\n");
+}
+
+function renderSessionForestJson(forest: SessionForest): string {
+	interface Frame {
+		readonly nodes: readonly SessionTreeNode[];
+		index: number;
+		readonly close: string;
+	}
+	const output: string[] = ['{"roots":['];
+	const stack: Frame[] = [{ nodes: forest.roots, index: 0, close: "]}" }];
+	while (stack.length > 0) {
+		const frame = stack.at(-1);
+		if (!frame) break;
+		const node = frame.nodes[frame.index];
+		if (!node) {
+			output.push(frame.close);
+			stack.pop();
+			continue;
+		}
+		if (frame.index > 0) output.push(",");
+		frame.index += 1;
+		const { children, ...raw } = node;
+		const head = JSON.stringify({
+			...raw,
+			prime: node.prime === true,
+			oldPrime: node.oldPrime === true,
+		});
+		output.push(head.slice(0, -1), ',"children":[');
+		stack.push({ nodes: children, index: 0, close: "]}" });
+	}
+	return output.join("");
 }
 
 function liveOf(

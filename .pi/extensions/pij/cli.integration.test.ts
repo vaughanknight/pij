@@ -33,7 +33,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { reattachIdentity } from "./core/binding.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
-import type { PijMessage } from "./core/types.js";
+import type { PijMessage, SessionDescriptor } from "./core/types.js";
 
 const CLI = join(import.meta.dirname, "cli.ts");
 const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
@@ -45,7 +45,11 @@ let BIN: string;
 let TMUX_LOG: string;
 
 /** Run the real cli.ts bin in the sandbox. Returns stdout + exit code. */
-function pij(args: string[], extraEnv: Record<string, string> = {}): { out: string; code: number } {
+function pij(
+	args: string[],
+	extraEnv: Record<string, string> = {},
+	cwd = FOLDER,
+): { out: string; code: number } {
 	const env = {
 		...process.env,
 		PIJ_HOME: HOME,
@@ -54,14 +58,14 @@ function pij(args: string[], extraEnv: Record<string, string> = {}): { out: stri
 		CLAUDE_CODE_SESSION_ID: "",
 		COPILOT_AGENT_SESSION_ID: "",
 		CODEX_THREAD_ID: "",
-		FAKE_TMUX_CWD: FOLDER,
+		FAKE_TMUX_CWD: cwd,
 		FAKE_TMUX_PID: String(process.pid),
 		FAKE_TMUX_LOG: TMUX_LOG,
 		...extraEnv,
 	};
 	try {
 		const out = execFileSync(TSX, [CLI, ...args], {
-			cwd: FOLDER,
+			cwd,
 			env,
 			encoding: "utf8",
 			timeout: 10_000,
@@ -155,6 +159,9 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
 		expect(result.out).toContain("pij list [--here] [--prime] [--json]");
+		expect(result.out).toContain("pij tree [<id> | --global]");
+		expect(result.out).toContain("pij link <child> --parent <parent> | --root");
+		expect(result.out).toContain('pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]');
 	});
 
 	it("top-level help and skill guidance distinguish pull from push delivery", () => {
@@ -717,6 +724,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			id: output.id,
 			paneId: output.paneId,
 			spawnedBy: "pij-A",
+			parentId: "pij-A",
 			lifecycle: "pending",
 		});
 		expect(readFileSync(TMUX_LOG, "utf8")).toContain(`PIJ_SESSION_ID=${output.id}`);
@@ -760,6 +768,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
 			agentPack: "inline",
+			parentId: "pij-A",
 			lifecycle: "pending",
 		});
 		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
@@ -1026,6 +1035,223 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			ok: true,
 			value: false,
 		});
+	});
+
+	it("tree/link/adopt/spawn compose over a real repository, linked worktree, and scratch registry", {
+		timeout: 30_000,
+	}, () => {
+		const root = mkdtempSync(join(tmpdir(), "pij-tree-integration-"));
+		const home = join(root, "home");
+		const main = join(root, "main");
+		const worktree = join(root, "worktree");
+		const other = join(root, "other");
+		mkdirSync(home, { recursive: true });
+		mkdirSync(main, { recursive: true });
+		mkdirSync(other, { recursive: true });
+		const git = (cwd: string, args: string[]): string =>
+			execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+		const seedRepository = (cwd: string, name: string): void => {
+			git(cwd, ["init", "-q"]);
+			git(cwd, ["config", "user.email", "pij@example.test"]);
+			git(cwd, ["config", "user.name", "pij test"]);
+			writeFileSync(join(cwd, "README.md"), `${name}\n`);
+			git(cwd, ["add", "README.md"]);
+			git(cwd, ["commit", "-qm", "seed"]);
+		};
+
+		try {
+			seedRepository(main, "main");
+			git(main, ["worktree", "add", "-q", "-b", "linked", worktree]);
+			seedRepository(other, "other");
+			const commonDir = git(main, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+			const otherCommonDir = git(other, [
+				"rev-parse",
+				"--path-format=absolute",
+				"--git-common-dir",
+			]);
+			const registry = new FsRegistry(home);
+			const write = (id: string, folder: string, extra: Partial<SessionDescriptor> = {}): void => {
+				registry.write({
+					id,
+					folder,
+					dataDir: join(home, id),
+					eventsPath: join(home, id, "events.ndjson"),
+					pid: process.pid,
+					startedAt: "2026-07-13T00:00:00.000Z",
+					state: "idle",
+					...extra,
+				});
+			};
+			write("pij-root", main, {
+				parentId: null,
+				gitCommonDir: commonDir,
+				prime: true,
+				harness: "claude",
+				harnessSessionId: "native-root",
+				lifecycle: "bound",
+			});
+			write("pij-child", worktree, {
+				parentId: "pij-root",
+				spawnedBy: "pij-close-owner",
+				oldPrime: true,
+			});
+			write("pij-grandchild", worktree, { parentId: "pij-child" });
+			write("pij-other", other, { parentId: null, gitCommonDir: otherCommonDir });
+			write("pij-closed", main, {
+				parentId: "pij-root",
+				gitCommonDir: commonDir,
+				lifecycle: "dissolved",
+			});
+
+			const env = { PIJ_HOME: home, CLAUDE_CODE_SESSION_ID: "" };
+			const repositoryTree = pij(["tree", "--json"], env, main);
+			expect(repositoryTree.code).toBe(0);
+			expect(repositoryTree.out).toContain("pij-root");
+			expect(repositoryTree.out).toContain("pij-child");
+			expect(repositoryTree.out).not.toContain("pij-other");
+			expect(repositoryTree.out).not.toContain("pij-closed");
+
+			const globalTree = pij(["tree", "--global", "--all", "--json"], env, main);
+			expect(globalTree.code).toBe(0);
+			expect(globalTree.out).toContain("pij-other");
+			expect(globalTree.out).toContain('"lifecycle":"dissolved"');
+			const human = pij(["tree", "--global", "--all"], env, main);
+			expect(human.out).toContain("P pij-root");
+			expect(human.out).toContain("O pij-child");
+			expect(human.out).toContain("closed");
+
+			const subtree = pij(["tree", "pij-other", "--json"], env, main);
+			expect(subtree.code).toBe(0);
+			expect(subtree.out).toContain("pij-other");
+			expect(subtree.out).not.toContain("pij-root");
+
+			const beforeCycle = readFileSync(join(home, "pij-root.json"), "utf8");
+			const cycle = pij(["link", "pij-root", "--parent", "pij-grandchild"], env, main);
+			expect(cycle.code).not.toBe(0);
+			expect(readFileSync(join(home, "pij-root.json"), "utf8")).toBe(beforeCycle);
+
+			const rooted = pij(["link", "pij-child", "--root", "--json"], env, main);
+			expect(rooted.code).toBe(0);
+			expect(registry.read("pij-child")).toMatchObject({
+				parentId: null,
+				spawnedBy: "pij-close-owner",
+			});
+			const reparented = pij(["link", "pij-child", "--parent", "pij-root", "--json"], env, main);
+			expect(reparented.code).toBe(0);
+
+			const adopted = pij(
+				[
+					"adopt",
+					"%7",
+					"--harness",
+					"claude",
+					"--session-id",
+					"native-adopted",
+					"--parent",
+					"pij-root",
+					"--json",
+				],
+				env,
+				main,
+			);
+			expect(adopted.code).toBe(0);
+			const adoptedId = (JSON.parse(adopted.out) as { id: string }).id;
+			expect(registry.read(adoptedId)).toMatchObject({
+				parentId: "pij-root",
+				gitCommonDir: commonDir,
+			});
+
+			const beforeUnknown = readdirSync(home)
+				.filter((name) => name.endsWith(".json"))
+				.sort();
+			const unknownParent = pij(
+				[
+					"adopt",
+					"%8",
+					"--harness",
+					"claude",
+					"--session-id",
+					"native-unknown-parent",
+					"--parent",
+					"missing",
+				],
+				env,
+				main,
+			);
+			expect(unknownParent.code).not.toBe(0);
+			expect(
+				readdirSync(home)
+					.filter((name) => name.endsWith(".json"))
+					.sort(),
+			).toEqual(beforeUnknown);
+
+			const beforeAdoptCycle = readFileSync(join(home, "pij-root.json"), "utf8");
+			const adoptCycle = pij(
+				[
+					"adopt",
+					"%9",
+					"--harness",
+					"claude",
+					"--id",
+					"pij-root",
+					"--session-id",
+					"native-root",
+					"--parent",
+					"pij-grandchild",
+				],
+				env,
+				main,
+			);
+			expect(adoptCycle.code).not.toBe(0);
+			expect(readFileSync(join(home, "pij-root.json"), "utf8")).toBe(beforeAdoptCycle);
+
+			writeFileSync(TMUX_LOG, "");
+			const spawned = pij(
+				["spawn", "--harness", "claude", "--json"],
+				{ ...env, PIJ_SESSION_ID: "pij-root" },
+				main,
+			);
+			expect(spawned.code).toBe(0);
+			const jsonLine = spawned.out
+				.trim()
+				.split("\n")
+				.findLast((line) => line.startsWith("{"));
+			const spawnedId = (JSON.parse(jsonLine ?? "{}") as { id: string }).id;
+			expect(registry.read(spawnedId)).toMatchObject({
+				spawnedBy: "pij-root",
+				parentId: "pij-root",
+				gitCommonDir: commonDir,
+			});
+
+			writeFileSync(TMUX_LOG, "");
+			const agentSpawned = pij(
+				[
+					"agent",
+					"spawn",
+					"--prompt",
+					"Inspect the current tree.",
+					"--harness",
+					"claude",
+					"--json",
+				],
+				{ ...env, PIJ_SESSION_ID: "pij-root" },
+				main,
+			);
+			expect(agentSpawned.code).toBe(0);
+			const agentJsonLine = agentSpawned.out
+				.trim()
+				.split("\n")
+				.findLast((line) => line.startsWith("{"));
+			const agentSpawnedId = (JSON.parse(agentJsonLine ?? "{}") as { id: string }).id;
+			expect(registry.read(agentSpawnedId)).toMatchObject({
+				spawnedBy: "pij-root",
+				parentId: "pij-root",
+				gitCommonDir: commonDir,
+				agentPack: "inline",
+			});
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("AC-6 command: send --command compact is accepted + the peer executes it", () => {

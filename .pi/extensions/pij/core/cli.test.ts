@@ -36,11 +36,13 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 
 function deps(opts: {
 	descs?: SessionDescriptor[];
+	treeDescs?: SessionDescriptor[];
 	self?: string;
 	cwd?: string;
 	alive?: number[];
 	logs?: Record<string, PijEvent[]>;
 	env?: Record<string, string>;
+	repositories?: Record<string, string | null>;
 	resolveAmbientSelf?: CliDeps["resolveAmbientSelf"];
 }): CliDeps & { delivery: FakeDelivery; registry: FakeRegistry } {
 	const registry = new FakeRegistry(opts.descs ?? []);
@@ -56,6 +58,10 @@ function deps(opts: {
 		cwd: opts.cwd ?? "/repo",
 		pijHome: "/home/.pij",
 		eventLogFor: (id) => logMap.get(id) ?? new FakeEventLog([]),
+		treeDescriptors: opts.treeDescs,
+		repository: {
+			gitCommonDir: (folder) => opts.repositories?.[folder] ?? null,
+		},
 		...(opts.resolveAmbientSelf ? { resolveAmbientSelf: opts.resolveAmbientSelf } : {}),
 	};
 }
@@ -340,6 +346,7 @@ describe("dispatch whoami / list", () => {
 			boundModel: string | null;
 			effort: string | null;
 			prime: boolean;
+			oldPrime: boolean;
 		}>;
 		expect(arr.map((x) => x.id).sort()).toEqual(["a1", "w3"]); // z9 filtered out
 		expect(arr.find((x) => x.id === "a1")?.liveness).toBe("active");
@@ -349,6 +356,7 @@ describe("dispatch whoami / list", () => {
 		});
 		expect(arr.find((x) => x.id === "w3")?.liveness).toBe("dead");
 		expect(arr.every((x) => x.prime === false)).toBe(true);
+		expect(arr.every((x) => x.oldPrime === false)).toBe(true);
 		const human = dispatch({ verb: "list", here: true, prime: false, json: false }, d);
 		expect(human.stdout).toContain("★ a1");
 		expect(human.stdout).toContain("gpt-5.6-sol");
@@ -360,31 +368,37 @@ describe("dispatch whoami / list", () => {
 			self: "a1",
 			descs: [
 				desc({ id: "a1", prime: true }),
-				desc({ id: "w3", prime: false }),
+				desc({ id: "w3", prime: false, oldPrime: true }),
 				desc({ id: "legacy" }),
+				desc({ id: "corrupt", prime: true, oldPrime: true }),
 				desc({ id: "elsewhere", folder: "/other", prime: true }),
 			],
 		});
 		const filtered = dispatch({ verb: "list", here: true, prime: true, json: true }, d);
-		expect(JSON.parse(filtered.stdout)).toEqual([
-			expect.objectContaining({ id: "a1", prime: true }),
+		expect((JSON.parse(filtered.stdout) as Array<{ id: string }>).map(({ id }) => id)).toEqual([
+			"a1",
+			"corrupt",
 		]);
 
 		const allJson = JSON.parse(
 			dispatch({ verb: "list", here: false, prime: false, json: true }, d).stdout,
-		) as Array<{ id: string; prime: boolean }>;
-		expect(allJson.map(({ id, prime }) => ({ id, prime }))).toEqual([
-			{ id: "a1", prime: true },
-			{ id: "w3", prime: false },
-			{ id: "legacy", prime: false },
-			{ id: "elsewhere", prime: true },
+		) as Array<{ id: string; prime: boolean; oldPrime: boolean }>;
+		expect(allJson.map(({ id, prime, oldPrime }) => ({ id, prime, oldPrime }))).toEqual([
+			{ id: "a1", prime: true, oldPrime: false },
+			{ id: "w3", prime: false, oldPrime: true },
+			{ id: "legacy", prime: false, oldPrime: false },
+			{ id: "corrupt", prime: true, oldPrime: true },
+			{ id: "elsewhere", prime: true, oldPrime: false },
 		]);
 
 		const human = dispatch({ verb: "list", here: true, prime: false, json: false }, d);
 		const primeRow = human.stdout.split("\n").find((line) => line.includes("a1"));
-		const normalRow = human.stdout.split("\n").find((line) => line.includes("w3"));
+		const oldPrimeRow = human.stdout.split("\n").find((line) => line.includes("w3"));
+		const corruptRow = human.stdout.split("\n").find((line) => line.includes("corrupt"));
 		expect(primeRow).toMatch(/a1\s+P\s/);
-		expect(normalRow).not.toMatch(/w3\s+P\s/);
+		expect(oldPrimeRow).toMatch(/w3\s+O\s/);
+		expect(corruptRow).toMatch(/corrupt\s+P\s/);
+		expect(corruptRow).not.toMatch(/corrupt\s+O\s/);
 	});
 });
 
@@ -1049,5 +1063,284 @@ describe("dispatch phonehome (confirmatory binding, AC-03)", () => {
 	it("E-NOID when self resolves to no descriptor", () => {
 		const d = deps({ descs: [], self: "ghost" });
 		expect(dispatch({ verb: "phonehome", json: false }, d).exitCode).toBe(2);
+	});
+});
+
+describe("tree/link grammar", () => {
+	it("parses repository, global, subtree, repeatable filter, history, and JSON forms", () => {
+		expect(parseArgs(["tree"])).toEqual({
+			ok: true,
+			value: {
+				verb: "tree",
+				rootId: undefined,
+				global: false,
+				filters: {},
+				json: false,
+			},
+		});
+		expect(
+			parseArgs([
+				"tree",
+				"--global",
+				"--activity",
+				"working",
+				"--activity=done",
+				"--liveness",
+				"active",
+				"--lifecycle",
+				"bound",
+				"--all",
+				"--json",
+			]),
+		).toEqual({
+			ok: true,
+			value: {
+				verb: "tree",
+				rootId: undefined,
+				global: true,
+				filters: {
+					activity: ["working", "done"],
+					liveness: ["active"],
+					lifecycle: ["bound"],
+					all: true,
+				},
+				json: true,
+			},
+		});
+		expect(parseArgs(["tree", "pij-root", "--json"])).toMatchObject({
+			ok: true,
+			value: { verb: "tree", rootId: "pij-root", global: false, json: true },
+		});
+		expect(parseArgs(["link", "pij-child", "--parent", "pij-root", "--json"])).toEqual({
+			ok: true,
+			value: {
+				verb: "link",
+				childId: "pij-child",
+				parentId: "pij-root",
+				json: true,
+			},
+		});
+		expect(parseArgs(["link", "pij-child", "--root"])).toEqual({
+			ok: true,
+			value: { verb: "link", childId: "pij-child", parentId: null, json: false },
+		});
+	});
+
+	it("rejects invalid selector, filter, and link combinations before dispatch", () => {
+		for (const argv of [
+			["tree", "pij-root", "--global"],
+			["tree", "pij-root", "extra"],
+			["tree", "--activity", "busy"],
+			["tree", "--liveness", "alive"],
+			["tree", "--lifecycle", "closed"],
+			["tree", "--global=true"],
+			["tree", "--all=false"],
+			["link"],
+			["link", "pij-child"],
+			["link", "pij-child", "--parent", "pij-root", "--root"],
+			["link", "pij-child", "--parent"],
+			["link", "pij-child", "--parent="],
+			["link", "pij-child", "--root=false"],
+			["link", "pij-child", "extra", "--root"],
+		]) {
+			expect(parseArgs(argv)).toMatchObject({ ok: false, code: "E-ARG" });
+		}
+	});
+});
+
+describe("dispatch tree/link", () => {
+	const repositoryDescriptors = [
+		desc({
+			id: "pij-root",
+			folder: "/repo-main",
+			parentId: null,
+			gitCommonDir: "/shared/.git",
+			prime: true,
+		}),
+		desc({
+			id: "pij-child",
+			folder: "/repo-worktree",
+			parentId: "pij-root",
+			spawnedBy: "pij-owner",
+			oldPrime: true,
+		}),
+		desc({
+			id: "pij-other",
+			folder: "/other",
+			parentId: null,
+			gitCommonDir: "/other/.git",
+		}),
+		desc({
+			id: "pij-closed",
+			folder: "/repo-main",
+			parentId: "pij-root",
+			gitCommonDir: "/shared/.git",
+			lifecycle: "dissolved",
+		}),
+	];
+	const repositories = {
+		"/repo-main": "/shared/.git",
+		"/repo-worktree": "/shared/.git",
+		"/other": "/other/.git",
+	};
+
+	it("renders the current repository by default and keeps JSON projection additive", () => {
+		const d = deps({
+			descs: repositoryDescriptors,
+			treeDescs: repositoryDescriptors,
+			cwd: "/repo-main",
+			repositories,
+		});
+		const result = dispatch(parsed(["tree", "--json"]), d);
+		expect(result.exitCode).toBe(0);
+		const forest = JSON.parse(result.stdout) as {
+			roots: Array<{
+				id: string;
+				prime: boolean;
+				oldPrime: boolean;
+				children: Array<{ id: string; spawnedBy?: string; oldPrime: boolean }>;
+			}>;
+		};
+		expect(forest.roots).toHaveLength(1);
+		expect(forest.roots[0]).toMatchObject({
+			id: "pij-root",
+			prime: true,
+			oldPrime: false,
+		});
+		expect(forest.roots[0]?.children[0]).toMatchObject({
+			id: "pij-child",
+			spawnedBy: "pij-owner",
+			oldPrime: true,
+		});
+		expect(result.stdout).not.toContain("pij-other");
+		expect(result.stdout).not.toContain("pij-closed");
+	});
+
+	it("supports global/subtree selectors, composed filters, history, and human problem/prime markers", () => {
+		const descriptors = [
+			...repositoryDescriptors,
+			desc({ id: "pij-orphan", parentId: "missing", state: "working", prime: true }),
+		];
+		const d = deps({
+			descs: descriptors,
+			treeDescs: descriptors,
+			cwd: "/repo-main",
+			repositories,
+			alive: [100],
+		});
+
+		const filtered = dispatch(
+			parsed(["tree", "--global", "--activity", "working", "--liveness", "active", "--json"]),
+			d,
+		);
+		expect(filtered.stdout).toContain("pij-orphan");
+		expect(filtered.stdout).not.toContain("pij-root");
+
+		const subtree = dispatch(parsed(["tree", "pij-other", "--json"]), d);
+		expect(JSON.parse(subtree.stdout).roots.map((node: { id: string }) => node.id)).toEqual([
+			"pij-other",
+		]);
+
+		const human = dispatch(parsed(["tree", "--global", "--all"]), d);
+		expect(human.stdout).toContain("P pij-root");
+		expect(human.stdout).toContain("O pij-child");
+		expect(human.stdout).toContain("pij-closed");
+		expect(human.stdout).toContain("closed");
+		expect(human.stdout).toContain("orphan");
+	});
+
+	it("fails a bare repository tree outside git and an unknown subtree without writes", () => {
+		const d = deps({
+			descs: repositoryDescriptors,
+			treeDescs: repositoryDescriptors,
+			cwd: "/not-git",
+			repositories,
+		});
+		expect(dispatch(parsed(["tree"]), d)).toMatchObject({ exitCode: 64 });
+		expect(dispatch(parsed(["tree", "missing"]), d)).toMatchObject({ exitCode: 2 });
+	});
+
+	it("links or roots one descriptor while preserving ownership and unrelated fields", () => {
+		const descriptors = [
+			desc({ id: "pij-root", parentId: null }),
+			desc({ id: "pij-new-parent", parentId: null }),
+			desc({
+				id: "pij-child",
+				parentId: "pij-root",
+				spawnedBy: "pij-close-owner",
+				gitCommonDir: "/repo/.git",
+				prime: true,
+				oldPrime: false,
+				deliveryMode: "pull",
+			}),
+			desc({ id: "pij-grandchild", parentId: "pij-child" }),
+		];
+		const d = deps({ descs: descriptors, treeDescs: descriptors });
+		const linked = dispatch(
+			parsed(["link", "pij-child", "--parent", "pij-new-parent", "--json"]),
+			d,
+		);
+		expect(linked.exitCode).toBe(0);
+		expect(JSON.parse(linked.stdout)).toEqual({
+			id: "pij-child",
+			parentId: "pij-new-parent",
+			changed: true,
+		});
+		expect(d.registry.read("pij-child")).toMatchObject({
+			parentId: "pij-new-parent",
+			spawnedBy: "pij-close-owner",
+			gitCommonDir: "/repo/.git",
+			prime: true,
+			oldPrime: false,
+			deliveryMode: "pull",
+		});
+
+		const rooted = dispatch(parsed(["link", "pij-child", "--root", "--json"]), d);
+		expect(JSON.parse(rooted.stdout)).toEqual({
+			id: "pij-child",
+			parentId: null,
+			changed: true,
+		});
+		expect(d.registry.read("pij-child")?.spawnedBy).toBe("pij-close-owner");
+	});
+
+	it("refuses unknown/self/cycle links without writing any descriptor", () => {
+		for (const argv of [
+			["link", "missing", "--root"],
+			["link", "pij-child", "--parent", "missing"],
+			["link", "pij-child", "--parent", "pij-child"],
+			["link", "pij-root", "--parent", "pij-grandchild"],
+		]) {
+			const descriptors = [
+				desc({ id: "pij-root", parentId: null }),
+				desc({ id: "pij-child", parentId: "pij-root", spawnedBy: "pij-owner" }),
+				desc({ id: "pij-grandchild", parentId: "pij-child" }),
+			];
+			const d = deps({ descs: descriptors, treeDescs: descriptors });
+			const before = structuredClone(descriptors);
+			expect(dispatch(parsed(argv), d).exitCode).not.toBe(0);
+			expect(d.registry.read("pij-root")).toEqual(before[0]);
+			expect(d.registry.read("pij-child")).toEqual(before[1]);
+			expect(d.registry.read("pij-grandchild")).toEqual(before[2]);
+		}
+	});
+
+	it("serializes and renders an 8,000-level corrupt cycle without using the JavaScript stack", () => {
+		const count = 8_000;
+		const id = (index: number): string => `deep-${index.toString().padStart(4, "0")}`;
+		const descriptors = Array.from({ length: count }, (_, index) =>
+			desc({ id: id(index), parentId: id((index + 1) % count) }),
+		);
+		const d = deps({ descs: descriptors, treeDescs: descriptors });
+
+		const json = dispatch(parsed(["tree", "--global", "--json"]), d);
+		expect(json.exitCode).toBe(0);
+		expect(json.stdout).toContain('"problem":"cycle"');
+		expect(json.stdout).toContain('"id":"deep-0000"');
+
+		const human = dispatch(parsed(["tree", "--global"]), d);
+		expect(human.exitCode).toBe(0);
+		expect(human.stdout).toContain("cycle");
+		expect(human.stdout).toContain("deep-0000");
 	});
 });

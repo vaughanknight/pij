@@ -35,6 +35,11 @@ export interface RegistryPort {
 	dissolve(id: SessionId): void;
 }
 
+/** Resolves the canonical git common directory for a checkout/worktree path. */
+export interface RepositoryIdentityPort {
+	gitCommonDir(folder: string): string | null;
+}
+
 /** Appends/reads a single session's events.ndjson. */
 export interface EventLogPort {
 	/** Append one event line (persist before mutate — Pattern P9). */

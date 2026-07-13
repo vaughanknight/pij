@@ -2,8 +2,8 @@
 
 `/pij prime` is the progressive-disclosure entry point for running one o-prime
 seat above multiple plan-owning stream orchestrators. It is a skill route, not a
-`pij` CLI verb; the route composes the existing spawn, adopt, send, state, close,
-daemon, and harness-flow surfaces.
+`pij` CLI verb; the route composes the existing spawn, adopt, tree, link, send,
+state, close, daemon, and harness-flow surfaces.
 
 ## Start here
 
@@ -46,6 +46,12 @@ peer spawn from that worktree into a new orchestrator window. `/pij prime` lands
 the stream on its role module; after thesis, preamble, guided Builder planning,
 and cold validation, it waits for the human's fleet configuration.
 
+Spawned streams record their caller as structural parent automatically and the
+kickoff verifies that edge with `pij tree <id> --json`. A human-spawned/adopted
+stream is canaried first, then linked with
+`pij link <id> --parent <o-prime-id> --json` before its brief pointer is sent.
+`parentId` controls hierarchy; `spawnedBy` remains close authorization.
+
 Implementation runs through `/pij pair`: coder and separate reviewer are splits
 inside the orchestrator window and inherit the stream cwd. Approved work lands
 through `/builder 8 ship` (confirm-gated push and PR, watched CI, optional merge).
@@ -59,20 +65,32 @@ The o-prime seat is marked directly on its pij session descriptor:
 
 ```bash
 pij orchestration prime set [<id>] [--json]
+pij orchestration prime retire [<id>] [--json]
 pij orchestration prime unset [<id>] [--json]
 pij list --prime [--here] [--json]
+pij tree --global --all [--json]
 ```
 
-Without `<id>`, set/unset requires exact self-resolution through
+Without `<id>`, every transition requires exact self-resolution through
 `PIJ_SESSION_ID`, the registered tmux pane, or a lone local descriptor.
 Ambiguity returns `E-AMBIG`; an unknown explicit target returns `E-NOID`.
 Neither error writes anything, and pij never substitutes the baton's
 `operator` actor fallback.
 
-Mutation JSON is `{id,prime,changed}`. Set/unset are idempotent, and unset
-persists explicit `false`. Ordinary human `pij list` marks prime rows in the
-`P` column; list JSON always projects `prime:boolean`, including `false` for a
-legacy descriptor with no field.
+Transitions are mutually exclusive and idempotent:
+
+| Command | Resulting descriptor | Use |
+|---|---|---|
+| `set` | `prime:true`, `oldPrime:false` | Designate a current seat. |
+| `retire` | `prime:false`, `oldPrime:true` | Preserve a completed/outgoing seat in history. |
+| `unset` | `prime:false`, `oldPrime:false` | Clear both designations. |
+
+For compatibility, set/unset JSON remains `{id,prime,changed}`. Retire JSON is
+additive: `{id,prime:false,oldPrime:true,changed}`. Multiple current primes are
+allowed during intentional handover overlap. `pij list --prime` is current-only
+and never treats `oldPrime` as an active-seat signal. Ordinary `pij list` and
+`pij tree` mark current seats `P` and retired seats `O`; audit history with
+`pij tree --global --all --json`.
 
 The marker survives reload, restart, durable native-identity snapshots, and
 reattachment. It is mutable external registry state: before daemon writes, the
@@ -81,8 +99,10 @@ This differs from append-only external fields such as `reportedAt`.
 
 Designation is an honor-system coordination signal, not an ACL or uniqueness
 lock. Bootstrap marks the proved seat before government creation. Handover
-marks the incoming seat before writer-line transfer, then unsets the live
-outgoing seat after its final relay and before descriptor teardown.
+marks the incoming seat before writer-line transfer, keeps the bounded two-prime
+overlap through the outgoing seat's final relay, then retires the outgoing seat.
+The retired descriptor remains visible as old-prime history; do not use `unset`
+as a handover substitute.
 
 ## Distribution and local state
 

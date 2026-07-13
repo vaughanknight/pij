@@ -86,7 +86,7 @@ budget "$SKILL/references/prime/orchestrator.md" 120
 
 # 4. CLI-verb coverage: every required bin family is mapped in the coverage table.
 cli_rows=$(sed -n '/^## CLI-verb coverage/,/^## /p' "$SKILL/SKILL.md" | grep '^| `' || true)
-for v in spawn close adopt daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime; do
+for v in spawn close adopt tree link daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime; do
   printf '%s\n' "$cli_rows" | grep -Fq "\`$v\`" \
     || err "verb coverage: '$v' unmapped in CLI-verb coverage table"
 done
@@ -243,7 +243,50 @@ for marker in \
     || err "completion C7: missing '$marker'"
 done
 
-# 7. prime payload: exact tree + every relative markdown pointer resolves.
+# 7. real-tree skill contracts: peer operations, current-seat triage, and handover order.
+peer_route="$SKILL/references/routes/peer.md"
+prime_route="$SKILL/references/routes/prime.md"
+kickoff="$SKILL/references/prime/rituals/kickoff.md"
+handover="$SKILL/references/prime/templates/seat-handover.md"
+
+for marker in \
+  'pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]' \
+  'pij link <child> --parent <parent> [--json]' \
+  'pij link <child> --root [--json]' \
+  'pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]' \
+  '`parentId` is structural' \
+  '`spawnedBy` remains close authorization' \
+  'current Git repository across linked worktrees'; do
+  completion_marker "$peer_route" "$marker" "real-tree peer: $marker"
+done
+
+for marker in \
+  '`pij list --prime --here --json` is current-prime-only' \
+  '`oldPrime` is history' \
+  'never an active-seat signal' \
+  '`pij tree --global --all --json`'; do
+  completion_marker "$prime_route" "$marker" "real-tree prime triage: $marker"
+done
+
+require_order "$kickoff" "real-tree kickoff: spawned link verified before canary" \
+  "**Verify placement.**" \
+  'verify the automatically persisted structural link with `pij tree <id> --json`' \
+  "**Canary legs (a) and (b).**"
+require_order "$kickoff" "real-tree kickoff: adopted identity before link before brief" \
+  "Complete canary leg (a) round-trip and leg (b) identity proof" \
+  'run `pij link <id> --parent <o-prime-id> --json`' \
+  "**Deliver the brief by pointer as canary leg (c).**"
+
+require_order "$handover" "real-tree handover: set before writers, retire after final relay" \
+  '`pij orchestration prime set --json`' \
+  "before changing any writer line" \
+  "outgoing seat's FINAL send" \
+  '`pij orchestration prime retire <outgoing-pij-id> --json`' \
+  '`pij tree <outgoing-pij-id> --all --json`'
+completion_marker "$handover" '`oldPrime: true`' \
+  "real-tree handover: retired seat remains old-prime history"
+
+# 8. prime payload: exact tree + every relative markdown pointer resolves.
 prime_required=(
   "$SKILL/references/routes/prime.md"
   "$SKILL/references/prime/orchestrator.md"
@@ -285,7 +328,7 @@ check_links "$SKILL/references/routes/prime.md"
 while IFS= read -r f; do check_links "$f"; done < <(find "$SKILL/references/prime" -type f -name '*.md' | sort)
 ok "prime pointer-integrity scanned"
 
-# 8. stream-orchestrator route, ordered journey, and lifecycle markers.
+# 9. stream-orchestrator route, ordered journey, and lifecycle markers.
 orchestrator="$SKILL/references/prime/orchestrator.md"
 prime_route="$SKILL/references/routes/prime.md"
 
@@ -505,7 +548,7 @@ require_marker "docs/how/pij-prime.md" "/builder 8 ship" \
 require_marker "docs/domains/pij-skill/domain.md" "Stream Orchestrator Landing" \
   "pij-skill domain: names orchestrator landing concept"
 
-# 9. frozen evidence expected by the route's provenance contract.
+# 10. frozen evidence expected by the route's provenance contract.
 for f in \
   bootstrap.md encode-candidates.md kickoff-runbook.md map.md \
   orient-local.secondcrack.md pij-prime-answers-r1.md \
@@ -516,7 +559,7 @@ for f in \
     || err "prime evidence missing: docs/plans/035-o-prime-routing-skill/vendored/$f"
 done
 
-# 10. runtime payload must stand alone after the transitional source repo disappears.
+# 11. runtime payload must stand alone after the transitional source repo disappears.
 severance_paths=("$SKILL")
 [ -f docs/how/pij-prime.md ] && severance_paths+=(docs/how/pij-prime.md)
 # local-path-check: allow -- literal is the forbidden transitional source path.

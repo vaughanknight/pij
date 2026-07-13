@@ -4,15 +4,15 @@
 
 Own machine-wide orchestration primitives that serialize or coordinate multi-agent
 work. Batons provide atomic single-holder leases and pushed lifecycle notices.
-Prime designation provides a registry-backed, honor-system marker for the current
-o-prime seat.
+Prime designation provides mutually exclusive registry-backed, honor-system
+markers for current and retired o-prime seats.
 
 ## Source Locations
 
 | Path | Role |
 |------|------|
 | `.pi/extensions/pij/core/orchestration/baton.ts` | Pi-free baton vocabulary, lifecycle decisions, local store/notice ports, blocked-time and holder-transition rules. |
-| `.pi/extensions/pij/core/orchestration/prime.ts` | Pure `PrimeService` over `RegistryPort`; idempotent set/unset preserving the full descriptor. |
+| `.pi/extensions/pij/core/orchestration/prime.ts` | Pure `PrimeService` over `RegistryPort`; idempotent set/retire/unset transitions preserve the full descriptor. |
 | `.pi/extensions/pij/core/orchestration/cli.ts` | Pure baton/prime family grammar, dispatch, rendering, and exit-code mapping. |
 | `.pi/extensions/pij/adapters/baton-store.ts` | Filesystem adapter for definitions, atomic no-replace lease files, and the append-only machine log under `PIJ_HOME/orchestration/`. |
 | `.pi/extensions/pij/core/daemon/baton-sweep.ts` | Holder liveness classification and alert-once-per-transition sweep. |
@@ -31,7 +31,7 @@ o-prime seat.
 | Blocked time | Time from request to grant. | `grantedAt - requestedAt`, exposed by `show --json` and machine log entries. |
 | Holder alert | A dead/stalled transition is pushed once to the granter. | Alert records transition state; lease remains untouched until explicit reclaim. |
 | Machine log | One structured line per command/action. | `PIJ_HOME/orchestration/log.ndjson`; human narrative remains outside this domain. |
-| Prime marker | Durable session designation for registry-first o-prime detection. | `prime set\|unset [id]`; explicit target or exact self-resolution, idempotent `changed` result. |
+| Prime marker/history | Durable current and retired session designations for registry-first o-prime detection and audit. | `set` → current only; `retire` → old only; `unset` → neither. Multiple current primes remain valid during bounded handover overlap. |
 
 ## Contracts
 
@@ -41,7 +41,7 @@ o-prime seat.
 | `BatonNoticeSink` | CLI/daemon wiring, fakes | Pushes request/grant/return/reclaim/alert notices and reports `queued\|delivered\|unverified`; notice failure never lies about success. |
 | Baton lifecycle results | CLI, tests | Tagged unions; single-holder conflicts and stale pins fail explicitly, while grant/reclaim authority remains an honor-system judgment. |
 | Holder transition decision | daemon sweep | Pure previous/current liveness shaping; dead/stalled alerts once per transition, no lease mutation. |
-| Prime mutation result | CLI, skill, tests | `{id, prime, changed}`; `E-NOID`/`E-AMBIG` are fail-loud and perform no write. |
+| Prime mutation result | CLI, skill, tests | Set/unset retain `{id,prime,changed}` compatibility; retire returns additive `{id,prime:false,oldPrime:true,changed}`. `E-NOID`/`E-AMBIG` perform no write. |
 
 ## Boundary Owns
 
@@ -50,7 +50,7 @@ o-prime seat.
 - Atomic single-holder truth.
 - Pin/re-pin semantics and blocked-time accounting.
 - Holder-health transition metadata and alert-never-auto-reclaim behavior.
-- Prime designation service and orchestration grammar.
+- Current/old-prime transition service and orchestration grammar.
 
 ## Boundary Excludes
 
@@ -82,3 +82,4 @@ o-prime seat.
 |------|--------|------|
 | 036-pij-orchestration-baton | Created the domain and established batons as the first `pij orchestration` primitive. | 2026-07-11 |
 | 038-pij-prime-designation | Added the registry-backed prime primitive with exact-self targeting and idempotent set/unset results. | 2026-07-11 |
+| 046-pij-real-trees | Added `prime retire`, mutually exclusive current/old transitions, multiple-current compatibility, and historical old-prime audit without changing set/unset JSON receipts. | 2026-07-13 |

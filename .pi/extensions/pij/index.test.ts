@@ -14,10 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import { deriveSelfId, memorableIdentitySeed } from "./core/discovery.js";
 import { receiptBody } from "./core/message.js";
 import pijExtension from "./index.js";
@@ -85,20 +86,26 @@ describe("pij index — footer status bar", () => {
 	let pijHome: string;
 	let origPijHome: string | undefined;
 	let origSessionId: string | undefined;
+	let origParentId: string | undefined;
 
 	beforeEach(() => {
 		origPijHome = process.env.PIJ_HOME;
 		origSessionId = process.env.PIJ_SESSION_ID;
+		origParentId = process.env.PIJ_PARENT_ID;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
+		delete process.env.PIJ_PARENT_ID;
 	});
 
 	afterEach(() => {
+		vi.restoreAllMocks();
 		rmSync(pijHome, { recursive: true, force: true });
 		if (origPijHome === undefined) delete process.env.PIJ_HOME;
 		else process.env.PIJ_HOME = origPijHome;
 		if (origSessionId === undefined) delete process.env.PIJ_SESSION_ID;
 		else process.env.PIJ_SESSION_ID = origSessionId;
+		if (origParentId === undefined) delete process.env.PIJ_PARENT_ID;
+		else process.env.PIJ_PARENT_ID = origParentId;
 	});
 
 	it("publishes the pij id to the status bar on session_start", async () => {
@@ -162,6 +169,26 @@ describe("pij index — footer status bar", () => {
 		expect(statuses.at(-1)?.value).toBe(opaqueId);
 		expect(new FsRegistry(pijHome).read(opaqueId)?.prime).toBe(true);
 
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("registers Pi with its structural parent and freshly resolved repository identity", async () => {
+		process.env.PIJ_PARENT_ID = "pij-structural-parent";
+		const gitCommonDir = vi
+			.spyOn(GitRepositoryAdapter.prototype, "gitCommonDir")
+			.mockReturnValue("/repo/.git");
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("native-repository");
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		const id = statuses.at(-1)?.value;
+		expect(gitCommonDir).toHaveBeenCalledWith(process.cwd());
+		expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({
+			parentId: "pij-structural-parent",
+			gitCommonDir: "/repo/.git",
+		});
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 

@@ -35,7 +35,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 
 | CLI verb | lives in |
 |---|---|
-| `spawn` `send` `tail` `close` `adopt` `whoami` `list` `state` `inbox` | peer route |
+| `spawn` `send` `tail` `close` `adopt` `whoami` `list` `state` `inbox` `tree` `link` | peer route |
 | `agent` (`list/run/spawn/show/new/check/eject`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |

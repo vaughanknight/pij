@@ -272,6 +272,47 @@ describe("FsRegistry", () => {
 		});
 	});
 
+	it("keeps parent and repository metadata in identity snapshots through removal and dissolve", () => {
+		const registry = new FsRegistry(home);
+		registry.write({
+			...descriptor("pij-structural"),
+			harness: "pi",
+			harnessSessionId: "pi-native-structural",
+			parentId: null,
+			gitCommonDir: "/repo/.git",
+			spawnedBy: "pij-close-owner",
+		});
+		registry.remove("pij-structural");
+
+		const removed = new FsRegistry(home).resolveIdentitySnapshot("pi", "pi-native-structural");
+		expect(removed).toMatchObject({
+			ok: true,
+			value: {
+				parentId: null,
+				gitCommonDir: "/repo/.git",
+				spawnedBy: "pij-close-owner",
+			},
+		});
+		if (!removed.ok || !removed.value) throw new Error("expected durable identity snapshot");
+
+		const hydrated = new FsRegistry(home);
+		hydrated.write({ ...removed.value, pid: 99, lifecycle: "bound" });
+		hydrated.dissolve("pij-structural");
+		hydrated.remove("pij-structural");
+
+		expect(
+			new FsRegistry(home).resolveIdentitySnapshot("pi", "pi-native-structural"),
+		).toMatchObject({
+			ok: true,
+			value: {
+				parentId: null,
+				gitCommonDir: "/repo/.git",
+				spawnedBy: "pij-close-owner",
+				lifecycle: "dissolved",
+			},
+		});
+	});
+
 	it("a second id cannot claim an already-owned native tuple", () => {
 		new FsRegistry(home).claimIdentity("claude", "native", "pij-first");
 		expect(new FsRegistry(home).claimIdentity("claude", "native", "pij-second")).toMatchObject({

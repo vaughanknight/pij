@@ -9,7 +9,9 @@ import {
 	isSubagentChild,
 	memorableIdentitySeed,
 	resolveSelf,
+	selectByRepository,
 } from "./discovery.js";
+import type { RepositoryIdentityPort } from "./ports.js";
 import type { SessionDescriptor } from "./types.js";
 
 function desc(id: string, folder: string): SessionDescriptor {
@@ -30,6 +32,61 @@ const c = desc("c", "/work/other");
 describe("filterByFolder", () => {
 	it("keeps only descriptors in the folder", () => {
 		expect(filterByFolder([a, b, c], "/work/proj").map((d) => d.id)).toEqual(["a", "b"]);
+	});
+
+	describe("selectByRepository", () => {
+		class FakeRepository implements RepositoryIdentityPort {
+			readonly calls: string[] = [];
+
+			constructor(private readonly keys: Readonly<Record<string, string | null>>) {}
+
+			gitCommonDir(folder: string): string | null {
+				this.calls.push(folder);
+				return this.keys[folder] ?? null;
+			}
+		}
+
+		it("groups persisted and legacy descriptors across linked worktrees", () => {
+			const repo = new FakeRepository({
+				"/repo/main": "/repo/main/.git",
+				"/repo/worktree": "/repo/main/.git",
+				"/other": "/other/.git",
+			});
+			const persisted = { ...desc("persisted", "/repo/main"), gitCommonDir: "/repo/main/.git" };
+			const legacyWorktree = desc("legacy-worktree", "/repo/worktree");
+			const unrelated = desc("unrelated", "/other");
+
+			const selection = selectByRepository(
+				[persisted, legacyWorktree, unrelated],
+				"/repo/worktree",
+				repo,
+			);
+
+			expect(selection.gitCommonDir).toBe("/repo/main/.git");
+			expect(selection.descriptors.map((descriptor) => descriptor.id)).toEqual([
+				"persisted",
+				"legacy-worktree",
+			]);
+			expect(selection.unresolved).toEqual([]);
+			expect(repo.calls).not.toContain("/repo/main");
+		});
+
+		it("reports a non-git query path explicitly", () => {
+			const repo = new FakeRepository({});
+			expect(selectByRepository([a], "/tmp/not-a-repo", repo)).toEqual({
+				gitCommonDir: null,
+				descriptors: [],
+				unresolved: [],
+			});
+		});
+
+		it("reports missing legacy folders without treating them as repository matches", () => {
+			const missing = desc("missing", "/deleted/worktree");
+			const repo = new FakeRepository({ "/repo/main": "/repo/main/.git" });
+			const selection = selectByRepository([a, missing], "/repo/main", repo);
+			expect(selection.descriptors).toEqual([]);
+			expect(selection.unresolved).toEqual([a, missing]);
+		});
 	});
 
 	describe("filterPrime", () => {

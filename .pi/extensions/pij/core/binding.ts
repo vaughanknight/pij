@@ -204,6 +204,7 @@ export interface ReattachIdentityInput {
 	readonly paneId?: string;
 	readonly transcriptPath?: string;
 	readonly deliveryMode?: DeliveryMode;
+	readonly gitCommonDir?: string;
 }
 
 /** Replace one runtime incarnation's attachment data while preserving the
@@ -224,6 +225,7 @@ export function reattachIdentity(
 		lifecycle: "bound",
 		...(input.deliveryMode !== undefined ? { deliveryMode: input.deliveryMode } : {}),
 		...(input.transcriptPath !== undefined ? { transcriptPath: input.transcriptPath } : {}),
+		...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
 	};
 }
 

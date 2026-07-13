@@ -15,6 +15,7 @@ USAGE
   pij orchestration baton return <name> [--evidence <text>] [--json]
   pij orchestration baton reclaim <name> --evidence <text> [--json]
   pij orchestration prime set [<id>] [--json]
+  pij orchestration prime retire [<id>] [--json]
   pij orchestration prime unset [<id>] [--json]
 
 POSTURE
@@ -25,7 +26,7 @@ POSTURE
 export type ParsedOrchestrationCommand =
 	| {
 			readonly primitive: "prime";
-			readonly verb: "set" | "unset";
+			readonly verb: "set" | "retire" | "unset";
 			readonly id?: SessionId;
 			readonly json: boolean;
 	  }
@@ -205,7 +206,7 @@ function oneName(verb: string, positionals: readonly string[]): ParseOrchestrati
 export function parseOrchestrationArgs(args: readonly string[]): ParseOrchestrationResult {
 	if (args[0] === "prime") {
 		const verb = args[1];
-		if (verb !== "set" && verb !== "unset") {
+		if (verb !== "set" && verb !== "retire" && verb !== "unset") {
 			return argError(
 				verb === undefined ? "expected a prime verb" : `unknown prime verb '${verb}'`,
 			);
@@ -445,10 +446,20 @@ export function dispatchOrchestration(
 		const result =
 			command.verb === "set"
 				? deps.primeService.set(resolved.value)
-				: deps.primeService.unset(resolved.value);
+				: command.verb === "retire"
+					? deps.primeService.retire(resolved.value)
+					: deps.primeService.unset(resolved.value);
 		if (!result.ok) return resultError(result);
+		const jsonValue =
+			command.verb === "retire"
+				? result.value
+				: {
+						id: result.value.id,
+						prime: result.value.prime,
+						changed: result.value.changed,
+					};
 		return success(
-			command.json ? JSON.stringify(result.value) : `prime ${command.verb}: ${result.value.id}`,
+			command.json ? JSON.stringify(jsonValue) : `prime ${command.verb}: ${result.value.id}`,
 		);
 	}
 	if (command.verb === "help") return success(ORCHESTRATION_USAGE);

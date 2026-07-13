@@ -534,6 +534,32 @@ describe("buildPendingDescriptor", () => {
 		expect(descriptor.boundModel).toBeUndefined();
 		expect(descriptor.effort).toBeUndefined();
 	});
+
+	it.each([
+		["pij-structural-parent", "pij-structural-parent"],
+		[null, null],
+	] as const)("persists structural parent %s and repository identity without changing spawn ownership", (parentId, expectedParentId) => {
+		expect(
+			buildPendingDescriptor({
+				...input,
+				parentId,
+				gitCommonDir: "/repo/.git",
+				spawnedBy: "pij-close-owner",
+				model: "gpt-5.6-sol",
+				effort: "xhigh",
+				plannedHarnessSessionId: "fork-native",
+				branchedFrom: "source-native",
+			}),
+		).toMatchObject({
+			parentId: expectedParentId,
+			gitCommonDir: "/repo/.git",
+			spawnedBy: "pij-close-owner",
+			boundModel: "gpt-5.6-sol",
+			effort: "xhigh",
+			plannedHarnessSessionId: "fork-native",
+			branchedFrom: "source-native",
+		});
+	});
 });
 
 describe("buildSpawnOutput", () => {
@@ -871,7 +897,14 @@ describe("parseAdoptArgs (T023)", () => {
 			},
 		});
 		expect(
-			parseAdoptArgs(["%5", "--harness=claude", "--id=pij-x", "--session-id=native-x", "--json"]),
+			parseAdoptArgs([
+				"%5",
+				"--harness=claude",
+				"--id=pij-x",
+				"--session-id=native-x",
+				"--parent=pij-prime",
+				"--json",
+			]),
 		).toMatchObject({
 			ok: true,
 			value: {
@@ -879,13 +912,18 @@ describe("parseAdoptArgs (T023)", () => {
 				harness: "claude",
 				id: "pij-x",
 				sessionId: "native-x",
+				parentId: "pij-prime",
 				json: true,
 			},
 		});
 	});
 
-	it("rejects a missing --session-id value instead of consuming the next flag", () => {
+	it("rejects missing --session-id/--parent values instead of consuming the next flag", () => {
 		expect(parseAdoptArgs(["%7", "--harness", "claude", "--session-id", "--json"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseAdoptArgs(["%7", "--harness", "claude", "--parent", "--json"])).toMatchObject({
 			ok: false,
 			code: "E-ARG",
 		});

@@ -5,7 +5,7 @@
 
 **Job**: talk to colleagues — stand up a NEW live session (claude / copilot / codex / pi) in a tmux pane, **or converse with peers that already exist**: identity/list/send/tail/state need no spawn. Nothing here delegates work products — this is the raw colleague seam.
 
-**Preconditions**: detect the delivery owner before giving any self-registration advice (§ C1). Spawning requires tmux. Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. A non-tmux external session can converse with existing peers after `pij inbox register` (or its first `pij inbox --wait`) auto-registers pull ownership.
+**Preconditions**: detect the delivery owner before giving any self-registration advice (§ C1). Spawning requires tmux. Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. To place it structurally during registration, use `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`. A non-tmux external session can converse with existing peers after `pij inbox register` (or its first `pij inbox --wait`) auto-registers pull ownership.
 
 Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers).
 
@@ -32,7 +32,27 @@ pij adopt "$TMUX_PANE" --harness <h>    # E-NOID only; exact non-empty current-p
 pij list [--here]        # known sessions (--here: this tmux server only)
 pij state <id> [--json]  # liveness + working/idle for one peer
 pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers
+pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
 ```
+
+Bare `tree` selects the current Git repository across linked worktrees. `--global`
+selects the registry, while `<id>` selects that arbitrary subtree. Dead/dissolved
+history is hidden by default; `--all` or an explicit history filter exposes it.
+Repeated values OR within one axis; activity, liveness, and lifecycle axes AND.
+
+**Structure**
+
+```bash
+pij link <child> --parent <parent> [--json]
+pij link <child> --root [--json]
+```
+
+`parentId` is structural: an id is an explicit parent, `--root` writes explicit
+root `null`, and an absent field keeps the legacy `spawnedBy` fallback.
+`spawnedBy` remains close authorization; `link` never changes it or other
+descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
+Use adopt `--parent <id>` to establish structure at registration; spawn records
+the caller as both structural parent and close owner automatically.
 
 **Spawn**
 
@@ -101,6 +121,7 @@ pij inbox --wait 30000                        # prints [pij from pij-xxxxx] ok
 | Symptom | Meaning / move |
 |---|---|
 | `E-NOID` on send/close | id not in registry — `pij list`, or the peer already closed |
+| `E-NOID`/`E-ARG` on link/adopt parent | inspect `pij tree --global --all`; unknown/self/cyclic links and missing parents are no-write failures |
 | `E-NOID` for self in tmux control-plane mode | use only `pij adopt "$TMUX_PANE" --harness <h>` with the current process's exact non-empty pane |
 | `E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`; first use auto-registers the ambient session |
 | `E-FULL` on spawn | window at split cap — free a slot or spawn from a scratch window (§ C5) |

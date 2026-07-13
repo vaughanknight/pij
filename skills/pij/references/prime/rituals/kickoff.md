@@ -22,12 +22,14 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
    --model <m> --effort <e> --layout window)`. Peer descriptor/pane cwd comes
    from `process.cwd()`; there is no peer `--cwd`. Keep it out of the o-prime window.
 8. **Wait for the daemon's ready push.** Never poll a booting peer.
-9. **Verify placement.** From the worktree, inspect `pij list --here --json`,
-   `git branch --show-current`, and the tmux window/panes. Descriptor cwd, branch,
-   and window must match the brief before readiness.
-10. **Canary.** Complete all three legs below and write the record at pass time.
-11. **Deliver the brief by pointer.** Its first instruction is `/pij prime`;
-   one send, no inline body. Its ack closes canary leg (c).
+9. **Verify placement.** Inspect `pij list --here --json`, `git branch --show-current`,
+   and the tmux panes; for spawned streams, verify the automatically persisted structural link with `pij tree <id> --json`;
+   cwd, branch, parent, and window must match the brief.
+10. **Canary legs (a) and (b).** Complete canary leg (a) round-trip and leg (b) identity proof, then write the record with leg (c) pending.
+    Adopted streams then run `pij link <id> --parent <o-prime-id> --json`;
+    verify the resulting subtree and record the linked structural parent plus absent or unknown `spawnedBy`/close ownership.
+11. **Deliver the brief by pointer as canary leg (c).** Its first instruction is
+    `/pij prime`; one send, no inline body. Require `brief-ack`, then close the canary record.
 12. **Sync the spine.** Fill peer id, status `briefed`, and stamp. Push the
     updated structure tree to every live stream.
 13. **Report one hop up.** Use [`reports.md`](./reports.md); if this is a
@@ -43,7 +45,7 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 17. **Diff manifest against fences.** At plan validation compare both ways:
     task paths outside fences and fenced paths no task uses. Amend or fix.
 18. **Adoption variant.** For a human-spawned peer, skip steps 6–7 only. Unknown
-    provenance makes the same canary more important; record no-parent/spawner,
+    provenance makes the same canary more important; record the linked structural parent and absent or unknown `spawnedBy`/close ownership,
     **instantiate the same stream-brief template — every section, the Orient
     stack included** (the first outside run freelanced its adoption brief and
     dropped the levers), roster `ADOPTED`, and hold provisional until the

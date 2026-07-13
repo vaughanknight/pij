@@ -24,16 +24,18 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/harness/pi.ts` | Pi transport: observe-only routing (delivery owned by the thin receiver). |
 | `.pi/extensions/pij/core/models/registry.ts` | Shared model registry: pure Pi/Copilot/Codex/Claude source parsers and snapshots plus the single impure `loadModels()` composition root. Owns `ModelEntry.reasoning`/`levels`, verified-vs-curated semantics, and the exact Copilot GPT-5.6 effort correction. |
 | `.pi/extensions/pij/core/models/validate.ts` | Pure model and effort validation against registry entries; reports only positive contradictions and never blocks spawn. |
-| `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
-| `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice. |
+| `.pi/extensions/pij/adapters/git-repository.ts` | Argv-only canonical Git common-directory resolver; main checkout and linked worktrees share one absolute identity, non-Git returns null. |
+| `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition, structural/repository pending metadata, adopt-parent grammar, and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
+| `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice; preserves tree/prime history and refreshes repository identity. |
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
-| `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `prime` is latest-disk-authoritative before daemon writes. |
+| `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `parentId`, `prime`, and `oldPrime` are latest-disk-authoritative before daemon writes. |
 | `.pi/extensions/pij/core/inbox.ts` | Shared durable inbox actions used by daemon-owned receipt consumption: prepare hidden receipt envelopes, append/reuse their event, then mark read. |
 | `.pi/extensions/pij/adapters/fs-registry.ts` | Fsync+hard-link no-replace live claims, memorable-id allocation, pre-bind reservation ownership, two-way durable identity ownership, and metadata snapshots. |
 | `.pi/extensions/pij/core/daemon/lock.ts` | Single-instance PID/lockfile guard. |
 | `.pi/extensions/pij/adapters/tui-chalk.ts` | chalk event-line renderer (spawn/ready/interstitial/bind/message/death). |
 | `.pi/extensions/pij/daemon.ts` | Daemon bin: lock → watch pending+inboxes → readiness/interstitial → init-once → route → render. |
+| `.pi/extensions/pij/cli.ts` | Production tree/link repository wiring, adopt `--parent` validation, spawn metadata capture, and orchestration intercept. |
 | `.pi/extensions/pij/telegram/bridge.ts` | Telegram inbound precedence, selected `/tail` target, successful-speech observation, and once-per-message sender/repository prefixing across text/media forwarding. |
 | `.pi/extensions/pij/telegram/index.ts` | Bridge lifecycle, process-local per-chat last-speaker composition, normalized chat keys, and bounded fakeable git-context resolution from sender descriptors. |
 | `.pi/extensions/pij/telegram/commands.ts` | `/list` and `/tail`; `/tail` reads selected-target state, never last-speaker fallback state. |
@@ -52,7 +54,9 @@ thin receiver). Plan 019.
 | Deterministic binding | Claude/Codex use harness-specific transcript discovery; Copilot spawn uses its chosen UUID and Copilot adopt uses only validated `COPILOT_AGENT_SESSION_ID`. | `bind()`; harness-aware phonehome (`COPILOT_AGENT_SESSION_ID` / `CLAUDE_CODE_SESSION_ID`); watchdog. |
 | Init-exactly-once | The init (pij-id + `pij phonehome` line) is injected once, after ready, idempotent across daemon restart. | persisted `initInjectedAt` (AC-02/12). |
 | Fire-and-forget injection | tmux targets receive `send-keys`+Enter, ungated; the caller never blocks. | router → `tmux-keys` (AC-07/13). |
-| External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `prime:true\|false` overrides stale daemon snapshots; append-only `reportedAt` retains fill-only semantics. |
+| External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `parentId`, `prime`, and `oldPrime` (including explicit null/false clears) override stale daemon snapshots; append-only `reportedAt` remains fill-only. |
+| Structural registration | Spawn/adopt/bind carry hierarchy without conflating authorization. | Spawn writes caller to `parentId` and `spawnedBy`; adopt accepts validated `--parent`; link mutates only `parentId`. |
+| Repository refresh | Registration and reattachment capture the repository grouping active at the current folder. | Injected `RepositoryIdentityPort.gitCommonDir(folder)` returns canonical absolute common dir or null; stale identity is cleared outside Git. |
 | Delivery ownership | Senders write the target inbox; the daemon consumes+injects ONLY tmux inboxes and merely observes pi inboxes. | router rules; pi thin receiver sole pi-inbox consumer (AC-08). |
 | Durable push ownership | The daemon consumes only push-owned tmux unread envelopes, marks after an injection outcome, and leaves `deliveryMode:"pull"` plus pi inboxes untouched. | `daemonOwnsDelivery`; marker-aware `listUnread`; pi thin receiver/pull CLI own their inboxes. |
 | Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
@@ -74,6 +78,7 @@ thin receiver). Plan 019.
 | `classifyInterstitial` | daemon readiness loop | pure `string → { kind: "dismiss" \| "needs-human" \| "none" }`. |
 | Binding record | daemon, `pij tail`, creator notice | Durable `(harness,harnessSessionId) ↔ pij-id` plus replaceable `paneId ↔ pid ↔ cwd`; exact zero/one/many resolution, no silent overwrite. |
 | Prime CLI wiring | orchestration core | Omitted target uses exact env/pane/lone-local self resolution; explicit ids bypass it; baton actor fallback remains baton-only. |
+| Tree/link/adopt wiring | messaging core | Production supplies all readable descriptors plus repository identity; adopt parent uses the same link planner before allocation/reservation/descriptor writes; link preserves `spawnedBy`. |
 | Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
 | Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
@@ -90,6 +95,8 @@ thin receiver). Plan 019.
 - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
 - pij-id pre-allocation + restart-stable exact native-identity recovery + the pending-descriptor handoff; init idempotency.
 - Reattachment-only `adopt --id`: existing descriptor/reservation required, unknown ids fail `E-NOID`.
+- Canonical Git common-directory capture/refresh and production repository/global/subtree selection.
+- Structural-parent persistence through spawn, adoption, binding, daemon merge, failure, and dissolve; close ownership remains separate.
 - Claude/codex transcript-path resolution + tailing (harness-selected `transcriptLayout`).
 - Telegram reply/name/last-speaker precedence, process-local per-chat state, and separate
   selected-target semantics for `/tail`.
@@ -115,7 +122,7 @@ thin receiver). Plan 019.
 
 | Domain / System | Type | Contract Used |
 |-----------------|------|---------------|
-| `pij-messaging` | extend | `SessionDescriptor`, `Result`, the five ports, `deriveSelfId`/`resolveSelf`, `FsChannel`/registry layout. |
+| `pij-messaging` | extend | `SessionDescriptor`, tree/link contracts, `RepositoryIdentityPort`, `Result`, discovery/self-resolution, `FsChannel`/registry layout. |
 | `extension-authoring-harness` | consume | `harness/driver/tmux.ts` primitives (now re-exported from the shared lib); vitest/Biome/Driver smoke. |
 | tmux + `claude` CLI | consume (impure) | `split-window -P`, `send-keys`, `capture-pane`; Claude Code v2.1.x footer/transcript surface. |
 | Pi/Codex user configuration | consume (impure) | `~/.pi/agent/models.json` provider models/overrides and the top-level model in `~/.codex/config.toml`; unreadable sources degrade to curated aliases. |
@@ -144,3 +151,4 @@ thin receiver). Plan 019.
 | 043-telegram-last-speaker-routing / R8 | Added stable sender repository context to every agent-originated Telegram text/media bubble: `[pij-id] [repo]` on `main`, `[pij-id] [repo/branch]` otherwise. Resolution uses the sender descriptor folder, git common-dir identity, and bounded injected subprocess effects; failures preserve the original sender tag. | 2026-07-12 |
 | 041-pij-inbox-no-tmux | Replaced tmux delete-on-consume/raw scans with marker-aware retained history, post-outcome read markers, event-before-marker receipt handling, and explicit pull non-ownership at every daemon gate. | 2026-07-12 |
 | 045-copilot-5-6-effort-levels | Corrected the exact Copilot GPT-5.6 trio to `none, low, medium, high, xhigh, max` at provider-guarded Pi parsing and Copilot fallback construction. Preserved raw/clone projections, `verified:false` fallback semantics, warn-don't-block validation, unrelated-provider data, and existing harness effort translation. | 2026-07-13 |
+| 046-pij-real-trees | Added argv-only Git common-directory identity, structural/repository metadata across spawn/adopt/bind/daemon/failure/dissolve paths, production tree/link wiring, and pre-write adopt-parent validation while retaining `spawnedBy` ownership. | 2026-07-13 |
