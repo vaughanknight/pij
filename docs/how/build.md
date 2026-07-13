@@ -34,9 +34,11 @@ It runs six ordered steps (`justfile:20-66`):
 
 1. **`npm ci`** — install repo dependencies from the lockfile.
 2. **Install/update the official global `pi` binary** (`just pi-official-install`).
-3. **Sync user-personal prefs** into the pi global agent dir:
-   `.pi/APPEND_SYSTEM.md → ~/.pi/agent/APPEND_SYSTEM.md` and
-   `.pi/mcp.json → ~/.pi/agent/mcp.json`.
+3. **Sync repo-managed global Pi config** into the global agent dir:
+   `.pi/APPEND_SYSTEM.md → ~/.pi/agent/APPEND_SYSTEM.md`,
+   `.pi/mcp.json → ~/.pi/agent/mcp.json`, and the three managed provider
+   objects from `.pi/models.json` into `~/.pi/agent/models.json`. The model
+   merge preserves machine-local and otherwise unmanaged providers.
 4. **Symlink pij's local extensions** into `~/.pi/agent/extensions/` (`just link`)
    and link the `pij` CLI onto `PATH` (`npm link`).
 5. **Install every vetted package** from `.pi/packages.yaml` globally
@@ -44,8 +46,8 @@ It runs six ordered steps (`justfile:20-66`):
 6. **Run `just pi-doctor`** as a final verification.
 
 After it completes, `pi` from *any* cwd on the machine gets the same extensions,
-MCP servers, prefs, and global packages pij configures. The pi side of this
-(what pi is, how the global state syncs) is documented in
+MCP servers, prefs, portable models, and global packages pij configures. The pi
+side of this (what pi is, how the global state syncs) is documented in
 [`update-pi.md`](update-pi.md).
 
 ## The recipe surface
@@ -69,6 +71,7 @@ Day-to-day recipes:
 | `just link` / `just unlink` | Symlink (or remove) `.pi/extensions/*` into `~/.pi/agent/extensions/` | `147-151` |
 | `just pij <args>` | Run the pij CLI in-repo, no global install | `95-98` |
 | `just pkg <args>` | Manage third-party pi-extensions via `.pi/packages.yaml` | `100-102` |
+| `just sync-models [--source <path>] [--target <path>]` | Atomically merge repo-managed providers into Pi's global model registry | `106-109` |
 
 ## The gate: `just self-check`
 

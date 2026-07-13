@@ -16,19 +16,24 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
 pi --version
 ```
 
-pij contributes four things to pi's **global** state under `~/.pi/agent/`:
+pij contributes five things to pi's **global** state under `~/.pi/agent/`:
 
 - **`APPEND_SYSTEM.md`** — voice-input rules, response-mode prefs, SQL prefs
   (personal, applies to every pi session on the machine).
 - **`mcp.json`** — MCP servers (perplexity + flowspace/`fs2`), with env-var
   references like `${PERPLEXITY_API_KEY}`, never plaintext secrets.
+- **`models.json` managed providers** — the portable `github-copilot`,
+  `sakana`, and `openrouter` catalog sourced from `.pi/models.json`.
 - **Extension symlinks** — pij's local `.pi/extensions/*` linked into
   `~/.pi/agent/extensions/`.
 - **Vetted packages** — third-party pi-extensions from `.pi/packages.yaml`.
 
-The **source of truth** for the prefs/MCP files is in this repo —
-`.pi/APPEND_SYSTEM.md` and `.pi/mcp.json`. Edit those here and re-run the sync;
-**never hand-edit `~/.pi/agent/*`**, it is overwritten on every sync.
+The **source of truth** for repo-managed global config is in this repo:
+`.pi/APPEND_SYSTEM.md`, `.pi/mcp.json`, and `.pi/models.json`. Run
+`just sync-models` after editing the model catalog. It replaces the three
+managed provider objects exactly while preserving `local` and every other
+unmanaged provider in the global target. Resolved credentials, `auth.json`,
+skills, and machine-local providers remain outside repository ownership.
 
 ## The canonical refresh: `just update-pi`
 
@@ -43,8 +48,9 @@ just update-pi
 It performs:
 
 1. **Install/update the official pi binary** (`just pi-official-install`).
-2. **Sync pij prefs** — `.pi/APPEND_SYSTEM.md` and `.pi/mcp.json` →
-   `~/.pi/agent/`.
+2. **Sync pij config** — copy `.pi/APPEND_SYSTEM.md` and `.pi/mcp.json`, then
+   merge the managed providers from `.pi/models.json` into
+   `~/.pi/agent/models.json`.
 3. **Link pij extensions globally** (`just link`) and link the `pij` CLI
    (`npm link`).
 4. **Ensure vetted packages are installed** globally (`just pkg bootstrap`).
