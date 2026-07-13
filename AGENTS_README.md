@@ -53,8 +53,9 @@ just self-check         # or: harness boot  (fast typecheck + test)
 ## Build & test
 
 The recipe surface (`just` with no args lists everything), the composite gate
-`just self-check` (typecheck → lint → test → smoke → pkg audit → snapshots), and
-the engineering harness (`harness boot` / `harness checks` / `harness doctor`).
+`just self-check` (local-path portability → typecheck → lint → test → smoke →
+pkg audit → snapshots), and the engineering harness (`harness boot` /
+`harness checks` / `harness doctor`).
 The `harness` CLI is an ambient global tool; `.harness/` is committed substrate
 it reads.
 
@@ -125,6 +126,7 @@ lifecycle. Separate o-primes are sibling governments, not child streams.
 seat and `pij orchestration baton` manages shared-resource leases.
 
 → [`docs/how/pij-prime.md`](docs/how/pij-prime.md) ·
+[`docs/how/pij-prime-tree.md`](docs/how/pij-prime-tree.md) ·
 [`docs/how/pij-orchestration-baton.md`](docs/how/pij-orchestration-baton.md) ·
 [`docs/how/flow-pair.md`](docs/how/flow-pair.md)
 

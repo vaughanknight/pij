@@ -80,8 +80,10 @@ hand:
 just self-check
 ```
 
-It runs, in order: **`typecheck` → `lint` → `test` → `smoke` →
-`PIJ_VET_SKIP_AGENT=1 pkg audit` → `snapshots-check`** (`justfile:118-123`).
+It runs, in order: **`local-path-check` → `typecheck` → `lint` → `test` →
+`windows-compat` → `smoke` → `PIJ_VET_SKIP_AGENT=1 pkg audit` →
+`snapshots-check`**. The portability sensor rejects user-specific absolute home
+paths in operational source/config before they reach another machine.
 `snapshots-check` is a soft alarm that warns when the package-vetter briefing
 SHA drifts (`justfile:132-133`); it is informational and always exits 0.
 

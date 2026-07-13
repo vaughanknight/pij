@@ -27,6 +27,7 @@ the landing module.
 
 | Need | Canonical page |
 |---|---|
+| See the canonical hierarchy and real examples | [prime hierarchy](./pij-prime-tree.md) |
 | Enter the stream-orchestrator role and journey | [orchestrator landing](../../skills/pij/references/prime/orchestrator.md) |
 | Stand up a government and seat | [bootstrap ritual](../../skills/pij/references/prime/rituals/bootstrap.md) |
 | Spawn/adopt, canary, brief, or tear down a stream | [kickoff ritual](../../skills/pij/references/prime/rituals/kickoff.md) |

@@ -24,6 +24,12 @@ interface Sensor {
 
 const SENSORS: Sensor[] = [
 	{
+		name: "local-paths",
+		cmd: "just",
+		args: ["local-path-check"],
+		proves: "operational files contain no user-specific absolute home paths",
+	},
+	{
 		name: "typecheck",
 		cmd: "just",
 		args: ["typecheck"],
@@ -78,7 +84,7 @@ const checks: HarnessVerb = {
 		"Run pij's full deterministic gate (the signal inventory) and report a ship/done verdict.",
 	description:
 		'The single "are we done?" gate. Runs every sensor in the engineering-harness signal inventory ' +
-		"(mirrors `just self-check`: typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots) as individual " +
+		"(mirrors `just self-check`: local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots) as individual " +
 		"stages, reports a per-sensor verdict, and — unlike self-check — runs ALL of them so you see every " +
 		"failure in one pass. Run it before ship and before declaring any non-trivial task done. " +
 		"`--quick` skips heavy sensors (smoke) for a fast static+unit gate.",

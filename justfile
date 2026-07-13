@@ -96,6 +96,10 @@ smoke:
 windows-compat:
     npm run windows:check
 
+# Reject user-specific absolute home paths in executable/configuration surfaces.
+local-path-check:
+    npx tsx harness/scripts/local-path-check.ts
+
 # Run the pij CLI in-repo (no global link needed): `just pij list --here`.
 # Quote message bodies normally: `just pij send pij-X "hello (world)"`.
 pij *ARGS:
@@ -119,6 +123,7 @@ copilot-models *ARGS:
 # Pre-merge / pre-release gate. Agents MUST run this before reporting a
 # task complete — never run npm directly to compose these steps.
 self-check:
+    just local-path-check
     just typecheck
     just lint
     just test
@@ -368,7 +373,7 @@ pi-doctor:
     @ls -la ~/.pi/agent/extensions/ 2>/dev/null || echo "  (missing — run: just link)"
     @echo
     @echo "=== ~/.pi/agent/settings.json packages[] ==="
-    @python3 -c 'import json; s=json.load(open("/Users/jordanknight/.pi/agent/settings.json")); [print(f"  - {p}") for p in s.get("packages", [])]'
+    @python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); [print(f"  - {p}") for p in s.get("packages", [])]' ~/.pi/agent/settings.json
     @echo
     @echo "=== ~/.pi/agent/mcp.json servers ==="
     @if [ -f ~/.pi/agent/mcp.json ]; then \

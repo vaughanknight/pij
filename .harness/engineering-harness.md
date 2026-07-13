@@ -25,6 +25,7 @@ the pij extension's own event stream (`~/.pij/<id>/events.ndjson`) + minih retro
 (`docs/retros/*.md`).
 
 ## Deterministic signal inventory
+- `just local-path-check` — no user-specific absolute home paths in operational files.
 - `just typecheck` (`tsc --noEmit`) — type surface.
 - `just test` (vitest) — store/core unit tests (P8).
 - `just lint` (biome, errors+warnings) — style/correctness.
