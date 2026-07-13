@@ -12,25 +12,29 @@ allow-list, peer discovery + self-resolution, message framing, and delivery
 receipts) plus **in-memory fake adapters** with full unit coverage. Adapters
 (fs registry/event-log/channel, pi-runtime), the extension wiring, and the
 `pij` CLI land in Phases 2–5. Plan 041 adds immutable inbox envelopes,
-atomic read markers, and a pull consumer for sessions without tmux.
+atomic read markers, and a pull consumer for sessions without tmux. Plan 046
+adds migration-safe structural forests, repository identity, lifecycle filters,
+link validation, and current/old-prime projections without changing close ownership.
 
 ## Source Locations
 
 | Path | Role |
 |------|------|
-| `.pi/extensions/pij/core/types.ts` | Pi-free domain vocabulary: ids, roles, optional prime designation, state/liveness, descriptor, event/query, message, receipt, error codes, `Result` tagged union. |
-| `.pi/extensions/pij/core/ports.ts` | Hexagonal port interfaces: `RegistryPort`, `EventLogPort` (`+lastSeq/count/appendOnce`), `DeliveryPort`, `InboxPort`, `PiRuntimePort`, `ProcessPort`. |
+| `.pi/extensions/pij/core/types.ts` | Pi-free domain vocabulary: ids, roles, tri-state `parentId`, `gitCommonDir`, current/old prime, tree/filter projections, state/liveness, descriptor, event/query, message, receipt, error codes, `Result` tagged union. |
+| `.pi/extensions/pij/core/ports.ts` | Hexagonal port interfaces: `RegistryPort`, `RepositoryIdentityPort`, `EventLogPort` (`+lastSeq/count/appendOnce`), `DeliveryPort`, `InboxPort`, `PiRuntimePort`, `ProcessPort`. |
 | `.pi/extensions/pij/core/seq.ts` | `SeqCounter` — strictly-monotonic allocator with crash-safe recovery from `lastSeq()`. |
 | `.pi/extensions/pij/core/events.ts` | `buildEvent` (seq + ISO timestamp), `filterEvents` (since/type/last), `eventAgeMs`/`latestEventAgeMs`. |
 | `.pi/extensions/pij/core/state.ts` | `isWorking`, `liveness` (active/stale/dead), `isStalled`; `STALE_AFTER_MS`. |
 | `.pi/extensions/pij/core/commands.ts` | Remote-command allow-list (`compact`) + `validateCommand`. |
-| `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, `filterByFolder`, `filterPrime`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
+| `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, exact-folder and repository selection, current-only `filterPrime`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
+| `.pi/extensions/pij/core/tree.ts` | Effective-parent resolution, no-write link planning/cycle refusal, repository/global/subtree selection, filter algebra, and iterative cycle-safe forest projection. |
 | `.pi/extensions/pij/core/memorable-id.ts` | Exact-pinned adjective/animal candidate sequence: PoC-compatible first vector plus deterministic full-space linear probing. |
 | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
-| `.pi/extensions/pij/core/cli.ts` | Send grammar, ordered broadcast preflight/fan-out/result projection, and target/message wait correlation. |
+| `.pi/extensions/pij/core/cli.ts` | Send grammar, tree/link grammar and iterative rendering, ordered broadcast preflight/fan-out/result projection, and target/message wait correlation. |
+| `.pi/extensions/pij/core/session-join.ts` | Stable additive session projection and eval-safe environment exports for structural parent, repository, and prime history. |
 | `.pi/extensions/pij/core/inbox.ts` | Pull inbox grammar, claim projection, hidden receipt preparation, and event-before-marker persistence. |
-| `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of all five ports (Pattern P8: tests target these). |
+| `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of the domain ports (Pattern P8: tests target these). |
 | `.pi/extensions/pij/core/*.test.ts`, `adapters/fakes.test.ts` | Unit coverage for every core module + fakes (50 tests). |
 | `.pi/extensions/pij/adapters/channel.ts` | Immutable `msg-*` publication plus exclusive/idempotent `read-*` markers, unread listing, and pi watcher watermarking. |
 | `.pi/extensions/pij/index.ts` | Pi wiring: durable unread-derived watcher watermark, `PijSession.onInbound`, then post-callback `markRead`. |
@@ -40,7 +44,10 @@ atomic read markers, and a pull consumer for sessions without tmux.
 | Concept | Description | Contract |
 |---------|-------------|----------|
 | Session descriptor | Live presence/attachment data used to find and address a session. | `SessionDescriptor` — written to `~/.pij/<id>.json`; runtime fields may be refreshed without replacing durable identity/history. |
-| Prime designation | Optional honor-system marker consumed by orchestration and list filters. | `SessionDescriptor.prime?: boolean`; only explicit `true` is prime, while `false` and legacy absence are not. |
+| Prime designation/history | Mutually exclusive current and retired honor-system markers consumed by orchestration and projections. | `prime:true` is current; `oldPrime:true` is retired history; `list --prime` is current-only; legacy absence means neither. |
+| Structural parent | Session hierarchy independent of close ownership. | `parentId:<id>` is explicit parent, `null` explicit root, and absence read-only falls back to legacy `spawnedBy`; `spawnedBy` remains authorization. |
+| Repository identity | Stable grouping across a Git main checkout and linked worktrees. | Canonical absolute `gitCommonDir`; absent legacy descriptors can be resolved from folder without migration writes. |
+| Session forest | Deterministic repository/global/subtree projection over one effective-parent graph. | OR within activity/liveness/lifecycle axes, AND across axes; dead/dissolved hidden by default; orphan/filtered-parent/cycle annotations; iterative bounded rendering. |
 | Durable native identity | The same exact native session recovers the same pij-id and metadata after descriptor removal or machine restart. | Two-way `FsRegistry` ownership records keyed by native tuple and pij-id, with durable descriptor snapshots and no-replace publication; Pi persists its exact native id. |
 | Memorable primary id | Newly minted identities use the actual `pij-<adjective>-<animal>` value everywhere; existing opaque ids are immutable. | Exact-pinned 1,202 x 355 corpus; deterministic non-repeating candidates; native/durable/legacy lookup precedes allocation. |
 | Pre-bind reservation | A control-plane id is owned before its pane or descriptor exists. | The same atomic by-pij owner record arbitrates native claims and reservation claims; known failure releases only the owner token, while crash-orphans are retained. |
@@ -64,7 +71,9 @@ atomic read markers, and a pull consumer for sessions without tmux.
 | Contract | Consumer | Shape / Guarantee |
 |----------|----------|-------------------|
 | `Result<T>` | whole core, CLI, tests | Tagged union `{ok:true,value}` / `{ok:false,code,message}` (Pattern P4 — no throws). |
-| Six ports | Phase 2/3 adapters, tests | `RegistryPort`, `EventLogPort(+lastSeq/count/appendOnce)`, `DeliveryPort`, `InboxPort`, `PiRuntimePort`, `ProcessPort`. Only `PiRuntimePort`'s real adapter imports pi. |
+| Seven domain ports | adapters, tests | `RegistryPort`, `RepositoryIdentityPort`, `EventLogPort(+lastSeq/count/appendOnce)`, `DeliveryPort`, `InboxPort`, `PiRuntimePort`, `ProcessPort`. Only `PiRuntimePort`'s real adapter imports pi. |
+| Effective-parent/link contract | tree CLI, adopt validation, tests | One tri-state parent function drives both projection and cycle refusal; unknown/self/cyclic changes return tagged errors before registry writes. |
+| Forest projection | CLI users and automation | JSON root `{roots}` with raw descriptor fields plus `effectiveParentId`, computed state, problem metadata, and children; human `P`/`O` markers and finite deep/corrupt output. |
 | `PijEvent` + `EventQuery` | event log adapter, `pij tail` | seq+ISO-timestamp lines; filters compose deterministically. |
 | `MessageReceipt` + correlation | Phase 3 receiver wiring, `pij send` | queued/delivered lifecycle; pure correlation to the runtime turn stream. |
 | Broadcast send result | CLI users and automation | Human output has one recipient row; JSON is `{from,results:[...]}` with ordered per-target successes or errors. Preflight failure produces no deliveries; runtime partial failure exits non-zero after attempting later targets. |
@@ -76,7 +85,7 @@ atomic read markers, and a pull consumer for sessions without tmux.
 
 - Peer registry descriptor vocabulary + durable native-identity binding + discovery/self-resolution rules.
 - Memorable primary-id sequence, collision retry, legacy opaque-id preservation, and reservation ownership.
-- Prime filter/projection semantics on the shared descriptor and `pij list`.
+- Structural-parent, repository-selection, tree/filter/link, and current/old-prime projection semantics.
 - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
 - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
 - Fire-and-forget message framing + delivery-receipt lifecycle.
@@ -120,3 +129,4 @@ atomic read markers, and a pull consumer for sessions without tmux.
 | 038-pij-prime-designation | Added optional `SessionDescriptor.prime`, `filterPrime`, `pij list --prime`, ordinary-list `P` visibility, and JSON `prime:boolean` compatibility. | 2026-07-11 |
 | 040-memorable-pij-session-ids | New identities now use collision-safe two-word primary ids; exact native and legacy opaque identities reuse their stored id, and `prime` survives allocation, snapshots, and reattachment. | 2026-07-11 |
 | 041-pij-inbox-no-tmux | Added `InboxPort`, immutable `msg-*` plus atomic `read-*`, ambient pull registration/`pij inbox --wait`, durable receipt-event convergence, and post-outcome tmux/pi read ownership. | 2026-07-12 |
+| 046-pij-real-trees | Added tri-state structural parents, canonical Git common-directory identity, repository/global/subtree forests, composable filters, no-write link validation, iterative deep/cycle-safe rendering, and additive old-prime projection while preserving `spawnedBy` close ownership. | 2026-07-13 |

@@ -214,6 +214,10 @@ export interface PendingDescriptorInput {
 	 *  can distinguish a worker you spawned from one you don't own (a pi worker
 	 *  self-registers this; claude/copilot get it written here at spawn). */
 	readonly spawnedBy?: SessionId;
+	/** Structural tree parent, independent from close ownership. */
+	readonly parentId?: SessionId | null;
+	/** Canonical git common directory resolved for the spawn cwd. */
+	readonly gitCommonDir?: string;
 	/** Transcript paths present at spawn (BEFORE the pane exists) — seeds
 	 *  deterministic new-path discovery (AC-03 / review H1). Claude only. */
 	readonly transcriptsAtSpawn?: readonly string[];
@@ -331,6 +335,8 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		...(input.model !== undefined ? { boundModel: input.model } : {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
+		...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+		...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
 		...(input.transcriptsAtSpawn ? { transcriptsAtSpawn: input.transcriptsAtSpawn } : {}),
 		...(input.plannedHarnessSessionId
 			? { plannedHarnessSessionId: input.plannedHarnessSessionId }
@@ -696,6 +702,8 @@ export interface AdoptRequest {
 	readonly id?: SessionId;
 	/** Authoritative harness-native id for restart re-attachment (AC-15). */
 	readonly sessionId?: string;
+	/** Structural parent to persist independently from close ownership. */
+	readonly parentId?: SessionId;
 	readonly json: boolean;
 }
 
@@ -706,6 +714,7 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 	let harness: HarnessKind | undefined;
 	let id: SessionId | undefined;
 	let sessionId: string | undefined;
+	let parentId: SessionId | undefined;
 	let json = false;
 	for (let i = 0; i < argv.length; i++) {
 		const tok = argv[i];
@@ -734,6 +743,11 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 				return err("E-ARG", "--session-id needs a non-empty native id value");
 			}
 			sessionId = value;
+		} else if (key === "parent") {
+			if (value.trim() === "" || value.startsWith("--")) {
+				return err("E-ARG", "--parent needs a non-empty pij session id");
+			}
+			parentId = value;
 		} else {
 			return err("E-ARG", `unknown flag --${key} for adopt`);
 		}
@@ -741,10 +755,17 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 	if (!pane || !/^%\d+$/.test(pane))
 		return err(
 			"E-ARG",
-			"usage: pij adopt <pane:%N> --harness claude [--id <pij-id>] [--session-id <native-id>]",
+			"usage: pij adopt <pane:%N> --harness claude [--id <pij-id>] [--session-id <native-id>] [--parent <pij-id>]",
 		);
 	if (!harness) return err("E-ARG", "adopt needs --harness claude|copilot|codex");
-	return ok({ pane, harness, id, sessionId, json });
+	return ok({
+		pane,
+		harness,
+		id,
+		sessionId,
+		...(parentId !== undefined ? { parentId } : {}),
+		json,
+	});
 }
 
 // ─── Spawn-time model validation (warn-don't-block, T006) ───────────────────

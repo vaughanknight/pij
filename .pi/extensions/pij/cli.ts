@@ -25,6 +25,7 @@ import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
@@ -148,6 +149,7 @@ import {
 	type SpawnLayout,
 	spawnIdentitySeed,
 } from "./core/spawn.js";
+import { planLink } from "./core/tree.js";
 import {
 	err,
 	type HarnessKind,
@@ -175,7 +177,7 @@ const USAGE = `pij — session messaging + tmux control plane
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
-  pij adopt "$TMUX_PANE" --harness <h> [--session-id <native-id>] [--export]    register/re-attach your pane (--session-id: authoritative restart identity)
+  pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]    register/re-attach your pane
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
   pij telegram <init|start|stop>                     bridge pij sessions to a Telegram bot
@@ -196,6 +198,9 @@ Messaging:
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
   pij list [--here] [--prime] [--json]               known sessions
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
+  pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
+                                                        repository forest by default; global forest or arbitrary subtree on request
+  pij link <child> --parent <parent> | --root [--json]  reparent or explicitly root a session without changing close ownership
   pij send <id> "<text>" | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
                                                         deliver one message, broadcast text, or run a control command
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
@@ -329,6 +334,22 @@ function write(res: CliResult): void {
 	if (res.stderr) process.stderr.write(`${res.stderr}\n`);
 }
 
+function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
+	const descriptors: SessionDescriptor[] = [];
+	let names: string[] = [];
+	try {
+		names = readdirSync(pijHome);
+	} catch {
+		return descriptors;
+	}
+	for (const name of names) {
+		if (!name.endsWith(".json")) continue;
+		const descriptor = registry.read(name.slice(0, -".json".length));
+		if (descriptor) descriptors.push(descriptor);
+	}
+	return descriptors;
+}
+
 function deps(): CliDeps {
 	const registry = new FsRegistry(pijHome);
 	const channel = new FsChannel(pijHome);
@@ -342,6 +363,8 @@ function deps(): CliDeps {
 		pijHome,
 		models: loadModels(),
 		resolveAmbientSelf: () => resolveAmbientSelf(registry),
+		repository: new GitRepositoryAdapter(),
+		treeDescriptors: listAllDescriptors(registry),
 	};
 }
 
@@ -912,6 +935,7 @@ function runSpawn(argv: readonly string[]): void {
 	const locals0 = filterByFolder(reg0.list(), cwd);
 	const callerRes = resolveSelf(process.env.PIJ_SESSION_ID, locals0, process.env.TMUX_PANE);
 	const parentId = callerRes.ok ? callerRes.value : undefined;
+	const gitCommonDir = new GitRepositoryAdapter().gitCommonDir(cwd) ?? undefined;
 	let branchFrom: string | undefined;
 	let forkSessionId: string | undefined;
 	if (req.value.branch) {
@@ -1052,6 +1076,8 @@ function runSpawn(argv: readonly string[]): void {
 		// Record who spawned this worker so `pij close` is ownership-aware (a pi
 		// child self-registers spawnedBy; claude/copilot get it written here).
 		spawnedBy: parentId,
+		parentId,
+		gitCommonDir,
 		transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
 		plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
 		branchedFrom: branchFrom,
@@ -1332,6 +1358,7 @@ function runAdopt(argv: readonly string[]): void {
 		process.stderr.write(`E-ARG: cannot resolve pane ${pane} (is it a live tmux pane?)\n`);
 		process.exit(2);
 	}
+	const gitCommonDir = new GitRepositoryAdapter().gitCommonDir(cwd) ?? undefined;
 	// Harness-aware newest-first listings (the impure readdir/mtime-sort lives here;
 	// the decision is the pure resolver). Only the relevant harness's listing runs.
 	let claudeStemsNewestFirst: string[] = [];
@@ -1420,6 +1447,38 @@ function runAdopt(argv: readonly string[]): void {
 				`E-AMBIG: durable ${harness}:${harnessSessionId} identity is ${durablePijId}, not requested ${requestedId}\n`,
 			);
 			process.exit(2);
+		}
+	}
+	if (req.value.parentId !== undefined) {
+		const parentDescriptor = registry.read(req.value.parentId);
+		if (!parentDescriptor) {
+			process.stderr.write(`E-NOID: no parent session '${req.value.parentId}' in registry\n`);
+			process.exit(2);
+		}
+		const candidateId = requestedId ?? durablePijId ?? durableDescriptor?.id;
+		if (candidateId) {
+			const candidate =
+				requestedDescriptor ??
+				durableDescriptor ??
+				buildPendingDescriptor({
+					pijId: candidateId,
+					paneId: pane,
+					cwd,
+					harness,
+					dataDir: join(pijHome, candidateId),
+					eventsPath: join(pijHome, candidateId, "events.ndjson"),
+					pid: panePid,
+					startedAtIso: new Date().toISOString(),
+				});
+			const graph = listAllDescriptors(registry).filter(
+				(descriptor) => descriptor.id !== candidate.id,
+			);
+			graph.push(candidate);
+			const linked = planLink(graph, candidate.id, req.value.parentId);
+			if (!linked.ok) {
+				process.stderr.write(`${linked.code}: ${linked.message}\n`);
+				process.exit(2);
+			}
 		}
 	}
 	let descriptor: SessionDescriptor;
@@ -1623,6 +1682,17 @@ function runAdopt(argv: readonly string[]): void {
 				process.exit(2);
 			}
 		}
+	}
+	descriptor = {
+		...descriptor,
+		...(req.value.parentId !== undefined ? { parentId: req.value.parentId } : {}),
+		gitCommonDir,
+	};
+	try {
+		registry.write(descriptor);
+	} catch (error) {
+		process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+		process.exit(2);
 	}
 	const pijId = descriptor.id;
 	const finalHarnessSessionId = descriptor.harnessSessionId ?? null;
@@ -2225,6 +2295,19 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		channel: new FsChannel(pijHome),
 		cwd,
 	});
+	const spawnedDescriptor = reg.read(id);
+	if (!spawnedDescriptor) {
+		process.stderr.write(`E-NOREG: spawned agent descriptor ${id} is missing\n`);
+		process.exit(3);
+	}
+	const gitCommonDir = new GitRepositoryAdapter().gitCommonDir(cwd) ?? undefined;
+	if (spawnedBy !== undefined || gitCommonDir !== undefined) {
+		reg.write({
+			...spawnedDescriptor,
+			...(spawnedBy !== undefined ? { parentId: spawnedBy } : {}),
+			...(gitCommonDir !== undefined ? { gitCommonDir } : {}),
+		});
+	}
 	const consumed = reg.consumeReservation(id, reservationOwnerToken);
 	if (!consumed.ok) {
 		process.stderr.write(`${consumed.code}: ${consumed.message}\n`);

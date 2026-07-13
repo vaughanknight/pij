@@ -374,6 +374,41 @@ describe("driveSession state machine", () => {
 		expect(out.kind).toBe("failed");
 		expect(reg.read("pij-w")?.lifecycle).toBe("failed");
 	});
+
+	it.each([
+		{ label: "structural parent", parentId: "pij-structural-parent" },
+		{ label: "explicit root", parentId: null },
+	])("dead bound descriptor preserves $label metadata when persisted as failed", ({ parentId }) => {
+		const w = world({ pane: "[exited]", dead: true });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const descriptor = desc({
+			lifecycle: "bound",
+			harnessSessionId: "claude-bound",
+			parentId,
+			gitCommonDir: "/repo/.git",
+			spawnedBy: "pij-close-owner",
+		});
+
+		const out = driveSession(descriptor, {}, w.ports, reg, del);
+		const failed = reg.read("pij-w");
+
+		expect(out).toEqual({ kind: "failed", reason: "pane exited before binding" });
+		expect(failed).toMatchObject({
+			lifecycle: "failed",
+			parentId,
+			gitCommonDir: "/repo/.git",
+			spawnedBy: "pij-close-owner",
+			failureReason: "dead",
+		});
+		expect(
+			del.outbox.some(
+				(event) =>
+					event.message.to === "pij-close-owner" &&
+					event.message.body.includes("failed to bind: pane exited before binding"),
+			),
+		).toBe(true);
+	});
 });
 
 describe("observeActivity (control-plane working|idle|done persistence)", () => {
@@ -600,6 +635,37 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		const reg = new FakeRegistry([desc({ prime: true })]);
 		const written = writeMerged(reg, desc({ prime: stalePrime, state: "idle" }));
 		expect(written.prime).toBe(true);
+		expect(written.state).toBe("idle");
+	});
+
+	it("lets the latest persisted oldPrime=false beat a stale daemon oldPrime=true snapshot", () => {
+		const reg = new FakeRegistry([desc({ oldPrime: false })]);
+		const written = writeMerged(reg, desc({ oldPrime: true, state: "working" }));
+		expect(written.oldPrime).toBe(false);
+		expect(written.state).toBe("working");
+	});
+
+	it.each([
+		false,
+		undefined,
+	])("lets the latest persisted oldPrime=true beat a stale daemon oldPrime=%s snapshot", (staleOldPrime) => {
+		const reg = new FakeRegistry([desc({ oldPrime: true })]);
+		const written = writeMerged(reg, desc({ oldPrime: staleOldPrime, state: "idle" }));
+		expect(written.oldPrime).toBe(true);
+		expect(written.state).toBe("idle");
+	});
+
+	it("lets the latest persisted parentId=null beat a stale daemon parent id", () => {
+		const reg = new FakeRegistry([desc({ parentId: null })]);
+		const written = writeMerged(reg, desc({ parentId: "pij-stale-parent", state: "working" }));
+		expect(written.parentId).toBeNull();
+		expect(written.state).toBe("working");
+	});
+
+	it("lets the latest persisted repository identity beat a stale daemon value", () => {
+		const reg = new FakeRegistry([desc({ gitCommonDir: "/new/.git" })]);
+		const written = writeMerged(reg, desc({ gitCommonDir: "/stale/.git", state: "idle" }));
+		expect(written.gitCommonDir).toBe("/new/.git");
 		expect(written.state).toBe("idle");
 	});
 });

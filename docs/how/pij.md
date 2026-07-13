@@ -49,11 +49,14 @@ pij list --here               # bare `pij` on PATH from any cwd
 - **`PIJ_SESSION_ID`** is exported into each session's env at boot so a `pij`
   invocation from inside that session resolves "self" unambiguously even when two
   sessions share a folder.
-- **`PIJ_PARENT_ID`** is set on a *spawned* session to the pij-id of the session
-  that spawned it (its parent). Together with `PIJ_SESSION_ID` (own id) this gives
-  a spawned agent both "who am I" and "who spawned me" without any resolution
-  step — uniform across `pi`, `claude`, `copilot`, and `codex` spawns. Absent on a
-  session with no resolvable spawner (e.g. a top-level boot).
+- **`PIJ_PARENT_ID`** is a spawn/adopt/export-time environment snapshot used by
+  the current process and inherited by future children. `pij link` changes the
+  registry descriptor's `parentId`; observe current structural truth with
+  `pij tree`. Linking cannot retroactively mutate a running process environment.
+  An explicit-root export emits no parent assignment, so run
+  `unset PIJ_PARENT_ID` first when evaluating into a shell that may carry a stale
+  value. `spawnedBy` remains separate close-authorization ownership and is never
+  rewritten by structural linking.
 
 ### Push and pull delivery
 
@@ -80,15 +83,17 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 |------|-------|------|
 | `inbox` | `pij inbox [check\|register] [--wait [ms]]` | Pull unread messages for the current external session. First use auto-registers it as pull-owned; `--wait` blocks indefinitely and `--wait <ms>` uses one finite timeout. Receipt envelopes become events and never print as user messages. |
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
-| `list` | `pij list [--prime] [--here]` | List known sessions (id, prime marker, state, liveness, folder). `--prime` keeps only explicit prime sessions and composes with `--here`; self is marked `★`, prime rows `P`. JSON always includes `prime:boolean`. |
+| `list` | `pij list [--prime] [--here]` | List known sessions (id, prime marker, state, liveness, folder). `--prime` is current-only: it keeps explicit `prime:true` sessions and composes with `--here`. Self is `★`; current prime is `P`; retired old-prime is `O`. JSON includes `prime:boolean` and `oldPrime:boolean`. |
 | `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
+| `tree` | `pij tree [<id> \| --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all]` | Render the current Git repository forest by default, the global registry with `--global`, or an arbitrary subtree with `<id>`. Filters are repeatable; `--json` returns `{"roots":[...]}`. |
+| `link` | `pij link <child> --parent <parent> \| --root` | Reparent a session or make it an explicit structural root. Validates unknown ids, self-links, and cycles before writing; never changes close ownership. |
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
-| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. Explicit `--session-id` is authoritative. Copilot otherwise uses only its validated `COPILOT_AGENT_SESSION_ID`; global newest session-state is never identity. |
+| `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane and optionally place it structurally under an existing session. Parent validation happens before reservation or descriptor writes. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. |
 | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
-| `orchestration prime` | `pij orchestration prime set\|unset [<id>]` | Set or clear the durable honor-system prime marker on self or another session. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
+| `orchestration prime` | `pij orchestration prime set\|retire\|unset [<id>]` | Mark a current prime, retire it into old-prime history, or clear both markers. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
 
 ### Exit codes
 
@@ -99,6 +104,59 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `1` | `E-DEAD` (peer's process is gone), or at least one preflight-valid broadcast delivery failed |
 | `3` | `E-NOREG` (no `~/.pij` registry yet) |
 | `64` | `E-ARG` (malformed invocation — unknown flag, bad arity, non-numeric `--since`, `text` + `--command` together, …) |
+
+---
+
+## Session forests, repositories, and ownership
+
+Four independent descriptor axes answer different questions:
+
+| Axis | Field / projection | Meaning |
+|---|---|---|
+| Structure | `parentId` / `effectiveParentId` | Where the session appears in the forest. An id is an explicit parent, `null` is an explicit root, and absence reads through the legacy `spawnedBy` fallback without migration writes. |
+| Close ownership | `spawnedBy` | Which creator may close the peer without `--force`. `pij link` never changes it. |
+| Repository | `gitCommonDir` | Canonical absolute Git common directory. A main checkout and all linked worktrees share one repository key. |
+| State | activity + liveness + lifecycle | Activity is `working\|idle\|done`; liveness is `active\|stale\|dead\|dissolved`; lifecycle is `pending\|ready\|bound\|failed\|dissolved`. |
+
+### Tree selectors and filters
+
+```bash
+pij tree                                      # current Git repository, across linked worktrees
+pij tree --global                             # all visible registry sessions
+pij tree <id>                                 # arbitrary subtree, independent of cwd/repository
+pij tree --activity working --activity idle   # OR within activity
+pij tree --liveness active --lifecycle bound  # AND across axes
+pij tree --all --json                         # include dead/dissolved history
+```
+
+Bare `tree` requires a Git repository identity; outside Git, use `--global` or an
+explicit subtree id. Repository identity is captured/refreshed during spawn,
+registration, and reattachment. Dead/dissolved history is hidden by default and
+is included by `--all` or an explicit `dead`/`dissolved` liveness/lifecycle
+filter. Repeating one filter flag ORs its values; different axes compose with AND.
+
+Human output uses `P` for current prime and `O` for old-prime, renders dissolved
+lifecycle as `closed`, and annotates `[orphan:<id>]`, `[filtered-parent:<id>]`,
+or `[cycle→<id>]`. JSON is additive and stable: raw descriptor fields stay on
+each node beside `effectiveParentId`, activity, liveness, optional problem data,
+and `children`; the document root is `{"roots":[...]}`. Human and JSON rendering
+use explicit traversal stacks, so corrupt/cyclic or thousands-deep history stays
+finite without recursive stack overflow; very deep human indentation is capped
+and marked with an ellipsis while retaining every node.
+
+### Linking and adoption
+
+```bash
+pij link <child> --parent <parent> [--json]
+pij link <child> --root [--json]
+pij adopt "$TMUX_PANE" --harness <h> --parent <parent>
+```
+
+`link` changes only `parentId`. Unknown child/parent ids, self-parenting, and
+effective-parent cycles fail before any write. The JSON receipt is
+`{"id":"…","parentId":"…"|null,"changed":true|false}`. Automatic spawn records
+the caller as structural parent and close owner; adopted panes need `--parent`
+or an explicit post-identity `link` when they should join an existing hierarchy.
 
 ---
 
@@ -135,9 +193,10 @@ with an actionable message. Run `pij phonehome` inside that Copilot pane once th
 signal is available; phonehome reads `COPILOT_AGENT_SESSION_ID` for Copilot and
 `CLAUDE_CODE_SESSION_ID` for Claude.
 
-Prime designation is part of the descriptor snapshot and survives this same
-restart/reattachment path. `unset` writes explicit `false`; legacy absence reads
-as not prime. See [pij prime](./pij-prime.md#registry-designation).
+Structural parent, repository identity, current prime, and old-prime history are
+part of the descriptor snapshot and survive this same restart/reattachment path.
+`unset` writes explicit false for both prime markers; legacy absence reads as
+neither current nor old prime. See [pij prime](./pij-prime.md#registry-designation).
 
 ---
 
@@ -319,6 +378,8 @@ If another pi session is running in this repo, you can message and observe it:
 - `pij send <id> --command <compact\|new\|reload>` — run an allow-listed session-control command on a peer
 - `pij tail <id> --since N` — read a peer's new events (cheap incremental review)
 - `pij state <id>` — a peer's working/idle + liveness + latest-event age
+- `pij tree [<id> | --global]` — inspect repository, global, or subtree structure
+- `pij link <child> --parent <parent> | --root` — change structure without changing close ownership
 - `pij path <id> --events` — the peer's events.ndjson path for direct reading
 
 You are stamped with a stable id at boot (`pij whoami`). Full guide: docs/how/pij.md

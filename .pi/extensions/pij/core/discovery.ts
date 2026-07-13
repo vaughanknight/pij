@@ -1,5 +1,6 @@
 // pij-messaging — peer discovery + self-resolution (pure).
 
+import type { RepositoryIdentityPort } from "./ports.js";
 import {
 	err,
 	type HarnessKind,
@@ -71,6 +72,34 @@ export function filterByFolder(
 	folder: string,
 ): SessionDescriptor[] {
 	return descriptors.filter((d) => d.folder === folder);
+}
+
+export interface RepositorySelection {
+	readonly gitCommonDir: string | null;
+	readonly descriptors: SessionDescriptor[];
+	readonly unresolved: SessionDescriptor[];
+}
+
+export function selectByRepository(
+	descriptors: readonly SessionDescriptor[],
+	folder: string,
+	repository: RepositoryIdentityPort,
+): RepositorySelection {
+	const gitCommonDir = repository.gitCommonDir(folder);
+	if (gitCommonDir === null) return { gitCommonDir: null, descriptors: [], unresolved: [] };
+
+	const matched: SessionDescriptor[] = [];
+	const unresolved: SessionDescriptor[] = [];
+	for (const descriptor of descriptors) {
+		const descriptorRepository =
+			descriptor.gitCommonDir ?? repository.gitCommonDir(descriptor.folder);
+		if (descriptorRepository === null) {
+			unresolved.push(descriptor);
+		} else if (descriptorRepository === gitCommonDir) {
+			matched.push(descriptor);
+		}
+	}
+	return { gitCommonDir, descriptors: matched, unresolved };
 }
 
 /** Descriptors explicitly designated prime. Legacy absence and false are excluded. */

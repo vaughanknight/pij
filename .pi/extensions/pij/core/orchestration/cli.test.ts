@@ -24,7 +24,7 @@ function err(args: string[]) {
 }
 
 describe("parseOrchestrationArgs", () => {
-	it("parses prime set/unset with an optional target and JSON", () => {
+	it("parses prime set/retire/unset with an optional target and JSON", () => {
 		expect(ok(["prime", "set"])).toEqual({
 			primitive: "prime",
 			verb: "set",
@@ -33,6 +33,12 @@ describe("parseOrchestrationArgs", () => {
 		expect(ok(["prime", "set", "pij-a", "--json"])).toEqual({
 			primitive: "prime",
 			verb: "set",
+			id: "pij-a",
+			json: true,
+		});
+		expect(ok(["prime", "retire", "pij-a", "--json"])).toEqual({
+			primitive: "prime",
+			verb: "retire",
 			id: "pij-a",
 			json: true,
 		});
@@ -162,7 +168,9 @@ describe("parseOrchestrationArgs", () => {
 		[["prime"]],
 		[["prime", "show"]],
 		[["prime", "set", "a", "b"]],
+		[["prime", "retire", "a", "b"]],
 		[["prime", "set", "--wat"]],
+		[["prime", "retire", "--json=true"]],
 		[["prime", "unset", "--json=true"]],
 	])("rejects malformed invocation %j", (args) => {
 		expect(err(args).code).toBe("E-ARG");
@@ -195,7 +203,7 @@ describe("orchestration exit codes", () => {
 	});
 });
 
-function descriptor(id: string, prime?: boolean): SessionDescriptor {
+function descriptor(id: string, over: Partial<SessionDescriptor> = {}): SessionDescriptor {
 	return {
 		id,
 		folder: "/repo",
@@ -203,7 +211,7 @@ function descriptor(id: string, prime?: boolean): SessionDescriptor {
 		eventsPath: `/home/.pij/${id}/events.ndjson`,
 		pid: 100,
 		startedAt: "2026-07-11T00:00:00.000Z",
-		...(prime === undefined ? {} : { prime }),
+		...over,
 	};
 }
 
@@ -235,7 +243,7 @@ function dispatchPrime(
 describe("prime orchestration dispatch", () => {
 	it("sets the exact resolved self and renders human output", () => {
 		const { result, registry } = dispatchPrime(["prime", "set"], {
-			descriptors: [descriptor("pij-a")],
+			descriptors: [descriptor("pij-a", { oldPrime: true })],
 		});
 		expect(result).toEqual({
 			stdout: "prime set: pij-a",
@@ -243,6 +251,7 @@ describe("prime orchestration dispatch", () => {
 			exitCode: 0,
 		});
 		expect(registry.read("pij-a")?.prime).toBe(true);
+		expect(registry.read("pij-a")?.oldPrime).toBe(false);
 	});
 
 	it("uses an explicit target without consulting ambiguous self resolution", () => {
@@ -260,9 +269,35 @@ describe("prime orchestration dispatch", () => {
 		expect(registry.read("pij-b")?.prime).toBe(true);
 	});
 
+	it("retires the exact resolved self and renders human output", () => {
+		const { result, registry } = dispatchPrime(["prime", "retire"], {
+			descriptors: [descriptor("pij-a", { prime: true })],
+		});
+		expect(result).toEqual({
+			stdout: "prime retire: pij-a",
+			stderr: "",
+			exitCode: 0,
+		});
+		expect(registry.read("pij-a")).toMatchObject({ prime: false, oldPrime: true });
+	});
+
+	it("renders the retired marker additively in JSON without consulting self resolution", () => {
+		const { result, registry } = dispatchPrime(["prime", "retire", "pij-b", "--json"], {
+			descriptors: [descriptor("pij-a"), descriptor("pij-b", { prime: true })],
+			resolveSelf: () => resultErr("E-AMBIG", "ambiguous"),
+		});
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-b",
+			prime: false,
+			oldPrime: true,
+			changed: true,
+		});
+		expect(registry.read("pij-b")).toMatchObject({ prime: false, oldPrime: true });
+	});
+
 	it("unsets idempotently and reports changed=false in JSON", () => {
 		const { result, registry } = dispatchPrime(["prime", "unset", "pij-a", "--json"], {
-			descriptors: [descriptor("pij-a", false)],
+			descriptors: [descriptor("pij-a", { prime: false, oldPrime: false })],
 		});
 		expect(JSON.parse(result.stdout)).toEqual({
 			id: "pij-a",
@@ -270,6 +305,7 @@ describe("prime orchestration dispatch", () => {
 			changed: false,
 		});
 		expect(registry.read("pij-a")?.prime).toBe(false);
+		expect(registry.read("pij-a")?.oldPrime).toBe(false);
 	});
 
 	it("maps E-NOID and E-AMBIG without mutating descriptors", () => {

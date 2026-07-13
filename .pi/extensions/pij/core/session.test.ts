@@ -169,6 +169,73 @@ describe("PijSession.boot", () => {
 		});
 	});
 
+	it("refreshes structural and repository metadata while preserving close ownership", () => {
+		const existing: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			parentId: "pij-old-parent",
+			gitCommonDir: "/old/.git",
+			folder: "/old-repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			spawnedBy: "pij-close-owner",
+		};
+		const refreshed = harness({ registry: [existing], now: T0 });
+		refreshed.session.boot(
+			bootInput({
+				parentId: null,
+				gitCommonDir: "/new/.git",
+				resetRuntimeState: true,
+			}),
+		);
+		expect(refreshed.registry.read("alice")).toMatchObject({
+			parentId: null,
+			gitCommonDir: "/new/.git",
+			spawnedBy: "pij-close-owner",
+		});
+
+		const preserved = harness({ registry: [existing], now: T0 });
+		preserved.session.boot(bootInput({ resetRuntimeState: true }));
+		expect(preserved.registry.read("alice")).toMatchObject({
+			parentId: "pij-old-parent",
+			gitCommonDir: "/old/.git",
+			spawnedBy: "pij-close-owner",
+		});
+	});
+
+	it("hydrates durable structural metadata and applies a freshly resolved repository identity", () => {
+		const durable: SessionDescriptor = {
+			id: "alice",
+			parentId: null,
+			gitCommonDir: "/old/.git",
+			folder: "/old-repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			spawnedBy: "pij-close-owner",
+		};
+		const h = harness({ now: T0 });
+		h.session.boot(
+			bootInput({
+				durableDescriptor: durable,
+				gitCommonDir: "/new/.git",
+				resetRuntimeState: true,
+			}),
+		);
+		expect(h.registry.read("alice")).toMatchObject({
+			parentId: null,
+			gitCommonDir: "/new/.git",
+			spawnedBy: "pij-close-owner",
+		});
+	});
+
 	it("reseeds the seq counter from lastSeq() (crash-safe, finding 04)", () => {
 		const events: PijEvent[] = [
 			{ seq: 7, timestamp: new Date(T0).toISOString(), type: "tool_call" },
@@ -346,10 +413,19 @@ describe("PijSession descriptor state (D-A / AC-9, AC-7a)", () => {
 describe("PijSession.shutdown", () => {
 	it("dissolves the descriptor without leaving it in the live registry list", () => {
 		const h = harness();
-		h.session.boot(bootInput());
+		h.session.boot(
+			bootInput({
+				parentId: null,
+				gitCommonDir: "/repo/.git",
+			}),
+		);
 		expect(h.registry.read("alice")).not.toBeNull();
 		h.session.shutdown();
-		expect(h.registry.read("alice")?.lifecycle).toBe("dissolved");
+		expect(h.registry.read("alice")).toMatchObject({
+			lifecycle: "dissolved",
+			parentId: null,
+			gitCommonDir: "/repo/.git",
+		});
 		expect(h.registry.list()).toEqual([]);
 	});
 });

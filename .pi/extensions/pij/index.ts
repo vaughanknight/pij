@@ -11,6 +11,7 @@ import { Type } from "typebox";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
@@ -41,6 +42,7 @@ export default function (pi: ExtensionAPI): void {
 	if (isSubagentChild(process.env)) return;
 
 	const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+	const repositories = new GitRepositoryAdapter();
 
 	// Native send tool (the model-facing comms seam). Agents call this instead of
 	// shelling out to the `pij` CLI — it reuses the proven core dispatch() send
@@ -268,6 +270,8 @@ export default function (pi: ExtensionAPI): void {
 		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const dataDir = join(pijHome, self);
 		const eventsPath = join(dataDir, "events.ndjson");
+		const folder = process.cwd();
+		const gitCommonDir = repositories.gitCommonDir(folder);
 		// /new and /fork mint a fresh id => drop the prior session's descriptor so it
 		// does not linger as a duplicate live peer (same pid, stale id). /reload keeps
 		// the same id, so this is a no-op there.
@@ -288,12 +292,14 @@ export default function (pi: ExtensionAPI): void {
 		const boot = session.boot({
 			id: self,
 			role,
-			folder: process.cwd(),
+			folder,
 			dataDir,
 			eventsPath,
 			harness: "pi",
 			harnessSessionId: piSessionId,
 			paneId: process.env.TMUX_PANE,
+			...(process.env.PIJ_PARENT_ID !== undefined ? { parentId: process.env.PIJ_PARENT_ID } : {}),
+			...(gitCommonDir !== null ? { gitCommonDir } : {}),
 			durableDescriptor,
 			resetRuntimeState: event.reason !== "reload",
 		});

@@ -27,6 +27,14 @@ export interface JoinRow {
 	readonly boundModel?: string;
 	/** The pij-id of the session that spawned this one. Omitted for operator spawns. */
 	readonly spawnedBy?: SessionId;
+	/** Structural tree parent. Explicit root is retained as `null`; absence is omitted. */
+	readonly parentId?: SessionId | null;
+	/** Canonical repository identity shared by linked worktrees. */
+	readonly gitCommonDir?: string;
+	/** Current-prime projection is always explicit for consumers. */
+	readonly prime: boolean;
+	/** Retired-prime projection is always explicit for consumers. */
+	readonly oldPrime: boolean;
 	/** Spawn→bind lifecycle. Omitted for a session that never went through spawn. */
 	readonly lifecycle?: SessionLifecycle;
 }
@@ -42,6 +50,10 @@ export function buildSessionJoinRows(descriptors: readonly SessionDescriptor[]):
 		...(d.transcriptPath !== undefined ? { transcriptPath: d.transcriptPath } : {}),
 		...(d.boundModel !== undefined ? { boundModel: d.boundModel } : {}),
 		...(d.spawnedBy !== undefined ? { spawnedBy: d.spawnedBy } : {}),
+		...(d.parentId !== undefined ? { parentId: d.parentId } : {}),
+		...(d.gitCommonDir !== undefined ? { gitCommonDir: d.gitCommonDir } : {}),
+		prime: d.prime === true,
+		oldPrime: d.oldPrime === true,
 		...(d.lifecycle !== undefined ? { lifecycle: d.lifecycle } : {}),
 	}));
 }
@@ -61,7 +73,9 @@ function shQuote(value: string): string {
  *  Finding 04). Every value is shell-quoted so the whole block is safe to `eval`. */
 export function buildExportLines(descriptor: SessionDescriptor): string {
 	const lines = [`export PIJ_SESSION_ID=${shQuote(descriptor.id)}`];
-	if (descriptor.spawnedBy) lines.push(`export PIJ_PARENT_ID=${shQuote(descriptor.spawnedBy)}`);
+	const parentId =
+		descriptor.parentId !== undefined ? descriptor.parentId : (descriptor.spawnedBy ?? null);
+	if (parentId) lines.push(`export PIJ_PARENT_ID=${shQuote(parentId)}`);
 	if (descriptor.role) lines.push(`export PIJ_ROLE=${shQuote(descriptor.role)}`);
 	return lines.join("\n");
 }

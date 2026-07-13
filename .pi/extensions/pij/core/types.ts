@@ -52,6 +52,13 @@ export interface SessionDescriptor {
 	readonly role?: Role;
 	/** Honor-system orchestration designation. Absent means legacy/not prime. */
 	readonly prime?: boolean;
+	/** Retired orchestration designation. Absent means legacy/not old-prime. */
+	readonly oldPrime?: boolean;
+	/** Structural tree parent. An id is an explicit parent, `null` is an explicit
+	 * root, and absence falls back read-only to legacy `spawnedBy`. */
+	readonly parentId?: SessionId | null;
+	/** Canonical absolute git common directory, shared by linked worktrees. */
+	readonly gitCommonDir?: string;
 	/** Absolute project folder the session runs in (used by --here filter). */
 	readonly folder: string;
 	/** Absolute data dir: ~/.pij/<id>/ holding events.ndjson + state.json. */
@@ -143,6 +150,52 @@ export interface SessionDescriptor {
 	 *  to the spawner. Drives the `--once` auto-close latch (`agentOnce && reportedAt`,
 	 *  T005 planOnceClose). Re-stamped on each subsequent report. */
 	readonly reportedAt?: string;
+}
+
+// ─── session-tree projection ────────────────────────────────────────────────
+
+/** Orchestration-facing activity axis used by list/tree filters. */
+export type TreeActivity = "working" | "idle" | "done";
+
+/** A descriptor paired with the live values computed by the caller. */
+export interface TreeSession {
+	readonly descriptor: SessionDescriptor;
+	readonly activity: TreeActivity;
+	readonly liveness: LivenessVerdict;
+}
+
+/** Tree filters compose as OR within one axis and AND across axes. */
+export interface TreeFilters {
+	readonly activity?: readonly TreeActivity[];
+	readonly liveness?: readonly LivenessVerdict[];
+	readonly lifecycle?: readonly SessionLifecycle[];
+	/** Include dead/dissolved history when no explicit history filter is present. */
+	readonly all?: boolean;
+}
+
+/** Optional selection applied before filters and projection. */
+export interface TreeProjectionOptions {
+	/** Restrict projection to this preselected set (for repository views). */
+	readonly selectedIds?: readonly SessionId[];
+	/** Restrict projection to one node and its descendants. */
+	readonly rootId?: SessionId;
+	readonly filters?: TreeFilters;
+}
+
+export type TreeProblem = "orphan" | "filtered-parent" | "cycle";
+
+/** Stable JSON tree node: raw descriptor fields stay top-level and additive. */
+export interface SessionTreeNode extends SessionDescriptor {
+	readonly effectiveParentId: SessionId | null;
+	readonly activity: TreeActivity;
+	readonly liveness: LivenessVerdict;
+	readonly problem?: TreeProblem;
+	readonly cycleTo?: SessionId;
+	readonly children: readonly SessionTreeNode[];
+}
+
+export interface SessionForest {
+	readonly roots: readonly SessionTreeNode[];
 }
 
 // ─── peer file-watch subscriptions ─────────────────────────────────────────
