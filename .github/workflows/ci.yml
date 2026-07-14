@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      - run: npm ci --min-release-age=null
       - run: npm run typecheck
       - run: npm run lint
       # npm test now includes the two-peer integration smoke
@@ -43,5 +43,5 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --min-release-age=null
       - run: npm run windows:check

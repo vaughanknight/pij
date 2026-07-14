@@ -31,6 +31,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { type Document, parseDocument, type YAMLMap, type YAMLSeq } from "yaml";
 import { piInvocation } from "./cli-invocation.js";
+import { releaseAgeEnvironment } from "./release-age-policy.js";
 import { agentVetter } from "./vetters/agent.js";
 import { aggregate, runPipeline } from "./vetters/aggregate.js";
 import { buildUnmanifestedVerdict } from "./vetters/audit-unmanifested.js";
@@ -152,6 +153,14 @@ function piRemove(source: string): "removed" | "missing" {
 	}
 }
 
+function installPiPackage(source: string): void {
+	const invocation = piInvocation(["install", source]);
+	execFileSync(invocation.file, invocation.args, {
+		env: releaseAgeEnvironment(),
+		stdio: "inherit",
+	});
+}
+
 function cmdSync(): void {
 	const doc = readDoc();
 	const list = entries(doc);
@@ -203,8 +212,7 @@ async function cmdAdd(args: string[]): Promise<void> {
 	// Install first so vetters can scan
 	console.error(`installing ${source} for pre-vet scan...`);
 	try {
-		const invocation = piInvocation(["install", source]);
-		execFileSync(invocation.file, invocation.args, { stdio: "inherit" });
+		installPiPackage(source);
 	} catch {
 		console.error(`! pi install failed for ${source}; aborting add`);
 		process.exit(2);
@@ -296,8 +304,7 @@ async function cmdBootstrap(_args: string[]): Promise<void> {
 			continue;
 		}
 		try {
-			const invocation = piInvocation(["install", e.source]);
-			execFileSync(invocation.file, invocation.args, { stdio: "inherit" });
+			installPiPackage(e.source);
 			installed++;
 		} catch {
 			console.error(`! failed: ${e.source}`);

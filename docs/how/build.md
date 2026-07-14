@@ -53,8 +53,10 @@ pwsh -File .\install-windows.ps1 -StartAt 5
 
 Both entry points run the same six ordered stages:
 
-1. **`npm ci`** — install repo dependencies from the lockfile.
-2. **Install/update the official global `pi` binary** (`just pi-official-install`).
+1. **`npm ci --min-release-age=null`** — replay the committed root lockfile with
+   the npm/cli #9005 compatibility exception described below.
+2. **Install/update the official global `pi` binary** (`just pi-official-install`)
+   under the repository's seven-day npm release-age policy.
 3. **Sync repo-managed global Pi config** into the global agent dir:
    `.pi/APPEND_SYSTEM.md → ~/.pi/agent/APPEND_SYSTEM.md`,
    `.pi/mcp.json → ~/.pi/agent/mcp.json`, and the three managed provider
@@ -93,7 +95,56 @@ Day-to-day recipes:
 | `just link` / `just unlink` | Symlink (or remove) `.pi/extensions/*` into `~/.pi/agent/extensions/` | `147-151` |
 | `just pij <args>` | Run the pij CLI in-repo, no global install | `95-98` |
 | `just pkg <args>` | Manage third-party pi-extensions via `.pi/packages.yaml` | `100-102` |
+| `just release-age-probe` | Separately prove locked install, fresh-resolution refusal, and root audit visibility | release-age recipes |
 | `just sync-models [--source <path>] [--target <path>]` | Atomically merge repo-managed providers into Pi's global model registry | `106-109` |
+
+## npm release-age boundary
+
+The root [`.npmrc`](../../.npmrc) uses npm's native `min-release-age=7`; the
+unit is **days**. It also leaves `audit=true`. The typed policy helper at
+`harness/scripts/release-age-policy.ts` supplies the same environment to
+pij-owned Pi installs, and the `justfile` imports that constant for the official
+global Pi install and `pi update --extensions`.
+
+Coverage is deliberately narrow:
+
+- Fresh root npm resolution observes the committed seven-day setting.
+- `pkg add` and `pkg bootstrap` propagate it to Pi's nested npm resolution.
+- `just pi-official-install` and the extension-only update in `just update-pi`
+  propagate it without removing the existing `--ignore-scripts` flag.
+- Pi's own bare self-update command is upstream behavior and is **not** covered
+  or claimed. `just update-pi` does not invoke bare `pi update`.
+
+A successful `npm ci` proves only that the frozen lock installs. It is not
+fresh-resolution evidence. npm/cli
+[#9005](https://github.com/npm/cli/issues/9005) currently makes the project
+`min-release-age` conflict with npm's internally derived `--before` during nested
+git preparation. Root lock replay therefore uses
+`npm ci --min-release-age=null`: the CLI `null` clears the inherited value for
+that frozen operation. The exception is wired only into `just install` and the
+Node 22/24 + Windows CI lock-replay steps. Never use it with `npm install`.
+
+Root `npm audit --json` is a separate, report-only observation; audit findings
+do not become release-age failures and do not change package-vetter's
+report-and-continue policy.
+
+Run the isolated proof explicitly:
+
+```bash
+just release-age-probe
+```
+
+It copies the committed `.npmrc`, verifies npm derives a `before` date
+approximately seven days earlier, and asks a local deterministic registry for a
+fixture version published at probe time. Native npm must refuse that version
+without any raw `--min-release-age` argument. The same run replays the unchanged
+lock through the approved compatibility exception, captures every subprocess
+result, observes audit JSON, verifies the root manifests were unchanged, and
+removes its temporary root.
+
+There is no generic age-zero recipe. The only exception is the exact root
+lock-replay command above; every fresh `npm install`, Pi package install, global
+Pi install, and extension update remains at seven days.
 
 ## The gate: `just self-check`
 

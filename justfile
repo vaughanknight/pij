@@ -42,7 +42,7 @@ default:
 
 install:
     @echo "=== 1/6 npm dependencies ==="
-    npm ci
+    npm ci --min-release-age=null
     @echo
     @echo "=== 2/6 install/update official pi binary ==="
     just pi-official-install
@@ -111,6 +111,14 @@ pij *ARGS:
 # Manage third-party pi-extensions via .pi/packages.yaml.
 pkg *ARGS:
     npm run pkg -- "$@"
+
+# Print the production npm release-age value from the typed policy module.
+_release-age-days:
+    @node --input-type=module -e 'import { MIN_RELEASE_AGE_DAYS } from "./harness/scripts/release-age-policy.ts"; process.stdout.write(String(MIN_RELEASE_AGE_DAYS))'
+
+# Prove locked install, fresh-resolution refusal, and audit visibility separately.
+release-age-probe:
+    @npx tsx harness/scripts/release-age-probe.ts
 
 # Replace repo-managed provider objects in the global pi model registry while
 # preserving machine-local and otherwise unmanaged providers.
@@ -255,7 +263,8 @@ pi-official-install:
       elif [ -e "$global_pi" ]; then \
         echo "ℹ existing non-symlink pi at $global_pi; npm will update it if package-owned"; \
       fi; \
-      npm install -g --ignore-scripts "$package"; \
+      release_age="$(just _release-age-days)"; \
+      npm_config_min_release_age="$release_age" npm install -g --ignore-scripts "$package"; \
       pi --version | head -1
 
 # --- pi fork source control (optional Pi core development only) ---
@@ -358,7 +367,8 @@ update-pi:
     just pkg bootstrap
     @echo
     @echo "=== update pi extension packages only ==="
-    pi update --extensions
+    @release_age="$(just _release-age-days)"; \
+      npm_config_min_release_age="$release_age" pi update --extensions
     @echo
     just pi-doctor
 

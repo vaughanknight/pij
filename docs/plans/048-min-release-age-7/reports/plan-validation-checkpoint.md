@@ -1,0 +1,30 @@
+# s048 corrected plan and validation checkpoint
+
+- **claim**: The unified Simple plan is corrected and cold-validated at `min-release-age=7` **days**, with the pi-mono hardening baseline reconciled. The stream remains `WAITING_FOR_BUILD_CONFIG`; no implementation, fleet, package, lockfile, CI, or government mutation has started.
+- **artifacts[]**:
+  - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/original-ask.md`
+  - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/research-dossier.md`
+  - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/reports/upstream-hardening-reconciliation.md`
+  - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/min-release-age-7-plan.md`
+  - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/validations/min-release-age-7-plan-validation.md`
+  - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/reports/plan-validation-checkpoint.md`
+- **shas[]**:
+  - Plan SHA-256: `b8cf34d101a55728e1c84b11e9b1cbab5341e0d7c7a228574367cb3f7837438b`
+  - Research SHA-256: `7474a5950c93c92169944c7ee5c4fd4ecec89d14ec6a98eb7d3fcf34bc188ca1`
+  - Reconciliation SHA-256: `c9bb43f90704bf4db44547e27ec00f5862a523c775c1c641458ae7cfebb658c4`
+  - Worktree HEAD: `5830b279941538593a04483bfc1068911bdd3ffd` (PR #14 merge)
+- **gates[]**:
+  - Rebase and boot — PASS: branch rebased to `origin/main@5830b279941538593a04483bfc1068911bdd3ffd`; `harness boot` typecheck and test stages passed.
+  - Native semantics — PASS: source-of-truth npm 11.10.0 evidence establishes `min-release-age` uses days; production plan value is exactly `7`.
+  - Corrected plan parser — PASS: required unified-plan sections are ordered; 7 ACs resolve to the coverage map; 5 task IDs resolve; no incorrect-unit tokens remain in the plan/research contract.
+  - Upstream reconciliation — PASS: exact pins, save-exact, lockfile guard, shrinkwrap, release smoke, ignore-scripts, audit signatures, lifecycle allowlisting, and Pi self-update boundary are classified without adding scope.
+  - Cold validation — PASS WITH REPAIR: CRITICAL unit error and two MEDIUM planning omissions are resolved in the sidecar validation record.
+  - Released-path reread — PASS: post-merge full reread of `justfile`, `harness/scripts/packages.ts`, and `docs/how/build.md` confirms all prior overlap paths are now current; their intended policy seams remain `just install`/`update-pi`, `cmdAdd`/`cmdBootstrap`, and build-runbook coverage.
+  - No implementation test/build gate run — intentionally deferred until the corrected plan receives a refreshed implementation release and overlap fence.
+- **observations[]**:
+  - `s048-004 / defect / security-planning / an unchecked native-config unit converted a seven-day quarantine into an extreme unintended hold / require source-level unit verification before freezing numeric package-policy values.`
+  - `s048-005 / win / engineering-harness / pi-mono hardening baseline supplied reusable native controls and explicit non-goals / retain upstream-reconciliation matrix before dispatching supply-chain changes.`
+- **open[]**:
+  - `WAITING_FOR_BUILD_CONFIG`: o-prime/human must issue a refreshed implementation release after this corrected checkpoint, including exact active-file fences and any shared git-index baton.
+  - PR #14 is merged and its three released paths have been rebased and reread; they remain untouched until a refreshed implementation grant authorizes code edits.
+  - No project-level bypass recipe is authorized; a higher-priority npm override requires a fresh explicit human direction.

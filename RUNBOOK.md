@@ -12,6 +12,42 @@ npm run self-check     # validates the harness still works end-to-end
 If `self-check` fails, fix it before doing anything else. **The harness IS
 the product.**
 
+## Dependency release-age policy
+
+The committed [`.npmrc`](.npmrc) sets npm's native `min-release-age=7`
+(**days**) and keeps `audit=true`. The seven-day environment is also applied to
+pij-owned Pi package resolution: `pkg add`, `pkg bootstrap`, the official global
+Pi install recipe, and `pi update --extensions`.
+
+`npm ci` proves the committed lock remains installable; it does **not** prove a
+fresh resolution would accept the same versions. npm/cli
+[#9005](https://github.com/npm/cli/issues/9005) makes the inherited relative age
+conflict with npm's derived `--before` during nested git preparation, so root
+lock replay uses the only approved compatibility form:
+
+```bash
+npm ci --min-release-age=null
+```
+
+The `null` CLI value clears the inherited project setting for this frozen-lock
+operation. It is not a fresh install bypass, must never be used with
+`npm install`, and is the only age-zero path encoded in normal recipes or CI.
+Run the independent proof with:
+
+```bash
+just release-age-probe
+```
+
+The probe replays the committed lock with that scoped exception, derives a
+`before` date approximately seven days earlier from the committed `.npmrc`,
+refuses a deterministic newly-published local registry fixture without a raw age
+argument, and captures `npm audit --json` separately. Audit remains report-only;
+release age does not change package-vetter verdicts.
+
+There is no generic bypass recipe and no age-zero `npm install`. Pi's own bare
+self-update path is upstream behavior and is not covered; pij's `just update-pi`
+deliberately uses the governed npm install plus `pi update --extensions`.
+
 ## New extension
 
 ```bash
@@ -112,15 +148,15 @@ overrides?, agentRubric? }` block; freshness TTL is 30 days.
 `PIJ_VET_SKIP_AGENT=1`. The `self-check` chain skips the agent by
 default for determinism.
 
-**`pkg add` + `pkg bootstrap` enforce the gate**:
-- `pkg add <source>` installs, runs the full pipeline, refuses on
-  `level: fail` without `--unsafe`, and records `vetted:` on success.
-- `pkg bootstrap` refuses entries whose `vetted.date` is missing or
-  older than 30 days unless `--unsafe`.
+**`pkg add` + `pkg bootstrap` report and continue**:
+- `pkg add <source>` installs, runs the full pipeline, prints warn/fail
+  findings, and records the package so the human can keep or disable it.
+- `pkg bootstrap` installs enabled entries, then re-vets stale/unvetted entries
+  offline and prints findings without refusing the install.
 
-**`--unsafe` requires a non-empty reason** via interactive prompt or
-`--reason "<text>"` flag. The reason is logged to stderr and stored in
-`vetted.overrides`.
+`--unsafe` / `--reason "<text>"` is optional provenance. When supplied, the
+reason is logged to stderr and stored in `vetted.overrides`; it does not change
+the report-and-continue control flow.
 
 **Overrides are scoped to specific rules** (FX001-1). The typed shape is:
 

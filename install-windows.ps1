@@ -14,6 +14,7 @@ $AgentRoot = Join-Path $HOME ".pi\agent"
 $ExtensionSourceRoot = Join-Path $RepoRoot ".pi\extensions"
 $ExtensionTargetRoot = Join-Path $AgentRoot "extensions"
 $ManifestPath = Join-Path $RepoRoot ".pi\packages.yaml"
+$ReleaseAgeDays = 7
 
 function Write-Stage {
 	param(
@@ -76,6 +77,27 @@ function Invoke-Native {
 			return
 		}
 		throw $message
+	}
+}
+
+function Invoke-WithReleaseAgeEnvironment {
+	param(
+		[Parameter(Mandatory = $true)]
+		[scriptblock]$Action
+	)
+
+	$minReleaseAgeName = "npm_config_min_release_age"
+	$beforeName = "npm_config_before"
+	$previousMinReleaseAge = [Environment]::GetEnvironmentVariable($minReleaseAgeName, "Process")
+	$previousBefore = [Environment]::GetEnvironmentVariable($beforeName, "Process")
+	[Environment]::SetEnvironmentVariable($minReleaseAgeName, [string]$ReleaseAgeDays, "Process")
+	[Environment]::SetEnvironmentVariable($beforeName, $null, "Process")
+	try {
+		& $Action
+	}
+	finally {
+		[Environment]::SetEnvironmentVariable($minReleaseAgeName, $previousMinReleaseAge, "Process")
+		[Environment]::SetEnvironmentVariable($beforeName, $previousBefore, "Process")
 	}
 }
 
@@ -189,7 +211,9 @@ function Ensure-LeanCtx {
 	$previousNoOnboard = [Environment]::GetEnvironmentVariable("LEAN_CTX_NO_ONBOARD", "Process")
 	$env:LEAN_CTX_NO_ONBOARD = "1"
 	try {
-		Invoke-Native $NpmCommand @("install", "-g", "lean-ctx-bin")
+		Invoke-WithReleaseAgeEnvironment {
+			Invoke-Native $NpmCommand @("install", "-g", "lean-ctx-bin")
+		}
 
 		if (-not (Test-CommandVersion "lean-ctx")) {
 			$npmRoot = (& $NpmCommand "root" "-g" | Select-Object -Last 1).Trim()
@@ -267,7 +291,9 @@ function Install-ManifestPackages {
 
 		Write-Host "Installing $source..."
 		try {
-			Invoke-Native $PiCommand @("install", $source)
+			Invoke-WithReleaseAgeEnvironment {
+				Invoke-Native $PiCommand @("install", $source)
+			}
 		}
 		catch {
 			Write-Warning $_
@@ -392,12 +418,14 @@ $Node = Resolve-CommandPath @("node.exe", "node")
 
 if ($StartAt -le 1) {
 	Write-Stage "1/6 npm dependencies"
-	Invoke-Native $Npm @("ci")
+	Invoke-Native $Npm @("ci", "--min-release-age=null")
 }
 
 if ($StartAt -le 2) {
 	Write-Stage "2/6 install/update official Pi binary"
-	Invoke-Native $Npm @("install", "-g", "--ignore-scripts", "@earendil-works/pi-coding-agent@latest")
+	Invoke-WithReleaseAgeEnvironment {
+		Invoke-Native $Npm @("install", "-g", "--ignore-scripts", "@earendil-works/pi-coding-agent@latest")
+	}
 }
 $Pi = Resolve-CommandPath @("pi.cmd", "pi.exe", "pi")
 
@@ -426,7 +454,9 @@ if ($StartAt -le 5) {
 	Write-Stage "5/6 install and update manifest packages"
 	Invoke-Native $Npm @("run", "pkg", "--", "sync")
 	Install-ManifestPackages $packages $Pi $Npm $Node
-	Invoke-Native $Pi @("update", "--extensions")
+	Invoke-WithReleaseAgeEnvironment {
+		Invoke-Native $Pi @("update", "--extensions")
+	}
 }
 
 Write-Stage "6/6 verify installed state"
