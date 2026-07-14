@@ -44,6 +44,20 @@
 10. **One handler for `session_start`**, all reasons (`startup`, `reload`,
     `new`, `resume`, `fork`).
 
+## Background subagents
+
+- With `@tintinweb/pi-subagents`, use the project-defined `pij-background`
+  agent type for background work. It retains normal extensions and skills but
+  excludes the child-incompatible `pij` extension, whose `session_start`
+  injection otherwise races the subagent's initial prompt.
+- `pij-background` inherits the parent system prompt. Keep conversation context
+  fresh by default (`inherit_context: false` or omitted); set
+  `inherit_context: true` only when the task materially depends on the current
+  thread.
+- Do not use `isolated: true` unless a hermetic built-in-tools-only child is
+  intended. Discover available models at runtime rather than hardcoding a
+  provider or model id.
+
 ## Workflow
 
 > **Canonical interface: `just`.** All composite gates live in the

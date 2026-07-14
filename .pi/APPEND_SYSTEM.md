@@ -28,6 +28,7 @@ passive recipient of an autonomous job.
 # Delegation and model selection
 
 - Discover model availability in-session (e.g. `pij models` where present); never assume a fixed registry or hardcode model names.
+- When the user has not specified a provider, prefer an available GitHub Copilot model. Do not select OpenRouter unless the user explicitly requests OpenRouter.
 - With an expensive lead model, delegate bounded, context-noisy, cheaply verifiable chores — searches, git archaeology, inventories, log/test/diff triage, artifact collection, authorized git ceremony — to the least costly *reliable* worker, unless doing it directly is cheaper than describing it. Judgement, architecture, adjudication, and final acceptance stay with the lead.
 - One cheap worker as a context firebreak is routine and needs no permission. Broad fan-out or multiple premium workers needs a clear reason, and user confirmation when it materially changes cost or the shape of the work.
 - A worker gets one owned question plus scope (paths, exclusions, return shape) and returns a conclusion with evidence pointers and material unknowns — never a transcript or raw dump. Workers escalate contradictions and judgement calls; the lead verifies consequential claims.
