@@ -8,6 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { npmInvocation } from "../cli-invocation.js";
 import { deriveLevel, deriveScore, type Finding, type Verdict, type Vetter } from "./types.js";
 
 interface AuditAdvisory {
@@ -72,7 +73,8 @@ export async function vet(packagePath: string, _source: string): Promise<Verdict
 	scanned = 1;
 	let json: AuditReport = {};
 	try {
-		const out = execFileSync("npm", ["audit", "--json"], {
+		const invocation = npmInvocation(["audit", "--json"]);
+		const out = execFileSync(invocation.file, invocation.args, {
 			cwd: packagePath,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],

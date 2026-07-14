@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import type { SessionId, WatchSidecar, WatchSubscription } from "../core/types.js";
+import { writeJsonAtomic } from "./atomic-file.js";
 
 function isWatchSubscription(v: unknown): v is WatchSubscription {
 	if (typeof v !== "object" || v === null) return false;
@@ -38,12 +39,7 @@ export class FsWatchStore {
 	}
 
 	writeWatches(id: SessionId, watches: readonly WatchSubscription[]): void {
-		const dir = this.dirFor(id);
-		mkdirSync(dir, { recursive: true });
-		const finalPath = this.pathFor(id);
-		const tmpPath = join(dir, `.watches.tmp-${process.pid}`);
-		writeFileSync(tmpPath, JSON.stringify({ watches }));
-		renameSync(tmpPath, finalPath);
+		writeJsonAtomic(this.pathFor(id), { watches });
 	}
 
 	revision(id: SessionId): number | null {

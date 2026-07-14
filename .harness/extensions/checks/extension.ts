@@ -41,7 +41,8 @@ const SENSORS: Sensor[] = [
 		name: "windows-compat",
 		cmd: "just",
 		args: ["windows-compat"],
-		proves: "portable typecheck, lint, inbox, fake, and no-tmux CLI checks pass",
+		proves:
+			"portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass",
 	},
 	{
 		name: "smoke",

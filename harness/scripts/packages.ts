@@ -30,6 +30,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { type Document, parseDocument, type YAMLMap, type YAMLSeq } from "yaml";
+import { piInvocation } from "./cli-invocation.js";
 import { agentVetter } from "./vetters/agent.js";
 import { aggregate, runPipeline } from "./vetters/aggregate.js";
 import { buildUnmanifestedVerdict } from "./vetters/audit-unmanifested.js";
@@ -143,7 +144,8 @@ function findIndex(doc: Document, needle: string): number {
 
 function piRemove(source: string): "removed" | "missing" {
 	try {
-		execFileSync("pi", ["remove", source], { stdio: ["ignore", "pipe", "pipe"] });
+		const invocation = piInvocation(["remove", source]);
+		execFileSync(invocation.file, invocation.args, { stdio: ["ignore", "pipe", "pipe"] });
 		return "removed";
 	} catch {
 		return "missing";
@@ -201,7 +203,8 @@ async function cmdAdd(args: string[]): Promise<void> {
 	// Install first so vetters can scan
 	console.error(`installing ${source} for pre-vet scan...`);
 	try {
-		execFileSync("pi", ["install", source], { stdio: "inherit" });
+		const invocation = piInvocation(["install", source]);
+		execFileSync(invocation.file, invocation.args, { stdio: "inherit" });
 	} catch {
 		console.error(`! pi install failed for ${source}; aborting add`);
 		process.exit(2);
@@ -293,7 +296,8 @@ async function cmdBootstrap(_args: string[]): Promise<void> {
 			continue;
 		}
 		try {
-			execFileSync("pi", ["install", e.source], { stdio: "inherit" });
+			const invocation = piInvocation(["install", e.source]);
+			execFileSync(invocation.file, invocation.args, { stdio: "inherit" });
 			installed++;
 		} catch {
 			console.error(`! failed: ${e.source}`);

@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { npxInvocation } from "../cli-invocation.js";
 import { deriveLevel, deriveScore, type Finding, type Verdict, type Vetter } from "./types.js";
 
 export async function vet(packagePath: string, _source: string): Promise<Verdict> {
@@ -29,21 +30,21 @@ export async function vet(packagePath: string, _source: string): Promise<Verdict
 	}
 
 	try {
-		execFileSync(
-			"npx",
-			[
-				"--yes",
-				"lockfile-lint",
-				"--path",
-				lockPath,
-				"--type",
-				"npm",
-				"--allowed-hosts",
-				"npm",
-				"--validate-https",
-			],
-			{ encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-		);
+		const invocation = npxInvocation([
+			"--yes",
+			"lockfile-lint",
+			"--path",
+			lockPath,
+			"--type",
+			"npm",
+			"--allowed-hosts",
+			"npm",
+			"--validate-https",
+		]);
+		execFileSync(invocation.file, invocation.args, {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 	} catch (err: unknown) {
 		const e = err as { stdout?: Buffer | string; stderr?: Buffer | string };
 		const out = [

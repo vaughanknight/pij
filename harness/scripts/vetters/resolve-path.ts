@@ -3,6 +3,7 @@
 // when both exist (project paths are what pi loads in this repo).
 
 import { execFileSync } from "node:child_process";
+import { piInvocation } from "../cli-invocation.js";
 
 export interface PiListEntry {
 	source: string;
@@ -50,7 +51,8 @@ export function parsePiListOutput(raw: string): PiListEntry[] {
 }
 
 export function piList(): PiListEntry[] {
-	const raw = execFileSync("pi", ["list"], {
+	const invocation = piInvocation(["list"]);
+	const raw = execFileSync(invocation.file, invocation.args, {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
 	});

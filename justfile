@@ -19,9 +19,10 @@ default:
 
 # --- bootstrap ---
 #
-# `just install` is THE single command to set up pij on a fresh machine
-# after `git clone`. Idempotent — safe to re-run any time pi's state
-# drifts (after pi self-update, after switching machines, etc.).
+# `just install` is THE single command to set up pij on a fresh Unix machine
+# after `git clone`. Windows uses `pwsh -File .\install-windows.ps1`, which
+# performs the same six stages with directory junctions and Windows CLI shims.
+# Both are idempotent — safe to re-run any time pi's state drifts.
 #
 # What it does:
 #   1. Install repo dependencies (`npm ci`)

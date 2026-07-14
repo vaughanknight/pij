@@ -17,6 +17,7 @@ const STAGES: readonly Stage[] = [
 			"--",
 			".pi/extensions/pij/adapters/channel.test.ts",
 			".pi/extensions/pij/adapters/fakes.test.ts",
+			".pi/extensions/pij/adapters/fs-registry.test.ts",
 			".pi/extensions/pij/cli.inbox.integration.test.ts",
 		],
 	},

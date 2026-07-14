@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,9 +9,11 @@ import { reattachIdentity, resolveStableIdentity } from "../core/binding.js";
 import { deriveHarnessPijId } from "../core/discovery.js";
 import { memorablePijIdCandidate } from "../core/memorable-id.js";
 import type { SessionDescriptor } from "../core/types.js";
+import { renameReplaceWithRetry } from "./atomic-file.js";
 import { FsRegistry } from "./fs-registry.js";
 
-const TSX = join(import.meta.dirname, "..", "..", "..", "..", "node_modules", ".bin", "tsx");
+const nodeRequire = createRequire(import.meta.url);
+const TSX_CLI = nodeRequire.resolve("tsx/cli");
 const REGISTRY_MODULE = pathToFileURL(join(import.meta.dirname, "fs-registry.ts")).href;
 
 function descriptor(id: string): SessionDescriptor {
@@ -72,9 +75,13 @@ process.stdout.write(JSON.stringify(result));
 		(ready) =>
 			new Promise<{ ok: boolean; value?: { id: string }; code?: string; message?: string }>(
 				(resolve, reject) => {
-					const child = spawn(TSX, [script, raceHome, harness, nativeId, seed, barrier, ready], {
-						stdio: ["ignore", "pipe", "pipe"],
-					});
+					const child = spawn(
+						process.execPath,
+						[TSX_CLI, script, raceHome, harness, nativeId, seed, barrier, ready],
+						{
+							stdio: ["ignore", "pipe", "pipe"],
+						},
+					);
 					let stdout = "";
 					let stderr = "";
 					child.stdout.setEncoding("utf8");
@@ -116,6 +123,115 @@ describe("FsRegistry", () => {
 		expect(reg.read("alice")?.id).toBe("alice");
 		expect(reg.list().map((d) => d.id)).toEqual(["alice"]);
 	});
+
+	it("retries transient Windows replace failures without weakening other platforms", () => {
+		const delays: number[] = [];
+		let attempts = 0;
+		renameReplaceWithRetry("staged", "final", {
+			platform: "win32",
+			rename: () => {
+				attempts += 1;
+				if (attempts < 3) {
+					const error = new Error("target temporarily locked") as NodeJS.ErrnoException;
+					error.code = "EPERM";
+					throw error;
+				}
+			},
+			sleep: (delayMs) => delays.push(delayMs),
+			retryDelaysMs: [5, 10, 20],
+		});
+
+		expect(attempts).toBe(3);
+		expect(delays).toEqual([5, 10]);
+
+		const permanent = new Error("not found") as NodeJS.ErrnoException;
+		permanent.code = "ENOENT";
+		expect(() =>
+			renameReplaceWithRetry("staged", "final", {
+				platform: "win32",
+				rename: () => {
+					throw permanent;
+				},
+				sleep: () => {
+					throw new Error("must not retry");
+				},
+				retryDelaysMs: [5],
+			}),
+		).toThrow(permanent);
+	});
+
+	it("uses a unique temp path instead of clobbering the legacy pid temp name", () => {
+		const legacyTmp = join(home, `alice.json.tmp-${process.pid}`);
+		writeFileSync(legacyTmp, "sentinel");
+
+		new FsRegistry(home).write(descriptor("alice"));
+
+		expect(readFileSync(legacyTmp, "utf8")).toBe("sentinel");
+		expect(new FsRegistry(home).read("alice")?.id).toBe("alice");
+	});
+
+	it.runIf(process.platform === "win32")(
+		"retries atomic replacement while Windows temporarily denies delete sharing",
+		{ timeout: 10_000 },
+		async () => {
+			const registry = new FsRegistry(home);
+			registry.write(descriptor("alice"));
+			const target = join(home, "alice.json");
+			const ready = join(home, "lock-ready");
+			const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+			const powershell = join(
+				systemRoot,
+				"System32",
+				"WindowsPowerShell",
+				"v1.0",
+				"powershell.exe",
+			);
+			const lockScriptPath = join(home, "hold-lock.ps1");
+			writeFileSync(
+				lockScriptPath,
+				[
+					"param([string]$TargetPath, [string]$ReadyPath)",
+					"$stream = [IO.File]::Open($TargetPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)",
+					"try {",
+					"  [IO.File]::WriteAllText($ReadyPath, 'ready')",
+					"  Start-Sleep -Milliseconds 250",
+					"} finally {",
+					"  $stream.Dispose()",
+					"}",
+				].join("\n"),
+			);
+			const child = spawn(
+				powershell,
+				[
+					"-NoProfile",
+					"-NonInteractive",
+					"-ExecutionPolicy",
+					"Bypass",
+					"-File",
+					lockScriptPath,
+					target,
+					ready,
+				],
+				{ stdio: ["ignore", "ignore", "pipe"] },
+			);
+			let stderr = "";
+			child.stderr.setEncoding("utf8");
+			child.stderr.on("data", (chunk: string) => {
+				stderr += chunk;
+			});
+			const completed = new Promise<void>((resolve, reject) => {
+				child.on("error", reject);
+				child.on("close", (code) => {
+					code === 0 ? resolve() : reject(new Error(`lock holder exited ${code}: ${stderr}`));
+				});
+			});
+
+			await waitUntil(() => existsSync(ready));
+			expect(() => registry.write({ ...descriptor("alice"), state: "working" })).not.toThrow();
+			await completed;
+			expect(registry.read("alice")?.state).toBe("working");
+		},
+	);
 
 	it("claim creates once and returns the existing descriptor to concurrent claimers", () => {
 		const first = new FsRegistry(home).claim(descriptor("stable"));

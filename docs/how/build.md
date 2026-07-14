@@ -19,18 +19,39 @@ in this repo is committed configuration it reads — see
 [`AGENTS.md`](../../AGENTS.md) (§ Harness tooling, lines ~120–128) and
 [`.harness/engineering-harness.md`](../../.harness/engineering-harness.md).
 
-## One-command bootstrap: `just install`
+## One-command bootstrap
 
-`just install` is **the** single command to set up pij on a fresh machine after
-`git clone` (`justfile:41-66`). It is idempotent — safe to re-run any time pi's
-global state drifts (after a pi self-update, after switching machines):
+The bootstrap is idempotent — safe to re-run any time pi's global state drifts
+(after a pi self-update, after switching machines).
+
+Unix:
 
 ```bash
 git clone <pij-repo> && cd pij
 just install
 ```
 
-It runs six ordered steps (`justfile:20-66`):
+Windows:
+
+```powershell
+git clone <pij-repo>
+Set-Location pij
+pwsh -File .\install-windows.ps1
+```
+
+The Windows script is the native counterpart to `just install`: it uses
+directory junctions instead of privileged symlinks, invokes Windows command
+shims directly, and installs the `lean-ctx` prerequisite from its official
+prebuilt npm package instead of the manifest's Homebrew command.
+
+If a run is interrupted, resume from its numbered stage without repeating the
+earlier work:
+
+```powershell
+pwsh -File .\install-windows.ps1 -StartAt 5
+```
+
+Both entry points run the same six ordered stages:
 
 1. **`npm ci`** — install repo dependencies from the lockfile.
 2. **Install/update the official global `pi` binary** (`just pi-official-install`).
@@ -39,8 +60,9 @@ It runs six ordered steps (`justfile:20-66`):
    `.pi/mcp.json → ~/.pi/agent/mcp.json`, and the three managed provider
    objects from `.pi/models.json` into `~/.pi/agent/models.json`. The model
    merge preserves machine-local and otherwise unmanaged providers.
-4. **Symlink pij's local extensions** into `~/.pi/agent/extensions/` (`just link`)
-   and link the `pij` CLI onto `PATH` (`npm link`).
+4. **Link pij's local extensions** into `~/.pi/agent/extensions/` (`just link`
+   on Unix, directory junctions on Windows) and link the `pij` CLI onto `PATH`
+   (`npm link`).
 5. **Install every vetted package** from `.pi/packages.yaml` globally
    (`just pkg bootstrap`).
 6. **Run `just pi-doctor`** as a final verification.

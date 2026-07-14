@@ -4,7 +4,7 @@
 	"private": true,
 	"type": "module",
 	"bin": {
-		"pij": ".pi/extensions/pij/cli.ts",
+		"pij": "harness/scripts/pij-cli.cjs",
 		"flow-pair": "skills/flow-pair/lib/cli.ts"
 	},
 	"description": "Engineering harness for building pi extensions.",

@@ -15,7 +15,7 @@ failure), so one invocation surfaces every problem:
 3. `lint` — `just lint` (Biome errors + warnings clean)
 4. `test` — `just test` (vitest suite passes)
 5. `windows-compat` — `just windows-compat` (portable typecheck, lint, focused
-   inbox/fake tests, and the no-tmux CLI baseline)
+   registry-replacement/inbox/fake tests, and the no-tmux CLI baseline)
 6. `smoke` — `just smoke` (tmux-driven driver scenarios) — **heavy**
 7. `pkg-audit` — `PIJ_VET_SKIP_AGENT=1 just pkg audit` (no new package findings)
 8. `snapshots` — `just snapshots-check` (agent-pack snapshots not drifted)

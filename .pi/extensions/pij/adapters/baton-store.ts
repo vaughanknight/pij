@@ -8,7 +8,6 @@ import {
 	openSync,
 	readdirSync,
 	readFileSync,
-	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -24,6 +23,7 @@ import {
 	batonErr,
 	batonOk,
 } from "../core/orchestration/baton.js";
+import { writeJsonAtomic } from "./atomic-file.js";
 
 const BATON_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -134,16 +134,11 @@ export class FsBatonStore implements BatonStorePort {
 		const valid = this.validateName(definition.name);
 		if (!valid.ok) return valid;
 		const path = this.definitionPath(definition.name);
-		const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
 		try {
-			mkdirSync(dirname(path), { recursive: true });
-			writeFileSync(tmpPath, JSON.stringify(definition));
-			renameSync(tmpPath, path);
+			writeJsonAtomic(path, definition);
 			return batonOk(undefined);
 		} catch (error) {
 			return batonErr("E-STORE", `cannot write baton '${definition.name}': ${String(error)}`);
-		} finally {
-			rmSync(tmpPath, { force: true });
 		}
 	}
 

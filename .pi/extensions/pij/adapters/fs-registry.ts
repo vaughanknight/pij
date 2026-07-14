@@ -13,7 +13,6 @@ import {
 	openSync,
 	readdirSync,
 	readFileSync,
-	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -28,6 +27,7 @@ import {
 	type SessionDescriptor,
 	type SessionId,
 } from "../core/types.js";
+import { writeJsonAtomic } from "./atomic-file.js";
 
 interface IdentityRecord {
 	readonly kind?: "identity";
@@ -776,10 +776,7 @@ export class FsRegistry implements RegistryPort {
 	}
 
 	private writeAtomic(path: string, value: unknown): void {
-		mkdirSync(dirname(path), { recursive: true });
-		const tmpPath = `${path}.tmp-${process.pid}`;
-		writeFileSync(tmpPath, JSON.stringify(value));
-		renameSync(tmpPath, path);
+		writeJsonAtomic(path, value);
 	}
 
 	private readFile(path: string): SessionDescriptor | null {
