@@ -211,9 +211,9 @@ first** before asking — common patterns:
 - "scale" → "skill"
 
 If two phonetic candidates are both plausible **and** the choice changes
-what code you'd write, ask via `ask_user_question`. Otherwise pick the
-one that fits the surrounding context and proceed — the user prefers
-forward motion over interrogation.
+what code you'd write, ask according to the clarification protocol below.
+Otherwise pick the one that fits the surrounding context and proceed — the
+user prefers forward motion over interrogation.
 
 ## Clarification protocol
 
@@ -221,6 +221,20 @@ Before guessing, **ask**. When you'd otherwise type a question to the user
 in plain prose, call the `ask_user_question` tool instead (provided by
 `pi-askuserquestion`, auto-loaded from `.pi/packages.yaml`). It accepts an
 array of 1–4 questions in one call and returns one consolidated answer.
+
+**Pij orchestration exception**: a seat or peer in pij orchestration never
+invokes `ask_user_question` or any modal question UI — it asks in ordinary
+inline text, persists the pending decision, and blocks only dependent work;
+question ownership stays with the context owner (parents relay pointers, never
+proxy). This changes the transport and ownership path, not the requirement to
+ask before consequential ambiguity. Full doctrine: `skills/pij/SKILL.md`
+invariants 9–10 and `skills/pij/references/prime/protocol.md`.
+
+**Pij worktree synchronization rule**: isolation removes edit-time
+serialization, not convergence-time serialization — work confined to a verified
+stream worktree/branch is notify-only; synchronize at convergence or any shared
+mutable resource. Full doctrine: `skills/pij/SKILL.md` invariant 11 and
+`skills/pij/references/prime/rituals/batons.md`.
 
 Use it when:
 

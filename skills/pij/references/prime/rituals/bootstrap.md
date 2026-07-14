@@ -1,14 +1,10 @@
 # Bootstrap — stand up an o-prime
 
 Use this only when the consuming repo has no `government/`. It is the day-zero
-ritual; role operation belongs in the orient files and protocol.
-
-## Preconditions
-
-- A git repo, tmux, `pij`, and the ambient `harness` CLI.
-- One session for the `o-prime` window, registered with `pij phonehome` or
-  `pij adopt`.
-- A human ready to name the work. The seat never invents portfolio items.
+ritual; role operation belongs in the orient files and protocol. Preconditions:
+a git repo, tmux, `pij`, the ambient `harness` CLI, one session for the
+`o-prime` window (registered via `pij phonehome` or `pij adopt`), and a human
+ready to name the work — the seat never invents portfolio items.
 
 ## 1. Seat and prove the o-prime
 
@@ -17,10 +13,9 @@ ritual; role operation belongs in the orient files and protocol.
    [`kickoff.md`](./kickoff.md#canary).
 3. Run the orient's boot audit: channel, dead descriptors, inherited government
    if any, and the human status channel.
-4. Persist the proved seat before creating government:
-   `pij orchestration prime set --json`, then confirm the current id appears in
-   `pij list --prime --here --json`. An ambiguous self is a seating failure, not
-   permission to target `"operator"`.
+4. Persist the proved seat: `pij orchestration prime set --json`, then
+   confirm the id in `pij list --prime --here --json`. An ambiguous self is a
+   seating failure, never permission to target `"operator"`.
 
 ## 2. Derive the per-repo contract
 
@@ -30,7 +25,7 @@ Inspect the repo; do not copy the worked example's answers.
 |---|---|---|
 | Cheap gate | Fast deterministic check entrypoint | `harness checks --quick` |
 | Full gate | Complete pre-ship suite | `harness checks` |
-| Batons | What breaks under two concurrent users? Add a probe for "free" | dotnet, Godot window, push-main |
+| Notify-only vs batons | Which isolated operations are grant-free; what breaks under concurrency or convergence (add a "free" probe) | worktree-local ops free; shared daemon, moving handoff, merge-main |
 | Never-stage | Generated/local state missed by ignore rules | `.fs2/`, `.flow-pair/**`, scratch |
 | Flow-state rule | Which files have CLI-only, single-writer mutation? | `the-flow.json` via `harness flow` |
 | Worktree root/naming | Where isolated stream worktrees live; deterministic path pattern | sibling directory + `s<ord>-<slug>` |
@@ -43,9 +38,8 @@ Inspect the repo; do not copy the worked example's answers.
 
 Create `government/` in durable, committable repo space:
 
-- Instantiate [`../templates/spine.md`](../templates/spine.md): human thesis,
-  `date -u` stamp, writer id, empty roster, per-stream fence slots, allocation
-  ledger seeded by scanning existing ordinals, sequencing watch, rulings.
+- Instantiate [`../templates/spine.md`](../templates/spine.md): thesis, stamp,
+  writer id, roster, fence slots, allocation ledger, sequencing watch, rulings.
 - Instantiate [`../templates/baton-book.md`](../templates/baton-book.md): one
   row per derived baton, all free, append-only grant log.
 - Always create `briefs/` and `canaries/`; create `reports/` only when an actual
@@ -57,35 +51,32 @@ harness flow create prime-flow --slug <project>-portfolio \
   --path government/prime-flow.json --agent o-prime --bare
 ```
 
-Record any pre-existing workshops as prime-flow inputs when creating the flow.
-Add successors before predecessors: forward `next` references are rejected.
-Node status is concurrent truth; `nav.now` is only the seat's attention.
+Record pre-existing workshops as prime-flow inputs at creation. Add successors
+before predecessors (forward `next` references are rejected); node status is
+concurrent truth, `nav.now` only the seat's attention.
 
 ## 4. Install the orient stack
 
-- Levers 0/1 stay authoritative in this skill; point at
+- Levers 0/1 stay authoritative in this skill: point at
   [`../orient-oprime.md`](../orient-oprime.md) and
-  [`../orient-global.md`](../orient-global.md), never fork them into the repo.
+  [`../orient-global.md`](../orient-global.md); never fork them into the repo.
 - Generate `government/orient-local.md` from
-  [`../templates/orient-local.md`](../templates/orient-local.md). Derive the
-  project one-liner, doctrine, harness commands, repo mechanics, mandatory
-  non-auto-loaded reads, and current portfolio. The run that omitted the real
-  product pillar produced a technically neat, strategically wrong orient.
-- Use [`../templates/stream-brief.md`](../templates/stream-brief.md) per item;
-  specifics live there, not in the levers.
+  [`../templates/orient-local.md`](../templates/orient-local.md): project
+  one-liner, doctrine, harness commands, repo mechanics, mandatory reads,
+  current portfolio. The run that omitted the real product pillar produced a
+  technically neat, strategically wrong orient.
+- Use [`../templates/stream-brief.md`](../templates/stream-brief.md) per item — specifics live there, not the levers.
 
 ## 5. Open intake and govern
 
 1. Human-named items enter the prime-flow as `proposed` or `deciding`.
 2. At `preparing`, reserve ordinal/folder/window/worktree/branch/base, derive
-   fences, and persist the row, then delegate to [`kickoff.md`](./kickoff.md).
-   Kickoff is the sole construction owner; bootstrap only derives and reserves
-   the inputs.
+   the descriptive touch set and convergence risks, persist the row, then
+   delegate to [`kickoff.md`](./kickoff.md). Kickoff is the sole construction owner.
 3. Assignment stays provisional through `adopt → orient → preamble`; move the
    node to `in_flight` only after the preamble report lands.
 4. In steady state: verify then relay, serialize batons, route cross-stream
-   asks, sync roster rows before prose, and graduate repeated observations into
-   checks, defaults, or protocol tunes.
+   asks, sync rows before prose, graduate repeated observations into encodings.
 
 ## Recovery
 
@@ -96,4 +87,4 @@ Node status is concurrent truth; `nav.now` is only the seat's attention.
 | Sends queue but never deliver | Check daemon ticks and every dead descriptor; one stale corpse once wedged the whole fabric |
 | Stream dies mid-work | Adopt a fresh orchestrator onto its plan folder; disk is the handover |
 | Stream is dissolved | Follow kickoff teardown: close, verify after queue drain, strike row, tombstone ordinal, transplant insights |
-| Fence gap appears | Stop; independently verify the needed path, record a constrained grant, notify every affected stream |
+| Descriptive fence gap appears in a verified worktree | Stream persists and tells the path; o-prime records touch-set/overlap metadata; work continues unless it crosses a hard ownership boundary or convergence point |

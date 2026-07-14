@@ -562,6 +562,21 @@ require_marker "docs/how/pij-prime.md" "/builder 8 ship" \
 require_marker "docs/domains/pij-skill/domain.md" "Stream Orchestrator Landing" \
   "pij-skill domain: names orchestrator landing concept"
 
+# 10b. question doctrine: ask_user_question may appear in the prime payload and
+# root skill only inside ban language (never/No …) — regression guard on the
+# modal-question ban; and the 2IC mission line must survive edits.
+modal_hits=$(grep -rn 'ask_user_question' "$SKILL/SKILL.md" \
+  "$SKILL/references/prime" "$SKILL/references/routes/prime.md" 2>/dev/null \
+  | grep -Ev 'never|Never|No ' || true)
+[ -z "$modal_hits" ] \
+  && ok "question doctrine: ask_user_question appears only inside ban language" \
+  || err "question doctrine: unguarded ask_user_question reference: $modal_hits"
+require_marker "$SKILL/references/prime/orient-oprime.md" \
+  "You are the human's 2IC" \
+  "prime posture: 2IC mission line present"
+require_marker "$SKILL/references/prime/templates/spine.md" "Pending decisions" \
+  "question doctrine: spine template carries the pending-decision queue"
+
 # 11. frozen evidence expected by the route's provenance contract.
 for f in \
   bootstrap.md encode-candidates.md kickoff-runbook.md map.md \

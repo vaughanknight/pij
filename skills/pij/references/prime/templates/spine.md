@@ -11,19 +11,29 @@
 
 ## Fences — <stream id>
 
-**Owns**:
+> Descriptive ownership + merge-risk metadata; not an edit-time permission grant.
+
+**Expected touch set**:
 - `<exact write path>`
 - `.harness/temp/<stream id>/**`
 
-**Read-only / exclusions**:
-- `<explicit non-fence or sibling-owned seam>`
+**Hard exclusions**:
+- `<government/CLI-only flow state/another stream worktree>`
 
-**Overlap ruling**: <none, or recorded sequencing decision + affected streams>
+**Separate-branch overlap**: <none, or paths + affected streams; notification only>
+
+**Convergence plan**: <reconciliation owner + baton/sequencing point for same branch,
+moving dependency, rebase, landing, or merge>
 
 ## Sequencing watch
 
 | ID | Trigger (verified, never hearsay) | Action | Status |
 |---|---|---|---|
+
+## Pending decisions
+
+| ID | Owner | Question (verbatim) | Blocked nodes | Asked | Answered | Answer |
+|---|---|---|---|---|---|---|
 
 ## Allocation ledger
 

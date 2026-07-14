@@ -10,10 +10,20 @@ when. One o-prime writes the book; everyone, including the o-prime, obeys it —
 no code path ever writes the book.
 
 Start from [`../templates/baton-book.md`](../templates/baton-book.md). A baton is
-anything that breaks under two concurrent users: shared build locks, one editor
-window, an external service, merge coordination, a timing run polluted by sibling
-activity, or git/index use during a ruled shared-tree fallback. Routine per-stream
-worktree construction is not a baton.
+anything that breaks under two concurrent users or when histories converge: shared
+build locks, ports/services/daemons, global package/config/cache/runtime state,
+rate-limited external APIs/accounts, shared fixtures or generated artifacts,
+same-branch/shared-checkout work, moving-branch handoffs, rebase, landing, merge,
+or git/index use during a ruled shared-tree fallback.
+
+Isolation removes edit-time serialization, not convergence-time serialization.
+Routine reads, edits, hermetic tests/builds, commits, and sole-owner branch pushes
+inside a verified stream-owned worktree/branch are notification-only: **do not
+request a baton**. Two isolated branches editing the same path record overlap now
+and synchronize when reconciling. A downstream pinned to an immutable producer SHA
+needs no baton until repinning; consuming a moving branch needs a handoff baton. A
+unique-branch push is notify-only unless CI/external quota is shared; merge to a
+shared target is always serialized.
 
 ## Lifecycle (ritual step → primitive verb)
 
@@ -70,4 +80,7 @@ Worked examples of the reclaim and breach records: [`../exemplars/grant-log.md`]
   the construction default; persistent timing/runtime contention informs a new
   sensor, resource split, or human sequencing ruling.
 
-Fences partition files; batons serialize time. Neither replaces the other.
+Fences are sensors — they inform and record merge risk, never block. Batons
+are interlocks — one holder, justified only by a real hazard: shared mutable
+state or convergence. Neither is an edit-time permission gate for isolated
+branch work.

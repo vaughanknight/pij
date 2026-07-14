@@ -159,6 +159,8 @@ Rules of thumb:
 # Clarification batching preference
 
 - When multiple clarification questions are known up front and independent, ask them in one `ask_user_question` call instead of one-by-one. This is preferred for planning/clarification skills unless the answer to an earlier question genuinely changes later questions. Respect the tool's maximum question count per call; if more remain, ask the highest-impact batch first and only follow up if still necessary.
+- **Pij orchestration exception**: pij orchestration seats and peers never use `ask_user_question` or any modal question UI — ask inline through the active delivery channel, persist the pending decision, block only dependent work; the context owner asks, parents relay pointers. Transport and ownership change, not the ask-vs-assume threshold. Full doctrine: `skills/pij/SKILL.md` invariants 9–10.
+- **Pij worktree synchronization rule**: isolation removes edit-time serialization, not convergence-time serialization — work confined to a verified stream worktree/branch is notify-only; synchronize at convergence or any shared mutable resource. Full doctrine: `skills/pij/SKILL.md` invariant 11 + `skills/pij/references/prime/rituals/batons.md`.
 - Whether to ask at all is governed by the ask-vs-assume rule (§ Intent, scope, and autonomy).
 
 # Voice input — phonetic interpretation

@@ -39,7 +39,9 @@ orientation/preamble:
 |---|---|
 | Cheap quality gate | <command> |
 | Full pre-ship gate | <command> |
-| Batons: what breaks under two concurrent users? | <resource + free probe> |
+| Notify-only worktree actions | <ordinary isolated reads/edits/gates/commits/sole-owner push> |
+| Non-hermetic commands (write outside the worktree) | <audits, installs, links, global config — name them; command names are not proof of hermeticity> |
+| Batons: what breaks under two concurrent users or converging histories? | <resource/convergence + free probe> |
 | Never-stage list | <generated/local paths> |
 | Flow-state rule | <CLI-only single-writer files> |
 | Worktree root | <absolute parent directory for stream worktrees> |
@@ -62,7 +64,9 @@ orientation/preamble:
 - [ ] Product one-liner and pillars confirmed by human/PRD
 - [ ] Mandatory non-auto-loaded reads named
 - [ ] Commands mechanically discovered, not guessed
-- [ ] Batons include "free" probes
+- [ ] Notify-only worktree actions explicit; fences are not grants; batons cover
+      only proven shared resources and convergence, with "free" probes
+- [ ] Non-hermetic commands named — hermeticity derived, never assumed from names
 - [ ] Never-stage and flow-writer rules explicit
 - [ ] Worktree root/naming/base and Landing policy mechanically derived
 - [ ] Shared-tree fallback is explicit, not the construction default

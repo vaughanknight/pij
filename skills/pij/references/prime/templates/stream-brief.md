@@ -26,14 +26,16 @@ human
   repos may be severance-ruled; a citation into one rots the day it goes dark.
   Never prepend headers to a verbatim vendor (breaks byte-identity).
 
-## Fences
+## Descriptive fence
 
 Canonical fence section: `<government/spine.md#fences--stream-id>`.
 
-- Owns: <exact paths derived from planned actions>
+- Expected touch set: <exact paths derived from planned actions>
 - Scratch: `.harness/temp/<stream-id>/**`
-- Read-only seams: <sibling-owned or shared paths>
-- Outside-fence need: stop and escalate; never improvise.
+- Hard exclusions: <government/CLI-only flow state/another worktree>
+- Known separate-branch overlap: <paths + eventual reconciliation point>
+- New worktree-local path: persist, tell the o-prime, continue (tell-not-ask;
+  stop only at hard boundaries or convergence — global invariant 11).
 
 ## Orient stack
 
@@ -52,7 +54,9 @@ Canonical fence section: `<government/spine.md#fences--stream-id>`.
   until the human confirms the recorded coder/reviewer profile.
 - Report at preamble, every phase checkpoint, and ship using
   `claim · artifacts[] · shas[] · gates[] · observations[] · open[]`.
-- Exclusive resources require a pushed baton grant.
-- Fleet packets inherit these fences and name their own narrower allowlist.
+- Work confined to this verified worktree/branch is notify-only; a pushed baton
+  grant is required only at convergence or shared mutable resources.
+- Fleet packets inherit this fence and name a narrower task allowlist (task
+  scope, not cross-worktree synchronization).
 - Window/identity: `s<ORD>-<SLUG>` / `<pij id>` / role `stream-s<ORD>`; worker
   panes split inside this window and inherit the worktree cwd.

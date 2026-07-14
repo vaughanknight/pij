@@ -39,10 +39,14 @@ government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 ## Prime invariants
 
 - Government files have one writer; see [`../prime/protocol.md#government-files`](../prime/protocol.md#government-files).
+- Worktree-local activity is notification-only; synchronization begins at shared
+  mutable resources or converging histories; see
+  [`../prime/protocol.md#construction-fences-batons-and-landing`](../prime/protocol.md#construction-fences-batons-and-landing).
 - An orchestrator seat never runs long blocking subagents in its own session;
   role-address sends; see [`../prime/protocol.md#seat-identity`](../prime/protocol.md#seat-identity).
-- Human rulings land in durable government or plan files immediately; see
-  [`../prime/protocol.md#human-rulings`](../prime/protocol.md#human-rulings).
+- Human rulings land in durable government or plan files immediately; questions
+  never block (modal UIs forbidden; the context owner asks); see
+  [`../prime/protocol.md#human-rulings-and-non-blocking-questions`](../prime/protocol.md#human-rulings-and-non-blocking-questions).
 
 ## Preconditions
 

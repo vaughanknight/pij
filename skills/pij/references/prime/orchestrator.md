@@ -30,7 +30,9 @@ stop and escalate one hop; do not improvise a replacement contract.
 Record any named user choice exactly.
 - Default coder: separate Copilot gpt-5.6-sol @ xhigh coder.
 - Default reviewer: separate Copilot gpt-5.6-sol @ xhigh reviewer.
-Then read it back verbatim and wait for confirmation before fleet creation.
+Then read it back verbatim and confirm inline before fleet creation — never a
+modal question UI (global invariant 9); persist the pending choice and remain
+reachable.
 
 Workers are default-stack splits in the orchestrator's own window, never the o-prime's window,
 and inherit the verified worktree because peer spawn uses the
@@ -43,8 +45,10 @@ the override flags; the plan roster remains the durable configuration truth.
 
 ## Packaging and review law
 
-- source-verify every claimed seam before dispatch; a missing seam becomes a
-  brokered fence or grant, never a coder approximation.
+- source-verify every claimed seam before dispatch; a newly discovered
+  worktree-local path is a persisted fence update plus notification (global
+  invariant 11). Stop and escalate at a hard ownership boundary; broker a baton
+  only for a shared mutable resource or convergence point.
 - Freeze immutable coder and reviewer packets with worktree, branch, parent SHA,
   composition, allowed and forbidden paths, proof commands, baton ownership, and
   done schema.
@@ -60,7 +64,16 @@ the override flags; the plan roster remains the durable configuration truth.
 
 Persist pointer reports using [`rituals/reports.md`](./rituals/reports.md) at
 preamble, plan/validation, each phase, and ship; also report blockers, human
-rulings, and coordination changes immediately. Escalate exactly one hop.
+rulings, and coordination changes immediately. Escalate governance and
+coordination exactly one hop — never as a question proxy: an active Builder or
+other specialist asks its own context-local questions directly and sends you
+the pending-decision pointer (global invariants 9–10).
+
+Worktree-local scope changes are the same: tell, do not ask. Record the updated
+touch set and overlap risk, notify the o-prime, and continue on the isolated
+branch; synchronize only at convergence or shared mutable resources (global
+invariant 11; matrix: [`rituals/batons.md`](./rituals/batons.md)). Two isolated
+branches touching the same path is a reconciliation risk, not an edit-time lock.
 
 Push-not-poll remains normal. Treat unexplained worker silence outage-first, never
 misconduct-first. After a 15-minute cadence passes with no completion, blocked,

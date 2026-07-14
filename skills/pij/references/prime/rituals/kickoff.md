@@ -2,14 +2,15 @@
 
 Run steps in order. Artifacts make the process reconstructable; conversation does not.
 
-## Steps 1–18
+## Steps 1–17
 
 1. **Record the ruling.** Put the human's named work item in the spine rulings
    log, dated and as close to verbatim as possible.
 2. **Allocate.** Scan plan ordinals; reserve ordinal, folder, `s<ord>-<slug>`
    window, branch, worktree path, approved base/SHA. Tombstones stay burned.
-3. **Derive fences from actions.** Enumerate paths the plan will touch, verify
-   them on disk, name scratch space, and resolve every overlap before spawn.
+3. **Derive descriptive fences from actions.** Enumerate expected paths, verify
+   them on disk, name scratch space. Record separate-branch overlaps as merge
+   risk (they never block spawn) and name the future convergence point.
 4. **Add the roster row.** Status `preparing`; record worktree, branch, base, and
    UTC stamp before prose. A polished note beside a stale row fooled readers twice.
 5. **Write the brief before spawning.** Instantiate the
@@ -27,29 +28,29 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
    cwd, branch, parent, and window must match the brief.
 10. **Canary legs (a) and (b).** Complete canary leg (a) round-trip and leg (b) identity proof, then write the record with leg (c) pending.
     Adopted streams then run `pij link <id> --parent <o-prime-id> --json`;
-    verify the resulting subtree and record the linked structural parent plus absent or unknown `spawnedBy`/close ownership.
+    verify the subtree, record the linked parent and `spawnedBy`/close ownership.
 11. **Deliver the brief by pointer as canary leg (c).** Its first instruction is
     `/pij prime`; one send, no inline body. Require `brief-ack`, then close the canary record.
-12. **Sync the spine.** Fill peer id, status `briefed`, and stamp. Push the
-    updated structure tree to every live stream.
+12. **Sync the spine; keep the structure tree live.** Fill peer id, status
+    `briefed`, and stamp. Every roster change pushes the updated tree to every
+    live stream; every brief names o-prime and siblings with ids/windows.
 13. **Report one hop up.** Use [`reports.md`](./reports.md); if this is a
     topless o-prime, the government record + human digest replaces numbering.
 14. **Orient and preamble.** The stream invokes `/pij prime`, follows the
     module-first journey, and lands its preamble report before planning mutation.
 15. **Land before teardown.** Require `/builder 8 ship` evidence of PR merge, or
-    record an explicit abandonment ruling. Then send stand-down, `pij close <id>`,
-    drain the queue, verify `E-NOID`, remove the worktree, strike the roster row,
-    tombstone the ordinal, release batons, and transplant useful findings.
-16. **Keep the structure tree live.** Every brief names o-prime and sibling
-    streams with ids/windows; every roster change triggers a tree push.
-17. **Diff manifest against fences.** At plan validation compare both ways:
-    task paths outside fences and fenced paths no task uses. Amend or fix.
-18. **Adoption variant.** For a human-spawned peer, skip steps 6–7 only. Unknown
-    provenance makes the same canary more important; record the linked structural parent and absent or unknown `spawnedBy`/close ownership,
-    **instantiate the same stream-brief template — every section, the Orient
-    stack included** (the first outside run freelanced its adoption brief and
-    dropped the levers), roster `ADOPTED`, and hold provisional until the
-    human preamble.
+    record an explicit abandonment ruling. Then stand-down, `pij close <id>`,
+    drain queue, verify `E-NOID`, remove worktree, strike row, tombstone
+    ordinal, release batons, transplant findings.
+16. **Diff manifest against descriptive fences.** At plan validation compare both
+    ways: task paths outside the declared touch set and declared paths no task
+    uses. Worktree-local additions are tell-not-ask (global invariant 11).
+17. **Adoption variant.** For a human-spawned peer, skip steps 6–7 only. Unknown
+    provenance makes the same canary more important; record the linked
+    structural parent and absent/unknown `spawnedBy`/close ownership,
+    **instantiate the same stream-brief template — every section, Orient stack
+    included** (the first outside run freelanced its brief and dropped the
+    levers), roster `ADOPTED`, provisional until the human preamble.
 
 ## Canary
 
@@ -67,10 +68,10 @@ only in transcript. **Pass-time file first, claim second.**
 ## Live deviations folded in
 
 - Settle the item before spawn; otherwise a canaried peer idles on hold.
-- Brief-before-spawn keeps the canary-to-work gap tight.
 - Structure tree and scratch fence are fields, not afterthoughts.
-- Human direct-go defaults to "after o-prime deconfliction" unless the human
-  says now-regardless; cc the o-prime before first execution.
+- Human direct-go: deconfliction default per [`protocol.md`](../protocol.md) § Human rulings.
+- Worktree-confined work is notify-only; synchronize at convergence or shared
+  mutable resources ([`protocol.md`](../protocol.md) § Construction).
 
 ## Shared-tree fallback yield rule
 
@@ -79,12 +80,11 @@ shared-tree fallback is unavoidable, fences still do not protect siblings' build
 windows; two streams proved that in opposite directions within one hour.
 
 1. Author uncompilable work in scratch; move it in-tree only when it builds.
-2. Every pause, handoff, yield — and every **commit**, the strongest yield
-   point — includes the repo's compilation/typecheck probe: a commit's
-   transitive type closure must compile at checkout (a run-01 phase commit
-   nearly shipped referencing a sibling's untracked sources).
-3. A non-owner never repairs a sibling's broken file. Stop and send an
-   **urgent owner-fix** with the failing command and exact path.
+2. Every pause, handoff, yield, and every **commit** includes the repo's
+   compile/typecheck probe: a commit's transitive type closure must compile at
+   checkout (run-01 nearly shipped referencing a sibling's untracked sources).
+3. A non-owner never repairs a sibling's broken file: stop, send an **urgent
+   owner-fix** with the failing command and exact path.
 4. The rule cuts upward and beyond compilers: the o-prime's own untracked
-   CLI-generated file once redded a stream's FORMAT gate — ignore-list
-   generated files (`.prettierignore` etc.); never hand-format them.
+   CLI-generated file once redded a stream's FORMAT gate — ignore-list generated
+   files (`.prettierignore` etc.); never hand-format them.
