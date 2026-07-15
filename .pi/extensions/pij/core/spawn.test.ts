@@ -10,6 +10,7 @@ import {
 	buildControlSpawnCommand,
 	buildEffortWarning,
 	buildPendingDescriptor,
+	buildPiFocusSpawnCommand,
 	buildSpawnCommand,
 	buildSpawnOutput,
 	livePeerPanes,
@@ -360,6 +361,38 @@ describe("buildControlSpawnCommand", () => {
 			"--model",
 			"sonnet",
 		]);
+	});
+
+	it("pi focus fork uses the self-registering spawn env without a caller-owned pij id", () => {
+		const r = buildPiFocusSpawnCommand({
+			spawnId: "focus-spawn",
+			announceTo: "pij-parent",
+			cwd: "/repo",
+			role: "worker",
+			snapshotPath: "/home/.pij/focus/golden/snapshot.jsonl",
+			forkSessionId: "019f-focus-native",
+			sessionDir: "/home/.pij/focus-launches/019f-focus-native/pi-sessions",
+			model: "github-copilot/gpt-5.6-sol",
+			effort: "xhigh",
+		});
+		expect(r.cmd).toBe("pi");
+		expect(r.args).toEqual([
+			"--fork",
+			"/home/.pij/focus/golden/snapshot.jsonl",
+			"--session-dir",
+			"/home/.pij/focus-launches/019f-focus-native/pi-sessions",
+			"--session-id",
+			"019f-focus-native",
+			"--model",
+			"github-copilot/gpt-5.6-sol:xhigh",
+		]);
+		expect(r.env).toMatchObject({
+			PIJ_ANNOUNCE_TO: "pij-parent",
+			PIJ_PARENT_ID: "pij-parent",
+			PIJ_SPAWN_ID: "focus-spawn",
+			PIJ_ROLE: "worker",
+		});
+		expect(r.env).not.toHaveProperty("PIJ_SESSION_ID");
 	});
 
 	it("no branchFrom → today's claude args are byte-identical (AC-05 regression)", () => {

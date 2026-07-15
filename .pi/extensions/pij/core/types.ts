@@ -22,6 +22,23 @@ export type HarnessKind = "pi" | "claude" | "copilot" | "codex";
  * pi self-consumes its inbox; claude/copilot/codex use daemon tmux push. */
 export type DeliveryMode = "push" | "pull";
 
+/** Immutable metadata for one saved native-session focus snapshot. */
+export interface FocusManifest {
+	readonly version: 1;
+	readonly name: string;
+	readonly harness: HarnessKind;
+	readonly harnessSessionId: string;
+	readonly model?: string;
+	readonly effort?: string;
+	readonly originCwd: string;
+	readonly sha256: string;
+	readonly createdAt: string;
+	readonly lineage: {
+		readonly sourcePijId: SessionId;
+		readonly sourceHarnessSessionId: string;
+	};
+}
+
 /** Spawn→bind lifecycle of a control-plane session (Plan 019). DISTINCT from
  *  `SessionDescriptor.state` (working/idle of a live turn): this tracks the
  *  pre-bind handoff `pending` → `ready` → `bound`, or `failed` on watchdog

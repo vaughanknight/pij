@@ -11,19 +11,22 @@ import {
 	accessSync,
 	constants,
 	existsSync,
+	mkdirSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
 	statSync,
+	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeAgentAdapter } from "minih";
 import { validateInput } from "minih/runner";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
+import { FsFocusStore } from "./adapters/focus-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import { NodeProcess } from "./adapters/process.js";
@@ -82,6 +85,7 @@ import {
 	memorableIdentitySeed,
 	resolveSelf,
 } from "./core/discovery.js";
+import { formatFocusList, launchFocus, listFocuses, saveFocus } from "./core/focus.js";
 import {
 	summarizeTranscriptLine,
 	transcriptDir,
@@ -176,6 +180,7 @@ const USAGE = `pij — session messaging + tmux control plane
 
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
+  pij focus save|list|launch ...                      save immutable native-session focuses and fork them on demand
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]    register/re-attach your pane
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
@@ -274,6 +279,21 @@ FLAGS
 pi: prints the new pane id immediately; the child self-registers and its pij-id arrives
 via its ready-ping (see \`pij list\`). claude/copilot: returns the pre-allocated pij id
 immediately; the daemon drives boot -> ready -> bound.`;
+
+const FOCUS_USAGE = `pij focus — save and relaunch immutable native-session focuses
+
+USAGE
+  pij focus save <name> [--json]
+  pij focus list [--global] [--json]
+  pij focus launch <name> [--json]
+
+NOTES
+  save requires the caller to be a bound pi or claude pij peer.
+  list is repository-filtered by default; --global shows every saved focus.
+  launch starts a fresh tmux fork in pending-canary state; it is not ready until
+  the operator verifies golden recall. pi must launch from the main checkout,
+  not a git worktree (#21).
+  copilot and codex adapters are not yet available in v1.`;
 
 /** Package version for `pij --version` (best-effort; "unknown" if unreadable). */
 function pijVersion(): string {
@@ -794,6 +814,258 @@ function runDaemonVerb(argv: readonly string[]): void {
 		process.exit(0);
 	}
 	process.stderr.write(`E-ARG: unknown 'pij daemon' subcommand '${sub}' (use start|status|stop)\n`);
+	process.exit(64);
+}
+
+function focusNameAndJson(
+	subcommand: "save" | "launch",
+	argv: readonly string[],
+): { name: string; json: boolean } | null {
+	let name: string | undefined;
+	let json = false;
+	for (const arg of argv) {
+		if (arg === "--json") {
+			json = true;
+		} else if (arg.startsWith("--")) {
+			process.stderr.write(`E-ARG: unknown focus ${subcommand} flag '${arg}'\n${FOCUS_USAGE}\n`);
+			process.exit(64);
+		} else if (name === undefined) {
+			name = arg;
+		} else {
+			process.stderr.write(`E-ARG: focus ${subcommand} takes exactly one <name>\n${FOCUS_USAGE}\n`);
+			process.exit(64);
+		}
+	}
+	if (!name) {
+		process.stderr.write(`E-ARG: focus ${subcommand} needs <name>\n${FOCUS_USAGE}\n`);
+		process.exit(64);
+	}
+	return { name, json };
+}
+
+function focusTranscriptFiles() {
+	return {
+		flat: (dir: string): string[] =>
+			readdirSync(dir)
+				.filter((name) => name.endsWith(".jsonl"))
+				.map((name) => join(dir, name)),
+		deep: (_dir: string): string[] => [],
+		read: (path: string): string => readFileSync(path, "utf8"),
+	};
+}
+
+function isLinkedGitWorktree(cwd: string): boolean {
+	try {
+		const gitDir = execFileSync(
+			"git",
+			["-C", cwd, "rev-parse", "--path-format=absolute", "--git-dir"],
+			{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+		).trim();
+		const commonDir = execFileSync(
+			"git",
+			["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+			{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+		).trim();
+		return resolve(cwd, gitDir) !== resolve(cwd, commonDir);
+	} catch {
+		return false;
+	}
+}
+
+function focusPanePid(paneId: string): number {
+	try {
+		const raw = execFileSync("tmux", ["display-message", "-p", "-t", paneId, "#{pane_pid}"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		return /^\d+$/.test(raw) ? Number(raw) : process.pid;
+	} catch {
+		return process.pid;
+	}
+}
+
+function writeFocusMaterialized(path: string, contents: string): void {
+	mkdirSync(dirname(path), { recursive: true });
+	if (existsSync(path)) {
+		if (readFileSync(path, "utf8") === contents) return;
+		throw new Error(`existing transcript materialization differs: ${path}`);
+	}
+	writeFileSync(path, contents, { flag: "wx", mode: 0o400 });
+}
+
+function waitForFocusPiRegistration(
+	registry: FsRegistry,
+	paneId: string,
+	spawnId: string,
+): Result<SessionDescriptor> {
+	const deadline = Date.now() + WAIT_TIMEOUT_MS;
+	while (Date.now() <= deadline) {
+		let matches: SessionDescriptor[];
+		try {
+			matches = registry
+				.list()
+				.filter(
+					(descriptor) => descriptor.paneId === paneId && (descriptor.harness ?? "pi") === "pi",
+				);
+		} catch (error) {
+			return err(
+				"E-NOREG",
+				`cannot inspect pi self-registration for focus spawn '${spawnId}': ${String(error)}`,
+			);
+		}
+		const registered = matches[0];
+		if (matches.length === 1 && registered) return ok(registered);
+		if (matches.length > 1) {
+			return err(
+				"E-AMBIG",
+				`multiple pi sessions self-registered in focus pane ${paneId} for spawn '${spawnId}'`,
+			);
+		}
+		sleepSync(FOLLOW_MS);
+	}
+	return err(
+		"E-NOREG",
+		`pi focus spawn '${spawnId}' timed out waiting for self-registration/ready-ping in pane ${paneId}`,
+	);
+}
+
+function runFocus(argv: readonly string[]): void {
+	if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
+		process.stdout.write(`${FOCUS_USAGE}\n`);
+		return;
+	}
+	const subcommand = argv[0];
+	const rest = argv.slice(1);
+	const store = new FsFocusStore(pijHome);
+	const registry = new FsRegistry(pijHome);
+	const repository = new GitRepositoryAdapter();
+
+	if (subcommand === "save") {
+		const parsed = focusNameAndJson("save", rest);
+		if (!parsed) return;
+		const self = resolveSelf(
+			process.env.PIJ_SESSION_ID,
+			filterByFolder(registry.list(), process.cwd()),
+			process.env.TMUX_PANE,
+		);
+		if (!self.ok) {
+			process.stderr.write(`${self.code}: ${self.message}\n`);
+			process.exit(exitCodeForCore(self.code));
+		}
+		const result = saveFocus(
+			{ name: parsed.name, sourcePijId: self.value },
+			{
+				registry,
+				store,
+				home: homedir(),
+				piSessionDir: process.env.PI_CODING_AGENT_SESSION_DIR,
+				transcripts: focusTranscriptFiles(),
+				nowIso: () => new Date().toISOString(),
+			},
+		);
+		if (!result.ok) {
+			process.stderr.write(`${result.code}: ${result.message}\n`);
+			process.exit(exitCodeForCore(result.code));
+		}
+		process.stdout.write(
+			parsed.json
+				? `${JSON.stringify(result.value)}\n`
+				: `saved focus '${result.value.name}' (${result.value.harness}, ${result.value.model ?? "default"}) at ${store.snapshotPath(result.value.name)}\n`,
+		);
+		return;
+	}
+
+	if (subcommand === "list") {
+		let global = false;
+		let json = false;
+		for (const arg of rest) {
+			if (arg === "--global") global = true;
+			else if (arg === "--json") json = true;
+			else {
+				process.stderr.write(`E-ARG: unknown focus list argument '${arg}'\n${FOCUS_USAGE}\n`);
+				process.exit(64);
+			}
+		}
+		const result = listFocuses(
+			{ cwd: process.cwd(), global },
+			{ store, gitCommonDir: (cwd) => repository.gitCommonDir(cwd) },
+		);
+		if (!result.ok) {
+			process.stderr.write(`${result.code}: ${result.message}\n`);
+			process.exit(exitCodeForCore(result.code));
+		}
+		process.stdout.write(`${formatFocusList(result.value, json)}\n`);
+		return;
+	}
+
+	if (subcommand === "launch") {
+		const parsed = focusNameAndJson("launch", rest);
+		if (!parsed) return;
+		const launchManifest = store.read(parsed.name);
+		if (launchManifest?.harness === "claude") {
+			const daemonNote = ensureDaemonRunning();
+			if (daemonNote) {
+				(parsed.json ? process.stderr : process.stdout).write(`${daemonNote}\n`);
+			}
+		}
+		const caller = resolveSelf(
+			process.env.PIJ_SESSION_ID,
+			filterByFolder(registry.list(), process.cwd()),
+			process.env.TMUX_PANE,
+		);
+		const parentId = caller.ok ? caller.value : undefined;
+		const result = launchFocus(
+			{ name: parsed.name, launchCwd: process.cwd(), parentId },
+			{
+				registry,
+				store,
+				tmux: new TmuxAdapter(),
+				home: homedir(),
+				pijHome,
+				nowIso: () => new Date().toISOString(),
+				randomUuid: randomUUID,
+				spawnToken: () => `focus-${Date.now()}-${process.pid}`,
+				ownerToken: () => `focus-launch:${Date.now()}:${process.pid}:${randomUUID()}`,
+				pid: () => process.pid,
+				panePid: focusPanePid,
+				cwdExists: (cwd) => {
+					try {
+						return statSync(cwd).isDirectory();
+					} catch {
+						return false;
+					}
+				},
+				isGitWorktree: isLinkedGitWorktree,
+				gitCommonDir: (cwd) => repository.gitCommonDir(cwd),
+				ensureDir: (path) => mkdirSync(path, { recursive: true }),
+				writeMaterialized: writeFocusMaterialized,
+				waitForPiRegistration: (paneId, spawnId) =>
+					waitForFocusPiRegistration(registry, paneId, spawnId),
+			},
+		);
+		if (!result.ok) {
+			process.stderr.write(`${result.code}: ${result.message}\n`);
+			process.exit(exitCodeForCore(result.code));
+		}
+		const output = {
+			focus: parsed.name,
+			id: result.value.id,
+			paneId: result.value.paneId,
+			harness: result.value.descriptor.harness,
+			lifecycle: result.value.descriptor.lifecycle ?? null,
+			state: result.value.state,
+			forkSessionId: result.value.forkSessionId,
+			branchedFrom: result.value.branchedFrom,
+		};
+		process.stdout.write(
+			parsed.json
+				? `${JSON.stringify(output)}\n`
+				: `started focus '${parsed.name}' as ${output.id} (${output.harness}) in pane ${output.paneId} — PENDING CANARY (not ready); verify golden recall before assigning work\n`,
+		);
+		return;
+	}
+
+	process.stderr.write(`E-ARG: unknown focus subcommand '${subcommand}'\n${FOCUS_USAGE}\n`);
 	process.exit(64);
 }
 
@@ -2099,6 +2371,13 @@ function spawnAgentPane(
 	},
 	cwd: string,
 ): AgentPaneOutcome {
+	if (plan.harness === "pi") {
+		return {
+			ok: false,
+			message: "E-NOADAPTER: pij agent peers require a daemon-bound harness",
+			exitCode: 2,
+		};
+	}
 	const tmux = new TmuxAdapter();
 	const ownPane = tmux.currentPane();
 	if (!ownPane || !tmux.currentSession()) {
@@ -2446,6 +2725,10 @@ function main(): void {
 			return;
 		}
 		runSpawn(spawnArgs);
+		return;
+	}
+	if (top === "focus") {
+		runFocus(process.argv.slice(3));
 		return;
 	}
 	if (process.argv[2] === "adopt") {

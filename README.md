@@ -53,6 +53,22 @@ After `just install` (which runs `npm link`), bare `pij …` resolves from any c
 See [`docs/how/pij.md`](./docs/how/pij.md) for the full CLI reference, the
 message/receipt protocol, and the parent/worker workflow.
 
+### Focus agents
+
+Freeze a bound pi or claude peer's native session, list saved focuses, then
+start fresh independent forks from the immutable snapshot:
+
+```bash
+pij focus save golden-reviewer
+pij focus list
+pij focus launch golden-reviewer
+```
+
+Focuses live under `~/.pij/focus/<name>/`. See
+[`docs/how/pij-focus.md`](./docs/how/pij-focus.md) for adapter rules, pi's
+worktree restriction, JSON output, and the required relaunch canary. A launch
+is reported as `pending-canary`, not ready, until golden recall is verified.
+
 ## session-sql
 
 `session-sql` is a pi extension that gives the current pi session a private

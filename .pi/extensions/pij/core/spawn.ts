@@ -114,6 +114,30 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	return { cmd: "pi", args, env };
 }
 
+export interface PiFocusSpawnInput extends SpawnInput {
+	readonly snapshotPath: string;
+	readonly sessionDir: string;
+	readonly forkSessionId: string;
+}
+
+/** Build a focus fork on pi's self-registering spawn path. The child owns its
+ * pij id; only the native fork id and isolated transcript destination are pinned. */
+export function buildPiFocusSpawnCommand(input: PiFocusSpawnInput): SpawnCommand {
+	const base = buildSpawnCommand(input);
+	return {
+		...base,
+		args: [
+			"--fork",
+			input.snapshotPath,
+			"--session-dir",
+			input.sessionDir,
+			"--session-id",
+			input.forkSessionId,
+			...base.args,
+		],
+	};
+}
+
 /**
  * Build the ready-ping body string that a spawned child sends to the
  * parent once it is initialised. Encodes spawnId, model, and cwd.
@@ -166,8 +190,8 @@ export function parseReadyBody(body: string): ReadyPayload | null {
 
 /** Input to {@link buildControlSpawnCommand}. */
 export interface ControlSpawnInput {
-	/** The harness to launch (`claude` now; `copilot` reserved). */
-	readonly harness: HarnessKind;
+	/** Daemon-bound harness to launch. Pi uses {@link buildPiFocusSpawnCommand}. */
+	readonly harness: Exclude<HarnessKind, "pi">;
 	/** The registry-claimed pre-bind pij-id — rides PIJ_SESSION_ID so
 	 *  the agent's `pij phonehome` self-resolves to the same id. */
 	readonly pijId: SessionId;

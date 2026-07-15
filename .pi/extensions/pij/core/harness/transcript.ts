@@ -12,6 +12,7 @@
 // `list` takes an injected {flat, deep} listing (the impure readdir lives in the
 // daemon/bin adapters) so the layout itself stays pure + unit-testable.
 
+import { resolve } from "node:path";
 import { transcriptDir, transcriptSessionId } from "./claude.js";
 import { codexSessionIdFromPath, codexTranscriptRoot } from "./codex.js";
 import type { HarnessKind } from "./types.js";
@@ -47,6 +48,20 @@ const CLAUDE_LAYOUT: TranscriptLayout = {
 	sessionIdOf: (path) => transcriptSessionId(path),
 };
 
+function piSessionDir(home: string, cwd: string, override?: string): string {
+	if (override) return resolve(override);
+	const encoded = `--${resolve(cwd)
+		.replace(/^[/\\]/, "")
+		.replace(/[/\\:]/g, "-")}--`;
+	return `${home}/.pi/agent/sessions/${encoded}`;
+}
+
+function piSessionIdFromPath(path: string): string {
+	const stem = transcriptSessionId(path);
+	const separator = stem.lastIndexOf("_");
+	return separator === -1 ? stem : stem.slice(separator + 1);
+}
+
 /** Codex layout = date-nested GLOBAL dir, recursive listing, trailing-UUID id. */
 const CODEX_LAYOUT: TranscriptLayout = {
 	dir: (home, _cwd) => codexTranscriptRoot(home),
@@ -54,8 +69,38 @@ const CODEX_LAYOUT: TranscriptLayout = {
 	sessionIdOf: (path) => codexSessionIdFromPath(path),
 };
 
-/** Select the transcript layout for a harness (Plan 022). Only `codex` diverges;
- *  every other harness gets the claude layout so claude bind stays byte-unchanged. */
-export function transcriptLayout(harness: HarnessKind): TranscriptLayout {
-	return harness === "codex" ? CODEX_LAYOUT : CLAUDE_LAYOUT;
+export interface TranscriptLayoutOptions {
+	/** Pi's `--session-dir` / `PI_CODING_AGENT_SESSION_DIR` override. */
+	readonly piSessionDir?: string;
+}
+
+/** Select the transcript layout for a harness. Claude and copilot preserve the
+ * existing cwd-scoped flat layout; codex is global/deep; pi uses its own
+ * cwd-encoded flat directory or the explicit session-dir override. */
+export function transcriptLayout(
+	harness: HarnessKind,
+	options: TranscriptLayoutOptions = {},
+): TranscriptLayout {
+	if (harness === "codex") return CODEX_LAYOUT;
+	if (harness === "pi") {
+		return {
+			dir: (home, cwd) => piSessionDir(home, cwd, options.piSessionDir),
+			list: (listing, dir) => listing.flat(dir),
+			sessionIdOf: piSessionIdFromPath,
+		};
+	}
+	return CLAUDE_LAYOUT;
+}
+
+/** Resolve one native session id against a concrete listing without mocking the
+ * filesystem shape that selected the candidate paths. */
+export function findTranscriptPath(
+	layout: TranscriptLayout,
+	listing: TranscriptListing,
+	dir: string,
+	harnessSessionId: string,
+): string | null {
+	return (
+		layout.list(listing, dir).find((path) => layout.sessionIdOf(path) === harnessSessionId) ?? null
+	);
 }
