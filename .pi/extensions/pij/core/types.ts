@@ -52,7 +52,7 @@ export type DeathReason =
 	| "model-not-supported" // harness rejected the --model (400/not_found_error)
 	| "auth" // authentication failure (401)
 	| "quota" // terminal quota: credit/billing/insufficient (429/529/overloaded are transient → unknown)
-	| "stalled" // watchdog: working but silent past the stale threshold
+	| "stalled" // shared whole-life/watchdog verdict: peer stayed silent through its response threshold
 	| "dead" // pane exited (no specific error signal)
 	| "unknown"; // fallback when no pattern matched
 
@@ -96,6 +96,9 @@ export interface SessionDescriptor {
 	/** ISO-8601 timestamp of the daemon's latest pass over this control-plane
 	 *  session. Absent for legacy descriptors and pi-owned delivery. */
 	readonly lastTickAt?: string;
+	/** ISO-8601 timestamp of the latest delivered watchdog turn. Descriptor-owned
+	 *  axis truth; absent before the first fire and for legacy descriptors. */
+	readonly lastWatchdogFireAt?: string;
 	/** Tmux pane id (%N) of this session's window, self-recorded by the child
 	 *  from $TMUX_PANE at fresh boot (§H1). Present iff spawned via pij_spawn.
 	 *  Used by PijSession.close() to killPane. */
@@ -235,6 +238,35 @@ export interface WatchSubscription {
 /** Sidecar shape owned by the CLI and read-only to the daemon. */
 export interface WatchSidecar {
 	readonly watches: readonly WatchSubscription[];
+}
+
+// ─── peer watchdog sidecar ─────────────────────────────────────────────────
+/** Why watchdog firing is suspended. `self` requires an explicit resume;
+ *  `compact` resumes when work is next observed; `exempt` is never derived. */
+export type WatchdogPauseTier = "self" | "compact" | "exempt";
+
+/** Watcher-specific bounded pane-capture policy. */
+export interface WatchdogCapturePolicy {
+	readonly mode?: "anomaly" | "always" | "never";
+	readonly maxLines?: number;
+	readonly maxBytes?: number;
+}
+
+/** One peer subscribed to watchdog status for a target session. */
+export interface WatchdogWatcher {
+	readonly watcherId: SessionId;
+	readonly addedAt: string;
+	readonly capture?: WatchdogCapturePolicy;
+}
+
+/** CLI-owned watchdog configuration and pause state, read-only to the daemon.
+ *  Absence of the sidecar is meaningful: watchdog monitoring defaults on. */
+export interface WatchdogSidecar {
+	readonly enabled?: boolean;
+	readonly intervalMs?: number;
+	readonly pausedBy?: WatchdogPauseTier;
+	readonly pausedAtMs?: number;
+	readonly watchers?: readonly WatchdogWatcher[];
 }
 
 // ─── event stream ─────────────────────────────────────────────────────────

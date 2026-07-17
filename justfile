@@ -241,8 +241,9 @@ flow-pair-test *ARGS:
 # A suite that stays green under mutation is decoration. See references/review-rubrics.md
 # Dimension 0. Usage:
 #   just flow-pair-mutate skills/flow-pair/lib/ledger.ts 's/if \(!ev[A-Za-z]+\.ok\)/if (false)/g'
-flow-pair-mutate file expr:
-    bash harness/scripts/flow-pair-mutate.sh "{{file}}" '{{expr}}'
+#   just flow-pair-mutate <file> '<expr>' 'npx vitest run <suite>'   # target the suite that guards <file>
+flow-pair-mutate file expr *test_cmd:
+    bash harness/scripts/flow-pair-mutate.sh "{{file}}" '{{expr}}' {{test_cmd}}
 
 # Install/update official Pi from npm. If this machine still has pij's old
 # local ../pi-fork symlink as the global `pi`, remove that symlink first so

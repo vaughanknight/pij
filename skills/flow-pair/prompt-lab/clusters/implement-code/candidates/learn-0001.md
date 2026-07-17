@@ -1,23 +1,23 @@
 # Learning Candidate — learn-0001
 
 - **Cluster**: implement-code
-- **Run**: 2026-07-11T09-19-34Z-github.com-AI-Substr
+- **Run**: 2026-07-17T01-03-56Z-github.com-AI-Substr
 - **Delegation**: dlg-0001
 - **Miss type**: implement-code
-- **Created at**: 2026-07-11T10:17:38.225Z
+- **Created at**: 2026-07-17T02:02:43.108Z
 
 ## Summary
 
-Whole-phase TDD packet to gpt-5.6-sol: 2 live defects hid in untested branches (null-HEAD pin bypass; sticky failureReason) — both were edge-of-contract branches the packet's AC list named but didn't force tests for. Candidate delta: packet template should demand a negative-space test per AC ('name the test for the branch where this guard CANNOT be checked')
+Packet must EXPLICITLY demand the phase bookkeeping artifacts (tasks.md status flips + execution.log.md with per-task outcomes) as first-class deliverables — coder shipped perfect code+gates but zero bookkeeping; cost one review round (CRITICAL-2)
 
 ## Evidence
 
-- reviews/review.phase-1.dlg-0001.md R1 F1/F3 probes
-- R3 APPROVE after 2 fix cycles
+- review-dlg-0001.md CRITICAL-2
+- fix-0001 cycle
 
 ## Candidate prompt delta
 
-Whole-phase TDD packet to gpt-5.6-sol: 2 live defects hid in untested branches (null-HEAD pin bypass; sticky failureReason) — both were edge-of-contract branches the packet's AC list named but didn't force tests for. Candidate delta: packet template should demand a negative-space test per AC ('name the test for the branch where this guard CANNOT be checked')
+Add to worker-implement template: 'Deliverables include docs bookkeeping: flip each task Status to [x] as completed and maintain execution.log.md (per-task outcome, decisions, gate results) — absence is an automatic FIX_REQUIRED'
 
 ## Promotion status
 

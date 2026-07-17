@@ -42,9 +42,17 @@ import {
 	type TreeActivity,
 	type TreeFilters,
 	type TreeSession,
+	type WatchdogCapturePolicy,
+	type WatchdogSidecar,
 } from "./types.js";
+import { applyWatchdogResume, effectiveWatchdog } from "./watchdog.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
+export interface WatchdogCliStore {
+	read(id: SessionId): WatchdogSidecar | undefined;
+	write(id: SessionId, sidecar: WatchdogSidecar): void;
+}
+
 export interface CliDeps {
 	readonly registry: RegistryPort;
 	/** A per-target event log (the bin builds `FsEventLog(pijHome, id)`). */
@@ -65,9 +73,13 @@ export interface CliDeps {
 	readonly repository?: RepositoryIdentityPort;
 	/** Full tree source, including dissolved descriptors hidden by RegistryPort.list(). */
 	readonly treeDescriptors?: readonly SessionDescriptor[];
+	/** CLI-owned watchdog sidecars. Optional for legacy/in-process send-only callers. */
+	readonly watchdogStore?: WatchdogCliStore;
 }
 
 // ─── parsed command (discriminated per verb) ────────────────────────────────
+type WatchdogAction = "status" | "pause" | "resume" | "exempt" | "watch" | "unwatch" | "list";
+
 export type ParsedCommand =
 	| { readonly verb: "whoami"; readonly json: boolean; readonly env?: boolean }
 	| {
@@ -110,6 +122,13 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| { readonly verb: "state"; readonly id: SessionId; readonly json: boolean }
+	| {
+			readonly verb: "watchdog";
+			readonly action: WatchdogAction;
+			readonly id?: SessionId;
+			readonly capture?: WatchdogCapturePolicy;
+			readonly json: boolean;
+	  }
 	| { readonly verb: "phonehome"; readonly json: boolean }
 	| {
 			readonly verb: "tree";
@@ -317,6 +336,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	tree: new Set(["global", "activity", "liveness", "lifecycle", "all", "json"]),
 	link: new Set(["parent", "root", "json"]),
 	path: new Set(["events", "state", "dir", "json"]),
+	watchdog: new Set(["capture", "max-lines", "max-bytes", "json"]),
 };
 /** Max positionals per verb (send allows id + text; models allows optional filter). */
 const MAX_POS: Record<string, number> = {
@@ -331,6 +351,7 @@ const MAX_POS: Record<string, number> = {
 	tree: 1,
 	link: 1,
 	path: 1,
+	watchdog: 2,
 };
 
 export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
@@ -338,13 +359,13 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|tail|state|phonehome|tree|link|path> …",
+			"usage: pij <whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path> …",
 		);
 	const allowed = ALLOWED_FLAGS[verb];
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|tree|link|path)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path)`,
 		);
 	const args = argv.slice(1);
 	for (const token of args) {
@@ -491,6 +512,64 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if (id === undefined) return err("E-ARG", "usage: pij state <id>");
 			return ok({ verb: "state", id, json });
 		}
+		case "watchdog": {
+			const action = pos[0];
+			const actions = new Set<WatchdogAction>([
+				"status",
+				"pause",
+				"resume",
+				"exempt",
+				"watch",
+				"unwatch",
+				"list",
+			]);
+			if (!action || !actions.has(action as WatchdogAction)) {
+				return err(
+					"E-ARG",
+					"usage: pij watchdog <status|pause|resume|exempt|watch|unwatch|list> [id]",
+				);
+			}
+			const typedAction = action as WatchdogAction;
+			const id = pos[1];
+			if (typedAction === "list") {
+				if (id !== undefined) return err("E-ARG", "pij watchdog list takes no id");
+				if (
+					flags.capture !== undefined ||
+					flags["max-lines"] !== undefined ||
+					flags["max-bytes"] !== undefined
+				) {
+					return err("E-ARG", "capture flags are valid only for 'pij watchdog watch'");
+				}
+				return ok({ verb: "watchdog", action: typedAction, json });
+			}
+			if (!id) return err("E-ARG", `pij watchdog ${typedAction} needs a session id`);
+			if (
+				typedAction !== "watch" &&
+				(flags.capture !== undefined ||
+					flags["max-lines"] !== undefined ||
+					flags["max-bytes"] !== undefined)
+			) {
+				return err("E-ARG", "capture flags are valid only for 'pij watchdog watch'");
+			}
+			if (flags.capture === true) return err("E-ARG", "--capture needs anomaly|always|never");
+			const mode = typeof flags.capture === "string" ? flags.capture : undefined;
+			if (mode !== undefined && mode !== "anomaly" && mode !== "always" && mode !== "never") {
+				return err("E-ARG", "--capture needs anomaly|always|never");
+			}
+			const maxLines = pnum(flags["max-lines"]);
+			if (maxLines === "bad") return err("E-ARG", "--max-lines takes a number");
+			const maxBytes = pnum(flags["max-bytes"]);
+			if (maxBytes === "bad") return err("E-ARG", "--max-bytes takes a number");
+			const capture: WatchdogCapturePolicy | undefined =
+				mode !== undefined || maxLines !== undefined || maxBytes !== undefined
+					? {
+							...(mode !== undefined ? { mode } : {}),
+							...(maxLines !== undefined ? { maxLines } : {}),
+							...(maxBytes !== undefined ? { maxBytes } : {}),
+						}
+					: undefined;
+			return ok({ verb: "watchdog", action: typedAction, id, capture, json });
+		}
 		case "phonehome":
 			return ok({ verb: "phonehome", json });
 		case "tree": {
@@ -565,7 +644,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		default:
 			return err(
 				"E-ARG",
-				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|phonehome|tree|link|path)`,
+				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path)`,
 			);
 	}
 }
@@ -591,6 +670,18 @@ function descAgeMs(d: SessionDescriptor, nowMs: number): number | null {
 	if (!d.lastEventAt) return null;
 	const t = Date.parse(d.lastEventAt);
 	return Number.isNaN(t) ? null : nowMs - t;
+}
+
+function watchdogBlock(d: SessionDescriptor, sidecar: WatchdogSidecar | undefined) {
+	const cfg = effectiveWatchdog(sidecar);
+	return {
+		enabled: cfg.enabled,
+		intervalMs: cfg.intervalMs,
+		pausedBy: cfg.pausedBy ?? null,
+		exempt: cfg.pausedBy === "exempt",
+		lastFireAt: d.lastWatchdogFireAt ?? null,
+		watchers: (sidecar?.watchers ?? []).map((watcher) => watcher.watcherId),
+	};
 }
 
 function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
@@ -748,6 +839,73 @@ function renderBroadcastSuccess(
 export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 	const now = deps.process.now();
 	switch (cmd.verb) {
+		case "watchdog": {
+			const store = deps.watchdogStore;
+			if (!store) return fail("E-ARG", "watchdog sidecar store is unavailable", cmd.json);
+			if (cmd.action === "list") {
+				const rows = deps.registry.list().map((descriptor) => ({
+					id: descriptor.id,
+					watchdog: watchdogBlock(descriptor, store.read(descriptor.id)),
+				}));
+				if (cmd.json) return okOut(JSON.stringify(rows));
+				return okOut(
+					rows.length === 0
+						? "no watchdog sessions"
+						: rows
+								.map(
+									(row) =>
+										`${row.id}: ${row.watchdog.enabled ? "enabled" : "disabled"} · ${row.watchdog.pausedBy ?? "active"} · watchers ${row.watchdog.watchers.length}`,
+								)
+								.join("\n"),
+				);
+			}
+			const id = cmd.id;
+			if (!id) return fail("E-ARG", `pij watchdog ${cmd.action} needs a session id`, cmd.json);
+			const descriptor = deps.registry.read(id);
+			if (!descriptor) return fail("E-NOID", `no session '${id}' in registry`, cmd.json);
+			let sidecar = store.read(id) ?? {};
+			if (cmd.action === "pause") {
+				if (sidecar.pausedBy === "exempt") {
+					return fail(
+						"E-ARG",
+						`watchdog ${id} is exempt; pause cannot downgrade a non-expiring exemption`,
+						cmd.json,
+					);
+				}
+				sidecar = { ...sidecar, pausedBy: "self", pausedAtMs: now };
+				store.write(id, sidecar);
+			} else if (cmd.action === "resume") {
+				sidecar = applyWatchdogResume(sidecar);
+				store.write(id, sidecar);
+			} else if (cmd.action === "exempt") {
+				sidecar = { ...sidecar, pausedBy: "exempt", pausedAtMs: now };
+				store.write(id, sidecar);
+			} else if (cmd.action === "watch" || cmd.action === "unwatch") {
+				const self = selfId(deps);
+				if (!self.ok) return fail(self.code, self.message, cmd.json);
+				const others = (sidecar.watchers ?? []).filter(
+					(watcher) => watcher.watcherId !== self.value,
+				);
+				const watchers =
+					cmd.action === "watch"
+						? [
+								...others,
+								{
+									watcherId: self.value,
+									addedAt: new Date(now).toISOString(),
+									capture: cmd.capture ?? { mode: "anomaly" as const },
+								},
+							]
+						: others;
+				sidecar = { ...sidecar, watchers };
+				store.write(id, sidecar);
+			}
+			const block = watchdogBlock(descriptor, sidecar);
+			if (cmd.json) return okOut(JSON.stringify({ id, watchdog: block }));
+			return okOut(
+				`${id}: ${block.enabled ? "enabled" : "disabled"} · ${block.pausedBy ?? "active"} · interval ${block.intervalMs}ms · watchers ${block.watchers.length}`,
+			);
+		}
 		case "models": {
 			let entries = deps.models ?? [];
 			// pi proxies ALL providers — applying a provider filter would return nothing
@@ -839,6 +997,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							boundModel: d.boundModel ?? null,
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
+							watchdog: watchdogBlock(d, deps.watchdogStore?.read(d.id)),
 							prime: d.prime === true,
 							oldPrime: d.oldPrime === true,
 						})),
@@ -1159,6 +1318,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						daemonTickAgeMs: tickStatus?.daemonTickAgeMs ?? null,
 						daemonTickStale: tickStatus?.daemonTickStale ?? null,
 						failureReason: d.failureReason ?? null,
+						watchdog: watchdogBlock(d, deps.watchdogStore?.read(d.id)),
 					}),
 				);
 			const modelLine = d.boundModel ? `  ·  model: ${d.boundModel}` : "";

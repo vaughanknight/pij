@@ -27,7 +27,9 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/adapters/git-repository.ts` | Argv-only canonical Git common-directory resolver; main checkout and linked worktrees share one absolute identity, non-Git returns null. |
 | `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition, structural/repository pending metadata, adopt-parent grammar, and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
 | `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice; preserves tree/prime history and refreshes repository identity. |
-| `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules. |
+| `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules; persist compact watchdog pause before tmux injection. |
+| `.pi/extensions/pij/core/daemon/watchdog-manager.ts` | Daemon-owned whole-life watchdog coordinator: descriptor-driven scheduling, delivery split, typed self-attribution, silent-fire derivation, per-watcher episode latch, and bounded capture dispatch. |
+| `.pi/extensions/pij/adapters/watchdog-store.ts` | Validated atomic per-session watchdog sidecars plus per-watcher capture pointer files. CLI-owned, daemon-read. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
 | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `parentId`, `prime`, and `oldPrime` are latest-disk-authoritative before daemon writes. |
 | `.pi/extensions/pij/core/inbox.ts` | Shared durable inbox actions used by daemon-owned receipt consumption: prepare hidden receipt envelopes, append/reuse their event, then mark read. |
@@ -40,6 +42,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/telegram/index.ts` | Bridge lifecycle, process-local per-chat last-speaker composition, normalized chat keys, and bounded fakeable git-context resolution from sender descriptors. |
 | `.pi/extensions/pij/telegram/commands.ts` | `/list` and `/tail`; `/tail` reads selected-target state, never last-speaker fallback state. |
 | `docs/how/pij-daemon.md` | Operator guide (run/spawn/adopt/send/tail/TUI/recovery). |
+| `docs/how/pij-watchdog.md` | Whole-life watchdog verbs, pause tiers, self-teaching etiquette, stalled semantics, capture defaults, and isolated-proof safety. |
 
 ## Concepts
 
@@ -59,6 +62,8 @@ thin receiver). Plan 019.
 | Repository refresh | Registration and reattachment capture the repository grouping active at the current folder. | Injected `RepositoryIdentityPort.gitCommonDir(folder)` returns canonical absolute common dir or null; stale identity is cleared outside Git. |
 | Delivery ownership | Senders write the target inbox; the daemon consumes+injects ONLY tmux inboxes and merely observes pi inboxes. | router rules; pi thin receiver sole pi-inbox consumer (AC-08). |
 | Durable push ownership | The daemon consumes only push-owned tmux unread envelopes, marks after an injection outcome, and leaves `deliveryMode:"pull"` plus pi inboxes untouched. | `daemonOwnsDelivery`; marker-aware `listUnread`; pi thin receiver/pull CLI own their inboxes. |
+| Whole-life watchdog | Every eligible session is default-on after 20 minutes; daemon fires blind, derives suspect/stalled from delivered-but-unanswered turns, and shares one owner/watcher stalled episode. | `WatchdogManager`; descriptor `lastEventAt` axis truth; tmux `sendText` vs pi/pull inbox; pre-bind/paused/exempt skip. |
+| Watchdog capture | Supervisors opt into per-target watcher policies without unbounded inline pane text. | Anomaly-only 40-line/4-KiB tail by default; 200-line/16-KiB hard ceiling; pointer file + ≤5 inline lines; paneless is capture-n/a. |
 | Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
 | Telegram conversation routing | Bare text/captionless media follows the last session whose non-receipt bubble successfully reached that normalized chat id; explicit selection remains separate for `/tail`. | reply tag > explicit name > last speaker; `onSpoke` after first successful send; process-local maps in `startBridge`. |
 | Telegram sender context | Every agent bubble keeps `[pij-id]` first, then adds stable repository identity from the sender descriptor folder. | `[pij-id] [repo]` on `main`; `[pij-id] [repo/branch]` otherwise; bounded git failure or missing descriptor falls back to `[pij-id]`. |
@@ -80,6 +85,8 @@ thin receiver). Plan 019.
 | Prime CLI wiring | orchestration core | Omitted target uses exact env/pane/lone-local self resolution; explicit ids bypass it; baton actor fallback remains baton-only. |
 | Tree/link/adopt wiring | messaging core | Production supplies all readable descriptors plus repository identity; adopt parent uses the same link planner before allocation/reservation/descriptor writes; link preserves `spawnedBy`. |
 | Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
+| Watchdog manager/store | daemon, CLI, supervisors | Absence of sidecar means default-on; manager caches sidecar revisions, persists `lastWatchdogFireAt` through daemon callbacks, excludes its own pane/event transitions, and writes watcher captures under `<PIJ_HOME>/<watcher>/watchdog-captures/`. |
+| Watchdog stalled episode | daemon whole-life detector + manager watcher delivery | Two silent fires stamp `failureReason:"stalled"`; owner and each anomaly watcher are notified once until typed real recovery. `capture.mode:"always"` remains every-due-fire. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
 | Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
 | Model registry entry | `pij models`, peer spawn, agent spawn | `{ id, name, provider, verified, reasoning?, levels? }`; source-derived data is preferred over same-harness fallbacks, while provider projections remain separate. |
@@ -105,6 +112,7 @@ thin receiver). Plan 019.
 - Shared model discovery, verification metadata, and effort capability data consumed by
   `pij models`, peer spawn, and agent spawn.
 - Warn-don't-block model/effort validation and harness-specific spawn effort translation.
+- Whole-life watchdog scheduling, tmux-side attribution, shared stalled ownership, watcher episode delivery, and bounded pane-capture persistence.
 
 ## Boundary Excludes
 
@@ -152,3 +160,4 @@ thin receiver). Plan 019.
 | 041-pij-inbox-no-tmux | Replaced tmux delete-on-consume/raw scans with marker-aware retained history, post-outcome read markers, event-before-marker receipt handling, and explicit pull non-ownership at every daemon gate. | 2026-07-12 |
 | 045-copilot-5-6-effort-levels | Corrected the exact Copilot GPT-5.6 trio to `none, low, medium, high, xhigh, max` at provider-guarded Pi parsing and Copilot fallback construction. Preserved raw/clone projections, `verified:false` fallback semantics, warn-don't-block validation, unrelated-provider data, and existing harness effort translation. | 2026-07-13 |
 | 046-pij-real-trees | Added argv-only Git common-directory identity, structural/repository metadata across spawn/adopt/bind/daemon/failure/dissolve paths, production tree/link wiring, and pre-write adopt-parent validation while retaining `spawnedBy` ownership. | 2026-07-13 |
+| 055-pij-watchdog | Added default-on daemon-owned whole-life watchdog management, compact pause integration, shared stalled episodes, delivery-split parity, watcher capture pointers, and disposable-home acceptance/smoke proof. | 2026-07-17 |

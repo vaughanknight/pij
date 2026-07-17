@@ -38,6 +38,8 @@ export interface SpawnInput {
 	cwd: string;
 	/** Role the new session plays ("worker" for spawned children). */
 	role: Role;
+	/** Mark the child exempt in its watchdog sidecar on first boot. */
+	noWatchdog?: boolean;
 }
 
 /** Output of buildSpawnCommand — passed to TmuxPort.newWindow. `cmd` is `"pi"`
@@ -109,6 +111,9 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 
 	if (input.paneId !== undefined) {
 		env.PIJ_PANE_ID = input.paneId;
+	}
+	if (input.noWatchdog === true) {
+		env.PIJ_NO_WATCHDOG = "1";
 	}
 
 	return { cmd: "pi", args, env };
@@ -523,6 +528,8 @@ export interface SpawnRequest {
 	/** Branch-from-self (Plan 020): fork the CALLER's own session into the new pane
 	 *  (`--branch`). Default false. Gated + resolved by the bin via {@link planBranch}. */
 	readonly branch: boolean;
+	/** Persist an exempt watchdog sidecar for the spawned peer. */
+	readonly noWatchdog?: true;
 	/** Explicit placement (FX001-3 / SUGG-001): stack | right | below | window.
 	 *  Unset ⇒ `stack` (the default side stack — first peer opens a ~1/3 right
 	 *  column, later peers append to it). */
@@ -558,6 +565,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let effort: string | undefined;
 	let layout: SpawnLayout | undefined;
 	let branch = false;
+	let noWatchdog = false;
 	let json = false;
 	for (let i = 0; i < argv.length; i++) {
 		const tok = argv[i];
@@ -567,6 +575,10 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		}
 		if (tok === "--branch") {
 			branch = true;
+			continue;
+		}
+		if (tok === "--no-watchdog") {
+			noWatchdog = true;
 			continue;
 		}
 		const eq = tok?.indexOf("=") ?? -1;
@@ -598,7 +610,16 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			"E-ARG",
 			"usage: pij spawn --harness pi|claude|copilot|codex [--task …] [--model …] [--effort …]",
 		);
-	return ok({ harness, task, model, effort, layout, branch, json });
+	return ok({
+		harness,
+		task,
+		model,
+		effort,
+		layout,
+		branch,
+		...(noWatchdog ? { noWatchdog: true as const } : {}),
+		json,
+	});
 }
 
 /** A placement plan: a split (ControlSplitPlan) or a fresh tmux window. */

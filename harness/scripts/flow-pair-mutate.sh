@@ -17,9 +17,14 @@ set -euo pipefail
 
 FILE="${1:?usage: flow-pair-mutate.sh <file> <sed-ERE-expr> [test-cmd]}"
 EXPR="${2:?missing sed ERE expression}"
-TEST_CMD="${3:-npx vitest run skills/flow-pair/test/}"
+# Join ALL remaining args into the test command — just's variadic *test_cmd
+# splats a multi-word command into separate args, and taking only $3 silently
+# ran bare `npx` (a false mutation verdict).
+shift 2
+TEST_CMD="${*:-npx vitest run skills/flow-pair/test/}"
 
 [ -f "$FILE" ] || { echo "✗ no such file: $FILE" >&2; exit 2; }
+echo "→ suite: $TEST_CMD"
 
 BAK="$(mktemp)"
 cp "$FILE" "$BAK"

@@ -21,8 +21,9 @@ SDK (`harness/scripts/smoke.ts`).
 
 ## Observe method
 `harness observe "<what>" --kind <kind>` for loop friction capture. Domain evidence:
-the pij extension's own event stream (`~/.pij/<id>/events.ndjson`) + minih retros
-(`docs/retros/*.md`).
+the pij extension's own per-session records under `~/.pij/<id>/` (`event-once-*.json`
+receipts + `inbox/`; the descriptor's `eventsPath` names the ndjson stream when one
+exists) + minih retros (`docs/retros/*.md`).
 
 ## Deterministic signal inventory
 - `just local-path-check` — no user-specific absolute home paths in operational files.

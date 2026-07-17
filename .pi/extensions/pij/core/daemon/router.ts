@@ -10,7 +10,8 @@
 
 import { selectTransport } from "../harness/types.js";
 import { frame } from "../message.js";
-import type { PijMessage, SessionDescriptor, SessionId } from "../types.js";
+import type { PijMessage, SessionDescriptor, SessionId, WatchdogSidecar } from "../types.js";
+import { applyCompactPause } from "../watchdog.js";
 
 export interface BufferedMessage {
 	readonly messageId: string;
@@ -31,6 +32,15 @@ export type RouteDecision =
  *  A `receipt` carries no keystrokes — it is recorded, never injected. */
 export function injectionText(message: PijMessage): string {
 	return message.command ? `/${message.command}` : frame(message.from, message.body);
+}
+
+/** Persist-before-inject compact seam shared by daemon-owned tmux delivery. */
+export function pauseForCompactMessage(
+	message: { readonly command?: string },
+	sidecar: WatchdogSidecar | undefined,
+	nowMs: number,
+): WatchdogSidecar | undefined {
+	return message.command === "compact" ? applyCompactPause(sidecar, nowMs) : sidecar;
 }
 
 /** Decide how to deliver `message` to `target` (AC-07/08, R-02):

@@ -16,6 +16,7 @@ import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
+import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
@@ -287,6 +288,7 @@ export default function (pi: ExtensionAPI): void {
 			pi: new PiRuntimeAdapter(pi, ctx, () => commandControl),
 			process: new NodeProcess(),
 			tmux: new TmuxAdapter(),
+			watchdog: new FsWatchdogStore(pijHome),
 		});
 
 		const boot = session.boot({

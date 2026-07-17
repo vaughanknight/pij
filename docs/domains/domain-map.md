@@ -10,14 +10,14 @@ flowchart LR
     RL[agentic-loops\ncontracts: StopReason, IterationRunner, PlanModel]
     AW[agent-workbench\ncontracts: MinihRunSummary, MinihViewSnapshot, MinihAdapterResult, persistence facade]
     MH[Minih artifacts\ncontracts: run.json, events.ndjson, inbox/state/history, output/report.json]
-    PIJ[pij-messaging\ncontracts: SessionDescriptor parent/repository/current+old-prime, forests+filters+link, PijEvent+EventQuery, 7 domain ports incl. RepositoryIdentity/Inbox, immutable msg/read markers]
+    PIJ[pij-messaging\ncontracts: SessionDescriptor parent/repository/current+old-prime+watchdog, forests+filters+link, PijEvent+EventQuery, watchdog pure core, 7 domain ports incl. RepositoryIdentity/Inbox, immutable msg/read markers]
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
-    PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
+    PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, whole-life WatchdogManager/store/captures, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
-    PS[pij-skill\ncontracts: /pij routes, tree/link/adopt-parent guidance, current-only prime triage, shared conventions C1-C7, pij-skill-check gate]
+    PS[pij-skill\ncontracts: /pij routes, tree/link/adopt-parent guidance, watchdog CLI discoverability, current-only prime triage, shared conventions C1-C7, pij-skill-check gate]
     PO[pij-orchestration\ncontracts: PrimeService set/retire/unset, BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time]
 
     ATI -->|uses current-session store + todo contracts| SWS
@@ -95,8 +95,8 @@ flowchart LR
 | `flow-pair` → `agent-tooling-interface` | planned | Skill + `flow-pair` CLI present through Pi skill/tool UX; not yet built. |
 | `flow-pair` → `extension-authoring-harness` | planned | `just`/vitest/self-check will validate the pi-free helper lib; retros/difficulty/velocity feed the learning loop. |
 | `flow-pair` ⇢ `the-flow` (external) | wraps-only | Wrapper-level delegation seam; **never** edits `the-flow` or writes `.the-flow-state.json`/`the-flow.json`/`the-flow.md`. Single flow-state-writer invariant. |
-| `pij-control-plane` → `pij-messaging` | extends (Plans 019/041/046) | Reuses `SessionDescriptor` (+delivery, parent, repository, prime history), seven domain ports including `RepositoryIdentityPort`/`InboxPort`, tree/link contracts, immutable inbox markers, and `FsChannel`; daemon writes keep mutable graph/prime fields latest-disk-authoritative. |
-| `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate. |
+| `pij-control-plane` → `pij-messaging` | extends (Plans 019/041/046/055) | Reuses `SessionDescriptor` (+delivery, parent, repository, prime history, watchdog fire stamp), watchdog sidecar/pure decisions, domain ports including `RepositoryIdentityPort`/`InboxPort`, tree/link contracts, immutable inbox markers, and `FsChannel`; daemon writes keep mutable graph/prime fields latest-disk-authoritative and descriptor activity remains watchdog axis truth. |
+| `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate, including the disposable-home watchdog scenario. |
 | `pij-control-plane` → `agent-tooling-interface` | contract-only (future) | The `pij spawn`/`daemon`/`adopt` CLI + `pij_spawn --harness` UX will present through Pi command/tool surfaces. |
 | `agent-runtime` → `minih` (external) | embeds-only | Imports minih's `runAgent`, `IAgentAdapter`, `FakeAgentAdapter`, validators, and `SdkCopilotAdapter` as a library at exact tag `minih-v0.2.4`. The pack format, validators, and `runs/<ts>/` ledger are minih's — **never forked, never extended**; a pack that runs under pij runs under stock minih unchanged. AC-12 contract test guards the API against tag drift. |
 | `agent-runtime` → `extension-authoring-harness` | healthy | Rides the `*.live.test.ts` + `describe.skipIf` live-gate pattern, the vitest globs (contract + boundary tests auto-included), and `just self-check` / `harness checks`. |
@@ -111,6 +111,7 @@ flowchart LR
 | `pij-orchestration` → `pij-messaging` prime contract | healthy | `PrimeService` preserves full descriptors through `RegistryPort`; set/retire/unset are mutually exclusive, while `list --prime` consumes current `prime:true` only and old-prime stays historical. |
 | `pij-control-plane` → tree/prime mutation | healthy | The CLI supplies repository/tree/link/adopt-parent and exact-self prime wiring; daemon merges give latest persisted `parentId`, `prime`, and `oldPrime` authority over stale ticks. |
 | `pij-skill` ⇢ tree/prime contracts | teaches-only | Peer guidance separates structure from close ownership; triage reads current-only `pij list --prime`; kickoff links adopted streams before brief; handover retires after final relay. |
+| `pij-skill` ⇢ watchdog contracts | teaches-only | CLI coverage points operators to `docs/how/pij-watchdog.md`; it teaches explicit pause/resume/exempt etiquette and capture policy without importing manager/store code. |
 
 ## History
 
@@ -136,3 +137,4 @@ flowchart LR
 | 2026-07-11 | Plan 038 — extended existing PIJ/PO/PCP/PS relationships for descriptor-backed prime designation, list filtering, mutable merge ownership, and registry-first skill triage. |
 | 2026-07-12 | Plan 041 — extended PIJ/PCP/PS contracts with immutable inbox/read markers, pull delivery ownership, post-outcome tmux/pi markers, durable receipt convergence, and non-tmux inbox guidance. |
 | 2026-07-13 | Plan 046 — extended existing PIJ/PCP/PO/PS nodes and edges with tri-state structural parents, Git common-directory grouping, tree/link/filter projections, adopt-parent wiring, current/old-prime transitions, and sensor-backed guidance; no new node. |
+| 2026-07-17 | Plan 055 — extended PIJ/PCP/PS with whole-life watchdog sidecars and pure decisions, daemon manager/store/capture ownership, CLI discoverability, and a deterministic disposable-home smoke; no new domain node. |

@@ -21,6 +21,7 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
+import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
@@ -38,6 +39,7 @@ import {
 } from "./core/daemon/loop.js";
 import { SendBuffer } from "./core/daemon/router.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
+import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import { persistReceiptEnvelope, prepareReceiptEnvelopes } from "./core/inbox.js";
 import { receiptBody } from "./core/message.js";
@@ -82,6 +84,9 @@ export class Daemon {
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
 	private readonly pushed = new Map<string, Set<PushedTransition>>();
+	/** Sessions whose current stalled episode was confirmed by the watchdog.
+	 * Only a typed real-recovery response may release this stronger latch. */
+	private readonly watchdogStalled = new Set<string>();
 	/** Per-bound-session last captured-pane signature — the pane-content heartbeat.
 	 *  ANY visible change tick-to-tick means the peer is alive (streaming reasoning
 	 *  or tool output), even when its footer momentarily classifies as `booting`
@@ -89,6 +94,7 @@ export class Daemon {
 	 *  deep-thinking / long-tool xhigh peer isn't false-flagged stalled. */
 	private readonly paneSig = new Map<string, string>();
 	private readonly watchManager: PeerWatchManager;
+	private readonly watchdogManager: WatchdogManager;
 	private readonly batonSweep: BatonSweep;
 
 	constructor(
@@ -99,6 +105,7 @@ export class Daemon {
 		private readonly log: (line: string) => void = () => {},
 		watchManager?: PeerWatchManager,
 		batonSweep?: BatonSweep,
+		watchdogManager?: WatchdogManager,
 	) {
 		this.watchManager =
 			watchManager ??
@@ -106,6 +113,28 @@ export class Daemon {
 				store: new FsWatchStore(pijHome),
 				channel,
 				isAlive: (pid) => this.ports.isAlive(pid),
+				log,
+			});
+		this.watchdogManager =
+			watchdogManager ??
+			new WatchdogManager({
+				store: new FsWatchdogStore(pijHome),
+				channel,
+				isAlive: (pid) => this.ports.isAlive(pid),
+				now: () => this.ports.now(),
+				capturePane: (session) => (session.paneId ? this.ports.capturePane(session.paneId) : ""),
+				sendText: (session, body) => {
+					if (!session.paneId) return;
+					this.ports.sendText(session.paneId, body, session.harness, session.pid);
+				},
+				onFire: (session, atMs) => {
+					const latest = this.registry.read(session.id) ?? session;
+					writeMerged(this.registry, {
+						...latest,
+						lastWatchdogFireAt: new Date(atMs).toISOString(),
+					});
+				},
+				onResponse: (event) => this.pushWatchdogResponse(event),
 				log,
 			});
 		this.batonSweep =
@@ -172,9 +201,11 @@ export class Daemon {
 					this.registry.dissolve(d.id);
 					this.drives.delete(d.id);
 					this.pushed.delete(d.id);
+					this.watchdogStalled.delete(d.id);
 					this.flushed.delete(d.id);
 					this.paneSig.delete(d.id);
 					this.watchManager.disposeSession(d.id);
+					this.watchdogManager.disposeSession(d.id);
 					this.log(
 						`close ${d.id}: once-mode agent peer reported → pane killed + descriptor dissolved`,
 					);
@@ -217,13 +248,23 @@ export class Daemon {
 						// `booting` (no footer marker); its pane is still CHANGING, so this keeps
 						// its liveness fresh and stops the stall watchdog false-firing (SUGG-002).
 						const prevSig = this.paneSig.get(current.id);
-						this.paneSig.set(current.id, pane);
+						const paneChanged = prevSig !== undefined && pane !== prevSig;
 						const effectiveState = updated?.state ?? current.state;
-						if (prevSig !== undefined && pane !== prevSig && effectiveState === "working") {
-							updated = {
-								...(updated ?? current),
-								lastEventAt: new Date(this.ports.now()).toISOString(),
-							};
+						const watchdogAttributedPaneChange =
+							paneChanged &&
+							this.watchdogManager.isPaneChangeWatchdogAttributed(current.id, pane, effectiveState);
+						this.paneSig.set(current.id, pane);
+						if (!watchdogAttributedPaneChange) {
+							if (paneChanged && effectiveState === "working") {
+								updated = {
+									...(updated ?? current),
+									lastEventAt: new Date(this.ports.now()).toISOString(),
+								};
+							}
+						} else if (updated) {
+							// `observeActivity` runs to derive the state edge, but watchdog-caused
+							// pane movement must never move the descriptor's activity axis.
+							updated = { ...updated, lastEventAt: current.lastEventAt };
 						}
 						if (updated) {
 							// writeMerged re-reads + preserves a reportedAt stamped concurrently by
@@ -256,6 +297,7 @@ export class Daemon {
 				this.log(`session ${d.id} tick error: ${detail}`);
 			}
 		}
+		this.watchdogManager.reconcile(this.registry.list());
 	}
 
 	/** Detect and push stalled/dead transitions for a bound session. The push
@@ -297,7 +339,41 @@ export class Daemon {
 			const note = buildStalledNotice(persisted);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: stalled`);
+		} else if (
+			!stalled &&
+			!this.watchdogStalled.has(d.id) &&
+			(latch.delete("stalled") || d.failureReason === "stalled")
+		) {
+			writeMerged(this.registry, { ...d, failureReason: undefined });
+			this.log(`push ${d.id}: legacy stalled cleared on recovery`);
 		}
+	}
+
+	/** Watchdog derivation shares the same `stalled` latch as the legacy
+	 * whole-life detector, so either detector may win but an episode pushes once. */
+	private pushWatchdogResponse(event: WatchdogResponseEvent): void {
+		const d = this.registry.read(event.session.id) ?? event.session;
+		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
+		this.pushed.set(d.id, latch);
+		if (event.response === "responsive") {
+			this.watchdogStalled.delete(d.id);
+			if (latch.delete("stalled") || d.failureReason === "stalled") {
+				writeMerged(this.registry, { ...d, failureReason: undefined });
+				this.log(`push ${d.id}: watchdog stalled cleared on recovery`);
+			}
+			return;
+		}
+		if (event.response !== "stalled") return;
+		this.watchdogStalled.add(d.id);
+		if (latch.has("stalled")) return;
+		latch.add("stalled");
+		const persisted = writeMerged(this.registry, { ...d, failureReason: "stalled" });
+		if (persisted.lifecycle === "dissolved") return;
+		if (persisted.spawnedBy) {
+			const note = buildStalledNotice(persisted);
+			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+		}
+		this.log(`push ${d.id}: watchdog stalled`);
 	}
 
 	/** Read-only provider-failure peek (FIX-A / DL-005). For ANY spawned, paned
@@ -392,6 +468,7 @@ export class Daemon {
 		if (messages.length === 0) return;
 		let consumedCount = 0;
 		for (const message of messages) {
+			this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			const consumed = drainTmuxInbox(target, [message], this.ports, this.buffer);
 			for (const item of consumed) {
 				const marked = this.channel.markRead(id, item.messageId, {
@@ -429,6 +506,7 @@ export class Daemon {
 
 	dispose(): void {
 		this.watchManager.disposeAll();
+		this.watchdogManager.disposeAll();
 	}
 }
 

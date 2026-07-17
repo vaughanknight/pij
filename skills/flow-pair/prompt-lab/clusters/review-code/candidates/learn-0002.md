@@ -1,22 +1,23 @@
 # Learning Candidate — learn-0002
 
 - **Cluster**: review-code
-- **Run**: 2026-07-10T03-15-51Z-github.com-AI-Substr
-- **Delegation**: dlg-0003
+- **Run**: 2026-07-17T01-03-56Z-github.com-AI-Substr
+- **Delegation**: dlg-0001
 - **Miss type**: review-code
-- **Created at**: 2026-07-10T03:53:45.062Z
+- **Created at**: 2026-07-17T02:02:43.567Z
 
 ## Summary
 
-flow-pair review artifact gate only recognizes phase-shaped dirs (requires execution.log.md); builder fix-mode logs (FX###-slug.log.md) false-flag as missing artifact
+Review packets must direct mutation testing through the underlying script with an explicit vitest target — the just flow-pair-mutate wrapper hard-codes skills/flow-pair/test/ and false-greens on any other file
 
 ## Evidence
 
-- rev-0002 critical artifact_contract finding vs reviewer APPROVE on the same delegation
+- review-dlg-0001.md Dim-0 section
+- DL-004
 
 ## Candidate prompt delta
 
-review verb: accept --log-path override or recognize FX*.log.md in fix dirs
+Review template mutation instruction: use 'bash harness/scripts/flow-pair-mutate.sh <file> <sed> "npx vitest run <matching test file>"' until the wrapper takes a suite arg
 
 ## Promotion status
 

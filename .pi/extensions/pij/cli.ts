@@ -33,6 +33,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
+import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import {
 	type AgentSpawnPaneInfo,
 	buildAgentPeerEnv,
@@ -212,8 +213,23 @@ Messaging:
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
+  pij watchdog status|pause|resume|exempt|watch|unwatch|list …   supervise peer progress and subscriptions
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
+
+const WATCHDOG_USAGE = `pij watchdog — supervise peer progress
+
+USAGE
+  pij watchdog status <id> [--json]
+  pij watchdog pause|resume|exempt <id> [--json]
+  pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
+  pij watchdog unwatch <id> [--json]
+  pij watchdog list [--json]
+
+JSON
+  status/state/list include watchdog: { enabled, intervalMs, pausedBy, exempt,
+  lastFireAt, watchers }. Watcher captures are pointer files under
+  ~/.pij/<watcher>/watchdog-captures/ with a bounded inline head.`;
 
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
 
@@ -275,6 +291,7 @@ FLAGS
   --branch        fork YOUR OWN session into the new pane (branch-from-self), so the
                   colleague inherits your full context. Claude only (pi/copilot/codex reject).
                   Requires: the new harness MATCHES yours and your session is bound.
+  --no-watchdog   persist an exempt watchdog sidecar for the spawned colleague.
 
 pi: prints the new pane id immediately; the child self-registers and its pij-id arrives
 via its ready-ping (see \`pij list\`). claude/copilot: returns the pre-allocated pij id
@@ -385,6 +402,7 @@ function deps(): CliDeps {
 		resolveAmbientSelf: () => resolveAmbientSelf(registry),
 		repository: new GitRepositoryAdapter(),
 		treeDescriptors: listAllDescriptors(registry),
+		watchdogStore: new FsWatchdogStore(pijHome),
 	};
 }
 
@@ -1130,6 +1148,7 @@ function runSpawn(argv: readonly string[]): void {
 			model: req.value.model,
 			effort: req.value.effort,
 			task: req.value.task,
+			noWatchdog: req.value.noWatchdog,
 		});
 		// Same side-stack layout as the daemon-bound harnesses (shared helper → one
 		// behaviour across the whole mixed fleet): first peer → right ~1/3 column,
@@ -1360,6 +1379,12 @@ function runSpawn(argv: readonly string[]): void {
 	if (!promoted.ok) {
 		process.stderr.write(`${promoted.code}: ${promoted.message}\n`);
 		process.exit(2);
+	}
+	if (req.value.noWatchdog === true) {
+		new FsWatchdogStore(pijHome).write(pijId, {
+			pausedBy: "exempt",
+			pausedAtMs: Date.now(),
+		});
 	}
 	// FX001-2 / DL-002: a daemon-bound peer never reads PIJ_SPAWN_TASK (only pi
 	// children do), so --task rode env into a void. Queue it in the peer's INBOX
@@ -2725,6 +2750,13 @@ function main(): void {
 			return;
 		}
 		runSpawn(spawnArgs);
+		return;
+	}
+	if (
+		top === "watchdog" &&
+		(process.argv[3] === "--help" || process.argv[3] === "-h" || process.argv[3] === "help")
+	) {
+		process.stdout.write(`${WATCHDOG_USAGE}\n`);
 		return;
 	}
 	if (top === "focus") {

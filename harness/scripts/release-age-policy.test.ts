@@ -11,7 +11,10 @@ import {
 } from "./release-age-policy.js";
 
 const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
-const POWERSHELL_PROBE_TIMEOUT_MS = 15_000;
+// 60s: the pwsh spawn takes ~4.5s isolated but has been observed past 15s under
+// full-suite parallel load (vitest workers + pkg audit contending) — the probe
+// is correctness-, not latency-sensitive, so the generous ceiling de-flakes it.
+const POWERSHELL_PROBE_TIMEOUT_MS = 60_000;
 const POWERSHELL_TEST_TIMEOUT_MS = POWERSHELL_PROBE_TIMEOUT_MS + 5_000;
 const temporaryRoots: string[] = [];
 

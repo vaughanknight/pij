@@ -15,8 +15,9 @@
 //                                   surface findings for human review (never blocks)
 //   vet <source> [--json]         — run vetter pipeline against one source; print Verdict
 //                                   (STRICT escape hatch: still exits 0/2 for on-demand checks)
-//   audit [--json]                — run pipeline across all enabled entries; REPORT-ONLY (exit 0).
-//                                   Findings are surfaced for review, not enforced.
+//   audit [--json] [--write]      — run pipeline across all enabled entries; REPORT-ONLY (exit 0).
+//                                   Findings are surfaced for review, not enforced. vetted.date
+//                                   refresh write-backs persist only under --write.
 //
 // Policy (changed 2026-06-16, per user): the vetter pipeline REPORTS rather than
 // blocks. add/bootstrap/audit never refuse on stale/warn/fail — they print the
@@ -433,6 +434,10 @@ async function cmdVet(args: string[]): Promise<void> {
 
 async function cmdAudit(args: string[]): Promise<void> {
 	const json = args.includes("--json");
+	// Audit is REPORT-ONLY by contract: vetted.date refresh write-backs (FX001-3)
+	// persist only under an explicit --write. A default-on write let the mandated
+	// `harness checks` gate dirty .pi/packages.yaml inside every worker's diff.
+	const write = args.includes("--write");
 	const doc = readDoc();
 	const list = entries(doc).filter((e) => e.enabled);
 	const seq = doc.get("packages") as YAMLSeq;
@@ -472,9 +477,10 @@ async function cmdAudit(args: string[]): Promise<void> {
 		}
 		// FX001-3: refresh write-back. Gated on RAW verdict.level === "ok"
 		// (NOT effective via override — overrides must age out, otherwise we
-		// re-create F004 through a different door). Skip on --json for CI
+		// re-create F004 through a different door). Requires explicit --write
+		// (audit is otherwise report-only); still skipped on --json for CI
 		// determinism.
-		if (!json && verdict.level === "ok") {
+		if (write && !json && verdict.level === "ok") {
 			const idx = findIndex(doc, e.source);
 			if (idx !== -1) {
 				const item = seq.get(idx) as YAMLMap;
@@ -511,7 +517,8 @@ async function cmdAudit(args: string[]): Promise<void> {
 		console.log(JSON.stringify({ results, unmanifestedProjectInstalls: unmanifested }, null, 2));
 	}
 
-	// FX001-3: persist refresh write-backs (if any). One write per cmdAudit run.
+	// FX001-3: persist refresh write-backs (if any). One write per cmdAudit run,
+	// and only ever under --write (report-only otherwise).
 	if (refreshedCount > 0) {
 		writeDoc(doc);
 		if (!json) {

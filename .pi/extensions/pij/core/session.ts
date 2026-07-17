@@ -37,9 +37,16 @@ import {
 	type Role,
 	type SessionDescriptor,
 	type SessionId,
+	type WatchdogSidecar,
 } from "./types.js";
+import { applyCompactPause, applyWorkingTransition } from "./watchdog.js";
 
-/** The 6 seams the coordinator depends on (constructor-injected). */
+export interface WatchdogSessionStore {
+	read(id: SessionId): WatchdogSidecar | undefined;
+	write(id: SessionId, sidecar: WatchdogSidecar): void;
+}
+
+/** The coordinator seams (constructor-injected). */
 export interface PijPorts {
 	readonly registry: RegistryPort;
 	readonly eventLog: EventLogPort;
@@ -49,6 +56,8 @@ export interface PijPorts {
 	/** Tmux seam: open/kill windows, check session. Wired in index.ts only
 	 *  (P2: core stays tmux-free); `FakeTmux` used in session.test.ts (P8). */
 	readonly tmux: TmuxPort;
+	/** Optional during migration; runtime wiring supplies the sidecar adapter. */
+	readonly watchdog?: WatchdogSessionStore;
 }
 
 /** Input to PijSession.spawn(). The session generates spawnId + announceTo
@@ -165,6 +174,16 @@ export class PijSession {
 		this.ports.registry.write(descriptor);
 		this.descriptor = descriptor;
 		this.self = input.id;
+		if (fresh && this.ports.process.env("PIJ_NO_WATCHDOG") === "1") {
+			const current = this.ports.watchdog?.read(this.self);
+			if (current?.pausedBy !== "exempt") {
+				this.ports.watchdog?.write(this.self, {
+					...current,
+					pausedBy: "exempt",
+					pausedAtMs: this.ports.process.now(),
+				});
+			}
+		}
 		this.role = descriptor.role;
 		this.seq = new SeqCounter(this.ports.eventLog.lastSeq());
 		if (fresh) {
@@ -373,6 +392,9 @@ export class PijSession {
 				return { kind: "command-rejected", code: v.code };
 			}
 			if (!isControlCommand(v.value)) {
+				const sidecar = this.ports.watchdog?.read(this.self);
+				const paused = applyCompactPause(sidecar, this.ports.process.now());
+				if (paused !== sidecar) this.ports.watchdog?.write(this.self, paused);
 				this.ports.pi.compact();
 				this.capture("receipt", { messageId, command: v.value, executed: true });
 				return { kind: "command-executed", command: v.value };
@@ -410,6 +432,10 @@ export class PijSession {
 	/** turn_start (ISO). Resolves any queued receipt whose steered message has
 	 *  now been consumed by the live turn (finding 08). */
 	onTurnStart(iso: string): void {
+		const sidecar = this.ports.watchdog?.read(this.self);
+		if (sidecar?.pausedBy === "compact") {
+			this.ports.watchdog?.write(this.self, applyWorkingTransition(sidecar));
+		}
 		this.persist({ state: "working" }); // D-A: a live turn => working
 		if (this.pending.length === 0) return;
 		const still: PendingReceipt[] = [];

@@ -58,6 +58,23 @@
   intended. Discover available models at runtime rather than hardcoding a
   provider or model id.
 
+## Spawning pi peers in worktrees (known trap)
+
+`pij spawn --harness pi` **dies at boot (~3s, silently) when invoked from a
+linked worktree**: the machine-global extension links
+(`~/.pi/agent/extensions/*` → the MAIN checkout's `.pi/extensions/`) collide
+with the worktree's own project-local extensions — same tool names from two
+paths is a fatal conflict, and a pi peer that dies pre-boot never registers
+with pij, so nothing reports the death (observation DL-003, s055).
+
+- **Proven workaround**: spawn from the MAIN checkout (`cd
+  /path/to/pij && pij spawn --harness pi …`), then instruct the peer to `cd`
+  into the worktree and use absolute paths for every file operation.
+- Alternative (untested at scale): launch with `-ne` plus explicit `-e
+  <worktree>/.pi/extensions/<name>` paths.
+- Real fixes under consideration: pi conflict precedence (project beats
+  global), worktree-aware `link-global`, or `pij spawn` handling it.
+
 ## Workflow
 
 > **Canonical interface: `just`.** All composite gates live in the
