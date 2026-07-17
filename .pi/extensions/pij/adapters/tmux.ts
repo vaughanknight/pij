@@ -34,18 +34,36 @@ function tmuxSafe(args: string[]): void {
 
 // ─── Adapter ────────────────────────────────────────────────────────────────
 
+/** Capture format for spawn/split (plan 054 P2 T006, AC-09): pane id plus the
+ *  window id that holds it, so `tmux select-window -t <windowId>` can open a
+ *  node's terminal later without a lookup. */
+const PANE_WINDOW_FORMAT = "#{pane_id} #{window_id}";
+
+/** Parse `-P -F '#{pane_id} #{window_id}'` output. The pane id is the
+ *  load-bearing half (null fails the spawn, exactly as before); a missing or
+ *  malformed window id degrades to paneId-only — addressability is metadata,
+ *  never worth killing a spawn over (the daemon backfill retries it). */
+export function parsePaneAndWindow(
+	raw: string,
+): { readonly paneId: string; readonly windowId?: string } | null {
+	const [paneId, windowId] = raw.trim().split(/\s+/);
+	if (paneId === undefined || !/^%\d+$/.test(paneId)) return null;
+	if (windowId !== undefined && /^@\d+$/.test(windowId)) return { paneId, windowId };
+	return { paneId };
+}
+
 export class TmuxAdapter implements TmuxPort {
 	/**
-	 * Create a new tmux window, capture the %N pane id via -P -F '#{pane_id}'.
+	 * Create a new tmux window, capture '%N @M' via -P -F (pane + window id).
 	 *
 	 * Argv construction:
-	 *   tmux new-window -P -F '#{pane_id}' -n <name> [-c <cwd>]
+	 *   tmux new-window -P -F '#{pane_id} #{window_id}' -n <name> [-c <cwd>]
 	 *        [-e KEY=VAL …] <cmd> [args…]
 	 *
 	 * Env vars ride repeated -e KEY=VAL (tmux 3.0+); no shell interpretation.
 	 */
-	newWindow(opts: NewWindowOpts): Result<{ paneId: string }> {
-		const args = ["new-window", "-P", "-F", "#{pane_id}", "-n", opts.name];
+	newWindow(opts: NewWindowOpts): Result<{ paneId: string; windowId?: string }> {
+		const args = ["new-window", "-P", "-F", PANE_WINDOW_FORMAT, "-n", opts.name];
 
 		// -d: create in the background, don't switch the client's focus into it.
 		if (opts.detached) {
@@ -65,11 +83,11 @@ export class TmuxAdapter implements TmuxPort {
 
 		try {
 			const raw = tmux(args);
-			const paneId = raw.trim();
-			if (!/^%\d+$/.test(paneId)) {
-				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(paneId)}`);
+			const parsed = parsePaneAndWindow(raw);
+			if (parsed === null) {
+				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(raw.trim())}`);
 			}
-			return ok({ paneId });
+			return ok(parsed);
 		} catch (e) {
 			return err("E-ARG", `tmux new-window failed: ${(e as Error).message}`);
 		}
@@ -84,12 +102,12 @@ export class TmuxAdapter implements TmuxPort {
 	 * -h = LEFT/RIGHT column, -v = UP/DOWN stack (VERIFIED on tmux 3.6a; bare
 	 * split-window defaults to -v, so -h is always explicit). AC-09: argv-only.
 	 */
-	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string }> {
+	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string; windowId?: string }> {
 		const args = [
 			"split-window",
 			"-P",
 			"-F",
-			"#{pane_id}",
+			PANE_WINDOW_FORMAT,
 			"-t",
 			opts.target,
 			`-${opts.direction}`,
@@ -103,10 +121,11 @@ export class TmuxAdapter implements TmuxPort {
 		args.push(opts.cmd, ...opts.args);
 		try {
 			const raw = tmux(args);
-			const paneId = raw.trim();
-			if (!/^%\d+$/.test(paneId)) {
-				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(paneId)}`);
+			const parsed = parsePaneAndWindow(raw);
+			if (parsed === null) {
+				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(raw.trim())}`);
 			}
+			const paneId = parsed.paneId;
 			// Stack layout: spread the new pane's vertical run out evenly, then pin
 			// the column width back (-E can re-spread the root h-split too — seen
 			// live on tmux 3.6a: a 2-pane column went 67/33 → 50/50). Cosmetic →
@@ -117,7 +136,7 @@ export class TmuxAdapter implements TmuxPort {
 			if (opts.columnPercent !== undefined) {
 				tmuxSafe(["resize-pane", "-t", paneId, "-x", `${opts.columnPercent}%`]);
 			}
-			return ok({ paneId });
+			return ok(parsed);
 		} catch (e) {
 			return err("E-ARG", `tmux split-window failed: ${(e as Error).message}`);
 		}

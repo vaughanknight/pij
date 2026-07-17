@@ -352,3 +352,41 @@ describe("codexConfigModels (default-model TOML read, #2)", () => {
 		expect(codexConfigModels(undefined as unknown as string)).toEqual([]);
 	});
 });
+
+// ─── plan 054 P2 T007 — contextWindow join source (AC-09) ───────────────────
+describe("parseModelsJson contextWindow", () => {
+	it("carries a model's contextWindow through (the pij contextMax source)", () => {
+		const entries = parseModelsJson({
+			providers: {
+				"github-copilot": {
+					models: [{ id: "gpt-5.6-sol", name: "sol", contextWindow: 258400 }],
+				},
+			},
+		});
+		expect(entries[0]?.contextWindow).toBe(258400);
+	});
+
+	it("drops a bogus contextWindow (negative, zero, NaN, stringly) — honest absence", () => {
+		const entries = parseModelsJson({
+			providers: {
+				p: {
+					models: [
+						{ id: "a", contextWindow: -5 },
+						{ id: "b", contextWindow: 0 },
+						{ id: "c", contextWindow: Number.NaN },
+						{ id: "d", contextWindow: "258400" },
+						{ id: "e" },
+					],
+				},
+			},
+		});
+		for (const entry of entries) expect(entry.contextWindow).toBeUndefined();
+	});
+
+	it("reads contextWindow off modelOverrides too", () => {
+		const entries = parseModelsJson({
+			providers: { p: { modelOverrides: { ov: { name: "ov", contextWindow: 128000 } } } },
+		});
+		expect(entries[0]?.contextWindow).toBe(128000);
+	});
+});

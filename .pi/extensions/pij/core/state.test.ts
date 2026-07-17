@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
 	activityOf,
+	BADGE_SEVERITY,
+	badgeOf,
 	classifyDeathReason,
 	isStalled,
 	isWorking,
 	liveness,
 	STALE_AFTER_MS,
+	systemStateOf,
 } from "./state.js";
+import { SEMANTIC_STATES, SYSTEM_STATES } from "./types.js";
 
 describe("isWorking", () => {
 	it("treats in-progress/reviewing as working", () => {
@@ -152,5 +156,140 @@ describe("classifyDeathReason", () => {
 			"Error: prepaid credit balance exhausted — add credits at https://console.example.ai/billing",
 		].join("\n");
 		expect(classifyDeathReason(pane)).toBe("quota");
+	});
+});
+
+// ─── plan 054 Phase 2 T003 — 7-state mechanical axis + worst-first badge ────
+
+describe("systemStateOf (AC-04 — mechanical truth, never a guess)", () => {
+	const bound = {
+		lifecycle: "bound" as const,
+		pidAlive: true,
+		paneSuspended: false,
+		latestEventAgeMs: 1_000,
+	};
+
+	it("a just-spawned unbound node reads starting (pending lifecycle)", () => {
+		expect(systemStateOf({ lifecycle: "pending", pidAlive: true, latestEventAgeMs: null })).toBe(
+			"starting",
+		);
+	});
+
+	it("starting HOLDS through ready lifecycle until the bind verdict", () => {
+		expect(systemStateOf({ lifecycle: "ready", pidAlive: true, latestEventAgeMs: null })).toBe(
+			"starting",
+		);
+	});
+
+	it("bound + working + fresh events reads working", () => {
+		expect(systemStateOf({ ...bound, state: "working" })).toBe("working");
+	});
+
+	it("bound + working but silent past the stale threshold reads stalled", () => {
+		expect(
+			systemStateOf({ ...bound, state: "working", latestEventAgeMs: STALE_AFTER_MS + 1 }),
+		).toBe("stalled");
+	});
+
+	it("bound + working with NO event telemetry at all reads stalled", () => {
+		expect(systemStateOf({ ...bound, state: "working", latestEventAgeMs: null })).toBe("stalled");
+	});
+
+	it("bound + idle reads idle", () => {
+		expect(systemStateOf({ ...bound, state: "idle" })).toBe("idle");
+	});
+
+	it("a gone pid reads dead — even while lifecycle still says pending", () => {
+		expect(systemStateOf({ lifecycle: "pending", pidAlive: false, latestEventAgeMs: null })).toBe(
+			"dead",
+		);
+	});
+
+	it("a suspended-but-alive pane reads stopped — even mid-work", () => {
+		expect(systemStateOf({ ...bound, paneSuspended: true, state: "working" })).toBe("stopped");
+	});
+
+	it("suspension beats the starting hold (definite telemetry wins)", () => {
+		expect(
+			systemStateOf({
+				lifecycle: "pending",
+				pidAlive: true,
+				paneSuspended: true,
+				latestEventAgeMs: null,
+			}),
+		).toBe("stopped");
+	});
+
+	it("missing pid telemetry reads unknown — never inferred dead", () => {
+		expect(systemStateOf({ ...bound, pidAlive: null, state: "working" })).toBe("unknown");
+	});
+
+	it("bound + pid alive but NO state telemetry reads unknown — never inferred idle", () => {
+		expect(systemStateOf({ lifecycle: "bound", pidAlive: true, latestEventAgeMs: null })).toBe(
+			"unknown",
+		);
+	});
+
+	it("a legacy node with no lifecycle and no state telemetry reads unknown", () => {
+		expect(systemStateOf({ pidAlive: true, latestEventAgeMs: null })).toBe("unknown");
+	});
+
+	it("dead beats stopped (a gone pid is the stronger verdict)", () => {
+		expect(
+			systemStateOf({ ...bound, pidAlive: false, paneSuspended: true, state: "working" }),
+		).toBe("dead");
+	});
+
+	it("honors a caller-supplied stale threshold", () => {
+		expect(
+			systemStateOf({ ...bound, state: "working", latestEventAgeMs: 500, staleAfterMs: 100 }),
+		).toBe("stalled");
+		expect(
+			systemStateOf({ ...bound, state: "working", latestEventAgeMs: 500, staleAfterMs: 1_000 }),
+		).toBe("working");
+	});
+});
+
+describe("badgeOf (AC-05 — worst-first across both axes)", () => {
+	it("a multi-assignment node badges its WORST semantic state (done on A, blocked on B)", () => {
+		expect(badgeOf("idle", ["done", "blocked"])).toBe("blocked");
+	});
+
+	it("a dead system beats every semantic state", () => {
+		expect(badgeOf("dead", ["blocked", "failed", "question"])).toBe("dead");
+	});
+
+	it("failed work beats a stalled system; stalled beats blocked", () => {
+		expect(badgeOf("stalled", ["failed"])).toBe("failed");
+		expect(badgeOf("stalled", ["blocked", "waiting"])).toBe("stalled");
+	});
+
+	it("question outranks hold, waiting and every calm state", () => {
+		expect(badgeOf("working", ["question", "hold", "waiting", "ready"])).toBe("question");
+	});
+
+	it("with no open assignments the badge is the system state itself", () => {
+		expect(badgeOf("working", [])).toBe("working");
+		expect(badgeOf("idle", [])).toBe("idle");
+	});
+
+	it("all-done work on an idle node badges done (informative over idle)", () => {
+		expect(badgeOf("idle", ["done"])).toBe("done");
+	});
+
+	it("an unknown system still surfaces above calm semantic states", () => {
+		expect(badgeOf("unknown", ["waiting"])).toBe("unknown");
+	});
+
+	it("no system verdict at all (legacy descriptor) falls back to the semantic worst", () => {
+		expect(badgeOf(undefined, ["waiting", "ready"])).toBe("waiting");
+	});
+
+	it("nothing known at all is an honest unknown", () => {
+		expect(badgeOf(undefined, [])).toBe("unknown");
+	});
+
+	it("BADGE_SEVERITY covers BOTH ruled vocabularies completely, no extras", () => {
+		expect([...BADGE_SEVERITY].sort()).toEqual([...SEMANTIC_STATES, ...SYSTEM_STATES].sort());
 	});
 });

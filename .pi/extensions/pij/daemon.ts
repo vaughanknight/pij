@@ -14,21 +14,28 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { FsOpJournal } from "./adapters/op-journal.js";
+import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
+import { FsProjectStore } from "./adapters/project-store.js";
+import { FsSpineLog } from "./adapters/spine-store.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
+import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
 import {
+	backfillWindowId,
 	type DaemonPorts,
 	type DriveState,
 	drainTmuxInbox,
@@ -38,6 +45,7 @@ import {
 	writeMerged,
 } from "./core/daemon/loop.js";
 import { SendBuffer } from "./core/daemon/router.js";
+import { RuntimeAxisTracker } from "./core/daemon/runtime-axis.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
@@ -93,6 +101,20 @@ export class Daemon {
 	 *  (raw tool output) rather than a `busy` marker. Feeds the stall guard so a
 	 *  deep-thinking / long-tool xhigh peer isn't false-flagged stalled. */
 	private readonly paneSig = new Map<string, string>();
+	/** One backfill attempt per session per daemon run (plan 054 P2 T006):
+	 *  legacy live nodes gain windowId without per-tick tmux probing spam. */
+	private readonly windowBackfillTried = new Set<string>();
+	/** WS-6 mechanical-axis owner (plan 054 P2 T008): verdicts + V-05 spine
+	 *  events, latch-after-successful-append. Constructed over the daemon's
+	 *  own Fs platform adapters (mirrors bin deps(), the critic-finding gap)
+	 *  LAZILY on the first tick: FsSpineLog creates its directory eagerly,
+	 *  and a daemon under test (or on a broken home) must degrade to the
+	 *  legacy passes with one honest log line, never crash at construction. */
+	private runtimeAxis: RuntimeAxisTracker | undefined;
+	/** Anomaly parent alerts (plan 054 P2 T010, AC-07): evidence-keyed
+	 *  once-per-transition latch, alert-only — the daemon never remediates. */
+	private anomalySweep: AnomalySweep | undefined;
+	private platformPassesDisabled = false;
 	private readonly watchManager: PeerWatchManager;
 	private readonly watchdogManager: WatchdogManager;
 	private readonly batonSweep: BatonSweep;
@@ -157,7 +179,92 @@ export class Daemon {
 			if (latest) this.registry.write({ ...latest, lastTickAt: tickAt });
 		}
 		this.index.rebuild(this.registry.list());
+		// Legacy-node windowId backfill (plan 054 P2 T006, AC-09): once per
+		// session per daemon run, resolve the pane's window and persist it via
+		// the merge-law write. Fresh spawns/adopts already carry it.
+		for (const d of this.index.all()) {
+			if (d.windowId !== undefined || d.paneId === undefined) continue;
+			if (this.windowBackfillTried.has(d.id)) continue;
+			this.windowBackfillTried.add(d.id);
+			try {
+				const filled = backfillWindowId(d, this.registry, (paneId) => {
+					try {
+						const raw = execFileSync(
+							"tmux",
+							["display-message", "-p", "-t", paneId, "#{window_id}"],
+							{ encoding: "utf8" },
+						).trim();
+						return raw === "" ? null : raw;
+					} catch {
+						return null; // pane gone / tmux unavailable — nothing to backfill
+					}
+				});
+				if (filled) this.log(`backfill ${d.id}: windowId ${filled.windowId}`);
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				this.log(`backfill ${d.id}: error ${detail}`);
+			}
+		}
+		this.index.rebuild(this.registry.list());
+		// Mechanical-axis pass (plan 054 P2 T008): verdicts persist merge-law
+		// safe; V-05 transition events append under lock+recovery, latch flips
+		// only after a successful append (skip-and-retry, never a stalled tick).
+		if (this.runtimeAxis === undefined && !this.platformPassesDisabled) {
+			try {
+				this.runtimeAxis = new RuntimeAxisTracker({
+					registry: this.registry,
+					spineLog: new FsSpineLog(this.pijHome),
+					opJournal: new FsOpJournal(this.pijHome),
+					projectStore: new FsProjectStore(this.pijHome),
+					assignmentStore: new FsAssignmentStore(this.pijHome),
+					platformWriteLock: new FsPlatformWriteLock(this.pijHome),
+					now: () => this.ports.now(),
+					isAlive: (pid) => this.ports.isAlive(pid),
+					// Suspension probe: `ps -o state=` reads 'T' for a SIGSTOP'd
+					// process; an unreadable probe is null — honest missing telemetry.
+					isSuspended: (pid) => {
+						try {
+							const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], {
+								encoding: "utf8",
+							}).trim();
+							return state === "" ? null : state.startsWith("T");
+						} catch {
+							return null;
+						}
+					},
+					log: this.log,
+				});
+				this.anomalySweep = new AnomalySweep({
+					registry: this.registry,
+					assignmentStore: new FsAssignmentStore(this.pijHome),
+					spineLog: new FsSpineLog(this.pijHome),
+					delivery: this.channel,
+					now: () => this.ports.now(),
+				});
+			} catch (error) {
+				this.platformPassesDisabled = true;
+				const detail = error instanceof Error ? error.message : String(error);
+				this.log(
+					`platform adapters unavailable (${detail}) — runtime-axis/anomaly passes disabled for this run`,
+				);
+			}
+		}
+		this.runtimeAxis?.tick(this.index.all());
+		this.index.rebuild(this.registry.list());
 		this.watchManager.reconcile(this.index.all());
+		// Anomaly alerts (plan 054 P2 T010): derived queries + one pushed alert
+		// per transition to the effectiveParent; act never.
+		if (this.anomalySweep !== undefined) {
+			try {
+				const anomalySweep = this.anomalySweep.tick();
+				if (anomalySweep.alerts > 0) {
+					this.log(`anomaly sweep: pushed ${anomalySweep.alerts} parent alert(s)`);
+				}
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				this.log(`anomaly sweep error: ${detail}`);
+			}
+		}
 		const batonSweep = this.batonSweep.tick();
 		if (!batonSweep.ok) {
 			this.log(`baton sweep error: ${batonSweep.code}: ${batonSweep.message}`);

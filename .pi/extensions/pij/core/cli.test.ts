@@ -3,8 +3,16 @@
 // error codes. F1 (receiver-frames) is asserted explicitly: send delivers RAW.
 
 import { describe, expect, it } from "vitest";
-import { FakeDelivery, FakeEventLog, FakeProcess, FakeRegistry } from "../adapters/fakes.js";
-import type { CliDeps } from "./cli.js";
+import {
+	FakeAssignmentStore,
+	FakeDelivery,
+	FakeEventLog,
+	FakeProcess,
+	FakeProjectStore,
+	FakeRegistry,
+	FakeSpineLog,
+} from "../adapters/fakes.js";
+import type { CliDeps, CliResult } from "./cli.js";
 import {
 	applyWaitReceipt,
 	applyWaitReceiptSources,
@@ -13,6 +21,7 @@ import {
 	renderWaitReceipt,
 	renderWaitTimeout,
 } from "./cli.js";
+import type { Project, SpineEvent } from "./platform/types.js";
 import type { DeliveryPort } from "./ports.js";
 import { err, ok, type PijEvent, type PijMessage, type SessionDescriptor } from "./types.js";
 
@@ -1342,5 +1351,2464 @@ describe("dispatch tree/link", () => {
 		expect(human.exitCode).toBe(0);
 		expect(human.stdout).toContain("cycle");
 		expect(human.stdout).toContain("deep-0000");
+	});
+});
+
+// ═══ plan 054 T009 — project/spine CLI surface (dispatch-level pins) ════════
+// Append-only section. Local wrappers only — the shared builders above are
+// untouched. All pins live at the dispatch surface: parseArgs → dispatch →
+// CliResult. ParsedCommand internals are deliberately never asserted (T010
+// owns the parse representation). run() folds a parse-level error into the
+// CliResult the bin would print, so each E-ARG/E-NOREG pin holds whether the
+// rejection happens in parseArgs or in dispatch.
+
+// Platform-section-local imports (the legacy import block above is frozen):
+// module-scope import declarations hoist, so placement here is behavior-neutral.
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { FsAssignmentStore } from "../adapters/assignment-store.js";
+import { FakeOpJournal, FakePlatformWriteLock } from "../adapters/fakes.js";
+import { FsOpJournal } from "../adapters/op-journal.js";
+import { FsPlatformWriteLock } from "../adapters/platform-write-lock.js";
+import { FsProjectStore } from "../adapters/project-store.js";
+import { FsSpineLog } from "../adapters/spine-store.js";
+import { canonicalAssignmentJson } from "./platform/assignment.js";
+import type { PendingOp } from "./platform/ports.js";
+import { createProject, setProject } from "./platform/project.js";
+import type { Assignment, SpineEventDraft } from "./platform/types.js";
+import { SPINE_KIND_NODE_LINKED } from "./platform/types.js";
+
+interface PlatformStores {
+	readonly projectStore: FakeProjectStore;
+	readonly assignmentStore: FakeAssignmentStore;
+	readonly spineLog: FakeSpineLog;
+	readonly opJournal: FakeOpJournal;
+	readonly platformWriteLock: FakePlatformWriteLock;
+}
+
+/** deps() + the plan-054 stores (optional CliDeps ports per the T010 contract). */
+function platformDeps(
+	opts: Parameters<typeof deps>[0] & { projects?: Project[]; spine?: SpineEvent[] } = {},
+): CliDeps & PlatformStores & { delivery: FakeDelivery; registry: FakeRegistry } {
+	return {
+		...deps(opts),
+		projectStore: new FakeProjectStore(opts.projects ?? []),
+		assignmentStore: new FakeAssignmentStore(),
+		spineLog: new FakeSpineLog(opts.spine ?? []),
+		opJournal: new FakeOpJournal(),
+		platformWriteLock: new FakePlatformWriteLock(),
+	};
+}
+
+/** Unwrap OpJournalPort.pending's Result surface (review 003 H2) — every pin
+ *  below asserts over the surviving ops, and an unenumerable journal in these
+ *  fake-backed fixtures is a harness bug worth throwing on. */
+function pendingOps(journal: FakeOpJournal): readonly PendingOp[] {
+	const result = journal.pending();
+	if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
+	return result.value;
+}
+
+/** parse → dispatch; a parse error becomes the CliResult the bin prints
+ *  (E-ARG → 64, E-NOREG → 3), keeping every pin at the dispatch level. */
+function run(argv: readonly string[], d: CliDeps): CliResult {
+	const result = parseArgs(argv);
+	if (!result.ok) {
+		const exitCode = result.code === "E-ARG" ? 64 : result.code === "E-NOREG" ? 3 : 2;
+		return { stdout: "", stderr: `${result.code}: ${result.message}`, exitCode };
+	}
+	return dispatch(result.value, d);
+}
+
+function seedProject(over: Partial<Project> & { slug: string }): Project {
+	return {
+		schema_version: 1,
+		description: over.slug,
+		created: { actor: "seed-actor", ts: recent },
+		...over,
+	};
+}
+
+function spineEv(over: Partial<SpineEvent> & { seq: number }): SpineEvent {
+	return {
+		schema_version: 1,
+		ts: recent,
+		actor: "seed-actor",
+		kind: "note",
+		refs: [],
+		...over,
+	};
+}
+
+const seqsOf = (stdout: string): number[] => (JSON.parse(stdout) as SpineEvent[]).map((e) => e.seq);
+
+describe("project verbs", () => {
+	describe("project create", () => {
+		it("persists the record, mentions the slug in text, exit 0", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(0);
+			expect(r.stderr).toBe("");
+			expect(r.stdout).toContain("fix-the-cli");
+			expect(d.projectStore.read("fix-the-cli")).toMatchObject({
+				schema_version: 1,
+				slug: "fix-the-cli",
+				description: "Fix the CLI",
+			});
+		});
+
+		it("--json prints the bare persisted record (house: no envelope wrapper)", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "Fix the CLI", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			const j = JSON.parse(r.stdout) as Project;
+			expect(j).toMatchObject({
+				schema_version: 1,
+				slug: "fix-the-cli",
+				description: "Fix the CLI",
+			});
+			expect(j.created.actor).toBe("pij-self");
+			// bare record — exactly what the store holds, nothing wrapped around it.
+			expect(j).toEqual(d.projectStore.read("fix-the-cli"));
+			expect(j).not.toHaveProperty("project");
+			expect(j).not.toHaveProperty("ok");
+		});
+
+		it("resolves slug collisions against the store's existing slugs (AC-01)", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			const r = run(["project", "create", "Fix the CLI", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			expect((JSON.parse(r.stdout) as Project).slug).toBe("fix-the-cli-2");
+			expect(d.projectStore.read("fix-the-cli-2")).not.toBeNull();
+			// first-writer-wins: the original record survives untouched.
+			expect(d.projectStore.read("fix-the-cli")?.created.actor).toBe("seed-actor");
+		});
+
+		it("appends EXACTLY ONE project-created spine event, seq = lastSeq()+1 (AC-03)", () => {
+			const d = platformDeps({ self: "pij-self", spine: [spineEv({ seq: 7 })] });
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()).toHaveLength(2); // seeded + exactly one new
+			const added = d.spineLog.read({ since: 7 });
+			expect(added).toHaveLength(1);
+			expect(added[0]).toMatchObject({
+				schema_version: 1,
+				kind: "project-created",
+				seq: 8,
+				actor: "pij-self",
+				refs: ["project:fix-the-cli"],
+				project: "fix-the-cli",
+			});
+		});
+
+		it("collision-RESOLVED slug flows into the spine event, never the base slug (AC-01×AC-03)", () => {
+			// Audit fix (major): an impl that builds the event from
+			// kebabSlug(description) while persisting the collision-resolved
+			// record would pass the two tests above — this one catches it.
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+				spine: [spineEv({ seq: 7 })],
+			});
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(0);
+			const added = d.spineLog.read({ since: 7 });
+			expect(added).toHaveLength(1);
+			expect(added[0]).toMatchObject({
+				kind: "project-created",
+				seq: 8,
+				refs: ["project:fix-the-cli-2"],
+				project: "fix-the-cli-2",
+			});
+		});
+
+		it("empty description → E-ARG 64 naming the description", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", ""], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toContain("description");
+			expect(d.projectStore.list()).toHaveLength(0);
+		});
+
+		it("symbol-only description (kebabs to '') → E-ARG 64 naming the description", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "!!!"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toContain("description");
+			expect(d.projectStore.list()).toHaveLength(0);
+		});
+
+		it("NO spine event when the record write fails (one event per SUCCESSFUL write)", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.projectStore.failNext("create");
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("E-NOREG"); // the store's fault code surfaces
+			expect(d.spineLog.read()).toHaveLength(0); // the log gained NOTHING
+			expect(d.projectStore.list()).toHaveLength(0);
+			// Abort path clears the journal (audit F2): a leaked op would be
+			// replayed into a project-created event for state that never committed.
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("resolvable self stamps actor + actorProvenance 'resolved' (convention F2)", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({
+				seq: 1, // empty log: lastSeq()=0 + 1
+				actor: "pij-self",
+				actorProvenance: "resolved",
+			});
+			expect(d.projectStore.read("fix-the-cli")?.created.actor).toBe("pij-self");
+		});
+
+		it("--actor asserts attribution and WINS over a resolvable self", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "Fix the CLI", "--actor", "lord-jordan"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({
+				actor: "lord-jordan",
+				actorProvenance: "asserted",
+			});
+			expect(d.projectStore.read("fix-the-cli")?.created.actor).toBe("lord-jordan");
+		});
+
+		it("unresolvable caller without --actor is refused with an --actor hint", () => {
+			const d = platformDeps({}); // no PIJ_SESSION_ID, empty registry
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("--actor");
+			expect(d.projectStore.list()).toHaveLength(0);
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("--actor rescues an UNRESOLVABLE caller: asserted attribution succeeds", () => {
+			// Audit fix (minor): the refusal hint above must not be a lie — --actor
+			// is a real escape hatch, not an attribution override that still
+			// requires a resolvable self.
+			const d = platformDeps({}); // no PIJ_SESSION_ID, empty registry
+			const r = run(["project", "create", "Fix the CLI", "--actor", "lord-jordan"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.projectStore.read("fix-the-cli")?.created.actor).toBe("lord-jordan");
+			expect(d.spineLog.read()[0]).toMatchObject({
+				kind: "project-created",
+				actor: "lord-jordan",
+				actorProvenance: "asserted",
+			});
+		});
+	});
+
+	describe("project list", () => {
+		it("text lists the seeded slugs", () => {
+			const d = platformDeps({
+				projects: [seedProject({ slug: "beta" }), seedProject({ slug: "alpha" })],
+			});
+			const r = run(["project", "list"], d);
+			expect(r.exitCode).toBe(0);
+			expect(r.stderr).toBe("");
+			expect(r.stdout).toContain("alpha");
+			expect(r.stdout).toContain("beta");
+		});
+
+		it("--json is a bare array of records sorted by slug", () => {
+			const d = platformDeps({
+				projects: [seedProject({ slug: "beta" }), seedProject({ slug: "alpha" })],
+			});
+			const r = run(["project", "list", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			const j = JSON.parse(r.stdout) as Project[];
+			expect(Array.isArray(j)).toBe(true);
+			expect(j.map((p) => p.slug)).toEqual(["alpha", "beta"]);
+			expect(j[0]).toMatchObject({ schema_version: 1, slug: "alpha" });
+		});
+
+		it("empty store → exit 0 and an empty --json array", () => {
+			const d = platformDeps({});
+			expect(run(["project", "list"], d).exitCode).toBe(0);
+			const r = run(["project", "list", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			expect(JSON.parse(r.stdout)).toEqual([]);
+		});
+	});
+
+	describe("project show", () => {
+		it("--json prints the full record", () => {
+			const d = platformDeps({
+				projects: [
+					seedProject({
+						slug: "fix-the-cli",
+						description: "Fix the CLI",
+						planPath: "docs/plans/054/plan.md",
+						primeId: "pij-w3",
+					}),
+				],
+			});
+			const r = run(["project", "show", "fix-the-cli", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			expect(JSON.parse(r.stdout)).toMatchObject({
+				schema_version: 1,
+				slug: "fix-the-cli",
+				description: "Fix the CLI",
+				planPath: "docs/plans/054/plan.md",
+				primeId: "pij-w3",
+			});
+		});
+
+		it("text output names the slug", () => {
+			const d = platformDeps({ projects: [seedProject({ slug: "fix-the-cli" })] });
+			const r = run(["project", "show", "fix-the-cli"], d);
+			expect(r.exitCode).toBe(0);
+			expect(r.stdout).toContain("fix-the-cli");
+		});
+
+		it("missing <slug> positional → E-ARG 64", () => {
+			const d = platformDeps({});
+			const r = run(["project", "show"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toMatch(/slug/i);
+		});
+
+		it("unknown slug → E-NOREG, exit 3", () => {
+			const d = platformDeps({ projects: [seedProject({ slug: "fix-the-cli" })] });
+			const r = run(["project", "show", "ghost"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+		});
+
+		it("read verbs need NO actor: list and show succeed for an unresolvable caller", () => {
+			// No PIJ_SESSION_ID, empty registry — reads are exempt (convention F2).
+			const d = platformDeps({ projects: [seedProject({ slug: "solo" })] });
+			expect(run(["project", "list"], d).exitCode).toBe(0);
+			expect(run(["project", "show", "solo"], d).exitCode).toBe(0);
+		});
+	});
+
+	describe("project set", () => {
+		it("--plan updates planPath and appends EXACTLY ONE project-set event", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+				spine: [spineEv({ seq: 2 })],
+			});
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plans/054/plan.md"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBe("docs/plans/054/plan.md");
+			expect(d.spineLog.read()).toHaveLength(2); // seeded + exactly one new
+			expect(d.spineLog.read({ since: 2 })[0]).toMatchObject({
+				kind: "project-set",
+				seq: 3,
+				actor: "pij-self",
+				refs: ["project:fix-the-cli"],
+				project: "fix-the-cli",
+			});
+		});
+
+		it("resolved self stamps actorProvenance 'resolved' on the project-set event (F2)", () => {
+			// Audit fix (minor): asserted provenance was pinned for set, resolved
+			// was not — a set-path that omits or mis-stamps it must fail here.
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({
+				kind: "project-set",
+				actor: "pij-self",
+				actorProvenance: "resolved",
+			});
+		});
+
+		it("--prime updates primeId; both flags together update both fields", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			const first = run(["project", "set", "fix-the-cli", "--prime", "pij-w3"], d);
+			expect(first.exitCode).toBe(0);
+			expect(d.projectStore.read("fix-the-cli")?.primeId).toBe("pij-w3");
+			const second = run(
+				["project", "set", "fix-the-cli", "--plan", "docs/plan.md", "--prime", "pij-w9"],
+				d,
+			);
+			expect(second.exitCode).toBe(0);
+			expect(d.projectStore.read("fix-the-cli")).toMatchObject({
+				planPath: "docs/plan.md",
+				primeId: "pij-w9",
+			});
+			expect(d.spineLog.read()).toHaveLength(2); // one event per successful write
+		});
+
+		it("neither --plan nor --prime → E-ARG 64", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			const r = run(["project", "set", "fix-the-cli"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toMatch(/plan/i);
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("unknown slug → E-NOREG, exit 3, no event", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "set", "ghost", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("NO spine event when the update write fails; the record is unchanged", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			d.projectStore.failNext("update");
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(d.spineLog.read()).toHaveLength(0);
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBeUndefined();
+			// Abort path clears the journal (audit F2) — no phantom replay later.
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("--actor stamps asserted attribution on the project-set event", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			const r = run(
+				["project", "set", "fix-the-cli", "--plan", "docs/plan.md", "--actor", "lord-jordan"],
+				d,
+			);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({
+				kind: "project-set",
+				actor: "lord-jordan",
+				actorProvenance: "asserted",
+			});
+		});
+
+		it("unresolvable caller without --actor is refused with an --actor hint", () => {
+			const d = platformDeps({ projects: [seedProject({ slug: "fix-the-cli" })] });
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("--actor");
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBeUndefined();
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+	});
+});
+
+describe("spine verbs", () => {
+	describe("spine append", () => {
+		it("appends EXACTLY ONE event: seq = lastSeq()+1, kind, resolved actor", () => {
+			const d = platformDeps({ self: "pij-self", spine: [spineEv({ seq: 3 })] });
+			const r = run(["spine", "append", "--kind", "checkpoint"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()).toHaveLength(2); // seeded + exactly one new
+			const added = d.spineLog.read({ since: 3 });
+			expect(added).toHaveLength(1);
+			expect(added[0]).toMatchObject({
+				schema_version: 1,
+				seq: 4,
+				kind: "checkpoint",
+				actor: "pij-self",
+				actorProvenance: "resolved",
+			});
+		});
+
+		it("--refs is comma-separated; absent --refs → []", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(
+				[
+					"spine",
+					"append",
+					"--kind",
+					"note",
+					"--refs",
+					"project:fix,assignment:asg-1,commit:abc123",
+				],
+				d,
+			);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]?.refs).toEqual([
+				"project:fix",
+				"assignment:asg-1",
+				"commit:abc123",
+			]);
+
+			const bare = platformDeps({ self: "pij-self" });
+			expect(run(["spine", "append", "--kind", "note"], bare).exitCode).toBe(0);
+			expect(bare.spineLog.read()[0]?.refs).toEqual([]);
+		});
+
+		it("--peer and --project pass through onto the event", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(
+				["spine", "append", "--kind", "note", "--peer", "pij-w3", "--project", "fix-the-cli"],
+				d,
+			);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({ peer: "pij-w3", project: "fix-the-cli" });
+		});
+
+		it("--json prints exactly the appended event", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["spine", "append", "--kind", "note", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			const j = JSON.parse(r.stdout) as SpineEvent;
+			expect(j).toMatchObject({ schema_version: 1, seq: 1, kind: "note", actor: "pij-self" });
+			expect(j).toEqual(d.spineLog.read()[0]); // stdout IS the persisted event, bare
+		});
+
+		it("missing --kind → E-ARG naming kind; the log gains nothing", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["spine", "append"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toContain("kind");
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("--actor asserts attribution and WINS over a resolvable self", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["spine", "append", "--kind", "note", "--actor", "lord-jordan"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({
+				actor: "lord-jordan",
+				actorProvenance: "asserted",
+			});
+		});
+
+		it("unresolvable caller without --actor is refused; the log gains nothing", () => {
+			const d = platformDeps({});
+			const r = run(["spine", "append", "--kind", "note"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("--actor");
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("--actor rescues an UNRESOLVABLE caller on spine append too", () => {
+			// Audit fix (minor): same escape-hatch proof as project create.
+			const d = platformDeps({}); // no PIJ_SESSION_ID, empty registry
+			const r = run(["spine", "append", "--kind", "note", "--actor", "lord-jordan"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read()[0]).toMatchObject({
+				kind: "note",
+				actor: "lord-jordan",
+				actorProvenance: "asserted",
+			});
+		});
+
+		it("spineLog.append failure surfaces the port's error — never fabricated success (audit F2)", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("append");
+			const r = run(["spine", "append", "--kind", "note"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stdout).toBe("");
+			expect(r.stderr).toContain("E-NOREG");
+			expect(r.stderr).toContain("injected fake spine append failure");
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+	});
+
+	describe("spine events", () => {
+		// Mirrors the T003 exactness matrix (core/platform/spine.test.ts): peer
+		// pij-a vs pij-ab, project fix vs fix-the-cli — exact equality only (AC-02).
+		const MATRIX: SpineEvent[] = [
+			spineEv({ seq: 1, peer: "pij-a", project: "fix" }),
+			spineEv({ seq: 2, peer: "pij-ab", project: "fix-the-cli" }),
+			spineEv({ seq: 3, peer: "pij-a" }),
+			spineEv({ seq: 4, project: "fix" }),
+			spineEv({ seq: 5 }),
+			spineEv({ seq: 6, peer: "pij-a", project: "fix" }),
+		];
+
+		it("no filters → all events; --json is a bare seq-ascending array", () => {
+			const d = platformDeps({ spine: MATRIX });
+			const r = run(["spine", "events", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			const j = JSON.parse(r.stdout) as SpineEvent[];
+			expect(Array.isArray(j)).toBe(true);
+			expect(j.map((e) => e.seq)).toEqual([1, 2, 3, 4, 5, 6]);
+			expect(j[0]).toMatchObject({ schema_version: 1, kind: "note" });
+		});
+
+		it("--peer matches exactly — 'pij-a' never matches 'pij-ab' and vice versa (AC-02)", () => {
+			const d = platformDeps({ spine: MATRIX });
+			const a = run(["spine", "events", "--peer", "pij-a", "--json"], d);
+			expect(a.exitCode).toBe(0);
+			expect(seqsOf(a.stdout)).toEqual([1, 3, 6]);
+			const ab = run(["spine", "events", "--peer", "pij-ab", "--json"], d);
+			expect(seqsOf(ab.stdout)).toEqual([2]);
+		});
+
+		it("--project matches exactly — 'fix' never matches 'fix-the-cli' and vice versa (AC-02)", () => {
+			const d = platformDeps({ spine: MATRIX });
+			const fix = run(["spine", "events", "--project", "fix", "--json"], d);
+			expect(fix.exitCode).toBe(0);
+			expect(seqsOf(fix.stdout)).toEqual([1, 4, 6]);
+			const full = run(["spine", "events", "--project", "fix-the-cli", "--json"], d);
+			expect(seqsOf(full.stdout)).toEqual([2]);
+		});
+
+		it("--since is EXCLUSIVE (seq > since)", () => {
+			const d = platformDeps({ spine: MATRIX });
+			const r = run(["spine", "events", "--since", "4", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			expect(seqsOf(r.stdout)).toEqual([5, 6]);
+			const last = run(["spine", "events", "--since", "6", "--json"], d);
+			expect(JSON.parse(last.stdout)).toEqual([]);
+		});
+
+		it("filters combine: since → peer → project", () => {
+			const d = platformDeps({ spine: MATRIX });
+			const r = run(
+				["spine", "events", "--since", "1", "--peer", "pij-a", "--project", "fix", "--json"],
+				d,
+			);
+			expect(r.exitCode).toBe(0);
+			expect(seqsOf(r.stdout)).toEqual([6]);
+		});
+
+		it("non-numeric --since → E-ARG 64", () => {
+			const d = platformDeps({ spine: MATRIX });
+			const r = run(["spine", "events", "--since", "banana", "--json"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toContain("since");
+		});
+
+		it("text mode succeeds and needs NO actor (read exemption)", () => {
+			// No PIJ_SESSION_ID, empty registry — reads are exempt (convention F2).
+			const d = platformDeps({ spine: MATRIX });
+			const r = run(["spine", "events"], d);
+			expect(r.exitCode).toBe(0);
+			expect(r.stderr).toBe("");
+			expect(r.stdout).toContain("note"); // the kind is visible in human output
+		});
+	});
+
+	describe("strict parse (house law) across the new verbs", () => {
+		it("rejects an unknown flag on every project/spine verb → E-ARG 64", () => {
+			const invocations: readonly (readonly string[])[] = [
+				["project", "create", "Fix it", "--frobnicate"],
+				["project", "list", "--frobnicate"],
+				["project", "show", "fix", "--frobnicate"],
+				["project", "set", "fix", "--plan", "docs/plan.md", "--frobnicate"],
+				["spine", "append", "--kind", "note", "--frobnicate"],
+				["spine", "events", "--frobnicate"],
+			];
+			for (const argv of invocations) {
+				const r = run(argv, platformDeps({ self: "pij-self" }));
+				expect(r.exitCode, argv.join(" ")).toBe(64);
+				expect(r.stderr, argv.join(" ")).toContain("frobnicate");
+			}
+		});
+
+		it("rejects an unknown subcommand with a usage-ish E-ARG", () => {
+			const project = run(["project", "frobnicate"], platformDeps({}));
+			expect(project.exitCode).toBe(64);
+			expect(project.stderr).toContain("E-ARG");
+			expect(project.stderr).toContain("frobnicate");
+			const spine = run(["spine", "frobnicate"], platformDeps({}));
+			expect(spine.exitCode).toBe(64);
+			expect(spine.stderr).toContain("frobnicate");
+		});
+	});
+});
+
+// ═══ review p1-review-001 HIGH-2 — journal-FIRST coupled write ══════════════
+// The hard requirements under test: (a) committed project state without its
+// spine event never SURVIVES a single append failure — the draft event is
+// journaled durably BEFORE state commits and replayed by the next platform
+// WRITE verb (appendOnce keyed by opId = exactly-once); (b) NO exception
+// escapes dispatch for the platform verbs — every failure is a CliResult.
+describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
+	describe("project create under spine appendOnce failure", () => {
+		it("fails naming the journaled replay; record COMMITTED; ONE pending op; NO event visible", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce");
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toMatch(/journal/i);
+			expect(r.stderr).toMatch(/replay/i);
+			// The state commit stands — the failure is about the AUDIT event only.
+			expect(d.projectStore.read("fix-the-cli")).toMatchObject({ slug: "fix-the-cli" });
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(pendingOps(d.opJournal)[0]?.draft).toMatchObject({
+				kind: "project-created",
+				project: "fix-the-cli",
+			});
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("the NEXT platform write verb (spine append) REPLAYS it exactly once and drains the journal", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce");
+			expect(run(["project", "create", "Fix the CLI"], d).exitCode).not.toBe(0);
+			const next = run(["spine", "append", "--kind", "note"], d);
+			expect(next.exitCode).toBe(0);
+			const created = d.spineLog.read().filter((e) => e.kind === "project-created");
+			expect(created).toHaveLength(1);
+			expect(created[0]).toMatchObject({ project: "fix-the-cli", actor: "pij-self" });
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+			// Idempotent forever after: further writes gain no duplicate.
+			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
+		});
+
+		it("another project create also replays first — pending event exactly once, both journals drained", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce");
+			expect(run(["project", "create", "First"], d).exitCode).not.toBe(0);
+			const r = run(["project", "create", "Second"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.project === "first")).toHaveLength(1);
+			expect(d.spineLog.read().filter((e) => e.project === "second")).toHaveLength(1);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("an UNREPLAYABLE predecessor BLOCKS the verb: honest recovery error, nothing mutated (review 002 G3 — supersedes the cycle-1 best-effort ruling)", () => {
+			// A verb writing past a failed replay let later state events overtake
+			// their causal predecessors (the reviewer's B→C-before-A→B trace).
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce"); // burns the first create's append
+			d.spineLog.failNext("appendOnce"); // burns the second create's RECOVERY pass
+			expect(run(["project", "create", "First"], d).exitCode).not.toBe(0);
+			const r = run(["project", "create", "Second"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toMatch(/recovery/i);
+			// The blocked verb mutated NOTHING: no record, no journal entry, no event.
+			expect(d.projectStore.read("second")).toBeNull();
+			expect(d.spineLog.read()).toHaveLength(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(pendingOps(d.opJournal)[0]?.draft).toMatchObject({ project: "first" });
+			// Once the spine heals, the SAME verb replays the predecessor FIRST,
+			// then lands its own coupled write — causal order restored.
+			const healed = run(["project", "create", "Second"], d);
+			expect(healed.exitCode).toBe(0);
+			expect(d.spineLog.read().map((e) => e.project)).toEqual(["first", "second"]);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+	});
+
+	describe("project set under spine appendOnce failure", () => {
+		it("fails naming the journaled replay; update COMMITTED; ONE pending op; NO event visible", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			d.spineLog.failNext("appendOnce");
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toMatch(/journal/i);
+			expect(r.stderr).toMatch(/replay/i);
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBe("docs/plan.md");
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(pendingOps(d.opJournal)[0]?.draft).toMatchObject({
+				kind: "project-set",
+				project: "fix-the-cli",
+			});
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("the NEXT platform write verb REPLAYS the project-set event exactly once and drains the journal", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			d.spineLog.failNext("appendOnce");
+			expect(run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d).exitCode).not.toBe(
+				0,
+			);
+			const next = run(["spine", "append", "--kind", "note"], d);
+			expect(next.exitCode).toBe(0);
+			const setEvents = d.spineLog.read().filter((e) => e.kind === "project-set");
+			expect(setEvents).toHaveLength(1);
+			expect(setEvents[0]).toMatchObject({ project: "fix-the-cli", actor: "pij-self" });
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("project set also REPLAYS first: a pending op from a failed create lands exactly once (audit F2)", () => {
+			// Seat ruling: replay runs at the start of EVERY platform write verb —
+			// project set included, not just spine append / project create.
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			d.spineLog.failNext("appendOnce");
+			expect(run(["project", "create", "First"], d).exitCode).not.toBe(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+	});
+
+	describe("abort paths clear the journal — no phantom replay (audit F2)", () => {
+		it("create state-write failure leaves NOTHING pending; the next write verb fabricates NO event", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.projectStore.failNext("create");
+			expect(run(["project", "create", "Fix the CLI"], d).exitCode).not.toBe(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+			// A leaked op would surface HERE as a project-created event for a
+			// record that never committed — a false audit trail.
+			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(0);
+			expect(d.projectStore.list()).toHaveLength(0);
+		});
+
+		it("set state-write failure leaves NOTHING pending; the next write verb fabricates NO event", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			d.projectStore.failNext("update");
+			expect(run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d).exitCode).not.toBe(
+				0,
+			);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(0);
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBeUndefined();
+		});
+
+		it("concurrent-create 'exists' → E-NOREG with a retry hint, journal cleared, NO event", () => {
+			const base = platformDeps({ self: "pij-self" });
+			const d: CliDeps = {
+				...base,
+				projectStore: {
+					create: () => ok("exists" as const),
+					update: () => ok(undefined),
+					read: () => null,
+					list: () => [],
+				},
+			};
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(r.stderr).toMatch(/retry/i);
+			expect(pendingOps(base.opJournal)).toHaveLength(0);
+			expect(base.spineLog.read()).toHaveLength(0);
+		});
+	});
+
+	describe("journal record failure aborts BEFORE any state commit", () => {
+		it("create: no project record, no event, nothing pending, exit != 0", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.opJournal.failNext("record");
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(d.projectStore.list()).toHaveLength(0);
+			expect(d.spineLog.read()).toHaveLength(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("set: the project is unchanged, no event, exit != 0", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+			});
+			d.opJournal.failNext("record");
+			const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBeUndefined();
+			expect(d.spineLog.read()).toHaveLength(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+	});
+
+	describe("no-throw dispatch (F1 hard requirement b)", () => {
+		it("a THROWING projectStore.create is contained as an E-NOREG CliResult naming the verb", () => {
+			const base = platformDeps({ self: "pij-self" });
+			const d: CliDeps = {
+				...base,
+				projectStore: {
+					create: () => {
+						throw new Error("boom");
+					},
+					update: () => {
+						throw new Error("boom");
+					},
+					read: () => null,
+					list: () => [],
+				},
+			};
+			const cmd = parsed(["project", "create", "Fix the CLI"]);
+			let r: CliResult | undefined;
+			expect(() => {
+				r = dispatch(cmd, d);
+			}).not.toThrow();
+			expect(r?.exitCode).toBe(3);
+			expect(r?.stderr).toContain("E-NOREG");
+			expect(r?.stderr).toContain("project-create");
+			expect(r?.stderr).toContain("boom");
+		});
+
+		// Audit F2: the gate must contain EVERY platform verb against EVERY
+		// throwing port — a gate that rethrows for all-but-one verb passed the
+		// single-verb test above.
+		const boom = () => {
+			throw new Error("boom");
+		};
+		const throwingDeps = (): CliDeps => ({
+			...platformDeps({ self: "pij-self" }),
+			projectStore: { create: boom, update: boom, read: boom, list: boom },
+			spineLog: { append: boom, appendOnce: boom, hasOnce: boom, lastSeq: boom, read: boom },
+			opJournal: { record: boom, markCommitted: boom, clear: boom, pending: boom },
+		});
+		it.each([
+			["project-create", ["project", "create", "Fix the CLI"]],
+			["project-list", ["project", "list"]],
+			["project-show", ["project", "show", "fix-the-cli"]],
+			["project-set", ["project", "set", "fix-the-cli", "--plan", "docs/plan.md"]],
+			["spine-append", ["spine", "append", "--kind", "note"]],
+			["spine-events", ["spine", "events"]],
+		] as const)("%s: throwing ports contained as E-NOREG naming the verb", (verb, argv) => {
+			let r: CliResult | undefined;
+			expect(() => {
+				r = run(argv, throwingDeps());
+			}).not.toThrow();
+			expect(r?.exitCode).toBe(3);
+			expect(r?.stderr).toContain("E-NOREG");
+			expect(r?.stderr).toContain(verb);
+			expect(r?.stderr).toContain("boom");
+		});
+	});
+
+	describe("crash-window replay (event landed, journal not yet cleared)", () => {
+		it("replay clears the op WITHOUT a duplicate event", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const draft: SpineEventDraft = {
+				schema_version: 1,
+				ts: recent,
+				actor: "seed-actor",
+				kind: "project-created",
+				refs: ["project:ghost"],
+				project: "ghost",
+			};
+			const recorded = d.opJournal.record(draft);
+			if (!recorded.ok) throw new Error("seed record failed");
+			// The real crash window: append happens only AFTER the committed flip
+			// (review 002 G2), so the surviving entry is committed-phase.
+			const flipped = d.opJournal.markCommitted(recorded.value);
+			if (!flipped.ok) throw new Error("seed markCommitted failed");
+			const landed = d.spineLog.appendOnce(recorded.value, draft);
+			if (!landed.ok) throw new Error("seed appendOnce failed");
+			// The crash window: the event IS in the log, the journal op survives.
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			const r = run(["spine", "append", "--kind", "note"], d);
+			expect(r.exitCode).toBe(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
+			expect(d.spineLog.read()).toHaveLength(2); // landed event + the new note, NO duplicate
+		});
+
+		it("a SUCCESSFUL create whose journal clear FAILS reports the cleanup honestly and replays WITHOUT a duplicate — the verb's append key IS the journal opId (audit F2, review 004 J2)", () => {
+			// Drives the real window end-to-end through the VERB (the test above
+			// manufactures it port-side and so cannot pin the verb's key choice):
+			// an impl keying its success-path appendOnce by anything other than
+			// the journaled opId duplicates the event on replay. Review 004 J2:
+			// exit 0 here would hide a machine-wide write outage KNOWN at return
+			// time — the verb reports the cleanup fault while the write stands.
+			const d = platformDeps({ self: "pij-self" });
+			d.opJournal.failNext("clear");
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("WAS created");
+			expect(r.stderr).toContain("injected fake op-journal clear failure");
+			expect(d.projectStore.read("fix-the-cli")).not.toBeNull();
+			expect(pendingOps(d.opJournal)).toHaveLength(1); // the failed clear = crash window
+			const next = run(["spine", "append", "--kind", "note"], d);
+			expect(next.exitCode).toBe(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
+		});
+	});
+
+	describe("journal wiring + read-verb exemption", () => {
+		it("WRITE verbs require the op journal wired (E-NOREG 'not wired'); READ verbs do not", () => {
+			const { opJournal: _omit, ...rest } = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "fix-the-cli" })],
+				spine: [spineEv({ seq: 1 })],
+			});
+			const d = rest as CliDeps;
+			const writes: readonly (readonly string[])[] = [
+				["project", "create", "New Thing"],
+				["project", "set", "fix-the-cli", "--plan", "docs/plan.md"],
+				["spine", "append", "--kind", "note"],
+			];
+			for (const argv of writes) {
+				const r = run(argv, d);
+				expect(r.exitCode, argv.join(" ")).toBe(3);
+				expect(r.stderr, argv.join(" ")).toContain("not wired");
+			}
+			expect(run(["project", "list"], d).exitCode).toBe(0);
+			expect(run(["project", "show", "fix-the-cli"], d).exitCode).toBe(0);
+			expect(run(["spine", "events"], d).exitCode).toBe(0);
+		});
+
+		it("READ verbs never replay: a pending op survives spine events / project list", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce");
+			run(["project", "create", "Fix the CLI"], d);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(run(["spine", "events"], d).exitCode).toBe(0);
+			expect(run(["project", "list"], d).exitCode).toBe(0);
+			expect(run(["project", "show", "fix-the-cli"], d).exitCode).toBe(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+	});
+});
+
+// ═══ review 002 G2/G3 — journal lifecycle: phases, causal gate, write lock ══
+// G2: an op is replayable ONLY after its state write committed — an intent
+// abandoned by a crash (or discarded by an aborted write whose clear was
+// lost) must NEVER become a spine event for state that never landed.
+// G3: a write verb must not proceed while a predecessor op is unresolvable —
+// an honest recovery error before ANY mutation, so later events can never
+// causally overtake earlier ones. The whole coupled write runs under the
+// machine-wide platform write lock, which is what makes intent adjudication
+// sound (an intent seen under the lock is never a live writer mid-window).
+
+describe("review 002 G2/G3 — phase-aware journal recovery + causal gate", () => {
+	describe("G2 — abandoned intents are discarded, never replayed", () => {
+		it("an ABANDONED set intent (state write never landed) is DISCARDED — the reviewer's phantom probe", () => {
+			const d = platformDeps({ self: "pij-self" });
+			expect(run(["project", "create", "Fix the CLI"], d).exitCode).toBe(0);
+			const before = d.projectStore.read("fix-the-cli");
+			if (!before) throw new Error("seed project missing");
+			// A writer crashed between record and its state write: journal the
+			// set intent EXACTLY as the verb would, but never touch the store.
+			const write = setProject(before, {
+				actor: "pij-self",
+				nowMs: Date.parse(recent),
+				planPath: "docs/never-landed.md",
+			});
+			if (!write.ok) throw new Error("seed setProject failed");
+			const recorded = d.opJournal.record(write.value.event);
+			if (!recorded.ok) throw new Error("seed record failed");
+			expect(pendingOps(d.opJournal)[0]?.phase).toBe("intent");
+			// The next write verb must NOT replay the phantom project-set.
+			const r = run(["project", "create", "Beta"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0); // discarded, journal drained
+			expect(d.projectStore.read("fix-the-cli")?.planPath).toBeUndefined();
+		});
+
+		it("an intent whose state write LANDED (crash before the committed flip) is replayed, not discarded", () => {
+			const d = platformDeps({ self: "pij-self" });
+			expect(run(["project", "create", "Fix the CLI"], d).exitCode).toBe(0);
+			const before = d.projectStore.read("fix-the-cli");
+			if (!before) throw new Error("seed project missing");
+			const write = setProject(before, {
+				actor: "pij-self",
+				nowMs: Date.parse(recent),
+				planPath: "docs/landed.md",
+			});
+			if (!write.ok) throw new Error("seed setProject failed");
+			const recorded = d.opJournal.record(write.value.event);
+			if (!recorded.ok) throw new Error("seed record failed");
+			// The state write DID land; the crash hit before markCommitted.
+			const updated = d.projectStore.update(write.value.project);
+			if (!updated.ok) throw new Error("seed update failed");
+			const r = run(["spine", "append", "--kind", "note"], d);
+			expect(r.exitCode).toBe(0);
+			expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("an append-failure survivor is COMMITTED phase — replayable once corroborated (review 003 H1)", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce");
+			expect(run(["project", "create", "Fix the CLI"], d).exitCode).not.toBe(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(pendingOps(d.opJournal)[0]?.phase).toBe("committed");
+		});
+	});
+
+	describe("G3 — no write verb proceeds past an unresolvable predecessor", () => {
+		it("a blocked project set mutates NOTHING, then the healed chain lands in causal prev→next order", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "alpha" })],
+			});
+			d.spineLog.failNext("appendOnce");
+			// A→B: state commits, append fails, committed op survives.
+			expect(run(["project", "set", "alpha", "--plan", "docs/b.md"], d).exitCode).not.toBe(0);
+			expect(pendingOps(d.opJournal)[0]?.phase).toBe("committed");
+			// B→C while the predecessor is still unreplayable: BLOCKED.
+			d.spineLog.failNext("appendOnce");
+			const blocked = run(["project", "set", "alpha", "--prime", "pij-c"], d);
+			expect(blocked.exitCode).not.toBe(0);
+			expect(blocked.stderr).toMatch(/recovery/i);
+			expect(d.projectStore.read("alpha")?.primeId).toBeUndefined();
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(d.spineLog.read()).toHaveLength(0);
+			// Healed: the SAME verb first replays A→B, then lands B→C — seq order
+			// IS causal order, prev→next chains (the reviewer's broken trace).
+			expect(run(["project", "set", "alpha", "--prime", "pij-c"], d).exitCode).toBe(0);
+			const sets = d.spineLog.read().filter((e) => e.kind === "project-set");
+			expect(sets).toHaveLength(2);
+			expect(sets[0]?.seq).toBeLessThan(sets[1]?.seq as number);
+			expect(sets[1]?.prev).toBe(sets[0]?.next);
+			expect(d.projectStore.read("alpha")).toMatchObject({
+				planPath: "docs/b.md",
+				primeId: "pij-c",
+			});
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("spine append is gated too: a note cannot causally overtake a pending committed op", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.spineLog.failNext("appendOnce");
+			expect(run(["project", "create", "First"], d).exitCode).not.toBe(0);
+			d.spineLog.failNext("appendOnce");
+			const r = run(["spine", "append", "--kind", "note"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toMatch(/recovery/i);
+			expect(d.spineLog.read()).toHaveLength(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+		});
+	});
+
+	describe("platform write lock", () => {
+		it("every platform WRITE verb takes the machine-wide lock exactly once; READ verbs never do", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "alpha" })],
+			});
+			expect(run(["project", "create", "New Thing"], d).exitCode).toBe(0);
+			expect(run(["project", "set", "alpha", "--plan", "docs/plan.md"], d).exitCode).toBe(0);
+			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(d.platformWriteLock.acquisitions).toBe(3);
+			expect(run(["project", "list"], d).exitCode).toBe(0);
+			expect(run(["project", "show", "alpha"], d).exitCode).toBe(0);
+			expect(run(["spine", "events"], d).exitCode).toBe(0);
+			expect(d.platformWriteLock.acquisitions).toBe(3);
+		});
+
+		it("lock acquisition failure is an honest E-NOREG and NOTHING is mutated", () => {
+			const d = platformDeps({ self: "pij-self" });
+			d.platformWriteLock.failNext();
+			const r = run(["project", "create", "Fix the CLI"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(d.projectStore.list()).toHaveLength(0);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("WRITE verbs require the write lock wired (E-NOREG 'not wired'); READ verbs do not", () => {
+			const { platformWriteLock: _omit, ...rest } = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "alpha" })],
+			});
+			const d = rest as CliDeps;
+			for (const argv of [
+				["project", "create", "New Thing"],
+				["project", "set", "alpha", "--plan", "docs/plan.md"],
+				["spine", "append", "--kind", "note"],
+			] as const) {
+				const r = run(argv, d);
+				expect(r.exitCode, argv.join(" ")).toBe(3);
+				expect(r.stderr, argv.join(" ")).toContain("not wired");
+			}
+			expect(run(["project", "list"], d).exitCode).toBe(0);
+			expect(run(["spine", "events"], d).exitCode).toBe(0);
+		});
+	});
+});
+
+// ═══ review 003 — crash-window edges around the recovery gate ═══════════════
+// H1: a committed journal marker is a CLAIM, not proof — trusting it bare let
+// recovery forge a state event for a write that never survived. Corroborate
+// with persisted state (state === next) or the durable once-record; block
+// honestly otherwise.
+
+describe("review 003 H1 — a committed marker is never trusted over persisted state", () => {
+	it("marker written, state write lost: write verbs BLOCK and the false event is never forged (the reviewer's probe)", () => {
+		const d = platformDeps({ self: "pij-self" });
+		expect(run(["project", "create", "Alpha"], d).exitCode).toBe(0);
+		const before = d.projectStore.read("alpha");
+		if (!before) throw new Error("seed project missing");
+		const write = setProject(before, {
+			actor: "pij-self",
+			nowMs: Date.parse(recent),
+			planPath: "docs/b.md",
+		});
+		if (!write.ok) throw new Error("seed setProject failed");
+		// Crash image (reviewer's fs probe): the A→B intent was recorded AND
+		// durably marked committed, but the state write itself did not survive
+		// — the store still holds A, and no event ever reached the spine.
+		const recorded = d.opJournal.record(write.value.event);
+		if (!recorded.ok) throw new Error("seed record failed");
+		const flipped = d.opJournal.markCommitted(recorded.value);
+		if (!flipped.ok) throw new Error("seed markCommitted failed");
+		const eventsBefore = d.spineLog.read().length;
+		// The probe verb exited 0 and forged the false A→B at the next seq.
+		const r = run(["spine", "append", "--kind", "note"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toMatch(/recovery/i);
+		expect(r.stderr).toMatch(/state write/i);
+		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(0);
+		expect(d.spineLog.read()).toHaveLength(eventsBefore);
+		expect(pendingOps(d.opJournal)).toHaveLength(1); // survives for human resolution
+		expect(d.projectStore.read("alpha")?.planPath).toBeUndefined();
+		// Every write verb is equally gated — no path forges or writes past it.
+		expect(run(["project", "create", "Beta"], d).exitCode).not.toBe(0);
+		expect(d.projectStore.read("beta")).toBeNull();
+	});
+
+	it("clear lost after a fully-landed set: the verb reports the cleanup fault (review 004 J2) and recovery resolves to the EXISTING event — no duplicate, causal chain intact", () => {
+		const d = platformDeps({ self: "pij-self" });
+		expect(run(["project", "create", "Alpha"], d).exitCode).toBe(0);
+		// A set whose write AND event landed but whose CLEAR failed (the one
+		// legitimate way a committed marker outlives its state matching next).
+		d.opJournal.failNext("clear");
+		const lost = run(["project", "set", "alpha", "--plan", "docs/b.md"], d);
+		expect(lost.exitCode).not.toBe(0); // honest cleanup fault (review 004 J2)
+		expect(d.projectStore.read("alpha")?.planPath).toBe("docs/b.md"); // …the write stands
+		expect(pendingOps(d.opJournal)).toHaveLength(1);
+		// The next write recovers the surviving op to its EXISTING event first,
+		// then lands B→C.
+		const r = run(["project", "set", "alpha", "--prime", "pij-c"], d);
+		expect(r.exitCode).toBe(0);
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+		// No duplicate: one create + exactly two sets, chained prev→next.
+		const sets = d.spineLog.read().filter((e) => e.kind === "project-set");
+		expect(sets).toHaveLength(2);
+		expect(sets[1]?.prev).toBe(sets[0]?.next);
+	});
+});
+
+describe("review 003 M3 — a failed journal clear stops the verb, never a delayed wedge", () => {
+	it("abandoned intent + failed recovery clear: the successor verb FAILS with nothing mutated (the reviewer's probe)", () => {
+		const d = platformDeps({ self: "pij-self" });
+		expect(run(["project", "create", "Alpha"], d).exitCode).toBe(0);
+		const before = d.projectStore.read("alpha");
+		if (!before) throw new Error("seed project missing");
+		// The record→state crash window: an abandoned set intent survives.
+		const write = setProject(before, {
+			actor: "pij-self",
+			nowMs: Date.parse(recent),
+			planPath: "docs/never-landed.md",
+		});
+		if (!write.ok) throw new Error("seed setProject failed");
+		const recorded = d.opJournal.record(write.value.event);
+		if (!recorded.ok) throw new Error("seed record failed");
+		// The reviewer's probe: recovery DISCARDS the intent, its clear fails
+		// silently, the successor exits 0 and mutates — and the next platform
+		// write then wedges on the stale intent ("neither prev nor next").
+		d.opJournal.failNext("clear");
+		const r = run(["project", "set", "alpha", "--plan", "docs/c.md"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toMatch(/recovery/i);
+		expect(r.stderr).toMatch(/clear/i);
+		// The successor mutated NOTHING; the intent survives for the retry.
+		expect(d.projectStore.read("alpha")?.planPath).toBeUndefined();
+		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(0);
+		expect(pendingOps(d.opJournal)).toHaveLength(1);
+		// Healed clear: the SAME verb discards the phantom and lands its own
+		// coupled write — exactly one set event, no wedge one write later.
+		const healed = run(["project", "set", "alpha", "--plan", "docs/c.md"], d);
+		expect(healed.exitCode).toBe(0);
+		expect(d.projectStore.read("alpha")?.planPath).toBe("docs/c.md");
+		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+		expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+	});
+});
+
+// ═══ review 004 J2 — verb-side clear() results are honest, never swallowed ══
+// The Result surface added by review 003 M3 was inspected inside recovery but
+// discarded at all four verb-side call sites. For a PERSISTENT cleanup fault
+// (permissions, I/O) the success-path swallow returns exit 0 while planting a
+// machine-wide write outage known at return time; abort-path swallows drop
+// the residual-entry diagnostic the operator needs alongside the primary
+// error.
+
+describe("review 004 J2 — verb-side clear results are honest, never swallowed", () => {
+	it("persistent clear failure: the set exits nonzero naming the cleanup fault and the blocked writes (the reviewer's probe)", () => {
+		const d = platformDeps({ self: "pij-self", projects: [seedProject({ slug: "alpha" })] });
+		// The reviewer's probe: an otherwise-normal journal whose clear always
+		// fails. The probe's set exited 0 with no warning and only the NEXT
+		// verb returned the outage.
+		d.opJournal.failNext("clear");
+		const r = run(["project", "set", "alpha", "--plan", "docs/b.md"], d);
+		expect(r.exitCode).toBe(3);
+		expect(r.stderr).toContain("E-NOREG");
+		expect(r.stderr).toContain("WAS updated");
+		expect(r.stderr).toContain("injected fake op-journal clear failure");
+		expect(r.stderr).toMatch(/further platform writes are blocked/i);
+		// The write and its audit event DID land — the fault is cleanup-only.
+		expect(d.projectStore.read("alpha")?.planPath).toBe("docs/b.md");
+		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
+		expect(pendingOps(d.opJournal)).toHaveLength(1);
+		// Still failing: the following append blocks in RECOVERY (resolves the
+		// existing event, cannot clear) — the outage was already announced by
+		// the set instead of surfacing here first.
+		d.opJournal.failNext("clear");
+		const next = run(["spine", "append", "--kind", "note"], d);
+		expect(next.exitCode).toBe(3);
+		expect(next.stderr).toMatch(/recovery/i);
+		// Healed: the entry drains to its EXISTING event — exactly one set.
+		const healed = run(["spine", "append", "--kind", "note"], d);
+		expect(healed.exitCode).toBe(0);
+		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+	});
+
+	it("set abort path keeps the primary error AND reports the failed cleanup's residual journal entry", () => {
+		const d = platformDeps({ self: "pij-self", projects: [seedProject({ slug: "alpha" })] });
+		d.projectStore.failNext("update");
+		d.opJournal.failNext("clear");
+		const r = run(["project", "set", "alpha", "--plan", "docs/b.md"], d);
+		expect(r.exitCode).not.toBe(0);
+		// Primary cause first, residual diagnostic alongside — neither is lost.
+		expect(r.stderr).toContain("injected fake project update failure");
+		expect(r.stderr).toContain("injected fake op-journal clear failure");
+		expect(r.stderr).toMatch(/residual/i);
+		expect(d.projectStore.read("alpha")?.planPath).toBeUndefined();
+		expect(d.spineLog.read()).toHaveLength(0);
+		expect(pendingOps(d.opJournal)).toHaveLength(1); // the intent survives
+		// The residual intent is adjudicated (discarded) by the next verb.
+		const healed = run(["project", "set", "alpha", "--plan", "docs/c.md"], d);
+		expect(healed.exitCode).toBe(0);
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+	});
+
+	it("create abort path (store create fails) carries both errors too", () => {
+		const d = platformDeps({ self: "pij-self" });
+		d.projectStore.failNext("create");
+		d.opJournal.failNext("clear");
+		const r = run(["project", "create", "Beta"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("injected fake project create failure");
+		expect(r.stderr).toContain("injected fake op-journal clear failure");
+		expect(d.projectStore.read("beta")).toBeNull();
+		expect(pendingOps(d.opJournal)).toHaveLength(1);
+	});
+});
+
+// H2: a corrupt op-shaped journal entry is a damaged SAFETY record, not an
+// ignorable file — silently skipping it let a write verb sail past the
+// recovery gate over an unaudited predecessor. Real fs adapters end-to-end:
+// the reviewer's probe ran the actual CLI over a planted malformed entry.
+
+describe("review 003 H2 — a corrupt journal entry fails the verb, never bypassed (real fs)", () => {
+	it("a malformed UUID-shaped spine/ops entry blocks project create, naming the path; nothing is created", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-cli-h2-"));
+		try {
+			const badPath = join(home, "spine", "ops", "1b671a64-40d5-491e-99b0-da01ff1f3341.json");
+			mkdirSync(join(home, "spine", "ops"), { recursive: true });
+			writeFileSync(badPath, "{ this is not a journal op");
+			const d: CliDeps = {
+				...deps({}),
+				projectStore: new FsProjectStore(home),
+				assignmentStore: new FsAssignmentStore(home),
+				spineLog: new FsSpineLog(home),
+				opJournal: new FsOpJournal(home),
+				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
+			};
+			// The reviewer's probe exited 0 and created Beta past the dead entry.
+			const r = run(["project", "create", "Beta", "--actor", "tester"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(r.stderr).toContain(badPath);
+			expect(new FsProjectStore(home).read("beta")).toBeNull();
+			expect(new FsSpineLog(home).read()).toEqual([]);
+			// The damaged record is left for the operator, never deleted blind.
+			expect(existsSync(badPath)).toBe(true);
+			// The write lock was released on the failure path: a later healed
+			// verb is not wedged by THIS failure (remove the bad entry → works).
+			rmSync(badPath);
+			expect(run(["project", "create", "Beta", "--actor", "tester"], d).exitCode).toBe(0);
+			expect(new FsProjectStore(home).read("beta")).toMatchObject({ slug: "beta" });
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
+
+// ═══ review 004 J1 — a once-record proves the EVENT survived, not the state ═
+// Project publication and once-file publication are separate directory
+// entries under best-effort fsync: a crash can keep the later spine link
+// while dropping the earlier project rename. The cycle-3 gate let the
+// once-record override a persisted-state mismatch — the reviewer's real-fs
+// probe replayed the op, cleared the ONLY recovery record, and permanently
+// blessed an A→B event over state A. A state mismatch must always block for
+// a coupled op; once-only corroboration is for uncoupled drafts alone.
+
+describe("review 004 J1 — an existing once-record never overrides a state mismatch (real fs)", () => {
+	it("set: once-file survived, project publish did not — write verbs BLOCK and the journal is retained (the reviewer's probe)", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-cli-j1-"));
+		try {
+			const d: CliDeps = {
+				...deps({}),
+				projectStore: new FsProjectStore(home),
+				assignmentStore: new FsAssignmentStore(home),
+				spineLog: new FsSpineLog(home),
+				opJournal: new FsOpJournal(home),
+				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
+			};
+			expect(run(["project", "create", "Alpha", "--actor", "tester"], d).exitCode).toBe(0);
+			const before = new FsProjectStore(home).read("alpha");
+			if (!before) throw new Error("seed project missing");
+			const write = setProject(before, {
+				actor: "tester",
+				nowMs: Date.parse(recent),
+				planPath: "docs/b.md",
+			});
+			if (!write.ok) throw new Error("seed setProject failed");
+			// Crash image: journal, committed flip and appendOnce all landed —
+			// the A→B project publish itself did not survive (store stays A).
+			const journal = new FsOpJournal(home);
+			const recorded = journal.record(write.value.event);
+			if (!recorded.ok) throw new Error("seed record failed");
+			const flipped = journal.markCommitted(recorded.value);
+			if (!flipped.ok) throw new Error("seed markCommitted failed");
+			const landed = new FsSpineLog(home).appendOnce(recorded.value, write.value.event);
+			if (!landed.ok) throw new Error("seed appendOnce failed");
+			expect(new FsSpineLog(home).hasOnce(recorded.value)).toBe(true);
+			// The probe: recovery returned ok({replayed: 1}) and cleared the only
+			// recovery record. It must block instead.
+			const r = run(["spine", "append", "--kind", "note", "--actor", "tester"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(r.stderr).toContain(recorded.value);
+			expect(r.stderr).toMatch(/state/i);
+			// Nothing moved: state still A, journal retained, no note appended.
+			expect(new FsProjectStore(home).read("alpha")?.planPath).toBeUndefined();
+			const pending = new FsOpJournal(home).pending();
+			if (!pending.ok) throw new Error(pending.message);
+			expect(pending.value).toHaveLength(1);
+			expect(new FsSpineLog(home).read().filter((e) => e.kind === "note")).toHaveLength(0);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("create: once-file survived, the record never materialized — BLOCKS, journal retained", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-cli-j1c-"));
+		try {
+			const d: CliDeps = {
+				...deps({}),
+				projectStore: new FsProjectStore(home),
+				assignmentStore: new FsAssignmentStore(home),
+				spineLog: new FsSpineLog(home),
+				opJournal: new FsOpJournal(home),
+				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
+			};
+			const write = createProject({
+				description: "Beta",
+				actor: "tester",
+				nowMs: Date.parse(recent),
+				existingSlugs: new Set<string>(),
+			});
+			if (!write.ok) throw new Error("seed createProject failed");
+			const journal = new FsOpJournal(home);
+			const recorded = journal.record(write.value.event);
+			if (!recorded.ok) throw new Error("seed record failed");
+			const flipped = journal.markCommitted(recorded.value);
+			if (!flipped.ok) throw new Error("seed markCommitted failed");
+			const landed = new FsSpineLog(home).appendOnce(recorded.value, write.value.event);
+			if (!landed.ok) throw new Error("seed appendOnce failed");
+			// The 'project-created Beta' event is in the log; projects/beta is not.
+			const r = run(["project", "create", "Gamma", "--actor", "tester"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("E-NOREG");
+			expect(r.stderr).toContain(recorded.value);
+			expect(new FsProjectStore(home).read("beta")).toBeNull();
+			expect(new FsProjectStore(home).read("gamma")).toBeNull();
+			const pending = new FsOpJournal(home).pending();
+			if (!pending.ok) throw new Error(pending.message);
+			expect(pending.value).toHaveLength(1);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
+
+// ═══ review 005 K1 — a cleared op resurrected by power loss stays resolved ══
+// clear's removal durability used to ride a fail-soft directory fsync. The
+// reviewer restored the exact pre-clear journal bytes after a successor
+// landed: a resurrected aborted intent replayed as a FORGED event attributed
+// to the aborted writer after the winner's, and a resurrected committed op
+// false-blocked every later platform write forever. clear now records a
+// durably fsynced `<opId>.resolved` tombstone BEFORE the unlink and leaves it
+// until a load-bearing dir fsync proves the removal durable — so any real
+// power-loss resurrection arrives WITH its tombstone (the op entry can only
+// come back while the tombstone, made durable first, still stands), and
+// recovery sweeps the pair as resolved instead of adjudicating it as live.
+
+describe("review 005 K1 — a cleared op resurrected by power loss can never forge or false-block (real fs)", () => {
+	it("resurrected aborted intent after a genuine winner: swept as resolved, never replayed as the aborted writer (the reviewer's probe)", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-cli-k1a-"));
+		try {
+			const d: CliDeps = {
+				...deps({}),
+				projectStore: new FsProjectStore(home),
+				assignmentStore: new FsAssignmentStore(home),
+				spineLog: new FsSpineLog(home),
+				opJournal: new FsOpJournal(home),
+				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
+			};
+			expect(run(["project", "create", "Alpha", "--actor", "creator"], d).exitCode).toBe(0);
+			const before = new FsProjectStore(home).read("alpha");
+			if (!before) throw new Error("seed project missing");
+			// The aborted writer's A→B intent: journaled, then the update aborted
+			// and the abort path cleared the entry (state never left A).
+			const write = setProject(before, {
+				actor: "aborted-writer",
+				nowMs: Date.parse(recent),
+				planPath: "docs/b.md",
+			});
+			if (!write.ok) throw new Error("seed setProject failed");
+			const journal = new FsOpJournal(home);
+			const recorded = journal.record(write.value.event);
+			if (!recorded.ok) throw new Error("seed record failed");
+			const opPath = join(home, "spine", "ops", `${recorded.value}.json`);
+			const preClearBytes = readFileSync(opPath, "utf8");
+			const cleared = journal.clear(recorded.value);
+			if (!cleared.ok) throw new Error("seed clear failed");
+			// A genuine A→B by another actor lands — same next, different writer.
+			expect(
+				run(["project", "set", "alpha", "--plan", "docs/b.md", "--actor", "winning-writer"], d)
+					.exitCode,
+			).toBe(0);
+			// Power-loss image: the clear's unlink never became durable. The op
+			// entry can only resurrect while its tombstone — made durable FIRST
+			// and discarded only after the absence is fsync-proven — still
+			// stands, so the faithful crash image restores both.
+			writeFileSync(opPath, preClearBytes);
+			writeFileSync(
+				join(home, "spine", "ops", `${recorded.value}.resolved`),
+				JSON.stringify({ schema_version: 1, opId: recorded.value }),
+			);
+			// The probe: recovery replayed the resurrected intent (state === next
+			// matched the WINNER's write) and appended a second A→B attributed to
+			// the aborted writer AFTER the winner's event. It must sweep instead.
+			const r = run(["spine", "append", "--kind", "note", "--actor", "tester"], d);
+			expect(r.exitCode).toBe(0);
+			const sets = new FsSpineLog(home).read().filter((e) => e.kind === "project-set");
+			expect(sets).toHaveLength(1);
+			expect(sets.map((e) => e.actor)).toEqual(["winning-writer"]);
+			expect(new FsSpineLog(home).read().filter((e) => e.kind === "note")).toHaveLength(1);
+			expect(new FsProjectStore(home).read("alpha")?.planPath).toBe("docs/b.md");
+			const pending = new FsOpJournal(home).pending();
+			if (!pending.ok) throw new Error(pending.message);
+			expect(pending.value).toEqual([]);
+			expect(existsSync(opPath)).toBe(false);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("resurrected committed op after the projection legitimately moved on: swept as resolved, never a permanent false-block (the reviewer's probe)", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-cli-k1b-"));
+		try {
+			const d: CliDeps = {
+				...deps({}),
+				projectStore: new FsProjectStore(home),
+				assignmentStore: new FsAssignmentStore(home),
+				spineLog: new FsSpineLog(home),
+				opJournal: new FsOpJournal(home),
+				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
+			};
+			expect(run(["project", "create", "Alpha", "--actor", "creator"], d).exitCode).toBe(0);
+			const before = new FsProjectStore(home).read("alpha");
+			if (!before) throw new Error("seed project missing");
+			// A fully-landed A→B coupled write, built exactly as the verb does:
+			// intent, committed flip, state write, once-append — then cleared.
+			const write = setProject(before, {
+				actor: "original-writer",
+				nowMs: Date.parse(recent),
+				planPath: "docs/b.md",
+			});
+			if (!write.ok) throw new Error("seed setProject failed");
+			const journal = new FsOpJournal(home);
+			const recorded = journal.record(write.value.event);
+			if (!recorded.ok) throw new Error("seed record failed");
+			const flipped = journal.markCommitted(recorded.value);
+			if (!flipped.ok) throw new Error("seed markCommitted failed");
+			const opPath = join(home, "spine", "ops", `${recorded.value}.json`);
+			const preClearBytes = readFileSync(opPath, "utf8");
+			const updated = new FsProjectStore(home).update(write.value.project);
+			if (!updated.ok) throw new Error("seed update failed");
+			const landed = new FsSpineLog(home).appendOnce(recorded.value, write.value.event);
+			if (!landed.ok) throw new Error("seed appendOnce failed");
+			const cleared = journal.clear(recorded.value);
+			if (!cleared.ok) throw new Error("seed clear failed");
+			// The projection legitimately moves on: B→C by another writer.
+			expect(
+				run(["project", "set", "alpha", "--plan", "docs/c.md", "--actor", "mover"], d).exitCode,
+			).toBe(0);
+			// Power-loss image: op bytes back beside the surviving tombstone.
+			writeFileSync(opPath, preClearBytes);
+			writeFileSync(
+				join(home, "spine", "ops", `${recorded.value}.resolved`),
+				JSON.stringify({ schema_version: 1, opId: recorded.value }),
+			);
+			// The probe: state was genuinely C and the once-record existed, yet
+			// recovery returned E-NOREG and retained the entry FOREVER. It must
+			// sweep the resolved pair and let the successor through.
+			const r = run(["spine", "append", "--kind", "note", "--actor", "tester"], d);
+			expect(r.exitCode).toBe(0);
+			// Original A→B once-append plus mover's B→C — no duplicate replay.
+			const sets = new FsSpineLog(home).read().filter((e) => e.kind === "project-set");
+			expect(sets).toHaveLength(2);
+			expect(new FsSpineLog(home).read().filter((e) => e.kind === "note")).toHaveLength(1);
+			expect(new FsProjectStore(home).read("alpha")?.planPath).toBe("docs/c.md");
+			const pending = new FsOpJournal(home).pending();
+			if (!pending.ok) throw new Error(pending.message);
+			expect(pending.value).toEqual([]);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── review 001 F3 — prev/next audit payload at the dispatch level ──────────
+// The event read back from the log must alone answer who changed what: next
+// on create parses to the persisted record; a real set through dispatch shows
+// canonical prev→next across the change (WS-5/AC-03).
+
+describe("F3 — prev/next ride the project events through dispatch", () => {
+	it("project create appends next = the persisted record, and NO prev key", () => {
+		const d = platformDeps({ self: "pij-self" });
+		const r = run(["project", "create", "Fix the CLI"], d);
+		expect(r.exitCode).toBe(0);
+		const created = d.spineLog.read().filter((e) => e.kind === "project-created");
+		expect(created).toHaveLength(1);
+		expect(created[0].next).toBeTypeOf("string");
+		// Single-line compact JSON — the spine is ndjson.
+		expect(created[0].next).not.toContain("\n");
+		expect(JSON.parse(created[0].next as string)).toEqual(d.projectStore.read("fix-the-cli"));
+		expect("prev" in created[0]).toBe(false);
+	});
+
+	it("project set appends canonical prev→next across a real dispatch-level change", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			projects: [seedProject({ slug: "fix-the-cli", planPath: "docs/plans/054/plan.md" })],
+		});
+		const before = d.projectStore.read("fix-the-cli");
+		const r = run(["project", "set", "fix-the-cli", "--prime", "pij-w3"], d);
+		expect(r.exitCode).toBe(0);
+		const sets = d.spineLog.read().filter((e) => e.kind === "project-set");
+		expect(sets).toHaveLength(1);
+		expect(JSON.parse(sets[0].prev as string)).toEqual(before);
+		expect(JSON.parse(sets[0].next as string)).toEqual(d.projectStore.read("fix-the-cli"));
+		expect(sets[0].prev).not.toBe(sets[0].next);
+	});
+
+	it("successive sets chain: each event's prev equals the previous event's next", () => {
+		const d = platformDeps({ self: "pij-self", projects: [seedProject({ slug: "fix-the-cli" })] });
+		expect(run(["project", "set", "fix-the-cli", "--prime", "pij-a"], d).exitCode).toBe(0);
+		expect(run(["project", "set", "fix-the-cli", "--prime", "pij-b"], d).exitCode).toBe(0);
+		const sets = d.spineLog.read().filter((e) => e.kind === "project-set");
+		expect(sets).toHaveLength(2);
+		expect(sets[1].prev).toBe(sets[0].next);
+		// The history alone recovers the A→B prime chain (review scenario).
+		expect((JSON.parse(sets[0].next as string) as Project).primeId).toBe("pij-a");
+		expect((JSON.parse(sets[1].next as string) as Project).primeId).toBe("pij-b");
+	});
+
+	it("no-op set still appends, with IDENTICAL prev/next (ruled: audited intent, no delta-skip)", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			projects: [seedProject({ slug: "fix-the-cli", planPath: "docs/plan.md" })],
+		});
+		const r = run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d);
+		expect(r.exitCode).toBe(0);
+		const sets = d.spineLog.read().filter((e) => e.kind === "project-set");
+		expect(sets).toHaveLength(1);
+		expect(sets[0].prev).toBe(sets[0].next);
+		expect(JSON.parse(sets[0].prev as string)).toEqual(d.projectStore.read("fix-the-cli"));
+	});
+});
+
+// ─── review 001 F7 — an invalid deps clock is an E-ARG envelope, not a throw ─
+// F2's dispatch wrapper is the backstop, not the fix: the write verbs must
+// propagate the constructor's E-ARG (exit 64) with NOTHING committed,
+// journaled, or appended.
+
+describe("F7 — invalid deps clock propagates E-ARG (exit 64), never a throw", () => {
+	function nanClockDeps(opts: Parameters<typeof platformDeps>[0] = {}) {
+		const d = platformDeps({ self: "pij-self", ...opts });
+		return {
+			...d,
+			process: new FakeProcess(999, Number.NaN, { PIJ_SESSION_ID: "pij-self" }, [100]),
+		};
+	}
+
+	it("project create: exit 64 naming nowMs; store, journal, and spine untouched", () => {
+		const d = nanClockDeps();
+		const r = run(["project", "create", "New Thing"], d);
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("E-ARG");
+		expect(r.stderr).toContain("nowMs");
+		expect(d.projectStore.read("new-thing")).toBeNull();
+		expect(pendingOps(d.opJournal)).toEqual([]);
+		expect(d.spineLog.read()).toEqual([]);
+	});
+
+	it("project set: exit 64 naming nowMs; record, journal, and spine untouched", () => {
+		const d = nanClockDeps({
+			projects: [seedProject({ slug: "fix-the-cli", planPath: "docs/plans/054/plan.md" })],
+		});
+		const before = d.projectStore.read("fix-the-cli");
+		const r = run(["project", "set", "fix-the-cli", "--prime", "pij-w3"], d);
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("nowMs");
+		expect(d.projectStore.read("fix-the-cli")).toEqual(before);
+		expect(pendingOps(d.opJournal)).toEqual([]);
+		expect(d.spineLog.read()).toEqual([]);
+	});
+
+	it("spine append: exit 64 naming nowMs; nothing appended", () => {
+		const d = nanClockDeps();
+		const r = run(["spine", "append", "--kind", "note"], d);
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("nowMs");
+		expect(d.spineLog.read()).toEqual([]);
+	});
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// plan 054 Phase 2 T004 — task/state verbs (AC-05/AC-06)
+// task set / state set / state verify run the journal-FIRST coupled write:
+// the assignment RECORD is the state side (prev/next = canonicalAssignmentJson,
+// states[] excluded), the semantic transition rides in structured refs, the
+// stamped seq joins states[] inside the pend window, and the node descriptor
+// carries the currentAssignment/currentTask/semanticState denorm.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function nodeDeps(over: Parameters<typeof platformDeps>[0] = {}) {
+	return platformDeps({
+		self: "pij-self",
+		descs: [desc({ id: "pij-node" }), desc({ id: "pij-other" })],
+		...over,
+	});
+}
+
+describe("task/state verb parsing (T004)", () => {
+	it.each([
+		[["task", "set"], "usage"],
+		[["task", "set", "pij-node"], "usage"],
+		[["task", "bogus"], "unknown task subcommand"],
+		[["state", "set", "pij-node"], "usage"],
+		[["state", "verify"], "usage"],
+	])("%j is E-ARG exit 64", (argv, needle) => {
+		const r = run(argv as string[], nodeDeps());
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr.toLowerCase()).toContain(needle);
+	});
+
+	it("rejects a word outside the ruled semantic vocabulary, naming it (WS-6)", () => {
+		const r = run(["state", "set", "pij-node", "working"], nodeDeps());
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("working");
+		expect(r.stderr).toContain("blocked|question|hold|waiting|ready|failed|cancelled|done");
+	});
+
+	it("rejects unknown flags and extra positionals", () => {
+		expect(run(["task", "set", "pij-node", "t", "--bogus", "x"], nodeDeps()).exitCode).toBe(64);
+		expect(run(["state", "set", "pij-node", "ready", "extra"], nodeDeps()).exitCode).toBe(64);
+	});
+
+	it("legacy `pij state <id>` still routes to the state card (regression)", () => {
+		const r = run(["state", "pij-node"], nodeDeps());
+		expect(r.exitCode).toBe(0);
+		expect(r.stdout).toContain("pij-node");
+	});
+});
+
+describe("task set (T005)", () => {
+	it("opens an assignment, denorms the descriptor, couples EXACTLY ONE task-set event", () => {
+		const d = nodeDeps();
+		const r = run(["task", "set", "pij-node", "review the packet", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const record = JSON.parse(r.stdout) as Assignment;
+		expect(record.id.startsWith("asg-")).toBe(true);
+		expect(record.nodeId).toBe("pij-node");
+		expect(record.task).toBe("review the packet");
+		expect(record.states).toEqual([]);
+		expect(record.opened.actor).toBe("pij-self");
+		// bare persisted record (house: no envelope)
+		expect(record).toEqual(d.assignmentStore.read(record.id));
+		// descriptor denorm
+		const node = d.registry.read("pij-node");
+		expect(node?.currentAssignment).toBe(record.id);
+		expect(node?.currentTask).toBe("review the packet");
+		// exactly one coupled event
+		const events = d.spineLog.read();
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({ kind: "task-set", actor: "pij-self", peer: "pij-node" });
+		expect(events[0]?.refs).toContain("node:pij-node");
+		expect(events[0]?.refs).toContain(`assignment:${record.id}`);
+		expect(events[0]?.prev).toBeUndefined();
+		expect(events[0]?.next).toBe(canonicalAssignmentJson(record));
+		// journal drained
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+	});
+
+	it("a fresh task set replaces a stale semanticState denorm (new assignment, no declared state)", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-node", semanticState: "done", currentTask: "old" })],
+		});
+		const r = run(["task", "set", "pij-node", "new work"], d);
+		expect(r.exitCode).toBe(0);
+		const node = d.registry.read("pij-node");
+		expect(node?.semanticState).toBeUndefined();
+		expect(node?.currentTask).toBe("new work");
+	});
+
+	it("--project pins the slug on record, event and refs; unknown slug is E-NOREG untouched", () => {
+		const d = nodeDeps({ projects: [seedProject({ slug: "alpha" })] });
+		const r = run(["task", "set", "pij-node", "work", "--project", "alpha", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const record = JSON.parse(r.stdout) as Assignment;
+		expect(record.projectSlug).toBe("alpha");
+		const ev = d.spineLog.read()[0];
+		expect(ev?.project).toBe("alpha");
+		expect(ev?.refs).toContain("project:alpha");
+
+		const bad = run(["task", "set", "pij-node", "work", "--project", "ghost"], nodeDeps());
+		expect(bad.exitCode).toBe(3);
+		expect(bad.stderr).toContain("ghost");
+	});
+
+	it("unknown node is E-NOID; nothing written anywhere", () => {
+		const d = nodeDeps();
+		const r = run(["task", "set", "pij-ghost", "work"], d);
+		expect(r.exitCode).toBe(2);
+		expect(d.spineLog.read()).toEqual([]);
+		expect(d.assignmentStore.list()).toEqual([]);
+	});
+
+	it("attribution: unresolvable self without --actor is E-NOID naming the escape hatch; --actor asserts", () => {
+		// cwd away from every descriptor's folder: no ambient, no env, no
+		// pane — self is genuinely unresolvable.
+		const noSelf = platformDeps({ descs: [desc({ id: "pij-node" })], cwd: "/elsewhere" });
+		const r = run(["task", "set", "pij-node", "work"], noSelf);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("--actor");
+
+		const asserted = platformDeps({ descs: [desc({ id: "pij-node" })], cwd: "/elsewhere" });
+		const ok2 = run(["task", "set", "pij-node", "work", "--actor", "jordan"], asserted);
+		expect(ok2.exitCode).toBe(0);
+		expect(asserted.spineLog.read()[0]).toMatchObject({
+			actor: "jordan",
+			actorProvenance: "asserted",
+		});
+	});
+});
+
+describe("state set (T005)", () => {
+	it("implicit general: first write materializes asg-general-<node>, chains the seq, denorms", () => {
+		const d = nodeDeps();
+		const r = run(["state", "set", "pij-node", "waiting", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const record = d.assignmentStore.read("asg-general-pij-node");
+		expect(record).not.toBeNull();
+		expect(record?.task).toBe("general");
+		const events = d.spineLog.read();
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({ kind: "state-set", peer: "pij-node" });
+		expect(events[0]?.refs).toContain("assignment:asg-general-pij-node");
+		expect(events[0]?.refs).toContain("state:waiting");
+		// the stamped seq joined the chain inside the coupled write
+		expect(record?.states).toEqual([events[0]?.seq]);
+		// denorm
+		const node = d.registry.read("pij-node");
+		expect(node?.semanticState).toBe("waiting");
+		expect(node?.currentAssignment).toBe("asg-general-pij-node");
+		expect(node?.currentTask).toBe("general");
+		// --json prints the STAMPED event
+		expect(JSON.parse(r.stdout)).toEqual(events[0]);
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+	});
+
+	it("explicit --assignment wins; a foreign node's assignment is E-ARG", () => {
+		const d = nodeDeps();
+		run(["task", "set", "pij-node", "work", "--json"], d);
+		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
+		const r = run(["state", "set", "pij-node", "blocked", "--assignment", id], d);
+		expect(r.exitCode).toBe(0);
+		expect(d.assignmentStore.read(id)?.states).toHaveLength(1);
+
+		const foreign = run(["state", "set", "pij-other", "ready", "--assignment", id], d);
+		expect(foreign.exitCode).toBe(64);
+		expect(foreign.stderr).toContain("pij-node");
+	});
+
+	it("falls back to the descriptor's currentAssignment before the general", () => {
+		const d = nodeDeps();
+		run(["task", "set", "pij-node", "focused work"], d);
+		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
+		const r = run(["state", "set", "pij-node", "ready"], d);
+		expect(r.exitCode).toBe(0);
+		expect(d.assignmentStore.read(id)?.states).toHaveLength(1);
+		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
+	});
+
+	it("a nonexistent --assignment is E-NOREG; user --refs ride the event", () => {
+		const d = nodeDeps();
+		expect(
+			run(["state", "set", "pij-node", "ready", "--assignment", "asg-ghost"], d).exitCode,
+		).toBe(3);
+
+		const r = run(["state", "set", "pij-node", "blocked", "--refs", "pr:14,issue:6"], d);
+		expect(r.exitCode).toBe(0);
+		const ev = d.spineLog.read()[0];
+		expect(ev?.refs).toContain("pr:14");
+		expect(ev?.refs).toContain("issue:6");
+	});
+
+	describe("coupled-write fault matrix (fakes failNext)", () => {
+		it("journal record failure aborts BEFORE any state commit", () => {
+			const d = nodeDeps();
+			d.opJournal.failNext("record");
+			const r = run(["state", "set", "pij-node", "waiting"], d);
+			expect(r.exitCode).toBe(3);
+			expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
+			expect(d.spineLog.read()).toEqual([]);
+			expect(d.registry.read("pij-node")?.semanticState).toBeUndefined();
+		});
+
+		it("record-write failure is the primary error; the intent entry is cleared (abort path)", () => {
+			const d = nodeDeps();
+			d.assignmentStore.failNext("write");
+			const r = run(["state", "set", "pij-node", "waiting"], d);
+			expect(r.exitCode).toBe(3);
+			expect(d.spineLog.read()).toEqual([]);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("record-write + clear double failure surfaces the residual diagnostic (J2)", () => {
+			const d = nodeDeps();
+			d.assignmentStore.failNext("write");
+			d.opJournal.failNext("clear");
+			const r = run(["state", "set", "pij-node", "waiting"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("journal cleanup also failed");
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+		});
+
+		it("appendOnce failure keeps the journal entry; the NEXT platform write replays AND reconciles the chain", () => {
+			const d = nodeDeps();
+			d.spineLog.failNext("appendOnce");
+			const r = run(["state", "set", "pij-node", "waiting"], d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("replayed by the next platform write");
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			// record landed, chain not yet reconciled
+			expect(d.assignmentStore.read("asg-general-pij-node")?.states).toEqual([]);
+
+			// any later WRITE verb recovers: event lands + states[] reconciled
+			const r2 = run(["project", "create", "Recovery Driver"], d);
+			expect(r2.exitCode).toBe(0);
+			const stateEvents = d.spineLog.read().filter((e) => e.kind === "state-set");
+			expect(stateEvents).toHaveLength(1);
+			expect(d.assignmentStore.read("asg-general-pij-node")?.states).toEqual([stateEvents[0]?.seq]);
+			expect(pendingOps(d.opJournal)).toHaveLength(0);
+		});
+
+		it("clear failure after a landed write is an honest non-zero naming the block", () => {
+			const d = nodeDeps();
+			d.opJournal.failNext("clear");
+			const r = run(["state", "set", "pij-node", "waiting"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("WAS");
+			expect(r.stderr).toContain("blocked until");
+			// the write itself landed
+			expect(d.spineLog.read()).toHaveLength(1);
+		});
+	});
+});
+
+describe("state verify (T005, AC-06)", () => {
+	function doneChain() {
+		const d = nodeDeps();
+		run(["task", "set", "pij-node", "ship it"], d);
+		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
+		run(["state", "set", "pij-node", "done"], d);
+		return { d, id };
+	}
+
+	it("done is a claim until verified: verify appends state-verified with verifiedBy and joins the chain", () => {
+		const { d, id } = doneChain();
+		// before: the chain's done event carries NO verifiedBy (unverified done)
+		const before = d.spineLog.read().filter((e) => e.kind === "state-set");
+		expect(before[0]?.verifiedBy).toBeUndefined();
+
+		const r = run(["state", "verify", "pij-node", "--actor", "pij-reviewer", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const verified = d.spineLog.read().filter((e) => e.kind === "state-verified");
+		expect(verified).toHaveLength(1);
+		expect(verified[0]?.verifiedBy).toBe("pij-reviewer");
+		expect(verified[0]?.refs).toContain(`assignment:${id}`);
+		expect(verified[0]?.refs).toContain(`event:${before[0]?.seq}`);
+		// verify joins the chain
+		expect(d.assignmentStore.read(id)?.states).toContain(verified[0]?.seq);
+		expect(JSON.parse(r.stdout)).toEqual(verified[0]);
+	});
+
+	it("verifying an assignment whose latest state is not done is E-ARG naming the state", () => {
+		const d = nodeDeps();
+		run(["state", "set", "pij-node", "waiting"], d);
+		const r = run(["state", "verify", "pij-node"], d);
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("waiting");
+	});
+
+	it("a later state change after done also un-verifies: verify then is E-ARG on the new latest", () => {
+		const { d } = doneChain();
+		run(["state", "verify", "pij-node"], d);
+		run(["state", "set", "pij-node", "blocked"], d);
+		const r = run(["state", "verify", "pij-node"], d);
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("blocked");
+	});
+
+	it("verify with no resolvable assignment is E-NOREG (nothing to verify — the general is never materialized)", () => {
+		const d = nodeDeps();
+		const r = run(["state", "verify", "pij-node"], d);
+		expect(r.exitCode).toBe(3);
+		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
+	});
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// plan 054 Phase 2 T009/T010 — node show full card (AC-09) + anomalies verb
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("node show (T009 — the full card, field by field)", () => {
+	function cardDeps() {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({
+					id: "pij-card",
+					harness: "claude",
+					lifecycle: "bound",
+					parentId: "pij-parent",
+					spawnedBy: "pij-spawner",
+					systemState: "idle",
+					paneId: "%4",
+					windowId: "@2",
+					boundModel: "gpt-5.6-sol",
+					effort: "high",
+					state: "idle",
+				}),
+			],
+		});
+		return {
+			...d,
+			models: [
+				{
+					id: "gpt-5.6-sol",
+					name: "sol",
+					provider: "copilot",
+					verified: true,
+					contextWindow: 258_400,
+				},
+			],
+			contextReader: {
+				current: () => ({ value: 116_858, asOf: recent, provenance: "claude-transcript" }),
+			},
+		};
+	}
+
+	it("returns identity, axes, badge, assignments join, addressability and gauges (AC-09)", () => {
+		const d = cardDeps();
+		// two assignments: one done-unverified, one blocked → badge worst-first
+		run(["task", "set", "pij-card", "alpha work", "--actor", "pij-boss"], d);
+		const asgA = d.assignmentStore.listByNode("pij-card")[0]?.id as string;
+		run(["state", "set", "pij-card", "done", "--actor", "pij-card"], d);
+		run(["task", "set", "pij-card", "beta work", "--actor", "pij-boss"], d);
+		const asgB = d.assignmentStore
+			.listByNode("pij-card")
+			.map((a) => a.id)
+			.find((id) => id !== asgA) as string;
+		run(["state", "set", "pij-card", "blocked", "--actor", "pij-card"], d);
+
+		const r = run(["node", "show", "pij-card", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const card = JSON.parse(r.stdout) as Record<string, unknown>;
+		expect(card.id).toBe("pij-card");
+		expect(card.harness).toBe("claude");
+		expect(card.lifecycle).toBe("bound");
+		expect(card.parent).toBe("pij-parent");
+		expect(card.spawnedBy).toBe("pij-spawner");
+		expect(card.systemState).toBe("idle");
+		expect(card.semanticState).toBe("blocked"); // denorm of the current assignment
+		expect(card.badge).toBe("blocked"); // worst-first across open assignments
+		expect(card.currentAssignment).toBe(asgB);
+		expect(card.currentTask).toBe("beta work");
+		expect(card.paneId).toBe("%4");
+		expect(card.windowId).toBe("@2");
+		expect(card.boundModel).toBe("gpt-5.6-sol");
+		expect(card.effort).toBe("high");
+		expect(card.contextMax).toBe(258_400);
+		expect(card.contextCurrent).toEqual({
+			value: 116_858,
+			asOf: recent,
+			provenance: "claude-transcript",
+		});
+		expect(card.pid).toBe(100);
+		expect(card.cwd).toBe("/repo");
+		const assignments = card.assignments as Array<Record<string, unknown>>;
+		expect(assignments).toHaveLength(2);
+		const cardA = assignments.find((a) => a.id === asgA);
+		const cardB = assignments.find((a) => a.id === asgB);
+		expect(cardA).toMatchObject({ task: "alpha work", state: "done", verified: false, open: true });
+		expect(cardB).toMatchObject({ task: "beta work", state: "blocked", open: true });
+	});
+
+	it("an unverified done flips to verified:true after a verify write (AC-06 render)", () => {
+		const d = cardDeps();
+		run(["task", "set", "pij-card", "ship", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-card", "done", "--actor", "pij-card"], d);
+		const before = JSON.parse(run(["node", "show", "pij-card", "--json"], d).stdout) as {
+			assignments: Array<{ state: string; verified: boolean | null }>;
+		};
+		expect(before.assignments[0]).toMatchObject({ state: "done", verified: false });
+		run(["state", "verify", "pij-card", "--actor", "pij-reviewer"], d);
+		const after = JSON.parse(run(["node", "show", "pij-card", "--json"], d).stdout) as {
+			assignments: Array<{ state: string; verified: boolean | null }>;
+		};
+		expect(after.assignments[0]).toMatchObject({ state: "done", verified: true });
+	});
+
+	it("a legacy node with none of the new truth reads honest nulls, badge unknown", () => {
+		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-old" })] });
+		const r = run(["node", "show", "pij-old", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const card = JSON.parse(r.stdout) as Record<string, unknown>;
+		expect(card.systemState).toBeNull();
+		expect(card.semanticState).toBeNull();
+		expect(card.badge).toBe("unknown");
+		expect(card.windowId).toBeNull();
+		expect(card.contextMax).toBeNull();
+		expect(card.assignments).toEqual([]);
+	});
+
+	it("unknown node is E-NOID; missing subcommand is E-ARG usage", () => {
+		expect(run(["node", "show", "pij-ghost"], platformDeps({})).exitCode).toBe(2);
+		expect(run(["node"], platformDeps({})).exitCode).toBe(64);
+	});
+
+	it("tree JSON carries the node-truth fields free (additive spread pin)", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			treeDescs: [desc({ id: "pij-t", parentId: null, systemState: "working", windowId: "@9" })],
+		});
+		const r = run(["tree", "--global", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const forest = JSON.parse(r.stdout) as { roots: Array<Record<string, unknown>> };
+		expect(forest.roots[0]?.systemState).toBe("working");
+		expect(forest.roots[0]?.windowId).toBe("@9");
+	});
+});
+
+describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
+	it("surfaces an unverified done with spine-seq evidence; --json is the bare array", () => {
+		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
+		run(["task", "set", "pij-n", "ship", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-n", "done", "--actor", "pij-n"], d);
+		const r = run(["anomalies", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const anomalies = JSON.parse(r.stdout) as Array<Record<string, unknown>>;
+		const unverified = anomalies.filter((a) => a.kind === "unverified-done");
+		expect(unverified).toHaveLength(1);
+		expect(unverified[0]?.nodeId).toBe("pij-n");
+		expect((unverified[0]?.evidence as number[]).length).toBeGreaterThan(0);
+	});
+
+	it("a verified chain is clean; an empty machine prints an empty array", () => {
+		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
+		run(["task", "set", "pij-n", "ship", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-n", "done", "--actor", "pij-n"], d);
+		run(["state", "verify", "pij-n", "--actor", "pij-reviewer"], d);
+		const anomalies = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{
+			kind: string;
+		}>;
+		expect(anomalies.filter((a) => a.kind === "unverified-done")).toHaveLength(0);
+
+		const empty = platformDeps({ self: "pij-self" });
+		expect(JSON.parse(run(["anomalies", "--json"], empty).stdout)).toEqual([]);
+	});
+
+	it("foreign hold-clear surfaces both actors", () => {
+		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
+		run(["state", "set", "pij-n", "hold", "--actor", "pij-issuer"], d);
+		run(["state", "set", "pij-n", "ready", "--actor", "pij-meddler"], d);
+		const anomalies = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{
+			kind: string;
+			detail: string;
+		}>;
+		const foreign = anomalies.filter((a) => a.kind === "foreign-hold-clear");
+		expect(foreign).toHaveLength(1);
+		expect(foreign[0]?.detail).toContain("pij-issuer");
+		expect(foreign[0]?.detail).toContain("pij-meddler");
+	});
+});
+
+describe("unadopted flow-through (P3 T003/T005 — AC-08/WS-1 machine-wide enumerability)", () => {
+	function adoptionDeps() {
+		return platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({ id: "pij-prime-root", prime: true }),
+				desc({ id: "pij-stray", harness: "claude", lifecycle: "bound" }),
+				desc({ id: "pij-kid", spawnedBy: "pij-prime-root" }),
+			],
+		});
+	}
+
+	it("tree --global --json carries unadopted on exactly the stray (UI query shape)", () => {
+		const d = adoptionDeps();
+		const r = run(["tree", "--global", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const forest = JSON.parse(r.stdout) as {
+			roots: Array<Record<string, unknown> & { id: string; children: unknown[] }>;
+		};
+		const byId = new Map(forest.roots.map((node) => [node.id, node]));
+		expect(byId.get("pij-stray")?.unadopted).toBe(true);
+		expect(byId.get("pij-prime-root")?.unadopted).toBeUndefined();
+		// Machine-wide enumeration is a plain filter over the flow-through.
+		const unadopted = forest.roots.filter((node) => node.unadopted === true).map((n) => n.id);
+		expect(unadopted).toEqual(["pij-stray"]);
+	});
+
+	it("list --json rows carry the adoption axis as an explicit boolean", () => {
+		const d = adoptionDeps();
+		const r = run(["list", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const rows = JSON.parse(r.stdout) as Array<{ id: string; unadopted: boolean }>;
+		const byId = new Map(rows.map((row) => [row.id, row]));
+		expect(byId.get("pij-stray")?.unadopted).toBe(true);
+		expect(byId.get("pij-prime-root")?.unadopted).toBe(false);
+		expect(byId.get("pij-kid")?.unadopted).toBe(false);
+	});
+
+	it("human tree render badges the stray [unadopted], distinct from problems", () => {
+		const d = adoptionDeps();
+		const r = run(["tree", "--global"], d);
+		expect(r.exitCode).toBe(0);
+		const strayLine = r.stdout.split("\n").find((line) => line.includes("pij-stray"));
+		expect(strayLine).toContain("[unadopted]");
+		const primeLine = r.stdout.split("\n").find((line) => line.includes("pij-prime-root"));
+		expect(primeLine).not.toContain("[unadopted]");
+	});
+});
+
+describe("pij link spine event (P3 T004 — node-linked, V-05 uncoupled)", () => {
+	const kindPin = "node-linked";
+
+	function linkDeps() {
+		const descriptors = [
+			desc({ id: "pij-alpha" }),
+			desc({ id: "pij-beta" }),
+			desc({ id: "pij-gamma" }),
+			desc({ id: "pij-kid", spawnedBy: "pij-alpha" }),
+		];
+		return platformDeps({ self: "pij-self", descs: descriptors, treeDescs: descriptors });
+	}
+
+	it("pins the kind constant", () => {
+		expect(SPINE_KIND_NODE_LINKED).toBe(kindPin);
+	});
+
+	it("re-parent appends an uncoupled node-linked event: prev=old effective parent, next=new, peer=child, refs [node:, parent:]", () => {
+		const d = linkDeps();
+		const r = run(["link", "pij-kid", "--parent", "pij-beta", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const events = d.spineLog.read({ peer: "pij-kid" });
+		expect(events).toHaveLength(1);
+		const e = events[0] as SpineEvent;
+		expect(e.kind).toBe(kindPin);
+		expect(e.peer).toBe("pij-kid");
+		// spawnedBy was the effective parent before the link (provenance truth).
+		expect(e.prev).toBe("pij-alpha");
+		expect(e.next).toBe("pij-beta");
+		expect(e.refs).toEqual(["node:pij-kid", "parent:pij-beta"]);
+		expect(e.actor).toBe("pij-self");
+		expect(e.actorProvenance).toBe("resolved");
+		// Uncoupled (V-05): nothing journaled for this append.
+		expect(pendingOps(d.opJournal)).toHaveLength(0);
+		// The verb's JSON reports the audit seq additively.
+		expect(JSON.parse(r.stdout)).toMatchObject({
+			id: "pij-kid",
+			parentId: "pij-beta",
+			spineSeq: e.seq,
+		});
+	});
+
+	it("--actor asserts attribution (F2) and wins over the resolved self", () => {
+		const d = linkDeps();
+		run(["link", "pij-kid", "--parent", "pij-beta", "--actor", "pij-boss"], d);
+		const e = d.spineLog.read({ peer: "pij-kid" })[0] as SpineEvent;
+		expect(e.actor).toBe("pij-boss");
+		expect(e.actorProvenance).toBe("asserted");
+	});
+
+	it("--root link: next OMITTED (never null/sentinel), refs [node:<child>] only, prev still carried", () => {
+		const d = linkDeps();
+		run(["link", "pij-kid", "--parent", "pij-beta", "--actor", "a"], d);
+		const r = run(["link", "pij-kid", "--root", "--actor", "a", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const events = d.spineLog.read({ peer: "pij-kid" });
+		const rootHop = events[1] as SpineEvent;
+		expect(rootHop.prev).toBe("pij-beta");
+		expect(Object.hasOwn(rootHop, "next")).toBe(false);
+		expect(rootHop.refs).toEqual(["node:pij-kid"]);
+	});
+
+	it("history A→B→C→root reconstructs from `spine events --peer <child>` incl. the root hop, spawnedBy byte-stable throughout", () => {
+		const d = linkDeps();
+		run(["link", "pij-kid", "--parent", "pij-beta", "--actor", "a"], d);
+		run(["link", "pij-kid", "--parent", "pij-gamma", "--actor", "a"], d);
+		run(["link", "pij-kid", "--root", "--actor", "a"], d);
+		const r = run(["spine", "events", "--peer", "pij-kid", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const events = JSON.parse(r.stdout) as Array<Record<string, unknown>>;
+		const hops = events
+			.filter((e) => e.kind === kindPin)
+			.map((e) => `${e.prev ?? "∅"}→${e.next ?? "root"}`);
+		expect(hops).toEqual(["pij-alpha→pij-beta", "pij-beta→pij-gamma", "pij-gamma→root"]);
+		// Immutable provenance: three re-parents never touch spawnedBy.
+		expect(d.registry.read("pij-kid")?.spawnedBy).toBe("pij-alpha");
+	});
+
+	it("no-op link (unchanged parent) still appends its event — the adjudicated no-op-set precedent", () => {
+		const d = linkDeps();
+		run(["link", "pij-kid", "--parent", "pij-beta", "--actor", "a"], d);
+		const again = run(["link", "pij-kid", "--parent", "pij-beta", "--actor", "a", "--json"], d);
+		expect(again.exitCode).toBe(0);
+		expect(JSON.parse(again.stdout)).toMatchObject({ changed: false });
+		const events = d.spineLog.read({ peer: "pij-kid" });
+		expect(events).toHaveLength(2);
+		const noop = events[1] as SpineEvent;
+		expect(noop.prev).toBe("pij-beta");
+		expect(noop.next).toBe("pij-beta");
+	});
+
+	it("refused links (self/cycle/unknown) append NOTHING", () => {
+		const d = linkDeps();
+		expect(run(["link", "pij-kid", "--parent", "pij-kid", "--actor", "a"], d).exitCode).not.toBe(0);
+		expect(run(["link", "pij-missing", "--root", "--actor", "a"], d).exitCode).not.toBe(0);
+		expect(d.spineLog.read()).toHaveLength(0);
+	});
+
+	it("wired ports + unresolvable actor: refused BEFORE any descriptor write, naming --actor", () => {
+		const descriptors = [
+			desc({ id: "pij-kid", spawnedBy: "pij-alpha" }),
+			desc({ id: "pij-alpha" }),
+		];
+		const d = platformDeps({ descs: descriptors, treeDescs: descriptors });
+		const r = run(["link", "pij-kid", "--parent", "pij-alpha", "--json"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("--actor");
+		expect(d.registry.read("pij-kid")?.parentId).toBeUndefined();
+		expect(d.spineLog.read()).toHaveLength(0);
+	});
+
+	it("append failure is honest: descriptor truth lands (V-05 — truth never waits on the spine), spineSeq null + warning", () => {
+		const d = linkDeps();
+		d.spineLog.failNext("append");
+		const r = run(["link", "pij-kid", "--parent", "pij-beta", "--actor", "a", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		expect(d.registry.read("pij-kid")?.parentId).toBe("pij-beta");
+		const out = JSON.parse(r.stdout) as Record<string, unknown>;
+		expect(out.spineSeq).toBeNull();
+		expect(String(out.spineWarning ?? r.stderr)).not.toBe("");
+		expect(d.spineLog.read({ peer: "pij-kid" })).toHaveLength(0);
+	});
+});
+
+describe("denorm fresh-read basis (P3 T006b — p2-review-001 note 2)", () => {
+	it("a daemon systemState landing mid-verb survives the denorm — the write is built from a re-read, never the verb's opening snapshot", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-node", systemState: "working" })],
+		});
+		const registry = d.registry;
+		const origRead = registry.read.bind(registry);
+		const origWrite = registry.write.bind(registry);
+		// Simulate the daemon between the verb's opening node-read and the
+		// denorm: the FIRST read hands back the pre-daemon snapshot and the
+		// daemon's verdict lands immediately after it.
+		let daemonLanded = false;
+		registry.read = (id: string) => {
+			const snapshot = origRead(id);
+			if (id === "pij-node" && !daemonLanded && snapshot) {
+				daemonLanded = true;
+				origWrite({ ...snapshot, systemState: "stalled" });
+				return snapshot;
+			}
+			return origRead(id);
+		};
+		const r = run(["state", "set", "pij-node", "ready", "--actor", "pij-boss"], d);
+		expect(r.exitCode).toBe(0);
+		const persisted = origRead("pij-node");
+		// The verb's denorm fields landed…
+		expect(persisted?.semanticState).toBe("ready");
+		// …and the daemon's mid-verb verdict was NOT reverted to the verb's
+		// opening snapshot ("working"): the denorm re-read carried it.
+		expect(persisted?.systemState).toBe("stalled");
+	});
+});
+
+describe("spine render (P4 T002 — parse row + core E-NOREG naming the bin)", () => {
+	it("parses `spine render` with --json only (MAX_POS 0)", () => {
+		expect(parseArgs(["spine", "render", "--json"])).toMatchObject({
+			ok: true,
+			value: { verb: "spine-render", json: true },
+		});
+		expect(parseArgs(["spine", "render"])).toMatchObject({
+			ok: true,
+			value: { verb: "spine-render", json: false },
+		});
+	});
+
+	it("rejects positionals and unknown flags → E-ARG", () => {
+		expect(parseArgs(["spine", "render", "extra"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["spine", "render", "--peer", "x"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("core dispatch is E-NOREG naming the bin (the markdown write is bin-owned)", () => {
+		// Even with every platform port wired, core cannot honor `spine render`:
+		// SpineLogPort has no markdown-write method by design — the pij bin
+		// intercepts the verb before dispatch and writes spine/spine.md itself.
+		const d = platformDeps({ spine: [spineEv({ seq: 1 })] });
+		const r = run(["spine", "render"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-NOREG");
+		expect(r.stderr).toContain("bin");
 	});
 });

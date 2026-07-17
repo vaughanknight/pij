@@ -8,12 +8,40 @@
 // liveness/validateCommand/filterEvents via the ports) — no new logic. Node I/O
 // (fs, argv, exit) and the imperative --follow / --wait loops live in the bin.
 
+import { chainStateOf, detectAnomalies } from "./anomalies.js";
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
+import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
+import {
+	appendStateRef,
+	assignmentIdCandidates,
+	canonicalAssignmentJson,
+	materializeGeneralIfMissing,
+	openAssignment,
+} from "./platform/assignment.js";
+import { recoverPendingOps } from "./platform/journal.js";
+import type {
+	AssignmentStorePort,
+	OpJournalPort,
+	PlatformWriteLockPort,
+	ProjectStorePort,
+	SpineLogPort,
+} from "./platform/ports.js";
+import { createProject, setProject } from "./platform/project.js";
+import { buildSpineEvent } from "./platform/spine.js";
+import {
+	type ActorProvenance,
+	type Assignment,
+	generalAssignmentId,
+	SPINE_KIND_NODE_LINKED,
+	SPINE_KIND_STATE_SET,
+	SPINE_KIND_STATE_VERIFIED,
+	SPINE_KIND_TASK_SET,
+} from "./platform/types.js";
 import type {
 	DeliveryPort,
 	EventLogPort,
@@ -24,16 +52,19 @@ import type {
 } from "./ports.js";
 import { daemonTickStatus } from "./receipts.js";
 import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
-import { activityOf, liveness, STALE_AFTER_MS } from "./state.js";
-import { planLink, projectSessionForest } from "./tree.js";
+import { activityOf, badgeOf, liveness, STALE_AFTER_MS } from "./state.js";
+import { effectiveParent, isUnadopted, planLink, projectSessionForest } from "./tree.js";
 import {
 	err,
+	isSemanticState,
 	type LivenessVerdict,
 	ok,
 	type PijErrorCode,
 	type PijEvent,
 	type ReceiptState,
 	type Result,
+	SEMANTIC_STATES,
+	type SemanticState,
 	type SessionDescriptor,
 	type SessionForest,
 	type SessionId,
@@ -73,6 +104,22 @@ export interface CliDeps {
 	readonly repository?: RepositoryIdentityPort;
 	/** Full tree source, including dissolved descriptors hidden by RegistryPort.list(). */
 	readonly treeDescriptors?: readonly SessionDescriptor[];
+	/** Plan-054 platform stores — optional so legacy deps-sites compile unchanged.
+	 *  The bin wires all three; the project/spine family verbs require them. */
+	readonly projectStore?: ProjectStorePort;
+	readonly assignmentStore?: AssignmentStorePort;
+	readonly spineLog?: SpineLogPort;
+	/** Write-ahead op journal for the journal-FIRST coupled write (HIGH-2);
+	 *  the platform WRITE verbs require it wired (the bin always wires it). */
+	readonly opJournal?: OpJournalPort;
+	/** Machine-wide platform write lock (review 002 G2/G3): every platform
+	 *  WRITE verb runs its whole coupled write under it, which is what makes
+	 *  intent-phase recovery sound. Required wired for WRITE verbs. */
+	readonly platformWriteLock?: PlatformWriteLockPort;
+	/** Per-harness contextCurrent reads (plan 054 P2 T007, AC-09) — real
+	 *  readings or honest unknown, never estimates. Optional so legacy
+	 *  deps-sites compile; `node show` reports unknown/none when unwired. */
+	readonly contextReader?: ContextReaderPort;
 	/** CLI-owned watchdog sidecars. Optional for legacy/in-process send-only callers. */
 	readonly watchdogStore?: WatchdogCliStore;
 }
@@ -141,6 +188,7 @@ export type ParsedCommand =
 			readonly verb: "link";
 			readonly childId: SessionId;
 			readonly parentId: SessionId | null;
+			readonly actor?: string;
 			readonly json: boolean;
 	  }
 	| {
@@ -148,7 +196,72 @@ export type ParsedCommand =
 			readonly id: SessionId;
 			readonly which: "dir" | "events" | "state";
 			readonly json: boolean;
-	  };
+	  }
+	// ── plan 054 family verbs (project/spine) — pure core-table verbs ─────────
+	| {
+			readonly verb: "project-create";
+			readonly description: string;
+			/** Asserted attribution (`--actor <label>`), F2: wins over a resolved self. */
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| { readonly verb: "project-list"; readonly json: boolean }
+	| { readonly verb: "project-show"; readonly slug: string; readonly json: boolean }
+	| {
+			readonly verb: "project-set";
+			readonly slug: string;
+			readonly planPath?: string;
+			readonly primeId?: string;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "spine-append";
+			readonly kind: string;
+			readonly refs: readonly string[];
+			readonly peer?: string;
+			readonly project?: string;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "spine-events";
+			readonly since?: number;
+			readonly peer?: string;
+			readonly project?: string;
+			readonly json: boolean;
+	  }
+	/** Parse-row only (plan 054 P4 T002): the markdown write is BIN-owned —
+	 *  the pij bin intercepts `spine render` before dispatch. Core keeps the
+	 *  row for usage/E-ARG parity and E-NOREGs if ever reached. */
+	| { readonly verb: "spine-render"; readonly json: boolean }
+	// ── plan 054 Phase 2 — assignment/state family verbs (AC-05/AC-06) ────────
+	| {
+			readonly verb: "task-set";
+			readonly node: SessionId;
+			readonly task: string;
+			readonly projectSlug?: string;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "state-set";
+			readonly node: SessionId;
+			readonly state: SemanticState;
+			readonly assignmentId?: string;
+			readonly refs: readonly string[];
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "state-verify";
+			readonly node: SessionId;
+			readonly assignmentId?: string;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| { readonly verb: "node-show"; readonly id: SessionId; readonly json: boolean }
+	| { readonly verb: "anomalies"; readonly json: boolean };
 
 export interface CliResult {
 	readonly stdout: string;
@@ -323,6 +436,30 @@ const BOOLEAN_FLAGS = new Set([
 ]);
 const REPEATABLE_FLAGS = new Set(["to", "activity", "liveness", "lifecycle"]);
 
+/** Family verbs (plan 054): the tables below key on "<verb> <subcommand>".
+ *  `state` is deliberately NOT here — it is BOTH a positional verb
+ *  (`pij state <id>`) and a family verb (P2: `state set|verify`), routed by
+ *  the exact-subcommand special case in parseArgs. */
+const FAMILY_SUBCOMMANDS: Record<string, string> = {
+	project: "create|list|show|set",
+	spine: "append|events|render",
+	task: "set",
+	node: "show",
+};
+
+/** Per-verb flag VALENCE (plan 054 T010): flags that are boolean globally but
+ *  take a value for a given verb key — `project set --prime <id>` vs the
+ *  boolean `list --prime`. Existing verbs keep the global BOOLEAN_FLAGS set. */
+const VALUED_FLAG_OVERRIDES: Record<string, ReadonlySet<string>> = {
+	"project set": new Set(["prime"]),
+};
+
+function booleanFlagsFor(key: string): ReadonlySet<string> {
+	const valued = VALUED_FLAG_OVERRIDES[key];
+	if (!valued) return BOOLEAN_FLAGS;
+	return new Set([...BOOLEAN_FLAGS].filter((flag) => !valued.has(flag)));
+}
+
 /** Flags each verb accepts — anything else is E-ARG. */
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	whoami: new Set(["json", "env"]),
@@ -334,8 +471,22 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
 	tree: new Set(["global", "activity", "liveness", "lifecycle", "all", "json"]),
-	link: new Set(["parent", "root", "json"]),
+	link: new Set(["parent", "root", "actor", "json"]),
 	path: new Set(["events", "state", "dir", "json"]),
+	"project create": new Set(["actor", "json"]),
+	"project list": new Set(["json"]),
+	"project show": new Set(["json"]),
+	"project set": new Set(["plan", "prime", "actor", "json"]),
+	"spine append": new Set(["kind", "refs", "peer", "project", "actor", "json"]),
+	"spine events": new Set(["since", "peer", "project", "json"]),
+	"spine render": new Set(["json"]),
+	// plan 054 P2 (T005). --project/--assignment/--refs are not in
+	// BOOLEAN_FLAGS, so lex values them without VALUED_FLAG_OVERRIDES rows.
+	"task set": new Set(["project", "actor", "json"]),
+	"state set": new Set(["assignment", "refs", "actor", "json"]),
+	"state verify": new Set(["assignment", "actor", "json"]),
+	"node show": new Set(["json"]),
+	anomalies: new Set(["json"]),
 	watchdog: new Set(["capture", "max-lines", "max-bytes", "json"]),
 };
 /** Max positionals per verb (send allows id + text; models allows optional filter). */
@@ -351,6 +502,18 @@ const MAX_POS: Record<string, number> = {
 	tree: 1,
 	link: 1,
 	path: 1,
+	"project create": 1,
+	"project list": 0,
+	"project show": 1,
+	"project set": 1,
+	"spine append": 0,
+	"spine events": 0,
+	"spine render": 0,
+	"task set": 2,
+	"state set": 2,
+	"state verify": 1,
+	"node show": 1,
+	anomalies: 0,
 	watchdog: 2,
 };
 
@@ -359,33 +522,56 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path> …",
+			"usage: pij <whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies> …",
 		);
-	const allowed = ALLOWED_FLAGS[verb];
+	// Family verbs route "<verb> <subcommand>" into the same strict tables —
+	// no bin interception (Finding 06); everything downstream keys on `key`.
+	let key = verb;
+	let args = argv.slice(1);
+	// `state` dual routing (plan 054 P2): the family route engages ONLY on the
+	// exact reserved subcommands, so the legacy positional card
+	// (`pij state <id>`) keeps working for every other first argument.
+	if (verb === "state" && (argv[1] === "set" || argv[1] === "verify")) {
+		key = `state ${argv[1]}`;
+		args = argv.slice(2);
+	}
+	const subcommands = key === verb ? FAMILY_SUBCOMMANDS[verb] : undefined;
+	if (subcommands !== undefined) {
+		const sub = argv[1];
+		if (sub === undefined || sub.startsWith("--"))
+			return err("E-ARG", `usage: pij ${verb} <${subcommands}> …`);
+		key = `${verb} ${sub}`;
+		if (ALLOWED_FLAGS[key] === undefined)
+			return err("E-ARG", `unknown ${verb} subcommand '${sub}' (${subcommands})`);
+		args = argv.slice(2);
+	}
+	const allowed = ALLOWED_FLAGS[key];
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies)`,
 		);
-	const args = argv.slice(1);
+	// Valence is per verb key (plan 054): the same flag can be boolean for one
+	// verb and valued for another; existing verbs see the unchanged global set.
+	const booleans = booleanFlagsFor(key);
 	for (const token of args) {
 		const equals = token.startsWith("--") ? token.indexOf("=") : -1;
 		if (equals === -1) continue;
-		const key = token.slice(2, equals);
-		if (BOOLEAN_FLAGS.has(key)) return err("E-ARG", `--${key} does not take a value`);
+		const flag = token.slice(2, equals);
+		if (booleans.has(flag)) return err("E-ARG", `--${flag} does not take a value`);
 	}
-	const { pos, flags, repeated } = lex(args, BOOLEAN_FLAGS, REPEATABLE_FLAGS);
+	const { pos, flags, repeated } = lex(args, booleans, REPEATABLE_FLAGS);
 	// strict: reject unknown flags and extra arity (finding F001).
 	for (const k of [...Object.keys(flags), ...Object.keys(repeated)]) {
-		if (!allowed.has(k)) return err("E-ARG", `unknown flag --${k} for '${verb}'`);
+		if (!allowed.has(k)) return err("E-ARG", `unknown flag --${k} for '${key}'`);
 	}
-	if (pos.length > (MAX_POS[verb] ?? 0)) return err("E-ARG", `too many arguments for '${verb}'`);
+	if (pos.length > (MAX_POS[key] ?? 0)) return err("E-ARG", `too many arguments for '${key}'`);
 	const json = flags.json === true;
 	// number | undefined (absent) | "bad" (present but non-numeric -> E-ARG).
 	const pnum = (v: string | true | undefined): number | undefined | "bad" =>
 		v === undefined ? undefined : typeof v === "string" && /^\d+$/.test(v) ? Number(v) : "bad";
 
-	switch (verb) {
+	switch (key) {
 		case "whoami":
 			return ok({ verb: "whoami", json, env: flags.env === true });
 		case "list":
@@ -633,7 +819,14 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if ((parentId === undefined) === !root) {
 				return err("E-ARG", "pij link requires exactly one of --parent <parent> or --root");
 			}
-			return ok({ verb: "link", childId, parentId: root ? null : (parentId as string), json });
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "link",
+				childId,
+				parentId: root ? null : (parentId as string),
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
 		}
 		case "path": {
 			const id = pos[0];
@@ -641,10 +834,154 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			const which = flags.events === true ? "events" : flags.state === true ? "state" : "dir";
 			return ok({ verb: "path", id, which, json });
 		}
+		case "project create": {
+			const description = pos[0];
+			if (description === undefined)
+				return err("E-ARG", 'usage: pij project create "<description>"');
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "project-create",
+				description,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "project list":
+			return ok({ verb: "project-list", json });
+		case "project show": {
+			const slug = pos[0];
+			if (slug === undefined) return err("E-ARG", "usage: pij project show <slug>");
+			return ok({ verb: "project-show", slug, json });
+		}
+		case "project set": {
+			const slug = pos[0];
+			if (slug === undefined)
+				return err("E-ARG", "usage: pij project set <slug> [--plan <path>] [--prime <id>]");
+			if (flags.plan === true) return err("E-ARG", "--plan needs a path");
+			if (flags.prime === true) return err("E-ARG", "--prime needs a session id");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "project-set",
+				slug,
+				planPath: typeof flags.plan === "string" ? flags.plan : undefined,
+				primeId: typeof flags.prime === "string" ? flags.prime : undefined,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "task set": {
+			const node = pos[0];
+			const task = pos[1];
+			if (node === undefined || task === undefined)
+				return err("E-ARG", 'usage: pij task set <node> "<task>" [--project <slug>]');
+			if (flags.project === true) return err("E-ARG", "--project takes a project slug");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "task-set",
+				node,
+				task,
+				projectSlug: typeof flags.project === "string" ? flags.project : undefined,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "state set": {
+			const node = pos[0];
+			const state = pos[1];
+			if (node === undefined || state === undefined)
+				return err(
+					"E-ARG",
+					"usage: pij state set <node> <state> [--assignment <id>] [--refs <r,s>]",
+				);
+			// WS-6: the semantic vocabulary is human-ruled and closed — an
+			// unknown word is a user error naming the whole vocabulary.
+			if (!isSemanticState(state))
+				return err("E-ARG", `invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})`);
+			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
+			if (flags.refs === true) return err("E-ARG", "--refs takes a comma-separated list");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			const stateRefs =
+				typeof flags.refs === "string"
+					? flags.refs
+							.split(",")
+							.map((ref) => ref.trim())
+							.filter((ref) => ref !== "")
+					: [];
+			return ok({
+				verb: "state-set",
+				node,
+				state,
+				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
+				refs: stateRefs,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "state verify": {
+			const node = pos[0];
+			if (node === undefined)
+				return err("E-ARG", "usage: pij state verify <node> [--assignment <id>]");
+			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "state-verify",
+				node,
+				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "node show": {
+			const id = pos[0];
+			if (id === undefined) return err("E-ARG", "usage: pij node show <id> [--json]");
+			return ok({ verb: "node-show", id, json });
+		}
+		case "anomalies":
+			return ok({ verb: "anomalies", json });
+		case "spine append": {
+			if (flags.kind === true) return err("E-ARG", "--kind takes an event kind");
+			const kind = typeof flags.kind === "string" ? flags.kind : undefined;
+			if (kind === undefined) return err("E-ARG", "spine append requires --kind <kind>");
+			if (flags.refs === true) return err("E-ARG", "--refs takes a comma-separated list");
+			if (flags.peer === true) return err("E-ARG", "--peer takes a session id");
+			if (flags.project === true) return err("E-ARG", "--project takes a project slug");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			const refs =
+				typeof flags.refs === "string"
+					? flags.refs
+							.split(",")
+							.map((ref) => ref.trim())
+							.filter((ref) => ref !== "")
+					: [];
+			return ok({
+				verb: "spine-append",
+				kind,
+				refs,
+				peer: typeof flags.peer === "string" ? flags.peer : undefined,
+				project: typeof flags.project === "string" ? flags.project : undefined,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "spine events": {
+			const since = pnum(flags.since);
+			if (since === "bad") return err("E-ARG", "--since takes a number");
+			if (flags.peer === true) return err("E-ARG", "--peer takes a session id");
+			if (flags.project === true) return err("E-ARG", "--project takes a project slug");
+			return ok({
+				verb: "spine-events",
+				since,
+				peer: typeof flags.peer === "string" ? flags.peer : undefined,
+				project: typeof flags.project === "string" ? flags.project : undefined,
+				json,
+			});
+		}
+		case "spine render":
+			return ok({ verb: "spine-render", json });
 		default:
 			return err(
 				"E-ARG",
-				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path)`,
+				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies)`,
 			);
 	}
 }
@@ -717,6 +1054,65 @@ function selfId(deps: CliDeps): Result<SessionId> {
 		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
 	}
 	return resolveSelf(undefined, filterByFolder(deps.registry.list(), deps.cwd), pane);
+}
+
+// ─── platform attribution + ports (plan 054) ────────────────────────────────
+/** WRITE-verb attribution (convention F2): `--actor <label>` asserts and WINS
+ *  even over a resolvable self; otherwise the resolved self attributes;
+ *  otherwise refuse, naming --actor as the escape hatch. READ verbs never call
+ *  this. */
+function resolveActor(
+	asserted: string | undefined,
+	deps: CliDeps,
+): Result<{ readonly actor: string; readonly provenance: ActorProvenance }> {
+	if (asserted !== undefined) return ok({ actor: asserted, provenance: "asserted" });
+	const s = selfId(deps);
+	if (!s.ok) return err(s.code, `${s.message} (pass --actor <label> to assert attribution)`);
+	return ok({ actor: s.value, provenance: "resolved" });
+}
+
+/** The plan-054 stores are optional on CliDeps so legacy deps-sites compile
+ *  unchanged; the family verbs need them wired (the bin always wires them). */
+function platformPorts(deps: CliDeps): Result<{
+	readonly projectStore: ProjectStorePort;
+	readonly spineLog: SpineLogPort;
+	readonly opJournal?: OpJournalPort;
+}> {
+	if (!deps.projectStore || !deps.spineLog)
+		return err("E-NOREG", "project/spine stores are not wired — update the pij bin");
+	return ok({
+		projectStore: deps.projectStore,
+		spineLog: deps.spineLog,
+		...(deps.opJournal ? { opJournal: deps.opJournal } : {}),
+	});
+}
+
+/** WRITE verbs additionally require the op journal (HIGH-2 coupled write +
+ *  start-of-verb recovery) and the machine-wide platform write lock (review
+ *  002 G2/G3). READ verbs stay on platformPorts — no journal, no lock, no
+ *  recovery. */
+function platformWritePorts(deps: CliDeps): Result<{
+	readonly projectStore: ProjectStorePort;
+	readonly assignmentStore: AssignmentStorePort;
+	readonly spineLog: SpineLogPort;
+	readonly opJournal: OpJournalPort;
+	readonly platformWriteLock: PlatformWriteLockPort;
+}> {
+	const ports = platformPorts(deps);
+	if (!ports.ok) return ports;
+	const { projectStore, spineLog, opJournal } = ports.value;
+	// The assignment store joined the WRITE-port set in plan 054 P2 (T005):
+	// recovery adjudicates assignment coupled ops against it, so every WRITE
+	// verb needs it wired even before the assignment verbs run.
+	if (!opJournal || !deps.platformWriteLock || !deps.assignmentStore)
+		return err("E-NOREG", "project/spine stores are not wired — update the pij bin");
+	return ok({
+		projectStore,
+		assignmentStore: deps.assignmentStore,
+		spineLog,
+		opJournal,
+		platformWriteLock: deps.platformWriteLock,
+	});
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────
@@ -910,8 +1306,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			let entries = deps.models ?? [];
 			// pi proxies ALL providers — applying a provider filter would return nothing
 			// because real provider keys are github-copilot, sakana, openrouter, etc.
-			if (cmd.harnessFilter && cmd.harnessFilter !== "pi") {
-				entries = entries.filter((e) => providerMatchesHarness(e.provider, cmd.harnessFilter!));
+			const harnessFilter = cmd.harnessFilter;
+			if (harnessFilter && harnessFilter !== "pi") {
+				entries = entries.filter((e) => providerMatchesHarness(e.provider, harnessFilter));
 			}
 			if (cmd.filter) {
 				// Fuzzy filter: keep entries whose normalised id or name contains the query,
@@ -1000,6 +1397,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							watchdog: watchdogBlock(d, deps.watchdogStore?.read(d.id)),
 							prime: d.prime === true,
 							oldPrime: d.oldPrime === true,
+							// Adoption axis (plan 054 P3, WS-1): explicit boolean in the
+							// row projection so a UI/skill can filter without joins.
+							unadopted: isUnadopted(d),
 						})),
 					),
 				);
@@ -1087,16 +1487,83 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const current = deps.registry.read(cmd.childId);
 			const planned = planLink(descriptors, cmd.childId, cmd.parentId);
 			if (!planned.ok) return fail(planned.code, planned.message, cmd.json);
+			// Re-parent audit event (plan 054 P3 T004): with the platform stores
+			// wired, every link — including an attributed no-op (the adjudicated
+			// no-op-set precedent) — appends an UNCOUPLED node-linked event.
+			// Attribution resolves BEFORE any write (F2: refusal mutates nothing);
+			// unwired stores = legacy deps-sites, which keep the descriptor-only
+			// behavior byte-for-byte (the bin always wires).
+			const wired = platformWritePorts(deps);
+			let attribution: { actor: string; provenance: ActorProvenance } | undefined;
+			if (wired.ok) {
+				const resolved = resolveActor(cmd.actor, deps);
+				if (!resolved.ok) return fail(resolved.code, resolved.message, cmd.json);
+				attribution = { actor: resolved.value.actor, provenance: resolved.value.provenance };
+			}
 			const changed = current?.parentId !== cmd.parentId;
 			if (changed) deps.registry.write(planned.value);
-			if (cmd.json) {
-				return okOut(JSON.stringify({ id: cmd.childId, parentId: cmd.parentId, changed }));
+			// prev = the tree truth the link replaces (effectiveParent, the notion
+			// every projection uses), not the raw parentId override — a spawned
+			// child's first re-parent honestly records "was under its spawner".
+			const prevParent = current === null ? null : effectiveParent(current);
+			let spineSeq: number | null | undefined;
+			let spineWarning: string | undefined;
+			if (wired.ok && attribution !== undefined) {
+				const ports = wired.value;
+				const att = attribution;
+				// V-05 uncoupled append under lock + recovery gate (runtime-axis
+				// shape): descriptor truth already landed and never waits on the
+				// spine; a failed append is surfaced, never forged past.
+				const locked = ports.platformWriteLock.withPlatformWriteLock((): Result<number> => {
+					const recovered = recoverPendingOps(
+						ports.opJournal,
+						ports.spineLog,
+						ports.projectStore,
+						ports.assignmentStore,
+					);
+					if (!recovered.ok) return recovered;
+					const draft = buildSpineEvent({
+						nowMs: now,
+						actor: att.actor,
+						kind: SPINE_KIND_NODE_LINKED,
+						refs: [
+							`node:${cmd.childId}`,
+							...(cmd.parentId === null ? [] : [`parent:${cmd.parentId}`]),
+						],
+						peer: cmd.childId,
+						...(prevParent === null ? {} : { prev: prevParent }),
+						...(cmd.parentId === null ? {} : { next: cmd.parentId }),
+						actorProvenance: att.provenance,
+					});
+					if (!draft.ok) return draft;
+					const event = ports.spineLog.append(draft.value);
+					if (!event.ok) return event;
+					return ok(event.value.seq);
+				});
+				const outcome: Result<number> = locked.ok ? locked.value : locked;
+				if (outcome.ok) {
+					spineSeq = outcome.value;
+				} else {
+					spineSeq = null;
+					spineWarning = `node-linked spine event not recorded: ${outcome.code}: ${outcome.message}`;
+				}
 			}
-			return okOut(
+			if (cmd.json) {
+				return okOut(
+					JSON.stringify({
+						id: cmd.childId,
+						parentId: cmd.parentId,
+						changed,
+						...(spineSeq !== undefined ? { spineSeq } : {}),
+						...(spineWarning !== undefined ? { spineWarning } : {}),
+					}),
+				);
+			}
+			const human =
 				cmd.parentId === null
 					? `${changed ? "linked" : "unchanged"} ${cmd.childId} → root`
-					: `${changed ? "linked" : "unchanged"} ${cmd.childId} → ${cmd.parentId}`,
-			);
+					: `${changed ? "linked" : "unchanged"} ${cmd.childId} → ${cmd.parentId}`;
+			return okOut(spineWarning === undefined ? human : `${human}  (WARNING: ${spineWarning})`);
 		}
 		case "send": {
 			const s = selfId(deps);
@@ -1392,6 +1859,805 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						: d.dataDir;
 			return okOut(cmd.json ? JSON.stringify({ path: p }) : p);
 		}
+		// ── plan 054 — project/spine family verbs ─────────────────────────────
+		// Routed through ONE containment gate (HIGH-2 hard requirement b): no
+		// exception may escape dispatch for a platform verb — a throwing port
+		// becomes an E-NOREG CliResult naming the verb, never a crash.
+		case "project-create":
+		case "project-list":
+		case "project-show":
+		case "project-set":
+		case "spine-append":
+		case "spine-events":
+		case "spine-render":
+		case "task-set":
+		case "state-set":
+		case "state-verify":
+		case "node-show":
+		case "anomalies": {
+			try {
+				return dispatchPlatform(cmd, deps, now);
+			} catch (error) {
+				return fail("E-NOREG", `internal error in ${cmd.verb}: ${String(error)}`, cmd.json);
+			}
+		}
+	}
+}
+
+/** The six platform verbs (plan 054), extracted so dispatch can wrap them in
+ *  the no-throw containment gate above. WRITE verbs run the journal-FIRST
+ *  coupled write (HIGH-2, lifecycle per review 002 G2/G3) UNDER the machine-
+ *  wide platform write lock: recover every surviving op (or fail honestly —
+ *  never write past an unresolvable predecessor), journal the draft event
+ *  durably as an INTENT before any state commit, durably mark it COMMITTED
+ *  after, append via appendOnce(opId, draft), clear on success — so committed
+ *  state without its audit event never survives a single append failure and
+ *  the spine never claims state that never landed. */
+/** Fold an abort-path journal-clear Result into the primary error message
+ *  (review 004 J2): the primary failure stays the headline, but a failed
+ *  cleanup leaves a residual intent entry — adjudicated by the next verb's
+ *  recovery — that the operator must hear about now, never silently. */
+function withResidualDiagnostic(primary: string, cleared: Result<void>): string {
+	if (cleared.ok) return primary;
+	return `${primary} (journal cleanup also failed: ${cleared.message} — a residual intent entry remains for the next platform write's recovery)`;
+}
+
+type PlatformCommand = Extract<
+	ParsedCommand,
+	{
+		verb:
+			| "project-create"
+			| "project-list"
+			| "project-show"
+			| "project-set"
+			| "spine-append"
+			| "spine-events"
+			| "spine-render"
+			| "task-set"
+			| "state-set"
+			| "state-verify"
+			| "node-show"
+			| "anomalies";
+	}
+>;
+
+/** Post-clear descriptor denorm for the assignment verbs (plan 054 P2): the
+ *  UI-facing currentAssignment/currentTask/semanticState cache on the node
+ *  descriptor. The registry is NOT platform state — the spine/record are
+ *  truth and have already landed when this runs — so a failure here must be
+ *  reported honestly (WAS-set framing at the call site) but can never forge
+ *  or lose platform history. Reads the LATEST descriptor so a concurrent
+ *  writer's fields survive (Finding 04 discipline) — the FRESH read is the
+ *  write's basis, never the verb's opening snapshot (pinned, P3 T006b /
+ *  p2-review-001 note 2). Residual: the read→write lines below are still a
+ *  raw replace, so a daemon write landing INSIDE that microsecond window is
+ *  reverted until the next tick re-derives it (self-healing, no spurious
+ *  V-05 event — the tracker's latch already advanced). CLI-vs-CLI raced
+ *  denorms don't exist: every caller runs under the platform write lock. */
+function denormDescriptor(
+	deps: CliDeps,
+	nodeId: SessionId,
+	fields: {
+		readonly currentAssignment: string;
+		readonly currentTask: string;
+		readonly semanticState: SemanticState | undefined;
+	},
+): Result<void> {
+	try {
+		const latest = deps.registry.read(nodeId);
+		if (!latest) return err("E-NOID", `node descriptor '${nodeId}' vanished before the denorm`);
+		// A fresh assignment has no declared state yet: a stale semanticState
+		// from the previous assignment must not survive the pointer swap.
+		const { semanticState: _stale, ...rest } = latest;
+		deps.registry.write({
+			...rest,
+			currentAssignment: fields.currentAssignment,
+			currentTask: fields.currentTask,
+			...(fields.semanticState === undefined ? {} : { semanticState: fields.semanticState }),
+		});
+		return ok(undefined);
+	} catch (error) {
+		return err("E-NOREG", `the node descriptor could not be updated (${String(error)})`);
+	}
+}
+
+/** Resolve which assignment a state verb targets: explicit --assignment
+ *  (must exist and belong to the node), else the descriptor's
+ *  currentAssignment (dangling is an honest error, never a silent fallback),
+ *  else the node's general assignment — `existing` undefined means the
+ *  general is not yet materialized. */
+function resolveTargetAssignment(
+	assignmentStore: AssignmentStorePort,
+	node: SessionDescriptor,
+	explicitId: string | undefined,
+): Result<{ readonly id: string; readonly existing: Assignment | undefined }> {
+	if (explicitId !== undefined) {
+		const record = assignmentStore.read(explicitId);
+		if (record === null) return err("E-NOREG", `no assignment '${explicitId}'`);
+		if (record.nodeId !== node.id) {
+			return err(
+				"E-ARG",
+				`assignment '${record.id}' belongs to node '${record.nodeId}', not '${node.id}'`,
+			);
+		}
+		return ok({ id: record.id, existing: record });
+	}
+	if (node.currentAssignment !== undefined) {
+		const record = assignmentStore.read(node.currentAssignment);
+		if (record === null) {
+			return err(
+				"E-NOREG",
+				`descriptor of '${node.id}' points at missing assignment '${node.currentAssignment}'`,
+			);
+		}
+		return ok({ id: record.id, existing: record });
+	}
+	const generalId = generalAssignmentId(node.id);
+	return ok({ id: generalId, existing: assignmentStore.read(generalId) ?? undefined });
+}
+
+/** The semantic word of a chain event, carried as a `state:<word>` ref. */
+function stateWordOf(event: { readonly refs: readonly string[] }): string | undefined {
+	for (const ref of event.refs) {
+		if (ref.startsWith("state:")) return ref.slice("state:".length);
+	}
+	return undefined;
+}
+
+function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): CliResult {
+	switch (cmd.verb) {
+		case "project-create": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			// The WHOLE coupled write holds the machine-wide write lock (review
+			// 002 G2/G3): recovery's intent adjudication is sound only when no
+			// live writer can be mid-window concurrently.
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				// Recovery gate (G2/G3): every surviving op is resolved before this
+				// verb mutates anything; an unresolvable predecessor is an honest
+				// recovery error, never something to write past.
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const write = createProject({
+					description: cmd.description,
+					actor: attribution.value.actor,
+					nowMs: now,
+					existingSlugs: new Set(projectStore.list().map((p) => p.slug)),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!write.ok) return fail(write.code, write.message, cmd.json);
+				// Journal FIRST (HIGH-2): the draft event is durable — phase intent —
+				// BEFORE any state commit; a journal fault aborts with NOTHING committed.
+				const recorded = opJournal.record(write.value.event);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const claimed = projectStore.create(write.value.project);
+				if (!claimed.ok) {
+					// Abort-path clear (review 004 J2): the create failure stays the
+					// primary error, but a failed cleanup leaves a residual intent
+					// entry the operator should hear about NOW, not from the next
+					// verb's recovery pass.
+					return fail(
+						claimed.code,
+						withResidualDiagnostic(claimed.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				if (claimed.value === "exists") {
+					return fail(
+						"E-NOREG",
+						withResidualDiagnostic(
+							`project '${write.value.project.slug}' already exists (concurrent create) — retry`,
+							opJournal.clear(opId),
+						),
+						cmd.json,
+					);
+				}
+				// Durable phase flip (review 002 G2): from here the op replays once
+				// recovery corroborates it against persisted state (review 003 H1 /
+				// 004 J1 — a bare marker is a claim, not proof, and a once-record
+				// proves only the EVENT survived, never the project publish). A
+				// failed flip is survivable — the entry stays intent and recovery
+				// adjudicates it against the state that DID land — so the coupled
+				// write proceeds either way.
+				opJournal.markCommitted(opId);
+				// Coupling law (AC-03): the event lands ONLY after a successful record
+				// write; appendOnce keyed by opId keeps journal replay exactly-once.
+				const appended = spineLog.appendOnce(opId, write.value.event);
+				if (!appended.ok) {
+					// The journal entry SURVIVES: the next platform write verb replays
+					// it, so the committed record is never left without its audit event.
+					return fail(
+						appended.code,
+						`project '${write.value.project.slug}' WAS created, but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				// Success-path clear is inspected (review 004 J2): the write and its
+				// audit event both landed, but a failed cleanup is a machine-wide
+				// write outage KNOWN at return time — every later platform write
+				// blocks in recovery until the entry clears. Exit 0 here would hide
+				// it; the entry stays adjudicable (committed + once-record), so the
+				// next recovery resolves it to the EXISTING event once clears heal.
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`project '${write.value.project.slug}' WAS created and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				if (cmd.json) return okOut(JSON.stringify(write.value.project));
+				return okOut(`project ${write.value.project.slug} created`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		case "project-list": {
+			const ports = platformPorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const projects = ports.value.projectStore.list();
+			if (cmd.json) return okOut(JSON.stringify(projects));
+			if (projects.length === 0) return okOut("no projects");
+			const lines = projects.map(
+				(p) => `${pad(p.slug, 24)} ${pad(p.primeId ?? "—", 12)} ${p.description}`,
+			);
+			return okOut([`${pad("slug", 24)} ${pad("prime", 12)} description`, ...lines].join("\n"));
+		}
+		case "project-show": {
+			const ports = platformPorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const project = ports.value.projectStore.read(cmd.slug);
+			if (!project) return fail("E-NOREG", `no project '${cmd.slug}'`, cmd.json);
+			if (cmd.json) return okOut(JSON.stringify(project));
+			return okOut(
+				[
+					`project:     ${project.slug}`,
+					`description: ${project.description}`,
+					`plan:        ${project.planPath ?? "—"}`,
+					`prime:       ${project.primeId ?? "—"}`,
+					`created:     ${project.created.ts} by ${project.created.actor}`,
+				].join("\n"),
+			);
+		}
+		case "project-set": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			// Whole coupled write under the write lock (review 002 G2/G3).
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				// Recovery gate (G2/G3) — see project-create.
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const existing = projectStore.read(cmd.slug);
+				if (!existing)
+					return fail("E-NOREG", `no project '${cmd.slug}' — create it first`, cmd.json);
+				const write = setProject(existing, {
+					actor: attribution.value.actor,
+					nowMs: now,
+					planPath: cmd.planPath,
+					primeId: cmd.primeId,
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!write.ok) return fail(write.code, write.message, cmd.json);
+				// Journal FIRST (HIGH-2): a journal fault aborts BEFORE the update.
+				const recorded = opJournal.record(write.value.event);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const updated = projectStore.update(write.value.project);
+				if (!updated.ok) {
+					// Abort-path clear (review 004 J2) — primary error plus any
+					// residual-entry diagnostic, see project-create.
+					return fail(
+						updated.code,
+						withResidualDiagnostic(updated.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				// Durable phase flip (review 002 G2) — survivable if it fails, see
+				// project-create.
+				opJournal.markCommitted(opId);
+				// Coupling law (AC-03): the event lands ONLY after a successful record
+				// write; appendOnce keyed by opId keeps journal replay exactly-once.
+				const appended = spineLog.appendOnce(opId, write.value.event);
+				if (!appended.ok) {
+					// The journal entry SURVIVES for the next write verb's replay.
+					return fail(
+						appended.code,
+						`project '${write.value.project.slug}' WAS updated, but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				// Success-path clear is inspected (review 004 J2) — see project-create.
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`project '${write.value.project.slug}' WAS updated and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				if (cmd.json) return okOut(JSON.stringify(write.value.project));
+				return okOut(`project ${write.value.project.slug} updated`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		case "spine-render":
+			// Bin-owned write (plan 054 P4 T002): SpineLogPort deliberately has
+			// no markdown-write method, so core cannot honor this verb — the pij
+			// bin intercepts `spine render` BEFORE dispatch (two-tier precedent),
+			// reads the log, and writes ~/.pij/spine/spine.md atomically. Reaching
+			// this case means the intercept is missing.
+			return fail(
+				"E-NOREG",
+				"spine render is bin-owned — the pij bin writes spine/spine.md (intercept missing: update the pij bin)",
+				cmd.json,
+			);
+		case "spine-append": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			// Under the write lock like every platform WRITE verb (review 002
+			// G2/G3): the append itself is UNcoupled (no state write rides on it,
+			// so no journal entry of its own), but it must not causally overtake
+			// a pending predecessor, and its recovery pass needs the lock's
+			// exclusion to adjudicate intents soundly.
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				// Fallible on the clock (review 001 F7): a bad deps.process.now() is an
+				// E-ARG envelope here, never a RangeError for the dispatch wrapper.
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: cmd.kind,
+					refs: cmd.refs,
+					peer: cmd.peer,
+					project: cmd.project,
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				// The port stamps seq atomically (review 001 F1); output the STAMPED event.
+				const appended = spineLog.append(draft.value);
+				if (!appended.ok) return fail(appended.code, appended.message, cmd.json);
+				const event = appended.value;
+				if (cmd.json) return okOut(JSON.stringify(event));
+				return okOut(`spine ${event.seq} appended: ${event.kind} (by ${event.actor})`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		// ── plan 054 Phase 2 — assignment/state coupled writes (AC-05/AC-06) ──
+		// Same journal-FIRST template as the project verbs; the state side is
+		// the assignment RECORD (prev/next = canonicalAssignmentJson, states[]
+		// excluded), the STATE kinds chain the stamped seq inside the pend
+		// window, and the descriptor denorm runs after the clear.
+		case "task-set": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const node = deps.registry.read(cmd.node);
+			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
+			if (cmd.projectSlug !== undefined && projectStore.read(cmd.projectSlug) === null) {
+				return fail("E-NOREG", `no project '${cmd.projectSlug}' — create it first`, cmd.json);
+			}
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				// First free memorable asg id (store read is the occupancy probe;
+				// the store's create-or-replace never clobbers because only free
+				// ids are chosen under the machine-wide write lock).
+				let assignmentId: string | undefined;
+				for (const candidate of assignmentIdCandidates(`${cmd.node}\0${cmd.task}`)) {
+					if (assignmentStore.read(candidate) === null) {
+						assignmentId = candidate;
+						break;
+					}
+				}
+				if (assignmentId === undefined) {
+					return fail("E-FULL", "memorable assignment id space exhausted", cmd.json);
+				}
+				const opened = openAssignment({
+					id: assignmentId,
+					nodeId: cmd.node,
+					task: cmd.task,
+					actor: attribution.value.actor,
+					nowMs: now,
+					projectSlug: cmd.projectSlug,
+				});
+				if (!opened.ok) return fail(opened.code, opened.message, cmd.json);
+				const record = opened.value;
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_TASK_SET,
+					refs: [
+						`node:${cmd.node}`,
+						`assignment:${record.id}`,
+						...(cmd.projectSlug === undefined ? [] : [`project:${cmd.projectSlug}`]),
+					],
+					peer: cmd.node,
+					project: cmd.projectSlug,
+					// Creation-shaped: no prior record — next only (F3 law).
+					next: canonicalAssignmentJson(record),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				const recorded = opJournal.record(draft.value);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const written = assignmentStore.write(record);
+				if (!written.ok) {
+					return fail(
+						written.code,
+						withResidualDiagnostic(written.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				opJournal.markCommitted(opId);
+				const appended = spineLog.appendOnce(opId, draft.value);
+				if (!appended.ok) {
+					return fail(
+						appended.code,
+						`task on '${cmd.node}' WAS set (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`task on '${cmd.node}' WAS set and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				const denormed = denormDescriptor(deps, cmd.node, {
+					currentAssignment: record.id,
+					currentTask: record.task,
+					semanticState: undefined,
+				});
+				if (!denormed.ok) {
+					return fail(
+						denormed.code,
+						`task on '${cmd.node}' WAS set (assignment ${record.id}) and its spine event landed, but ${denormed.message}`,
+						cmd.json,
+					);
+				}
+				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
+				return okOut(`task set on ${cmd.node}: ${record.id} "${record.task}"`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		case "state-set": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const node = deps.registry.read(cmd.node);
+			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const target = resolveTargetAssignment(assignmentStore, node, cmd.assignmentId);
+				if (!target.ok) return fail(target.code, target.message, cmd.json);
+				// Implicit-general fallback (AC-05): first write materializes it.
+				const materialized = materializeGeneralIfMissing(target.value.existing, {
+					nodeId: cmd.node,
+					actor: attribution.value.actor,
+					nowMs: now,
+				});
+				if (!materialized.ok) return fail(materialized.code, materialized.message, cmd.json);
+				const record = materialized.value;
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_STATE_SET,
+					refs: [
+						`node:${cmd.node}`,
+						`assignment:${record.id}`,
+						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
+						`state:${cmd.state}`,
+						...cmd.refs,
+					],
+					peer: cmd.node,
+					project: record.projectSlug,
+					// An existing record couples prev===next (the ruled no-op-set
+					// shape); a fresh general is creation-shaped (next only).
+					prev: target.value.existing === undefined ? undefined : canonicalAssignmentJson(record),
+					next: canonicalAssignmentJson(record),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				const recorded = opJournal.record(draft.value);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const written = assignmentStore.write(record);
+				if (!written.ok) {
+					return fail(
+						written.code,
+						withResidualDiagnostic(written.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				opJournal.markCommitted(opId);
+				const appended = spineLog.appendOnce(opId, draft.value);
+				if (!appended.ok) {
+					return fail(
+						appended.code,
+						`state '${cmd.state}' on '${cmd.node}' WAS recorded (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				const event = appended.value.event;
+				// The stamped seq joins the chain INSIDE the pend window: a cut
+				// here leaves a committed op recovery replays AND reconciles.
+				const chained = assignmentStore.write(appendStateRef(record, event.seq));
+				if (!chained.ok) {
+					return fail(
+						chained.code,
+						`state '${cmd.state}' WAS set on '${cmd.node}' and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
+						cmd.json,
+					);
+				}
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`state '${cmd.state}' WAS set on '${cmd.node}' and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				const denormed = denormDescriptor(deps, cmd.node, {
+					currentAssignment: record.id,
+					currentTask: record.task,
+					semanticState: cmd.state,
+				});
+				if (!denormed.ok) {
+					return fail(
+						denormed.code,
+						`state '${cmd.state}' WAS set on '${cmd.node}' and its spine event landed, but ${denormed.message}`,
+						cmd.json,
+					);
+				}
+				if (cmd.json) return okOut(JSON.stringify(event));
+				return okOut(
+					`state ${cmd.state} set on ${cmd.node} (assignment ${record.id}, spine ${event.seq})`,
+				);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		case "state-verify": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const node = deps.registry.read(cmd.node);
+			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const target = resolveTargetAssignment(assignmentStore, node, cmd.assignmentId);
+				if (!target.ok) return fail(target.code, target.message, cmd.json);
+				// Verify never materializes: an absent chain is nothing to verify.
+				const record = target.value.existing;
+				if (record === undefined) {
+					return fail("E-NOREG", `no assignment to verify for node '${cmd.node}'`, cmd.json);
+				}
+				// The chain's LATEST declared state must be done (AC-06): a
+				// verify of anything else is a user error, not a free write.
+				const chainSeqs = new Set(record.states);
+				const declared = spineLog
+					.read({ peer: cmd.node })
+					.filter((e) => chainSeqs.has(e.seq) && e.kind === SPINE_KIND_STATE_SET);
+				const latest = declared[declared.length - 1];
+				if (latest === undefined) {
+					return fail(
+						"E-ARG",
+						`assignment '${record.id}' has no declared state to verify`,
+						cmd.json,
+					);
+				}
+				const word = stateWordOf(latest);
+				if (word !== "done") {
+					return fail(
+						"E-ARG",
+						`assignment '${record.id}' is not done (latest state: ${word ?? "unknown"}) — nothing to verify`,
+						cmd.json,
+					);
+				}
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_STATE_VERIFIED,
+					refs: [
+						`node:${cmd.node}`,
+						`assignment:${record.id}`,
+						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
+						"state:done",
+						`event:${latest.seq}`,
+					],
+					peer: cmd.node,
+					project: record.projectSlug,
+					prev: canonicalAssignmentJson(record),
+					next: canonicalAssignmentJson(record),
+					verifiedBy: attribution.value.actor,
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				const recorded = opJournal.record(draft.value);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const written = assignmentStore.write(record);
+				if (!written.ok) {
+					return fail(
+						written.code,
+						withResidualDiagnostic(written.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				opJournal.markCommitted(opId);
+				const appended = spineLog.appendOnce(opId, draft.value);
+				if (!appended.ok) {
+					return fail(
+						appended.code,
+						`verification of '${record.id}' WAS recorded, but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				const event = appended.value.event;
+				const chained = assignmentStore.write(appendStateRef(record, event.seq));
+				if (!chained.ok) {
+					return fail(
+						chained.code,
+						`'${record.id}' WAS verified and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
+						cmd.json,
+					);
+				}
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`'${record.id}' WAS verified and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				if (cmd.json) return okOut(JSON.stringify(event));
+				return okOut(`state verified on ${cmd.node} (assignment ${record.id}, spine ${event.seq})`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		case "node-show": {
+			// READ verb (AC-09): the full card — identity, both axes, badge,
+			// assignments join, addressability, gauges. Bare JSON, no envelope.
+			const ports = platformPorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			if (!deps.assignmentStore)
+				return fail("E-NOREG", "project/spine stores are not wired — update the pij bin", cmd.json);
+			const d = deps.registry.read(cmd.id);
+			if (!d) return fail("E-NOID", `no session '${cmd.id}' in registry`, cmd.json);
+			const events = ports.value.spineLog.read({ peer: d.id });
+			const assignments = deps.assignmentStore.listByNode(d.id).map((assignment) => ({
+				assignment,
+				chain: chainStateOf(assignment, events),
+			}));
+			const openStates = assignments
+				.filter(({ assignment }) => assignment.closed === undefined)
+				.map(({ chain }) => chain.state)
+				.filter((state) => state !== undefined);
+			const badge = badgeOf(d.systemState, openStates);
+			const contextCurrent = deps.contextReader?.current(d) ?? null;
+			const contextMax = contextMaxFor(d.boundModel, deps.models ?? []);
+			const card = {
+				id: d.id,
+				harness: d.harness ?? null,
+				lifecycle: d.lifecycle ?? null,
+				parent: effectiveParent(d),
+				spawnedBy: d.spawnedBy ?? null,
+				systemState: d.systemState ?? null,
+				semanticState: d.semanticState ?? null,
+				badge,
+				currentAssignment: d.currentAssignment ?? null,
+				currentTask: d.currentTask ?? null,
+				assignments: assignments.map(({ assignment, chain }) => ({
+					id: assignment.id,
+					task: assignment.task,
+					projectSlug: assignment.projectSlug ?? null,
+					open: assignment.closed === undefined,
+					state: chain.state ?? null,
+					// AC-06 render: done is UNVERIFIED until a verify write lands.
+					verified: chain.state === "done" ? chain.verified : null,
+					verifiedBy: chain.verifiedBy ?? null,
+					stateSeq: chain.stateSeq ?? null,
+				})),
+				paneId: d.paneId ?? null,
+				windowId: d.windowId ?? null,
+				boundModel: d.boundModel ?? null,
+				effort: d.effort ?? null,
+				contextMax: contextMax ?? null,
+				contextCurrent,
+				state: d.state ?? "idle",
+				activity: activityOf(d.state, d.lastEventAt != null),
+				liveness: liveOf(deps, d, now),
+				lastEventAt: d.lastEventAt ?? null,
+				pid: d.pid,
+				cwd: d.folder,
+			};
+			if (cmd.json) return okOut(JSON.stringify(card));
+			const gauge =
+				contextCurrent === null
+					? "—"
+					: `${contextCurrent.value}${contextMax !== undefined ? ` / ${contextMax}` : ""} (${contextCurrent.provenance})`;
+			const lines = [
+				`node:        ${d.id}  [${badge}]`,
+				`harness:     ${d.harness ?? "—"}  ·  lifecycle: ${d.lifecycle ?? "—"}  ·  pid ${d.pid}`,
+				`axes:        system ${d.systemState ?? "—"} · semantic ${d.semanticState ?? "—"}`,
+				`task:        ${d.currentTask ?? "—"}  (${d.currentAssignment ?? "no assignment"})`,
+				...assignments.map(
+					({ assignment, chain }) =>
+						`  assignment ${assignment.id}: ${chain.state ?? "undeclared"}${
+							chain.state === "done" ? (chain.verified ? " ✓verified" : " (UNVERIFIED)") : ""
+						}${assignment.closed ? ` [closed:${assignment.closed.reason}]` : ""} — ${assignment.task}`,
+				),
+				`terminal:    pane ${d.paneId ?? "—"} · window ${d.windowId ?? "—"}`,
+				`model:       ${d.boundModel ?? "—"}  ·  effort: ${d.effort ?? "—"}`,
+				`context:     ${gauge}`,
+				`parent:      ${effectiveParent(d) ?? "(root)"}`,
+				`cwd:         ${d.folder}`,
+			];
+			return okOut(lines.join("\n"));
+		}
+		case "anomalies": {
+			// READ verb (AC-06/AC-07): pure queries with spine-seq evidence.
+			const ports = platformPorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			if (!deps.assignmentStore)
+				return fail("E-NOREG", "project/spine stores are not wired — update the pij bin", cmd.json);
+			const anomalies = detectAnomalies({
+				descriptors: deps.registry.list(),
+				assignments: deps.assignmentStore.list(),
+				events: ports.value.spineLog.read(),
+				nowMs: now,
+			});
+			if (cmd.json) return okOut(JSON.stringify(anomalies));
+			if (anomalies.length === 0) return okOut("no anomalies");
+			return okOut(
+				anomalies
+					.map(
+						(a) =>
+							`${pad(a.kind, 20)} ${pad(a.nodeId, 20)} ${a.detail} [spine ${a.evidence.join(",") || "—"}]`,
+					)
+					.join("\n"),
+			);
+		}
+		case "spine-events": {
+			const ports = platformPorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const events = ports.value.spineLog.read({
+				since: cmd.since,
+				peer: cmd.peer,
+				project: cmd.project,
+			});
+			if (cmd.json) return okOut(JSON.stringify(events));
+			if (events.length === 0) return okOut("(no spine events)");
+			const lines = events.map(
+				(e) =>
+					`${pad(String(e.seq), 5)} ${pad(hhmmss(e.ts), 8)} ${pad(e.kind, 16)} ${pad(e.actor, 16)}${
+						e.project ? ` project:${e.project}` : ""
+					}${e.peer ? ` peer:${e.peer}` : ""}`,
+			);
+			return okOut(
+				[`${pad("seq", 5)} ${pad("ts", 8)} ${pad("kind", 16)} actor`, ...lines].join("\n"),
+			);
+		}
 	}
 }
 
@@ -1426,8 +2692,10 @@ function renderSessionForestHuman(forest: SessionForest): string {
 				: node.problem === "cycle"
 					? ` [cycle${node.cycleTo ? `→${node.cycleTo}` : ""}]`
 					: ` [${node.problem}${node.effectiveParentId ? `:${node.effectiveParentId}` : ""}]`;
+		// Adoption axis, rendered apart from structural problems (WS-1 split).
+		const unadopted = node.unadopted === true ? " [unadopted]" : "";
 		lines.push(
-			`${indent}${prime} ${node.id}  ${node.activity}/${node.liveness}/${lifecycle}${problem}`,
+			`${indent}${prime} ${node.id}  ${node.activity}/${node.liveness}/${lifecycle}${problem}${unadopted}`,
 		);
 		for (let index = node.children.length - 1; index >= 0; index--) {
 			const child = node.children[index];

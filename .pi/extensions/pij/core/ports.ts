@@ -142,10 +142,14 @@ export interface SplitWindowOpts {
  *  confined to adapters/tmux.ts; this interface is pi-free). */
 export interface TmuxPort {
 	/** Create a new tmux window running the given command. Returns the
-	 *  captured %N pane id. */
-	newWindow(opts: NewWindowOpts): Result<{ paneId: string }>;
-	/** Split an existing pane (layout:"split"); returns the new %N pane id. */
-	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string }>;
+	 *  captured %N pane id plus the @M window id holding it (plan 054 P2
+	 *  T006, AC-09 terminal addressability). `windowId` is optional: a
+	 *  malformed capture degrades to paneId-only — the daemon backfill
+	 *  retries it, and addressability is never worth failing a spawn. */
+	newWindow(opts: NewWindowOpts): Result<{ paneId: string; windowId?: string }>;
+	/** Split an existing pane (layout:"split"); returns the new %N pane id
+	 *  (+ @M window id, same contract as newWindow). */
+	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string; windowId?: string }>;
 	/** Kill a window by its pane id. Swallows "already gone" (idempotent). */
 	killWindow(paneId: string): Result<void>;
 	/** Kill a single pane by its id (split-safe: siblings survive; a window's

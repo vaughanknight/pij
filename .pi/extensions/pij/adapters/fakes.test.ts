@@ -9,6 +9,7 @@ import {
 	FakePiRuntime,
 	FakeProcess,
 	FakeRegistry,
+	FakeTmux,
 } from "./fakes.js";
 
 function desc(id: string): SessionDescriptor {
@@ -159,5 +160,34 @@ describe("FakeProcess", () => {
 		expect(p.now()).toBe(5000);
 		expect(p.env("PIJ_SESSION_ID")).toBe("a");
 		expect(p.env("MISSING")).toBeUndefined();
+	});
+});
+
+// ─── plan 054 P2 T006 — FakeTmux windowId (AC-09 addressability twin) ───────
+describe("FakeTmux windowId", () => {
+	it("mints a window id per new window and reports the pane→window join", () => {
+		const tmux = new FakeTmux();
+		const win = tmux.newWindow({ name: "w", env: {}, cmd: "echo", args: [] });
+		if (!win.ok) throw new Error(win.message);
+		expect(win.value.windowId).toMatch(/^@\d+$/);
+		// `tmux select-window -t <windowId>` proof shape: the fake's join says
+		// this windowId IS the window holding the returned pane.
+		expect(tmux.windowOf(win.value.paneId)).toBe(win.value.windowId);
+	});
+
+	it("a split pane lands in the TARGET pane's window", () => {
+		const tmux = new FakeTmux();
+		const win = tmux.newWindow({ name: "w", env: {}, cmd: "echo", args: [] });
+		if (!win.ok) throw new Error(win.message);
+		const split = tmux.splitWindow({
+			target: win.value.paneId,
+			direction: "h",
+			env: {},
+			cmd: "echo",
+			args: [],
+		});
+		if (!split.ok) throw new Error(split.message);
+		expect(split.value.windowId).toBe(win.value.windowId);
+		expect(tmux.windowOf(split.value.paneId)).toBe(win.value.windowId);
 	});
 });

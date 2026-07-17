@@ -63,6 +63,76 @@ export type SessionState = "idle" | "in-progress" | "paused" | "reviewing" | "co
 /** Liveness verdict derived from pid probe + latest-event age. */
 export type LivenessVerdict = "active" | "stale" | "dead" | "dissolved";
 
+// ─── two-axis node truth (plan 054 Phase 2; WS-6 — HUMAN-RULED vocabulary) ──
+// Both arrays are ruled words, byte-exact: never extend, rename, or reorder
+// (s055 watchdog consumes `systemState` by these names; core/types.test.ts
+// pins the full vocabulary so any drift is a loud red).
+
+/** Semantic axis — declared per-assignment by agents through pij (WS-6). */
+export const SEMANTIC_STATES = [
+	"blocked",
+	"question",
+	"hold",
+	"waiting",
+	"ready",
+	"failed",
+	"cancelled",
+	"done",
+] as const;
+export type SemanticState = (typeof SEMANTIC_STATES)[number];
+
+/** Mechanical axis — computed ONLY by pij's own probes (WS-5 retained
+ *  exception): honest `unknown` over any heuristic guess (AC-04). */
+export const SYSTEM_STATES = [
+	"starting",
+	"working",
+	"idle",
+	"stalled",
+	"stopped",
+	"dead",
+	"unknown",
+] as const;
+export type SystemState = (typeof SYSTEM_STATES)[number];
+
+/** One context-window gauge reading (AC-09). `value` is a REAL reading — a
+ *  finite token count — or the honest literal `"unknown"` (no source, e.g.
+ *  copilot); never an estimate, never NaN/null. `provenance` names where the
+ *  reading came from; `asOf` is the ISO-8601 instant it was taken. */
+export interface ContextGauge {
+	readonly value: number | "unknown";
+	readonly asOf: string;
+	readonly provenance: string;
+}
+
+export function isSemanticState(value: unknown): value is SemanticState {
+	return typeof value === "string" && (SEMANTIC_STATES as readonly string[]).includes(value);
+}
+
+export function isSystemState(value: unknown): value is SystemState {
+	return typeof value === "string" && (SYSTEM_STATES as readonly string[]).includes(value);
+}
+
+/** Total guard, own-property law (platform/types.ts precedent — helpers are
+ *  duplicated privately here because types.ts imports NOTHING). */
+export function isContextGauge(value: unknown): value is ContextGauge {
+	try {
+		if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+		const record = value as Record<string, unknown>;
+		const gaugeValue = record.value;
+		return (
+			Object.hasOwn(record, "value") &&
+			(gaugeValue === "unknown" ||
+				(typeof gaugeValue === "number" && Number.isFinite(gaugeValue))) &&
+			Object.hasOwn(record, "asOf") &&
+			typeof record.asOf === "string" &&
+			Object.hasOwn(record, "provenance") &&
+			typeof record.provenance === "string"
+		);
+	} catch {
+		return false;
+	}
+}
+
 // ─── registry descriptor (the ~/.pij/<id>.json a peer reads) ──────────────
 export interface SessionDescriptor {
 	readonly id: SessionId;
@@ -170,6 +240,27 @@ export interface SessionDescriptor {
 	 *  to the spawner. Drives the `--once` auto-close latch (`agentOnce && reportedAt`,
 	 *  T005 planOnceClose). Re-stamped on each subsequent report. */
 	readonly reportedAt?: string;
+	// ─── node truth (plan 054 Phase 2; all optional ⇒ migration-safe) ─────
+	/** Assignment id this node is currently pointed at (`pij task set`). The
+	 *  full record lives in the assignment store; this is a UI denorm. */
+	readonly currentAssignment?: string;
+	/** Denormalized task text of the current assignment (`pij task set`). */
+	readonly currentTask?: string;
+	/** Denormalized semantic state of the current assignment (`pij state set`)
+	 *  — agent-declared truth, externally owned (never daemon-clobbered). */
+	readonly semanticState?: SemanticState;
+	/** Mechanical axis verdict — computed and owned by the DAEMON only (WS-5
+	 *  exception): deliberately NOT in MUTABLE_EXTERNALLY_OWNED_FIELDS. */
+	readonly systemState?: SystemState;
+	/** Tmux window id (@N) holding this node's pane — captured at spawn/adopt,
+	 *  daemon-backfilled for legacy live nodes (AC-09 terminal addressability:
+	 *  `tmux select-window -t <windowId>`). */
+	readonly windowId?: string;
+	/** Context-window capacity (tokens) joined from the models registry via
+	 *  `boundModel`. Absent when the model is unknown to the registry. */
+	readonly contextMax?: number;
+	/** Latest context-usage gauge reading — real or honest-unknown (AC-09). */
+	readonly contextCurrent?: ContextGauge;
 }
 
 // ─── session-tree projection ────────────────────────────────────────────────
@@ -209,6 +300,12 @@ export interface SessionTreeNode extends SessionDescriptor {
 	readonly effectiveParentId: SessionId | null;
 	readonly activity: TreeActivity;
 	readonly liveness: LivenessVerdict;
+	/** ADOPTION axis (plan 054 P3, WS-1 — carp's split): a non-prime with NO
+	 *  effective parent has nobody to escalate to. Present-when-true, like
+	 *  `problem`. Distinct from `TreeProblem` (structural: an orphan HAS a
+	 *  parent pointer whose target vanished) and from the runtime axis
+	 *  (`systemState`) — three independently assertable axes. */
+	readonly unadopted?: true;
 	readonly problem?: TreeProblem;
 	readonly cycleTo?: SessionId;
 	readonly children: readonly SessionTreeNode[];

@@ -1,6 +1,13 @@
 // pij-messaging — session state classification + liveness verdict (pure).
 
-import type { DeathReason, LivenessVerdict, SessionState } from "./types.js";
+import type {
+	DeathReason,
+	LivenessVerdict,
+	SemanticState,
+	SessionLifecycle,
+	SessionState,
+	SystemState,
+} from "./types.js";
 
 // ─── thresholds (Pattern P5: live with the data they constrain) ───────────
 /** Newer than this → active; older (but pid alive) → stale. */
@@ -63,6 +70,92 @@ export function isStalled(
 ): boolean {
 	if (!isWorking(state)) return false;
 	return latestEventAgeMs === null || latestEventAgeMs > staleAfterMs;
+}
+
+// ─── 7-state mechanical axis (plan 054 P2 T003; WS-6, AC-04) ─────────────────
+
+/** Telemetry the mechanical verdict is derived from. Every field is a REAL
+ *  probe result; `null` means the probe itself was unavailable — missing
+ *  telemetry is first-class input, never silently coerced (AC-04). */
+export interface SystemStateInputs {
+	readonly lifecycle?: SessionLifecycle;
+	/** Pid probe verdict; `null` = no pid telemetry available. */
+	readonly pidAlive: boolean | null;
+	/** Pane-process suspension probe (e.g. SIGSTOP); absent/`null` = no probe. */
+	readonly paneSuspended?: boolean | null;
+	/** Descriptor working/idle signal; absent = no state telemetry. */
+	readonly state?: "working" | "idle";
+	readonly latestEventAgeMs: number | null;
+	readonly staleAfterMs?: number;
+}
+
+/** Derive the WS-6 mechanical axis from telemetry — never a heuristic:
+ *  1. a gone pid is `dead` (the strongest verdict, beats everything);
+ *  2. a suspended-but-alive pane is `stopped` (definite telemetry — beats
+ *     the starting hold);
+ *  3. pre-bind lifecycle (`pending`/`ready`) is `starting` — written at
+ *     spawn/adopt and HELD until the first bind/readiness verdict (AC-04);
+ *  4. a missing pid probe is `unknown` — never inferred `dead`;
+ *  5. `working` telemetry that has gone silent past the stale threshold
+ *     (or never produced an event) is `stalled`, else `working`;
+ *  6. `idle` telemetry is `idle`;
+ *  7. anything else — no state telemetry at all — is an honest `unknown`,
+ *     never inferred `idle`. */
+export function systemStateOf(inputs: SystemStateInputs): SystemState {
+	const staleAfterMs = inputs.staleAfterMs ?? STALE_AFTER_MS;
+	if (inputs.pidAlive === false) return "dead";
+	if (inputs.paneSuspended === true) return "stopped";
+	if (inputs.lifecycle === "pending" || inputs.lifecycle === "ready") return "starting";
+	if (inputs.pidAlive === null) return "unknown";
+	if (inputs.state === "working") {
+		const age = inputs.latestEventAgeMs;
+		return age === null || age > staleAfterMs ? "stalled" : "working";
+	}
+	if (inputs.state === "idle") return "idle";
+	return "unknown";
+}
+
+// ─── worst-first badge (plan 054 P2 T003; AC-05) ─────────────────────────────
+
+/** Explicit severity order over BOTH ruled vocabularies, worst first — the
+ *  badge is the single entry a human must see first. Attention-priority:
+ *  terminal mechanical failure, then declared failure, then anything wedged
+ *  or asking, then ambiguity, then calm/informative states. Covers every
+ *  SemanticState and SystemState exactly once (pinned by test). */
+export const BADGE_SEVERITY = [
+	"dead", // system: terminal
+	"failed", // semantic: declared failure
+	"stalled", // system: claims work, silent — the 44h shape
+	"blocked", // semantic: cannot proceed
+	"question", // semantic: waiting on an answer
+	"hold", // semantic: deliberately parked by an issuer
+	"stopped", // system: suspended pane
+	"unknown", // system: missing telemetry — ambiguity outranks calm
+	"waiting", // semantic: dependent on something external
+	"starting", // system: pre-bind hold
+	"working", // system: actively producing
+	"ready", // semantic: awaiting pickup (review/commit/…)
+	"cancelled", // semantic: closed, no action needed
+	"done", // semantic: closed, informative over idle
+	"idle", // system: calm baseline
+] as const satisfies readonly (SemanticState | SystemState)[];
+
+/** Worst-first badge over the mechanical verdict + every OPEN assignment's
+ *  semantic state (AC-05: a seat can be done on A and blocked on B — the
+ *  badge is `blocked`). No system verdict and no semantics is an honest
+ *  `unknown`. */
+export function badgeOf(
+	systemState: SystemState | undefined,
+	semanticStates: readonly SemanticState[],
+): SemanticState | SystemState {
+	const candidates: (SemanticState | SystemState)[] = [...semanticStates];
+	if (systemState !== undefined) candidates.push(systemState);
+	if (candidates.length === 0) return "unknown";
+	let worst = candidates[0] as SemanticState | SystemState;
+	for (const candidate of candidates) {
+		if (BADGE_SEVERITY.indexOf(candidate) < BADGE_SEVERITY.indexOf(worst)) worst = candidate;
+	}
+	return worst;
 }
 
 // ─── death-reason classifier (pure) ──────────────────────────────────────────

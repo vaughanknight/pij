@@ -52,6 +52,9 @@ npm run smoke -- pij              # in-pi boot/announce smoke (local)
 After `just install` (which runs `npm link`), bare `pij …` resolves from any cwd.
 See [`docs/how/pij.md`](./docs/how/pij.md) for the full CLI reference, the
 message/receipt protocol, and the parent/worker workflow.
+The machine-wide platform records (projects, assignments, the spine event
+log) are a documented public on-disk contract — a UI can be built from the
+files alone: [`docs/how/pij-platform.md`](./docs/how/pij-platform.md).
 
 ### Focus agents
 
@@ -210,6 +213,7 @@ and a photo/gif/document you send to the bot is saved with the addressed session
 | Agent harness (companion mode) | [`docs/project-rules/agent-harness.md`](docs/project-rules/agent-harness.md) (RUNBOOK § "Companion mode (minih)") |
 | Pi Peacock extension | `.pi/extensions/pi-peacock/` + [`docs/how/pi-peacock.md`](docs/how/pi-peacock.md) |
 | flow-pair (orchestrator/worker/reviewer) | `skills/flow-pair/` + [`docs/how/flow-pair.md`](docs/how/flow-pair.md) |
+| pij platform on-disk contract (projects/assignments/spine) | [`docs/how/pij-platform.md`](docs/how/pij-platform.md) + migration posture [`docs/how/pij-governance-migration.md`](docs/how/pij-governance-migration.md) |
 
 ## Using extensions on another machine
 

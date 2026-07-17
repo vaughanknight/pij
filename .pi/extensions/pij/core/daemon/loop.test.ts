@@ -4,6 +4,7 @@ import { FakeDelivery, FakeRegistry } from "../../adapters/fakes.js";
 import { transcriptDir } from "../harness/claude.js";
 import type { SessionDescriptor } from "../types.js";
 import {
+	backfillWindowId,
 	type DaemonPorts,
 	type DriveState,
 	drainTmuxInbox,
@@ -670,6 +671,53 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 	});
 });
 
+describe("writeMerged — node-truth ownership (plan 054 P2 T002, Finding 04)", () => {
+	it("CLI-stamped currentAssignment/currentTask/semanticState survive a daemon tick write", () => {
+		// The CLI coupled-write denormed these onto the descriptor AFTER the
+		// daemon took its tick-start snapshot; the daemon's computed descriptor
+		// (derived from that stale snapshot) has none of them. A daemon persist
+		// must not clobber them (Finding 04).
+		const reg = new FakeRegistry([
+			desc({
+				currentAssignment: "asg-general-pij-w",
+				currentTask: "review the packet",
+				semanticState: "waiting",
+			}),
+		]);
+		const written = writeMerged(reg, desc({ state: "working" }));
+		expect(written.currentAssignment).toBe("asg-general-pij-w");
+		expect(written.currentTask).toBe("review the packet");
+		expect(written.semanticState).toBe("waiting");
+		expect(written.state).toBe("working"); // daemon-owned field still applied
+	});
+
+	it("latest persisted semanticState beats a stale daemon snapshot value", () => {
+		// Mutable-external semantics: when BOTH sides carry the field, latest
+		// disk wins — the daemon's copy is by construction a stale snapshot.
+		const reg = new FakeRegistry([desc({ semanticState: "done" })]);
+		const written = writeMerged(reg, desc({ semanticState: "waiting", state: "idle" }));
+		expect(written.semanticState).toBe("done");
+	});
+
+	it("systemState is daemon-owned: the computed verdict beats any on-disk value", () => {
+		// systemState stays OUT of MUTABLE_EXTERNALLY_OWNED_FIELDS (WS-5:
+		// mechanical truth has no meaningful external writer) — a value that
+		// somehow landed on disk never overrides the daemon's fresh verdict.
+		const reg = new FakeRegistry([desc({ systemState: "idle" })]);
+		const written = writeMerged(reg, desc({ systemState: "working" }));
+		expect(written.systemState).toBe("working");
+	});
+
+	it("a daemon write lacking systemState does not resurrect a stale on-disk one", () => {
+		// Deliberate-drop parity with the failureReason case: absence in the
+		// computed descriptor is authoritative for a daemon-owned field.
+		const reg = new FakeRegistry([desc({ systemState: "stalled" })]);
+		const { systemState: _dropped, ...computed } = desc({ systemState: "stalled" });
+		const written = writeMerged(reg, computed);
+		expect(written.systemState).toBeUndefined();
+	});
+});
+
 describe("drainTmuxInbox — post-outcome contract", () => {
 	it.each([
 		"confirmed",
@@ -702,5 +750,43 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 		);
 
 		expect(consumed).toEqual([]);
+	});
+});
+
+describe("backfillWindowId — legacy live nodes gain addressability once (plan 054 P2 T006)", () => {
+	it("resolves and persists the window id for a pane-bearing node without one", () => {
+		const reg = new FakeRegistry([desc({ paneId: "%7" })]);
+		const written = backfillWindowId(desc({ paneId: "%7" }), reg, (paneId) =>
+			paneId === "%7" ? "@2" : null,
+		);
+		expect(written?.windowId).toBe("@2");
+		expect(reg.read("pij-w")?.windowId).toBe("@2");
+	});
+
+	it("is a no-op when the node already has a windowId (once-only latch)", () => {
+		const reg = new FakeRegistry([desc({ paneId: "%7", windowId: "@2" })]);
+		let calls = 0;
+		const out = backfillWindowId(desc({ paneId: "%7", windowId: "@2" }), reg, () => {
+			calls += 1;
+			return "@9";
+		});
+		expect(out).toBeNull();
+		expect(calls).toBe(0);
+		expect(reg.read("pij-w")?.windowId).toBe("@2");
+	});
+
+	it("is a no-op without a pane, on resolver failure, and on a malformed id", () => {
+		const reg = new FakeRegistry([desc({})]);
+		const { paneId: _p, ...noPane } = desc({});
+		expect(backfillWindowId(noPane, reg, () => "@1")).toBeNull();
+		expect(backfillWindowId(desc({ paneId: "%7" }), reg, () => null)).toBeNull();
+		expect(backfillWindowId(desc({ paneId: "%7" }), reg, () => "window-3")).toBeNull();
+		expect(reg.read("pij-w")?.windowId).toBeUndefined();
+	});
+
+	it("a CLI-stamped windowId on disk survives a daemon write lacking it (merge law)", () => {
+		const reg = new FakeRegistry([desc({ windowId: "@5" })]);
+		const written = writeMerged(reg, desc({ state: "working" }));
+		expect(written.windowId).toBe("@5");
 	});
 });

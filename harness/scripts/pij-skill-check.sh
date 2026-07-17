@@ -44,7 +44,7 @@ done <<< "$registry_rows"
 for f in "$SKILL"/references/routes/*.md; do
   [ -e "$f" ] || continue
   self=$(basename "$f" .md)
-  for r in ready pair delegate agent skill peer ops prime watch; do
+  for r in ready pair delegate agent skill peer ops prime watch node; do
     [ "$r" = "$self" ] && continue
     hits=$(grep -En "routes/$r\.md|/pij $r\b" "$f" 2>/dev/null || true)
     if [ "$self" = prime ] && { [ "$r" = pair ] || [ "$r" = peer ]; }; then
@@ -66,7 +66,7 @@ budget() {
 budget "$SKILL/SKILL.md" 150
 budget "$SKILL/references/00-routing.md" 250
 budget "$SKILL/references/routes/pair.md" 350
-for m in ready peer agent skill ops delegate; do budget "$SKILL/references/routes/$m.md" 150; done
+for m in ready peer agent skill ops delegate node; do budget "$SKILL/references/routes/$m.md" 150; done
 
 soft_budget() {
   [ -f "$1" ] || return 0
@@ -86,7 +86,7 @@ budget "$SKILL/references/prime/orchestrator.md" 120
 
 # 4. CLI-verb coverage: every required bin family is mapped in the coverage table.
 cli_rows=$(sed -n '/^## CLI-verb coverage/,/^## /p' "$SKILL/SKILL.md" | grep '^| `' || true)
-for v in spawn close adopt tree link daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime; do
+for v in spawn close adopt tree link daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime project spine task node anomalies; do
   printf '%s\n' "$cli_rows" | grep -Fq "\`$v\`" \
     || err "verb coverage: '$v' unmapped in CLI-verb coverage table"
 done

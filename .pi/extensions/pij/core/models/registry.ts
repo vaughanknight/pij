@@ -29,6 +29,10 @@ export interface ModelEntry {
 	 *  NON-NULL keys of pi's `thinkingLevelMap` (null = unsupported), or a curated
 	 *  codex table. Empty / absent = no level data (cannot validate `--effort`). */
 	readonly levels?: readonly string[];
+	/** Context-window capacity in tokens (plan 054 P2 T007, AC-09) — read off
+	 *  pi's per-model `contextWindow`. Absent when the source has none: the
+	 *  contextMax join reports honest absence, never a guess. */
+	readonly contextWindow?: number;
 }
 
 interface PiModel {
@@ -36,6 +40,13 @@ interface PiModel {
 	readonly name?: unknown;
 	readonly reasoning?: unknown;
 	readonly thinkingLevelMap?: unknown;
+	readonly contextWindow?: unknown;
+}
+
+/** A usable window is a finite POSITIVE token count; anything else is honest
+ *  absence (T007 — the gauge law tolerates no bogus capacities). */
+function usableContextWindow(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 interface PiProvider {
@@ -96,6 +107,7 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 				if (!isObj(m) || typeof m.id !== "string") continue;
 				const id: string = m.id;
 				seenIds.add(id);
+				const window = usableContextWindow(m.contextWindow);
 				entries.push({
 					id,
 					name: typeof m.name === "string" ? m.name : id,
@@ -104,6 +116,7 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 					reasoning:
 						isCopilotGpt56(id) && provider === "github-copilot" ? true : m.reasoning === true,
 					levels: piModelLevels(provider, id, m.thinkingLevelMap),
+					...(window === undefined ? {} : { contextWindow: window }),
 				});
 			}
 		}
@@ -112,6 +125,7 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 				if (seenIds.has(id)) continue; // don't duplicate
 				const ov = isObj(override) ? override : {};
 				const name = typeof ov.name === "string" ? ov.name : id;
+				const window = usableContextWindow(ov.contextWindow);
 				entries.push({
 					id,
 					name,
@@ -120,6 +134,7 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 					reasoning:
 						isCopilotGpt56(id) && provider === "github-copilot" ? true : ov.reasoning === true,
 					levels: piModelLevels(provider, id, ov.thinkingLevelMap),
+					...(window === undefined ? {} : { contextWindow: window }),
 				});
 			}
 		}

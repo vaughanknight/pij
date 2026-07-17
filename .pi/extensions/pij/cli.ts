@@ -23,13 +23,20 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeAgentAdapter } from "minih";
 import { validateInput } from "minih/runner";
+import { FsAssignmentStore } from "./adapters/assignment-store.js";
+import { writeTextAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
+import { FsContextReader } from "./adapters/context-reader.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsFocusStore } from "./adapters/focus-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
+import { FsOpJournal } from "./adapters/op-journal.js";
+import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
+import { FsProjectStore } from "./adapters/project-store.js";
+import { FsSpineLog } from "./adapters/spine-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
@@ -135,6 +142,7 @@ import {
 	parseOrchestrationArgs,
 } from "./core/orchestration/cli.js";
 import { PrimeService } from "./core/orchestration/prime.js";
+import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
 import { buildExportLines } from "./core/session-join.js";
 import {
@@ -145,6 +153,7 @@ import {
 	buildSpawnCommand,
 	buildSpawnOutput,
 	buildSpawnWarning,
+	deriveCallerParent,
 	livePeerPanes,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
@@ -198,6 +207,20 @@ Orchestration (machine-wide coordination):
   pij orchestration baton <define|list|show|request|grant|return|reclaim>   atomic resource leases + pushed notices
   pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
 
+Platform (durable projects + the shared spine log):
+  pij project create "<description>" [--actor <label>] [--json]   create a project (kebab slug, collision-resolved)
+  pij project list [--json]                          all projects, sorted by slug
+  pij project show <slug> [--json]                   one full project record
+  pij project set <slug> [--plan <path>] [--prime <id>] [--actor <label>] [--json]   update a project's plan/prime
+  pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--actor <label>] [--json]   append one spine event
+  pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
+  pij spine render [--json]                          regenerate spine/spine.md (markdown view of the spine)
+  pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it
+  pij state set <node> <state> [--assignment <id>] [--refs a,b,…] [--actor <label>] [--json]   declare a per-assignment semantic state
+  pij state verify <node> [--assignment <id>] [--actor <label>] [--json]   verify a done state (stamps verifiedBy — done is a claim until verified)
+  pij node show <id> [--json]                        the full node card: both state axes, badge, assignments, terminal address, context gauges
+  pij anomalies [--json]                             derived safety queries: axis-disagreement, unverified done, foreign hold-clear
+
 Messaging:
   pij inbox [check|register] [--wait [ms]] [--json]   pull messages; first use auto-registers this ambient session
                                                         non-tmux external peers use 'pij inbox --wait'; tmux/pi stay push-first
@@ -206,7 +229,7 @@ Messaging:
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
   pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
                                                         repository forest by default; global forest or arbitrary subtree on request
-  pij link <child> --parent <parent> | --root [--json]  reparent or explicitly root a session without changing close ownership
+  pij link <child> --parent <parent> | --root [--actor <label>] [--json]  reparent or explicitly root a session without changing close ownership (audited as a node-linked spine event)
   pij send <id> "<text>" | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
                                                         deliver one message, broadcast text, or run a control command
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
@@ -402,6 +425,12 @@ function deps(): CliDeps {
 		resolveAmbientSelf: () => resolveAmbientSelf(registry),
 		repository: new GitRepositoryAdapter(),
 		treeDescriptors: listAllDescriptors(registry),
+		projectStore: new FsProjectStore(pijHome),
+		assignmentStore: new FsAssignmentStore(pijHome),
+		spineLog: new FsSpineLog(pijHome),
+		opJournal: new FsOpJournal(pijHome),
+		platformWriteLock: new FsPlatformWriteLock(pijHome),
+		contextReader: new FsContextReader(homedir()),
 		watchdogStore: new FsWatchdogStore(pijHome),
 	};
 }
@@ -1131,15 +1160,12 @@ function runSpawn(argv: readonly string[]): void {
 		}
 		const cwdPi = process.cwd();
 		const regPi = new FsRegistry(pijHome);
-		// announce-to: resolve the CALLING session (PIJ_SESSION_ID → lone-local →
-		// $TMUX_PANE, same as --branch) so the child ready-pings us back. Unresolved
-		// caller → "" → the child fresh-boots and announces to all peers.
-		const selfPi = resolveSelf(
-			process.env.PIJ_SESSION_ID,
-			filterByFolder(regPi.list(), cwdPi),
-			process.env.TMUX_PANE,
-		);
-		const announceTo = selfPi.ok ? selfPi.value : "";
+		// announce-to = the child's parent (it self-registers spawnedBy from it),
+		// so it follows AC-08 caller truth: identity only (env id → pane-exact
+		// across the FULL registry), never cwd cohabitation (issue #20).
+		// Unresolved caller → "" → the child fresh-boots and announces to all peers.
+		const announceTo =
+			deriveCallerParent(process.env.PIJ_SESSION_ID, regPi.list(), process.env.TMUX_PANE) ?? "";
 		const spawnCmdPi = buildSpawnCommand({
 			spawnId: `s${Date.now()}-${process.pid}`,
 			announceTo,
@@ -1219,13 +1245,23 @@ function runSpawn(argv: readonly string[]): void {
 	// A forked claude pins its id (`--session-id`), so it binds on the planned id —
 	// no transcript snapshot. branch-from-ANOTHER-peer is out of scope (we only ever
 	// pass our own resolved descriptor as `self`), but the seam doesn't preclude it.
-	// Resolve the CALLING session once (PIJ_SESSION_ID → lone-local → $TMUX_PANE):
-	// its pij-id becomes the child's PIJ_PARENT_ID (who spawned it), and — for
-	// --branch — the source descriptor to fork. Unresolved caller → no parent.
+	// Parent = the CALLING session, from identity ONLY (AC-08 / issue #20):
+	// PIJ_SESSION_ID, else a unique pane-exact match across the FULL registry.
+	// cwd cohabitation never makes a parent — unresolved caller → no parent.
 	const reg0 = new FsRegistry(pijHome);
-	const locals0 = filterByFolder(reg0.list(), cwd);
-	const callerRes = resolveSelf(process.env.PIJ_SESSION_ID, locals0, process.env.TMUX_PANE);
-	const parentId = callerRes.ok ? callerRes.value : undefined;
+	const parentId = deriveCallerParent(
+		process.env.PIJ_SESSION_ID,
+		reg0.list(),
+		process.env.TMUX_PANE,
+	);
+	// --branch keeps resolveSelf ("which session am I", s051's contract): the
+	// fork source is OUR OWN descriptor, a distinct question from who parents
+	// the child.
+	const callerRes = resolveSelf(
+		process.env.PIJ_SESSION_ID,
+		filterByFolder(reg0.list(), cwd),
+		process.env.TMUX_PANE,
+	);
 	const gitCommonDir = new GitRepositoryAdapter().gitCommonDir(cwd) ?? undefined;
 	let branchFrom: string | undefined;
 	let forkSessionId: string | undefined;
@@ -1358,6 +1394,7 @@ function runSpawn(argv: readonly string[]): void {
 	const pending = buildPendingDescriptor({
 		pijId,
 		paneId,
+		windowId: split.value.windowId,
 		cwd,
 		harness: req.value.harness,
 		dataDir,
@@ -1639,18 +1676,21 @@ function runAdopt(argv: readonly string[]): void {
 	}
 	const pane = req.value.pane;
 	const harness = req.value.harness;
-	// Resolve the pane's cwd + foreground pid from tmux.
+	// Resolve the pane's cwd + foreground pid + window id from tmux (window id:
+	// plan 054 P2 T006 — AC-09 terminal addressability rides the same call).
 	let cwd = process.cwd();
 	let panePid = process.pid;
+	let windowId: string | undefined;
 	try {
 		const out = execFileSync(
 			"tmux",
-			["display-message", "-p", "-t", pane, "#{pane_current_path}\t#{pane_pid}"],
+			["display-message", "-p", "-t", pane, "#{pane_current_path}\t#{pane_pid}\t#{window_id}"],
 			{ encoding: "utf8" },
 		).trim();
-		const [path, pid] = out.split("\t");
+		const [path, pid, win] = out.split("\t");
 		if (path) cwd = path;
 		if (pid && /^\d+$/.test(pid)) panePid = Number(pid);
+		if (win && /^@\d+$/.test(win)) windowId = win;
 	} catch {
 		process.stderr.write(`E-ARG: cannot resolve pane ${pane} (is it a live tmux pane?)\n`);
 		process.exit(2);
@@ -1983,6 +2023,7 @@ function runAdopt(argv: readonly string[]): void {
 	descriptor = {
 		...descriptor,
 		...(req.value.parentId !== undefined ? { parentId: req.value.parentId } : {}),
+		...(windowId !== undefined ? { windowId } : {}),
 		gitCommonDir,
 	};
 	try {
@@ -2715,6 +2756,30 @@ async function runAgentVerb(args: string[]): Promise<void> {
 	}
 }
 
+/** `pij spine render` — bin-owned (plan 054 P4 T002, AC-10): SpineLogPort has
+ *  no markdown-write method by design, so the bin reads the log and publishes
+ *  `$PIJ_HOME/spine/spine.md` atomically. Core keeps the parse row for
+ *  usage/E-ARG parity and E-NOREGs if ever reached without this intercept. */
+function runSpineRender(json: boolean): void {
+	const events = new FsSpineLog(pijHome).read();
+	const md = renderSpineMd(events);
+	const path = join(pijHome, "spine", "spine.md");
+	try {
+		writeTextAtomic(path, md);
+	} catch (error) {
+		// Same code family as the fs spine adapters use for fs failures.
+		process.stderr.write(`E-NOREG: spine render could not write ${path}: ${String(error)}\n`);
+		process.exit(3);
+	}
+	const bytes = Buffer.byteLength(md, "utf8");
+	if (json) {
+		process.stdout.write(`${JSON.stringify({ path, bytes, events: events.length })}\n`);
+	} else {
+		process.stdout.write(`spine render: ${events.length} events → ${path} (${bytes} bytes)\n`);
+	}
+	process.exit(0);
+}
+
 function main(): void {
 	// Full-surface usage on no args / --help (the core parser only knows the
 	// messaging verbs; the control-plane verbs live here in the bin).
@@ -2820,6 +2885,12 @@ function main(): void {
 		}
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(64);
+	}
+	// `spine render` writes markdown the pure core cannot (bin-owned, plan 054
+	// P4 T002) — intercept BEFORE dispatch, after core's parse gave E-ARG parity.
+	if (parsed.value.verb === "spine-render") {
+		runSpineRender(parsed.value.json);
+		return;
 	}
 	// `pij tail` of a bound claude/copilot session streams ITS JSONL transcript,
 	// not the pij event log (T022). Try that first; fall through to the event tail

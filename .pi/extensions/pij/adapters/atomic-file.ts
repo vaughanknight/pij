@@ -57,19 +57,58 @@ export function renameReplaceWithRetry(
 	}
 }
 
-export function writeJsonAtomic(path: string, value: unknown): void {
+/** Best-effort directory fsync (audit F2): a rename/link publishes a directory
+ *  ENTRY, and fsyncing the file alone leaves that entry in the page cache — a
+ *  power loss could then drop a "durable" record even though a process crash
+ *  could not (the spine-store.ts:91-94 threat model includes power loss).
+ *  Directory fsync is platform-dependent (Windows disallows opening
+ *  directories), so failures never throw: durability degrades to
+ *  process-crash scope there, never to an error. Returns whether the sync
+ *  actually succeeded — most callers ignore it, but a caller for whom entry
+ *  durability is LOAD-BEARING (the op-journal resolution sweep, review 005
+ *  K1: discarding resolution evidence is only safe once the op entry's
+ *  absence is durable) must branch on it. */
+export function fsyncDirBestEffort(dir: string): boolean {
+	let fd: number | undefined;
+	try {
+		fd = openSync(dir, "r");
+		fsyncSync(fd);
+		return true;
+	} catch {
+		return false; // never throws by contract — see doc comment
+	} finally {
+		if (fd !== undefined) {
+			try {
+				closeSync(fd);
+			} catch {
+				// closing a directory fd is best-effort too
+			}
+		}
+	}
+}
+
+/** Atomic text publish: temp file + fsync + rename-replace + best-effort
+ *  directory fsync — same durability contract as {@link writeJsonAtomic}
+ *  (which delegates here). For non-JSON artifacts, e.g. spine/spine.md. */
+export function writeTextAtomic(path: string, text: string): void {
 	mkdirSync(dirname(path), { recursive: true });
 	const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
 	let fd: number | undefined;
 	try {
 		fd = openSync(tmpPath, "wx");
-		writeFileSync(fd, JSON.stringify(value));
+		writeFileSync(fd, text);
 		fsyncSync(fd);
 		closeSync(fd);
 		fd = undefined;
 		renameReplaceWithRetry(tmpPath, path);
+		// Durability of the RENAME itself, not just the bytes (audit F2).
+		fsyncDirBestEffort(dirname(path));
 	} finally {
 		if (fd !== undefined) closeSync(fd);
 		rmSync(tmpPath, { force: true });
 	}
+}
+
+export function writeJsonAtomic(path: string, value: unknown): void {
+	writeTextAtomic(path, JSON.stringify(value));
 }

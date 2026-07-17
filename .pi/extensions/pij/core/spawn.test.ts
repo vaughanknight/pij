@@ -13,6 +13,7 @@ import {
 	buildPiFocusSpawnCommand,
 	buildSpawnCommand,
 	buildSpawnOutput,
+	deriveCallerParent,
 	livePeerPanes,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
@@ -1061,5 +1062,103 @@ describe("parseSpawnArgs --layout", () => {
 	it("rejects an unknown layout", () => {
 		const r = parseSpawnArgs(["--harness", "claude", "--layout", "floating"]);
 		expect(r.ok).toBe(false);
+	});
+});
+
+// ─── plan 054 P2 T006 — windowId capture at spawn (AC-09) ───────────────────
+describe("buildPendingDescriptor windowId (AC-09 terminal addressability)", () => {
+	const base = {
+		pijId: "pij-w",
+		paneId: "%9",
+		cwd: "/repo",
+		harness: "claude" as const,
+		dataDir: "/home/.pij/pij-w",
+		eventsPath: "/home/.pij/pij-w/events.ndjson",
+		pid: 42,
+		startedAtIso: "2026-07-17T00:00:00.000Z",
+	};
+
+	it("carries the tmux window id captured beside the pane id", () => {
+		const d = buildPendingDescriptor({ ...base, windowId: "@4" });
+		expect(d.windowId).toBe("@4");
+		expect(d.paneId).toBe("%9");
+	});
+
+	it("stays ABSENT (no key) when the capture did not yield one", () => {
+		const d = buildPendingDescriptor(base);
+		expect("windowId" in d).toBe(false);
+	});
+});
+
+describe("buildPendingDescriptor systemState (AC-04 — starting at spawn/adopt)", () => {
+	it("stamps the mechanical axis starting at birth; it holds until the bind verdict", () => {
+		const d = buildPendingDescriptor({
+			pijId: "pij-w",
+			paneId: "%9",
+			cwd: "/repo",
+			harness: "claude",
+			dataDir: "/home/.pij/pij-w",
+			eventsPath: "/home/.pij/pij-w/events.ndjson",
+			pid: 42,
+			startedAtIso: "2026-07-17T00:00:00.000Z",
+		});
+		expect(d.systemState).toBe("starting");
+	});
+});
+
+// ─── deriveCallerParent (plan 054 P3 T001/T002 — AC-08 caller truth) ─────────
+// Behavior contracts ONLY (SW-7): outcomes of parent derivation, never the
+// internals that produce them. The invoking session is the parent; cwd
+// cohabitation NEVER makes a parent (issue #20's corruption mechanism).
+
+describe("deriveCallerParent (AC-08 — parent is the invoking session, never cwd)", () => {
+	const at = (id: string, over: Partial<SessionDescriptor> = {}): SessionDescriptor => ({
+		id,
+		folder: "/repo",
+		dataDir: `/home/.pij/${id}`,
+		eventsPath: `/home/.pij/${id}/events.ndjson`,
+		pid: 100,
+		startedAt: "2026-07-17T00:00:00.000Z",
+		...over,
+	});
+
+	it("PIJ_SESSION_ID wins outright, even with cwd cohabitants and a matching pane", () => {
+		const all = [at("pij-env"), at("pij-neighbor"), at("pij-paned", { paneId: "%7" })];
+		expect(deriveCallerParent("pij-env", all, "%7")).toBe("pij-env");
+	});
+
+	it("env unset: a unique pane-exact match identifies the caller", () => {
+		const all = [at("pij-a"), at("pij-caller", { paneId: "%7" })];
+		expect(deriveCallerParent(undefined, all, "%7")).toBe("pij-caller");
+		expect(deriveCallerParent("", all, "%7")).toBe("pij-caller");
+		expect(deriveCallerParent("   ", all, "%7")).toBe("pij-caller");
+	});
+
+	it("pane matching runs against the FULL registry — a caller registered under a DIFFERENT folder still resolves (adopted-peer-in-worktree shape)", () => {
+		const all = [
+			at("pij-local-neighbor", { folder: "/worktree" }),
+			at("pij-caller", { folder: "/elsewhere", paneId: "%7" }),
+		];
+		// Caller invokes from /worktree; its registered folder is /elsewhere.
+		// cwd plays NO role: the pane identity alone resolves the parent.
+		expect(deriveCallerParent(undefined, all, "%7")).toBe("pij-caller");
+	});
+
+	it("env unset + no pane match: cwd cohabitants NEVER become the parent (issue #20 kill)", () => {
+		// The #20 shape: exactly one descriptor sharing the launch cwd. The old
+		// lone-local inference made it the parent; caller truth says ABSENT.
+		const loneCohabitant = [at("pij-neighbor", { folder: "/worktree" })];
+		expect(deriveCallerParent(undefined, loneCohabitant, undefined)).toBeUndefined();
+		expect(deriveCallerParent(undefined, loneCohabitant, "%none")).toBeUndefined();
+	});
+
+	it("ambiguous pane (duplicate registrations) yields NO parent, never a guess", () => {
+		const all = [at("pij-x", { paneId: "%7" }), at("pij-y", { paneId: "%7" })];
+		expect(deriveCallerParent(undefined, all, "%7")).toBeUndefined();
+	});
+
+	it("nothing to go on — empty registry, no env, no pane — yields no parent", () => {
+		expect(deriveCallerParent(undefined, [], undefined)).toBeUndefined();
+		expect(deriveCallerParent(undefined, [], "%7")).toBeUndefined();
 	});
 });

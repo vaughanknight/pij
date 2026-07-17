@@ -16,6 +16,32 @@ export function effectiveParent(descriptor: SessionDescriptor): SessionId | null
 	return descriptor.parentId !== undefined ? descriptor.parentId : (descriptor.spawnedBy ?? null);
 }
 
+/** The ADOPTION axis (plan 054 P3 — AC-08/WS-1, carp's split): a non-prime
+ *  node with no effective parent has nobody to report or escalate to. Prime
+ *  is the LEGAL root, never unadopted. Deliberately independent of the
+ *  structural axis (`TreeProblem` — an orphan HAS a parent pointer) and the
+ *  runtime axis (`systemState`). One predicate feeds tree nodes, list rows,
+ *  and the adoption guidance surface, so "unadopted" means ONE thing. */
+export function isUnadopted(descriptor: SessionDescriptor): boolean {
+	return descriptor.prime !== true && effectiveParent(descriptor) === null;
+}
+
+/** Skill-facing adoption guidance (plan 054 P3 T005 — CONTENT only; the pij
+ *  skill route that carries it lands in P4 4.3). One authored text so the
+ *  route, future UI, and any nudge all say the same thing. Consumption
+ *  contract: enumerate via `pij tree --global --json` filtering
+ *  `unadopted === true` (or `pij list --json` rows' boolean); this hint is
+ *  the remedy text to show alongside. */
+export const ADOPTION_HINT =
+	"Unadopted nodes (non-prime, no effective parent) have nobody to report or escalate to — " +
+	"anomaly alerts and completion reports go nowhere. Enumerate them with " +
+	"`pij tree --global --json` (filter `unadopted === true`; `pij list --json` carries the same " +
+	"boolean per row). Remedy: adopt each under its real operator with " +
+	"`pij link <child> --parent <parent-id>` (audited on the spine as a node-linked event). " +
+	"Prevention beats repair: spawn from an identified session — export PIJ_SESSION_ID (or run " +
+	"from your registered pane) so children record the true caller as parent. Prime seats are " +
+	"legal roots and are never flagged.";
+
 export function planLink(
 	descriptors: readonly SessionDescriptor[],
 	childId: SessionId,
@@ -263,6 +289,7 @@ function toNode(
 		effectiveParentId: effectiveParent(session.descriptor),
 		activity: session.activity,
 		liveness: session.liveness,
+		...(isUnadopted(session.descriptor) ? { unadopted: true as const } : {}),
 		...(problem !== undefined ? { problem } : {}),
 		...(cycleTo !== undefined ? { cycleTo } : {}),
 		children,

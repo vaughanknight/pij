@@ -15,6 +15,25 @@ import {
 	batonOk,
 } from "../core/orchestration/baton.js";
 import type {
+	AssignmentStorePort,
+	OpJournalPort,
+	PendingOp,
+	PendingOpPhase,
+	PlatformWriteLockPort,
+	ProjectStorePort,
+	SpineAppendOnceOutcome,
+	SpineLogPort,
+} from "../core/platform/ports.js";
+import { filterSpineEvents, type SpineEventQuery } from "../core/platform/spine.js";
+import {
+	type Assignment,
+	isAssignment,
+	isSpineEvent,
+	type Project,
+	type SpineEvent,
+	type SpineEventDraft,
+} from "../core/platform/types.js";
+import type {
 	DeliveryPort,
 	EventLogPort,
 	InboxPort,
@@ -340,6 +359,10 @@ export class FakeTmux implements TmuxPort {
 	readonly windows: Array<{ opts: NewWindowOpts; paneId: string }> = [];
 	/** Recorded splitWindow calls, in order. */
 	readonly splits: Array<{ opts: SplitWindowOpts; paneId: string }> = [];
+	/** Pane→window join (plan 054 P2 T006): the AC-09 addressability twin —
+	 *  `select-window -t windowOf(pane)` would land on the pane's window. */
+	private readonly paneWindows = new Map<string, string>();
+	private windowCounter = 1;
 	/** Recorded killWindow pane ids, in order. */
 	readonly killed: string[] = [];
 	/** Recorded killPane pane ids, in order (close() uses killPane). */
@@ -370,17 +393,28 @@ export class FakeTmux implements TmuxPort {
 		this.windowPanes = new Set([currentPane, ...windowPanes]);
 	}
 
-	newWindow(opts: NewWindowOpts): Result<{ paneId: string }> {
+	newWindow(opts: NewWindowOpts): Result<{ paneId: string; windowId?: string }> {
 		const paneId = `%${this.paneCounter++}`;
+		const windowId = `@${this.windowCounter++}`;
+		this.paneWindows.set(paneId, windowId);
 		this.windows.push({ opts, paneId });
-		return ok({ paneId });
+		return ok({ paneId, windowId });
 	}
 
-	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string }> {
+	splitWindow(opts: SplitWindowOpts): Result<{ paneId: string; windowId?: string }> {
 		const paneId = `%${this.paneCounter++}`;
+		// A split lands in its TARGET pane's window; an unknown target gets a
+		// fresh window id (the fake's panes may predate this join).
+		const windowId = this.paneWindows.get(opts.target) ?? `@${this.windowCounter++}`;
+		this.paneWindows.set(paneId, windowId);
 		this.splits.push({ opts, paneId });
 		this.windowPanes.add(paneId);
-		return ok({ paneId });
+		return ok({ paneId, windowId });
+	}
+
+	/** The window a fake pane lives in (AC-09 proof shape for tests). */
+	windowOf(paneId: string): string | undefined {
+		return this.paneWindows.get(paneId);
 	}
 
 	killWindow(paneId: string): Result<void> {
@@ -404,5 +438,407 @@ export class FakeTmux implements TmuxPort {
 
 	currentWindowPanes(): string[] {
 		return [...this.windowPanes];
+	}
+}
+
+// ─── platform stores (plan 054, T008) ───────────────────────────────────────
+// In-memory twins of the fs platform adapters. Records are stored and
+// returned as JSON ROUND-TRIP copies (jsonClone) so callers never alias
+// store state AND the copy discipline is exactly the fs adapters'
+// serialize/parse: undefined-valued optional keys are dropped and non-finite
+// numbers become null (structuredClone would preserve both and let a
+// fake-backed test pass where the fs impl diverges). Name guards mirror the
+// frozen fs adapters: E-ARG on write paths, null on read paths. Fault
+// injection uses E-NOREG, the house store-fault code of the fs platform
+// adapters (project-store.ts / assignment-store.ts) — E-STORE is baton-only.
+
+/** CONSTRAINT: lockstep replica of the frozen fs name guards — the fs
+ *  adapters keep SLUG_PATTERN (project-store.ts:32) and ASSIGNMENT_ID_RE
+ *  (assignment-store.ts:20) module-private, so the shared alphabet is
+ *  duplicated here. Keep all three in lockstep. */
+const PLATFORM_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** Canonical fake copy discipline: a real JSON round-trip, matching what the
+ *  fs adapters do to every record on its way through the disk. */
+function jsonClone<T>(value: T): T {
+	return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export class FakeProjectStore implements ProjectStorePort {
+	readonly projects = new Map<string, Project>();
+	private readonly failures = new Map<"create" | "update", number>();
+
+	constructor(initial: readonly Project[] = []) {
+		for (const project of initial) this.projects.set(project.slug, jsonClone(project));
+	}
+
+	failNext(operation: "create" | "update"): void {
+		this.failures.set(operation, (this.failures.get(operation) ?? 0) + 1);
+	}
+
+	private shouldFail(operation: "create" | "update"): boolean {
+		const remaining = this.failures.get(operation) ?? 0;
+		if (remaining === 0) return false;
+		if (remaining === 1) this.failures.delete(operation);
+		else this.failures.set(operation, remaining - 1);
+		return true;
+	}
+
+	create(project: Project): Result<"claimed" | "exists"> {
+		// fs parity: the name guard precedes any store activity (project-store.ts).
+		if (!PLATFORM_NAME_PATTERN.test(project.slug)) {
+			return err(
+				"E-ARG",
+				`invalid project slug '${project.slug}' (use letters, digits, dot, underscore, or hyphen)`,
+			);
+		}
+		if (this.shouldFail("create")) {
+			return err("E-NOREG", "injected fake project create failure");
+		}
+		// First-writer-wins (publishNoReplace semantics): the original record survives.
+		if (this.projects.has(project.slug)) return ok("exists");
+		this.projects.set(project.slug, jsonClone(project));
+		return ok("claimed");
+	}
+
+	update(project: Project): Result<void> {
+		if (!PLATFORM_NAME_PATTERN.test(project.slug)) {
+			return err(
+				"E-ARG",
+				`invalid project slug '${project.slug}' (use letters, digits, dot, underscore, or hyphen)`,
+			);
+		}
+		if (this.shouldFail("update")) {
+			return err("E-NOREG", "injected fake project update failure");
+		}
+		if (!this.projects.has(project.slug)) {
+			return err("E-NOREG", `no project '${project.slug}' — create it first`);
+		}
+		this.projects.set(project.slug, jsonClone(project));
+		return ok(undefined);
+	}
+
+	read(slug: string): Project | null {
+		if (!PLATFORM_NAME_PATTERN.test(slug)) return null;
+		const project = this.projects.get(slug);
+		return project === undefined ? null : jsonClone(project);
+	}
+
+	list(): Project[] {
+		return [...this.projects.values()]
+			.map((project) => jsonClone(project))
+			.sort((left, right) => left.slug.localeCompare(right.slug));
+	}
+}
+
+export class FakeAssignmentStore implements AssignmentStorePort {
+	readonly assignments = new Map<string, Assignment>();
+	private readonly failures = new Map<"write", number>();
+
+	constructor(initial: readonly Assignment[] = []) {
+		for (const assignment of initial) {
+			this.assignments.set(assignment.id, jsonClone(assignment));
+		}
+	}
+
+	failNext(operation: "write"): void {
+		this.failures.set(operation, (this.failures.get(operation) ?? 0) + 1);
+	}
+
+	private shouldFail(operation: "write"): boolean {
+		const remaining = this.failures.get(operation) ?? 0;
+		if (remaining === 0) return false;
+		if (remaining === 1) this.failures.delete(operation);
+		else this.failures.set(operation, remaining - 1);
+		return true;
+	}
+
+	write(assignment: Assignment): Result<void> {
+		// fs parity: the id guard precedes any store activity (assignment-store.ts).
+		if (!PLATFORM_NAME_PATTERN.test(assignment.id)) {
+			return err(
+				"E-ARG",
+				`invalid assignment id '${assignment.id}' (use letters, digits, dot, underscore, or hyphen)`,
+			);
+		}
+		// Review 001 F5: a type-valid record the JSON round-trip poisons
+		// (states: [NaN] → null) dies HERE, identically to the fs write boundary
+		// — never stored to be silently lost on read.
+		const clone = jsonClone(assignment);
+		if (!isAssignment(clone)) {
+			return err(
+				"E-ARG",
+				`assignment '${assignment.id}' fails the record contract after JSON round-trip (non-finite state ref?)`,
+			);
+		}
+		if (this.shouldFail("write")) {
+			return err("E-NOREG", "injected fake assignment write failure");
+		}
+		this.assignments.set(assignment.id, clone);
+		return ok(undefined);
+	}
+
+	read(id: string): Assignment | null {
+		if (!PLATFORM_NAME_PATTERN.test(id)) return null;
+		const assignment = this.assignments.get(id);
+		if (assignment === undefined) return null;
+		// fs read parity (review 001 F5): guard AFTER the round-trip copy, so a
+		// constructor-seeded poisoned record reads null like corrupt disk bytes.
+		const clone = jsonClone(assignment);
+		return isAssignment(clone) ? clone : null;
+	}
+
+	list(): Assignment[] {
+		return [...this.assignments.values()]
+			.map((assignment) => jsonClone(assignment))
+			.filter((assignment) => isAssignment(assignment))
+			.sort((left, right) => left.id.localeCompare(right.id));
+	}
+
+	listByNode(nodeId: string): Assignment[] {
+		return this.list().filter((assignment) => assignment.nodeId === nodeId);
+	}
+}
+
+export class FakeSpineLog implements SpineLogPort {
+	private readonly events: SpineEvent[] = [];
+	private readonly onceEvents = new Map<string, SpineEvent>();
+	private readonly failures = new Map<"append" | "appendOnce", number>();
+
+	constructor(initial: readonly SpineEvent[] = []) {
+		for (const event of initial) this.push(event);
+	}
+
+	failNext(operation: "append" | "appendOnce"): void {
+		this.failures.set(operation, (this.failures.get(operation) ?? 0) + 1);
+	}
+
+	private shouldFail(operation: "append" | "appendOnce"): boolean {
+		const remaining = this.failures.get(operation) ?? 0;
+		if (remaining === 0) return false;
+		if (remaining === 1) this.failures.delete(operation);
+		else this.failures.set(operation, remaining - 1);
+		return true;
+	}
+
+	append(draft: SpineEventDraft): Result<SpineEvent> {
+		// The newline-guard is fs-only torn-tail hygiene (spine-store.ts); the
+		// in-memory log has no torn tails. Seq allocation lives INSIDE the
+		// operation (review 001 F1): stamped here, never by callers.
+		if (this.shouldFail("append")) {
+			return err("E-NOREG", "injected fake spine append failure");
+		}
+		const stamped = this.stamp(draft);
+		this.push(stamped);
+		return ok(stamped);
+	}
+
+	appendOnce(key: string, draft: SpineEventDraft): Result<SpineAppendOnceOutcome> {
+		// Durable idempotence: replay returns the ORIGINALLY stamped event.
+		if (this.shouldFail("appendOnce")) {
+			return err("E-NOREG", "injected fake spine appendOnce failure");
+		}
+		const prior = this.onceEvents.get(key);
+		if (prior !== undefined) return ok({ outcome: "existing", event: jsonClone(prior) });
+		const stamped = this.stamp(draft);
+		this.onceEvents.set(key, jsonClone(stamped));
+		this.push(stamped);
+		return ok({ outcome: "appended", event: stamped });
+	}
+
+	hasOnce(key: string): boolean {
+		// fs parity (review 003 H1): pure existence of the durable once-record.
+		return this.onceEvents.has(key);
+	}
+
+	/** fs parity: seq = readAll-max + 1, exactly the allocation the fs adapter
+	 *  performs under its lock, over a JSON round-trip of the draft — so
+	 *  undefined-valued optional keys drop as serialization would drop them
+	 *  and the returned event never aliases caller-held draft state. */
+	private stamp(draft: SpineEventDraft): SpineEvent {
+		return { ...jsonClone(draft), seq: this.lastSeq() + 1 };
+	}
+
+	/** fs write→read parity: serialize, re-parse, and guard. A record the fs
+	 *  adapter would drop on read (e.g. a non-finite seq — JSON.stringify turns
+	 *  it into null, failing isSpineEvent) never enters the fake log either,
+	 *  so it is equally invisible to read() and lastSeq(). */
+	private push(event: SpineEvent): void {
+		const stored = jsonClone(event);
+		if (isSpineEvent(stored)) this.events.push(stored);
+	}
+
+	lastSeq(): number {
+		let max = 0;
+		for (const e of this.events) if (e.seq > max) max = e.seq;
+		return max;
+	}
+
+	read(query?: SpineEventQuery): SpineEvent[] {
+		// fs parity: seq-ascending merge, then the real core filter.
+		const ascending = [...this.events].sort((left, right) => left.seq - right.seq);
+		return filterSpineEvents(ascending, query).map((event) => jsonClone(event));
+	}
+}
+
+/** In-memory journal entry: the durable fields of the fs layout minus the
+ *  envelope (schema_version/opId live in the map key + record on disk). */
+interface FakeJournalEntry {
+	readonly order: number;
+	readonly phase: PendingOpPhase;
+	readonly draft: SpineEventDraft;
+}
+
+export class FakeOpJournal implements OpJournalPort {
+	readonly ops = new Map<string, FakeJournalEntry>();
+	private opCounter = 0;
+	private readonly failures = new Map<"record" | "markCommitted" | "clear", number>();
+
+	failNext(operation: "record" | "markCommitted" | "clear"): void {
+		this.failures.set(operation, (this.failures.get(operation) ?? 0) + 1);
+	}
+
+	private shouldFail(operation: "record" | "markCommitted" | "clear"): boolean {
+		const remaining = this.failures.get(operation) ?? 0;
+		if (remaining === 0) return false;
+		if (remaining === 1) this.failures.delete(operation);
+		else this.failures.set(operation, remaining - 1);
+		return true;
+	}
+
+	record(draft: SpineEventDraft): Result<string> {
+		// fs parity (op-journal.ts): pending()'s read-back probe runs at record
+		// time too — a draft the replay pass would silently skip is refused
+		// BEFORE it can strand a committed state write unaudited (audit F2).
+		if (!isSpineEvent({ ...draft, seq: 1 })) {
+			return err("E-ARG", "invalid spine event draft — refusing to journal");
+		}
+		if (this.shouldFail("record")) {
+			return err("E-NOREG", "injected fake op-journal record failure");
+		}
+		// Deterministic ids; a failed record burns nothing (FakeSpineLog parity).
+		this.opCounter += 1;
+		const opId = `op-${this.opCounter}`;
+		// fs parity (review 002 G3): order = max over surviving entries + 1 —
+		// coexisting entries were recorded by concurrent writers (the recovery
+		// gate empties the journal before any sequential successor records), so
+		// the max-pending rule yields a durable causality-respecting order.
+		this.ops.set(opId, { order: this.nextOrder(), phase: "intent", draft: jsonClone(draft) });
+		return ok(opId);
+	}
+
+	private nextOrder(): number {
+		let max = 0;
+		for (const entry of this.ops.values()) if (entry.order > max) max = entry.order;
+		return max + 1;
+	}
+
+	markCommitted(opId: string): Result<void> {
+		if (this.shouldFail("markCommitted")) {
+			return err("E-NOREG", "injected fake op-journal markCommitted failure");
+		}
+		const entry = this.ops.get(opId);
+		if (entry === undefined) {
+			return err("E-NOREG", `no journaled op '${opId}' to mark committed`);
+		}
+		this.ops.set(opId, { ...entry, phase: "committed" });
+		return ok(undefined);
+	}
+
+	clear(opId: string): Result<void> {
+		// One-shot LOST clear (audit F2 / review 003 M3): the entry SURVIVES
+		// and the failure is reported honestly — recovery must stop on it, and
+		// the "verb succeeded, clear lost" crash window stays drivable
+		// end-to-end through the CLI.
+		if (this.shouldFail("clear")) {
+			return err("E-NOREG", "injected fake op-journal clear failure");
+		}
+		this.ops.delete(opId);
+		return ok(undefined);
+	}
+
+	pending(): Result<readonly PendingOp[]> {
+		// Port contract (review 002 G3): durable order ascending, opId tiebreak —
+		// never opId-lexical alone (op-10 must not sort before op-2's successor).
+		// The in-memory map cannot hold a corrupt entry, so enumeration is
+		// always ok — the H2 unreadable-entry law is an fs-only failure mode
+		// pinned in op-journal.test.ts.
+		return ok(
+			[...this.ops.entries()]
+				.map(([opId, entry]) => ({
+					opId,
+					order: entry.order,
+					phase: entry.phase,
+					draft: jsonClone(entry.draft),
+				}))
+				.sort((left, right) =>
+					left.order !== right.order
+						? left.order - right.order
+						: left.opId < right.opId
+							? -1
+							: left.opId > right.opId
+								? 1
+								: 0,
+				),
+		);
+	}
+}
+
+/** One machine home's write-lock state, shared by every handle that models
+ *  that home (review 003 M5 — fs parity: all FsPlatformWriteLock instances
+ *  over one pijHome contend on the single spine/write.lock file). */
+interface FakeWriteLockMachine {
+	held: boolean;
+}
+
+/** In-process contract twin of FsPlatformWriteLock (review 002 G2/G3 +
+ *  review 003 M5): held-state semantics, NON-reentrant, machine-wide via the
+ *  shared backing — a nested or contended acquisition fails E-NOREG without
+ *  running its operation, exactly like the fs lock's budget timeout, so
+ *  downstream tests can never admit an interleaving production serialization
+ *  forbids. Throws from the operation propagate (fs parity: the dispatch
+ *  containment gate owns them), the lock releasing either way. */
+export class FakePlatformWriteLock implements PlatformWriteLockPort {
+	/** Completed acquisitions — every platform WRITE verb must take exactly one. */
+	acquisitions = 0;
+	private failures = 0;
+	private readonly machine: FakeWriteLockMachine;
+
+	constructor(machine: FakeWriteLockMachine = { held: false }) {
+		this.machine = machine;
+	}
+
+	/** A second handle onto the SAME machine home's lock (fs parity: another
+	 *  FsPlatformWriteLock constructed over the same pijHome). */
+	fork(): FakePlatformWriteLock {
+		return new FakePlatformWriteLock(this.machine);
+	}
+
+	failNext(): void {
+		this.failures += 1;
+	}
+
+	withPlatformWriteLock<T>(operation: () => T): Result<T> {
+		if (this.failures > 0) {
+			this.failures -= 1;
+			return err("E-NOREG", "injected fake platform write-lock acquisition failure");
+		}
+		// Held-state check (review 003 M5): the fs lock times out E-NOREG on a
+		// nested or contended acquisition — the single-threaded fake fails
+		// FAST instead of burning a retry budget, same verdict, same shape.
+		if (this.machine.held) {
+			return err(
+				"E-NOREG",
+				"platform write lock is held — locks are never stolen; release the holder first",
+			);
+		}
+		this.machine.held = true;
+		this.acquisitions += 1;
+		try {
+			return ok(operation());
+		} finally {
+			// fs parity: released on ok AND on a propagating throw.
+			this.machine.held = false;
+		}
 	}
 }

@@ -11,9 +11,15 @@ import {
 } from "./release-age-policy.js";
 
 const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
-// 60s: the pwsh spawn takes ~4.5s isolated but has been observed past 15s under
-// full-suite parallel load (vitest workers + pkg audit contending) — the probe
-// is correctness-, not latency-sensitive, so the generous ceiling de-flakes it.
+// 60s. The pwsh spawn is heavyweight and this file runs in parallel with the whole
+// suite: ~4.5s isolated (s055's measurement), ~10s isolated on a loaded machine
+// (s054's), and past 15s under full-suite contention (vitest workers + pkg audit) —
+// which produced 7 recorded false reds, each green on an isolated re-run, one of
+// them red-lighting `harness boot` at a phase seam. The probe is correctness-, not
+// latency-sensitive, so the budget is a HANG detector rather than a performance
+// assertion: keep it far above the worst honest run, so a red here always means the
+// probe genuinely wedged. (s054 and s055 diagnosed this independently and landed on
+// the same ceiling; this comment merges both records.)
 const POWERSHELL_PROBE_TIMEOUT_MS = 60_000;
 const POWERSHELL_TEST_TIMEOUT_MS = POWERSHELL_PROBE_TIMEOUT_MS + 5_000;
 const temporaryRoots: string[] = [];

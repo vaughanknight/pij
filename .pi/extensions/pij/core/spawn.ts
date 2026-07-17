@@ -232,6 +232,10 @@ export interface PendingDescriptorInput {
 	readonly pijId: SessionId;
 	/** %N captured from `split-window -P` at spawn (finding 04). */
 	readonly paneId: string;
+	/** @M window id captured beside the pane (plan 054 P2 T006, AC-09) —
+	 *  `tmux select-window -t <windowId>` opens the node's terminal. Absent
+	 *  when the capture didn't yield one; the daemon backfills. */
+	readonly windowId?: string;
 	readonly cwd: string;
 	readonly harness: HarnessKind;
 	readonly dataDir: string;
@@ -360,7 +364,11 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		startedAt: input.startedAtIso,
 		harness: input.harness,
 		paneId: input.paneId,
+		...(input.windowId !== undefined ? { windowId: input.windowId } : {}),
 		lifecycle: "pending",
+		// AC-04: the mechanical axis is `starting` from birth and HOLDS until
+		// the first bind/readiness verdict (the daemon owns it from here).
+		systemState: "starting",
 		...(input.model !== undefined ? { boundModel: input.model } : {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
@@ -553,6 +561,32 @@ const CONTROL_HARNESSES = new Set<HarnessKind>(["claude", "copilot", "codex"]);
  *  daemon, no pre-allocated id, and no binding — the bin dispatches it down the pi
  *  path. codex (Plan 022) IS daemon-bound, like claude/copilot. */
 const SPAWNABLE_HARNESSES = new Set<HarnessKind>(["pi", "claude", "copilot", "codex"]);
+
+/** AC-08 caller-truth parent derivation (plan 054 P3, issue #20): the parent
+ *  of a spawned node is the INVOKING SESSION, resolved from identity ONLY —
+ *  `PIJ_SESSION_ID` wins outright; else a pane id that matches exactly one
+ *  descriptor across the FULL registry (panes are tmux-server-global, so an
+ *  adopted peer invoking from a different worktree still resolves). cwd
+ *  cohabitation NEVER makes a parent: the old lone-local inference silently
+ *  parented children onto whichever single descriptor shared the launch
+ *  folder — issue #20's live-reproduced tree corruption. Undefined means the
+ *  caller is genuinely unresolved and the child spawns parentless (surfaced
+ *  as `unadopted`, never guessed). Distinct from `resolveSelf`, whose job is
+ *  "which session am I" for messaging — that contract (s051's zone) keeps
+ *  its lone-local convenience; parent derivation must not. */
+export function deriveCallerParent(
+	envId: string | undefined,
+	descriptors: readonly SessionDescriptor[],
+	paneId: string | undefined,
+): SessionId | undefined {
+	if (envId !== undefined && envId.trim() !== "") return envId;
+	if (paneId !== undefined && paneId.trim() !== "") {
+		const byPane = descriptors.filter((d) => d.paneId === paneId);
+		const only = byPane[0];
+		if (byPane.length === 1 && only) return only.id;
+	}
+	return undefined;
+}
 
 /** Parse the `spawn` verb's args. `--harness` is required and must be a spawnable
  *  harness (pi | claude | copilot). pi launches via the in-process path inside the

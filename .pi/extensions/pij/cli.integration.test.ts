@@ -30,7 +30,9 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FakePiRuntime } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { FsSpineLog } from "./adapters/spine-store.js";
 import { reattachIdentity } from "./core/binding.js";
+import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
 import type { PijMessage, SessionDescriptor } from "./core/types.js";
@@ -1040,7 +1042,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 	it("tree/link/adopt/spawn compose over a real repository, linked worktree, and scratch registry", {
 		timeout: 30_000,
 	}, () => {
-		const root = mkdtempSync(join(tmpdir(), "pij-tree-integration-"));
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "pij-tree-integration-")));
 		const home = join(root, "home");
 		const main = join(root, "main");
 		const worktree = join(root, "worktree");
@@ -1130,14 +1132,40 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			expect(cycle.code).not.toBe(0);
 			expect(readFileSync(join(home, "pij-root.json"), "utf8")).toBe(beforeCycle);
 
-			const rooted = pij(["link", "pij-child", "--root", "--json"], env, main);
+			// P3 T004: with the bin's platform stores wired, link is an audited
+			// write verb (F2) — an unattributable caller is refused BEFORE any
+			// descriptor write, naming the --actor escape hatch.
+			//
+			// "Unattributable" has to be CONSTRUCTED, not assumed: resolveSelf has
+			// three ways in, and this probe must close all of them or it proves
+			// nothing. Run from `root` (no descriptor claims it as its folder, so
+			// the lone-local branch can't fire — from `main` it would, since
+			// pij-root lives there) with the pane hint cleared (the helper pins
+			// TMUX_PANE=%1 for every other call) and no session id.
+			// Prior to this, `root` was not realpathed and the probe only LOOKED refused
+			// on macOS, where
+			// mkdtemp's /var symlink defeats the folder match that Linux makes —
+			// so it passed locally and failed in CI against correct product code.
+			const unattributedEnv = { ...env, PIJ_SESSION_ID: "", TMUX_PANE: "" };
+			const unattributed = pij(["link", "pij-child", "--root", "--json"], unattributedEnv, root);
+			expect(unattributed.code).not.toBe(0);
+			expect(unattributed.out).toContain("--actor");
+			expect(registry.read("pij-child")?.parentId).toBe("pij-root");
+
+			const asRoot = { ...env, PIJ_SESSION_ID: "pij-root" };
+			const rooted = pij(["link", "pij-child", "--root", "--json"], asRoot, main);
 			expect(rooted.code).toBe(0);
 			expect(registry.read("pij-child")).toMatchObject({
 				parentId: null,
 				spawnedBy: "pij-close-owner",
 			});
-			const reparented = pij(["link", "pij-child", "--parent", "pij-root", "--json"], env, main);
+			const reparented = pij(["link", "pij-child", "--parent", "pij-root", "--json"], asRoot, main);
 			expect(reparented.code).toBe(0);
+			// The re-parent history is on the spine, end to end through the bin.
+			const hops = pij(["spine", "events", "--peer", "pij-child", "--json"], asRoot, main);
+			expect(hops.code).toBe(0);
+			const hopEvents = JSON.parse(hops.out) as Array<Record<string, unknown>>;
+			expect(hopEvents.filter((e) => e.kind === "node-linked")).toHaveLength(2);
 
 			const adopted = pij(
 				[
@@ -1374,5 +1402,206 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(pij(["watch", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-A" }).out).toContain(
 			"non-pi peers only",
 		);
+	});
+});
+
+// ─── P3 caller-truth parent derivation (plan 054 — AC-08, issue #20) ─────────
+// Behavior contracts through the REAL bin (SW-7 law: outcomes only — these
+// must survive s051's identity/ownership rewrite unchanged). The parent of a
+// spawned node is the INVOKING SESSION, resolved from identity alone
+// (PIJ_SESSION_ID, else a unique pane-exact match across the FULL registry);
+// cwd cohabitation never makes a parent.
+describe("caller-truth spawn parent (AC-08)", () => {
+	let WORKTREE: string;
+	let LONELY: string;
+
+	beforeAll(() => {
+		WORKTREE = realpathSync(mkdtempSync(join(tmpdir(), "pij-worktree-")));
+		LONELY = realpathSync(mkdtempSync(join(tmpdir(), "pij-lonely-")));
+		const reg = new FsRegistry(HOME);
+		// A cwd cohabitant of WORKTREE — the issue-#20 bait. Never a parent.
+		reg.write({
+			id: "pij-neighbor",
+			folder: WORKTREE,
+			dataDir: join(HOME, "pij-neighbor"),
+			eventsPath: join(HOME, "pij-neighbor", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-17T00:00:00.000Z",
+			harness: "claude",
+			lifecycle: "bound",
+		});
+		// The real caller: registered under a DIFFERENT folder, identified by
+		// its pane (adopted-peer-in-worktree shape).
+		reg.write({
+			id: "pij-crosscwd",
+			folder: LONELY,
+			dataDir: join(HOME, "pij-crosscwd"),
+			eventsPath: join(HOME, "pij-crosscwd", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-17T00:00:00.000Z",
+			paneId: "%777",
+			harness: "claude",
+			lifecycle: "bound",
+		});
+	});
+
+	afterAll(() => {
+		rmSync(WORKTREE, { recursive: true, force: true });
+		rmSync(LONELY, { recursive: true, force: true });
+	});
+
+	function spawnedDescriptor(
+		extraEnv: Record<string, string>,
+		cwd: string,
+	): SessionDescriptor & Record<string, unknown> {
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(["spawn", "--harness", "claude", "--json"], extraEnv, cwd);
+		expect(result.code).toBe(0);
+		const jsonLine = result.out
+			.trim()
+			.split("\n")
+			.findLast((line) => line.startsWith("{"));
+		const output = JSON.parse(jsonLine ?? "{}") as { id: string };
+		const descriptor = new FsRegistry(HOME).read(output.id);
+		expect(descriptor).not.toBeNull();
+		return descriptor as SessionDescriptor & Record<string, unknown>;
+	}
+
+	it("issue-#20 kill: env unset + no pane match ⇒ NO parent, even with a lone cwd cohabitant", () => {
+		const d = spawnedDescriptor({ PIJ_SESSION_ID: "", TMUX_PANE: "%none" }, WORKTREE);
+		expect(d.parentId).toBeUndefined();
+		expect(d.spawnedBy).toBeUndefined();
+	});
+
+	it("env unset + pane-exact match resolves the caller across the FULL registry (cross-cwd)", () => {
+		// Invoked from WORKTREE; the caller's registered folder is LONELY. The
+		// pane identity alone must resolve it — cwd filtering would lose it.
+		const d = spawnedDescriptor({ PIJ_SESSION_ID: "", TMUX_PANE: "%777" }, WORKTREE);
+		expect(d.parentId).toBe("pij-crosscwd");
+		expect(d.spawnedBy).toBe("pij-crosscwd");
+	});
+
+	it("PIJ_SESSION_ID wins over both cwd cohabitants and pane matches", () => {
+		const d = spawnedDescriptor({ PIJ_SESSION_ID: "pij-A", TMUX_PANE: "%777" }, WORKTREE);
+		expect(d.parentId).toBe("pij-A");
+		expect(d.spawnedBy).toBe("pij-A");
+	});
+
+	it("pi spawn announce target follows the same rule: pane identity yes, cwd cohabitant no", () => {
+		// Cohabitant-only shape: announce must NOT name the neighbor.
+		writeFileSync(TMUX_LOG, "");
+		const bare = pij(
+			["spawn", "--harness", "pi", "--json"],
+			{ PIJ_SESSION_ID: "", TMUX_PANE: "%none" },
+			WORKTREE,
+		);
+		expect(bare.code).toBe(0);
+		expect(readFileSync(TMUX_LOG, "utf8")).toContain("PIJ_ANNOUNCE_TO= ");
+		// Cross-cwd pane identity: announce resolves the true caller.
+		writeFileSync(TMUX_LOG, "");
+		const paned = pij(
+			["spawn", "--harness", "pi", "--json"],
+			{ PIJ_SESSION_ID: "", TMUX_PANE: "%777" },
+			WORKTREE,
+		);
+		expect(paned.code).toBe(0);
+		expect(readFileSync(TMUX_LOG, "utf8")).toContain("PIJ_ANNOUNCE_TO=pij-crosscwd");
+	});
+
+	it("adopt honors --parent end-to-end and stays parentless without it", () => {
+		const withParent = pij(
+			["adopt", "%81", "--harness", "claude", "--parent", "pij-A", "--json"],
+			{ PIJ_SESSION_ID: "", FAKE_TMUX_CWD: LONELY },
+			LONELY,
+		);
+		expect(withParent.code).toBe(0);
+		const adoptedId = (JSON.parse(withParent.out) as { id: string }).id;
+		const adopted = new FsRegistry(HOME).read(adoptedId);
+		expect(adopted?.parentId).toBe("pij-A");
+
+		const bare = pij(
+			["adopt", "%82", "--harness", "claude", "--json"],
+			{ PIJ_SESSION_ID: "", FAKE_TMUX_CWD: LONELY },
+			LONELY,
+		);
+		expect(bare.code).toBe(0);
+		const bareId = (JSON.parse(bare.out) as { id: string }).id;
+		const bareDescriptor = new FsRegistry(HOME).read(bareId);
+		expect(bareDescriptor?.parentId).toBeUndefined();
+		expect(bareDescriptor?.spawnedBy).toBeUndefined();
+	});
+});
+
+// ─── plan 054 P4 T002 — `pij spine render` through the real bin (AC-10) ─────
+// The write is BIN-owned: core's parse tables carry the row for E-ARG/usage
+// parity, but the markdown lands via the bin's intercept (SpineLogPort has no
+// markdown-write method by design). Proofs: the file lands under
+// $PIJ_HOME/spine/spine.md, is byte-identical to the pure render of the log,
+// and re-rendering an unchanged log is byte-stable.
+
+describe("pij spine render (P4 T002 — bin-owned write, AC-10)", () => {
+	it("writes spine/spine.md byte-identical to the pure render; --json reports path/bytes/events", () => {
+		// Attributed appends so the log is non-empty regardless of suite order.
+		const asActor = { PIJ_SESSION_ID: "", TMUX_PANE: "" };
+		const a = pij(
+			[
+				"spine",
+				"append",
+				"--kind",
+				"render-probe",
+				"--peer",
+				"pij-render-a",
+				"--actor",
+				"render-tester",
+			],
+			asActor,
+		);
+		expect(a.code).toBe(0);
+		const b = pij(
+			[
+				"spine",
+				"append",
+				"--kind",
+				"render-probe",
+				"--refs",
+				"node:pij-render-a",
+				"--actor",
+				"render-tester",
+			],
+			asActor,
+		);
+		expect(b.code).toBe(0);
+
+		const r = pij(["spine", "render", "--json"]);
+		expect(r.code).toBe(0);
+		const envlp = JSON.parse(r.out) as { path: string; bytes: number; events: number };
+		expect(envlp.path).toBe(join(HOME, "spine", "spine.md"));
+
+		const written = readFileSync(envlp.path, "utf8");
+		const events = new FsSpineLog(HOME).read();
+		expect(written).toBe(renderSpineMd(events));
+		expect(envlp.events).toBe(events.length);
+		expect(envlp.bytes).toBe(Buffer.byteLength(written, "utf8"));
+		expect(written).toContain("render-probe");
+	});
+
+	it("re-render of an unchanged log is byte-stable; human mode names the path", () => {
+		const before = readFileSync(join(HOME, "spine", "spine.md"), "utf8");
+		const again = pij(["spine", "render"]);
+		expect(again.code).toBe(0);
+		expect(again.out).toContain(join(HOME, "spine", "spine.md"));
+		expect(readFileSync(join(HOME, "spine", "spine.md"), "utf8")).toBe(before);
+	});
+
+	it("renders an EMPTY spine as the header-only document (fresh temp home)", () => {
+		const freshHome = mkdtempSync(join(tmpdir(), "pij-render-empty-"));
+		const r = pij(["spine", "render", "--json"], { PIJ_HOME: freshHome });
+		expect(r.code).toBe(0);
+		const envlp = JSON.parse(r.out) as { path: string; events: number };
+		expect(envlp.events).toBe(0);
+		const written = readFileSync(join(freshHome, "spine", "spine.md"), "utf8");
+		expect(written).toBe(renderSpineMd([]));
+		expect(written).toContain("_No events._");
+		rmSync(freshHome, { recursive: true, force: true });
 	});
 });

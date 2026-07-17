@@ -810,3 +810,90 @@ describe("FsRegistry", () => {
 		expect(read?.lifecycle).toBeUndefined();
 	});
 });
+
+// ─── plan 054 Phase 2 T001 — AC-11 legacy round-trip (node-truth block) ─────
+// The registry is a pass-through for fields it does not interpret: a
+// pre-Phase-2 descriptor loads untouched, unknown/foreign fields survive a
+// write round-trip, and the new node-truth fields persist byte-faithfully.
+describe("descriptor node-truth fields — AC-11 legacy round-trip (plan 054 P2)", () => {
+	let home: string;
+	beforeEach(() => {
+		home = mkdtempSync(join(tmpdir(), "pij-reg-ac11-"));
+	});
+	afterEach(() => {
+		rmSync(home, { recursive: true, force: true });
+	});
+
+	function base(id: string): SessionDescriptor {
+		return {
+			id,
+			folder: "/proj",
+			dataDir: `/home/.pij/${id}`,
+			eventsPath: `/home/.pij/${id}/events.ndjson`,
+			pid: 4242,
+			startedAt: "2026-07-17T00:00:00.000Z",
+		};
+	}
+
+	it("a descriptor carrying the full node-truth block round-trips field-by-field", () => {
+		const reg = new FsRegistry(home);
+		reg.write({
+			...base("truthy"),
+			currentAssignment: "asg-general-truthy",
+			currentTask: "hold the line",
+			semanticState: "hold",
+			systemState: "working",
+			windowId: "@3",
+			contextMax: 200_000,
+			contextCurrent: {
+				value: "unknown",
+				asOf: "2026-07-17T01:00:00.000Z",
+				provenance: "copilot-none",
+			},
+		});
+		const read = reg.read("truthy");
+		expect(read?.currentAssignment).toBe("asg-general-truthy");
+		expect(read?.currentTask).toBe("hold the line");
+		expect(read?.semanticState).toBe("hold");
+		expect(read?.systemState).toBe("working");
+		expect(read?.windowId).toBe("@3");
+		expect(read?.contextMax).toBe(200_000);
+		expect(read?.contextCurrent).toEqual({
+			value: "unknown",
+			asOf: "2026-07-17T01:00:00.000Z",
+			provenance: "copilot-none",
+		});
+	});
+
+	it("an old descriptor (no node-truth fields) loads with every new field absent", () => {
+		writeFileSync(join(home, "old.json"), JSON.stringify(base("old")));
+		const read = new FsRegistry(home).read("old");
+		expect(read?.id).toBe("old");
+		expect(read?.currentAssignment).toBeUndefined();
+		expect(read?.currentTask).toBeUndefined();
+		expect(read?.semanticState).toBeUndefined();
+		expect(read?.systemState).toBeUndefined();
+		expect(read?.windowId).toBeUndefined();
+		expect(read?.contextMax).toBeUndefined();
+		expect(read?.contextCurrent).toBeUndefined();
+	});
+
+	it("unknown foreign fields survive a read → write round-trip (additive-schema law)", () => {
+		writeFileSync(
+			join(home, "foreign.json"),
+			JSON.stringify({ ...base("foreign"), futureField: { nested: true }, extra: "kept" }),
+		);
+		const reg = new FsRegistry(home);
+		const read = reg.read("foreign");
+		expect(read).not.toBeNull();
+		if (!read) throw new Error("unreachable");
+		reg.write(read);
+		const roundTripped = JSON.parse(readFileSync(join(home, "foreign.json"), "utf8")) as Record<
+			string,
+			unknown
+		>;
+		expect(roundTripped.futureField).toEqual({ nested: true });
+		expect(roundTripped.extra).toBe("kept");
+		expect(roundTripped.id).toBe("foreign");
+	});
+});

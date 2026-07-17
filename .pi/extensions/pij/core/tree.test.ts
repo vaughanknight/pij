@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { effectiveParent, planLink, projectSessionForest } from "./tree.js";
+import { ADOPTION_HINT, effectiveParent, planLink, projectSessionForest } from "./tree.js";
 import type {
 	LivenessVerdict,
 	SessionDescriptor,
@@ -285,5 +285,76 @@ describe("projectSessionForest", () => {
 
 		expect(projectedCount).toBeLessThanOrEqual(count + 1);
 		expect(cycleCount).toBeGreaterThan(0);
+	});
+});
+
+// ─── P3 (plan 054 — AC-08): prime is a LEGAL root ────────────────────────────
+describe("prime parentless is a legal root (AC-08)", () => {
+	it("projects a parentless prime as a root with no problem", () => {
+		const forest = project([
+			entry(desc("pij-prime", { prime: true })),
+			entry(desc("pij-child", { spawnedBy: "pij-prime" })),
+		]);
+		const root = forest.roots[0];
+		expect(root?.id).toBe("pij-prime");
+		expect(root?.problem).toBeUndefined();
+		expect(root?.effectiveParentId).toBeNull();
+		expect(root?.children.map((c) => c.id)).toEqual(["pij-child"]);
+	});
+});
+
+// ─── P3 (plan 054 — AC-08/WS-1): the ADOPTION axis, carp's split ─────────────
+// unadopted ≠ problem ≠ runtime state: three independently assertable axes.
+// unadopted = non-prime with NO effective parent (nothing to escalate to);
+// an orphan (parent named but MISSING) is a structural problem, not an
+// adoption gap; runtime state lives on neither.
+describe("unadopted adoption-axis projection (AC-08 / WS-1)", () => {
+	it("flags a parentless non-prime root as unadopted", () => {
+		const forest = project([entry(desc("pij-loner"))]);
+		expect(forest.roots[0]?.unadopted).toBe(true);
+		expect(forest.roots[0]?.problem).toBeUndefined();
+	});
+
+	it("flags an explicit root override (parentId null) on a non-prime", () => {
+		const forest = project([entry(desc("pij-rooted", { parentId: null, spawnedBy: "gone" }))]);
+		expect(forest.roots[0]?.unadopted).toBe(true);
+	});
+
+	it("never flags prime — parentless prime is the legal root", () => {
+		const forest = project([entry(desc("pij-prime", { prime: true }))]);
+		expect(forest.roots[0]?.unadopted).toBeUndefined();
+	});
+
+	it("never flags a parented child, and an orphan is a problem — NOT unadopted", () => {
+		const forest = project([
+			entry(desc("pij-parent")),
+			entry(desc("pij-child", { spawnedBy: "pij-parent" })),
+			entry(desc("pij-orphan", { parentId: "pij-vanished" })),
+		]);
+		const byId = new Map(forest.roots.map((r) => [r.id, r]));
+		const child = byId.get("pij-parent")?.children[0];
+		expect(child?.unadopted).toBeUndefined();
+		// The orphan HAS a parent pointer (adoption axis satisfied); the
+		// registry gap is a structural problem on a different axis.
+		expect(byId.get("pij-orphan")?.problem).toBe("orphan");
+		expect(byId.get("pij-orphan")?.unadopted).toBeUndefined();
+		// And the runtime axis is untouched by either flag: the descriptor's
+		// systemState flows through the node verbatim.
+		expect(byId.get("pij-orphan")?.systemState).toBeUndefined();
+	});
+});
+
+// ─── P3 T005: adoption guidance surface (content contract for the P4 route) ──
+describe("ADOPTION_HINT (P3 T005 — skill-facing content, route lands P4 4.3)", () => {
+	it("names the flag, the enumeration recipe, and the remedy", () => {
+		expect(ADOPTION_HINT).toContain("unadopted");
+		expect(ADOPTION_HINT).toContain("pij tree --global --json");
+		expect(ADOPTION_HINT).toContain("pij link");
+		expect(ADOPTION_HINT).toContain("--parent");
+		// Spawn-time prevention beats post-hoc adoption: the hint teaches the
+		// caller-truth rule, not just the repair verb.
+		expect(ADOPTION_HINT).toContain("PIJ_SESSION_ID");
+		// Prime is the legal root — the hint must not nag prime seats.
+		expect(ADOPTION_HINT.toLowerCase()).toContain("prime");
 	});
 });

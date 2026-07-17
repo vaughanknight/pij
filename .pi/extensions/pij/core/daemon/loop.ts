@@ -145,8 +145,24 @@ export function observeActivity(
 const APPEND_ONLY_EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
 
 /** Mutable external fields are always latest-disk-authoritative when present.
- *  `prime:false` and `oldPrime:false` are meaningful state, so truthiness/fill-only merging is wrong. */
-const MUTABLE_EXTERNALLY_OWNED_FIELDS = ["prime", "oldPrime", "parentId", "gitCommonDir"] as const;
+ *  `prime:false` and `oldPrime:false` are meaningful state, so truthiness/fill-only merging is wrong.
+ *  The node-truth denorms (`currentAssignment`/`currentTask`/`semanticState`,
+ *  plan 054 P2 T002) are CLI-stamped between the daemon's tick-start snapshot
+ *  and its persist — Finding 04's clobber shape. `systemState` stays OUT:
+ *  mechanical truth is daemon-computed with no meaningful external writer
+ *  (WS-5), so the fresh verdict must always beat a disk value. */
+const MUTABLE_EXTERNALLY_OWNED_FIELDS = [
+	"prime",
+	"oldPrime",
+	"parentId",
+	"gitCommonDir",
+	"currentAssignment",
+	"currentTask",
+	"semanticState",
+	// T006: stamped by spawn/adopt (externally to the daemon's snapshot); the
+	// daemon's own backfill only ever writes it where it was absent.
+	"windowId",
+] as const;
 
 /** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
  *  writer stamped after this tick's index snapshot was taken. Re-reads the latest
@@ -177,6 +193,23 @@ export function writeMerged(
 	const persisted = registry.read(merged.id);
 	if (!persisted) throw new Error(`daemon write for ${merged.id} did not persist`);
 	return persisted;
+}
+
+/** One-shot windowId backfill for a legacy live node (plan 054 P2 T006,
+ *  AC-09): a pane-bearing descriptor that predates windowId capture gains it
+ *  from a live tmux resolve, persisted through writeMerged so concurrent
+ *  writers survive. Self-latching — a node that already has one is never
+ *  probed again. Returns the persisted descriptor, or null when nothing was
+ *  (or could be) done. */
+export function backfillWindowId(
+	descriptor: SessionDescriptor,
+	registry: RegistryPort,
+	resolveWindowId: (paneId: string) => string | null,
+): SessionDescriptor | null {
+	if (descriptor.windowId !== undefined || descriptor.paneId === undefined) return null;
+	const windowId = resolveWindowId(descriptor.paneId);
+	if (windowId === null || !/^@\d+$/.test(windowId)) return null;
+	return writeMerged(registry, { ...descriptor, windowId });
 }
 
 export function driveSession(
