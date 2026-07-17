@@ -1,6 +1,11 @@
 # Plan 054 ship checklist — pij grown up
 
-**Status: LISTED, NOT EXECUTED.** Every step below was R3-gated out of the
+**Status: LANDED 2026-07-17 — `ab16cfb` on main.** §1–§2 are CLOSED (see below);
+§3–§5 remain live and now ride ONE combined daemon restart shared with s055
+(mandrill drives, on Jordan's word) — do NOT restart the daemon separately for
+s054, or the fleet eats two restarts for one need.
+
+_Original framing:_ **LISTED, NOT EXECUTED.** Every step below was R3-gated out of the
 build legs (P1–P4 ran against temp homes + fakes only: no skill install, no
 live daemon, no real `~/.pij`). Execution happens at ship, in this order,
 by whoever holds the ship baton — nothing here is a coder action.
@@ -10,19 +15,42 @@ Build state at hand-off: P1–P4 all review-clean/complete on
 `harness checks` all 8 stages green · `just pij-skill-check` green ·
 `government/prime-flow.json` byte-untouched (R4).
 
-## 1 · PR gate — sequencing (standing ruling R2)
+## 1 · PR gate — sequencing (standing ruling R2) — ✅ CLOSED
 
-- [ ] **s051 (identity integrity) lands on main FIRST.** This branch builds
-      on identity/ownership surfaces s051 rewrites; the standing ruling
-      sequences s054's PR behind s051's committed completion.
-- [ ] s052's `npm ci` restoration confirmed on main (CI prerequisite).
+- [x] **R2 AMENDED, then satisfied.** The ruling's premise — that s054 builds
+      *on top of* the surfaces s051 rewrites — was falsified by the build:
+      s054's diff touches `core/discovery.ts` / `core/current-session.ts` /
+      `core/close.ts` **zero lines** (verified at every coder checkpoint, by
+      the cold reviewer at P3 and P4, and again by me pre-merge). The streams
+      are textually disjoint, so the ordering intent no longer bound. Jordan
+      ruled PD-011 accept ("lets get them both landed"); o-prime recorded the
+      amendment. **s051 no longer gates s054 — the dependency is inverted (§2).**
+- [x] **s052 `npm ci` prerequisite — STALE, dismissed.** CI runs
+      `npm ci --min-release-age=null` on every leg and went green throughout;
+      the E404 lock boundary that motivated this row had already resolved.
+- [x] PR #27 merged as `ab16cfb` (squash), second-lander behind s055's
+      `482d604`. Convergence evidence: full suite 2886 passed / 0 failed
+      (s054's 2832 + s055's 54, green together), tsc/biome/skill-check clean.
 
-## 2 · Convergence re-read (SW-7 reconciliation) — *R3-safe, read-only*
+## 2 · Convergence re-read (SW-7 reconciliation) — ⇄ **INVERTED**
 
-- [ ] Re-read landed main: `core/discovery.ts`, `core/current-session.ts`,
-      `core/close.ts` as s051 shipped them (s054's diff never touched them —
-      verified every checkpoint).
-- [ ] Re-run the P3 behavior contracts against the MERGED tree
+**s054 landed first, so s051 is now the second lander — the gate runs in the
+other direction.** s054's P3 tree/parent tests were written as *outcome*
+contracts (never internal call shapes) precisely so they would survive s051's
+reimplementation; that design is now the portfolio's convergence instrument.
+
+- [ ] **s051 (when it lands)**: rebase onto main, then re-run s054's behavior
+      contracts as its own convergence gate — `effectiveParent(descriptor) ==
+      the resolved caller` · a cwd cohabitant is NEVER a parent source · pane
+      identity resolves across a differing cwd · `spawnedBy` byte-stable
+      across a `pij link` re-parent · self/cycle rejected. **A red there is a
+      real convergence finding in s051, not a flake and not an s054 bug** —
+      the contracts assert outcomes both streams already agreed on (o-prime
+      cross-check, Seq 449: they encode the same semantics s051's G7 binds).
+- [ ] Route any red through o-prime as a reconcile excursion.
+
+_Historical (now s051's to run, not s054's):_ re-read landed main and re-run
+      the P3 behavior contracts against the MERGED tree
       (`npx vitest run .pi/extensions/pij/core .pi/extensions/pij/adapters
       .pi/extensions/pij/cli.integration.test.ts`): they were written as
       outcome contracts precisely so they survive s051's implementation —
@@ -31,6 +59,10 @@ Build state at hand-off: P1–P4 all review-clean/complete on
       .pi/extensions/pij/acceptance-sweep.test.ts`) on the merged tree.
 
 ## 3 · Daemon restart — machine-wide baton *(R3: forbidden pre-ship)*
+
+> **DELEGATED**: rides the ONE combined restart shared with s055 — mandrill
+> drives on Jordan's word. s054 must NOT restart separately (both streams'
+> daemon-side changes are on main; one restart serves both).
 
 - [ ] Acquire the daemon-restart baton (memory/Finding 02: daemon runs tsx
       off source with NO hot-reload — a stale daemon silently ignores every
