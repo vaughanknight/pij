@@ -15,7 +15,11 @@ shipped, so the store is dogfooded on real data. The prose government stays the
 builds the migration + the equivalence proof + a cutover-ready posture and **stops before
 the authoritative-writer flip** (that flip is a separate Jordan ruling).
 
-### The real data (surveyed 2026-07-18, read-only)
+### The real data (surveyed 2026-07-18, read-only — a MOVING source)
+**The prose spine is written live through the entire dogfood** (Seq 481 at plan
+acceptance, ~15 events that day alone). Survey numbers below are scale
+indicators, never pinned constants: every extractor, ledger, and sensor run keys
+to the **current prose at run time**.
 - `government/spine.md` — **191 timestamped governance events** (`**Event HH:MMZ — TITLE**: body`), current Seq 195. Dense narrative rulings: stream transitions, baton grants, teardowns, priority calls, defect ledgering.
 - `government/prime-flow.json` — **14 nodes** (`kind: prime-flow`, E309-legacy), each node a stream/plan in the portfolio (wi-036…) with label + nav status.
 - `~/.pij/*.json` — **1394 live descriptors** (the messaging registry) + the platform store's own `spine/events.ndjson` (already live from s054).
@@ -43,7 +47,7 @@ the authoritative-writer flip** (that flip is a separate Jordan ruling).
 - **AC-07** Dual-run equivalence sensor: a runnable check reporting divergence between authoritative prose and migrated store; ships with a proving-window protocol.
 - **AC-08** Cutover checklist exists (R3-gated, listed-not-executed): the flip steps + the equivalence bar that must hold, ending at a Jordan ruling.
 - **AC-09** Staging-home gate is **mechanical**: importer + sensor assert the resolved home is an explicit staging path `!= ~/.pij` and ABORT otherwise; a test proves the abort fires (see Non-Goals — `resolvePijHome({})` defaults LIVE). *(F1)*
-- **AC-10** Residue coverage: **every one of the 191 prose Event paragraphs is accounted for** — mapped to ≥1 extracted fact OR explicitly classified `narrative-residue` with a reason; 0 unaccounted = green. This is the anti-symmetric-blindness check: completeness/soundness/round-trip all project through the SAME ruled extractor, so a fact class the taxonomy omits is invisible to all three — the residue ledger is the only check that sees the raw paragraphs. *(F2)*
+- **AC-10** Residue coverage: **every prose Event paragraph in the authoritative spine AT RUN TIME is accounted for** (191 at survey — live and growing) — mapped to ≥1 extracted fact OR explicitly classified `narrative-residue` with a reason; 0 unaccounted = green. The ledger re-enumerates the current prose on every run — never a pinned snapshot — and the divergence sensor (AC-07) treats a NEW prose paragraph as a new-fact-to-map, never as divergence. This is the anti-symmetric-blindness check: completeness/soundness/round-trip all project through the SAME ruled extractor, so a fact class the taxonomy omits is invisible to all three — the residue ledger is the only check that sees the raw paragraphs. *(F2)*
 - **AC-11** Registry equivalence: every live descriptor maps to its platform record(s) (completeness) and every imported record traces back to a descriptor (soundness); the 11 known pane+pid collisions surface as N honest flagged records, never reconciled. Registry is JSON→JSON, so this is mechanical — but it is proven, not assumed. *(F5)*
 
 ### Risks
@@ -73,7 +77,7 @@ the authoritative-writer flip** (that flip is a separate Jordan ruling).
 **P1 opens with a Jordan-driven workshop** ruling FOUR things (all contract territory — no coder dispatch until ruled):
 1. The `government/spine.md` **fact taxonomy** (AC-01).
 2. The **spine-event-kind vocabulary** for governance (AC-02).
-3. The **placeholder-actor + provenance policy** — the 191 events predate the attribution envelope, yet `actor` is mandatory on every SpineEvent; the policy names the placeholder form and when `asserted` vs `resolved` provenance applies (feeds AC-05). *(F3)*
+3. The **placeholder-actor + provenance policy** — the historical events (191 at survey) predate the attribution envelope, yet `actor` is mandatory on every SpineEvent; the policy names the placeholder form and when `asserted` vs `resolved` provenance applies (feeds AC-05). *(F3)*
 4. The **date-reconstruction algorithm** (prose timestamps are `HH:MMZ` only) + the **governance-Seq storage mapping** (its own field/ref — platform `seq` is append-allocated and can never carry it), pinning AC-06's comparison granularity. *(F4)*
 
 ### The equivalence-proof design (the backbone)
