@@ -168,6 +168,55 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.sent[1]?.body).toContain("[pij watchdog #2 for pij-tmux]");
 	});
 
+	it("fires for a session that has never emitted an event, anchored on startedAt", () => {
+		// Found live on activation day: a freshly spawned peer that never emits an
+		// event has no lastEventAt, and lastWatchdogFireAt is null until the first
+		// fire — so both anchors were null and the watchdog never fired at all.
+		// That silently excluded the peer most in need of watching: spawned but
+		// hung at boot. startedAt always exists; it is the birth anchor.
+		const h = managerHarness();
+		h.store.sidecars.set("pij-newborn", intervalSidecar());
+		h.store.revisions.set("pij-newborn", 1);
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "pij-newborn", lastEventAt: undefined })]);
+		expect(h.sent[0]?.body).toContain("[pij watchdog #1 for pij-newborn]");
+		expect(h.fires).toEqual([{ id: "pij-newborn", atMs: 100 }]);
+	});
+
+	it("does not fire a never-emitted session before its interval elapses since startedAt", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-newborn", intervalSidecar());
+		h.store.revisions.set("pij-newborn", 1);
+		h.setNow(10); // startedAt = epoch, interval = 50 → not due yet
+		h.manager.reconcile([desc({ id: "pij-newborn", lastEventAt: undefined })]);
+		expect(h.sent).toEqual([]);
+		expect(h.fires).toEqual([]);
+	});
+
+	it("never fires at an EXTERNAL pull target — the daemon does not own its delivery", () => {
+		// The delivery-ownership invariant (daemon.test.ts) says an external pull
+		// target is never tick-owned, driven, buffered, or drained. The watchdog
+		// honoured that only by accident: pull targets never emit events, so the
+		// null-anchor bug kept them silent. Fixing the anchor exposed the missing
+		// guard — a pi peer still gets its inbox turn (AC-10), an external pull
+		// target never does.
+		const h = managerHarness();
+		h.store.sidecars.set("pij-ext-pull", intervalSidecar());
+		h.store.revisions.set("pij-ext-pull", 1);
+		h.setNow(100);
+		h.manager.reconcile([
+			desc({
+				id: "pij-ext-pull",
+				harness: "copilot",
+				deliveryMode: "pull",
+				lastEventAt: undefined,
+			}),
+		]);
+		expect(h.sent).toEqual([]);
+		expect(h.delivery.outbox).toEqual([]);
+		expect(h.fires).toEqual([]);
+	});
+
 	it("delivers pi turns through the inbox channel and never captures a missing pane", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-pi", intervalSidecar());

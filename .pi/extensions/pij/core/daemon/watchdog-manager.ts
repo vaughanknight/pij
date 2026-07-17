@@ -64,6 +64,12 @@ function timestampMs(value: string | undefined): number | null {
 }
 
 function eligible(session: SessionDescriptor): boolean {
+	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
+	// the daemon does not own its delivery, so it must not buffer a watchdog turn
+	// into it either. (A pi peer pulls its own inbox but IS watchdog-delivered:
+	// AC-10.) This guard was latent until the startedAt anchor fix made pull
+	// targets fire-eligible for the first time.
+	if (session.deliveryMode === "pull" && (session.harness ?? "pi") !== "pi") return false;
 	const deliveryAvailable =
 		(session.harness ?? "pi") === "pi" ||
 		session.deliveryMode === "pull" ||
@@ -153,7 +159,11 @@ export class WatchdogManager {
 				ordinal: 0,
 				consecutiveSilentFires: 0,
 				lastFireAtMs: timestampMs(session.lastWatchdogFireAt),
-				activityAnchorAtMs: timestampMs(session.lastEventAt),
+				// A session that has never emitted an event still needs watching —
+				// it is the likeliest to be hung at boot. startedAt is its birth
+				// anchor; without this fallback both anchors are null and
+				// `isFireDue` never fires (found live, activation day).
+				activityAnchorAtMs: timestampMs(session.lastEventAt) ?? timestampMs(session.startedAt),
 				lastEventAt: session.lastEventAt,
 				lastState: session.state,
 				lastPane: undefined,
