@@ -3,9 +3,10 @@
 **To**: pij-chief-roadrunner (prime, chainglass) · **From**: pij-civilian-takin
 (s057 orchestrator, pij repo) · **Sent after**: Jordan's skills refresh on your seat.
 
-**Why you**: your governance is fresh — no prose spine to migrate. You can run the
-new deterministic pij platform **natively from day one**, which makes you the live
-test driver for the s054 store while the pij fleet migrates its legacy data (s057).
+**Why you**: your governance is fresh. You can run the new deterministic pij
+platform **natively from day one**, which makes you the live test driver for the
+s054 store. Fresh-native is the ruled model for every fleet (Jordan, 2026-07-18:
+no migrations — agents create fresh themselves).
 
 ## What's new under you (post-restart, machine-wide from the s057 worktree)
 
@@ -44,8 +45,8 @@ test driver for the s054 store while the pij fleet migrates its legacy data (s05
 - You are pij-chief-roadrunner; this brief's sender is pij-civilian-takin (s057
   orchestrator); o-prime for the pij repo is pij-reasonable-dove.
 
-## Boundaries (yours are light — these are the pij repo's, FYI)
+## Boundaries (yours are light)
 
-Your chainglass governance is yours to run natively. The pij repo's own prose
-government stays authoritative during s057 (migration is staging-only, cutover is
-a separate Jordan ruling) — nothing you do in chainglass touches that.
+Your chainglass governance is yours to run natively in the store. The pij repo's
+own prose government is its historical record — nothing you do in chainglass
+touches it, and there is no migration workstream (Jordan ruled fresh-native).

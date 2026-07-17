@@ -1,6 +1,6 @@
 # pij data dogfood migration — plan 057
 
-**Status**: DRAFT (awaiting Jordan's P1 workshop + o-prime plan acceptance)
+**Status**: ❌ **CANCELLED — Jordan's ruling 2026-07-18: "we are not going to do migrations, agents can just create fresh themselves."** No importer, no equivalence harness, no cutover; the prose government stands as historical record and new governance is created natively in the platform store. The P1 workshop gate dissolves. What survives of s057: the machine-wide deploy-from-worktree + fleet dogfood with rapid fixes (deploy sequence unchanged, gated on s056). *(Plan body below kept for the record; was FINAL-accepted by o-prime pre-cancellation.)*
 **Ordinal**: 057 · **Branch**: `s057/pij-data-dogfood-migration` · **Base**: `main@3b33879`
 **Depends on**: s054 (platform store — `pij project`/`pij spine`, `buildSpineEvent`, render). Converges through o-prime.
 **Origin**: Jordan's cutover ruling ("merge over our pij data to the new way to dogfood it"); WS-3/R4 cutover authorized. o-prime allocation Seq (057).
