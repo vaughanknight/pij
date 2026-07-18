@@ -76,7 +76,12 @@ import {
 	type WatchdogCapturePolicy,
 	type WatchdogSidecar,
 } from "./types.js";
-import { applyWatchdogResume, effectiveWatchdog, parseWatchdogInterval } from "./watchdog.js";
+import {
+	applyWatchdogResume,
+	describeWatchdogState,
+	effectiveWatchdog,
+	parseWatchdogInterval,
+} from "./watchdog.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
 export interface WatchdogCliStore {
@@ -1324,7 +1329,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						: rows
 								.map(
 									(row) =>
-										`${row.id}: ${row.watchdog.enabled ? "enabled" : "disabled"} · ${row.watchdog.pausedBy ?? "active"} · watchers ${row.watchdog.watchers.length}`,
+										`${row.id}: ${describeWatchdogState(row.watchdog)} · watchers ${row.watchdog.watchers.length}`,
 								)
 								.join("\n"),
 				);
@@ -1387,13 +1392,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				deps.watchdogGlobalStore?.disabled() ?? false,
 			);
 			if (cmd.json) return okOut(JSON.stringify({ id, watchdog: block }));
-			const stateNote = block.globallyDisabled
-				? "globally-disabled · "
-				: block.relay
-					? "relay (never watched) · "
-					: "";
 			return okOut(
-				`${id}: ${stateNote}${block.enabled ? "enabled" : "disabled"} · ${block.pausedBy ?? "active"} · interval ${block.intervalMs}ms · watchers ${block.watchers.length}`,
+				`${id}: ${describeWatchdogState(block)} · interval ${block.intervalMs}ms · watchers ${block.watchers.length}`,
 			);
 		}
 		case "models": {

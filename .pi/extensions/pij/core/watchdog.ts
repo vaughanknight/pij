@@ -193,3 +193,27 @@ export function parseWatchdogInterval(text: string): number | null {
 	const unit = (match[2] ?? "ms") as keyof typeof unitMs;
 	return value * unitMs[unit];
 }
+
+// ─── human-readable state ───────────────────────────────────────────────────
+
+/** What the watchdog is actually DOING, in words a reader can act on.
+ *
+ * The status line used to render `enabled · self` for a successful pause: the
+ * word "paused" never appeared, and the tier sat in an unlabelled positional
+ * field. `enabled` describes configuration; a reader asking "did my pause land?"
+ * needs behaviour. This says the behaviour — and, in priority order, the two
+ * states that dominate the per-session config (Plan 056): a globally-disabled
+ * runtime and a relay/bridge that is never watched. */
+export function describeWatchdogState(state: {
+	enabled: boolean;
+	pausedBy?: WatchdogPauseTier | null;
+	globallyDisabled?: boolean;
+	relay?: boolean;
+}): string {
+	if (state.globallyDisabled) return "globally-disabled";
+	if (state.relay) return "relay (never watched)";
+	if (!state.enabled) return "disabled";
+	if (state.pausedBy === "exempt") return "exempt";
+	if (state.pausedBy) return `paused (${state.pausedBy})`;
+	return "watching";
+}
