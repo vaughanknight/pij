@@ -3,9 +3,10 @@
 // just link -- <name>        — symlink only that one
 // just unlink (or link -- --remove) — remove pij-owned symlinks from ~/.pi/agent/extensions/
 //
-// Idempotent. Refuses to clobber real directories or symlinks owned by
-// another source. After running, `pi` from any cwd autoloads pij's
-// extensions in addition to whatever the cwd's package.json provides.
+// Idempotent. Refuses to clobber real directories, but replaces stale
+// symlinks so this checkout remains the machine's extension source. After
+// running, `pi` from any cwd autoloads pij's extensions in addition to
+// whatever the cwd's package.json provides.
 //
 // Why ~/.pi/agent/extensions and not ~/.pi/extensions? Pi's loader
 // resolves global extensions via `getAgentDir() + "/extensions"`, and
@@ -53,18 +54,19 @@ function ensureTargetRoot(): void {
 function link(name: string): "linked" | "already" | "skipped" {
 	const source = join(SOURCE_ROOT, name);
 	const target = join(TARGET_ROOT, name);
+	const stat = lstatSync(target, { throwIfNoEntry: false });
 
-	if (!existsSync(target)) {
+	if (!stat) {
 		symlinkSync(source, target);
 		return "linked";
 	}
 
-	const stat = lstatSync(target);
 	if (stat.isSymbolicLink()) {
 		const current = readlinkSync(target);
 		if (current === source) return "already";
-		console.error(`skip ${name}: ~/.pi/agent/extensions/${name} → ${current} (not ours)`);
-		return "skipped";
+		unlinkSync(target);
+		symlinkSync(source, target);
+		return "linked";
 	}
 
 	console.error(`skip ${name}: ~/.pi/agent/extensions/${name} is a real directory, not a symlink`);
