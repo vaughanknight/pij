@@ -147,8 +147,9 @@ incl. the one broken-transport spot-check exception).
 
 The `flow-pair` CLI's `review` verb is an **artifact/contract gate**, not a code reviewer: it
 computes a verdict from the **severity of the findings you feed it** (`lib/review.ts` —
-critical/high → `FIX_REQUIRED`, medium → `APPROVE_WITH_NOTES`, else `APPROVE`); it never reads
-the diff for correctness. So:
+critical/high → `FIX_REQUIRED`, medium → `APPROVE_WITH_NOTES`); with **zero findings it
+REFUSES to mint a verdict** ("no findings to review" — APPROVE is never a default); it never
+reads the diff for correctness. So:
 
 - The **real verdict is the reviewer peer's** judgment (with the mandatory **Dim-0** mutation
   gate), hand-persisted to the review record — that is the law, not the CLI's exit.
@@ -160,10 +161,10 @@ the diff for correctness. So:
 
 ```
 /pij pair start "<request>" [--repo <path>] [--ledger-root <path>] [--coder-model <m>] [--reviewer-model <m>]
-/pij pair dispatch --run-id <id> --plan-path <p> --phase <text> --tasks-dir <p> [--task-description <t>] [--allowed-paths <p1,...>]
+/pij pair dispatch --run-id <id> --plan-path <p> --phase <text> --tasks-dir <p> [--cluster <c>] [--task-description <t>] [--allowed-paths <p1,...>]
 /pij pair observe [--run-id <id>]
-/pij pair review --delegation <id>
-/pij pair fix --review <id>
+/pij pair review --run-id <id> --delegation-id <id> --phase-dir <p>
+/pij pair fix --run-id <id> --delegation-id <id> --review-id <id>
 /pij pair accept --delegation <id>
 /pij pair ledger [--run-id <id>]
 /pij pair learn --run-id <id> --delegation-id <id> --cluster <c> --miss-type <t> --summary <text> [--evidence <text>] [--candidate-delta <text>] [--json]

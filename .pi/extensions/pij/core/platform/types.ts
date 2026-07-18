@@ -265,6 +265,18 @@ export function kebabSlug(input: string): string {
 		.replace(/^-+|-+$/g, "");
 }
 
+/** Cap for a project slug (s057 dogfood): auto-derived slugs are truncated to
+ *  this length; an explicit `--slug` must fit it outright. Contract constant —
+ *  raising it later is additive, lowering is not. */
+export const PROJECT_SLUG_MAX_LENGTH = 48;
+
+/** Whether `slug` is a legal EXPLICIT project slug: strict kebab shape
+ *  (lowercase alnum runs joined by single '-', no edge hyphens) within
+ *  PROJECT_SLUG_MAX_LENGTH. Never throws. */
+export function isValidProjectSlug(slug: string): boolean {
+	return slug.length <= PROJECT_SLUG_MAX_LENGTH && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug);
+}
+
 /** First free slug: base, then base-2, base-3, … (AC-01). */
 export function resolveSlugCollision(base: string, taken: ReadonlySet<string>): string {
 	if (!taken.has(base)) return base;

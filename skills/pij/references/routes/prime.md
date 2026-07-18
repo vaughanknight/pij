@@ -31,6 +31,7 @@ government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 | Need | Load exactly this |
 |---|---|
 | Stand up the seat and government | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) |
+| Record governance in the platform store (ruled default; lazy self-migration) | [`../prime/rituals/store-native.md`](../prime/rituals/store-native.md) |
 | Spawn, adopt, canary, brief, or tear down a stream | [`../prime/rituals/kickoff.md`](../prime/rituals/kickoff.md) |
 | Request, grant, return, reclaim, or audit a baton | [`../prime/rituals/batons.md`](../prime/rituals/batons.md) |
 | File, verify, relay, or digest a report | [`../prime/rituals/reports.md`](../prime/rituals/reports.md) |

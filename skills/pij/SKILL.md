@@ -38,11 +38,12 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | CLI verb | lives in |
 |---|---|
 | `spawn` `send` `tail` `close` `adopt` `whoami` `list` `state` `inbox` `tree` `link` | peer route |
-| `agent` (`list/run/spawn/show/new/check/eject`) | agent route |
+| `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
-| `watchdog` (`status/pause/resume/exempt/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C8 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
+| `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C8 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
+| `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |
 | `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
 | `project` `spine` `task` (`set`) `state` (`set/verify`) `node` (`show`) `anomalies` | node route (platform governance surface, plan 054) |
 

@@ -111,6 +111,44 @@ describe("axis-disagreement (AC-07 — the 44h lost-dispatch shape, ruled non-ne
 		).toHaveLength(0);
 	});
 
+	it("a FRESH spawn with no telemetry yet is NOT a lost dispatch — idle is bounded by startedAt (kingfisher false-positive, dogfood #2)", () => {
+		const justBorn = desc({
+			id: "pij-lost",
+			lifecycle: "bound",
+			systemState: "idle",
+			state: "idle",
+			startedAt: new Date(NOW - 60_000).toISOString(),
+			// no lastEventAt at all — zero activity samples
+		});
+		expect(
+			detectAnomalies({
+				descriptors: [justBorn],
+				assignments: [dispatched],
+				events: [],
+				nowMs: NOW,
+			}),
+		).toHaveLength(0);
+	});
+
+	it("no telemetry on an OLD node still fires — bounded by age, detail carries hours not 'forever'", () => {
+		const oldSilent = desc({
+			id: "pij-lost",
+			lifecycle: "bound",
+			systemState: "idle",
+			state: "idle",
+			// desc() default startedAt = NOW - 88h; no lastEventAt
+		});
+		const anomalies = detectAnomalies({
+			descriptors: [oldSilent],
+			assignments: [dispatched],
+			events: [],
+			nowMs: NOW,
+		});
+		expect(anomalies).toHaveLength(1);
+		expect(anomalies[0]?.detail).toContain("88h");
+		expect(anomalies[0]?.detail).not.toContain("since forever");
+	});
+
 	it("a PARKED semantic state (waiting/hold/blocked/question) is legitimate idleness", () => {
 		for (const word of ["waiting", "hold", "blocked", "question"]) {
 			const withState = asg({ id: "asg-dispatch", nodeId: "pij-lost", states: [3] });

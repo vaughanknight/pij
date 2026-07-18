@@ -24,6 +24,9 @@
    - [ ] anything this repo added (grep `Writer:` under government/)
 4. Announce to the human and to every live stream **citing this pack** —
    streams do not know your id; say so explicitly per stream.
+   4b. Govern **store-native** from here (ruled default): self-migrate
+   load-bearing facts lazily as you touch them — the rule and verb mapping
+   live in [`../rituals/store-native.md`](../rituals/store-native.md).
 5. After the outgoing seat's FINAL send, retire its live marker with
    `pij orchestration prime retire <outgoing-pij-id> --json`, verify it is absent
    from current-only `pij list --prime --here --json`, then confirm

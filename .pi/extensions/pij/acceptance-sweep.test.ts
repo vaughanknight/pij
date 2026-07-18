@@ -146,7 +146,10 @@ beforeAll(() => {
 			effort: "high",
 		}),
 	);
-	// The lost-dispatch shape (AC-07): mechanically idle for 5h.
+	// The lost-dispatch shape (AC-07): mechanically idle for 5h. The seat must
+	// be OLDER than its last event — idle duration is bounded by node age
+	// (kingfisher fix, dogfood #2), so a recent startedAt would honestly read
+	// as a fresh spawn, not a lost dispatch.
 	registry.write(
 		desc({
 			id: "pij-idler",
@@ -154,6 +157,7 @@ beforeAll(() => {
 			lifecycle: "bound",
 			state: "idle",
 			pid: 4243,
+			startedAt: new Date(NOW - 6 * 3_600_000).toISOString(),
 			lastEventAt: new Date(NOW - 5 * 3_600_000).toISOString(),
 		}),
 	);
@@ -333,7 +337,12 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 	});
 
 	it("step 7 · AC-07 (+AC-06 flip) — all three anomaly kinds with evidence; parent alert exactly once per transition", () => {
-		// foreign-hold-clear: hold by the resolved self, cleared by an ASSERTED other.
+		// foreign-hold-clear: hold by the resolved self, cleared by an ASSERTED
+		// other — on an assignment joined to fix-the-cli (primeId = ACTOR from
+		// step 2), so the unadopted stray exercises the project-prime fallback.
+		expect(
+			run(["task", "set", "pij-stray", "stray errand", "--project", "fix-the-cli"]).exitCode,
+		).toBe(0);
 		expect(run(["state", "set", "pij-stray", "hold"]).exitCode).toBe(0);
 		expect(run(["state", "set", "pij-stray", "ready", "--actor", "pij-other"]).exitCode).toBe(0);
 		// axis-disagreement: open undeclared assignment on a 5h-idle node.
@@ -352,21 +361,43 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 
 		// Parent alerts: once per transition, never twice, never an action.
 		const delivered: PijMessage[] = [];
+		const logged: string[] = [];
 		const sweep = new AnomalySweep({
 			registry,
 			assignmentStore,
 			spineLog,
 			delivery: { deliver: (m) => void delivered.push(m as PijMessage) },
 			now: () => NOW,
+			projectStore,
+			log: (line) => void logged.push(line),
 		});
 		const first = sweep.tick();
 		expect(first.anomalies).toBe(anomalies.length);
-		// pij-stray is unadopted (no parent to alert) — latched silently; the
-		// worker + idler anomalies alert their effectiveParent (the prime seat).
+		// The worker + idler anomalies alert their effectiveParent (the prime
+		// seat); the unadopted stray reaches the SAME seat via its assignment's
+		// project prime (s057 fallback) — nothing dropped this tick.
 		expect(delivered.length).toBeGreaterThan(0);
 		expect(delivered.every((m) => m.to === ACTOR)).toBe(true);
+		expect(delivered.some((m) => m.from === "pij-stray")).toBe(true);
+		expect(first.dropped).toBe(0);
 		const second = sweep.tick();
 		expect(second.alerts).toBe(0); // the latch: a quiet tick re-alerts nothing
+		expect(second.dropped).toBe(0);
+
+		// No-prime path: the same dance joined to fix-the-cli-2 (NO primeId on
+		// record) has nobody to alert — counted + logged, never silent, latched.
+		expect(
+			run(["task", "set", "pij-stray", "primeless errand", "--project", "fix-the-cli-2"]).exitCode,
+		).toBe(0);
+		expect(run(["state", "set", "pij-stray", "hold"]).exitCode).toBe(0);
+		expect(run(["state", "set", "pij-stray", "ready", "--actor", "pij-other"]).exitCode).toBe(0);
+		const third = sweep.tick();
+		expect(third.alerts).toBe(0);
+		expect(third.dropped).toBe(1);
+		expect(delivered.every((m) => m.to === ACTOR)).toBe(true); // nothing new delivered
+		expect(logged.some((line) => line.includes("anomaly alert dropped"))).toBe(true);
+		const fourth = sweep.tick();
+		expect(fourth.dropped).toBe(0); // dropped transitions latch like delivered ones
 
 		// AC-06 flip: verify stamps verifiedBy and clears the anomaly.
 		expect(run(["state", "verify", "pij-worker", "--assignment", assignmentA]).exitCode).toBe(0);

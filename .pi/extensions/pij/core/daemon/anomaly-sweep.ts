@@ -2,13 +2,15 @@
 //
 // BatonSweep-pattern composition: per tick, run the pure anomaly queries
 // over registry + assignment store + spine and push ONE alert per anomaly
-// TRANSITION to the node's effectiveParent (parentId ?? spawnedBy). The
-// latch keys on kind + assignment + evidence seqs, so a quiet tick never
+// TRANSITION to the node's effectiveParent (parentId ?? spawnedBy), falling
+// back to the assignment's project prime for a parentless node (s057
+// dogfood); a recipient-less transition is COUNTED and logged, never silent.
+// The latch keys on kind + assignment + evidence seqs, so a quiet tick never
 // re-alerts and fresh evidence (a new unverified done after a verify) alerts
 // again. Alert once, act NEVER — remediation is a human/prime decision.
 
 import { type Anomaly, detectAnomalies } from "../anomalies.js";
-import type { AssignmentStorePort, SpineLogPort } from "../platform/ports.js";
+import type { AssignmentStorePort, ProjectStorePort, SpineLogPort } from "../platform/ports.js";
 import type { DeliveryPort, RegistryPort } from "../ports.js";
 import { effectiveParent } from "../tree.js";
 
@@ -19,6 +21,12 @@ export interface AnomalySweepDeps {
 	readonly delivery: DeliveryPort;
 	readonly now: () => number;
 	readonly idleThresholdMs?: number;
+	/** Recipient fallback (s057 dogfood): a parentless node's alert goes to
+	 *  its assignment's project prime when one is on record. Optional —
+	 *  absent keeps the parent-only behavior. */
+	readonly projectStore?: ProjectStorePort;
+	/** Honest-drop surface: one line per recipient-less transition. */
+	readonly log?: (line: string) => void;
 }
 
 export interface AnomalySweepSummary {
@@ -26,6 +34,9 @@ export interface AnomalySweepSummary {
 	readonly alerts: number;
 	/** Anomalies currently detected, delivered or not. */
 	readonly anomalies: number;
+	/** Recipient-less anomalies this tick (no effective parent, no project
+	 *  prime) — latched like any transition, surfaced instead of silent. */
+	readonly dropped: number;
 }
 
 function latchKeyOf(anomaly: Anomaly): string {
@@ -41,31 +52,46 @@ export class AnomalySweep {
 	tick(): AnomalySweepSummary {
 		const d = this.deps;
 		const descriptors = d.registry.list();
+		const assignments = d.assignmentStore.list();
 		const anomalies = detectAnomalies({
 			descriptors,
-			assignments: d.assignmentStore.list(),
+			assignments,
 			events: d.spineLog.read(),
 			nowMs: d.now(),
 			...(d.idleThresholdMs === undefined ? {} : { idleThresholdMs: d.idleThresholdMs }),
 		});
 		const byId = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+		const byAssignment = new Map(assignments.map((assignment) => [assignment.id, assignment]));
 		let alerts = 0;
+		let dropped = 0;
 		for (const anomaly of anomalies) {
 			const key = latchKeyOf(anomaly);
 			if (this.alerted.has(key)) continue;
 			const node = byId.get(anomaly.nodeId);
-			const parent = node === undefined ? null : effectiveParent(node);
-			// A parentless root has nobody to alert; latch anyway so a later
-			// link doesn't replay stale alerts.
+			// Latch BEFORE any delivery decision — once per transition covers
+			// push AND drop, and a later link doesn't replay stale alerts.
 			this.alerted.add(key);
-			if (parent === null || node === undefined) continue;
+			let target = node === undefined ? null : effectiveParent(node);
+			// Recipient fallback (s057 dogfood): a parentless node's anomaly
+			// goes to its assignment's project prime, when one is on record.
+			if (target === null && anomaly.assignmentId !== undefined) {
+				const slug = byAssignment.get(anomaly.assignmentId)?.projectSlug;
+				if (slug !== undefined) target = d.projectStore?.read(slug)?.primeId ?? null;
+			}
+			if (target === null) {
+				// Nobody to alert — surface the drop (count + one log line per
+				// transition, the latch already fired), never act on it.
+				dropped += 1;
+				d.log?.(`anomaly alert dropped (no effective parent, no project prime): ${key}`);
+				continue;
+			}
 			d.delivery.deliver({
 				from: anomaly.nodeId,
-				to: parent,
+				to: target,
 				body: `⚠️ anomaly ${anomaly.kind} on ${anomaly.nodeId}${anomaly.assignmentId ? ` (assignment ${anomaly.assignmentId})` : ""}: ${anomaly.detail} — evidence: spine ${anomaly.evidence.join(", ") || "(none)"}`,
 			});
 			alerts += 1;
 		}
-		return { alerts, anomalies: anomalies.length };
+		return { alerts, anomalies: anomalies.length, dropped };
 	}
 }

@@ -1,5 +1,10 @@
 # Bootstrap — stand up an o-prime
 
+> **Store-native is the ruled default for new primes** — load
+> [`store-native.md`](./store-native.md) first; it replaces §3's prose scaffold
+> with platform-store verbs. The prose scaffold below remains authoritative for
+> repos already governed in prose (until their prime self-migrates).
+
 Use this only when the consuming repo has no `government/`. It is the day-zero
 ritual; role operation belongs in the orient files and protocol. Preconditions:
 a git repo, tmux, `pij`, the ambient `harness` CLI, one session for the

@@ -10,10 +10,11 @@ import { describe, expect, it } from "vitest";
 import {
 	FakeAssignmentStore,
 	FakeDelivery,
+	FakeProjectStore,
 	FakeRegistry,
 	FakeSpineLog,
 } from "../../adapters/fakes.js";
-import type { Assignment, SpineEvent } from "../platform/types.js";
+import type { Assignment, Project, SpineEvent } from "../platform/types.js";
 import type { SessionDescriptor } from "../types.js";
 import { AnomalySweep } from "./anomaly-sweep.js";
 
@@ -53,16 +54,36 @@ function doneEvent(seq: number, nodeId: string, assignmentId: string): SpineEven
 	};
 }
 
-function rig(descriptors: SessionDescriptor[], assignments: Assignment[], events: SpineEvent[]) {
+function rig(
+	descriptors: SessionDescriptor[],
+	assignments: Assignment[],
+	events: SpineEvent[],
+	extras: { projects?: Project[] } = {},
+) {
 	const delivery = new FakeDelivery();
+	const logged: string[] = [];
 	const sweep = new AnomalySweep({
 		registry: new FakeRegistry(descriptors),
 		assignmentStore: new FakeAssignmentStore(assignments),
 		spineLog: new FakeSpineLog(events),
 		delivery,
 		now: () => NOW,
+		...(extras.projects === undefined
+			? {}
+			: { projectStore: new FakeProjectStore(extras.projects) }),
+		log: (line) => void logged.push(line),
 	});
-	return { delivery, sweep };
+	return { delivery, sweep, logged };
+}
+
+function project(slug: string, primeId?: string): Project {
+	return {
+		schema_version: 1,
+		slug,
+		description: `project ${slug}`,
+		...(primeId === undefined ? {} : { primeId }),
+		created: { actor: "pij-boss", ts: new Date(NOW - 3_600_000).toISOString() },
+	};
 }
 
 describe("AnomalySweep", () => {
@@ -93,14 +114,71 @@ describe("AnomalySweep", () => {
 		expect(delivery.outbox.some((e) => e.message.to === "pij-spawner")).toBe(true);
 	});
 
-	it("a parentless root just records the anomaly count — no delivery, no crash", () => {
+	it("a parentless root just records the anomaly + dropped counts — no delivery, no crash", () => {
 		const { delivery, sweep } = rig(
 			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
 			[doneAsg("asg-a", "pij-root", 5)],
 			[doneEvent(5, "pij-root", "asg-a")],
 		);
-		expect(sweep.tick().alerts).toBe(0);
+		const first = sweep.tick();
+		expect(first.alerts).toBe(0);
+		expect(first.dropped).toBe(1); // surfaced, never silent
 		expect(delivery.outbox).toHaveLength(0);
+	});
+
+	it("FALLBACK: a parentless node's alert goes to its assignment's project prime (s057)", () => {
+		const { delivery, sweep, logged } = rig(
+			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
+			[{ ...doneAsg("asg-a", "pij-root", 5), projectSlug: "alpha" }],
+			[doneEvent(5, "pij-root", "asg-a")],
+			{ projects: [project("alpha", "pij-prime")] },
+		);
+		const first = sweep.tick();
+		expect(first.alerts).toBe(1);
+		expect(first.dropped).toBe(0);
+		expect(logged).toHaveLength(0);
+		const toPrime = delivery.outbox.filter((e) => e.message.to === "pij-prime");
+		expect(toPrime).toHaveLength(1);
+		expect(toPrime[0]?.message.from).toBe("pij-root");
+		expect(toPrime[0]?.message.body).toContain("unverified-done");
+		// the latch covers the fallback path too: tick 2 is quiet.
+		const second = sweep.tick();
+		expect(second.alerts).toBe(0);
+		expect(second.dropped).toBe(0);
+	});
+
+	it("HONEST DROP: no projectSlug on the assignment — counted, logged once, latched", () => {
+		const { delivery, sweep, logged } = rig(
+			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
+			[doneAsg("asg-a", "pij-root", 5)],
+			[doneEvent(5, "pij-root", "asg-a")],
+			{ projects: [project("alpha", "pij-prime")] },
+		);
+		const first = sweep.tick();
+		expect(first.alerts).toBe(0);
+		expect(first.dropped).toBe(1);
+		expect(delivery.outbox).toHaveLength(0);
+		expect(logged).toHaveLength(1);
+		expect(logged[0]).toContain("anomaly alert dropped");
+		expect(logged[0]).toContain("no effective parent, no project prime");
+		// the latch already fired — tick 2 neither re-drops nor re-logs.
+		const second = sweep.tick();
+		expect(second.dropped).toBe(0);
+		expect(logged).toHaveLength(1);
+	});
+
+	it("HONEST DROP: the assignment's project has no primeId on record", () => {
+		const { delivery, sweep, logged } = rig(
+			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
+			[{ ...doneAsg("asg-a", "pij-root", 5), projectSlug: "alpha" }],
+			[doneEvent(5, "pij-root", "asg-a")],
+			{ projects: [project("alpha")] }, // primeless project
+		);
+		const first = sweep.tick();
+		expect(first.alerts).toBe(0);
+		expect(first.dropped).toBe(1);
+		expect(delivery.outbox).toHaveLength(0);
+		expect(logged).toHaveLength(1);
 	});
 
 	it("NEW evidence re-alerts: a fresh done after a verify is a new transition", () => {

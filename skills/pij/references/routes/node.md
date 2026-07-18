@@ -54,7 +54,10 @@ Prevention beats repair: spawn from a seat with `PIJ_SESSION_ID` exported so cal
 ## Anomalies (derived safety)
 
 ```bash
-pij anomalies --json    # each finding carries evidence refs into the spine
+pij anomalies [--here] [--project <slug>] --json   # evidence refs into the spine
+                        # --here: this folder's peers · --project: one project's
+                        # assignments — detection stays machine-wide, only the
+                        # VIEW scopes (repo primes: poll scoped, not global)
 ```
 
 | Symptom | Read | Likely meaning |

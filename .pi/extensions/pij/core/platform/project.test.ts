@@ -12,6 +12,8 @@ import {
 	type ActorProvenance,
 	isProject,
 	isSpineEvent,
+	kebabSlug,
+	PROJECT_SLUG_MAX_LENGTH,
 	type Project,
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
@@ -33,6 +35,7 @@ function unwrap<V>(result: Result<V>): V {
 interface CreateOverrides {
 	readonly description?: string;
 	readonly existingSlugs?: ReadonlySet<string>;
+	readonly slug?: string;
 	readonly actorProvenance?: ActorProvenance;
 	readonly repo?: string;
 	readonly planPath?: string;
@@ -151,6 +154,55 @@ describe("createProject", () => {
 		const { event } = unwrap(create({ actorProvenance: "asserted" }));
 		expect(event.actorProvenance).toBe("asserted");
 		expect(isSpineEvent({ ...event, seq: 7 })).toBe(true);
+	});
+
+	it("uses an explicit slug VERBATIM in the record and the event refs (s057)", () => {
+		const { project, event } = unwrap(create({ slug: "chosen-name" }));
+		expect(project.slug).toBe("chosen-name");
+		expect(project.description).toBe("Fix the CLI!"); // description untouched
+		expect(event.project).toBe("chosen-name");
+		expect(event.refs).toEqual(["project:chosen-name"]);
+		expect(isProject(project)).toBe(true);
+	});
+
+	it("rejects an invalid explicit slug with E-ARG (uppercase, spaces, '', over-max)", () => {
+		for (const slug of [
+			"Chosen-Name",
+			"chosen name",
+			"",
+			"a".repeat(PROJECT_SLUG_MAX_LENGTH + 1),
+		]) {
+			const result = create({ slug });
+			expect(result, slug).toMatchObject({ ok: false, code: "E-ARG" });
+			if (!result.ok) expect(result.message).toContain("slug");
+		}
+	});
+
+	it("rejects an explicit-slug collision with E-ARG — a chosen identity is never renamed", () => {
+		const result = create({ slug: "chosen-name", existingSlugs: new Set(["chosen-name"]) });
+		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
+		if (!result.ok) expect(result.message).toContain("chosen-name");
+	});
+
+	it("caps a long-description auto-slug at PROJECT_SLUG_MAX_LENGTH with no trailing hyphen", () => {
+		const description =
+			"Reusable fresh prime dogfood brief with the known open findings table attached for review";
+		const { project } = unwrap(create({ description }));
+		expect(project.slug.length).toBeLessThanOrEqual(PROJECT_SLUG_MAX_LENGTH);
+		expect(project.slug.endsWith("-")).toBe(false);
+		expect(project.slug).toBe(
+			kebabSlug(description).slice(0, PROJECT_SLUG_MAX_LENGTH).replace(/-+$/, ""),
+		);
+		// The FULL description survives on the record — only the slug is capped.
+		expect(project.description).toBe(description);
+	});
+
+	it("a capped auto-slug still collision-resolves to -2", () => {
+		const description =
+			"Reusable fresh prime dogfood brief with the known open findings table attached for review";
+		const capped = kebabSlug(description).slice(0, PROJECT_SLUG_MAX_LENGTH).replace(/-+$/, "");
+		const { project } = unwrap(create({ description, existingSlugs: new Set([capped]) }));
+		expect(project.slug).toBe(`${capped}-2`);
 	});
 });
 

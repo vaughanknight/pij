@@ -21,7 +21,7 @@ import {
 	renderWaitReceipt,
 	renderWaitTimeout,
 } from "./cli.js";
-import type { Project, SpineEvent } from "./platform/types.js";
+import { PROJECT_SLUG_MAX_LENGTH, type Project, type SpineEvent } from "./platform/types.js";
 import type { DeliveryPort } from "./ports.js";
 import { err, ok, type PijEvent, type PijMessage, type SessionDescriptor } from "./types.js";
 
@@ -1524,6 +1524,54 @@ describe("project verbs", () => {
 				refs: ["project:fix-the-cli-2"],
 				project: "fix-the-cli-2",
 			});
+		});
+
+		it("--slug parses and persists that slug verbatim (bare record --json unchanged)", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "Fix the CLI", "--slug", "foo-bar", "--json"], d);
+			expect(r.exitCode).toBe(0);
+			const j = JSON.parse(r.stdout) as Project;
+			expect(j).toMatchObject({
+				schema_version: 1,
+				slug: "foo-bar",
+				description: "Fix the CLI",
+			});
+			// still the bare persisted record — the --slug flag adds no envelope.
+			expect(j).toEqual(d.projectStore.read("foo-bar"));
+			expect(j).not.toHaveProperty("ok");
+		});
+
+		it("bare --slug → E-ARG 64", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", "Fix the CLI", "--slug"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toContain("--slug");
+			expect(d.projectStore.list()).toHaveLength(0);
+		});
+
+		it("--slug collision → E-ARG, nothing written (explicit identity is never renamed)", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "foo-bar" })],
+			});
+			const r = run(["project", "create", "Fix the CLI", "--slug", "foo-bar"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("E-ARG");
+			expect(r.stderr).toContain("foo-bar");
+			expect(d.projectStore.list()).toHaveLength(1); // the seed alone survives
+			expect(d.spineLog.read()).toHaveLength(0);
+		});
+
+		it("a 127-char description caps the slug but the record holds the FULL description", () => {
+			const description = `long description regression ${"word ".repeat(20)}`.trim();
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["project", "create", description, "--json"], d);
+			expect(r.exitCode).toBe(0);
+			const j = JSON.parse(r.stdout) as Project;
+			expect(j.slug.length).toBeLessThanOrEqual(PROJECT_SLUG_MAX_LENGTH);
+			expect(j.description).toBe(description);
+			expect(d.projectStore.read(j.slug)?.description).toBe(description);
 		});
 
 		it("empty description → E-ARG 64 naming the description", () => {
@@ -3573,6 +3621,36 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 		expect(foreign[0]?.detail).toContain("pij-issuer");
 		expect(foreign[0]?.detail).toContain("pij-meddler");
 	});
+
+	it("--here scopes the VIEW to this folder's peers; --project to one project's assignments (s057 dogfood — detection stays machine-wide)", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-local" }), desc({ id: "pij-far", folder: "/elsewhere" })],
+		});
+		run(["project", "create", "here work", "--slug", "here-work", "--actor", "pij-boss"], d);
+		run(["task", "set", "pij-local", "ship", "--project", "here-work", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-local", "done", "--actor", "pij-local"], d);
+		run(["task", "set", "pij-far", "other errand", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-far", "done", "--actor", "pij-far"], d);
+
+		const all = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{ nodeId: string }>;
+		expect(new Set(all.map((a) => a.nodeId))).toEqual(new Set(["pij-local", "pij-far"]));
+
+		const here = JSON.parse(run(["anomalies", "--here", "--json"], d).stdout) as Array<{
+			nodeId: string;
+		}>;
+		expect(here.map((a) => a.nodeId)).toEqual(["pij-local"]);
+
+		const proj = JSON.parse(
+			run(["anomalies", "--project", "here-work", "--json"], d).stdout,
+		) as Array<{ nodeId: string }>;
+		expect(proj.map((a) => a.nodeId)).toEqual(["pij-local"]);
+	});
+
+	it("bare --project on anomalies is an E-ARG", () => {
+		const d = platformDeps({ self: "pij-self" });
+		expect(run(["anomalies", "--project"], d).exitCode).not.toBe(0);
+	});
 });
 
 describe("unadopted flow-through (P3 T003/T005 — AC-08/WS-1 machine-wide enumerability)", () => {
@@ -3782,7 +3860,7 @@ describe("denorm fresh-read basis (P3 T006b — p2-review-001 note 2)", () => {
 });
 
 describe("spine render (P4 T002 — parse row + core E-NOREG naming the bin)", () => {
-	it("parses `spine render` with --json only (MAX_POS 0)", () => {
+	it("parses `spine render` with --project/--json only (MAX_POS 0)", () => {
 		expect(parseArgs(["spine", "render", "--json"])).toMatchObject({
 			ok: true,
 			value: { verb: "spine-render", json: true },
@@ -3790,6 +3868,20 @@ describe("spine render (P4 T002 — parse row + core E-NOREG naming the bin)", (
 		expect(parseArgs(["spine", "render"])).toMatchObject({
 			ok: true,
 			value: { verb: "spine-render", json: false },
+		});
+	});
+
+	it("parses --project <slug> through to the bin (s057 — per-project render)", () => {
+		expect(parseArgs(["spine", "render", "--project", "fix-the-cli"])).toMatchObject({
+			ok: true,
+			value: { verb: "spine-render", project: "fix-the-cli", json: false },
+		});
+	});
+
+	it("bare --project → E-ARG", () => {
+		expect(parseArgs(["spine", "render", "--project"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
 		});
 	});
 

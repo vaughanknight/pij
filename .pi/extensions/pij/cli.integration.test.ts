@@ -1604,4 +1604,81 @@ describe("pij spine render (P4 T002 — bin-owned write, AC-10)", () => {
 		expect(written).toContain("_No events._");
 		rmSync(freshHome, { recursive: true, force: true });
 	});
+
+	it("--project publishes a FILTERED view to spine/<slug>.spine.md — spine.md untouched (s057)", () => {
+		const asActor = { PIJ_SESSION_ID: "", TMUX_PANE: "" };
+		const a = pij(
+			[
+				"spine",
+				"append",
+				"--kind",
+				"render-probe",
+				"--project",
+				"render-proj",
+				"--actor",
+				"render-tester",
+			],
+			asActor,
+		);
+		expect(a.code).toBe(0);
+		const before = readFileSync(join(HOME, "spine", "spine.md"), "utf8");
+		const r = pij(["spine", "render", "--project", "render-proj", "--json"]);
+		expect(r.code).toBe(0);
+		const envlp = JSON.parse(r.out) as { path: string; bytes: number; events: number };
+		expect(envlp.path).toBe(join(HOME, "spine", "render-proj.spine.md"));
+		const written = readFileSync(envlp.path, "utf8");
+		const events = new FsSpineLog(HOME).read({ project: "render-proj" });
+		expect(events.length).toBeGreaterThan(0);
+		expect(written).toBe(renderSpineMd(events, { title: "pij spine — project render-proj" }));
+		expect(envlp.events).toBe(events.length);
+		expect(envlp.bytes).toBe(Buffer.byteLength(written, "utf8"));
+		// A filtered view must NEVER overwrite the machine-wide spine.md.
+		expect(readFileSync(join(HOME, "spine", "spine.md"), "utf8")).toBe(before);
+	});
+
+	it("--project rejects a non-slug shape with E-ARG (the slug becomes a filename)", () => {
+		const r = pij(["spine", "render", "--project", "../escape"]);
+		expect(r.code).toBe(64);
+		expect(r.out).toContain("E-ARG");
+	});
+});
+
+describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", () => {
+	// A hard process.exit() after write() raced the stdout pipe buffer: any
+	// payload past 64KB was cut at exactly 65536 bytes (found live: `tree
+	// --global --json` over 1394 real descriptors returned unparseable JSON).
+	it("tree --global --liveness dead --json over 1200 descriptors parses complete", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-bigout-"));
+		for (let i = 0; i < 1200; i++) {
+			const id = `pij-big-${String(i).padStart(4, "0")}`;
+			writeFileSync(
+				join(home, `${id}.json`),
+				JSON.stringify({
+					id,
+					folder: `/tmp/big/${i}`,
+					dataDir: join(home, id),
+					eventsPath: join(home, id, "events.ndjson"),
+					pid: 90_000_000 + i,
+					startedAt: new Date(1752800000000 + i).toISOString(),
+					state: "idle",
+					systemState: "idle",
+					lifecycle: "bound",
+					harness: "claude",
+				}),
+			);
+		}
+		// Seeds carry no tick/event telemetry → liveness dead; the default tree
+		// prunes dead, so include them explicitly — the point is OUTPUT SIZE.
+		const out = execFileSync(TSX, [CLI, "tree", "--global", "--liveness", "dead", "--json"], {
+			env: { ...process.env, PIJ_HOME: home, TMUX_PANE: "" },
+			encoding: "utf8",
+			maxBuffer: 16 * 1024 * 1024,
+			timeout: 30_000,
+		});
+		expect(out.length).toBeGreaterThan(65_536);
+		const forest = JSON.parse(out) as { roots: Array<{ id?: string }> };
+		expect((out.match(/pij-big-/g) ?? []).length).toBeGreaterThanOrEqual(1200);
+		expect(forest.roots.length).toBeGreaterThanOrEqual(1200);
+		rmSync(home, { recursive: true, force: true });
+	});
 });
