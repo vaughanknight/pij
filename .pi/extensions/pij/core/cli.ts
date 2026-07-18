@@ -2771,7 +2771,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 					}${e.peer ? ` peer:${e.peer}` : ""}`,
 			);
 			return okOut(
-				[`${pad("seq", 5)} ${pad("ts", 8)} ${pad("kind", 16)} actor`, ...lines].join("\n"),
+				[`${pad("seq", 5)} ${pad("ts", 8)} ${pad("kind", 16)} ${pad("actor", 16)} context`, ...lines].join("\n"),
 			);
 		}
 	}

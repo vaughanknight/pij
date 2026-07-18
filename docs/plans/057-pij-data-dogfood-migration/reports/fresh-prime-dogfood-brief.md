@@ -31,12 +31,13 @@ that reached nobody.
 
 ## Known-open findings (don't re-report; workarounds inline)
 
-| id | issue | status / workaround |
+| id | issue | status |
 |---|---|---|
-| F1 | `project create` mints the ENTIRE description as a permanent slug | fix in flight — until landed, keep create descriptions SHORT (slug-worthy) |
-| F2 | `spine render` is machine-wide only (no `--project`) | fix in flight — use `spine events --project` meanwhile |
-| F3 | anomaly alerts silently dropped when worker has no parent (adopted seats) | daemon-side fix rides next restart — poll `pij anomalies` for adopted workers |
-| F4 | render dumps raw JSON for project events | fix in flight |
-| F5 | `ruling-pointer` events can't carry an on-disk pointer (body-less by design) | doctrine question with Jordan — use event → project → `--plan` chain |
+| F1 | permanent whole-description slugs | ✅ FIXED+LIVE — `project create "<desc>" [--slug <kebab>]`, auto-slug caps at 48 |
+| F2 | render machine-wide only | ✅ FIXED+LIVE — `spine render --project <slug>` → `spine/<slug>.spine.md` |
+| F3 | alerts silently dropped for parent-less (adopted) workers | fixed on branch, **inert until daemon restart** — poll `pij anomalies` meanwhile |
+| F4 | raw JSON blobs in render | ✅ FIXED+LIVE — field-level project events |
+| F5 | events can't carry pointers | ✅ convention blessed — `--refs` takes `seq` / `commit:<sha>` / `pr:<n>` / `path:<file>` |
+| F6 | work lifecycle missing from project-filtered spine | ✅ works as designed — pass `--project <slug>` on `task set`; claim/verify events then inherit the assignment's project. Assignments created WITHOUT it stay unlinked (historical) |
 
 Anything NOT on this list is new signal — send it.
