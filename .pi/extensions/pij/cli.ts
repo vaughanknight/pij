@@ -40,7 +40,7 @@ import { FsSpineLog } from "./adapters/spine-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
-import { FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import {
 	type AgentSpawnPaneInfo,
 	buildAgentPeerEnv,
@@ -236,7 +236,7 @@ Messaging:
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
-  pij watchdog status|pause|resume|exempt|watch|unwatch|list …   supervise peer progress and subscriptions
+  pij watchdog status|pause|resume|exempt|reset|interval|watch|unwatch|list|disable-all|enable-all …   supervise peers
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
 
@@ -244,15 +244,18 @@ const WATCHDOG_USAGE = `pij watchdog — supervise peer progress
 
 USAGE
   pij watchdog status <id> [--json]
-  pij watchdog pause|resume|exempt <id> [--json]
+  pij watchdog pause|resume|exempt <id> [--json]     pause / clear pause / non-expiring exempt
+  pij watchdog reset <id> [--json]                   back to default (on, 20m, un-paused, UN-exempt)
+  pij watchdog interval <id> <duration> [--json]     set the timeout (e.g. 30s, 20m, 1h, or ms)
   pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
   pij watchdog unwatch <id> [--json]
   pij watchdog list [--json]
+  pij watchdog disable-all | enable-all [--json]     machine-wide kill switch (no id)
 
 JSON
-  status/state/list include watchdog: { enabled, intervalMs, pausedBy, exempt,
-  lastFireAt, watchers }. Watcher captures are pointer files under
-  ~/.pij/<watcher>/watchdog-captures/ with a bounded inline head.`;
+  status/state/list include watchdog: { enabled, globallyDisabled, relay,
+  intervalMs, pausedBy, exempt, lastFireAt, watchers }. Watcher captures are
+  pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded head.`;
 
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
 
@@ -432,6 +435,7 @@ function deps(): CliDeps {
 		platformWriteLock: new FsPlatformWriteLock(pijHome),
 		contextReader: new FsContextReader(homedir()),
 		watchdogStore: new FsWatchdogStore(pijHome),
+		watchdogGlobalStore: new FsWatchdogGlobalStore(pijHome),
 	};
 }
 

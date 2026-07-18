@@ -42,7 +42,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
-| `watchdog` (`status/pause/resume/exempt/watch/unwatch/list`) | peer supervision (`docs/how/pij-watchdog.md`) |
+| `watchdog` (`status/pause/resume/exempt/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C8 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
 | `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
 | `project` `spine` `task` (`set`) `state` (`set/verify`) `node` (`show`) `anomalies` | node route (platform governance surface, plan 054) |
 

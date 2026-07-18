@@ -176,6 +176,13 @@ export interface SessionDescriptor {
 	/** SessionId of the session that spawned this one (= PIJ_ANNOUNCE_TO at
 	 *  fresh boot). Present iff this is a spawned worker session. */
 	readonly spawnedBy?: SessionId;
+	/** Deliberate-silence class (Plan 056): a relay/bridge/control-plane
+	 *  infrastructure peer whose inbox forwards to an external sink (e.g. the
+	 *  pij-telegram bridge → the operator's phone). Its idleness is correct by
+	 *  design, never a stall — so the watchdog must NEVER watch it. A watchdog
+	 *  nudge into such a peer becomes a real-world message (the 20-nudge
+	 *  incident). Absent ⇒ ordinary watchable peer. */
+	readonly relay?: boolean;
 	// ─── control plane (Plan 019; all optional ⇒ migration-safe) ──────────
 	/** Which harness this session runs (`pi`/`claude`/`copilot`). Absent ⇒
 	 *  legacy pi session. Decides the message transport (inbox vs send-keys). */

@@ -76,12 +76,19 @@ import {
 	type WatchdogCapturePolicy,
 	type WatchdogSidecar,
 } from "./types.js";
-import { applyWatchdogResume, effectiveWatchdog } from "./watchdog.js";
+import { applyWatchdogResume, effectiveWatchdog, parseWatchdogInterval } from "./watchdog.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
 export interface WatchdogCliStore {
 	read(id: SessionId): WatchdogSidecar | undefined;
 	write(id: SessionId, sidecar: WatchdogSidecar): void;
+}
+
+/** The machine-wide watchdog switch (Plan 056), read/written by
+ *  `pij watchdog disable-all|enable-all`. */
+export interface WatchdogGlobalCliStore {
+	disabled(): boolean;
+	setEnabled(enabled: boolean): void;
 }
 
 export interface CliDeps {
@@ -122,10 +129,22 @@ export interface CliDeps {
 	readonly contextReader?: ContextReaderPort;
 	/** CLI-owned watchdog sidecars. Optional for legacy/in-process send-only callers. */
 	readonly watchdogStore?: WatchdogCliStore;
+	readonly watchdogGlobalStore?: WatchdogGlobalCliStore;
 }
 
 // ─── parsed command (discriminated per verb) ────────────────────────────────
-type WatchdogAction = "status" | "pause" | "resume" | "exempt" | "watch" | "unwatch" | "list";
+type WatchdogAction =
+	| "status"
+	| "pause"
+	| "resume"
+	| "exempt"
+	| "reset"
+	| "interval"
+	| "watch"
+	| "unwatch"
+	| "list"
+	| "disable-all"
+	| "enable-all";
 
 export type ParsedCommand =
 	| { readonly verb: "whoami"; readonly json: boolean; readonly env?: boolean }
@@ -174,6 +193,7 @@ export type ParsedCommand =
 			readonly action: WatchdogAction;
 			readonly id?: SessionId;
 			readonly capture?: WatchdogCapturePolicy;
+			readonly intervalMs?: number;
 			readonly json: boolean;
 	  }
 	| { readonly verb: "phonehome"; readonly json: boolean }
@@ -514,7 +534,7 @@ const MAX_POS: Record<string, number> = {
 	"state verify": 1,
 	"node show": 1,
 	anomalies: 0,
-	watchdog: 2,
+	watchdog: 3, // action + id + duration (for `interval <id> <duration>`)
 };
 
 export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
@@ -705,18 +725,39 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				"pause",
 				"resume",
 				"exempt",
+				"reset",
+				"interval",
 				"watch",
 				"unwatch",
 				"list",
+				"disable-all",
+				"enable-all",
 			]);
 			if (!action || !actions.has(action as WatchdogAction)) {
 				return err(
 					"E-ARG",
-					"usage: pij watchdog <status|pause|resume|exempt|watch|unwatch|list> [id]",
+					"usage: pij watchdog <status|pause|resume|exempt|reset|interval|watch|unwatch|list|disable-all|enable-all> [id] [duration]",
 				);
 			}
 			const typedAction = action as WatchdogAction;
 			const id = pos[1];
+			// Machine-wide switch (Plan 056): no id, no flags.
+			if (typedAction === "disable-all" || typedAction === "enable-all") {
+				if (id !== undefined) return err("E-ARG", `pij watchdog ${typedAction} takes no id`);
+				return ok({ verb: "watchdog", action: typedAction, json });
+			}
+			// Set a per-peer timeout (Plan 056): `interval <id> <duration>`, human
+			// durations (30s/20m/1h) or bare ms.
+			if (typedAction === "interval") {
+				if (!id) return err("E-ARG", "usage: pij watchdog interval <id> <duration>");
+				const raw = pos[2];
+				if (raw === undefined)
+					return err("E-ARG", "usage: pij watchdog interval <id> <duration> (e.g. 20m, 1h, 30s)");
+				const intervalMs = parseWatchdogInterval(raw);
+				if (intervalMs === null)
+					return err("E-ARG", `invalid duration '${raw}' — use e.g. 30s, 20m, 1h, or ms`);
+				return ok({ verb: "watchdog", action: typedAction, id, intervalMs, json });
+			}
 			if (typedAction === "list") {
 				if (id !== undefined) return err("E-ARG", "pij watchdog list takes no id");
 				if (
@@ -729,6 +770,13 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				return ok({ verb: "watchdog", action: typedAction, json });
 			}
 			if (!id) return err("E-ARG", `pij watchdog ${typedAction} needs a session id`);
+			// Strict arity: the family cap is 3 (for `interval <id> <duration>`),
+			// but every OTHER verb here takes exactly <id> — a stray third
+			// positional is a mistake, not silently ignored. (interval + the global
+			// switch already returned above.)
+			if (pos[2] !== undefined) {
+				return err("E-ARG", `pij watchdog ${typedAction} takes only <id>`);
+			}
 			if (
 				typedAction !== "watch" &&
 				(flags.capture !== undefined ||
@@ -1009,10 +1057,23 @@ function descAgeMs(d: SessionDescriptor, nowMs: number): number | null {
 	return Number.isNaN(t) ? null : nowMs - t;
 }
 
-function watchdogBlock(d: SessionDescriptor, sidecar: WatchdogSidecar | undefined) {
+function watchdogBlock(
+	d: SessionDescriptor,
+	sidecar: WatchdogSidecar | undefined,
+	globallyDisabled = false,
+) {
 	const cfg = effectiveWatchdog(sidecar);
+	// A relay/bridge is born exempt and never watched (Plan 056) — report that
+	// truthfully rather than `enabled`, the same effective-state invariant as the
+	// global switch: what status says must match scheduler eligibility.
+	const relay = d.relay === true;
 	return {
-		enabled: cfg.enabled,
+		// The machine-wide switch and the relay class both dominate the per-session
+		// config: a globally-disabled runtime, or a relay peer, fires nothing
+		// regardless of sidecar — so never say `enabled` for either.
+		enabled: cfg.enabled && !globallyDisabled && !relay,
+		globallyDisabled,
+		relay,
 		intervalMs: cfg.intervalMs,
 		pausedBy: cfg.pausedBy ?? null,
 		exempt: cfg.pausedBy === "exempt",
@@ -1238,10 +1299,23 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "watchdog": {
 			const store = deps.watchdogStore;
 			if (!store) return fail("E-ARG", "watchdog sidecar store is unavailable", cmd.json);
+			if (cmd.action === "disable-all" || cmd.action === "enable-all") {
+				const globalStore = deps.watchdogGlobalStore;
+				if (!globalStore) return fail("E-ARG", "watchdog global store is unavailable", cmd.json);
+				const enable = cmd.action === "enable-all";
+				globalStore.setEnabled(enable);
+				if (cmd.json) return okOut(JSON.stringify({ watchdog: { globallyDisabled: !enable } }));
+				return okOut(
+					enable
+						? "watchdog ENABLED machine-wide — every session is watched again"
+						: "watchdog DISABLED machine-wide — no session fires until `pij watchdog enable-all`",
+				);
+			}
 			if (cmd.action === "list") {
+				const globalOff = deps.watchdogGlobalStore?.disabled() ?? false;
 				const rows = deps.registry.list().map((descriptor) => ({
 					id: descriptor.id,
-					watchdog: watchdogBlock(descriptor, store.read(descriptor.id)),
+					watchdog: watchdogBlock(descriptor, store.read(descriptor.id), globalOff),
 				}));
 				if (cmd.json) return okOut(JSON.stringify(rows));
 				return okOut(
@@ -1260,7 +1334,18 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const descriptor = deps.registry.read(id);
 			if (!descriptor) return fail("E-NOID", `no session '${id}' in registry`, cmd.json);
 			let sidecar = store.read(id) ?? {};
-			if (cmd.action === "pause") {
+			if (cmd.action === "reset") {
+				// Back to default: on, 20 min, un-paused, UN-EXEMPT. The clean undo —
+				// `resume` deliberately won't clear `exempt`, so this is the only way
+				// to un-exempt a peer without hand-editing the sidecar (Plan 056).
+				sidecar = {};
+				store.write(id, sidecar);
+			} else if (cmd.action === "interval") {
+				if (cmd.intervalMs === undefined)
+					return fail("E-ARG", "pij watchdog interval needs a duration", cmd.json);
+				sidecar = { ...sidecar, intervalMs: cmd.intervalMs };
+				store.write(id, sidecar);
+			} else if (cmd.action === "pause") {
 				if (sidecar.pausedBy === "exempt") {
 					return fail(
 						"E-ARG",
@@ -1296,10 +1381,19 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				sidecar = { ...sidecar, watchers };
 				store.write(id, sidecar);
 			}
-			const block = watchdogBlock(descriptor, sidecar);
+			const block = watchdogBlock(
+				descriptor,
+				sidecar,
+				deps.watchdogGlobalStore?.disabled() ?? false,
+			);
 			if (cmd.json) return okOut(JSON.stringify({ id, watchdog: block }));
+			const stateNote = block.globallyDisabled
+				? "globally-disabled · "
+				: block.relay
+					? "relay (never watched) · "
+					: "";
 			return okOut(
-				`${id}: ${block.enabled ? "enabled" : "disabled"} · ${block.pausedBy ?? "active"} · interval ${block.intervalMs}ms · watchers ${block.watchers.length}`,
+				`${id}: ${stateNote}${block.enabled ? "enabled" : "disabled"} · ${block.pausedBy ?? "active"} · interval ${block.intervalMs}ms · watchers ${block.watchers.length}`,
 			);
 		}
 		case "models": {
@@ -1394,7 +1488,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							boundModel: d.boundModel ?? null,
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
-							watchdog: watchdogBlock(d, deps.watchdogStore?.read(d.id)),
+							watchdog: watchdogBlock(
+								d,
+								deps.watchdogStore?.read(d.id),
+								deps.watchdogGlobalStore?.disabled() ?? false,
+							),
 							prime: d.prime === true,
 							oldPrime: d.oldPrime === true,
 							// Adoption axis (plan 054 P3, WS-1): explicit boolean in the
@@ -1785,7 +1883,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						daemonTickAgeMs: tickStatus?.daemonTickAgeMs ?? null,
 						daemonTickStale: tickStatus?.daemonTickStale ?? null,
 						failureReason: d.failureReason ?? null,
-						watchdog: watchdogBlock(d, deps.watchdogStore?.read(d.id)),
+						watchdog: watchdogBlock(
+							d,
+							deps.watchdogStore?.read(d.id),
+							deps.watchdogGlobalStore?.disabled() ?? false,
+						),
 					}),
 				);
 			const modelLine = d.boundModel ? `  ·  model: ${d.boundModel}` : "";

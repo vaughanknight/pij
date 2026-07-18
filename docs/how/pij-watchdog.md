@@ -10,6 +10,22 @@ activity appears again.
 This whole-life supervision watchdog is distinct from the short spawn
 phone-home watchdog used while a control-plane peer binds.
 
+## Intent — never watch a peer whose silence is deliberate
+
+The watchdog exists to catch a peer that *should* be making progress but has gone
+quiet. Its premise — idleness might be a stall — is false for two classes, which
+it must never nudge:
+
+- **Relays / bridges / control-plane infrastructure** (the deliberate-silence
+  class). A peer that forwards its inbox to an external sink — e.g. the
+  `pij-telegram` bridge → the operator's phone — is *supposed* to sit idle waiting
+  for events. A watchdog nudge into it becomes a real-world message (this once
+  sent ~20 nudges to the operator's phone). These peers carry `relay: true` on
+  their descriptor and are **born exempt**: never watched, no sidecar needed. Any
+  new bridge/relay must set `relay: true` at registration.
+- **A peer that has deliberately paused** (done, or blocked awaiting a human).
+  See § Blocked on a human below.
+
 ## Commands
 
 ```sh
@@ -17,14 +33,39 @@ pij watchdog status <id> [--json]
 pij watchdog pause <id> [--json]
 pij watchdog resume <id> [--json]
 pij watchdog exempt <id> [--json]
+pij watchdog reset <id> [--json]   # back to default: on, 20m, un-paused, UN-exempt
+pij watchdog interval <id> <duration> [--json]   # set the timeout: 30s, 20m, 1h, or ms
 pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
 pij watchdog unwatch <id> [--json]
 pij watchdog list [--json]
+
+pij watchdog disable-all           # machine-wide OFF — one command, no per-sidecar edits
+pij watchdog enable-all            # machine-wide ON again
 
 pij state <id> --json              # includes a watchdog block
 pij list --json                    # each row includes a watchdog block
 pij spawn --harness <h> --no-watchdog
 ```
+
+**Machine-wide switch.** `disable-all`/`enable-all` is the fleet kill switch. It
+writes a single `~/.pij/pij-watchdog/global.json` that the daemon honors on its
+next tick for **every** session — including ones spawned while it is off — with
+no per-session sidecar writes. Use it to silence the whole fleet in one command
+rather than exempting peers one at a time. Absent file ⇒ enabled (fail-safe: a
+missing or malformed switch never silently disables supervision).
+
+## Timeouts
+
+The default interval is 20 minutes. Change a peer's timeout with one command,
+using a human duration (`30s`, `20m`, `1h`) or bare milliseconds:
+
+```sh
+pij watchdog interval pij-example 45m
+```
+
+`pij watchdog reset <id>` clears a peer back to the default (on, 20 min,
+un-paused, and **un-exempt** — the only way to lift a non-expiring exemption,
+since `resume` deliberately will not).
 
 `watch` subscribes the calling peer, resolved from `PIJ_SESSION_ID` or its
 adopted pane. `unwatch` removes that caller's subscription. Status/state/list
@@ -70,6 +111,16 @@ notices but disables pane text.
 
 A pause is the peer's claim that watchdog turns are unnecessary; it does not
 disable existing dead/provider-failure supervision.
+
+## Blocked on a human
+
+If a nudge reaches you while you are neither working nor done but **blocked
+awaiting a human ruling**, self-pause (`pij watchdog pause <your-id>`): that is
+the honest signal that your silence is intentional, not a stall. Known limitation
+(field-reported): a `self` pause for "blocked on human" is today
+indistinguishable from a `self` pause for "finished" — a supervisor cannot tell
+done from blocked. A richer `awaiting-human` pause reason (auto-resume-worthy,
+unlike a plain `self`) is a planned follow-up.
 
 ## What a watchdog turn means
 

@@ -121,6 +121,7 @@ describe("buildTelegramDescriptor (T001 / AC-08)", () => {
 		expect(d.id).toBe("pij-telegram");
 		expect(d.harness).toBe("pi"); // ← router observes (skips) this peer
 		expect(d.lifecycle).toBe("bound"); // ← already bound; daemon never drives it
+		expect(d.relay).toBe(true); // ← Plan 056: born exempt; the watchdog never nudges a relay
 		expect(d.pid).toBe(4242);
 		expect(d.folder).toBe("/work/here");
 		expect(d.dataDir).toBe("/home/.pij/pij-telegram");

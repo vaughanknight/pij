@@ -26,7 +26,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
-import { FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
@@ -143,6 +143,7 @@ export class Daemon {
 				store: new FsWatchdogStore(pijHome),
 				channel,
 				isAlive: (pid) => this.ports.isAlive(pid),
+				globallyDisabled: () => new FsWatchdogGlobalStore(pijHome).disabled(),
 				now: () => this.ports.now(),
 				capturePane: (session) => (session.paneId ? this.ports.capturePane(session.paneId) : ""),
 				sendText: (session, body) => {
