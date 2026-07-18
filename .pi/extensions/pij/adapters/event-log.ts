@@ -10,7 +10,6 @@ import { createHash, randomUUID } from "node:crypto";
 import {
 	appendFileSync,
 	closeSync,
-	fsyncSync,
 	linkSync,
 	mkdirSync,
 	openSync,
@@ -23,6 +22,7 @@ import { join } from "node:path";
 import { filterEvents } from "../core/events.js";
 import type { EventLogPort } from "../core/ports.js";
 import type { EventQuery, PijEvent } from "../core/types.js";
+import { maybeFsyncSync } from "./atomic-file.js";
 
 export class FsEventLog implements EventLogPort {
 	private readonly file: string;
@@ -46,7 +46,7 @@ export class FsEventLog implements EventLogPort {
 		try {
 			fd = openSync(tempPath, "wx");
 			writeFileSync(fd, JSON.stringify(event));
-			fsyncSync(fd);
+			maybeFsyncSync(fd);
 			closeSync(fd);
 			fd = undefined;
 			try {

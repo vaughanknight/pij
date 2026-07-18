@@ -11,7 +11,6 @@
 import {
 	closeSync,
 	existsSync,
-	fsyncSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
@@ -34,6 +33,7 @@ import {
 	type Result,
 	type SessionId,
 } from "../core/types.js";
+import { maybeFsyncSync } from "./atomic-file.js";
 
 export type { DeliveredMessage } from "../core/types.js";
 
@@ -118,7 +118,7 @@ export class FsChannel {
 		try {
 			fd = openSync(path, "wx");
 			writeFileSync(fd, JSON.stringify({ ...marker, messageId }));
-			fsyncSync(fd);
+			maybeFsyncSync(fd);
 			return ok("marked");
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "EEXIST") return ok("exists");

@@ -30,6 +30,17 @@ const NODE_RENAME_REPLACE_DEPS: RenameReplaceDeps = {
 	retryDelaysMs: WINDOWS_RENAME_RETRY_DELAYS_MS,
 };
 
+/** fsync, unless tests opt out: PIJ_TEST_NO_FSYNC=1 skips the physical disk
+ *  barrier. Under parallel vitest (16 workers x 170 files on one disk) fsync
+ *  latency stacks into tens of seconds and starves boot-path tests (the
+ *  "load-flake" family — never test infra, always this). Production always
+ *  fsyncs: crash-durability is the product contract; test assertions cover
+ *  ordering + content, which do not need the physical barrier. */
+export function maybeFsyncSync(fd: number): void {
+	if (process.env.PIJ_TEST_NO_FSYNC === "1") return;
+	fsyncSync(fd);
+}
+
 export function renameReplaceWithRetry(
 	source: string,
 	target: string,
@@ -72,7 +83,7 @@ export function fsyncDirBestEffort(dir: string): boolean {
 	let fd: number | undefined;
 	try {
 		fd = openSync(dir, "r");
-		fsyncSync(fd);
+		maybeFsyncSync(fd);
 		return true;
 	} catch {
 		return false; // never throws by contract — see doc comment
@@ -97,7 +108,7 @@ export function writeTextAtomic(path: string, text: string): void {
 	try {
 		fd = openSync(tmpPath, "wx");
 		writeFileSync(fd, text);
-		fsyncSync(fd);
+		maybeFsyncSync(fd);
 		closeSync(fd);
 		fd = undefined;
 		renameReplaceWithRetry(tmpPath, path);

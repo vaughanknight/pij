@@ -7,7 +7,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
 	closeSync,
-	fsyncSync,
 	linkSync,
 	mkdirSync,
 	openSync,
@@ -27,7 +26,7 @@ import {
 	type SessionDescriptor,
 	type SessionId,
 } from "../core/types.js";
-import { writeJsonAtomic } from "./atomic-file.js";
+import { maybeFsyncSync, writeJsonAtomic } from "./atomic-file.js";
 
 interface IdentityRecord {
 	readonly kind?: "identity";
@@ -756,7 +755,7 @@ export class FsRegistry implements RegistryPort {
 			// Fully write + fsync the temp before atomic no-replace hard-link publish.
 			fd = openSync(tmpPath, "wx");
 			writeFileSync(fd, JSON.stringify(value));
-			fsyncSync(fd);
+			maybeFsyncSync(fd);
 			closeSync(fd);
 			fd = undefined;
 			try {

@@ -10,7 +10,6 @@
 import { randomUUID } from "node:crypto";
 import {
 	closeSync,
-	fsyncSync,
 	linkSync,
 	mkdirSync,
 	openSync,
@@ -23,7 +22,7 @@ import { dirname, join } from "node:path";
 import type { ProjectStorePort } from "../core/platform/ports.js";
 import { isProject, type Project } from "../core/platform/types.js";
 import { err, ok, type Result } from "../core/types.js";
-import { fsyncDirBestEffort, writeJsonAtomic } from "./atomic-file.js";
+import { fsyncDirBestEffort, maybeFsyncSync, writeJsonAtomic } from "./atomic-file.js";
 
 // Keep every path below `projects/<slug>/`: a malformed slug (`..`, `/`,
 // empty) could otherwise escape into the pijHome top level, which belongs
@@ -50,7 +49,7 @@ function publishNoReplace(path: string, value: unknown): Result<"claimed" | "exi
 		// Fully write + fsync the temp before atomic no-replace hard-link publish.
 		fd = openSync(tmpPath, "wx");
 		writeFileSync(fd, JSON.stringify(value));
-		fsyncSync(fd);
+		maybeFsyncSync(fd);
 		closeSync(fd);
 		fd = undefined;
 		try {
