@@ -26,6 +26,10 @@ outside the allowed scope list.
 
 ## Allowed scope (AC-06)
 
+Verify your working directory BEFORE the first edit — run `pwd` and confirm it
+is the repo root this packet targets; any other checkout/worktree → STOP,
+report BLOCKED (never "fix" the path yourself).
+
 You may only write to these files (exactly — no others):
 
 {{ALLOWED_FILES_LIST}}

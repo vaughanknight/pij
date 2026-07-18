@@ -123,6 +123,10 @@ When your work is complete, send a report via `pij_send` using this exact JSON s
   targeted tests for every file you changed, using THIS repo's own commands (check its
   README/justfile/package scripts; ask the orchestrator if unnamed). Never assume
   another repo's recipes exist here.
+- **Verify your working directory BEFORE the first edit** — run `pwd` and confirm it is
+  the repo root this packet names (allowed paths resolve relative to it). If it is any
+  other checkout/worktree, STOP and report BLOCKED — never "fix" the path yourself.
+  (Encoded from a live incident: a worker edited the wrong checkout.)
 - **Do NOT edit forbidden paths** under any circumstances
 - **Do NOT write `.flow-pair/`** and do NOT read any ledger files under `.flow-pair/` —
   the orchestrator owns the entire ledger directory. Exception: you may read **only this
