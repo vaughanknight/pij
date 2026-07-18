@@ -16,6 +16,8 @@
 import {
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
+	SPINE_KIND_STATE_SET,
+	SPINE_KIND_STATE_VERIFIED,
 	type SpineEvent,
 } from "./types.js";
 
@@ -64,10 +66,12 @@ function parseRecord(raw: string | undefined): Record<string, unknown> | null {
  *  keys keep the render byte-stable. Null → the caller falls back to the
  *  raw `- prev:`/`- next:` lines (WS-5: rendered, never dropped). */
 function projectRecordLines(event: SpineEvent): string[] | null {
-	if (event.kind === SPINE_KIND_PROJECT_CREATED) {
-		// Creation carries next only by contract; a prev here is an external
-		// writer's shape — render it raw rather than guess.
-		if (event.prev !== undefined) return null;
+	// Creation carries next only by contract; a prev on project-created is an
+	// external writer's shape — render it raw rather than guess.
+	if (event.kind === SPINE_KIND_PROJECT_CREATED && event.prev !== undefined) return null;
+	if (event.prev === undefined) {
+		// Creation-shaped (project-created, or a state-set opening a fresh
+		// assignment): field-level view of next alone.
 		const next = parseRecord(event.next);
 		if (next === null) return null;
 		return Object.keys(next)
@@ -98,10 +102,15 @@ function renderEvent(event: SpineEvent): string {
 	if (event.peer !== undefined) lines.push(`- peer: ${event.peer}`);
 	if (event.project !== undefined) lines.push(`- project: ${event.project}`);
 	if (event.repo !== undefined) lines.push(`- repo: ${event.repo}`);
-	// Project events carry whole canonical record blobs as prev/next — render
-	// them field-level when they parse; anything else keeps the raw lines.
+	// Project AND state events carry whole canonical record blobs as
+	// prev/next — render them field-level when they parse (a state-set whose
+	// delta lives in refs compresses to "(no field changes)"); anything else
+	// keeps the raw lines.
 	const fieldLines =
-		event.kind === SPINE_KIND_PROJECT_CREATED || event.kind === SPINE_KIND_PROJECT_SET
+		event.kind === SPINE_KIND_PROJECT_CREATED ||
+		event.kind === SPINE_KIND_PROJECT_SET ||
+		event.kind === SPINE_KIND_STATE_SET ||
+		event.kind === SPINE_KIND_STATE_VERIFIED
 			? projectRecordLines(event)
 			: null;
 	if (fieldLines !== null) {

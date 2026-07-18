@@ -153,10 +153,15 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 		const node = byNode.get(assignment.nodeId);
 		if (node === undefined || node.systemState !== "idle") continue;
 		if (!isSemanticActive(chainState)) continue;
-		// Idle duration from lastEventAt; a node with NO event telemetry at
-		// all has been idle since forever — that IS the lost-dispatch image.
+		// Idle duration from lastEventAt, BOUNDED by the node's own age — a
+		// node cannot have been idle longer than it has existed. A fresh spawn
+		// with no telemetry yet is NOT a lost dispatch (kingfisher
+		// false-positive, dogfood findings #2); only a node whose timestamps
+		// are all unparseable reads as idle-since-forever.
 		const lastMs = node.lastEventAt === undefined ? Number.NaN : Date.parse(node.lastEventAt);
-		const idleMs = Number.isNaN(lastMs) ? Number.POSITIVE_INFINITY : inputs.nowMs - lastMs;
+		const startMs = Date.parse(node.startedAt);
+		const stamps = [lastMs, startMs].filter((t) => !Number.isNaN(t));
+		const idleMs = stamps.length === 0 ? Number.POSITIVE_INFINITY : inputs.nowMs - Math.max(...stamps);
 		if (idleMs <= threshold) continue;
 		// Evidence: the assignment's task-set event (the dispatch) plus its
 		// latest declared state, whichever exist.

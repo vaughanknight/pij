@@ -146,7 +146,10 @@ beforeAll(() => {
 			effort: "high",
 		}),
 	);
-	// The lost-dispatch shape (AC-07): mechanically idle for 5h.
+	// The lost-dispatch shape (AC-07): mechanically idle for 5h. The seat must
+	// be OLDER than its last event — idle duration is bounded by node age
+	// (kingfisher fix, dogfood #2), so a recent startedAt would honestly read
+	// as a fresh spawn, not a lost dispatch.
 	registry.write(
 		desc({
 			id: "pij-idler",
@@ -154,6 +157,7 @@ beforeAll(() => {
 			lifecycle: "bound",
 			state: "idle",
 			pid: 4243,
+			startedAt: new Date(NOW - 6 * 3_600_000).toISOString(),
 			lastEventAt: new Date(NOW - 5 * 3_600_000).toISOString(),
 		}),
 	);
