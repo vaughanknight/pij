@@ -516,14 +516,14 @@ describe("dispatch send", () => {
 					id: "w3",
 					harness: "claude",
 					state: "idle",
-					lastTickAt: new Date(T - 10_000).toISOString(),
+					lastTickAt: new Date(T - 40_000).toISOString(),
 				}),
 			],
 		});
 		const json = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, wedged);
 		expect(JSON.parse(json.stdout)).toMatchObject({
 			receipt: "queued",
-			daemonTickAgeMs: 10_000,
+			daemonTickAgeMs: 40_000,
 			daemonTickStale: true,
 		});
 		const human = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: false }, wedged);
@@ -965,7 +965,7 @@ describe("dispatch tail / state / path", () => {
 					id: "w3",
 					state: "working",
 					lastEventAt: old,
-					lastTickAt: new Date(T - 10_000).toISOString(),
+					lastTickAt: new Date(T - 40_000).toISOString(),
 					boundModel: "gpt-5.6-sol",
 					effort: "xhigh",
 				}),
@@ -982,8 +982,8 @@ describe("dispatch tail / state / path", () => {
 		expect(j).toMatchObject({
 			boundModel: "gpt-5.6-sol",
 			effort: "xhigh",
-			daemonLastTickAt: new Date(T - 10_000).toISOString(),
-			daemonTickAgeMs: 10_000,
+			daemonLastTickAt: new Date(T - 40_000).toISOString(),
+			daemonTickAgeMs: 40_000,
 			daemonTickStale: true,
 		});
 		// working|idle|done activity for the orchestrator (feedback round 3).

@@ -2911,6 +2911,17 @@ function main(): void {
 		process.stderr.write("E-NOREG: no pij registry — is the pij extension loaded?\n");
 		process.exit(3);
 	}
+	// T8 (dogfood, mastodon#3): `pij <verb> [sub] --help` prints that verb's
+	// USAGE lines and exits 0 — before this, subcommand --help was a bare
+	// E-ARG. Generic: filter the one usage text by the verb token, so every
+	// verb family gets --help for free and the surface can never drift from
+	// the documented one.
+	if (process.argv.includes("--help") && process.argv.length > 3) {
+		const verb = process.argv[2] ?? "";
+		const lines = USAGE.split("\n").filter((l) => l.includes(`pij ${verb}`));
+		process.stdout.write(lines.length > 0 ? `${lines.join("\n")}\n` : USAGE);
+		process.exit(0);
+	}
 	// T2 (dogfood, osk#4): a literal-body channel that bypasses the caller's
 	// shell entirely — double-quoted backticks/$( substitute in the SENDER'S
 	// shell before pij ever runs (osk accidentally executed `pij close` from

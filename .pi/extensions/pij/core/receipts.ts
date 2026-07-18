@@ -8,9 +8,12 @@
 
 import type { MessageReceipt, ReceiptState, SessionId } from "./types.js";
 
-/** A daemon ticks every 600ms; five missed seconds is unambiguously wedged
- *  without making brief scheduler jitter look unhealthy. */
-export const DAEMON_TICK_STALE_AFTER_MS = 5_000;
+/** A daemon ticks every 600ms, but a full field day (T5, 2026-07-18) showed
+ *  5-19s tick ages on virtually EVERY send under normal load — at 5s the
+ *  stale warning was the ordinary receipt and the fleet learned to ignore it
+ *  (alarm fatigue is a loosened gate). 30s sits above every observed-normal
+ *  reading and far below wedge-scale (a dead daemon reads minutes). */
+export const DAEMON_TICK_STALE_AFTER_MS = 30_000;
 
 export interface DaemonTickStatus {
 	readonly daemonLastTickAt: string | null;
