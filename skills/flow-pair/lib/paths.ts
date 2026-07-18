@@ -1,12 +1,23 @@
 // skills/flow-pair/lib/paths.ts
 // P2: zero @earendil-works/* imports | P7: .js ESM imports
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
 /** Default ledger root directory (gitignored at repo root). */
 export const LEDGER_ROOT = ".flow-pair" as const;
+
+/**
+ * Absolute root of the INSTALLED flow-pair skill (the parent of `lib/`,
+ * `references/`, and `prompt-lab/`), resolved from this module's location.
+ *
+ * DL-003 (packet path drift): the skill runs against arbitrary consuming repos,
+ * so skill-owned assets (templates, references, prompt-lab clusters) must be
+ * resolved from THIS root — never joined onto the consuming repo's root.
+ */
+export const FLOW_PAIR_SKILL_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Sub-directory under ledger root that holds per-run directories. */
 export const RUNS_DIR = "runs" as const;

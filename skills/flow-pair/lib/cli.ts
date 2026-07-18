@@ -7,15 +7,14 @@
 // Exit codes: 0=success  1=usage error  2=runtime error
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { ContextPackCompiler, nodeContextPackDeps } from "./context-pack.js";
 import { deriveRepoId, nodeGitDeps } from "./identity.js";
 import { Learning, nodeLearningDeps } from "./learning.js";
 import { LedgerWriter, nodeLedgerDeps, PROMPTS_DIR } from "./ledger.js";
 import { nodeObserveDeps, Observe } from "./observe.js";
 import { nodePacketRendererDeps, PacketRenderer } from "./packet.js";
-import { LEDGER_ROOT, resolveRunDir } from "./paths.js";
+import { FLOW_PAIR_SKILL_ROOT, LEDGER_ROOT, resolveRunDir } from "./paths.js";
 import { nodeReviewDeps, Review } from "./review.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
@@ -63,7 +62,7 @@ Options:
   --cluster <name>   Prompt-lab cluster name (dispatch; default: implement-code)
   --allowed-paths <p1,p2,...>  Comma-separated allowed paths (dispatch)
   --review-id <id>   Review id (fix)
-  --prompt-lab-root <p>  Prompt-lab root (learn; default: skills/flow-pair/prompt-lab)
+  --prompt-lab-root <p>  Prompt-lab root (learn; default: <flow-pair skill root>/prompt-lab)
   --miss-type <name> Learning miss type (learn; v1 must equal --cluster)
   --summary <text>   Learning summary (learn)
   --evidence <text>  Learning evidence; repeat not supported, use ';' separated text (learn)
@@ -201,7 +200,13 @@ function runDispatch(flags: Record<string, string | boolean>): Record<string, un
 	}
 
 	// Step 3: compile context pack
-	const compiler = new ContextPackCompiler(repoRoot, ledgerRoot, nodeContextPackDeps());
+	// DL-003: cluster learnings live under the skill install root, not the target repo.
+	const compiler = new ContextPackCompiler(
+		repoRoot,
+		ledgerRoot,
+		nodeContextPackDeps(),
+		FLOW_PAIR_SKILL_ROOT,
+	);
 	const compileResult = compiler.compile({
 		runId,
 		delegationId: delegResult.delegation.delegationId,
@@ -216,15 +221,15 @@ function runDispatch(flags: Record<string, string | boolean>): Record<string, un
 	}
 
 	// Step 4: render + write packet (P9 inside writePacket)
-	// templateDir is adjacent to this file: lib/../references/templates/
-	const __filename = fileURLToPath(import.meta.url);
-	const __dirname = dirname(__filename);
-	const templateDir = join(__dirname, "..", "references", "templates");
+	// templateDir lives under the skill install root: <skillRoot>/references/templates/
+	// DL-003: that same absolute root is surfaced into the packet as {{SKILL_ROOT}}.
+	const templateDir = join(FLOW_PAIR_SKILL_ROOT, "references", "templates");
 	const renderer = new PacketRenderer(ledgerRoot, templateDir, writer, nodePacketRendererDeps());
 	const packetResult = renderer.writePacket({
 		manifest: compileResult.manifest,
 		taskDescription,
 		repoRoot,
+		skillRoot: FLOW_PAIR_SKILL_ROOT,
 	});
 	if (!packetResult.ok || !packetResult.packet) {
 		throw new Error(packetResult.error ?? "writePacket failed");
@@ -343,12 +348,10 @@ function runFix(flags: Record<string, string | boolean>): Record<string, unknown
 	const reviewRec = JSON.parse(readFileSync(reviewPath, "utf8")) as {
 		findings: unknown[];
 	};
-	const __filename = fileURLToPath(import.meta.url);
-	const __dirname = dirname(__filename);
 	const templateDir =
 		typeof flags["template-dir"] === "string"
 			? flags["template-dir"]
-			: join(__dirname, "..", "references", "templates");
+			: join(FLOW_PAIR_SKILL_ROOT, "references", "templates");
 	const rev = new Review(ledgerRoot, nodeReviewDeps());
 	const res = rev.generateFixPacket({
 		runId,
@@ -357,6 +360,7 @@ function runFix(flags: Record<string, string | boolean>): Record<string, unknown
 		findings: reviewRec.findings as Parameters<Review["generateFixPacket"]>[0]["findings"],
 		templateDir,
 		repoRoot: localRepoRoot,
+		skillRoot: FLOW_PAIR_SKILL_ROOT,
 	});
 	if (!res.ok) {
 		throw new Error(res.error ?? "fix packet generation failed");
@@ -381,12 +385,10 @@ function runLearn(flags: Record<string, string | boolean>): Record<string, unkno
 		typeof flags["ledger-root"] === "string"
 			? flags["ledger-root"]
 			: join(localRepoRoot, ".flow-pair");
-	const __filename = fileURLToPath(import.meta.url);
-	const __dirname = dirname(__filename);
 	const promptLabRoot =
 		typeof flags["prompt-lab-root"] === "string"
 			? flags["prompt-lab-root"]
-			: join(__dirname, "..", "prompt-lab");
+			: join(FLOW_PAIR_SKILL_ROOT, "prompt-lab");
 	const evidenceRaw = typeof flags.evidence === "string" ? flags.evidence : "";
 	const candidateDelta =
 		typeof flags["candidate-delta"] === "string" ? flags["candidate-delta"] : summary;

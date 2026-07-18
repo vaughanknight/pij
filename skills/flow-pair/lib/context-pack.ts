@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { appendLedgerEvent } from "./ledger.js";
-import { resolveRunDir } from "./paths.js";
+import { FLOW_PAIR_SKILL_ROOT, resolveRunDir } from "./paths.js";
 
 // ─── P3 injectable fs deps ────────────────────────────────────────────────────
 
@@ -133,6 +133,11 @@ export class ContextPackCompiler {
 		readonly repoRoot: string,
 		readonly ledgerRoot: string,
 		private readonly deps: ContextPackDeps = nodeContextPackDeps(),
+		/**
+		 * Absolute root of the installed flow-pair skill (DL-003). Cluster learnings
+		 * live under `<skillRoot>/prompt-lab/` — NOT under the consuming repo's root.
+		 */
+		readonly skillRoot: string = FLOW_PAIR_SKILL_ROOT,
 	) {}
 
 	/**
@@ -200,28 +205,34 @@ export class ContextPackCompiler {
 	}
 
 	/**
-	 * Return same-cluster learnings from prompt-lab.
+	 * Return same-cluster learnings from the SKILL's prompt-lab (DL-003: resolved
+	 * from `skillRoot`, never the consuming repo root — repoRoot-joined lookups
+	 * silently compiled empty in every repo other than pij).
 	 *
-	 * Always {ok:true}: returns [] when cluster dir or active.md is absent
-	 * (Phase 7 not yet built — empty is the expected path for Phases 3 and 4).
+	 * Always {ok:true}: returns [] when cluster dir or active.md is absent, with
+	 * `searchedPath` naming the active.md that was looked for so callers can
+	 * record the miss honestly instead of dropping it.
 	 */
 	clusterLearnings(cluster: string): {
 		ok: boolean;
 		learnings?: ClusterLearning[];
+		/** The active.md path that was searched — set even when nothing was found. */
+		searchedPath?: string;
 		error?: string;
 	} {
-		const clusterPath = join(this.repoRoot, "skills/flow-pair/prompt-lab/clusters", cluster);
-		if (!this.deps.existsSync(clusterPath)) {
-			return { ok: true, learnings: [] };
-		}
+		const clusterPath = join(this.skillRoot, "prompt-lab", "clusters", cluster);
 		const activePath = join(clusterPath, "active.md");
+		if (!this.deps.existsSync(clusterPath)) {
+			return { ok: true, learnings: [], searchedPath: activePath };
+		}
 		if (!this.deps.existsSync(activePath)) {
-			return { ok: true, learnings: [] };
+			return { ok: true, learnings: [], searchedPath: activePath };
 		}
 		const content = this.deps.readFileSync(activePath, "utf8");
 		return {
 			ok: true,
 			learnings: [{ cluster, sourcePath: activePath, content }],
+			searchedPath: activePath,
 		};
 	}
 
@@ -295,9 +306,10 @@ export class ContextPackCompiler {
 				exclusions.push({ path: logPath, reason: "not found" });
 			}
 
-			// Step 5: cluster learnings (graceful [] when Phase 7 not built)
+			// Step 5: cluster learnings — resolved from skillRoot (DL-003). An empty
+			// result is recorded as an exclusion (honest miss), never dropped silently.
 			const learnResult = this.clusterLearnings(opts.cluster);
-			if (learnResult.ok && learnResult.learnings) {
+			if (learnResult.ok && learnResult.learnings && learnResult.learnings.length > 0) {
 				for (const learning of learnResult.learnings) {
 					entries.push({
 						path: learning.sourcePath,
@@ -306,6 +318,8 @@ export class ContextPackCompiler {
 						role: "learning",
 					});
 				}
+			} else if (learnResult.searchedPath) {
+				exclusions.push({ path: learnResult.searchedPath, reason: "not found" });
 			}
 
 			const createdAt = new Date().toISOString();

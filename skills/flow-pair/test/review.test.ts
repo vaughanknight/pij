@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ReviewFinding } from "../lib/ledger.js";
+import { FLOW_PAIR_SKILL_ROOT } from "../lib/paths.js";
 import type { ReviewDeps } from "../lib/review.js";
 import { FINDING_KIND, nodeReviewDeps, Review, VERDICT } from "../lib/review.js";
 
@@ -472,6 +473,45 @@ describe("Review — generateFixPacket() AC-06 (T002)", () => {
 		const mdContent = readFileSync(result.packet.fixPacketPath, "utf8");
 		expect(mdContent).toContain("dlg-0001");
 		expect(mdContent).toContain("rev-0001");
+	});
+
+	it("DL-003: {{SKILL_ROOT}} in worker-fix.md renders to an absolute skill root (explicit + default)", () => {
+		writeFileSync(
+			join(templateDir, "worker-fix.md"),
+			`${MINIMAL_TEMPLATE}Protocol: {{SKILL_ROOT}}/references/orchestrator-worker-protocol.md\n`,
+		);
+		const rev = new Review(ledgerRoot, nodeReviewDeps());
+		// Explicit skillRoot is substituted verbatim
+		const explicit = rev.generateFixPacket({
+			runId: RUN_ID,
+			delegationId: "dlg-0001",
+			reviewId: "rev-0001",
+			findings: FINDINGS,
+			templateDir,
+			repoRoot,
+			skillRoot: "/opt/agents/skills/flow-pair",
+		});
+		expect(explicit.ok).toBe(true);
+		if (!explicit.packet) throw new Error("expected fix packet");
+		const explicitMd = readFileSync(explicit.packet.fixPacketPath, "utf8");
+		expect(explicitMd).toContain(
+			"Protocol: /opt/agents/skills/flow-pair/references/orchestrator-worker-protocol.md",
+		);
+		expect(explicitMd).not.toContain("{{SKILL_ROOT}}");
+		// Omitted → defaults to the installed flow-pair skill root
+		const defaulted = rev.generateFixPacket({
+			runId: RUN_ID,
+			delegationId: "dlg-0001",
+			reviewId: "rev-0002",
+			findings: FINDINGS,
+			templateDir,
+			repoRoot,
+		});
+		expect(defaulted.ok).toBe(true);
+		if (!defaulted.packet) throw new Error("expected fix packet");
+		const defaultedMd = readFileSync(defaulted.packet.fixPacketPath, "utf8");
+		expect(defaultedMd).toContain(`Protocol: ${FLOW_PAIR_SKILL_ROOT}/references/`);
+		expect(defaultedMd).not.toContain("{{SKILL_ROOT}}");
 	});
 
 	it("pointerMsg format: [flow-pair fix-0001] Fix packet at: ...", () => {

@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { appendLedgerEvent, FIX_PACKETS_DIR, type ReviewFinding } from "./ledger.js";
-import { resolveRunDir } from "./paths.js";
+import { FLOW_PAIR_SKILL_ROOT, resolveRunDir } from "./paths.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
@@ -67,6 +67,12 @@ export interface FixPacketOpts {
 	templateDir: string;
 	/** Absolute repo root — for relative-path display in pointerMsg. */
 	repoRoot: string;
+	/**
+	 * Absolute root of the installed flow-pair skill, injected as {{SKILL_ROOT}}
+	 * so fix-packet citations resolve in ANY consuming repo (DL-003).
+	 * Defaults to the root this module is installed under.
+	 */
+	skillRoot?: string;
 }
 
 export interface FixPacket {
@@ -320,6 +326,8 @@ export class Review {
 			DELEGATION_ID: opts.delegationId,
 			REVIEW_ID: opts.reviewId,
 			RUN_ID: opts.runId,
+			// DL-003: absolute install root of the flow-pair skill for citation resolution.
+			SKILL_ROOT: opts.skillRoot ?? FLOW_PAIR_SKILL_ROOT,
 			ALLOWED_FILES_LIST:
 				allowedFiles.length > 0 ? allowedFiles.map((f) => `- ${f}`).join("\n") : "(none)",
 			FINDINGS_SUMMARY: findingsSummary || "(no findings)",
