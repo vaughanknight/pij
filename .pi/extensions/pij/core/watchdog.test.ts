@@ -9,6 +9,7 @@ import {
 	effectiveWatchdog,
 	evaluateResponse,
 	isFireDue,
+	parseWatchdogInterval,
 	shouldCapture,
 } from "./watchdog.js";
 
@@ -258,5 +259,24 @@ describe("applyCompactPause", () => {
 		const exempt: WatchdogSidecar = { pausedBy: "exempt", pausedAtMs: 1 };
 		expect(applyCompactPause(self, 2)).toBe(self);
 		expect(applyCompactPause(exempt, 2)).toBe(exempt);
+	});
+});
+
+describe("parseWatchdogInterval", () => {
+	it("parses human durations to milliseconds", () => {
+		expect(parseWatchdogInterval("30s")).toBe(30_000);
+		expect(parseWatchdogInterval("20m")).toBe(1_200_000);
+		expect(parseWatchdogInterval("1h")).toBe(3_600_000);
+		expect(parseWatchdogInterval("90m")).toBe(5_400_000);
+	});
+
+	it("accepts a bare integer as milliseconds", () => {
+		expect(parseWatchdogInterval("1200000")).toBe(1_200_000);
+	});
+
+	it("rejects non-positive, fractional, and malformed input", () => {
+		for (const bad of ["0", "0s", "-5m", "abc", "", "5x", "1.5h", "m", "10 m"]) {
+			expect(parseWatchdogInterval(bad)).toBeNull();
+		}
 	});
 });

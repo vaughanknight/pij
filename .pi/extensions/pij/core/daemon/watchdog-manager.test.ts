@@ -103,6 +103,7 @@ interface ManagerHarness {
 	readonly responses: WatchdogResponseEvent[];
 	setNow(value: number): void;
 	setPane(id: string, value: string): void;
+	setGlobalDisabled(value: boolean): void;
 }
 
 function managerHarness(): ManagerHarness {
@@ -114,10 +115,12 @@ function managerHarness(): ManagerHarness {
 	const responses: WatchdogResponseEvent[] = [];
 	const panes = new Map<string, string>();
 	let nowMs = 0;
+	let globalDisabled = false;
 	const manager = new WatchdogManager({
 		store,
 		channel: delivery,
 		isAlive: () => true,
+		globallyDisabled: () => globalDisabled,
 		now: () => nowMs,
 		capturePane: (session) => {
 			events.push(`capture:${session.id}`);
@@ -142,6 +145,9 @@ function managerHarness(): ManagerHarness {
 			nowMs = value;
 		},
 		setPane: (id, value) => panes.set(id, value),
+		setGlobalDisabled: (value: boolean) => {
+			globalDisabled = value;
+		},
 	};
 }
 
@@ -265,6 +271,46 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		// Paused/exempt peers remain reconciled so a sidecar revision or real
 		// working transition can resume them; the other three are discarded.
 		expect(deadManager.activeCount()).toBe(2);
+	});
+
+	it("fires nothing while off, and RE-ANCHORS on re-enable so the off-window isn't counted (Plan 056)", () => {
+		// The machine-wide kill switch: one flag disables every peer's watchdog
+		// regardless of its sidecar, and — being global, not per-descriptor — a
+		// peer spawned while off is covered too. No per-sidecar writes.
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(1_000));
+		h.store.revisions.set("peer", 1);
+		h.setGlobalDisabled(true);
+		h.setNow(1_000_000); // long past due, but disabled
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(0).toISOString() })]);
+		expect(h.fires).toEqual([]);
+
+		// Re-enable: must NOT fire immediately even though the peer's last event is
+		// ancient — the disabled window is re-anchored, not treated as silence.
+		h.setGlobalDisabled(false);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(0).toISOString() })]);
+		expect(h.fires).toEqual([]);
+
+		// One full interval AFTER re-enable, it fires.
+		h.setNow(1_001_000);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(0).toISOString() })]);
+		expect(h.fires).toEqual([{ id: "peer", atMs: 1_001_000 }]);
+	});
+
+	it("never watches a relay/bridge peer — the deliberate-silence class (Plan 056)", () => {
+		// The pij-telegram bridge forwards its inbox to the operator's phone. A
+		// watchdog nudge into it became 20 real messages. A relay's idleness is
+		// correct by design, never a stall — it must never be reconciled or fired,
+		// even with a due, enabled sidecar.
+		const h = managerHarness();
+		h.store.sidecars.set("pij-telegram", intervalSidecar(1));
+		h.store.revisions.set("pij-telegram", 1);
+		h.setNow(10_000);
+		h.manager.reconcile([desc({ id: "pij-telegram", relay: true })]);
+		expect(h.sent).toEqual([]);
+		expect(h.delivery.outbox).toEqual([]);
+		expect(h.fires).toEqual([]);
+		expect(h.manager.activeCount()).toBe(0); // never even tracked
 	});
 
 	it("mtime-gates sidecar reads until the revision changes", () => {
@@ -620,10 +666,18 @@ describe("watchdog CLI and state surfaces", () => {
 		const target = desc({ id: "target", lastWatchdogFireAt: new Date(50).toISOString() });
 		const registry = new FakeRegistry([caller, target]);
 		const watchdog = new MemoryWatchdogStore();
+		let globalDisabled = false;
+		const watchdogGlobal = {
+			disabled: () => globalDisabled,
+			setEnabled: (enabled: boolean) => {
+				globalDisabled = !enabled;
+			},
+		};
 		const process = new FakeProcess(10, 100, { PIJ_SESSION_ID: "caller" });
 		return {
 			registry,
 			watchdog,
+			watchdogGlobal,
 			deps: {
 				registry,
 				eventLogFor: () => new FakeEventLog(),
@@ -632,6 +686,7 @@ describe("watchdog CLI and state surfaces", () => {
 				cwd: "/repo",
 				pijHome: "/tmp/pij",
 				watchdogStore: watchdog,
+				watchdogGlobalStore: watchdogGlobal,
 			},
 		};
 	}
@@ -688,6 +743,81 @@ describe("watchdog CLI and state surfaces", () => {
 		if (!unwatch.ok) throw new Error(unwatch.message);
 		dispatch(unwatch.value, h.deps);
 		expect(h.watchdog.read("target")?.watchers).toEqual([]);
+	});
+
+	it("disable-all / enable-all flip the machine-wide switch (Plan 056)", () => {
+		const h = cliHarness();
+		const disable = parseArgs(["watchdog", "disable-all"]);
+		if (!disable.ok) throw new Error(disable.message);
+		const dres = dispatch(disable.value, h.deps);
+		expect(dres.exitCode).toBe(0);
+		expect(dres.stdout).toContain("DISABLED machine-wide");
+		expect(h.watchdogGlobal.disabled()).toBe(true);
+
+		const enable = parseArgs(["watchdog", "enable-all"]);
+		if (!enable.ok) throw new Error(enable.message);
+		const eres = dispatch(enable.value, h.deps);
+		expect(eres.exitCode).toBe(0);
+		expect(h.watchdogGlobal.disabled()).toBe(false);
+	});
+
+	it("interval sets a per-peer timeout from a human duration (Plan 056)", () => {
+		const h = cliHarness();
+		const parsed = parseArgs(["watchdog", "interval", "target", "20m"]);
+		if (!parsed.ok) throw new Error(parsed.message);
+		expect(dispatch(parsed.value, h.deps).exitCode).toBe(0);
+		expect(h.watchdog.read("target")?.intervalMs).toBe(1_200_000);
+		expect(parseArgs(["watchdog", "interval", "target"]).ok).toBe(false); // needs duration
+		expect(parseArgs(["watchdog", "interval", "target", "nope"]).ok).toBe(false); // bad duration
+	});
+
+	it("reset clears a peer back to default, including un-exempting it (Plan 056)", () => {
+		const h = cliHarness();
+		// Exempt it first — resume can't undo exempt, so reset is the only CLI path.
+		h.watchdog.sidecars.set("target", { pausedBy: "exempt", pausedAtMs: 1, intervalMs: 5 });
+		const parsed = parseArgs(["watchdog", "reset", "target"]);
+		if (!parsed.ok) throw new Error(parsed.message);
+		expect(dispatch(parsed.value, h.deps).exitCode).toBe(0);
+		expect(h.watchdog.read("target")).toEqual({}); // default: on, 20min, unpaused, un-exempt
+	});
+
+	it("status reports globally-disabled after disable-all, not a bare 'enabled' (Plan 056)", () => {
+		const h = cliHarness();
+		const off = parseArgs(["watchdog", "disable-all"]);
+		if (!off.ok) throw new Error(off.message);
+		dispatch(off.value, h.deps);
+		const status = parseArgs(["watchdog", "status", "target", "--json"]);
+		if (!status.ok) throw new Error(status.message);
+		const out = JSON.parse(dispatch(status.value, h.deps).stdout) as {
+			watchdog: { enabled: boolean; globallyDisabled: boolean };
+		};
+		expect(out.watchdog.globallyDisabled).toBe(true);
+		expect(out.watchdog.enabled).toBe(false); // the switch dominates the sidecar
+	});
+
+	it("status reports a relay peer as never-watched, not 'enabled' (Plan 056 review MEDIUM-1)", () => {
+		const h = cliHarness();
+		h.registry.write(desc({ id: "bridge", relay: true }));
+		const status = parseArgs(["watchdog", "status", "bridge", "--json"]);
+		if (!status.ok) throw new Error(status.message);
+		const out = JSON.parse(dispatch(status.value, h.deps).stdout) as {
+			watchdog: { enabled: boolean; relay: boolean };
+		};
+		expect(out.watchdog.relay).toBe(true);
+		expect(out.watchdog.enabled).toBe(false); // relay dominates — never watched
+	});
+
+	it("rejects a stray third positional for non-interval verbs (review LOW)", () => {
+		expect(parseArgs(["watchdog", "status", "target", "junk"]).ok).toBe(false);
+		expect(parseArgs(["watchdog", "reset", "target", "junk"]).ok).toBe(false);
+		expect(parseArgs(["watchdog", "pause", "target", "junk"]).ok).toBe(false);
+		expect(parseArgs(["watchdog", "interval", "target", "20m"]).ok).toBe(true); // interval keeps its 3rd
+	});
+
+	it("disable-all / enable-all take no id", () => {
+		expect(parseArgs(["watchdog", "disable-all", "target"]).ok).toBe(false);
+		expect(parseArgs(["watchdog", "enable-all", "x"]).ok).toBe(false);
+		expect(parseArgs(["watchdog", "disable-all"]).ok).toBe(true);
 	});
 
 	it("rejects pause after exemption without weakening the tier", () => {

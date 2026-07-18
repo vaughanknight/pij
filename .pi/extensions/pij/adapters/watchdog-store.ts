@@ -102,3 +102,39 @@ export class FsWatchdogStore {
 		return path;
 	}
 }
+
+/** The subdir the global switch lives under. A sibling of per-session dirs, so
+ *  its `global.json` is NOT enumerated by `FsRegistry.list()`'s top-level
+ *  `readdirSync(pijHome)` + `.json` filter — a top-level file there would be
+ *  read as a phantom peer (the F-01 trap). */
+const WATCHDOG_GLOBAL_DIR = "pij-watchdog";
+
+/** Machine-wide watchdog on/off switch (Plan 056), at
+ *  `~/.pij/pij-watchdog/global.json`. Absent ⇒ enabled (legacy default). One
+ *  file replaces per-session sidecar edits for a fleet-wide disable. */
+export class FsWatchdogGlobalStore {
+	constructor(private readonly pijHome: string) {}
+
+	private path(): string {
+		return join(this.pijHome, WATCHDOG_GLOBAL_DIR, "global.json");
+	}
+
+	/** True when the whole watchdog runtime is disabled. Absent/malformed ⇒
+	 *  false (fail safe: default is watching, matching legacy). */
+	disabled(): boolean {
+		try {
+			const parsed = JSON.parse(readFileSync(this.path(), "utf8")) as unknown;
+			return (
+				typeof parsed === "object" &&
+				parsed !== null &&
+				(parsed as { enabled?: unknown }).enabled === false
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	setEnabled(enabled: boolean): void {
+		writeJsonAtomic(this.path(), { enabled });
+	}
+}

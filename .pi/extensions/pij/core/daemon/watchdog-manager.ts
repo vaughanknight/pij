@@ -29,6 +29,10 @@ export interface WatchdogManagerDeps {
 	readonly store: WatchdogStorePort;
 	readonly channel: DeliveryPort;
 	readonly isAlive: (pid: number) => boolean;
+	/** Machine-wide kill switch (Plan 056). When it returns true, NO peer is
+	 *  watched or fired — global, not per-descriptor, so peers spawned while off
+	 *  are covered without any sidecar writes. Absent ⇒ always enabled. */
+	readonly globallyDisabled?: () => boolean;
 	readonly now: () => number;
 	readonly capturePane: (session: SessionDescriptor) => string;
 	readonly sendText: (session: SessionDescriptor, body: string) => void;
@@ -69,6 +73,11 @@ function eligible(session: SessionDescriptor): boolean {
 	// into it either. (A pi peer pulls its own inbox but IS watchdog-delivered:
 	// AC-10.) This guard was latent until the startedAt anchor fix made pull
 	// targets fire-eligible for the first time.
+	// Deliberate-silence class (Plan 056): a relay/bridge peer forwards its inbox
+	// to an external sink (the pij-telegram bridge → the operator's phone). Its
+	// idleness is correct by design; a watchdog nudge into it becomes a real-world
+	// message. Never watch it.
+	if (session.relay) return false;
 	if (session.deliveryMode === "pull" && (session.harness ?? "pi") !== "pi") return false;
 	const deliveryAvailable =
 		(session.harness ?? "pi") === "pi" ||
@@ -89,9 +98,26 @@ export class WatchdogManager {
 	private readonly revisions = new Map<SessionId, number | null>();
 	private readonly sidecars = new Map<SessionId, WatchdogSidecar | undefined>();
 
+	private wasGloballyDisabled = false;
+
 	constructor(private readonly deps: WatchdogManagerDeps) {}
 
 	reconcile(sessions: readonly SessionDescriptor[]): void {
+		// Machine-wide kill switch (Plan 056): drop all runtime state and fire
+		// nothing while globally off.
+		if (this.deps.globallyDisabled?.()) {
+			for (const id of [...this.states.keys()]) this.disposeSession(id);
+			this.wasGloballyDisabled = true;
+			return;
+		}
+		// On the disabled→enabled edge, RE-ANCHOR every peer to now: the disabled
+		// window must not count toward isFireDue(), or every otherwise-due peer
+		// fires the instant the switch flips back on (a re-enable nudge-storm).
+		// Dropping in-memory state alone does NOT re-anchor — reconcileSession
+		// rebuilds the anchor from the descriptor's old timestamps, which is
+		// exactly the disabled window. So force a fresh `now` anchor here.
+		const reanchorNowMs = this.wasGloballyDisabled ? this.deps.now() : undefined;
+		this.wasGloballyDisabled = false;
 		const seen = new Set<SessionId>();
 		for (const session of sessions) {
 			if (!eligible(session) || !this.deps.isAlive(session.pid)) {
@@ -99,7 +125,7 @@ export class WatchdogManager {
 				continue;
 			}
 			seen.add(session.id);
-			this.reconcileSession(session);
+			this.reconcileSession(session, reanchorNowMs);
 		}
 		for (const id of this.states.keys()) {
 			if (!seen.has(id)) this.disposeSession(id);
@@ -150,7 +176,7 @@ export class WatchdogManager {
 		if (next !== current && next !== undefined) this.writeSidecar(id, next);
 	}
 
-	private reconcileSession(session: SessionDescriptor): void {
+	private reconcileSession(session: SessionDescriptor, reanchorNowMs?: number): void {
 		const nowMs = this.deps.now();
 		let sidecar = this.readSidecar(session.id);
 		let state = this.states.get(session.id);
@@ -158,12 +184,15 @@ export class WatchdogManager {
 			state = {
 				ordinal: 0,
 				consecutiveSilentFires: 0,
-				lastFireAtMs: timestampMs(session.lastWatchdogFireAt),
+				// On a global re-enable, anchor to now so the disabled window does
+				// not count as silence (else a long-disabled peer fires instantly).
+				lastFireAtMs: reanchorNowMs ?? timestampMs(session.lastWatchdogFireAt),
 				// A session that has never emitted an event still needs watching —
 				// it is the likeliest to be hung at boot. startedAt is its birth
 				// anchor; without this fallback both anchors are null and
 				// `isFireDue` never fires (found live, activation day).
-				activityAnchorAtMs: timestampMs(session.lastEventAt) ?? timestampMs(session.startedAt),
+				activityAnchorAtMs:
+					reanchorNowMs ?? timestampMs(session.lastEventAt) ?? timestampMs(session.startedAt),
 				lastEventAt: session.lastEventAt,
 				lastState: session.state,
 				lastPane: undefined,

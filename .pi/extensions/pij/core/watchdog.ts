@@ -179,3 +179,17 @@ export function captureSlice(paneText: string, policy: CapturePolicy): string {
 	}
 	return codePoints.slice(firstIncluded).join("");
 }
+
+/** Parse a watchdog interval from a human string to milliseconds (Plan 056).
+ *  Accepts `<n>s`/`<n>m`/`<n>h` or a bare integer of milliseconds. Returns null
+ *  for anything non-positive, fractional, or malformed — the caller reports the
+ *  usage error. Makes `pij watchdog interval <id> 20m` ergonomic. */
+export function parseWatchdogInterval(text: string): number | null {
+	const match = /^(\d+)(ms|s|m|h)?$/.exec(text.trim());
+	if (!match) return null;
+	const value = Number(match[1]);
+	if (!Number.isSafeInteger(value) || value <= 0) return null;
+	const unitMs = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 } as const;
+	const unit = (match[2] ?? "ms") as keyof typeof unitMs;
+	return value * unitMs[unit];
+}

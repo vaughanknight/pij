@@ -108,6 +108,9 @@ export function buildTelegramDescriptor(
 		startedAt,
 		harness: "pi",
 		lifecycle: "bound",
+		// Deliberate-silence class (Plan 056): this bridge forwards its inbox to
+		// the operator's phone, so the watchdog must never nudge it. Born exempt.
+		relay: true,
 	};
 }
 
