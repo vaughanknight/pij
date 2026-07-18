@@ -530,6 +530,49 @@ describe("dispatch send", () => {
 		expect(human.stdout).toContain("daemon tick stale");
 	});
 
+	it("names the compact hold at send time — 'queued: target compacting' (DL-004)", () => {
+		const compacting = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "w3",
+					harness: "claude",
+					state: "idle",
+					lastTickAt: new Date(T - 1000).toISOString(),
+					compactingAt: new Date(T - 2000).toISOString(),
+				}),
+			],
+		});
+		const human = dispatch(
+			{ verb: "send", to: "w3", text: "x", wait: false, json: false },
+			compacting,
+		);
+		expect(human.stdout).toContain("queued: target compacting");
+	});
+
+	it("an EXPIRED compact mark does not name the hold (drain has resumed)", () => {
+		const staleMark = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "w3",
+					harness: "claude",
+					state: "idle",
+					lastTickAt: new Date(T - 1000).toISOString(),
+					compactingAt: new Date(T - 300_000).toISOString(), // > COMPACT_MAX_MS
+				}),
+			],
+		});
+		const human = dispatch(
+			{ verb: "send", to: "w3", text: "x", wait: false, json: false },
+			staleMark,
+		);
+		expect(human.stdout).not.toContain("target compacting");
+		expect(human.stdout).toContain("queued: awaiting daemon delivery confirmation");
+	});
+
 	it("codes: E-SELF, E-NOID, E-CMD, E-DEAD; stale warns + sends", () => {
 		const base = [desc({ id: "a1" })];
 		expect(

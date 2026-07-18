@@ -37,6 +37,10 @@ export const execFileRunner: TmuxRunner = (args) => {
 /** Named keys send-keys understands (mirrors harness/driver/tmux.ts `Key`). */
 export type TmuxKey =
 	| "Enter"
+	// Digit answer keys — send-keys types the literal character (interstitial
+	// auto-answer, e.g. copilot folder-trust option 1 = trust once).
+	| "1"
+	| "2"
 	| "C-c"
 	| "C-d"
 	| "C-z"

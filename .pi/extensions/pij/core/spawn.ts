@@ -10,8 +10,10 @@
 //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
+import { writeMerged } from "./daemon/loop.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
+import type { RegistryPort } from "./ports.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
 import { err, ok, type Result } from "./types.js";
 
@@ -454,6 +456,23 @@ export function parseCompactSelfArgs(
 	}
 	const instruction = rest.join(" ").trim();
 	return { pane, delayMs, ...(instruction ? { instruction } : {}) };
+}
+
+/** Best-effort compact-self window mark (DL-004): stamp `compactingAt` on the
+ *  resolved caller descriptor so the daemon HOLDS inbox drain while this pane
+ *  compacts (a mid-compact injection is eaten by the harness's fresh-context
+ *  reset). No id / unknown id → null and nothing written — an unregistered
+ *  pane still compacts exactly as before. Persists via the daemon merge law
+ *  (writeMerged) so a concurrent daemon tick write is never clobbered. */
+export function markCompactingSelf(
+	registry: RegistryPort,
+	selfId: SessionId | undefined,
+	nowIso: string,
+): SessionDescriptor | null {
+	if (selfId === undefined) return null;
+	const descriptor = registry.read(selfId);
+	if (!descriptor) return null;
+	return writeMerged(registry, { ...descriptor, compactingAt: nowIso });
 }
 
 /** The side stack's column width as a % of the window (~1/3 — the orchestrator

@@ -155,6 +155,7 @@ import {
 	buildSpawnWarning,
 	deriveCallerParent,
 	livePeerPanes,
+	markCompactingSelf,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseSpawnArgs,
@@ -1476,6 +1477,22 @@ function runCompactSelf(argv: readonly string[]): void {
 			"E-NOTMUX: compact-self needs a tmux pane (set $TMUX_PANE, or pass --pane %N)\n",
 		);
 		process.exit(2);
+	}
+
+	// DL-004: best-effort mark the compact window on the caller's descriptor so
+	// the daemon HOLDS inbox drain while this pane compacts (an injection into
+	// the compact window is eaten by the harness's fresh-context reset). An
+	// unregistered/unresolvable pane gets no mark — send-keys behavior unchanged.
+	try {
+		const reg = new FsRegistry(pijHome);
+		const self = resolveSelf(
+			process.env.PIJ_SESSION_ID,
+			filterByFolder(reg.list(), process.cwd()),
+			pane,
+		);
+		if (self.ok) markCompactingSelf(reg, self.value, new Date().toISOString());
+	} catch {
+		/* best-effort — compacting still works without the daemon hold */
 	}
 
 	typeLiteral(pane, "/compact", execFileRunner);

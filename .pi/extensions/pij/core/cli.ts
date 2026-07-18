@@ -12,6 +12,7 @@ import { chainStateOf, detectAnomalies } from "./anomalies.js";
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
+import { isCompacting } from "./daemon/router.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { closestModel } from "./models/match.js";
@@ -1324,9 +1325,11 @@ function renderBroadcastSuccess(
 			? target.deliveryMode === "pull"
 				? "queued: awaiting inbox check"
 				: daemonReceiptAuthoritative(target)
-					? result.daemonTickStale
-						? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
-						: "queued: awaiting daemon delivery confirmation"
+					? isCompacting(target, now)
+						? "queued: target compacting"
+						: result.daemonTickStale
+							? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
+							: "queued: awaiting daemon delivery confirmation"
 					: "queued: peer is busy, will steer after current turn"
 			: "delivered: peer was idle";
 	const targetAgeMs = descAgeMs(target, now);
@@ -1848,9 +1851,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					? target.deliveryMode === "pull"
 						? "queued: awaiting inbox check"
 						: daemonReceiptAuthoritative(target)
-							? tickStatus?.daemonTickStale
-								? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
-								: "queued: awaiting daemon delivery confirmation"
+							? isCompacting(target, now)
+								? "queued: target compacting"
+								: tickStatus?.daemonTickStale
+									? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
+									: "queued: awaiting daemon delivery confirmation"
 							: "queued: peer is busy, will steer after current turn"
 					: "delivered: peer was idle";
 			const tail = cmd.wait

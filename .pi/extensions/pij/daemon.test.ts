@@ -7,6 +7,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
+import { COMPACT_GRACE_MS, COMPACT_MAX_MS } from "./core/daemon/router.js";
 import { receiptBody } from "./core/message.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
 import { STALE_AFTER_MS } from "./core/state.js";
@@ -718,5 +719,121 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 		daemon.tick();
 		expect(ports.killed).toContain("%7");
 		expect(registry.read("pij-agent")?.lifecycle).toBe("dissolved");
+	});
+});
+
+describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
+	function boundClaude(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
+		return desc({
+			id: "pij-c",
+			harness: "claude",
+			lifecycle: "bound",
+			paneId: "%4",
+			harnessSessionId: "sess",
+			...over,
+		});
+	}
+
+	it("holds drain while compactingAt is fresh — message stays durable-unread, NO receipt", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			boundClaude({ compactingAt: new Date(NOW_MS - 1_000).toISOString() }), // inside grace
+		);
+		const channel = new FsChannel(home);
+		const delivered = channel.deliver({ from: "pij-boss", to: "pij-c", body: "queued task" });
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts({ nowMs: NOW_MS });
+
+		new Daemon(home, ports, registry, channel).tick();
+
+		expect(ports.sent.filter((s) => s.text.includes("queued task"))).toHaveLength(0);
+		expect(unreadBodies("pij-c")).toEqual(["queued task"]); // the inbox IS the queue
+		expect(messageBodies("pij-boss")).not.toContain(
+			receiptBody(delivered.value.messageId, "delivered"),
+		);
+		// Ready pane inside the grace window must NOT insta-clear the mark.
+		expect(registry.read("pij-c")?.compactingAt).toBeTruthy();
+	});
+
+	it("pane ready past the grace → mark clears and the held message drains with an honest receipt", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			boundClaude({ compactingAt: new Date(NOW_MS - COMPACT_GRACE_MS - 1).toISOString() }),
+		);
+		const channel = new FsChannel(home);
+		const delivered = channel.deliver({ from: "pij-boss", to: "pij-c", body: "queued task" });
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts({ nowMs: NOW_MS });
+
+		new Daemon(home, ports, registry, channel).tick();
+
+		expect(registry.read("pij-c")?.compactingAt).toBeUndefined();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] queued task" });
+		expect(unreadBodies("pij-c")).toEqual([]);
+		expect(messageBodies("pij-boss")).toContain(
+			receiptBody(delivered.value.messageId, "delivered"),
+		);
+	});
+
+	it("a mark stale past COMPACT_MAX_MS clears even on a busy pane — drain resumes (no wedged queue)", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			boundClaude({ compactingAt: new Date(NOW_MS - COMPACT_MAX_MS - 1).toISOString() }),
+		);
+		const channel = new FsChannel(home);
+		const delivered = channel.deliver({ from: "pij-boss", to: "pij-c", body: "queued task" });
+		if (!delivered.ok) throw new Error(delivered.message);
+		// Pane still shows a live-turn marker (a compact that wedged mid-window).
+		const ports = fakePorts({ nowMs: NOW_MS, paneText: "✽ Compacting… (esc to interrupt)" });
+
+		new Daemon(home, ports, registry, channel).tick();
+
+		expect(registry.read("pij-c")?.compactingAt).toBeUndefined();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] queued task" });
+		expect(messageBodies("pij-boss")).toContain(
+			receiptBody(delivered.value.messageId, "delivered"),
+		);
+	});
+
+	it("remote /compact injection marks the window and holds the REST of the batch behind it", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(boundClaude());
+		const channel = new FsChannel(home);
+		const compact = channel.deliver({
+			from: "pij-boss",
+			to: "pij-c",
+			body: "",
+			command: "compact",
+		});
+		const task = channel.deliver({ from: "pij-boss", to: "pij-c", body: "after compact" });
+		if (!compact.ok) throw new Error(compact.message);
+		if (!task.ok) throw new Error(task.message);
+		const ports = fakePorts({ nowMs: NOW_MS });
+
+		new Daemon(home, ports, registry, channel).tick();
+
+		// The trigger went through; the follow-up stayed durable-unread behind it.
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "/compact" });
+		expect(ports.sent.filter((s) => s.text.includes("after compact"))).toHaveLength(0);
+		expect(registry.read("pij-c")?.compactingAt).toBe(new Date(NOW_MS).toISOString());
+		expect(unreadBodies("pij-c")).toEqual(["after compact"]);
+		expect(messageBodies("pij-boss")).toContain(receiptBody(compact.value.messageId, "delivered"));
+		expect(messageBodies("pij-boss")).not.toContain(receiptBody(task.value.messageId, "delivered"));
+
+		// Compaction ends: pane ready past the grace → the held message flushes.
+		const laterPorts = fakePorts({ nowMs: NOW_MS + COMPACT_GRACE_MS + 1_000 });
+		new Daemon(home, laterPorts, registry, channel).tick();
+
+		expect(registry.read("pij-c")?.compactingAt).toBeUndefined();
+		expect(laterPorts.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij from pij-boss] after compact",
+		});
+		expect(unreadBodies("pij-c")).toEqual([]);
+		expect(messageBodies("pij-boss")).toContain(receiptBody(task.value.messageId, "delivered"));
 	});
 });

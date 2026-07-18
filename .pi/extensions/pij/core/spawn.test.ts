@@ -4,6 +4,7 @@
 // paneId ±, required env vars, argv array shape, ready-body round-trip.
 
 import { describe, expect, it } from "vitest";
+import { FakeRegistry } from "../adapters/fakes.js";
 import { type ModelEntry, parseModelsJson } from "./models/registry.js";
 import {
 	aliasAgentSpawnArgs,
@@ -15,6 +16,7 @@ import {
 	buildSpawnOutput,
 	deriveCallerParent,
 	livePeerPanes,
+	markCompactingSelf,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseReadyBody,
@@ -1160,5 +1162,31 @@ describe("deriveCallerParent (AC-08 — parent is the invoking session, never cw
 	it("nothing to go on — empty registry, no env, no pane — yields no parent", () => {
 		expect(deriveCallerParent(undefined, [], undefined)).toBeUndefined();
 		expect(deriveCallerParent(undefined, [], "%7")).toBeUndefined();
+	});
+});
+
+describe("markCompactingSelf (DL-004 — compact-self window mark)", () => {
+	const NOW_ISO = "2026-07-18T00:00:00.000Z";
+	const me: SessionDescriptor = {
+		id: "pij-me",
+		folder: "/repo",
+		dataDir: "/home/.pij/pij-me",
+		eventsPath: "/home/.pij/pij-me/events.ndjson",
+		pid: 100,
+		startedAt: "2026-07-17T00:00:00.000Z",
+	};
+
+	it("stamps compactingAt on the resolved descriptor (merge-law persist)", () => {
+		const reg = new FakeRegistry([me]);
+		const written = markCompactingSelf(reg, "pij-me", NOW_ISO);
+		expect(written?.compactingAt).toBe(NOW_ISO);
+		expect(reg.read("pij-me")?.compactingAt).toBe(NOW_ISO);
+	});
+
+	it("no id / unknown id → null, nothing written (unregistered pane compacts unchanged)", () => {
+		const reg = new FakeRegistry([me]);
+		expect(markCompactingSelf(reg, undefined, NOW_ISO)).toBeNull();
+		expect(markCompactingSelf(reg, "pij-ghost", NOW_ISO)).toBeNull();
+		expect(reg.read("pij-me")?.compactingAt).toBeUndefined();
 	});
 });

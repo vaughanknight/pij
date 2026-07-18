@@ -44,7 +44,12 @@ import {
 	observeActivity,
 	writeMerged,
 } from "./core/daemon/loop.js";
-import { SendBuffer } from "./core/daemon/router.js";
+import {
+	COMPACT_GRACE_MS,
+	COMPACT_MAX_MS,
+	isCompacting,
+	SendBuffer,
+} from "./core/daemon/router.js";
 import { RuntimeAxisTracker } from "./core/daemon/runtime-axis.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
@@ -291,7 +296,7 @@ export class Daemon {
 							? ` ↔ ${out.harnessSessionId}`
 							: out.kind === "failed"
 								? ` (${out.reason})`
-								: out.kind === "dismissed" || out.kind === "needs-human"
+								: out.kind === "dismissed" || out.kind === "answered" || out.kind === "needs-human"
 									? ` (${out.label})`
 									: "";
 					this.log(`spawn ${d.id}: ${out.kind}${extra}`);
@@ -389,6 +394,28 @@ export class Daemon {
 							current = writeMerged(this.registry, updated);
 							if (current.lifecycle === "dissolved") continue;
 						}
+						// Compact-window release (DL-004): clear the mark once the pane reads
+						// ready again past a short grace (compaction done → drain resumes this
+						// tick), or unconditionally once the mark is stale past COMPACT_MAX_MS
+						// (a compact that died mid-window must never wedge the queue).
+						if (current.compactingAt !== undefined) {
+							const compactAgeMs = this.ports.now() - Date.parse(current.compactingAt);
+							const compactDone =
+								readiness === "ready" &&
+								Number.isFinite(compactAgeMs) &&
+								compactAgeMs >= COMPACT_GRACE_MS;
+							const compactStale = !(compactAgeMs <= COMPACT_MAX_MS); // NaN-safe: NaN clears too
+							if (compactDone || compactStale) {
+								const { compactingAt: _compactingAt, ...cleared } = current;
+								current = writeMerged(this.registry, cleared);
+								if (current.lifecycle === "dissolved") continue;
+								this.log(
+									compactStale
+										? `compact ${d.id}: mark stale (> ${COMPACT_MAX_MS}ms) — cleared, drain resumes`
+										: `compact ${d.id}: pane ready — window over, drain resumes`,
+								);
+							}
+						}
 					}
 					// Whole-life stalled/dead push (T012): detect transitions and push once
 					// per transition to the creator. The latch (`this.pushed`) ensures each
@@ -405,7 +432,11 @@ export class Daemon {
 				// owning its inbox, delivery, and self-written state — we only peek.
 				const providerView = current.state === "working" ? current : d;
 				if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
-				if (owns) this.drainInbox(current.id);
+				// Compact hold (DL-004): while the pane is compacting, do NOT drain —
+				// messages stay durable-unread in the inbox (the queue), nothing is
+				// marked read, and the sender's receipt stays `queued` until the
+				// post-compact injection emits a real `delivered`.
+				if (owns && !isCompacting(current, this.ports.now())) this.drainInbox(current.id);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : String(error);
 				this.log(`session ${d.id} tick error: ${detail}`);
@@ -581,9 +612,25 @@ export class Daemon {
 			}));
 		if (messages.length === 0) return;
 		let consumedCount = 0;
+		let compactFired = false;
 		for (const message of messages) {
 			this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			const consumed = drainTmuxInbox(target, [message], this.ports, this.buffer);
+			// A remote `/compact` just went into the pane: mark the compact window
+			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
+			// itself must go through, but anything injected behind it mid-compact
+			// would be eaten by the harness's fresh-context reset.
+			if (message.command === "compact" && consumed.some((item) => item.outcome !== undefined)) {
+				const latest = this.registry.read(target.id);
+				if (latest && latest.lifecycle !== "dissolved") {
+					writeMerged(this.registry, {
+						...latest,
+						compactingAt: new Date(this.ports.now()).toISOString(),
+					});
+					this.log(`compact ${id}: remote /compact injected — holding drain until ready`);
+					compactFired = true;
+				}
+			}
 			for (const item of consumed) {
 				const marked = this.channel.markRead(id, item.messageId, {
 					messageId: item.messageId,
@@ -598,6 +645,9 @@ export class Daemon {
 				}
 				consumedCount += 1;
 			}
+			// Stop this batch behind the compact trigger — the rest of the unread
+			// queue stays durable and flushes once the window clears.
+			if (compactFired) break;
 		}
 		if (consumedCount > 0) this.log(`route ${id}: injected ${consumedCount} message(s)`);
 	}
