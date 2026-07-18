@@ -1642,3 +1642,43 @@ describe("pij spine render (P4 T002 — bin-owned write, AC-10)", () => {
 		expect(r.out).toContain("E-ARG");
 	});
 });
+
+describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", () => {
+	// A hard process.exit() after write() raced the stdout pipe buffer: any
+	// payload past 64KB was cut at exactly 65536 bytes (found live: `tree
+	// --global --json` over 1394 real descriptors returned unparseable JSON).
+	it("tree --global --liveness dead --json over 1200 descriptors parses complete", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-bigout-"));
+		for (let i = 0; i < 1200; i++) {
+			const id = `pij-big-${String(i).padStart(4, "0")}`;
+			writeFileSync(
+				join(home, `${id}.json`),
+				JSON.stringify({
+					id,
+					folder: `/tmp/big/${i}`,
+					dataDir: join(home, id),
+					eventsPath: join(home, id, "events.ndjson"),
+					pid: 90_000_000 + i,
+					startedAt: new Date(1752800000000 + i).toISOString(),
+					state: "idle",
+					systemState: "idle",
+					lifecycle: "bound",
+					harness: "claude",
+				}),
+			);
+		}
+		// Seeds carry no tick/event telemetry → liveness dead; the default tree
+		// prunes dead, so include them explicitly — the point is OUTPUT SIZE.
+		const out = execFileSync(TSX, [CLI, "tree", "--global", "--liveness", "dead", "--json"], {
+			env: { ...process.env, PIJ_HOME: home, TMUX_PANE: "" },
+			encoding: "utf8",
+			maxBuffer: 16 * 1024 * 1024,
+			timeout: 30_000,
+		});
+		expect(out.length).toBeGreaterThan(65_536);
+		const forest = JSON.parse(out) as { roots: Array<{ id?: string }> };
+		expect((out.match(/pij-big-/g) ?? []).length).toBeGreaterThanOrEqual(1200);
+		expect(forest.roots.length).toBeGreaterThanOrEqual(1200);
+		rmSync(home, { recursive: true, force: true });
+	});
+});

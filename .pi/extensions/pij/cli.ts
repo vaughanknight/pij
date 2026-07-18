@@ -2937,7 +2937,11 @@ function main(): void {
 		);
 		return;
 	}
-	process.exit(res.exitCode);
+	// Exit only after stdout drains: a hard process.exit() races the pipe
+	// buffer and truncates any payload past 64KB (dogfood: `tree --global
+	// --json` over 1394 descriptors cut at exactly 65536 bytes). The empty
+	// write's callback queues behind every buffered chunk.
+	process.stdout.write("", () => process.exit(res.exitCode));
 }
 
 main();
