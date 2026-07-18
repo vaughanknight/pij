@@ -10,9 +10,9 @@
 //   enable <source-or-substring>  — flip enabled=true, then sync
 //   disable <source-or-substring> — flip enabled=false, sync (runs `pi remove`)
 //   sync                          — regenerate settings.json, `pi remove` disabled entries
-//   bootstrap                     — sync, then `pi install` every enabled entry, then
-//                                   report-and-continue: re-vet stale entries offline and
-//                                   surface findings for human review (never blocks)
+//   bootstrap                     — sync, attempt `pi install` for every enabled entry, then
+//                                   report-and-continue on vet findings; prerequisite/install
+//                                   execution failures are summarized and exit non-zero
 //   vet <source> [--json]         — run vetter pipeline against one source; print Verdict
 //                                   (STRICT escape hatch: still exits 0/2 for on-demand checks)
 //   audit [--json] [--write]      — run pipeline across all enabled entries; REPORT-ONLY (exit 0).
@@ -20,10 +20,11 @@
 //                                   refresh write-backs persist only under --write.
 //
 // Policy (changed 2026-06-16, per user): the vetter pipeline REPORTS rather than
-// blocks. add/bootstrap/audit never refuse on stale/warn/fail — they print the
+// blocks. add/bootstrap/audit never refuse on stale/warn/fail vet verdicts — they print the
 // findings and the agent relays them so the human can choose to keep a package or
 // remove it with `pkg disable <source>`. `vet <source>` remains the strict, exit-
-// coded check. The hand-edit bans (packages.yaml / settings.json) and the
+// coded check. Bootstrap still fails after attempting every entry if a prerequisite
+// or package install command fails. The hand-edit bans (packages.yaml / settings.json) and the
 // `requires.install` shell-vector caution still stand.
 
 import { execFileSync, execSync } from "node:child_process";
@@ -32,7 +33,10 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { type Document, parseDocument, type YAMLMap, type YAMLSeq } from "yaml";
 import { piInvocation } from "./cli-invocation.js";
-import { releaseAgeEnvironment } from "./release-age-policy.js";
+import {
+	assertQuarantineEnforceableOrExit,
+	npmResolutionEnvironment,
+} from "./release-age-policy.js";
 import { agentVetter } from "./vetters/agent.js";
 import { aggregate, runPipeline } from "./vetters/aggregate.js";
 import { buildUnmanifestedVerdict } from "./vetters/audit-unmanifested.js";
@@ -92,8 +96,13 @@ function ensureRequires(e: Entry): "ok" | "installed" | "skipped" {
 		return "ok";
 	} catch {
 		console.log(`  dep '${bin}' missing — installing: ${install}`);
+		// Fail-closed: this governed install enforces the age quarantine via
+		// npm-native min-release-age (npm >= 11 only). Refuse on npm < 11 rather
+		// than install unprotected (dove ruling — no governed install silently
+		// skips the quarantine on any npm).
+		assertQuarantineEnforceableOrExit();
 		try {
-			execSync(install, { stdio: "inherit" });
+			execSync(install, { env: npmResolutionEnvironment(), stdio: "inherit" });
 			return "installed";
 		} catch {
 			console.error(`  ! failed to install '${bin}'`);
@@ -155,9 +164,11 @@ function piRemove(source: string): "removed" | "missing" {
 }
 
 function installPiPackage(source: string): void {
+	// Fail-closed: governed pi install under the age quarantine (npm >= 11 only).
+	assertQuarantineEnforceableOrExit();
 	const invocation = piInvocation(["install", source]);
 	execFileSync(invocation.file, invocation.args, {
-		env: releaseAgeEnvironment(),
+		env: npmResolutionEnvironment(),
 		stdio: "inherit",
 	});
 }
@@ -298,10 +309,10 @@ async function cmdBootstrap(_args: string[]): Promise<void> {
 	// findings so the human can decide whether to keep each package.
 	console.log(`\nbootstrapping ${list.length} package(s)...`);
 	let installed = 0;
-	let failed = 0;
+	const installFailures: string[] = [];
 	for (const e of list) {
 		if (ensureRequires(e) === "skipped") {
-			failed++;
+			installFailures.push(e.source);
 			continue;
 		}
 		try {
@@ -309,11 +320,16 @@ async function cmdBootstrap(_args: string[]): Promise<void> {
 			installed++;
 		} catch {
 			console.error(`! failed: ${e.source}`);
-			failed++;
+			installFailures.push(e.source);
 		}
 	}
-	const failedNote = failed > 0 ? ` (${failed} failed)` : "";
-	console.log(`\n✓ installed ${installed}/${list.length}${failedNote}`);
+	if (installFailures.length === 0) {
+		console.log(`\n✓ installed ${installed}/${list.length}`);
+	} else {
+		console.error(
+			`\n✗ bootstrap installation failed for ${installFailures.length}/${list.length} package(s); installed ${installed}/${list.length}`,
+		);
+	}
 
 	const stale = list.filter((e) => !isFresh(e));
 	const flagged: Array<{ source: string; verdict: Verdict }> = [];
@@ -339,6 +355,10 @@ async function cmdBootstrap(_args: string[]): Promise<void> {
 			console.log(`  • ${f.source}: ${f.verdict.level} (${fails} fail, ${warns} warn)`);
 		}
 		console.log("  Keep: do nothing.  Remove: npm run pkg disable <source>");
+	}
+	if (installFailures.length > 0) {
+		console.error(`\n✗ failed package installs: ${installFailures.join(", ")}`);
+		process.exitCode = 1;
 	}
 }
 

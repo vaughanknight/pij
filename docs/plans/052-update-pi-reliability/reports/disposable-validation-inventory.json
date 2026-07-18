@@ -1,0 +1,185 @@
+{
+  "base": "591f188f394ab17d8c34a800fd55f87c752d4005",
+  "files": {
+    ".npmrc": {
+      "kind": "file",
+      "sha256": "4dde5b7b4ee0afed60e0eaa3e998dd84ba3eb71090fe61ee980d22bdfa4d7f00",
+      "mode": 420,
+      "size": 129
+    },
+    "docs/how/build.md": {
+      "kind": "file",
+      "sha256": "59ccd08ae064bc36d930bc20b37f9bdad4fb7b735bbf65eb6916cd0edeadafdd",
+      "mode": 420,
+      "size": 10291
+    },
+    "docs/how/update-pi.md": {
+      "kind": "file",
+      "sha256": "9865e58d391380f0545d8ac4442892d2d5a34adf4db8b892f2ad11f862e870b7",
+      "mode": 420,
+      "size": 6206
+    },
+    "docs/plans/052-update-pi-reliability/reports/base-reconciliation.md": {
+      "kind": "file",
+      "sha256": "78847fa28c9be48d8bf75a1d40aedb910b027fb9c94d04fbe2de04ef774685c6",
+      "mode": 420,
+      "size": 3310
+    },
+    "docs/plans/052-update-pi-reliability/reports/coder-attachment-reconciliation.md": {
+      "kind": "file",
+      "sha256": "cd43ca86309001c7e086505745c1aa717c3ce51722642aa77237cedc89801891",
+      "mode": 420,
+      "size": 1673
+    },
+    "docs/plans/052-update-pi-reliability/reports/design-contract.md": {
+      "kind": "file",
+      "sha256": "241a6b2f5d4733df4d00b2f50dcfc08eed3ca55d4e961d7bbf9f8b7425828c9e",
+      "mode": 420,
+      "size": 14551
+    },
+    "docs/plans/052-update-pi-reliability/reports/disposable-harness-checks.json": {
+      "kind": "file",
+      "sha256": "b784e722c8ec07fc86a0123681fdcba1ce30e53efa45a4600a4e8ad8a9b1d5e4",
+      "mode": 420,
+      "size": 1123
+    },
+    "docs/plans/052-update-pi-reliability/reports/disposable-validation-inventory.json": {
+      "kind": "file",
+      "sha256": "111658a0b755d335a203840b86920582856f298a52036495b60e2a036e5c6576",
+      "mode": 420,
+      "size": 4813
+    },
+    "docs/plans/052-update-pi-reliability/reports/disposable-validation.md": {
+      "kind": "file",
+      "sha256": "3e7686d2f15302665dedf0da61066b633656b12f1d6883b96a9eba355d4ace0f",
+      "mode": 420,
+      "size": 4912
+    },
+    "docs/plans/052-update-pi-reliability/reports/implementation-checkpoint.md": {
+      "kind": "file",
+      "sha256": "de8a4fb272a4145b54d9f516e96bd5743879ba3b0a6b8668d8a3324636809415",
+      "mode": 420,
+      "size": 8167
+    },
+    "docs/plans/052-update-pi-reliability/research/coder-findings.md": {
+      "kind": "file",
+      "sha256": "4ae00c9a1c803d3026c2d7df5b5433061faf713d43e76742d5bab42a7dc71d71",
+      "mode": 420,
+      "size": 10406
+    },
+    "docs/plans/052-update-pi-reliability/research/coder-reconciliation-request.md": {
+      "kind": "file",
+      "sha256": "cb8a2e5915110b6132ba4359390e9bffc22426dc9acfeb3a2e4def88a619a0f8",
+      "mode": 420,
+      "size": 4291
+    },
+    "docs/plans/052-update-pi-reliability/research/coder-research-request.md": {
+      "kind": "file",
+      "sha256": "f0e6a6815e1c2021349623c5bfb20bc540906da32938060aabffdfc213b7cb17",
+      "mode": 420,
+      "size": 4135
+    },
+    "docs/plans/052-update-pi-reliability/reviews/cold-review-fix-request.md": {
+      "kind": "file",
+      "sha256": "b994544cde001d551fdf1f74bea20579541a674f603b3b0a72f90a44078cd7b9",
+      "mode": 420,
+      "size": 4095
+    },
+    "docs/plans/052-update-pi-reliability/reviews/cold-review-request.md": {
+      "kind": "file",
+      "sha256": "5cbb8e9b72589933aa9ecf15590e9b122008414301a0c126d5c51a2ffafeb290",
+      "mode": 420,
+      "size": 4434
+    },
+    "docs/plans/052-update-pi-reliability/reviews/cold-review.md": {
+      "kind": "file",
+      "sha256": "e86b32ad9d0b1ce5a14e9485d743813d6361079fffe822d5e6067ae4b7c9a615",
+      "mode": 420,
+      "size": 8536
+    },
+    "docs/plans/052-update-pi-reliability/reviews/execution.log.md": {
+      "kind": "file",
+      "sha256": "ab8672804eec6d7598e924adf198683f6863654b63476ea41ba23f98c1b043d8",
+      "mode": 420,
+      "size": 10862
+    },
+    "docs/plans/052-update-pi-reliability/tasks/implementation.md": {
+      "kind": "file",
+      "sha256": "beacbdce3a3fd7b8a2c6c9b42c2ac5dd053dab0417fe46f2291419207f7d57db",
+      "mode": 420,
+      "size": 6741
+    },
+    "harness/scripts/npm-resolution-diagnostic.ts": {
+      "kind": "file",
+      "sha256": "3ff4af718072dd83b2434c35d79fa54f7410944c9e75d4fba0213aadd845e248",
+      "mode": 420,
+      "size": 7099
+    },
+    "harness/scripts/npm-resolution-policy.integration.test.ts": {
+      "kind": "file",
+      "sha256": "66c8122d4bcadb376244ec5987c673fa76e7137c7812c33285f34696635c5969",
+      "mode": 420,
+      "size": 18606
+    },
+    "harness/scripts/npm-resolution-run.ts": {
+      "kind": "file",
+      "sha256": "d72bbb30decd7fa56a9b2c19e8d11c1ba3994b81a3e919ff90bc151b71ad6a7d",
+      "mode": 420,
+      "size": 855
+    },
+    "harness/scripts/packages-bootstrap.test.ts": {
+      "kind": "file",
+      "sha256": "b6b817642f23900794e0e985cc15165ac3a10e7dd9fa83cbabf103fba657f8e2",
+      "mode": 420,
+      "size": 5118
+    },
+    "harness/scripts/packages.ts": {
+      "kind": "file",
+      "sha256": "a1127f7a8a469a781b72ca0fc266f827944e927c833beb164387fbe0dd2f0cee",
+      "mode": 420,
+      "size": 20992
+    },
+    "harness/scripts/release-age-policy.test.ts": {
+      "kind": "file",
+      "sha256": "39380ce55a6dd7a55ecd7ad3f66a7f2068d0b3496af005fab5ed032d6a6ee9bd",
+      "mode": 420,
+      "size": 18225
+    },
+    "harness/scripts/release-age-policy.ts": {
+      "kind": "file",
+      "sha256": "c9620079bb6d0d34ad3b77df6e26c793853a385230209b5f07821003f0b68c55",
+      "mode": 420,
+      "size": 1758
+    },
+    "harness/scripts/release-age-probe.ts": {
+      "kind": "file",
+      "sha256": "e583840d00c1fdb2829c2442e40a8999f79ee4c1c94ea05d37b0a82e35ea6aba",
+      "mode": 420,
+      "size": 15725
+    },
+    "harness/scripts/vetters/lockfile-lint.ts": {
+      "kind": "file",
+      "sha256": "1a00f58874db02053e46e160c10875e3cb44b22df5ad4604b02a3123ae1649d6",
+      "mode": 420,
+      "size": 2370
+    },
+    "harness/scripts/vetters/npm-audit.ts": {
+      "kind": "file",
+      "sha256": "f041ac398326b9a444fc17afce2737d8bc022ea901629190ad89283d588721c1",
+      "mode": 420,
+      "size": 3448
+    },
+    "install-windows.ps1": {
+      "kind": "file",
+      "sha256": "9e4b2b141b28d12762d72b98ca73128330b90bc7f9d8dfb263a946af5f8aef4f",
+      "mode": 420,
+      "size": 14587
+    },
+    "justfile": {
+      "kind": "file",
+      "sha256": "5de1e97170d7f47b0a9501340c04e85634785c4700188b8e2a53652c25a7c6ea",
+      "mode": 420,
+      "size": 19279
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { npxInvocation } from "../cli-invocation.js";
+import { npmResolutionEnvironment } from "../release-age-policy.js";
 import { deriveLevel, deriveScore, type Finding, type Verdict, type Vetter } from "./types.js";
 
 export async function vet(packagePath: string, _source: string): Promise<Verdict> {
@@ -32,7 +33,7 @@ export async function vet(packagePath: string, _source: string): Promise<Verdict
 	try {
 		const invocation = npxInvocation([
 			"--yes",
-			"lockfile-lint",
+			"lockfile-lint@4.14.0",
 			"--path",
 			lockPath,
 			"--type",
@@ -43,6 +44,7 @@ export async function vet(packagePath: string, _source: string): Promise<Verdict
 		]);
 		execFileSync(invocation.file, invocation.args, {
 			encoding: "utf8",
+			env: npmResolutionEnvironment(),
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 	} catch (err: unknown) {
