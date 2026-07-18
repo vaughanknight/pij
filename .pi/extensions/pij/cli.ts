@@ -231,7 +231,8 @@ Messaging:
   pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
                                                         repository forest by default; global forest or arbitrary subtree on request
   pij link <child> --parent <parent> | --root [--actor <label>] [--json]  reparent or explicitly root a session without changing close ownership (audited as a node-linked spine event)
-  pij send <id> "<text>" | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
+  pij send <id> "<text>" | <id> --body-file <path|-> | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
+                                                     (--body-file/- reads the body LITERALLY — use it for text with backticks/$( ; a double-quoted body substitutes in YOUR shell before pij runs)
                                                         deliver one message, broadcast text, or run a control command
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
@@ -2910,7 +2911,42 @@ function main(): void {
 		process.stderr.write("E-NOREG: no pij registry — is the pij extension loaded?\n");
 		process.exit(3);
 	}
-	const parsed = parseArgs(process.argv.slice(2));
+	// T2 (dogfood, osk#4): a literal-body channel that bypasses the caller's
+	// shell entirely — double-quoted backticks/$( substitute in the SENDER'S
+	// shell before pij ever runs (osk accidentally executed `pij close` from
+	// quoted text). `--body-file <path>` (or `-` for stdin) reads the body raw.
+	let argvForParse = process.argv.slice(2);
+	const bodyFileIdx = argvForParse.indexOf("--body-file");
+	if (bodyFileIdx !== -1) {
+		if (argvForParse[0] !== "send") {
+			process.stderr.write("E-ARG: --body-file is a send flag\n");
+			process.exit(64);
+		}
+		const bodyPath = argvForParse[bodyFileIdx + 1];
+		if (bodyPath === undefined || bodyPath.startsWith("--")) {
+			process.stderr.write("E-ARG: --body-file takes a path (or - for stdin)\n");
+			process.exit(64);
+		}
+		let body: string;
+		try {
+			body = readFileSync(bodyPath === "-" ? 0 : bodyPath, "utf8");
+		} catch (error) {
+			process.stderr.write(`E-ARG: --body-file: ${String(error)}\n`);
+			process.exit(64);
+		}
+		const rest = [...argvForParse.slice(0, bodyFileIdx), ...argvForParse.slice(bodyFileIdx + 2)];
+		// The file IS the body: refuse a competing positional body (send's body
+		// is the sole non-flag positional after the target id).
+		const positionals = rest.filter(
+			(a, i) => i > 0 && !a.startsWith("--") && rest[i - 1]?.startsWith("--") !== true,
+		);
+		if (positionals.length > 1) {
+			process.stderr.write("E-ARG: --body-file replaces the body — drop the inline text\n");
+			process.exit(64);
+		}
+		argvForParse = [...rest, body.trimEnd()];
+	}
+	const parsed = parseArgs(argvForParse);
 	if (!parsed.ok) {
 		// A top-level unknown verb gets the COMPLETE surface (core only lists the
 		// messaging verbs); per-verb arity/flag errors keep core's precise message.
