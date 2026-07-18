@@ -35,7 +35,7 @@ that reached nobody.
 |---|---|---|
 | F1 | permanent whole-description slugs | ✅ FIXED+LIVE — `project create "<desc>" [--slug <kebab>]`, auto-slug caps at 48 |
 | F2 | render machine-wide only | ✅ FIXED+LIVE — `spine render --project <slug>` → `spine/<slug>.spine.md` |
-| F3 | alerts silently dropped for parent-less (adopted) workers | fixed on branch, **inert until daemon restart** — poll `pij anomalies` meanwhile |
+| F3 | alerts silently dropped for parent-less (adopted) workers | ✅ FIXED+LIVE — falls back to the assignment's project prime (verified live post-restart); put `--project` on `task set` so the fallback has a route |
 | F4 | raw JSON blobs in render | ✅ FIXED+LIVE — field-level project events |
 | F5 | events can't carry pointers | ✅ convention blessed — `--refs` takes `seq` / `commit:<sha>` / `pr:<n>` / `path:<file>` |
 | F6 | work lifecycle missing from project-filtered spine | ✅ works as designed — pass `--project <slug>` on `task set`; claim/verify events then inherit the assignment's project. Assignments created WITHOUT it stay unlinked (historical) |
