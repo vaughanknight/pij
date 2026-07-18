@@ -17,7 +17,16 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # `just` is required by tests that exercise the repo's own recipes
+      # (e.g. the pij-bin-shape check). CI runs npm scripts directly, so install
+      # just explicitly rather than assume it on the runner.
+      - uses: extractions/setup-just@v2
       - run: npm ci --min-release-age=null
+      # Lockfile source-host allowlist (PR#25): the compensating control for
+      # npmjs-scoped host replacement. Every `resolved` URL must be npmjs or the
+      # sanctioned minih git source — a tampered lockfile fails LOUD, here, before
+      # anything is built. Tamper-detection, not silent install-time redirection.
+      - run: node_modules/.bin/tsx harness/scripts/lockfile-allowlist.ts
       - run: npm run typecheck
       - run: npm run lint
       # npm test now includes the two-peer integration smoke

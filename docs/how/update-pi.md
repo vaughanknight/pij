@@ -9,12 +9,15 @@ source of truth.
 
 `pi` is the **official npm binary** `@earendil-works/pi-coding-agent`. pij does
 not ship its own pi — it installs the upstream one and layers configuration on
-top. The install is done by `just pi-official-install` (`justfile:210-227`):
+top. The install is done by `just pi-official-install`:
 
 ```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
-pi --version
+just pi-official-install
 ```
+
+That recipe runs npm through `harness/scripts/npm-resolution-run.ts`, which
+sets the Microsoft package-feed proxy, forces online metadata revalidation,
+and keeps the seven-day client release-age policy.
 
 pij contributes five things to pi's **global** state under `~/.pi/agent/`:
 
@@ -37,8 +40,8 @@ skills, and machine-local providers remain outside repository ownership.
 
 ## The canonical refresh: `just update-pi`
 
-`just update-pi` is the one command to refresh pi's runtime state from this repo
-(`justfile:306-330`, header `292-302`). It is the same shape as the pi-related
+`just update-pi` is the one command to refresh pi's runtime state from this repo.
+It is the same shape as the pi-related
 steps of [`just install`](build.md), runnable on its own any time pi drifts:
 
 ```bash
@@ -54,9 +57,10 @@ It performs:
 3. **Link pij extensions globally** (`just link`) and link the `pij` CLI
    (`npm link`).
 4. **Ensure vetted packages are installed** globally (`just pkg bootstrap`).
-5. **Update extension packages only** — `pi update --extensions` (the
-   `--extensions` flag is deliberate: a bare `pi update` *also* self-updates pi
-   and would fight the explicit npm install above; `justfile:299-302`).
+5. **Update extension packages only** — `pi update --extensions`, under the
+   same governed npm environment. The `--extensions` flag is deliberate: a
+   bare `pi update` *also* self-updates pi and would fight the explicit npm
+   install above.
 6. **Run `just pi-doctor`**.
 
 Always refresh pi through this recipe so the global CLI stays the official npm
@@ -73,6 +77,46 @@ build while pij's local extensions and config remain globally visible.
 - `~/.pi/agent/mcp.json` servers,
 
 and flags anything that looks wrong.
+
+The doctor also checks the globally linked `pij` executable. It must resolve
+to the linked package's `pij/harness/scripts/pij-cli.cjs` wrapper. A stale link
+to the legacy TypeScript entrypoint fails with instructions to rerun `npm link`
+from the local main checkout or use `just update-pi`.
+
+## npm authority and failure behavior
+
+Every npm read, resolution, download, install, audit, and remote `npx` launched
+by the canonical flow uses:
+
+```ini
+registry=https://packagefeedproxy.microsoft.io/npm/
+replace-registry-host=always
+prefer-online=true
+min-release-age=7
+```
+
+The proxy is authoritative, including tarball URLs already recorded in lockfiles:
+`replace-registry-host=always` prevents a caller from preserving another lock host.
+Online revalidation refreshes stale client
+metadata, but it does not invent a missing exact version or repair inconsistent
+metadata and tarballs. Those cases fail closed without a retry through another
+registry, cache deletion, or lockfile rewrite.
+
+Only frozen root lock replay uses `npm ci --min-release-age=null`. That command
+still enforces the proxy, lock-host replacement, and online revalidation; the
+exception clears only the age filter for the already committed exact lock.
+
+For a manual, read-only check of one exact version, run:
+
+```bash
+node_modules/.bin/tsx harness/scripts/npm-resolution-diagnostic.ts <package@version>
+```
+
+The diagnostic uses empty temporary npm state, performs an age-governed
+resolution before downloading, prints the governed lock-host replacement,
+reports `PROXY_OK`, `PROXY_ABSENT`, `PROXY_INCONSISTENT`, `POLICY_TOO_YOUNG`, or
+`DIAGNOSTIC_ERROR`, and removes its temporary state. It queries only the
+configured Microsoft proxy.
 
 ## Optional: the pi-fork path (advanced — pi-core dev only)
 

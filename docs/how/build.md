@@ -54,7 +54,9 @@ pwsh -File .\install-windows.ps1 -StartAt 5
 Both entry points run the same six ordered stages:
 
 1. **`npm ci --min-release-age=null`** — replay the committed root lockfile with
-   the npm/cli #9005 compatibility exception described below.
+   the npm/cli #9005 compatibility exception described below. The bootstrap
+   explicitly strips inherited npm policy overrides and still enforces the
+   Microsoft proxy plus online revalidation.
 2. **Install/update the official global `pi` binary** (`just pi-official-install`)
    under the repository's seven-day npm release-age policy.
 3. **Sync repo-managed global Pi config** into the global agent dir:
@@ -93,27 +95,42 @@ Day-to-day recipes:
 | `just test [path]` | Run vitest; optionally scope to a file/pattern | `80-82` |
 | `just smoke` | tmux-driven end-to-end smoke (Driver SDK) | `91-93` |
 | `just link` / `just unlink` | Symlink (or remove) `.pi/extensions/*` into `~/.pi/agent/extensions/` | `147-151` |
-| `just pij <args>` | Run the pij CLI in-repo, no global install | `95-98` |
+| `just pij <args>` | Run the pij CLI through the locked local wrapper, no global install or npm resolution | pij recipes |
 | `just pkg <args>` | Manage third-party pi-extensions via `.pi/packages.yaml` | `100-102` |
 | `just release-age-probe` | Separately prove locked install, fresh-resolution refusal, and root audit visibility | release-age recipes |
 | `just sync-models [--source <path>] [--target <path>]` | Atomically merge repo-managed providers into Pi's global model registry | `106-109` |
 
-## npm release-age boundary
+## npm resolution boundary
 
-The root [`.npmrc`](../../.npmrc) uses npm's native `min-release-age=7`; the
-unit is **days**. It also leaves `audit=true`. The typed policy helper at
-`harness/scripts/release-age-policy.ts` supplies the same environment to
-pij-owned Pi installs, and the `justfile` imports that constant for the official
-global Pi install and `pi update --extensions`.
+The root [`.npmrc`](../../.npmrc) fixes five settings:
 
-Coverage is deliberately narrow:
+```ini
+registry=https://packagefeedproxy.microsoft.io/npm/
+replace-registry-host=always
+prefer-online=true
+min-release-age=7
+audit=true
+```
 
-- Fresh root npm resolution observes the committed seven-day setting.
-- `pkg add` and `pkg bootstrap` propagate it to Pi's nested npm resolution.
-- `just pi-official-install` and the extension-only update in `just update-pi`
-  propagate it without removing the existing `--ignore-scripts` flag.
-- Pi's own bare self-update command is upstream behavior and is **not** covered
-  or claimed. `just update-pi` does not invoke bare `pi update`.
+The typed helper at `harness/scripts/release-age-policy.ts` removes inherited
+registry, lock-host replacement, online, age, and `before` overrides
+case-insensitively, then supplies the governed lowercase values without mutating
+its caller. The fail-closed
+runner at `harness/scripts/npm-resolution-run.ts` applies that environment to
+global Pi installation, package installation and prerequisites, extension
+updates, audits, and intentional remote `npx` tools.
+
+Locally locked tools use `node_modules/.bin/*` or a checked-in wrapper instead
+of opportunistic `npx` resolution. In particular, `just pij` executes
+`node harness/scripts/pij-cli.cjs`; missing local `tsx` fails instead of being
+downloaded at runtime.
+
+The Microsoft proxy is the only live read authority. `replace-registry-host=always`
+rewrites lock-resolved hosts to that authority, and `prefer-online=true`
+revalidates stale client metadata against it. If the proxy omits an exact lock
+target or advertises an unusable tarball, npm fails closed: pij does not delete
+the cache, rewrite the lock, retry another registry, or return a success-shaped
+fallback.
 
 A successful `npm ci` proves only that the frozen lock installs. It is not
 fresh-resolution evidence. npm/cli
@@ -124,7 +141,7 @@ git preparation. Root lock replay therefore uses
 that frozen operation. The exception is wired only into `just install` and the
 Node 22/24 + Windows CI lock-replay steps. Never use it with `npm install`.
 
-Root `npm audit --json` is a separate, report-only observation; audit findings
+Root and package `npm audit --json` remain report-only observations; findings
 do not become release-age failures and do not change package-vetter's
 report-and-continue policy.
 
@@ -134,17 +151,26 @@ Run the isolated proof explicitly:
 just release-age-probe
 ```
 
-It copies the committed `.npmrc`, verifies npm derives a `before` date
-approximately seven days earlier, and asks a local deterministic registry for a
-fixture version published at probe time. Native npm must refuse that version
-without any raw `--min-release-age` argument. The same run replays the unchanged
-lock through the approved compatibility exception, captures every subprocess
-result, observes audit JSON, verifies the root manifests were unchanged, and
-removes its temporary root.
+It creates isolated HOME, cache, user/global config, project, tarball, and local
+registry state. Native npm must derive a `before` date approximately seven days
+earlier and refuse a fixture version published at probe time without any raw
+age argument. The same run creates a fixture lock, proves exact replay still
+fails after the local proxy removes its artifact, observes local audit JSON,
+verifies the repository manifests were unchanged, captures every subprocess
+result, and removes its temporary root. It does not download the root lock or
+use the caller's npm state.
 
 There is no generic age-zero recipe. The only exception is the exact root
 lock-replay command above; every fresh `npm install`, Pi package install, global
 Pi install, and extension update remains at seven days.
+
+The deeper regression fixture is
+`harness/scripts/npm-resolution-policy.integration.test.ts`. It uses mutable
+local proxy and upstream servers with real tarballs and request logs to prove
+online stale-cache recovery, proxy-truth changes, missing and corrupt artifacts,
+governed replacement of an upstream-host lock URL despite a caller `never`
+override, exact-lock absence, age refusal versus a test-only age-zero mutation,
+and zero governed requests to the fixture upstream.
 
 ## The gate: `just self-check`
 

@@ -61,7 +61,8 @@
 		"yaml": "^2.9.0"
 	},
 	"engines": {
-		"node": ">=24"
+		"node": ">=24",
+		"npm": ">=11"
 	},
 	"dependencies": {
 		"@grammyjs/files": "^1.2.0",

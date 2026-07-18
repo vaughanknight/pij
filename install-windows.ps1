@@ -14,6 +14,9 @@ $AgentRoot = Join-Path $HOME ".pi\agent"
 $ExtensionSourceRoot = Join-Path $RepoRoot ".pi\extensions"
 $ExtensionTargetRoot = Join-Path $AgentRoot "extensions"
 $ManifestPath = Join-Path $RepoRoot ".pi\packages.yaml"
+$NpmRegistryUrl = "https://packagefeedproxy.microsoft.io/npm/"
+$NpmReplaceRegistryHost = "always"
+$NpmPreferOnline = "true"
 $ReleaseAgeDays = 7
 
 function Write-Stage {
@@ -80,25 +83,58 @@ function Invoke-Native {
 	}
 }
 
-function Invoke-WithReleaseAgeEnvironment {
+function Invoke-WithNpmEnvironment {
 	param(
 		[Parameter(Mandatory = $true)]
-		[scriptblock]$Action
+		[scriptblock]$Action,
+
+		[switch]$ClearReleaseAge
 	)
 
+	$registryName = "npm_config_registry"
+	$replaceRegistryHostName = "npm_config_replace_registry_host"
+	$preferOnlineName = "npm_config_prefer_online"
 	$minReleaseAgeName = "npm_config_min_release_age"
 	$beforeName = "npm_config_before"
+	$previousRegistry = [Environment]::GetEnvironmentVariable($registryName, "Process")
+	$previousReplaceRegistryHost = [Environment]::GetEnvironmentVariable($replaceRegistryHostName, "Process")
+	$previousPreferOnline = [Environment]::GetEnvironmentVariable($preferOnlineName, "Process")
 	$previousMinReleaseAge = [Environment]::GetEnvironmentVariable($minReleaseAgeName, "Process")
 	$previousBefore = [Environment]::GetEnvironmentVariable($beforeName, "Process")
-	[Environment]::SetEnvironmentVariable($minReleaseAgeName, [string]$ReleaseAgeDays, "Process")
+	[Environment]::SetEnvironmentVariable($registryName, $NpmRegistryUrl, "Process")
+	[Environment]::SetEnvironmentVariable($replaceRegistryHostName, $NpmReplaceRegistryHost, "Process")
+	[Environment]::SetEnvironmentVariable($preferOnlineName, $NpmPreferOnline, "Process")
+	$minReleaseAge = if ($ClearReleaseAge) { $null } else { [string]$ReleaseAgeDays }
+	[Environment]::SetEnvironmentVariable($minReleaseAgeName, $minReleaseAge, "Process")
 	[Environment]::SetEnvironmentVariable($beforeName, $null, "Process")
 	try {
 		& $Action
 	}
 	finally {
+		[Environment]::SetEnvironmentVariable($registryName, $previousRegistry, "Process")
+		[Environment]::SetEnvironmentVariable($replaceRegistryHostName, $previousReplaceRegistryHost, "Process")
+		[Environment]::SetEnvironmentVariable($preferOnlineName, $previousPreferOnline, "Process")
 		[Environment]::SetEnvironmentVariable($minReleaseAgeName, $previousMinReleaseAge, "Process")
 		[Environment]::SetEnvironmentVariable($beforeName, $previousBefore, "Process")
 	}
+}
+
+function Invoke-WithNpmResolutionEnvironment {
+	param(
+		[Parameter(Mandatory = $true)]
+		[scriptblock]$Action
+	)
+
+	Invoke-WithNpmEnvironment -Action $Action
+}
+
+function Invoke-WithRootLockNpmResolutionEnvironment {
+	param(
+		[Parameter(Mandatory = $true)]
+		[scriptblock]$Action
+	)
+
+	Invoke-WithNpmEnvironment -Action $Action -ClearReleaseAge
 }
 
 function Get-NormalizedPath {
@@ -211,7 +247,7 @@ function Ensure-LeanCtx {
 	$previousNoOnboard = [Environment]::GetEnvironmentVariable("LEAN_CTX_NO_ONBOARD", "Process")
 	$env:LEAN_CTX_NO_ONBOARD = "1"
 	try {
-		Invoke-WithReleaseAgeEnvironment {
+		Invoke-WithNpmResolutionEnvironment {
 			Invoke-Native $NpmCommand @("install", "-g", "lean-ctx-bin")
 		}
 
@@ -291,7 +327,7 @@ function Install-ManifestPackages {
 
 		Write-Host "Installing $source..."
 		try {
-			Invoke-WithReleaseAgeEnvironment {
+			Invoke-WithNpmResolutionEnvironment {
 				Invoke-Native $PiCommand @("install", $source)
 			}
 		}
@@ -413,17 +449,19 @@ if ([Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
 
 Set-Location $RepoRoot
 $Npm = Resolve-CommandPath @("npm.cmd", "npm")
-$Npx = Resolve-CommandPath @("npx.cmd", "npx")
 $Node = Resolve-CommandPath @("node.exe", "node")
+$Tsx = Join-Path $RepoRoot "node_modules\.bin\tsx.cmd"
 
 if ($StartAt -le 1) {
 	Write-Stage "1/6 npm dependencies"
-	Invoke-Native $Npm @("ci", "--min-release-age=null")
+	Invoke-WithRootLockNpmResolutionEnvironment {
+		Invoke-Native $Npm @("ci", "--min-release-age=null")
+	}
 }
 
 if ($StartAt -le 2) {
 	Write-Stage "2/6 install/update official Pi binary"
-	Invoke-WithReleaseAgeEnvironment {
+	Invoke-WithNpmResolutionEnvironment {
 		Invoke-Native $Npm @("install", "-g", "--ignore-scripts", "@earendil-works/pi-coding-agent@latest")
 	}
 }
@@ -436,7 +474,10 @@ if ($StartAt -le 3) {
 	Copy-Item -LiteralPath (Join-Path $RepoRoot ".pi\mcp.json") -Destination $AgentRoot -Force
 	Write-Host "-> $AgentRoot\APPEND_SYSTEM.md"
 	Write-Host "-> $AgentRoot\mcp.json"
-	Invoke-Native $Npx @("tsx", "harness/scripts/sync-models.ts")
+	if (-not (Test-Path -LiteralPath $Tsx)) {
+		throw "Locked tsx executable is missing at '$Tsx'. Run the dependency stage first."
+	}
+	Invoke-Native $Tsx @("harness/scripts/sync-models.ts")
 }
 
 if ($StartAt -le 4) {
@@ -454,7 +495,7 @@ if ($StartAt -le 5) {
 	Write-Stage "5/6 install and update manifest packages"
 	Invoke-Native $Npm @("run", "pkg", "--", "sync")
 	Install-ManifestPackages $packages $Pi $Npm $Node
-	Invoke-WithReleaseAgeEnvironment {
+	Invoke-WithNpmResolutionEnvironment {
 		Invoke-Native $Pi @("update", "--extensions")
 	}
 }

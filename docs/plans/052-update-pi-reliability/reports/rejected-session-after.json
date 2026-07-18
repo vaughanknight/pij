@@ -1,0 +1,19 @@
+{
+  "token": "pij-s052-validation-k_uajea4",
+  "directory": "/Users/jordanknight/.pi/agent/sessions/--private-var-folders-mv-9mcvlzg504b158ctlswmgwph0000gn-T-pij-s052-validation-k_uajea4-repo--",
+  "exists": false,
+  "descriptorMatches": [],
+  "processMatches": [],
+  "tmuxMatches": [],
+  "probeExcludedPidChain": [
+    1,
+    4053,
+    39703,
+    39709,
+    45001,
+    63212
+  ],
+  "descriptorCount": 0,
+  "processCount": 0,
+  "tmuxCount": 0
+}

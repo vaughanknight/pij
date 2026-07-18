@@ -42,7 +42,7 @@ default:
 
 install:
     @echo "=== 1/6 npm dependencies ==="
-    npm ci --min-release-age=null
+    just _root-lock-npm-ci
     @echo
     @echo "=== 2/6 install/update official pi binary ==="
     just pi-official-install
@@ -89,7 +89,7 @@ test *ARGS:
 check-file-watch-notify:
     just typecheck
     just test .pi/extensions/file-watch-notify
-    npx biome check .pi/extensions/file-watch-notify/
+    node_modules/.bin/biome check .pi/extensions/file-watch-notify/
 
 # tmux-driven end-to-end smoke (Driver SDK).
 smoke:
@@ -101,12 +101,19 @@ windows-compat:
 
 # Reject user-specific absolute home paths in executable/configuration surfaces.
 local-path-check:
-    npx tsx harness/scripts/local-path-check.ts
+    node_modules/.bin/tsx harness/scripts/local-path-check.ts
+
+# Assert every `resolved` source in package-lock.json is allowlisted (npmjs
+# registry or the sanctioned minih git source). The compensating control for
+# npmjs-scoped host replacement — tamper-DETECTION at CI/review time. Any other
+# host hard-fails.
+lockfile-allowlist:
+    node_modules/.bin/tsx harness/scripts/lockfile-allowlist.ts
 
 # Run the pij CLI in-repo (no global link needed): `just pij list --here`.
 # Quote message bodies normally: `just pij send pij-X "hello (world)"`.
 pij *ARGS:
-    npx tsx .pi/extensions/pij/cli.ts "$@"
+    node harness/scripts/pij-cli.cjs "$@"
 
 # Manage third-party pi-extensions via .pi/packages.yaml.
 pkg *ARGS:
@@ -116,14 +123,31 @@ pkg *ARGS:
 _release-age-days:
     @node --input-type=module -e 'import { MIN_RELEASE_AGE_DAYS } from "./harness/scripts/release-age-policy.ts"; process.stdout.write(String(MIN_RELEASE_AGE_DAYS))'
 
+# Run a fresh npm/Pi resolver with the governed proxy, online revalidation,
+# and seven-day release-age policy.
+_npm-resolution *ARGS:
+    @node_modules/.bin/tsx harness/scripts/npm-resolution-run.ts "$@"
+
+# Root lock replay must work before node_modules exists. Strip inherited npm
+# policy keys case-insensitively, then retain only the governed authority,
+# lock-host replacement, and
+# online settings while the CLI argument clears age for this frozen operation.
+_root-lock-npm-ci:
+    @set -eu; \
+      eval "$(env | sed -n 's/=.*//p' | awk '{ lower=tolower($0); if (lower=="npm_config_registry" || lower=="npm_config_replace_registry_host" || lower=="npm_config_prefer_online" || lower=="npm_config_min_release_age" || lower=="npm_config_before") print "unset " $0 }')"; \
+      npm_config_registry="https://packagefeedproxy.microsoft.io/npm/" \
+      npm_config_replace_registry_host="npmjs" \
+      npm_config_prefer_online="true" \
+      npm ci --min-release-age=null
+
 # Prove locked install, fresh-resolution refusal, and audit visibility separately.
 release-age-probe:
-    @npx tsx harness/scripts/release-age-probe.ts
+    @node_modules/.bin/tsx harness/scripts/release-age-probe.ts
 
 # Replace repo-managed provider objects in the global pi model registry while
 # preserving machine-local and otherwise unmanaged providers.
 sync-models *ARGS:
-    npx tsx harness/scripts/sync-models.ts "$@"
+    node_modules/.bin/tsx harness/scripts/sync-models.ts "$@"
 
 # List the GitHub Copilot models your account is actually entitled to.
 # Auto-selects the correct API host from the token's proxy-ep claim
@@ -140,6 +164,7 @@ copilot-models *ARGS:
 # task complete — never run npm directly to compose these steps.
 self-check:
     just local-path-check
+    just lockfile-allowlist
     just typecheck
     just lint
     just test
@@ -161,7 +186,7 @@ snapshots-check:
 # Opt-in live regression for the package-vetter adapter.
 # Requires a real Copilot session + spends API tokens.
 vet-live:
-    PIJ_VET_LIVE=1 npx vitest run agent.live
+    PIJ_VET_LIVE=1 node_modules/.bin/vitest run agent.live
 
 # Opt-in live regression for the agent-runtime harness adapters (AC-07).
 # Drives one real `claude` and one real `codex` one-shot through the injected
@@ -169,7 +194,7 @@ vet-live:
 # Requires `claude`+`codex` on PATH and spends API tokens; NOT part of self-check.
 # MINIH_NO_AUTO_HARVEST=1 keeps the run from writing a retro into this repo.
 agent-live:
-    PIJ_AGENT_LIVE=1 MINIH_NO_AUTO_HARVEST=1 npx vitest run adapters.live
+    PIJ_AGENT_LIVE=1 MINIH_NO_AUTO_HARVEST=1 node_modules/.bin/vitest run adapters.live
 
 # --- ergonomics ---
 
@@ -202,7 +227,7 @@ pij-skill-link:
 # plan 030 retro: copies drift, flow-pair forked that way); the symlink makes
 # the live skill track this repo with no re-install.
 pij-skill-install:
-    npx skills@latest add "$(realpath skills)" -a '*' -g -y -s pij
+    just _npm-resolution npx --yes skills@latest add "$(realpath skills)" -a '*' -g -y -s pij
     rm -rf ~/.agents/skills/pij
     ln -sfn "$(realpath skills/pij)" ~/.agents/skills/pij
     @echo "✓ ~/.agents/skills/pij → $(realpath skills/pij) (symlink, drift-proof)"
@@ -220,20 +245,20 @@ pij-skill-install:
 # Re-run after a fresh machine or `pi update` to restore the flow skills.
 install-flow-skills:
     @echo "=== the-flow ← jakkaj/tools (pi, global) ==="
-    npx skills@latest add jakkaj/tools -a pi -g -y -s the-flow
+    just _npm-resolution npx --yes skills@latest add jakkaj/tools -a pi -g -y -s the-flow
     @echo
     @echo "=== eng-harness-flow ← @ai-substrate/engineering-harness (pi, global) ==="
     @set -eu; \
       eh="$(npm root -g)/@ai-substrate/engineering-harness/skills"; \
       test -d "$eh" || { echo "❌ harness skills not found at $eh"; echo "   install @ai-substrate/engineering-harness globally first"; exit 1; }; \
-      npx skills@latest add "$eh" -a pi -g -y -s eng-harness-flow -s eng-harness-0-harnessability-assessment
+      node_modules/.bin/tsx harness/scripts/npm-resolution-run.ts npx --yes skills@latest add "$eh" -a pi -g -y -s eng-harness-flow -s eng-harness-0-harnessability-assessment
     @echo
     @echo "✓ flow skills installed globally for pi (the-flow + eng-harness-flow)"
 
 # Run vitest scoped to the flow-pair lib tests (explicit path bypasses vitest
 # config include filter; also works with: just test skills/flow-pair/test/).
 flow-pair-test *ARGS:
-    npx vitest run skills/flow-pair/test/ "$@"
+    node_modules/.bin/vitest run skills/flow-pair/test/ "$@"
 
 # Mutation smoke: PROVE the flow-pair suite actually guards a behaviour. The worker
 # writes its own tests, so green != good — this deliberately breaks <file> with a
@@ -250,6 +275,7 @@ flow-pair-mutate file expr *test_cmd:
 # npm can own the executable again. Refuses to clobber unknown real files.
 pi-official-install:
     @set -eu; \
+      pij_root="$(pwd)"; \
       package="@earendil-works/pi-coding-agent@latest"; \
       global_bin_dir="$(npm prefix -g)/bin"; \
       global_pi="$global_bin_dir/pi"; \
@@ -264,8 +290,7 @@ pi-official-install:
       elif [ -e "$global_pi" ]; then \
         echo "ℹ existing non-symlink pi at $global_pi; npm will update it if package-owned"; \
       fi; \
-      release_age="$(just _release-age-days)"; \
-      npm_config_min_release_age="$release_age" npm install -g --ignore-scripts "$package"; \
+      "$pij_root/node_modules/.bin/tsx" "$pij_root/harness/scripts/npm-resolution-run.ts" npm install -g --ignore-scripts "$package"; \
       pi --version | head -1
 
 # --- pi fork source control (optional Pi core development only) ---
@@ -319,12 +344,13 @@ pi-fork-link:
 # does not pull/fetch; use `just pi-fork-sync-upstream` explicitly for that.
 pi-fork-build:
     @set -eu; \
+      pij_root="$(pwd)"; \
       repo="../pi-fork"; \
       test -d "$repo/.git" || { echo "❌ $repo is not a git checkout"; exit 1; }; \
       short="$(git -C "$repo" rev-parse --short HEAD)"; \
       repo_abs="$(cd "$repo" && pwd)"; \
       echo "=== install pi fork dependencies ==="; \
-      cd "$repo_abs" && npm install --ignore-scripts; \
+      cd "$repo_abs" && "$pij_root/node_modules/.bin/tsx" "$pij_root/harness/scripts/npm-resolution-run.ts" npm install --ignore-scripts; \
       echo; \
       echo "=== build pi fork $short ==="; \
       npm run build; \
@@ -368,8 +394,7 @@ update-pi:
     just pkg bootstrap
     @echo
     @echo "=== update pi extension packages only ==="
-    @release_age="$(just _release-age-days)"; \
-      npm_config_min_release_age="$release_age" pi update --extensions
+    @just _npm-resolution pi update --extensions
     @echo
     just pi-doctor
 
@@ -388,6 +413,9 @@ update-pi-full:
 # MCP servers, and flags anything that looks wrong.
 pi-doctor:
     @echo "=== pi binary ===" && which pi && pi --version | head -1
+    @global_npm_root="$(npm root -g)"; \
+      pij_bin="$(command -v pij)"; \
+      just _pij-bin-shape-check "$global_npm_root" "$pij_bin"
     @echo
     @echo "=== ~/.pi/agent/extensions/ (pij symlinks should be here) ==="
     @ls -la ~/.pi/agent/extensions/ 2>/dev/null || echo "  (missing — run: just link)"
@@ -399,3 +427,26 @@ pi-doctor:
     @if [ -f ~/.pi/agent/mcp.json ]; then \
       python3 -c "import json,sys; s=json.load(open(sys.argv[1])); m=s.get('mcpServers',{}); [print(f'  - {k}: {v.get(\"command\",\"\")} {\" \".join(v.get(\"args\",[]))}'.rstrip()) for k,v in m.items()]; (not m) and print('  (no mcpServers defined)')" ~/.pi/agent/mcp.json; \
     else echo "  (no ~/.pi/agent/mcp.json)"; fi
+
+_pij-bin-shape-check global_npm_root pij_bin:
+    @set -eu; \
+      expected="{{global_npm_root}}/pij/harness/scripts/pij-cli.cjs"; \
+      test -e "{{pij_bin}}" || { \
+        echo "❌ global pij bin is missing: {{pij_bin}}"; \
+        echo "   run npm link from the local main checkout, or run: just update-pi"; \
+        exit 1; \
+      }; \
+      test -f "$expected" || { \
+        echo "❌ linked pij package has no wrapper at: $expected"; \
+        echo "   run npm link from the local main checkout, or run: just update-pi"; \
+        exit 1; \
+      }; \
+      actual="$(realpath "{{pij_bin}}")"; \
+      expected="$(realpath "$expected")"; \
+      if [ "$actual" != "$expected" ]; then \
+        echo "❌ stale global pij bin: {{pij_bin}} -> $actual"; \
+        echo "   expected: $expected"; \
+        echo "   run npm link from the local main checkout, or run: just update-pi"; \
+        exit 1; \
+      fi; \
+      echo "pij bin: $actual"
