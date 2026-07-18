@@ -6,6 +6,7 @@ import {
 	applyWorkingTransition,
 	buildWatchdogTurn,
 	captureSlice,
+	describeWatchdogState,
 	effectiveWatchdog,
 	evaluateResponse,
 	isFireDue,
@@ -277,6 +278,53 @@ describe("parseWatchdogInterval", () => {
 	it("rejects non-positive, fractional, and malformed input", () => {
 		for (const bad of ["0", "0s", "-5m", "abc", "", "5x", "1.5h", "m", "10 m"]) {
 			expect(parseWatchdogInterval(bad)).toBeNull();
+		}
+	});
+});
+
+describe("describeWatchdogState", () => {
+	// Activation-day finding (pij-civilian-takin, echoed by a mastodon seat): a
+	// SUCCESSFUL pause rendered "enabled · self" — the word "paused" never
+	// appeared, and the field carrying the pause state was positional and
+	// unlabelled. The state must say what it is.
+	it("says paused, and by whom, for each pause tier", () => {
+		expect(describeWatchdogState({ enabled: true, pausedBy: "self" })).toBe("paused (self)");
+		expect(describeWatchdogState({ enabled: true, pausedBy: "compact" })).toBe("paused (compact)");
+	});
+
+	it("names exemption as its own state — it never fires and never expires", () => {
+		expect(describeWatchdogState({ enabled: true, pausedBy: "exempt" })).toBe("exempt");
+	});
+
+	it("says watching when it is actually watching", () => {
+		expect(describeWatchdogState({ enabled: true })).toBe("watching");
+	});
+
+	it("says disabled regardless of tier", () => {
+		expect(describeWatchdogState({ enabled: false })).toBe("disabled");
+		expect(describeWatchdogState({ enabled: false, pausedBy: "self" })).toBe("disabled");
+	});
+
+	it("surfaces the Plan-056 dominating states in priority order", () => {
+		// globally-disabled dominates everything; relay dominates the sidecar.
+		expect(describeWatchdogState({ enabled: false, globallyDisabled: true })).toBe(
+			"globally-disabled",
+		);
+		expect(
+			describeWatchdogState({ enabled: false, globallyDisabled: true, pausedBy: "self" }),
+		).toBe("globally-disabled");
+		expect(describeWatchdogState({ enabled: false, relay: true })).toBe("relay (never watched)");
+	});
+
+	it("never renders a paused, relay, or globally-disabled watchdog as bare 'enabled'", () => {
+		for (const state of [
+			{ enabled: true, pausedBy: "self" as const },
+			{ enabled: true, pausedBy: "compact" as const },
+			{ enabled: true, pausedBy: "exempt" as const },
+			{ enabled: false, relay: true },
+			{ enabled: false, globallyDisabled: true },
+		]) {
+			expect(describeWatchdogState(state)).not.toBe("enabled");
 		}
 	});
 });
