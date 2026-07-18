@@ -27,7 +27,20 @@ import { isSemanticState, type SemanticState, type SessionDescriptor } from "./t
  *  flag every coffee break. */
 export const DEFAULT_IDLE_DISAGREEMENT_MS = 4 * 3_600_000;
 
-export type AnomalyKind = "axis-disagreement" | "unverified-done" | "foreign-hold-clear";
+export type AnomalyKind =
+	| "axis-disagreement"
+	| "unverified-done"
+	| "foreign-hold-clear"
+	| "spawn-limbo";
+
+/** A seat may sit pre-bind this long before it reads as a wedged boot. The
+ *  watchdog cannot see pending/ready seats (eligible() excludes them by
+ *  design — nudging a wedged update prompt is useless), so this sensor is the
+ *  ONLY alarm for the bind-zombie class (T1: 2.5 days lost silently at osk).
+ *  GENEROUS by design (o-prime nit): codex cold-boot + update prompt is a
+ *  legitimately slow bind — 8min false-alarms nobody and still beats the
+ *  2.5-day silent loss by ~450x. Harness-aware deadlines: assessment agenda. */
+export const DEFAULT_SPAWN_LIMBO_MS = 8 * 60_000;
 
 export interface Anomaly {
 	readonly kind: AnomalyKind;
@@ -44,6 +57,7 @@ export interface AnomalyInputs {
 	readonly events: readonly SpineEvent[];
 	readonly nowMs: number;
 	readonly idleThresholdMs?: number;
+	readonly spawnLimboMs?: number;
 }
 
 /** The declared-state view of one assignment's chain (states[] seqs joined
@@ -113,6 +127,32 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const out: Anomaly[] = [];
 	const byNode = new Map<string, SessionDescriptor>();
 	for (const descriptor of inputs.descriptors) byNode.set(descriptor.id, descriptor);
+
+	// spawn-limbo (descriptor-driven, assignment-free — the second cross-node
+	// pass this module carries): a seat still pending/ready long past spawn is
+	// a wedged boot the watchdog structurally cannot see. Surface once; the
+	// sweep routes to the creator. Evidence: the seat's own spine events when
+	// any exist (a pre-bind wedge usually has none — the emptiness IS the
+	// symptom, and the detail says so).
+	const limboMs = inputs.spawnLimboMs ?? DEFAULT_SPAWN_LIMBO_MS;
+	for (const node of inputs.descriptors) {
+		if (node.lifecycle !== "pending" && node.lifecycle !== "ready") continue;
+		const bornMs = Date.parse(node.startedAt);
+		if (Number.isNaN(bornMs)) continue;
+		const ageMs = inputs.nowMs - bornMs;
+		if (ageMs <= limboMs) continue;
+		const evidence: number[] = [];
+		for (const event of inputs.events) {
+			if (event.peer === node.id) evidence.push(event.seq);
+			if (evidence.length >= 3) break;
+		}
+		out.push({
+			kind: "spawn-limbo",
+			nodeId: node.id,
+			detail: `'${node.id}' spawned ${Math.round(ageMs / 60_000)}min ago and is still '${node.lifecycle}' — never bound (wedged boot? the watchdog cannot see pre-bind seats${evidence.length === 0 ? "; zero spine events, which is itself the symptom" : ""})`,
+			evidence,
+		});
+	}
 
 	for (const assignment of inputs.assignments) {
 		const chain = chainEventsOf(assignment, inputs.events);

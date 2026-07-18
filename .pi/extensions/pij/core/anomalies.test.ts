@@ -7,7 +7,11 @@
 // non-issuer — each with spine-seq evidence refs.
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_IDLE_DISAGREEMENT_MS, detectAnomalies } from "./anomalies.js";
+import {
+	DEFAULT_IDLE_DISAGREEMENT_MS,
+	DEFAULT_SPAWN_LIMBO_MS,
+	detectAnomalies,
+} from "./anomalies.js";
 import type { Assignment, SpineEvent } from "./platform/types.js";
 import type { SessionDescriptor } from "./types.js";
 
@@ -284,5 +288,61 @@ describe("foreign hold-clear (hold released by an actor other than its issuer)",
 				nowMs: NOW,
 			}).filter((x) => x.kind === "foreign-hold-clear"),
 		).toHaveLength(0);
+	});
+});
+
+describe("spawn-limbo (T1 — the bind-zombie class the watchdog cannot see)", () => {
+	const NOW_MS = NOW;
+	function limboDesc(over: Partial<SessionDescriptor> & { id: string }): SessionDescriptor {
+		return desc({
+			lifecycle: "pending",
+			startedAt: new Date(NOW_MS - 10 * 60_000).toISOString(),
+			...over,
+		});
+	}
+
+	it("a seat pending past the deadline fires with an honest zero-events detail", () => {
+		const anomalies = detectAnomalies({
+			descriptors: [limboDesc({ id: "pij-wedged" })],
+			assignments: [],
+			events: [],
+			nowMs: NOW_MS,
+		});
+		const limbo = anomalies.filter((a) => a.kind === "spawn-limbo");
+		expect(limbo).toHaveLength(1);
+		expect(limbo[0]?.nodeId).toBe("pij-wedged");
+		expect(limbo[0]?.detail).toContain("never bound");
+		expect(limbo[0]?.detail).toContain("zero spine events");
+		expect(limbo[0]?.evidence).toEqual([]);
+	});
+
+	it("ready counts as limbo too; bound never does; young pending never does", () => {
+		const ready = limboDesc({ id: "pij-r", lifecycle: "ready" });
+		const bound = limboDesc({ id: "pij-b", lifecycle: "bound" });
+		const young = limboDesc({
+			id: "pij-y",
+			startedAt: new Date(NOW_MS - 2 * 60_000).toISOString(),
+		});
+		const kinds = detectAnomalies({
+			descriptors: [ready, bound, young],
+			assignments: [],
+			events: [],
+			nowMs: NOW_MS,
+		}).filter((a) => a.kind === "spawn-limbo");
+		expect(kinds.map((a) => a.nodeId)).toEqual(["pij-r"]);
+	});
+
+	it("cites the seat's own spine events as evidence when any exist", () => {
+		const anomalies = detectAnomalies({
+			descriptors: [limboDesc({ id: "pij-wedged" })],
+			assignments: [],
+			events: [ev({ seq: 9, kind: "system-state", peer: "pij-wedged" })],
+			nowMs: NOW_MS,
+		});
+		expect(anomalies.find((a) => a.kind === "spawn-limbo")?.evidence).toEqual([9]);
+	});
+
+	it("the deadline is generous — default is minutes-scale, several times a slow cold boot", () => {
+		expect(DEFAULT_SPAWN_LIMBO_MS).toBeGreaterThanOrEqual(5 * 60_000);
 	});
 });
