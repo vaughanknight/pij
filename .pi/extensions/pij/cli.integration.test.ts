@@ -1604,4 +1604,41 @@ describe("pij spine render (P4 T002 — bin-owned write, AC-10)", () => {
 		expect(written).toContain("_No events._");
 		rmSync(freshHome, { recursive: true, force: true });
 	});
+
+	it("--project publishes a FILTERED view to spine/<slug>.spine.md — spine.md untouched (s057)", () => {
+		const asActor = { PIJ_SESSION_ID: "", TMUX_PANE: "" };
+		const a = pij(
+			[
+				"spine",
+				"append",
+				"--kind",
+				"render-probe",
+				"--project",
+				"render-proj",
+				"--actor",
+				"render-tester",
+			],
+			asActor,
+		);
+		expect(a.code).toBe(0);
+		const before = readFileSync(join(HOME, "spine", "spine.md"), "utf8");
+		const r = pij(["spine", "render", "--project", "render-proj", "--json"]);
+		expect(r.code).toBe(0);
+		const envlp = JSON.parse(r.out) as { path: string; bytes: number; events: number };
+		expect(envlp.path).toBe(join(HOME, "spine", "render-proj.spine.md"));
+		const written = readFileSync(envlp.path, "utf8");
+		const events = new FsSpineLog(HOME).read({ project: "render-proj" });
+		expect(events.length).toBeGreaterThan(0);
+		expect(written).toBe(renderSpineMd(events, { title: "pij spine — project render-proj" }));
+		expect(envlp.events).toBe(events.length);
+		expect(envlp.bytes).toBe(Buffer.byteLength(written, "utf8"));
+		// A filtered view must NEVER overwrite the machine-wide spine.md.
+		expect(readFileSync(join(HOME, "spine", "spine.md"), "utf8")).toBe(before);
+	});
+
+	it("--project rejects a non-slug shape with E-ARG (the slug becomes a filename)", () => {
+		const r = pij(["spine", "render", "--project", "../escape"]);
+		expect(r.code).toBe(64);
+		expect(r.out).toContain("E-ARG");
+	});
 });

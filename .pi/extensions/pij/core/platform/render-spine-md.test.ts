@@ -85,6 +85,13 @@ describe("renderSpineMd — current kinds render with full attribution", () => {
 		expect(doc).toContain("refs: node:pij-child, parent:pij-new");
 	});
 
+	it("renders a project-set's record blobs FIELD-LEVEL, changed keys only (s057)", () => {
+		// seq 2: prev {} → next {"planPath":"p.md"} — one changed field, no raw blob.
+		expect(doc).toContain('- planPath: ∅ → "p.md"');
+		expect(doc).not.toContain("- prev: {}");
+		expect(doc).not.toContain('- next: {"planPath":"p.md"}');
+	});
+
 	it("renders peer/project scoping and verifiedBy", () => {
 		expect(doc).toContain("peer: pij-node");
 		expect(doc).toContain("project: alpha");
@@ -125,6 +132,46 @@ describe("renderSpineMd — honesty under openness", () => {
 		expect(doc).toContain('{"source":"external"}');
 	});
 
+	it("renders a project-created's next record field-level, keys sorted (s057)", () => {
+		const doc = renderSpineMd([
+			ev(5, "project-created", {
+				project: "alpha",
+				next: '{"schema_version":1,"slug":"alpha","description":"Alpha!"}',
+			}),
+		]);
+		expect(doc).toContain('- description: "Alpha!"');
+		expect(doc).toContain("- schema_version: 1");
+		expect(doc).toContain('- slug: "alpha"');
+		expect(doc).not.toContain("- next: {");
+		// determinism: sorted keys, description before schema_version before slug.
+		expect(doc.indexOf("- description:")).toBeLessThan(doc.indexOf("- schema_version:"));
+		expect(doc.indexOf("- schema_version:")).toBeLessThan(doc.indexOf("- slug:"));
+	});
+
+	it("compresses a no-op project-set (prev === next) to one honest line", () => {
+		const blob = '{"slug":"alpha","planPath":"p.md"}';
+		const doc = renderSpineMd([ev(6, "project-set", { project: "alpha", prev: blob, next: blob })]);
+		expect(doc).toContain("- (no field changes)");
+		expect(doc).not.toContain("- prev:");
+		expect(doc).not.toContain("- next:");
+	});
+
+	it("falls back to the RAW prev/next lines when a project blob is not JSON (WS-5 honesty)", () => {
+		const doc = renderSpineMd([
+			ev(7, "project-set", { project: "alpha", prev: "not-json", next: '{"slug":"alpha"}' }),
+		]);
+		expect(doc).toContain("- prev: not-json");
+		expect(doc).toContain('- next: {"slug":"alpha"}');
+	});
+
+	it("falls back raw for a project-created that carries a contract-breaking prev", () => {
+		const doc = renderSpineMd([
+			ev(8, "project-created", { project: "alpha", prev: "{}", next: '{"slug":"alpha"}' }),
+		]);
+		expect(doc).toContain("- prev: {}");
+		expect(doc).toContain('- next: {"slug":"alpha"}');
+	});
+
 	it("skips no known envelope field when present (nothing dropped)", () => {
 		const full = ev(3, "task-set", {
 			peer: "p",
@@ -155,6 +202,11 @@ describe("renderSpineMd — byte stability (AC-10)", () => {
 	const events = [
 		ev(1, "project-created", { project: "alpha", actorProvenance: "resolved" }),
 		ev(2, "node-linked", { peer: "pij-c", refs: ["node:pij-c", "parent:pij-p"], next: "pij-p" }),
+		ev(3, "project-set", {
+			project: "alpha",
+			prev: '{"slug":"alpha","planPath":"old.md"}',
+			next: '{"slug":"alpha","planPath":"new.md"}',
+		}),
 	];
 
 	it("double render is byte-identical", () => {
@@ -174,7 +226,7 @@ describe("renderSpineMd — byte stability (AC-10)", () => {
 				"",
 				"Machine-generated from `spine/events.ndjson` — do not hand-edit. Regenerate with `pij spine render`.",
 				"",
-				"2 events · seq 1–2",
+				"3 events · seq 1–3",
 				"",
 				"## Events",
 				"",
@@ -191,6 +243,13 @@ describe("renderSpineMd — byte stability (AC-10)", () => {
 				"- peer: pij-c",
 				"- next: pij-p",
 				"- refs: node:pij-c, parent:pij-p",
+				"",
+				"### 3 · project-set",
+				"",
+				"- ts: 2026-07-17T03:00:00.000Z",
+				"- actor: pij-tester",
+				"- project: alpha",
+				'- planPath: "old.md" → "new.md"',
 				"",
 			].join("\n"),
 		);

@@ -201,6 +201,8 @@ export type ParsedCommand =
 	| {
 			readonly verb: "project-create";
 			readonly description: string;
+			/** Explicitly chosen slug (`--slug <slug>`) — verbatim, E-ARG on collision. */
+			readonly slug?: string;
 			/** Asserted attribution (`--actor <label>`), F2: wins over a resolved self. */
 			readonly actor?: string;
 			readonly json: boolean;
@@ -233,8 +235,9 @@ export type ParsedCommand =
 	  }
 	/** Parse-row only (plan 054 P4 T002): the markdown write is BIN-owned —
 	 *  the pij bin intercepts `spine render` before dispatch. Core keeps the
-	 *  row for usage/E-ARG parity and E-NOREGs if ever reached. */
-	| { readonly verb: "spine-render"; readonly json: boolean }
+	 *  row for usage/E-ARG parity and E-NOREGs if ever reached. `--project`
+	 *  scopes the render to one project's events (s057 dogfood). */
+	| { readonly verb: "spine-render"; readonly json: boolean; readonly project?: string }
 	// ── plan 054 Phase 2 — assignment/state family verbs (AC-05/AC-06) ────────
 	| {
 			readonly verb: "task-set";
@@ -473,13 +476,14 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	tree: new Set(["global", "activity", "liveness", "lifecycle", "all", "json"]),
 	link: new Set(["parent", "root", "actor", "json"]),
 	path: new Set(["events", "state", "dir", "json"]),
-	"project create": new Set(["actor", "json"]),
+	// --slug is not in BOOLEAN_FLAGS, so lex values it (no override row needed).
+	"project create": new Set(["slug", "actor", "json"]),
 	"project list": new Set(["json"]),
 	"project show": new Set(["json"]),
 	"project set": new Set(["plan", "prime", "actor", "json"]),
 	"spine append": new Set(["kind", "refs", "peer", "project", "actor", "json"]),
 	"spine events": new Set(["since", "peer", "project", "json"]),
-	"spine render": new Set(["json"]),
+	"spine render": new Set(["project", "json"]),
 	// plan 054 P2 (T005). --project/--assignment/--refs are not in
 	// BOOLEAN_FLAGS, so lex values them without VALUED_FLAG_OVERRIDES rows.
 	"task set": new Set(["project", "actor", "json"]),
@@ -837,11 +841,14 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		case "project create": {
 			const description = pos[0];
 			if (description === undefined)
-				return err("E-ARG", 'usage: pij project create "<description>"');
+				return err("E-ARG", 'usage: pij project create "<description>" [--slug <slug>]');
+			if (flags.slug === true || flags.slug === "")
+				return err("E-ARG", "--slug needs a kebab slug");
 			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
 			return ok({
 				verb: "project-create",
 				description,
+				slug: typeof flags.slug === "string" ? flags.slug : undefined,
 				actor: typeof flags.actor === "string" ? flags.actor : undefined,
 				json,
 			});
@@ -976,8 +983,14 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				json,
 			});
 		}
-		case "spine render":
-			return ok({ verb: "spine-render", json });
+		case "spine render": {
+			if (flags.project === true) return err("E-ARG", "--project takes a project slug");
+			return ok({
+				verb: "spine-render",
+				project: typeof flags.project === "string" ? flags.project : undefined,
+				json,
+			});
+		}
 		default:
 			return err(
 				"E-ARG",
@@ -2026,6 +2039,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 					actor: attribution.value.actor,
 					nowMs: now,
 					existingSlugs: new Set(projectStore.list().map((p) => p.slug)),
+					slug: cmd.slug,
 					actorProvenance: attribution.value.provenance,
 				});
 				if (!write.ok) return fail(write.code, write.message, cmd.json);

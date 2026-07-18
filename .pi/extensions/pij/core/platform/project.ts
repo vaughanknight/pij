@@ -9,7 +9,9 @@ import { buildSpineEvent } from "./spine.js";
 import { isoTimestamp } from "./time.js";
 import {
 	type ActorProvenance,
+	isValidProjectSlug,
 	kebabSlug,
+	PROJECT_SLUG_MAX_LENGTH,
 	type Project,
 	resolveSlugCollision,
 	SPINE_KIND_PROJECT_CREATED,
@@ -22,6 +24,9 @@ export interface CreateProjectInput {
 	readonly actor: string;
 	readonly nowMs: number;
 	readonly existingSlugs: ReadonlySet<string>;
+	/** Explicitly chosen slug (s057 dogfood): used VERBATIM — E-ARG on shape,
+	 *  length, or collision; a chosen identity is never silently renamed. */
+	readonly slug?: string;
 	readonly actorProvenance?: ActorProvenance;
 	readonly repo?: string;
 	readonly planPath?: string;
@@ -116,17 +121,38 @@ export function canonicalProjectJson(project: Project): string {
 	return JSON.stringify(canonical);
 }
 
-/** Slug via kebabSlug + resolveSlugCollision (AC-01); E-ARG when the
- *  description kebabs to '' or a given repo/planPath/primeId is ''. */
+/** Slug: explicit `input.slug` used verbatim (E-ARG on shape/collision — a
+ *  chosen identity is never silently renamed), else kebabSlug(description)
+ *  capped at PROJECT_SLUG_MAX_LENGTH + resolveSlugCollision (AC-01); E-ARG
+ *  when the description kebabs to '' or a given repo/planPath/primeId is ''. */
 export function createProject(input: CreateProjectInput): Result<ProjectWrite> {
-	const base = kebabSlug(input.description);
-	if (base === "") {
-		return err("E-ARG", `description must kebab to a non-empty slug (got '${input.description}')`);
+	let slug: string;
+	if (input.slug !== undefined) {
+		if (!isValidProjectSlug(input.slug)) {
+			return err(
+				"E-ARG",
+				`invalid project slug '${input.slug}' (kebab: lowercase alnum runs joined by '-', max ${PROJECT_SLUG_MAX_LENGTH} chars)`,
+			);
+		}
+		// Honest "already exists" posture: an explicit slug never auto-suffixes.
+		if (input.existingSlugs.has(input.slug)) {
+			return err("E-ARG", `project slug '${input.slug}' already exists — pick another`);
+		}
+		slug = input.slug;
+	} else {
+		const kebab = kebabSlug(input.description);
+		if (kebab === "") {
+			return err("E-ARG", `description must kebab to a non-empty slug (got '${input.description}')`);
+		}
+		// Cap the derived base (a whole-description slug is a filename, not
+		// prose); trim any hyphen fragment the cut left behind. A -N collision
+		// suffix may exceed the cap by a few chars — uniqueness wins.
+		const base = kebab.slice(0, PROJECT_SLUG_MAX_LENGTH).replace(/-+$/, "");
+		slug = resolveSlugCollision(base, input.existingSlugs);
 	}
 	if (input.repo === "") return err("E-ARG", "project repo must not be empty");
 	if (input.planPath === "") return err("E-ARG", "project planPath must not be empty");
 	if (input.primeId === "") return err("E-ARG", "project primeId must not be empty");
-	const slug = resolveSlugCollision(base, input.existingSlugs);
 	// F7: ONE checked clock stamps both sides of the coupling (Pattern P3).
 	const ts = isoTimestamp(input.nowMs);
 	if (!ts.ok) return ts;

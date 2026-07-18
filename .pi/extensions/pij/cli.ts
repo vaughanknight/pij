@@ -208,13 +208,13 @@ Orchestration (machine-wide coordination):
   pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
 
 Platform (durable projects + the shared spine log):
-  pij project create "<description>" [--actor <label>] [--json]   create a project (kebab slug, collision-resolved)
+  pij project create "<description>" [--slug <slug>] [--actor <label>] [--json]   create a project (kebab slug, collision-resolved; --slug is verbatim and errors on collision)
   pij project list [--json]                          all projects, sorted by slug
   pij project show <slug> [--json]                   one full project record
   pij project set <slug> [--plan <path>] [--prime <id>] [--actor <label>] [--json]   update a project's plan/prime
   pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--actor <label>] [--json]   append one spine event
   pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
-  pij spine render [--json]                          regenerate spine/spine.md (markdown view of the spine)
+  pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
   pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it
   pij state set <node> <state> [--assignment <id>] [--refs a,b,…] [--actor <label>] [--json]   declare a per-assignment semantic state
   pij state verify <node> [--assignment <id>] [--actor <label>] [--json]   verify a done state (stamps verifiedBy — done is a claim until verified)
@@ -2759,11 +2759,25 @@ async function runAgentVerb(args: string[]): Promise<void> {
 /** `pij spine render` — bin-owned (plan 054 P4 T002, AC-10): SpineLogPort has
  *  no markdown-write method by design, so the bin reads the log and publishes
  *  `$PIJ_HOME/spine/spine.md` atomically. Core keeps the parse row for
- *  usage/E-ARG parity and E-NOREGs if ever reached without this intercept. */
-function runSpineRender(json: boolean): void {
-	const events = new FsSpineLog(pijHome).read();
-	const md = renderSpineMd(events);
-	const path = join(pijHome, "spine", "spine.md");
+ *  usage/E-ARG parity and E-NOREGs if ever reached without this intercept.
+ *  `--project` (s057 dogfood) publishes a FILTERED view to its OWN file,
+ *  `$PIJ_HOME/spine/<slug>.spine.md` — never over the machine-wide spine.md
+ *  (a filtered view at that path would lie about the whole log). Stale
+ *  per-project files are never cleaned up (surfaced residue, acted on never). */
+function runSpineRender(json: boolean, project?: string): void {
+	// The slug becomes a filename — the shape guard blocks `--project ../x`
+	// traversal, so it is part of the contract, not cosmetics.
+	if (project !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(project)) {
+		process.stderr.write(`E-ARG: --project takes a kebab project slug (got '${project}')\n`);
+		process.exit(64);
+	}
+	// Same exact-match filter path `spine events --project` uses.
+	const events = new FsSpineLog(pijHome).read(project === undefined ? undefined : { project });
+	const md = renderSpineMd(
+		events,
+		project === undefined ? {} : { title: `pij spine — project ${project}` },
+	);
+	const path = join(pijHome, "spine", project === undefined ? "spine.md" : `${project}.spine.md`);
 	try {
 		writeTextAtomic(path, md);
 	} catch (error) {
@@ -2889,7 +2903,7 @@ function main(): void {
 	// `spine render` writes markdown the pure core cannot (bin-owned, plan 054
 	// P4 T002) — intercept BEFORE dispatch, after core's parse gave E-ARG parity.
 	if (parsed.value.verb === "spine-render") {
-		runSpineRender(parsed.value.json);
+		runSpineRender(parsed.value.json, parsed.value.project);
 		return;
 	}
 	// `pij tail` of a bound claude/copilot session streams ITS JSONL transcript,

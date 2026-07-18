@@ -15,8 +15,10 @@ import {
 	isAssignment,
 	isProject,
 	isSpineEvent,
+	isValidProjectSlug,
 	kebabSlug,
 	type Project,
+	PROJECT_SLUG_MAX_LENGTH,
 	resolveSlugCollision,
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
@@ -611,6 +613,35 @@ describe("resolveSlugCollision", () => {
 		expect(resolveSlugCollision("fix-the-cli", new Set(["other", "fix-the-cli-2"]))).toBe(
 			"fix-the-cli",
 		);
+	});
+});
+
+describe("isValidProjectSlug (s057 — explicit --slug shape)", () => {
+	it("accepts strict kebab slugs", () => {
+		for (const slug of ["fix-the-cli", "a", "plan-054", "a-b-c", "0-day"]) {
+			expect(isValidProjectSlug(slug), slug).toBe(true);
+		}
+	});
+
+	it("rejects non-kebab shapes (a string in, a boolean out — no throw)", () => {
+		for (const slug of [
+			"",
+			"Fix-The-CLI", // uppercase
+			"fix the cli", // spaces
+			"-fix", // leading hyphen
+			"fix-", // trailing hyphen
+			"fix--cli", // double hyphen
+			"fix_cli", // underscore
+			"../escape", // path shape
+		]) {
+			expect(isValidProjectSlug(slug), slug).toBe(false);
+		}
+	});
+
+	it("accepts exactly PROJECT_SLUG_MAX_LENGTH chars and rejects one more (boundary)", () => {
+		const atMax = "a".repeat(PROJECT_SLUG_MAX_LENGTH);
+		expect(isValidProjectSlug(atMax)).toBe(true);
+		expect(isValidProjectSlug(`${atMax}a`)).toBe(false);
 	});
 });
 

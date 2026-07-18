@@ -240,6 +240,9 @@ export class Daemon {
 					spineLog: new FsSpineLog(this.pijHome),
 					delivery: this.channel,
 					now: () => this.ports.now(),
+					// Recipient fallback + honest-drop surface (s057 dogfood).
+					projectStore: new FsProjectStore(this.pijHome),
+					log: this.log,
 				});
 			} catch (error) {
 				this.platformPassesDisabled = true;
@@ -259,6 +262,9 @@ export class Daemon {
 				const anomalySweep = this.anomalySweep.tick();
 				if (anomalySweep.alerts > 0) {
 					this.log(`anomaly sweep: pushed ${anomalySweep.alerts} parent alert(s)`);
+				}
+				if (anomalySweep.dropped > 0) {
+					this.log(`anomaly sweep: ${anomalySweep.dropped} alert(s) had no recipient (dropped)`);
 				}
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : String(error);
