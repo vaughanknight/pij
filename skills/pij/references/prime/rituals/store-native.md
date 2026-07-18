@@ -24,7 +24,9 @@ Read-back: `pij spine events [--since <seq>] [--project <slug>] [--peer <id>]`,
 
 - **Events are kind-coded records, not prose.** No body field exists. Narrative
   belongs in briefs/plan docs on disk (pointer delivery unchanged); link the
-  record via `--project` and prior-event `--refs`.
+  record via `--project` and `--refs`. Refs take free-form pointer strings —
+  convention: prior event seqs, `commit:<sha>`, `pr:<n>`, `path:<repo-relative>`
+  — so a ruling/ship event CAN carry its on-disk pointer.
 - **Append is immediate and irreversible** — no dry-run; a bare
   `spine append --kind x` writes at once. A mistaken event is never deleted:
   append a correcting event that `--refs` it.
