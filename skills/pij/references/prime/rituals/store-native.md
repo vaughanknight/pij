@@ -38,6 +38,23 @@ Read-back: `pij spine events [--since <seq>] [--project <slug>] [--peer <id>]`,
   your seat id; never write as `"operator"`.
 - Platform `seq` is store-allocated. Never encode your own ordering into it.
 
+## Event-kind palette (recommended, not enforced — o-prime ruling 2026-07-18)
+
+`kind` is open vocabulary (WS-5), but cross-prime queryability erodes when
+primes coin near-synonyms (live census: ~30 kinds where
+verify/report-verified/review-verdict/phase-approved all meant "verified").
+**Reach for a CORE kind before coining one; coin freely only for a genuinely
+new act.**
+
+Core: `ruling` (o-prime decision) · `grant` (authority/baton/resume) ·
+`ship` (landed to main) · `deploy` (machine-wide activation step) ·
+`verify` (independent verification passed) · `finding` (routed dogfood/review
+finding) · `blocker` (recorded impediment) · `transition` (stream/seat state
+change) · `note` (governance telemetry).
+
+Append is irreversible — no junk kinds (a stray `x` is permanent); correct a
+mis-kinded event with a `--refs` correction, never a delete.
+
 ## Day-zero (fresh prime)
 
 Replace the prose scaffold (bootstrap §3) with: one `pij project create` per
