@@ -346,3 +346,23 @@ describe("spawn-limbo (T1 — the bind-zombie class the watchdog cannot see)", (
 		expect(DEFAULT_SPAWN_LIMBO_MS).toBeGreaterThanOrEqual(5 * 60_000);
 	});
 });
+
+describe("axis-disagreement remedy hint (mastodon intake — a confusing alarm becomes self-clearing)", () => {
+	it("the detail names the self-serve remedy with the node's own id", () => {
+		const idler = desc({
+			id: "pij-lost",
+			lifecycle: "bound",
+			systemState: "idle",
+			state: "idle",
+			lastEventAt: new Date(NOW - H44).toISOString(),
+		});
+		const a = detectAnomalies({
+			descriptors: [idler],
+			assignments: [asg({ id: "asg-d", nodeId: "pij-lost" })],
+			events: [],
+			nowMs: NOW,
+		}).find((x) => x.kind === "axis-disagreement");
+		expect(a?.detail).toContain("pij state set pij-lost waiting|hold|blocked|question");
+		expect(a?.detail).toContain("parked states never flag");
+	});
+});
