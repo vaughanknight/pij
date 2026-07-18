@@ -18,8 +18,11 @@ export interface InterstitialVerdict {
 	/** Keystrokes an `answer` presses, in order (argv-level tmux keys). E.g.
 	 *  copilot folder-trust: ["1", "Enter"] = option 1, trust ONCE (session-
 	 *  scoped). NEVER option 2 — "remember" permanently mutates the user's
-	 *  global copilot trusted-folders config. Set only when action === "answer". */
-	readonly keys?: readonly ("1" | "Enter")[];
+	 *  global copilot trusted-folders config. codex update prompt: ["2",
+	 *  "Enter"] = Skip — a spawned seat must NEVER run a global npm install
+	 *  mid-fleet-op (option 1 is the wedge that ate 2.5 days at osk, T1).
+	 *  Set only when action === "answer". */
+	readonly keys?: readonly ("1" | "2" | "Enter")[];
 }
 
 /** Known one-time boot prompts safe to auto-dismiss with Esc (verified: the
@@ -35,6 +38,11 @@ const DISMISS_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
 const NEEDS_HUMAN_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
 	{ re: /Do you trust|trust the files in/i, label: "folder-trust" },
 	{ re: /Select login method|Log in with|Sign in/i, label: "login" },
+	// Live-captured 2026-07-18 (codex-cli 0.144.1→0.144.5 pending): "✨ Update
+	// available!" with options 1=Update now / 2=Skip / 3=Skip until next
+	// version, cursor DEFAULTING to 1. The pre-footer wedge of the T1
+	// bind-zombie (2.5 days at osk).
+	{ re: /Update available!/i, label: "update-prompt" },
 ];
 
 /**
@@ -56,6 +64,13 @@ export function classifyInterstitial(paneText: string, harness?: HarnessKind): I
 		if (p.re.test(paneText)) {
 			if (p.label === "folder-trust" && harness === "copilot") {
 				return { action: "answer", label: p.label, keys: ["1", "Enter"] };
+			}
+			// codex update prompt → Skip (option 2): session-scoped, mutates
+			// nothing. Never option 1 — a global npm install mid-spawn is the
+			// wedge itself, and never Esc/skip-until-next (3) — stickier than a
+			// spawned seat should decide.
+			if (p.label === "update-prompt" && harness === "codex") {
+				return { action: "answer", label: p.label, keys: ["2", "Enter"] };
 			}
 			return { action: "needs-human", label: p.label };
 		}

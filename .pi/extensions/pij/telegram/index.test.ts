@@ -11,6 +11,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Bot, InputFile, type Update } from "grammy";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Bridge tests drive a real FsChannel poller; under full-suite parallel load
+// the 5s default flakes (same family as the footer tests, DL-002). Band-aid
+// budget; the real fix is fake timers.
+vi.setConfig({ testTimeout: 20_000 });
+
 import { FsChannel } from "../adapters/channel.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
 import type { PijEvent, SessionId } from "../core/types.js";

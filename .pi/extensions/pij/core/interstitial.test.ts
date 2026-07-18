@@ -78,3 +78,22 @@ describe("classifyInterstitial", () => {
 		});
 	});
 });
+
+describe("codex update prompt (T1's other half — live-captured 0.144.1→0.144.5)", () => {
+	const UPDATE_PANE = `  ✨ Update available! 0.144.1 -> 0.144.5
+  Release notes: https://github.com/openai/codex/
+› 1. Update now (runs \`npm install -g @openai/codex\`)
+  2. Skip
+  3. Skip until next version
+  Press enter to continue`;
+
+	it("codex → answer with Skip (2+Enter) — never option 1's global npm install", () => {
+		const v = classifyInterstitial(UPDATE_PANE, "codex");
+		expect(v).toEqual({ action: "answer", label: "update-prompt", keys: ["2", "Enter"] });
+	});
+
+	it("harness-less and non-codex stay needs-human (readiness still sees an interstitial)", () => {
+		expect(classifyInterstitial(UPDATE_PANE).action).toBe("needs-human");
+		expect(classifyInterstitial(UPDATE_PANE, "claude").action).toBe("needs-human");
+	});
+});
