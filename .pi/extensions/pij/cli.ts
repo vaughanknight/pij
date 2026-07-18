@@ -219,7 +219,7 @@ Platform (durable projects + the shared spine log):
   pij state set <node> <state> [--assignment <id>] [--refs a,b,…] [--actor <label>] [--json]   declare a per-assignment semantic state
   pij state verify <node> [--assignment <id>] [--actor <label>] [--json]   verify a done state (stamps verifiedBy — done is a claim until verified)
   pij node show <id> [--json]                        the full node card: both state axes, badge, assignments, terminal address, context gauges
-  pij anomalies [--json]                             derived safety queries: axis-disagreement, unverified done, foreign hold-clear
+  pij anomalies [--here] [--project <slug>] [--json]   derived safety queries: axis-disagreement, unverified done, foreign hold-clear (--here: this folder's peers; --project: one project's assignments)
 
 Messaging:
   pij inbox [check|register] [--wait [ms]] [--json]   pull messages; first use auto-registers this ambient session

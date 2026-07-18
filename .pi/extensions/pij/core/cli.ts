@@ -284,7 +284,12 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| { readonly verb: "node-show"; readonly id: SessionId; readonly json: boolean }
-	| { readonly verb: "anomalies"; readonly json: boolean };
+	| {
+			readonly verb: "anomalies";
+			readonly json: boolean;
+			readonly here: boolean;
+			readonly project?: string;
+	  };
 
 export interface CliResult {
 	readonly stdout: string;
@@ -510,7 +515,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	"state set": new Set(["assignment", "refs", "actor", "json"]),
 	"state verify": new Set(["assignment", "actor", "json"]),
 	"node show": new Set(["json"]),
-	anomalies: new Set(["json"]),
+	anomalies: new Set(["json", "here", "project"]),
 	watchdog: new Set(["capture", "max-lines", "max-bytes", "json"]),
 };
 /** Max positionals per verb (send allows id + text; models allows optional filter). */
@@ -991,8 +996,15 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if (id === undefined) return err("E-ARG", "usage: pij node show <id> [--json]");
 			return ok({ verb: "node-show", id, json });
 		}
-		case "anomalies":
-			return ok({ verb: "anomalies", json });
+		case "anomalies": {
+			if (flags.project === true) return err("E-ARG", "--project takes a project slug");
+			return ok({
+				verb: "anomalies",
+				json,
+				here: flags.here === true,
+				project: typeof flags.project === "string" ? flags.project : undefined,
+			});
+		}
 		case "spine append": {
 			if (flags.kind === true) return err("E-ARG", "--kind takes an event kind");
 			const kind = typeof flags.kind === "string" ? flags.kind : undefined;
@@ -2737,12 +2749,27 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
 			if (!deps.assignmentStore)
 				return fail("E-NOREG", "project/spine stores are not wired — update the pij bin", cmd.json);
-			const anomalies = detectAnomalies({
+			// Detect over the FULL inputs (cross-descriptor invariants stay
+			// whole); --here/--project scope only the VIEW (s057 dogfood —
+			// repo primes drown in other repos' peers otherwise).
+			let anomalies = detectAnomalies({
 				descriptors: deps.registry.list(),
 				assignments: deps.assignmentStore.list(),
 				events: ports.value.spineLog.read(),
 				nowMs: now,
 			});
+			if (cmd.here) {
+				const hereIds = new Set(filterByFolder(deps.registry.list(), deps.cwd).map((d) => d.id));
+				anomalies = anomalies.filter((a) => hereIds.has(a.nodeId));
+			}
+			if (cmd.project !== undefined) {
+				const byAssignment = new Map(deps.assignmentStore.list().map((r) => [r.id, r]));
+				anomalies = anomalies.filter(
+					(a) =>
+						a.assignmentId !== undefined &&
+						byAssignment.get(a.assignmentId)?.projectSlug === cmd.project,
+				);
+			}
 			if (cmd.json) return okOut(JSON.stringify(anomalies));
 			if (anomalies.length === 0) return okOut("no anomalies");
 			return okOut(

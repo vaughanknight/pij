@@ -3621,6 +3621,36 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 		expect(foreign[0]?.detail).toContain("pij-issuer");
 		expect(foreign[0]?.detail).toContain("pij-meddler");
 	});
+
+	it("--here scopes the VIEW to this folder's peers; --project to one project's assignments (s057 dogfood — detection stays machine-wide)", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-local" }), desc({ id: "pij-far", folder: "/elsewhere" })],
+		});
+		run(["project", "create", "here work", "--slug", "here-work", "--actor", "pij-boss"], d);
+		run(["task", "set", "pij-local", "ship", "--project", "here-work", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-local", "done", "--actor", "pij-local"], d);
+		run(["task", "set", "pij-far", "other errand", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-far", "done", "--actor", "pij-far"], d);
+
+		const all = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{ nodeId: string }>;
+		expect(new Set(all.map((a) => a.nodeId))).toEqual(new Set(["pij-local", "pij-far"]));
+
+		const here = JSON.parse(run(["anomalies", "--here", "--json"], d).stdout) as Array<{
+			nodeId: string;
+		}>;
+		expect(here.map((a) => a.nodeId)).toEqual(["pij-local"]);
+
+		const proj = JSON.parse(
+			run(["anomalies", "--project", "here-work", "--json"], d).stdout,
+		) as Array<{ nodeId: string }>;
+		expect(proj.map((a) => a.nodeId)).toEqual(["pij-local"]);
+	});
+
+	it("bare --project on anomalies is an E-ARG", () => {
+		const d = platformDeps({ self: "pij-self" });
+		expect(run(["anomalies", "--project"], d).exitCode).not.toBe(0);
+	});
 });
 
 describe("unadopted flow-through (P3 T003/T005 — AC-08/WS-1 machine-wide enumerability)", () => {
