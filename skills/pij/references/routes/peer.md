@@ -57,9 +57,20 @@ the caller as both structural parent and close owner automatically.
 **Spawn**
 
 ```bash
-pij spawn --harness claude --model claude-sonnet-5 [--effort low|medium|high|xhigh] \
+pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] \
           [--task "first task"] [--layout stack|right|below|window] [--branch]
 ```
+
+Flags, never positionals — `pij spawn claude` is an E-ARG; `--harness` is
+required. Effort levels are per-model (`off|minimal|low|medium|high|xhigh|max`,
+warn-don't-block): discover what a model accepts via `pij models`, never assume.
+
+**Focus** — immutable native-session checkpoints, spawn's sibling:
+`pij focus save <name>` (caller must be a bound pi/claude peer) ·
+`pij focus list [--global]` (repo-filtered by default) ·
+`pij focus launch <name>` — forks a fresh tmux seat in **pending-canary**
+state: not ready until golden recall is verified (§ C2). pi launches from the
+main checkout, not a worktree; no copilot/codex adapters in v1.
 
 - Model names are per-harness — discover with `pij models` (§ C4); an "unknown model" warning is non-blocking, the canary decides (§ C2).
 - Returns the pij id immediately (claude/copilot/codex are daemon-bound: boot → ready → bound happens behind you; pi self-registers).
