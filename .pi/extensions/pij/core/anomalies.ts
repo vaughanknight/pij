@@ -161,7 +161,8 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 		const lastMs = node.lastEventAt === undefined ? Number.NaN : Date.parse(node.lastEventAt);
 		const startMs = Date.parse(node.startedAt);
 		const stamps = [lastMs, startMs].filter((t) => !Number.isNaN(t));
-		const idleMs = stamps.length === 0 ? Number.POSITIVE_INFINITY : inputs.nowMs - Math.max(...stamps);
+		const idleMs =
+			stamps.length === 0 ? Number.POSITIVE_INFINITY : inputs.nowMs - Math.max(...stamps);
 		if (idleMs <= threshold) continue;
 		// Evidence: the assignment's task-set event (the dispatch) plus its
 		// latest declared state, whichever exist.

@@ -13,8 +13,8 @@ import {
 	isProject,
 	isSpineEvent,
 	kebabSlug,
-	type Project,
 	PROJECT_SLUG_MAX_LENGTH,
+	type Project,
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
 } from "./types.js";

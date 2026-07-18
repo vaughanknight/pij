@@ -121,7 +121,12 @@ describe("axis-disagreement (AC-07 — the 44h lost-dispatch shape, ruled non-ne
 			// no lastEventAt at all — zero activity samples
 		});
 		expect(
-			detectAnomalies({ descriptors: [justBorn], assignments: [dispatched], events: [], nowMs: NOW }),
+			detectAnomalies({
+				descriptors: [justBorn],
+				assignments: [dispatched],
+				events: [],
+				nowMs: NOW,
+			}),
 		).toHaveLength(0);
 	});
 

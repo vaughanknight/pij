@@ -142,7 +142,10 @@ export function createProject(input: CreateProjectInput): Result<ProjectWrite> {
 	} else {
 		const kebab = kebabSlug(input.description);
 		if (kebab === "") {
-			return err("E-ARG", `description must kebab to a non-empty slug (got '${input.description}')`);
+			return err(
+				"E-ARG",
+				`description must kebab to a non-empty slug (got '${input.description}')`,
+			);
 		}
 		// Cap the derived base (a whole-description slug is a filename, not
 		// prose); trim any hyphen fragment the cut left behind. A -N collision
