@@ -31,9 +31,11 @@ Read-back: `pij spine events [--since <seq>] [--project <slug>] [--peer <id>]`,
   record via `--project` and `--refs`. Refs take free-form pointer strings —
   convention: prior event seqs, `commit:<sha>`, `pr:<n>`, `path:<repo-relative>`
   — so a ruling/ship event CAN carry its on-disk pointer.
-- **Append is immediate and irreversible** — no dry-run; a bare
-  `spine append --kind x` writes at once. A mistaken event is never deleted:
-  append a correcting event that `--refs` it.
+- **Append is immediate and irreversible** — no dry-run. A kind-only append
+  with no `--refs`/`--project`/`--peer` now REFUSES (probe-safety; two stray
+  junk events earned this guard) — link the event, or pass `--bare` for a
+  deliberate bare append. A mistaken event is never deleted: append a
+  correcting event that `--refs` it.
 - **Attribution is mandatory and honest** — omit `--actor` and the store records
   your seat id; never write as `"operator"`.
 - Platform `seq` is store-allocated. Never encode your own ordering into it.

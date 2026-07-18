@@ -212,7 +212,7 @@ Platform (durable projects + the shared spine log):
   pij project list [--json]                          all projects, sorted by slug
   pij project show <slug> [--json]                   one full project record
   pij project set <slug> [--plan <path>] [--prime <id>] [--actor <label>] [--json]   update a project's plan/prime
-  pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--actor <label>] [--json]   append one spine event
+  pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--bare] [--actor <label>] [--json]   append one spine event
   pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
   pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
   pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it

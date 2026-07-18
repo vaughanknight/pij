@@ -1862,7 +1862,7 @@ describe("spine verbs", () => {
 	describe("spine append", () => {
 		it("appends EXACTLY ONE event: seq = lastSeq()+1, kind, resolved actor", () => {
 			const d = platformDeps({ self: "pij-self", spine: [spineEv({ seq: 3 })] });
-			const r = run(["spine", "append", "--kind", "checkpoint"], d);
+			const r = run(["spine", "append", "--kind", "checkpoint", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			expect(d.spineLog.read()).toHaveLength(2); // seeded + exactly one new
 			const added = d.spineLog.read({ since: 3 });
@@ -1897,8 +1897,20 @@ describe("spine verbs", () => {
 			]);
 
 			const bare = platformDeps({ self: "pij-self" });
-			expect(run(["spine", "append", "--kind", "note"], bare).exitCode).toBe(0);
+			expect(run(["spine", "append", "--kind", "note", "--bare"], bare).exitCode).toBe(0);
 			expect(bare.spineLog.read()[0]?.refs).toEqual([]);
+		});
+
+		it("probe-safety: kind-only append with no linking context REFUSES without --bare; log gains nothing", () => {
+			const d = platformDeps({ self: "pij-self" });
+			const r = run(["spine", "append", "--kind", "x"], d);
+			expect(r.exitCode).toBe(64);
+			expect(r.stderr).toContain("accidental probe");
+			expect(d.spineLog.read()).toHaveLength(0);
+			// Any linking context lifts the guard without --bare.
+			expect(run(["spine", "append", "--kind", "note", "--refs", "commit:abc"], d).exitCode).toBe(
+				0,
+			);
 		});
 
 		it("--peer and --project pass through onto the event", () => {
@@ -1913,7 +1925,7 @@ describe("spine verbs", () => {
 
 		it("--json prints exactly the appended event", () => {
 			const d = platformDeps({ self: "pij-self" });
-			const r = run(["spine", "append", "--kind", "note", "--json"], d);
+			const r = run(["spine", "append", "--kind", "note", "--bare", "--json"], d);
 			expect(r.exitCode).toBe(0);
 			const j = JSON.parse(r.stdout) as SpineEvent;
 			expect(j).toMatchObject({ schema_version: 1, seq: 1, kind: "note", actor: "pij-self" });
@@ -1931,7 +1943,7 @@ describe("spine verbs", () => {
 
 		it("--actor asserts attribution and WINS over a resolvable self", () => {
 			const d = platformDeps({ self: "pij-self" });
-			const r = run(["spine", "append", "--kind", "note", "--actor", "lord-jordan"], d);
+			const r = run(["spine", "append", "--kind", "note", "--actor", "lord-jordan", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			expect(d.spineLog.read()[0]).toMatchObject({
 				actor: "lord-jordan",
@@ -1941,7 +1953,7 @@ describe("spine verbs", () => {
 
 		it("unresolvable caller without --actor is refused; the log gains nothing", () => {
 			const d = platformDeps({});
-			const r = run(["spine", "append", "--kind", "note"], d);
+			const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(r.exitCode).not.toBe(0);
 			expect(r.stderr).toContain("--actor");
 			expect(d.spineLog.read()).toHaveLength(0);
@@ -1950,7 +1962,7 @@ describe("spine verbs", () => {
 		it("--actor rescues an UNRESOLVABLE caller on spine append too", () => {
 			// Audit fix (minor): same escape-hatch proof as project create.
 			const d = platformDeps({}); // no PIJ_SESSION_ID, empty registry
-			const r = run(["spine", "append", "--kind", "note", "--actor", "lord-jordan"], d);
+			const r = run(["spine", "append", "--kind", "note", "--actor", "lord-jordan", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			expect(d.spineLog.read()[0]).toMatchObject({
 				kind: "note",
@@ -1962,7 +1974,7 @@ describe("spine verbs", () => {
 		it("spineLog.append failure surfaces the port's error — never fabricated success (audit F2)", () => {
 			const d = platformDeps({ self: "pij-self" });
 			d.spineLog.failNext("append");
-			const r = run(["spine", "append", "--kind", "note"], d);
+			const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(r.exitCode).toBe(3);
 			expect(r.stdout).toBe("");
 			expect(r.stderr).toContain("E-NOREG");
@@ -2055,7 +2067,7 @@ describe("spine verbs", () => {
 				["project", "list", "--frobnicate"],
 				["project", "show", "fix", "--frobnicate"],
 				["project", "set", "fix", "--plan", "docs/plan.md", "--frobnicate"],
-				["spine", "append", "--kind", "note", "--frobnicate"],
+				["spine", "append", "--kind", "note", "--frobnicate", "--bare"],
 				["spine", "events", "--frobnicate"],
 			];
 			for (const argv of invocations) {
@@ -2106,14 +2118,14 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			const d = platformDeps({ self: "pij-self" });
 			d.spineLog.failNext("appendOnce");
 			expect(run(["project", "create", "Fix the CLI"], d).exitCode).not.toBe(0);
-			const next = run(["spine", "append", "--kind", "note"], d);
+			const next = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(next.exitCode).toBe(0);
 			const created = d.spineLog.read().filter((e) => e.kind === "project-created");
 			expect(created).toHaveLength(1);
 			expect(created[0]).toMatchObject({ project: "fix-the-cli", actor: "pij-self" });
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
 			// Idempotent forever after: further writes gain no duplicate.
-			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(run(["spine", "append", "--kind", "note", "--bare"], d).exitCode).toBe(0);
 			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
 		});
 
@@ -2181,7 +2193,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			expect(run(["project", "set", "fix-the-cli", "--plan", "docs/plan.md"], d).exitCode).not.toBe(
 				0,
 			);
-			const next = run(["spine", "append", "--kind", "note"], d);
+			const next = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(next.exitCode).toBe(0);
 			const setEvents = d.spineLog.read().filter((e) => e.kind === "project-set");
 			expect(setEvents).toHaveLength(1);
@@ -2215,7 +2227,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
 			// A leaked op would surface HERE as a project-created event for a
 			// record that never committed — a false audit trail.
-			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(run(["spine", "append", "--kind", "note", "--bare"], d).exitCode).toBe(0);
 			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(0);
 			expect(d.projectStore.list()).toHaveLength(0);
 		});
@@ -2230,7 +2242,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 				0,
 			);
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
-			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(run(["spine", "append", "--kind", "note", "--bare"], d).exitCode).toBe(0);
 			expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(0);
 			expect(d.projectStore.read("fix-the-cli")?.planPath).toBeUndefined();
 		});
@@ -2324,7 +2336,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			["project-list", ["project", "list"]],
 			["project-show", ["project", "show", "fix-the-cli"]],
 			["project-set", ["project", "set", "fix-the-cli", "--plan", "docs/plan.md"]],
-			["spine-append", ["spine", "append", "--kind", "note"]],
+			["spine-append", ["spine", "append", "--kind", "note", "--bare"]],
 			["spine-events", ["spine", "events"]],
 		] as const)("%s: throwing ports contained as E-NOREG naming the verb", (verb, argv) => {
 			let r: CliResult | undefined;
@@ -2359,7 +2371,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			if (!landed.ok) throw new Error("seed appendOnce failed");
 			// The crash window: the event IS in the log, the journal op survives.
 			expect(pendingOps(d.opJournal)).toHaveLength(1);
-			const r = run(["spine", "append", "--kind", "note"], d);
+			const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
 			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
@@ -2381,7 +2393,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			expect(r.stderr).toContain("injected fake op-journal clear failure");
 			expect(d.projectStore.read("fix-the-cli")).not.toBeNull();
 			expect(pendingOps(d.opJournal)).toHaveLength(1); // the failed clear = crash window
-			const next = run(["spine", "append", "--kind", "note"], d);
+			const next = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(next.exitCode).toBe(0);
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
 			expect(d.spineLog.read().filter((e) => e.kind === "project-created")).toHaveLength(1);
@@ -2399,7 +2411,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			const writes: readonly (readonly string[])[] = [
 				["project", "create", "New Thing"],
 				["project", "set", "fix-the-cli", "--plan", "docs/plan.md"],
-				["spine", "append", "--kind", "note"],
+				["spine", "append", "--kind", "note", "--bare"],
 			];
 			for (const argv of writes) {
 				const r = run(argv, d);
@@ -2477,7 +2489,7 @@ describe("review 002 G2/G3 — phase-aware journal recovery + causal gate", () =
 			// The state write DID land; the crash hit before markCommitted.
 			const updated = d.projectStore.update(write.value.project);
 			if (!updated.ok) throw new Error("seed update failed");
-			const r = run(["spine", "append", "--kind", "note"], d);
+			const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
@@ -2529,7 +2541,7 @@ describe("review 002 G2/G3 — phase-aware journal recovery + causal gate", () =
 			d.spineLog.failNext("appendOnce");
 			expect(run(["project", "create", "First"], d).exitCode).not.toBe(0);
 			d.spineLog.failNext("appendOnce");
-			const r = run(["spine", "append", "--kind", "note"], d);
+			const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 			expect(r.exitCode).not.toBe(0);
 			expect(r.stderr).toMatch(/recovery/i);
 			expect(d.spineLog.read()).toHaveLength(0);
@@ -2545,7 +2557,7 @@ describe("review 002 G2/G3 — phase-aware journal recovery + causal gate", () =
 			});
 			expect(run(["project", "create", "New Thing"], d).exitCode).toBe(0);
 			expect(run(["project", "set", "alpha", "--plan", "docs/plan.md"], d).exitCode).toBe(0);
-			expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+			expect(run(["spine", "append", "--kind", "note", "--bare"], d).exitCode).toBe(0);
 			expect(d.platformWriteLock.acquisitions).toBe(3);
 			expect(run(["project", "list"], d).exitCode).toBe(0);
 			expect(run(["project", "show", "alpha"], d).exitCode).toBe(0);
@@ -2573,7 +2585,7 @@ describe("review 002 G2/G3 — phase-aware journal recovery + causal gate", () =
 			for (const argv of [
 				["project", "create", "New Thing"],
 				["project", "set", "alpha", "--plan", "docs/plan.md"],
-				["spine", "append", "--kind", "note"],
+				["spine", "append", "--kind", "note", "--bare"],
 			] as const) {
 				const r = run(argv, d);
 				expect(r.exitCode, argv.join(" ")).toBe(3);
@@ -2612,7 +2624,7 @@ describe("review 003 H1 — a committed marker is never trusted over persisted s
 		if (!flipped.ok) throw new Error("seed markCommitted failed");
 		const eventsBefore = d.spineLog.read().length;
 		// The probe verb exited 0 and forged the false A→B at the next seq.
-		const r = run(["spine", "append", "--kind", "note"], d);
+		const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 		expect(r.exitCode).not.toBe(0);
 		expect(r.stderr).toMatch(/recovery/i);
 		expect(r.stderr).toMatch(/state write/i);
@@ -2681,7 +2693,7 @@ describe("review 003 M3 — a failed journal clear stops the verb, never a delay
 		expect(d.projectStore.read("alpha")?.planPath).toBe("docs/c.md");
 		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
 		expect(pendingOps(d.opJournal)).toHaveLength(0);
-		expect(run(["spine", "append", "--kind", "note"], d).exitCode).toBe(0);
+		expect(run(["spine", "append", "--kind", "note", "--bare"], d).exitCode).toBe(0);
 	});
 });
 
@@ -2714,11 +2726,11 @@ describe("review 004 J2 — verb-side clear results are honest, never swallowed"
 		// existing event, cannot clear) — the outage was already announced by
 		// the set instead of surfacing here first.
 		d.opJournal.failNext("clear");
-		const next = run(["spine", "append", "--kind", "note"], d);
+		const next = run(["spine", "append", "--kind", "note", "--bare"], d);
 		expect(next.exitCode).toBe(3);
 		expect(next.stderr).toMatch(/recovery/i);
 		// Healed: the entry drains to its EXISTING event — exactly one set.
-		const healed = run(["spine", "append", "--kind", "note"], d);
+		const healed = run(["spine", "append", "--kind", "note", "--bare"], d);
 		expect(healed.exitCode).toBe(0);
 		expect(d.spineLog.read().filter((e) => e.kind === "project-set")).toHaveLength(1);
 		expect(pendingOps(d.opJournal)).toHaveLength(0);
@@ -2838,7 +2850,7 @@ describe("review 004 J1 — an existing once-record never overrides a state mism
 			expect(new FsSpineLog(home).hasOnce(recorded.value)).toBe(true);
 			// The probe: recovery returned ok({replayed: 1}) and cleared the only
 			// recovery record. It must block instead.
-			const r = run(["spine", "append", "--kind", "note", "--actor", "tester"], d);
+			const r = run(["spine", "append", "--kind", "note", "--actor", "tester", "--bare"], d);
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("E-NOREG");
 			expect(r.stderr).toContain(recorded.value);
@@ -2954,7 +2966,7 @@ describe("review 005 K1 — a cleared op resurrected by power loss can never for
 			// The probe: recovery replayed the resurrected intent (state === next
 			// matched the WINNER's write) and appended a second A→B attributed to
 			// the aborted writer AFTER the winner's event. It must sweep instead.
-			const r = run(["spine", "append", "--kind", "note", "--actor", "tester"], d);
+			const r = run(["spine", "append", "--kind", "note", "--actor", "tester", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			const sets = new FsSpineLog(home).read().filter((e) => e.kind === "project-set");
 			expect(sets).toHaveLength(1);
@@ -3018,7 +3030,7 @@ describe("review 005 K1 — a cleared op resurrected by power loss can never for
 			// The probe: state was genuinely C and the once-record existed, yet
 			// recovery returned E-NOREG and retained the entry FOREVER. It must
 			// sweep the resolved pair and let the successor through.
-			const r = run(["spine", "append", "--kind", "note", "--actor", "tester"], d);
+			const r = run(["spine", "append", "--kind", "note", "--actor", "tester", "--bare"], d);
 			expect(r.exitCode).toBe(0);
 			// Original A→B once-append plus mover's B→C — no duplicate replay.
 			const sets = new FsSpineLog(home).read().filter((e) => e.kind === "project-set");
@@ -3134,7 +3146,7 @@ describe("F7 — invalid deps clock propagates E-ARG (exit 64), never a throw", 
 
 	it("spine append: exit 64 naming nowMs; nothing appended", () => {
 		const d = nanClockDeps();
-		const r = run(["spine", "append", "--kind", "note"], d);
+		const r = run(["spine", "append", "--kind", "note", "--bare"], d);
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("nowMs");
 		expect(d.spineLog.read()).toEqual([]);
