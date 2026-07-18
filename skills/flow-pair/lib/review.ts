@@ -205,7 +205,18 @@ export class Review {
 			}
 		}
 
-		// Step 5: determine verdict
+		// Step 5: determine verdict — VERDICT LAW: a verdict is never minted from
+		// zero findings. The deterministic sweep above only proves artifacts
+		// exist; "nothing fed" must never read as "reviewed clean" (dogfood:
+		// a real reviewer's FIX_REQUIRED was shadowed by a default APPROVE).
+		// FIX_REQUIRED from real deterministic defects stands; APPROVE does not.
+		if (findings.length === 0) {
+			return {
+				ok: false,
+				error:
+					"no findings to review — artifact-contract checks passed, but a verdict cannot be minted from zero reviewer input. Record the reviewer's real verdict via the ledger writer instead.",
+			};
+		}
 		const verdict = determineVerdict(findings);
 		const at = new Date().toISOString();
 

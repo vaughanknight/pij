@@ -193,8 +193,10 @@ describe("Review — evaluate() AC-05 (T001)", () => {
 		expect(rec.reviewId).toBe("rev-0001");
 	});
 
-	it("present execution.log.md → verdict is APPROVE and review record matches schema enum", () => {
-		// Write the artifact so the guard passes
+	it("present execution.log.md + zero findings → REFUSES to mint a verdict (verdict law: APPROVE is never a default)", () => {
+		// Write the artifact so the deterministic sweep finds nothing — the
+		// dogfood case where a default APPROVE shadowed a reviewer's real
+		// FIX_REQUIRED (s1 stream, rev-0001 stub).
 		writeFileSync(join(phaseDir, "execution.log.md"), "## log\nDone.\n");
 		const rev = new Review(ledgerRoot, nodeReviewDeps());
 		const result = rev.evaluate({
@@ -203,18 +205,13 @@ describe("Review — evaluate() AC-05 (T001)", () => {
 			phaseDir,
 			repoRoot,
 		});
-		expect(result.ok).toBe(true);
-		expect(result.verdict).toBe(VERDICT.APPROVE);
-		const acFinding = result.findings?.find((f) => f.dimension === FINDING_KIND.ARTIFACT_CONTRACT);
-		expect(acFinding).toBeUndefined();
+		expect(result.ok).toBe(false);
+		expect(result.verdict).toBeUndefined();
+		expect(result.error).toContain("no findings to review");
 
+		// Nothing recorded: no review file, no verdict minted anywhere.
 		const recPath = join(ledgerRoot, "runs", RUN_ID, "reviews", "rev-0001.json");
-		const rec = JSON.parse(readFileSync(recPath, "utf8")) as Record<string, unknown>;
-		const schema = JSON.parse(readFileSync(REVIEW_SCHEMA_PATH, "utf8")) as {
-			properties?: { verdict?: { enum?: string[] } };
-		};
-		const verdictEnum = schema.properties?.verdict?.enum ?? [];
-		expect(verdictEnum).toContain(rec.verdict);
+		expect(() => readFileSync(recPath, "utf8")).toThrow();
 	});
 
 	it("P9: review.recorded event appended before reviews/<id>.json written", () => {
