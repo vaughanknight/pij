@@ -3005,11 +3005,17 @@ function main(): void {
 		);
 		return;
 	}
-	// Exit only after stdout drains: a hard process.exit() races the pipe
-	// buffer and truncates any payload past 64KB (dogfood: `tree --global
-	// --json` over 1394 descriptors cut at exactly 65536 bytes). The empty
-	// write's callback queues behind every buffered chunk.
-	process.stdout.write("", () => process.exit(res.exitCode));
+	// Flush stdout fully before exiting. A hard process.exit() races the pipe
+	// buffer and truncates any payload past the pipe boundary (dogfood: `tree
+	// --global --json` and `spine events --json` cut at 64KB of a 1.1MB payload).
+	// Both `stdout.write("", () => process.exit())` and this exitCode form drain
+	// fully in testing (delayed-reader integration test below), so this is a
+	// hardening, not a bug fix: setting exitCode and returning is the idiomatic,
+	// unambiguously-correct pattern — it makes no assumption about empty-write
+	// callback ordering and lets Node drain stdout naturally before exit.
+	// (Read/dispatch verbs open no ref'd handles; the follow verbs above return
+	// early and own their own exit.)
+	process.exitCode = res.exitCode;
 }
 
 main();
