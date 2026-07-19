@@ -87,16 +87,42 @@ of s051's `resolveCaller` (CallerResolution + sources + `uncommittedTransitionId
 
 **doNotRoute** (correctly excluded — folder-scope/target/geometry/native-ambient is load-bearing): 961 (spawned-child by target pane), 1148 & 2474 (`tmux.currentPane()` geometry), 2100 (close TARGET id), current-session.ts ambient (plugs in as the `ambient` hook, stays distinct), core/cli.ts:1958 phonehome (env-only bootstrap, guarded), binding.ts native-id resolvers, **`--here` view filters (core/cli.ts:1511/1573/2782 — folder scope IS the feature)**, index.ts:243 producer.
 
-## The pid seam (hyena's agreed contract)
+## The pid seam (hyena's agreed contract — zero-fork, refined by s051 review)
 
-hyena's s051 adopt-guard G7 (pane→PID ancestry) plugs in as **ONE optional hook**
-`resolvePaneToPid(candidates, paneId, callerPid) → SessionId | undefined`, at
-**step 4** — fires only when the pane match is ambiguous (0/>1). Contract agreed:
-`ParentPidOf = (pid) => Result<number|null>` injected port; walk `selfPid`
-inclusive → ancestors; ignore retired/dissolved; **>1 active at a pid → E-AMBIG
-sorted-ids (never array-order)**; fail-loud on invalid-pid/cycle/depth; **pid
-selects a CANDIDATE only** — `validateIdentityAuthority` still adjudicates.
-**Index home**: extend the *dead* full-registry pane index at `core/daemon/index-state.ts:94 resolvePane` — do not fork a fifth resolver. Optional/off-by-default → **G7 lands additively after STEP 0, no re-consolidation.**
+**NO pane hook** (my first proposal was rejected — firing pid on an ambiguous pane
+would break s051's frozen fail-closed pane tests). Instead: optional `selfPid` +
+`parentPidOf: ParentPidOf` **directly on `ResolveCallerInput`**; `resolveCaller`
+invokes an internal subordinate `resolveByPidAncestry(input): Result<SessionId |
+undefined>`, then its existing `validateIdentityAuthority`. **PID-ancestry runs
+only when the pane signal is ABSENT** (the no-tmux gap) — **a present pane with
+0/>1 matches stays `E-AMBIG`** (s051's fail-closed invariant, preserved).
+
+Contract: `ParentPidOf = (pid) => Result<number|null>` injected port; walk
+`selfPid` inclusive → ancestors; ignore retired/dissolved; **>1 active at a pid →
+E-AMBIG sorted-ids (never array-order)**; fail-loud on invalid-pid/cycle/depth;
+**pid selects a CANDIDATE only** — `validateIdentityAuthority` adjudicates.
+`IndexState.resolvePane` is **left alone** (daemon routing, not caller authority —
+reusing it as adjudicator would fork `validateIdentityAuthority`). Off-by-default
+(`parentPidOf` omitted → behavior == today) → **G7 lands additively after STEP 0,
+no re-consolidation.**
+
+**fallbackPolicy semantics** (s051 constraint): omission defaults `folder-lone-local`
+byte-for-behavior; `none` disables **only the final cwd step** — it must NOT convert
+a contradictory explicit/ambient or an ambiguous pane into fallback (those still
+`E-AMBIG`). Ambient stays untouched: delegates pass `ambientId` or `undefined`; the
+ambient STEP in `resolveCaller` is never dropped.
+
+### Open (NON-BLOCKING) — pane-collision policy (o-prime named it an INS-004 trigger)
+
+s051's frozen behavior leaves a present-but-ambiguous pane (0/>1 — a **pane-collision**,
+which o-prime named alongside cwd≠folder as an INS-004 trigger) as `E-AMBIG`. The
+zero-fork shape above does NOT pid-disambiguate a collision. To do so would change
+s051's fail-closed invariant — a **separate** named policy `paneConflictPolicy?:
+"fail" | "pid-ancestry"` (default `fail`), Result-typed, needing its own o-prime
+ruling. **Question for dove**: does caller-identity want a pane-collision
+pid-disambiguated, or fail-loud? cwd≠folder is fully fixed either way (full-registry
+pane pre-check); this only affects the >1-collision tail. **Does not block STEP 0**
+(builds with `fail`).
 
 ## THE decisions I need from you
 
