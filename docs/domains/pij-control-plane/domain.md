@@ -28,6 +28,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition, structural/repository pending metadata, adopt-parent grammar, and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
 | `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice; preserves tree/prime history and refreshes repository identity. |
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules; persist compact watchdog pause before tmux injection. |
+| `.pi/extensions/pij/core/daemon/pane-signals.ts` | Pure rolling byte-density busy signal, caret-driven user-typing tracker, and all-pane connect/retire diff. |
 | `.pi/extensions/pij/core/daemon/watchdog-manager.ts` | Daemon-owned whole-life watchdog coordinator: descriptor-driven scheduling, delivery split, typed self-attribution, silent-fire derivation, per-watcher episode latch, and bounded capture dispatch. |
 | `.pi/extensions/pij/adapters/watchdog-store.ts` | Validated atomic per-session watchdog sidecars plus per-watcher capture pointer files. CLI-owned, daemon-read. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
@@ -43,6 +44,7 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/telegram/commands.ts` | `/list` and `/tail`; `/tail` reads selected-target state, never last-speaker fallback state. |
 | `docs/how/pij-daemon.md` | Operator guide (run/spawn/adopt/send/tail/TUI/recovery). |
 | `docs/how/pij-watchdog.md` | Whole-life watchdog verbs, pause tiers, self-teaching etiquette, stalled semantics, capture defaults, and isolated-proof safety. |
+| `docs/how/pij-pane-signals.md` | Busy/typing/connect derivation, tap lifecycle, and user-typing-only send hold contract. |
 
 ## Concepts
 
@@ -57,6 +59,7 @@ thin receiver). Plan 019.
 | Deterministic binding | Claude/Codex use harness-specific transcript discovery; Copilot spawn uses its chosen UUID and Copilot adopt uses only validated `COPILOT_AGENT_SESSION_ID`. | `bind()`; harness-aware phonehome (`COPILOT_AGENT_SESSION_ID` / `CLAUDE_CODE_SESSION_ID`); watchdog. |
 | Init-exactly-once | The init (pij-id + `pij phonehome` line) is injected once, after ready, idempotent across daemon restart. | persisted `initInjectedAt` (AC-02/12). |
 | Fire-and-forget injection | tmux targets receive `send-keys`+Enter, ungated; the caller never blocks. | router → `tmux-keys` (AC-07/13). |
+| Pane signals | The daemon observes busy, human composer activity, and pane lifecycle from one output tap plus one all-pane query. | Busy is read-only; only a non-empty human composer holds delivery; Enter or 60-second key-idle releases FIFO sends. |
 | External-field merge ownership | Concurrent registry writers do not lose out-of-band state. | Latest persisted `parentId`, `prime`, and `oldPrime` (including explicit null/false clears) override stale daemon snapshots; append-only `reportedAt` remains fill-only. |
 | Structural registration | Spawn/adopt/bind carry hierarchy without conflating authorization. | Spawn writes caller to `parentId` and `spawnedBy`; adopt accepts validated `--parent`; link mutates only `parentId`. |
 | Repository refresh | Registration and reattachment capture the repository grouping active at the current folder. | Injected `RepositoryIdentityPort.gitCommonDir(folder)` returns canonical absolute common dir or null; stale identity is cleared outside Git. |
@@ -85,6 +88,7 @@ thin receiver). Plan 019.
 | Prime CLI wiring | orchestration core | Omitted target uses exact env/pane/lone-local self resolution; explicit ids bypass it; baton actor fallback remains baton-only. |
 | Tree/link/adopt wiring | messaging core | Production supplies all readable descriptors plus repository identity; adopt parent uses the same link planner before allocation/reservation/descriptor writes; link preserves `spawnedBy`. |
 | Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
+| Pane signal gate | daemon + future UI | `PaneSignalSnapshot` exposes busy/userTyping/composer length; `SendBuffer` gates only on `userTyping`, retains held inbox envelopes unread, and flushes FIFO on release. |
 | Watchdog manager/store | daemon, CLI, supervisors | Absence of sidecar means default-on; manager caches sidecar revisions, persists `lastWatchdogFireAt` through daemon callbacks, excludes its own pane/event transitions, and writes watcher captures under `<PIJ_HOME>/<watcher>/watchdog-captures/`. |
 | Watchdog stalled episode | daemon whole-life detector + manager watcher delivery | Two silent fires stamp `failureReason:"stalled"`; owner and each anomaly watcher are notified once until typed real recovery. `capture.mode:"always"` remains every-due-fire. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
@@ -99,6 +103,7 @@ thin receiver). Plan 019.
 - Daemon ownership of push tmux unread/marker outcomes; pull and pi inboxes remain externally owned.
 - The tmux key/paste/capture primitives (shared lib).
 - Readiness detection + interstitial handling.
+- Read-only per-pane busy/connect signals and the human-composer-only send hold.
 - Deterministic transcript-discovery binding + phone-home confirmation + watchdog.
 - pij-id pre-allocation + restart-stable exact native-identity recovery + the pending-descriptor handoff; init idempotency.
 - Reattachment-only `adopt --id`: existing descriptor/reservation required, unknown ids fail `E-NOID`.
@@ -161,3 +166,4 @@ thin receiver). Plan 019.
 | 045-copilot-5-6-effort-levels | Corrected the exact Copilot GPT-5.6 trio to `none, low, medium, high, xhigh, max` at provider-guarded Pi parsing and Copilot fallback construction. Preserved raw/clone projections, `verified:false` fallback semantics, warn-don't-block validation, unrelated-provider data, and existing harness effort translation. | 2026-07-13 |
 | 046-pij-real-trees | Added argv-only Git common-directory identity, structural/repository metadata across spawn/adopt/bind/daemon/failure/dissolve paths, production tree/link wiring, and pre-write adopt-parent validation while retaining `spawnedBy` ownership. | 2026-07-13 |
 | 055-pij-watchdog | Added default-on daemon-owned whole-life watchdog management, compact pause integration, shared stalled episodes, delivery-split parity, watcher capture pointers, and disposable-home acceptance/smoke proof. | 2026-07-17 |
+| 058-tmux-pane-smarts | Added one-tap per-pane busy, user-typing, and connect signals; only human mid-type holds daemon delivery, with Enter/60-second-idle FIFO release. | 2026-07-19 |

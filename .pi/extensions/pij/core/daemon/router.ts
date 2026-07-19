@@ -18,6 +18,11 @@ export interface BufferedMessage {
 	readonly message: PijMessage;
 }
 
+export interface BufferedPaneSignal {
+	readonly busy: boolean;
+	readonly userTyping: boolean;
+}
+
 export type RouteDecision =
 	| { readonly kind: "inject"; readonly paneId: string; readonly text: string }
 	| { readonly kind: "buffer"; readonly reason: string }
@@ -85,12 +90,32 @@ export function route(target: SessionDescriptor, message: PijMessage): RouteDeci
  *  unsent work from the inbox files it has not yet consumed). */
 export class SendBuffer {
 	private readonly byTarget = new Map<SessionId, BufferedMessage[]>();
+	private readonly paneSignals = new Map<string, BufferedPaneSignal>();
 
 	/** Buffer a message for its target. */
 	enqueue(messageId: string, message: PijMessage): void {
 		const q = this.byTarget.get(message.to) ?? [];
+		if (q.some((entry) => entry.messageId === messageId)) return;
 		q.push({ messageId, message });
 		this.byTarget.set(message.to, q);
+	}
+
+	/** Update the pane's read-only signals. Only `userTyping` gates delivery;
+	 * `busy` is deliberately exposed for future UI consumers and never holds. */
+	setPaneSignal(paneId: string, signal: BufferedPaneSignal): void {
+		this.paneSignals.set(paneId, signal);
+	}
+
+	paneSignal(paneId: string): Readonly<BufferedPaneSignal> | undefined {
+		return this.paneSignals.get(paneId);
+	}
+
+	isPaneHeld(paneId: string): boolean {
+		return this.paneSignals.get(paneId)?.userTyping ?? false;
+	}
+
+	forgetPane(paneId: string): void {
+		this.paneSignals.delete(paneId);
 	}
 
 	/** How many messages are buffered for a target (0 if none). */
@@ -99,7 +124,8 @@ export class SendBuffer {
 	}
 
 	/** Remove and return all buffered messages for a target, in arrival order. */
-	flush(target: SessionId): BufferedMessage[] {
+	flush(target: SessionId, paneId?: string): BufferedMessage[] {
+		if (paneId && this.isPaneHeld(paneId)) return [];
 		const q = this.byTarget.get(target) ?? [];
 		this.byTarget.delete(target);
 		return q;

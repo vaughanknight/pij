@@ -33,6 +33,7 @@ import type {
 	SessionDescriptor,
 	SessionId,
 } from "../types.js";
+import type { PaneListing } from "./pane-signals.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -42,6 +43,13 @@ export interface DaemonPorts {
 	capturePane(paneId: string): string;
 	/** Is the pane dead/exited (tmux `#{pane_dead}`)? */
 	isPaneDead(paneId: string): boolean;
+	/** All panes in the tmux server. Optional so pure loop fakes and non-tmux
+	 * callers remain unchanged; the real daemon adapter supplies the full set. */
+	listPanes?(): readonly PaneListing[];
+	/** Attach, drain, and detach the one output tap used by pane signal parsing. */
+	attachPaneTap?(paneId: string, sinkPath: string): void;
+	drainPaneTap?(paneId: string): Uint8Array;
+	detachPaneTap?(paneId: string): void;
 	/** Type literal text into a pane and press Enter (a submitted line). `harness`
 	 *  selects the per-harness Enter-settle (Copilot's composer needs longer than
 	 *  Claude's, else the Return is swallowed and the text strands in the input box).
@@ -484,6 +492,10 @@ export function drainTmuxInbox(
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
+			if (buffer.isPaneHeld(decision.paneId)) {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
 			const outcome = ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
 			consumed.push({ messageId: m.messageId, from: m.from, outcome });
 		} else if (decision.kind === "buffer") {

@@ -7,6 +7,8 @@ import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
+import type { PaneListing } from "./core/daemon/pane-signals.js";
+import { USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
 import { COMPACT_GRACE_MS, COMPACT_MAX_MS } from "./core/daemon/router.js";
 import { receiptBody } from "./core/message.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
@@ -44,19 +46,35 @@ interface FakePortsOptions {
 	readonly paneText?: string | (() => string);
 	readonly sendOutcome?: "confirmed" | "unverified";
 	readonly sendErrorForPane?: string;
+	readonly paneListings?: () => readonly PaneListing[];
+	readonly tapChunks?: Uint8Array[];
+	readonly now?: () => number;
 }
 
-function fakePorts(
-	options: FakePortsOptions = {},
-): DaemonPorts & { sent: Array<{ pane: string; text: string }>; killed: string[] } {
+function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
+	sent: Array<{ pane: string; text: string }>;
+	killed: string[];
+	attached: string[];
+	detached: string[];
+} {
 	const sent: Array<{ pane: string; text: string }> = [];
 	const killed: string[] = [];
+	const attached: string[] = [];
+	const detached: string[] = [];
 	const paneText = options.paneText;
 	return {
 		sent,
 		killed,
+		attached,
+		detached,
 		capturePane: () => (typeof paneText === "function" ? paneText() : (paneText ?? READY)),
 		isPaneDead: () => false,
+		listPanes: options.paneListings,
+		attachPaneTap: options.paneListings ? (pane) => attached.push(pane) : undefined,
+		drainPaneTap: options.paneListings
+			? () => options.tapChunks?.shift() ?? new Uint8Array()
+			: undefined,
+		detachPaneTap: options.paneListings ? (pane) => detached.push(pane) : undefined,
 		sendText: (pane, text) => {
 			if (pane === options.sendErrorForPane) throw new Error(`can't find pane: ${pane}`);
 			sent.push({ pane, text });
@@ -66,7 +84,7 @@ function fakePorts(
 		killPane: (pane) => killed.push(pane),
 		listTranscripts: () => [],
 		home: () => home,
-		now: () => options.nowMs ?? 1000,
+		now: () => options.now?.() ?? options.nowMs ?? 1000,
 		isAlive: () => options.alive ?? true,
 	};
 }
@@ -478,6 +496,113 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		new Daemon(home, ports, registry, new FsChannel(home)).tick();
 		expect(ports.sent).toHaveLength(0);
 		expect(registry.read("pij-pull")?.initInjectedAt).toBeUndefined();
+	});
+
+	it("queues while a human composer is non-empty, then flushes FIFO on Enter", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "one" });
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "two" });
+		const listings = () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 23 }];
+		const ports = fakePorts({
+			paneListings: listings,
+			tapChunks: [Buffer.from("\x1b[24;3Hk\x1b[24;4H"), Buffer.from("\x1b[24;4H\r\n\x1b[24;3H")],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([]);
+		expect(unreadBodies("pij-c")).toEqual(["one", "two"]);
+
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
+		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([
+			{ pane: "%4", text: "[pij from pij-boss] one" },
+			{ pane: "%4", text: "[pij from pij-boss] two" },
+		]);
+		expect(unreadBodies("pij-c")).toEqual([]);
+	});
+
+	it("releases a typing hold after 60 seconds of keystroke-idle", () => {
+		let nowMs = 1_000;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "after idle" });
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 23 }],
+			tapChunks: [Buffer.from("\x1b[24;3Hk\x1b[24;4H")],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+		expect(unreadBodies("pij-c")).toEqual(["after idle"]);
+		nowMs += USER_TYPING_IDLE_MS;
+		daemon.tick();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] after idle" });
+	});
+
+	it("delivers immediately while busy when the composer is empty", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "busy is not a gate" });
+		const ports = fakePorts({
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 23 }],
+			tapChunks: [new Uint8Array(300).fill(120)],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ busy: true, userTyping: false });
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij from pij-boss] busy is not a gate",
+		});
+	});
+
+	it("attaches newly listed panes and detaches pane_dead entries", () => {
+		let dead = false;
+		const ports = fakePorts({
+			paneListings: () => [{ paneId: "%4", dead, cursorX: 2, cursorY: 23 }],
+		});
+		const daemon = new Daemon(home, ports, new FsRegistry(home), new FsChannel(home));
+		daemon.tick();
+		expect(ports.attached).toEqual(["%4"]);
+		dead = true;
+		daemon.tick();
+		expect(ports.detached).toEqual(["%4"]);
+		expect(daemon.paneSignal("%4")).toBeUndefined();
 	});
 });
 

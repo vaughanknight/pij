@@ -7,10 +7,21 @@
 // pane / missing dir degrades to "" / [] rather than throwing — Pattern P4).
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import {
+	closeSync,
+	fstatSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	readSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { DaemonPorts } from "../core/daemon/loop.js";
+import type { PaneListing } from "../core/daemon/pane-signals.js";
 import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
 import type { SendOutcome } from "../core/ports.js";
 import { BUSY_RE, paneWentBusy } from "../core/readiness.js";
@@ -191,6 +202,7 @@ export class DaemonTmux implements DaemonPorts {
 	private readonly proc = new NodeProcess();
 	private readonly runner: TmuxRunner;
 	private readonly sleep: (ms: number) => void;
+	private readonly tapFiles = new Map<string, { path: string; offset: number }>();
 
 	constructor(options: DaemonTmuxOptions = {}) {
 		this.runner = options.runner ?? execFileRunner;
@@ -214,6 +226,95 @@ export class DaemonTmux implements DaemonPorts {
 		} catch {
 			return true; // the pane (or window) is gone entirely
 		}
+	}
+
+	listPanes(): readonly PaneListing[] {
+		try {
+			const out = this.runner([
+				"list-panes",
+				"-a",
+				"-F",
+				"#{pane_id}\t#{pane_dead}\t#{cursor_x}\t#{cursor_y}",
+			]);
+			return out
+				.split("\n")
+				.filter((line) => line.length > 0)
+				.flatMap((line) => {
+					const [paneId, dead, cursorX, cursorY] = line.split("\t");
+					if (!paneId) return [];
+					const parsedX = Number(cursorX);
+					const parsedY = Number(cursorY);
+					return [
+						{
+							paneId,
+							dead: dead === "1",
+							...(Number.isInteger(parsedX) ? { cursorX: parsedX } : {}),
+							...(Number.isInteger(parsedY) ? { cursorY: parsedY } : {}),
+						},
+					];
+				});
+		} catch {
+			return [];
+		}
+	}
+
+	attachPaneTap(paneId: string, sinkPath: string): void {
+		const existing = this.tapFiles.get(paneId);
+		if (existing?.path === sinkPath) return;
+		mkdirSync(dirname(sinkPath), { recursive: true });
+		writeFileSync(sinkPath, "");
+		try {
+			this.runner(["pipe-pane", "-O", "-o", "-t", paneId, `cat >> ${shellQuote(sinkPath)}`]);
+			this.tapFiles.set(paneId, { path: sinkPath, offset: 0 });
+		} catch {
+			rmSync(sinkPath, { force: true });
+		}
+	}
+
+	drainPaneTap(paneId: string): Uint8Array {
+		const tap = this.tapFiles.get(paneId);
+		if (!tap) return new Uint8Array();
+		let fd: number | undefined;
+		try {
+			fd = openSync(tap.path, "r");
+			const size = fstatSync(fd).size;
+			const offset = Math.min(tap.offset, size);
+			const length = size - offset;
+			if (length === 0) {
+				tap.offset = size;
+				return new Uint8Array();
+			}
+			const bytes = Buffer.allocUnsafe(length);
+			let bytesRead = 0;
+			while (bytesRead < length) {
+				const count = readSync(fd, bytes, bytesRead, length - bytesRead, offset + bytesRead);
+				if (count === 0) break;
+				bytesRead += count;
+			}
+			tap.offset = size;
+			return bytes.subarray(0, bytesRead);
+		} catch {
+			return new Uint8Array();
+		} finally {
+			if (fd !== undefined) {
+				try {
+					closeSync(fd);
+				} catch {
+					// Best-effort tap reads must not stop the daemon.
+				}
+			}
+		}
+	}
+
+	detachPaneTap(paneId: string): void {
+		const tap = this.tapFiles.get(paneId);
+		try {
+			this.runner(["pipe-pane", "-t", paneId]);
+		} catch {
+			// Gone panes already dropped their pipe.
+		}
+		this.tapFiles.delete(paneId);
+		if (tap) rmSync(tap.path, { force: true });
 	}
 
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome {
@@ -357,4 +458,8 @@ export class DaemonTmux implements DaemonPorts {
 	isAlive(pid: number): boolean {
 		return this.proc.isAlive(pid);
 	}
+}
+
+function shellQuote(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`;
 }

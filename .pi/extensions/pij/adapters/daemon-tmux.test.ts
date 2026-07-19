@@ -6,7 +6,10 @@
 // rule itself (pure, no live pane); the Dim-0 anchor is "copilot > claude" — flatten
 // the table back to one value and these go RED.
 
-import { describe, expect, it } from "vitest";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	composerHasTextTail,
 	composerIsEmpty,
@@ -23,6 +26,11 @@ import type { TmuxRunner } from "./tmux-keys.js";
 const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)";
 const NON_BMP_SENT = "[pij from pij-x] hi 😀";
 const PANE_ID = "%42";
+const tempDirs: string[] = [];
+
+afterEach(() => {
+	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 // Real copilot pane shapes (composer boxed between two ──── rules).
 const STUCK_PANE = [
@@ -85,6 +93,57 @@ describe("enterSettleMs — per-harness Enter settle", () => {
 	it("gives copilot a LONGER settle than claude (the whole point of task #24)", () => {
 		// If both collapse to the same value, the swallowed-Enter bug returns.
 		expect(enterSettleMs("copilot")).toBeGreaterThan(enterSettleMs("claude"));
+	});
+
+	describe("DaemonTmux pane signal plumbing", () => {
+		it("lists every server pane with dead and cursor metadata", () => {
+			const calls: string[][] = [];
+			const adapter = new DaemonTmux({
+				runner: (args) => {
+					calls.push(args);
+					return "%1\t0\t2\t23\n%2\t1\t0\t0\n";
+				},
+			});
+			expect(adapter.listPanes()).toEqual([
+				{ paneId: "%1", dead: false, cursorX: 2, cursorY: 23 },
+				{ paneId: "%2", dead: true, cursorX: 0, cursorY: 0 },
+			]);
+			expect(calls).toContainEqual([
+				"list-panes",
+				"-a",
+				"-F",
+				"#{pane_id}\t#{pane_dead}\t#{cursor_x}\t#{cursor_y}",
+			]);
+		});
+
+		it("attaches one pipe, reads only each new byte delta, and detaches cleanly", () => {
+			const calls: string[][] = [];
+			const dir = mkdtempSync(join(tmpdir(), "pij-pane-tap-"));
+			tempDirs.push(dir);
+			const sink = join(dir, "pane.raw");
+			const initialSize = 1024 * 1024;
+			const adapter = new DaemonTmux({
+				runner: (args) => {
+					calls.push(args);
+					return "";
+				},
+			});
+
+			adapter.attachPaneTap(PANE_ID, sink);
+			writeFileSync(sink, Buffer.alloc(initialSize, "a"));
+			expect(adapter.drainPaneTap(PANE_ID)).toHaveLength(initialSize);
+
+			const allocationSpy = vi.spyOn(Buffer, "allocUnsafe");
+			appendFileSync(sink, "two");
+			expect(Buffer.from(adapter.drainPaneTap(PANE_ID)).toString()).toBe("two");
+			expect(allocationSpy).toHaveBeenCalledTimes(1);
+			expect(allocationSpy).toHaveBeenCalledWith(3);
+			allocationSpy.mockRestore();
+			adapter.detachPaneTap(PANE_ID);
+
+			expect(calls[0]?.slice(0, 5)).toEqual(["pipe-pane", "-O", "-o", "-t", PANE_ID]);
+			expect(calls.at(-1)).toEqual(["pipe-pane", "-t", PANE_ID]);
+		});
 	});
 
 	it("copilot waits long enough for its composer (>= 900ms)", () => {

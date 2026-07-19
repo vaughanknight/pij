@@ -107,6 +107,34 @@ describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 	it("flushing an unknown target is empty, not an error", () => {
 		expect(new SendBuffer().flush("ghost")).toEqual([]);
 	});
+
+	it("holds and flushes FIFO only while a human composer is non-empty", () => {
+		const b = new SendBuffer();
+		b.setPaneSignal("%7", { busy: false, userTyping: true });
+		b.enqueue("m1", msg("w", "one"));
+		b.enqueue("m2", msg("w", "two"));
+		expect(b.flush("w", "%7")).toEqual([]);
+		expect(b.pending("w")).toBe(2);
+
+		b.setPaneSignal("%7", { busy: true, userTyping: false });
+		expect(b.flush("w", "%7").map((entry) => entry.message.body)).toEqual(["one", "two"]);
+	});
+
+	it("exposes busy read-only but never treats busy alone as a hold", () => {
+		const b = new SendBuffer();
+		b.setPaneSignal("%7", { busy: true, userTyping: false });
+		b.enqueue("m1", msg("w", "deliver while agent is busy"));
+		expect(b.paneSignal("%7")).toEqual({ busy: true, userTyping: false });
+		expect(b.isPaneHeld("%7")).toBe(false);
+		expect(b.flush("w", "%7")).toHaveLength(1);
+	});
+
+	it("deduplicates a retained unread message across held ticks", () => {
+		const b = new SendBuffer();
+		b.enqueue("m1", msg("w", "one"));
+		b.enqueue("m1", msg("w", "one"));
+		expect(b.pending("w")).toBe(1);
+	});
 });
 
 describe("isCompacting (compact-window drain hold, DL-004)", () => {
