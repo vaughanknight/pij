@@ -1,6 +1,9 @@
 # FsChannel delivery — design read (thread-1, for o-prime deconfliction)
 
-**Status**: READ COMPLETE — awaiting o-prime deconfliction before any implement.
+**Status**: APPROVED + LANDED. o-prime deconfliction cleared; §7 ruling =
+decoupled cadences (500ms deliver / 2500ms persist), detection SLA ~6.6s < 10s.
+Step 1 poll-primary delivery = `870c3a7`; Step 2 liveness anomaly = `11bf186`.
+This doc is the design of record.
 **Recommendation**: **POLL-PRIMARY** for the two live inbox call sites (pi
 self-inbox `index.ts:342`, telegram `bridge.ts:626`) — drop `fs.watch`, promote
 the existing poll to sole driver, add a poll-loop liveness heartbeat as the
