@@ -1,12 +1,17 @@
-import { adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
+import { uniqueNamesGenerator } from "unique-names-generator";
 
+import { NAME_ADJECTIVES as adjectives, NAME_NOUNS as nouns } from "./name-corpus.js";
 import { err, ok, type Result, type SessionId } from "./types.js";
 
-export const MEMORABLE_PIJ_ID_SPACE = adjectives.length * animals.length;
+// The seat-name corpus is vendored + curated in ./name-corpus.ts (edit the word
+// lists there). We keep the lib's seeded generator, but feed it OUR dictionaries.
+export { EXCLUDED_NAME_WORDS } from "./name-corpus.js";
+
+export const MEMORABLE_PIJ_ID_SPACE = adjectives.length * nouns.length;
 
 function initialPairIndex(seed: string): number | null {
 	const first = uniqueNamesGenerator({
-		dictionaries: [adjectives, animals],
+		dictionaries: [adjectives, nouns],
 		separator: "\0",
 		length: 2,
 		style: "lowerCase",
@@ -15,14 +20,14 @@ function initialPairIndex(seed: string): number | null {
 	const separator = first.indexOf("\0");
 	if (separator < 1) return null;
 	const adjectiveIndex = adjectives.indexOf(first.slice(0, separator));
-	const animalIndex = animals.indexOf(first.slice(separator + 1));
+	const animalIndex = nouns.indexOf(first.slice(separator + 1));
 	if (adjectiveIndex < 0 || animalIndex < 0) return null;
-	return adjectiveIndex * animals.length + animalIndex;
+	return adjectiveIndex * nouns.length + animalIndex;
 }
 
 function idAt(index: number): SessionId | null {
-	const adjective = adjectives[Math.floor(index / animals.length)];
-	const animal = animals[index % animals.length];
+	const adjective = adjectives[Math.floor(index / nouns.length)];
+	const animal = nouns[index % nouns.length];
 	return adjective && animal ? `pij-${adjective}-${animal}` : null;
 }
 
