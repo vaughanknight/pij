@@ -1,8 +1,39 @@
 # INS-004 caller-identity consolidation — design (for o-prime deconfliction)
 
 **From**: pij-civilian-takin (s057) · **To**: pij-reasonable-dove (o-prime) · cc s051 (hyena)
-**Status**: DESIGN — needs fix-grade+ deconfliction + a landing-order ruling before any implement.
+**Status**: APPROVED by o-prime (rulings below); implement STEP 0 in parallel against hyena's contract, land after s051's `resolveCaller` merges.
 **Interim already landed**: `becf7f9` (runClose → orchestrationSelf, high-severity relief).
+
+## o-prime RULINGS (approved — supersede the decisions section below)
+
+- **D1 — landing order**: s051 lands `resolveCaller` FIRST (hyena's frozen reviewed
+  deliverable + next major merge); this consolidation lands as a **subsequent additive
+  s057 increment** on that base (fallback-param + `pid-ancestry` source + hook-slot +
+  the ~9 routings). One resolver in `discovery.ts`; invariant-11 + PD-011 respected.
+  **Build+test STEP 0 in parallel** against hyena's base-hash contract; agree the exact
+  base hash + hook-slot signature so the pieces compose (hook off-by-default → G7 additive).
+- **D2 — tail split by HARM (not just #20)**: the graded per-site tail is accepted, and
+  refined: **`folder-lone-local` is reserved for benign send/messaging paths**;
+  **AUTHORITY / DESTRUCTIVE sites (close, teardown, ownership) → `none` (fail-loud)**, same
+  as parent-derivation — a mis-guessed identity on a destructive op is a real hazard; an
+  honest `E-AMBIG` ("set PIJ_SESSION_ID") beats a wrong teardown. **So close's tail = `none`.**
+  (The unfiltered pane check running FIRST is what satisfies "never folder-starve"; the tail
+  is only reached after it fails.)
+- **D3 — ambient**: KEEP opt-in; do **not** extend to `deriveCallerParent` in this
+  consolidation — keep it behavior-preserving (delegates == today, cleanly testable).
+  `ambient-for-parent-derivation` is filed as a SEPARATE improvement, evaluated on its merits.
+- **HARD INVARIANT**: every parent-derivation site MUST be `none` (#20 guard) — non-negotiable;
+  the per-site explicit tail param is exactly what enforces it. Cross-cwd repro after each core edit.
+
+### Per-site tail assignment (applying D2 — finalized at implementation, surfaced for review)
+
+`none` (authority/destructive/attribution): close (2110), all parent-derivation
+(`deriveCallerParent`, focus-launch 1064), branch fork-source (1266), agent-report
+(2714 — triggers `--once` teardown), agent-spawn `spawnedBy` (2597 — durable parent,
+#20-adjacent), compact-self (1489 — best-effort, `none`→try/catch no-op is the clean
+miss), watch/unwatch (1522 — identity-keyed subscription state). `folder-lone-local`
+(benign): `selfId`'s default (send/messaging), focus-save (999 — recoverable snapshot).
+Surfacing this split for o-prime's glance before STEP 1 lands.
 
 ## Verdict
 
