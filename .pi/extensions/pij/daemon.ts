@@ -44,6 +44,7 @@ import {
 	observeActivity,
 	writeMerged,
 } from "./core/daemon/loop.js";
+import { PaneSignalMonitor, type PaneSignalSnapshot } from "./core/daemon/pane-signals.js";
 import {
 	COMPACT_GRACE_MS,
 	COMPACT_MAX_MS,
@@ -93,7 +94,7 @@ export class Daemon {
 	private readonly index = new IndexState();
 	private readonly drives = new Map<string, DriveState>();
 	private readonly buffer = new SendBuffer();
-	private readonly flushed = new Set<string>();
+	private readonly paneSignals = new PaneSignalMonitor();
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
 	private readonly pushed = new Map<string, Set<PushedTransition>>();
@@ -185,6 +186,7 @@ export class Daemon {
 			if (latest) this.registry.write({ ...latest, lastTickAt: tickAt });
 		}
 		this.index.rebuild(this.registry.list());
+		this.refreshPaneSignals();
 		// Legacy-node windowId backfill (plan 054 P2 T006, AC-09): once per
 		// session per daemon run, resolve the pane's window and persist it via
 		// the merge-law write. Fresh spawns/adopts already carry it.
@@ -321,7 +323,6 @@ export class Daemon {
 					this.drives.delete(d.id);
 					this.pushed.delete(d.id);
 					this.watchdogStalled.delete(d.id);
-					this.flushed.delete(d.id);
 					this.paneSig.delete(d.id);
 					this.watchManager.disposeSession(d.id);
 					this.watchdogManager.disposeSession(d.id);
@@ -338,18 +339,27 @@ export class Daemon {
 					current.lifecycle === "bound" &&
 					daemonOwnsDelivery(current.harness ?? "pi", current.deliveryMode);
 				if (owns) {
-					// Flush buffered pre-bind sends — but ONLY once we have a pane to send to.
-					// `SendBuffer.flush` deletes the queue unconditionally, so guarding the
-					// flush (not just the send) avoids silently dropping them (review M1).
-					if (current.paneId && !this.flushed.has(current.id)) {
-						this.flushed.add(current.id);
-						for (const m of this.buffer.flush(current.id)) {
+					// Flush held sends only after the human composer releases. Busy is
+					// intentionally absent from this condition.
+					if (
+						current.paneId &&
+						!this.buffer.isPaneHeld(current.paneId) &&
+						this.buffer.pending(current.id) > 0
+					) {
+						for (const m of this.buffer.flush(current.id, current.paneId)) {
+							this.watchdogManager.beforeTmuxInject(current.id, m.message, this.ports.now());
 							const outcome = this.ports.sendText(
 								current.paneId,
 								flushedText(m.message),
 								current.harness,
 								current.pid,
 							);
+							const marked = this.channel.markRead(current.id, m.messageId, {
+								messageId: m.messageId,
+								readAt: new Date(this.ports.now()).toISOString(),
+								reader: current.id,
+							});
+							if (!marked.ok) throw new Error(`${marked.code}: ${marked.message}`);
 							this.emitSendReceipt(current.id, m.message.from, m.messageId, outcome);
 						}
 					}
@@ -614,7 +624,9 @@ export class Daemon {
 		let consumedCount = 0;
 		let compactFired = false;
 		for (const message of messages) {
-			this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
+			if (!this.buffer.isPaneHeld(target.paneId)) {
+				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
+			}
 			const consumed = drainTmuxInbox(target, [message], this.ports, this.buffer);
 			// A remote `/compact` just went into the pane: mark the compact window
 			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
@@ -652,6 +664,47 @@ export class Daemon {
 		if (consumedCount > 0) this.log(`route ${id}: injected ${consumedCount} message(s)`);
 	}
 
+	/** Read-only signal surface for a future UI. Busy is deliberately not a
+	 * delivery gate; callers can inspect it without changing daemon behaviour. */
+	paneSignal(paneId: string): PaneSignalSnapshot | undefined {
+		return this.paneSignals.snapshot(paneId, this.ports.now());
+	}
+
+	private refreshPaneSignals(): void {
+		if (
+			!this.ports.listPanes ||
+			!this.ports.attachPaneTap ||
+			!this.ports.drainPaneTap ||
+			!this.ports.detachPaneTap
+		) {
+			return;
+		}
+		const listings = this.ports.listPanes();
+		const diff = this.paneSignals.reconcile(listings);
+		for (const pane of diff.added) {
+			const safePane = pane.paneId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
+			this.ports.attachPaneTap(pane.paneId, join(this.pijHome, "pane-signals", `${safePane}.raw`));
+		}
+		for (const paneId of this.paneSignals.paneIds()) {
+			const bytes = this.ports.drainPaneTap(paneId);
+			if (bytes.byteLength > 0) this.paneSignals.ingest(paneId, bytes, this.ports.now());
+		}
+		this.paneSignals.tick(this.ports.now());
+		for (const paneId of this.paneSignals.paneIds()) {
+			const signal = this.paneSignals.snapshot(paneId, this.ports.now());
+			if (signal) {
+				this.buffer.setPaneSignal(paneId, {
+					busy: signal.busy,
+					userTyping: signal.userTyping,
+				});
+			}
+		}
+		for (const paneId of diff.retired) {
+			this.ports.detachPaneTap(paneId);
+			this.buffer.forgetPane(paneId);
+		}
+	}
+
 	private emitSendReceipt(
 		peer: string,
 		sender: string,
@@ -669,6 +722,7 @@ export class Daemon {
 	}
 
 	dispose(): void {
+		for (const paneId of this.paneSignals.paneIds()) this.ports.detachPaneTap?.(paneId);
 		this.watchManager.disposeAll();
 		this.watchdogManager.disposeAll();
 	}
