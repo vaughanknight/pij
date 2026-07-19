@@ -81,7 +81,27 @@ describe("portable models source", () => {
 			"!python3 -c \"import json,os;print(json.load(open(os.path.expanduser('~/.pi/agent/auth.json')))['sakana']['key'])\"",
 		);
 		assertJsonObject(openrouter);
-		expect(openrouter.models).toHaveLength(4);
+		expect(openrouter.models).toHaveLength(5);
+		expect(openrouter.models).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "moonshotai/kimi-k3",
+					reasoning: true,
+					thinkingLevelMap: {
+						off: null,
+						minimal: null,
+						low: null,
+						medium: null,
+						high: null,
+						xhigh: "max",
+					},
+					input: ["text", "image"],
+					contextWindow: 1048576,
+					maxTokens: 1048576,
+					compat: { thinkingFormat: "openrouter" },
+				}),
+			]),
+		);
 	});
 });
 
