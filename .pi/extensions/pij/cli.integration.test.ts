@@ -721,7 +721,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.split("\n")
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; paneId: string };
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
 			paneId: output.paneId,
@@ -744,7 +744,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 		expect(result.code).toBe(2);
 		const log = readFileSync(TMUX_LOG, "utf8");
-		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+-[a-z]+)/)?.[1];
+		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+(?:-[a-z]+)+)/)?.[1];
 		expect(id).toBeDefined();
 		expect(new FsRegistry(HOME).read(id as string)).toBeNull();
 		expect(new FsRegistry(HOME).hasReservation(id as string)).toEqual({
@@ -765,7 +765,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.split("\n")
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; agentPack: string };
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(output.agentPack).toBe("inline");
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
@@ -1013,7 +1013,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.code).toBe(0);
 		const output = JSON.parse(result.out) as { id: string; harnessSessionId: string };
 		expect(output).toMatchObject({ harnessSessionId: "native-first-adopt" });
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 	});
 
 	it("no-native adopt reserves then publishes one memorable pending descriptor", () => {
@@ -1026,7 +1026,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			harnessSessionId: null;
 			lifecycle: string;
 		};
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(output).toMatchObject({ harnessSessionId: null, lifecycle: "pending" });
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,

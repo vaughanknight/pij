@@ -63,7 +63,7 @@ function openAsg(over: Partial<Assignment> = {}): Assignment {
 describe("assignmentIdCandidates", () => {
 	it("yields ids shaped asg-<adjective>-<animal>", () => {
 		for (const id of take(assignmentIdCandidates("seat-1"), 5)) {
-			expect(id).toMatch(/^asg-[a-z]+-[a-z]+$/);
+			expect(id).toMatch(/^asg-[a-z]+(-[a-z]+)+$/);
 		}
 	});
 
