@@ -2265,11 +2265,13 @@ class CliBatonNoticeSink implements BatonNoticeSink {
 
 function orchestrationActor(registry: FsRegistry): string {
 	if (process.env.PIJ_SESSION_ID) return process.env.PIJ_SESSION_ID;
-	const resolved = resolveSelf(
-		undefined,
-		filterByFolder(registry.list(), process.cwd()),
-		process.env.TMUX_PANE,
-	);
+	// Reuse the SAME shared resolver the `prime` primitive uses (deps.resolveSelf):
+	// orchestrationSelf tries a $TMUX_PANE match against the FULL registry BEFORE the
+	// folder-filtered path, so a seat filing from a shell whose cwd differs from its
+	// recorded folder still resolves to its real id instead of the silent 'operator'
+	// phantom (identity-attribution fix-loop). The pane/pid enhancement rides s051's
+	// adopt resolver (G7) through this same seam — no second resolver forked here.
+	const resolved = orchestrationSelf(registry);
 	return resolved.ok ? resolved.value : "operator";
 }
 
