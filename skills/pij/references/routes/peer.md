@@ -76,6 +76,12 @@ File-change notices (self-serve): `pij watch <path>` / `pij unwatch` — use whe
 a peer must react to a file another seat writes; mechanics in
 `docs/how/pij-peer-watch.md`.
 
+**Body safety (live incident: quoted text EXECUTED `pij close` at a peer's
+repo)**: a double-quoted send body substitutes backticks/`$(...)` in YOUR shell
+before pij ever runs. For any body carrying code, backticks, or untrusted text:
+single-quote it, or use the literal channel — `pij send <id> --body-file
+<path>` (`-` = stdin), which bypasses shell interpretation entirely.
+
 - Model names are per-harness — discover with `pij models` (§ C4); an "unknown model" warning is non-blocking, the canary decides (§ C2).
 - Returns the pij id immediately (claude/copilot/codex are daemon-bound: boot → ready → bound happens behind you; pi self-registers).
 - `--task` delivers the first task on every harness: pi reads it at boot (env); daemon-bound peers get it **injected after bind** (it rides the inbox, FX001-2). `--layout` places the pane (§ C5). `--branch` forks YOUR session into the pane (claude→claude only, same harness, bound session).

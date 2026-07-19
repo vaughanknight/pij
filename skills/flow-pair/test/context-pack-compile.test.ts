@@ -358,8 +358,9 @@ describe("ContextPackCompiler.compile — T005: P9 + cluster isolation", () => {
 	});
 
 	it("cluster isolation: active.md from cluster-A is NOT in entries when compiling for cluster-B (mutation guard: remove cluster filter → RED)", () => {
-		// Scaffold active.md for cluster-A (should be excluded)
-		const clusterADir = join(tmpRoot, "skills/flow-pair/prompt-lab/clusters/cluster-a");
+		// DL-003: clusters live under the skill root — scaffold cluster-A there.
+		const skillRoot = join(tmpRoot, "skill");
+		const clusterADir = join(skillRoot, "prompt-lab/clusters/cluster-a");
 		mkdirSync(clusterADir, { recursive: true });
 		writeFileSync(join(clusterADir, "active.md"), "Cluster A learnings.", "utf8");
 
@@ -368,7 +369,7 @@ describe("ContextPackCompiler.compile — T005: P9 + cluster isolation", () => {
 		const planPath = makePlan(tmpRoot, [{ heading: "Phase 3: Compiler", body: "Content." }]);
 		const tasksDir = join(tmpRoot, "tasks");
 		mkdirSync(tasksDir, { recursive: true });
-		const compiler = new ContextPackCompiler(tmpRoot, ledgerRoot);
+		const compiler = new ContextPackCompiler(tmpRoot, ledgerRoot, undefined, skillRoot);
 		// Compile for cluster-B, not cluster-A
 		const result = compiler.compile({
 			runId,
@@ -388,5 +389,67 @@ describe("ContextPackCompiler.compile — T005: P9 + cluster isolation", () => {
 		// Also: no cluster-a in entry paths
 		const entryPaths = result.manifest?.entries.map((e) => e.path) ?? [];
 		expect(entryPaths.every((p) => !p.includes("cluster-a"))).toBe(true);
+	});
+
+	it("DL-003: learnings compile from skillRoot, NOT from a repoRoot-joined layout (mutation guard: rejoin repoRoot → RED)", () => {
+		const skillRoot = join(tmpRoot, "skill");
+		// Correct location — under the skill root
+		const skillClusterDir = join(skillRoot, "prompt-lab/clusters/implement-code");
+		mkdirSync(skillClusterDir, { recursive: true });
+		writeFileSync(join(skillClusterDir, "active.md"), "SKILL-ROOT learnings.", "utf8");
+		// Decoy at the old (buggy) repoRoot-joined location — must be ignored
+		const repoClusterDir = join(tmpRoot, "skills/flow-pair/prompt-lab/clusters/implement-code");
+		mkdirSync(repoClusterDir, { recursive: true });
+		writeFileSync(join(repoClusterDir, "active.md"), "REPO-ROOT learnings — WRONG.", "utf8");
+
+		const runId = "2026-06-17T00-00-00Z-t005-d";
+		scaffoldRun(ledgerRoot, runId);
+		const planPath = makePlan(tmpRoot, [{ heading: "Phase 3: Compiler", body: "Content." }]);
+		const tasksDir = join(tmpRoot, "tasks");
+		mkdirSync(tasksDir, { recursive: true });
+		const compiler = new ContextPackCompiler(tmpRoot, ledgerRoot, undefined, skillRoot);
+		const result = compiler.compile({
+			runId,
+			delegationId: "dlg-0001",
+			planPath,
+			phase: "Phase 3: Compiler",
+			tasksDir,
+			cluster: "implement-code",
+			allowedPaths: [],
+		});
+		expect(result.ok).toBe(true);
+		const learningEntries = result.manifest?.entries.filter((e) => e.role === "learning") ?? [];
+		expect(learningEntries).toHaveLength(1);
+		expect(learningEntries[0]?.content).toBe("SKILL-ROOT learnings.");
+		expect(learningEntries[0]?.path).toContain(skillRoot);
+	});
+
+	it("DL-003 honesty: absent cluster learnings are recorded as a manifest exclusion, not silently dropped (mutation guard: remove exclusion push → RED)", () => {
+		const skillRoot = join(tmpRoot, "skill");
+		mkdirSync(skillRoot, { recursive: true }); // no prompt-lab at all
+
+		const runId = "2026-06-17T00-00-00Z-t005-e";
+		scaffoldRun(ledgerRoot, runId);
+		const planPath = makePlan(tmpRoot, [{ heading: "Phase 3: Compiler", body: "Content." }]);
+		const tasksDir = join(tmpRoot, "tasks");
+		mkdirSync(tasksDir, { recursive: true });
+		const compiler = new ContextPackCompiler(tmpRoot, ledgerRoot, undefined, skillRoot);
+		const result = compiler.compile({
+			runId,
+			delegationId: "dlg-0001",
+			planPath,
+			phase: "Phase 3: Compiler",
+			tasksDir,
+			cluster: "implement-code",
+			allowedPaths: [],
+		});
+		expect(result.ok).toBe(true);
+		expect(result.manifest?.entries.some((e) => e.role === "learning")).toBe(false);
+		const excl = result.manifest?.exclusions.find((e) =>
+			e.path.endsWith(join("clusters", "implement-code", "active.md")),
+		);
+		expect(excl).toBeDefined();
+		expect(excl?.reason).toBe("not found");
+		expect(excl?.path).toContain(skillRoot);
 	});
 });

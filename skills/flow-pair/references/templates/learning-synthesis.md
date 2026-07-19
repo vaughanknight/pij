@@ -37,7 +37,7 @@ No automatic promotion: do not edit `active.md` programmatically. If a human acc
 
 ## Field guidance
 
-- `CLUSTER`: one of the canonical slugs in `references/prompt-taxonomy.md`.
+- `CLUSTER`: one of the canonical slugs in `<flow-pair skill root>/references/prompt-taxonomy.md` (the skill's install root — not the consuming repo).
 - `MISS_TYPE`: currently redundant in v1 because it must equal `CLUSTER`; keep it to support future many-to-one attribution.
 - `EVIDENCE_LIST`: concrete review findings, failed mutation gates, command output, or artifact paths.
 - `CANDIDATE_DELTA`: the prompt text or instruction that might improve the cluster's future behavior.

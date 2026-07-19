@@ -137,6 +137,14 @@ export class PijSession {
 	 *  context only exists inside a registered command handler). */
 	private pendingControl: ControlCommand[] = [];
 	private descriptor: SessionDescriptor | undefined;
+	/** Persist cadence for the poll-primary delivery liveness heartbeat (plan 057
+	 *  thread-1): the delivery poll runs every 500ms, but lastInboxScanAt is
+	 *  written only this often to bound descriptor writes. The daemon's
+	 *  inbox-poll-stalled anomaly reads the coarse persisted copy; the accurate
+	 *  per-scan time flows through noteInboxScan's argument, so no in-memory field
+	 *  is stored. */
+	private static readonly INBOX_SCAN_STAMP_CADENCE_MS = 2_500;
+	private lastPersistedInboxScanMs = 0;
 
 	constructor(private readonly ports: PijPorts) {}
 
@@ -480,6 +488,18 @@ export class PijSession {
 		return applied;
 	}
 
+	/** Poll-primary delivery liveness (plan 057 thread-1). Called on every inbox
+	 *  poll scan (drained or empty — an executed scan proves the loop is alive).
+	 *  The accurate scan time is `atMs`; lastInboxScanAt is persisted only every
+	 *  INBOX_SCAN_STAMP_CADENCE_MS to bound writes. The daemon's inbox-poll-stalled
+	 *  anomaly reads the persisted copy. */
+	noteInboxScan(atMs: number): void {
+		if (!this.descriptor) return; // pre-boot: nothing to stamp, don't advance the marker
+		if (atMs - this.lastPersistedInboxScanMs < PijSession.INBOX_SCAN_STAMP_CADENCE_MS) return;
+		this.lastPersistedInboxScanMs = atMs;
+		this.persist({ lastInboxScanAt: new Date(atMs).toISOString() });
+	}
+
 	// ─── internals ──────────────────────────────────────────────────────────
 	/** Merge a patch into the live descriptor and persist it (D-A). No-op before
 	 *  boot. */
@@ -487,7 +507,14 @@ export class PijSession {
 		patch: Partial<
 			Pick<
 				SessionDescriptor,
-				"state" | "lastEventAt" | "pid" | "paneId" | "spawnedBy" | "boundModel" | "effort"
+				| "state"
+				| "lastEventAt"
+				| "lastInboxScanAt"
+				| "pid"
+				| "paneId"
+				| "spawnedBy"
+				| "boundModel"
+				| "effort"
 			>
 		>,
 	): void {

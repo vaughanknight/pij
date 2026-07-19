@@ -24,7 +24,6 @@ import {
 	closeSync,
 	existsSync,
 	fstatSync,
-	fsyncSync,
 	linkSync,
 	mkdirSync,
 	openSync,
@@ -39,7 +38,7 @@ import type { SpineAppendOnceOutcome, SpineLogPort } from "../core/platform/port
 import { filterSpineEvents, type SpineEventQuery } from "../core/platform/spine.js";
 import { isSpineEvent, type SpineEvent, type SpineEventDraft } from "../core/platform/types.js";
 import { err, ok, type Result } from "../core/types.js";
-import { fsyncDirBestEffort } from "./atomic-file.js";
+import { fsyncDirBestEffort, maybeFsyncSync } from "./atomic-file.js";
 
 const NEWLINE_BYTE = 0x0a;
 /** Total lock-acquisition budget before a write gives up with E-NOREG. */
@@ -96,7 +95,7 @@ export class FsSpineLog implements SpineLogPort {
 			const fd = openSync(this.file, "a");
 			try {
 				writeFileSync(fd, `${guard}${JSON.stringify(stamped)}\n`);
-				fsyncSync(fd);
+				maybeFsyncSync(fd);
 			} finally {
 				closeSync(fd);
 			}
@@ -163,7 +162,7 @@ export class FsSpineLog implements SpineLogPort {
 		try {
 			fd = openSync(tempPath, "wx");
 			writeFileSync(fd, JSON.stringify(stamped));
-			fsyncSync(fd);
+			maybeFsyncSync(fd);
 			closeSync(fd);
 			fd = undefined;
 			try {

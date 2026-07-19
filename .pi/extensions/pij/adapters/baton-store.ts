@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
 	appendFileSync,
 	closeSync,
-	fsyncSync,
 	linkSync,
 	mkdirSync,
 	openSync,
@@ -23,7 +22,7 @@ import {
 	batonErr,
 	batonOk,
 } from "../core/orchestration/baton.js";
-import { writeJsonAtomic } from "./atomic-file.js";
+import { maybeFsyncSync, writeJsonAtomic } from "./atomic-file.js";
 
 const BATON_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -159,7 +158,7 @@ export class FsBatonStore implements BatonStorePort {
 			mkdirSync(dirname(path), { recursive: true });
 			fd = openSync(tmpPath, "wx");
 			writeFileSync(fd, JSON.stringify(lease));
-			fsyncSync(fd);
+			maybeFsyncSync(fd);
 			closeSync(fd);
 			fd = undefined;
 			try {

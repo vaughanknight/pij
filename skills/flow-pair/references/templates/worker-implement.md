@@ -37,6 +37,18 @@ warm context. Work straight through the task list start-to-finish in this single
 
 Work inside this repo root. All relative paths below resolve from here.
 
+## Flow-Pair Skill Root
+
+```
+{{SKILL_ROOT}}
+```
+
+The flow-pair skill's own install root (absolute — NOT inside the repo root above).
+Protocol references cited in this packet resolve from here:
+
+- `{{SKILL_ROOT}}/references/orchestrator-worker-protocol.md` — packet/report schema + allowed/forbidden-paths contract
+- `{{SKILL_ROOT}}/references/review-rubrics.md` — review rubric your work will be judged against
+
 ---
 
 ## Forbidden Paths (NEVER edit these)
@@ -107,7 +119,14 @@ When your work is complete, send a report via `pij_send` using this exact JSON s
 ## Stop Conditions
 
 - **Finish the entire phase before reporting** (§ Completion Discipline) — do not hand back after a couple of tasks; `COMPLETE` means the whole phase is done
-- **Run your self-check gates before reporting** (`just flow-pair-test`, `just typecheck`, `just lint`)
+- **Run the consuming repo's own gates before reporting** — typecheck, lint, and the
+  targeted tests for every file you changed, using THIS repo's own commands (check its
+  README/justfile/package scripts; ask the orchestrator if unnamed). Never assume
+  another repo's recipes exist here.
+- **Verify your working directory BEFORE the first edit** — run `pwd` and confirm it is
+  the repo root this packet names (allowed paths resolve relative to it). If it is any
+  other checkout/worktree, STOP and report BLOCKED — never "fix" the path yourself.
+  (Encoded from a live incident: a worker edited the wrong checkout.)
 - **Do NOT edit forbidden paths** under any circumstances
 - **Do NOT write `.flow-pair/`** and do NOT read any ledger files under `.flow-pair/` —
   the orchestrator owns the entire ledger directory. Exception: you may read **only this

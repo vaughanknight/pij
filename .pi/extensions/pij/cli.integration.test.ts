@@ -721,7 +721,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.split("\n")
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; paneId: string };
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
 			paneId: output.paneId,
@@ -744,7 +744,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 		expect(result.code).toBe(2);
 		const log = readFileSync(TMUX_LOG, "utf8");
-		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+-[a-z]+)/)?.[1];
+		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+(?:-[a-z]+)+)/)?.[1];
 		expect(id).toBeDefined();
 		expect(new FsRegistry(HOME).read(id as string)).toBeNull();
 		expect(new FsRegistry(HOME).hasReservation(id as string)).toEqual({
@@ -765,7 +765,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.split("\n")
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; agentPack: string };
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(output.agentPack).toBe("inline");
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
@@ -1013,7 +1013,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.code).toBe(0);
 		const output = JSON.parse(result.out) as { id: string; harnessSessionId: string };
 		expect(output).toMatchObject({ harnessSessionId: "native-first-adopt" });
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 	});
 
 	it("no-native adopt reserves then publishes one memorable pending descriptor", () => {
@@ -1026,7 +1026,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			harnessSessionId: null;
 			lifecycle: string;
 		};
-		expect(output.id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(output).toMatchObject({ harnessSessionId: null, lifecycle: "pending" });
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
@@ -1647,7 +1647,7 @@ describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", (
 	// A hard process.exit() after write() raced the stdout pipe buffer: any
 	// payload past 64KB was cut at exactly 65536 bytes (found live: `tree
 	// --global --json` over 1394 real descriptors returned unparseable JSON).
-	it("tree --global --liveness dead --json over 1200 descriptors parses complete", () => {
+	it("tree --global --liveness dead --json over 1200 descriptors parses complete THROUGH A REAL PIPE", () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-bigout-"));
 		for (let i = 0; i < 1200; i++) {
 			const id = `pij-big-${String(i).padStart(4, "0")}`;
@@ -1667,17 +1667,38 @@ describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", (
 				}),
 			);
 		}
-		// Seeds carry no tick/event telemetry → liveness dead; the default tree
-		// prunes dead, so include them explicitly — the point is OUTPUT SIZE.
-		const out = execFileSync(TSX, [CLI, "tree", "--global", "--liveness", "dead", "--json"], {
-			env: { ...process.env, PIJ_HOME: home, TMUX_PANE: "" },
-			encoding: "utf8",
-			maxBuffer: 16 * 1024 * 1024,
-			timeout: 30_000,
-		});
-		expect(out.length).toBeGreaterThan(65_536);
-		const forest = JSON.parse(out) as { roots: Array<{ id?: string }> };
-		expect((out.match(/pij-big-/g) ?? []).length).toBeGreaterThanOrEqual(1200);
+		const env = { ...process.env, PIJ_HOME: home, TMUX_PANE: "" };
+		const args = ["tree", "--global", "--liveness", "dead", "--json"];
+		// Direct capture only tells us the FULL size: execFileSync drains the pipe
+		// eagerly, so the child never hits the OS pipe-buffer backpressure that
+		// causes the real exit-race truncation — which is why the prior version of
+		// this test was VACUOUS (green while `pij ... | wc -c` truncated live).
+		const full = Buffer.byteLength(
+			execFileSync(TSX, [CLI, ...args], {
+				env,
+				encoding: "utf8",
+				maxBuffer: 16 * 1024 * 1024,
+				timeout: 30_000,
+			}),
+			"utf8",
+		);
+		expect(full).toBeGreaterThan(200_000); // well past any 64/128KB pipe boundary
+		// THROUGH A REAL PIPE WITH A DELAYED READER — the live truncation scenario.
+		// A plain `| cat` cannot catch it: an eager reader keeps the OS pipe buffer
+		// drained, so the child never sustains backpressure. `( sleep 0.5; cat )`
+		// lets the buffer FILL, so a hard process.exit() (or an empty-string write
+		// callback that fast-paths, the old 5db11c1 pattern) drops libuv's unflushed
+		// queue and cuts the payload at the pipe boundary. Only a drain-safe exit
+		// (process.exitCode + natural return) blocks until the reader drains. Verified
+		// non-vacuous: old cut at ~64-80KB across runs; the fix equals `full` every run.
+		const piped = execFileSync(
+			"sh",
+			["-c", `'${TSX}' '${CLI}' ${args.join(" ")} | ( sleep 0.5; cat )`],
+			{ env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 30_000 },
+		);
+		expect(Buffer.byteLength(piped, "utf8")).toBe(full); // NOT truncated at the pipe boundary
+		const forest = JSON.parse(piped) as { roots: Array<{ id?: string }> };
+		expect((piped.match(/pij-big-/g) ?? []).length).toBeGreaterThanOrEqual(1200);
 		expect(forest.roots.length).toBeGreaterThanOrEqual(1200);
 		rmSync(home, { recursive: true, force: true });
 	});

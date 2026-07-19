@@ -9,7 +9,7 @@ import { isAbsolute, join, relative } from "node:path";
 import type { ContextPackManifest } from "./context-pack.js";
 import type { PromptTrialRecord } from "./ledger.js";
 import { appendLedgerEvent, PROMPTS_DIR } from "./ledger.js";
-import { resolveRunDir } from "./paths.js";
+import { FLOW_PAIR_SKILL_ROOT, resolveRunDir } from "./paths.js";
 
 // ─── Constants (P5) ──────────────────────────────────────────────────────────
 
@@ -43,12 +43,20 @@ export interface WritePacketOpts {
 	taskDescription: string;
 	repoRoot: string;
 	templateRef?: string;
+	/**
+	 * Absolute root of the installed flow-pair skill, injected into the packet as
+	 * {{SKILL_ROOT}} so cited references resolve in ANY consuming repo (DL-003).
+	 * Defaults to the root this module is installed under.
+	 */
+	skillRoot?: string;
 }
 
 export interface RenderOpts {
 	taskDescription: string;
 	repoRoot: string;
 	templateRef?: string;
+	/** See WritePacketOpts.skillRoot — {{SKILL_ROOT}} substitution source (DL-003). */
+	skillRoot?: string;
 }
 
 /** Minimal interface for PacketRenderer's writer dependency — only what writePacket calls. */
@@ -154,6 +162,9 @@ export class PacketRenderer {
 				PHASE: manifest.phase,
 				TASK_DESCRIPTION: opts.taskDescription,
 				REPO_ROOT: opts.repoRoot,
+				// DL-003: absolute install root of the flow-pair skill — packet citations
+				// (protocol, rubrics) resolve against this in any consuming repo.
+				SKILL_ROOT: opts.skillRoot ?? FLOW_PAIR_SKILL_ROOT,
 				FORBIDDEN_PATHS: forbiddenPaths,
 				ALLOWED_PATHS: allowedPaths,
 				PLAN_PHASE_CONTENT: planEntry.content,

@@ -34,6 +34,26 @@ export function injectionText(message: PijMessage): string {
 	return message.command ? `/${message.command}` : frame(message.from, message.body);
 }
 
+/** Don't insta-clear the compact mark off the still-idle pane sampled before
+ *  `/compact` has visibly started (~3s covers the send-keys → busy edge). */
+export const COMPACT_GRACE_MS = 3_000;
+/** Staleness bound on the compact hold: compaction normally runs 10–45s, so a
+ *  mark older than this is a compact that died mid-window (or a wedged pane) —
+ *  drain resumes unconditionally rather than wedging the queue (DL-004). */
+export const COMPACT_MAX_MS = 120_000;
+
+/** Is this descriptor inside a live compact window (fresh `compactingAt`)? The
+ *  daemon skips inbox drain while true, so a send can't be injected into the
+ *  compact window and eaten by the harness's fresh-context reset (DL-004). The
+ *  durable inbox IS the queue: nothing is consumed, receipts stay `queued`
+ *  until the post-compact injection emits `delivered`. Absent/unparseable/
+ *  expired (past {@link COMPACT_MAX_MS}) → false. Pure. */
+export function isCompacting(d: SessionDescriptor, nowMs: number): boolean {
+	if (d.compactingAt === undefined) return false;
+	const ageMs = nowMs - Date.parse(d.compactingAt);
+	return Number.isFinite(ageMs) && ageMs <= COMPACT_MAX_MS;
+}
+
 /** Persist-before-inject compact seam shared by daemon-owned tmux delivery. */
 export function pauseForCompactMessage(
 	message: { readonly command?: string },

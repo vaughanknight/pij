@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type FileFlavor, hydrateFiles } from "@grammyjs/files";
 import { type Bot, type Context, InputFile } from "grammy";
-import { FsChannel } from "../adapters/channel.js";
+import { FsChannel, pollPrimaryWatchOpts } from "../adapters/channel.js";
 import { FsEventLog } from "../adapters/event-log.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
 import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";
@@ -271,7 +271,10 @@ function runtimeFor(pijHome: string, log: (message: string) => void): BridgeRunt
 		startedAt: new Date().toISOString(),
 		isAlive: isProcessAlive,
 		registry: new FsRegistry(pijHome),
-		channel: new FsChannel(pijHome),
+		// Poll-primary: the telegram bridge's inbox watcher (bridge.ts) drops
+		// fs.watch and drains via the 500ms poll — same silent-drop immunity as
+		// the pi self-inbox (plan 057 thread-1).
+		channel: new FsChannel(pijHome, pollPrimaryWatchOpts()),
 		readEvents: (id, last) => new FsEventLog(pijHome, id).read({ last }),
 		git: (cwd, args, timeoutMs) =>
 			execFileSync("git", ["-C", cwd, ...args], {

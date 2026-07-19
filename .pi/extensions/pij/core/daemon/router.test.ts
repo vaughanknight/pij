@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PijMessage, SessionDescriptor } from "../types.js";
-import { injectionText, route, SendBuffer } from "./router.js";
+import { COMPACT_MAX_MS, injectionText, isCompacting, route, SendBuffer } from "./router.js";
 
 function target(over: Partial<SessionDescriptor> & { id: string }): SessionDescriptor {
 	return {
@@ -106,5 +106,35 @@ describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 
 	it("flushing an unknown target is empty, not an error", () => {
 		expect(new SendBuffer().flush("ghost")).toEqual([]);
+	});
+});
+
+describe("isCompacting (compact-window drain hold, DL-004)", () => {
+	const NOW = Date.parse("2026-07-18T00:00:00.000Z");
+
+	it("fresh mark → compacting (drain holds)", () => {
+		const d = target({ id: "w", compactingAt: new Date(NOW - 1_000).toISOString() });
+		expect(isCompacting(d, NOW)).toBe(true);
+	});
+
+	it("no mark → not compacting", () => {
+		expect(isCompacting(target({ id: "w" }), NOW)).toBe(false);
+	});
+
+	it("expired past COMPACT_MAX_MS → not compacting (a dead compact never wedges the queue)", () => {
+		const atBound = target({
+			id: "w",
+			compactingAt: new Date(NOW - COMPACT_MAX_MS).toISOString(),
+		});
+		expect(isCompacting(atBound, NOW)).toBe(true); // inclusive bound still holds
+		const past = target({
+			id: "w",
+			compactingAt: new Date(NOW - COMPACT_MAX_MS - 1).toISOString(),
+		});
+		expect(isCompacting(past, NOW)).toBe(false);
+	});
+
+	it("malformed timestamp → not compacting (fail open to delivery)", () => {
+		expect(isCompacting(target({ id: "w", compactingAt: "not-a-date" }), NOW)).toBe(false);
 	});
 });

@@ -53,3 +53,25 @@ same worktree.
 **Ask**: ack + restart-timing deconfliction (and ownership of the link-global
 uncommitted mods if you know it). I execute link → skills → restart → verify on
 Jordan's go once you've deconflicted.
+
+## Addendum (2026-07-19) — the three reload boundaries (don't over-claim "live fleet-wide")
+
+A change's **reload boundary** decides WHEN it goes live. Naming all three keeps us
+from over-claiming an in-process change as instantly fleet-wide (o-prime, at the
+thread-1 detector activation):
+
+1. **CLI verbs** (`pij <verb>`) — reload **per-invocation** (a fresh `tsx` process
+   each call). CLI + skill edits in the worktree are live **instantly**.
+2. **Daemon** (`daemon.ts` + everything it imports — e.g. `anomalies.ts`,
+   `anomaly-sweep.ts`) — loads at **daemon start**, no hot-reload → needs a
+   **coordinated daemon restart**. The `inbox-poll-stalled` detector (daemon-side)
+   went live exactly at the restart (pid 78853 → 60854, HEAD `faf06c5`).
+3. **Pi in-process extension** (`index.ts` + `FsChannel`) — loads at pi **session
+   boot**. A running pi seat keeps its boot-time code until it **cycles**, so
+   poll-primary DELIVERY + `lastInboxScanAt` STAMPING reach a seat only when it
+   restarts; the `undefined`-stamp guard correctly SKIPS old-boot seats (no false
+   positive) until then. Coverage ramps with natural cycling — **never** instantly
+   fleet-wide, and no forced churn needed.
+
+Rule of thumb: **CLI/skill → instant · daemon/core-imported-by-daemon → restart ·
+pi-extension/in-process → per-seat session boot (natural cycling).**

@@ -33,6 +33,33 @@ async function waitFor(pred: () => boolean, ms = 1500): Promise<void> {
 	}
 }
 
+/** A deterministic fs.watch stand-in. The real OS watcher (FSEvents on macOS) is
+ *  the dominant, highly-variable cost that made the live-delivery tests flake
+ *  under full-suite parallel load (DL-004): the mocked-watcher tests below run
+ *  in ~6ms, the real-watch ones took 0.6-1.6s and ballooned past the 5s budget
+ *  under 16-way disk/FSEvents contention. `fire()` triggers the channel's
+ *  onEvent exactly as a real inbox event would, but instantly. `pollMs` is
+ *  pushed far out so `fire()` is the SOLE drain path — a broken drain HANGS the
+ *  test (non-vacuous) instead of being silently rescued by the 1.5s fallback
+ *  poll. The real fs.watch WIRING stays covered by "passes a canonical inbox
+ *  path to fs.watch"; only the drain LOGIC is exercised here. */
+function controllableWatch(): {
+	opts: { pollMs: number; watchFactory: (dir: string, onEvent: () => void) => { close(): void } };
+	fire: () => void;
+} {
+	let onEvent = (): void => {};
+	return {
+		opts: {
+			pollMs: 1_000_000,
+			watchFactory: (_dir, cb) => {
+				onEvent = cb;
+				return { close() {} };
+			},
+		},
+		fire: () => onEvent(),
+	};
+}
+
 describe("FsChannel", () => {
 	let home: string;
 	let disposers: Array<() => void>;
@@ -220,12 +247,18 @@ describe("FsChannel", () => {
 	});
 
 	it("delivers live writes exactly once, in order (debounce + dedupe)", async () => {
-		const ch = new FsChannel(home);
+		const { opts, fire } = controllableWatch();
+		const ch = new FsChannel(home, opts);
 		const got: DeliveredMessage[] = [];
 		disposers.push(ch.watch("bob", (m) => got.push(m)));
 		for (let i = 1; i <= 5; i++) ch.deliver(msg(`m${i}`));
+		// A real write burst emits several fs.watch events; the debounce collapses
+		// them to one scan and the per-id `seen` set drains each message once.
+		fire();
+		fire();
+		fire();
 		await waitFor(() => got.length === 5);
-		// settle: any duplicate fs.watch events would arrive within a debounce window
+		// settle past the debounce window — the extra fires must not double-deliver
 		await new Promise((r) => setTimeout(r, 60));
 		expect(got.map((m) => m.body)).toEqual(["m1", "m2", "m3", "m4", "m5"]);
 		expect(new Set(got.map((m) => m.messageId)).size).toBe(5);
@@ -264,11 +297,37 @@ describe("FsChannel", () => {
 	});
 
 	it("a watcher only sees its own inbox (routes by message.to)", async () => {
-		const ch = new FsChannel(home);
+		const { opts, fire } = controllableWatch();
+		const ch = new FsChannel(home, opts);
 		ch.deliver({ from: "alice", to: "carol", body: "for carol" });
 		const bobGot: DeliveredMessage[] = [];
 		disposers.push(ch.watch("bob", (m) => bobGot.push(m)));
+		// Fire bob's watcher: its scan reads only bob's inbox, which never held
+		// carol's message (routing is by recipient dir, not filter).
+		fire();
 		await new Promise((r) => setTimeout(r, 60));
 		expect(bobGot).toEqual([]);
+	});
+
+	it("calls onScan on every executed scan — the poll-primary liveness heartbeat", async () => {
+		const { opts, fire } = controllableWatch();
+		const ch = new FsChannel(home, opts);
+		const scans: number[] = [];
+		disposers.push(
+			ch.watch(
+				"bob",
+				() => {},
+				new Set(),
+				(atMs) => scans.push(atMs),
+			),
+		);
+		// the drain-on-subscribe scan stamps once even with an empty inbox —
+		// liveness must not depend on a delivery happening.
+		const afterSubscribe = scans.length;
+		expect(afterSubscribe).toBeGreaterThanOrEqual(1);
+		fire();
+		await waitFor(() => scans.length > afterSubscribe);
+		// stamps are epoch-ms, monotonic non-decreasing
+		expect(scans.every((t, i) => i === 0 || t >= (scans[i - 1] ?? 0))).toBe(true);
 	});
 });

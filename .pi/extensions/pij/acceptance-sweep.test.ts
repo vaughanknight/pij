@@ -231,7 +231,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 			["spine", "append", "--kind", "probe", "--peer", "pij-worker", "--project", "fix-the-cli"],
 			["spine", "append", "--kind", "probe", "--peer", "pij-workerx"], // near-miss peer
 			["spine", "append", "--kind", "probe", "--project", "fix-the-cli-2"], // near-miss project
-			["spine", "append", "--kind", "probe"],
+			["spine", "append", "--kind", "probe", "--bare"],
 		]) {
 			expect(run(args).exitCode).toBe(0);
 		}

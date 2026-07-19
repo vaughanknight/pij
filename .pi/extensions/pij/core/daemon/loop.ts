@@ -50,8 +50,9 @@ export interface DaemonPorts {
 	 *  of stranding the message in the composer. Both optional — absent falls back to
 	 *  the Claude default settle and no wake. */
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome;
-	/** Press a bare key (e.g. Escape to dismiss an interstitial). */
-	sendKey(paneId: string, key: "Escape" | "Enter"): void;
+	/** Press a bare key (e.g. Escape to dismiss an interstitial, or a digit +
+	 *  Enter to answer one — the copilot folder-trust auto-answer, DL-001). */
+	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void;
 	/** Kill a pane (tmux `kill-pane`). Idempotent — a gone pane is a no-op. Used by
 	 *  the `--once` agent-peer auto-close (Plan 029 T008). */
 	killPane(paneId: string): void;
@@ -84,6 +85,11 @@ export interface DriveState {
 	resentAtMs?: number;
 	/** A needs-human interstitial was already surfaced (don't spam). */
 	flaggedHuman?: boolean;
+	/** One-shot latch: an `answer` interstitial's keys were already pressed. If
+	 *  the modal persists on a later tick (marker/keymap drift in a new harness
+	 *  version) the branch degrades to the needs-human surface — never a
+	 *  key-spam loop (DL-001). */
+	trustAnswered?: boolean;
 	/** A terminal notice (bound/failed) was already delivered. */
 	settled?: boolean;
 	/** Set true the first time the pane goes `busy` after init injection —
@@ -96,6 +102,7 @@ export interface DriveState {
 export type DriveOutcome =
 	| { readonly kind: "boot" } // still booting — nothing to do
 	| { readonly kind: "dismissed"; readonly label: string }
+	| { readonly kind: "answered"; readonly label: string }
 	| { readonly kind: "needs-human"; readonly label: string }
 	| { readonly kind: "injected-init" }
 	| { readonly kind: "bound"; readonly harnessSessionId: string }
@@ -256,12 +263,21 @@ export function driveSession(
 		return fail(descriptor, drive, registry, delivery, "pane reported dead", dr);
 	}
 	if (readiness === "interstitial") {
-		const verdict = classifyInterstitial(pane);
+		const verdict = classifyInterstitial(pane, harness);
+		// Auto-answer (copilot folder-trust, DL-001): press the verdict's keys
+		// EXACTLY ONCE. If the modal is still up on a later tick, the latch makes
+		// this fall through to the needs-human surface below — version drift (or a
+		// wrong digit) degrades to a human ping, never a key-spam loop.
+		if (verdict.action === "answer" && !drive.trustAnswered) {
+			drive.trustAnswered = true;
+			for (const key of verdict.keys ?? []) ports.sendKey(paneId, key);
+			return { kind: "answered", label: verdict.label ?? "interstitial" };
+		}
 		if (verdict.action === "dismiss") {
 			ports.sendKey(paneId, "Escape");
 			return { kind: "dismissed", label: verdict.label ?? "interstitial" };
 		}
-		if (verdict.action === "needs-human") {
+		if (verdict.action === "needs-human" || verdict.action === "answer") {
 			if (!drive.flaggedHuman && descriptor.spawnedBy) {
 				drive.flaggedHuman = true;
 				notify(

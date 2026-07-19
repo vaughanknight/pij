@@ -26,6 +26,10 @@ outside the allowed scope list.
 
 ## Allowed scope (AC-06)
 
+Verify your working directory BEFORE the first edit — run `pwd` and confirm it
+is the repo root this packet targets; any other checkout/worktree → STOP,
+report BLOCKED (never "fix" the path yourself).
+
 You may only write to these files (exactly — no others):
 
 {{ALLOWED_FILES_LIST}}
@@ -59,12 +63,12 @@ Do **NOT** touch any of:
 
 When done:
 
-1. Run `harness checks` (all sensors: typecheck→lint→test→smoke→pkg-audit→snapshots;
-   `--quick` skips smoke for a fast mid-iteration gate). All sensors must pass before
-   reporting — this supersedes `just self-check`'s first-fail behavior (it runs ALL
-   sensors so one pass surfaces every failure).
+1. Run the consuming repo's own gates — typecheck, lint, and the targeted tests for
+   every file you changed, using THIS repo's own commands (check its README/justfile/
+   package scripts; ask the orchestrator if unnamed). All gates must pass before
+   reporting. Never assume another repo's recipes exist here.
 2. Confirm mutation checks on any load-bearing guard you touched.
 3. Reply with a Worker Report per the orchestrator-worker protocol
-   (`references/orchestrator-worker-protocol.md`). Include the literal
-   `Tests N passed (N)` line from vitest and the exact sed expressions used for
-   mutation gates.
+   (`{{SKILL_ROOT}}/references/orchestrator-worker-protocol.md` — absolute path,
+   resolves outside the repo root). Include the literal test-runner pass line
+   (e.g. `Tests N passed (N)`) and the exact mutations used for mutation gates.

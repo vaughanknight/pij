@@ -770,3 +770,30 @@ describe("PijSession.boot — spawned child path (T204)", () => {
 		expect(h.pi.injects).toHaveLength(0); // no announce on reload
 	});
 });
+
+describe("PijSession.noteInboxScan (plan 057 thread-1 — poll-primary liveness heartbeat)", () => {
+	it("persists lastInboxScanAt only at the ~2500ms cadence (per-scan accurate, persisted coarse)", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		// first scan stamps immediately (bootstraps the heartbeat at boot)
+		h.session.noteInboxScan(T0);
+		expect(h.registry.read("alice")?.lastInboxScanAt).toBe(new Date(T0).toISOString());
+		// a scan within the cadence does NOT persist — the stamp is unchanged
+		h.session.noteInboxScan(T0 + 1_000);
+		expect(h.registry.read("alice")?.lastInboxScanAt).toBe(new Date(T0).toISOString());
+		// a scan past the cadence persists the newer stamp
+		h.session.noteInboxScan(T0 + 3_000);
+		expect(h.registry.read("alice")?.lastInboxScanAt).toBe(new Date(T0 + 3_000).toISOString());
+	});
+
+	it("is a no-op before boot — the marker never advances, so the first post-boot scan still stamps", () => {
+		const h = harness();
+		h.session.noteInboxScan(T0); // pre-boot: no descriptor
+		expect(h.registry.read("alice")).toBeNull();
+		h.session.boot(bootInput());
+		// only 100ms after the pre-boot call: without the guard the marker would
+		// have advanced to T0 and this within-cadence scan would skip — it must NOT.
+		h.session.noteInboxScan(T0 + 100);
+		expect(h.registry.read("alice")?.lastInboxScanAt).toBe(new Date(T0 + 100).toISOString());
+	});
+});

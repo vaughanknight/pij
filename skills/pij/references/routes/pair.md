@@ -13,8 +13,14 @@ prompt-learning ledger. This is the delegation *wrapper* — never a replacement
 **Preconditions**: mode detected once per run (§ C1 — control-plane mode also needs the
 one-time self-adopt so colleague replies can reach you); a `pij daemon` (auto-starts on
 first spawn). The **engine is already built** — the `flow-pair` CLI
-(`skills/flow-pair/lib/cli.ts`) + the `.flow-pair/` ledger. This route *drives* that CLI;
-it never reimplements it, never imports it into pi (P2), and never writes the ledger by hand.
+(`<flow-pair skill root>/lib/cli.ts`) + the `.flow-pair/` ledger. This route *drives* that
+CLI; it never reimplements it, never imports it into pi (P2), and never writes the ledger
+by hand.
+
+> **`<flow-pair skill root>`** below = the INSTALLED flow-pair skill directory (the parent
+> of its `lib/`, `references/`, `prompt-lab/`) — a sibling of this pij skill in the skills
+> install dir, NOT a path inside the consuming repo. Rendered packets carry it absolute as
+> `{{SKILL_ROOT}}`, so worker-cited references resolve in any repo.
 
 ## Hard invariants
 
@@ -155,7 +161,7 @@ reads the diff for correctness. So:
   gate), hand-persisted to the review record — that is the law, not the CLI's exit.
 - `fix` is real (renders a narrowed fix packet); **`accept` is unimplemented** (a stub) — do
   not rely on it to close a run; record approval + advance the ledger yourself.
-- Full 10-dimension rubric + verdict model: `skills/flow-pair/references/review-rubrics.md`.
+- Full 10-dimension rubric + verdict model: `<flow-pair skill root>/references/review-rubrics.md`.
 
 ## Invocation
 
@@ -171,17 +177,20 @@ reads the diff for correctness. So:
 ```
 
 Every state-mutating operation shells to the `flow-pair` CLI (never imported into pi — P2
-boundary). Call chain (CLI → lib → ledger): `skills/flow-pair/references/architecture.md`.
+boundary). Call chain (CLI → lib → ledger): `<flow-pair skill root>/references/architecture.md`.
 
 ## Procedure
 
 1. **Resolve intent** → a decision-protocol state (above).
 2. **Load context pack** — the relevant plan sections + **same-cluster** learnings from
-   `prompt-lab/clusters/<cluster>/active.md` only (cluster isolation). Extraction rules:
-   `skills/flow-pair/references/context-packs.md`.
-3. **Render packet** — `skills/flow-pair/references/templates/worker-implement.md` (or
-   `worker-fix.md` for a FIX). These templates are **runtime-read by the engine** — cited,
-   never moved.
+   `<flow-pair skill root>/prompt-lab/clusters/<cluster>/active.md` only (cluster
+   isolation; learnings live under the SKILL root, never the consuming repo — a missing
+   cluster is recorded as a manifest exclusion, not silently empty). Extraction rules:
+   `<flow-pair skill root>/references/context-packs.md`.
+3. **Render packet** — `<flow-pair skill root>/references/templates/worker-implement.md`
+   (or `worker-fix.md` for a FIX). These templates are **runtime-read by the engine** —
+   cited, never moved. The engine injects the absolute skill root as `{{SKILL_ROOT}}` so
+   packet citations resolve in any repo.
 4. **Deliver** — `flow-pair dispatch …` compiles the pack, writes the packet to
    `.flow-pair/runs/<run-id>/prompts/<delegationId>.md`, and prints exactly ONE line:
    `[flow-pair <delegationId>] Packet at: <rel-path>`. Send **that pointer** to the worker
@@ -189,22 +198,26 @@ boundary). Call chain (CLI → lib → ledger): `skills/flow-pair/references/arc
 5. **Review via the reviewer peer** — on the worker's report, compact it FIRST (§ C3), then
    hand the diff to the reviewer (acquire/canary if not live) with the rubric
    (`review-rubrics.md`). **Dim-0 (test quality) is mandatory for CODE packets** — the worker
-   wrote its own tests, so green ≠ good; the reviewer proves them non-vacuous
-   (`just flow-pair-mutate <file> '<sed>'`, or a named-assertion argument) before approval.
-   On the verdict, compact the reviewer FIRST, then run the sanity pass and APPROVE, or loop
+   wrote its own tests, so green ≠ good; the reviewer proves them non-vacuous (a mutation
+   gate using the consuming repo's own test runner — break the guard, rerun the targeted
+   test, confirm RED, restore — or a named-assertion argument) before approval. On the
+   verdict, compact the reviewer FIRST, then run the sanity pass and APPROVE, or loop
    to FIX.
 6. **Learn** — after approval, write a candidate note to
-   `prompt-lab/clusters/<cluster>/candidates/` (never auto-promote to `active.md`).
-7. **End-of-work gate** — before declaring any delegation/phase done, run `harness checks`
-   (all sensors; `--quick` skips smoke mid-iteration, full run before ship). It supersedes
-   `just self-check`'s first-fail behavior (runs ALL sensors, surfaces every failure at once).
+   `<flow-pair skill root>/prompt-lab/clusters/<cluster>/candidates/` (never auto-promote
+   to `active.md`).
+7. **End-of-work gate** — before declaring any delegation/phase done, run the **consuming
+   repo's own gates** (typecheck, lint, tests — its README/justfile/package scripts name
+   them; ask the user if unnamed). Run ALL of them, not first-fail, so one pass surfaces
+   every failure. Never assume another repo's recipes (e.g. pij's `just`/`harness`
+   commands) exist in the target repo.
 
-## References (cited in place — engine-owned, not moved)
+## References (cited in place — engine-owned, not moved; all under `<flow-pair skill root>`)
 
-- `skills/flow-pair/references/review-rubrics.md` — 10-dimension rubric + verdict model
-- `skills/flow-pair/references/ledger-schema.md` — run/delegation/trial/review/learning schemas
-- `skills/flow-pair/references/context-packs.md` — context-pack extraction rules
-- `skills/flow-pair/references/prompt-taxonomy.md` — cluster taxonomy (implement-code, fix-code, review-code, …)
-- `skills/flow-pair/references/architecture.md` — CLI → lib → ledger call chain
-- `skills/flow-pair/references/orchestrator-worker-protocol.md` — packet/report schema + allowed/forbidden-paths contract (also injected by the runtime-read `worker-fix.md`)
-- `skills/flow-pair/references/templates/` — orchestrator-stage · worker-implement · worker-fix · review-synthesis · learning-synthesis (worker-* are runtime-read)
+- `<flow-pair skill root>/references/review-rubrics.md` — 10-dimension rubric + verdict model
+- `<flow-pair skill root>/references/ledger-schema.md` — run/delegation/trial/review/learning schemas
+- `<flow-pair skill root>/references/context-packs.md` — context-pack extraction rules
+- `<flow-pair skill root>/references/prompt-taxonomy.md` — cluster taxonomy (implement-code, fix-code, review-code, …)
+- `<flow-pair skill root>/references/architecture.md` — CLI → lib → ledger call chain
+- `<flow-pair skill root>/references/orchestrator-worker-protocol.md` — packet/report schema + allowed/forbidden-paths contract (cited absolute in rendered packets via `{{SKILL_ROOT}}`)
+- `<flow-pair skill root>/references/templates/` — orchestrator-stage · worker-implement · worker-fix · review-synthesis · learning-synthesis (worker-* are runtime-read)

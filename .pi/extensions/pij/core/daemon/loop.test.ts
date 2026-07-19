@@ -119,6 +119,37 @@ describe("driveSession state machine", () => {
 		expect(w.sentKeys).toHaveLength(0); // never auto-answered
 	});
 
+	it("copilot trust interstitial → answered ONCE (1 + Enter); a persisting modal degrades to needs-human, notify exactly once (DL-001)", () => {
+		const w = world({ pane: TRUST });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = {};
+		const d = desc({ harness: "copilot" });
+		// tick 1 — auto-answer with option 1 (trust once) + Enter, nothing else.
+		expect(driveSession(d, drive, w.ports, reg, del)).toEqual({
+			kind: "answered",
+			label: "folder-trust",
+		});
+		expect(w.sentKeys).toEqual([
+			{ pane: "%1", key: "1" },
+			{ pane: "%1", key: "Enter" },
+		]);
+		// tick 2 — modal persists (version drift): NO key spam, surface to a human.
+		expect(driveSession(d, drive, w.ports, reg, del)).toMatchObject({
+			kind: "needs-human",
+			label: "folder-trust",
+		});
+		expect(w.sentKeys).toHaveLength(2); // still just the one answer attempt
+		// tick 3 — still needs-human, but the creator was notified exactly once.
+		driveSession(d, drive, w.ports, reg, del);
+		expect(del.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(1);
+		expect(
+			del.outbox.some(
+				(e) => e.message.to === "pij-boss" && e.message.body.includes("folder-trust"),
+			),
+		).toBe(true);
+	});
+
 	it("ready + not-yet-injected → injects init once and marks initInjectedAt", () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry([desc()]);

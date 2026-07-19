@@ -1,7 +1,6 @@
 import {
 	chmodSync,
 	closeSync,
-	fsyncSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
@@ -11,7 +10,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { FocusManifest, HarnessKind } from "../core/types.js";
-import { writeJsonAtomic } from "./atomic-file.js";
+import { maybeFsyncSync, writeJsonAtomic } from "./atomic-file.js";
 
 const FOCUS_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -77,7 +76,7 @@ export class FsFocusStore {
 		const fd = openSync(path, "wx", 0o600);
 		try {
 			writeFileSync(fd, contents);
-			fsyncSync(fd);
+			maybeFsyncSync(fd);
 		} finally {
 			closeSync(fd);
 		}

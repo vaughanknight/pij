@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
@@ -125,7 +126,7 @@ describe("pij index — footer status bar", () => {
 
 		const pijStatus = statuses.find((s) => s.key === "pij");
 		expect(pijStatus).toBeDefined();
-		expect(pijStatus?.value).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(pijStatus?.value).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 
 		// Best-effort cleanup of any FS watcher opened by session_start.
 		try {
@@ -142,7 +143,7 @@ describe("pij index — footer status bar", () => {
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		const first = statuses.at(-1)?.value;
-		expect(first).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(first).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
 		expect(statuses.at(-1)?.value).toBe(first);
@@ -150,7 +151,7 @@ describe("pij index — footer status bar", () => {
 		setSessionId("native-new");
 		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
 		const second = statuses.at(-1)?.value;
-		expect(second).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(second).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(second).not.toBe(first);
 
 		const opaqueNative = "native-existing-opaque";
@@ -199,7 +200,7 @@ describe("pij index — footer status bar", () => {
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		const id = statuses.at(-1)?.value;
-		expect(id).toMatch(/^pij-[a-z]+-[a-z]+$/);
+		expect(id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
 		expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({ id });
 
 		await handlers.get("session_shutdown")?.({}, ctx);

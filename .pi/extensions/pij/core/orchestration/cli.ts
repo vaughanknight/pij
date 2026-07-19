@@ -501,7 +501,7 @@ export function dispatchOrchestration(
 			return success(
 				command.json
 					? JSON.stringify(result.value)
-					: `requested baton '${command.name}' as ${result.value.request.id} · ${receiptText(result.value.receipt.state)}`,
+					: `requested baton '${command.name}' as ${result.value.request.id} (filed as: ${result.value.request.requester}) · ${receiptText(result.value.receipt.state)}`,
 			);
 		}
 		case "grant": {

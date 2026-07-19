@@ -60,6 +60,11 @@ export default defineConfig({
 			...(hasNodeSqlite() ? [] : SQLITE_DEPENDENT_TESTS),
 		],
 		testTimeout: 5000,
+		// Skip physical fsync barriers in tests (adapters/atomic-file.ts
+		// maybeFsyncSync): 18 fsync sites x 16 parallel workers on one disk
+		// starved boot-path tests into 20s+ timeouts. Ordering/content
+		// assertions are unaffected; production always fsyncs.
+		env: { PIJ_TEST_NO_FSYNC: "1" },
 		reporters: process.env.CI ? ["default", "github-actions"] : ["default"],
 		// A fresh clone with no extensions yet (and post-demo-teardown at
 		// v1 ship) has no .test.ts files. Vitest's default is exit 1 in

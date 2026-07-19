@@ -1,4 +1,4 @@
-#!/usr/bin/env -S NODE_NO_WARNINGS=1 npx tsx
+#!/usr/bin/env -S NODE_NO_WARNINGS=1 npm_config_loglevel=error npm_config_yes=true npx tsx
 // pij-messaging — the `pij` CLI bin. THIN: wires the real fs adapters to the
 // pure core/cli.ts, owns Node I/O (argv, stdout/stderr, exit) and the only two
 // imperative loops (--follow tail, --wait receipt poll). Pi-free by design —
@@ -155,6 +155,7 @@ import {
 	buildSpawnWarning,
 	deriveCallerParent,
 	livePeerPanes,
+	markCompactingSelf,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseSpawnArgs,
@@ -212,7 +213,7 @@ Platform (durable projects + the shared spine log):
   pij project list [--json]                          all projects, sorted by slug
   pij project show <slug> [--json]                   one full project record
   pij project set <slug> [--plan <path>] [--prime <id>] [--actor <label>] [--json]   update a project's plan/prime
-  pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--actor <label>] [--json]   append one spine event
+  pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--bare] [--actor <label>] [--json]   append one spine event
   pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
   pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
   pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it
@@ -230,7 +231,8 @@ Messaging:
   pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
                                                         repository forest by default; global forest or arbitrary subtree on request
   pij link <child> --parent <parent> | --root [--actor <label>] [--json]  reparent or explicitly root a session without changing close ownership (audited as a node-linked spine event)
-  pij send <id> "<text>" | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
+  pij send <id> "<text>" | <id> --body-file <path|-> | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
+                                                     (--body-file/- reads the body LITERALLY — use it for text with backticks/$( ; a double-quoted body substitutes in YOUR shell before pij runs)
                                                         deliver one message, broadcast text, or run a control command
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
@@ -1478,6 +1480,22 @@ function runCompactSelf(argv: readonly string[]): void {
 		process.exit(2);
 	}
 
+	// DL-004: best-effort mark the compact window on the caller's descriptor so
+	// the daemon HOLDS inbox drain while this pane compacts (an injection into
+	// the compact window is eaten by the harness's fresh-context reset). An
+	// unregistered/unresolvable pane gets no mark — send-keys behavior unchanged.
+	try {
+		const reg = new FsRegistry(pijHome);
+		const self = resolveSelf(
+			process.env.PIJ_SESSION_ID,
+			filterByFolder(reg.list(), process.cwd()),
+			pane,
+		);
+		if (self.ok) markCompactingSelf(reg, self.value, new Date().toISOString());
+	} catch {
+		/* best-effort — compacting still works without the daemon hold */
+	}
+
 	typeLiteral(pane, "/compact", execFileRunner);
 	// Settle so the paste/slash-menu detection resolves before Enter (same lesson
 	// as the daemon's send-keys — fire Enter too soon and it's swallowed).
@@ -2083,11 +2101,13 @@ function runClose(argv: readonly string[]): void {
 	// Resolve who's asking (PIJ_SESSION_ID → lone-local → $TMUX_PANE) for the
 	// ownership check. Unresolved self is fine — a non-owner without --force is
 	// refused either way, and --force always proceeds.
-	const selfRes = resolveSelf(
-		process.env.PIJ_SESSION_ID,
-		filterByFolder(reg.list(), process.cwd()),
-		process.env.TMUX_PANE,
-	);
+	// INS-004 interim (close is the 3rd site of the caller-identity resolution bug):
+	// route through the STRONG full-registry-pane resolver (orchestrationSelf) instead
+	// of the folder-starving weak path, so a seat closing its OWN peer from a shell
+	// whose cwd != its recorded folder resolves instead of being refused as a
+	// non-owner (blocked teardown → accumulating seats). Full consolidation onto one
+	// canonical resolver (+ hyena's s051 pid seam) follows as Stream-3 work.
+	const selfRes = orchestrationSelf(reg);
 	const self = selfRes.ok ? selfRes.value : undefined;
 	const plan = planClose(descriptor, parsed.value.id, self, parsed.value.force);
 	if (!plan.ok) {
@@ -2247,11 +2267,13 @@ class CliBatonNoticeSink implements BatonNoticeSink {
 
 function orchestrationActor(registry: FsRegistry): string {
 	if (process.env.PIJ_SESSION_ID) return process.env.PIJ_SESSION_ID;
-	const resolved = resolveSelf(
-		undefined,
-		filterByFolder(registry.list(), process.cwd()),
-		process.env.TMUX_PANE,
-	);
+	// Reuse the SAME shared resolver the `prime` primitive uses (deps.resolveSelf):
+	// orchestrationSelf tries a $TMUX_PANE match against the FULL registry BEFORE the
+	// folder-filtered path, so a seat filing from a shell whose cwd differs from its
+	// recorded folder still resolves to its real id instead of the silent 'operator'
+	// phantom (identity-attribution fix-loop). The pane/pid enhancement rides s051's
+	// adopt resolver (G7) through this same seam — no second resolver forked here.
+	const resolved = orchestrationSelf(registry);
 	return resolved.ok ? resolved.value : "operator";
 }
 
@@ -2893,7 +2915,53 @@ function main(): void {
 		process.stderr.write("E-NOREG: no pij registry — is the pij extension loaded?\n");
 		process.exit(3);
 	}
-	const parsed = parseArgs(process.argv.slice(2));
+	// T8 (dogfood, mastodon#3): `pij <verb> [sub] --help` prints that verb's
+	// USAGE lines and exits 0 — before this, subcommand --help was a bare
+	// E-ARG. Generic: filter the one usage text by the verb token, so every
+	// verb family gets --help for free and the surface can never drift from
+	// the documented one.
+	if (process.argv.includes("--help") && process.argv.length > 3) {
+		const verb = process.argv[2] ?? "";
+		const lines = USAGE.split("\n").filter((l) => l.includes(`pij ${verb}`));
+		process.stdout.write(lines.length > 0 ? `${lines.join("\n")}\n` : USAGE);
+		process.exit(0);
+	}
+	// T2 (dogfood, osk#4): a literal-body channel that bypasses the caller's
+	// shell entirely — double-quoted backticks/$( substitute in the SENDER'S
+	// shell before pij ever runs (osk accidentally executed `pij close` from
+	// quoted text). `--body-file <path>` (or `-` for stdin) reads the body raw.
+	let argvForParse = process.argv.slice(2);
+	const bodyFileIdx = argvForParse.indexOf("--body-file");
+	if (bodyFileIdx !== -1) {
+		if (argvForParse[0] !== "send") {
+			process.stderr.write("E-ARG: --body-file is a send flag\n");
+			process.exit(64);
+		}
+		const bodyPath = argvForParse[bodyFileIdx + 1];
+		if (bodyPath === undefined || bodyPath.startsWith("--")) {
+			process.stderr.write("E-ARG: --body-file takes a path (or - for stdin)\n");
+			process.exit(64);
+		}
+		let body: string;
+		try {
+			body = readFileSync(bodyPath === "-" ? 0 : bodyPath, "utf8");
+		} catch (error) {
+			process.stderr.write(`E-ARG: --body-file: ${String(error)}\n`);
+			process.exit(64);
+		}
+		const rest = [...argvForParse.slice(0, bodyFileIdx), ...argvForParse.slice(bodyFileIdx + 2)];
+		// The file IS the body: refuse a competing positional body (send's body
+		// is the sole non-flag positional after the target id).
+		const positionals = rest.filter(
+			(a, i) => i > 0 && !a.startsWith("--") && rest[i - 1]?.startsWith("--") !== true,
+		);
+		if (positionals.length > 1) {
+			process.stderr.write("E-ARG: --body-file replaces the body — drop the inline text\n");
+			process.exit(64);
+		}
+		argvForParse = [...rest, body.trimEnd()];
+	}
+	const parsed = parseArgs(argvForParse);
 	if (!parsed.ok) {
 		// A top-level unknown verb gets the COMPLETE surface (core only lists the
 		// messaging verbs); per-verb arity/flag errors keep core's precise message.
@@ -2937,11 +3005,17 @@ function main(): void {
 		);
 		return;
 	}
-	// Exit only after stdout drains: a hard process.exit() races the pipe
-	// buffer and truncates any payload past 64KB (dogfood: `tree --global
-	// --json` over 1394 descriptors cut at exactly 65536 bytes). The empty
-	// write's callback queues behind every buffered chunk.
-	process.stdout.write("", () => process.exit(res.exitCode));
+	// Flush stdout fully before exiting. A hard process.exit() races the pipe
+	// buffer and truncates any payload past the pipe boundary (dogfood: `tree
+	// --global --json` and `spine events --json` cut at 64KB of a 1.1MB payload).
+	// Both `stdout.write("", () => process.exit())` and this exitCode form drain
+	// fully in testing (delayed-reader integration test below), so this is a
+	// hardening, not a bug fix: setting exitCode and returning is the idiomatic,
+	// unambiguously-correct pattern — it makes no assumption about empty-write
+	// callback ordering and lets Node drain stdout naturally before exit.
+	// (Read/dispatch verbs open no ref'd handles; the follow verbs above return
+	// early and own their own exit.)
+	process.exitCode = res.exitCode;
 }
 
 main();

@@ -2,12 +2,13 @@
 // T001: extractSection (6 tests) + T002: clusterLearnings (3 tests)
 // All tests go RED against the stub (which throws "not implemented").
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ContextPackCompiler } from "../lib/context-pack.js";
+import { FLOW_PAIR_SKILL_ROOT } from "../lib/paths.js";
 
 // ─── Shared fixture helpers ───────────────────────────────────────────────────
 
@@ -131,38 +132,49 @@ describe("ContextPackCompiler.extractSection — T001", () => {
 });
 
 // ─── T002: clusterLearnings ───────────────────────────────────────────────────
+// DL-003: learnings resolve from the SKILL root (4th ctor arg), never repoRoot.
 
 describe("ContextPackCompiler.clusterLearnings — T002", () => {
 	let tmpRoot: string;
+	let repoRoot: string;
+	let skillRoot: string;
 	let compiler: ContextPackCompiler;
 
 	beforeEach(async () => {
 		tmpRoot = await mkdtemp(join(tmpdir(), "fp-cluster-"));
-		compiler = new ContextPackCompiler(tmpRoot, tmpRoot);
+		repoRoot = join(tmpRoot, "repo");
+		skillRoot = join(tmpRoot, "skill");
+		mkdirSync(repoRoot, { recursive: true });
+		mkdirSync(skillRoot, { recursive: true });
+		compiler = new ContextPackCompiler(repoRoot, repoRoot, undefined, skillRoot);
 	});
 
 	afterEach(async () => {
 		await rm(tmpRoot, { recursive: true, force: true });
 	});
 
-	it("returns {ok:true, learnings:[]} when cluster dir absent (graceful — Phase 7 not built)", () => {
+	it("returns {ok:true, learnings:[]} + searchedPath when cluster dir absent (graceful — honest miss)", () => {
 		// No cluster dir created at all
 		const result = compiler.clusterLearnings("implement-code");
 		expect(result.ok).toBe(true);
 		expect(result.learnings).toEqual([]);
+		expect(result.searchedPath).toBe(
+			join(skillRoot, "prompt-lab/clusters/implement-code/active.md"),
+		);
 	});
 
-	it("returns {ok:true, learnings:[]} when cluster dir exists but active.md absent", () => {
-		mkdirSync(join(tmpRoot, "skills/flow-pair/prompt-lab/clusters/implement-code"), {
+	it("returns {ok:true, learnings:[]} + searchedPath when cluster dir exists but active.md absent", () => {
+		mkdirSync(join(skillRoot, "prompt-lab/clusters/implement-code"), {
 			recursive: true,
 		});
 		const result = compiler.clusterLearnings("implement-code");
 		expect(result.ok).toBe(true);
 		expect(result.learnings).toEqual([]);
+		expect(result.searchedPath).toContain("active.md");
 	});
 
-	it("returns one ClusterLearning entry with correct content when active.md present", () => {
-		const clusterDir = join(tmpRoot, "skills/flow-pair/prompt-lab/clusters/implement-code");
+	it("returns one ClusterLearning entry with correct content when active.md present under skillRoot", () => {
+		const clusterDir = join(skillRoot, "prompt-lab/clusters/implement-code");
 		mkdirSync(clusterDir, { recursive: true });
 		const activeContent = "# Learnings\nAlways TDD first.";
 		writeFileSync(join(clusterDir, "active.md"), activeContent, "utf8");
@@ -173,5 +185,26 @@ describe("ContextPackCompiler.clusterLearnings — T002", () => {
 		expect(result.learnings?.[0]?.cluster).toBe("implement-code");
 		expect(result.learnings?.[0]?.content).toBe(activeContent);
 		expect(result.learnings?.[0]?.sourcePath).toContain("active.md");
+	});
+
+	it("DL-003 root fix: repoRoot-joined layout is IGNORED — only skillRoot is searched (mutation guard: rejoin repoRoot → RED)", () => {
+		// Old (buggy) layout under the CONSUMING repo — must not be picked up.
+		const repoClusterDir = join(repoRoot, "skills/flow-pair/prompt-lab/clusters/implement-code");
+		mkdirSync(repoClusterDir, { recursive: true });
+		writeFileSync(join(repoClusterDir, "active.md"), "REPO-ROOT LEARNINGS — WRONG", "utf8");
+
+		const result = compiler.clusterLearnings("implement-code");
+		expect(result.ok).toBe(true);
+		expect(result.learnings).toEqual([]);
+		expect(result.searchedPath).toContain(skillRoot);
+	});
+
+	it("defaults skillRoot to the installed flow-pair skill root (absolute)", () => {
+		const defaulted = new ContextPackCompiler(repoRoot, repoRoot);
+		expect(isAbsolute(defaulted.skillRoot)).toBe(true);
+		expect(defaulted.skillRoot).toBe(FLOW_PAIR_SKILL_ROOT);
+		// The installed root really is the flow-pair skill dir (has prompt-lab/ + references/)
+		expect(existsSync(join(defaulted.skillRoot, "prompt-lab"))).toBe(true);
+		expect(existsSync(join(defaulted.skillRoot, "references", "templates"))).toBe(true);
 	});
 });

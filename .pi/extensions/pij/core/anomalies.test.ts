@@ -7,7 +7,12 @@
 // non-issuer — each with spine-seq evidence refs.
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_IDLE_DISAGREEMENT_MS, detectAnomalies } from "./anomalies.js";
+import {
+	DEFAULT_IDLE_DISAGREEMENT_MS,
+	DEFAULT_INBOX_POLL_STALL_MS,
+	DEFAULT_SPAWN_LIMBO_MS,
+	detectAnomalies,
+} from "./anomalies.js";
 import type { Assignment, SpineEvent } from "./platform/types.js";
 import type { SessionDescriptor } from "./types.js";
 
@@ -284,5 +289,160 @@ describe("foreign hold-clear (hold released by an actor other than its issuer)",
 				nowMs: NOW,
 			}).filter((x) => x.kind === "foreign-hold-clear"),
 		).toHaveLength(0);
+	});
+});
+
+describe("spawn-limbo (T1 — the bind-zombie class the watchdog cannot see)", () => {
+	const NOW_MS = NOW;
+	function limboDesc(over: Partial<SessionDescriptor> & { id: string }): SessionDescriptor {
+		return desc({
+			lifecycle: "pending",
+			startedAt: new Date(NOW_MS - 10 * 60_000).toISOString(),
+			...over,
+		});
+	}
+
+	it("a seat pending past the deadline fires with an honest zero-events detail", () => {
+		const anomalies = detectAnomalies({
+			descriptors: [limboDesc({ id: "pij-wedged" })],
+			assignments: [],
+			events: [],
+			nowMs: NOW_MS,
+		});
+		const limbo = anomalies.filter((a) => a.kind === "spawn-limbo");
+		expect(limbo).toHaveLength(1);
+		expect(limbo[0]?.nodeId).toBe("pij-wedged");
+		expect(limbo[0]?.detail).toContain("never bound");
+		expect(limbo[0]?.detail).toContain("zero spine events");
+		expect(limbo[0]?.evidence).toEqual([]);
+	});
+
+	it("ready counts as limbo too; bound never does; young pending never does", () => {
+		const ready = limboDesc({ id: "pij-r", lifecycle: "ready" });
+		const bound = limboDesc({ id: "pij-b", lifecycle: "bound" });
+		const young = limboDesc({
+			id: "pij-y",
+			startedAt: new Date(NOW_MS - 2 * 60_000).toISOString(),
+		});
+		const kinds = detectAnomalies({
+			descriptors: [ready, bound, young],
+			assignments: [],
+			events: [],
+			nowMs: NOW_MS,
+		}).filter((a) => a.kind === "spawn-limbo");
+		expect(kinds.map((a) => a.nodeId)).toEqual(["pij-r"]);
+	});
+
+	it("cites the seat's own spine events as evidence when any exist", () => {
+		const anomalies = detectAnomalies({
+			descriptors: [limboDesc({ id: "pij-wedged" })],
+			assignments: [],
+			events: [ev({ seq: 9, kind: "system-state", peer: "pij-wedged" })],
+			nowMs: NOW_MS,
+		});
+		expect(anomalies.find((a) => a.kind === "spawn-limbo")?.evidence).toEqual([9]);
+	});
+
+	it("the deadline is generous — default is minutes-scale, several times a slow cold boot", () => {
+		expect(DEFAULT_SPAWN_LIMBO_MS).toBeGreaterThanOrEqual(5 * 60_000);
+	});
+});
+
+describe("axis-disagreement remedy hint (mastodon intake — a confusing alarm becomes self-clearing)", () => {
+	it("the detail names the self-serve remedy with the node's own id", () => {
+		const idler = desc({
+			id: "pij-lost",
+			lifecycle: "bound",
+			systemState: "idle",
+			state: "idle",
+			lastEventAt: new Date(NOW - H44).toISOString(),
+		});
+		const a = detectAnomalies({
+			descriptors: [idler],
+			assignments: [asg({ id: "asg-d", nodeId: "pij-lost" })],
+			events: [],
+			nowMs: NOW,
+		}).find((x) => x.kind === "axis-disagreement");
+		expect(a?.detail).toContain("pij state set pij-lost waiting|hold|blocked|question");
+		expect(a?.detail).toContain("parked states never flag");
+	});
+});
+
+describe("inbox-poll-stalled (plan 057 thread-1 — poll-primary delivery liveness)", () => {
+	const STALL = DEFAULT_INBOX_POLL_STALL_MS;
+
+	function stalledOnly(descriptors: SessionDescriptor[], nowMs = NOW, over: object = {}) {
+		return detectAnomalies({ descriptors, assignments: [], events: [], nowMs, ...over }).filter(
+			(x) => x.kind === "inbox-poll-stalled",
+		);
+	}
+
+	it("flags a BOUND seat whose poll stamp is older than the threshold — evidence is the frozen stamp ms", () => {
+		const scanMs = NOW - (STALL + 2_000);
+		const a = stalledOnly([
+			desc({
+				id: "pij-stalled",
+				lifecycle: "bound",
+				lastInboxScanAt: new Date(scanMs).toISOString(),
+			}),
+		]);
+		expect(a).toHaveLength(1);
+		expect(a[0]?.nodeId).toBe("pij-stalled");
+		expect(a[0]?.evidence).toEqual([scanMs]);
+		expect(a[0]?.detail).toContain("stranding messages");
+	});
+
+	it("does NOT flag a BOUND seat whose stamp is fresh (within threshold)", () => {
+		expect(
+			stalledOnly([
+				desc({
+					id: "pij-fresh",
+					lifecycle: "bound",
+					lastInboxScanAt: new Date(NOW - 1_000).toISOString(),
+				}),
+			]),
+		).toHaveLength(0);
+	});
+
+	it("does NOT flag a seat with NO stamp — a non-self-polling seat (tmux, daemon-drained) never registers", () => {
+		expect(stalledOnly([desc({ id: "pij-tmux", lifecycle: "bound" })])).toHaveLength(0);
+	});
+
+	it("does NOT flag a non-bound seat even with a stale stamp (only live-bound delivery loops are watched)", () => {
+		expect(
+			stalledOnly([
+				desc({
+					id: "pij-ready",
+					lifecycle: "ready",
+					lastInboxScanAt: new Date(NOW - (STALL + 10_000)).toISOString(),
+				}),
+			]),
+		).toHaveLength(0);
+	});
+
+	it("re-alerts per episode: a fresh stall after recovery has a new evidence key", () => {
+		const first = NOW - (STALL + 1_000);
+		const second = NOW - (STALL + 500); // a later, distinct frozen stamp
+		const a1 = stalledOnly([
+			desc({ id: "pij-x", lifecycle: "bound", lastInboxScanAt: new Date(first).toISOString() }),
+		]);
+		const a2 = stalledOnly([
+			desc({ id: "pij-x", lifecycle: "bound", lastInboxScanAt: new Date(second).toISOString() }),
+		]);
+		expect(a1[0]?.evidence).toEqual([first]);
+		expect(a2[0]?.evidence).toEqual([second]);
+		expect(a1[0]?.evidence).not.toEqual(a2[0]?.evidence); // distinct latch key => re-alert
+	});
+
+	it("honors an override threshold", () => {
+		const seat = [
+			desc({
+				id: "pij-tuned",
+				lifecycle: "bound",
+				lastInboxScanAt: new Date(NOW - 4_000).toISOString(),
+			}),
+		];
+		expect(stalledOnly(seat)).toHaveLength(0); // 4s-stale not flagged at the 6s default
+		expect(stalledOnly(seat, NOW, { inboxPollStallMs: 3_000 })).toHaveLength(1); // flagged at 3s
 	});
 });

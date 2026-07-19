@@ -300,7 +300,7 @@ export class DaemonTmux implements DaemonPorts {
 		return "unverified";
 	}
 
-	sendKey(paneId: string, key: "Escape" | "Enter"): void {
+	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void {
 		pressKey(paneId, key, 1, this.runner);
 	}
 

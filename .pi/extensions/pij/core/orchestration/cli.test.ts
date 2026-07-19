@@ -329,3 +329,45 @@ describe("prime orchestration dispatch", () => {
 		expect(ambiguous.registry.list().every((item) => item.prime === undefined)).toBe(true);
 	});
 });
+
+describe("baton request dispatch — 'filed as:' visibility (identity-attribution fix-loop)", () => {
+	function dispatch(store: FakeBatonStore, actor: string, args: string[]) {
+		const parsed = parseOrchestrationArgs(args);
+		if (!parsed.ok) throw new Error(parsed.message);
+		return dispatchOrchestration(parsed.command, {
+			service: new BatonService({
+				store,
+				notices: new FakeBatonNoticeSink(),
+				now: () => 0,
+				newId: () => "req-1",
+			}),
+			actor,
+			currentHead: () => null,
+			primeService: new PrimeService(new FakeRegistry([])),
+			resolveSelf: () => resultOk(actor),
+		});
+	}
+
+	it("echoes the recorded requester so a silent 'operator' phantom is self-evident, not concealed", () => {
+		const store = new FakeBatonStore();
+		expect(
+			dispatch(store, "operator", ["baton", "define", "b1", "--resource", "the build"]).exitCode,
+		).toBe(0);
+		const res = dispatch(store, "operator", ["baton", "request", "b1", "--purpose", "ship it"]);
+		expect(res.exitCode).toBe(0);
+		expect(res.stdout).toContain("filed as: operator");
+	});
+
+	it("shows the real seat id when the requester resolves to a genuine seat", () => {
+		const store = new FakeBatonStore();
+		dispatch(store, "pij-superior-mastodon", ["baton", "define", "b2", "--resource", "the build"]);
+		const res = dispatch(store, "pij-superior-mastodon", [
+			"baton",
+			"request",
+			"b2",
+			"--purpose",
+			"ship it",
+		]);
+		expect(res.stdout).toContain("filed as: pij-superior-mastodon");
+	});
+});

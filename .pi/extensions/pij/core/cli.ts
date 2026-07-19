@@ -12,6 +12,7 @@ import { chainStateOf, detectAnomalies } from "./anomalies.js";
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
+import { isCompacting } from "./daemon/router.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { closestModel } from "./models/match.js";
@@ -511,7 +512,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	"project list": new Set(["json"]),
 	"project show": new Set(["json"]),
 	"project set": new Set(["plan", "prime", "actor", "json"]),
-	"spine append": new Set(["kind", "refs", "peer", "project", "actor", "json"]),
+	"spine append": new Set(["kind", "refs", "peer", "project", "actor", "bare", "json"]),
 	"spine events": new Set(["since", "peer", "project", "json"]),
 	"spine render": new Set(["project", "json"]),
 	// plan 054 P2 (T005). --project/--assignment/--refs are not in
@@ -1025,6 +1026,21 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 							.map((ref) => ref.trim())
 							.filter((ref) => ref !== "")
 					: [];
+			// Probe-safety (dogfood: two stray junk events in one day — seq 1538
+			// 'x', seq 2785 projectless): a kind-only append with NO linking
+			// context is almost always an accidental usage probe against an
+			// irreversible log. Deliberate bare events opt in with --bare.
+			if (
+				refs.length === 0 &&
+				typeof flags.peer !== "string" &&
+				typeof flags.project !== "string" &&
+				flags.bare !== true
+			) {
+				return err(
+					"E-ARG",
+					"kind-only append with no --refs/--project/--peer — the spine is append-only and this is usually an accidental probe; link the event, or pass --bare to append deliberately",
+				);
+			}
 			return ok({
 				verb: "spine-append",
 				kind,
@@ -1309,9 +1325,11 @@ function renderBroadcastSuccess(
 			? target.deliveryMode === "pull"
 				? "queued: awaiting inbox check"
 				: daemonReceiptAuthoritative(target)
-					? result.daemonTickStale
-						? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
-						: "queued: awaiting daemon delivery confirmation"
+					? isCompacting(target, now)
+						? "queued: target compacting"
+						: result.daemonTickStale
+							? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
+							: "queued: awaiting daemon delivery confirmation"
 					: "queued: peer is busy, will steer after current turn"
 			: "delivered: peer was idle";
 	const targetAgeMs = descAgeMs(target, now);
@@ -1833,9 +1851,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					? target.deliveryMode === "pull"
 						? "queued: awaiting inbox check"
 						: daemonReceiptAuthoritative(target)
-							? tickStatus?.daemonTickStale
-								? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
-								: "queued: awaiting daemon delivery confirmation"
+							? isCompacting(target, now)
+								? "queued: target compacting"
+								: tickStatus?.daemonTickStale
+									? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
+									: "queued: awaiting daemon delivery confirmation"
 							: "queued: peer is busy, will steer after current turn"
 					: "delivered: peer was idle";
 			const tail = cmd.wait
