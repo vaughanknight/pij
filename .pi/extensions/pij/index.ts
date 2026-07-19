@@ -8,7 +8,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { FsChannel } from "./adapters/channel.js";
+import { FsChannel, pollPrimaryWatchOpts } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
@@ -280,7 +280,10 @@ export default function (pi: ExtensionAPI): void {
 			registry.remove(previousSelf);
 		}
 		eventLog = new FsEventLog(pijHome, self);
-		const channel = new FsChannel(pijHome);
+		// Poll-primary delivery: this live self-inbox watcher drops fs.watch (no-op
+		// watchFactory) and drains via the 500ms poll — no silent FSEvents drop
+		// under load, and prod == what the boot tests exercise (plan 057 thread-1).
+		const channel = new FsChannel(pijHome, pollPrimaryWatchOpts());
 		session = new PijSession({
 			registry,
 			eventLog,

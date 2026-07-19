@@ -16,10 +16,6 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Footer tests drive real debounce/poll timers; under full-suite parallel load
-// the default 5s budget flakes (DL-002 — 4 red runs in one day, always green in
-// isolation). Budget raised as a band-aid; the real fix is fake timers.
-vi.setConfig({ testTimeout: 20_000 });
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";

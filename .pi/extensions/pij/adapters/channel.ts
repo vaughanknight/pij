@@ -69,6 +69,27 @@ const DEBOUNCE_MS = 20;
 // A low-frequency poll guarantees a missed event still drains within POLL_MS.
 const POLL_MS = 1500;
 
+/** Poll-primary delivery cadence for LIVE inbox watchers (plan 057 thread-1
+ *  design read). Sits just under the daemon's 600ms tmux tick so a pi self-inbox
+ *  is never less responsive than a tmux seat the daemon polls — a <=520ms
+ *  (cadence + DEBOUNCE_MS) LOAD-INDEPENDENT delivery SLA. */
+export const POLL_PRIMARY_DELIVERY_MS = 500;
+
+/** The live inbox watchers (pi self-inbox, telegram peer) DROP fs.watch and let
+ *  the poll be the sole delivery driver. Rationale (design read): FSEvents is
+ *  costly to open (~0.6-1.6s/handle, DL-004) and drops events SILENTLY under
+ *  load — exactly when a busy/compacting seat most needs delivery — and a
+ *  no-op-watched channel makes shipped==tested (CI drives the real prod path).
+ *  A stalled poll loop is caught by the `inbox-poll-stalled` liveness anomaly.
+ *  Deliver-only channels never call watch(), so this is only wired at the two
+ *  live watch sites. */
+export function pollPrimaryWatchOpts(): {
+	pollMs: number;
+	watchFactory: () => { close(): void };
+} {
+	return { pollMs: POLL_PRIMARY_DELIVERY_MS, watchFactory: () => ({ close() {} }) };
+}
+
 export class FsChannel {
 	private seq = 0;
 
