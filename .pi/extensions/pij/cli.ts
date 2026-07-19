@@ -2101,11 +2101,13 @@ function runClose(argv: readonly string[]): void {
 	// Resolve who's asking (PIJ_SESSION_ID → lone-local → $TMUX_PANE) for the
 	// ownership check. Unresolved self is fine — a non-owner without --force is
 	// refused either way, and --force always proceeds.
-	const selfRes = resolveSelf(
-		process.env.PIJ_SESSION_ID,
-		filterByFolder(reg.list(), process.cwd()),
-		process.env.TMUX_PANE,
-	);
+	// INS-004 interim (close is the 3rd site of the caller-identity resolution bug):
+	// route through the STRONG full-registry-pane resolver (orchestrationSelf) instead
+	// of the folder-starving weak path, so a seat closing its OWN peer from a shell
+	// whose cwd != its recorded folder resolves instead of being refused as a
+	// non-owner (blocked teardown → accumulating seats). Full consolidation onto one
+	// canonical resolver (+ hyena's s051 pid seam) follows as Stream-3 work.
+	const selfRes = orchestrationSelf(reg);
 	const self = selfRes.ok ? selfRes.value : undefined;
 	const plan = planClose(descriptor, parsed.value.id, self, parsed.value.force);
 	if (!plan.ok) {
