@@ -31,7 +31,8 @@ export type AnomalyKind =
 	| "axis-disagreement"
 	| "unverified-done"
 	| "foreign-hold-clear"
-	| "spawn-limbo";
+	| "spawn-limbo"
+	| "inbox-poll-stalled";
 
 /** A seat may sit pre-bind this long before it reads as a wedged boot. The
  *  watchdog cannot see pending/ready seats (eligible() excludes them by
@@ -41,6 +42,15 @@ export type AnomalyKind =
  *  legitimately slow bind — 8min false-alarms nobody and still beats the
  *  2.5-day silent loss by ~450x. Harness-aware deadlines: assessment agenda. */
 export const DEFAULT_SPAWN_LIMBO_MS = 8 * 60_000;
+
+/** A live-bound seat's inbox delivery poll must have stamped `lastInboxScanAt`
+ *  at least this recently, or the poll loop has stalled (plan 057 thread-1,
+ *  poll-primary delivery). 6s sits well above the ~2500ms persist cadence's
+ *  healthy max (~3s) with margin, giving a STATED worst-case detection SLA of
+ *  ~6.6s (threshold + one 600ms daemon tick) — under the 10s target. A stalled
+ *  poll is the poll-primary analogue of a silent fs.watch drop: previously the
+ *  watch death was NEVER detected; now a stale stamp surfaces it. */
+export const DEFAULT_INBOX_POLL_STALL_MS = 6_000;
 
 export interface Anomaly {
 	readonly kind: AnomalyKind;
@@ -58,6 +68,7 @@ export interface AnomalyInputs {
 	readonly nowMs: number;
 	readonly idleThresholdMs?: number;
 	readonly spawnLimboMs?: number;
+	readonly inboxPollStallMs?: number;
 }
 
 /** The declared-state view of one assignment's chain (states[] seqs joined
@@ -151,6 +162,31 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			nodeId: node.id,
 			detail: `'${node.id}' spawned ${Math.round(ageMs / 60_000)}min ago and is still '${node.lifecycle}' — never bound (wedged boot? the watchdog cannot see pre-bind seats${evidence.length === 0 ? "; zero spine events, which is itself the symptom" : ""})`,
 			evidence,
+		});
+	}
+
+	// inbox-poll-stalled (plan 057 thread-1): poll-primary delivery's liveness
+	// heartbeat. A BOUND seat stamps `lastInboxScanAt` from its delivery poll loop
+	// (persisted at a coarse ~2500ms cadence); a stamp older than the threshold
+	// means the poll stalled — a long synchronous block, or a seat that stopped
+	// draining — so inbound messages may be stranded. This is the poll-primary
+	// analogue of the silent fs.watch drop, now OBSERVABLE. Evidence = the frozen
+	// stamp (ms): a persisting stall latches ONE alert, while a fresh stall after
+	// recovery has a new stamp → re-alerts. Absent stamp = a seat that does not
+	// self-poll (tmux is drained by the daemon tick) — skipped, no false positive.
+	const stallMs = inputs.inboxPollStallMs ?? DEFAULT_INBOX_POLL_STALL_MS;
+	for (const node of inputs.descriptors) {
+		if (node.lifecycle !== "bound") continue;
+		if (node.lastInboxScanAt === undefined) continue;
+		const scanMs = Date.parse(node.lastInboxScanAt);
+		if (Number.isNaN(scanMs)) continue;
+		const staleMs = inputs.nowMs - scanMs;
+		if (staleMs <= stallMs) continue;
+		out.push({
+			kind: "inbox-poll-stalled",
+			nodeId: node.id,
+			detail: `'${node.id}' inbox delivery poll last ran ${Math.round(staleMs / 1000)}s ago (stall threshold ${Math.round(stallMs / 1000)}s) — poll-primary delivery may be stranding messages (long synchronous block, or a seat that stopped draining)`,
+			evidence: [scanMs],
 		});
 	}
 

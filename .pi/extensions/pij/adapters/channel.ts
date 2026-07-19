@@ -235,6 +235,7 @@ export class FsChannel {
 		id: SessionId,
 		onMessage: (message: DeliveredMessage) => void,
 		seen: Set<string> = new Set(),
+		onScan?: (atMs: number) => void,
 	): () => void {
 		const dir = this.inboxDir(id);
 		mkdirSync(dir, { recursive: true });
@@ -260,6 +261,10 @@ export class FsChannel {
 					seen.delete(name); // partial write — retry on the next scan
 				}
 			}
+			// Poll-primary liveness (plan 057 thread-1): every executed scan — drained
+			// or empty — proves the delivery loop is alive; the caller stamps a coarse
+			// heartbeat so a stalled poll becomes observable (inbox-poll-stalled).
+			onScan?.(Date.now());
 		};
 
 		const mkWatcher = this.watchOpts.watchFactory ?? ((d, cb) => watch(d, cb));

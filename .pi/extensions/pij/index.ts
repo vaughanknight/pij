@@ -356,6 +356,9 @@ export default function (pi: ExtensionAPI): void {
 				}
 			},
 			seen,
+			// Poll-primary liveness heartbeat (plan 057 thread-1): stamp on every
+			// delivery poll scan; PijSession persists it at the coarse ~2500ms cadence.
+			(atMs) => receiver.noteInboxScan(atMs),
 		);
 	});
 

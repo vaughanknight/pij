@@ -166,6 +166,15 @@ export interface SessionDescriptor {
 	/** ISO-8601 timestamp of the daemon's latest pass over this control-plane
 	 *  session. Absent for legacy descriptors and pi-owned delivery. */
 	readonly lastTickAt?: string;
+	/** ISO-8601 timestamp of this seat's most recent inbox delivery poll scan,
+	 *  persisted at a coarse ~2500ms cadence (in-memory tracking is per-scan).
+	 *  Poll-primary delivery's LIVENESS heartbeat (plan 057 thread-1): the daemon's
+	 *  `inbox-poll-stalled` anomaly flags a bound seat whose stamp is older than
+	 *  the stall threshold — a stalled delivery poll (long synchronous block, or a
+	 *  seat that stopped draining) is the poll-primary analogue of a silent
+	 *  fs.watch drop, now OBSERVABLE. Absent on seats that don't self-poll (tmux
+	 *  seats are drained by the daemon tick). */
+	readonly lastInboxScanAt?: string;
 	/** ISO-8601 — a compaction was fired at this pane (`pij compact-self`
 	 *  best-effort self-mark, or a daemon-injected remote `/compact`). While
 	 *  fresh (see isCompacting) the daemon HOLDS inbox drain — the harness eats

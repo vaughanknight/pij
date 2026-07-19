@@ -308,4 +308,26 @@ describe("FsChannel", () => {
 		await new Promise((r) => setTimeout(r, 60));
 		expect(bobGot).toEqual([]);
 	});
+
+	it("calls onScan on every executed scan — the poll-primary liveness heartbeat", async () => {
+		const { opts, fire } = controllableWatch();
+		const ch = new FsChannel(home, opts);
+		const scans: number[] = [];
+		disposers.push(
+			ch.watch(
+				"bob",
+				() => {},
+				new Set(),
+				(atMs) => scans.push(atMs),
+			),
+		);
+		// the drain-on-subscribe scan stamps once even with an empty inbox —
+		// liveness must not depend on a delivery happening.
+		const afterSubscribe = scans.length;
+		expect(afterSubscribe).toBeGreaterThanOrEqual(1);
+		fire();
+		await waitFor(() => scans.length > afterSubscribe);
+		// stamps are epoch-ms, monotonic non-decreasing
+		expect(scans.every((t, i) => i === 0 || t >= (scans[i - 1] ?? 0))).toBe(true);
+	});
 });
