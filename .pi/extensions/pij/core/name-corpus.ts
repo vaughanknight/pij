@@ -1648,3 +1648,55 @@ export const NAME_NOUNS: string[] = [
 	"tochee",
 	"sinon",
 ];
+
+// Standalone ship / Mind names (Culture — Banks; a few Polity — Asher). Unlike
+// NAME_NOUNS these are multi-token phrases used WHOLE as `pij-<ship>` (no
+// adjective) — memorable-id weights them so roughly 1 seat in SHIP_NAME_EVERY
+// draws one. Kebab-case, apostrophes dropped; keep each <= 26 chars so the id
+// stays tractable. The imperative Minds ("killing-time", "poke-it-with-a-stick")
+// carry the verb flavour. Delete a line to drop a ship.
+export const SHIP_NAMES: string[] = [
+	// "Falling Outside The Normal Moral Constraints" — the best ship, split so no
+	// single id is a mouthful (a seat draws one half or the other).
+	"falling-outside",
+	"moral-constraints",
+	// "Experiencing A Significant Gravitas Shortfall"
+	"gravitas-shortfall",
+	"grey-area",
+	"sleeper-service",
+	"ethics-gradient",
+	"attitude-adjuster",
+	"prosthetic-conscience",
+	"frank-exchange-of-views",
+	"so-much-for-subtlety",
+	"just-read-the-instructions",
+	"killing-time",
+	"nervous-energy",
+	"fate-amenable-to-change",
+	"irregular-apocalypse",
+	"no-more-mr-nice-guy",
+	"youthful-indiscretion",
+	"little-rascal",
+	"serious-callers-only",
+	"xenophobe",
+	"gunboat-diplomat",
+	"zealot",
+	"determinist",
+	"poke-it-with-a-stick",
+	"someone-elses-problem",
+	"honest-mistake",
+	"reasonable-excuse",
+	"mistake-not",
+	"shoot-them-later",
+	"of-course-i-still-love-you",
+	"i-blame-the-parents",
+	"screw-loose",
+	"unacceptable-behaviour",
+	"heavy-messing",
+	"occam-razor",
+	"king-of-hearts",
+	"jack-ketch",
+	"cable-hogue",
+	"trafalgar",
+	"vulture",
+];
