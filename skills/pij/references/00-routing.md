@@ -55,7 +55,7 @@ The instant a reusable/live coder reports completion or a reviewer returns a ver
 
 Dispatch compact **fire-and-forget** with `pij_send({to, command:"compact"})` or `pij send <id> "/compact"` without `--wait`. **Continue immediately** with report/review/fix work; `executed:true`, receipt delivery, and compact completion are observe-only diagnostics, never progress gates. A one-shot `--once` peer auto-dissolves when its report lands, so an immediate `E-DEAD` is the expected boundary: it has no reusable context left to compact.
 
-Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. For your own context: `pij compact-self [instruction]` (queues a follow-up so work continues after the compact).
+Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. For your own context: `pij compact-self [instruction]` (queues a follow-up so work continues after the compact). A peer **cannot** compact itself by messaging its own id — `pij send <self-id>` returns **E-SELF**; self-compaction runs only through `compact-self`. `compact-self` also accepts `[--pane %N]`, so an orchestrator can keystroke-inject `/compact` into a specific pane it drives directly (the reliable path when a text `/compact` send may land as a literal turn rather than firing the harness command).
 
 ### C4 — Model discovery
 
