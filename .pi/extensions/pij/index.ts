@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
@@ -266,7 +266,15 @@ export default function (pi: ExtensionAPI): void {
 			}
 			self = reserved.value.id;
 		}
-		ctx.ui.setStatus(PIJ_STATUS_KEY, self);
+		// OMP's default status line includes the session_name segment but renders
+		// extension statuses on a separate row. Mirror the pij identity into that
+		// native segment so the peer id remains visible in the actual bar.
+		const hostExecutable = basename(process.execPath || process.argv[0] || "");
+		if (process.env.OMPCODE === "1" || hostExecutable === "omp") {
+			await pi.setSessionName(self);
+		} else {
+			ctx.ui.setStatus(PIJ_STATUS_KEY, self);
+		}
 		const envRole = process.env.PIJ_ROLE;
 		role = envRole === "parent" || envRole === "worker" ? envRole : undefined;
 		const dataDir = join(pijHome, self);

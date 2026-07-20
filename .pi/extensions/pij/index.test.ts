@@ -1,13 +1,12 @@
 // pij index wiring — status bar (plan 018).
 //
 // Pattern P8: tests target the wiring, not the core. This file owns ONE
-// concern: the pi-facing session_start handler calls ctx.ui.setStatus with
-// PIJ_STATUS_KEY ("pij") and this session's pij id immediately after
-// deriveSelfId fires. Uses a fake ctx.ui (pi-peacock test pattern) so the
-// test is driven at unit speed with no live TUI.
+// concern: session_start publishes the pij id through the host's persistent
+// status surface — Pi's keyed extension status or OMP's default session_name
+// segment. Fakes keep both paths at unit speed with no live TUI.
 //
-// Non-vacuous: removing the ctx.ui.setStatus(PIJ_STATUS_KEY, self) call from
-// index.ts causes this test to fail (no "pij" entry in captured statuses).
+// Non-vacuous: removing either publication path from index.ts fails its
+// corresponding assertion.
 
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,6 +32,7 @@ import pijExtension from "./index.js";
 function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 	const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
 	const sentUserMessages: string[] = [];
+	const sessionNames: string[] = [];
 	const pi = {
 		on: (event: string, handler: (...args: unknown[]) => Promise<void>) => {
 			handlers.set(event, handler);
@@ -44,8 +44,11 @@ function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 			sentUserMessages.push(message);
 			onSendUserMessage(message);
 		},
+		setSessionName: async (name: string) => {
+			sessionNames.push(name);
+		},
 	} as unknown as ExtensionAPI;
-	return { pi, handlers, sentUserMessages };
+	return { pi, handlers, sentUserMessages, sessionNames };
 }
 
 /** Minimal fake ExtensionContext — captures setStatus calls. */
@@ -88,14 +91,17 @@ describe("pij index — footer status bar", () => {
 	let origPijHome: string | undefined;
 	let origSessionId: string | undefined;
 	let origParentId: string | undefined;
+	let origOmpCode: string | undefined;
 
 	beforeEach(() => {
 		origPijHome = process.env.PIJ_HOME;
 		origSessionId = process.env.PIJ_SESSION_ID;
 		origParentId = process.env.PIJ_PARENT_ID;
+		origOmpCode = process.env.OMPCODE;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
 		delete process.env.PIJ_PARENT_ID;
+		delete process.env.OMPCODE;
 	});
 
 	afterEach(() => {
@@ -107,6 +113,8 @@ describe("pij index — footer status bar", () => {
 		else process.env.PIJ_SESSION_ID = origSessionId;
 		if (origParentId === undefined) delete process.env.PIJ_PARENT_ID;
 		else process.env.PIJ_PARENT_ID = origParentId;
+		if (origOmpCode === undefined) delete process.env.OMPCODE;
+		else process.env.OMPCODE = origOmpCode;
 	});
 
 	it("publishes the pij id to the status bar on session_start", async () => {
@@ -134,6 +142,19 @@ describe("pij index — footer status bar", () => {
 		} catch {
 			// ignore
 		}
+	});
+
+	it("publishes the pij id through OMP's default session_name segment", async () => {
+		process.env.OMPCODE = "1";
+		const { pi, handlers, sessionNames } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("omp-session-statusbar");
+
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(statuses.some((status) => status.key === "pij")).toBe(false);
+		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
 	it("reuses on reload, mints on new, and preserves an existing opaque id with prime metadata", async () => {
