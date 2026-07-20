@@ -78,6 +78,9 @@ export const SPINE_KIND_PROJECT_SET = "project-set";
 // semantic transition rides in structured refs (`state:<word>`).
 export const SPINE_KIND_TASK_SET = "task-set";
 export const SPINE_KIND_STATE_SET = "state-set";
+/** Removes the current assignment's declaration; this is a transition event,
+ * never a member of the closed semantic-state vocabulary. */
+export const SPINE_KIND_STATE_CLEARED = "state-cleared";
 export const SPINE_KIND_STATE_VERIFIED = "state-verified";
 /** Mechanical-axis transition, appended by the DAEMON with `actor: daemon`
  *  (plan 054 P2 T008, V-05). prev/next carry WS-6 SystemState words; s055

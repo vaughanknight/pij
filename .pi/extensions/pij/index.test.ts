@@ -30,11 +30,11 @@ import pijExtension from "./index.js";
 /** Minimal fake ExtensionAPI — captures only what index.ts needs at wiring
  *  time + what session_start triggers (sendUserMessage for the boot announce). */
 function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
-	const handlers = new Map<string, (...args: unknown[]) => Promise<void>>();
+	const handlers = new Map<string, (...args: unknown[]) => unknown>();
 	const sentUserMessages: string[] = [];
 	const sessionNames: string[] = [];
 	const pi = {
-		on: (event: string, handler: (...args: unknown[]) => Promise<void>) => {
+		on: (event: string, handler: (...args: unknown[]) => unknown) => {
 			handlers.set(event, handler);
 		},
 		registerTool: () => {},
@@ -92,16 +92,19 @@ describe("pij index — footer status bar", () => {
 	let origSessionId: string | undefined;
 	let origParentId: string | undefined;
 	let origOmpCode: string | undefined;
+	let origAnnounceTo: string | undefined;
 
 	beforeEach(() => {
 		origPijHome = process.env.PIJ_HOME;
 		origSessionId = process.env.PIJ_SESSION_ID;
 		origParentId = process.env.PIJ_PARENT_ID;
 		origOmpCode = process.env.OMPCODE;
+		origAnnounceTo = process.env.PIJ_ANNOUNCE_TO;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
 		delete process.env.PIJ_PARENT_ID;
 		delete process.env.OMPCODE;
+		delete process.env.PIJ_ANNOUNCE_TO;
 	});
 
 	afterEach(() => {
@@ -115,6 +118,8 @@ describe("pij index — footer status bar", () => {
 		else process.env.PIJ_PARENT_ID = origParentId;
 		if (origOmpCode === undefined) delete process.env.OMPCODE;
 		else process.env.OMPCODE = origOmpCode;
+		if (origAnnounceTo === undefined) delete process.env.PIJ_ANNOUNCE_TO;
+		else process.env.PIJ_ANNOUNCE_TO = origAnnounceTo;
 	});
 
 	it("publishes the pij id to the status bar on session_start", async () => {
@@ -194,6 +199,23 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
+	it("passes the exact shutdown reason: replacement dissolves, quit stays observable", async () => {
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("native-shutdown-contract");
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		const id = statuses.at(-1)?.value as string;
+		await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "reload" }, ctx);
+		expect(new FsRegistry(pijHome).read(id)).toMatchObject({ lifecycle: "dissolved" });
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+		expect(new FsRegistry(pijHome).read(id)?.lifecycle).not.toBe("dissolved");
+		await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
+		expect(new FsRegistry(pijHome).read(id)?.lifecycle).not.toBe("dissolved");
+		expect(new FsRegistry(pijHome).read(id)?.terminal).toBeUndefined();
+	});
+
 	it("registers Pi with its structural parent and freshly resolved repository identity", async () => {
 		process.env.PIJ_PARENT_ID = "pij-structural-parent";
 		const gitCommonDir = vi
@@ -211,6 +233,49 @@ describe("pij index — footer status bar", () => {
 			parentId: "pij-structural-parent",
 			gitCommonDir: "/repo/.git",
 		});
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("blocks ask_user_question only for a structurally managed Pi peer and still captures it", async () => {
+		process.env.PIJ_PARENT_ID = "pij-structural-parent";
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("native-modal-guard");
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		const result = await handlers.get("tool_call")?.(
+			{ toolCallId: "modal-call", toolName: "ask_user_question", input: {} },
+			ctx,
+		);
+
+		expect(result).toMatchObject({
+			block: true,
+			reason: expect.stringContaining("pij invariant #9"),
+		});
+		expect(result).toMatchObject({
+			reason: expect.stringContaining("pij_send"),
+		});
+		const id = statuses.at(-1)?.value;
+		expect(new FsEventLog(pijHome, id as string).read({ type: "tool_call" })).toMatchObject([
+			{ data: { toolCallId: "modal-call", toolName: "ask_user_question", input: {} } },
+		]);
+
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("does not block ask_user_question for an un-managed Pi session", async () => {
+		const { pi, handlers } = makeFakePi();
+		const { ctx } = makeFakeCtx("native-generic-modal-guard");
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		expect(
+			await handlers.get("tool_call")?.(
+				{ toolCallId: "generic-modal-call", toolName: "ask_user_question", input: {} },
+				ctx,
+			),
+		).toBeUndefined();
+
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 

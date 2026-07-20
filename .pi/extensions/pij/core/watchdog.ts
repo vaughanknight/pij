@@ -4,6 +4,9 @@ import type { WatchdogPauseTier, WatchdogSidecar } from "./types.js";
 
 // ─── watchdog configuration ─────────────────────────────────────────────────
 export const DEFAULT_WATCHDOG_INTERVAL_MS = 20 * 60 * 1_000;
+/** A safety exemption is deliberately temporary: a daemon restart must never
+ * turn one incident response into permanent watchdog blindness. */
+export const DEFAULT_WATCHDOG_EXEMPT_TTL_MS = 60 * 60 * 1_000;
 
 export interface EffectiveWatchdogConfig {
 	readonly enabled: boolean;
@@ -29,7 +32,77 @@ function withoutPause(sidecar: WatchdogSidecar): WatchdogSidecar {
 	const resumed = { ...sidecar };
 	delete resumed.pausedBy;
 	delete resumed.pausedAtMs;
+	delete resumed.exemptUntilMs;
 	return resumed;
+}
+
+/** Create a bounded incident exemption. Callers share this seam so CLI and
+ * PIJ_NO_WATCHDOG boot can never disagree about the re-arm deadline. */
+export function applyWatchdogExemption(
+	sidecar: WatchdogSidecar | undefined,
+	nowMs: number,
+	ttlMs = DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
+): WatchdogSidecar {
+	const duration =
+		Number.isSafeInteger(ttlMs) && ttlMs > 0 ? ttlMs : DEFAULT_WATCHDOG_EXEMPT_TTL_MS;
+	const deadline = nowMs + duration;
+	const validDeadline =
+		Number.isSafeInteger(nowMs) && Number.isSafeInteger(deadline) && deadline > nowMs;
+	return {
+		...sidecar,
+		pausedBy: "exempt",
+		pausedAtMs: nowMs,
+		exemptUntilMs: validDeadline ? deadline : 0,
+	};
+}
+
+export interface WatchdogExemptionReconciliation {
+	readonly sidecar: WatchdogSidecar | undefined;
+	readonly effectivePause: WatchdogPauseTier | undefined;
+}
+
+/** Normalize an exemption against an injected clock. Legacy sidecars acquire a
+ * one-time deadline; malformed time fails closed so safety-off is never extended. */
+export function reconcileWatchdogExemption(
+	sidecar: WatchdogSidecar | undefined,
+	nowMs: number,
+): WatchdogExemptionReconciliation {
+	if (!sidecar) return { sidecar: undefined, effectivePause: undefined };
+	if (sidecar.pausedBy !== "exempt") {
+		if (sidecar.exemptUntilMs === undefined) {
+			return { sidecar, effectivePause: sidecar.pausedBy };
+		}
+		const normalized = { ...sidecar };
+		delete normalized.exemptUntilMs;
+		return { sidecar: normalized, effectivePause: normalized.pausedBy };
+	}
+
+	const deadline = sidecar.exemptUntilMs;
+	if (deadline !== undefined) {
+		if (Number.isSafeInteger(deadline) && Number.isSafeInteger(nowMs) && nowMs < deadline) {
+			return { sidecar, effectivePause: "exempt" };
+		}
+		const normalized = withoutPause(sidecar);
+		return { sidecar: normalized, effectivePause: undefined };
+	}
+
+	const pausedAtMs = sidecar.pausedAtMs;
+	const legacyDeadline =
+		typeof pausedAtMs === "number" && Number.isSafeInteger(pausedAtMs)
+			? pausedAtMs + DEFAULT_WATCHDOG_EXEMPT_TTL_MS
+			: Number.NaN;
+	if (
+		Number.isSafeInteger(legacyDeadline) &&
+		Number.isSafeInteger(nowMs) &&
+		nowMs < legacyDeadline
+	) {
+		return {
+			sidecar: { ...sidecar, exemptUntilMs: legacyDeadline },
+			effectivePause: "exempt",
+		};
+	}
+	const normalized = withoutPause(sidecar);
+	return { sidecar: normalized, effectivePause: undefined };
 }
 
 /** Apply the explicit `pij watchdog resume` transition. Exemptions are stronger. */
@@ -191,7 +264,8 @@ export function parseWatchdogInterval(text: string): number | null {
 	if (!Number.isSafeInteger(value) || value <= 0) return null;
 	const unitMs = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 } as const;
 	const unit = (match[2] ?? "ms") as keyof typeof unitMs;
-	return value * unitMs[unit];
+	const intervalMs = value * unitMs[unit];
+	return Number.isSafeInteger(intervalMs) && intervalMs > 0 ? intervalMs : null;
 }
 
 // ─── human-readable state ───────────────────────────────────────────────────

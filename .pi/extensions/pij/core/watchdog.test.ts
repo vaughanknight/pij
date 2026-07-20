@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WatchdogSidecar } from "./types.js";
 import {
 	applyCompactPause,
+	applyWatchdogExemption,
 	applyWatchdogResume,
 	applyWorkingTransition,
 	buildWatchdogTurn,
@@ -11,6 +12,7 @@ import {
 	evaluateResponse,
 	isFireDue,
 	parseWatchdogInterval,
+	reconcileWatchdogExemption,
 	shouldCapture,
 } from "./watchdog.js";
 
@@ -51,6 +53,44 @@ describe("effectiveWatchdog and pause tiers", () => {
 		const sidecar: WatchdogSidecar = { pausedBy: "exempt", pausedAtMs: 10 };
 		expect(applyWorkingTransition(sidecar)).toBe(sidecar);
 		expect(applyWatchdogResume(sidecar)).toBe(sidecar);
+	});
+});
+
+describe("bounded watchdog exemptions", () => {
+	it("pins the exact expiry boundary and clears an expired exemption", () => {
+		const exempt = applyWatchdogExemption({ intervalMs: 1 }, 1_000, 100);
+		expect(exempt).toMatchObject({
+			pausedBy: "exempt",
+			pausedAtMs: 1_000,
+			exemptUntilMs: 1_100,
+		});
+		for (const [nowMs, paused] of [
+			[1_099, "exempt"],
+			[1_100, undefined],
+			[1_101, undefined],
+		] as const) {
+			const reconciled = reconcileWatchdogExemption(exempt, nowMs);
+			expect(reconciled.effectivePause).toBe(paused);
+			expect(reconciled.sidecar?.pausedBy).toBe(paused);
+		}
+	});
+
+	it("migrates a valid legacy exemption once, and fails closed for missing or invalid time", () => {
+		const legacy: WatchdogSidecar = { pausedBy: "exempt", pausedAtMs: 10 };
+		expect(reconcileWatchdogExemption(legacy, 11)).toMatchObject({
+			effectivePause: "exempt",
+			sidecar: { exemptUntilMs: 3_600_010 },
+		});
+		for (const sidecar of [
+			{ pausedBy: "exempt" },
+			{ pausedBy: "exempt", pausedAtMs: Number.NaN },
+			{ pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: Number.NaN },
+		] as const) {
+			expect(reconcileWatchdogExemption(sidecar, 2)).toMatchObject({
+				effectivePause: undefined,
+				sidecar: {},
+			});
+		}
 	});
 });
 
@@ -275,8 +315,19 @@ describe("parseWatchdogInterval", () => {
 		expect(parseWatchdogInterval("1200000")).toBe(1_200_000);
 	});
 
-	it("rejects non-positive, fractional, and malformed input", () => {
-		for (const bad of ["0", "0s", "-5m", "abc", "", "5x", "1.5h", "m", "10 m"]) {
+	it("rejects non-positive, fractional, malformed, and unsafe input", () => {
+		for (const bad of [
+			"0",
+			"0s",
+			"-5m",
+			"abc",
+			"",
+			"5x",
+			"1.5h",
+			"m",
+			"10 m",
+			"9007199254740991h",
+		]) {
 			expect(parseWatchdogInterval(bad)).toBeNull();
 		}
 	});
@@ -292,7 +343,7 @@ describe("describeWatchdogState", () => {
 		expect(describeWatchdogState({ enabled: true, pausedBy: "compact" })).toBe("paused (compact)");
 	});
 
-	it("names exemption as its own state — it never fires and never expires", () => {
+	it("names a live exemption as its own state", () => {
 		expect(describeWatchdogState({ enabled: true, pausedBy: "exempt" })).toBe("exempt");
 	});
 

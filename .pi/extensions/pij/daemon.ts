@@ -24,6 +24,7 @@ import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsProjectStore } from "./adapters/project-store.js";
+import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
@@ -32,6 +33,7 @@ import { sweepStaleTmp } from "./core/agents/inline.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
+import { reconcileDeaths } from "./core/daemon/death-reconciler.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
 import {
@@ -66,7 +68,7 @@ import {
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { DeathReason, SessionDescriptor } from "./core/types.js";
+import type { SessionDescriptor } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -124,6 +126,9 @@ export class Daemon {
 	private readonly watchManager: PeerWatchManager;
 	private readonly watchdogManager: WatchdogManager;
 	private readonly batonSweep: BatonSweep;
+	private readonly expectations: FsSpawnExpectationStore;
+	/** The first sweep reconciles persisted state after boot; later passes are live. */
+	private deathSweepIsHistorical = true;
 
 	constructor(
 		private readonly pijHome: string,
@@ -135,6 +140,7 @@ export class Daemon {
 		batonSweep?: BatonSweep,
 		watchdogManager?: WatchdogManager,
 	) {
+		this.expectations = new FsSpawnExpectationStore(pijHome);
 		this.watchManager =
 			watchManager ??
 			new PeerWatchManager({
@@ -318,7 +324,21 @@ export class Daemon {
 				// is unchanged. The report is already durable in the spawner's inbox before
 				// `reportedAt` is stamped (T007), so closing the reporter never loses it.
 				if (planOnceClose(d)) {
+					const closeIntent = {
+						actor: "pij-daemon",
+						kind: "once-close" as const,
+						requestedAt: new Date(this.ports.now()).toISOString(),
+					};
+					// Intent is durable before the owned pane teardown and dissolve.
+					this.registry.write({ ...d, closeIntent });
 					if (d.paneId) this.ports.killPane(d.paneId);
+					const observedAt = new Date(this.ports.now()).toISOString();
+					this.registry.write({
+						...d,
+						closeIntent,
+						terminal: { disposition: "requested", observedAt, evidence: "pane-missing" },
+						deathNoticeLatchedAt: observedAt,
+					});
 					this.registry.dissolve(d.id);
 					this.drives.delete(d.id);
 					this.pushed.delete(d.id);
@@ -452,6 +472,24 @@ export class Daemon {
 				this.log(`session ${d.id} tick error: ${detail}`);
 			}
 		}
+		// Reconcile after descriptor activity/close paths have completed. A descriptor
+		// dissolved mid-tick is therefore not announced as a terminal absence.
+		const deathSweep = reconcileDeaths({
+			descriptors: this.registry.list(),
+			expectations: this.expectations.list(),
+			nowIso: tickAt,
+			isAlive: (pid) => this.ports.isAlive(pid),
+			paneExists: (paneId) => !this.ports.isPaneDead(paneId),
+			failureReasonFor: (descriptor) =>
+				classifyDeathReason(descriptor.paneId ? this.ports.capturePane(descriptor.paneId) : ""),
+			historical: this.deathSweepIsHistorical,
+		});
+		this.deathSweepIsHistorical = false;
+		for (const update of deathSweep.descriptorUpdates) this.registry.write(update);
+		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
+		for (const notice of deathSweep.notices) {
+			this.channel.deliver({ from: notice.from, to: notice.to, body: notice.text });
+		}
 		this.watchdogManager.reconcile(this.registry.list());
 	}
 
@@ -464,20 +502,9 @@ export class Daemon {
 		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
 		this.pushed.set(d.id, latch);
 
-		// Dead: pid gone (authoritative)
-		const pidAlive = this.ports.isAlive(d.pid);
-		if (!pidAlive && !latch.has("dead")) {
-			latch.add("dead");
-			const pane = d.paneId ? this.ports.capturePane(d.paneId) : "";
-			const reason: DeathReason = classifyDeathReason(pane);
-			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
-			const persisted = writeMerged(this.registry, { ...d, failureReason: reason });
-			if (persisted.lifecycle === "dissolved") return;
-			const note = buildDeadNotice(persisted, reason, { authoritativeDeath: true });
-			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
-			this.log(`push ${d.id}: dead (${reason})`);
-			return;
-		}
+		// Terminal absence is reconciled after all tick-local activity/teardown paths.
+		// A live PID with provider text is intentionally not terminal here.
+		if (!this.ports.isAlive(d.pid)) return;
 
 		// Stalled: `state === "working"` (daemon's descriptor vocab) + event age past stale.
 		// Note: `isStalled` uses SessionState ("in-progress"|"reviewing") which is different

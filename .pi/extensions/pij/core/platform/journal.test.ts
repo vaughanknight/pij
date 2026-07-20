@@ -738,6 +738,16 @@ describe("recoverPendingOps — assignment ops (plan 054 P2 T005)", () => {
 		});
 	}
 
+	function stateClearedDraft(n: number, record: Assignment): SpineEventDraft {
+		return draft(n, {
+			kind: "state-cleared",
+			peer: record.nodeId,
+			refs: [`node:${record.nodeId}`, `assignment:${record.id}`, "transition:clear"],
+			prev: canonicalAssignmentJson(record),
+			next: canonicalAssignmentJson(record),
+		});
+	}
+
 	describe("intent adjudication (G2 extended)", () => {
 		it("task-set intent whose record landed replays the event", () => {
 			const journal = new TestOpJournal();
@@ -869,6 +879,19 @@ describe("recoverPendingOps — assignment ops (plan 054 P2 T005)", () => {
 			const seq = log.events[0]?.seq;
 			expect(seq).toBeDefined();
 			expect(asg.read(asgA.id)?.states).toEqual([seq]);
+		});
+
+		it("replaying a committed state-cleared event also reconciles its stamped seq", () => {
+			const journal = new TestOpJournal();
+			const log = new TestSpineLog();
+			const asg = new TestAssignmentStore([asgA]);
+			journal.seed("op-clear", 1, "committed", stateClearedDraft(1, asgA));
+			expect(expectOk(recover(journal, log, new TestProjectStore(), asg))).toEqual({
+				replayed: 1,
+				discarded: 0,
+			});
+			expect(log.events[0]?.kind).toBe("state-cleared");
+			expect(asg.read(asgA.id)?.states).toEqual([log.events[0]?.seq]);
 		});
 
 		it("replay-to-EXISTING reconciles with the ORIGINAL seq, idempotently", () => {

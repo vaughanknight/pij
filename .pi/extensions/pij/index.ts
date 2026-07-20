@@ -15,11 +15,13 @@ import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
+import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
+import { guardInvariantNineModal } from "./core/invariant-guard.js";
 import { PijSession } from "./core/session.js";
 import type { Role, SessionDescriptor } from "./core/types.js";
 
@@ -300,6 +302,7 @@ export default function (pi: ExtensionAPI): void {
 			process: new NodeProcess(),
 			tmux: new TmuxAdapter(),
 			watchdog: new FsWatchdogStore(pijHome),
+			expectations: new FsSpawnExpectationStore(pijHome),
 		});
 
 		const boot = session.boot({
@@ -372,7 +375,10 @@ export default function (pi: ExtensionAPI): void {
 
 	// Event capture (registered once, top-level — reload-safe). Each pi event maps
 	// to exactly one coordinator capture. There is no pi `usage` event.
-	pi.on("tool_call", (event) => session?.capture("tool_call", event));
+	pi.on("tool_call", (event) => {
+		session?.capture("tool_call", event);
+		return guardInvariantNineModal(registry?.read(self), event.toolName);
+	});
 	pi.on("tool_result", (event) => session?.capture("tool_result", event));
 	pi.on("message_end", (event) => session?.capture("message", event));
 
@@ -384,10 +390,12 @@ export default function (pi: ExtensionAPI): void {
 	// working/idle without parsing the stream.
 	pi.on("turn_end", () => session?.onTurnEnd());
 
-	pi.on("session_shutdown", async (_event, ctx: ExtensionContext) => {
+	pi.on("session_shutdown", async (event, ctx: ExtensionContext) => {
 		disposeWatch?.();
 		disposeWatch = undefined;
-		session?.shutdown();
+		// Pi guarantees this closed union (extensions.md, session_shutdown): only
+		// replacement reasons dissolve a predecessor; quit remains observable.
+		session?.shutdown(event.reason);
 		ctx.ui.setStatus(PIJ_STATUS_KEY, undefined);
 	});
 

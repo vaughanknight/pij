@@ -262,6 +262,8 @@ export interface PendingDescriptorInput {
 	/** Branch-from-self (Plan 020): the source harness session id this pane was
 	 *  forked from. Observability only — the bind keys on `plannedHarnessSessionId`. */
 	readonly branchedFrom?: string;
+	/** Durable join to the pre-launch expectation keyed by PIJ_SPAWN_ID. */
+	readonly spawnId?: string;
 	/** Model pinned on the spawn command, persisted before first inference. */
 	readonly model?: string;
 	/** Reasoning effort pinned on the spawn command, persisted as registry truth. */
@@ -381,6 +383,7 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 			? { plannedHarnessSessionId: input.plannedHarnessSessionId }
 			: {}),
 		...(input.branchedFrom ? { branchedFrom: input.branchedFrom } : {}),
+		...(input.spawnId !== undefined ? { spawnId: input.spawnId } : {}),
 	};
 }
 

@@ -56,6 +56,31 @@ export type DeathReason =
 	| "dead" // pane exited (no specific error signal)
 	| "unknown"; // fallback when no pattern matched
 
+/** A pij-owned teardown intent, persisted before the pane is killed or its
+ * descriptor is dissolved. It is not an assertion about why a process stopped. */
+export interface CloseIntent {
+	readonly actor: string;
+	readonly kind: "cli-close" | "in-process-close" | "once-close" | "session-close";
+	readonly requestedAt: string;
+}
+
+/** `unrequested-by-pij` means only an observed absence without a persisted
+ * pij close intent. It never names a crash cause or an external actor. */
+export type TerminalDisposition = "requested" | "unrequested-by-pij" | "unavailable";
+export type TerminalEvidence =
+	| "pid-missing"
+	| "pane-missing"
+	| "expectation-expired"
+	| "observation-unavailable";
+
+export interface TerminalObservation {
+	readonly disposition: TerminalDisposition;
+	readonly observedAt: string;
+	readonly evidence: TerminalEvidence;
+	readonly lastSeenAt?: string;
+	readonly unavailableReason?: string;
+}
+
 // ─── liveness + state (vocabulary aligned with agent-workbench) ───────────
 /** Self-reported working state of a session. */
 export type SessionState = "idle" | "in-progress" | "paused" | "reviewing" | "complete" | "error";
@@ -248,6 +273,14 @@ export interface SessionDescriptor {
 	/** Machine-stable failure reason set by the daemon when lifecycle → failed.
 	 *  model-not-supported|auth|quota|stalled|dead|unknown. Absent until failed. */
 	readonly failureReason?: DeathReason;
+	/** Spawn correlation joining this descriptor to its pre-launch expectation. */
+	readonly spawnId?: string;
+	/** Persisted before pij-owned teardown. */
+	readonly closeIntent?: CloseIntent;
+	/** Durable, evidence-based terminal absence classification. */
+	readonly terminal?: TerminalObservation;
+	/** Once-latch for the creator terminal notice across daemon recreation. */
+	readonly deathNoticeLatchedAt?: string;
 	// ─── agent-pack peer layer (Plan 029 Phase 3; additive — migration-safe) ──
 	/** The agent pack slug this peer runs (`pij agent spawn <slug>`), or `"inline"`
 	 *  for a `--prompt` spawn. Absent ⇒ not an agent-pack peer (a plain colleague). */
@@ -284,6 +317,25 @@ export interface SessionDescriptor {
 	readonly contextMax?: number;
 	/** Latest context-usage gauge reading — real or honest-unknown (AC-09). */
 	readonly contextCurrent?: ContextGauge;
+}
+
+// ─── durable spawn expectation ──────────────────────────────────────────────
+
+/** Spawn intent persisted before every launch attempt, keyed by PIJ_SPAWN_ID. */
+export interface SpawnExpectation {
+	readonly spawnId: string;
+	readonly creatorId?: SessionId;
+	readonly requestedHarness: HarnessKind;
+	readonly requestedAt: string;
+	/** Bounded registration window: expiry is a no-show observation, not a harness cause. */
+	readonly deadlineAt?: string;
+	readonly paneId?: string;
+	readonly sessionId?: SessionId;
+	readonly runtimeHarness?: HarnessKind;
+	readonly boundAt?: string;
+	readonly closeIntent?: CloseIntent;
+	readonly terminal?: TerminalObservation;
+	readonly deathNoticeLatchedAt?: string;
 }
 
 // ─── session-tree projection ────────────────────────────────────────────────
@@ -386,6 +438,9 @@ export interface WatchdogSidecar {
 	readonly intervalMs?: number;
 	readonly pausedBy?: WatchdogPauseTier;
 	readonly pausedAtMs?: number;
+	/** Epoch milliseconds at which an `exempt` pause re-arms. Absent legacy
+	 * exemptions derive a bounded deadline from pausedAtMs. */
+	readonly exemptUntilMs?: number;
 	readonly watchers?: readonly WatchdogWatcher[];
 }
 

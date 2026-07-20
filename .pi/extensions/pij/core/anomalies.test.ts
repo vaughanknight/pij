@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	chainStateOf,
 	DEFAULT_IDLE_DISAGREEMENT_MS,
 	DEFAULT_INBOX_POLL_STALL_MS,
 	DEFAULT_SPAWN_LIMBO_MS,
@@ -63,6 +64,21 @@ function stateSet(
 		actor,
 		peer: nodeId,
 		refs: [`node:${nodeId}`, `assignment:${assignmentId}`, `state:${word}`],
+	});
+}
+
+function stateCleared(
+	seq: number,
+	nodeId: string,
+	assignmentId: string,
+	actor: string,
+): SpineEvent {
+	return ev({
+		seq,
+		kind: "state-cleared",
+		actor,
+		peer: nodeId,
+		refs: [`node:${nodeId}`, `assignment:${assignmentId}`, "transition:clear"],
 	});
 }
 
@@ -290,6 +306,33 @@ describe("foreign hold-clear (hold released by an actor other than its issuer)",
 			}).filter((x) => x.kind === "foreign-hold-clear"),
 		).toHaveLength(0);
 	});
+
+	it("foreign clear after hold is flagged with both seqs; issuer clear is clean", () => {
+		const a = asg({ id: "asg-a", nodeId: "pij-n", states: [4, 8] });
+		const foreign = detectAnomalies({
+			descriptors: [node],
+			assignments: [a],
+			events: [
+				stateSet(4, "pij-n", "asg-a", "hold", "pij-issuer"),
+				stateCleared(8, "pij-n", "asg-a", "pij-meddler"),
+			],
+			nowMs: NOW,
+		}).filter((x) => x.kind === "foreign-hold-clear");
+		expect(foreign).toHaveLength(1);
+		expect(foreign[0]?.evidence).toEqual([4, 8]);
+
+		expect(
+			detectAnomalies({
+				descriptors: [node],
+				assignments: [a],
+				events: [
+					stateSet(4, "pij-n", "asg-a", "hold", "pij-issuer"),
+					stateCleared(8, "pij-n", "asg-a", "pij-issuer"),
+				],
+				nowMs: NOW,
+			}).filter((x) => x.kind === "foreign-hold-clear"),
+		).toHaveLength(0);
+	});
 });
 
 describe("spawn-limbo (T1 — the bind-zombie class the watchdog cannot see)", () => {
@@ -444,5 +487,52 @@ describe("inbox-poll-stalled (plan 057 thread-1 — poll-primary delivery livene
 		];
 		expect(stalledOnly(seat)).toHaveLength(0); // 4s-stale not flagged at the 6s default
 		expect(stalledOnly(seat, NOW, { inboxPollStallMs: 3_000 })).toHaveLength(1); // flagged at 3s
+	});
+});
+
+describe("state-cleared chain transition", () => {
+	it("clear makes the latest declaration undeclared, retains history, and a later set wins", () => {
+		const assignment = asg({ id: "asg-clear", nodeId: "pij-n", states: [3, 5, 7] });
+		const events = [
+			stateSet(3, "pij-n", "asg-clear", "hold", "pij-owner"),
+			ev({
+				seq: 5,
+				kind: "state-cleared",
+				actor: "pij-owner",
+				peer: "pij-n",
+				refs: ["node:pij-n", "assignment:asg-clear"],
+			}),
+			stateSet(7, "pij-n", "asg-clear", "ready", "pij-owner"),
+		];
+		expect(chainStateOf({ ...assignment, states: [3, 5] }, events)).toEqual({ verified: false });
+		expect(chainStateOf(assignment, events)).toMatchObject({ state: "ready", stateSeq: 7 });
+	});
+
+	it("a cleared parked state again participates in the existing idle-disagreement predicate", () => {
+		const assignment = asg({ id: "asg-clear", nodeId: "pij-lost", states: [3, 5] });
+		const events = [
+			stateSet(3, "pij-lost", "asg-clear", "hold", "pij-owner"),
+			ev({
+				seq: 5,
+				kind: "state-cleared",
+				actor: "pij-owner",
+				peer: "pij-lost",
+				refs: ["node:pij-lost", "assignment:asg-clear"],
+			}),
+		];
+		const anomalies = detectAnomalies({
+			descriptors: [
+				desc({
+					id: "pij-lost",
+					lifecycle: "bound",
+					systemState: "idle",
+					lastEventAt: new Date(NOW - H44).toISOString(),
+				}),
+			],
+			assignments: [assignment],
+			events,
+			nowMs: NOW,
+		});
+		expect(anomalies.some((anomaly) => anomaly.kind === "axis-disagreement")).toBe(true);
 	});
 });

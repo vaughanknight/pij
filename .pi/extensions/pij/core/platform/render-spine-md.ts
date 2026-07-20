@@ -16,6 +16,7 @@
 import {
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
+	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	type SpineEvent,
@@ -110,6 +111,7 @@ function renderEvent(event: SpineEvent): string {
 		event.kind === SPINE_KIND_PROJECT_CREATED ||
 		event.kind === SPINE_KIND_PROJECT_SET ||
 		event.kind === SPINE_KIND_STATE_SET ||
+		event.kind === SPINE_KIND_STATE_CLEARED ||
 		event.kind === SPINE_KIND_STATE_VERIFIED
 			? projectRecordLines(event)
 			: null;

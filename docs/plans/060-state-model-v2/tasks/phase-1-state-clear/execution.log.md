@@ -1,0 +1,10 @@
+# State clear execution log
+
+- **2026-07-20 — RED:** `just test` failed on the new parser, reducer, event-kind, core dispatch, acceptance, and real-CLI `state clear` specifications. The initial run also showed the pre-existing Telegram timeout baseline.
+- **2026-07-20 — GREEN:** Added the `state-cleared` assignment-coupled journal kind, shared chain reduction, strict CLI grammar/dispatch, descriptor-only semantic denorm removal, renderer support, help, and domain/operator documentation.
+- **Verification:** `just typecheck` passed. `just lint` passed (existing warnings only). `just test` passed: 168 files, 3039 tests, 4 skipped. `git diff --check` passed.
+- **Aggregate gate:** `harness checks` passed local paths, typecheck, lint, Windows compatibility, package audit, and snapshots; it failed its later test run on unrelated channel/Telegram timeouts and smoke while package installation waited for an idle harness. The owned test suite passed independently.
+- **Resolver completion:** Added red regressions for done → clear → verify and foreign hold → clear attribution, then routed verification through `chainStateOf` and included `state-cleared` in foreign hold-clear transitions. Added the clear journal cut-point matrix (record/write/append/recovery/clear/denorm).
+- **Independent lead proof:** focused state-family matrix passed after one unrelated memorable-id integration flake passed immediately on isolated rerun; `just typecheck`, `just lint`, and `git diff --check` passed. Final `just test`: **168 files, 3,046 passed, 4 files / 11 tests skipped**.
+- **Mutation proof:** removing clear handling from `chainStateOf` made anomalies/CLI tests RED; removing `state-cleared` from the journal recovery kind set made journal tests RED; both files restored byte-for-byte and the combined 289-test reducer/CLI/journal set returned GREEN.
+- **Baseline timeout classification:** clean `git archive fb1bfbd` ran channel + Telegram suites 85/85 green, proving the earlier timeout reds are environmental flakes rather than this change; evidence `reports/clean-base-timeout-proof.log`.

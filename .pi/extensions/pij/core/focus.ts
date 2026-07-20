@@ -6,7 +6,7 @@ import {
 	type TranscriptListing,
 	transcriptLayout,
 } from "./harness/transcript.js";
-import type { RegistryPort, TmuxPort } from "./ports.js";
+import type { RegistryPort, SpawnExpectationStore, TmuxPort } from "./ports.js";
 import {
 	buildControlSpawnCommand,
 	buildPendingDescriptor,
@@ -16,6 +16,11 @@ import {
 	type SpawnCommand,
 	spawnIdentitySeed,
 } from "./spawn.js";
+import {
+	bindSpawnExpectation,
+	createSpawnExpectation,
+	spawnExpectationDeadline,
+} from "./spawn-expectation.js";
 import {
 	err,
 	type FocusManifest,
@@ -74,6 +79,8 @@ export interface FocusLaunchDeps {
 	readonly registry: FocusLaunchRegistryPort;
 	readonly store: FocusStorePort;
 	readonly tmux: TmuxPort;
+	/** Durable pre-launch intent, shared with daemon no-show reconciliation. */
+	readonly expectations: SpawnExpectationStore;
 	readonly home: string;
 	readonly pijHome: string;
 	readonly nowIso: () => string;
@@ -338,6 +345,16 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 		}
 		return placement;
 	}
+	const requestedAt = deps.nowIso();
+	const expectation = createSpawnExpectation({
+		spawnId: token,
+		creatorId: input.parentId,
+		requestedHarness: manifest.harness,
+		requestedAt,
+		deadlineAt: spawnExpectationDeadline(requestedAt),
+	});
+	// Intent is durable before tmux has an opportunity to launch and disappear.
+	deps.expectations.write(expectation);
 	const split = deps.tmux.splitWindow({
 		cmd: command.cmd,
 		args: command.args,
@@ -351,6 +368,7 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 		detached: true,
 	});
 	if (!split.ok) {
+		deps.expectations.remove(token);
 		if (pijId !== undefined && ownerToken !== undefined) {
 			deps.registry.releaseReservation(pijId, ownerToken);
 		}
@@ -358,11 +376,13 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 	}
 
 	const paneId = split.value.paneId;
+	deps.expectations.write({ ...expectation, paneId });
 	let postSpawnSnapshot: string;
 	try {
 		postSpawnSnapshot = deps.store.readSnapshot(input.name);
 	} catch (error) {
 		deps.tmux.killPane(paneId);
+		deps.expectations.remove(token);
 		if (pijId !== undefined && ownerToken !== undefined) {
 			deps.registry.releaseReservation(pijId, ownerToken);
 		}
@@ -373,6 +393,7 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 	}
 	if (createHash("sha256").update(postSpawnSnapshot).digest("hex") !== manifest.sha256) {
 		deps.tmux.killPane(paneId);
+		deps.expectations.remove(token);
 		if (pijId !== undefined && ownerToken !== undefined) {
 			deps.registry.releaseReservation(pijId, ownerToken);
 		}
@@ -383,8 +404,17 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 		const registered = deps.waitForPiRegistration(paneId, token);
 		if (!registered.ok) {
 			deps.tmux.killPane(paneId);
+			deps.expectations.remove(token);
 			return registered;
 		}
+		deps.expectations.write(
+			bindSpawnExpectation(expectation, {
+				sessionId: registered.value.id,
+				paneId,
+				runtimeHarness: "pi",
+				boundAt: deps.nowIso(),
+			}),
+		);
 		return ok({
 			id: registered.value.id,
 			paneId,
@@ -398,6 +428,7 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 
 	if (pijId === undefined || ownerToken === undefined) {
 		deps.tmux.killPane(paneId);
+		deps.expectations.remove(token);
 		return err("E-NOREG", `focus launch identity was not reserved for ${manifest.harness}`);
 	}
 	const dataDir = join(deps.pijHome, pijId);
@@ -415,15 +446,25 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 		gitCommonDir: deps.gitCommonDir(input.launchCwd) ?? undefined,
 		plannedHarnessSessionId: forkSessionId,
 		branchedFrom: manifest.harnessSessionId,
+		spawnId: token,
 		model: manifest.model,
 		effort: manifest.effort,
 	});
 	const promoted = deps.registry.promoteReservation(descriptor, ownerToken);
 	if (!promoted.ok) {
 		deps.tmux.killPane(paneId);
+		deps.expectations.remove(token);
 		deps.registry.releaseReservation(pijId, ownerToken);
 		return promoted;
 	}
+	deps.expectations.write(
+		bindSpawnExpectation(expectation, {
+			sessionId: pijId,
+			paneId,
+			runtimeHarness: manifest.harness,
+			boundAt: deps.nowIso(),
+		}),
+	);
 	return ok({
 		id: pijId,
 		paneId,
