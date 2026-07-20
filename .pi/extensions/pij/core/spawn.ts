@@ -19,10 +19,33 @@ import { err, ok, type Result } from "./types.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+/** Pi-family binaries pij can launch on the self-register path. Both load the
+ *  same `.pi/extensions/pij` extension and self-register as `harness:"pi"`, so they
+ *  share the ENTIRE spawn path — only the exec'd binary (and omp's headless
+ *  permission-bypass flag) differ. `omp` = oh-my-pi, a bundled pi build (verified
+ *  live: an omp pane self-registered as `harness:"pi"`). Adding a bin here is the
+ *  whole cost of making pij launch it — no new HarnessKind, transport, or bind. */
+export const PI_FAMILY_BINS = ["pi", "omp"] as const;
+export type PiFamilyBin = (typeof PI_FAMILY_BINS)[number];
+
+/** Resolve which pi-family binary a spawn launches: an explicit `--bin` wins, else
+ *  the `PIJ_PI_BIN` env override (honoured ONLY when it names a known pi-family bin —
+ *  an unknown/empty value is IGNORED, never exec'd, so a typo can't mis-launch), else
+ *  the default `"pi"` (existing behaviour byte-unchanged). Pure. */
+export function resolvePiBin(flagBin: string | undefined, envBin: string | undefined): PiFamilyBin {
+	if (flagBin === "pi" || flagBin === "omp") return flagBin;
+	if (envBin === "pi" || envBin === "omp") return envBin;
+	return "pi";
+}
+
 /** Input to buildSpawnCommand. */
 export interface SpawnInput {
 	/** Optional model override (passed as --model <model>). */
 	model?: string;
+	/** Which pi-family binary to exec (default `"pi"`). `"omp"` swaps the binary to
+	 *  oh-my-pi and prepends its headless permission-bypass flag; everything else
+	 *  (env threading, --model, self-register) is identical because omp IS pi. */
+	bin?: PiFamilyBin;
 	/** Optional thinking/reasoning effort (#3). For pi it rides the model id as a
 	 *  `:<level>` suffix (e.g. `github-copilot/gpt-5.5:xhigh`); a no-op without a
 	 *  model. Unset ⇒ nothing emitted (the child uses its boot default). */
@@ -82,6 +105,13 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		input.model !== undefined && input.effort !== undefined
 			? `${input.model}:${input.effort}`
 			: input.model;
+	// omp (oh-my-pi) has no human at the daemon-driven pane to answer its approval
+	// prompts (interactive omp defaults to "bypass permissions on / shift+tab"), so
+	// mirror the claude/copilot/codex posture and skip approvals up front. pi takes
+	// no such flag today, so the default path stays byte-unchanged.
+	if (input.bin === "omp") {
+		args.push("--auto-approve");
+	}
 	if (piModel !== undefined) {
 		args.push("--model", piModel);
 	}
@@ -118,7 +148,7 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		env.PIJ_NO_WATCHDOG = "1";
 	}
 
-	return { cmd: "pi", args, env };
+	return { cmd: input.bin ?? "pi", args, env };
 }
 
 export interface PiFocusSpawnInput extends SpawnInput {
@@ -552,6 +582,10 @@ export interface SpawnRequest {
 	readonly harness: HarnessKind;
 	readonly task?: string;
 	readonly model?: string;
+	/** Which pi-family binary to launch on the `--harness pi` path (`pi` | `omp`).
+	 *  Unset ⇒ the default `pi`. Only valid with `--harness pi`; `omp` additionally
+	 *  rejects `--branch` (omp has no `--session-id`, so focus-fork can't be wired). */
+	readonly bin?: PiFamilyBin;
 	/** Optional thinking/reasoning effort level (#3). Translated per harness at
 	 *  build time; unset ⇒ no flag (the colleague keeps its boot default). */
 	readonly effort?: string;
@@ -620,6 +654,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let model: string | undefined;
 	let effort: string | undefined;
 	let layout: SpawnLayout | undefined;
+	let bin: PiFamilyBin | undefined;
 	let branch = false;
 	let noWatchdog = false;
 	let json = false;
@@ -657,6 +692,10 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			model = value;
 		} else if (key === "effort") {
 			effort = value;
+		} else if (key === "bin") {
+			if (value !== "pi" && value !== "omp")
+				return err("E-ARG", `--bin must be pi|omp (got '${value}')`);
+			bin = value;
 		} else {
 			return err("E-ARG", `unknown flag --${key} for spawn`);
 		}
@@ -664,7 +703,19 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	if (!harness)
 		return err(
 			"E-ARG",
-			"usage: pij spawn --harness pi|claude|copilot|codex [--task …] [--model …] [--effort …]",
+			"usage: pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--task …] [--model …] [--effort …]",
+		);
+	// `--bin` selects the pi-family BINARY, so it only makes sense on the pi path
+	// (claude/copilot/codex are their own binaries with their own bind machinery).
+	if (bin !== undefined && harness !== "pi")
+		return err("E-ARG", `--bin only applies to --harness pi (got --harness ${harness})`);
+	// omp has no `--session-id` (verified: not in its --help), so a focus-fork can't
+	// be pinned deterministically. Reject `--branch` explicitly here rather than let
+	// it silently fall through and mis-wire the fork path.
+	if (bin === "omp" && branch)
+		return err(
+			"E-ARG",
+			"--branch (focus-fork) is unsupported for --bin omp: omp has no --session-id to pin the fork — spawn without --branch",
 		);
 	return ok({
 		harness,
@@ -672,6 +723,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		model,
 		effort,
 		layout,
+		...(bin !== undefined ? { bin } : {}),
 		branch,
 		...(noWatchdog ? { noWatchdog: true as const } : {}),
 		json,

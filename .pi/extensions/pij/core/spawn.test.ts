@@ -25,6 +25,7 @@ import {
 	planControlSplit,
 	planPlacement,
 	readyBody,
+	resolvePiBin,
 	spawnIdentitySeed,
 } from "./spawn.js";
 import type { HarnessKind, SessionDescriptor } from "./types.js";
@@ -39,7 +40,7 @@ describe("buildSpawnCommand", () => {
 		role: "worker" as const,
 	};
 
-	it("cmd is always 'pi'", () => {
+	it("cmd defaults to 'pi' (no --bin)", () => {
 		const result = buildSpawnCommand(base);
 		expect(result.cmd).toBe("pi");
 	});
@@ -68,6 +69,52 @@ describe("buildSpawnCommand", () => {
 		for (const arg of result.args) {
 			expect(typeof arg).toBe("string");
 		}
+	});
+
+	// ── --bin: pi-family binary selection (omp = oh-my-pi) ──────────────────────
+	// omp is a bundled pi build that loads the same .pi/extensions/pij extension and
+	// self-registers as harness:"pi" (verified live: pane %1972 → pij-remote-lobster).
+	// So the ONLY spawn-time difference from pi is which binary we exec + omp's
+	// headless permission-bypass flag. The default path must stay byte-unchanged.
+	describe("--bin (pi-family binary selection)", () => {
+		it("bin unset → cmd 'pi', NO --auto-approve (default path byte-unchanged)", () => {
+			const r = buildSpawnCommand({ ...base, model: "opus" });
+			expect(r.cmd).toBe("pi");
+			expect(r.args).toEqual(["--model", "opus"]);
+			expect(r.args).not.toContain("--auto-approve");
+		});
+
+		it("bin 'pi' explicit is identical to the default (no bypass flag)", () => {
+			const r = buildSpawnCommand({ ...base, bin: "pi", model: "opus" });
+			expect(r.cmd).toBe("pi");
+			expect(r.args).toEqual(["--model", "opus"]);
+		});
+
+		it("bin 'omp' → cmd 'omp' + --auto-approve (headless permission bypass)", () => {
+			const r = buildSpawnCommand({ ...base, bin: "omp" });
+			expect(r.cmd).toBe("omp");
+			expect(r.args).toContain("--auto-approve");
+		});
+
+		it("bin 'omp' passes a bare fuzzy model id through unchanged (no provider prefix)", () => {
+			const r = buildSpawnCommand({ ...base, bin: "omp", model: "gpt-5.6-sol" });
+			expect(r.cmd).toBe("omp");
+			expect(r.args).toEqual(["--auto-approve", "--model", "gpt-5.6-sol"]);
+		});
+
+		it("bin 'omp' threads effort as pi's model:effort suffix (pi-family parity)", () => {
+			const r = buildSpawnCommand({ ...base, bin: "omp", model: "gpt-5.6-sol", effort: "high" });
+			expect(r.args).toEqual(["--auto-approve", "--model", "gpt-5.6-sol:high"]);
+		});
+
+		it("bin 'omp' env threading is identical to pi (same pij extension self-registers)", () => {
+			const r = buildSpawnCommand({ ...base, bin: "omp", task: "go", model: "opus" });
+			expect(r.env.PIJ_ANNOUNCE_TO).toBe("pij-parent01");
+			expect(r.env.PIJ_SPAWN_ID).toBe("abc123");
+			expect(r.env.PIJ_ROLE).toBe("worker");
+			expect(r.env.PIJ_SPAWN_TASK).toBe("go");
+			expect(r.env.PIJ_SPAWN_MODEL).toBe("opus");
+		});
 	});
 
 	it("always includes required env vars", () => {
@@ -766,6 +813,44 @@ describe("parseSpawnArgs (T018)", () => {
 		expect(parseSpawnArgs(["--harness"])).toMatchObject({ ok: false, code: "E-ARG" });
 	});
 
+	// ── --bin omp (pi-family binary; omp = oh-my-pi, registers as harness:pi) ────
+	it("parses --bin omp on the pi harness (space and = forms)", () => {
+		expect(parseSpawnArgs(["--harness", "pi", "--bin", "omp"])).toMatchObject({
+			ok: true,
+			value: { harness: "pi", bin: "omp" },
+		});
+		expect(parseSpawnArgs(["--harness=pi", "--bin=omp", "--model=gpt-5.6-sol"])).toMatchObject({
+			ok: true,
+			value: { harness: "pi", bin: "omp", model: "gpt-5.6-sol" },
+		});
+	});
+
+	it("--bin unset → bin undefined (resolves to pi downstream)", () => {
+		const r = parseSpawnArgs(["--harness", "pi"]);
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value.bin).toBeUndefined();
+	});
+
+	it("rejects an unknown --bin value (only pi|omp are pi-family)", () => {
+		expect(parseSpawnArgs(["--harness", "pi", "--bin", "frobnicate"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("rejects --bin on a non-pi harness (--bin selects the pi-family binary only)", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--bin", "omp"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("rejects --bin omp with --branch (omp has no --session-id; focus-fork unsupported)", () => {
+		const r = parseSpawnArgs(["--harness", "pi", "--bin", "omp", "--branch"]);
+		expect(r).toMatchObject({ ok: false, code: "E-ARG" });
+		if (!r.ok) expect(r.message).toMatch(/branch/i);
+	});
+
 	it("parses --effort (space and = forms); unset → effort undefined (#3, AC-04)", () => {
 		expect(parseSpawnArgs(["--harness", "claude", "--effort", "high"])).toMatchObject({
 			ok: true,
@@ -778,6 +863,23 @@ describe("parseSpawnArgs (T018)", () => {
 		const unset = parseSpawnArgs(["--harness", "claude"]);
 		expect(unset.ok).toBe(true);
 		if (unset.ok) expect(unset.value.effort).toBeUndefined();
+	});
+});
+
+describe("resolvePiBin (--bin flag wins → PIJ_PI_BIN env fallback → default pi)", () => {
+	it("returns the explicit flag bin (flag beats env)", () => {
+		expect(resolvePiBin("omp", undefined)).toBe("omp");
+		expect(resolvePiBin("pi", "omp")).toBe("pi");
+	});
+
+	it("falls back to a known PIJ_PI_BIN env when no flag", () => {
+		expect(resolvePiBin(undefined, "omp")).toBe("omp");
+	});
+
+	it("defaults to pi when neither set, and ignores an unknown env (never mis-launches)", () => {
+		expect(resolvePiBin(undefined, undefined)).toBe("pi");
+		expect(resolvePiBin(undefined, "frobnicate")).toBe("pi");
+		expect(resolvePiBin(undefined, "")).toBe("pi");
 	});
 });
 

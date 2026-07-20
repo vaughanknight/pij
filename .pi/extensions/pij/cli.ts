@@ -163,6 +163,7 @@ import {
 	parseSpawnArgs,
 	planBranch,
 	planPlacement,
+	resolvePiBin,
 	type SpawnLayout,
 	spawnIdentitySeed,
 } from "./core/spawn.js";
@@ -298,7 +299,7 @@ EXAMPLES
 const SPAWN_USAGE = `pij spawn — spawn a colleague in a tmux pane (one uniform surface for every harness)
 
 USAGE
-  pij spawn --harness pi|claude|copilot|codex [--model <m>] [--effort <lvl>] [--task "<t>"] [--branch]
+  pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--model <m>] [--effort <lvl>] [--task "<t>"] [--branch]
 
 FLAGS
   --harness <h>   pi | claude | copilot | codex  (the harness to launch in a new tmux pane)
@@ -306,6 +307,11 @@ FLAGS
                     claude  -> daemon-bound via transcript discovery
                     copilot -> daemon-bound via deterministic --session-id
                     codex   -> daemon-bound via transcript discovery (date-nested rollout)
+  --bin <b>       pi | omp  (pi-family binary; --harness pi only). Default pi.
+                    omp = oh-my-pi, a bundled pi build that loads the same pij extension
+                    and self-registers as harness:pi — so it needs NO new bind machinery.
+                    omp gets --auto-approve (headless permission bypass); --branch is
+                    rejected for omp (no --session-id to pin a fork). Also: PIJ_PI_BIN env.
   --model <m>     model id for that harness:
                     pi      -> a pi model/preset (e.g. @preset/glm-1m; pair with the
                                session's configured provider)
@@ -1195,11 +1201,16 @@ function runSpawn(argv: readonly string[]): void {
 			requestedAt,
 			deadlineAt: spawnExpectationDeadline(requestedAt),
 		});
+		// Which pi-family binary to exec: explicit --bin wins, else PIJ_PI_BIN env,
+		// else "pi" (default byte-unchanged). omp = oh-my-pi, which self-registers as
+		// harness:"pi" exactly like pi — only the binary + its --auto-approve differ.
+		const piBin = resolvePiBin(req.value.bin, process.env.PIJ_PI_BIN);
 		const spawnCmdPi = buildSpawnCommand({
 			spawnId,
 			announceTo,
 			cwd: cwdPi,
 			role: "worker",
+			bin: piBin,
 			model: req.value.model,
 			effort: req.value.effort,
 			task: req.value.task,
@@ -1253,13 +1264,13 @@ function runSpawn(argv: readonly string[]): void {
 						harness: "pi",
 						model: req.value.model,
 						effort: req.value.effort,
-						note: "pi self-registers; its id is assigned by the child at boot — watch for its ready-ping or `pij list`",
+						note: `${piBin} self-registers as harness:pi; its id is assigned by the child at boot — watch for its ready-ping or \`pij list\``,
 					}),
 				)}\n`,
 			);
 		} else {
 			process.stdout.write(
-				`spawned pi worker in pane ${panePi} (model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
+				`spawned ${piBin} worker in pane ${panePi} (model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
 			);
 		}
 		return;
