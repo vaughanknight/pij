@@ -30,11 +30,13 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FakePiRuntime } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
+import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { reattachIdentity } from "./core/binding.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
+import { DEFAULT_SPAWN_EXPECTATION_TTL_MS } from "./core/spawn-expectation.js";
 import type { PijMessage, SessionDescriptor } from "./core/types.js";
 
 const CLI = join(import.meta.dirname, "cli.ts");
@@ -45,6 +47,16 @@ let HOME: string;
 let FOLDER: string;
 let BIN: string;
 let TMUX_LOG: string;
+
+function clearSpawnExpectations(): void {
+	rmSync(join(HOME, "spawn-expectations"), { recursive: true, force: true });
+}
+
+function prelaunchSnapshots(): string[] {
+	return readFileSync(TMUX_LOG, "utf8")
+		.split("\n")
+		.filter((line) => line.startsWith("PRELAUNCH ") && line.includes('"spawnId"'));
+}
 
 /** Run the real cli.ts bin in the sandbox. Returns stdout + exit code. */
 function pij(
@@ -123,6 +135,15 @@ beforeAll(() => {
 		tmux,
 		`#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
+if [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; then
+	for expectation in "$PIJ_HOME"/spawn-expectations/*.json; do
+		if [ -f "$expectation" ]; then
+			printf 'PRELAUNCH ' >> "$FAKE_TMUX_LOG"
+			cat "$expectation" >> "$FAKE_TMUX_LOG"
+			printf '\n' >> "$FAKE_TMUX_LOG"
+		fi
+	done
+fi
 if [ "$FAKE_TMUX_FAIL" = "1" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
 	exit 1
 fi
@@ -710,7 +731,39 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(r.code).toBe(2);
 	});
 
-	it("control-plane spawn reserves a memorable id before launch and publishes that exact id", () => {
+	it("standalone pi spawn persists a pane-correlated five-minute expectation before launch without a descriptor", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(["spawn", "--harness", "pi", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(result.code).toBe(0);
+		const output = JSON.parse(result.out) as { paneId: string };
+		const expectations = new FsSpawnExpectationStore(HOME).list();
+		expect(expectations).toHaveLength(1);
+		const expectation = expectations[0];
+		expect(expectation).toMatchObject({
+			creatorId: "pij-A",
+			requestedHarness: "pi",
+			paneId: output.paneId,
+		});
+		expect(
+			Date.parse(expectation?.deadlineAt ?? "") - Date.parse(expectation?.requestedAt ?? ""),
+		).toBe(DEFAULT_SPAWN_EXPECTATION_TTL_MS);
+		expect(
+			new FsRegistry(HOME).list().some((descriptor) => descriptor.spawnId === expectation?.spawnId),
+		).toBe(false);
+		const prelaunch = prelaunchSnapshots().map((line) =>
+			JSON.parse(line.slice("PRELAUNCH ".length)),
+		);
+		expect(prelaunch).toEqual([
+			expect.objectContaining({ spawnId: expectation?.spawnId, requestedHarness: "pi" }),
+		]);
+		expect(prelaunch[0]).not.toHaveProperty("paneId");
+	});
+
+	it("control-plane spawn correlates one prelaunch expectation with descriptor and pane", () => {
+		clearSpawnExpectations();
 		writeFileSync(TMUX_LOG, "");
 		const result = pij(["spawn", "--harness", "claude", "--json"], {
 			PIJ_SESSION_ID: "pij-A",
@@ -722,21 +775,41 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; paneId: string };
 		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
-		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+		const descriptor = new FsRegistry(HOME).read(output.id);
+		expect(descriptor).toMatchObject({
 			id: output.id,
 			paneId: output.paneId,
 			spawnedBy: "pij-A",
 			parentId: "pij-A",
 			lifecycle: "pending",
 		});
+		const expectation = new FsSpawnExpectationStore(HOME).read(descriptor?.spawnId ?? "");
+		expect(expectation).toMatchObject({
+			spawnId: descriptor?.spawnId,
+			creatorId: "pij-A",
+			requestedHarness: "claude",
+			paneId: output.paneId,
+			sessionId: output.id,
+		});
 		expect(readFileSync(TMUX_LOG, "utf8")).toContain(`PIJ_SESSION_ID=${output.id}`);
+		expect(prelaunchSnapshots()).toEqual([
+			expect.stringContaining(`"spawnId":"${descriptor?.spawnId}"`),
+		]);
+		expect(prelaunchSnapshots()[0]).not.toContain('"paneId"');
 		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
 			ok: true,
 			value: false,
 		});
 	});
 
-	it("known pane-launch failure releases only the reservation it owns", () => {
+	it("known pane-launch failure releases only its reservation and expectation", () => {
+		clearSpawnExpectations();
+		const expectationStore = new FsSpawnExpectationStore(HOME);
+		expectationStore.write({
+			spawnId: "sentinel",
+			requestedHarness: "pi",
+			requestedAt: "2026-07-20T00:00:00.000Z",
+		});
 		writeFileSync(TMUX_LOG, "");
 		const result = pij(["spawn", "--harness", "claude", "--json"], {
 			PIJ_SESSION_ID: "pij-A",
@@ -751,9 +824,11 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			ok: true,
 			value: false,
 		});
+		expect(expectationStore.list().map((expectation) => expectation.spawnId)).toEqual(["sentinel"]);
 	});
 
-	it("agent spawn uses and consumes the same pre-bind memorable reservation", () => {
+	it("agent spawn correlates its prelaunch expectation, pane, descriptor, and harness", () => {
+		clearSpawnExpectations();
 		writeFileSync(TMUX_LOG, "");
 		const result = pij(
 			["agent", "spawn", "--prompt", "Inspect the current diff.", "--harness", "claude", "--json"],
@@ -765,17 +840,63 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.split("\n")
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; agentPack: string };
-		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(?:-[a-z]+)*$/);
 		expect(output.agentPack).toBe("inline");
-		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+		const descriptor = new FsRegistry(HOME).read(output.id);
+		expect(descriptor).toMatchObject({
 			id: output.id,
 			agentPack: "inline",
 			parentId: "pij-A",
 			lifecycle: "pending",
 		});
+		expect(new FsSpawnExpectationStore(HOME).read(descriptor?.spawnId ?? "")).toMatchObject({
+			spawnId: descriptor?.spawnId,
+			creatorId: "pij-A",
+			requestedHarness: "claude",
+			paneId: descriptor?.paneId,
+			sessionId: output.id,
+			runtimeHarness: "claude",
+		});
+		expect(prelaunchSnapshots()).toEqual([
+			expect.stringContaining(`"spawnId":"${descriptor?.spawnId}"`),
+		]);
+		expect(prelaunchSnapshots()[0]).not.toContain('"paneId"');
 		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
 			ok: true,
 			value: false,
+		});
+	});
+
+	it("CLI close traces intent → kill → requested terminal → dissolve and retains history", () => {
+		const id = "pij-close-p3";
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-20T00:00:00.000Z",
+			paneId: "%88",
+			spawnedBy: "pij-A",
+			harness: "claude",
+			lifecycle: "bound",
+		});
+		const tracePath = join(HOME, "p3-close.trace");
+		const result = pij(["close", id], {
+			PIJ_SESSION_ID: "pij-A",
+			PIJ_TEST_P3_TRACE: tracePath,
+		});
+		expect(result.code).toBe(0);
+		expect(readFileSync(tracePath, "utf8").trim().split("\n")).toEqual([
+			"close:intent-write",
+			"close:kill",
+			"close:terminal-write",
+			"close:dissolve",
+		]);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			lifecycle: "dissolved",
+			closeIntent: { actor: "pij-A", kind: "cli-close" },
+			terminal: { disposition: "requested", evidence: "pane-missing" },
 		});
 	});
 
@@ -1402,6 +1523,20 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(pij(["watch", "src/**/*.ts"], { PIJ_SESSION_ID: "pij-A" }).out).toContain(
 			"non-pi peers only",
 		);
+	});
+
+	it("state clear round-trips through the real CLI without materializing a second assignment", () => {
+		const set = pij(["state", "set", "pij-B", "hold", "--actor", "pij-A", "--json"]);
+		expect(set.code).toBe(0);
+		const clear = pij(["state", "clear", "pij-B", "--actor", "pij-A", "--json"]);
+		expect(clear.code).toBe(0);
+		expect(JSON.parse(clear.out)).toMatchObject({ kind: "state-cleared", peer: "pij-B" });
+		const card = pij(["node", "show", "pij-B", "--json"]);
+		expect(card.code).toBe(0);
+		expect(JSON.parse(card.out)).toMatchObject({ semanticState: null });
+		const repeat = pij(["state", "clear", "pij-B", "--actor", "pij-A"]);
+		expect(repeat.code).toBe(64);
+		expect(repeat.out).toContain("undeclared");
 	});
 });
 

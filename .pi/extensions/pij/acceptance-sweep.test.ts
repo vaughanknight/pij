@@ -545,4 +545,19 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 			"references/routes/node.md",
 		);
 	});
+
+	it("state clear makes a parked assignment undeclared without disturbing its mechanical axis", () => {
+		registry.write({ ...(registry.read("pij-stray") as SessionDescriptor), systemState: "idle" });
+		expect(run(["state", "set", "pij-stray", "hold"]).exitCode).toBe(0);
+		const cleared = runJson<SpineEvent>(["state", "clear", "pij-stray", "--json"]);
+		expect(cleared).toMatchObject({ kind: "state-cleared", peer: "pij-stray" });
+		const card = runJson<{ semanticState: string | null; systemState: string | null }>([
+			"node",
+			"show",
+			"pij-stray",
+			"--json",
+		]);
+		expect(card).toMatchObject({ semanticState: null, systemState: "idle" });
+		expect(registry.read("pij-stray")?.semanticState).toBeUndefined();
+	});
 });

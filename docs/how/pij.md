@@ -87,6 +87,7 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
+| `state clear` | `pij state clear <node> [--assignment <id>]` | Remove the target assignment's declared semantic state while keeping its task, event history, and mechanical/runtime state. Refuses loudly when no assignment or declaration exists. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
 | `tree` | `pij tree [<id> \| --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all]` | Render the current Git repository forest by default, the global registry with `--global`, or an arbitrary subtree with `<id>`. Filters are repeatable; `--json` returns `{"roots":[...]}`. |
 | `link` | `pij link <child> --parent <parent> \| --root` | Reparent a session or make it an explicit structural root. Validates unknown ids, self-links, and cycles before writing; never changes close ownership. |
@@ -104,6 +105,17 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `1` | `E-DEAD` (peer's process is gone), or at least one preflight-valid broadcast delivery failed |
 | `3` | `E-NOREG` (no `~/.pij` registry yet) |
 | `64` | `E-ARG` (malformed invocation — unknown flag, bad arity, non-numeric `--since`, `text` + `--command` together, …) |
+
+---
+
+## Semantic state declarations
+
+`pij state set <node> <state>` records an assignment-scoped declaration from the
+closed semantic vocabulary. `pij state clear <node> [--assignment <id>]` removes
+that declaration without creating an implicit general assignment, closing the task,
+or changing `systemState`. It appends one journaled `state-cleared` spine event and
+keeps earlier assignment history intact. A clear of an already undeclared assignment
+is an `E-ARG` refusal, not a silent success.
 
 ---
 
@@ -441,6 +453,21 @@ The bound model (captured from first inference) and reason code are surfaced in 
 pij state pij-worker          # shows model + failure reason in human text
 pij state pij-worker --json   # boundModel, failureReason fields
 ```
+
+### Terminal observation and spawn no-shows
+
+Every launch writes a durable expectation keyed by its `spawnId` **before** opening
+its tmux pane. It records the requested harness, a bounded registration deadline,
+and later the pane/session correlation. A launch that fails synchronously removes
+only its own expectation; a process crash leaves the intent for reconciliation.
+
+Terminal status is evidence, not a guessed cause: a pij-owned close is
+`requested`; a PID/pane absence without recorded pij close intent is
+`unrequested-by-pij`; and a failed probe is `unavailable`. The daemon labels its
+first post-boot reconciliation as **historical** and subsequent observations as
+**live**, preserving the observation time and any last-seen time. An unbound,
+expired expectation becomes an expectation-keyed no-show notice; a descriptor with
+the same `spawnId` suppresses that no-show rather than inventing a runtime harness.
 
 Per-harness detection (on captured pane text, never stderr):
 - **claude**: `API Error: 400` → `model-not-supported` (also triggers pane-dead via `classifyReadiness`)

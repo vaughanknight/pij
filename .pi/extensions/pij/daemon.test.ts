@@ -42,6 +42,7 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 
 interface FakePortsOptions {
 	readonly alive?: boolean;
+	readonly isAlive?: () => boolean;
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
 	readonly sendOutcome?: "confirmed" | "unverified";
@@ -85,7 +86,7 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 		listTranscripts: () => [],
 		home: () => home,
 		now: () => options.now?.() ?? options.nowMs ?? 1000,
-		isAlive: () => options.alive ?? true,
+		isAlive: () => options.isAlive?.() ?? options.alive ?? true,
 	};
 }
 
@@ -606,6 +607,91 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 	});
 });
 
+describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
+	it("labels the first durable death sweep historical, persists it, and restart does not duplicate", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-parent", pid: 101 }));
+		registry.write(
+			desc({
+				id: "pij-dead",
+				harness: "pi",
+				lifecycle: "bound",
+				spawnedBy: "pij-parent",
+				lastEventAt: "2026-06-27T23:59:00.000Z",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const ports = fakePorts({ alive: false, nowMs: NOW_MS });
+
+		new Daemon(home, ports, registry, channel).tick();
+
+		const terminal = registry.read("pij-dead");
+		expect(terminal).toMatchObject({
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: new Date(NOW_MS).toISOString(),
+				evidence: "pid-missing",
+			},
+			deathNoticeLatchedAt: new Date(NOW_MS).toISOString(),
+		});
+		expect(messageBodies("pij-parent")).toEqual([
+			expect.stringContaining("historical boot reconciliation"),
+		]);
+		expect(messageBodies("pij-parent")[0]).toContain(new Date(NOW_MS).toISOString());
+
+		new Daemon(home, ports, registry, channel).tick();
+		expect(messageBodies("pij-parent")).toHaveLength(1);
+	});
+
+	it("uses live-observation wording after the daemon's first sweep", () => {
+		const registry = new FsRegistry(home);
+		const channel = new FsChannel(home);
+		const ports = fakePorts({ alive: false, nowMs: NOW_MS });
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+		registry.write(desc({ id: "pij-parent", pid: 101 }));
+		registry.write(
+			desc({
+				id: "pij-live-death",
+				harness: "pi",
+				lifecycle: "bound",
+				spawnedBy: "pij-parent",
+			}),
+		);
+
+		daemon.tick();
+
+		expect(messageBodies("pij-parent")).toEqual([expect.stringContaining("live observation")]);
+	});
+
+	it("contains an unavailable PID probe and persists explicit unavailable truth", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-unavailable",
+				harness: "pi",
+				lifecycle: "bound",
+			}),
+		);
+		const ports = fakePorts({
+			nowMs: NOW_MS,
+			isAlive: () => {
+				if (new Error().stack?.includes("death-reconciler")) {
+					throw new Error("EPERM probing pid");
+				}
+				return true;
+			},
+		});
+
+		expect(() => new Daemon(home, ports, registry, new FsChannel(home)).tick()).not.toThrow();
+		expect(registry.read("pij-unavailable")?.terminal).toMatchObject({
+			disposition: "unavailable",
+			evidence: "observation-unavailable",
+			unavailableReason: "EPERM probing pid",
+		});
+	});
+});
+
 describe("Daemon.tick provider-failure peek", () => {
 	it("does not push a provider failure while the session is working with fresh activity", () => {
 		const registry = new FsRegistry(home);
@@ -727,7 +813,7 @@ describe("Daemon.tick provider-failure peek", () => {
 });
 
 describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => {
-	it("closes a once-mode peer that has reported: kills the pane + removes the descriptor", () => {
+	it("orders once close intent → kill → requested terminal → dissolve exactly", () => {
 		const registry = new FsRegistry(home);
 		registry.write(
 			desc({
@@ -740,10 +826,37 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 				reportedAt: FRESH_AT,
 			}),
 		);
+		const trace: string[] = [];
+		let intentSeen = false;
+		let terminalSeen = false;
+		const write = registry.write.bind(registry);
+		registry.write = (descriptor) => {
+			if (descriptor.id === "pij-agent" && descriptor.closeIntent && !intentSeen) {
+				trace.push("intent-write");
+				intentSeen = true;
+			}
+			if (descriptor.id === "pij-agent" && descriptor.terminal && !terminalSeen) {
+				trace.push("terminal-write");
+				terminalSeen = true;
+			}
+			write(descriptor);
+		};
+		const dissolve = registry.dissolve.bind(registry);
+		registry.dissolve = (id) => {
+			trace.push("dissolve");
+			dissolve(id);
+		};
 		const ports = fakePorts();
+		ports.killPane = (pane) => {
+			trace.push("kill");
+			ports.killed.push(pane);
+		};
 		new Daemon(home, ports, registry, new FsChannel(home)).tick();
-		expect(ports.killed).toContain("%7");
-		expect(registry.read("pij-agent")?.lifecycle).toBe("dissolved");
+		expect(trace).toEqual(["intent-write", "kill", "terminal-write", "dissolve"]);
+		expect(registry.read("pij-agent")).toMatchObject({
+			lifecycle: "dissolved",
+			terminal: { disposition: "requested", evidence: "pane-missing" },
+		});
 	});
 
 	it("does NOT close a once-mode peer that has not reported yet (the load-bearing latch)", () => {

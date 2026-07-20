@@ -26,7 +26,15 @@ import {
 } from "./focus.js";
 import { transcriptDir } from "./harness/claude.js";
 import type { RegistryPort } from "./ports.js";
-import { type FocusManifest, ok, type Result, type SessionDescriptor } from "./types.js";
+import { DEFAULT_SPAWN_EXPECTATION_TTL_MS } from "./spawn-expectation.js";
+import {
+	err,
+	type FocusManifest,
+	ok,
+	type Result,
+	type SessionDescriptor,
+	type SpawnExpectation,
+} from "./types.js";
 
 function descriptor(overrides: Partial<SessionDescriptor> = {}): SessionDescriptor {
 	return {
@@ -153,8 +161,30 @@ describe("focus core", () => {
 		tmux = new FakeTmux(),
 		overrides: Partial<FocusLaunchDeps> = {},
 	) {
+		const expectations = new Map<string, SpawnExpectation>();
+		const trace: string[] = [];
+		const splitWindow = tmux.splitWindow.bind(tmux);
+		tmux.splitWindow = (opts) => {
+			trace.push("tmux-launch");
+			return splitWindow(opts);
+		};
 		return {
+			trace,
 			registry: new FsRegistry(pijHome),
+			expectations: {
+				list: () => [...expectations.values()],
+				read: (spawnId: string) => expectations.get(spawnId) ?? null,
+				write: (expectation: SpawnExpectation) => {
+					trace.push(
+						expectation.paneId === undefined ? "expectation-write" : "pane-or-bind-update",
+					);
+					expectations.set(expectation.spawnId, expectation);
+				},
+				remove: (spawnId: string) => {
+					trace.push("expectation-remove");
+					expectations.delete(spawnId);
+				},
+			},
 			store,
 			tmux,
 			home,
@@ -259,6 +289,53 @@ describe("focus core", () => {
 			target: "%500",
 			direction: "h",
 		});
+		expect(deps.trace).toEqual([
+			"expectation-write",
+			"tmux-launch",
+			"pane-or-bind-update",
+			"pane-or-bind-update",
+		]);
+		expect(deps.expectations.read("focus-launch-token")).toMatchObject({
+			spawnId: "focus-launch-token",
+			requestedAt: "2026-07-15T02:03:04.000Z",
+			deadlineAt: new Date(
+				Date.parse("2026-07-15T02:03:04.000Z") + DEFAULT_SPAWN_EXPECTATION_TTL_MS,
+			).toISOString(),
+			paneId: "%900",
+			sessionId: "pij-child-owned",
+		});
+	});
+
+	it("cleans only the focus-owned expectation when tmux launch fails synchronously", () => {
+		const snapshot = '{"type":"user","sessionId":"source-claude"}\n';
+		const manifest: FocusManifest = {
+			version: 1,
+			name: "failed-focus",
+			harness: "claude",
+			harnessSessionId: "source-claude",
+			originCwd: "/repo",
+			sha256: createHash("sha256").update(snapshot).digest("hex"),
+			createdAt: "2026-07-15T00:00:00.000Z",
+			lineage: { sourcePijId: "pij-source", sourceHarnessSessionId: "source-claude" },
+		};
+		const tmux = new FakeTmux();
+		tmux.splitWindow = () => err("E-NOTMUX", "injected split failure");
+		const deps = launchDeps(persistFocus(manifest, snapshot), tmux);
+		deps.expectations.write({
+			spawnId: "sentinel",
+			requestedHarness: "pi",
+			requestedAt: "2026-07-15T00:00:00.000Z",
+		});
+
+		const result = launchFocus({ name: manifest.name, launchCwd: "/repo" }, deps);
+
+		expect(result).toMatchObject({ ok: false, code: "E-NOTMUX" });
+		expect(deps.trace.slice(-3)).toEqual([
+			"expectation-write",
+			"tmux-launch",
+			"expectation-remove",
+		]);
+		expect(deps.expectations.list().map((item) => item.spawnId)).toEqual(["sentinel"]);
 	});
 
 	it("materializes a claude snapshot under a fresh focus-owned id when the donor file differs", () => {

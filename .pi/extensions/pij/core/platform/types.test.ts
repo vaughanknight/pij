@@ -22,6 +22,7 @@ import {
 	resolveSlugCollision,
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
+	SPINE_KIND_STATE_CLEARED,
 	type SpineEvent,
 } from "./types.js";
 
@@ -530,6 +531,10 @@ describe("spine kind openness + pij constants", () => {
 
 	it("SPINE_KIND_PROJECT_SET is the literal 'project-set'", () => {
 		expect(SPINE_KIND_PROJECT_SET).toBe("project-set");
+	});
+
+	it("SPINE_KIND_STATE_CLEARED is the literal 'state-cleared'", () => {
+		expect(SPINE_KIND_STATE_CLEARED).toBe("state-cleared");
 	});
 
 	it("isSpineEvent accepts arbitrary external kind strings (open vocabulary)", () => {

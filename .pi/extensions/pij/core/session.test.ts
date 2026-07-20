@@ -11,9 +11,11 @@ import {
 	FakeRegistry,
 	FakeTmux,
 } from "../adapters/fakes.js";
+import type { SpawnExpectationStore } from "./ports.js";
 import type { BootInput, PijPorts } from "./session.js";
 import { PijSession } from "./session.js";
-import type { PijEvent, SessionDescriptor } from "./types.js";
+import { DEFAULT_SPAWN_EXPECTATION_TTL_MS } from "./spawn-expectation.js";
+import { err, type PijEvent, type SessionDescriptor, type SpawnExpectation } from "./types.js";
 
 const T0 = Date.parse("2026-06-16T00:00:00.000Z");
 
@@ -40,6 +42,7 @@ function harness(
 		vars?: Record<string, string>;
 		/** Override default FakeTmux (e.g. to test E-NOTMUX with sessionName: null). */
 		tmux?: FakeTmux;
+		expectations?: SpawnExpectationStore;
 	} = {},
 ) {
 	const registry = new FakeRegistry(opts.registry ?? []);
@@ -48,8 +51,33 @@ function harness(
 	const pi = new FakePiRuntime(opts.idle ?? true);
 	const process = new FakeProcess(4242, opts.now ?? T0, opts.vars ?? {});
 	const tmux = opts.tmux ?? new FakeTmux();
-	const ports: PijPorts = { registry, eventLog, delivery, pi, process, tmux };
+	const ports: PijPorts = {
+		registry,
+		eventLog,
+		delivery,
+		pi,
+		process,
+		tmux,
+		...(opts.expectations ? { expectations: opts.expectations } : {}),
+	};
 	return { ports, registry, eventLog, delivery, pi, process, tmux, session: new PijSession(ports) };
+}
+
+function memoryExpectationStore(): SpawnExpectationStore & { writes: SpawnExpectation[] } {
+	const map = new Map<string, SpawnExpectation>();
+	const writes: SpawnExpectation[] = [];
+	return {
+		writes,
+		list: () => [...map.values()],
+		read: (spawnId) => map.get(spawnId) ?? null,
+		write: (expectation) => {
+			writes.push(expectation);
+			map.set(expectation.spawnId, expectation);
+		},
+		remove: (spawnId) => {
+			map.delete(spawnId);
+		},
+	};
 }
 
 describe("PijSession.boot", () => {
@@ -411,7 +439,7 @@ describe("PijSession descriptor state (D-A / AC-9, AC-7a)", () => {
 });
 
 describe("PijSession.shutdown", () => {
-	it("dissolves the descriptor without leaving it in the live registry list", () => {
+	it("dissolves a replacement descriptor without leaving it in the live registry list", () => {
 		const h = harness();
 		h.session.boot(
 			bootInput({
@@ -420,13 +448,20 @@ describe("PijSession.shutdown", () => {
 			}),
 		);
 		expect(h.registry.read("alice")).not.toBeNull();
-		h.session.shutdown();
+		h.session.shutdown("reload");
 		expect(h.registry.read("alice")).toMatchObject({
 			lifecycle: "dissolved",
 			parentId: null,
 			gitCommonDir: "/repo/.git",
 		});
 		expect(h.registry.list()).toEqual([]);
+	});
+
+	it("leaves quit available for daemon terminal observation", () => {
+		const h = harness();
+		h.session.boot(bootInput());
+		h.session.shutdown("quit");
+		expect(h.registry.read("alice")?.lifecycle).not.toBe("dissolved");
 	});
 });
 
@@ -443,6 +478,50 @@ describe("PijSession.spawn", () => {
 		expect(r.value.paneId).toBe("%900"); // FakeTmux starts at 900
 		expect(h.tmux.windows).toHaveLength(1);
 		expect(h.tmux.splits).toHaveLength(0);
+	});
+
+	it("persists the exact deadline before launch, then correlates pane and child registration", () => {
+		const trace: string[] = [];
+		const expectations = memoryExpectationStore();
+		const originalWrite = expectations.write;
+		expectations.write = (expectation) => {
+			trace.push(expectation.paneId === undefined ? "expectation-write" : "pane-update");
+			originalWrite(expectation);
+		};
+		const parent = harness({ expectations });
+		const originalNewWindow = parent.tmux.newWindow.bind(parent.tmux);
+		parent.tmux.newWindow = (opts) => {
+			trace.push("tmux-launch");
+			return originalNewWindow(opts);
+		};
+		parent.session.boot(bootInput());
+		const spawned = parent.session.spawn({ cwd: "/repo", layout: "window" });
+		expect(spawned.ok).toBe(true);
+		if (!spawned.ok) return;
+		expect(expectations.writes[0]).toMatchObject({
+			spawnId: spawned.value.spawnId,
+			requestedHarness: "pi",
+			requestedAt: new Date(T0).toISOString(),
+			deadlineAt: new Date(T0 + DEFAULT_SPAWN_EXPECTATION_TTL_MS).toISOString(),
+		});
+		expect(expectations.writes[0]).not.toHaveProperty("paneId");
+		expect(expectations.writes[1]).toMatchObject({ paneId: spawned.value.paneId });
+		expect(trace).toEqual(["expectation-write", "tmux-launch", "pane-update"]);
+
+		const child = harness({
+			expectations,
+			vars: {
+				PIJ_ANNOUNCE_TO: "alice",
+				PIJ_SPAWN_ID: spawned.value.spawnId,
+				TMUX_PANE: spawned.value.paneId,
+			},
+		});
+		child.session.boot(bootInput({ id: "bob", harnessSessionId: "pi-native-bob" }));
+		expect(expectations.read(spawned.value.spawnId)).toMatchObject({
+			sessionId: "bob",
+			runtimeHarness: "pi",
+			paneId: spawned.value.paneId,
+		});
 	});
 
 	it("env carries PIJ_ANNOUNCE_TO=self, PIJ_SPAWN_ID, PIJ_ROLE=worker (AC-02)", () => {
@@ -494,6 +573,22 @@ describe("PijSession.spawn", () => {
 		if (r.ok) return;
 		expect(r.code).toBe("E-NOTMUX");
 		expect(h.tmux.windows).toHaveLength(0); // no window opened
+	});
+
+	it("synchronous tmux launch failure removes only its owned expectation", () => {
+		const expectations = memoryExpectationStore();
+		expectations.write({
+			spawnId: "sentinel",
+			requestedHarness: "pi",
+			requestedAt: new Date(T0).toISOString(),
+		});
+		const tmux = new FakeTmux();
+		tmux.newWindow = () => err("E-NOTMUX", "injected launch failure");
+		const h = harness({ expectations, tmux });
+		h.session.boot(bootInput());
+		const result = h.session.spawn({ cwd: "/repo", layout: "window" });
+		expect(result).toMatchObject({ ok: false, code: "E-NOTMUX" });
+		expect(expectations.list().map((item) => item.spawnId)).toEqual(["sentinel"]);
 	});
 
 	// ─── split-pane layout ───────────────────────────────────────────────────
@@ -600,14 +695,49 @@ describe("PijSession.close", () => {
 		spawnedBy: "alice",
 	};
 
-	it("kills the pane by paneId and dissolves the descriptor (AC-05)", () => {
+	it("orders intent write → kill → requested terminal write → dissolve exactly", () => {
 		const h = harness({ registry: [spawnedDescriptor] });
+		const trace: string[] = [];
+		const originalWrite = h.registry.write.bind(h.registry);
+		h.registry.write = (descriptor) => {
+			if (descriptor.id === "bob") {
+				trace.push(descriptor.terminal ? "terminal-write" : "intent-write");
+			}
+			originalWrite(descriptor);
+		};
+		const originalKill = h.tmux.killPane.bind(h.tmux);
+		h.tmux.killPane = (paneId) => {
+			trace.push("kill");
+			return originalKill(paneId);
+		};
+		const originalDissolve = h.registry.dissolve.bind(h.registry);
+		h.registry.dissolve = (id) => {
+			trace.push("dissolve");
+			originalDissolve(id);
+		};
 		h.session.boot(bootInput());
+		trace.length = 0;
 		const r = h.session.close("bob");
 		expect(r.ok).toBe(true);
-		expect(h.tmux.killedPanes).toEqual(["%901"]);
-		expect(h.registry.read("bob")?.lifecycle).toBe("dissolved");
+		expect(trace).toEqual(["intent-write", "kill", "terminal-write", "dissolve"]);
+		expect(h.registry.read("bob")).toMatchObject({
+			lifecycle: "dissolved",
+			terminal: { disposition: "requested", evidence: "pane-missing" },
+		});
 		expect(h.registry.list().map((d) => d.id)).not.toContain("bob");
+	});
+
+	it("a failed kill stops after intent without terminalizing or dissolving", () => {
+		const h = harness({ registry: [spawnedDescriptor] });
+		h.tmux.killPane = () => err("E-NOTMUX", "injected kill failure");
+		h.session.boot(bootInput());
+		const result = h.session.close("bob");
+		expect(result).toMatchObject({ ok: false, code: "E-NOTMUX" });
+		expect(h.registry.read("bob")).toMatchObject({
+			closeIntent: { kind: "in-process-close" },
+		});
+		expect(h.registry.read("bob")?.terminal).toBeUndefined();
+		expect(h.registry.read("bob")?.lifecycle).not.toBe("dissolved");
 	});
 
 	it("is idempotent after dissolve — a second close is a no-op", () => {

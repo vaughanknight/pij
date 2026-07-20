@@ -246,7 +246,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		const h = managerHarness();
 		for (const [id, sidecar] of [
 			["paused", { intervalMs: 1, pausedBy: "self" }],
-			["exempt", { intervalMs: 1, pausedBy: "exempt" }],
+			["exempt", { intervalMs: 1, pausedBy: "exempt", pausedAtMs: 1 }],
 		] as const) {
 			h.store.sidecars.set(id, sidecar);
 			h.store.revisions.set(id, 1);
@@ -271,6 +271,57 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		// Paused/exempt peers remain reconciled so a sidecar revision or real
 		// working transition can resume them; the other three are discarded.
 		expect(deadManager.activeCount()).toBe(2);
+	});
+
+	it("retains the exact persisted deadline across manager restart without extending it", () => {
+		const store = new MemoryWatchdogStore();
+		store.sidecars.set("peer", {
+			intervalMs: 1,
+			pausedBy: "exempt",
+			pausedAtMs: 0,
+			exemptUntilMs: 200,
+		});
+		store.revisions.set("peer", 1);
+		const first = managerHarness();
+		first.store.sidecars.set("peer", store.sidecars.get("peer") as WatchdogSidecar);
+		first.store.revisions.set("peer", 1);
+		first.setNow(100);
+		first.manager.reconcile([desc({ id: "peer" })]);
+		expect(first.store.read("peer")?.exemptUntilMs).toBe(200);
+
+		const restarted = managerHarness();
+		restarted.store.sidecars.set("peer", first.store.read("peer") as WatchdogSidecar);
+		restarted.store.revisions.set("peer", 1);
+		restarted.setNow(199);
+		restarted.manager.reconcile([desc({ id: "peer" })]);
+		expect(restarted.store.read("peer")?.exemptUntilMs).toBe(200);
+		restarted.setNow(200);
+		restarted.manager.reconcile([desc({ id: "peer" })]);
+		expect(restarted.store.read("peer")).toEqual({ intervalMs: 1 });
+	});
+
+	it("persists an expired exemption before capture or delivery makes the peer active", () => {
+		const store = new MemoryWatchdogStore();
+		store.sidecars.set("peer", {
+			intervalMs: 1,
+			pausedBy: "exempt",
+			pausedAtMs: 0,
+			exemptUntilMs: 100,
+		});
+		store.revisions.set("peer", 1);
+		const manager = new WatchdogManager({
+			store,
+			channel: new FakeDelivery(),
+			isAlive: () => true,
+			now: () => 100,
+			capturePane: () => {
+				store.order.push("capture");
+				return "idle";
+			},
+			sendText: () => store.order.push("send"),
+		});
+		manager.reconcile([desc({ id: "peer" })]);
+		expect(store.order).toEqual(["write:peer:active", "capture", "send"]);
 	});
 
 	it("fires nothing while off, and RE-ANCHORS on re-enable so the off-window isn't counted (Plan 056)", () => {
@@ -553,6 +604,12 @@ describe("FsWatchdogStore", () => {
 		]);
 		store.write("peer", sidecar);
 		expect(store.read("peer")).toEqual(sidecar);
+		store.write("peer", { ...sidecar, pausedBy: "exempt", pausedAtMs: 123, exemptUntilMs: 456 });
+		expect(new FsWatchdogStore(home).read("peer")).toMatchObject({
+			pausedBy: "exempt",
+			pausedAtMs: 123,
+			exemptUntilMs: 456,
+		});
 		expect(store.revision("peer")).toEqual(expect.any(Number));
 		const pointer = store.writeCapture("owner", "peer", 123, "pane tail");
 		expect(pointer).toBe(join(home, "owner", "watchdog-captures", "123-peer.txt"));
@@ -697,6 +754,7 @@ describe("watchdog CLI and state surfaces", () => {
 			["watchdog", "pause", "target"],
 			["watchdog", "resume", "target"],
 			["watchdog", "exempt", "target"],
+			["watchdog", "exempt", "target", "30s"],
 			["watchdog", "unwatch", "target"],
 			["watchdog", "list"],
 		]) {
@@ -731,7 +789,10 @@ describe("watchdog CLI and state surfaces", () => {
 			if (!parsed.ok) throw new Error(parsed.message);
 			expect(dispatch(parsed.value, h.deps).exitCode).toBe(0);
 		}
-		expect(h.watchdog.read("target")?.pausedBy).toBe("exempt");
+		expect(h.watchdog.read("target")).toMatchObject({
+			pausedBy: "exempt",
+			exemptUntilMs: 3_600_100,
+		});
 
 		const watch = parseArgs(["watchdog", "watch", "target", "--capture", "anomaly"]);
 		if (!watch.ok) throw new Error(watch.message);
@@ -827,8 +888,30 @@ describe("watchdog CLI and state surfaces", () => {
 		if (!parsed.ok) throw new Error(parsed.message);
 		const result = dispatch(parsed.value, h.deps);
 		expect(result.exitCode).not.toBe(0);
-		expect(result.stderr).toContain("exempt");
-		expect(h.watchdog.read("target")).toEqual({ pausedBy: "exempt", pausedAtMs: 1 });
+		expect(result.stderr).toContain("active exemption");
+		expect(h.watchdog.read("target")).toMatchObject({
+			pausedBy: "exempt",
+			pausedAtMs: 1,
+			exemptUntilMs: 3_600_001,
+		});
+	});
+
+	it("accepts default and custom exemption durations, and reports their live deadline truthfully", () => {
+		const h = cliHarness();
+		const custom = parseArgs(["watchdog", "exempt", "target", "30s", "--json"]);
+		if (!custom.ok) throw new Error(custom.message);
+		const customOut = JSON.parse(dispatch(custom.value, h.deps).stdout) as {
+			watchdog: { exemptUntilMs: number; exemptRemainingMs: number; pausedBy: string };
+		};
+		expect(customOut.watchdog).toMatchObject({
+			pausedBy: "exempt",
+			exemptUntilMs: 30_100,
+			exemptRemainingMs: 30_000,
+		});
+		const status = parseArgs(["watchdog", "status", "target"]);
+		if (!status.ok) throw new Error(status.message);
+		expect(dispatch(status.value, h.deps).stdout).toContain("remaining");
+		expect(parseArgs(["watchdog", "exempt", "target", "bad"]).ok).toBe(false);
 	});
 
 	it("adds the watchdog envelope to status, state --json, and list --json", () => {
@@ -903,7 +986,11 @@ describe("spawn exemption parsing", () => {
 			eventsPath: "/tmp/peer/events.ndjson",
 			harness: "pi",
 		});
-		expect(store.read("peer")).toMatchObject({ pausedBy: "exempt", pausedAtMs: 50 });
+		expect(store.read("peer")).toMatchObject({
+			pausedBy: "exempt",
+			pausedAtMs: 50,
+			exemptUntilMs: 3_600_050,
+		});
 	});
 });
 

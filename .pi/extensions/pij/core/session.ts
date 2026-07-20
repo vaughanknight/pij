@@ -16,6 +16,7 @@ import type {
 	PiRuntimePort,
 	ProcessPort,
 	RegistryPort,
+	SpawnExpectationStore,
 	TmuxPort,
 } from "./ports.js";
 import {
@@ -26,6 +27,13 @@ import {
 } from "./receipts.js";
 import { SeqCounter } from "./seq.js";
 import { buildSpawnCommand, readyBody, STACK_COLUMN_PERCENT } from "./spawn.js";
+import {
+	applyTerminalObservation,
+	bindSpawnExpectation,
+	createSpawnExpectation,
+	requestClose,
+	spawnExpectationDeadline,
+} from "./spawn-expectation.js";
 import {
 	err,
 	type MessageReceipt,
@@ -39,7 +47,19 @@ import {
 	type SessionId,
 	type WatchdogSidecar,
 } from "./types.js";
-import { applyCompactPause, applyWorkingTransition } from "./watchdog.js";
+import { applyCompactPause, applyWatchdogExemption, applyWorkingTransition } from "./watchdog.js";
+
+/** Exact installed Pi lifecycle contract: replacement reasons carry a successor,
+ * whereas quit is left for the daemon's PID/pane observation. */
+export type SessionShutdownReason = "quit" | "reload" | "new" | "resume" | "fork";
+
+export function shutdownDecision(
+	reason: SessionShutdownReason,
+): { readonly kind: "dissolve-replacement" } | { readonly kind: "await-terminal-observation" } {
+	return reason === "reload" || reason === "new" || reason === "resume" || reason === "fork"
+		? { kind: "dissolve-replacement" }
+		: { kind: "await-terminal-observation" };
+}
 
 export interface WatchdogSessionStore {
 	read(id: SessionId): WatchdogSidecar | undefined;
@@ -58,6 +78,8 @@ export interface PijPorts {
 	readonly tmux: TmuxPort;
 	/** Optional during migration; runtime wiring supplies the sidecar adapter. */
 	readonly watchdog?: WatchdogSessionStore;
+	/** Durable pre-launch intent, independent from child self-registration. */
+	readonly expectations?: SpawnExpectationStore;
 }
 
 /** Input to PijSession.spawn(). The session generates spawnId + announceTo
@@ -184,13 +206,10 @@ export class PijSession {
 		this.self = input.id;
 		if (fresh && this.ports.process.env("PIJ_NO_WATCHDOG") === "1") {
 			const current = this.ports.watchdog?.read(this.self);
-			if (current?.pausedBy !== "exempt") {
-				this.ports.watchdog?.write(this.self, {
-					...current,
-					pausedBy: "exempt",
-					pausedAtMs: this.ports.process.now(),
-				});
-			}
+			this.ports.watchdog?.write(
+				this.self,
+				applyWatchdogExemption(current, this.ports.process.now()),
+			);
 		}
 		this.role = descriptor.role;
 		this.seq = new SeqCounter(this.ports.eventLog.lastSeq());
@@ -216,7 +235,21 @@ export class PijSession {
 					spawnedBy: announceTo,
 					...(model ? { boundModel: model } : {}),
 					...(effort ? { effort } : {}),
+					...(spawnId ? { spawnId } : {}),
 				});
+				if (spawnId) {
+					const expectation = this.ports.expectations?.read(spawnId);
+					if (expectation) {
+						this.ports.expectations?.write(
+							bindSpawnExpectation(expectation, {
+								sessionId: this.self,
+								paneId: tmuxPane,
+								runtimeHarness: "pi",
+								boundAt: this.nowIso(),
+							}),
+						);
+					}
+				}
 				// Deliver the ready-ping via channel (event — never an inject)
 				this.ports.delivery.deliver({
 					from: this.self,
@@ -249,6 +282,16 @@ export class PijSession {
 		}
 		// §M4: deterministic spawnId via clock + per-session counter (not crypto.randomUUID)
 		const spawnId = `s${this.ports.process.now()}-${this.spawnCounter++}`;
+		const requestedAt = this.nowIso();
+		const expectation = createSpawnExpectation({
+			spawnId,
+			creatorId: this.self,
+			requestedHarness: "pi",
+			requestedAt,
+			deadlineAt: spawnExpectationDeadline(requestedAt),
+		});
+		// Persist intent before opening a pane: a vanished child may never produce a descriptor.
+		this.ports.expectations?.write(expectation);
 		const spawnCmd = buildSpawnCommand({
 			model: opts.model,
 			effort: opts.effort,
@@ -304,8 +347,10 @@ export class PijSession {
 				detached: true,
 			});
 			if (!splitResult.ok) {
+				this.ports.expectations?.remove(spawnId);
 				return err(splitResult.code, splitResult.message);
 			}
+			this.ports.expectations?.write({ ...expectation, paneId: splitResult.value.paneId });
 			// Record parent-side so the NEXT spawn sees this pane before the child
 			// has booted its descriptor (fixes the fire-and-forget stack-target race).
 			this.splitPanes.push(splitResult.value.paneId);
@@ -320,8 +365,10 @@ export class PijSession {
 			cwd: opts.cwd,
 		});
 		if (!winResult.ok) {
+			this.ports.expectations?.remove(spawnId);
 			return err(winResult.code, winResult.message);
 		}
+		this.ports.expectations?.write({ ...expectation, paneId: winResult.value.paneId });
 		return ok({ spawnId, paneId: winResult.value.paneId });
 	}
 
@@ -356,9 +403,44 @@ export class PijSession {
 		// Kill the pane (TmuxAdapter is idempotent: swallows "already gone").
 		// kill-pane is split-safe AND closes the window when it is the last pane,
 		// so it is correct for both window-mode and split-mode workers.
+		const closeIntent = {
+			actor: this.self,
+			kind: "in-process-close" as const,
+			requestedAt: this.nowIso(),
+		};
+		// Persist intent before touching tmux so a later absence is not misclassified.
+		this.ports.registry.write({ ...descriptor, closeIntent });
+		if (descriptor.spawnId) {
+			const expectation = this.ports.expectations?.read(descriptor.spawnId);
+			if (expectation) this.ports.expectations?.write(requestClose(expectation, closeIntent));
+		}
 		const killResult = this.ports.tmux.killPane(descriptor.paneId);
 		if (!killResult.ok) {
 			return err(killResult.code, killResult.message);
+		}
+		// killPane is idempotent: successful return observes the owned pane absent.
+		const terminal = {
+			disposition: "requested" as const,
+			observedAt: this.nowIso(),
+			evidence: "pane-missing" as const,
+		};
+		this.ports.registry.write({
+			...descriptor,
+			closeIntent,
+			terminal,
+			deathNoticeLatchedAt: terminal.observedAt,
+		});
+		if (descriptor.spawnId) {
+			const expectation = this.ports.expectations?.read(descriptor.spawnId);
+			if (expectation) {
+				this.ports.expectations?.write(
+					applyTerminalObservation(requestClose(expectation, closeIntent), {
+						kind: "absent",
+						observedAt: terminal.observedAt,
+						evidence: "pane-missing",
+					}),
+				);
+			}
 		}
 		this.ports.registry.dissolve(id);
 		return ok({ warning });
@@ -464,10 +546,13 @@ export class PijSession {
 		this.persist({ state: "idle" });
 	}
 
-	/** session_shutdown: drop this session's descriptor so `pij list` stops
-	 *  showing it active. */
-	shutdown(): void {
-		this.ports.registry.dissolve(this.self);
+	/** session_shutdown only dissolves replacement incarnations. A terminal quit
+	 * stays observable until the daemon records evidence; it is never relabelled as
+	 * a replacement. */
+	shutdown(reason: SessionShutdownReason = "quit"): void {
+		if (shutdownDecision(reason).kind === "dissolve-replacement") {
+			this.ports.registry.dissolve(this.self);
+		}
 	}
 
 	/** Drain queued new|reload requests now that a command context is armed
@@ -515,6 +600,7 @@ export class PijSession {
 				| "spawnedBy"
 				| "boundModel"
 				| "effort"
+				| "spawnId"
 			>
 		>,
 	): void {

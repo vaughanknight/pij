@@ -18,7 +18,11 @@
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
 import type { Assignment, SpineEvent } from "./platform/types.js";
-import { SPINE_KIND_STATE_SET, SPINE_KIND_STATE_VERIFIED } from "./platform/types.js";
+import {
+	SPINE_KIND_STATE_CLEARED,
+	SPINE_KIND_STATE_SET,
+	SPINE_KIND_STATE_VERIFIED,
+} from "./platform/types.js";
 import { isSemanticState, type SemanticState, type SessionDescriptor } from "./types.js";
 
 /** Default semantic-active + system-idle disagreement threshold (AC-07's
@@ -104,9 +108,13 @@ export function chainStateOf(assignment: Assignment, events: readonly SpineEvent
 	const chain = chainEventsOf(assignment, events);
 	let latest: SpineEvent | undefined;
 	for (const event of chain) {
-		if (event.kind === SPINE_KIND_STATE_SET) latest = event;
+		if (event.kind === SPINE_KIND_STATE_SET || event.kind === SPINE_KIND_STATE_CLEARED) {
+			latest = event;
+		}
 	}
-	if (latest === undefined) return { verified: false };
+	// Clear is a transition, never a semantic word: its latest occurrence
+	// intentionally restores the assignment to the undeclared projection.
+	if (latest === undefined || latest.kind === SPINE_KIND_STATE_CLEARED) return { verified: false };
 	const word = stateWordOf(latest);
 	const state = isSemanticState(word) ? word : undefined;
 	let verifiedBy: string | undefined;
@@ -205,9 +213,12 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			});
 		}
 
-		// foreign hold-clear — every hold whose NEXT declared state has a
-		// different actor. Evidence: [holdSeq, clearSeq].
-		const declared = chain.filter((e) => e.kind === SPINE_KIND_STATE_SET);
+		// foreign hold-clear — every hold whose NEXT declaration transition has
+		// a different actor. A state-cleared transition is the canonical hold
+		// release too. Evidence: [holdSeq, clearSeq].
+		const declared = chain.filter(
+			(e) => e.kind === SPINE_KIND_STATE_SET || e.kind === SPINE_KIND_STATE_CLEARED,
+		);
 		for (let i = 0; i < declared.length - 1; i++) {
 			const hold = declared[i];
 			const next = declared[i + 1];
@@ -218,7 +229,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 				kind: "foreign-hold-clear",
 				nodeId: assignment.nodeId,
 				assignmentId: assignment.id,
-				detail: `hold issued by ${hold.actor} on '${assignment.id}' was cleared by ${next.actor} (→ ${stateWordOf(next) ?? "?"})`,
+				detail: `hold issued by ${hold.actor} on '${assignment.id}' was cleared by ${next.actor} (→ ${next.kind === SPINE_KIND_STATE_CLEARED ? "clear" : (stateWordOf(next) ?? "?")})`,
 				evidence: [hold.seq, next.seq],
 			});
 		}

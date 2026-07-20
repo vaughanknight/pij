@@ -15,6 +15,7 @@ import type {
 	Result,
 	SessionDescriptor,
 	SessionId,
+	SpawnExpectation,
 } from "./types.js";
 
 /** Outcome of a daemon-owned tmux text injection. */
@@ -36,6 +37,16 @@ export interface RegistryPort {
 }
 
 /** Resolves the canonical git common directory for a checkout/worktree path. */
+/** Durable pre-launch expectations, keyed by the spawn correlation token.
+ * The store is intentionally independent from registry descriptors: a child can
+ * disappear before it ever self-registers. */
+export interface SpawnExpectationStore {
+	list(): SpawnExpectation[];
+	read(spawnId: string): SpawnExpectation | null;
+	write(expectation: SpawnExpectation): void;
+	remove(spawnId: string): void;
+}
+
 export interface RepositoryIdentityPort {
 	gitCommonDir(folder: string): string | null;
 }

@@ -994,6 +994,27 @@ describe("dispatch tail / state / path", () => {
 		expect(human.stdout).toContain("daemon tick: stale");
 	});
 
+	it("state/list JSON preserve full terminal truth and human state names unavailable evidence", () => {
+		const terminal = {
+			disposition: "unavailable" as const,
+			observedAt: "2026-06-16T11:59:00.000Z",
+			evidence: "observation-unavailable" as const,
+			lastSeenAt: "2026-06-16T11:58:00.000Z",
+			unavailableReason: "EPERM probing pid",
+		};
+		const d = deps({ descs: [desc({ id: "w3", terminal })] });
+		const state = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout);
+		expect(state.terminal).toEqual(terminal);
+		const rows = JSON.parse(
+			dispatch({ verb: "list", here: false, prime: false, json: true }, d).stdout,
+		) as Array<{ terminal: unknown }>;
+		expect(rows[0]?.terminal).toEqual(terminal);
+		const human = dispatch({ verb: "state", id: "w3", json: false }, d).stdout;
+		expect(human).toContain("terminal: unavailable");
+		expect(human).toContain("observation-unavailable");
+		expect(human).toContain("EPERM probing pid");
+	});
+
 	it("path prints events/state/dir", () => {
 		const d = deps({ descs: [desc({ id: "w3" })] });
 		expect(dispatch({ verb: "path", id: "w3", which: "events", json: false }, d).stdout).toBe(
@@ -1420,7 +1441,7 @@ import { canonicalAssignmentJson } from "./platform/assignment.js";
 import type { PendingOp } from "./platform/ports.js";
 import { createProject, setProject } from "./platform/project.js";
 import type { Assignment, SpineEventDraft } from "./platform/types.js";
-import { SPINE_KIND_NODE_LINKED } from "./platform/types.js";
+import { SPINE_KIND_NODE_LINKED, SPINE_KIND_STATE_CLEARED } from "./platform/types.js";
 
 interface PlatformStores {
 	readonly projectStore: FakeProjectStore;
@@ -3494,6 +3515,17 @@ describe("state verify (T005, AC-06)", () => {
 		expect(r.stderr).toContain("blocked");
 	});
 
+	it("refuses done → clear → verify as already undeclared without a verify event", () => {
+		const { d } = doneChain();
+		expect(run(["state", "clear", "pij-node"], d).exitCode).toBe(0);
+		const before = d.spineLog.read().length;
+		const r = run(["state", "verify", "pij-node"], d);
+		expect(r.exitCode).toBe(64);
+		expect(r.stderr).toContain("no declared state to verify");
+		expect(d.spineLog.read()).toHaveLength(before);
+		expect(d.spineLog.read().filter((event) => event.kind === "state-verified")).toEqual([]);
+	});
+
 	it("verify with no resolvable assignment is E-NOREG (nothing to verify — the general is never materialized)", () => {
 		const d = nodeDeps();
 		const r = run(["state", "verify", "pij-node"], d);
@@ -3957,5 +3989,185 @@ describe("spine render (P4 T002 — parse row + core E-NOREG naming the bin)", (
 		expect(r.exitCode).not.toBe(0);
 		expect(r.stderr).toContain("E-NOREG");
 		expect(r.stderr).toContain("bin");
+	});
+});
+
+describe("state clear (State-Model v2)", () => {
+	it("parses strict state clear grammar without changing the legacy state card", () => {
+		expect(
+			parseArgs([
+				"state",
+				"clear",
+				"pij-node",
+				"--assignment",
+				"asg-1",
+				"--actor",
+				"boss",
+				"--json",
+			]),
+		).toMatchObject({
+			ok: true,
+			value: {
+				verb: "state-clear",
+				node: "pij-node",
+				assignmentId: "asg-1",
+				actor: "boss",
+				json: true,
+			},
+		});
+		for (const argv of [
+			["state", "clear"],
+			["state", "clear", "pij-node", "extra"],
+			["state", "clear", "pij-node", "--refs", "issue:1"],
+			["state", "clear", "pij-node", "--assignment"],
+		] as const) {
+			expect(parseArgs(argv)).toMatchObject({ ok: false, code: "E-ARG" });
+		}
+		expect(parseArgs(["state", "pij-node"])).toMatchObject({ ok: true, value: { verb: "state" } });
+	});
+
+	it("journals one state-cleared event, retains the assignment chain, and removes only semanticState", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({
+					id: "pij-node",
+					currentAssignment: "asg-clear",
+					currentTask: "keep this task",
+					semanticState: "hold",
+					systemState: "idle",
+					parentId: "pij-parent",
+					spawnedBy: "pij-owner",
+				}),
+			],
+		});
+		const assignment: Assignment = {
+			schema_version: 1,
+			id: "asg-clear",
+			nodeId: "pij-node",
+			task: "keep this task",
+			states: [1],
+			opened: { actor: "pij-self", ts: recent },
+		};
+		d.assignmentStore.write(assignment);
+		d.spineLog.append({
+			schema_version: 1,
+			ts: recent,
+			actor: "pij-self",
+			kind: "state-set",
+			peer: "pij-node",
+			refs: ["node:pij-node", "assignment:asg-clear", "state:hold"],
+		});
+		const r = run(["state", "clear", "pij-node", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const event = JSON.parse(r.stdout) as SpineEvent;
+		expect(event).toMatchObject({ kind: SPINE_KIND_STATE_CLEARED, peer: "pij-node" });
+		expect(event.refs).toContain("assignment:asg-clear");
+		expect(d.assignmentStore.read("asg-clear")?.states).toEqual([1, event.seq]);
+		expect(d.registry.read("pij-node")).toMatchObject({
+			currentAssignment: "asg-clear",
+			currentTask: "keep this task",
+			systemState: "idle",
+			parentId: "pij-parent",
+			spawnedBy: "pij-owner",
+		});
+		expect(d.registry.read("pij-node")?.semanticState).toBeUndefined();
+		expect(pendingOps(d.opJournal)).toEqual([]);
+	});
+
+	it("refuses a missing-general target without an event or materialization", () => {
+		const d = nodeDeps();
+		const r = run(["state", "clear", "pij-node"], d);
+		expect(r.exitCode).toBe(3);
+		expect(r.stderr).toContain("no assignment to clear");
+		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
+		expect(d.spineLog.read()).toEqual([]);
+	});
+
+	it("a later state set becomes current after a clear", () => {
+		const d = nodeDeps();
+		expect(run(["state", "set", "pij-node", "hold"], d).exitCode).toBe(0);
+		expect(run(["state", "clear", "pij-node"], d).exitCode).toBe(0);
+		expect(run(["state", "set", "pij-node", "ready"], d).exitCode).toBe(0);
+		const card = JSON.parse(run(["node", "show", "pij-node", "--json"], d).stdout) as {
+			assignments: Array<{ state: string | null }>;
+		};
+		expect(card.assignments[0]?.state).toBe("ready");
+	});
+
+	describe("journal-first cut points", () => {
+		function clearable() {
+			const d = nodeDeps();
+			expect(run(["state", "set", "pij-node", "hold"], d).exitCode).toBe(0);
+			return { d, assignmentId: "asg-general-pij-node" };
+		}
+
+		it("journal record failure commits neither the clear event nor assignment change", () => {
+			const { d, assignmentId } = clearable();
+			const before = d.assignmentStore.read(assignmentId);
+			d.opJournal.failNext("record");
+			const r = run(["state", "clear", "pij-node"], d);
+			expect(r.exitCode).toBe(3);
+			expect(d.spineLog.read()).toHaveLength(1);
+			expect(d.assignmentStore.read(assignmentId)).toEqual(before);
+			expect(pendingOps(d.opJournal)).toEqual([]);
+		});
+
+		it("assignment-write abort clears the clear intent and leaves the declaration intact", () => {
+			const { d, assignmentId } = clearable();
+			d.assignmentStore.failNext("write");
+			const r = run(["state", "clear", "pij-node"], d);
+			expect(r.exitCode).toBe(3);
+			expect(d.spineLog.read()).toHaveLength(1);
+			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1]);
+			expect(d.registry.read("pij-node")?.semanticState).toBe("hold");
+			expect(pendingOps(d.opJournal)).toEqual([]);
+		});
+
+		it("appendOnce failure reports WAS-cleared; the next write replays and chains one clear", () => {
+			const { d, assignmentId } = clearable();
+			d.spineLog.failNext("appendOnce");
+			const failed = run(["state", "clear", "pij-node"], d);
+			expect(failed.exitCode).toBe(3);
+			expect(failed.stderr).toContain("WAS cleared");
+			expect(d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED)).toEqual(
+				[],
+			);
+			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1]);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+
+			expect(run(["project", "create", "recovery-driver"], d).exitCode).toBe(0);
+			const cleared = d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED);
+			expect(cleared).toHaveLength(1);
+			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1, cleared[0]?.seq]);
+			expect(pendingOps(d.opJournal)).toEqual([]);
+		});
+
+		it("journal clear failure is nonzero while the clear event and assignment chain stand", () => {
+			const { d, assignmentId } = clearable();
+			d.opJournal.failNext("clear");
+			const r = run(["state", "clear", "pij-node"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("WAS cleared");
+			const cleared = d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED);
+			expect(cleared).toHaveLength(1);
+			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1, cleared[0]?.seq]);
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+		});
+
+		it("denorm failure is honest while the clear event and assignment history are preserved", () => {
+			const { d, assignmentId } = clearable();
+			d.registry.write = () => {
+				throw new Error("injected descriptor write failure");
+			};
+			const r = run(["state", "clear", "pij-node"], d);
+			expect(r.exitCode).toBe(3);
+			expect(r.stderr).toContain("WAS cleared");
+			expect(r.stderr).toContain("injected descriptor write failure");
+			const cleared = d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED);
+			expect(cleared).toHaveLength(1);
+			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1, cleared[0]?.seq]);
+			expect(d.registry.read("pij-node")?.semanticState).toBe("hold");
+		});
 	});
 });

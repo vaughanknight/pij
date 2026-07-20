@@ -32,7 +32,7 @@ it must never nudge:
 pij watchdog status <id> [--json]
 pij watchdog pause <id> [--json]
 pij watchdog resume <id> [--json]
-pij watchdog exempt <id> [--json]
+pij watchdog exempt <id> [duration] [--json]
 pij watchdog reset <id> [--json]   # back to default: on, 20m, un-paused, UN-exempt
 pij watchdog interval <id> <duration> [--json]   # set the timeout: 30s, 20m, 1h, or ms
 pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
@@ -64,8 +64,8 @@ pij watchdog interval pij-example 45m
 ```
 
 `pij watchdog reset <id>` clears a peer back to the default (on, 20 min,
-un-paused, and **un-exempt** — the only way to lift a non-expiring exemption,
-since `resume` deliberately will not).
+un-paused, and **un-exempt**) immediately. `resume` never downgrades a live
+exemption; reset is the explicit early re-arm path.
 
 `watch` subscribes the calling peer, resolved from `PIJ_SESSION_ID` or its
 adopted pane. `unwatch` removes that caller's subscription. Status/state/list
@@ -78,6 +78,8 @@ JSON exposes:
     "intervalMs": 1200000,
     "pausedBy": null,
     "exempt": false,
+    "exemptUntilMs": null,
+    "exemptRemainingMs": null,
     "lastFireAt": null,
     "watchers": []
   }
@@ -90,9 +92,12 @@ The three ruled defaults are:
 
 1. **Explicit pause/resume verbs** — `pij watchdog pause <id>` and
    `pij watchdog resume <id>`; completion is not inferred.
-2. **First-class, non-expiring exemption** — `pij spawn --no-watchdog` or
-   `pij watchdog exempt <id>`. Exemption is stronger than an ordinary pause;
-   `pause` cannot downgrade it and `resume` does not override it.
+2. **First-class, bounded exemption** — `pij spawn --no-watchdog` or
+   `pij watchdog exempt <id> [duration]`. It defaults to 60 minutes and accepts
+   the same `30s`/`20m`/`1h`/milliseconds grammar as intervals. The persisted
+   `exemptUntilMs` deadline is absolute: at the deadline the watchdog re-arms,
+   rather than granting one extra tick. `pause` cannot downgrade a live exemption
+   and `resume` does not override it.
 3. **40 lines/4 KiB anomaly-only tail capture** — watcher capture defaults to
    the last 40 lines **and** 4,096 UTF-8 bytes, only when a fire is anomalous.
    `--capture always` is an explicit opt-in.
@@ -107,7 +112,7 @@ notices but disables pane text.
 |---|---|---|
 | `self` | `pij watchdog pause <id>` | Only the explicit `resume` verb clears it. |
 | `compact` | Remote `pij send <id> --command compact` or a bare `/compact` message | Clears automatically on the next **real** working transition. The sidecar is persisted before compact is injected. |
-| `exempt` | `pij watchdog exempt <id>` or spawn `--no-watchdog` | Non-expiring and excluded from watchdog-driven stall derivation. It is not weakened by pause/resume. |
+| `exempt` | `pij watchdog exempt <id> [duration]` or spawn `--no-watchdog` | Bounded by a persisted absolute deadline (default 60m); excluded from watchdog-driven stall derivation only while live. `reset` clears it immediately; pause/resume do not weaken it. |
 
 A pause is the peer's claim that watchdog turns are unnecessary; it does not
 disable existing dead/provider-failure supervision.
@@ -174,7 +179,8 @@ creating a fake capture file.
 
 - The daemon owns scheduling and tmux delivery; pi/pull watchdog turns use the
   durable inbox ownership path.
-- Pre-bind, failed, dissolved, dead, paused, and exempt targets are not fired.
+- Pre-bind, failed, dissolved, dead, paused, and **live** exempt targets are not fired. At expiry the manager writes the cleared sidecar before evaluating a due fire.
+- A legacy `exempt` sidecar with a valid `pausedAtMs` derives exactly one 60-minute deadline; missing or invalid time re-arms immediately rather than silently extending safety-off.
 - Watchdog turns never refresh descriptor activity or pane heartbeats merely by
   changing the pane themselves.
 - A live-daemon restart is an operations action. Tests and proofs use a

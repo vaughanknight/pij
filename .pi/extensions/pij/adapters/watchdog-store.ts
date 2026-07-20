@@ -46,6 +46,8 @@ function parseSidecar(value: unknown): WatchdogSidecar | undefined {
 		return undefined;
 	}
 	if (sidecar.pausedAtMs !== undefined && typeof sidecar.pausedAtMs !== "number") return undefined;
+	if (sidecar.exemptUntilMs !== undefined && typeof sidecar.exemptUntilMs !== "number")
+		return undefined;
 	if (sidecar.watchers !== undefined) {
 		if (!Array.isArray(sidecar.watchers) || !sidecar.watchers.every(isWatcher)) return undefined;
 	}
@@ -58,6 +60,7 @@ function parseSidecar(value: unknown): WatchdogSidecar | undefined {
 			? { pausedBy: sidecar.pausedBy }
 			: {}),
 		...(typeof sidecar.pausedAtMs === "number" ? { pausedAtMs: sidecar.pausedAtMs } : {}),
+		...(typeof sidecar.exemptUntilMs === "number" ? { exemptUntilMs: sidecar.exemptUntilMs } : {}),
 		...(Array.isArray(sidecar.watchers) ? { watchers: sidecar.watchers.filter(isWatcher) } : {}),
 	};
 }

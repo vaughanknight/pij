@@ -25,11 +25,12 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/models/registry.ts` | Shared model registry: pure Pi/Copilot/Codex/Claude source parsers and snapshots plus the single impure `loadModels()` composition root. Owns `ModelEntry.reasoning`/`levels`, verified-vs-curated semantics, and the exact Copilot GPT-5.6 effort correction. |
 | `.pi/extensions/pij/core/models/validate.ts` | Pure model and effort validation against registry entries; reports only positive contradictions and never blocks spawn. |
 | `.pi/extensions/pij/adapters/git-repository.ts` | Argv-only canonical Git common-directory resolver; main checkout and linked worktrees share one absolute identity, non-Git returns null. |
-| `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition, structural/repository pending metadata, adopt-parent grammar, and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
+| `.pi/extensions/pij/core/spawn.ts` | Spawn warning composition, structural/repository pending metadata including `spawnId`, adopt-parent grammar, and harness-specific effort translation (`:<level>` for Pi, `--effort` for Claude/Copilot, Codex config override). |
+| `.pi/extensions/pij/core/spawn-expectation.ts` | Pi-free durable expectation and terminal reducers, including the named default registration TTL. |
 | `.pi/extensions/pij/core/binding.ts` | Deterministic binding (transcript-discovery) + phone-home confirm + watchdog + creator notice; preserves tree/prime history and refreshes repository identity. |
 | `.pi/extensions/pij/core/daemon/router.ts` | Resolve target → transport; buffer pre-binding sends; delivery-ownership rules; persist compact watchdog pause before tmux injection. |
 | `.pi/extensions/pij/core/daemon/pane-signals.ts` | Pure rolling byte-density busy signal, caret-driven user-typing tracker, and all-pane connect/retire diff. |
-| `.pi/extensions/pij/core/daemon/watchdog-manager.ts` | Daemon-owned whole-life watchdog coordinator: descriptor-driven scheduling, delivery split, typed self-attribution, silent-fire derivation, per-watcher episode latch, and bounded capture dispatch. |
+| `.pi/extensions/pij/core/daemon/watchdog-manager.ts` | Daemon-owned whole-life watchdog coordinator: descriptor-driven scheduling, durable exemption reconciliation before due-fire evaluation, delivery split, typed self-attribution, silent-fire derivation, per-watcher episode latch, and bounded capture dispatch. |
 | `.pi/extensions/pij/adapters/watchdog-store.ts` | Validated atomic per-session watchdog sidecars plus per-watcher capture pointer files. CLI-owned, daemon-read. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
 | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `parentId`, `prime`, and `oldPrime` are latest-disk-authoritative before daemon writes. |
@@ -53,6 +54,8 @@ thin receiver). Plan 019.
 | Durable identity | Spawn atomically reserves a memorable `pij-id` before launch; restart re-attachment resolves the exact harness-native identity, hydrates durable metadata, and reuses the original id while runtime presence is replaced. | Shared by-pij ownership record; two-way `FsRegistry` native claim; `adopt --session-id`. |
 | Reservation lifecycle | A launch owns its candidate before pane creation and transfers ownership to the pending descriptor after publication. | Owner-token release on known launch failure; no PID-death reclamation; explicit `adopt --id` recovery for retained crash-orphans. |
 | Pending descriptor | Spawn atomically writes `(pij-id, paneId, cwd, harness, state:pending)` under `~/.pij/`; the daemon dir-watch picks it up. | `SessionDescriptor` += `harness`/`state` (F2 / AC-01). |
+| Spawn expectation | Every Pi, daemon-bound, agent, and focus launch persists `(spawnId, requestedHarness, requestedAt, deadlineAt)` before tmux launch, then joins pane and descriptor/session ids. | Synchronous launch failure removes only its own key; expiry is an expectation-keyed no-show, suppressed once a descriptor has the same `spawnId`. |
+| Terminal observation | Terminal absence is classified from durable intent and probe evidence, never guessed from a missing pane alone. | `requested` (pij close intent), `unrequested-by-pij` (observed absence), or `unavailable` (probe failure); first daemon sweep is historical, later sweeps live. |
 | Transport selection | A target's harness decides how a message reaches it. | `selectTransport(harness)` → `inbox` (pi) \| `sendkeys` (claude/copilot/codex). |
 | Readiness | The daemon reads the pane and classifies idle-ready vs busy vs booting vs interstitial — no agent in the loop. | `classifyReadiness(paneText)`; R-01 footer markers (AC-02). |
 | Interstitial handling | Known one-time boot prompts are auto-dismissed (Esc); trust/login are surfaced as needs-human. | `classifyInterstitial` → `dismiss`/`needs-human` (AC-06). |
@@ -65,7 +68,7 @@ thin receiver). Plan 019.
 | Repository refresh | Registration and reattachment capture the repository grouping active at the current folder. | Injected `RepositoryIdentityPort.gitCommonDir(folder)` returns canonical absolute common dir or null; stale identity is cleared outside Git. |
 | Delivery ownership | Senders write the target inbox; the daemon consumes+injects ONLY tmux inboxes and merely observes pi inboxes. | router rules; pi thin receiver sole pi-inbox consumer (AC-08). |
 | Durable push ownership | The daemon consumes only push-owned tmux unread envelopes, marks after an injection outcome, and leaves `deliveryMode:"pull"` plus pi inboxes untouched. | `daemonOwnsDelivery`; marker-aware `listUnread`; pi thin receiver/pull CLI own their inboxes. |
-| Whole-life watchdog | Every eligible session is default-on after 20 minutes; daemon fires blind, derives suspect/stalled from delivered-but-unanswered turns, and shares one owner/watcher stalled episode. | `WatchdogManager`; descriptor `lastEventAt` axis truth; tmux `sendText` vs pi/pull inbox; pre-bind/paused/exempt skip. |
+| Whole-life watchdog | Every eligible session is default-on after 20 minutes; daemon fires blind, derives suspect/stalled from delivered-but-unanswered turns, and shares one owner/watcher stalled episode. | `WatchdogManager`; descriptor `lastEventAt` axis truth; tmux `sendText` vs pi/pull inbox; pre-bind/paused/live-exempt skip. Expired exemptions are durably cleared before scheduling can fire. |
 | Watchdog capture | Supervisors opt into per-target watcher policies without unbounded inline pane text. | Anomaly-only 40-line/4-KiB tail by default; 200-line/16-KiB hard ceiling; pointer file + ≤5 inline lines; paneless is capture-n/a. |
 | Retained tmux history | Daemon delivery no longer deletes envelopes or replays marked history. | `msg-*` retained; `read-*` published after confirmed/unverified outcome; receipt event persisted before receipt marker. |
 | Telegram conversation routing | Bare text/captionless media follows the last session whose non-receipt bubble successfully reached that normalized chat id; explicit selection remains separate for `/tail`. | reply tag > explicit name > last speaker; `onSpoke` after first successful send; process-local maps in `startBridge`. |
@@ -74,6 +77,7 @@ thin receiver). Plan 019.
 | Model effort capability | `ModelEntry.levels` is the canonical ordered effort set used by every current validation/advertisement consumer. | Exact Copilot ids `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` use `none, low, medium, high, xhigh, max` only under `github-copilot` parsing and Copilot fallback construction; same-id rows under other providers retain source data. |
 | Warn-don't-block validation | Unknown models or unsupported known effort values produce guidance without refusing the launch. | `validateModel`/`validateEffort` report tagged results; warnings list known levels, then spawn continues with the supplied model/effort. |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
+| Semantic clear audit | Removing a semantic declaration remains an append-only, recoverable platform action. | `state-cleared` is assignment-coupled under the platform write lock; journal-first recovery reconciles its stamped sequence exactly once. |
 | Single-instance daemon | A second `pij daemon` refuses/attaches — never a second injector. | PID/lockfile (AC-10). |
 
 ## Contracts
@@ -89,7 +93,7 @@ thin receiver). Plan 019.
 | Tree/link/adopt wiring | messaging core | Production supplies all readable descriptors plus repository identity; adopt parent uses the same link planner before allocation/reservation/descriptor writes; link preserves `spawnedBy`. |
 | Push delivery marker | daemon + sender wait | A tmux message is marked only after `sendText` returns; receipt envelopes append/reuse a durable event before marking and never reach send-keys. |
 | Pane signal gate | daemon + future UI | `PaneSignalSnapshot` exposes busy/userTyping/composer length; `SendBuffer` gates only on `userTyping`, retains held inbox envelopes unread, and flushes FIFO on release. |
-| Watchdog manager/store | daemon, CLI, supervisors | Absence of sidecar means default-on; manager caches sidecar revisions, persists `lastWatchdogFireAt` through daemon callbacks, excludes its own pane/event transitions, and writes watcher captures under `<PIJ_HOME>/<watcher>/watchdog-captures/`. |
+| Watchdog manager/store | daemon, CLI, supervisors | Absence of sidecar means default-on; `exemptUntilMs` is a durable absolute deadline (60m default), manager normalizes legacy/malformed expiry and persists clearing before due-fire evaluation, caches sidecar revisions, persists `lastWatchdogFireAt` through daemon callbacks, excludes its own pane/event transitions, and writes watcher captures under `<PIJ_HOME>/<watcher>/watchdog-captures/`. |
 | Watchdog stalled episode | daemon whole-life detector + manager watcher delivery | Two silent fires stamp `failureReason:"stalled"`; owner and each anomaly watcher are notified once until typed real recovery. `capture.mode:"always"` remains every-due-fire. |
 | Telegram last-speaker seam | Telegram bot + forwarder | `getLastSpeaker(String(chatId))` supplies inbound fallback; `onSpoke(from)` updates only after the first successful non-receipt Telegram send; `/tail` uses separate selected-target state. |
 | Telegram repository-context seam | Telegram forwarder | `senderContext(from)` runs once per `DeliveredMessage`; `startBridge` resolves the sender descriptor folder through an injected git runner with 2-second subprocess bounds and reuses the prefix across chunks/media. |
@@ -118,6 +122,7 @@ thin receiver). Plan 019.
   `pij models`, peer spawn, and agent spawn.
 - Warn-don't-block model/effort validation and harness-specific spawn effort translation.
 - Whole-life watchdog scheduling, tmux-side attribution, shared stalled ownership, watcher episode delivery, and bounded pane-capture persistence.
+- The `state-cleared` spine kind and its journal-first assignment-chain recovery semantics.
 
 ## Boundary Excludes
 
@@ -167,3 +172,5 @@ thin receiver). Plan 019.
 | 046-pij-real-trees | Added argv-only Git common-directory identity, structural/repository metadata across spawn/adopt/bind/daemon/failure/dissolve paths, production tree/link wiring, and pre-write adopt-parent validation while retaining `spawnedBy` ownership. | 2026-07-13 |
 | 055-pij-watchdog | Added default-on daemon-owned whole-life watchdog management, compact pause integration, shared stalled episodes, delivery-split parity, watcher capture pointers, and disposable-home acceptance/smoke proof. | 2026-07-17 |
 | 058-tmux-pane-smarts | Added one-tap per-pane busy, user-typing, and connect signals; only human mid-type holds daemon delivery, with Enter/60-second-idle FIFO release. | 2026-07-19 |
+| 059-detection-integrity / Phase 2 | Made watchdog exemptions self-rearming: an expiry is persisted cleared before a manager can deliver a due watchdog turn. | 2026-07-20 |
+| 060-state-model-v2 | Added the assignment-coupled `state-cleared` spine event, journal-first recovery, and clear-state CLI wiring. | 2026-07-20 |

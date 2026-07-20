@@ -48,6 +48,7 @@ import { canonicalProjectJson } from "./project.js";
 import {
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
+	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	SPINE_KIND_TASK_SET,
@@ -60,6 +61,7 @@ import {
 // record's states[] chain, reconciled on replay.
 const ASSIGNMENT_STATE_KINDS: ReadonlySet<string> = new Set([
 	SPINE_KIND_STATE_SET,
+	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_VERIFIED,
 ]);
 const ASSIGNMENT_KINDS: ReadonlySet<string> = new Set([

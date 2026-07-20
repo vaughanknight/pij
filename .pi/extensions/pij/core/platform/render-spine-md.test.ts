@@ -53,8 +53,14 @@ describe("renderSpineMd — current kinds render with full attribution", () => {
 			next: '{"task":"build"}',
 		}),
 		ev(5, "state-verified", { peer: "pij-node", verifiedBy: "pij-parent" }),
-		ev(6, "system-state", { actor: "daemon", peer: "pij-node", prev: "working", next: "idle" }),
-		ev(7, "node-linked", {
+		ev(6, "state-cleared", {
+			peer: "pij-node",
+			refs: ["assignment:asg-general-pij-node", "transition:clear"],
+			prev: '{"task":"build"}',
+			next: '{"task":"build"}',
+		}),
+		ev(7, "system-state", { actor: "daemon", peer: "pij-node", prev: "working", next: "idle" }),
+		ev(8, "node-linked", {
 			peer: "pij-child",
 			refs: ["node:pij-child", "parent:pij-new"],
 			prev: "pij-old",
@@ -98,16 +104,23 @@ describe("renderSpineMd — current kinds render with full attribution", () => {
 		expect(doc).toContain("verifiedBy: pij-parent");
 	});
 
+	it("renders state-cleared's coupled no-op record canonically", () => {
+		const section = doc.slice(doc.indexOf("### 6 · state-cleared"), doc.indexOf("### 7 ·"));
+		expect(section).toContain("- (no field changes)");
+		expect(section).toContain("transition:clear");
+		expect(section).not.toContain('- prev: {"task":"build"}');
+	});
+
 	it("summarises the log (count + last seq) in the header", () => {
-		expect(doc).toContain("7 events");
-		expect(doc).toContain("seq 1–7");
+		expect(doc).toContain("8 events");
+		expect(doc).toContain("seq 1–8");
 	});
 
 	it("renders events in log order and leaves the input untouched", () => {
 		const copy = events.map((e) => ({ ...e, refs: [...e.refs] }));
 		renderSpineMd(events);
 		expect(events).toEqual(copy);
-		expect(doc.indexOf("### 1 ·")).toBeLessThan(doc.indexOf("### 7 ·"));
+		expect(doc.indexOf("### 1 ·")).toBeLessThan(doc.indexOf("### 8 ·"));
 	});
 });
 

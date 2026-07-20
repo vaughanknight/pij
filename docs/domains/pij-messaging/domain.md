@@ -25,14 +25,14 @@ link validation, and current/old-prime projections without changing close owners
 | `.pi/extensions/pij/core/seq.ts` | `SeqCounter` — strictly-monotonic allocator with crash-safe recovery from `lastSeq()`. |
 | `.pi/extensions/pij/core/events.ts` | `buildEvent` (seq + ISO timestamp), `filterEvents` (since/type/last), `eventAgeMs`/`latestEventAgeMs`. |
 | `.pi/extensions/pij/core/state.ts` | `isWorking`, `liveness` (active/stale/dead), `isStalled`; `STALE_AFTER_MS`. |
-| `.pi/extensions/pij/core/watchdog.ts` | Pure whole-life watchdog defaults, scheduler, pause transitions, typed response derivation, self-teaching turn builder, capture gating, and UTF-8-safe bounded tail slicing. |
+| `.pi/extensions/pij/core/watchdog.ts` | Pure whole-life watchdog defaults, bounded exemption/reconciliation, scheduler, pause transitions, typed response derivation, self-teaching turn builder, capture gating, and UTF-8-safe bounded tail slicing. |
 | `.pi/extensions/pij/core/commands.ts` | Remote-command allow-list (`compact`) + `validateCommand`. |
 | `.pi/extensions/pij/core/discovery.ts` | `deriveSelfId`/`deriveHarnessPijId`, exact-folder and repository selection, current-only `filterPrime`, `excludeSelf`, `resolveSelf` (PIJ_SESSION_ID → lone-local → `E-AMBIG`). |
 | `.pi/extensions/pij/core/tree.ts` | Effective-parent resolution, no-write link planning/cycle refusal, repository/global/subtree selection, filter algebra, and iterative cycle-safe forest projection. |
 | `.pi/extensions/pij/core/memorable-id.ts` | Exact-pinned adjective/animal candidate sequence: PoC-compatible first vector plus deterministic full-space linear probing. |
 | `.pi/extensions/pij/core/message.ts` | `frame`/`parseFrame` (`[pij from <id>] …`), `roleLabel`, boot `announceText`. |
 | `.pi/extensions/pij/core/receipts.ts` | `MessageReceipt` model + `classifyOnInject`/`initialReceipt`/`markDelivered`/`correlateDeliveredAt`. |
-| `.pi/extensions/pij/core/cli.ts` | Send grammar, tree/link grammar and iterative rendering, ordered broadcast preflight/fan-out/result projection, target/message wait correlation, and `watchdog status/pause/resume/exempt/watch/unwatch/list` state surfaces. |
+| `.pi/extensions/pij/core/cli.ts` | Send/tree/link grammar and rendering, broadcast/wait projection, watchdog surfaces, and journal-first `state set|clear|verify` command dispatch. |
 | `.pi/extensions/pij/core/session-join.ts` | Stable additive session projection and eval-safe environment exports for structural parent, repository, and prime history. |
 | `.pi/extensions/pij/core/inbox.ts` | Pull inbox grammar, claim projection, hidden receipt preparation, and event-before-marker persistence. |
 | `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of the domain ports (Pattern P8: tests target these). |
@@ -45,6 +45,8 @@ link validation, and current/old-prime projections without changing close owners
 | Concept | Description | Contract |
 |---------|-------------|----------|
 | Session descriptor | Live presence/attachment data used to find and address a session. | `SessionDescriptor` — written to `~/.pij/<id>.json`; runtime fields may be refreshed without replacing durable identity/history. |
+| Terminal observation | A durable statement of terminal evidence, not an inferred crash cause. | `requested` follows persisted pij close intent; `unrequested-by-pij` is an observed PID/pane absence without it; `unavailable` records a failed probe. Historical first-sweep and live observations remain distinguishable. |
+| Spawn expectation | Pre-launch durable intent keyed by `spawnId`, independent of child registration. | Carries requested harness, named bounded deadline, pane/session correlation, and terminal/no-show latch. A same-key descriptor suppresses an expired no-show. |
 | Prime designation/history | Mutually exclusive current and retired honor-system markers consumed by orchestration and projections. | `prime:true` is current; `oldPrime:true` is retired history; `list --prime` is current-only; legacy absence means neither. |
 | Structural parent | Session hierarchy independent of close ownership. | `parentId:<id>` is explicit parent, `null` explicit root, and absence read-only falls back to legacy `spawnedBy`; `spawnedBy` remains authorization. |
 | Repository identity | Stable grouping across a Git main checkout and linked worktrees. | Canonical absolute `gitCommonDir`; absent legacy descriptors can be resolved from folder without migration writes. |
@@ -64,10 +66,11 @@ link validation, and current/old-prime projections without changing close owners
 | Multi-message wait | A broadcast sender can wait honestly for every successful recipient. | Ordered `{to,messageId}` tracking; `queued` retains a target, `delivered`/`unverified` removes only that target, and one global timeout names unresolved recipients. |
 | Immutable inbox | Message payload and read state are separate durable facts. | `msg-<id>.json` is retained; `read-<id>.json` existence is authoritative and marker publication is atomic/idempotent. |
 | Delivery ownership | Push and pull consumers share one unread/marker contract without double consumption. | Pi marks after `onInbound`; daemon-owned tmux marks after injection outcome; `deliveryMode:"pull"` is never daemon-owned. |
-| Watchdog configuration | Supervision deviations are durable, additive, and pi-free. | `WatchdogSidecar`: optional enable/interval, `self\|compact\|exempt` pause tier, per-watcher capture policy; absence means default-on 20 minutes. |
+| Watchdog configuration | Supervision deviations are durable, additive, and pi-free. | `WatchdogSidecar`: optional enable/interval, `self\|compact\|exempt` pause tier, per-watcher capture policy, and `exemptUntilMs`; absence means default-on 20 minutes. A live exemption has an absolute bounded deadline; malformed legacy timing re-arms rather than extending safety-off. |
 | Watchdog response | Delivered turns are interpreted without letting the observer's own effects fabricate health. | `evaluateResponse` uses typed event/pane/working attribution; paneless peers omit pane evidence; two silent fires ⇒ `stalled`. |
 | Pull inbox | A non-tmux external session can register and block for messages without a daemon. | `pij inbox --wait [ms]`; first use auto-registers current ambient identity as pull-owned. |
 | Durable receipt envelope | Receipt history resolves waits without waking peers or relying on a live process. | Persist/reuse the receipt event before publishing its read marker; receipt envelopes remain retained and hidden. |
+| Semantic declaration clear | An assignment can return from a declared exception to undeclared without losing its work/history. | `state clear` targets an existing assignment, appends the journal-first `state-cleared` event, removes only descriptor `semanticState`, and refuses already-undeclared targets loudly. |
 
 ## Contracts
 
@@ -82,7 +85,7 @@ link validation, and current/old-prime projections without changing close owners
 | Broadcast send result | CLI users and automation | Human output has one recipient row; JSON is `{from,results:[...]}` with ordered per-target successes or errors. Preflight failure produces no deliveries; runtime partial failure exits non-zero after attempting later targets. |
 | Inbox read contract | pi watcher, daemon, pull CLI | List durable unread envelopes; publish read markers only after the owning consumer outcome; marked history is skipped across ticks/reloads. |
 | Receipt persistence | pull CLI, daemon | Atomic `appendOnce(receipt-envelope:<envelopeId>)` happens before `markRead`; retries reuse the event and finish the marker. |
-| Watchdog pure contract | daemon manager, compact seams, CLI/tests | `effectiveWatchdog`, `isFireDue`, `evaluateResponse`, `buildWatchdogTurn`, `captureSlice`, `applyCompactPause`, `applyWorkingTransition`, and `applyWatchdogResume`; descriptor activity is an input, never an event-log read. |
+| Watchdog pure contract | daemon manager, compact seams, CLI/tests | `effectiveWatchdog`, `reconcileWatchdogExemption`, `applyWatchdogExemption`, `isFireDue`, `evaluateResponse`, `buildWatchdogTurn`, `captureSlice`, `applyCompactPause`, `applyWorkingTransition`, and `applyWatchdogResume`; reconciliation pins `deadline-1` live and `deadline` re-armed, and descriptor activity is an input, never an event-log read. |
 | Error codes | CLI surface (workshop 001) | `E-NOID/E-SELF/E-CMD/E-DEAD/E-NOREG/E-ARG/E-AMBIG`; duplicate/colliding native identity mappings fail as `E-AMBIG`. |
 
 ## Boundary Owns
@@ -136,3 +139,6 @@ link validation, and current/old-prime projections without changing close owners
 | 041-pij-inbox-no-tmux | Added `InboxPort`, immutable `msg-*` plus atomic `read-*`, ambient pull registration/`pij inbox --wait`, durable receipt-event convergence, and post-outcome tmux/pi read ownership. | 2026-07-12 |
 | 046-pij-real-trees | Added tri-state structural parents, canonical Git common-directory identity, repository/global/subtree forests, composable filters, no-write link validation, iterative deep/cycle-safe rendering, and additive old-prime projection while preserving `spawnedBy` close ownership. | 2026-07-13 |
 | 055-pij-watchdog | Added additive sidecar/descriptor contracts and the pure default/schedule/pause/response/turn/capture core consumed by daemon-owned supervision and watchdog CLI projections. | 2026-07-17 |
+| 059-detection-integrity / Phase 2 | Replaced permanent `exempt` safety-off state with a 60-minute default, durable absolute deadline, legacy normalization, and exact-boundary re-arm contract. | 2026-07-20 |
+| 060-state-model-v2 | Added `pij state clear`: an auditable assignment-scoped declaration removal that preserves task/runtime truth and never extends semantic vocabulary. | 2026-07-20 |
+| 059-detection-integrity / Phase 3 | Added evidence-classified terminal observations and bounded pre-launch expectations keyed by `spawnId`, including historical-vs-live reconciliation and no-show suppression on descriptor correlation. | 2026-07-20 |

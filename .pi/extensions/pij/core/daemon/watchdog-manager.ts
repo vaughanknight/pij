@@ -7,6 +7,7 @@ import {
 	effectiveWatchdog,
 	evaluateResponse,
 	isFireDue,
+	reconcileWatchdogExemption,
 	shouldCapture,
 	type WatchdogResponse,
 } from "../watchdog.js";
@@ -179,6 +180,14 @@ export class WatchdogManager {
 	private reconcileSession(session: SessionDescriptor, reanchorNowMs?: number): void {
 		const nowMs = this.deps.now();
 		let sidecar = this.readSidecar(session.id);
+		// Re-arm before any scheduler decision or effective activity can fire.
+		// This durable write is the restart boundary: an expired in-memory view
+		// must never deliver one turn while watchdog.json still says exempt.
+		const reconciled = reconcileWatchdogExemption(sidecar, nowMs);
+		if (reconciled.sidecar !== sidecar && reconciled.sidecar !== undefined) {
+			this.writeSidecar(session.id, reconciled.sidecar);
+		}
+		sidecar = reconciled.sidecar;
 		let state = this.states.get(session.id);
 		if (!state) {
 			state = {

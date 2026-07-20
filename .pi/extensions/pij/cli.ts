@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	accessSync,
+	appendFileSync,
 	constants,
 	existsSync,
 	mkdirSync,
@@ -36,6 +37,7 @@ import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsProjectStore } from "./adapters/project-store.js";
+import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
@@ -164,6 +166,7 @@ import {
 	type SpawnLayout,
 	spawnIdentitySeed,
 } from "./core/spawn.js";
+import { createSpawnExpectation, spawnExpectationDeadline } from "./core/spawn-expectation.js";
 import { planLink } from "./core/tree.js";
 import {
 	err,
@@ -176,11 +179,18 @@ import {
 	type WatchMode,
 } from "./core/types.js";
 import { addWatch, removeWatch } from "./core/watch-subscription.js";
+import { applyWatchdogExemption } from "./core/watchdog.js";
 import { runTelegram } from "./telegram/index.js";
 
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
 const FOLLOW_MS = 200;
 const WAIT_TIMEOUT_MS = 15_000;
+
+/** Test-only ordered trace seam for the subprocess CLI close contract. */
+function traceP3(event: string): void {
+	const path = process.env.PIJ_TEST_P3_TRACE;
+	if (path) appendFileSync(path, `${event}\n`);
+}
 
 // The COMPLETE surface. The control-plane verbs (spawn/adopt/compact-self/daemon)
 // are intercepted here in the bin and never reach the pure core parser, so the
@@ -218,6 +228,7 @@ Platform (durable projects + the shared spine log):
   pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
   pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it
   pij state set <node> <state> [--assignment <id>] [--refs a,b,…] [--actor <label>] [--json]   declare a per-assignment semantic state
+  pij state clear <node> [--assignment <id>] [--actor <label>] [--json]   remove the current declared semantic state (assignment history remains)
   pij state verify <node> [--assignment <id>] [--actor <label>] [--json]   verify a done state (stamps verifiedBy — done is a claim until verified)
   pij node show <id> [--json]                        the full node card: both state axes, badge, assignments, terminal address, context gauges
   pij anomalies [--here] [--project <slug>] [--json]   derived safety queries: axis-disagreement, unverified done, foreign hold-clear (--here: this folder's peers; --project: one project's assignments)
@@ -246,7 +257,7 @@ const WATCHDOG_USAGE = `pij watchdog — supervise peer progress
 
 USAGE
   pij watchdog status <id> [--json]
-  pij watchdog pause|resume|exempt <id> [--json]     pause / clear pause / non-expiring exempt
+  pij watchdog pause|resume|exempt <id> [--json]     pause / clear pause / bounded exempt
   pij watchdog reset <id> [--json]                   back to default (on, 20m, un-paused, UN-exempt)
   pij watchdog interval <id> <duration> [--json]     set the timeout (e.g. 30s, 20m, 1h, or ms)
   pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
@@ -256,7 +267,8 @@ USAGE
 
 JSON
   status/state/list include watchdog: { enabled, globallyDisabled, relay,
-  intervalMs, pausedBy, exempt, lastFireAt, watchers }. Watcher captures are
+  intervalMs, pausedBy, exempt, exemptUntilMs, exemptRemainingMs, lastFireAt,
+  watchers }. Watcher captures are
   pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded head.`;
 
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
@@ -1072,6 +1084,7 @@ function runFocus(argv: readonly string[]): void {
 			{
 				registry,
 				store,
+				expectations: new FsSpawnExpectationStore(pijHome),
 				tmux: new TmuxAdapter(),
 				home: homedir(),
 				pijHome,
@@ -1172,8 +1185,18 @@ function runSpawn(argv: readonly string[]): void {
 		// Unresolved caller → "" → the child fresh-boots and announces to all peers.
 		const announceTo =
 			deriveCallerParent(process.env.PIJ_SESSION_ID, regPi.list(), process.env.TMUX_PANE) ?? "";
+		const spawnId = `s${Date.now()}-${process.pid}`;
+		const requestedAt = new Date().toISOString();
+		const expectations = new FsSpawnExpectationStore(pijHome);
+		const expectation = createSpawnExpectation({
+			spawnId,
+			creatorId: announceTo || undefined,
+			requestedHarness: "pi",
+			requestedAt,
+			deadlineAt: spawnExpectationDeadline(requestedAt),
+		});
 		const spawnCmdPi = buildSpawnCommand({
-			spawnId: `s${Date.now()}-${process.pid}`,
+			spawnId,
 			announceTo,
 			cwd: cwdPi,
 			role: "worker",
@@ -1191,6 +1214,8 @@ function runSpawn(argv: readonly string[]): void {
 			process.stderr.write(`${planPi.code}: ${planPi.message}\n`);
 			process.exit(2);
 		}
+		// Persist before the pane launch: a child can die before self-registering.
+		expectations.write(expectation);
 		const splitPi =
 			"window" in planPi
 				? tmux.newWindow({
@@ -1214,10 +1239,12 @@ function runSpawn(argv: readonly string[]): void {
 						detached: true, // keep focus here; the child boots on its own
 					});
 		if (!splitPi.ok) {
+			expectations.remove(spawnId);
 			process.stderr.write(`${splitPi.code}: ${splitPi.message}\n`);
 			process.exit(2);
 		}
 		const panePi = splitPi.value.paneId;
+		expectations.write({ ...expectation, paneId: panePi });
 		if (req.value.json) {
 			process.stdout.write(
 				`${JSON.stringify(
@@ -1315,6 +1342,15 @@ function runSpawn(argv: readonly string[]): void {
 		}
 	}
 	const token = `s${Date.now()}-${process.pid}`;
+	const requestedAt = new Date().toISOString();
+	const expectations = new FsSpawnExpectationStore(pijHome);
+	const expectation = createSpawnExpectation({
+		spawnId: token,
+		creatorId: parentId,
+		requestedHarness: req.value.harness,
+		requestedAt,
+		deadlineAt: spawnExpectationDeadline(requestedAt),
+	});
 	const reservationOwnerToken = `spawn:${token}:${randomUUID()}`;
 	const reserved = reg0.reserveMemorableId(
 		spawnIdentitySeed(token, process.pid),
@@ -1355,6 +1391,8 @@ function runSpawn(argv: readonly string[]): void {
 	}
 	// FX001-3 / SUGG-001: --layout window opens a background window in the CALLER's
 	// session (named after the peer, so it's findable) instead of splitting.
+	// Persist the no-show key before tmux can launch and vanish.
+	expectations.write(expectation);
 	const split =
 		"window" in plan
 			? tmux.newWindow({
@@ -1378,11 +1416,13 @@ function runSpawn(argv: readonly string[]): void {
 					detached: true, // keep focus here; the daemon drives the new pane
 				});
 	if (!split.ok) {
+		expectations.remove(token);
 		reg0.releaseReservation(pijId, reservationOwnerToken);
 		process.stderr.write(`${split.code}: ${split.message}\n`);
 		process.exit(2);
 	}
 	const paneId = split.value.paneId;
+	expectations.write({ ...expectation, paneId });
 	// Record the PANE's foreground pid (#{pane_pid}), not this short-lived
 	// spawner's pid — otherwise the descriptor probes "dead" the instant the
 	// spawn CLI exits and `pij send` refuses a perfectly live claude (liveness
@@ -1415,19 +1455,20 @@ function runSpawn(argv: readonly string[]): void {
 		transcriptsAtSpawn: skipSnapshot ? undefined : transcriptsAtSpawn,
 		plannedHarnessSessionId: copilotSessionId ?? forkSessionId,
 		branchedFrom: branchFrom,
+		spawnId: token,
 		model: req.value.model,
 		effort: req.value.effort,
 	});
 	const promoted = reg0.promoteReservation(pending, reservationOwnerToken);
 	if (!promoted.ok) {
+		expectations.remove(token);
 		process.stderr.write(`${promoted.code}: ${promoted.message}\n`);
 		process.exit(2);
 	}
+	expectations.write({ ...expectation, paneId, sessionId: pijId });
 	if (req.value.noWatchdog === true) {
-		new FsWatchdogStore(pijHome).write(pijId, {
-			pausedBy: "exempt",
-			pausedAtMs: Date.now(),
-		});
+		const watchdog = new FsWatchdogStore(pijHome);
+		watchdog.write(pijId, applyWatchdogExemption(watchdog.read(pijId), Date.now()));
 	}
 	// FX001-2 / DL-002: a daemon-bound peer never reads PIJ_SPAWN_TASK (only pi
 	// children do), so --task rode env into a void. Queue it in the peer's INBOX
@@ -2121,14 +2162,38 @@ function runClose(argv: readonly string[]): void {
 		process.exit(0);
 	}
 	const tmux = new TmuxAdapter();
+	const closeIntent = {
+		actor: self ?? "operator",
+		kind: "cli-close" as const,
+		requestedAt: new Date().toISOString(),
+	};
+	if (descriptor) {
+		// Persist intent before touching tmux so a later observed absence is correctly classified.
+		reg.write({ ...descriptor, closeIntent });
+		traceP3("close:intent-write");
+	}
+	traceP3("close:kill");
 	const killed = tmux.killPane(plan.value.paneId); // idempotent: swallows "already gone"
 	if (!killed.ok) {
 		process.stderr.write(`${killed.code}: ${killed.message}\n`);
 		process.exit(2);
 	}
+	const observedAt = new Date().toISOString();
+	if (descriptor) {
+		// A successful idempotent kill is our owned observation: persist terminal
+		// truth before hiding the descriptor, so history can distinguish requested.
+		reg.write({
+			...descriptor,
+			closeIntent,
+			terminal: { disposition: "requested", observedAt, evidence: "pane-missing" },
+			deathNoticeLatchedAt: observedAt,
+		});
+		traceP3("close:terminal-write");
+	}
 	reg.dissolve(plan.value.id);
+	traceP3("close:dissolve");
 	process.stdout.write(
-		`closed ${plan.value.id} — killed pane ${plan.value.paneId}, descriptor dissolved\n`,
+		`closed ${plan.value.id} — killed pane ${plan.value.paneId}, requested terminal recorded, descriptor dissolved\n`,
 	);
 	process.exit(0);
 }
@@ -2630,6 +2695,15 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		process.exit(exitCodeFor(prep.error.code));
 	}
 	const plan = prep.plan;
+	const requestedAt = new Date().toISOString();
+	const expectations = new FsSpawnExpectationStore(pijHome);
+	const expectation = createSpawnExpectation({
+		spawnId: token,
+		creatorId: spawnedBy,
+		requestedHarness: plan.harness,
+		requestedAt,
+		deadlineAt: spawnExpectationDeadline(requestedAt),
+	});
 
 	// Warn-never-block on model/effort (same policy as run), then the one-shot
 	// permissions advisory (KF-09) — printed exactly once on stderr.
@@ -2643,6 +2717,8 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	const daemonNote = ensureDaemonRunning();
 	if (daemonNote) process.stdout.write(`${daemonNote}\n`);
 
+	// Persist before the agent's daemon-bound pane is opened.
+	expectations.write(expectation);
 	const paneRes = spawnAgentPane(
 		{
 			id,
@@ -2655,11 +2731,13 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		cwd,
 	);
 	if (!paneRes.ok || !paneRes.pane) {
+		expectations.remove(token);
 		reservationRegistry.releaseReservation(id, reservationOwnerToken);
 		process.stderr.write(`${paneRes.message ?? "E-SPAWN: could not open pane"}\n`);
 		process.exit(paneRes.exitCode ?? 2);
 	}
 
+	expectations.write({ ...expectation, paneId: paneRes.pane.paneId });
 	const { packetPath } = finalizeAgentSpawn(plan, paneRes.pane, {
 		pijHome,
 		registry: reg,
@@ -2668,17 +2746,24 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	});
 	const spawnedDescriptor = reg.read(id);
 	if (!spawnedDescriptor) {
+		expectations.remove(token);
 		process.stderr.write(`E-NOREG: spawned agent descriptor ${id} is missing\n`);
 		process.exit(3);
 	}
 	const gitCommonDir = new GitRepositoryAdapter().gitCommonDir(cwd) ?? undefined;
-	if (spawnedBy !== undefined || gitCommonDir !== undefined) {
-		reg.write({
-			...spawnedDescriptor,
-			...(spawnedBy !== undefined ? { parentId: spawnedBy } : {}),
-			...(gitCommonDir !== undefined ? { gitCommonDir } : {}),
-		});
-	}
+	reg.write({
+		...spawnedDescriptor,
+		spawnId: token,
+		...(spawnedBy !== undefined ? { parentId: spawnedBy } : {}),
+		...(gitCommonDir !== undefined ? { gitCommonDir } : {}),
+	});
+	expectations.write({
+		...expectation,
+		paneId: paneRes.pane.paneId,
+		sessionId: id,
+		runtimeHarness: plan.harness,
+		boundAt: new Date().toISOString(),
+	});
 	const consumed = reg.consumeReservation(id, reservationOwnerToken);
 	if (!consumed.ok) {
 		process.stderr.write(`${consumed.code}: ${consumed.message}\n`);

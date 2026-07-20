@@ -39,6 +39,7 @@ import {
 	type Assignment,
 	generalAssignmentId,
 	SPINE_KIND_NODE_LINKED,
+	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	SPINE_KIND_TASK_SET,
@@ -78,10 +79,13 @@ import {
 	type WatchdogSidecar,
 } from "./types.js";
 import {
+	applyWatchdogExemption,
 	applyWatchdogResume,
+	DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
 	describeWatchdogState,
 	effectiveWatchdog,
 	parseWatchdogInterval,
+	reconcileWatchdogExemption,
 } from "./watchdog.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
@@ -200,6 +204,7 @@ export type ParsedCommand =
 			readonly id?: SessionId;
 			readonly capture?: WatchdogCapturePolicy;
 			readonly intervalMs?: number;
+			readonly exemptDurationMs?: number;
 			readonly json: boolean;
 	  }
 	| { readonly verb: "phonehome"; readonly json: boolean }
@@ -284,6 +289,13 @@ export type ParsedCommand =
 	  }
 	| {
 			readonly verb: "state-verify";
+			readonly node: SessionId;
+			readonly assignmentId?: string;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "state-clear";
 			readonly node: SessionId;
 			readonly assignmentId?: string;
 			readonly actor?: string;
@@ -520,6 +532,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	"task set": new Set(["project", "actor", "json"]),
 	"state set": new Set(["assignment", "refs", "actor", "json"]),
 	"state verify": new Set(["assignment", "actor", "json"]),
+	"state clear": new Set(["assignment", "actor", "json"]),
 	"node show": new Set(["json"]),
 	anomalies: new Set(["json", "here", "project"]),
 	watchdog: new Set(["capture", "max-lines", "max-bytes", "json"]),
@@ -547,6 +560,7 @@ const MAX_POS: Record<string, number> = {
 	"task set": 2,
 	"state set": 2,
 	"state verify": 1,
+	"state clear": 1,
 	"node show": 1,
 	anomalies: 0,
 	watchdog: 3, // action + id + duration (for `interval <id> <duration>`)
@@ -566,7 +580,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	// `state` dual routing (plan 054 P2): the family route engages ONLY on the
 	// exact reserved subcommands, so the legacy positional card
 	// (`pij state <id>`) keeps working for every other first argument.
-	if (verb === "state" && (argv[1] === "set" || argv[1] === "verify")) {
+	if (verb === "state" && (argv[1] === "set" || argv[1] === "verify" || argv[1] === "clear")) {
 		key = `state ${argv[1]}`;
 		args = argv.slice(2);
 	}
@@ -772,6 +786,15 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				if (intervalMs === null)
 					return err("E-ARG", `invalid duration '${raw}' — use e.g. 30s, 20m, 1h, or ms`);
 				return ok({ verb: "watchdog", action: typedAction, id, intervalMs, json });
+			}
+			if (typedAction === "exempt") {
+				if (!id) return err("E-ARG", "pij watchdog exempt needs a session id");
+				const raw = pos[2];
+				const exemptDurationMs =
+					raw === undefined ? DEFAULT_WATCHDOG_EXEMPT_TTL_MS : parseWatchdogInterval(raw);
+				if (exemptDurationMs === null)
+					return err("E-ARG", `invalid duration '${raw}' — use e.g. 30s, 20m, 1h, or ms`);
+				return ok({ verb: "watchdog", action: typedAction, id, exemptDurationMs, json });
 			}
 			if (typedAction === "list") {
 				if (id !== undefined) return err("E-ARG", "pij watchdog list takes no id");
@@ -997,6 +1020,20 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				json,
 			});
 		}
+		case "state clear": {
+			const node = pos[0];
+			if (node === undefined)
+				return err("E-ARG", "usage: pij state clear <node> [--assignment <id>]");
+			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "state-clear",
+				node,
+				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
 		case "node show": {
 			const id = pos[0];
 			if (id === undefined) return err("E-ARG", "usage: pij node show <id> [--json]");
@@ -1107,8 +1144,16 @@ function watchdogBlock(
 	d: SessionDescriptor,
 	sidecar: WatchdogSidecar | undefined,
 	globallyDisabled = false,
+	nowMs = Date.now(),
 ) {
-	const cfg = effectiveWatchdog(sidecar);
+	const reconciled = reconcileWatchdogExemption(sidecar, nowMs);
+	const normalized = reconciled.sidecar;
+	const cfg = effectiveWatchdog(normalized);
+	const exemptUntilMs =
+		reconciled.effectivePause === "exempt" && normalized?.exemptUntilMs !== undefined
+			? normalized.exemptUntilMs
+			: null;
+	const exemptRemainingMs = exemptUntilMs === null ? null : Math.max(0, exemptUntilMs - nowMs);
 	// A relay/bridge is born exempt and never watched (Plan 056) — report that
 	// truthfully rather than `enabled`, the same effective-state invariant as the
 	// global switch: what status says must match scheduler eligibility.
@@ -1121,10 +1166,12 @@ function watchdogBlock(
 		globallyDisabled,
 		relay,
 		intervalMs: cfg.intervalMs,
-		pausedBy: cfg.pausedBy ?? null,
-		exempt: cfg.pausedBy === "exempt",
+		pausedBy: reconciled.effectivePause ?? null,
+		exempt: reconciled.effectivePause === "exempt",
+		exemptUntilMs,
+		exemptRemainingMs,
 		lastFireAt: d.lastWatchdogFireAt ?? null,
-		watchers: (sidecar?.watchers ?? []).map((watcher) => watcher.watcherId),
+		watchers: (normalized?.watchers ?? []).map((watcher) => watcher.watcherId),
 	};
 }
 
@@ -1363,7 +1410,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				const globalOff = deps.watchdogGlobalStore?.disabled() ?? false;
 				const rows = deps.registry.list().map((descriptor) => ({
 					id: descriptor.id,
-					watchdog: watchdogBlock(descriptor, store.read(descriptor.id), globalOff),
+					watchdog: watchdogBlock(descriptor, store.read(descriptor.id), globalOff, now),
 				}));
 				if (cmd.json) return okOut(JSON.stringify(rows));
 				return okOut(
@@ -1381,7 +1428,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!id) return fail("E-ARG", `pij watchdog ${cmd.action} needs a session id`, cmd.json);
 			const descriptor = deps.registry.read(id);
 			if (!descriptor) return fail("E-NOID", `no session '${id}' in registry`, cmd.json);
-			let sidecar = store.read(id) ?? {};
+			const storedSidecar = store.read(id);
+			const reconciled = reconcileWatchdogExemption(storedSidecar, now);
+			if (reconciled.sidecar !== storedSidecar && reconciled.sidecar !== undefined) {
+				store.write(id, reconciled.sidecar);
+			}
+			let sidecar = reconciled.sidecar ?? {};
 			if (cmd.action === "reset") {
 				// Back to default: on, 20 min, un-paused, UN-EXEMPT. The clean undo —
 				// `resume` deliberately won't clear `exempt`, so this is the only way
@@ -1397,7 +1449,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				if (sidecar.pausedBy === "exempt") {
 					return fail(
 						"E-ARG",
-						`watchdog ${id} is exempt; pause cannot downgrade a non-expiring exemption`,
+						`watchdog ${id} has an active exemption; pause cannot downgrade it`,
 						cmd.json,
 					);
 				}
@@ -1407,7 +1459,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				sidecar = applyWatchdogResume(sidecar);
 				store.write(id, sidecar);
 			} else if (cmd.action === "exempt") {
-				sidecar = { ...sidecar, pausedBy: "exempt", pausedAtMs: now };
+				sidecar = applyWatchdogExemption(sidecar, now, cmd.exemptDurationMs);
 				store.write(id, sidecar);
 			} else if (cmd.action === "watch" || cmd.action === "unwatch") {
 				const self = selfId(deps);
@@ -1433,10 +1485,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				descriptor,
 				sidecar,
 				deps.watchdogGlobalStore?.disabled() ?? false,
+				now,
 			);
 			if (cmd.json) return okOut(JSON.stringify({ id, watchdog: block }));
+			const expiry =
+				block.exemptUntilMs === null
+					? ""
+					: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${block.exemptRemainingMs}ms remaining)`;
 			return okOut(
-				`${id}: ${describeWatchdogState(block)} · interval ${block.intervalMs}ms · watchers ${block.watchers.length}`,
+				`${id}: ${describeWatchdogState(block)} · interval ${block.intervalMs}ms${expiry} · watchers ${block.watchers.length}`,
 			);
 		}
 		case "models": {
@@ -1531,10 +1588,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							boundModel: d.boundModel ?? null,
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
+							terminal: d.terminal ?? null,
 							watchdog: watchdogBlock(
 								d,
 								deps.watchdogStore?.read(d.id),
 								deps.watchdogGlobalStore?.disabled() ?? false,
+								now,
 							),
 							prime: d.prime === true,
 							oldPrime: d.oldPrime === true,
@@ -1928,10 +1987,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						daemonTickAgeMs: tickStatus?.daemonTickAgeMs ?? null,
 						daemonTickStale: tickStatus?.daemonTickStale ?? null,
 						failureReason: d.failureReason ?? null,
+						terminal: d.terminal ?? null,
 						watchdog: watchdogBlock(
 							d,
 							deps.watchdogStore?.read(d.id),
 							deps.watchdogGlobalStore?.disabled() ?? false,
+							now,
 						),
 					}),
 				);
@@ -1943,8 +2004,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					)} old)`
 				: "";
 			const failLine = d.failureReason ? `  ·  failure: ${d.failureReason}` : "";
+			const terminalLine = d.terminal
+				? `  ·  terminal: ${d.terminal.disposition} at ${d.terminal.observedAt} (${d.terminal.evidence})${
+						d.terminal.unavailableReason ? ` — ${d.terminal.unavailableReason}` : ""
+					}`
+				: "";
 			return okOut(
-				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${effortLine}${tickLine}${failLine}`,
+				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${effortLine}${tickLine}${failLine}${terminalLine}`,
 			);
 		}
 		case "phonehome": {
@@ -2020,6 +2086,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "task-set":
 		case "state-set":
 		case "state-verify":
+		case "state-clear":
 		case "node-show":
 		case "anomalies": {
 			try {
@@ -2063,6 +2130,7 @@ type PlatformCommand = Extract<
 			| "task-set"
 			| "state-set"
 			| "state-verify"
+			| "state-clear"
 			| "node-show"
 			| "anomalies";
 	}
@@ -2141,14 +2209,6 @@ function resolveTargetAssignment(
 	}
 	const generalId = generalAssignmentId(node.id);
 	return ok({ id: generalId, existing: assignmentStore.read(generalId) ?? undefined });
-}
-
-/** The semantic word of a chain event, carried as a `state:<word>` ref. */
-function stateWordOf(event: { readonly refs: readonly string[] }): string | undefined {
-	for (const ref of event.refs) {
-		if (ref.startsWith("state:")) return ref.slice("state:".length);
-	}
-	return undefined;
 }
 
 function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): CliResult {
@@ -2582,6 +2642,104 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}
+		case "state-clear": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const node = deps.registry.read(cmd.node);
+			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const target = resolveTargetAssignment(assignmentStore, node, cmd.assignmentId);
+				if (!target.ok) return fail(target.code, target.message, cmd.json);
+				// Unlike state set, clear never materializes the implicit general: an
+				// absent record has no declaration to remove.
+				const record = target.value.existing;
+				if (record === undefined) {
+					return fail("E-NOREG", `no assignment to clear for node '${cmd.node}'`, cmd.json);
+				}
+				const chain = chainStateOf(record, spineLog.read({ peer: cmd.node }));
+				if (chain.state === undefined) {
+					return fail(
+						"E-ARG",
+						`assignment '${record.id}' is already undeclared — nothing to clear`,
+						cmd.json,
+					);
+				}
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_STATE_CLEARED,
+					refs: [
+						`node:${cmd.node}`,
+						`assignment:${record.id}`,
+						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
+						"transition:clear",
+					],
+					peer: cmd.node,
+					project: record.projectSlug,
+					prev: canonicalAssignmentJson(record),
+					next: canonicalAssignmentJson(record),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				const recorded = opJournal.record(draft.value);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const written = assignmentStore.write(record);
+				if (!written.ok) {
+					return fail(
+						written.code,
+						withResidualDiagnostic(written.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				opJournal.markCommitted(opId);
+				const appended = spineLog.appendOnce(opId, draft.value);
+				if (!appended.ok) {
+					return fail(
+						appended.code,
+						`state on '${cmd.node}' WAS cleared (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				const event = appended.value.event;
+				const chained = assignmentStore.write(appendStateRef(record, event.seq));
+				if (!chained.ok) {
+					return fail(
+						chained.code,
+						`state on '${cmd.node}' WAS cleared and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
+						cmd.json,
+					);
+				}
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`state on '${cmd.node}' WAS cleared and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				const denormed = denormDescriptor(deps, cmd.node, {
+					currentAssignment: record.id,
+					currentTask: record.task,
+					semanticState: undefined,
+				});
+				if (!denormed.ok) {
+					return fail(
+						denormed.code,
+						`state on '${cmd.node}' WAS cleared and its spine event landed, but ${denormed.message}`,
+						cmd.json,
+					);
+				}
+				if (cmd.json) return okOut(JSON.stringify(event));
+				return okOut(`state cleared on ${cmd.node} (assignment ${record.id}, spine ${event.seq})`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
 		case "state-verify": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
@@ -2600,25 +2758,28 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				if (record === undefined) {
 					return fail("E-NOREG", `no assignment to verify for node '${cmd.node}'`, cmd.json);
 				}
-				// The chain's LATEST declared state must be done (AC-06): a
-				// verify of anything else is a user error, not a free write.
-				const chainSeqs = new Set(record.states);
-				const declared = spineLog
-					.read({ peer: cmd.node })
-					.filter((e) => chainSeqs.has(e.seq) && e.kind === SPINE_KIND_STATE_SET);
-				const latest = declared[declared.length - 1];
-				if (latest === undefined) {
+				// The shared chain projection is the sole authority for the latest
+				// declaration: a later state-cleared makes this assignment undeclared.
+				const chain = chainStateOf(record, spineLog.read({ peer: cmd.node }));
+				if (chain.state === undefined) {
 					return fail(
 						"E-ARG",
 						`assignment '${record.id}' has no declared state to verify`,
 						cmd.json,
 					);
 				}
-				const word = stateWordOf(latest);
-				if (word !== "done") {
+				if (chain.state !== "done") {
 					return fail(
 						"E-ARG",
-						`assignment '${record.id}' is not done (latest state: ${word ?? "unknown"}) — nothing to verify`,
+						`assignment '${record.id}' is not done (latest state: ${chain.state}) — nothing to verify`,
+						cmd.json,
+					);
+				}
+				const doneSeq = chain.stateSeq;
+				if (doneSeq === undefined) {
+					return fail(
+						"E-NOREG",
+						`assignment '${record.id}' has an invalid done declaration without a spine seq`,
 						cmd.json,
 					);
 				}
@@ -2631,7 +2792,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 						`assignment:${record.id}`,
 						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
 						"state:done",
-						`event:${latest.seq}`,
+						`event:${doneSeq}`,
 					],
 					peer: cmd.node,
 					project: record.projectSlug,

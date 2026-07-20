@@ -73,7 +73,19 @@ The daemon runs `tsx` off source with **no hot-reload**: after ANY edit to daemo
 
 In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that re-invoke you. After dispatch: do independent prep and let the push wake you; never poll `pij state`. In external pull mode there is deliberately no injector: use `pij inbox --wait` (first use auto-registers; optional milliseconds make it finite). This blocking inbox read is the delivery primitive, not a liveness poll. A known-broken push transport may use one slow `pij tail <id>` spot-check.
 
-### C8 — Watchdog etiquette (you may be watched; some peers must never be)
+### C8 — Terminal and no-show interpretation
+
+Do not call an absent peer a crash from pane/PID absence alone. A persisted
+pij-owned close is **requested**; an observed absence without that intent is
+**unrequested-by-pij**; a failed probe is **unavailable**. Daemon reports label
+its initial boot reconciliation **historical** and later evidence **live**.
+
+Each launch has a bounded expectation keyed by `spawnId`; expiry means only that
+that expected registration did not appear. If a descriptor with the same key is
+present, it suppresses the no-show. Never substitute a guessed harness, cause, or
+owner for either observation.
+
+### C9 — Watchdog etiquette (you may be watched; some peers must never be)
 
 **What it is.** Every session gets a daemon-owned watchdog, **on by default at a 20-minute interval, no setup**. When a watched peer has been silent past the interval, the daemon injects a self-teaching nudge turn — *"Keep going if working. If done, pause me with `pij watchdog pause <id>`."* Two silent nudges in a row with no new output ⇒ the session is derived **stalled**. The premise is that idleness *might* be a stall — so the whole design turns on one distinction: **whose silence is deliberate.**
 
@@ -81,6 +93,6 @@ In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that r
 
 **Deliberate-silence class — some peers are born exempt and must stay so.** A **relay/bridge/control-plane** peer forwards its inbox to an external sink (the `pij-telegram` bridge → the operator's phone). Its idleness is *correct by design*; a watchdog nudge into it becomes a real-world message. Such peers carry `relay: true` on their descriptor and are **never watched** — set it at registration for any new bridge/relay you build; never watch, pause, or resume a seat that isn't yours (descriptor identity can collide — a nudge addressed to another id is registry evidence, not a command).
 
-**Tiers, strongest wins:** `exempt` (`pij watchdog exempt <id>` or spawn `--no-watchdog`; non-expiring, never fired, `pause` cannot downgrade it) > `compact` (auto-set around `/compact`, auto-resumes on the next real working transition) > `self` (verb-only resume). `pij watchdog status|list [--json]` reports the effective state.
+**Tiers, strongest wins:** `exempt` (`pij watchdog exempt <id> [duration]` or spawn `--no-watchdog`; default duration 1h, never fires only until its persisted deadline, then re-arms automatically; `pause` cannot downgrade an active exemption) > `compact` (auto-set around `/compact`, auto-resumes on the next real working transition) > `self` (verb-only resume). `pij watchdog status|list [--json]` reports the effective state and any live exemption deadline.
 
-**Operator controls.** Per peer: `pij watchdog interval <id> <30s|20m|1h|ms>` sets the timeout (default 20m); `pij watchdog reset <id>` restores defaults, the only way to lift an exemption (`resume` won't). Machine-wide: `pij watchdog disable-all` / `enable-all` is the fleet kill switch — one command, honored for every session including ones spawned while off (no per-sidecar edits), re-anchoring cleanly on re-enable. The daemon picks up any of these on its next tick (no restart; C6 is only for code edits).
+**Operator controls.** Per peer: `pij watchdog interval <id> <30s|20m|1h|ms>` sets the timeout (default 20m); `pij watchdog exempt <id> [duration]` creates the bounded exemption; `pij watchdog reset <id>` restores defaults and clears an active exemption early (`resume` won't). Machine-wide: `pij watchdog disable-all` / `enable-all` is the fleet kill switch — one command, honored for every session including ones spawned while off (no per-sidecar edits), re-anchoring cleanly on re-enable. The daemon picks up any of these on its next tick (no restart; C6 is only for code edits).
