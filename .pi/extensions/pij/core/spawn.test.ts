@@ -26,6 +26,7 @@ import {
 	planPlacement,
 	readyBody,
 	resolvePiBin,
+	resolvePiModelBinding,
 	spawnIdentitySeed,
 } from "./spawn.js";
 import type { HarnessKind, SessionDescriptor } from "./types.js";
@@ -96,15 +97,20 @@ describe("buildSpawnCommand", () => {
 			expect(r.args).toContain("--auto-approve");
 		});
 
-		it("bin 'omp' passes a bare fuzzy model id through unchanged (no provider prefix)", () => {
-			const r = buildSpawnCommand({ ...base, bin: "omp", model: "gpt-5.6-sol" });
+		it("bin 'omp' accepts an already provider-qualified model", () => {
+			const r = buildSpawnCommand({ ...base, bin: "omp", model: "github-copilot/gpt-5.6-sol" });
 			expect(r.cmd).toBe("omp");
-			expect(r.args).toEqual(["--auto-approve", "--model", "gpt-5.6-sol"]);
+			expect(r.args).toEqual(["--auto-approve", "--model", "github-copilot/gpt-5.6-sol"]);
 		});
 
-		it("bin 'omp' threads effort as pi's model:effort suffix (pi-family parity)", () => {
-			const r = buildSpawnCommand({ ...base, bin: "omp", model: "gpt-5.6-sol", effort: "high" });
-			expect(r.args).toEqual(["--auto-approve", "--model", "gpt-5.6-sol:high"]);
+		it("bin 'omp' threads effort onto a provider-qualified model", () => {
+			const r = buildSpawnCommand({
+				...base,
+				bin: "omp",
+				model: "github-copilot/gpt-5.6-sol",
+				effort: "high",
+			});
+			expect(r.args).toEqual(["--auto-approve", "--model", "github-copilot/gpt-5.6-sol:high"]);
 		});
 
 		it("bin 'omp' env threading is identical to pi (same pij extension self-registers)", () => {
@@ -863,6 +869,66 @@ describe("parseSpawnArgs (T018)", () => {
 		const unset = parseSpawnArgs(["--harness", "claude"]);
 		expect(unset.ok).toBe(true);
 		if (unset.ok) expect(unset.value.effort).toBeUndefined();
+	});
+});
+
+describe("resolvePiModelBinding", () => {
+	const model = (provider: string, id = "gpt-5.6-sol"): ModelEntry => ({
+		id,
+		name: id,
+		provider,
+		verified: true,
+	});
+
+	it("pins an ambiguous Copilot-family bare id to github-copilot with a notice", () => {
+		const result = resolvePiModelBinding("gpt-5.6-sol", [
+			model("github-copilot"),
+			model("copilot"),
+			model("codex"),
+		]);
+		expect(result).toMatchObject({
+			ok: true,
+			value: {
+				model: "github-copilot/gpt-5.6-sol",
+				provider: "github-copilot",
+			},
+		});
+		if (result.ok) {
+			expect(result.value.notice).toContain("github-copilot, copilot, codex");
+			expect(result.value.notice).toContain("defaulting");
+		}
+	});
+
+	it("preserves an explicit provider-qualified selection", () => {
+		expect(
+			resolvePiModelBinding("codex/gpt-5.6-sol", [model("github-copilot"), model("codex")]),
+		).toEqual({
+			ok: true,
+			value: { model: "codex/gpt-5.6-sol", provider: "codex" },
+		});
+	});
+
+	it("qualifies a unique exact provider and leaves an unknown id unchanged", () => {
+		expect(resolvePiModelBinding("fugu", [model("sakana", "fugu")])).toEqual({
+			ok: true,
+			value: { model: "sakana/fugu", provider: "sakana" },
+		});
+		expect(resolvePiModelBinding("custom-model", [model("sakana", "fugu")])).toEqual({
+			ok: true,
+			value: { model: "custom-model" },
+		});
+	});
+
+	it("fails loud on non-Copilot provider ambiguity and lists actionable candidates", () => {
+		const result = resolvePiModelBinding("shared-model", [
+			model("openrouter", "shared-model"),
+			model("sakana", "shared-model"),
+		]);
+		expect(result).toMatchObject({ ok: false, code: "E-AMBIGUOUS" });
+		if (!result.ok) {
+			expect(result.message).toContain("openrouter/shared-model");
+			expect(result.message).toContain("sakana/shared-model");
+		}
 	});
 });
 

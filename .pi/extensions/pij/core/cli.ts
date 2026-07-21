@@ -407,6 +407,7 @@ const EXIT: Record<PijErrorCode, number> = {
 	"E-SELF": 2,
 	"E-CMD": 2,
 	"E-AMBIG": 2,
+	"E-AMBIGUOUS": 64,
 	"E-DEAD": 1,
 	"E-NOREG": 3,
 	"E-ARG": 64,

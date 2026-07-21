@@ -543,6 +543,7 @@ export type PijErrorCode =
 	| "E-NOREG" // no registry present
 	| "E-ARG" // bad CLI arguments
 	| "E-AMBIG" // cannot resolve "self" (env unset + multiple local)
+	| "E-AMBIGUOUS" // model id resolves to multiple providers; caller must qualify it
 	| "E-NOTMUX" // not inside a tmux session (required for pij_spawn)
 	| "E-FULL" // explicit --layout right|below full — 2 workers already split (the default stack is uncapped)
 	| "E-BRANCH" // branch-from-self refused (unsupported harness / unresolved / mismatch / unbound)
