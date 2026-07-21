@@ -24,7 +24,10 @@
 
 import { recoverPendingOps } from "../platform/journal.js";
 import type {
+	AllocationStorePort,
 	AssignmentStorePort,
+	DispatchStorePort,
+	FenceStorePort,
 	OpJournalPort,
 	PlatformWriteLockPort,
 	ProjectStorePort,
@@ -44,6 +47,9 @@ export interface RuntimeAxisDeps {
 	readonly opJournal: OpJournalPort;
 	readonly projectStore: ProjectStorePort;
 	readonly assignmentStore: AssignmentStorePort;
+	readonly allocationStore: AllocationStorePort;
+	readonly fenceStore: FenceStorePort;
+	readonly dispatchStore: DispatchStorePort;
 	readonly platformWriteLock: PlatformWriteLockPort;
 	readonly now: () => number;
 	readonly isAlive: (pid: number) => boolean;
@@ -128,6 +134,9 @@ export class RuntimeAxisTracker {
 				d.spineLog,
 				d.projectStore,
 				d.assignmentStore,
+				d.allocationStore,
+				d.fenceStore,
+				d.dispatchStore,
 			);
 			if (!recovered.ok) return recovered;
 			const draft = buildSpineEvent({

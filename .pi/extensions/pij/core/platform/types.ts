@@ -29,6 +29,11 @@ export interface AttributionEnvelope {
 
 // ─── records (WS-4) ────────────────────────────────────────────────────────
 
+/** Orchestrator autonomy policy. Absent means gated for legacy projects. */
+export const PROJECT_AUTONOMIES = ["power-through", "gated"] as const;
+
+export type ProjectAutonomy = (typeof PROJECT_AUTONOMIES)[number];
+
 /** One tracked project. */
 export interface Project {
 	readonly schema_version: 1;
@@ -37,7 +42,131 @@ export interface Project {
 	readonly repo?: string;
 	readonly planPath?: string;
 	readonly primeId?: string;
+	readonly autonomy?: ProjectAutonomy;
 	readonly created: {
+		readonly actor: string;
+		readonly ts: string;
+	};
+}
+
+/** Stream-allocation lifecycle. Ordinals remain reserved after close/tombstone. */
+export const ALLOCATION_STATES = ["created", "briefed", "closed", "tombstoned"] as const;
+
+export type AllocationState = (typeof ALLOCATION_STATES)[number];
+
+/** One persisted, ordered transaction-journal step for stream stand-up/close. */
+export interface AllocationStep {
+	readonly name: string;
+	readonly ok: boolean;
+	readonly evidence: string;
+	readonly ts: string;
+}
+
+/** One reserved stream allocation. */
+export interface Allocation {
+	readonly schema_version: 1;
+	readonly id: string;
+	readonly project: string;
+	readonly ordinal: number;
+	readonly slug: string;
+	readonly worktree: string;
+	readonly branch: string;
+	readonly baseSha: string;
+	readonly state: AllocationState;
+	readonly steps: readonly AllocationStep[];
+	readonly created: {
+		readonly actor: string;
+		readonly ts: string;
+	};
+}
+
+/** Fence classes are descriptive sensors, never enforcement. */
+export const FENCE_CLASSES = ["notify-only"] as const;
+
+export type FenceClass = (typeof FENCE_CLASSES)[number];
+
+/** Expected touch-set for one allocation. */
+export interface Fence {
+	readonly schema_version: 1;
+	readonly id: string;
+	readonly allocation: string;
+	readonly touchSet: readonly string[];
+	readonly shared: readonly string[];
+	readonly class: FenceClass;
+	readonly updated: {
+		readonly actor: string;
+		readonly ts: string;
+	};
+}
+
+/** Dispatch lifecycle is separate from the shipped delivery receipt vocabulary. */
+export const DISPATCH_STATES = ["undelivered", "delivered-unacked", "acked"] as const;
+
+export type DispatchState = (typeof DISPATCH_STATES)[number];
+
+export const DISPATCH_DELIVERY_STATES = ["queued", "delivered", "unverified"] as const;
+
+export type DispatchDeliveryState = (typeof DISPATCH_DELIVERY_STATES)[number];
+
+export interface DispatchAck {
+	readonly schema_version: 1;
+	readonly kind: "brief-ack";
+	readonly messageId: string;
+	readonly packetId: string;
+	readonly packetSha256: string;
+	readonly declaredRuntime: {
+		readonly model: string;
+		readonly effort: string;
+		readonly source: "self-report";
+	};
+	readonly seat: string;
+	readonly ts: string;
+}
+
+export const CANARY_MODEL_CHECKS = ["matched", "unpinned-default"] as const;
+
+export type CanaryModelCheck = (typeof CANARY_MODEL_CHECKS)[number];
+
+/** Mechanical canary legs (a)+(b), attached only to a fully acknowledged
+ * dispatch after nonce/sha, identity, and runtime checks all pass. */
+export interface CanaryRecord {
+	readonly schema_version: 1;
+	readonly kind: "canary";
+	readonly dispatchId: string;
+	readonly nonce: string;
+	readonly target: string;
+	readonly expectedModel?: string;
+	readonly declaredRuntime: DispatchAck["declaredRuntime"];
+	readonly modelCheck: CanaryModelCheck;
+	readonly identity: {
+		readonly paneId: string;
+		readonly pid: number;
+		readonly harnessSessionId: string;
+	};
+	readonly passed: {
+		readonly actor: string;
+		readonly ts: string;
+	};
+}
+
+/** One dispatch packet and its delivery/engagement evidence. */
+export interface Dispatch {
+	readonly schema_version: 1;
+	readonly id: string;
+	readonly packetPath: string;
+	readonly packetSha256: string;
+	readonly from: string;
+	readonly to: string;
+	readonly messageId?: string;
+	readonly deliveryState?: DispatchDeliveryState;
+	readonly state: DispatchState;
+	readonly ack?: DispatchAck;
+	readonly canary?: CanaryRecord;
+	readonly created: {
+		readonly actor: string;
+		readonly ts: string;
+	};
+	readonly updated: {
 		readonly actor: string;
 		readonly ts: string;
 	};
@@ -73,6 +202,9 @@ export interface Assignment {
  *  the guard does not enforce this list. */
 export const SPINE_KIND_PROJECT_CREATED = "project-created";
 export const SPINE_KIND_PROJECT_SET = "project-set";
+export const SPINE_KIND_ALLOCATION = "allocation";
+export const SPINE_KIND_FENCE = "fence";
+export const SPINE_KIND_DISPATCH = "dispatch";
 // Assignment coupled-write kinds (plan 054 P2 T005). prev/next on these carry
 // canonicalAssignmentJson (states[] excluded — a log-derived index); the
 // semantic transition rides in structured refs (`state:<word>`).
@@ -195,6 +327,102 @@ function isAssignmentClosed(value: unknown): boolean {
 	);
 }
 
+function isAllocationState(value: unknown): value is AllocationState {
+	return typeof value === "string" && (ALLOCATION_STATES as readonly string[]).includes(value);
+}
+
+function isAllocationStep(value: unknown): boolean {
+	if (!isRecord(value)) return false;
+	return (
+		ownField(value, "name", isString) &&
+		ownField(value, "ok", (v) => typeof v === "boolean") &&
+		ownField(value, "evidence", isString) &&
+		ownField(value, "ts", isString)
+	);
+}
+
+function isFenceClass(value: unknown): value is FenceClass {
+	return typeof value === "string" && (FENCE_CLASSES as readonly string[]).includes(value);
+}
+
+function isDispatchState(value: unknown): value is DispatchState {
+	return typeof value === "string" && (DISPATCH_STATES as readonly string[]).includes(value);
+}
+
+function isDispatchDeliveryState(value: unknown): value is DispatchDeliveryState {
+	return (
+		typeof value === "string" && (DISPATCH_DELIVERY_STATES as readonly string[]).includes(value)
+	);
+}
+
+function isDispatchAck(value: unknown): value is DispatchAck {
+	if (!isRecord(value) || !isRecord(value.declaredRuntime)) return false;
+	return (
+		ownField(value, "schema_version", (v) => v === 1) &&
+		ownField(value, "kind", (v) => v === "brief-ack") &&
+		ownField(value, "messageId", isString) &&
+		ownField(value, "packetId", isString) &&
+		ownField(value, "packetSha256", (v) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v)) &&
+		ownField(
+			value,
+			"declaredRuntime",
+			(v) =>
+				isRecord(v) &&
+				ownField(v, "model", isString) &&
+				ownField(v, "effort", isString) &&
+				ownField(v, "source", (source) => source === "self-report"),
+		) &&
+		ownField(value, "seat", isString) &&
+		ownField(value, "ts", isString)
+	);
+}
+
+function isCanaryModelCheck(value: unknown): value is CanaryModelCheck {
+	return typeof value === "string" && (CANARY_MODEL_CHECKS as readonly string[]).includes(value);
+}
+
+function isCanaryRecord(value: unknown): value is CanaryRecord {
+	if (!isRecord(value) || !isRecord(value.declaredRuntime) || !isRecord(value.identity)) {
+		return false;
+	}
+	return (
+		ownField(value, "schema_version", (v) => v === 1) &&
+		ownField(value, "kind", (v) => v === "canary") &&
+		ownField(value, "dispatchId", isString) &&
+		ownField(value, "nonce", isString) &&
+		ownField(value, "target", isString) &&
+		ownOptional(value, "expectedModel", isOptionalString) &&
+		ownField(
+			value,
+			"declaredRuntime",
+			(v) =>
+				isRecord(v) &&
+				ownField(v, "model", isString) &&
+				ownField(v, "effort", isString) &&
+				ownField(v, "source", (source) => source === "self-report"),
+		) &&
+		ownField(value, "modelCheck", isCanaryModelCheck) &&
+		ownField(
+			value,
+			"identity",
+			(v) =>
+				isRecord(v) &&
+				ownField(v, "paneId", isString) &&
+				ownField(
+					v,
+					"pid",
+					(pid) => typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0,
+				) &&
+				ownField(v, "harnessSessionId", isString),
+		) &&
+		ownField(value, "passed", isActorStamp)
+	);
+}
+
+function isProjectAutonomy(value: unknown): value is ProjectAutonomy {
+	return typeof value === "string" && (PROJECT_AUTONOMIES as readonly string[]).includes(value);
+}
+
 export function isProject(value: unknown): value is Project {
 	try {
 		if (!isRecord(value)) return false;
@@ -205,7 +433,118 @@ export function isProject(value: unknown): value is Project {
 			ownOptional(value, "repo", isOptionalString) &&
 			ownOptional(value, "planPath", isOptionalString) &&
 			ownOptional(value, "primeId", isOptionalString) &&
+			ownOptional(value, "autonomy", (v) => v === undefined || isProjectAutonomy(v)) &&
 			ownField(value, "created", isActorStamp)
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function isAllocation(value: unknown): value is Allocation {
+	try {
+		if (!isRecord(value)) return false;
+		return (
+			ownField(value, "schema_version", (v) => v === 1) &&
+			ownField(value, "id", isString) &&
+			ownField(value, "project", isString) &&
+			ownField(
+				value,
+				"ordinal",
+				(v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 1,
+			) &&
+			ownField(value, "slug", isString) &&
+			ownField(value, "worktree", isString) &&
+			ownField(value, "branch", isString) &&
+			ownField(value, "baseSha", isString) &&
+			ownField(value, "state", isAllocationState) &&
+			ownField(value, "steps", (v) => isDenseArrayOf(v, isAllocationStep)) &&
+			ownField(value, "created", isActorStamp)
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function isFence(value: unknown): value is Fence {
+	try {
+		if (!isRecord(value)) return false;
+		return (
+			ownField(value, "schema_version", (v) => v === 1) &&
+			ownField(value, "id", isString) &&
+			ownField(value, "allocation", isString) &&
+			ownField(value, "touchSet", (v) => isDenseArrayOf(v, isString)) &&
+			ownField(value, "shared", (v) => isDenseArrayOf(v, isString)) &&
+			ownField(value, "class", isFenceClass) &&
+			ownField(value, "updated", isActorStamp)
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function isDispatch(value: unknown): value is Dispatch {
+	try {
+		if (!isRecord(value)) return false;
+		if (
+			!(
+				ownField(value, "schema_version", (v) => v === 1) &&
+				ownField(value, "id", isString) &&
+				ownField(value, "packetPath", isString) &&
+				ownField(value, "packetSha256", (v) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v)) &&
+				ownField(value, "from", isString) &&
+				ownField(value, "to", isString) &&
+				ownOptional(value, "messageId", isOptionalString) &&
+				ownOptional(value, "deliveryState", (v) => v === undefined || isDispatchDeliveryState(v)) &&
+				ownField(value, "state", isDispatchState) &&
+				ownOptional(value, "ack", (v) => v === undefined || isDispatchAck(v)) &&
+				ownOptional(value, "canary", (v) => v === undefined || isCanaryRecord(v)) &&
+				ownField(value, "created", isActorStamp) &&
+				ownField(value, "updated", isActorStamp)
+			)
+		) {
+			return false;
+		}
+		const state = value.state as DispatchState;
+		const messageId = value.messageId;
+		const deliveryState = value.deliveryState;
+		const ack = value.ack;
+		const canary = value.canary;
+		if (state === "undelivered") {
+			return (
+				messageId === undefined &&
+				deliveryState === undefined &&
+				ack === undefined &&
+				canary === undefined
+			);
+		}
+		if (
+			typeof messageId !== "string" ||
+			messageId.length === 0 ||
+			!isDispatchDeliveryState(deliveryState)
+		) {
+			return false;
+		}
+		if (state === "delivered-unacked") return ack === undefined && canary === undefined;
+		if (!isDispatchAck(ack)) return false;
+		if (
+			!(
+				ack.messageId === messageId &&
+				ack.packetId === value.id &&
+				ack.packetSha256 === value.packetSha256 &&
+				ack.seat === value.to
+			)
+		) {
+			return false;
+		}
+		if (canary === undefined) return true;
+		if (!isCanaryRecord(canary)) return false;
+		return (
+			canary.dispatchId === value.id &&
+			canary.target === value.to &&
+			canary.declaredRuntime.model === ack.declaredRuntime.model &&
+			canary.declaredRuntime.effort === ack.declaredRuntime.effort &&
+			canary.declaredRuntime.source === ack.declaredRuntime.source
 		);
 	} catch {
 		return false;

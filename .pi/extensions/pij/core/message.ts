@@ -49,6 +49,69 @@ export function parseReceiptBody(body: string): { messageId: string; state: Rece
 	return { messageId, state: state as ReceiptState };
 }
 
+export interface BriefAckReceipt {
+	readonly schema_version: 1;
+	readonly kind: "brief-ack";
+	readonly messageId: string;
+	readonly packetId: string;
+	readonly packetSha256: string;
+	readonly declaredRuntime: {
+		readonly model: string | "default";
+		readonly effort: string | "default";
+		readonly source: "self-report";
+	};
+	readonly seat: SessionId;
+	readonly ts: string;
+}
+
+const BRIEF_ACK_PREFIX = "[pij brief-ack] ";
+const SHA256_RE = /^[a-f0-9]{64}$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isBriefAckReceipt(value: unknown): value is BriefAckReceipt {
+	try {
+		if (!isRecord(value) || !isRecord(value.declaredRuntime)) return false;
+		return (
+			value.schema_version === 1 &&
+			value.kind === "brief-ack" &&
+			typeof value.messageId === "string" &&
+			value.messageId.length > 0 &&
+			typeof value.packetId === "string" &&
+			value.packetId.length > 0 &&
+			typeof value.packetSha256 === "string" &&
+			SHA256_RE.test(value.packetSha256) &&
+			typeof value.declaredRuntime.model === "string" &&
+			value.declaredRuntime.model.length > 0 &&
+			typeof value.declaredRuntime.effort === "string" &&
+			value.declaredRuntime.effort.length > 0 &&
+			value.declaredRuntime.source === "self-report" &&
+			typeof value.seat === "string" &&
+			value.seat.length > 0 &&
+			typeof value.ts === "string" &&
+			value.ts.length > 0
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function briefAckBody(receipt: BriefAckReceipt): string {
+	return `${BRIEF_ACK_PREFIX}${JSON.stringify(receipt)}`;
+}
+
+export function parseBriefAckBody(body: string): BriefAckReceipt | null {
+	if (!body.startsWith(BRIEF_ACK_PREFIX)) return null;
+	try {
+		const parsed: unknown = JSON.parse(body.slice(BRIEF_ACK_PREFIX.length));
+		return isBriefAckReceipt(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
 /** Boot self-announce injected at session start (spec AC-2): tells the session
  *  its own id + how to use pij, so it can be addressed and can reply.
  *

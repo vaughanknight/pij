@@ -20,16 +20,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
+	AllocationStorePort,
 	AssignmentStorePort,
+	DispatchStorePort,
+	FenceStorePort,
 	OpJournalPort,
 	PlatformWriteLockPort,
 	ProjectStorePort,
 	SpineLogPort,
 } from "../core/platform/ports.js";
 import { type BuildSpineEventInput, buildSpineEvent } from "../core/platform/spine.js";
-import type { Assignment, Project, SpineEvent, SpineEventDraft } from "../core/platform/types.js";
-import { ok, type Result } from "../core/types.js";
+import {
+	type Allocation,
+	type Assignment,
+	type Dispatch,
+	type Fence,
+	isAllocation,
+	isDispatch,
+	isFence,
+	type Project,
+	type SpineEvent,
+	type SpineEventDraft,
+} from "../core/platform/types.js";
+import { err, ok, type Result } from "../core/types.js";
+import { FsAllocationStore } from "./allocation-store.js";
 import { FsAssignmentStore } from "./assignment-store.js";
+import { FsDispatchStore } from "./dispatch-store.js";
 import {
 	FakeAssignmentStore,
 	FakeOpJournal,
@@ -37,6 +53,7 @@ import {
 	FakeProjectStore,
 	FakeSpineLog,
 } from "./fakes.js";
+import { FsFenceStore } from "./fence-store.js";
 import { FsOpJournal } from "./op-journal.js";
 import { FsPlatformWriteLock } from "./platform-write-lock.js";
 import { FsProjectStore } from "./project-store.js";
@@ -82,6 +99,9 @@ function expectOk<T>(result: Result<T>): T {
 interface ContractRig {
 	readonly projectStore: ProjectStorePort;
 	readonly assignmentStore: AssignmentStorePort;
+	readonly allocationStore: AllocationStorePort;
+	readonly fenceStore: FenceStorePort;
+	readonly dispatchStore: DispatchStorePort;
 	readonly spineLog: SpineLogPort;
 	readonly opJournal: OpJournalPort;
 	readonly platformWriteLock: PlatformWriteLockPort;
@@ -90,6 +110,84 @@ interface ContractRig {
 	 *  a fork sharing the machine backing. */
 	readonly newPlatformWriteLock: () => PlatformWriteLockPort;
 	readonly cleanup: () => void;
+}
+
+const RECORD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+class MemoryAllocationStore implements AllocationStorePort {
+	private readonly records = new Map<string, Allocation>();
+
+	write(allocation: Allocation): Result<void> {
+		if (!RECORD_ID_PATTERN.test(allocation.id)) return err("E-ARG", "invalid allocation id");
+		const clone = structuredClone(allocation);
+		if (!isAllocation(clone)) return err("E-ARG", "invalid allocation record");
+		this.records.set(clone.id, clone);
+		return ok(undefined);
+	}
+
+	read(id: string): Allocation | null {
+		if (!RECORD_ID_PATTERN.test(id)) return null;
+		const record = this.records.get(id);
+		return record === undefined ? null : structuredClone(record);
+	}
+
+	list(): Allocation[] {
+		return [...this.records.values()]
+			.map((record) => structuredClone(record))
+			.sort((left, right) =>
+				left.ordinal !== right.ordinal
+					? left.ordinal - right.ordinal
+					: left.id.localeCompare(right.id),
+			);
+	}
+}
+
+class MemoryFenceStore implements FenceStorePort {
+	private readonly records = new Map<string, Fence>();
+
+	write(fence: Fence): Result<void> {
+		if (!RECORD_ID_PATTERN.test(fence.id)) return err("E-ARG", "invalid fence id");
+		const clone = structuredClone(fence);
+		if (!isFence(clone)) return err("E-ARG", "invalid fence record");
+		this.records.set(clone.id, clone);
+		return ok(undefined);
+	}
+
+	read(id: string): Fence | null {
+		if (!RECORD_ID_PATTERN.test(id)) return null;
+		const record = this.records.get(id);
+		return record === undefined ? null : structuredClone(record);
+	}
+
+	list(): Fence[] {
+		return [...this.records.values()]
+			.map((record) => structuredClone(record))
+			.sort((left, right) => left.id.localeCompare(right.id));
+	}
+}
+
+class MemoryDispatchStore implements DispatchStorePort {
+	private readonly records = new Map<string, Dispatch>();
+
+	write(dispatch: Dispatch): Result<void> {
+		if (!RECORD_ID_PATTERN.test(dispatch.id)) return err("E-ARG", "invalid dispatch id");
+		const clone = structuredClone(dispatch);
+		if (!isDispatch(clone)) return err("E-ARG", "invalid dispatch record");
+		this.records.set(clone.id, clone);
+		return ok(undefined);
+	}
+
+	read(id: string): Dispatch | null {
+		if (!RECORD_ID_PATTERN.test(id)) return null;
+		const record = this.records.get(id);
+		return record === undefined ? null : structuredClone(record);
+	}
+
+	list(): Dispatch[] {
+		return [...this.records.values()]
+			.map((record) => structuredClone(record))
+			.sort((left, right) => left.id.localeCompare(right.id));
+	}
 }
 
 function runContract(name: string, makeStores: () => ContractRig): void {
@@ -197,6 +295,125 @@ function runContract(name: string, makeStores: () => ContractRig): void {
 				});
 				expect(rig.assignmentStore.write(full)).toEqual(ok(undefined));
 				expect(rig.assignmentStore.read("asg-full")).toEqual(full);
+			});
+
+			describe("AllocationStorePort", () => {
+				const allocation = (id: string, ordinal: number): Allocation => ({
+					schema_version: 1,
+					id,
+					project: "platform",
+					ordinal,
+					slug: `stream-${ordinal}`,
+					worktree: `/repo-worktrees/s${ordinal}`,
+					branch: `s${ordinal}/stream-${ordinal}`,
+					baseSha: "base",
+					state: "created",
+					steps: [],
+					created: { actor: "prime", ts: TS },
+				});
+
+				it("write/read/list round-trip and replace, ordinal-then-id sorted", () => {
+					const second = allocation("alloc-s002-second", 2);
+					const first = allocation("alloc-s001-first", 1);
+					expect(rig.allocationStore.write(second)).toEqual(ok(undefined));
+					expect(rig.allocationStore.write(first)).toEqual(ok(undefined));
+					const updated: Allocation = {
+						...first,
+						steps: [{ name: "worktree-created", ok: true, evidence: first.worktree, ts: TS }],
+					};
+					expect(rig.allocationStore.write(updated)).toEqual(ok(undefined));
+					expect(rig.allocationStore.read(first.id)).toEqual(updated);
+					expect(rig.allocationStore.list()).toEqual([updated, second]);
+				});
+
+				it("invalid ids fail loudly and records are isolated", () => {
+					const good = allocation("alloc-good", 1);
+					expect(rig.allocationStore.write(good)).toEqual(ok(undefined));
+					expect(rig.allocationStore.write(allocation("../bad", 2))).toMatchObject({
+						ok: false,
+						code: "E-ARG",
+					});
+					const read = rig.allocationStore.read(good.id);
+					if (read) (read as { slug: string }).slug = "mutated";
+					expect(rig.allocationStore.read(good.id)).toEqual(good);
+				});
+			});
+
+			describe("FenceStorePort", () => {
+				const fence = (id: string): Fence => ({
+					schema_version: 1,
+					id,
+					allocation: `alloc-${id}`,
+					touchSet: ["src/**"],
+					shared: [],
+					class: "notify-only",
+					updated: { actor: "stream", ts: TS },
+				});
+
+				it("write/read/list round-trip and replace, id sorted", () => {
+					const zeta = fence("fence-zeta");
+					const alpha = fence("fence-alpha");
+					expect(rig.fenceStore.write(zeta)).toEqual(ok(undefined));
+					expect(rig.fenceStore.write(alpha)).toEqual(ok(undefined));
+					const updated: Fence = { ...alpha, shared: ["src/shared.ts"] };
+					expect(rig.fenceStore.write(updated)).toEqual(ok(undefined));
+					expect(rig.fenceStore.read(alpha.id)).toEqual(updated);
+					expect(rig.fenceStore.list()).toEqual([updated, zeta]);
+				});
+
+				it("invalid ids fail loudly and records are isolated", () => {
+					const good = fence("fence-good");
+					expect(rig.fenceStore.write(good)).toEqual(ok(undefined));
+					expect(rig.fenceStore.write(fence("../bad"))).toMatchObject({
+						ok: false,
+						code: "E-ARG",
+					});
+					const read = rig.fenceStore.read(good.id);
+					if (read) (read.touchSet as string[]).push("mutated");
+					expect(rig.fenceStore.read(good.id)).toEqual(good);
+				});
+			});
+
+			describe("DispatchStorePort", () => {
+				const dispatch = (id: string): Dispatch => ({
+					schema_version: 1,
+					id,
+					packetPath: `/repo/${id}.md`,
+					packetSha256: "a".repeat(64),
+					from: "pij-parent",
+					to: "pij-worker",
+					state: "undelivered",
+					created: { actor: "pij-parent", ts: TS },
+					updated: { actor: "pij-parent", ts: TS },
+				});
+
+				it("write/read/list round-trip and replace, id sorted", () => {
+					const zeta = dispatch("dispatch-zeta");
+					const alpha = dispatch("dispatch-alpha");
+					expect(rig.dispatchStore.write(zeta)).toEqual(ok(undefined));
+					expect(rig.dispatchStore.write(alpha)).toEqual(ok(undefined));
+					const updated: Dispatch = {
+						...alpha,
+						messageId: "msg-alpha",
+						deliveryState: "delivered",
+						state: "delivered-unacked",
+					};
+					expect(rig.dispatchStore.write(updated)).toEqual(ok(undefined));
+					expect(rig.dispatchStore.read(alpha.id)).toEqual(updated);
+					expect(rig.dispatchStore.list()).toEqual([updated, zeta]);
+				});
+
+				it("invalid ids fail loudly and records are isolated", () => {
+					const good = dispatch("dispatch-good");
+					expect(rig.dispatchStore.write(good)).toEqual(ok(undefined));
+					expect(rig.dispatchStore.write(dispatch("../bad"))).toMatchObject({
+						ok: false,
+						code: "E-ARG",
+					});
+					const read = rig.dispatchStore.read(good.id);
+					if (read) (read as { packetPath: string }).packetPath = "mutated";
+					expect(rig.dispatchStore.read(good.id)).toEqual(good);
+				});
 			});
 
 			it("write is create-or-replace: a second write for the same id replaces the record", () => {
@@ -596,6 +813,9 @@ runContract("fs adapters", () => {
 	return {
 		projectStore: new FsProjectStore(home),
 		assignmentStore: new FsAssignmentStore(home),
+		allocationStore: new FsAllocationStore(home),
+		fenceStore: new FsFenceStore(home),
+		dispatchStore: new FsDispatchStore(home),
 		spineLog: new FsSpineLog(home),
 		opJournal: new FsOpJournal(home),
 		// Tight budget: the contention pins fail in ~60ms, not 5s.
@@ -610,6 +830,9 @@ runContract("in-memory fakes", () => {
 	return {
 		projectStore: new FakeProjectStore(),
 		assignmentStore: new FakeAssignmentStore(),
+		allocationStore: new MemoryAllocationStore(),
+		fenceStore: new MemoryFenceStore(),
+		dispatchStore: new MemoryDispatchStore(),
 		spineLog: new FakeSpineLog(),
 		opJournal: new FakeOpJournal(),
 		platformWriteLock,

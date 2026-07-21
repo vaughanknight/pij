@@ -17,8 +17,10 @@ import {
 	FakeRegistry,
 	FakeSpineLog,
 } from "../../adapters/fakes.js";
+import type { AllocationStorePort, DispatchStorePort, FenceStorePort } from "../platform/ports.js";
+import type { Allocation, Dispatch, Fence } from "../platform/types.js";
 import { SPINE_KIND_SYSTEM_STATE } from "../platform/types.js";
-import type { SessionDescriptor } from "../types.js";
+import { ok, type Result, type SessionDescriptor } from "../types.js";
 import { RuntimeAxisTracker } from "./runtime-axis.js";
 
 const NOW = Date.parse("2026-07-17T04:00:00.000Z");
@@ -53,12 +55,30 @@ function rig(
 	const opJournal = new FakeOpJournal();
 	const platformWriteLock = new FakePlatformWriteLock();
 	const logs: string[] = [];
+	const allocationStore: AllocationStorePort = {
+		write: (_allocation: Allocation): Result<void> => ok(undefined),
+		read: () => null,
+		list: () => [],
+	};
+	const fenceStore: FenceStorePort = {
+		write: (_fence: Fence): Result<void> => ok(undefined),
+		read: () => null,
+		list: () => [],
+	};
+	const dispatchStore: DispatchStorePort = {
+		write: (_dispatch: Dispatch): Result<void> => ok(undefined),
+		read: () => null,
+		list: () => [],
+	};
 	const tracker = new RuntimeAxisTracker({
 		registry,
 		spineLog,
 		opJournal,
 		projectStore: new FakeProjectStore(),
 		assignmentStore: new FakeAssignmentStore(),
+		allocationStore,
+		fenceStore,
+		dispatchStore,
 		platformWriteLock,
 		now: () => NOW,
 		isAlive: () => opts.alive ?? true,

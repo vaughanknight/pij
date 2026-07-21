@@ -17,13 +17,24 @@ import {
 	applyWaitReceipt,
 	applyWaitReceiptSources,
 	dispatch,
+	finalizeCanary,
 	parseArgs,
+	renderDispatchWaitTimeout,
 	renderWaitReceipt,
 	renderWaitTimeout,
 } from "./cli.js";
+import { parseBriefAckBody, parseReceiptBody, receiptBody } from "./message.js";
 import { PROJECT_SLUG_MAX_LENGTH, type Project, type SpineEvent } from "./platform/types.js";
 import type { DeliveryPort } from "./ports.js";
-import { err, ok, type PijEvent, type PijMessage, type SessionDescriptor } from "./types.js";
+import {
+	err,
+	ok,
+	type PijEvent,
+	type PijMessage,
+	type ReceiptState,
+	type Result,
+	type SessionDescriptor,
+} from "./types.js";
 
 const T = Date.parse("2026-06-16T12:00:00.000Z");
 const recent = new Date(T - 2000).toISOString();
@@ -420,6 +431,30 @@ describe("dispatch whoami / list", () => {
 });
 
 describe("dispatch send", () => {
+	it("freezes send --wait terminal handling before dispatch ack semantics are added", () => {
+		const states: readonly ReceiptState[] = ["queued", "delivered", "unverified"];
+		const targets = [{ to: "w3", messageId: "msg-freeze" }];
+
+		expect(states).toEqual(["queued", "delivered", "unverified"]);
+		expect(receiptBody("msg-freeze", "delivered")).toBe("[pij receipt msg-freeze] delivered");
+		expect(parseReceiptBody("[pij receipt msg-freeze] delivered")).toEqual({
+			messageId: "msg-freeze",
+			state: "delivered",
+		});
+		expect(applyWaitReceipt(targets, { messageId: "msg-freeze", state: "queued" })).toEqual({
+			target: targets[0],
+			pending: targets,
+		});
+		expect(applyWaitReceipt(targets, { messageId: "msg-freeze", state: "delivered" })).toEqual({
+			target: targets[0],
+			pending: [],
+		});
+		expect(applyWaitReceipt(targets, { messageId: "msg-freeze", state: "unverified" })).toEqual({
+			target: targets[0],
+			pending: [],
+		});
+	});
+
 	it("text delivers the RAW body (F1: receiver frames — never pre-frame)", () => {
 		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
 		const r = dispatch(
@@ -1434,39 +1469,187 @@ describe("dispatch tree/link", () => {
 // CliResult the bin would print, so each E-ARG/E-NOREG pin holds whether the
 // rejection happens in parseArgs or in dispatch.
 
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 // Platform-section-local imports (the legacy import block above is frozen):
 // module-scope import declarations hoist, so placement here is behavior-neutral.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FsAllocationStore } from "../adapters/allocation-store.js";
 import { FsAssignmentStore } from "../adapters/assignment-store.js";
+import { FsDispatchStore } from "../adapters/dispatch-store.js";
 import { FakeOpJournal, FakePlatformWriteLock } from "../adapters/fakes.js";
+import { FsFenceStore } from "../adapters/fence-store.js";
+import { FsRegistry } from "../adapters/fs-registry.js";
 import { FsOpJournal } from "../adapters/op-journal.js";
 import { FsPlatformWriteLock } from "../adapters/platform-write-lock.js";
 import { FsProjectStore } from "../adapters/project-store.js";
 import { FsSpineLog } from "../adapters/spine-store.js";
+import { renderCanaryPass, renderCanaryTimeout } from "./canary.js";
 import { canonicalAssignmentJson } from "./platform/assignment.js";
-import type { PendingOp } from "./platform/ports.js";
+import type {
+	AllocationStorePort,
+	DispatchStorePort,
+	FenceStorePort,
+	PendingOp,
+} from "./platform/ports.js";
 import { createProject, setProject } from "./platform/project.js";
-import type { Assignment, SpineEventDraft } from "./platform/types.js";
+import type { Allocation, Assignment, Dispatch, Fence, SpineEventDraft } from "./platform/types.js";
 import { SPINE_KIND_NODE_LINKED, SPINE_KIND_STATE_CLEARED } from "./platform/types.js";
+import type { StreamWorktreePort } from "./stream.js";
+
+const platformRequire = createRequire(import.meta.url);
+const PLATFORM_TSX = platformRequire.resolve("tsx/cli");
+const PIJ_CLI_BIN = join(import.meta.dirname, "..", "cli.ts");
 
 interface PlatformStores {
 	readonly projectStore: FakeProjectStore;
 	readonly assignmentStore: FakeAssignmentStore;
+	readonly allocationStore: TestAllocationStore;
+	readonly fenceStore: TestFenceStore;
+	readonly dispatchStore: TestDispatchStore;
+	readonly worktrees: TestStreamWorktrees;
+	readonly worktreeRoot: string;
 	readonly spineLog: FakeSpineLog;
 	readonly opJournal: FakeOpJournal;
 	readonly platformWriteLock: FakePlatformWriteLock;
+}
+
+class TestStreamWorktrees implements StreamWorktreePort {
+	readonly created = new Set<string>();
+
+	exists(path: string): boolean {
+		return this.created.has(path);
+	}
+
+	resolveBase(): Result<{ readonly baseSha: string; readonly gitCommonDir: string }> {
+		return ok({ baseSha: "base-sha", gitCommonDir: "/repo/.git" });
+	}
+
+	create(input: {
+		readonly path: string;
+		readonly branch: string;
+		readonly baseRef: string;
+	}): Result<{
+		readonly path: string;
+		readonly branch: string;
+		readonly baseSha: string;
+		readonly gitCommonDir: string;
+	}> {
+		if (this.created.has(input.path)) return err("E-ARG", `already exists: ${input.path}`);
+		this.created.add(input.path);
+		return ok({
+			path: input.path,
+			branch: input.branch,
+			baseSha: input.baseRef,
+			gitCommonDir: "/repo/.git",
+		});
+	}
+
+	verify(input: {
+		readonly path: string;
+		readonly branch: string;
+		readonly baseSha: string;
+		readonly gitCommonDir: string;
+	}): Result<{
+		readonly path: string;
+		readonly branch: string;
+		readonly baseSha: string;
+		readonly gitCommonDir: string;
+	}> {
+		return this.created.has(input.path)
+			? ok(input)
+			: err("E-NOREG", `missing worktree ${input.path}`);
+	}
+
+	preserveWip(): Result<{ readonly stashed: boolean; readonly evidence: string }> {
+		return ok({ stashed: false, evidence: "worktree clean; no stash needed" });
+	}
+
+	safeRemove(input: { readonly path: string }): Result<{ readonly removed: boolean }> {
+		const removed = this.created.delete(input.path);
+		return ok({ removed });
+	}
+}
+
+class TestAllocationStore implements AllocationStorePort {
+	private readonly records = new Map<string, Allocation>();
+
+	write(allocation: Allocation): Result<void> {
+		this.records.set(allocation.id, structuredClone(allocation));
+		return ok(undefined);
+	}
+
+	read(id: string): Allocation | null {
+		const record = this.records.get(id);
+		return record === undefined ? null : structuredClone(record);
+	}
+
+	list(): Allocation[] {
+		return [...this.records.values()]
+			.map((record) => structuredClone(record))
+			.sort((left, right) => left.ordinal - right.ordinal);
+	}
+}
+
+class TestFenceStore implements FenceStorePort {
+	private readonly records = new Map<string, Fence>();
+
+	write(fence: Fence): Result<void> {
+		this.records.set(fence.id, structuredClone(fence));
+		return ok(undefined);
+	}
+
+	read(id: string): Fence | null {
+		const record = this.records.get(id);
+		return record === undefined ? null : structuredClone(record);
+	}
+
+	list(): Fence[] {
+		return [...this.records.values()]
+			.map((record) => structuredClone(record))
+			.sort((left, right) => left.id.localeCompare(right.id));
+	}
+}
+
+class TestDispatchStore implements DispatchStorePort {
+	private readonly records = new Map<string, Dispatch>();
+
+	write(dispatchRecord: Dispatch): Result<void> {
+		this.records.set(dispatchRecord.id, structuredClone(dispatchRecord));
+		return ok(undefined);
+	}
+
+	read(id: string): Dispatch | null {
+		const record = this.records.get(id);
+		return record === undefined ? null : structuredClone(record);
+	}
+
+	list(): Dispatch[] {
+		return [...this.records.values()]
+			.map((record) => structuredClone(record))
+			.sort((left, right) => left.id.localeCompare(right.id));
+	}
 }
 
 /** deps() + the plan-054 stores (optional CliDeps ports per the T010 contract). */
 function platformDeps(
 	opts: Parameters<typeof deps>[0] & { projects?: Project[]; spine?: SpineEvent[] } = {},
 ): CliDeps & PlatformStores & { delivery: FakeDelivery; registry: FakeRegistry } {
+	let dispatchCounter = 0;
 	return {
 		...deps(opts),
 		projectStore: new FakeProjectStore(opts.projects ?? []),
 		assignmentStore: new FakeAssignmentStore(),
+		allocationStore: new TestAllocationStore(),
+		fenceStore: new TestFenceStore(),
+		dispatchStore: new TestDispatchStore(),
+		packetIdentity: (path) => ok({ path, sha256: "a".repeat(64) }),
+		nextDispatchId: () => `dispatch-test-${++dispatchCounter}`,
+		worktrees: new TestStreamWorktrees(),
+		worktreeRoot: "/repo-worktrees",
 		spineLog: new FakeSpineLog(opts.spine ?? []),
 		opJournal: new FakeOpJournal(),
 		platformWriteLock: new FakePlatformWriteLock(),
@@ -2364,6 +2547,41 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 		});
 	});
 
+	describe("journal committed-marker persistence failure (plan 061 P2 T009)", () => {
+		it("surfaces E-NOREG before appendOnce and leaves the landed record recoverable", () => {
+			const d = platformDeps({
+				self: "pij-self",
+				projects: [seedProject({ slug: "platform" })],
+			});
+			d.opJournal.failNext("markCommitted");
+			const failed = run(
+				[
+					"stream",
+					"create",
+					"--project",
+					"platform",
+					"--slug",
+					"marker-failure",
+					"--ordinal",
+					"61",
+				],
+				d,
+			);
+			expect(failed.exitCode).toBe(3);
+			expect(failed.stderr).toMatch(/committed marker/i);
+			expect(d.allocationStore.read("alloc-s061-marker-failure")).not.toBeNull();
+			expect(d.spineLog.read()).toEqual([]);
+			expect(pendingOps(d.opJournal)).toMatchObject([
+				{ phase: "intent", draft: { kind: "allocation", project: "platform" } },
+			]);
+
+			const healed = run(["spine", "append", "--kind", "note", "--bare"], d);
+			expect(healed.exitCode).toBe(0);
+			expect(d.spineLog.read().filter((event) => event.kind === "allocation")).toHaveLength(1);
+			expect(pendingOps(d.opJournal)).toEqual([]);
+		});
+	});
+
 	describe("no-throw dispatch (F1 hard requirement b)", () => {
 		it("a THROWING projectStore.create is contained as an E-NOREG CliResult naming the verb", () => {
 			const base = platformDeps({ self: "pij-self" });
@@ -2856,6 +3074,9 @@ describe("review 003 H2 — a corrupt journal entry fails the verb, never bypass
 				...deps({}),
 				projectStore: new FsProjectStore(home),
 				assignmentStore: new FsAssignmentStore(home),
+				allocationStore: new FsAllocationStore(home),
+				fenceStore: new FsFenceStore(home),
+				dispatchStore: new FsDispatchStore(home),
 				spineLog: new FsSpineLog(home),
 				opJournal: new FsOpJournal(home),
 				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
@@ -2897,6 +3118,9 @@ describe("review 004 J1 — an existing once-record never overrides a state mism
 				...deps({}),
 				projectStore: new FsProjectStore(home),
 				assignmentStore: new FsAssignmentStore(home),
+				allocationStore: new FsAllocationStore(home),
+				fenceStore: new FsFenceStore(home),
+				dispatchStore: new FsDispatchStore(home),
 				spineLog: new FsSpineLog(home),
 				opJournal: new FsOpJournal(home),
 				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
@@ -2945,6 +3169,9 @@ describe("review 004 J1 — an existing once-record never overrides a state mism
 				...deps({}),
 				projectStore: new FsProjectStore(home),
 				assignmentStore: new FsAssignmentStore(home),
+				allocationStore: new FsAllocationStore(home),
+				fenceStore: new FsFenceStore(home),
+				dispatchStore: new FsDispatchStore(home),
 				spineLog: new FsSpineLog(home),
 				opJournal: new FsOpJournal(home),
 				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
@@ -2999,6 +3226,9 @@ describe("review 005 K1 — a cleared op resurrected by power loss can never for
 				...deps({}),
 				projectStore: new FsProjectStore(home),
 				assignmentStore: new FsAssignmentStore(home),
+				allocationStore: new FsAllocationStore(home),
+				fenceStore: new FsFenceStore(home),
+				dispatchStore: new FsDispatchStore(home),
 				spineLog: new FsSpineLog(home),
 				opJournal: new FsOpJournal(home),
 				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
@@ -3061,6 +3291,9 @@ describe("review 005 K1 — a cleared op resurrected by power loss can never for
 				...deps({}),
 				projectStore: new FsProjectStore(home),
 				assignmentStore: new FsAssignmentStore(home),
+				allocationStore: new FsAllocationStore(home),
+				fenceStore: new FsFenceStore(home),
+				dispatchStore: new FsDispatchStore(home),
 				spineLog: new FsSpineLog(home),
 				opJournal: new FsOpJournal(home),
 				platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
@@ -3717,6 +3950,84 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 		expect(foreign[0]?.detail).toContain("pij-meddler");
 	});
 
+	it("surfaces stale dispatch/allocation records with direct evidence refs and leaves stores unchanged", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-worker", state: "idle" })],
+		});
+		const staleTs = new Date(T - 60 * 60_000).toISOString();
+		d.dispatchStore.write({
+			schema_version: 1,
+			id: "dispatch-stale",
+			packetPath: "/repo/packet.md",
+			packetSha256: "a".repeat(64),
+			from: "pij-self",
+			to: "pij-worker",
+			messageId: "msg-stale",
+			deliveryState: "delivered",
+			state: "delivered-unacked",
+			created: { actor: "pij-self", ts: staleTs },
+			updated: { actor: "pij-self", ts: staleTs },
+		});
+		d.allocationStore.write({
+			schema_version: 1,
+			id: "alloc-s061-half-open",
+			project: "team-scaffold",
+			ordinal: 61,
+			slug: "half-open",
+			worktree: "/repo-worktrees/s061-half-open",
+			branch: "s061/half-open",
+			baseSha: "base-sha",
+			state: "created",
+			steps: [{ name: "ordinal-reserved", ok: true, evidence: "reserved", ts: staleTs }],
+			created: { actor: "pij-self", ts: staleTs },
+		});
+		const before = {
+			dispatches: d.dispatchStore.list(),
+			allocations: d.allocationStore.list(),
+			spine: d.spineLog.read(),
+		};
+
+		const json = run(["anomalies", "--json"], d);
+		expect(json.exitCode).toBe(0);
+		const anomalies = JSON.parse(json.stdout) as Array<{
+			kind: string;
+			recordRef?: string;
+			ageMs?: number;
+		}>;
+		expect(anomalies).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: "delivered-unacked-stale",
+					recordRef: "dispatch:dispatch-stale",
+					ageMs: 60 * 60_000,
+				}),
+				expect.objectContaining({
+					kind: "allocation-half-open",
+					recordRef: "allocation:alloc-s061-half-open",
+					ageMs: 60 * 60_000,
+				}),
+			]),
+		);
+		const scoped = JSON.parse(
+			run(["anomalies", "--project", "team-scaffold", "--json"], d).stdout,
+		) as Array<{ kind: string; recordRef?: string }>;
+		expect(scoped).toEqual([
+			expect.objectContaining({
+				kind: "allocation-half-open",
+				recordRef: "allocation:alloc-s061-half-open",
+			}),
+		]);
+		const human = run(["anomalies"], d);
+		expect(human.stdout).toContain("[dispatch:dispatch-stale");
+		expect(human.stdout).toContain("[allocation:alloc-s061-half-open");
+		expect({
+			dispatches: d.dispatchStore.list(),
+			allocations: d.allocationStore.list(),
+			spine: d.spineLog.read(),
+		}).toEqual(before);
+	});
+
 	it("--here scopes the VIEW to this folder's peers; --project to one project's assignments (s057 dogfood — detection stays machine-wide)", () => {
 		const d = platformDeps({
 			self: "pij-self",
@@ -4176,6 +4487,930 @@ describe("state clear (State-Model v2)", () => {
 			expect(cleared).toHaveLength(1);
 			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1, cleared[0]?.seq]);
 			expect(d.registry.read("pij-node")?.semanticState).toBe("hold");
+		});
+	});
+
+	describe("stream/fence verbs — plan 061 phase 1", () => {
+		it("parses all four verbs through the strict family tables", () => {
+			expect(
+				parseArgs([
+					"stream",
+					"create",
+					"--project",
+					"platform",
+					"--slug",
+					"team-scaffold",
+					"--base",
+					"main",
+					"--ordinal",
+					"61",
+					"--actor",
+					"prime",
+					"--json",
+				]),
+			).toMatchObject({
+				ok: true,
+				value: {
+					verb: "stream-create",
+					project: "platform",
+					slug: "team-scaffold",
+					baseRef: "main",
+					ordinal: 61,
+					actor: "prime",
+					json: true,
+				},
+			});
+			expect(parseArgs(["stream", "close", "alloc-s061-team-scaffold"])).toMatchObject({
+				ok: true,
+				value: { verb: "stream-close", id: "alloc-s061-team-scaffold" },
+			});
+			expect(
+				parseArgs([
+					"fence",
+					"set",
+					"team-scaffold",
+					"--paths",
+					"src/**,docs/**",
+					"--shared",
+					"src/shared.ts",
+				]),
+			).toMatchObject({
+				ok: true,
+				value: {
+					verb: "fence-set",
+					stream: "team-scaffold",
+					touchSet: ["src/**", "docs/**"],
+					shared: ["src/shared.ts"],
+				},
+			});
+			expect(parseArgs(["fence", "show", "--path", "src/api.ts", "--json"])).toMatchObject({
+				ok: true,
+				value: { verb: "fence-show", path: "src/api.ts", json: true },
+			});
+		});
+
+		it("stream create/close emits evidence, persists the allocation, and appends attributed events", () => {
+			const d = platformDeps({
+				self: "pij-prime",
+				projects: [seedProject({ slug: "platform" })],
+			});
+			const created = run(
+				["stream", "create", "--project", "platform", "--slug", "team-scaffold", "--ordinal", "61"],
+				d,
+			);
+			expect(created.exitCode).toBe(0);
+			expect(created.stdout).toContain("alloc-s061-team-scaffold");
+			expect(created.stdout).toContain("/repo-worktrees/s061-team-scaffold");
+			expect(created.stdout).toContain("s061/team-scaffold");
+			expect(created.stdout).toContain("base-sha");
+			expect(d.allocationStore.read("alloc-s061-team-scaffold")).toMatchObject({
+				project: "platform",
+				state: "created",
+				created: { actor: "pij-prime" },
+			});
+			expect(d.spineLog.read().filter((event) => event.kind === "allocation")).toHaveLength(1);
+
+			const closed = run(["stream", "close", "alloc-s061-team-scaffold"], d);
+			expect(closed.exitCode).toBe(0);
+			expect(closed.stdout).toContain("closed");
+			expect(d.allocationStore.read("alloc-s061-team-scaffold")?.state).toBe("closed");
+			expect(d.spineLog.read().filter((event) => event.kind === "allocation")).toHaveLength(2);
+		});
+
+		it("fence set/show answers path ownership and reports overlap without blocking", () => {
+			const d = platformDeps({
+				self: "pij-prime",
+				projects: [seedProject({ slug: "platform" })],
+			});
+			for (const [ordinal, slug] of [
+				[61, "alpha"],
+				[62, "beta"],
+			] as const) {
+				expect(
+					run(
+						[
+							"stream",
+							"create",
+							"--project",
+							"platform",
+							"--slug",
+							slug,
+							"--ordinal",
+							String(ordinal),
+						],
+						d,
+					).exitCode,
+				).toBe(0);
+				expect(
+					run(
+						["fence", "set", slug, "--paths", "src/shared.ts,src/**", "--shared", "src/shared.ts"],
+						d,
+					).exitCode,
+				).toBe(0);
+			}
+			const shown = run(["fence", "show", "--path", "src/shared.ts", "--json"], d);
+			expect(shown.exitCode).toBe(0);
+			const fences = JSON.parse(shown.stdout) as Fence[];
+			expect(fences).toHaveLength(2);
+			expect(fences.map((fence) => fence.allocation).sort()).toEqual([
+				"alloc-s061-alpha",
+				"alloc-s062-beta",
+			]);
+			const human = run(["fence", "show", "--path", "src/shared.ts"], d);
+			expect(human.stdout).toMatch(/overlap/i);
+			expect(human.stdout).toContain("alloc-s061-alpha");
+			expect(human.stdout).toContain("alloc-s062-beta");
+		});
+
+		it("allocation crash window heals exactly once before the next fence write", () => {
+			const d = platformDeps({
+				self: "pij-prime",
+				projects: [seedProject({ slug: "platform" })],
+			});
+			d.spineLog.failNext("appendOnce");
+			const failed = run(
+				["stream", "create", "--project", "platform", "--slug", "recovery", "--ordinal", "61"],
+				d,
+			);
+			expect(failed.exitCode).toBe(3);
+			expect(failed.stderr).toContain("WAS committed");
+			expect(d.allocationStore.read("alloc-s061-recovery")).not.toBeNull();
+			expect(pendingOps(d.opJournal)).toHaveLength(1);
+			expect(d.spineLog.read().filter((event) => event.kind === "allocation")).toEqual([]);
+
+			const healed = run(["fence", "set", "recovery", "--paths", "src/**"], d);
+			expect(healed.exitCode).toBe(0);
+			expect(d.spineLog.read().filter((event) => event.kind === "allocation")).toHaveLength(1);
+			expect(d.spineLog.read().filter((event) => event.kind === "fence")).toHaveLength(1);
+			expect(pendingOps(d.opJournal)).toEqual([]);
+		});
+
+		it.each([
+			["stream create missing --project", ["stream", "create", "--slug", "x"]],
+			["stream create missing --slug", ["stream", "create", "--project", "platform"]],
+			[
+				"stream create bad combination/positional",
+				["stream", "create", "extra", "--project", "platform", "--slug", "x"],
+			],
+			[
+				"stream create unknown flag",
+				["stream", "create", "--project", "platform", "--slug", "x", "--bogus"],
+			],
+			["stream close missing id", ["stream", "close"]],
+			["stream close unknown flag", ["stream", "close", "alloc-x", "--bogus"]],
+			["fence set missing stream", ["fence", "set", "--paths", "src/**"]],
+			["fence set missing --paths", ["fence", "set", "x"]],
+			["fence set bare --shared", ["fence", "set", "x", "--paths", "src/**", "--shared"]],
+			["fence set unknown flag", ["fence", "set", "x", "--paths", "src/**", "--bogus"]],
+			["fence show bad positional", ["fence", "show", "extra"]],
+			["fence show unknown flag", ["fence", "show", "--bogus"]],
+		] as const)("%s fails E-ARG with no writes", (_label, argv) => {
+			const d = platformDeps({
+				self: "pij-prime",
+				projects: [seedProject({ slug: "platform" })],
+			});
+			const result = run(argv, d);
+			expect(result.exitCode).toBe(64);
+			expect(result.stderr).toContain("E-ARG");
+			expect(d.allocationStore.list()).toEqual([]);
+			expect(d.fenceStore.list()).toEqual([]);
+			expect(d.spineLog.read()).toEqual([]);
+		});
+	});
+
+	describe("stream/fence bin wiring", () => {
+		it("runs create → fence show → close end-to-end and serves generic family help", {
+			timeout: 15_000,
+		}, () => {
+			const root = mkdtempSync(join(tmpdir(), "pij-stream-bin-"));
+			const home = join(root, "home");
+			const repo = join(root, "demo");
+			try {
+				mkdirSync(home, { recursive: true });
+				execFileSync("git", ["init", "--quiet", repo]);
+				execFileSync("git", ["-C", repo, "config", "user.email", "pij@example.test"]);
+				execFileSync("git", ["-C", repo, "config", "user.name", "pij test"]);
+				writeFileSync(join(repo, "README.md"), "initial\n");
+				execFileSync("git", ["-C", repo, "add", "README.md"]);
+				execFileSync("git", ["-C", repo, "commit", "--quiet", "-m", "initial"]);
+				new FsProjectStore(home).create(seedProject({ slug: "platform" }));
+				const env = { ...process.env, PIJ_HOME: home };
+				const runBin = (args: readonly string[]) =>
+					spawnSync(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, ...args], {
+						cwd: repo,
+						env,
+						encoding: "utf8",
+					});
+
+				const help = runBin(["stream", "create", "--help"]);
+				expect(help.status).toBe(0);
+				expect(help.stdout).toContain("pij stream create");
+
+				const created = runBin([
+					"stream",
+					"create",
+					"--project",
+					"platform",
+					"--slug",
+					"bin-flow",
+					"--ordinal",
+					"61",
+					"--actor",
+					"tester",
+				]);
+				expect(created.status, created.stderr).toBe(0);
+				expect(created.stdout).toContain("alloc-s061-bin-flow");
+
+				const fenced = runBin([
+					"fence",
+					"set",
+					"bin-flow",
+					"--paths",
+					"src/**",
+					"--actor",
+					"tester",
+				]);
+				expect(fenced.status, fenced.stderr).toBe(0);
+				const shown = runBin(["fence", "show", "--path", "src/api.ts", "--json"]);
+				expect(shown.status, shown.stderr).toBe(0);
+				expect(JSON.parse(shown.stdout) as Fence[]).toHaveLength(1);
+
+				const closed = runBin(["stream", "close", "alloc-s061-bin-flow", "--actor", "tester"]);
+				expect(closed.status, closed.stderr).toBe(0);
+				expect(new FsAllocationStore(home).read("alloc-s061-bin-flow")?.state).toBe("closed");
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("dispatch/ack receipts — AC-02/AC-05/AC-09/AC-11", () => {
+		const SHA = "a".repeat(64);
+
+		function dispatchDeps() {
+			return platformDeps({
+				self: "pij-parent",
+				descs: [
+					desc({ id: "pij-parent", state: "idle" }),
+					desc({
+						id: "pij-worker",
+						state: "idle",
+						boundModel: "github-copilot/gpt-5.6-sol",
+						effort: "xhigh",
+					}),
+				],
+			});
+		}
+
+		it("parses the required positional dispatch target and ack dispatch id", () => {
+			expect(
+				parseArgs(["dispatch", "pij-worker", "--packet", "/repo/packet.md", "--wait=25"]),
+			).toEqual({
+				ok: true,
+				value: {
+					verb: "dispatch-packet",
+					to: "pij-worker",
+					packetPath: "/repo/packet.md",
+					wait: true,
+					waitMs: 25,
+					json: false,
+				},
+			});
+			expect(parseArgs(["ack", "dispatch-test-1", "--packet-sha", SHA, "--json"])).toEqual({
+				ok: true,
+				value: {
+					verb: "ack-dispatch",
+					dispatchId: "dispatch-test-1",
+					packetSha256: SHA,
+					json: true,
+				},
+			});
+		});
+
+		it("persists undelivered → delivered-unacked outside peer I/O, then acked with actual transport message id", () => {
+			const d = dispatchDeps();
+			const sent = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md", "--wait"], d);
+			expect(sent.exitCode).toBe(0);
+			const record = d.dispatchStore.list()[0];
+			expect(record).toMatchObject({
+				id: "dispatch-test-1",
+				packetPath: "/repo/packet.md",
+				packetSha256: SHA,
+				from: "pij-parent",
+				to: "pij-worker",
+				messageId: "fake-1",
+				deliveryState: "delivered",
+				state: "delivered-unacked",
+			});
+			expect(d.delivery.outbox[0]?.message.body).toContain("[pij dispatch dispatch-test-1]");
+			expect(d.delivery.outbox[0]?.message.body).toContain(`sha256: ${SHA}`);
+			expect(d.delivery.outbox[0]?.message.body).toContain(
+				`pij ack dispatch-test-1 --packet-sha ${SHA}`,
+			);
+			expect(sent.follow).toEqual({
+				kind: "dispatch-wait",
+				dispatchId: "dispatch-test-1",
+				timeoutMs: undefined,
+				exitCode: 0,
+			});
+
+			const ackDeps: CliDeps = {
+				...d,
+				process: new FakeProcess(999, T + 1000, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+			};
+			const acknowledged = run(["ack", "dispatch-test-1", "--packet-sha", SHA, "--json"], ackDeps);
+			expect(acknowledged.exitCode).toBe(0);
+			expect(JSON.parse(acknowledged.stdout)).toMatchObject({
+				id: "dispatch-test-1",
+				state: "acked",
+				ack: {
+					messageId: "fake-1",
+					packetId: "dispatch-test-1",
+					packetSha256: SHA,
+					seat: "pij-worker",
+					declaredRuntime: {
+						model: "github-copilot/gpt-5.6-sol",
+						effort: "xhigh",
+						source: "self-report",
+					},
+				},
+			});
+			const ackRecord = d.dispatchStore.read("dispatch-test-1");
+			expect(ackRecord?.state).toBe("acked");
+			const receipt = d.delivery.outbox[1]?.message;
+			expect(receipt).toMatchObject({ from: "pij-worker", to: "pij-parent", kind: "receipt" });
+			expect(receipt ? parseBriefAckBody(receipt.body) : null).toMatchObject({
+				messageId: "fake-1",
+				packetId: "dispatch-test-1",
+				packetSha256: SHA,
+			});
+			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(3);
+		});
+
+		it("never holds the platform write lock across peer delivery", () => {
+			const d = dispatchDeps();
+			const peerLock = d.platformWriteLock.fork();
+			const baseDelivery = d.delivery;
+			const lockProbe: boolean[] = [];
+			const delivery: DeliveryPort = {
+				deliver(message) {
+					lockProbe.push(peerLock.withPlatformWriteLock(() => undefined).ok);
+					return baseDelivery.deliver(message);
+				},
+			};
+			const result = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], {
+				...d,
+				delivery,
+			});
+			expect(result.exitCode).toBe(0);
+			expect(lockProbe).toEqual([true]);
+			expect(d.platformWriteLock.acquisitions).toBe(2);
+		});
+
+		it("delivery failure leaves an honest undelivered dispatch artifact", () => {
+			const d = dispatchDeps();
+			const delivery: DeliveryPort = {
+				deliver: () => err("E-NOREG", "injected channel failure"),
+			};
+			const result = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], {
+				...d,
+				delivery,
+			});
+			expect(result.exitCode).toBe(3);
+			expect(result.stderr).toContain("state=undelivered");
+			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("undelivered");
+			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(1);
+		});
+
+		it("sha mismatch refuses before ack mutation or receipt emission", () => {
+			const d = dispatchDeps();
+			expect(run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], d).exitCode).toBe(0);
+			const beforeEvents = d.spineLog.read().length;
+			const beforeMessages = d.delivery.outbox.length;
+			const ackDeps: CliDeps = {
+				...d,
+				process: new FakeProcess(999, T + 1000, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+				packetIdentity: (path) => ok({ path, sha256: "b".repeat(64) }),
+			};
+			const refused = run(["ack", "dispatch-test-1", "--packet-sha", SHA], ackDeps);
+			expect(refused.exitCode).toBe(64);
+			expect(refused.stderr).toMatch(/E-ARG.*sha/i);
+			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("delivered-unacked");
+			expect(d.spineLog.read()).toHaveLength(beforeEvents);
+			expect(d.delivery.outbox).toHaveLength(beforeMessages);
+		});
+
+		it.each([
+			["dispatch missing target", ["dispatch", "--packet", "/repo/packet.md"]],
+			["dispatch missing packet", ["dispatch", "pij-worker"]],
+			["dispatch bare packet flag", ["dispatch", "pij-worker", "--packet"]],
+			[
+				"dispatch rejects obsolete --to",
+				["dispatch", "pij-worker", "--packet", "/repo/p.md", "--to", "x"],
+			],
+			["dispatch extra positional", ["dispatch", "pij-worker", "extra", "--packet", "/repo/p.md"]],
+			["ack missing dispatch id", ["ack", "--packet-sha", SHA]],
+			["ack missing sha", ["ack", "dispatch-test-1"]],
+			["ack bare sha flag", ["ack", "dispatch-test-1", "--packet-sha"]],
+			["ack invalid sha", ["ack", "dispatch-test-1", "--packet-sha", "short"]],
+			["ack extra positional", ["ack", "dispatch-test-1", "extra", "--packet-sha", SHA]],
+		] as const)("%s fails E-ARG with zero writes", (_label, argv) => {
+			const d = dispatchDeps();
+			const result = run(argv, d);
+			expect(result.exitCode).toBe(64);
+			expect(result.stderr).toContain("E-ARG");
+			expect(d.dispatchStore.list()).toEqual([]);
+			expect(d.spineLog.read()).toEqual([]);
+			expect(d.delivery.outbox).toEqual([]);
+		});
+
+		it("an unknown dispatch id refuses loudly with zero mutations", () => {
+			const d = dispatchDeps();
+			const ackDeps: CliDeps = {
+				...d,
+				process: new FakeProcess(999, T + 1000, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+			};
+			const result = run(["ack", "dispatch-missing", "--packet-sha", SHA], ackDeps);
+			expect(result.exitCode).toBe(3);
+			expect(result.stderr).toMatch(/E-NOREG.*dispatch-missing/i);
+			expect(d.dispatchStore.list()).toEqual([]);
+			expect(d.spineLog.read()).toEqual([]);
+		});
+
+		it("timeout evidence remains delivered-unacked and is never rendered as acked", () => {
+			const d = dispatchDeps();
+			const sent = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md", "--wait=20"], d);
+			expect(sent.exitCode).toBe(0);
+			const record = d.dispatchStore.read("dispatch-test-1");
+			if (!record) throw new Error("missing dispatch");
+			expect(record.state).toBe("delivered-unacked");
+			expect(renderDispatchWaitTimeout(record)).toBe(
+				"dispatch dispatch-test-1 state=delivered-unacked (timeout awaiting brief ack)",
+			);
+			expect(renderDispatchWaitTimeout(record)).not.toContain("state=acked");
+		});
+
+		it("real bin timeout persists delivered-unacked, then a matching ack transitions to acked", {
+			timeout: 15_000,
+		}, () => {
+			const root = mkdtempSync(join(tmpdir(), "pij-dispatch-bin-"));
+			const home = join(root, "home");
+			const repo = join(root, "repo");
+			const packet = join(repo, "packet.md");
+			try {
+				mkdirSync(home, { recursive: true });
+				mkdirSync(repo, { recursive: true });
+				writeFileSync(packet, "# packet\n");
+				const registry = new FsRegistry(home);
+				registry.write(
+					desc({
+						id: "pij-parent",
+						folder: repo,
+						dataDir: join(home, "pij-parent"),
+						eventsPath: join(home, "pij-parent", "events.ndjson"),
+						pid: process.pid,
+						state: "idle",
+					}),
+				);
+				registry.write(
+					desc({
+						id: "pij-worker",
+						folder: repo,
+						dataDir: join(home, "pij-worker"),
+						eventsPath: join(home, "pij-worker", "events.ndjson"),
+						pid: process.pid,
+						state: "idle",
+						deliveryMode: "pull",
+						boundModel: "test/model",
+						effort: "high",
+					}),
+				);
+				const env = {
+					...process.env,
+					PIJ_HOME: home,
+					PIJ_SESSION_ID: "pij-parent",
+					COPILOT_AGENT_SESSION_ID: "",
+					CLAUDE_CODE_SESSION_ID: "",
+					CODEX_THREAD_ID: "",
+					TMUX_PANE: "",
+				};
+				const timedOut = spawnSync(
+					process.execPath,
+					[PLATFORM_TSX, PIJ_CLI_BIN, "dispatch", "pij-worker", "--packet", packet, "--wait=20"],
+					{ cwd: repo, env, encoding: "utf8" },
+				);
+				expect(timedOut.status, timedOut.stderr).toBe(0);
+				const store = new FsDispatchStore(home);
+				const record = store.list()[0];
+				expect(record?.state).toBe("delivered-unacked");
+				if (!record) throw new Error("missing dispatch");
+				const terminalOutput = timedOut.stdout.trim().split(/\r?\n/).at(-1);
+				expect(terminalOutput).toBe(renderDispatchWaitTimeout(record));
+				expect(timedOut.stdout).not.toContain("state=acked");
+				const sha = createHash("sha256").update(readFileSync(packet)).digest("hex");
+				const acked = spawnSync(
+					process.execPath,
+					[PLATFORM_TSX, PIJ_CLI_BIN, "ack", record?.id ?? "missing", "--packet-sha", sha],
+					{
+						cwd: repo,
+						env: { ...env, PIJ_SESSION_ID: "pij-worker" },
+						encoding: "utf8",
+					},
+				);
+				expect(acked.status, acked.stderr).toBe(0);
+				expect(acked.stdout).toContain("state=acked");
+				expect(store.read(record?.id ?? "missing")?.state).toBe("acked");
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+	});
+
+	describe("canary dispatch — AC-02/AC-07", () => {
+		const SHA = "a".repeat(64);
+		const EXPECTED_MODEL = "github-copilot/gpt-5.6-sol";
+
+		function canaryDeps() {
+			const packets: Array<{
+				readonly caller: SessionDescriptor;
+				readonly dispatchId: string;
+				readonly body: string;
+			}> = [];
+			const d = platformDeps({
+				self: "pij-parent",
+				descs: [
+					desc({
+						id: "pij-parent",
+						state: "idle",
+						lifecycle: "bound",
+						paneId: "%10",
+						harnessSessionId: "native-parent",
+					}),
+					desc({
+						id: "pij-worker",
+						state: "idle",
+						lifecycle: "bound",
+						paneId: "%11",
+						harnessSessionId: "native-worker",
+						boundModel: EXPECTED_MODEL,
+						effort: "xhigh",
+					}),
+				],
+			});
+			return {
+				...d,
+				packets,
+				nextCanaryNonce: () => "canary-nonce-7391",
+				writeCanaryPacket: (input: {
+					readonly caller: SessionDescriptor;
+					readonly dispatchId: string;
+					readonly body: string;
+				}) => {
+					packets.push(input);
+					return ok({
+						path: `${input.caller.dataDir}/canary-packets/${input.dispatchId}.md`,
+						sha256: SHA,
+					});
+				},
+			};
+		}
+
+		it("parses the target, expected model, and explicit short wait override", () => {
+			expect(
+				parseArgs([
+					"canary",
+					"pij-worker",
+					"--expect-model",
+					EXPECTED_MODEL,
+					"--wait=25",
+					"--json",
+				]),
+			).toEqual({
+				ok: true,
+				value: {
+					verb: "canary",
+					to: "pij-worker",
+					expectedModel: EXPECTED_MODEL,
+					waitMs: 25,
+					json: true,
+				},
+			});
+		});
+
+		it("writes the nonce packet only after preflight, dispatches it, then attaches CanaryRecord after ack", () => {
+			const d = canaryDeps();
+			const started = run(
+				["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=25"],
+				d,
+			);
+			expect(started.exitCode).toBe(0);
+			expect(started.follow).toEqual({
+				kind: "canary-wait",
+				dispatchId: "dispatch-test-1",
+				nonce: "canary-nonce-7391",
+				expectedModel: EXPECTED_MODEL,
+				timeoutMs: 25,
+				json: false,
+			});
+			expect(d.packets).toHaveLength(1);
+			expect(d.packets[0]?.body).toContain("canary-nonce-7391");
+			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("delivered-unacked");
+			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
+
+			const acknowledged = run(["ack", "dispatch-test-1", "--packet-sha", SHA], {
+				...d,
+				process: new FakeProcess(999, T + 100, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+			});
+			expect(acknowledged.exitCode).toBe(0);
+			const finalized = finalizeCanary(
+				{
+					dispatchId: "dispatch-test-1",
+					nonce: "canary-nonce-7391",
+					expectedModel: EXPECTED_MODEL,
+					json: false,
+				},
+				d,
+			);
+			expect(finalized.exitCode).toBe(0);
+			const record = d.dispatchStore.read("dispatch-test-1");
+			expect(record?.canary).toMatchObject({
+				dispatchId: "dispatch-test-1",
+				nonce: "canary-nonce-7391",
+				target: "pij-worker",
+				modelCheck: "matched",
+				identity: {
+					paneId: "%11",
+					pid: 100,
+					harnessSessionId: "native-worker",
+				},
+			});
+			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(4);
+		});
+
+		it("precondition and wrong-argument refusals write no packet, dispatch, spine event, or delivery", () => {
+			const precondition = canaryDeps();
+			const missing = run(["canary", "pij-missing"], precondition);
+			expect(missing.exitCode).toBe(2);
+			expect(missing.stderr).toContain("E-NOID");
+			expect(precondition.packets).toEqual([]);
+			expect(precondition.dispatchStore.list()).toEqual([]);
+			expect(precondition.spineLog.read()).toEqual([]);
+			expect(precondition.delivery.outbox).toEqual([]);
+
+			for (const argv of [
+				["canary"],
+				["canary", "pij-worker", "extra"],
+				["canary", "pij-worker", "--expect-model"],
+				["canary", "pij-worker", "--wait=soon"],
+				["canary", "pij-worker", "--bogus"],
+			] as const) {
+				const d = canaryDeps();
+				const result = run(argv, d);
+				expect(result.exitCode).toBe(64);
+				expect(result.stderr).toContain("E-ARG");
+				expect(d.packets).toEqual([]);
+				expect(d.dispatchStore.list()).toEqual([]);
+				expect(d.spineLog.read()).toEqual([]);
+				expect(d.delivery.outbox).toEqual([]);
+			}
+		});
+
+		it("refuses when the packet reread no longer matches the writer sha before any dispatch write", () => {
+			const d = {
+				...canaryDeps(),
+				packetIdentity: (path: string) => ok({ path, sha256: "b".repeat(64) }),
+			};
+			const refused = run(["canary", "pij-worker"], d);
+			expect(refused.exitCode).toBe(3);
+			expect(refused.stderr).toMatch(/E-CANARY-PACKET.*sha/i);
+			expect(d.dispatchStore.list()).toEqual([]);
+			expect(d.spineLog.read()).toEqual([]);
+			expect(d.delivery.outbox).toEqual([]);
+		});
+
+		it("post-ack model mismatch preserves transport truth but writes no CanaryRecord", () => {
+			const d = canaryDeps();
+			expect(run(["canary", "pij-worker"], d).exitCode).toBe(0);
+			expect(
+				run(["ack", "dispatch-test-1", "--packet-sha", SHA], {
+					...d,
+					process: new FakeProcess(999, T + 100, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+				}).exitCode,
+			).toBe(0);
+			const beforeEvents = d.spineLog.read().length;
+			const refused = finalizeCanary(
+				{
+					dispatchId: "dispatch-test-1",
+					nonce: "canary-nonce-7391",
+					expectedModel: "github-copilot/gpt-5.5",
+					json: false,
+				},
+				d,
+			);
+			expect(refused.exitCode).toBe(3);
+			expect(refused.stderr).toContain("E-CANARY-MODEL");
+			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("acked");
+			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
+			expect(d.spineLog.read()).toHaveLength(beforeEvents);
+		});
+
+		function collectChild(
+			args: readonly string[],
+			cwd: string,
+			env: NodeJS.ProcessEnv,
+		): Promise<{
+			readonly status: number | null;
+			readonly stdout: string;
+			readonly stderr: string;
+		}> {
+			const child = spawn(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, ...args], {
+				cwd,
+				env,
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			let stdout = "";
+			let stderr = "";
+			child.stdout.setEncoding("utf8");
+			child.stderr.setEncoding("utf8");
+			child.stdout.on("data", (chunk: string) => {
+				stdout += chunk;
+			});
+			child.stderr.on("data", (chunk: string) => {
+				stderr += chunk;
+			});
+			return new Promise((resolve) => {
+				child.on("close", (status) => resolve({ status, stdout, stderr }));
+			});
+		}
+
+		async function waitForDispatch(store: FsDispatchStore): Promise<Dispatch> {
+			const deadline = Date.now() + 3_000;
+			while (Date.now() < deadline) {
+				const record = store.list()[0];
+				if (record) return record;
+				await new Promise((resolve) => setTimeout(resolve, 20));
+			}
+			throw new Error("timed out waiting for canary dispatch");
+		}
+
+		it("real bin timeout leaves delivered-unacked, no CanaryRecord, and a named terminal refusal", {
+			timeout: 15_000,
+		}, () => {
+			const root = mkdtempSync(join(tmpdir(), "pij-canary-timeout-bin-"));
+			const home = join(root, "home");
+			const repo = join(root, "repo");
+			try {
+				mkdirSync(home, { recursive: true });
+				mkdirSync(repo, { recursive: true });
+				const registry = new FsRegistry(home);
+				registry.write(
+					desc({
+						id: "pij-parent",
+						folder: repo,
+						dataDir: join(home, "pij-parent"),
+						eventsPath: join(home, "pij-parent", "events.ndjson"),
+						pid: process.pid,
+						state: "idle",
+						lifecycle: "bound",
+						paneId: "%20",
+						harnessSessionId: "native-parent",
+					}),
+				);
+				registry.write(
+					desc({
+						id: "pij-worker",
+						folder: repo,
+						dataDir: join(home, "pij-worker"),
+						eventsPath: join(home, "pij-worker", "events.ndjson"),
+						pid: process.pid,
+						state: "working",
+						lifecycle: "bound",
+						deliveryMode: "pull",
+						paneId: "%21",
+						harnessSessionId: "native-worker",
+						boundModel: EXPECTED_MODEL,
+						effort: "xhigh",
+					}),
+				);
+				const env = {
+					...process.env,
+					PIJ_HOME: home,
+					PIJ_SESSION_ID: "pij-parent",
+					COPILOT_AGENT_SESSION_ID: "",
+					CLAUDE_CODE_SESSION_ID: "",
+					CODEX_THREAD_ID: "",
+					TMUX_PANE: "",
+				};
+				const timedOut = spawnSync(
+					process.execPath,
+					[
+						PLATFORM_TSX,
+						PIJ_CLI_BIN,
+						"canary",
+						"pij-worker",
+						"--expect-model",
+						EXPECTED_MODEL,
+						"--wait=20",
+					],
+					{ cwd: repo, env, encoding: "utf8" },
+				);
+				expect(timedOut.status).toBe(3);
+				const record = new FsDispatchStore(home).list()[0];
+				if (!record) throw new Error("missing canary dispatch");
+				expect(record.state).toBe("delivered-unacked");
+				expect(record.canary).toBeUndefined();
+				expect(existsSync(record.packetPath)).toBe(true);
+				const terminalOutput = timedOut.stdout.trim().split(/\r?\n/).at(-1);
+				expect(terminalOutput).toBe(renderCanaryTimeout(record));
+				expect(timedOut.stdout).not.toContain("canary PASS");
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("real bin pass attaches the defensive triple to the real acked dispatch", {
+			timeout: 15_000,
+		}, async () => {
+			const root = mkdtempSync(join(tmpdir(), "pij-canary-pass-bin-"));
+			const home = join(root, "home");
+			const repo = join(root, "repo");
+			try {
+				mkdirSync(home, { recursive: true });
+				mkdirSync(repo, { recursive: true });
+				const registry = new FsRegistry(home);
+				registry.write(
+					desc({
+						id: "pij-parent",
+						folder: repo,
+						dataDir: join(home, "pij-parent"),
+						eventsPath: join(home, "pij-parent", "events.ndjson"),
+						pid: process.pid,
+						state: "idle",
+						lifecycle: "bound",
+						paneId: "%30",
+						harnessSessionId: "native-parent",
+					}),
+				);
+				registry.write(
+					desc({
+						id: "pij-worker",
+						folder: repo,
+						dataDir: join(home, "pij-worker"),
+						eventsPath: join(home, "pij-worker", "events.ndjson"),
+						pid: process.pid,
+						state: "idle",
+						lifecycle: "bound",
+						deliveryMode: "pull",
+						paneId: "%31",
+						harnessSessionId: "native-worker",
+						boundModel: EXPECTED_MODEL,
+						effort: "xhigh",
+					}),
+				);
+				const parentEnv = {
+					...process.env,
+					PIJ_HOME: home,
+					PIJ_SESSION_ID: "pij-parent",
+					COPILOT_AGENT_SESSION_ID: "",
+					CLAUDE_CODE_SESSION_ID: "",
+					CODEX_THREAD_ID: "",
+					TMUX_PANE: "",
+				};
+				const canary = collectChild(
+					["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=2000"],
+					repo,
+					parentEnv,
+				);
+				const store = new FsDispatchStore(home);
+				const pending = await waitForDispatch(store);
+				const sha = createHash("sha256").update(readFileSync(pending.packetPath)).digest("hex");
+				const acked = spawnSync(
+					process.execPath,
+					[PLATFORM_TSX, PIJ_CLI_BIN, "ack", pending.id, "--packet-sha", sha],
+					{
+						cwd: repo,
+						env: { ...parentEnv, PIJ_SESSION_ID: "pij-worker" },
+						encoding: "utf8",
+					},
+				);
+				expect(acked.status, acked.stderr).toBe(0);
+				const completed = await canary;
+				expect(completed.status, completed.stderr).toBe(0);
+				const record = store.read(pending.id);
+				if (!record?.canary) throw new Error("missing CanaryRecord");
+				expect(record.state).toBe("acked");
+				expect(record.canary.identity).toEqual({
+					paneId: "%31",
+					pid: process.pid,
+					harnessSessionId: "native-worker",
+				});
+				expect(record.packetPath).toContain(join("pij-parent", "canary-packets"));
+				const terminalOutput = completed.stdout.trim().split(/\r?\n/).at(-1);
+				expect(terminalOutput).toBe(renderCanaryPass(record.canary));
+				expect(completed.stdout).not.toContain("E-CANARY-TIMEOUT");
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
 		});
 	});
 });

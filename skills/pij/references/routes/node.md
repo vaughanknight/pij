@@ -3,7 +3,7 @@
 > Route module — sibling-blind. Knows only this job; composition is the dispatch's job.
 > Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
 
-**Job**: work the pij platform's governance surface — machine-wide projects, per-node assignments (task + semantic state), the attributed spine event log, full node cards, adoption repair, and anomaly queries. Anyone may write anything; every write is an append-only attributed spine event — safety is DERIVED (anomaly queries), never enforced.
+**Job**: work the pij platform's governance surface — projects, stream/fence/dispatch records, canaries, per-node assignments, the attributed spine, node cards, adoption repair, and anomaly queries. Writes are attributed; safety is DERIVED, never enforced.
 
 ## Attribution (resolved BEFORE any write)
 
@@ -27,6 +27,20 @@ pij state verify <node> [--assignment <id>]        # done is a CLAIM until verif
 ```
 
 Semantic states: `blocked|question|hold|waiting|ready|failed|cancelled|done`. A node with no assignment falls back to its implicit general assignment (`asg-general-<node>`). The node badge derives worst-first across open assignments; the mechanical axis (`starting|working|idle|stalled|stopped|dead|unknown`) is pij-computed and never writable here.
+
+## Team-scaffold records
+
+```bash
+pij stream create --project <slug> --slug <stream> [--base <ref>] [--ordinal N]
+pij stream close <allocation-id>
+pij fence set <stream> --paths <a,b> [--shared <x,y>]
+pij fence show [--path <repo-path>]
+pij dispatch <id> --packet <file> [--wait]
+pij ack <dispatch-id> --packet-sha <sha256>
+pij canary <id> [--expect-model <model>]
+```
+
+Records live below `~/.pij/allocations/`, `fences/`, and `dispatches/`; canary pass evidence attaches to the real acknowledged dispatch. Worked flow and manifest example: [`../../../../docs/how/pij-team-scaffold.md`](../../../../docs/how/pij-team-scaffold.md).
 
 ## Node cards & the spine
 
@@ -65,4 +79,6 @@ pij anomalies [--here] [--project <slug>] --json   # evidence refs into the spin
 | semantic active but system idle for hours | axis-disagreement finding | seat lost its dispatch — nudge or reassign |
 | `done` with no `verifiedBy` | unverified-done finding | a claim awaiting verification — verify or challenge |
 | hold cleared by a non-issuer | foreign-hold-clear finding | coordination bypass — raise with the issuer |
+| dispatch delivered but unacked past threshold | delivered-unacked-stale finding | recipient never acknowledged; inspect the dispatch/packet |
+| allocation journal stopped before create/close completed | allocation-half-open finding | resume or investigate the last successful step |
 | node missing from its tree | `unadopted == true` in tree/list | link it to its true parent (above) |

@@ -1,9 +1,10 @@
 // pij-control-plane — anomaly queries (plan 054 P2 T010, AC-06/AC-07).
 //
 // Safety is DERIVED, never enforced (WS-6): pure queries over descriptors +
-// assignments + spine events, each anomaly carrying spine-seq evidence so a
-// prime or UI can chain straight to the audit trail. The daemon alerts on
-// these (once per transition) and NEVER acts on them.
+// assignments + spine events + durable team-scaffold records. Existing
+// state-chain anomalies carry spine-seq evidence; record anomalies carry the
+// record ref plus the timestamp that proves the stale episode. The daemon
+// alerts on these (once per transition) and NEVER acts on them.
 //
 // The three ruled shapes:
 //  • axis-disagreement — an OPEN assignment that expects activity (no
@@ -17,7 +18,7 @@
 //  • foreign-hold-clear — a `hold` whose NEXT declared state comes from a
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
-import type { Assignment, SpineEvent } from "./platform/types.js";
+import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
 	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
@@ -36,7 +37,9 @@ export type AnomalyKind =
 	| "unverified-done"
 	| "foreign-hold-clear"
 	| "spawn-limbo"
-	| "inbox-poll-stalled";
+	| "inbox-poll-stalled"
+	| "delivered-unacked-stale"
+	| "allocation-half-open";
 
 /** A seat may sit pre-bind this long before it reads as a wedged boot. The
  *  watchdog cannot see pending/ready seats (eligible() excludes them by
@@ -56,23 +59,37 @@ export const DEFAULT_SPAWN_LIMBO_MS = 8 * 60_000;
  *  watch death was NEVER detected; now a stale stamp surfaces it. */
 export const DEFAULT_INBOX_POLL_STALL_MS = 6_000;
 
+/** Team-scaffold records may remain transitional this long before they read as
+ * abandoned rather than merely in flight. Overrides keep deterministic tests
+ * and operators free to choose a stricter observation window. */
+export const DEFAULT_DISPATCH_UNACKED_STALE_MS = 15 * 60_000;
+export const DEFAULT_ALLOCATION_HALF_OPEN_MS = 15 * 60_000;
+
 export interface Anomaly {
 	readonly kind: AnomalyKind;
 	readonly nodeId: string;
 	readonly assignmentId?: string;
 	readonly detail: string;
-	/** Spine seqs chaining this anomaly to the audit trail. */
+	/** Spine seqs or a stale record's last-progress timestamp. */
 	readonly evidence: readonly number[];
+	/** Direct durable-record pointer for record-derived anomalies. */
+	readonly recordRef?: string;
+	/** Age of the stale record episode at query time. */
+	readonly ageMs?: number;
 }
 
 export interface AnomalyInputs {
 	readonly descriptors: readonly SessionDescriptor[];
 	readonly assignments: readonly Assignment[];
 	readonly events: readonly SpineEvent[];
+	readonly dispatches?: readonly Dispatch[];
+	readonly allocations?: readonly Allocation[];
 	readonly nowMs: number;
 	readonly idleThresholdMs?: number;
 	readonly spawnLimboMs?: number;
 	readonly inboxPollStallMs?: number;
+	readonly dispatchStaleMs?: number;
+	readonly allocationHalfOpenMs?: number;
 }
 
 /** The declared-state view of one assignment's chain (states[] seqs joined
@@ -141,11 +158,80 @@ function isSemanticActive(chain: ChainState): boolean {
 	return chain.state === undefined || chain.state === "ready";
 }
 
+function validTimestampMs(value: string): number | undefined {
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function ageLabel(ageMs: number): string {
+	const minutes = Math.round(ageMs / 60_000);
+	return minutes >= 1 ? `${minutes}min` : `${Math.round(ageMs / 1000)}s`;
+}
+
+function successfulAllocationSteps(allocation: Allocation): ReadonlySet<string> {
+	return new Set(allocation.steps.filter((step) => step.ok).map((step) => step.name));
+}
+
+function incompleteAllocationStep(allocation: Allocation): string | undefined {
+	if (allocation.state !== "created") return undefined;
+	const successful = successfulAllocationSteps(allocation);
+	if (!successful.has("worktree-created")) return "worktree-created";
+	if (!successful.has("allocation-committed")) return "allocation-committed";
+	const closeStarted = allocation.steps.some((step) =>
+		["wip-preserved", "worktree-removed", "allocation-closed"].includes(step.name),
+	);
+	if (closeStarted && !successful.has("allocation-closed")) return "allocation-closed";
+	return undefined;
+}
+
 export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const threshold = inputs.idleThresholdMs ?? DEFAULT_IDLE_DISAGREEMENT_MS;
 	const out: Anomaly[] = [];
 	const byNode = new Map<string, SessionDescriptor>();
 	for (const descriptor of inputs.descriptors) byNode.set(descriptor.id, descriptor);
+
+	const dispatchStaleMs = inputs.dispatchStaleMs ?? DEFAULT_DISPATCH_UNACKED_STALE_MS;
+	for (const dispatch of inputs.dispatches ?? []) {
+		if (dispatch.state !== "delivered-unacked") continue;
+		const updatedMs = validTimestampMs(dispatch.updated.ts);
+		if (updatedMs === undefined) continue;
+		const ageMs = inputs.nowMs - updatedMs;
+		if (ageMs <= dispatchStaleMs) continue;
+		const recordRef = `dispatch:${dispatch.id}`;
+		out.push({
+			kind: "delivered-unacked-stale",
+			nodeId: dispatch.to,
+			detail: `${recordRef} has remained delivered-unacked for ${ageLabel(ageMs)} (threshold ${ageLabel(dispatchStaleMs)}) — delivery landed but no durable brief ack followed`,
+			evidence: [updatedMs],
+			recordRef,
+			ageMs,
+		});
+	}
+
+	const allocationHalfOpenMs = inputs.allocationHalfOpenMs ?? DEFAULT_ALLOCATION_HALF_OPEN_MS;
+	for (const allocation of inputs.allocations ?? []) {
+		const missingStep = incompleteAllocationStep(allocation);
+		if (missingStep === undefined) continue;
+		const progressMs = allocation.steps
+			.map((step) => validTimestampMs(step.ts))
+			.filter((value): value is number => value !== undefined)
+			.reduce(
+				(latest, value) => Math.max(latest, value),
+				validTimestampMs(allocation.created.ts) ?? Number.NEGATIVE_INFINITY,
+			);
+		if (!Number.isFinite(progressMs)) continue;
+		const ageMs = inputs.nowMs - progressMs;
+		if (ageMs <= allocationHalfOpenMs) continue;
+		const recordRef = `allocation:${allocation.id}`;
+		out.push({
+			kind: "allocation-half-open",
+			nodeId: allocation.id,
+			detail: `${recordRef} has made no journal progress for ${ageLabel(ageMs)} (threshold ${ageLabel(allocationHalfOpenMs)}); required successful step '${missingStep}' is absent`,
+			evidence: [progressMs],
+			recordRef,
+			ageMs,
+		});
+	}
 
 	// spawn-limbo (descriptor-driven, assignment-free — the second cross-node
 	// pass this module carries): a seat still pending/ready long past spawn is

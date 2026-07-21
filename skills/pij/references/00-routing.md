@@ -47,7 +47,7 @@ Model names differ per harness; `pij spawn` auto-applies each harness's blanket-
 
 ### C2 — Canary-verify (a ready-ping is NOT proof)
 
-A wrong `--model` is accepted **silently** at startup; the child boots, registers, ready-pings — then 400s on its first real inference. After any spawn (and before first use of a **provided** peer): capture the pane footer (`pij tail <id>` / tmux capture), confirm the **expected** model name, confirm the first turn completed without a 400. Only then mark it healthy. An "unknown model" warning at spawn is non-blocking — the alias table is best-effort, not a live registry (C4); verify live regardless.
+A wrong `--model` is accepted **silently** at startup; the child boots, registers, ready-pings — then 400s on its first real inference. After any spawn (and before first use of a **provided** peer), run `pij canary <id> --expect-model <m>`: its nonce dispatch proves a real turn and its ack compares declared runtime with the descriptor pin. An UNPINNED result is an honest caveat, not proof of the actual default; capture the pane footer (`pij tail <id>` / tmux capture) then. Only mark the peer healthy after the canary passes and no 400 is present. Full operator flow: [`../../../docs/how/pij-team-scaffold.md`](../../../docs/how/pij-team-scaffold.md).
 
 ### C3 — Compact discipline (early, not late)
 

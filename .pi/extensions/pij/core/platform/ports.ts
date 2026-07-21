@@ -6,7 +6,15 @@
 
 import type { Result } from "../types.js";
 import type { SpineEventQuery } from "./spine.js";
-import type { Assignment, Project, SpineEvent, SpineEventDraft } from "./types.js";
+import type {
+	Allocation,
+	Assignment,
+	Dispatch,
+	Fence,
+	Project,
+	SpineEvent,
+	SpineEventDraft,
+} from "./types.js";
 
 export interface ProjectStorePort {
 	/** First-writer-wins claim of `projects/<slug>/project.json`. */
@@ -30,6 +38,30 @@ export interface AssignmentStorePort {
 	/** Valid records only, sorted by id; corrupt/foreign entries skipped. */
 	list(): Assignment[];
 	listByNode(nodeId: string): Assignment[];
+}
+
+export interface AllocationStorePort {
+	/** Atomic create-or-replace of `allocations/<id>.json`. */
+	write(allocation: Allocation): Result<void>;
+	read(id: string): Allocation | null;
+	/** Valid records only, ordinal-then-id sorted. */
+	list(): Allocation[];
+}
+
+export interface FenceStorePort {
+	/** Atomic create-or-replace of `fences/<id>.json`. */
+	write(fence: Fence): Result<void>;
+	read(id: string): Fence | null;
+	/** Valid records only, id-sorted. */
+	list(): Fence[];
+}
+
+export interface DispatchStorePort {
+	/** Atomic create-or-replace of `dispatches/<id>.json`. */
+	write(dispatch: Dispatch): Result<void>;
+	read(id: string): Dispatch | null;
+	/** Valid records only, id-sorted. */
+	list(): Dispatch[];
 }
 
 /** Result of a keyed idempotent append: the event as it exists in the log

@@ -6,7 +6,7 @@
 // this process never imports @earendil-works/*.
 
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	accessSync,
 	appendFileSync,
@@ -20,16 +20,19 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeAgentAdapter } from "minih";
 import { validateInput } from "minih/runner";
+import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeTextAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsContextReader } from "./adapters/context-reader.js";
+import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
+import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsFocusStore } from "./adapters/focus-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
@@ -68,14 +71,17 @@ import {
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir } from "./core/agents/paths.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
+import { renderCanaryTimeout } from "./core/canary.js";
 import {
 	applyWaitReceiptSources,
 	type CliDeps,
 	type CliResult,
 	dispatch,
+	finalizeCanary,
 	type ParsedCommand,
 	PROVIDER_HARNESS_MAP,
 	parseArgs,
+	renderDispatchWaitTimeout,
 	renderWaitReceipt,
 	renderWaitTimeout,
 	type WaitTarget,
@@ -182,6 +188,7 @@ import {
 } from "./core/types.js";
 import { addWatch, removeWatch } from "./core/watch-subscription.js";
 import { applyWatchdogExemption } from "./core/watchdog.js";
+import { WorktreeManager } from "./core/worktree.js";
 import { runTelegram } from "./telegram/index.js";
 
 const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
@@ -225,6 +232,13 @@ Platform (durable projects + the shared spine log):
   pij project list [--json]                          all projects, sorted by slug
   pij project show <slug> [--json]                   one full project record
   pij project set <slug> [--plan <path>] [--prime <id>] [--actor <label>] [--json]   update a project's plan/prime
+  pij stream create --project <slug> --slug <stream> [--base <ref>] [--ordinal N] [--actor <label>] [--json]   reserve + create one attributed worktree allocation
+  pij stream close <allocation-id> [--actor <label>] [--json]   preserve WIP, safely remove the worktree, and retain the ordinal tombstone
+  pij fence set <stream> --paths <a,b> [--shared <x,y>] [--actor <label>] [--json]   write a descriptive notify-only fence
+  pij fence show [--path <repo-path>] [--json]       list fences or answer path ownership (overlap is reported, never blocked)
+  pij dispatch <id> --packet <file> [--wait[=MS]] [--actor <label>] [--json]   send a packet with a durable three-state dispatch receipt
+  pij ack <dispatch-id> --packet-sha <sha256> [--json]   verify packet bytes and emit a brief-ack receipt
+  pij canary <id> [--expect-model <model>] [--wait[=MS]] [--json]   dispatch a nonce packet, verify identity/runtime, and attach pass evidence
   pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--bare] [--actor <label>] [--json]   append one spine event
   pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
   pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
@@ -437,20 +451,59 @@ function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
 function deps(): CliDeps {
 	const registry = new FsRegistry(pijHome);
 	const channel = new FsChannel(pijHome);
+	const cwd = process.cwd();
+	const repository = new GitRepositoryAdapter();
+	const commonDir = repository.gitCommonDir(cwd);
+	const repositoryRoot = commonDir === null ? undefined : dirname(commonDir);
 	return {
 		registry,
 		eventLogFor: (id) => new FsEventLog(pijHome, id),
 		delivery: channel,
 		inbox: channel,
 		process: new NodeProcess(),
-		cwd: process.cwd(),
+		cwd,
 		pijHome,
 		models: loadModels(),
 		resolveAmbientSelf: () => resolveAmbientSelf(registry),
-		repository: new GitRepositoryAdapter(),
+		repository,
 		treeDescriptors: listAllDescriptors(registry),
 		projectStore: new FsProjectStore(pijHome),
 		assignmentStore: new FsAssignmentStore(pijHome),
+		allocationStore: new FsAllocationStore(pijHome),
+		fenceStore: new FsFenceStore(pijHome),
+		dispatchStore: new FsDispatchStore(pijHome),
+		packetIdentity: (path) => {
+			const absolutePath = resolve(cwd, path);
+			try {
+				const bytes = readFileSync(absolutePath);
+				return ok({
+					path: absolutePath,
+					sha256: createHash("sha256").update(bytes).digest("hex"),
+				});
+			} catch (error) {
+				return err("E-ARG", `cannot read packet '${path}': ${String(error)}`);
+			}
+		},
+		nextDispatchId: () => `dispatch-${randomUUID()}`,
+		nextCanaryNonce: () => `canary-${randomUUID()}`,
+		writeCanaryPacket: ({ caller, dispatchId, body }) => {
+			const path = join(caller.dataDir, "canary-packets", `${dispatchId}.md`);
+			try {
+				writeTextAtomic(path, body);
+				return ok({
+					path,
+					sha256: createHash("sha256").update(Buffer.from(body, "utf8")).digest("hex"),
+				});
+			} catch (error) {
+				return err("E-NOREG", `cannot write canary packet '${path}': ${String(error)}`);
+			}
+		},
+		worktrees: new WorktreeManager(),
+		...(repositoryRoot === undefined
+			? {}
+			: {
+					worktreeRoot: join(dirname(repositoryRoot), `${basename(repositoryRoot)}-worktrees`),
+				}),
 		spineLog: new FsSpineLog(pijHome),
 		opJournal: new FsOpJournal(pijHome),
 		platformWriteLock: new FsPlatformWriteLock(pijHome),
@@ -604,7 +657,10 @@ function executeInboxActions(
 ): void {
 	const log = new FsEventLog(pijHome, self);
 	for (const action of actions) {
-		if (action.kind === "persist-receipt-envelope") {
+		if (
+			action.kind === "persist-receipt-envelope" ||
+			action.kind === "persist-brief-ack-envelope"
+		) {
 			const persisted = persistReceiptEnvelope({
 				inbox: channel,
 				eventLog: log,
@@ -724,8 +780,11 @@ function waitReceipts(
 				readAt: new Date().toISOString(),
 			});
 			if (!prepared.ok) failInbox(prepared.code, prepared.message);
-			envelopeReceipts = prepared.value;
-			for (const action of envelopeReceipts) {
+			envelopeReceipts = prepared.value.filter(
+				(action): action is Extract<InboxAction, { readonly kind: "persist-receipt-envelope" }> =>
+					action.kind === "persist-receipt-envelope",
+			);
+			for (const action of prepared.value) {
 				const persisted = persistReceiptEnvelope({
 					inbox: d.inbox,
 					eventLog: log,
@@ -746,6 +805,64 @@ function waitReceipts(
 		if (Date.now() - started > timeoutMs) {
 			process.stdout.write(`${renderWaitTimeout(pending, broadcast)}\n`);
 			process.exit(exitCode);
+		}
+		setTimeout(tick, FOLLOW_MS);
+	};
+	tick();
+}
+
+function waitDispatch(
+	d: CliDeps,
+	dispatchId: string,
+	timeoutMs = WAIT_TIMEOUT_MS,
+	exitCode = 0,
+): void {
+	if (!d.dispatchStore) failInbox("E-NOREG", "dispatch store is not wired — update the pij bin");
+	const started = Date.now();
+	const tick = (): void => {
+		const record = d.dispatchStore?.read(dispatchId);
+		if (!record) failInbox("E-NOREG", `no dispatch '${dispatchId}'`);
+		if (record.state === "acked") {
+			process.stdout.write(
+				`dispatch ${record.id} state=acked\nbrief-ack seat=${record.ack?.seat ?? "unknown"} message=${record.ack?.messageId ?? "unknown"}\n`,
+			);
+			process.exit(exitCode);
+		}
+		if (Date.now() - started >= timeoutMs) {
+			process.stdout.write(`${renderDispatchWaitTimeout(record)}\n`);
+			process.exit(exitCode);
+		}
+		setTimeout(tick, FOLLOW_MS);
+	};
+	tick();
+}
+
+function waitCanary(
+	d: CliDeps,
+	follow: Extract<NonNullable<CliResult["follow"]>, { readonly kind: "canary-wait" }>,
+): void {
+	if (!d.dispatchStore) failInbox("E-NOREG", "dispatch store is not wired — update the pij bin");
+	const started = Date.now();
+	const timeoutMs = follow.timeoutMs ?? WAIT_TIMEOUT_MS;
+	const tick = (): void => {
+		const record = d.dispatchStore?.read(follow.dispatchId);
+		if (!record) failInbox("E-NOREG", `no dispatch '${follow.dispatchId}'`);
+		if (record.state === "acked") {
+			const result = finalizeCanary(
+				{
+					dispatchId: follow.dispatchId,
+					nonce: follow.nonce,
+					expectedModel: follow.expectedModel,
+					json: follow.json,
+				},
+				d,
+			);
+			write(result);
+			process.exit(result.exitCode);
+		}
+		if (Date.now() - started >= timeoutMs) {
+			process.stdout.write(`${renderCanaryTimeout(record)}\n`);
+			process.exit(3);
 		}
 		setTimeout(tick, FOLLOW_MS);
 	};
@@ -3103,6 +3220,14 @@ function main(): void {
 	if (res.follow?.kind === "tail" && parsed.value.verb === "tail") {
 		followTail(parsed.value, d, res.follow.nextSince);
 		return; // loops until killed
+	}
+	if (res.follow?.kind === "dispatch-wait") {
+		waitDispatch(d, res.follow.dispatchId, res.follow.timeoutMs, res.follow.exitCode);
+		return;
+	}
+	if (res.follow?.kind === "canary-wait") {
+		waitCanary(d, res.follow);
+		return;
 	}
 	if (res.follow?.kind === "wait") {
 		const broadcast = parsed.value.verb === "send" && parsed.value.broadcast === true;

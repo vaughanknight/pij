@@ -10,13 +10,22 @@
 
 import { chainStateOf, detectAnomalies } from "./anomalies.js";
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
+import {
+	buildCanaryPacket,
+	CANARY_PACKET_ERROR,
+	type CanaryErrorCode,
+	evaluateCanary,
+	renderCanaryPass,
+} from "./canary.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
 import { isCompacting } from "./daemon/router.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
+import { type BriefAckReceipt, briefAckBody } from "./message.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
+import { canonicalAllocationJson } from "./platform/allocation.js";
 import {
 	appendStateRef,
 	assignmentIdCandidates,
@@ -24,9 +33,18 @@ import {
 	materializeGeneralIfMissing,
 	openAssignment,
 } from "./platform/assignment.js";
+import {
+	acknowledgeDispatch,
+	canonicalDispatchJson,
+	markDispatchDelivered,
+} from "./platform/dispatch.js";
+import { canonicalFenceJson, fencesForPath } from "./platform/fence.js";
 import { recoverPendingOps } from "./platform/journal.js";
 import type {
+	AllocationStorePort,
 	AssignmentStorePort,
+	DispatchStorePort,
+	FenceStorePort,
 	OpJournalPort,
 	PlatformWriteLockPort,
 	ProjectStorePort,
@@ -34,15 +52,22 @@ import type {
 } from "./platform/ports.js";
 import { createProject, setProject } from "./platform/project.js";
 import { buildSpineEvent } from "./platform/spine.js";
+import { isoTimestamp } from "./platform/time.js";
 import {
 	type ActorProvenance,
+	type Allocation,
 	type Assignment,
+	type Dispatch,
+	type Fence,
 	generalAssignmentId,
+	SPINE_KIND_DISPATCH,
+	SPINE_KIND_FENCE,
 	SPINE_KIND_NODE_LINKED,
 	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	SPINE_KIND_TASK_SET,
+	type SpineEventDraft,
 } from "./platform/types.js";
 import type {
 	DeliveryPort,
@@ -55,6 +80,12 @@ import type {
 import { daemonTickStatus } from "./receipts.js";
 import { buildExportLines, buildSessionJoinRows } from "./session-join.js";
 import { activityOf, badgeOf, liveness, STALE_AFTER_MS } from "./state.js";
+import {
+	closeStream,
+	createStream,
+	type StreamCommitPort,
+	type StreamWorktreePort,
+} from "./stream.js";
 import { effectiveParent, isUnadopted, planLink, projectSessionForest } from "./tree.js";
 import {
 	err,
@@ -125,6 +156,27 @@ export interface CliDeps {
 	 *  The bin wires all three; the project/spine family verbs require them. */
 	readonly projectStore?: ProjectStorePort;
 	readonly assignmentStore?: AssignmentStorePort;
+	readonly allocationStore?: AllocationStorePort;
+	readonly fenceStore?: FenceStorePort;
+	readonly dispatchStore?: DispatchStorePort;
+	/** Node-owned packet identity read. The bin resolves the path and hashes the
+	 * current file bytes; tests inject deterministic identities. */
+	readonly packetIdentity?: (
+		path: string,
+	) => Result<{ readonly path: string; readonly sha256: string }>;
+	/** Preallocate a durable dispatch id before peer delivery so the packet
+	 * header can carry a runnable ack command. */
+	readonly nextDispatchId?: () => string;
+	/** Canary packets live below the caller descriptor's dataDir, not in a new
+	 * registry/store namespace. All target/self preconditions run before this. */
+	readonly writeCanaryPacket?: (input: {
+		readonly caller: SessionDescriptor;
+		readonly dispatchId: string;
+		readonly body: string;
+	}) => Result<{ readonly path: string; readonly sha256: string }>;
+	readonly nextCanaryNonce?: () => string;
+	readonly worktrees?: StreamWorktreePort;
+	readonly worktreeRoot?: string;
 	readonly spineLog?: SpineLogPort;
 	/** Write-ahead op journal for the journal-FIRST coupled write (HIGH-2);
 	 *  the platform WRITE verbs require it wired (the bin always wires it). */
@@ -249,6 +301,62 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| {
+			readonly verb: "stream-create";
+			readonly project: string;
+			readonly slug: string;
+			readonly baseRef?: string;
+			readonly ordinal?: number;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "stream-close";
+			readonly id: string;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "fence-set";
+			readonly stream: string;
+			readonly touchSet: readonly string[];
+			readonly shared: readonly string[];
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "fence-show";
+			readonly path?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "dispatch-packet";
+			readonly to: SessionId;
+			readonly packetPath: string;
+			/** Internal preallocation used by canary so its packet path and
+			 * standard dispatch header share one id. Never parsed from argv. */
+			readonly dispatchId?: string;
+			/** Internal canary writer hash. The dispatch reread must match this
+			 * at the commitment point before any record or delivery write. */
+			readonly expectedPacketSha256?: string;
+			readonly wait: boolean;
+			readonly waitMs?: number;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "ack-dispatch";
+			readonly dispatchId: string;
+			readonly packetSha256: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "canary";
+			readonly to: SessionId;
+			readonly expectedModel?: string;
+			readonly waitMs?: number;
+			readonly json: boolean;
+	  }
+	| {
 			readonly verb: "spine-append";
 			readonly kind: string;
 			readonly refs: readonly string[];
@@ -316,6 +424,20 @@ export interface CliResult {
 	/** Set when the bin must keep going: --follow tails, --wait polls receipts. */
 	readonly follow?:
 		| { readonly kind: "tail"; readonly id: SessionId; readonly nextSince: number }
+		| {
+				readonly kind: "dispatch-wait";
+				readonly dispatchId: string;
+				readonly timeoutMs?: number;
+				readonly exitCode: number;
+		  }
+		| {
+				readonly kind: "canary-wait";
+				readonly dispatchId: string;
+				readonly nonce: string;
+				readonly expectedModel?: string;
+				readonly timeoutMs?: number;
+				readonly json: boolean;
+		  }
 		| {
 				readonly kind: "wait";
 				readonly self: SessionId;
@@ -399,6 +521,10 @@ export function renderWaitReceipt(
 export function renderWaitTimeout(pending: readonly WaitTarget[], broadcast: boolean): string {
 	if (!broadcast) return "receipt → (timeout; check `pij tail` later)";
 	return `receipt → (timeout; unresolved: ${pending.map(({ to }) => to).join(", ")}; check \`pij tail\` later)`;
+}
+
+export function renderDispatchWaitTimeout(dispatchRecord: Dispatch): string {
+	return `dispatch ${dispatchRecord.id} state=${dispatchRecord.state} (timeout awaiting brief ack)`;
 }
 
 /** Workshop-001 exit codes. */
@@ -489,6 +615,8 @@ const REPEATABLE_FLAGS = new Set(["to", "activity", "liveness", "lifecycle"]);
  *  the exact-subcommand special case in parseArgs. */
 const FAMILY_SUBCOMMANDS: Record<string, string> = {
 	project: "create|list|show|set",
+	stream: "create|close",
+	fence: "set|show",
 	spine: "append|events|render",
 	task: "set",
 	node: "show",
@@ -514,6 +642,9 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	sessions: new Set(["here", "json"]),
 	models: new Set(["harness", "json"]),
 	send: new Set(["to", "command", "file", "caption", "wait", "json"]),
+	dispatch: new Set(["packet", "wait", "actor", "json"]),
+	ack: new Set(["packet-sha", "json"]),
+	canary: new Set(["expect-model", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
@@ -525,6 +656,10 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	"project list": new Set(["json"]),
 	"project show": new Set(["json"]),
 	"project set": new Set(["plan", "prime", "actor", "json"]),
+	"stream create": new Set(["project", "slug", "base", "ordinal", "actor", "json"]),
+	"stream close": new Set(["actor", "json"]),
+	"fence set": new Set(["paths", "shared", "actor", "json"]),
+	"fence show": new Set(["path", "json"]),
 	"spine append": new Set(["kind", "refs", "peer", "project", "actor", "bare", "json"]),
 	"spine events": new Set(["since", "peer", "project", "json"]),
 	"spine render": new Set(["project", "json"]),
@@ -545,6 +680,9 @@ const MAX_POS: Record<string, number> = {
 	sessions: 0,
 	models: 1,
 	send: 2,
+	dispatch: 1,
+	ack: 1,
+	canary: 1,
 	tail: 1,
 	state: 1,
 	phonehome: 0,
@@ -555,6 +693,10 @@ const MAX_POS: Record<string, number> = {
 	"project list": 0,
 	"project show": 1,
 	"project set": 1,
+	"stream create": 0,
+	"stream close": 1,
+	"fence set": 1,
+	"fence show": 0,
 	"spine append": 0,
 	"spine events": 0,
 	"spine render": 0,
@@ -572,7 +714,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies> …",
+			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|stream|fence|spine|task|node|anomalies> …",
 		);
 	// Family verbs route "<verb> <subcommand>" into the same strict tables —
 	// no bin interception (Finding 06); everything downstream keys on `key`.
@@ -599,7 +741,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|stream|fence|spine|task|node|anomalies)`,
 		);
 	// Valence is per verb key (plan 054): the same flag can be boolean for one
 	// verb and valued for another; existing verbs see the unchanged global set.
@@ -720,6 +862,78 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				file,
 				caption,
 				wait: flags.wait !== undefined,
+				waitMs,
+				json,
+			});
+		}
+		case "dispatch": {
+			const to = pos[0];
+			if (to === undefined || to.trim() === "") {
+				return err("E-ARG", "usage: pij dispatch <id> --packet <file> [--wait]");
+			}
+			if (flags.packet === true || flags.packet === "") {
+				return err("E-ARG", "--packet needs a file path");
+			}
+			const packetPath = typeof flags.packet === "string" ? flags.packet : undefined;
+			if (packetPath === undefined) {
+				return err("E-ARG", "usage: pij dispatch <id> --packet <file> [--wait]");
+			}
+			let waitMs: number | undefined;
+			if (typeof flags.wait === "string") {
+				if (!/^\d+$/.test(flags.wait)) {
+					return err("E-ARG", "--wait takes an optional milliseconds value");
+				}
+				waitMs = Number(flags.wait);
+			}
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "dispatch-packet",
+				to,
+				packetPath,
+				wait: flags.wait !== undefined,
+				waitMs,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "ack": {
+			const dispatchId = pos[0];
+			if (dispatchId === undefined || dispatchId.trim() === "") {
+				return err("E-ARG", "usage: pij ack <dispatch-id> --packet-sha <sha256>");
+			}
+			if (flags["packet-sha"] === true || flags["packet-sha"] === "") {
+				return err("E-ARG", "--packet-sha needs a sha256 value");
+			}
+			const packetSha256 =
+				typeof flags["packet-sha"] === "string" ? flags["packet-sha"] : undefined;
+			if (packetSha256 === undefined) {
+				return err("E-ARG", "usage: pij ack <dispatch-id> --packet-sha <sha256>");
+			}
+			if (!/^[a-f0-9]{64}$/.test(packetSha256)) {
+				return err("E-ARG", "--packet-sha needs a lowercase 64-character sha256 value");
+			}
+			return ok({ verb: "ack-dispatch", dispatchId, packetSha256, json });
+		}
+		case "canary": {
+			const to = pos[0];
+			if (to === undefined || to.trim() === "") {
+				return err("E-ARG", "usage: pij canary <id> [--expect-model <model>] [--wait[=MS]]");
+			}
+			if (flags["expect-model"] === true || flags["expect-model"] === "") {
+				return err("E-ARG", "--expect-model needs a model id");
+			}
+			let waitMs: number | undefined;
+			if (typeof flags.wait === "string") {
+				if (!/^\d+$/.test(flags.wait)) {
+					return err("E-ARG", "--wait takes an optional milliseconds value");
+				}
+				waitMs = Number(flags.wait);
+			}
+			return ok({
+				verb: "canary",
+				to,
+				expectedModel:
+					typeof flags["expect-model"] === "string" ? flags["expect-model"] : undefined,
 				waitMs,
 				json,
 			});
@@ -959,6 +1173,88 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				json,
 			});
 		}
+		case "stream create": {
+			if (flags.project === true || flags.project === "")
+				return err("E-ARG", "--project needs a project slug");
+			if (flags.slug === true || flags.slug === "")
+				return err("E-ARG", "--slug needs a stream slug");
+			const project = typeof flags.project === "string" ? flags.project : undefined;
+			const slug = typeof flags.slug === "string" ? flags.slug : undefined;
+			if (project === undefined || slug === undefined) {
+				return err(
+					"E-ARG",
+					"usage: pij stream create --project <slug> --slug <stream> [--base <ref>] [--ordinal N]",
+				);
+			}
+			if (flags.base === true || flags.base === "") return err("E-ARG", "--base needs a git ref");
+			const ordinal = pnum(flags.ordinal);
+			if (ordinal === "bad" || ordinal === 0)
+				return err("E-ARG", "--ordinal needs a positive integer");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "stream-create",
+				project,
+				slug,
+				baseRef: typeof flags.base === "string" ? flags.base : undefined,
+				ordinal,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "stream close": {
+			const id = pos[0];
+			if (id === undefined) return err("E-ARG", "usage: pij stream close <allocation-id>");
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "stream-close",
+				id,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "fence set": {
+			const stream = pos[0];
+			if (stream === undefined)
+				return err("E-ARG", "usage: pij fence set <stream> --paths <a,b> [--shared <x,y>]");
+			if (flags.paths === true || flags.paths === "") {
+				return err("E-ARG", "--paths needs a comma-separated touch set");
+			}
+			if (flags.shared === true) {
+				return err("E-ARG", "--shared needs a comma-separated path list");
+			}
+			const touchSet =
+				typeof flags.paths === "string"
+					? flags.paths
+							.split(",")
+							.map((path) => path.trim())
+							.filter((path) => path !== "")
+					: [];
+			if (touchSet.length === 0) return err("E-ARG", "fence set requires --paths <a,b>");
+			const shared =
+				typeof flags.shared === "string"
+					? flags.shared
+							.split(",")
+							.map((path) => path.trim())
+							.filter((path) => path !== "")
+					: [];
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "fence-set",
+				stream,
+				touchSet,
+				shared,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "fence show": {
+			if (flags.path === true || flags.path === "") return err("E-ARG", "--path needs a repo path");
+			return ok({
+				verb: "fence-show",
+				path: typeof flags.path === "string" ? flags.path : undefined,
+				json,
+			});
+		}
 		case "task set": {
 			const node = pos[0];
 			const task = pos[1];
@@ -1113,7 +1409,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		default:
 			return err(
 				"E-ARG",
-				`unknown command '${verb}' (whoami|list|sessions|models|send|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies)`,
+				`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies)`,
 			);
 	}
 }
@@ -1246,28 +1542,55 @@ function platformPorts(deps: CliDeps): Result<{
  *  start-of-verb recovery) and the machine-wide platform write lock (review
  *  002 G2/G3). READ verbs stay on platformPorts — no journal, no lock, no
  *  recovery. */
-function platformWritePorts(deps: CliDeps): Result<{
+interface PlatformWritePorts {
 	readonly projectStore: ProjectStorePort;
 	readonly assignmentStore: AssignmentStorePort;
+	readonly allocationStore: AllocationStorePort;
+	readonly fenceStore: FenceStorePort;
+	readonly dispatchStore: DispatchStorePort;
 	readonly spineLog: SpineLogPort;
 	readonly opJournal: OpJournalPort;
 	readonly platformWriteLock: PlatformWriteLockPort;
-}> {
+}
+
+function platformWritePorts(deps: CliDeps): Result<PlatformWritePorts> {
 	const ports = platformPorts(deps);
 	if (!ports.ok) return ports;
 	const { projectStore, spineLog, opJournal } = ports.value;
 	// The assignment store joined the WRITE-port set in plan 054 P2 (T005):
 	// recovery adjudicates assignment coupled ops against it, so every WRITE
 	// verb needs it wired even before the assignment verbs run.
-	if (!opJournal || !deps.platformWriteLock || !deps.assignmentStore)
+	if (
+		!opJournal ||
+		!deps.platformWriteLock ||
+		!deps.assignmentStore ||
+		!deps.allocationStore ||
+		!deps.fenceStore ||
+		!deps.dispatchStore
+	)
 		return err("E-NOREG", "project/spine stores are not wired — update the pij bin");
 	return ok({
 		projectStore,
 		assignmentStore: deps.assignmentStore,
+		allocationStore: deps.allocationStore,
+		fenceStore: deps.fenceStore,
+		dispatchStore: deps.dispatchStore,
 		spineLog,
 		opJournal,
 		platformWriteLock: deps.platformWriteLock,
 	});
+}
+
+function recoverPlatformWrites(ports: PlatformWritePorts): Result<unknown> {
+	return recoverPendingOps(
+		ports.opJournal,
+		ports.spineLog,
+		ports.projectStore,
+		ports.assignmentStore,
+		ports.allocationStore,
+		ports.fenceStore,
+		ports.dispatchStore,
+	);
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────
@@ -1717,12 +2040,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				// shape): descriptor truth already landed and never waits on the
 				// spine; a failed append is surfaced, never forged past.
 				const locked = ports.platformWriteLock.withPlatformWriteLock((): Result<number> => {
-					const recovered = recoverPendingOps(
-						ports.opJournal,
-						ports.spineLog,
-						ports.projectStore,
-						ports.assignmentStore,
-					);
+					const recovered = recoverPlatformWrites(ports);
 					if (!recovered.ok) return recovered;
 					const draft = buildSpineEvent({
 						nowMs: now,
@@ -2082,6 +2400,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "project-list":
 		case "project-show":
 		case "project-set":
+		case "stream-create":
+		case "stream-close":
+		case "fence-set":
+		case "fence-show":
+		case "dispatch-packet":
+		case "ack-dispatch":
+		case "canary":
 		case "spine-append":
 		case "spine-events":
 		case "spine-render":
@@ -2118,6 +2443,71 @@ function withResidualDiagnostic(primary: string, cleared: Result<void>): string 
 	return `${primary} (journal cleanup also failed: ${cleared.message} — a residual intent entry remains for the next platform write's recovery)`;
 }
 
+function coupledRecordCommit(
+	ports: PlatformWritePorts,
+	event: SpineEventDraft,
+	label: string,
+	writeRecord: () => Result<void>,
+): Result<void> {
+	const locked = ports.platformWriteLock.withPlatformWriteLock((): Result<void> => {
+		const recovered = recoverPlatformWrites(ports);
+		if (!recovered.ok) return recovered;
+		const recorded = ports.opJournal.record(event);
+		if (!recorded.ok) return recorded;
+		const opId = recorded.value;
+		const written = writeRecord();
+		if (!written.ok) {
+			return err(
+				written.code,
+				withResidualDiagnostic(written.message, ports.opJournal.clear(opId)),
+			);
+		}
+		const marked = ports.opJournal.markCommitted(opId);
+		if (!marked.ok) {
+			return err(
+				marked.code,
+				`${label} WAS committed, but its committed marker could not be persisted (${marked.message}); the intent remains journaled and the next platform write will adjudicate the landed record before replay`,
+			);
+		}
+		const appended = ports.spineLog.appendOnce(opId, event);
+		if (!appended.ok) {
+			return err(
+				appended.code,
+				`${label} WAS committed, but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+			);
+		}
+		const cleared = ports.opJournal.clear(opId);
+		if (!cleared.ok) {
+			return err(
+				cleared.code,
+				`${label} WAS committed and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+			);
+		}
+		return ok(undefined);
+	});
+	return locked.ok ? locked.value : locked;
+}
+
+function allocationCommitPort(ports: PlatformWritePorts): StreamCommitPort {
+	return {
+		commitAllocation(previous, next, event): Result<void> {
+			return coupledRecordCommit(ports, event, `allocation '${next.id}'`, () => {
+				const current = ports.allocationStore.read(previous.id);
+				if (
+					current === null ||
+					canonicalAllocationJson(current) !== canonicalAllocationJson(previous)
+				) {
+					return err(
+						"E-NOREG",
+						`allocation '${previous.id}' changed during stream transaction — retry`,
+					);
+				}
+				return ports.allocationStore.write(next);
+			});
+		},
+	};
+}
+
 type PlatformCommand = Extract<
 	ParsedCommand,
 	{
@@ -2126,6 +2516,13 @@ type PlatformCommand = Extract<
 			| "project-list"
 			| "project-show"
 			| "project-set"
+			| "stream-create"
+			| "stream-close"
+			| "fence-set"
+			| "fence-show"
+			| "dispatch-packet"
+			| "ack-dispatch"
+			| "canary"
 			| "spine-append"
 			| "spine-events"
 			| "spine-render"
@@ -2213,12 +2610,637 @@ function resolveTargetAssignment(
 	return ok({ id: generalId, existing: assignmentStore.read(generalId) ?? undefined });
 }
 
+function resolveStreamAllocation(store: AllocationStorePort, stream: string): Result<Allocation> {
+	const matches = store
+		.list()
+		.filter((allocation) => allocation.id === stream || allocation.slug === stream);
+	if (matches.length === 0) return err("E-NOREG", `no allocation or stream '${stream}'`);
+	if (matches.length > 1) {
+		return err(
+			"E-AMBIG",
+			`stream '${stream}' matches multiple allocations: ${matches.map((item) => item.id).join(", ")}`,
+		);
+	}
+	return ok(matches[0] as Allocation);
+}
+
+function readPacketIdentity(
+	deps: CliDeps,
+	path: string,
+): Result<{ readonly path: string; readonly sha256: string }> {
+	if (!deps.packetIdentity) {
+		return err("E-NOREG", "packet identity reader is not wired — update the pij bin");
+	}
+	const identity = deps.packetIdentity(path);
+	if (!identity.ok) return identity;
+	if (identity.value.path.trim() === "" || !/^[a-f0-9]{64}$/.test(identity.value.sha256)) {
+		return err("E-NOREG", `packet identity reader returned invalid metadata for '${path}'`);
+	}
+	return identity;
+}
+
+function dispatchPacketBody(dispatchId: string, packetPath: string, packetSha256: string): string {
+	return [
+		`[pij dispatch ${dispatchId}]`,
+		`packet: ${packetPath}`,
+		`sha256: ${packetSha256}`,
+		"ACKNOWLEDGE FIRST after reading the packet:",
+		`pij ack ${dispatchId} --packet-sha ${packetSha256}`,
+	].join("\n");
+}
+
+function renderDispatchRecord(dispatchRecord: Dispatch): string {
+	return [
+		`dispatch ${dispatchRecord.id} state=${dispatchRecord.state}`,
+		`packet ${dispatchRecord.packetPath} sha256=${dispatchRecord.packetSha256}`,
+		...(dispatchRecord.messageId ? [`message ${dispatchRecord.messageId}`] : []),
+		...(dispatchRecord.deliveryState ? [`delivery ${dispatchRecord.deliveryState}`] : []),
+	].join("\n");
+}
+
+function failCanary(code: CanaryErrorCode, message: string, json: boolean): CliResult {
+	return {
+		stdout: "",
+		stderr: json ? JSON.stringify({ error: code, message }) : `${code}: ${message}`,
+		exitCode: 3,
+	};
+}
+
+export interface FinalizeCanaryInput {
+	readonly dispatchId: string;
+	readonly nonce: string;
+	readonly expectedModel?: string;
+	readonly json: boolean;
+}
+
+/** Pass-time canary commit. Transport truth already lives on the acknowledged
+ * dispatch; identity/model refusals return before any CanaryRecord write. */
+export function finalizeCanary(input: FinalizeCanaryInput, deps: CliDeps): CliResult {
+	try {
+		const ports = platformWritePorts(deps);
+		if (!ports.ok) return fail(ports.code, ports.message, input.json);
+		const previous = ports.value.dispatchStore.read(input.dispatchId);
+		if (previous === null) {
+			return fail("E-NOREG", `no dispatch '${input.dispatchId}'`, input.json);
+		}
+		if (previous.state !== "acked" || previous.ack === undefined) {
+			return failCanary(
+				"E-CANARY-IDENTITY",
+				`dispatch '${previous.id}' has no durable brief ack to evaluate`,
+				input.json,
+			);
+		}
+		if (previous.canary !== undefined) {
+			if (
+				previous.canary.nonce !== input.nonce ||
+				previous.canary.expectedModel !== input.expectedModel
+			) {
+				return failCanary(
+					"E-CANARY-IDENTITY",
+					`dispatch '${previous.id}' already carries a different canary verdict`,
+					input.json,
+				);
+			}
+			return okOut(input.json ? JSON.stringify(previous) : renderCanaryPass(previous.canary));
+		}
+		const descriptor = deps.registry.read(previous.to);
+		if (!descriptor) {
+			return failCanary(
+				"E-CANARY-IDENTITY",
+				`target descriptor '${previous.to}' vanished after acknowledgement`,
+				input.json,
+			);
+		}
+		const attribution = resolveActor(undefined, deps);
+		if (!attribution.ok) return fail(attribution.code, attribution.message, input.json);
+		const evaluated = evaluateCanary({
+			dispatch: previous,
+			descriptor,
+			nonce: input.nonce,
+			expectedModel: input.expectedModel,
+			actor: attribution.value.actor,
+			nowMs: deps.process.now(),
+		});
+		if (!evaluated.ok) return failCanary(evaluated.code, evaluated.message, input.json);
+		const next: Dispatch = { ...previous, canary: evaluated.value };
+		const event = buildSpineEvent({
+			nowMs: deps.process.now(),
+			actor: attribution.value.actor,
+			kind: SPINE_KIND_DISPATCH,
+			refs: [
+				`dispatch:${previous.id}`,
+				`message:${previous.messageId}`,
+				`nonce:${input.nonce}`,
+				"canary:pass",
+			],
+			peer: previous.to,
+			prev: canonicalDispatchJson(previous),
+			next: canonicalDispatchJson(next),
+			actorProvenance: attribution.value.provenance,
+		});
+		if (!event.ok) return fail(event.code, event.message, input.json);
+		const committed = coupledRecordCommit(
+			ports.value,
+			event.value,
+			`dispatch '${previous.id}' canary`,
+			() => {
+				const current = ports.value.dispatchStore.read(previous.id);
+				if (
+					current === null ||
+					canonicalDispatchJson(current) !== canonicalDispatchJson(previous)
+				) {
+					return err("E-NOREG", `dispatch '${previous.id}' changed during canary — retry`);
+				}
+				return ports.value.dispatchStore.write(next);
+			},
+		);
+		if (!committed.ok) return fail(committed.code, committed.message, input.json);
+		const current = ports.value.dispatchStore.read(previous.id);
+		if (current?.canary === undefined) {
+			return fail("E-NOREG", `dispatch '${previous.id}' canary did not persist`, input.json);
+		}
+		return okOut(input.json ? JSON.stringify(current) : renderCanaryPass(current.canary));
+	} catch (error) {
+		return fail("E-NOREG", `internal error in canary: ${String(error)}`, input.json);
+	}
+}
+
 function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): CliResult {
 	switch (cmd.verb) {
+		case "canary": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const self = selfId(deps);
+			if (!self.ok) return fail(self.code, self.message, cmd.json);
+			const attribution = resolveActor(undefined, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const preflight = preflightSendTargets([cmd.to], self.value, deps, now);
+			if (!preflight.ok) return fail(preflight.code, preflight.message, cmd.json);
+			const caller = deps.registry.read(self.value);
+			if (!caller) return fail("E-NOID", `no session '${self.value}' in registry`, cmd.json);
+			if (!deps.nextDispatchId) {
+				return fail("E-NOREG", "dispatch id allocator is not wired — update the pij bin", cmd.json);
+			}
+			if (!deps.nextCanaryNonce || !deps.writeCanaryPacket) {
+				return fail("E-NOREG", "canary packet writer is not wired — update the pij bin", cmd.json);
+			}
+			const dispatchId = deps.nextDispatchId();
+			const nonce = deps.nextCanaryNonce();
+			if (dispatchId.trim() === "" || nonce.trim() === "") {
+				return fail("E-NOREG", "canary id allocator returned an empty value", cmd.json);
+			}
+			const packet = deps.writeCanaryPacket({
+				caller,
+				dispatchId,
+				body: buildCanaryPacket({ nonce, from: self.value, to: cmd.to }),
+			});
+			if (!packet.ok) return fail(packet.code, packet.message, cmd.json);
+			if (packet.value.path.trim() === "" || !/^[a-f0-9]{64}$/.test(packet.value.sha256)) {
+				return fail("E-NOREG", "canary packet writer returned invalid metadata", cmd.json);
+			}
+			const sent = dispatchPlatform(
+				{
+					verb: "dispatch-packet",
+					to: cmd.to,
+					packetPath: packet.value.path,
+					dispatchId,
+					expectedPacketSha256: packet.value.sha256,
+					wait: true,
+					waitMs: cmd.waitMs,
+					json: cmd.json,
+				},
+				deps,
+				now,
+			);
+			if (sent.exitCode !== 0 || sent.follow?.kind !== "dispatch-wait") return sent;
+			return {
+				...sent,
+				follow: {
+					kind: "canary-wait",
+					dispatchId,
+					nonce,
+					expectedModel: cmd.expectedModel,
+					timeoutMs: cmd.waitMs,
+					json: cmd.json,
+				},
+			};
+		}
+		case "dispatch-packet": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const self = selfId(deps);
+			if (!self.ok) return fail(self.code, self.message, cmd.json);
+			const attribution = resolveActor(cmd.actor, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const preflight = preflightSendTargets([cmd.to], self.value, deps, now);
+			if (!preflight.ok) return fail(preflight.code, preflight.message, cmd.json);
+			const target = preflight.value[0];
+			if (!target) return fail("E-NOID", `no session '${cmd.to}' in registry`, cmd.json);
+			const packet = readPacketIdentity(deps, cmd.packetPath);
+			if (!packet.ok) return fail(packet.code, packet.message, cmd.json);
+			if (
+				cmd.expectedPacketSha256 !== undefined &&
+				packet.value.sha256 !== cmd.expectedPacketSha256
+			) {
+				return failCanary(
+					CANARY_PACKET_ERROR,
+					`canary packet sha changed before dispatch commitment (writer ${cmd.expectedPacketSha256}, reread ${packet.value.sha256})`,
+					cmd.json,
+				);
+			}
+			if (!deps.nextDispatchId) {
+				return fail("E-NOREG", "dispatch id allocator is not wired — update the pij bin", cmd.json);
+			}
+			const dispatchId = cmd.dispatchId ?? deps.nextDispatchId();
+			const ts = isoTimestamp(now);
+			if (!ts.ok) return fail(ts.code, ts.message, cmd.json);
+			const initial: Dispatch = {
+				schema_version: 1,
+				id: dispatchId,
+				packetPath: packet.value.path,
+				packetSha256: packet.value.sha256,
+				from: self.value,
+				to: cmd.to,
+				state: "undelivered",
+				created: { actor: attribution.value.actor, ts: ts.value },
+				updated: { actor: attribution.value.actor, ts: ts.value },
+			};
+			const createdEvent = buildSpineEvent({
+				nowMs: now,
+				actor: attribution.value.actor,
+				kind: SPINE_KIND_DISPATCH,
+				refs: [`dispatch:${initial.id}`, `packet:${initial.packetSha256}`],
+				peer: initial.to,
+				next: canonicalDispatchJson(initial),
+				actorProvenance: attribution.value.provenance,
+			});
+			if (!createdEvent.ok) return fail(createdEvent.code, createdEvent.message, cmd.json);
+			const created = coupledRecordCommit(
+				ports.value,
+				createdEvent.value,
+				`dispatch '${initial.id}'`,
+				() => {
+					if (ports.value.dispatchStore.read(initial.id) !== null) {
+						return err("E-NOREG", `dispatch '${initial.id}' already exists — retry`);
+					}
+					return ports.value.dispatchStore.write(initial);
+				},
+			);
+			if (!created.ok) return fail(created.code, created.message, cmd.json);
+
+			// Peer I/O deliberately sits between the two record commits, outside
+			// the platform lock. The first record preserves an honest undelivered
+			// artifact if channel delivery fails.
+			const delivered = deps.delivery.deliver({
+				from: self.value,
+				to: cmd.to,
+				body: dispatchPacketBody(initial.id, initial.packetPath, initial.packetSha256),
+			});
+			if (!delivered.ok) {
+				return fail(
+					delivered.code,
+					`dispatch ${initial.id} state=undelivered: ${delivered.message}`,
+					cmd.json,
+				);
+			}
+			const success = sendSuccess(target, delivered.value.messageId, "packet", now);
+			const next = markDispatchDelivered(initial, {
+				messageId: delivered.value.messageId,
+				deliveryState: success.receipt,
+				updated: { actor: attribution.value.actor, ts: ts.value },
+			});
+			const deliveredEvent = buildSpineEvent({
+				nowMs: now,
+				actor: attribution.value.actor,
+				kind: SPINE_KIND_DISPATCH,
+				refs: [
+					`dispatch:${next.id}`,
+					`packet:${next.packetSha256}`,
+					`message:${delivered.value.messageId}`,
+				],
+				peer: next.to,
+				prev: canonicalDispatchJson(initial),
+				next: canonicalDispatchJson(next),
+				actorProvenance: attribution.value.provenance,
+			});
+			if (!deliveredEvent.ok) return fail(deliveredEvent.code, deliveredEvent.message, cmd.json);
+			const committed = coupledRecordCommit(
+				ports.value,
+				deliveredEvent.value,
+				`dispatch '${next.id}'`,
+				() => {
+					const current = ports.value.dispatchStore.read(initial.id);
+					if (
+						current === null ||
+						canonicalDispatchJson(current) !== canonicalDispatchJson(initial)
+					) {
+						return err("E-NOREG", `dispatch '${initial.id}' changed during delivery — retry`);
+					}
+					return ports.value.dispatchStore.write(next);
+				},
+			);
+			if (!committed.ok) return fail(committed.code, committed.message, cmd.json);
+			const follow = cmd.wait
+				? ({
+						kind: "dispatch-wait",
+						dispatchId: next.id,
+						timeoutMs: cmd.waitMs,
+						exitCode: 0,
+					} as const)
+				: undefined;
+			return {
+				stdout: cmd.json ? JSON.stringify(next) : renderDispatchRecord(next),
+				stderr: "",
+				exitCode: 0,
+				follow,
+			};
+		}
+		case "ack-dispatch": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const previous = ports.value.dispatchStore.read(cmd.dispatchId);
+			if (previous === null) {
+				return fail("E-NOREG", `no dispatch '${cmd.dispatchId}'`, cmd.json);
+			}
+			if (previous.state === "undelivered" || !previous.messageId) {
+				return fail("E-ARG", `dispatch '${cmd.dispatchId}' has not been delivered`, cmd.json);
+			}
+			const packet = readPacketIdentity(deps, previous.packetPath);
+			if (!packet.ok) return fail(packet.code, packet.message, cmd.json);
+			if (
+				cmd.packetSha256 !== previous.packetSha256 ||
+				packet.value.sha256 !== previous.packetSha256
+			) {
+				return fail(
+					"E-ARG",
+					`packet sha mismatch for dispatch '${cmd.dispatchId}' (expected ${previous.packetSha256}, file is ${packet.value.sha256}, supplied ${cmd.packetSha256})`,
+					cmd.json,
+				);
+			}
+			const self = selfId(deps);
+			if (!self.ok) return fail(self.code, self.message, cmd.json);
+			if (self.value !== previous.to) {
+				return fail(
+					"E-OWN",
+					`dispatch '${cmd.dispatchId}' belongs to seat '${previous.to}', not '${self.value}'`,
+					cmd.json,
+				);
+			}
+			const attribution = resolveActor(undefined, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const descriptor = deps.registry.read(self.value);
+			if (!descriptor) return fail("E-NOID", `no session '${self.value}' in registry`, cmd.json);
+			const ts = isoTimestamp(now);
+			if (!ts.ok) return fail(ts.code, ts.message, cmd.json);
+			const ack: BriefAckReceipt = {
+				schema_version: 1,
+				kind: "brief-ack",
+				messageId: previous.messageId,
+				packetId: previous.id,
+				packetSha256: previous.packetSha256,
+				declaredRuntime: {
+					model: descriptor.boundModel ?? "default",
+					effort: descriptor.effort ?? "default",
+					source: "self-report",
+				},
+				seat: self.value,
+				ts: ts.value,
+			};
+			if (previous.state !== "acked") {
+				const acknowledged = acknowledgeDispatch(previous, ack);
+				if (!acknowledged.ok) {
+					return fail(acknowledged.code, acknowledged.message, cmd.json);
+				}
+				const event = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_DISPATCH,
+					refs: [
+						`dispatch:${previous.id}`,
+						`packet:${previous.packetSha256}`,
+						`message:${previous.messageId}`,
+					],
+					peer: previous.to,
+					prev: canonicalDispatchJson(previous),
+					next: canonicalDispatchJson(acknowledged.value),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!event.ok) return fail(event.code, event.message, cmd.json);
+				const committed = coupledRecordCommit(
+					ports.value,
+					event.value,
+					`dispatch '${previous.id}' acknowledgement`,
+					() => {
+						const current = ports.value.dispatchStore.read(previous.id);
+						if (
+							current === null ||
+							canonicalDispatchJson(current) !== canonicalDispatchJson(previous)
+						) {
+							return err(
+								"E-NOREG",
+								`dispatch '${previous.id}' changed during acknowledgement — retry`,
+							);
+						}
+						return ports.value.dispatchStore.write(acknowledged.value);
+					},
+				);
+				if (!committed.ok) return fail(committed.code, committed.message, cmd.json);
+			}
+			const current = ports.value.dispatchStore.read(previous.id);
+			if (current === null || current.state !== "acked" || !current.ack) {
+				return fail(
+					"E-NOREG",
+					`dispatch '${previous.id}' acknowledgement did not persist`,
+					cmd.json,
+				);
+			}
+			const receipt = deps.delivery.deliver({
+				from: self.value,
+				to: current.from,
+				body: briefAckBody(current.ack),
+				kind: "receipt",
+			});
+			if (!receipt.ok) {
+				return fail(
+					receipt.code,
+					`dispatch ${current.id} state=acked, but brief-ack envelope delivery failed: ${receipt.message}`,
+					cmd.json,
+				);
+			}
+			return okOut(cmd.json ? JSON.stringify(current) : renderDispatchRecord(current));
+		}
+		case "stream-create": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			if (!deps.worktrees) {
+				return fail("E-NOREG", "worktree adapter is not wired — update the pij bin", cmd.json);
+			}
+			if (ports.value.projectStore.read(cmd.project) === null) {
+				return fail("E-NOREG", `no project '${cmd.project}' — create it first`, cmd.json);
+			}
+			const attribution = resolveActor(cmd.actor, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const created = createStream(
+				{
+					project: cmd.project,
+					slug: cmd.slug,
+					baseRef: cmd.baseRef,
+					ordinal: cmd.ordinal,
+					actor: attribution.value.actor,
+					actorProvenance: attribution.value.provenance,
+					nowMs: now,
+					repoRoot: deps.cwd,
+					worktreeRoot: deps.worktreeRoot,
+				},
+				{
+					allocations: ports.value.allocationStore,
+					worktrees: deps.worktrees,
+					commit: allocationCommitPort(ports.value),
+				},
+			);
+			if (!created.ok) return fail(created.code, created.message, cmd.json);
+			if (cmd.json) return okOut(JSON.stringify(created.value));
+			return okOut(
+				[
+					`allocation ${created.value.id} created`,
+					`worktree ${created.value.worktree}`,
+					`branch ${created.value.branch}`,
+					`base ${created.value.baseSha}`,
+				].join("\n"),
+			);
+		}
+		case "stream-close": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			if (!deps.worktrees) {
+				return fail("E-NOREG", "worktree adapter is not wired — update the pij bin", cmd.json);
+			}
+			const attribution = resolveActor(cmd.actor, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const closed = closeStream(
+				{
+					id: cmd.id,
+					actor: attribution.value.actor,
+					actorProvenance: attribution.value.provenance,
+					nowMs: now,
+					repoRoot: deps.cwd,
+				},
+				{
+					allocations: ports.value.allocationStore,
+					worktrees: deps.worktrees,
+					commit: allocationCommitPort(ports.value),
+				},
+			);
+			if (!closed.ok) return fail(closed.code, closed.message, cmd.json);
+			if (cmd.json) return okOut(JSON.stringify(closed.value));
+			return okOut(
+				[
+					`allocation ${closed.value.id} closed`,
+					`worktree ${closed.value.worktree} preserved/removed safely`,
+					`ordinal ${closed.value.ordinal} remains reserved`,
+				].join("\n"),
+			);
+		}
+		case "fence-set": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const attribution = resolveActor(cmd.actor, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const allocation = resolveStreamAllocation(ports.value.allocationStore, cmd.stream);
+			if (!allocation.ok) return fail(allocation.code, allocation.message, cmd.json);
+			const ts = isoTimestamp(now);
+			if (!ts.ok) return fail(ts.code, ts.message, cmd.json);
+			const id = `fence-${allocation.value.id}`;
+			const previous = ports.value.fenceStore.read(id);
+			const next: Fence = {
+				...(previous ?? {}),
+				schema_version: 1,
+				id,
+				allocation: allocation.value.id,
+				touchSet: cmd.touchSet,
+				shared: cmd.shared,
+				class: "notify-only",
+				updated: { actor: attribution.value.actor, ts: ts.value },
+			};
+			const event = buildSpineEvent({
+				nowMs: now,
+				actor: attribution.value.actor,
+				kind: SPINE_KIND_FENCE,
+				refs: [
+					`project:${allocation.value.project}`,
+					`allocation:${allocation.value.id}`,
+					`fence:${id}`,
+					`stream:${allocation.value.slug}`,
+				],
+				project: allocation.value.project,
+				...(previous === null ? {} : { prev: canonicalFenceJson(previous) }),
+				next: canonicalFenceJson(next),
+				actorProvenance: attribution.value.provenance,
+			});
+			if (!event.ok) return fail(event.code, event.message, cmd.json);
+			const committed = coupledRecordCommit(ports.value, event.value, `fence '${id}'`, () => {
+				const current = ports.value.fenceStore.read(id);
+				if (
+					(previous === null && current !== null) ||
+					(previous !== null &&
+						(current === null || canonicalFenceJson(current) !== canonicalFenceJson(previous)))
+				) {
+					return err("E-NOREG", `fence '${id}' changed during update — retry`);
+				}
+				return ports.value.fenceStore.write(next);
+			});
+			if (!committed.ok) return fail(committed.code, committed.message, cmd.json);
+			const overlaps = ports.value.fenceStore
+				.list()
+				.filter(
+					(other) =>
+						other.id !== next.id &&
+						other.touchSet.some((pattern) => next.touchSet.includes(pattern)),
+				);
+			if (cmd.json) return okOut(JSON.stringify(next));
+			return okOut(
+				[
+					`fence ${next.id} set`,
+					`allocation ${next.allocation}`,
+					`paths ${next.touchSet.join(",")}`,
+					`shared ${next.shared.length === 0 ? "—" : next.shared.join(",")}`,
+					`overlap ${overlaps.length === 0 ? "none" : overlaps.map((item) => item.allocation).join(",")}`,
+				].join("\n"),
+			);
+		}
+		case "fence-show": {
+			if (!deps.fenceStore) {
+				return fail("E-NOREG", "fence store is not wired — update the pij bin", cmd.json);
+			}
+			const fences =
+				cmd.path === undefined
+					? deps.fenceStore.list()
+					: fencesForPath(deps.fenceStore.list(), cmd.path);
+			if (cmd.json) return okOut(JSON.stringify(fences));
+			if (cmd.path !== undefined && fences.length === 0) {
+				return okOut(`path ${cmd.path}: no declared owner`);
+			}
+			if (fences.length === 0) return okOut("no fences");
+			const heading =
+				cmd.path === undefined
+					? "fences"
+					: fences.length > 1
+						? `path ${cmd.path}: overlap (${fences.length} owners)`
+						: `path ${cmd.path}: owner`;
+			return okOut(
+				[
+					heading,
+					...fences.map(
+						(fence) =>
+							`${fence.allocation} ${fence.touchSet.join(",")} shared=${fence.shared.join(",") || "—"}`,
+					),
+				].join("\n"),
+			);
+		}
 		case "project-create": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const { projectStore, spineLog, opJournal, platformWriteLock } = ports.value;
 			// The WHOLE coupled write holds the machine-wide write lock (review
 			// 002 G2/G3): recovery's intent adjudication is sound only when no
 			// live writer can be mid-window concurrently.
@@ -2226,7 +3248,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				// Recovery gate (G2/G3): every surviving op is resolved before this
 				// verb mutates anything; an unresolvable predecessor is an honest
 				// recovery error, never something to write past.
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2335,11 +3357,11 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 		case "project-set": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const { projectStore, spineLog, opJournal, platformWriteLock } = ports.value;
 			// Whole coupled write under the write lock (review 002 G2/G3).
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
 				// Recovery gate (G2/G3) — see project-create.
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2410,14 +3432,14 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 		case "spine-append": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const { spineLog, platformWriteLock } = ports.value;
 			// Under the write lock like every platform WRITE verb (review 002
 			// G2/G3): the append itself is UNcoupled (no state write rides on it,
 			// so no journal entry of its own), but it must not causally overtake
 			// a pending predecessor, and its recovery pass needs the lock's
 			// exclusion to adjudicate intents soundly.
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2457,7 +3479,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				return fail("E-NOREG", `no project '${cmd.projectSlug}' — create it first`, cmd.json);
 			}
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2548,11 +3570,11 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 		case "state-set": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
 			const node = deps.registry.read(cmd.node);
 			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2647,11 +3669,11 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 		case "state-clear": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
 			const node = deps.registry.read(cmd.node);
 			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2745,11 +3767,11 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 		case "state-verify": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { projectStore, assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
 			const node = deps.registry.read(cmd.node);
 			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
-				const recovered = recoverPendingOps(opJournal, spineLog, projectStore, assignmentStore);
+				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
 				const attribution = resolveActor(cmd.actor, deps);
 				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
@@ -2935,10 +3957,14 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			// Detect over the FULL inputs (cross-descriptor invariants stay
 			// whole); --here/--project scope only the VIEW (s057 dogfood —
 			// repo primes drown in other repos' peers otherwise).
+			const assignments = deps.assignmentStore.list();
+			const allocations = deps.allocationStore?.list() ?? [];
 			let anomalies = detectAnomalies({
 				descriptors: deps.registry.list(),
-				assignments: deps.assignmentStore.list(),
+				assignments,
 				events: ports.value.spineLog.read(),
+				dispatches: deps.dispatchStore?.list() ?? [],
+				allocations,
 				nowMs: now,
 			});
 			if (cmd.here) {
@@ -2946,21 +3972,31 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				anomalies = anomalies.filter((a) => hereIds.has(a.nodeId));
 			}
 			if (cmd.project !== undefined) {
-				const byAssignment = new Map(deps.assignmentStore.list().map((r) => [r.id, r]));
-				anomalies = anomalies.filter(
-					(a) =>
-						a.assignmentId !== undefined &&
-						byAssignment.get(a.assignmentId)?.projectSlug === cmd.project,
-				);
+				const byAssignment = new Map(assignments.map((record) => [record.id, record]));
+				const byAllocation = new Map(allocations.map((record) => [record.id, record]));
+				anomalies = anomalies.filter((anomaly) => {
+					if (anomaly.assignmentId !== undefined) {
+						return byAssignment.get(anomaly.assignmentId)?.projectSlug === cmd.project;
+					}
+					const allocationId = anomaly.recordRef?.startsWith("allocation:")
+						? anomaly.recordRef.slice("allocation:".length)
+						: undefined;
+					return (
+						allocationId !== undefined && byAllocation.get(allocationId)?.project === cmd.project
+					);
+				});
 			}
 			if (cmd.json) return okOut(JSON.stringify(anomalies));
 			if (anomalies.length === 0) return okOut("no anomalies");
 			return okOut(
 				anomalies
-					.map(
-						(a) =>
-							`${pad(a.kind, 20)} ${pad(a.nodeId, 20)} ${a.detail} [spine ${a.evidence.join(",") || "—"}]`,
-					)
+					.map((a) => {
+						const evidence =
+							a.recordRef === undefined
+								? `spine ${a.evidence.join(",") || "—"}`
+								: `${a.recordRef}${a.ageMs === undefined ? "" : ` age=${a.ageMs}ms`}`;
+						return `${pad(a.kind, 26)} ${pad(a.nodeId, 20)} ${a.detail} [${evidence}]`;
+					})
 					.join("\n"),
 			);
 		}

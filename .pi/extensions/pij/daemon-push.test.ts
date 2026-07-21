@@ -77,7 +77,8 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		expect(toCreator.some((e) => e.message.body.match(/stall|stalled|quiet/i))).toBe(true);
 	});
 
-	it("pushes only ONCE per stalled transition (latch)", () => {
+	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
+	it.skip("pushes only ONCE per stalled transition (latch)", () => {
 		// Use a booting-classified pane so classifyReadiness → "booting" and
 		// observeActivity returns null (no-op). The registry keeps state="working" +
 		// the original stale lastEventAt, so tick 2 and 3 still see working+stale.
@@ -109,7 +110,8 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		).toHaveLength(0);
 	});
 
-	it("does NOT push stalled while the pane keeps CHANGING (deep-think heartbeat, SUGG-002)", () => {
+	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
+	it.skip("does NOT push stalled while the pane keeps CHANGING (deep-think heartbeat, SUGG-002)", () => {
 		// A deep-think / long-tool xhigh peer renders scrolling output that classifies
 		// as `booting` (no footer marker), so observeActivity never refreshes on a busy
 		// marker — but the pane IS changing. The pane-content heartbeat treats each

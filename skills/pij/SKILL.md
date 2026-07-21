@@ -27,7 +27,7 @@ description: Route pij platform jobs — adopt a seat and wait (/pij ready), spa
 | `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
 | `ops` | daemon health, registry & tmux hygiene | `references/routes/ops.md` |
-| `node` | declare/read node truth — projects, tasks, semantic states, adoption repair, anomaly queries | `references/routes/node.md` |
+| `node` | work durable project/stream/dispatch truth, node states, adoption repair, and anomaly queries | `references/routes/node.md` |
 | `prime` | govern many agents in one repo: one o-prime seat, stream orchestrators below, government as single-writer files | `references/routes/prime.md` |
 | `watch` | subscribe a non-pi peer to file-change notices — `pij watch`/`pij unwatch` (self-serve) | *(shipped, plan 033 — CLI verbs; see `docs/how/pij-peer-watch.md`; no route module)* |
 
@@ -45,7 +45,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C8 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
 | `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |
 | `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
-| `project` `spine` `task` (`set`) `state` (`set/verify`) `node` (`show`) `anomalies` | node route (platform governance surface, plan 054) |
+| `project` `stream` `fence` `dispatch` `ack` `canary` `spine` `task` (`set`) `state` (`set/verify`) `node` (`show`) `anomalies` | node route (platform governance + team-scaffold records) |
 
 `/pij prime` selects the skill route; `pij orchestration prime` invokes its CLI
 primitive. `baton` is the other orchestration subcommand.

@@ -6,8 +6,9 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 
 1. **Record the ruling.** Put the human's named work item in the spine rulings
    log, dated and as close to verbatim as possible.
-2. **Allocate.** Scan plan ordinals; reserve ordinal, folder, `s<ord>-<slug>`
-   window, branch, worktree path, approved base/SHA. Tombstones stay burned.
+2. **Allocate.** Scan plan ordinals, then run `pij stream create --project <p>
+   --slug <s> [--base <ref>] [--ordinal N]`. Its allocation record reserves
+   ordinal, branch, worktree path, and create-time base SHA; tombstones stay burned.
 3. **Derive descriptive fences from actions.** Enumerate expected paths, verify
    them on disk, name scratch space. Record separate-branch overlaps as merge
    risk (they never block spawn) and name the future convergence point.
@@ -16,9 +17,10 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 5. **Write the brief before spawning.** Instantiate the
    [`stream brief`](../templates/stream-brief.md) with ask, fences,
    worktree/branch/base, tree, prior art, cadence, and provisional status.
-6. **Construct before spawn.** New: `git worktree add -b <branch> <worktree>
-   <approved-base>`; resumed: `git worktree add <worktree> <branch>`. Verify base
-   SHA/branch. Shared-tree construction requires an explicit fallback ruling.
+6. **Construct before spawn.** Read back the `pij stream create` evidence and
+   allocation journal; it owns worktree creation/resume plus branch/base
+   verification (the verb replaces hand-running `git worktree add -b`).
+   Shared-tree construction still requires an explicit fallback ruling.
 7. **Spawn from the worktree.** `(cd <worktree> && pij spawn --harness <h>
    --model <m> --effort <e> --layout window)`. Peer descriptor/pane cwd comes
    from `process.cwd()`; there is no peer `--cwd`. Keep it out of the o-prime window.
@@ -26,11 +28,14 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 9. **Verify placement.** Inspect `pij list --here --json`, `git branch --show-current`,
    and the tmux panes; for spawned streams, verify the automatically persisted structural link with `pij tree <id> --json`;
    cwd, branch, parent, and window must match the brief.
-10. **Canary legs (a) and (b).** Complete canary leg (a) round-trip and leg (b) identity proof, then write the record with leg (c) pending.
+10. **Canary legs (a) and (b).** Run `pij canary <id> --expect-model <m>`;
+    Complete canary leg (a) round-trip and leg (b) identity proof, and record the
+    nonce-dispatch plus defensive runtime evidence at pass time. Leave leg (c) pending.
     Adopted streams then run `pij link <id> --parent <o-prime-id> --json`;
     verify the subtree, record the linked parent and `spawnedBy`/close ownership.
-11. **Deliver the brief by pointer as canary leg (c).** Its first instruction is
-    `/pij prime`; one send, no inline body. Require `brief-ack`, then close the canary record.
+11. **Deliver the brief by pointer as canary leg (c).** Run `pij dispatch <id>
+    --packet <brief> --wait`; its first instruction is `/pij prime`. The seat
+    runs the header's `pij ack <dispatch-id> --packet-sha <sha>` first; then close leg (c).
 12. **Sync the spine; keep the structure tree live.** Fill peer id, status
     `briefed`, and stamp. Every roster change pushes the updated tree to every
     live stream; every brief names o-prime and siblings with ids/windows.
@@ -53,6 +58,9 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
     levers), roster `ADOPTED`, provisional until the human preamble.
 
 ## Canary
+
+Mechanical command details and the manifest example live in
+[`../../../../../docs/how/pij-team-scaffold.md`](../../../../../docs/how/pij-team-scaffold.md).
 
 Write `government/canaries/s<ord>.md` while the evidence is fresh:
 

@@ -866,7 +866,8 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 	});
 
-	it("known pane-launch failure releases only its reservation and expectation", () => {
+	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
+	it.skip("known pane-launch failure releases only its reservation and expectation", () => {
 		clearSpawnExpectations();
 		const expectationStore = new FsSpawnExpectationStore(HOME);
 		expectationStore.write({

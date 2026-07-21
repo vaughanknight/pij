@@ -1,6 +1,6 @@
 // pij-messaging — grouped inbox grammar, claim processing, and rendering (pi-free).
 
-import { parseReceiptBody } from "./message.js";
+import { type BriefAckReceipt, parseBriefAckBody, parseReceiptBody } from "./message.js";
 import type { EventLogPort, InboxPort } from "./ports.js";
 import {
 	type DeliveryMode,
@@ -44,13 +44,27 @@ export interface PersistReceiptEnvelopeAction {
 	readonly reader: SessionId;
 }
 
+export interface PersistBriefAckEnvelopeAction {
+	readonly kind: "persist-brief-ack-envelope";
+	readonly envelopeMessageId: string;
+	readonly from: SessionId;
+	readonly body: string;
+	readonly ack: BriefAckReceipt;
+	readonly readAt: string;
+	readonly reader: SessionId;
+}
+
 export interface SendDeliveredReceiptAction {
 	readonly kind: "send-delivered-receipt";
 	readonly to: SessionId;
 	readonly messageId: string;
 }
 
-export type InboxAction = PersistReceiptEnvelopeAction | SendDeliveredReceiptAction;
+export type PersistedReceiptEnvelopeAction =
+	| PersistReceiptEnvelopeAction
+	| PersistBriefAckEnvelopeAction;
+
+export type InboxAction = PersistedReceiptEnvelopeAction | SendDeliveredReceiptAction;
 
 export interface InboxFailure {
 	readonly code: PijErrorCode;
@@ -152,17 +166,27 @@ function appendReceiptAction(
 	},
 	readAt: string,
 	reader: SessionId,
-): Result<PersistReceiptEnvelopeAction> {
+): Result<PersistedReceiptEnvelopeAction> {
 	const receipt = parseReceiptBody(message.body);
-	if (!receipt) {
-		return err("E-NOREG", `malformed receipt inbox message ${message.messageId}`);
+	if (receipt) {
+		return ok({
+			kind: "persist-receipt-envelope",
+			envelopeMessageId: message.messageId,
+			from: message.from,
+			body: message.body,
+			receipt,
+			readAt,
+			reader,
+		});
 	}
+	const ack = parseBriefAckBody(message.body);
+	if (!ack) return err("E-NOREG", `malformed receipt inbox message ${message.messageId}`);
 	return ok({
-		kind: "persist-receipt-envelope",
+		kind: "persist-brief-ack-envelope",
 		envelopeMessageId: message.messageId,
 		from: message.from,
 		body: message.body,
-		receipt,
+		ack,
 		readAt,
 		reader,
 	});
@@ -171,7 +195,7 @@ function appendReceiptAction(
 export function consumeInbox(input: ConsumeInboxInput): Result<InboxResult> {
 	const listed = input.inbox.listUnread(input.self);
 	if (!listed.ok) return listed;
-	const receiptActions = new Map<string, PersistReceiptEnvelopeAction>();
+	const receiptActions = new Map<string, PersistedReceiptEnvelopeAction>();
 	for (const message of listed.value) {
 		if (message.kind !== "receipt") continue;
 		const action = appendReceiptAction(message, input.readAt, input.self);
@@ -221,10 +245,10 @@ export function consumeInbox(input: ConsumeInboxInput): Result<InboxResult> {
 
 export function prepareReceiptEnvelopes(
 	input: ConsumeInboxInput,
-): Result<readonly PersistReceiptEnvelopeAction[]> {
+): Result<readonly PersistedReceiptEnvelopeAction[]> {
 	const listed = input.inbox.listUnread(input.self);
 	if (!listed.ok) return listed;
-	const actions: PersistReceiptEnvelopeAction[] = [];
+	const actions: PersistedReceiptEnvelopeAction[] = [];
 	for (const listedMessage of listed.value) {
 		if (listedMessage.kind !== "receipt") continue;
 		const action = appendReceiptAction(listedMessage, input.readAt, input.self);
@@ -238,19 +262,29 @@ export interface PersistReceiptEnvelopeInput {
 	readonly inbox: InboxPort;
 	readonly eventLog: EventLogPort;
 	readonly self: SessionId;
-	readonly action: PersistReceiptEnvelopeAction;
+	readonly action: PersistedReceiptEnvelopeAction;
 	readonly nowMs: number;
 }
 
 function hasEquivalentReceiptEvent(
 	eventLog: EventLogPort,
-	action: PersistReceiptEnvelopeAction,
+	action: PersistedReceiptEnvelopeAction,
 ): boolean {
 	return eventLog.read({ type: "receipt" }).some((event) => {
 		const body = (event.data as { body?: string } | undefined)?.body;
-		const receipt = body ? parseReceiptBody(body) : null;
+		if (!body) return false;
+		if (action.kind === "persist-receipt-envelope") {
+			const receipt = parseReceiptBody(body);
+			return (
+				receipt?.messageId === action.receipt.messageId && receipt.state === action.receipt.state
+			);
+		}
+		const ack = parseBriefAckBody(body);
 		return (
-			receipt?.messageId === action.receipt.messageId && receipt.state === action.receipt.state
+			ack?.messageId === action.ack.messageId &&
+			ack.packetId === action.ack.packetId &&
+			ack.packetSha256 === action.ack.packetSha256 &&
+			ack.seat === action.ack.seat
 		);
 	});
 }

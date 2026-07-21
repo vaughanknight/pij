@@ -332,6 +332,43 @@ describe("canonicalProjectJson", () => {
 		);
 	});
 
+	it("carries autonomy after primeId and before created, preserving byte-comparability (AC-04)", () => {
+		const full: Project = { ...BASE, primeId: "prime-054", autonomy: "power-through" };
+		expect(isProject(full)).toBe(true);
+		expect(canonicalProjectJson(full)).toContain(
+			`"primeId":"prime-054","autonomy":"power-through","created"`,
+		);
+		const scrambled = JSON.parse(
+			`{"autonomy":"power-through","created":{"ts":"${TS}","actor":"${ACTOR}"},` +
+				`"primeId":"prime-054","description":"Fix the CLI!","slug":"fix-the-cli",` +
+				`"schema_version":1}`,
+		) as Project;
+		expect(canonicalProjectJson(scrambled)).toBe(
+			canonicalProjectJson({
+				schema_version: 1,
+				slug: "fix-the-cli",
+				description: "Fix the CLI!",
+				primeId: "prime-054",
+				autonomy: "power-through",
+				created: { actor: ACTOR, ts: TS },
+			}),
+		);
+	});
+
+	it("Project.autonomy is optional, closed, and setProject preserves it", () => {
+		expect(isProject({ ...BASE, autonomy: "gated" })).toBe(true);
+		expect(isProject({ ...BASE, autonomy: "power-through" })).toBe(true);
+		expect(isProject({ ...BASE, autonomy: "unlimited" })).toBe(false);
+		const write = setProject(
+			{ ...BASE, autonomy: "power-through" },
+			{ actor: SETTER, nowMs: T2, primeId: "prime-055" },
+		);
+		if (!write.ok) throw new Error(`${write.code}: ${write.message}`);
+		expect(write.value.project.autonomy).toBe("power-through");
+		expect(JSON.parse(write.value.event.prev as string).autonomy).toBe("power-through");
+		expect(JSON.parse(write.value.event.next as string).autonomy).toBe("power-through");
+	});
+
 	// ─── review 002 G4 — the COMPLETE own record, additive fields included ──
 	// The public guards deliberately tolerate unknown fields and setProject
 	// preserves them through {...project}, so the store round-trips data this

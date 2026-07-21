@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
 	announceText,
+	briefAckBody,
 	frame,
+	isBriefAckReceipt,
+	parseBriefAckBody,
 	parseFrame,
 	parseReceiptBody,
 	receiptBody,
@@ -32,6 +35,53 @@ describe("roleLabel", () => {
 		expect(roleLabel("parent")).toContain("PARENT");
 		expect(roleLabel("worker")).toBe("WORKER");
 		expect(roleLabel(undefined)).toBe("PEER");
+	});
+});
+
+describe("shipped delivery receipt contract", () => {
+	it("freezes the send --wait vocabulary and receipt wire shape before dispatch receipts", () => {
+		const states: readonly ReceiptState[] = ["queued", "delivered", "unverified"];
+		expect(states).toEqual(["queued", "delivered", "unverified"]);
+		expect(receiptBody("msg-freeze", "delivered")).toBe("[pij receipt msg-freeze] delivered");
+		expect(parseReceiptBody("[pij receipt msg-freeze] delivered")).toEqual({
+			messageId: "msg-freeze",
+			state: "delivered",
+		});
+		expect(parseReceiptBody("[pij receipt msg-freeze] acked")).toBeNull();
+	});
+});
+
+describe("BriefAckReceipt — AC-05 additive receipt kind", () => {
+	const ACK = {
+		schema_version: 1,
+		kind: "brief-ack",
+		messageId: "msg-42",
+		packetId: "dispatch-42",
+		packetSha256: "a".repeat(64),
+		declaredRuntime: {
+			model: "github-copilot/gpt-5.6-sol",
+			effort: "xhigh",
+			source: "self-report",
+		},
+		seat: "pij-worker",
+		ts: "2026-07-20T12:00:00.000Z",
+	} as const;
+
+	it("round-trips a structured brief ack without changing ReceiptState", () => {
+		const body = briefAckBody(ACK);
+		expect(body).toBe(`[pij brief-ack] ${JSON.stringify(ACK)}`);
+		expect(parseBriefAckBody(body)).toEqual(ACK);
+		expect(isBriefAckReceipt(ACK)).toBe(true);
+		const shippedStates: readonly ReceiptState[] = ["queued", "delivered", "unverified"];
+		expect(shippedStates).toEqual(["queued", "delivered", "unverified"]);
+	});
+
+	it("rejects malformed or identity-weak brief acks", () => {
+		expect(parseBriefAckBody("[pij brief-ack] not-json")).toBeNull();
+		expect(isBriefAckReceipt({ ...ACK, packetSha256: "short" })).toBe(false);
+		expect(
+			isBriefAckReceipt({ ...ACK, declaredRuntime: { ...ACK.declaredRuntime, source: "pin" } }),
+		).toBe(false);
 	});
 });
 

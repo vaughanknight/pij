@@ -14,7 +14,7 @@ import {
 	DEFAULT_SPAWN_LIMBO_MS,
 	detectAnomalies,
 } from "./anomalies.js";
-import type { Assignment, SpineEvent } from "./platform/types.js";
+import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import type { SessionDescriptor } from "./types.js";
 
 const NOW = Date.parse("2026-07-17T05:00:00.000Z");
@@ -534,5 +534,223 @@ describe("state-cleared chain transition", () => {
 			nowMs: NOW,
 		});
 		expect(anomalies.some((anomaly) => anomaly.kind === "axis-disagreement")).toBe(true);
+	});
+});
+
+describe("team-scaffold record anomalies (plan 061 AC-07)", () => {
+	const RECORD_STALE_MS = 15 * 60_000;
+
+	function dispatchRecord(over: Partial<Dispatch> = {}): Dispatch {
+		return {
+			schema_version: 1,
+			id: "dispatch-stale",
+			packetPath: "/repo/packet.md",
+			packetSha256: "a".repeat(64),
+			from: "pij-parent",
+			to: "pij-worker",
+			messageId: "msg-1",
+			deliveryState: "delivered",
+			state: "delivered-unacked",
+			created: { actor: "pij-parent", ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString() },
+			updated: { actor: "pij-parent", ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString() },
+			...over,
+		};
+	}
+
+	function allocationRecord(over: Partial<Allocation> = {}): Allocation {
+		return {
+			schema_version: 1,
+			id: "alloc-s061-half-open",
+			project: "team-scaffold",
+			ordinal: 61,
+			slug: "half-open",
+			worktree: "/repo-worktrees/s061-half-open",
+			branch: "s061/half-open",
+			baseSha: "base-sha",
+			state: "created",
+			steps: [
+				{
+					name: "ordinal-reserved",
+					ok: true,
+					evidence: "reserved",
+					ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+				},
+			],
+			created: {
+				actor: "pij-prime",
+				ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+			},
+			...over,
+		};
+	}
+
+	it("freezes the existing clean fixture output before record-derived classes are added", () => {
+		expect(
+			detectAnomalies({
+				descriptors: [],
+				assignments: [],
+				events: [],
+				nowMs: NOW,
+			}),
+		).toEqual([]);
+	});
+
+	it("flags only stale delivered-unacked dispatches with record and age evidence", () => {
+		const stale = dispatchRecord();
+		const fresh = dispatchRecord({
+			id: "dispatch-fresh",
+			updated: { actor: "pij-parent", ts: new Date(NOW - 1_000).toISOString() },
+		});
+		const acked = dispatchRecord({
+			id: "dispatch-acked",
+			state: "acked",
+			ack: {
+				schema_version: 1,
+				kind: "brief-ack",
+				messageId: "msg-1",
+				packetId: "dispatch-acked",
+				packetSha256: "a".repeat(64),
+				declaredRuntime: { model: "test/model", effort: "high", source: "self-report" },
+				seat: "pij-worker",
+				ts: new Date(NOW - RECORD_STALE_MS).toISOString(),
+			},
+		});
+		const undelivered = dispatchRecord({
+			id: "dispatch-undelivered",
+			messageId: undefined,
+			deliveryState: undefined,
+			state: "undelivered",
+		});
+
+		const found = detectAnomalies({
+			descriptors: [],
+			assignments: [],
+			events: [],
+			dispatches: [stale, fresh, acked, undelivered],
+			allocations: [],
+			nowMs: NOW,
+			dispatchStaleMs: RECORD_STALE_MS,
+		}).filter((anomaly) => anomaly.kind === "delivered-unacked-stale");
+
+		expect(found).toHaveLength(1);
+		expect(found[0]).toMatchObject({
+			nodeId: "pij-worker",
+			recordRef: "dispatch:dispatch-stale",
+			ageMs: 2 * RECORD_STALE_MS,
+		});
+		expect(found[0]?.detail).toContain("dispatch:dispatch-stale");
+		expect(found[0]?.detail).toContain("30min");
+		expect(found[0]?.evidence).toEqual([Date.parse(stale.updated.ts)]);
+	});
+
+	it("flags stale incomplete create and close journals while complete active allocations stay clean", () => {
+		const halfCreated = allocationRecord();
+		const halfClosed = allocationRecord({
+			id: "alloc-s062-half-close",
+			ordinal: 62,
+			slug: "half-close",
+			steps: [
+				...allocationRecord().steps,
+				{
+					name: "worktree-created",
+					ok: true,
+					evidence: "created",
+					ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+				},
+				{
+					name: "allocation-committed",
+					ok: true,
+					evidence: "committed",
+					ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+				},
+				{
+					name: "wip-preserved",
+					ok: true,
+					evidence: "clean",
+					ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+				},
+			],
+		});
+		const complete = allocationRecord({
+			id: "alloc-s063-complete",
+			ordinal: 63,
+			slug: "complete",
+			steps: [
+				...allocationRecord().steps,
+				{
+					name: "worktree-created",
+					ok: true,
+					evidence: "created",
+					ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+				},
+				{
+					name: "allocation-committed",
+					ok: true,
+					evidence: "committed",
+					ts: new Date(NOW - 2 * RECORD_STALE_MS).toISOString(),
+				},
+			],
+		});
+
+		const found = detectAnomalies({
+			descriptors: [],
+			assignments: [],
+			events: [],
+			dispatches: [],
+			allocations: [halfCreated, halfClosed, complete],
+			nowMs: NOW,
+			allocationHalfOpenMs: RECORD_STALE_MS,
+		}).filter((anomaly) => anomaly.kind === "allocation-half-open");
+
+		expect(found.map((anomaly) => anomaly.recordRef)).toEqual([
+			"allocation:alloc-s061-half-open",
+			"allocation:alloc-s062-half-close",
+		]);
+		expect(found[0]?.detail).toContain("worktree-created");
+		expect(found[1]?.detail).toContain("allocation-closed");
+		expect(found.every((anomaly) => anomaly.ageMs === 2 * RECORD_STALE_MS)).toBe(true);
+	});
+
+	it("produces zero false positives on clean records and never mutates scanned stores", () => {
+		const dispatches = [
+			dispatchRecord({
+				id: "dispatch-fresh",
+				updated: { actor: "pij-parent", ts: new Date(NOW - 1_000).toISOString() },
+			}),
+		];
+		const allocations = [
+			allocationRecord({
+				steps: [
+					...allocationRecord().steps,
+					{
+						name: "worktree-created",
+						ok: true,
+						evidence: "created",
+						ts: new Date(NOW - 1_000).toISOString(),
+					},
+					{
+						name: "allocation-committed",
+						ok: true,
+						evidence: "committed",
+						ts: new Date(NOW - 1_000).toISOString(),
+					},
+				],
+			}),
+		];
+		const before = structuredClone({ dispatches, allocations });
+
+		expect(
+			detectAnomalies({
+				descriptors: [],
+				assignments: [],
+				events: [],
+				dispatches,
+				allocations,
+				nowMs: NOW,
+				dispatchStaleMs: RECORD_STALE_MS,
+				allocationHalfOpenMs: RECORD_STALE_MS,
+			}),
+		).toEqual([]);
+		expect({ dispatches, allocations }).toEqual(before);
 	});
 });

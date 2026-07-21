@@ -57,6 +57,7 @@ const PROJECT_FIELD_ORDER = [
 	"repo",
 	"planPath",
 	"primeId",
+	"autonomy",
 	"created",
 ] as const;
 

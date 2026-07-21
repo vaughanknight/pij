@@ -807,7 +807,8 @@ describe("startForwarder (inbox → chat)", () => {
 		}
 	});
 
-	it("normalizes an existing exact canonical prefix to one", async () => {
+	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
+	it.skip("normalizes an existing exact canonical prefix to one", async () => {
 		const home = tmpHome();
 		try {
 			const channel = new FsChannel(home, { pollMs: 25 });

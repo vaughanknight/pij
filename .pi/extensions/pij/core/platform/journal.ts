@@ -36,9 +36,15 @@
 // throws (Pattern P4) — every port failure is a Result.
 
 import { err, ok, type Result } from "../types.js";
+import { canonicalAllocationJson } from "./allocation.js";
 import { appendStateRef, canonicalAssignmentJson } from "./assignment.js";
+import { canonicalDispatchJson } from "./dispatch.js";
+import { canonicalFenceJson } from "./fence.js";
 import type {
+	AllocationStorePort,
 	AssignmentStorePort,
+	DispatchStorePort,
+	FenceStorePort,
 	OpJournalPort,
 	PendingOp,
 	ProjectStorePort,
@@ -46,6 +52,9 @@ import type {
 } from "./ports.js";
 import { canonicalProjectJson } from "./project.js";
 import {
+	SPINE_KIND_ALLOCATION,
+	SPINE_KIND_DISPATCH,
+	SPINE_KIND_FENCE,
 	SPINE_KIND_PROJECT_CREATED,
 	SPINE_KIND_PROJECT_SET,
 	SPINE_KIND_STATE_CLEARED,
@@ -79,6 +88,13 @@ function assignmentRefOf(draft: SpineEventDraft): string | undefined {
 	return undefined;
 }
 
+function structuredRefOf(draft: SpineEventDraft, prefix: string): string | undefined {
+	for (const ref of draft.refs) {
+		if (ref.startsWith(prefix)) return ref.slice(prefix.length);
+	}
+	return undefined;
+}
+
 export interface RecoverySummary {
 	/** Ops whose event reached the spine (freshly or already there). */
 	readonly replayed: number;
@@ -97,6 +113,9 @@ export function recoverPendingOps(
 	spineLog: SpineLogPort,
 	projectStore: ProjectStorePort,
 	assignmentStore: AssignmentStorePort,
+	allocationStore: AllocationStorePort,
+	fenceStore: FenceStorePort,
+	dispatchStore: DispatchStorePort,
 ): Result<RecoverySummary> {
 	let replayed = 0;
 	let discarded = 0;
@@ -106,7 +125,15 @@ export function recoverPendingOps(
 	const pending = journal.pending();
 	if (!pending.ok) return pending;
 	for (const op of pending.value) {
-		const outcome = resolveOp(op, spineLog, projectStore, assignmentStore);
+		const outcome = resolveOp(
+			op,
+			spineLog,
+			projectStore,
+			assignmentStore,
+			allocationStore,
+			fenceStore,
+			dispatchStore,
+		);
 		// Blocked: stop IN ORDER — successors must not overtake (G3).
 		if (!outcome.ok) return outcome;
 		// A resolution only COUNTS once the entry is DURABLY resolved (review
@@ -134,15 +161,45 @@ function resolveOp(
 	spineLog: SpineLogPort,
 	projectStore: ProjectStorePort,
 	assignmentStore: AssignmentStorePort,
+	allocationStore: AllocationStorePort,
+	fenceStore: FenceStorePort,
+	dispatchStore: DispatchStorePort,
 ): Result<"replayed" | "discarded"> {
 	if (op.phase === "committed") {
-		return resolveCommitted(op, spineLog, projectStore, assignmentStore);
+		return resolveCommitted(
+			op,
+			spineLog,
+			projectStore,
+			assignmentStore,
+			allocationStore,
+			fenceStore,
+			dispatchStore,
+		);
 	}
 	// Intent: the crash hit between record and markCommitted — adjudicate
 	// whether the state write landed inside that window.
 	const { kind, project: slug, prev, next } = op.draft;
 	if (ASSIGNMENT_KINDS.has(kind)) {
 		return resolveAssignmentIntent(op, spineLog, assignmentStore);
+	}
+	if (kind === SPINE_KIND_ALLOCATION) {
+		const id = structuredRefOf(op.draft, "allocation:");
+		return resolveRecordIntent(
+			op,
+			spineLog,
+			allocationStore,
+			id,
+			canonicalAllocationJson,
+			"allocation",
+		);
+	}
+	if (kind === SPINE_KIND_FENCE) {
+		const id = structuredRefOf(op.draft, "fence:");
+		return resolveRecordIntent(op, spineLog, fenceStore, id, canonicalFenceJson, "fence");
+	}
+	if (kind === SPINE_KIND_DISPATCH) {
+		const id = structuredRefOf(op.draft, "dispatch:");
+		return resolveRecordIntent(op, spineLog, dispatchStore, id, canonicalDispatchJson, "dispatch");
 	}
 	if (
 		(kind !== SPINE_KIND_PROJECT_CREATED && kind !== SPINE_KIND_PROJECT_SET) ||
@@ -172,6 +229,29 @@ function resolveOp(
 	// writes, or out-of-band edits). Fail loudly — writing past this would
 	// forge history.
 	return blocked(op, `disagrees with persisted state of project '${slug}' (neither prev nor next)`);
+}
+
+function resolveRecordIntent<T>(
+	op: PendingOp,
+	spineLog: SpineLogPort,
+	store: { read(id: string): T | null },
+	id: string | undefined,
+	canonical: (record: T) => string,
+	label: string,
+): Result<"replayed" | "discarded"> {
+	const { prev, next } = op.draft;
+	if (id === undefined || next === undefined) {
+		return blocked(op, `carries an unadjudicable ${label} intent (missing structured ref/next)`);
+	}
+	const current = store.read(id);
+	const currentCanonical = current === null ? null : canonical(current);
+	if (currentCanonical === next) return replay(op, spineLog);
+	if (currentCanonical === null) {
+		if (prev === undefined) return ok("discarded");
+		return blocked(op, `names ${label} '${id}' which is missing from the store`);
+	}
+	if (currentCanonical === prev) return ok("discarded");
+	return blocked(op, `disagrees with persisted state of ${label} '${id}' (neither prev nor next)`);
 }
 
 /** Assignment-intent adjudication (plan 054 P2 T005) — the G2 window logic,
@@ -262,8 +342,41 @@ function resolveCommitted(
 	spineLog: SpineLogPort,
 	projectStore: ProjectStorePort,
 	assignmentStore: AssignmentStorePort,
+	allocationStore: AllocationStorePort,
+	fenceStore: FenceStorePort,
+	dispatchStore: DispatchStorePort,
 ): Result<"replayed"> {
 	const { kind, project: slug, next } = op.draft;
+	if (kind === SPINE_KIND_ALLOCATION) {
+		return resolveCommittedRecord(
+			op,
+			spineLog,
+			allocationStore,
+			structuredRefOf(op.draft, "allocation:"),
+			canonicalAllocationJson,
+			"allocation",
+		);
+	}
+	if (kind === SPINE_KIND_FENCE) {
+		return resolveCommittedRecord(
+			op,
+			spineLog,
+			fenceStore,
+			structuredRefOf(op.draft, "fence:"),
+			canonicalFenceJson,
+			"fence",
+		);
+	}
+	if (kind === SPINE_KIND_DISPATCH) {
+		return resolveCommittedRecord(
+			op,
+			spineLog,
+			dispatchStore,
+			structuredRefOf(op.draft, "dispatch:"),
+			canonicalDispatchJson,
+			"dispatch",
+		);
+	}
 	// Assignment kinds are COUPLED (plan 054 P2 T005): before this branch they
 	// fell to the uncoupled once-record path — the J1 forge for assignment
 	// ops, blessing an event whose record publish never survived.
@@ -304,6 +417,31 @@ function resolveCommitted(
 	return blocked(
 		op,
 		"was marked committed but carries no adjudicable state and its event never reached the spine — the state write cannot be corroborated; refusing to forge history",
+	);
+}
+
+function resolveCommittedRecord<T>(
+	op: PendingOp,
+	spineLog: SpineLogPort,
+	store: { read(id: string): T | null },
+	id: string | undefined,
+	canonical: (record: T) => string,
+	label: string,
+): Result<"replayed"> {
+	const next = op.draft.next;
+	if (id === undefined || next === undefined) {
+		return blocked(
+			op,
+			`was marked committed but carries no adjudicable ${label} identity — refusing to forge history`,
+		);
+	}
+	const current = store.read(id);
+	if (current !== null && canonical(current) === next) return replay(op, spineLog);
+	return blocked(
+		op,
+		spineLog.hasOnce(op.opId)
+			? `was marked committed and its event reached the spine, but persisted ${label} '${id}' does not match its next — the state write did not survive; refusing to bless an event over state that never landed`
+			: `was marked committed but persisted ${label} '${id}' does not match its next and its event never reached the spine — the state write did not survive; refusing to forge history`,
 	);
 }
 

@@ -23,8 +23,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
+import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FakeProcess } from "./adapters/fakes.js";
+import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
@@ -48,6 +51,9 @@ let HOME: string;
 let registry: FsRegistry;
 let projectStore: FsProjectStore;
 let assignmentStore: FsAssignmentStore;
+let allocationStore: FsAllocationStore;
+let fenceStore: FsFenceStore;
+let dispatchStore: FsDispatchStore;
 let spineLog: FsSpineLog;
 let opJournal: FsOpJournal;
 let platformWriteLock: FsPlatformWriteLock;
@@ -65,6 +71,9 @@ function deps(): CliDeps {
 		treeDescriptors: registry.list(),
 		projectStore,
 		assignmentStore,
+		allocationStore,
+		fenceStore,
+		dispatchStore,
 		spineLog,
 		opJournal,
 		platformWriteLock,
@@ -110,6 +119,9 @@ beforeAll(() => {
 	registry = new FsRegistry(HOME);
 	projectStore = new FsProjectStore(HOME);
 	assignmentStore = new FsAssignmentStore(HOME);
+	allocationStore = new FsAllocationStore(HOME);
+	fenceStore = new FsFenceStore(HOME);
+	dispatchStore = new FsDispatchStore(HOME);
 	spineLog = new FsSpineLog(HOME);
 	opJournal = new FsOpJournal(HOME);
 	platformWriteLock = new FsPlatformWriteLock(HOME);
@@ -427,6 +439,9 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 			opJournal,
 			projectStore,
 			assignmentStore,
+			allocationStore,
+			fenceStore,
+			dispatchStore,
 			platformWriteLock,
 			now: () => NOW,
 			isAlive: (pid) => pid !== 999_999,

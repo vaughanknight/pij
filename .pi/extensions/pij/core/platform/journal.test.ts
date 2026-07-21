@@ -19,10 +19,16 @@
 
 import { describe, expect, it } from "vitest";
 import { err, ok, type Result } from "../types.js";
+import { canonicalAllocationJson } from "./allocation.js";
 import { canonicalAssignmentJson } from "./assignment.js";
+import { canonicalDispatchJson } from "./dispatch.js";
+import { canonicalFenceJson } from "./fence.js";
 import { recoverPendingOps } from "./journal.js";
 import type {
+	AllocationStorePort,
 	AssignmentStorePort,
+	DispatchStorePort,
+	FenceStorePort,
 	OpJournalPort,
 	PendingOp,
 	PendingOpPhase,
@@ -33,7 +39,15 @@ import type {
 import { canonicalProjectJson } from "./project.js";
 import type { SpineEventQuery } from "./spine.js";
 import { type BuildSpineEventInput, buildSpineEvent, filterSpineEvents } from "./spine.js";
-import type { Assignment, Project, SpineEvent, SpineEventDraft } from "./types.js";
+import type {
+	Allocation,
+	Assignment,
+	Dispatch,
+	Fence,
+	Project,
+	SpineEvent,
+	SpineEventDraft,
+} from "./types.js";
 
 const T = Date.parse("2026-07-16T12:00:00.000Z");
 
@@ -218,6 +232,69 @@ class TestAssignmentStore implements AssignmentStorePort {
 	}
 }
 
+class TestAllocationStore implements AllocationStorePort {
+	readonly records = new Map<string, Allocation>();
+
+	constructor(initial: readonly Allocation[] = []) {
+		for (const allocation of initial) this.records.set(allocation.id, allocation);
+	}
+
+	write(allocation: Allocation): Result<void> {
+		this.records.set(allocation.id, allocation);
+		return ok(undefined);
+	}
+
+	read(id: string): Allocation | null {
+		return this.records.get(id) ?? null;
+	}
+
+	list(): Allocation[] {
+		return [...this.records.values()].sort((left, right) => left.ordinal - right.ordinal);
+	}
+}
+
+class TestFenceStore implements FenceStorePort {
+	readonly records = new Map<string, Fence>();
+
+	constructor(initial: readonly Fence[] = []) {
+		for (const fence of initial) this.records.set(fence.id, fence);
+	}
+
+	write(fence: Fence): Result<void> {
+		this.records.set(fence.id, fence);
+		return ok(undefined);
+	}
+
+	read(id: string): Fence | null {
+		return this.records.get(id) ?? null;
+	}
+
+	list(): Fence[] {
+		return [...this.records.values()].sort((left, right) => left.id.localeCompare(right.id));
+	}
+}
+
+class TestDispatchStore implements DispatchStorePort {
+	readonly records = new Map<string, Dispatch>();
+
+	constructor(initial: readonly Dispatch[] = []) {
+		for (const dispatch of initial) this.records.set(dispatch.id, dispatch);
+	}
+
+	write(dispatch: Dispatch): Result<void> {
+		this.records.set(dispatch.id, dispatch);
+		return ok(undefined);
+	}
+
+	read(id: string): Dispatch | null {
+		return this.records.get(id) ?? null;
+	}
+
+	list(): Dispatch[] {
+		return [...this.records.values()].sort((left, right) => left.id.localeCompare(right.id));
+	}
+}
+
 /** Legacy 3-port call shape: pre-P2 pins don't consult the assignment store,
  *  so an empty one keeps them byte-meaning-identical after the T005 widening. */
 function recover(
@@ -225,8 +302,11 @@ function recover(
 	log: SpineLogPort,
 	store: ProjectStorePort,
 	assignments: AssignmentStorePort = new TestAssignmentStore(),
+	allocations: AllocationStorePort = new TestAllocationStore(),
+	fences: FenceStorePort = new TestFenceStore(),
+	dispatches: DispatchStorePort = new TestDispatchStore(),
 ): ReturnType<typeof recoverPendingOps> {
-	return recoverPendingOps(journal, log, store, assignments);
+	return recoverPendingOps(journal, log, store, assignments, allocations, fences, dispatches);
 }
 
 function expectOk<T>(result: Result<T>): T {
@@ -727,6 +807,316 @@ describe("recoverPendingOps — assignment ops (plan 054 P2 T005)", () => {
 			next: canonicalAssignmentJson(record),
 		});
 	}
+
+	describe("recoverPendingOps — allocation/fence ops (plan 061 T007, AC-11)", () => {
+		const allocationV1: Allocation = {
+			schema_version: 1,
+			id: "alloc-s061-team-scaffold",
+			project: "platform",
+			ordinal: 61,
+			slug: "team-scaffold",
+			worktree: "/repo-worktrees/s061-team-scaffold",
+			branch: "s061/team-scaffold",
+			baseSha: "base",
+			state: "created",
+			steps: [
+				{ name: "worktree-created", ok: true, evidence: "ready", ts: new Date(T).toISOString() },
+			],
+			created: { actor: "prime", ts: new Date(T).toISOString() },
+		};
+		const allocationV2: Allocation = {
+			...allocationV1,
+			steps: [
+				...allocationV1.steps,
+				{
+					name: "allocation-committed",
+					ok: true,
+					evidence: "attributed",
+					ts: new Date(T + 1000).toISOString(),
+				},
+			],
+		};
+		const fenceV1: Fence = {
+			schema_version: 1,
+			id: "fence-alloc-s061-team-scaffold",
+			allocation: allocationV1.id,
+			touchSet: [".pi/extensions/pij/core/**"],
+			shared: [".pi/extensions/pij/core/cli.ts"],
+			class: "notify-only",
+			updated: { actor: "stream", ts: new Date(T).toISOString() },
+		};
+
+		function allocationDraft(prev: Allocation, next: Allocation): SpineEventDraft {
+			return draft(1, {
+				kind: "allocation",
+				project: next.project,
+				refs: [`project:${next.project}`, `allocation:${next.id}`, `stream:${next.slug}`],
+				prev: canonicalAllocationJson(prev),
+				next: canonicalAllocationJson(next),
+			});
+		}
+
+		function fenceDraft(next: Fence): SpineEventDraft {
+			return draft(2, {
+				kind: "fence",
+				refs: [`allocation:${next.allocation}`, `fence:${next.id}`],
+				next: canonicalFenceJson(next),
+			});
+		}
+
+		it("allocation intent at prev discards; the same intent at next replays", () => {
+			const beforeJournal = new TestOpJournal();
+			beforeJournal.seed("op-before", 1, "intent", allocationDraft(allocationV1, allocationV2));
+			const beforeLog = new TestSpineLog();
+			expect(
+				expectOk(
+					recover(
+						beforeJournal,
+						beforeLog,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore([allocationV1]),
+					),
+				),
+			).toEqual({ replayed: 0, discarded: 1 });
+			expect(beforeLog.events).toEqual([]);
+
+			const afterJournal = new TestOpJournal();
+			afterJournal.seed("op-after", 1, "intent", allocationDraft(allocationV1, allocationV2));
+			const afterLog = new TestSpineLog();
+			expect(
+				expectOk(
+					recover(
+						afterJournal,
+						afterLog,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore([allocationV2]),
+					),
+				),
+			).toEqual({ replayed: 1, discarded: 0 });
+			expect(afterLog.events).toHaveLength(1);
+			expect(afterLog.events[0]?.kind).toBe("allocation");
+		});
+
+		it("fence create intent missing from the store discards; landed record replays", () => {
+			const missingJournal = new TestOpJournal();
+			missingJournal.seed("op-missing", 1, "intent", fenceDraft(fenceV1));
+			expect(
+				expectOk(
+					recover(
+						missingJournal,
+						new TestSpineLog(),
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore(),
+						new TestFenceStore(),
+					),
+				),
+			).toEqual({ replayed: 0, discarded: 1 });
+
+			const landedJournal = new TestOpJournal();
+			landedJournal.seed("op-landed", 1, "intent", fenceDraft(fenceV1));
+			const landedLog = new TestSpineLog();
+			expect(
+				expectOk(
+					recover(
+						landedJournal,
+						landedLog,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore(),
+						new TestFenceStore([fenceV1]),
+					),
+				),
+			).toEqual({ replayed: 1, discarded: 0 });
+			expect(landedLog.events[0]?.kind).toBe("fence");
+		});
+
+		it("crash after allocation record+marker but before append heals exactly once on the next write", () => {
+			const journal = new TestOpJournal();
+			const log = new TestSpineLog();
+			const d = allocationDraft(allocationV1, allocationV2);
+			const opId = expectOk(journal.record(d));
+			expectOk(journal.markCommitted(opId));
+			log.failNext();
+			const allocations = new TestAllocationStore([allocationV2]);
+			const first = recover(
+				journal,
+				log,
+				new TestProjectStore(),
+				new TestAssignmentStore(),
+				allocations,
+			);
+			expect(first).toMatchObject({ ok: false, code: "E-NOREG" });
+			expect(expectOk(journal.pending())).toHaveLength(1);
+
+			expect(
+				expectOk(
+					recover(journal, log, new TestProjectStore(), new TestAssignmentStore(), allocations),
+				),
+			).toEqual({ replayed: 1, discarded: 0 });
+			expect(log.events).toHaveLength(1);
+			expect(log.onceKeys).toEqual([opId, opId]);
+			expect(
+				expectOk(
+					recover(journal, log, new TestProjectStore(), new TestAssignmentStore(), allocations),
+				),
+			).toEqual({ replayed: 0, discarded: 0 });
+			expect(log.events).toHaveLength(1);
+		});
+
+		it("committed allocation whose state write did not survive blocks, even if its event exists", () => {
+			const journal = new TestOpJournal();
+			const log = new TestSpineLog();
+			const d = allocationDraft(allocationV1, allocationV2);
+			expectOk(log.appendOnce("op-forged", d));
+			journal.seed("op-forged", 1, "committed", d);
+			const result = recover(
+				journal,
+				log,
+				new TestProjectStore(),
+				new TestAssignmentStore(),
+				new TestAllocationStore([allocationV1]),
+			);
+			expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
+			expect(journal.cleared).toEqual([]);
+		});
+	});
+
+	describe("recoverPendingOps — dispatch ops (plan 061 P2 T004, AC-11)", () => {
+		const dispatchUndelivered: Dispatch = {
+			schema_version: 1,
+			id: "dispatch-42",
+			packetPath: "/repo/packet.md",
+			packetSha256: "a".repeat(64),
+			from: "pij-parent",
+			to: "pij-worker",
+			state: "undelivered",
+			created: { actor: "pij-parent", ts: new Date(T).toISOString() },
+			updated: { actor: "pij-parent", ts: new Date(T).toISOString() },
+		};
+		const dispatchDelivered: Dispatch = {
+			...dispatchUndelivered,
+			messageId: "msg-42",
+			deliveryState: "delivered",
+			state: "delivered-unacked",
+			updated: { actor: "pij-parent", ts: new Date(T + 1000).toISOString() },
+		};
+
+		function dispatchDraft(prev: Dispatch, next: Dispatch): SpineEventDraft {
+			return draft(1, {
+				kind: "dispatch",
+				peer: next.to,
+				refs: [`dispatch:${next.id}`, `message:${next.messageId ?? "none"}`],
+				prev: canonicalDispatchJson(prev),
+				next: canonicalDispatchJson(next),
+			});
+		}
+
+		it("dispatch intent at prev discards; the same intent at next replays", () => {
+			const beforeJournal = new TestOpJournal();
+			beforeJournal.seed(
+				"op-before",
+				1,
+				"intent",
+				dispatchDraft(dispatchUndelivered, dispatchDelivered),
+			);
+			const beforeLog = new TestSpineLog();
+			expect(
+				expectOk(
+					recover(
+						beforeJournal,
+						beforeLog,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore(),
+						new TestFenceStore(),
+						new TestDispatchStore([dispatchUndelivered]),
+					),
+				),
+			).toEqual({ replayed: 0, discarded: 1 });
+			expect(beforeLog.events).toEqual([]);
+
+			const afterJournal = new TestOpJournal();
+			afterJournal.seed(
+				"op-after",
+				1,
+				"intent",
+				dispatchDraft(dispatchUndelivered, dispatchDelivered),
+			);
+			const afterLog = new TestSpineLog();
+			expect(
+				expectOk(
+					recover(
+						afterJournal,
+						afterLog,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore(),
+						new TestFenceStore(),
+						new TestDispatchStore([dispatchDelivered]),
+					),
+				),
+			).toEqual({ replayed: 1, discarded: 0 });
+			expect(afterLog.events[0]?.kind).toBe("dispatch");
+		});
+
+		it("crash after dispatch record+marker but before append heals exactly once", () => {
+			const journal = new TestOpJournal();
+			const log = new TestSpineLog();
+			const d = dispatchDraft(dispatchUndelivered, dispatchDelivered);
+			const opId = expectOk(journal.record(d));
+			expectOk(journal.markCommitted(opId));
+			log.failNext();
+			const dispatches = new TestDispatchStore([dispatchDelivered]);
+			expect(
+				recover(
+					journal,
+					log,
+					new TestProjectStore(),
+					new TestAssignmentStore(),
+					new TestAllocationStore(),
+					new TestFenceStore(),
+					dispatches,
+				),
+			).toMatchObject({ ok: false, code: "E-NOREG" });
+			expect(
+				expectOk(
+					recover(
+						journal,
+						log,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore(),
+						new TestFenceStore(),
+						dispatches,
+					),
+				),
+			).toEqual({ replayed: 1, discarded: 0 });
+			expect(log.events).toHaveLength(1);
+			expect(log.onceKeys).toEqual([opId, opId]);
+		});
+
+		it("committed dispatch whose record write did not survive blocks even when its event exists", () => {
+			const journal = new TestOpJournal();
+			const log = new TestSpineLog();
+			const d = dispatchDraft(dispatchUndelivered, dispatchDelivered);
+			expectOk(log.appendOnce("op-forged", d));
+			journal.seed("op-forged", 1, "committed", d);
+			const result = recover(
+				journal,
+				log,
+				new TestProjectStore(),
+				new TestAssignmentStore(),
+				new TestAllocationStore(),
+				new TestFenceStore(),
+				new TestDispatchStore([dispatchUndelivered]),
+			);
+			expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
+			expect(journal.cleared).toEqual([]);
+		});
+	});
 
 	function stateSetDraft(n: number, record: Assignment, state: string): SpineEventDraft {
 		return draft(n, {

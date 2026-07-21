@@ -11,7 +11,7 @@ import {
 	renderInboxResult,
 	renderInboxWaiting,
 } from "./inbox.js";
-import { receiptBody } from "./message.js";
+import { briefAckBody, receiptBody } from "./message.js";
 import type { EventLogPort, InboxPort } from "./ports.js";
 import { type DeliveredMessage, err } from "./types.js";
 
@@ -72,6 +72,68 @@ describe("parseInboxArgs", () => {
 });
 
 describe("consumeInbox", () => {
+	it("freezes the shipped send-delivered-receipt action shape before brief ack emission", () => {
+		const inbox = new FakeInbox([message("msg-freeze")]);
+		const result = consumeInbox({
+			inbox,
+			self: "pij-self",
+			readAt: "2026-07-12T00:55:00.000Z",
+		});
+		expect(result).toMatchObject({
+			ok: true,
+			value: {
+				actions: [
+					{
+						kind: "send-delivered-receipt",
+						to: "pij-sender",
+						messageId: "msg-freeze",
+					},
+				],
+			},
+		});
+	});
+
+	it("emits a durable brief-ack action and never injects the receipt as user text", () => {
+		const ack = {
+			schema_version: 1,
+			kind: "brief-ack",
+			messageId: "msg-42",
+			packetId: "dispatch-42",
+			packetSha256: "a".repeat(64),
+			declaredRuntime: { model: "default", effort: "default", source: "self-report" },
+			seat: "pij-worker",
+			ts: "2026-07-20T12:00:00.000Z",
+		} as const;
+		const body = briefAckBody(ack);
+		const inbox = new FakeInbox([
+			message("ack-envelope", { from: "pij-worker", to: "pij-parent", body, kind: "receipt" }),
+			message("user-message", { to: "pij-parent" }),
+		]);
+		const result = consumeInbox({
+			inbox,
+			self: "pij-parent",
+			readAt: "2026-07-20T12:00:01.000Z",
+		});
+		expect(result).toMatchObject({
+			ok: true,
+			value: {
+				messages: [{ messageId: "user-message" }],
+				actions: [
+					{
+						kind: "persist-brief-ack-envelope",
+						envelopeMessageId: "ack-envelope",
+						from: "pij-worker",
+						body,
+						ack,
+						readAt: "2026-07-20T12:00:01.000Z",
+						reader: "pij-parent",
+					},
+					{ kind: "send-delivered-receipt", messageId: "user-message" },
+				],
+			},
+		});
+	});
+
 	it("claims in lexical message order and projects stable JSON fields", () => {
 		const inbox = new FakeInbox([
 			message("m2", {

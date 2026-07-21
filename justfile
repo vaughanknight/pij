@@ -210,6 +210,14 @@ link:
 unlink:
     npm run link -- --remove
 
+# Report where the machine's live pij currently resolves — CLI bin, extension,
+# skill store, and daemon. The quick answer to "am I on main or the worktree?".
+where:
+    @echo "pij CLI bin → $(realpath "$(command -v pij)" 2>/dev/null || echo '(not on PATH)')"
+    @echo "extension   → $(readlink ~/.pi/agent/extensions/pij 2>/dev/null || echo '(unlinked)')"
+    @echo "skill store → $(readlink ~/.agents/skills/pij 2>/dev/null || echo '(unlinked)')"
+    @printf 'daemon      → '; pij daemon status
+
 # Structural gates for the /pij router skill (plan 030): registry↔module parity,
 # sibling-blindness, line budgets, CLI-verb coverage, duplicated-prose scope.
 pij-skill-check:

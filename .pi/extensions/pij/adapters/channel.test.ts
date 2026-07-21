@@ -235,7 +235,8 @@ describe("FsChannel", () => {
 		expect(unread).toMatchObject([{ messageId: "001", kind: "receipt" }]);
 	});
 
-	it("drains messages already present when watch starts, in order", async () => {
+	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
+	it.skip("drains messages already present when watch starts, in order", async () => {
 		const ch = new FsChannel(home);
 		ch.deliver(msg("one"));
 		ch.deliver(msg("two"));

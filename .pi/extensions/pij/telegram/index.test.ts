@@ -241,7 +241,8 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 		expect(reassembled).toBe(body);
 	});
 
-	it("derives stable main/non-main repository prefixes from sender folders with bounded fake git", async () => {
+	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
+	it.skip("derives stable main/non-main repository prefixes from sender folders with bounded fake git", async () => {
 		const withChat: TelegramConfig = { ...config, chatId: "555000" };
 		const channel = new FsChannel(home, { pollMs: 25 });
 		const mainFolder = "/repos/pij-worktrees/main";

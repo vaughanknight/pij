@@ -14,11 +14,14 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
+import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
+import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
@@ -231,6 +234,9 @@ export class Daemon {
 					opJournal: new FsOpJournal(this.pijHome),
 					projectStore: new FsProjectStore(this.pijHome),
 					assignmentStore: new FsAssignmentStore(this.pijHome),
+					allocationStore: new FsAllocationStore(this.pijHome),
+					fenceStore: new FsFenceStore(this.pijHome),
+					dispatchStore: new FsDispatchStore(this.pijHome),
 					platformWriteLock: new FsPlatformWriteLock(this.pijHome),
 					now: () => this.ports.now(),
 					isAlive: (pid) => this.ports.isAlive(pid),
