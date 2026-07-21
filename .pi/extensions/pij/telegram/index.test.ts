@@ -12,10 +12,10 @@ import { join } from "node:path";
 import { type Bot, InputFile, type Update } from "grammy";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Bridge tests drive a real FsChannel poller; under full-suite parallel load
-// the 5s default flakes (same family as the footer tests, DL-002). Band-aid
-// budget; the real fix is fake timers.
-vi.setConfig({ testTimeout: 20_000 });
+// Bridge tests drive a real FsChannel poller. The shared-workstation tail now
+// exceeds 20s under full-suite load; retain a bounded 60s contract timeout
+// until fake timers remove the filesystem scheduling dependency (DL-002).
+vi.setConfig({ testTimeout: 60_000 });
 
 import { FsChannel } from "../adapters/channel.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
@@ -246,7 +246,7 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 		const channel = new FsChannel(home, { pollMs: 25 });
 		const mainFolder = "/repos/pij-worktrees/main";
 		const branchFolder = "/repos/pij-worktrees/feature";
-		const git = vi.fn((cwd: string, args: readonly string[], timeoutMs: number) => {
+		const git = vi.fn((cwd: string, args: readonly string[], _timeoutMs: number) => {
 			if (args.includes("--git-common-dir")) return "/repos/pij/.git\n";
 			if (args[0] === "symbolic-ref") {
 				return cwd === mainFolder ? "main\n" : "feature/repo-context\n";
