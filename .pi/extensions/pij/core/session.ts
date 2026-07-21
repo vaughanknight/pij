@@ -10,6 +10,7 @@
 import { type ControlCommand, isControlCommand, validateCommand } from "./commands.js";
 import { buildEvent } from "./events.js";
 import { announceText, frame, receiptBody } from "./message.js";
+import type { ModelEntry } from "./models/registry.js";
 import type {
 	DeliveryPort,
 	EventLogPort,
@@ -26,7 +27,12 @@ import {
 	markDelivered,
 } from "./receipts.js";
 import { SeqCounter } from "./seq.js";
-import { buildSpawnCommand, readyBody, STACK_COLUMN_PERCENT } from "./spawn.js";
+import {
+	buildSpawnCommand,
+	readyBody,
+	resolvePiModelBinding,
+	STACK_COLUMN_PERCENT,
+} from "./spawn.js";
 import {
 	applyTerminalObservation,
 	bindSpawnExpectation,
@@ -80,6 +86,8 @@ export interface PijPorts {
 	readonly watchdog?: WatchdogSessionStore;
 	/** Durable pre-launch intent, independent from child self-registration. */
 	readonly expectations?: SpawnExpectationStore;
+	/** Runtime model catalog used to resolve provider ambiguity before spawning. */
+	readonly models?: readonly ModelEntry[];
 }
 
 /** Input to PijSession.spawn(). The session generates spawnId + announceTo
@@ -223,6 +231,7 @@ export class PijSession {
 				const spawnId = this.ports.process.env("PIJ_SPAWN_ID") ?? "";
 				// §H2: model via PIJ_SPAWN_MODEL (set by spawner); "" = default model
 				const spawnModel = this.ports.process.env("PIJ_SPAWN_MODEL") ?? "";
+				const provider = this.ports.process.env("PIJ_SPAWN_PROVIDER");
 				const effort = this.ports.process.env("PIJ_SPAWN_EFFORT");
 				const effortSuffix = effort ? `:${effort}` : "";
 				const model =
@@ -234,6 +243,7 @@ export class PijSession {
 					paneId: tmuxPane,
 					spawnedBy: announceTo,
 					...(model ? { boundModel: model } : {}),
+					...(provider ? { boundProvider: provider } : {}),
 					...(effort ? { effort } : {}),
 					...(spawnId ? { spawnId } : {}),
 				});
@@ -275,7 +285,9 @@ export class PijSession {
 	/** Open a new tmux window running a pij worker and return immediately
 	 *  (fire-and-forget: the child's ready-ping arrives via the delivery channel
 	 *  once it has booted). */
-	spawn(opts: SpawnOpts): Result<{ spawnId: string; paneId: string }> {
+	spawn(opts: SpawnOpts): Result<{ spawnId: string; paneId: string; notice?: string }> {
+		const binding = resolvePiModelBinding(opts.model, this.ports.models ?? []);
+		if (!binding.ok) return binding;
 		// §M5: E-NOTMUX lives here (P8-testable against FakeTmux)
 		if (this.ports.tmux.currentSession() === null) {
 			return err("E-NOTMUX", "not inside a tmux session — cannot spawn a pij worker window");
@@ -293,7 +305,8 @@ export class PijSession {
 		// Persist intent before opening a pane: a vanished child may never produce a descriptor.
 		this.ports.expectations?.write(expectation);
 		const spawnCmd = buildSpawnCommand({
-			model: opts.model,
+			model: binding.value.model,
+			provider: binding.value.provider,
 			effort: opts.effort,
 			task: opts.task,
 			spawnId,
@@ -354,7 +367,11 @@ export class PijSession {
 			// Record parent-side so the NEXT spawn sees this pane before the child
 			// has booted its descriptor (fixes the fire-and-forget stack-target race).
 			this.splitPanes.push(splitResult.value.paneId);
-			return ok({ spawnId, paneId: splitResult.value.paneId });
+			return ok({
+				spawnId,
+				paneId: splitResult.value.paneId,
+				...(binding.value.notice ? { notice: binding.value.notice } : {}),
+			});
 		}
 
 		const winResult = this.ports.tmux.newWindow({
@@ -369,7 +386,11 @@ export class PijSession {
 			return err(winResult.code, winResult.message);
 		}
 		this.ports.expectations?.write({ ...expectation, paneId: winResult.value.paneId });
-		return ok({ spawnId, paneId: winResult.value.paneId });
+		return ok({
+			spawnId,
+			paneId: winResult.value.paneId,
+			...(binding.value.notice ? { notice: binding.value.notice } : {}),
+		});
 	}
 
 	/** Kill the tmux window of a spawned peer and remove its descriptor.
@@ -599,6 +620,7 @@ export class PijSession {
 				| "paneId"
 				| "spawnedBy"
 				| "boundModel"
+				| "boundProvider"
 				| "effort"
 				| "spawnId"
 			>

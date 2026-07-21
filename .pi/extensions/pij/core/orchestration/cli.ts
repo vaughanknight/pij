@@ -99,6 +99,7 @@ export const ORCHESTRATION_EXIT: Record<OrchestrationErrorCode, 1 | 2 | 3 | 64> 
 	"E-DEAD": 1,
 	"E-NOREG": 3,
 	"E-AMBIG": 2,
+	"E-AMBIGUOUS": 64,
 	"E-NOTMUX": 2,
 	"E-FULL": 2,
 	"E-BRANCH": 64,

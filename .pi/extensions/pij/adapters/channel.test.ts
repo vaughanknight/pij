@@ -70,7 +70,7 @@ describe("FsChannel", () => {
 	afterEach(() => {
 		for (const d of disposers) d();
 		rmSync(home, { recursive: true, force: true });
-	});
+	}, 60_000);
 
 	function writeDelivered(
 		messageId: string,

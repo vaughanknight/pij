@@ -12,8 +12,10 @@ import { join } from "node:path";
 import { Bot, InputFile, type Update } from "grammy";
 import { describe, expect, it, vi } from "vitest";
 
-// Same load-flake family as index/footer (DL-002): real pollers, 5s default.
-vi.setConfig({ testTimeout: 20_000 });
+// Real pollers share a contended filesystem across the full suite. Keep their
+// contract timeout above the observed shared-workstation tail; fake-timer
+// replacement remains the proper speed fix (DL-002).
+vi.setConfig({ testTimeout: 60_000 });
 
 import { FsChannel } from "../adapters/channel.js";
 import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";

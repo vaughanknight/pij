@@ -11,6 +11,7 @@ import {
 	FakeRegistry,
 	FakeTmux,
 } from "../adapters/fakes.js";
+import type { ModelEntry } from "./models/registry.js";
 import type { SpawnExpectationStore } from "./ports.js";
 import type { BootInput, PijPorts } from "./session.js";
 import { PijSession } from "./session.js";
@@ -43,6 +44,7 @@ function harness(
 		/** Override default FakeTmux (e.g. to test E-NOTMUX with sessionName: null). */
 		tmux?: FakeTmux;
 		expectations?: SpawnExpectationStore;
+		models?: readonly ModelEntry[];
 	} = {},
 ) {
 	const registry = new FakeRegistry(opts.registry ?? []);
@@ -58,6 +60,7 @@ function harness(
 		pi,
 		process,
 		tmux,
+		...(opts.models ? { models: opts.models } : {}),
 		...(opts.expectations ? { expectations: opts.expectations } : {}),
 	};
 	return { ports, registry, eventLog, delivery, pi, process, tmux, session: new PijSession(ports) };
@@ -549,6 +552,26 @@ describe("PijSession.spawn", () => {
 		expect(Object.keys(w?.opts.env ?? {}).filter((k) => k === "PIJ_SPAWN_MODEL")).toHaveLength(1);
 	});
 
+	it("model-facing spawn uses the same deterministic provider resolver", () => {
+		const model = (provider: string): ModelEntry => ({
+			id: "gpt-5.6-sol",
+			name: "GPT-5.6 Sol",
+			provider,
+			verified: true,
+		});
+		const h = harness({
+			models: [model("github-copilot"), model("copilot"), model("codex")],
+		});
+		h.session.boot(bootInput());
+		const result = h.session.spawn({ cwd: "/repo", model: "gpt-5.6-sol", layout: "window" });
+		expect(result).toMatchObject({ ok: true });
+		if (!result.ok) return;
+		expect(result.value.notice).toContain("defaulting");
+		const window = h.tmux.windows[0];
+		expect(window?.opts.args).toContain("github-copilot/gpt-5.6-sol");
+		expect(window?.opts.env.PIJ_SPAWN_PROVIDER).toBe("github-copilot");
+	});
+
 	it("does NOT set PIJ_PANE_ID in child env (§H1: child reads $TMUX_PANE)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
@@ -863,7 +886,8 @@ describe("PijSession.boot — spawned child path (T204)", () => {
 			vars: {
 				PIJ_ANNOUNCE_TO: "parent",
 				PIJ_SPAWN_ID: "s-test-003",
-				PIJ_SPAWN_MODEL: "claude-opus:xhigh",
+				PIJ_SPAWN_MODEL: "github-copilot/gpt-5.6-sol:xhigh",
+				PIJ_SPAWN_PROVIDER: "github-copilot",
 				PIJ_SPAWN_EFFORT: "xhigh",
 			},
 		});
@@ -873,10 +897,11 @@ describe("PijSession.boot — spawned child path (T204)", () => {
 			model: string;
 			effort: string;
 		};
-		expect(body).toMatchObject({ model: "claude-opus", effort: "xhigh" });
+		expect(body).toMatchObject({ model: "github-copilot/gpt-5.6-sol", effort: "xhigh" });
 		expect(h.registry.read("alice")).toMatchObject({
-			boundModel: "claude-opus",
+			boundModel: "github-copilot/gpt-5.6-sol",
 			effort: "xhigh",
+			boundProvider: "github-copilot",
 		});
 	});
 

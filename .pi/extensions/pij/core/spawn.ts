@@ -11,6 +11,7 @@
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
 import { writeMerged } from "./daemon/loop.js";
+import { normalizeModelQuery } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
 import type { RegistryPort } from "./ports.js";
@@ -38,10 +39,77 @@ export function resolvePiBin(flagBin: string | undefined, envBin: string | undef
 	return "pi";
 }
 
+export interface PiModelBinding {
+	readonly model?: string;
+	readonly provider?: string;
+	readonly notice?: string;
+}
+
+/** Resolve a pi-family model before any pane or expectation mutation.
+ *
+ * Provider-qualified input is authoritative. A bare exact id is qualified when
+ * its provider is unique. If the id exists under github-copilot and other
+ * providers, github-copilot is the deliberate machine default and the caller
+ * receives a notice. Every other multi-provider collision fails loud instead of
+ * delegating an order-dependent choice to pi/OMP's fuzzy resolver. Unknown ids
+ * preserve the existing warn-and-pass-through contract. */
+export function resolvePiModelBinding(
+	model: string | undefined,
+	known: readonly ModelEntry[],
+): Result<PiModelBinding> {
+	if (model === undefined) return ok({});
+	const providers = [...new Set(known.map((entry) => entry.provider))];
+	const slash = model.indexOf("/");
+	if (slash > 0) {
+		const requestedProvider = model.slice(0, slash);
+		const provider = providers.find(
+			(candidate) => candidate.toLowerCase() === requestedProvider.toLowerCase(),
+		);
+		if (provider !== undefined) {
+			return ok({ model: `${provider}/${model.slice(slash + 1)}`, provider });
+		}
+	}
+
+	const normalized = normalizeModelQuery(model);
+	const matchingProviders = [
+		...new Set(
+			known
+				.filter((entry) => normalizeModelQuery(entry.id) === normalized)
+				.map((entry) => entry.provider),
+		),
+	];
+	if (matchingProviders.length === 0) return ok({ model });
+	if (matchingProviders.includes("github-copilot")) {
+		const notice =
+			matchingProviders.length > 1
+				? `notice: model '${model}' is available from ${matchingProviders.join(
+						", ",
+					)}; defaulting pi-family spawn to github-copilot (qualify --model to override)`
+				: undefined;
+		return ok({
+			model: `github-copilot/${model}`,
+			provider: "github-copilot",
+			...(notice !== undefined ? { notice } : {}),
+		});
+	}
+	const onlyProvider = matchingProviders[0];
+	if (matchingProviders.length === 1 && onlyProvider !== undefined) {
+		return ok({ model: `${onlyProvider}/${model}`, provider: onlyProvider });
+	}
+	return err(
+		"E-AMBIGUOUS",
+		`model '${model}' exists under multiple providers: ${matchingProviders
+			.map((provider) => `${provider}/${model}`)
+			.join(", ")}; qualify --model with the intended provider`,
+	);
+}
+
 /** Input to buildSpawnCommand. */
 export interface SpawnInput {
 	/** Optional model override (passed as --model <model>). */
 	model?: string;
+	/** Resolved provider persisted separately from the model reference. */
+	provider?: string;
 	/** Which pi-family binary to exec (default `"pi"`). `"omp"` swaps the binary to
 	 *  oh-my-pi and prepends its headless permission-bypass flag; everything else
 	 *  (env threading, --model, self-register) is identical because omp IS pi. */
@@ -132,6 +200,9 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	// any `:<effort>` suffix).
 	if (piModel !== undefined) {
 		env.PIJ_SPAWN_MODEL = piModel;
+	}
+	if (input.provider !== undefined) {
+		env.PIJ_SPAWN_PROVIDER = input.provider;
 	}
 	if (input.effort !== undefined) {
 		env.PIJ_SPAWN_EFFORT = input.effort;
@@ -296,6 +367,8 @@ export interface PendingDescriptorInput {
 	readonly spawnId?: string;
 	/** Model pinned on the spawn command, persisted before first inference. */
 	readonly model?: string;
+	/** Resolved model provider; Copilot defaults to github-copilot. */
+	readonly provider?: string;
 	/** Reasoning effort pinned on the spawn command, persisted as registry truth. */
 	readonly effort?: string;
 }
@@ -404,6 +477,11 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		// the first bind/readiness verdict (the daemon owns it from here).
 		systemState: "starting",
 		...(input.model !== undefined ? { boundModel: input.model } : {}),
+		...(input.provider !== undefined
+			? { boundProvider: input.provider }
+			: input.harness === "copilot"
+				? { boundProvider: "github-copilot" }
+				: {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.parentId !== undefined ? { parentId: input.parentId } : {}),

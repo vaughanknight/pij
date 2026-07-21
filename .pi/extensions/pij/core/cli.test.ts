@@ -342,7 +342,12 @@ describe("dispatch whoami / list", () => {
 		const d = deps({
 			self: "a1",
 			descs: [
-				desc({ id: "a1", boundModel: "gpt-5.6-sol", effort: "xhigh" }),
+				desc({
+					id: "a1",
+					boundProvider: "github-copilot",
+					boundModel: "gpt-5.6-sol",
+					effort: "xhigh",
+				}),
 				desc({ id: "w3", pid: 200 }),
 				desc({ id: "z9", folder: "/other" }),
 			],
@@ -353,6 +358,7 @@ describe("dispatch whoami / list", () => {
 			id: string;
 			liveness: string;
 			boundModel: string | null;
+			boundProvider: string | null;
 			effort: string | null;
 			prime: boolean;
 			oldPrime: boolean;
@@ -361,6 +367,7 @@ describe("dispatch whoami / list", () => {
 		expect(arr.find((x) => x.id === "a1")?.liveness).toBe("active");
 		expect(arr.find((x) => x.id === "a1")).toMatchObject({
 			boundModel: "gpt-5.6-sol",
+			boundProvider: "github-copilot",
 			effort: "xhigh",
 		});
 		expect(arr.find((x) => x.id === "w3")?.liveness).toBe("dead");
@@ -369,6 +376,7 @@ describe("dispatch whoami / list", () => {
 		const human = dispatch({ verb: "list", here: true, prime: false, json: false }, d);
 		expect(human.stdout).toContain("★ a1");
 		expect(human.stdout).toContain("gpt-5.6-sol");
+		expect(human.stdout).toContain("github-copilot");
 		expect(human.stdout).toContain("xhigh");
 	});
 

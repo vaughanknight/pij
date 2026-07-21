@@ -266,6 +266,9 @@ export interface SessionDescriptor {
 	 *  captured (which may differ if the harness substituted a fallback).
 	 *  Absent for legacy/default-model descriptors. */
 	readonly boundModel?: string;
+	/** Provider resolved before spawn. Separate from `boundModel` because model ids
+	 * can collide across providers. Absent for legacy/default-model descriptors. */
+	readonly boundProvider?: string;
 	/** Reasoning effort pinned by spawn. Unlike a model footer this cannot be
 	 *  inferred reliably after launch, so the registry is authoritative.
 	 *  Absent for legacy/default-effort descriptors. */
@@ -543,6 +546,7 @@ export type PijErrorCode =
 	| "E-NOREG" // no registry present
 	| "E-ARG" // bad CLI arguments
 	| "E-AMBIG" // cannot resolve "self" (env unset + multiple local)
+	| "E-AMBIGUOUS" // model id resolves to multiple providers; caller must qualify it
 	| "E-NOTMUX" // not inside a tmux session (required for pij_spawn)
 	| "E-FULL" // explicit --layout right|below full — 2 workers already split (the default stack is uncapped)
 	| "E-BRANCH" // branch-from-self refused (unsupported harness / unresolved / mismatch / unbound)

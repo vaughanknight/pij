@@ -64,16 +64,19 @@ Both entry points run the same six ordered stages:
    `.pi/mcp.json → ~/.pi/agent/mcp.json`, and the three managed provider
    objects from `.pi/models.json` into `~/.pi/agent/models.json`. The model
    merge preserves machine-local and otherwise unmanaged providers.
-4. **Link pij's local extensions** into `~/.pi/agent/extensions/` (`just link`
-   on Unix, directory junctions on Windows) and link the `pij` CLI onto `PATH`
-   (`npm link`).
+4. **Install OMP when absent and apply canonical links.** `just omp-install`
+   delegates installation to OMP, then `just link` refuses linked worktrees,
+   links every repository extension into `~/.pi/agent/extensions/`, links only
+   `pij` into `~/.omp/agent/extensions/`, and shares Pi's MCP config with OMP.
+   The same stage links the global `pij` skill and CLI (`npm link`).
 5. **Install every vetted package** from `.pi/packages.yaml` globally
    (`just pkg bootstrap`).
-6. **Run `just pi-doctor`** as a final verification.
+6. **Run `just pi-doctor`** as the final Pi verification; `omp-install` already
+   ran `just omp-doctor` for OMP.
 
-After it completes, `pi` from *any* cwd on the machine gets the same extensions,
-MCP servers, prefs, portable models, and global packages pij configures. The pi
-side of this (what pi is, how the global state syncs) is documented in
+After it completes, `pi` from *any* cwd gets every managed extension. `omp`
+from any cwd gets the intentionally smaller surface: the `pij` extension and
+the exact same MCP config as Pi. The runtime/update details are documented in
 [`update-pi.md`](update-pi.md).
 
 ## The recipe surface
@@ -94,11 +97,12 @@ Day-to-day recipes:
 | `just format` | Auto-fix formatting + import order via Biome | `77-78` |
 | `just test [path]` | Run vitest; optionally scope to a file/pattern | `80-82` |
 | `just smoke` | tmux-driven end-to-end smoke (Driver SDK) | `91-93` |
-| `just link` / `just unlink` | Symlink (or remove) `.pi/extensions/*` into `~/.pi/agent/extensions/` | `147-151` |
+| `just link` / `just unlink` | Guarded canonical links: all extensions for Pi; pij-only + shared MCP for OMP | `206-211` |
 | `just pij <args>` | Run the pij CLI through the locked local wrapper, no global install or npm resolution | pij recipes |
 | `just pkg <args>` | Manage third-party pi-extensions via `.pi/packages.yaml` | `100-102` |
 | `just release-age-probe` | Separately prove locked install, fresh-resolution refusal, and root audit visibility | release-age recipes |
 | `just sync-models [--source <path>] [--target <path>]` | Atomically merge repo-managed providers into Pi's global model registry | `106-109` |
+| `just omp-install` / `just update-omp` / `just omp-doctor` | Install/update OMP and enforce or audit its pij-only extension policy | `243-273` |
 
 ## npm resolution boundary
 

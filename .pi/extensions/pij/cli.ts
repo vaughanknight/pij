@@ -164,6 +164,7 @@ import {
 	planBranch,
 	planPlacement,
 	resolvePiBin,
+	resolvePiModelBinding,
 	type SpawnLayout,
 	spawnIdentitySeed,
 } from "./core/spawn.js";
@@ -1163,6 +1164,18 @@ function runSpawn(argv: readonly string[]): void {
 	if (spawnWarn) process.stderr.write(`${spawnWarn}\n`);
 	const effortWarn = buildEffortWarning(req.value.effort, req.value.model, known);
 	if (effortWarn) process.stderr.write(`${effortWarn}\n`);
+	let resolvedPiModel = req.value.model;
+	let resolvedPiProvider: string | undefined;
+	if (req.value.harness === "pi") {
+		const binding = resolvePiModelBinding(req.value.model, known);
+		if (!binding.ok) {
+			process.stderr.write(`${binding.code}: ${binding.message}\n`);
+			process.exit(64);
+		}
+		resolvedPiModel = binding.value.model;
+		resolvedPiProvider = binding.value.provider;
+		if (binding.value.notice) process.stderr.write(`${binding.value.notice}\n`);
+	}
 	const tmux = new TmuxAdapter();
 	const ownPane = tmux.currentPane();
 	if (!ownPane || !tmux.currentSession()) {
@@ -1211,7 +1224,8 @@ function runSpawn(argv: readonly string[]): void {
 			cwd: cwdPi,
 			role: "worker",
 			bin: piBin,
-			model: req.value.model,
+			model: resolvedPiModel,
+			provider: resolvedPiProvider,
 			effort: req.value.effort,
 			task: req.value.task,
 			noWatchdog: req.value.noWatchdog,
@@ -1262,7 +1276,7 @@ function runSpawn(argv: readonly string[]): void {
 					buildSpawnOutput({
 						paneId: panePi,
 						harness: "pi",
-						model: req.value.model,
+						model: resolvedPiModel,
 						effort: req.value.effort,
 						note: `${piBin} self-registers as harness:pi; its id is assigned by the child at boot — watch for its ready-ping or \`pij list\``,
 					}),
@@ -1270,7 +1284,7 @@ function runSpawn(argv: readonly string[]): void {
 			);
 		} else {
 			process.stdout.write(
-				`spawned ${piBin} worker in pane ${panePi} (model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
+				`spawned ${piBin} worker in pane ${panePi} (model ${resolvedPiModel ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
 			);
 		}
 		return;
@@ -1468,6 +1482,7 @@ function runSpawn(argv: readonly string[]): void {
 		branchedFrom: branchFrom,
 		spawnId: token,
 		model: req.value.model,
+		provider: req.value.harness === "copilot" ? "github-copilot" : undefined,
 		effort: req.value.effort,
 	});
 	const promoted = reg0.promoteReservation(pending, reservationOwnerToken);

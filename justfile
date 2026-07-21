@@ -55,8 +55,9 @@ install:
     @echo "  → ~/.pi/agent/mcp.json"
     just sync-models
     @echo
-    @echo "=== 4/6 link pij extensions globally ==="
-    just link
+    @echo "=== 4/6 install omp + link managed global surfaces ==="
+    just omp-install
+    just pij-skill-link-global
     @echo "--- link the pij CLI bin (bare \`pij\` on PATH) ---"
     npm link
     @echo
@@ -221,16 +222,55 @@ pij-skill-link:
     ln -sf "$(realpath skills/pij)" .pi/skills/pij
     @echo "✓ .pi/skills/pij → $(realpath skills/pij)"
 
-# Install skills/pij MACHINE-WIDE to every detected agent via `npx skills`
-# (shared store ~/.agents/skills + per-agent symlink bridges; -a '*' fans out),
-# then swap the store entry for a symlink to the repo — npx copies (DL-001,
-# plan 030 retro: copies drift, flow-pair forked that way); the symlink makes
-# the live skill track this repo with no re-install.
+# Link skills/pij MACHINE-WIDE from the canonical checkout. The shared
+# link-global guard refuses linked worktrees before this recipe can remove the
+# existing target, preventing a development checkout from hijacking every seat.
+pij-skill-link-global:
+    #!/bin/sh
+    set -eu
+    npm run link -- --check-only
+    source="$(realpath skills/pij)"
+    target="$HOME/.agents/skills/pij"
+    mkdir -p "$(dirname "$target")"
+    rm -rf "$target"
+    ln -sfn "$source" "$target"
+    echo "✓ $target → $source (symlink, drift-proof)"
+
+# Backwards-compatible alias; global skill installation is link-only.
 pij-skill-install:
-    just _npm-resolution npx --yes skills@latest add "$(realpath skills)" -a '*' -g -y -s pij
-    rm -rf ~/.agents/skills/pij
-    ln -sfn "$(realpath skills/pij)" ~/.agents/skills/pij
-    @echo "✓ ~/.agents/skills/pij → $(realpath skills/pij) (symlink, drift-proof)"
+    just pij-skill-link-global
+
+# Install the official standalone OMP binary when absent, then restore pij's
+# managed OMP policy: only the pij extension plus Pi's shared MCP config.
+omp-install:
+    #!/bin/sh
+    set -eu
+    if command -v omp >/dev/null 2>&1; then
+        echo "= omp already installed: $(omp --version | head -1)"
+    else
+        curl -fsSL https://omp.sh/install | sh -s -- --binary
+    fi
+    just link
+    just omp-doctor
+
+# OMP owns its updater; re-apply managed links because updates may replace home state.
+update-omp:
+    #!/bin/sh
+    set -eu
+    if command -v omp >/dev/null 2>&1; then
+        omp update
+    else
+        curl -fsSL https://omp.sh/install | sh -s -- --binary
+    fi
+    just link
+    just omp-doctor
+
+omp-doctor:
+    #!/bin/sh
+    set -eu
+    npm run link -- --check-only
+    omp --version
+    npm run link -- --doctor-omp
 
 # Install the flow front-door skills GLOBALLY for pi only (machine-wide), via
 # `npx skills`. Mirrors ~/github/tools `install-skills`, but scoped to pi
@@ -385,8 +425,9 @@ update-pi:
     @echo "  → ~/.pi/agent/mcp.json"
     just sync-models
     @echo
-    @echo "=== link pij extensions globally ==="
+    @echo "=== link managed Pi/OMP surfaces ==="
     just link
+    just pij-skill-link-global
     @echo "--- link the pij CLI bin (bare \`pij\` on PATH) ---"
     npm link
     @echo

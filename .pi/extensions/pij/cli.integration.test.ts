@@ -762,6 +762,51 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(prelaunch[0]).not.toHaveProperty("paneId");
 	});
 
+	it("pins an ambiguous OMP model to github-copilot before tmux launch", () => {
+		const modelsPath = join(HOME, ".pi", "agent", "models.json");
+		mkdirSync(join(HOME, ".pi", "agent"), { recursive: true });
+		writeFileSync(
+			modelsPath,
+			JSON.stringify({
+				providers: {
+					"github-copilot": { models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }] },
+					openrouter: { models: [{ id: "shared-model", name: "Shared" }] },
+					sakana: { models: [{ id: "shared-model", name: "Shared" }] },
+				},
+			}),
+		);
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+
+		const result = pij(
+			["spawn", "--harness", "pi", "--bin", "omp", "--model", "gpt-5.6-sol", "--json"],
+			{ PIJ_SESSION_ID: "pij-A", HOME },
+		);
+
+		expect(result.code).toBe(0);
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).toContain("omp");
+		expect(log).toContain("--model github-copilot/gpt-5.6-sol");
+		expect(log).not.toMatch(/--model gpt-5\.6-sol(?:\s|$)/);
+	});
+
+	it("refuses other provider ambiguity before expectation or tmux mutation", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+
+		const result = pij(
+			["spawn", "--harness", "pi", "--bin", "omp", "--model", "shared-model", "--json"],
+			{ PIJ_SESSION_ID: "pij-A", HOME },
+		);
+
+		expect(result.code).toBe(64);
+		expect(result.out).toContain("E-AMBIGUOUS");
+		expect(result.out).toContain("openrouter/shared-model");
+		expect(result.out).toContain("sakana/shared-model");
+		expect(readFileSync(TMUX_LOG, "utf8")).toBe("");
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
 	it("control-plane spawn correlates one prelaunch expectation with descriptor and pane", () => {
 		clearSpawnExpectations();
 		writeFileSync(TMUX_LOG, "");
@@ -799,6 +844,25 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(new FsRegistry(HOME).hasReservation(output.id)).toEqual({
 			ok: true,
 			value: false,
+		});
+	});
+
+	it("daemon-bound Copilot descriptor records github-copilot provider", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(["spawn", "--harness", "copilot", "--model", "gpt-5.6-sol", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(result.code).toBe(0);
+		const jsonLine = result.out
+			.trim()
+			.split("\n")
+			.findLast((line) => line.startsWith("{"));
+		const output = JSON.parse(jsonLine ?? "{}") as { id: string };
+		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+			harness: "copilot",
+			boundModel: "gpt-5.6-sol",
+			boundProvider: "github-copilot",
 		});
 	});
 
