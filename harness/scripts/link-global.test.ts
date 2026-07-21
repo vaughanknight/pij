@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
 	existsSync,
 	lstatSync,
@@ -12,13 +11,10 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runLinkGlobal } from "./link-global.js";
 
-const PIJ_ROOT = resolve(import.meta.dirname, "..", "..");
-const LINK_SCRIPT = join(PIJ_ROOT, "harness", "scripts", "link-global.ts");
-const TSX = join(PIJ_ROOT, "node_modules", ".bin", "tsx");
 const scratch: string[] = [];
 
 function tempDir(prefix: string): string {
@@ -121,20 +117,20 @@ describe("link-global", () => {
 	});
 
 	it("worktree invocation exits 1 before either machine home changes", () => {
-		expect(lstatSync(join(PIJ_ROOT, ".git")).isFile()).toBe(true);
+		const canonicalRoot = tempDir("pij-link-canonical-");
+		const linkedRoot = tempDir("pij-link-worktree-");
+		const gitDir = join(canonicalRoot, ".git", "worktrees", "fixture");
+		mkdirSync(gitDir, { recursive: true });
+		writeFileSync(join(linkedRoot, ".git"), `gitdir: ${gitDir}\n`);
 		const home = tempDir("pij-link-home-");
 		const marker = join(home, "marker.txt");
 		writeFileSync(marker, "unchanged\n");
 
-		const result = spawnSync(TSX, [LINK_SCRIPT], {
-			cwd: PIJ_ROOT,
-			env: { ...process.env, HOME: home },
-			encoding: "utf8",
-		});
+		const result = run(linkedRoot, home);
 
-		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("linked worktree");
-		expect(result.stderr).toContain("run `just link` from");
+		expect(result.code).toBe(1);
+		expect(result.stderr.join("\n")).toContain("linked worktree");
+		expect(result.stderr.join("\n")).toContain(`run \`just link\` from ${canonicalRoot}`);
 		expect(readFileSync(marker, "utf8")).toBe("unchanged\n");
 		expect(existsSync(join(home, ".pi"))).toBe(false);
 		expect(existsSync(join(home, ".omp"))).toBe(false);
