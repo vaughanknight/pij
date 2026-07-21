@@ -266,6 +266,9 @@ export interface SessionDescriptor {
 	 *  captured (which may differ if the harness substituted a fallback).
 	 *  Absent for legacy/default-model descriptors. */
 	readonly boundModel?: string;
+	/** Provider resolved before spawn. Separate from `boundModel` because model ids
+	 * can collide across providers. Absent for legacy/default-model descriptors. */
+	readonly boundProvider?: string;
 	/** Reasoning effort pinned by spawn. Unlike a model footer this cannot be
 	 *  inferred reliably after launch, so the registry is authoritative.
 	 *  Absent for legacy/default-effort descriptors. */

@@ -847,6 +847,25 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 	});
 
+	it("daemon-bound Copilot descriptor records github-copilot provider", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(["spawn", "--harness", "copilot", "--model", "gpt-5.6-sol", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+		});
+		expect(result.code).toBe(0);
+		const jsonLine = result.out
+			.trim()
+			.split("\n")
+			.findLast((line) => line.startsWith("{"));
+		const output = JSON.parse(jsonLine ?? "{}") as { id: string };
+		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
+			harness: "copilot",
+			boundModel: "gpt-5.6-sol",
+			boundProvider: "github-copilot",
+		});
+	});
+
 	it("known pane-launch failure releases only its reservation and expectation", () => {
 		clearSpawnExpectations();
 		const expectationStore = new FsSpawnExpectationStore(HOME);

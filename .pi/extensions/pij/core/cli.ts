@@ -1587,6 +1587,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							liveness: live,
 							lastEventAt: d.lastEventAt ?? null,
 							boundModel: d.boundModel ?? null,
+							boundProvider: d.boundProvider ?? null,
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
 							terminal: d.terminal ?? null,
@@ -1616,9 +1617,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			const lines = rows.map(
 				({ d, live }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : " "} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundModel ?? "—", 20)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : " "} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundProvider ?? "—", 18)} ${pad(d.boundModel ?? "—", 28)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
 			);
-			const header = `  ${pad("id", 14)} P ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("model", 20)} ${pad("effort", 7)} folder`;
+			const header = `  ${pad("id", 14)} P ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("provider", 18)} ${pad("model", 28)} ${pad("effort", 7)} folder`;
 			return okOut(
 				[header, ...lines, `${rows.length} session(s)${self ? ` · ★ = you (${self})` : ""}`].join(
 					"\n",

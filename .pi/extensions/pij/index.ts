@@ -22,6 +22,7 @@ import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
 import { guardInvariantNineModal } from "./core/invariant-guard.js";
+import { loadModels } from "./core/models/registry.js";
 import { PijSession } from "./core/session.js";
 import type { Role, SessionDescriptor } from "./core/types.js";
 
@@ -176,7 +177,7 @@ export default function (pi: ExtensionAPI): void {
 				content: [
 					{
 						type: "text",
-						text: `spawned pij worker — spawnId=${res.value.spawnId} paneId=${res.value.paneId}`,
+						text: `spawned pij worker — spawnId=${res.value.spawnId} paneId=${res.value.paneId}${res.value.notice ? `\n${res.value.notice}` : ""}`,
 					},
 				],
 				details: {},
@@ -303,6 +304,7 @@ export default function (pi: ExtensionAPI): void {
 			tmux: new TmuxAdapter(),
 			watchdog: new FsWatchdogStore(pijHome),
 			expectations: new FsSpawnExpectationStore(pijHome),
+			models: loadModels(),
 		});
 
 		const boot = session.boot({

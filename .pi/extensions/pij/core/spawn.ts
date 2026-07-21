@@ -108,6 +108,8 @@ export function resolvePiModelBinding(
 export interface SpawnInput {
 	/** Optional model override (passed as --model <model>). */
 	model?: string;
+	/** Resolved provider persisted separately from the model reference. */
+	provider?: string;
 	/** Which pi-family binary to exec (default `"pi"`). `"omp"` swaps the binary to
 	 *  oh-my-pi and prepends its headless permission-bypass flag; everything else
 	 *  (env threading, --model, self-register) is identical because omp IS pi. */
@@ -198,6 +200,9 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	// any `:<effort>` suffix).
 	if (piModel !== undefined) {
 		env.PIJ_SPAWN_MODEL = piModel;
+	}
+	if (input.provider !== undefined) {
+		env.PIJ_SPAWN_PROVIDER = input.provider;
 	}
 	if (input.effort !== undefined) {
 		env.PIJ_SPAWN_EFFORT = input.effort;
@@ -362,6 +367,8 @@ export interface PendingDescriptorInput {
 	readonly spawnId?: string;
 	/** Model pinned on the spawn command, persisted before first inference. */
 	readonly model?: string;
+	/** Resolved model provider; Copilot defaults to github-copilot. */
+	readonly provider?: string;
 	/** Reasoning effort pinned on the spawn command, persisted as registry truth. */
 	readonly effort?: string;
 }
@@ -470,6 +477,11 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 		// the first bind/readiness verdict (the daemon owns it from here).
 		systemState: "starting",
 		...(input.model !== undefined ? { boundModel: input.model } : {}),
+		...(input.provider !== undefined
+			? { boundProvider: input.provider }
+			: input.harness === "copilot"
+				? { boundProvider: "github-copilot" }
+				: {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.parentId !== undefined ? { parentId: input.parentId } : {}),

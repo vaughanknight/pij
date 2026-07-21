@@ -196,6 +196,15 @@ describe("buildSpawnCommand", () => {
 		expect(result.env.PIJ_SPAWN_MODEL).toBe(model); // env var
 	});
 
+	it("threads the resolved provider through PIJ_SPAWN_PROVIDER", () => {
+		const result = buildSpawnCommand({
+			...base,
+			model: "github-copilot/gpt-5.6-sol",
+			provider: "github-copilot",
+		});
+		expect(result.env.PIJ_SPAWN_PROVIDER).toBe("github-copilot");
+	});
+
 	it("role 'parent' is passed through to PIJ_ROLE", () => {
 		const result = buildSpawnCommand({ ...base, role: "parent" });
 		expect(result.env.PIJ_ROLE).toBe("parent");
@@ -583,6 +592,15 @@ describe("buildPendingDescriptor", () => {
 		// still pending until the daemon confirms ready + injects init.
 		expect(d.lifecycle).toBe("pending");
 		expect(d.harnessSessionId).toBeUndefined();
+	});
+
+	it("stamps daemon-bound Copilot descriptors with github-copilot provider", () => {
+		const d = buildPendingDescriptor({
+			...input,
+			harness: "copilot",
+			model: "gpt-5.6-sol",
+		});
+		expect(d.boundProvider).toBe("github-copilot");
 	});
 
 	it("omits plannedHarnessSessionId for claude (discovery-bound)", () => {

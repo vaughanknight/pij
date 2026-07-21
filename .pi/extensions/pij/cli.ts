@@ -1165,6 +1165,7 @@ function runSpawn(argv: readonly string[]): void {
 	const effortWarn = buildEffortWarning(req.value.effort, req.value.model, known);
 	if (effortWarn) process.stderr.write(`${effortWarn}\n`);
 	let resolvedPiModel = req.value.model;
+	let resolvedPiProvider: string | undefined;
 	if (req.value.harness === "pi") {
 		const binding = resolvePiModelBinding(req.value.model, known);
 		if (!binding.ok) {
@@ -1172,6 +1173,7 @@ function runSpawn(argv: readonly string[]): void {
 			process.exit(64);
 		}
 		resolvedPiModel = binding.value.model;
+		resolvedPiProvider = binding.value.provider;
 		if (binding.value.notice) process.stderr.write(`${binding.value.notice}\n`);
 	}
 	const tmux = new TmuxAdapter();
@@ -1223,6 +1225,7 @@ function runSpawn(argv: readonly string[]): void {
 			role: "worker",
 			bin: piBin,
 			model: resolvedPiModel,
+			provider: resolvedPiProvider,
 			effort: req.value.effort,
 			task: req.value.task,
 			noWatchdog: req.value.noWatchdog,
@@ -1479,6 +1482,7 @@ function runSpawn(argv: readonly string[]): void {
 		branchedFrom: branchFrom,
 		spawnId: token,
 		model: req.value.model,
+		provider: req.value.harness === "copilot" ? "github-copilot" : undefined,
 		effort: req.value.effort,
 	});
 	const promoted = reg0.promoteReservation(pending, reservationOwnerToken);
