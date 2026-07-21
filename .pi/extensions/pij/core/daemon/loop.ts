@@ -33,7 +33,7 @@ import type {
 	SessionDescriptor,
 	SessionId,
 } from "../types.js";
-import type { PaneListing } from "./pane-signals.js";
+import { type PaneListing, renderedComposerLength } from "./pane-signals.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -470,6 +470,25 @@ export interface DrainedTmuxMessage {
 	readonly outcome?: SendOutcome;
 }
 
+/** Refresh the authoritative rendered-composer signal immediately before a
+ * send-key. Unknown layouts preserve the existing caret signal; known empty or
+ * non-empty snapshots replace it. */
+export function refreshRenderedComposerHold(
+	paneId: string,
+	ports: Pick<DaemonPorts, "capturePane">,
+	buffer: SendBuffer,
+): boolean {
+	const renderedLength = renderedComposerLength(ports.capturePane(paneId));
+	if (renderedLength !== undefined) {
+		const previous = buffer.paneSignal(paneId);
+		buffer.setPaneSignal(paneId, {
+			busy: previous?.busy ?? false,
+			userTyping: renderedLength > 0,
+		});
+	}
+	return buffer.isPaneHeld(paneId);
+}
+
 /** Route one bound tmux target's unread messages and return each completed
  *  injection outcome. The impure caller owns the post-outcome read marker.
  *  Delivery ownership (AC-08): pi targets route to `observe` and remain for the
@@ -492,7 +511,7 @@ export function drainTmuxInbox(
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
-			if (buffer.isPaneHeld(decision.paneId)) {
+			if (refreshRenderedComposerHold(decision.paneId, ports, buffer)) {
 				buffer.enqueue(m.messageId, msg);
 				continue;
 			}

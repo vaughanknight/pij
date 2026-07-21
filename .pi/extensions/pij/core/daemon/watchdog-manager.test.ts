@@ -126,10 +126,6 @@ function managerHarness(): ManagerHarness {
 			events.push(`capture:${session.id}`);
 			return panes.get(session.id) ?? "idle pane";
 		},
-		sendText: (session, body) => {
-			events.push(`send:${session.id}`);
-			sent.push({ id: session.id, body });
-		},
 		onFire: (session, atMs) => fires.push({ id: session.id, atMs }),
 		onResponse: (event) => responses.push(event),
 	});
@@ -159,19 +155,24 @@ function intervalSidecar(
 }
 
 describe("WatchdogManager — reconciliation and delivery", () => {
-	it("captures before a due tmux fire, increments ordinals, and stamps through its callback", () => {
+	it("queues every due tmux watchdog turn through the durable channel", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-tmux", intervalSidecar());
 		h.store.revisions.set("pij-tmux", 1);
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "pij-tmux" })]);
-		expect(h.events).toEqual(["capture:pij-tmux", "send:pij-tmux"]);
-		expect(h.sent[0]?.body).toContain("[pij watchdog #1 for pij-tmux]");
+		expect(h.events).toEqual(["capture:pij-tmux"]);
+		expect(h.sent).toEqual([]);
+		expect(h.delivery.outbox[0]?.message).toMatchObject({
+			from: "pij-watchdog",
+			to: "pij-tmux",
+		});
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-tmux]");
 		expect(h.fires).toEqual([{ id: "pij-tmux", atMs: 100 }]);
 
 		h.setNow(200);
 		h.manager.reconcile([desc({ id: "pij-tmux" })]);
-		expect(h.sent[1]?.body).toContain("[pij watchdog #2 for pij-tmux]");
+		expect(h.delivery.outbox[1]?.message.body).toContain("[pij watchdog #2 for pij-tmux]");
 	});
 
 	it("fires for a session that has never emitted an event, anchored on startedAt", () => {
@@ -185,7 +186,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		h.store.revisions.set("pij-newborn", 1);
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "pij-newborn", lastEventAt: undefined })]);
-		expect(h.sent[0]?.body).toContain("[pij watchdog #1 for pij-newborn]");
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-newborn]");
 		expect(h.fires).toEqual([{ id: "pij-newborn", atMs: 100 }]);
 	});
 
@@ -258,7 +259,6 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 			isAlive: (pid) => pid !== 999,
 			now: () => 10_000,
 			capturePane: () => "pane",
-			sendText: (session, body) => h.sent.push({ id: session.id, body }),
 		});
 		deadManager.reconcile([
 			desc({ id: "pending", lifecycle: "pending" }),
@@ -309,19 +309,20 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 			exemptUntilMs: 100,
 		});
 		store.revisions.set("peer", 1);
+		const delivery = new FakeDelivery();
 		const manager = new WatchdogManager({
 			store,
-			channel: new FakeDelivery(),
+			channel: delivery,
 			isAlive: () => true,
 			now: () => 100,
 			capturePane: () => {
 				store.order.push("capture");
 				return "idle";
 			},
-			sendText: () => store.order.push("send"),
 		});
 		manager.reconcile([desc({ id: "peer" })]);
-		expect(store.order).toEqual(["write:peer:active", "capture", "send"]);
+		expect(store.order).toEqual(["write:peer:active", "capture"]);
+		expect(delivery.outbox).toHaveLength(1);
 	});
 
 	it("fires nothing while off, and RE-ANCHORS on re-enable so the off-window isn't counted (Plan 056)", () => {
@@ -524,7 +525,7 @@ describe("WatchdogManager — watcher captures", () => {
 		h.setNow(200);
 		h.manager.reconcile([desc({ id: "peer", lastWatchdogFireAt: new Date(100).toISOString() })]);
 
-		expect(h.events).toEqual(["capture:peer", "send:peer"]);
+		expect(h.events).toEqual(["capture:peer"]);
 		expect(h.store.captures[0]).toMatchObject({
 			watcherId: "owner",
 			targetId: "peer",

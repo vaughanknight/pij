@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
 import type { PaneListing } from "./core/daemon/pane-signals.js";
 import { USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
@@ -17,6 +18,21 @@ import type { SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
+const CLAUDE_COMPOSER_EMPTY = [
+	"────────────────────────────────────────────────────────────────",
+	"❯",
+	"────────────────────────────────────────────────────────────────",
+	"45% pij · pij-reasonable-dove · Opus 4.8",
+].join("\n");
+const CLAUDE_COMPOSER_TEXT = [
+	"────────────────────────────────────────────────────────────────",
+	"❯ keep me posted on the researcher findings",
+	"────────────────────────────────────────────────────────────────",
+	"45% pij · pij-reasonable-dove · Opus 4.8",
+].join("\n");
+const CLAUDE_RELATIVE_REDRAW = Buffer.from(
+	"\x1b[?2026h\x1b[?25l\x1b[H\r\x1b[2C\x1b[45Bkeep me posted on the researcher findings\x1b[49;1H\x1b[46;3H",
+);
 const NOW_MS = Date.parse("2026-06-28T00:00:00.000Z");
 const FRESH_AT = new Date(NOW_MS - 5_000).toISOString();
 const STALE_AT = new Date(NOW_MS - STALE_AFTER_MS - 1).toISOString();
@@ -499,7 +515,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(registry.read("pij-pull")?.initInjectedAt).toBeUndefined();
 	});
 
-	it("queues while a human composer is non-empty, then flushes FIFO on Enter", () => {
+	it("holds real relative-redraw Claude input, then flushes FIFO when the composer empties", () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -514,10 +530,11 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		const channel = new FsChannel(home);
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "one" });
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "two" });
-		const listings = () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 23 }];
+		let pane = CLAUDE_COMPOSER_TEXT;
 		const ports = fakePorts({
-			paneListings: listings,
-			tapChunks: [Buffer.from("\x1b[24;3Hk\x1b[24;4H"), Buffer.from("\x1b[24;4H\r\n\x1b[24;3H")],
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			tapChunks: [CLAUDE_RELATIVE_REDRAW],
 		});
 		const daemon = new Daemon(home, ports, registry, channel);
 
@@ -526,6 +543,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([]);
 		expect(unreadBodies("pij-c")).toEqual(["one", "two"]);
 
+		pane = CLAUDE_COMPOSER_EMPTY;
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
 		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([
@@ -535,8 +553,9 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
-	it("releases a typing hold after 60 seconds of keystroke-idle", () => {
+	it("does not idle-release while rendered composer text remains non-empty", () => {
 		let nowMs = 1_000;
+		let pane = CLAUDE_COMPOSER_TEXT;
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -552,16 +571,83 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "after idle" });
 		const ports = fakePorts({
 			now: () => nowMs,
-			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 23 }],
-			tapChunks: [Buffer.from("\x1b[24;3Hk\x1b[24;4H")],
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			tapChunks: [CLAUDE_RELATIVE_REDRAW],
 		});
 		const daemon = new Daemon(home, ports, registry, channel);
 
 		daemon.tick();
-		expect(unreadBodies("pij-c")).toEqual(["after idle"]);
 		nowMs += USER_TYPING_IDLE_MS;
 		daemon.tick();
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-c")).toEqual(["after idle"]);
+
+		pane = CLAUDE_COMPOSER_EMPTY;
+		daemon.tick();
 		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] after idle" });
+	});
+
+	it("rechecks the rendered composer immediately before send to close the typing race", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
+		const paneSequence = [CLAUDE_COMPOSER_EMPTY, CLAUDE_COMPOSER_EMPTY, CLAUDE_COMPOSER_TEXT];
+		const ports = fakePorts({
+			paneText: () => paneSequence.shift() ?? CLAUDE_COMPOSER_TEXT,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, registry, channel).tick();
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-c")).toEqual(["racing"]);
+	});
+
+	it("routes an external watchdog turn through the same composer hold", () => {
+		const nowMs = Date.parse("2026-07-21T00:00:00.000Z");
+		let pane = CLAUDE_COMPOSER_TEXT;
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+				startedAt: "1970-01-01T00:00:00.000Z",
+				lastEventAt: "1970-01-01T00:00:00.000Z",
+				state: "idle",
+			}),
+		);
+		new FsWatchdogStore(home).write("pij-c", { intervalMs: 100 });
+		const channel = new FsChannel(home);
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-c")[0]).toContain("[pij watchdog #1 for pij-c]");
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+
+		pane = CLAUDE_COMPOSER_EMPTY;
+		daemon.tick();
+		expect(ports.sent.filter((entry) => entry.text.includes("[pij watchdog #1"))).toHaveLength(1);
+		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
 	it("delivers immediately while busy when the composer is empty", () => {
@@ -968,6 +1054,7 @@ describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
 			lifecycle: "bound",
 			paneId: "%4",
 			harnessSessionId: "sess",
+			lastEventAt: new Date(NOW_MS).toISOString(),
 			...over,
 		});
 	}

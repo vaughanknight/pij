@@ -1022,11 +1022,19 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 				channel,
 			);
 			daemon.tick();
-			const firstPiTurns = unreadBodies(channel, "pi-peer").filter((body) => body.startsWith("[pij watchdog"));
-			assertThat(tmuxTurns.length === 1, `tmux sendText count=${tmuxTurns.length}`);
+			const queuedTmuxTurns = unreadBodies(channel, "tmux-peer").filter((body) =>
+				body.startsWith("[pij watchdog"),
+			);
+			const firstPiTurns = unreadBodies(channel, "pi-peer").filter((body) =>
+				body.startsWith("[pij watchdog"),
+			);
+			assertThat(tmuxTurns.length === 0, "tmux watchdog bypassed the durable channel");
+			assertThat(queuedTmuxTurns.length === 1, "tmux watchdog turn was not queued");
 			assertThat(firstPiTurns.length === 1, "pi peer did not receive durable inbox turn");
 			assertThat(firstPiTurns[0]?.includes("Pane capture unavailable"), "pi turn faked pane availability");
 			assertThat(unreadBodies(channel, "prebind-peer").length === 0, "pre-bind peer received inbox turn");
+			daemon.tick();
+			assertThat(tmuxTurns.length === 1, `tmux queued delivery count=${tmuxTurns.length}`);
 
 			for (nowMs of [2, 3]) daemon.tick();
 			const splitNotice = unreadBodies(channel, "split-watcher").find((body) =>
@@ -1085,14 +1093,22 @@ function runSmokeComposite(): Readonly<Record<string, unknown>> {
 				channel,
 			);
 			daemon.tick();
-			assertThat(turns.length === 1, "smoke first fire missing");
+			assertThat(turns.length === 0, "smoke watchdog bypassed the durable channel");
+			assertThat(
+				unreadBodies(channel, "smoke-peer").some((body) => body.startsWith("[pij watchdog #1")),
+				"smoke first fire was not queued",
+			);
+			daemon.tick();
+			assertThat(turns.length === 1, "smoke queued first fire missing");
 			requireCli(home, ["watchdog", "pause", "smoke-peer", "--json"], "smoke-owner");
 			nowMs = 200;
 			daemon.tick();
 			assertThat(turns.length === 1, "smoke pause failed");
 			requireCli(home, ["watchdog", "resume", "smoke-peer", "--json"], "smoke-owner");
 			daemon.tick();
-			assertThat(turns.length === 2, "smoke resume failed");
+			assertThat(turns.length === 1, "smoke resumed fire bypassed the durable channel");
+			daemon.tick();
+			assertThat(turns.length === 2, "smoke queued resume missing");
 
 			// Complete the resumed watchdog turn's attributed working→idle pair
 			// before compact; the scratch `cat` pane has no harness footer that can

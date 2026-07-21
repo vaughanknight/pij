@@ -36,7 +36,6 @@ export interface WatchdogManagerDeps {
 	readonly globallyDisabled?: () => boolean;
 	readonly now: () => number;
 	readonly capturePane: (session: SessionDescriptor) => string;
-	readonly sendText: (session: SessionDescriptor, body: string) => void;
 	readonly onFire?: (session: SessionDescriptor, atMs: number) => void;
 	readonly onResponse?: (event: WatchdogResponseEvent) => void;
 	readonly log?: (line: string) => void;
@@ -316,18 +315,14 @@ export class WatchdogManager {
 
 		const ordinal = state.ordinal + 1;
 		const body = buildWatchdogTurn(session.id, ordinal, { ...cfg, paneAvailable });
-		let delivered = true;
-		if ((session.harness ?? "pi") === "pi" || session.deliveryMode === "pull") {
-			const outcome = this.deps.channel.deliver({
-				from: "pij-watchdog",
-				to: session.id,
-				body,
-			});
-			delivered = outcome.ok;
-			if (!outcome.ok)
-				this.deps.log?.(`watchdog ${session.id}: ${outcome.code} ${outcome.message}`);
-		} else {
-			this.deps.sendText(session, body);
+		const outcome = this.deps.channel.deliver({
+			from: "pij-watchdog",
+			to: session.id,
+			body,
+		});
+		const delivered = outcome.ok;
+		if (!outcome.ok) {
+			this.deps.log?.(`watchdog ${session.id}: ${outcome.code} ${outcome.message}`);
 		}
 		if (!delivered) return;
 

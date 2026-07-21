@@ -54,6 +54,46 @@ export function diffPaneListings(
 	};
 }
 
+interface ComposerRegionMatch {
+	readonly region: string;
+	readonly recognized: boolean;
+}
+
+/** Locate the live composer in a rendered `capture-pane` snapshot. Claude and
+ * Copilot place it between the final two horizontal rules; OMP renders input
+ * inside its final `╰─ … ─╯` row. Unknown layouts retain the submit-verifier's
+ * historical bottom-four-lines fallback but are not authoritative for holds. */
+function matchComposerRegion(pane: string): ComposerRegionMatch {
+	const lines = pane.split("\n");
+	for (let index = lines.length - 1; index >= 0; index--) {
+		const omp = lines[index]?.match(/^\s*╰─+\s?(.*?)\s?─+╯\s*$/);
+		if (omp) return { region: omp[1] ?? "", recognized: true };
+	}
+	const rules: number[] = [];
+	for (let index = 0; index < lines.length; index++) {
+		if (/─{8,}/.test(lines[index] ?? "")) rules.push(index);
+	}
+	const lower = rules.at(-2);
+	const upper = rules.at(-1);
+	if (lower !== undefined && upper !== undefined) {
+		return { region: lines.slice(lower + 1, upper).join("\n"), recognized: true };
+	}
+	return { region: lines.slice(-4).join("\n"), recognized: false };
+}
+
+/** Composer region shared by delivery safety and tmux submit verification. */
+export function composerRegion(pane: string): string {
+	return matchComposerRegion(pane).region;
+}
+
+/** Whitespace-insensitive rendered payload length, or `undefined` when the TUI
+ * layout is unknown. Unknown never overrides the caret tracker's prior signal. */
+export function renderedComposerLength(pane: string): number | undefined {
+	const match = matchComposerRegion(pane);
+	if (!match.recognized) return undefined;
+	return match.region.replace(/[❯\s]/g, "").length;
+}
+
 /** Cursor reports emitted by TUIs while redrawing. The final report in a burst
  * is the live composer caret; retaining every report also lets tests prove the
  * ordered key progression in recorded bursts. */
@@ -105,10 +145,11 @@ export class BusyDensityTracker {
 export class CaretTypingTracker {
 	private base: CaretPosition | undefined;
 	private composerLength = 0;
+	private renderedLength: number | undefined;
 	private lastKeyAt: number | undefined;
 
 	seedBase(position: CaretPosition): void {
-		if (this.composerLength === 0) this.base = position;
+		if (!this.isTyping()) this.base = position;
 	}
 
 	ingest(bytes: Uint8Array, nowMs: number, allowAcquire: boolean): TypingEvent[] {
@@ -122,7 +163,7 @@ export class CaretTypingTracker {
 			const nextLength = Math.max(0, position.column - this.base.column);
 			if (nextLength === 0 && this.composerLength > 0) {
 				this.composerLength = 0;
-				this.lastKeyAt = undefined;
+				if ((this.renderedLength ?? 0) === 0) this.lastKeyAt = undefined;
 				events.push({ kind: "enter", composerLength: 0 });
 				continue;
 			}
@@ -134,8 +175,28 @@ export class CaretTypingTracker {
 		return events;
 	}
 
+	/** Rendered composer occupancy is authoritative when the layout is known.
+	 * An empty snapshot releases stale caret state immediately; unknown preserves it. */
+	observeRenderedComposer(length: number | undefined, nowMs: number): TypingEvent | undefined {
+		if (length === undefined) {
+			this.renderedLength = undefined;
+			return undefined;
+		}
+		const wasTyping = this.isTyping();
+		const previous = this.renderedLength;
+		this.renderedLength = length;
+		if (length === 0) {
+			this.composerLength = 0;
+			this.lastKeyAt = undefined;
+			return wasTyping ? { kind: "enter", composerLength: 0 } : undefined;
+		}
+		if (length !== previous) this.lastKeyAt = nowMs;
+		return length !== previous ? { kind: "key", composerLength: length } : undefined;
+	}
+
 	expire(nowMs: number): TypingEvent | undefined {
 		if (
+			(this.renderedLength ?? 0) > 0 ||
 			this.composerLength === 0 ||
 			this.lastKeyAt === undefined ||
 			nowMs - this.lastKeyAt < USER_TYPING_IDLE_MS
@@ -148,11 +209,11 @@ export class CaretTypingTracker {
 	}
 
 	isTyping(): boolean {
-		return this.composerLength > 0;
+		return this.composerLength > 0 || (this.renderedLength ?? 0) > 0;
 	}
 
 	length(): number {
-		return this.composerLength;
+		return Math.max(this.composerLength, this.renderedLength ?? 0);
 	}
 
 	lastKeystrokeAt(): number | undefined {
@@ -195,6 +256,12 @@ export class PaneSignalMonitor {
 		if (!state) return [];
 		const busy = state.busy.ingest(bytes.byteLength, nowMs);
 		return state.typing.ingest(bytes, nowMs, !busy);
+	}
+
+	observeRenderedComposer(paneId: string, pane: string, nowMs: number): TypingEvent | undefined {
+		const state = this.panes.get(paneId);
+		if (!state) return undefined;
+		return state.typing.observeRenderedComposer(renderedComposerLength(pane), nowMs);
 	}
 
 	tick(nowMs: number): readonly string[] {

@@ -10,14 +10,26 @@ import {
 	diffPaneListings,
 	PaneSignalMonitor,
 	parseCaretPositions,
+	renderedComposerLength,
 	USER_TYPING_IDLE_MS,
 } from "./pane-signals.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "pane-signals");
 const HARNESSES = ["claude", "copilot", "codex", "pi"] as const;
 
-function fixture(harness: (typeof HARNESSES)[number], kind: string): Uint8Array {
-	const escaped = readFileSync(join(FIXTURES, `${harness}-${kind}.raw`), "utf8").trimEnd();
+const CLAUDE_RELATIVE_PANE = [
+	"────────────────────────────────────────────────────────────────",
+	"❯ keep me posted on the researcher findings",
+	"────────────────────────────────────────────────────────────────",
+	"45% pij · pij-reasonable-dove · Opus 4.8",
+].join("\n");
+const OMP_RELATIVE_PANE = [
+	"╭── pij-striped-cockroach > ⬢ GPT-5.6 Sol · ◒ high > ⑂ main ▶────────╮",
+	"╰─ keep me posted ─╯",
+].join("\n");
+
+function namedFixture(name: string): Uint8Array {
+	const escaped = readFileSync(join(FIXTURES, `${name}.raw`), "utf8").trimEnd();
 	const bytes: number[] = [];
 	for (let i = 0; i < escaped.length; i++) {
 		if (escaped[i] !== "\\" || escaped[i + 1] !== "x") {
@@ -31,6 +43,10 @@ function fixture(harness: (typeof HARNESSES)[number], kind: string): Uint8Array 
 		}
 	}
 	return Uint8Array.from(bytes);
+}
+
+function fixture(harness: (typeof HARNESSES)[number], kind: string): Uint8Array {
+	return namedFixture(`${harness}-${kind}`);
 }
 
 describe("BusyDensityTracker", () => {
@@ -70,15 +86,53 @@ describe("CaretTypingTracker", () => {
 		expect(tracker.isTyping()).toBe(false);
 	});
 
-	it("releases a non-empty composer after 60 seconds without a key", () => {
+	it("detects a non-empty live Claude composer despite relative cursor redraws", () => {
+		const bytes = namedFixture("claude-relative-typing");
+		expect(parseCaretPositions(bytes)).toEqual([
+			{ row: 49, column: 1 },
+			{ row: 46, column: 3 },
+		]);
 		const tracker = new CaretTypingTracker();
-		tracker.seedBase({ row: 24, column: 3 });
-		tracker.ingest(fixture("claude", "typing"), 1_000, true);
-		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS - 1)).toBeUndefined();
-		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS)).toEqual({
-			kind: "idle-release",
-			composerLength: 0,
-		});
+		tracker.seedBase({ row: 46, column: 3 });
+		tracker.ingest(bytes, 1_000, true);
+		tracker.observeRenderedComposer(renderedComposerLength(CLAUDE_RELATIVE_PANE), 1_000);
+		expect(tracker.isTyping()).toBe(true);
+		expect(tracker.length()).toBeGreaterThan(0);
+	});
+
+	it("detects a non-empty live OMP composer despite A/B/G-only cursor redraws", () => {
+		const bytes = namedFixture("omp-relative-typing");
+		expect(parseCaretPositions(bytes)).toEqual([]);
+		const tracker = new CaretTypingTracker();
+		tracker.seedBase({ row: 49, column: 4 });
+		tracker.ingest(bytes, 1_000, true);
+		tracker.observeRenderedComposer(renderedComposerLength(OMP_RELATIVE_PANE), 1_000);
+		expect(tracker.isTyping()).toBe(true);
+		expect(tracker.length()).toBeGreaterThan(0);
+	});
+
+	it.each([
+		[
+			"claude",
+			"claude-relative-typing",
+			CLAUDE_RELATIVE_PANE,
+			"keep me posted on the researcher findings",
+		],
+		["omp", "omp-relative-typing", OMP_RELATIVE_PANE, "keep me posted"],
+	] as const)("%s fixture couples actual relative bytes to a visibly non-empty pane", (_harness, raw, pane, typed) => {
+		const bytes = Buffer.from(namedFixture(raw)).toString("latin1");
+		expect(bytes).toContain(typed);
+		expect(pane).toContain(typed);
+		expect(renderedComposerLength(pane)).toBeGreaterThan(0);
+	});
+
+	it("never idle-releases while the rendered composer remains non-empty", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer(renderedComposerLength(CLAUDE_RELATIVE_PANE), 1_000);
+		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS)).toBeUndefined();
+		expect(tracker.isTyping()).toBe(true);
+		tracker.observeRenderedComposer(0, 1_000 + USER_TYPING_IDLE_MS);
+		expect(tracker.isTyping()).toBe(false);
 	});
 });
 

@@ -21,7 +21,10 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DaemonPorts } from "../core/daemon/loop.js";
-import type { PaneListing } from "../core/daemon/pane-signals.js";
+import { composerRegion, type PaneListing } from "../core/daemon/pane-signals.js";
+
+export { composerRegion } from "../core/daemon/pane-signals.js";
+
 import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
 import type { SendOutcome } from "../core/ports.js";
 import { BUSY_RE, paneWentBusy } from "../core/readiness.js";
@@ -110,20 +113,6 @@ const WAKE_SETTLE_MS = 200;
 export const TYPE_CONFIRM_ATTEMPTS = 3;
 export const TYPE_CONFIRM_POLLS = 8;
 export const TYPE_CONFIRM_POLL_MS = 250;
-
-/** The composer box's contents from a captured pane. Copilot boxes its input between
- *  two horizontal-rule lines (`────`); the `❯` prompt + any typed text live inside.
- *  Returns the region between the LAST two rules (the live composer), or the bottom
- *  few lines if the box can't be located. Pure + exported for test. */
-export function composerRegion(pane: string): string {
-	const lines = pane.split("\n");
-	const rules: number[] = [];
-	for (let i = 0; i < lines.length; i++) if (/─{8,}/.test(lines[i] ?? "")) rules.push(i);
-	const lo = rules.at(-2);
-	const hi = rules.at(-1);
-	if (lo !== undefined && hi !== undefined) return lines.slice(lo + 1, hi).join("\n");
-	return lines.slice(-4).join("\n");
-}
 
 /** Did the text we just sent FAIL to submit — i.e. is its tail still sitting in the
  *  composer box (the wedge)? Compares a whitespace-stripped tail of `sent` against the

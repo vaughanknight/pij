@@ -47,6 +47,7 @@ import {
 	driveSession,
 	flushedText,
 	observeActivity,
+	refreshRenderedComposerHold,
 	writeMerged,
 } from "./core/daemon/loop.js";
 import { PaneSignalMonitor, type PaneSignalSnapshot } from "./core/daemon/pane-signals.js";
@@ -161,10 +162,6 @@ export class Daemon {
 				globallyDisabled: () => new FsWatchdogGlobalStore(pijHome).disabled(),
 				now: () => this.ports.now(),
 				capturePane: (session) => (session.paneId ? this.ports.capturePane(session.paneId) : ""),
-				sendText: (session, body) => {
-					if (!session.paneId) return;
-					this.ports.sendText(session.paneId, body, session.harness, session.pid);
-				},
 				onFire: (session, atMs) => {
 					const latest = this.registry.read(session.id) ?? session;
 					writeMerged(this.registry, {
@@ -369,24 +366,33 @@ export class Daemon {
 					// intentionally absent from this condition.
 					if (
 						current.paneId &&
-						!this.buffer.isPaneHeld(current.paneId) &&
+						!refreshRenderedComposerHold(current.paneId, this.ports, this.buffer) &&
 						this.buffer.pending(current.id) > 0
 					) {
-						for (const m of this.buffer.flush(current.id, current.paneId)) {
-							this.watchdogManager.beforeTmuxInject(current.id, m.message, this.ports.now());
+						const flushed = this.buffer.flush(current.id, current.paneId);
+						for (let index = 0; index < flushed.length; index++) {
+							const message = flushed[index];
+							if (!message) continue;
+							if (refreshRenderedComposerHold(current.paneId, this.ports, this.buffer)) {
+								for (const remaining of flushed.slice(index)) {
+									this.buffer.enqueue(remaining.messageId, remaining.message);
+								}
+								break;
+							}
+							this.watchdogManager.beforeTmuxInject(current.id, message.message, this.ports.now());
 							const outcome = this.ports.sendText(
 								current.paneId,
-								flushedText(m.message),
+								flushedText(message.message),
 								current.harness,
 								current.pid,
 							);
-							const marked = this.channel.markRead(current.id, m.messageId, {
-								messageId: m.messageId,
+							const marked = this.channel.markRead(current.id, message.messageId, {
+								messageId: message.messageId,
 								readAt: new Date(this.ports.now()).toISOString(),
 								reader: current.id,
 							});
 							if (!marked.ok) throw new Error(`${marked.code}: ${marked.message}`);
-							this.emitSendReceipt(current.id, m.message.from, m.messageId, outcome);
+							this.emitSendReceipt(current.id, message.message.from, message.messageId, outcome);
 						}
 					}
 					// Persist footer activity → working|idle (+ fresh last-activity ts) so
@@ -657,7 +663,7 @@ export class Daemon {
 		let consumedCount = 0;
 		let compactFired = false;
 		for (const message of messages) {
-			if (!this.buffer.isPaneHeld(target.paneId)) {
+			if (!refreshRenderedComposerHold(target.paneId, this.ports, this.buffer)) {
 				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			}
 			const consumed = drainTmuxInbox(target, [message], this.ports, this.buffer);
@@ -721,6 +727,11 @@ export class Daemon {
 		for (const paneId of this.paneSignals.paneIds()) {
 			const bytes = this.ports.drainPaneTap(paneId);
 			if (bytes.byteLength > 0) this.paneSignals.ingest(paneId, bytes, this.ports.now());
+			this.paneSignals.observeRenderedComposer(
+				paneId,
+				this.ports.capturePane(paneId),
+				this.ports.now(),
+			);
 		}
 		this.paneSignals.tick(this.ports.now());
 		for (const paneId of this.paneSignals.paneIds()) {
