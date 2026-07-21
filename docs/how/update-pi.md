@@ -1,9 +1,9 @@
-# How: what pi is, and updating it
+# How: what Pi and OMP are, and updating them
 
-A cold-start agent on a new machine needs to know two things: **what `pi`
-actually is**, and **how pij keeps it current**. Both live in the
-[`justfile`](../../justfile) — this article narrates it; the `justfile` is the
-source of truth.
+A cold-start agent on a new machine needs to know what the two Pi-family
+runtimes are and how pij keeps their shared surfaces current. The executable
+and link recipes live in the [`justfile`](../../justfile); this article narrates
+them, while the `justfile` remains the source of truth.
 
 ## What is pi?
 
@@ -19,24 +19,28 @@ That recipe runs npm through `harness/scripts/npm-resolution-run.ts`, which
 sets the Microsoft package-feed proxy, forces online metadata revalidation,
 and keeps the seven-day client release-age policy.
 
-pij contributes five things to pi's **global** state under `~/.pi/agent/`:
+pij contributes machine-wide state under both `~/.pi/agent/` and
+`~/.omp/agent/`:
 
-- **`APPEND_SYSTEM.md`** — voice-input rules, response-mode prefs, SQL prefs
-  (personal, applies to every pi session on the machine).
-- **`mcp.json`** — MCP servers (perplexity + flowspace/`fs2`), with env-var
-  references like `${PERPLEXITY_API_KEY}`, never plaintext secrets.
-- **`models.json` managed providers** — the portable `github-copilot`,
+- **`APPEND_SYSTEM.md`** — Pi voice-input rules, response-mode prefs, and SQL
+  prefs.
+- **`mcp.json`** — Pi's MCP source of truth (perplexity + flowspace/`fs2`), with
+  env-var references rather than plaintext secrets. OMP's `mcp.json` is a
+  symlink to this exact file.
+- **`models.json` managed providers** — Pi's portable `github-copilot`,
   `sakana`, and `openrouter` catalog sourced from `.pi/models.json`.
-- **Extension symlinks** — pij's local `.pi/extensions/*` linked into
-  `~/.pi/agent/extensions/`.
-- **Vetted packages** — third-party pi-extensions from `.pi/packages.yaml`.
+- **Extension symlinks** — every repository extension under
+  `~/.pi/agent/extensions/`; only `pij` under `~/.omp/agent/extensions/`.
+- **Vetted packages** — third-party Pi extensions from `.pi/packages.yaml`.
 
-The **source of truth** for repo-managed global config is in this repo:
-`.pi/APPEND_SYSTEM.md`, `.pi/mcp.json`, and `.pi/models.json`. Run
-`just sync-models` after editing the model catalog. It replaces the three
-managed provider objects exactly while preserving `local` and every other
-unmanaged provider in the global target. Resolved credentials, `auth.json`,
-skills, and machine-local providers remain outside repository ownership.
+The guarded linker accepts only the canonical main checkout. It refuses linked
+worktrees, real destination paths, and foreign symlinks, so a development seat
+cannot silently take over either machine-wide runtime.
+
+The source of truth for repo-managed config remains `.pi/APPEND_SYSTEM.md`,
+`.pi/mcp.json`, and `.pi/models.json`. `just sync-models` replaces only the
+three managed provider objects; credentials and unmanaged providers stay
+outside repository ownership.
 
 ## The canonical refresh: `just update-pi`
 
@@ -54,8 +58,8 @@ It performs:
 2. **Sync pij config** — copy `.pi/APPEND_SYSTEM.md` and `.pi/mcp.json`, then
    merge the managed providers from `.pi/models.json` into
    `~/.pi/agent/models.json`.
-3. **Link pij extensions globally** (`just link`) and link the `pij` CLI
-   (`npm link`).
+3. **Apply canonical machine links** (`just link`): all extensions for Pi,
+   pij-only plus Pi's exact MCP config for OMP; then link the `pij` skill and CLI.
 4. **Ensure vetted packages are installed** globally (`just pkg bootstrap`).
 5. **Update extension packages only** — `pi update --extensions`, under the
    same governed npm environment. The `--extensions` flag is deliberate: a
@@ -66,22 +70,24 @@ It performs:
 Always refresh pi through this recipe so the global CLI stays the official npm
 build while pij's local extensions and config remain globally visible.
 
-## Verify: `just pi-doctor`
+## Refresh OMP: `just update-omp`
 
-`just pi-doctor` is a **read-only audit** of pi's globally-visible state
-(`justfile:345-357`). Run it first whenever "pi can't see X". It prints:
+OMP is the standalone `omp` binary installed by its official installer. Use
+`just update-omp`; it invokes OMP's updater (or installs when absent), reapplies
+the guarded canonical link policy, then runs `just omp-doctor`. Do not manually
+copy extensions between homes.
 
-- the `pi` binary location + version,
-- `~/.pi/agent/extensions/` symlinks (pij's extensions should be here),
-- `~/.pi/agent/settings.json` `packages[]` (the manifest packages),
-- `~/.pi/agent/mcp.json` servers,
+## Verify: Pi and OMP doctors
 
-and flags anything that looks wrong.
+`just pi-doctor` audits the Pi binary, global extension links, package manifest,
+MCP config, and globally linked `pij` executable. Run it first when Pi cannot
+see a managed surface.
 
-The doctor also checks the globally linked `pij` executable. It must resolve
-to the linked package's `pij/harness/scripts/pij-cli.cjs` wrapper. A stale link
-to the legacy TypeScript entrypoint fails with instructions to rerun `npm link`
-from the local main checkout or use `just update-pi`.
+`just omp-doctor` audits the OMP binary and enforces the smaller OMP contract:
+`~/.omp/agent/extensions/` contains exactly the canonical `pij` symlink, and
+`~/.omp/agent/mcp.json` resolves to `~/.pi/agent/mcp.json`. Any extra pij-owned
+OMP extension is policy drift; real paths and foreign symlinks are reported but
+never deleted.
 
 ## npm authority and failure behavior
 

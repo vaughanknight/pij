@@ -45,10 +45,12 @@ clones and fallback aliases. Fallback aliases stay `verified: false`: that flag
 means the id was not confirmed by a live registry, not that its curated effort
 capabilities are unknown.
 
-No provider-prefix normalization is performed by validation. Shared validation
-matches the bare registry id (for example `gpt-5.6-sol`), while Pi spawn continues
-to pass a supplied provider-prefixed id through unchanged and appends effort as
-`github-copilot/gpt-5.6-sol:max`.
+Pi-family spawn performs provider binding after validation and before any tmux
+mutation. A provider-qualified model passes through unchanged. A bare model id
+available from `github-copilot` plus other providers deterministically becomes
+`github-copilot/<id>` and emits a notice. Any other multi-provider collision is
+rejected with `E-AMBIGUOUS` and the qualified choices. CLI spawn and the
+model-facing `pij_spawn` tool share this resolver.
 
 ## Reading the output
 
@@ -57,6 +59,9 @@ to pass a supplied provider-prefixed id through unchanged and appends effort as
   turn completes with no `API error (400)`).
 - **`—`** in the levels column = no effort-level data (can't validate `--effort`;
   it's passed through, warn-don't-block).
+- **Provider in `pij list`** = the provider resolved before launch and persisted
+  independently from `boundModel`. `null` is reserved for legacy, default-model,
+  or otherwise genuinely unknown bindings.
 
 ## Key consequence: discovery ≠ usability
 
@@ -66,11 +71,13 @@ can still be **spawned**:
 ```bash
 pij spawn --harness codex   --model gpt-5.6-terra   # works even if not listed
 pij spawn --harness copilot --model gpt-5.6-sol
+pij spawn --harness pi --bin omp --model gpt-5.6-sol # binds github-copilot
 ```
 
-pij is **warn-don't-block** on unknown models. A bogus id spawns fine, then **400s on
-first inference** (no expensive silent fallback — you get a useless-but-cheap peer that
-*looks* healthy), so **always canary the footer + first turn** before trusting a peer.
+pij remains **warn-don't-block** for unknown model ids and unsupported effort
+levels. Provider ambiguity is different: guessing can silently bind credentials
+to the wrong backend, so non-Copilot ambiguity fails before launch. Canary the
+footer, first turn, and `pij list` provider before trusting a peer.
 
 ## To make a new model *appear* in `pij models`
 

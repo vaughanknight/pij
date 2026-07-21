@@ -115,21 +115,22 @@ with pij, so nothing reports the death (observation DL-003, s055).
 - **Driver SDK** at `harness/driver/` — typed `Scenario`/`Step`/`Session`
   for tmux-driven end-to-end smoke. `harness/scripts/smoke.ts` is a thin
   adapter over it. Use the SDK directly when authoring rich scenarios.
-- **`just link`** — symlinks `.pi/extensions/*` into
-  `~/.pi/agent/extensions/` so `pi` from any cwd autoloads them.
-  `just unlink` to undo. (Pi's loader resolves global extensions via
-  `getAgentDir() + "/extensions"` — `~/.pi/extensions/` looks plausible
-  but is silently ignored.)
+- **`just link`** — machine-wide policy from the **canonical main checkout only**.
+  It refuses linked worktrees, links every `.pi/extensions/*` directory into
+  `~/.pi/agent/extensions/`, and keeps OMP deliberately narrow: only `pij` in
+  `~/.omp/agent/extensions/` plus `~/.omp/agent/mcp.json` symlinked to Pi's MCP
+  config. `just unlink` removes only pij-owned links; real paths and foreign
+  symlinks are never clobbered. `just omp-doctor` verifies the OMP subset.
 - **`just update-pi`** — installs/updates the official pi binary from npm
   (`@earendil-works/pi-coding-agent@latest`) and re-applies pij's global
-  harness state: prefs/MCP sync, portable model sync, `just link`, vetted
-  package bootstrap, `pi update --extensions`, and `just pi-doctor`. Always
-  update pi through this recipe so the global CLI stays official while pij's
-  local extensions and config remain globally visible.
-- **`just pi-doctor`** — read-only audit of pi's global state: binary
-  version, extension symlinks at the correct path, packages in
-  `~/.pi/agent/settings.json`, and MCP servers in `~/.pi/agent/mcp.json`.
-  First diagnostic to run when "pi can't see X".
+  harness state: prefs/MCP sync, portable model sync, guarded Pi/OMP links,
+  vetted package bootstrap, `pi update --extensions`, and `just pi-doctor`.
+  **`just update-omp`** uses OMP's own updater, then re-applies the same guarded
+  links and runs `just omp-doctor`.
+- **`just pi-doctor`** — read-only audit of pi's global state: binary version,
+  extension symlinks, packages in `~/.pi/agent/settings.json`, and MCP servers.
+  Use `just omp-doctor` for OMP binary/link/MCP policy. These are the first
+  diagnostics when either harness cannot see a managed surface.
 - **`npm run pkg`** — manages third-party pi extensions in
   `.pi/packages.yaml` (source of truth) → `.pi/settings.json#packages`
   (generated). Subcommands: `list` / `add <src> [note...]` / `enable <s>`
