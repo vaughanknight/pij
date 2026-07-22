@@ -7,11 +7,17 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	ATTACHMENTS_CAP_BYTES,
+	type AttachmentEntry,
 	buildInboundNotice,
 	classifyMedia,
 	DOWNLOAD_LIMIT_BYTES,
+	isTransientSendError,
+	mediaFailureNotice,
+	methodOf,
 	OTHER_UPLOAD_LIMIT_BYTES,
 	PHOTO_UPLOAD_LIMIT_BYTES,
+	pruneAttachments,
 	safeMediaName,
 	withinDownloadLimit,
 	withinUploadLimit,
@@ -158,5 +164,106 @@ describe("buildInboundNotice", () => {
 	it("renders the size as bytes (distinct from the path)", () => {
 		const notice = buildInboundNotice({ path: "/store/a.bin", size: 1048576 });
 		expect(notice).toContain("1048576"); // exact byte count, not just a human string
+	});
+});
+
+describe("pruneAttachments (s113 W1 retention)", () => {
+	const entry = (name: string, mtimeMs: number, size: number): AttachmentEntry => ({
+		name,
+		mtimeMs,
+		size,
+	});
+
+	it("returns nothing when the dir is at or under the cap", () => {
+		// Mutation: `<` instead of `<=` in the stop condition → at-cap starts pruning.
+		expect(pruneAttachments([entry("a", 1, 60), entry("b", 2, 40)], 100)).toEqual([]);
+		expect(pruneAttachments([], 100)).toEqual([]);
+	});
+
+	it("deletes oldest-mtime first, only until the total is back under the cap", () => {
+		// 50+50+50 = 150 over a 100 cap → exactly the single oldest goes.
+		const doomed = pruneAttachments(
+			[entry("newest", 3, 50), entry("oldest", 1, 50), entry("mid", 2, 50)],
+			100,
+		);
+		expect(doomed).toEqual(["oldest"]); // mutation: newest-first → ["newest"]; no stop → all three
+	});
+
+	it("returns names in deletion order (oldest → newer) when several must go", () => {
+		const doomed = pruneAttachments([entry("c", 3, 80), entry("a", 1, 80), entry("b", 2, 80)], 100);
+		expect(doomed).toEqual(["a", "b"]);
+	});
+
+	it("NEVER deletes `keep` (the just-saved file), even if the dir stays over cap", () => {
+		// The keep file alone exceeds the cap — nothing else exists to delete.
+		expect(pruneAttachments([entry("just-saved", 9, 500)], 100, "just-saved")).toEqual([]);
+		// keep is the oldest; pruning must skip it and take the next-oldest instead.
+		const doomed = pruneAttachments(
+			[entry("just-saved", 1, 80), entry("old", 2, 80)],
+			100,
+			"just-saved",
+		);
+		expect(doomed).toEqual(["old"]);
+	});
+
+	it("breaks an mtime tie deterministically by name", () => {
+		const doomed = pruneAttachments([entry("b", 5, 80), entry("a", 5, 80)], 100);
+		expect(doomed).toEqual(["a"]);
+	});
+
+	it("the production cap is 200 MB", () => {
+		expect(ATTACHMENTS_CAP_BYTES).toBe(200 * 1024 * 1024);
+	});
+});
+
+describe("methodOf", () => {
+	it("names the real bot API method for each kind", () => {
+		// Mutation: swap any mapping and the failure-echo names the wrong method.
+		expect(methodOf("photo")).toBe("sendPhoto");
+		expect(methodOf("animation")).toBe("sendAnimation");
+		expect(methodOf("document")).toBe("sendDocument");
+	});
+});
+
+describe("isTransientSendError (s113 W5 retry gate)", () => {
+	it("classifies network-shaped failures as transient", () => {
+		for (const m of [
+			"fetch failed",
+			"Network request for 'sendPhoto' failed!",
+			"read ECONNRESET",
+			"connect ETIMEDOUT 149.154.167.220:443",
+			"socket hang up",
+			"getaddrinfo EAI_AGAIN api.telegram.org",
+			"Call to 'sendPhoto' failed! (429: Too Many Requests: retry after 5)",
+			"502 Bad Gateway",
+		]) {
+			expect(isTransientSendError(m), m).toBe(true);
+		}
+	});
+
+	it("classifies deterministic rejections as NOT transient (no retry)", () => {
+		for (const m of [
+			"Call to 'sendPhoto' failed! (400: Bad Request: IMAGE_PROCESS_FAILED)",
+			"ENOENT: no such file or directory, stat '/tmp/gone.png'",
+			"Call to 'sendDocument' failed! (403: Forbidden: bot was blocked by the user)",
+		]) {
+			expect(isTransientSendError(m), m).toBe(false);
+		}
+	});
+});
+
+describe("mediaFailureNotice (s113 W5 failure-echo)", () => {
+	it("names the method, the network-error class, and the file", () => {
+		const notice = mediaFailureNotice("photo", "/tmp/chart.png", "fetch failed");
+		expect(notice).toContain("media forward FAILED");
+		expect(notice).toContain("sendPhoto network error");
+		expect(notice).toContain("/tmp/chart.png");
+		expect(notice).toContain("fetch failed"); // raw message rides along for diagnosis
+	});
+
+	it("downgrades the class to plain 'error' for a deterministic failure", () => {
+		const notice = mediaFailureNotice("document", "/tmp/r.pdf", "400: Bad Request");
+		expect(notice).toContain("sendDocument error");
+		expect(notice).not.toContain("network error");
 	});
 });

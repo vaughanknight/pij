@@ -74,6 +74,74 @@ export function safeMediaName(raw: string): string {
 	return cleaned.length > 0 ? cleaned : "file";
 }
 
+/** Per-session inbound attachments cap (s113 W1): the bridge prunes a session's
+ *  `attachments/` dir back under this after every successful save, oldest first. With the
+ *  20 MB per-file download cap this keeps at least the ~10 most recent files. */
+export const ATTACHMENTS_CAP_BYTES = 200 * 1024 * 1024;
+
+/** One file in an attachments dir, as seen by the prune decision. */
+export interface AttachmentEntry {
+	readonly name: string;
+	readonly mtimeMs: number;
+	readonly size: number;
+}
+
+/**
+ * Decide which files to delete so the dir's total size returns to ≤ `capBytes` (s113 W1
+ * retention). Deletes oldest-mtime first (name is the deterministic tiebreak); `keep` —
+ * the just-saved file — is NEVER returned, even if the dir would stay over cap without
+ * it. Pure: takes a listing, returns names in deletion order; the caller owns the fs.
+ */
+export function pruneAttachments(
+	entries: readonly AttachmentEntry[],
+	capBytes: number,
+	keep?: string,
+): string[] {
+	let total = entries.reduce((sum, e) => sum + e.size, 0);
+	const oldestFirst = [...entries].sort(
+		(a, b) => a.mtimeMs - b.mtimeMs || a.name.localeCompare(b.name),
+	);
+	const doomed: string[] = [];
+	for (const e of oldestFirst) {
+		if (total <= capBytes) break;
+		if (e.name === keep) continue;
+		doomed.push(e.name);
+		total -= e.size;
+	}
+	return doomed;
+}
+
+/** Telegram bot API method a media kind maps to — named in operator/sender-facing text. */
+export function methodOf(kind: MediaKind): string {
+	if (kind === "photo") return "sendPhoto";
+	if (kind === "animation") return "sendAnimation";
+	return "sendDocument";
+}
+
+/**
+ * Is a failed send worth ONE bounded retry (s113 W5)? Transient = network-shaped
+ * failures (fetch/socket/DNS/timeouts) and Telegram's retryable statuses (429, 5xx).
+ * Anything else — a 400 bad request, a missing file — fails immediately: retrying a
+ * deterministic rejection is noise. Classifies by message text because the forwarder's
+ * send seam is injected (tests and production surface errors as plain Errors).
+ */
+export function isTransientSendError(message: string): boolean {
+	return /network|fetch failed|socket|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|timed? ?out|429|Too Many Requests|50[234]|Bad Gateway|Service Unavailable|Internal Server Error/i.test(
+		message,
+	);
+}
+
+/**
+ * The honest failure-echo body injected back to the SENDING session when a media upload
+ * finally fails (s113 W5): names the bot method, the error class, and the file, so the
+ * sender knows its "delivered" receipt covered only the bridge hop — the phone never got
+ * this file. The raw error message rides along for diagnosis.
+ */
+export function mediaFailureNotice(kind: MediaKind, path: string, message: string): string {
+	const klass = isTransientSendError(message) ? "network error" : "error";
+	return `[pij-telegram] media forward FAILED: ${methodOf(kind)} ${klass} — ${path} (${message})`;
+}
+
 /** The metadata a saved inbound file carries into the text notice. */
 export interface InboundNotice {
 	/** Absolute on-disk path the file was saved to (inside the session's store). */

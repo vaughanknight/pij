@@ -16,7 +16,7 @@
 // `/list`+`/tail` (commands.ts), the lockfile (lockfile.ts) — all exist and are tested.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type FileFlavor, hydrateFiles } from "@grammyjs/files";
@@ -29,6 +29,7 @@ import { createBot, startForwarder, TELEGRAM_PEER_ID } from "./bridge.js";
 import { loadConfig, type TelegramConfig } from "./config.js";
 import { telegramInit } from "./init.js";
 import { acquireLock, isProcessAlive, readLockPid, releaseLock } from "./lockfile.js";
+import { ATTACHMENTS_CAP_BYTES, pruneAttachments } from "./media.js";
 
 /** Single-instance lockfile name under PIJ_HOME (`~/.pij/pij-telegram.lock`). */
 const LOCK_NAME = "pij-telegram.lock";
@@ -72,7 +73,18 @@ Send a message TO the operator's Telegram — there is NO "telegram send" subcom
 It's just a normal channel send to the special peer id "pij-telegram":
   pij send pij-telegram "your message here"
 The running bridge forwards it to Telegram; the operator's swipe-replies come back as
-injected turns in your session. Keep messages phone-short. (Requires: pij telegram start.)`;
+injected turns in your session. Keep messages phone-short. (Requires: pij telegram start.)
+
+Media out — attach ONE local file to a send (reference-passing; bytes never ride the wire):
+  pij send pij-telegram --file <path> [--caption "text"]     # body text also allowed
+Sent by extension: jpg/jpeg/png/webp → photo · gif/mp4 → GIF · anything else → document.
+Caps: 10 MB photo, 50 MB other — an oversize file becomes an honest text notice, never an
+error. A finally-failed upload (after one retry on a network error) is echoed back to the
+sending session as "media forward FAILED: …" — a send receipt only covers the bridge hop.
+
+Media in — a photo/file the operator sends is saved under the addressed session's own
+~/.pij/<session-id>/attachments/ (20 MB/file; dir capped at 200 MB, oldest pruned) and the
+session receives a text notice carrying the saved path + caption.`;
 
 /** PIJ_HOME (default ~/.pij) — same resolution the rest of the extension uses. */
 function pijHomeOf(): string {
@@ -186,6 +198,9 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 			mkdirSync(dirname(dest), { recursive: true });
 			const file = await (ctx as FileFlavor<Context>).getFile();
 			await file.download(dest);
+			// Retention (s113 W1): after every successful save, prune this session's
+			// attachments dir back under the cap — oldest first, never the file just saved.
+			pruneAttachmentsDir(dirname(dest), basename(dest), rt.log);
 		},
 		log: rt.log,
 	});
@@ -218,6 +233,11 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 				const sender = rt.registry.read(from);
 				return sender === null ? undefined : resolveRepositoryContext(sender.folder, rt.git);
 			},
+			// Failure-echo (s113 W5): a finally-failed media upload is reported back to
+			// the SENDING session as an injected turn — never silent, never a receipt.
+			echoFailure: (to, body) => {
+				rt.channel.deliver({ from: TELEGRAM_PEER_ID, to, body });
+			},
 			send: (text, replyTo) => bot.api.sendMessage(chatId, text, replyOpts(replyTo)),
 			// Outbound media (Phase 5): upload each attached file by kind via grammY InputFile.
 			sendMedia: (kind, path, caption, replyTo) => {
@@ -246,6 +266,25 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 		releaseLock(lockPath, rt.pid);
 	};
 	return { kind: "started", bot, stop };
+}
+
+/** Enforce the per-session attachments cap on disk (s113 W1): list the dir, ask the pure
+ *  `pruneAttachments` which files to drop (oldest first, never `keep` — the just-saved
+ *  file), delete them. Any fs failure degrades to a log line — retention must never make
+ *  a successful download look failed. */
+function pruneAttachmentsDir(dir: string, keep: string, log: (message: string) => void): void {
+	try {
+		const entries = readdirSync(dir).flatMap((name) => {
+			const s = statSync(join(dir, name));
+			return s.isFile() ? [{ name, mtimeMs: s.mtimeMs, size: s.size }] : [];
+		});
+		for (const name of pruneAttachments(entries, ATTACHMENTS_CAP_BYTES, keep)) {
+			rmSync(join(dir, name), { force: true });
+			log(`media: pruned ${join(dir, name)} (attachments cap)`);
+		}
+	} catch (e) {
+		log(`media: attachments prune skipped: ${(e as Error).message}`);
+	}
 }
 
 /** Current `msg-*.json` names in the bridge inbox — the boot watermark for the

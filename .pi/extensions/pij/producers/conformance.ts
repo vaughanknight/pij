@@ -21,7 +21,12 @@ function fakeSink(): { sink: Sink; events: () => Record<string, unknown>[]; byte
 				const out: Record<string, unknown>[] = [];
 				const re = /\x1b\]7337;([\s\S]*?)\x07/g;
 				let m: RegExpExecArray | null;
-				while ((m = re.exec(c))) out.push(JSON.parse(m[1]));
+				// Out-of-fence fix (s113, prime-ratified): m[1] is string|undefined under
+				// noUncheckedIndexedAccess; a frame the regex matched always has group 1.
+				while ((m = re.exec(c))) {
+					const payload = m[1];
+					if (payload !== undefined) out.push(JSON.parse(payload));
+				}
 				return out;
 			}),
 	};
