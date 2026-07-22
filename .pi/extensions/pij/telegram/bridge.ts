@@ -35,7 +35,9 @@ import { resolveTarget } from "./match.js";
 import {
 	buildInboundNotice,
 	classifyMedia,
+	isTransientSendError,
 	type MediaKind,
+	mediaFailureNotice,
 	safeMediaName,
 	withinDownloadLimit,
 	withinUploadLimit,
@@ -464,6 +466,11 @@ export interface ForwarderDeps {
 	/** Successful-speech observer: called once per non-receipt delivered message, after
 	 *  its first text/media/fallback-notice Telegram send resolves successfully. */
 	onSpoke?: (from: SessionId) => void;
+	/** Failure-echo seam (s113 W5): deliver an honest failure notice back to the SENDING
+	 *  session when a media upload finally fails — its "delivered" receipt only ever
+	 *  covered the bridge hop, so silence here would read as success. Production wires
+	 *  `channel.deliver({from: TELEGRAM_PEER_ID, to, body})`. Absent ⇒ log-only. */
+	echoFailure?: (to: SessionId, body: string) => void;
 	/** Repository context for the sender (`repo` or `repo/branch`). Called once per
 	 *  delivered message and reused across every text/media bubble it produces. */
 	senderContext?: (from: SessionId) => string | undefined;
@@ -585,8 +592,8 @@ export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => v
 			// Outbound media: classify each file, enforce the per-kind upload cap, and
 			// keep every fallback/caption within Telegram's text/caption limits.
 			for (const att of attachments) {
+				const kind = classifyMedia(att.path);
 				try {
-					const kind = classifyMedia(att.path);
 					const bytes = sizeOf(att.path);
 					if (!withinUploadLimit(bytes, kind)) {
 						await sendText(oversizeNotice(att.path, bytes, kind), "media forward error");
@@ -603,7 +610,16 @@ export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => v
 								await sendText(normalizedCaption, "media forward error");
 							}
 						}
-						await deps.sendMedia(kind, att.path, caption, replyTo);
+						// One bounded retry on a transient (network-shaped) failure (s113 W5).
+						// A deterministic rejection (bad request, missing file) is NOT retried.
+						try {
+							await deps.sendMedia(kind, att.path, caption, replyTo);
+						} catch (e) {
+							const first = (e as Error).message;
+							if (!isTransientSendError(first)) throw e;
+							log(`media send retry after transient failure (${dm.messageId}): ${first}`);
+							await deps.sendMedia(kind, att.path, caption, replyTo);
+						}
 						noteSpoke();
 						replyTo = undefined;
 					} else {
@@ -613,7 +629,14 @@ export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => v
 						);
 					}
 				} catch (e) {
-					log(`media forward error (${dm.messageId}): ${(e as Error).message}`);
+					// Final failure — log AND echo honestly to the sender (s113 W5): its send
+					// receipt covered only the bridge hop, so without this echo the failure
+					// is invisible to the session that attached the file.
+					const message = (e as Error).message;
+					log(`media forward error (${dm.messageId}): ${message}`);
+					if (dm.from !== TELEGRAM_PEER_ID) {
+						deps.echoFailure?.(dm.from, mediaFailureNotice(kind, att.path, message));
+					}
 				}
 			}
 			log(

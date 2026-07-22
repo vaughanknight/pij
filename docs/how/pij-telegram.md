@@ -170,6 +170,11 @@ pij send pij-telegram "see attached" --file ./out.pdf # text body + a file
 - **Upload caps**: 10 MB for a photo, 50 MB for anything else. An oversize file is **not**
   thrown — the bridge sends you a short text notice instead and leaves the file on disk.
 - Media rides the **same ordered queue** as text, so a `body` + file arrive in order.
+- **Failure honesty (s113)**: a transient network failure gets **one** bounded retry; a
+  deterministic rejection (e.g. Telegram 400) is not retried. If the upload still fails,
+  the bridge injects an honest echo back into the **sending session** —
+  `media forward FAILED: sendPhoto network error — /path.png (…)` — because a `pij send`
+  receipt only ever covers the bridge hop, never the Telegram leg.
 
 ### Receive a photo / gif / document (inbound)
 
@@ -188,6 +193,12 @@ safe segment (path separators and `..` stripped), so a download can never escape
 The session receives a **text** notice carrying the saved path, the caption, the MIME type,
 and the size — it can then choose to open the file. Storing media *with* the session makes
 it ephemeral by construction: a future boot-time session tidy reclaims it with the session.
+
+**Retention (s113)**: each session's `attachments/` dir is bounded to **200 MB**. After
+every successful save the bridge prunes oldest-modified files first until the dir is back
+under the cap; the file just saved is never pruned. With the 20 MB per-file download cap
+this always preserves at least the ~10 most recent files. Copy anything you need to keep
+out of `attachments/` — it is a landing zone, not an archive.
 
 Inbound media is gated by the **same allowlist** as text — a non-allowlisted photo is
 dropped before any download.

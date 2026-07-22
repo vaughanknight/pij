@@ -1515,3 +1515,132 @@ describe("startForwarder media (outbound)", () => {
 		}
 	});
 });
+
+describe("startForwarder media failure handling (s113 W5)", () => {
+	/** A forwarder whose sendMedia is scripted to fail: `failures` messages are thrown in
+	 *  order, then sends succeed. Records every sendMedia attempt and every failure-echo. */
+	function failingMediaForwarder(home: string, failures: readonly string[]) {
+		const channel = new FsChannel(home, { pollMs: 25 });
+		const attempts: string[] = [];
+		const echoes: Array<{ to: string; body: string }> = [];
+		const onSpoke = vi.fn();
+		const remaining = [...failures];
+		const dispose = startForwarder(channel, {
+			send: async () => {},
+			sizeOf: () => 1,
+			onSpoke,
+			echoFailure: (to, body) => {
+				echoes.push({ to, body });
+			},
+			sendMedia: async (_kind, path) => {
+				attempts.push(path);
+				const failure = remaining.shift();
+				if (failure !== undefined) throw new Error(failure);
+			},
+		});
+		return { channel, attempts, echoes, onSpoke, dispose };
+	}
+
+	it("retries ONCE on a transient network failure and succeeds silently", async () => {
+		const home = tmpHome();
+		try {
+			const { channel, attempts, echoes, onSpoke, dispose } = failingMediaForwarder(home, [
+				"Network request for 'sendPhoto' failed!",
+			]);
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: "/tmp/chart.png" }],
+			});
+			await waitFor(() => attempts.length === 2);
+			dispose();
+			// Mutation: unbounded retry loop → a third attempt; no retry → only one.
+			expect(attempts).toEqual(["/tmp/chart.png", "/tmp/chart.png"]);
+			expect(echoes).toEqual([]); // recovered — the sender hears nothing
+			expect(onSpoke).toHaveBeenCalledWith("pij-osn81b");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("echoes an honest failure to the SENDING session when the retry also fails", async () => {
+		const home = tmpHome();
+		try {
+			const { channel, attempts, echoes, onSpoke, dispose } = failingMediaForwarder(home, [
+				"read ECONNRESET",
+				"read ECONNRESET",
+			]);
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: "/tmp/chart.png" }],
+			});
+			await waitFor(() => echoes.length === 1);
+			dispose();
+			expect(attempts).toHaveLength(2); // the ONE bounded retry, then give up
+			expect(echoes[0]?.to).toBe("pij-osn81b"); // back to the sender, not the operator
+			expect(echoes[0]?.body).toContain("media forward FAILED");
+			expect(echoes[0]?.body).toContain("sendPhoto network error");
+			expect(echoes[0]?.body).toContain("/tmp/chart.png");
+			expect(onSpoke).not.toHaveBeenCalled(); // a failed upload is not speech
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("does NOT retry a deterministic rejection — one attempt, immediate echo", async () => {
+		const home = tmpHome();
+		try {
+			const { channel, attempts, echoes, dispose } = failingMediaForwarder(home, [
+				"Call to 'sendDocument' failed! (400: Bad Request)",
+			]);
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: "/tmp/report.pdf" }],
+			});
+			await waitFor(() => echoes.length === 1);
+			dispose();
+			// Mutation: retry everything → two attempts here.
+			expect(attempts).toHaveLength(1);
+			expect(echoes[0]?.body).toContain("sendDocument error");
+			expect(echoes[0]?.body).toContain("/tmp/report.pdf");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("a final failure without an echoFailure seam still only logs (no crash), and later attachments still send", async () => {
+		const home = tmpHome();
+		try {
+			const channel = new FsChannel(home, { pollMs: 25 });
+			const sent: string[] = [];
+			let first = true;
+			const dispose = startForwarder(channel, {
+				send: async () => {},
+				sizeOf: () => 1,
+				sendMedia: async (_kind, path) => {
+					if (first) {
+						first = false;
+						throw new Error("Call to 'sendPhoto' failed! (400: Bad Request)");
+					}
+					sent.push(path);
+				},
+			});
+			channel.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: "/tmp/bad.png" }, { path: "/tmp/good.png" }],
+			});
+			await waitFor(() => sent.length === 1);
+			dispose();
+			expect(sent).toEqual(["/tmp/good.png"]); // the failure never wedged the queue
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
