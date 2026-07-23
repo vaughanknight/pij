@@ -517,7 +517,7 @@ export type InboxMark =
 	| { readonly kind: "already-read"; readonly messageId: string };
 
 // ─── delivery receipts (finding 08; spec AC-13) ───────────────────────────
-export type ReceiptState = "queued" | "delivered" | "unverified";
+export type ReceiptState = "queued" | "delivered" | "unverified" | "injected-unverified";
 
 export interface MessageReceipt {
 	readonly messageId: string;
@@ -530,6 +530,9 @@ export interface MessageReceipt {
 	readonly deliveredAt?: string;
 	/** ISO-8601 — set when daemon-owned tmux injection could not positively confirm. */
 	readonly unverifiedAt?: string;
+	/** ISO-8601 — set when text WAS typed into the composer but its submission could
+	 *  not be confirmed after bounded Enter retries (the swallowed-Enter wedge). */
+	readonly injectedUnverifiedAt?: string;
 	/** Daemon heartbeat observed when this receipt was classified. Additive so
 	 *  legacy receipt consumers can continue reading `state` alone. */
 	readonly daemonLastTickAt?: string | null;

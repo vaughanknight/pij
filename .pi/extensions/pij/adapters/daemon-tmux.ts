@@ -360,34 +360,52 @@ export class DaemonTmux implements DaemonPorts {
 		this.sleep(enterSettleMs(harness));
 		const preSubmit = this.capturePane(paneId);
 		let lastPane = preSubmit;
+		// Submission verification runs for EVERY harness (#40 Defect 5): claude/codex
+		// used to fire one Enter and blindly return `confirmed`, so a swallowed Enter
+		// (busy composer / render race) stranded the text yet still reported delivered.
+		// The oracle (`submissionConfirmed` = pane went busy OR the transcript region
+		// changed) and the retry Enter are harness-agnostic; only copilot's focus-IN
+		// re-assertion is harness-specific and stays gated behind `wake`.
 		for (let attempt = 0; attempt < SUBMIT_ATTEMPTS; attempt++) {
-			// Re-assert focus-IN right before Return. On retries, press Enter against the
-			// SAME visible payload; never clear/retype after submission became possible.
+			// Small backoff before every retry Enter (all harnesses). On retries, press
+			// Enter against the SAME visible payload; never clear/retype after the first
+			// Enter (a submission may already have happened → at-most-once wins).
 			if (attempt > 0) {
-				wakeCopilotInput(paneId, this.runner, pid);
+				// Re-assert focus-IN before the retry only for copilot (the focus-wedge).
+				if (wake) wakeCopilotInput(paneId, this.runner, pid);
 				this.sleep(WAKE_SETTLE_MS);
 			}
 			if (wake) sendFocusIn(paneId, this.runner);
 			pressKey(paneId, "Enter", 1, this.runner);
-			if (!wake) return "confirmed";
 			for (let poll = 0; poll < SUBMIT_VERIFY_POLLS; poll++) {
 				this.sleep(SUBMIT_VERIFY_MS);
 				lastPane = this.capturePane(paneId);
 				if (submissionConfirmed(preSubmit, lastPane, text)) return "confirmed";
 			}
-			// Empty means the payload left the composer. Even without a visible busy or
-			// transcript transition, replaying could duplicate an already-accepted turn.
-			if (composerIsEmpty(lastPane)) break;
+			// Stop re-pressing once OUR payload is no longer visibly pending: either the
+			// composer emptied (submitted) OR its tail is gone / replaced by claude's dim
+			// `[2m` ghost-suggestion placeholder. That placeholder is NOT real composer
+			// content — we match on the actual payload tail, never the hint — so a
+			// submitted message whose composer now shows a dim suggestion is correctly
+			// read as "payload gone", not "still pending". Replaying an already-gone
+			// payload risks a duplicate turn, and a bare Enter on an empty claude composer
+			// is a harmless no-op, so there is nothing to gain from another press. (For a
+			// too-short payload the tail can't be matched, so `composerIsEmpty` still
+			// carries the break.)
+			if (!composerHasTextTail(lastPane, text) || composerIsEmpty(lastPane)) break;
 		}
+		// The text WAS typed into the composer but no submission was confirmed after the
+		// bounded retries — the swallowed-Enter wedge. Report `injected-unverified` (a
+		// distinct, honest state), NEVER `confirmed`/`delivered`. Log loudly.
 		try {
 			const tail = text.replace(/\s+/g, " ").slice(-48);
 			process.stderr.write(
-				`⚠️  copilot UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) lacked positive submission confirmation; payload was typed once — text tail «…${tail}».\n`,
+				`⚠️  ${harness ?? "harness"} INJECTED-UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) typed the payload but never confirmed submission across ${SUBMIT_ATTEMPTS} Enter attempts — text tail «…${tail}».\n`,
 			);
 		} catch {
 			// logging is diagnostic-only — a write failure must not break delivery.
 		}
-		return "unverified";
+		return "injected-unverified";
 	}
 
 	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void {

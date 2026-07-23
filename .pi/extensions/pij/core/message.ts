@@ -29,13 +29,17 @@ export function roleLabel(role: Role | undefined): string {
 	return "PEER";
 }
 
-/** Body of an extension-issued delivery receipt, framed for the sender's
- *  event log (spec AC-13): `[pij receipt <messageId>] queued|delivered|unverified`. */
+/** Body of an extension-issued delivery receipt, framed for the sender's event
+ *  log (spec AC-13): `[pij receipt <messageId>] queued|delivered|unverified|injected-unverified`.
+ *  `injected-unverified` = text reached the composer but its submission was never
+ *  confirmed (the swallowed-Enter wedge) — honestly distinct from `delivered`. */
 export function receiptBody(messageId: string, state: ReceiptState): string {
 	return `[pij receipt ${messageId}] ${state}`;
 }
 
-const RECEIPT_RE = /^\[pij receipt ([^\]]+)\] (queued|delivered|unverified)$/;
+// `injected-unverified` precedes `unverified` in the alternation so the longer,
+// more specific word wins (both share the `unverified` suffix).
+const RECEIPT_RE = /^\[pij receipt ([^\]]+)\] (queued|delivered|injected-unverified|unverified)$/;
 
 /** Parse a receipt body back into { messageId, state }, or null if not a
  *  receipt (used by `pij send --wait` to correlate the delivered receipt and

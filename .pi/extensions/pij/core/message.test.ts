@@ -94,12 +94,24 @@ describe("announceText", () => {
 	});
 
 	describe("receiptBody/parseReceiptBody", () => {
-		it("round-trips every receipt state, including unverified", () => {
-			const states: ReceiptState[] = ["queued", "delivered", "unverified"];
+		it("round-trips every receipt state, including injected-unverified", () => {
+			const states: ReceiptState[] = ["queued", "delivered", "unverified", "injected-unverified"];
 			for (const state of states) {
 				const body = receiptBody("msg-1", state);
 				expect(parseReceiptBody(body)).toEqual({ messageId: "msg-1", state });
 			}
+		});
+
+		it("parses injected-unverified as itself, NOT as unverified (the shared suffix)", () => {
+			// The honest wedge word must never collapse into the pre-type-failure word.
+			expect(parseReceiptBody("[pij receipt msg-9] injected-unverified")).toEqual({
+				messageId: "msg-9",
+				state: "injected-unverified",
+			});
+			expect(parseReceiptBody("[pij receipt msg-9] unverified")).toEqual({
+				messageId: "msg-9",
+				state: "unverified",
+			});
 		});
 	});
 
