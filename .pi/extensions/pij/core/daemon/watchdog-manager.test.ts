@@ -103,6 +103,7 @@ interface ManagerHarness {
 	readonly responses: WatchdogResponseEvent[];
 	setNow(value: number): void;
 	setPane(id: string, value: string): void;
+	setPendingWatchdog(id: string, pending: boolean): void;
 	setGlobalDisabled(value: boolean): void;
 }
 
@@ -114,6 +115,7 @@ function managerHarness(): ManagerHarness {
 	const fires: Array<{ id: string; atMs: number }> = [];
 	const responses: WatchdogResponseEvent[] = [];
 	const panes = new Map<string, string>();
+	const pendingWatchdogs = new Set<string>();
 	let nowMs = 0;
 	let globalDisabled = false;
 	const manager = new WatchdogManager({
@@ -126,6 +128,7 @@ function managerHarness(): ManagerHarness {
 			events.push(`capture:${session.id}`);
 			return panes.get(session.id) ?? "idle pane";
 		},
+		hasPendingWatchdog: (id) => pendingWatchdogs.has(id),
 		onFire: (session, atMs) => fires.push({ id: session.id, atMs }),
 		onResponse: (event) => responses.push(event),
 	});
@@ -141,6 +144,10 @@ function managerHarness(): ManagerHarness {
 			nowMs = value;
 		},
 		setPane: (id, value) => panes.set(id, value),
+		setPendingWatchdog: (id, pending) => {
+			if (pending) pendingWatchdogs.add(id);
+			else pendingWatchdogs.delete(id);
+		},
 		setGlobalDisabled: (value: boolean) => {
 			globalDisabled = value;
 		},
@@ -155,7 +162,7 @@ function intervalSidecar(
 }
 
 describe("WatchdogManager — reconciliation and delivery", () => {
-	it("queues every due tmux watchdog turn through the durable channel", () => {
+	it("keeps at most one due tmux watchdog turn in the durable channel", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-tmux", intervalSidecar());
 		h.store.revisions.set("pij-tmux", 1);
@@ -170,7 +177,13 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-tmux]");
 		expect(h.fires).toEqual([{ id: "pij-tmux", atMs: 100 }]);
 
+		h.setPendingWatchdog("pij-tmux", true);
 		h.setNow(200);
+		h.manager.reconcile([desc({ id: "pij-tmux" })]);
+		expect(h.delivery.outbox).toHaveLength(1);
+
+		h.setPendingWatchdog("pij-tmux", false);
+		h.setNow(300);
 		h.manager.reconcile([desc({ id: "pij-tmux" })]);
 		expect(h.delivery.outbox[1]?.message.body).toContain("[pij watchdog #2 for pij-tmux]");
 	});
@@ -259,6 +272,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 			isAlive: (pid) => pid !== 999,
 			now: () => 10_000,
 			capturePane: () => "pane",
+			hasPendingWatchdog: () => false,
 		});
 		deadManager.reconcile([
 			desc({ id: "pending", lifecycle: "pending" }),
@@ -319,6 +333,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 				store.order.push("capture");
 				return "idle";
 			},
+			hasPendingWatchdog: () => false,
 		});
 		manager.reconcile([desc({ id: "peer" })]);
 		expect(store.order).toEqual(["write:peer:active", "capture"]);

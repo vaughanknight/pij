@@ -1,0 +1,49 @@
+⏺ Here's the definitive spawn tree, straight from the transcripts and the
+  spine — every node with its session id:
+
+  pij-vut1pp  — "the overseer"        ← Jordan directs; NO transcript in
+  ~/.claude/projects
+     │  (sent prime-brief.md, spot-checks by pointer)
+     ▼
+  pij-1bovprr / pij-uec99o  — "the o-prime" (PRIME + government seat)
+     │  session 18f2922d-98b3-4364-8d1b-e739e19271d0
+     │  span 2026-07-10 12:25Z → 2026-07-11 00:11Z (survived the restart;
+  re-registered uec99o)
+     ├── pij-1gx33y5  s017-config  → session 3d3f5d33
+     ├── pij-19qw8yy  s020-terrain → session a113673f
+     └── pij-1t7pmiw  s019 (dissolved) → session 121b2723
+
+  So on the documented evidence, 18f2922d = the o-prime — the spine
+  literally says "this session is now THE o-prime… same claude session
+  18f2922d as pre-restart pij-1bovprr," and it's the sole owner/writer of
+  government/. Its only parent is the overseer pij-vut1pp.
+
+  Since you're saying 18f2922d is the parent of o-prime, we're naming
+  different nodes. The two possibilities:
+
+  1. You mean the overseer (pij-vut1pp) — the pane you actually typed in,
+  one level above 18f2922d. That transcript is not in ~/.claude/projects/
+  at all (no session declares that id). It was likely launched from a
+  different cwd or a pij scratch/tmux dir.
+  2. You mean a child of 18f2922d — but its three children are the streams
+  s017/s020/s019, none named "o-prime."
+
+  Given "parent of o-prime," interpretation 1 fits: the o-prime you want is
+  the overseer pij-vut1pp, and it's missing from the normal store.
+
+  Want me to hunt for the pij-vut1pp transcript in pij's tmux/scratch/temp
+  locations (outside ~/.claude/projects/)? That's the pane you were
+  driving.
+
+✻ Cooked for 2m 46s
+
+※ recap: We're finding the Claude session behind docs/plans/018-o-prime.
+  The o-prime seat is session 18f2922d, but you say that's the parent, so
+  the one you want is the overseer pij-vut1pp. Next: hunt for its
+  transcript outside ~/.claude/projects. (disable recaps in /config)
+
+───────────────────────────────────────────────────────────────────────────
+❯ 
+───────────────────────────────────────────────────────────────────────────
+  SecondCrack ⎇ main • Opus 4.8 • high • 7% • 70k/1.0M • 4% ↻14:30
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent

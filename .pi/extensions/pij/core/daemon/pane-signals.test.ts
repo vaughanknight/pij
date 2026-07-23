@@ -11,11 +11,13 @@ import {
 	PaneSignalMonitor,
 	parseCaretPositions,
 	renderedComposerLength,
+	renderedComposerPayload,
+	SELF_INJECTION_WINDOW_MS,
 	USER_TYPING_IDLE_MS,
 } from "./pane-signals.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "pane-signals");
-const HARNESSES = ["claude", "copilot", "codex", "pi"] as const;
+const HARNESSES = ["claude", "copilot", "codex", "omp", "pi"] as const;
 
 const CLAUDE_RELATIVE_PANE = [
 	"────────────────────────────────────────────────────────────────",
@@ -23,6 +25,17 @@ const CLAUDE_RELATIVE_PANE = [
 	"────────────────────────────────────────────────────────────────",
 	"45% pij · pij-reasonable-dove · Opus 4.8",
 ].join("\n");
+function copilotPane(payload: string): string {
+	return [
+		"────────────────────────────────────────────────────────────────",
+		`❯ ${payload}`,
+		" GPT-5.6 Sol · 1.1M context",
+		" / commands · ? help · → next tab",
+		" ◉",
+	].join("\n");
+}
+
+const COPILOT_TYPED_PANE = copilotPane("keep me posted");
 const OMP_RELATIVE_PANE = [
 	"╭── pij-striped-cockroach > ⬢ GPT-5.6 Sol · ◒ high > ⑂ main ▶────────╮",
 	"╰─ keep me posted ─╯",
@@ -45,9 +58,89 @@ function namedFixture(name: string): Uint8Array {
 	return Uint8Array.from(bytes);
 }
 
+function paneFixture(name: string): string {
+	return readFileSync(join(FIXTURES, name), "utf8");
+}
+
 function fixture(harness: (typeof HARNESSES)[number], kind: string): Uint8Array {
 	return namedFixture(`${harness}-${kind}`);
 }
+
+describe("renderedComposerLength", () => {
+	it.each([
+		"pane_%157.txt",
+		"pane_%624.txt",
+	])("recognizes idle narrow Copilot capture %s without counting footer churn", (name) => {
+		expect(renderedComposerLength(paneFixture(name))).toBe(0);
+	});
+
+	it.each([
+		"pane_%4.txt",
+		"claude_idle_%29.txt",
+	])("recognizes empty composer capture %s", (name) => {
+		expect(renderedComposerLength(paneFixture(name))).toBe(0);
+	});
+
+	it("counts Copilot text but excludes its live footer", () => {
+		expect(renderedComposerLength(COPILOT_TYPED_PANE)).toBe("keepmeposted".length);
+	});
+
+	it("uses the caret to preserve final-space input while trimming width padding", () => {
+		const padded = copilotPane("hello      ");
+		const before = renderedComposerPayload(padded, { x: 7, y: 1 });
+		const after = renderedComposerPayload(padded, { x: 8, y: 1 });
+		expect(before).toBe("hello");
+		expect(after).toBe("hello ");
+
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer(before, 1_000);
+		expect(tracker.observeRenderedComposer(after, 1_001)).toEqual({
+			kind: "key",
+			composerLength: 5,
+		});
+		expect(tracker.isTyping()).toBe(true);
+
+		const internal = " hello  world";
+		expect(
+			renderedComposerPayload(copilotPane(`${internal}   `), { x: 2 + internal.length, y: 1 }),
+		).toBe(internal);
+	});
+
+	it("preserves a final-space edit when cursor coordinates are missing", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer(renderedComposerPayload(copilotPane("hello")), 1_000);
+		expect(
+			tracker.observeRenderedComposer(renderedComposerPayload(copilotPane("hello ")), 1_001),
+		).toEqual({
+			kind: "key",
+			composerLength: 5,
+		});
+		expect(tracker.isTyping()).toBe(true);
+	});
+
+	it("clips final-space input on the active multiline continuation", () => {
+		const before = renderedComposerPayload(copilotPane("first\nsecond      "), { x: 6, y: 2 });
+		const after = renderedComposerPayload(copilotPane("first\nsecond      "), { x: 7, y: 2 });
+		expect(before).toBe("first\nsecond");
+		expect(after).toBe("first\nsecond ");
+
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer(before, 1_000);
+		expect(tracker.observeRenderedComposer(after, 1_001)?.kind).toBe("key");
+		expect(tracker.isTyping()).toBe(true);
+	});
+
+	it("normalizes right padding when cursorX is beyond the captured line", () => {
+		const tracker = new CaretTypingTracker();
+		const before = renderedComposerPayload(copilotPane("hello    "), { x: 99, y: 1 });
+		const after = renderedComposerPayload(copilotPane("hello         "), { x: 99, y: 1 });
+		expect(before).toBe("hello");
+		expect(after).toBe("hello");
+		tracker.observeRenderedComposer(before, 1_000);
+		expect(tracker.observeRenderedComposer(after, 1_001)).toBeUndefined();
+		expect(tracker.isTyping()).toBe(false);
+	});
+});
 
 describe("BusyDensityTracker", () => {
 	it.each(HARNESSES)("%s busy capture becomes busy within the rolling window", (harness) => {
@@ -94,19 +187,21 @@ describe("CaretTypingTracker", () => {
 		]);
 		const tracker = new CaretTypingTracker();
 		tracker.seedBase({ row: 46, column: 3 });
+		tracker.observeRenderedComposer("", 900);
 		tracker.ingest(bytes, 1_000, true);
-		tracker.observeRenderedComposer(renderedComposerLength(CLAUDE_RELATIVE_PANE), 1_000);
+		tracker.observeRenderedComposer(renderedComposerPayload(CLAUDE_RELATIVE_PANE), 1_000);
 		expect(tracker.isTyping()).toBe(true);
 		expect(tracker.length()).toBeGreaterThan(0);
 	});
 
-	it("detects a non-empty live OMP composer despite A/B/G-only cursor redraws", () => {
+	it("detects a real OMP composer text change despite A/B/G-only cursor redraws", () => {
 		const bytes = namedFixture("omp-relative-typing");
 		expect(parseCaretPositions(bytes)).toEqual([]);
 		const tracker = new CaretTypingTracker();
 		tracker.seedBase({ row: 49, column: 4 });
+		tracker.observeRenderedComposer("", 900);
 		tracker.ingest(bytes, 1_000, true);
-		tracker.observeRenderedComposer(renderedComposerLength(OMP_RELATIVE_PANE), 1_000);
+		tracker.observeRenderedComposer(renderedComposerPayload(OMP_RELATIVE_PANE), 1_000);
 		expect(tracker.isTyping()).toBe(true);
 		expect(tracker.length()).toBeGreaterThan(0);
 	});
@@ -126,12 +221,119 @@ describe("CaretTypingTracker", () => {
 		expect(renderedComposerLength(pane)).toBeGreaterThan(0);
 	});
 
-	it("never idle-releases while the rendered composer remains non-empty", () => {
+	it("does not acquire from a static non-empty render", () => {
 		const tracker = new CaretTypingTracker();
-		tracker.observeRenderedComposer(renderedComposerLength(CLAUDE_RELATIVE_PANE), 1_000);
-		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS)).toBeUndefined();
+		const payload = renderedComposerPayload(CLAUDE_RELATIVE_PANE);
+		tracker.observeRenderedComposer(payload, 1_000);
+		tracker.observeRenderedComposer(payload, 2_000);
+		expect(tracker.isTyping()).toBe(false);
+		expect(tracker.lastKeystrokeAt()).toBeUndefined();
+	});
+
+	it("ignores Copilot footer cursor churn once the rendered composer is authoritative", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.seedBase({ row: 43, column: 1 });
+		tracker.observeRenderedComposer(renderedComposerPayload(paneFixture("pane_%157.txt")), 1_000);
+		const events = tracker.ingest(Buffer.from("\x1b[43;3H\x1b[43;18H"), 2_000, true);
+		tracker.observeRenderedComposer(renderedComposerPayload(paneFixture("pane_%624.txt")), 2_000);
+		expect(events).toEqual([]);
+		expect(tracker.isTyping()).toBe(false);
+	});
+
+	it("ignores daemon-injected payload and caret changes without hiding later human input", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer("before", 1_000);
+		tracker.markSelfInjection("[pij from peer] injected", 1_100);
+		expect(tracker.observeRenderedComposer("[pij from peer] injected", 1_101)).toBeUndefined();
+		expect(tracker.isTyping()).toBe(false);
+
+		expect(tracker.observeRenderedComposer("human edit", 1_102)).toEqual({
+			kind: "key",
+			composerLength: "humanedit".length,
+		});
 		expect(tracker.isTyping()).toBe(true);
-		tracker.observeRenderedComposer(0, 1_000 + USER_TYPING_IDLE_MS);
+
+		const caret = new CaretTypingTracker();
+		caret.seedBase({ row: 1, column: 1 });
+		caret.markSelfInjection("injected", 2_000);
+		expect(caret.ingest(Buffer.from("\x1b[1;2H"), 2_000 + SELF_INJECTION_WINDOW_MS, true)).toEqual(
+			[],
+		);
+		expect(caret.isTyping()).toBe(false);
+	});
+
+	it("acquires when a human edits before the pending injection echo appears", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer("", 1_000);
+		tracker.markSelfInjection("[pij from peer] injected", 1_100);
+		expect(tracker.observeRenderedComposer("human starts typing", 1_101)).toEqual({
+			kind: "key",
+			composerLength: "humanstartstyping".length,
+		});
+		expect(tracker.isTyping()).toBe(true);
+	});
+
+	it("does not renew unknown-layout activity from bare cursor reports", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.seedBase({ row: 1, column: 1 });
+		expect(tracker.ingest(Buffer.from("k\x1b[1;2H"), 1_000, true)).toEqual([
+			{ kind: "key", composerLength: 1 },
+		]);
+		expect(tracker.ingest(Buffer.from("\x1b[1;3H"), 1_000 + USER_TYPING_IDLE_MS - 1, true)).toEqual(
+			[],
+		);
+		expect(tracker.lastKeystrokeAt()).toBe(1_000);
+		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS)).toEqual({
+			kind: "idle-release",
+			composerLength: 0,
+		});
+	});
+
+	it("recognizes a printable key after a C1-ST-terminated OSC string", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.seedBase({ row: 1, column: 1 });
+		const bytes = Buffer.concat([
+			Buffer.from("\x1b]0;title", "latin1"),
+			Buffer.from([0x9c]),
+			Buffer.from("x\x1b[1;2H", "latin1"),
+		]);
+		expect(tracker.ingest(bytes, 1_000, true)).toEqual([{ kind: "key", composerLength: 1 }]);
+		expect(tracker.isTyping()).toBe(true);
+	});
+
+	it("holds equal-length and whitespace payload edits, then releases without chaining", () => {
+		const tracker = new CaretTypingTracker();
+		tracker.observeRenderedComposer(renderedComposerPayload(copilotPane("hello")), 900);
+		expect(
+			tracker.observeRenderedComposer(renderedComposerPayload(copilotPane("world")), 1_000),
+		).toEqual({
+			kind: "key",
+			composerLength: 5,
+		});
+		expect(tracker.isTyping()).toBe(true);
+		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS - 1)).toBeUndefined();
+		expect(tracker.expire(1_000 + USER_TYPING_IDLE_MS)).toEqual({
+			kind: "idle-release",
+			composerLength: 0,
+		});
+		expect(tracker.isTyping()).toBe(false);
+
+		tracker.observeRenderedComposer(
+			renderedComposerPayload(copilotPane("world")),
+			1_001 + USER_TYPING_IDLE_MS,
+		);
+		expect(tracker.isTyping()).toBe(false);
+		expect(
+			tracker.observeRenderedComposer(
+				renderedComposerPayload(copilotPane("wo rld")),
+				2_000 + USER_TYPING_IDLE_MS,
+			),
+		).toEqual({ kind: "key", composerLength: 5 });
+		expect(tracker.isTyping()).toBe(true);
+		expect(tracker.observeRenderedComposer("", 2_001 + USER_TYPING_IDLE_MS)).toEqual({
+			kind: "enter",
+			composerLength: 0,
+		});
 		expect(tracker.isTyping()).toBe(false);
 	});
 });
@@ -162,6 +364,21 @@ describe("pane connect diff", () => {
 		expect(monitor.snapshot("%1", 1_000)).toMatchObject({
 			userTyping: true,
 			composerLength: 1,
+		});
+	});
+	it("holds composer-scoped printable input when known-layout coordinates are absent", () => {
+		const monitor = new PaneSignalMonitor();
+		monitor.reconcile([{ paneId: "%1", dead: false }]);
+		const padded = copilotPane("hello     ");
+		monitor.observeRenderedComposer("%1", padded, 900);
+
+		expect(monitor.ingest("%1", Buffer.from("GPT-5.6 Sol\x1b[3;2H"), 950)).toEqual([]);
+		expect(monitor.ingest("%1", Buffer.from(" \x1b[2;8H"), 1_000)).toEqual([
+			{ kind: "key", composerLength: 5 },
+		]);
+		expect(monitor.snapshot("%1", 1_000)).toMatchObject({
+			userTyping: true,
+			composerLength: 5,
 		});
 	});
 });

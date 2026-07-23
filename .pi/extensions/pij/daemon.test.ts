@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FsChannel } from "./adapters/channel.js";
@@ -9,7 +10,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
 import type { PaneListing } from "./core/daemon/pane-signals.js";
-import { USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
+import { renderedComposerLength, USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
 import { COMPACT_GRACE_MS, COMPACT_MAX_MS } from "./core/daemon/router.js";
 import { receiptBody } from "./core/message.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
@@ -33,6 +34,27 @@ const CLAUDE_COMPOSER_TEXT = [
 const CLAUDE_RELATIVE_REDRAW = Buffer.from(
 	"\x1b[?2026h\x1b[?25l\x1b[H\r\x1b[2C\x1b[45Bkeep me posted on the researcher findings\x1b[49;1H\x1b[46;3H",
 );
+const PANE_SIGNAL_FIXTURES = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"core",
+	"daemon",
+	"__fixtures__",
+	"pane-signals",
+);
+
+function paneSignalFixture(name: string): string {
+	return readFileSync(join(PANE_SIGNAL_FIXTURES, name), "utf8");
+}
+
+function copilotComposer(payload: string): string {
+	return [
+		"────────────────────────────────────────────────────────────────",
+		`❯ ${payload}`,
+		" GPT-5.6 Sol · 1.1M context",
+		" / commands · ? help · → next tab",
+		" ◉",
+	].join("\n");
+}
 const NOW_MS = Date.parse("2026-06-28T00:00:00.000Z");
 const FRESH_AT = new Date(NOW_MS - 5_000).toISOString();
 const STALE_AT = new Date(NOW_MS - STALE_AFTER_MS - 1).toISOString();
@@ -515,6 +537,150 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(registry.read("pij-pull")?.initInjectedAt).toBeUndefined();
 	});
 
+	it.each([
+		["pane_%157.txt", "copilot"],
+		["pane_%624.txt", "copilot"],
+		["pane_%4.txt", "copilot"],
+		["claude_idle_%29.txt", "claude"],
+	] as const)("routes real idle pane capture %s through delivery without a hold", (fixtureName, harness) => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness,
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: fixtureName });
+		const ports = fakePorts({
+			paneText: paneSignalFixture(fixtureName),
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
+		expect(ports.sent).toContainEqual({ pane: "%4", text: `[pij from pij-boss] ${fixtureName}` });
+		expect(unreadBodies("pij-c")).toEqual([]);
+	});
+
+	it("buffers delivery when authoritative composer content changes at equal stripped length", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		let pane = copilotComposer("hello");
+		const ports = fakePorts({
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+
+		pane = copilotComposer("world");
+		expect(renderedComposerLength(pane)).toBe(5);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "equal-length edit" });
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-c")).toEqual(["equal-length edit"]);
+
+		pane = paneSignalFixture("pane_%4.txt");
+		daemon.tick();
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij from pij-boss] equal-length edit",
+		});
+		expect(unreadBodies("pij-c")).toEqual([]);
+	});
+
+	it("does not treat its own injection as typing that blocks the next delivery", () => {
+		let nowMs = 1_000;
+		let pane = paneSignalFixture("pane_%4.txt");
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "first" });
+		daemon.tick();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] first" });
+
+		pane = copilotComposer("[pij from pij-boss] first");
+		nowMs += 1;
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: false });
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] second" });
+		expect(unreadBodies("pij-c")).toEqual([]);
+	});
+
+	it("holds a human edit that arrives before the daemon injection echo", () => {
+		let nowMs = 1_000;
+		let pane = paneSignalFixture("pane_%4.txt");
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "first" });
+		daemon.tick();
+		pane = copilotComposer("human starts typing");
+		nowMs += 1;
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
+		daemon.tick();
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
+		expect(unreadBodies("pij-c")).toEqual(["second"]);
+
+		pane = paneSignalFixture("pane_%4.txt");
+		daemon.tick();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] second" });
+		expect(unreadBodies("pij-c")).toEqual([]);
+	});
+
 	it("holds real relative-redraw Claude input, then flushes FIFO when the composer empties", () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
@@ -528,16 +694,18 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			}),
 		);
 		const channel = new FsChannel(home);
-		channel.deliver({ from: "pij-boss", to: "pij-c", body: "one" });
-		channel.deliver({ from: "pij-boss", to: "pij-c", body: "two" });
-		let pane = CLAUDE_COMPOSER_TEXT;
+		let pane = CLAUDE_COMPOSER_EMPTY;
 		const ports = fakePorts({
 			paneText: () => pane,
 			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
-			tapChunks: [CLAUDE_RELATIVE_REDRAW],
+			tapChunks: [new Uint8Array(), CLAUDE_RELATIVE_REDRAW],
 		});
 		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
 
+		pane = CLAUDE_COMPOSER_TEXT;
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "one" });
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "two" });
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
 		expect(ports.sent.filter((entry) => entry.text.includes("[pij from"))).toEqual([]);
@@ -553,9 +721,9 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
-	it("does not idle-release while rendered composer text remains non-empty", () => {
+	it("idle-releases at 60 seconds even while rendered composer text remains", () => {
 		let nowMs = 1_000;
-		let pane = CLAUDE_COMPOSER_TEXT;
+		let pane = CLAUDE_COMPOSER_EMPTY;
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -568,27 +736,82 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			}),
 		);
 		const channel = new FsChannel(home);
-		channel.deliver({ from: "pij-boss", to: "pij-c", body: "after idle" });
 		const ports = fakePorts({
 			now: () => nowMs,
 			paneText: () => pane,
 			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
-			tapChunks: [CLAUDE_RELATIVE_REDRAW],
 		});
 		const daemon = new Daemon(home, ports, registry, channel);
-
 		daemon.tick();
-		nowMs += USER_TYPING_IDLE_MS;
+
+		pane = CLAUDE_COMPOSER_TEXT;
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "after idle" });
 		daemon.tick();
 		expect(ports.sent).toEqual([]);
-		expect(unreadBodies("pij-c")).toEqual(["after idle"]);
 
-		pane = CLAUDE_COMPOSER_EMPTY;
+		nowMs += USER_TYPING_IDLE_MS - 1;
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+
+		nowMs += 1;
 		daemon.tick();
 		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] after idle" });
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "no chaining" });
+		daemon.tick();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] no chaining" });
 	});
 
-	it("rechecks the rendered composer immediately before send to close the typing race", () => {
+	it("flushes an unattended orchestrator hold after undefined-layout timeout", () => {
+		let nowMs = 1_000;
+		let pane = CLAUDE_COMPOSER_EMPTY;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-orchestrator",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			tapChunks: [
+				new Uint8Array(),
+				new Uint8Array(),
+				Buffer.from("\x1b[46;4H"),
+				Buffer.from("\x1b[46;5H"),
+			],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+
+		pane = CLAUDE_COMPOSER_TEXT;
+		channel.deliver({ from: "pij-boss", to: "pij-orchestrator", body: "resume pipeline" });
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-orchestrator")).toEqual(["resume pipeline"]);
+
+		pane = "unrecognized pane layout with no composer delimiters";
+		nowMs += USER_TYPING_IDLE_MS - 1;
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+
+		nowMs += 1;
+		daemon.tick();
+		expect(ports.sent).toContainEqual({
+			pane: "%4",
+			text: "[pij from pij-boss] resume pipeline",
+		});
+		expect(unreadBodies("pij-orchestrator")).toEqual([]);
+	});
+
+	it("does not acquire a hold from a last-moment static non-empty render", () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -609,13 +832,13 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		});
 
 		new Daemon(home, ports, registry, channel).tick();
-		expect(ports.sent).toEqual([]);
-		expect(unreadBodies("pij-c")).toEqual(["racing"]);
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] racing" });
+		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 
-	it("routes an external watchdog turn through the same composer hold", () => {
-		const nowMs = Date.parse("2026-07-21T00:00:00.000Z");
-		let pane = CLAUDE_COMPOSER_TEXT;
+	it("coalesces repeated watchdog intervals while the composer hold is active", () => {
+		let nowMs = Date.parse("2026-07-21T00:00:00.000Z");
+		let pane = CLAUDE_COMPOSER_EMPTY;
 		const registry = new FsRegistry(home);
 		registry.write(
 			desc({
@@ -624,8 +847,8 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 				lifecycle: "bound",
 				paneId: "%4",
 				harnessSessionId: "sess",
-				startedAt: "1970-01-01T00:00:00.000Z",
-				lastEventAt: "1970-01-01T00:00:00.000Z",
+				startedAt: new Date(nowMs).toISOString(),
+				lastEventAt: new Date(nowMs).toISOString(),
 				state: "idle",
 			}),
 		);
@@ -639,14 +862,25 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		const daemon = new Daemon(home, ports, registry, channel);
 
 		daemon.tick();
-		expect(ports.sent).toEqual([]);
-		expect(unreadBodies("pij-c")[0]).toContain("[pij watchdog #1 for pij-c]");
+		pane = CLAUDE_COMPOSER_TEXT;
+		nowMs += 100;
 		daemon.tick();
+		expect(ports.sent).toEqual([]);
+
+		for (let interval = 0; interval < 10; interval++) {
+			nowMs += 100;
+			daemon.tick();
+		}
+		const pendingWatchdogs = unreadBodies("pij-c").filter((body) =>
+			body.includes("[pij watchdog #"),
+		);
+		expect(pendingWatchdogs).toHaveLength(1);
+		expect(pendingWatchdogs[0]).toContain("[pij watchdog #1 for pij-c]");
 		expect(ports.sent).toEqual([]);
 
 		pane = CLAUDE_COMPOSER_EMPTY;
 		daemon.tick();
-		expect(ports.sent.filter((entry) => entry.text.includes("[pij watchdog #1"))).toHaveLength(1);
+		expect(ports.sent.filter((entry) => entry.text.includes("[pij watchdog #"))).toHaveLength(1);
 		expect(unreadBodies("pij-c")).toEqual([]);
 	});
 

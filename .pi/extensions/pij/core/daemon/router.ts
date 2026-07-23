@@ -12,6 +12,7 @@ import { selectTransport } from "../harness/types.js";
 import { frame } from "../message.js";
 import type { PijMessage, SessionDescriptor, SessionId, WatchdogSidecar } from "../types.js";
 import { applyCompactPause } from "../watchdog.js";
+import { USER_TYPING_IDLE_MS } from "./pane-signals.js";
 
 export interface BufferedMessage {
 	readonly messageId: string;
@@ -21,6 +22,7 @@ export interface BufferedMessage {
 export interface BufferedPaneSignal {
 	readonly busy: boolean;
 	readonly userTyping: boolean;
+	readonly lastActivityAt?: number;
 }
 
 export type RouteDecision =
@@ -96,12 +98,18 @@ export class SendBuffer {
 	enqueue(messageId: string, message: PijMessage): void {
 		const q = this.byTarget.get(message.to) ?? [];
 		if (q.some((entry) => entry.messageId === messageId)) return;
+		if (
+			message.from === "pij-watchdog" &&
+			q.some((entry) => entry.message.from === "pij-watchdog")
+		) {
+			return;
+		}
 		q.push({ messageId, message });
 		this.byTarget.set(message.to, q);
 	}
 
-	/** Update the pane's read-only signals. Only `userTyping` gates delivery;
-	 * `busy` is deliberately exposed for future UI consumers and never holds. */
+	/** Update the pane's read-only signals. Only a fresh `userTyping` activity
+	 * timestamp gates delivery; `busy` is exposed for UI consumers and never holds. */
 	setPaneSignal(paneId: string, signal: BufferedPaneSignal): void {
 		this.paneSignals.set(paneId, signal);
 	}
@@ -110,8 +118,21 @@ export class SendBuffer {
 		return this.paneSignals.get(paneId);
 	}
 
-	isPaneHeld(paneId: string): boolean {
-		return this.paneSignals.get(paneId)?.userTyping ?? false;
+	isPaneHeld(paneId: string, nowMs: number): boolean {
+		const signal = this.paneSignals.get(paneId);
+		if (!signal?.userTyping) return false;
+		if (
+			signal.lastActivityAt === undefined ||
+			!Number.isFinite(signal.lastActivityAt) ||
+			nowMs - signal.lastActivityAt >= USER_TYPING_IDLE_MS
+		) {
+			this.paneSignals.set(paneId, {
+				busy: signal.busy,
+				userTyping: false,
+			});
+			return false;
+		}
+		return true;
 	}
 
 	forgetPane(paneId: string): void {
@@ -124,8 +145,8 @@ export class SendBuffer {
 	}
 
 	/** Remove and return all buffered messages for a target, in arrival order. */
-	flush(target: SessionId, paneId?: string): BufferedMessage[] {
-		if (paneId && this.isPaneHeld(paneId)) return [];
+	flush(target: SessionId, nowMs: number, paneId?: string): BufferedMessage[] {
+		if (paneId && this.isPaneHeld(paneId, nowMs)) return [];
 		const q = this.byTarget.get(target) ?? [];
 		this.byTarget.delete(target);
 		return q;
