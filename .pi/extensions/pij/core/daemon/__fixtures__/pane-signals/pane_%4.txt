@@ -1,0 +1,49 @@
+  Current   Sessions   Issues   Pull requests   Gists
+
+ ↓ find the game nad start it playing first please                                                                                             15:25 ┃
+                                                                                                                                                     ┃
+ $ Shell Run targeted and full test suites 114 lines…                                                                                                ┃
+   cd /Users/jordanknight/github/cast-afl && node --test test/games.test.js test/lg.test.js && npm test                                              ┃
+                                                                                                                                                     ┃
+ ● The regression suite is clean and the corrected live listing now returns  r19-syd-v-adel . I’m checking that playback remains active and          ┃
+   capturing the final changed-file state.                                                                                                           ┃
+                                                                                                                                                     ┃
+ $ Shell Confirm Sydney replay remains playing 2 lines…                                                                                              ┃
+   cd /Users/jordanknight/github/cast-afl && node bin/cast-afl.js status --json                                                                      ┃
+ $ Shell Show final changed files 11 lines…                                                                                                          ┃
+   cd /Users/jordanknight/github/cast-afl && git --no-pager status --short && git --no-pager diff --stat                                             ┃
+ $ Shell Review captured harness friction 2 lines…                                                                                                   ┃
+   cd /Users/jordanknight/github/cast-afl && harness observe --list                                                                                  ┃
+                                                                                                                                                     ┃
+ ● Playback is still PLAYING. The harness captured the exact failure mode; I’m draining that observation into its durable retro record so the lesson ┃
+    is not left only in session state.                                                                                                               ┃
+                                                                                                                                                     ┃
+ $ Shell Inspect harness retro recording command 14 lines…                                                                                           ┃
+   cd /Users/jordanknight/github/cast-afl && harness record retro --help                                                                             ┃
+ $ Shell Create durable harness retro record 2 lines…                                                                                                ┃
+   cd /Users/jordanknight/github/cast-afl && harness record retro --slug swannies-lookup                                                             ┃
+                                                                                                                                                     ┃
+ MD Read 001-swannies-lookup.md 38 lines read                                                                                                        ┃
+                                                                                                                                                     ┃
+ ● Edit  Edit .harness/records/retro/2026-07-19/001-swannies-lookup.md                                                                               ┃
+                                                                                                                                                     ┃
+ $ Shell Clear drained observation buffer 8 lines…                                                                                                   ┃
+   cd /Users/jordanknight/github/cast-afl && harness observe --clear && git --no-pager status --short                                                ┃
+ $ Shell Check patch whitespace 1 line…                                                                                                              ┃
+   cd /Users/jordanknight/github/cast-afl && git --no-pager diff --check                                                                             ┃
+ $ Shell Check final playback status 2 lines…                                                                                                        ┃
+   cd /Users/jordanknight/github/cast-afl && node bin/cast-afl.js status --json                                                                      ┃
+ $ Shell List persisted harness artifacts 61 lines…                                                                                                  ┃
+   cd /Users/jordanknight/github/cast-afl && find .harness -maxdepth 5 -type f -print | sort                                                         ┃
+                                                                                                                                                     ┃
+ ● Round 19 Sydney v Adelaide is PLAYING on Big TV.                                                                                                  ┃
+                                                                                                                                                     ┃
+   Fixed the recurrence causes: complete AFL API pagination, authoritative Swannies lookup instructions, correct LG TLS configuration, regression    ┃
+   coverage, and a durable harness retro record.                                                                                                     ┃
+                                                                                                                                                     ┃
+ ~/github/cast-afl [⎇ main*%]                                                                                                   Session: 383 AIC used
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ← sidebar · / commands · ? help · → next tab                                                                              GPT-5.6 Sol · 1.1M context
+14% cast-afl ⎇ main ⛓ pij-1sl9myp • gpt-5.6-sol · high · 1.1M context • xhigh • 145k/1.1M • 383 AIU • 838h44m

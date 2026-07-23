@@ -36,6 +36,7 @@ export interface WatchdogManagerDeps {
 	readonly globallyDisabled?: () => boolean;
 	readonly now: () => number;
 	readonly capturePane: (session: SessionDescriptor) => string;
+	readonly hasPendingWatchdog: (id: SessionId) => boolean;
 	readonly onFire?: (session: SessionDescriptor, atMs: number) => void;
 	readonly onResponse?: (event: WatchdogResponseEvent) => void;
 	readonly log?: (line: string) => void;
@@ -268,6 +269,11 @@ export class WatchdogManager {
 			state.lastFireAtMs = descriptorFire;
 		}
 		if (!isFireDue(cfg, state.lastFireAtMs, state.activityAnchorAtMs, nowMs)) return;
+		if (this.deps.hasPendingWatchdog(session.id)) {
+			state.lastFireAtMs = nowMs;
+			this.deps.log?.(`watchdog ${session.id}: pending ping exists — coalesced`);
+			return;
+		}
 
 		const paneAvailable = session.paneId !== undefined;
 		const pane = paneAvailable ? this.deps.capturePane(session) : undefined;

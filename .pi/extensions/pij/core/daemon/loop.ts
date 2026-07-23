@@ -33,7 +33,7 @@ import type {
 	SessionDescriptor,
 	SessionId,
 } from "../types.js";
-import { type PaneListing, renderedComposerLength } from "./pane-signals.js";
+import { type PaneListing, renderedComposerPayload } from "./pane-signals.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -233,6 +233,7 @@ export function driveSession(
 	ports: DaemonPorts,
 	registry: RegistryPort,
 	delivery: DeliveryPort,
+	beforeSelfInjection?: (paneId: string, payload: string, nowMs: number) => void,
 ): DriveOutcome {
 	const paneId = descriptor.paneId;
 	if (!paneId) return { kind: "waiting" }; // no pane yet (pre-split)
@@ -309,6 +310,7 @@ export function driveSession(
 			descriptor.branchedFrom != null,
 			descriptor.spawnedBy,
 		);
+		beforeSelfInjection?.(paneId, init.body, ports.now());
 		ports.sendText(paneId, init.body, harness, descriptor.pid);
 		const at = new Date(ports.now()).toISOString();
 		writeMerged(registry, markInitInjected(descriptor, at));
@@ -424,12 +426,9 @@ export function driveSession(
 		timeoutMs: WATCHDOG_TIMEOUT_MS,
 	});
 	if (decision.kind === "resend-phonehome") {
-		ports.sendText(
-			paneId,
-			buildInitInjection(descriptor.id).phonehomeLine,
-			harness,
-			descriptor.pid,
-		);
+		const phonehomeLine = buildInitInjection(descriptor.id).phonehomeLine;
+		beforeSelfInjection?.(paneId, phonehomeLine, ports.now());
+		ports.sendText(paneId, phonehomeLine, harness, descriptor.pid);
 		drive.resentAtMs = ports.now();
 		return { kind: "resent-phonehome" };
 	}
@@ -471,22 +470,22 @@ export interface DrainedTmuxMessage {
 }
 
 /** Refresh the authoritative rendered-composer signal immediately before a
- * send-key. Unknown layouts preserve the existing caret signal; known empty or
- * non-empty snapshots replace it. */
+ * send-key. A known empty composer releases immediately. Static non-empty text
+ * never acquires or reasserts a hold; only observed typing activity can do so. */
 export function refreshRenderedComposerHold(
 	paneId: string,
-	ports: Pick<DaemonPorts, "capturePane">,
+	ports: Pick<DaemonPorts, "capturePane" | "now">,
 	buffer: SendBuffer,
 ): boolean {
-	const renderedLength = renderedComposerLength(ports.capturePane(paneId));
-	if (renderedLength !== undefined) {
+	if (renderedComposerPayload(ports.capturePane(paneId)) === "") {
 		const previous = buffer.paneSignal(paneId);
 		buffer.setPaneSignal(paneId, {
 			busy: previous?.busy ?? false,
-			userTyping: renderedLength > 0,
+			userTyping: false,
+			lastActivityAt: undefined,
 		});
 	}
-	return buffer.isPaneHeld(paneId);
+	return buffer.isPaneHeld(paneId, ports.now());
 }
 
 /** Route one bound tmux target's unread messages and return each completed
@@ -503,6 +502,7 @@ export function drainTmuxInbox(
 	}>,
 	ports: DaemonPorts,
 	buffer: SendBuffer,
+	beforeSelfInjection?: (paneId: string, payload: string, nowMs: number) => void,
 ): DrainedTmuxMessage[] {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
@@ -515,6 +515,7 @@ export function drainTmuxInbox(
 				buffer.enqueue(m.messageId, msg);
 				continue;
 			}
+			beforeSelfInjection?.(decision.paneId, decision.text, ports.now());
 			const outcome = ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
 			consumed.push({ messageId: m.messageId, from: m.from, outcome });
 		} else if (decision.kind === "buffer") {

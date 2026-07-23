@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PijMessage, SessionDescriptor } from "../types.js";
+import { USER_TYPING_IDLE_MS } from "./pane-signals.js";
 import { COMPACT_MAX_MS, injectionText, isCompacting, route, SendBuffer } from "./router.js";
 
 function target(over: Partial<SessionDescriptor> & { id: string }): SessionDescriptor {
@@ -97,7 +98,7 @@ describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 		b.enqueue("m2", msg("w", "two"));
 		b.enqueue("m3", msg("other", "z"));
 		expect(b.pending("w")).toBe(2);
-		const flushed = b.flush("w");
+		const flushed = b.flush("w", 0);
 		expect(flushed.map((m) => m.message.body)).toEqual(["one", "two"]);
 		expect(flushed.map((m) => m.messageId)).toEqual(["m1", "m2"]);
 		expect(b.pending("w")).toBe(0); // cleared
@@ -105,19 +106,35 @@ describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 	});
 
 	it("flushing an unknown target is empty, not an error", () => {
-		expect(new SendBuffer().flush("ghost")).toEqual([]);
+		expect(new SendBuffer().flush("ghost", 0)).toEqual([]);
 	});
 
-	it("holds and flushes FIFO only while a human composer is non-empty", () => {
+	it("holds and flushes FIFO only while human activity is fresh", () => {
 		const b = new SendBuffer();
-		b.setPaneSignal("%7", { busy: false, userTyping: true });
+		b.setPaneSignal("%7", { busy: false, userTyping: true, lastActivityAt: 1_000 });
 		b.enqueue("m1", msg("w", "one"));
 		b.enqueue("m2", msg("w", "two"));
-		expect(b.flush("w", "%7")).toEqual([]);
+		expect(b.flush("w", 1_000, "%7")).toEqual([]);
 		expect(b.pending("w")).toBe(2);
 
 		b.setPaneSignal("%7", { busy: true, userTyping: false });
-		expect(b.flush("w", "%7").map((entry) => entry.message.body)).toEqual(["one", "two"]);
+		expect(b.flush("w", 1_001, "%7").map((entry) => entry.message.body)).toEqual(["one", "two"]);
+	});
+
+	it("expires a stale typing latch at the bounded hold deadline", () => {
+		const b = new SendBuffer();
+		b.setPaneSignal("%7", { busy: false, userTyping: true, lastActivityAt: 1_000 });
+		b.enqueue("m1", msg("w", "unattended"));
+		expect(b.flush("w", 1_000 + USER_TYPING_IDLE_MS - 1, "%7")).toEqual([]);
+		expect(b.flush("w", 1_000 + USER_TYPING_IDLE_MS, "%7")).toHaveLength(1);
+		expect(b.paneSignal("%7")).toEqual({ busy: false, userTyping: false });
+	});
+
+	it("clears an un-timestamped stale latch instead of holding forever", () => {
+		const b = new SendBuffer();
+		b.setPaneSignal("%7", { busy: false, userTyping: true });
+		expect(b.isPaneHeld("%7", 1_000)).toBe(false);
+		expect(b.paneSignal("%7")).toEqual({ busy: false, userTyping: false });
 	});
 
 	it("exposes busy read-only but never treats busy alone as a hold", () => {
@@ -125,8 +142,8 @@ describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 		b.setPaneSignal("%7", { busy: true, userTyping: false });
 		b.enqueue("m1", msg("w", "deliver while agent is busy"));
 		expect(b.paneSignal("%7")).toEqual({ busy: true, userTyping: false });
-		expect(b.isPaneHeld("%7")).toBe(false);
-		expect(b.flush("w", "%7")).toHaveLength(1);
+		expect(b.isPaneHeld("%7", 0)).toBe(false);
+		expect(b.flush("w", 0, "%7")).toHaveLength(1);
 	});
 
 	it("deduplicates a retained unread message across held ticks", () => {
@@ -134,6 +151,24 @@ describe("SendBuffer (flush-on-bind, in arrival order)", () => {
 		b.enqueue("m1", msg("w", "one"));
 		b.enqueue("m1", msg("w", "one"));
 		expect(b.pending("w")).toBe(1);
+	});
+
+	it("coalesces repeated held watchdog pings to one buffered delivery", () => {
+		const b = new SendBuffer();
+		b.setPaneSignal("%7", { busy: false, userTyping: true, lastActivityAt: 1_000 });
+		for (let ordinal = 1; ordinal <= 10; ordinal++) {
+			b.enqueue(`m${ordinal}`, {
+				...msg("w", `[pij watchdog #${ordinal} for w]`),
+				from: "pij-watchdog",
+			});
+		}
+		expect(b.pending("w")).toBe(1);
+		expect(b.flush("w", 1_001, "%7")).toEqual([]);
+
+		b.setPaneSignal("%7", { busy: false, userTyping: false });
+		const flushed = b.flush("w", 1_002, "%7");
+		expect(flushed).toHaveLength(1);
+		expect(flushed[0]?.message.body).toContain("watchdog #1");
 	});
 });
 

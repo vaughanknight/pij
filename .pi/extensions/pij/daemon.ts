@@ -72,7 +72,7 @@ import {
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { SessionDescriptor } from "./core/types.js";
+import type { SessionDescriptor, SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -101,6 +101,9 @@ export class Daemon {
 	private readonly drives = new Map<string, DriveState>();
 	private readonly buffer = new SendBuffer();
 	private readonly paneSignals = new PaneSignalMonitor();
+	private readonly markSelfInjection = (paneId: string, payload: string, nowMs: number): void => {
+		this.paneSignals.markSelfInjection(paneId, payload, nowMs);
+	};
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
 	private readonly pushed = new Map<string, Set<PushedTransition>>();
@@ -162,6 +165,16 @@ export class Daemon {
 				globallyDisabled: () => new FsWatchdogGlobalStore(pijHome).disabled(),
 				now: () => this.ports.now(),
 				capturePane: (session) => (session.paneId ? this.ports.capturePane(session.paneId) : ""),
+				hasPendingWatchdog: (id) => {
+					if (typeof channel.listUnread !== "function") return false;
+					const unread = channel.listUnread(id);
+					return (
+						unread.ok &&
+						unread.value.some(
+							(message) => message.kind !== "receipt" && message.from === "pij-watchdog",
+						)
+					);
+				},
 				onFire: (session, atMs) => {
 					const latest = this.registry.read(session.id) ?? session;
 					writeMerged(this.registry, {
@@ -300,7 +313,14 @@ export class Daemon {
 			try {
 				const drive = this.drives.get(d.id) ?? {};
 				this.drives.set(d.id, drive);
-				const out = driveSession(d, drive, this.ports, this.registry, this.channel);
+				const out = driveSession(
+					d,
+					drive,
+					this.ports,
+					this.registry,
+					this.channel,
+					this.markSelfInjection,
+				);
 				if (out.kind !== "waiting" && out.kind !== "boot") {
 					const extra =
 						out.kind === "bound"
@@ -369,7 +389,7 @@ export class Daemon {
 						!refreshRenderedComposerHold(current.paneId, this.ports, this.buffer) &&
 						this.buffer.pending(current.id) > 0
 					) {
-						const flushed = this.buffer.flush(current.id, current.paneId);
+						const flushed = this.buffer.flush(current.id, this.ports.now(), current.paneId);
 						for (let index = 0; index < flushed.length; index++) {
 							const message = flushed[index];
 							if (!message) continue;
@@ -380,9 +400,11 @@ export class Daemon {
 								break;
 							}
 							this.watchdogManager.beforeTmuxInject(current.id, message.message, this.ports.now());
+							const injectedText = flushedText(message.message);
+							this.markSelfInjection(current.paneId, injectedText, this.ports.now());
 							const outcome = this.ports.sendText(
 								current.paneId,
-								flushedText(message.message),
+								injectedText,
 								current.harness,
 								current.pid,
 							);
@@ -651,14 +673,35 @@ export class Daemon {
 
 		const listed = this.channel.listUnread(id);
 		if (!listed.ok) throw new Error(`${listed.code}: ${listed.message}`);
-		const messages = listed.value
-			.filter((message) => message.kind !== "receipt")
-			.map((message) => ({
+		const messages: Array<{
+			messageId: string;
+			from: SessionId;
+			body: string;
+			command?: string;
+		}> = [];
+		let watchdogPending = false;
+		for (const message of listed.value) {
+			if (message.kind === "receipt") continue;
+			if (message.from === "pij-watchdog") {
+				if (watchdogPending) {
+					const marked = this.channel.markRead(id, message.messageId, {
+						messageId: message.messageId,
+						readAt,
+						reader: id,
+					});
+					if (!marked.ok) throw new Error(`${marked.code}: ${marked.message}`);
+					this.log(`watchdog ${id}: coalesced duplicate pending ping`);
+					continue;
+				}
+				watchdogPending = true;
+			}
+			messages.push({
 				messageId: message.messageId,
 				from: message.from,
 				body: message.body,
 				command: message.command,
-			}));
+			});
+		}
 		if (messages.length === 0) return;
 		let consumedCount = 0;
 		let compactFired = false;
@@ -666,7 +709,13 @@ export class Daemon {
 			if (!refreshRenderedComposerHold(target.paneId, this.ports, this.buffer)) {
 				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			}
-			const consumed = drainTmuxInbox(target, [message], this.ports, this.buffer);
+			const consumed = drainTmuxInbox(
+				target,
+				[message],
+				this.ports,
+				this.buffer,
+				this.markSelfInjection,
+			);
 			// A remote `/compact` just went into the pane: mark the compact window
 			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
 			// itself must go through, but anything injected behind it mid-compact
@@ -740,6 +789,7 @@ export class Daemon {
 				this.buffer.setPaneSignal(paneId, {
 					busy: signal.busy,
 					userTyping: signal.userTyping,
+					lastActivityAt: signal.lastKeyAt,
 				});
 			}
 		}
