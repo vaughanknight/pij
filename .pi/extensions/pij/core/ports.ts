@@ -18,8 +18,15 @@ import type {
 	SpawnExpectation,
 } from "./types.js";
 
-/** Outcome of a daemon-owned tmux text injection. */
-export type SendOutcome = "confirmed" | "unverified";
+/** Outcome of a daemon-owned tmux text injection.
+ *  - `confirmed`: text typed AND submission positively verified (composer emptied
+ *    / harness went busy). Only this becomes a `delivered` receipt.
+ *  - `injected-unverified`: text WAS typed into the composer but submission could
+ *    not be confirmed after bounded Enter retries (the swallowed-Enter wedge). An
+ *    honest, distinct state — never `delivered`.
+ *  - `unverified`: the send threw before anything was typed (pane vanished / tmux
+ *    error) — nothing reached the composer. */
+export type SendOutcome = "confirmed" | "unverified" | "injected-unverified";
 
 /** Reads/writes the ~/.pij/ peer registry (one descriptor per session). */
 export interface RegistryPort {

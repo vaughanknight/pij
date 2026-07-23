@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +24,7 @@ import { receiptBody } from "./core/message.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
-import { Daemon } from "./daemon.js";
+import { Daemon, touchDaemonHeartbeat } from "./daemon.js";
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
 const CLAUDE_COMPOSER_EMPTY = [
@@ -83,7 +91,7 @@ interface FakePortsOptions {
 	readonly isAlive?: () => boolean;
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
-	readonly sendOutcome?: "confirmed" | "unverified";
+	readonly sendOutcome?: "confirmed" | "unverified" | "injected-unverified";
 	readonly sendErrorForPane?: string;
 	readonly paneListings?: () => readonly PaneListing[];
 	readonly tapChunks?: Uint8Array[];
@@ -306,6 +314,34 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(messageBodies("pij-boss")).toContain(
 			`[pij receipt ${delivered.value.messageId}] unverified`,
 		);
+	});
+
+	it("emits an injected-unverified receipt (never delivered) when text was typed but submission was unconfirmed", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const delivered = new FsChannel(home).deliver({
+			from: "pij-boss",
+			to: "pij-c",
+			body: "the GO message that must not be lied about",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts({ sendOutcome: "injected-unverified" });
+		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
+		const bodies = messageBodies("pij-boss");
+		expect(bodies).toContain(`[pij receipt ${delivered.value.messageId}] injected-unverified`);
+		// The honesty invariant: a swallowed-Enter wedge NEVER reports delivered.
+		expect(bodies).not.toContain(`[pij receipt ${delivered.value.messageId}] delivered`);
 	});
 
 	it("isolates one target's send failure so unrelated live inboxes still drain", () => {
@@ -1394,5 +1430,26 @@ describe("Daemon.tick — compact-window queue-not-drop (DL-004)", () => {
 		});
 		expect(unreadBodies("pij-c")).toEqual([]);
 		expect(messageBodies("pij-boss")).toContain(receiptBody(task.value.messageId, "delivered"));
+	});
+});
+
+describe("touchDaemonHeartbeat — the tick-loop liveness rider (#40 Defect 2)", () => {
+	it("advances the lock mtime past its stale startup value", () => {
+		const lockPath = join(home, "daemon.lock");
+		writeFileSync(lockPath, JSON.stringify({ pid: 1, startedAt: "2020-01-01T00:00:00Z" }));
+		// Simulate an hours-old startup mtime (the false-stale trigger).
+		const stale = new Date("2020-01-01T00:00:00Z");
+		touchDaemonHeartbeat(lockPath, stale);
+		expect(statSync(lockPath).mtimeMs).toBe(stale.getTime());
+
+		const fresh = new Date("2026-07-23T09:00:00Z");
+		touchDaemonHeartbeat(lockPath, fresh);
+		expect(statSync(lockPath).mtimeMs).toBe(fresh.getTime());
+		expect(statSync(lockPath).mtimeMs).toBeGreaterThan(stale.getTime());
+	});
+
+	it("is best-effort: a missing lock (racing teardown) never throws", () => {
+		const gonePath = join(home, "does-not-exist", "daemon.lock");
+		expect(() => touchDaemonHeartbeat(gonePath, new Date("2026-07-23T09:00:00Z"))).not.toThrow();
 	});
 });

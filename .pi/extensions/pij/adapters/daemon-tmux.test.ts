@@ -274,7 +274,9 @@ describe("composerPending — submit verification (the cause-independent retry g
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
 			expect(submissionConfirmed(STUCK_PANE, AMBIGUOUS_EMPTY_AFTER_ENTER, SENT)).toBe(false);
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
+			// The payload WAS typed but its submission was never positively confirmed →
+			// the honest `injected-unverified`, never `delivered`.
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("injected-unverified");
 			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
 		});
 
@@ -313,7 +315,7 @@ describe("composerPending — submit verification (the cause-independent retry g
 			const tmux = scriptedTmux(repeatedCapture(EMPTY_PANE, 90));
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("injected-unverified");
 			const typed = indexesOf(tmux.calls, typeArgv());
 			expect(typed).toHaveLength(3);
 			for (const index of typed.slice(1)) expect(tmux.calls[index - 1]).toEqual(clearArgv());
@@ -323,10 +325,135 @@ describe("composerPending — submit verification (the cause-independent retry g
 			const tmux = scriptedTmux(repeatedCapture(STUCK_PANE, 21));
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("injected-unverified");
 			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
 			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
 			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
+		});
+	});
+
+	// ─── claude/codex submission verification (#40 Defect 5) ────────────────────
+	// The regression: claude/codex used to fire ONE Enter and blindly return
+	// `confirmed`, so a swallowed Enter (busy composer / render race) stranded the
+	// text yet the sender still saw `delivered`. These pin the harness-agnostic
+	// verify+retry now running for claude — including that claude's dim `[2m`
+	// ghost-suggestion placeholder is NOT mistaken for pending composer content.
+	describe("DaemonTmux.sendText — claude submission verification", () => {
+		// Claude renders the composer between the final two rules; busy shows a live
+		// gerund spinner + `esc to interrupt` / token counter (matched by BUSY_RE).
+		const CLAUDE_PENDING_PANE = [
+			" ~/GitHub/pij  main",
+			" Previous claude output line",
+			"────────────────────────────────────────────",
+			"❯ [pij from pij-5lztp8] (pij delivery diagnostic —",
+			"  please ignore)",
+			"────────────────────────────────────────────",
+			"  ? for shortcuts",
+		].join("\n");
+		const CLAUDE_BUSY_PANE = [
+			" ~/GitHub/pij  main",
+			" Previous claude output line",
+			"────────────────────────────────────────────",
+			"❯",
+			"────────────────────────────────────────────",
+			" ✽ Percolating… (esc to interrupt · 3s · ↓ 41 tokens)",
+		].join("\n");
+		// Composer emptied AND the transcript region changed (a fast ready→busy→ready
+		// turn missed between polls) — the fresh-transcript confirmation fallback.
+		const CLAUDE_TURN_DONE_PANE = [
+			" ~/GitHub/pij  main",
+			" ⏺ Done — replied to pij-5lztp8",
+			"────────────────────────────────────────────",
+			"❯",
+			"────────────────────────────────────────────",
+			"  ? for shortcuts",
+		].join("\n");
+		// Truly empty composer, no busy, transcript unchanged — the ambiguous case.
+		const CLAUDE_EMPTY_PANE = [
+			" ~/GitHub/pij  main",
+			" Previous claude output line",
+			"────────────────────────────────────────────",
+			"❯",
+			"────────────────────────────────────────────",
+			"  ? for shortcuts",
+		].join("\n");
+		// Empty composer showing claude's dim autosuggest placeholder. tmux strips the
+		// `[2m` SGR so the hint renders as plain text — but it is NOT our payload, so
+		// the payload-tail match must read it as "payload gone", never "still pending".
+		const CLAUDE_GHOST_PANE = [
+			" ~/GitHub/pij  main",
+			" Previous claude output line",
+			"────────────────────────────────────────────",
+			'❯ Try "explain the composer verification path"',
+			"────────────────────────────────────────────",
+			"  ? for shortcuts",
+		].join("\n");
+
+		it("distinguishes the real payload tail from claude's ghost placeholder", () => {
+			expect(composerHasTextTail(CLAUDE_PENDING_PANE, SENT)).toBe(true);
+			expect(composerHasTextTail(CLAUDE_GHOST_PANE, SENT)).toBe(false);
+			expect(needsInputWake("claude")).toBe(false); // no copilot focus-wedge path
+		});
+
+		it("submitted first try — pane goes busy after one Enter → confirmed", () => {
+			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, CLAUDE_BUSY_PANE]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("confirmed");
+			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1);
+			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
+		});
+
+		it("confirmed by the fresh-transcript fallback when busy was missed", () => {
+			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, CLAUDE_TURN_DONE_PANE]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("confirmed");
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1);
+		});
+
+		it("submitted after retry — first Enter swallowed, second confirms", () => {
+			// preSubmit + one full 5-poll window still pending, then busy on attempt 2.
+			const tmux = scriptedTmux([
+				CLAUDE_PENDING_PANE,
+				...repeatedCapture(CLAUDE_PENDING_PANE, 5),
+				CLAUDE_BUSY_PANE,
+			]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("confirmed");
+			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1); // never retyped
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(2); // one retry Enter
+			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
+		});
+
+		it("exhausted — payload stays stranded → injected-unverified, 3 Enters, never delivered", () => {
+			const tmux = scriptedTmux(repeatedCapture(CLAUDE_PENDING_PANE, 30));
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("injected-unverified");
+			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
+			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
+		});
+
+		it("ghost placeholder is read as payload-gone — stops after one Enter (no hammering)", () => {
+			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, ...repeatedCapture(CLAUDE_GHOST_PANE, 30)]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			// No positive confirmation, but the payload left the composer (only the dim
+			// hint remains) → honest injected-unverified with a SINGLE Enter, not three.
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("injected-unverified");
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1);
+		});
+
+		it("empty composer, no busy — ambiguous submit → injected-unverified, at-most-once", () => {
+			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, ...repeatedCapture(CLAUDE_EMPTY_PANE, 30)]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("injected-unverified");
+			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1); // no speculative replay
 		});
 	});
 

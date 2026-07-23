@@ -11,7 +11,7 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
@@ -72,7 +72,7 @@ import {
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { SessionDescriptor, SessionId } from "./core/types.js";
+import type { ReceiptState, SessionDescriptor, SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -806,7 +806,15 @@ export class Daemon {
 		outcome: SendOutcome,
 	): void {
 		if (!this.registry.read(sender)) return;
-		const state = outcome === "confirmed" ? "delivered" : "unverified";
+		// Honest 1:1 mapping — text that was typed but never confirmed submitted is
+		// `injected-unverified`, NEVER `delivered`. Only a positive submission
+		// confirmation earns `delivered`; a pre-type send failure stays `unverified`.
+		const state: ReceiptState =
+			outcome === "confirmed"
+				? "delivered"
+				: outcome === "injected-unverified"
+					? "injected-unverified"
+					: "unverified";
 		this.channel.deliver({
 			from: peer,
 			to: sender,
@@ -826,6 +834,21 @@ export interface DaemonOptions {
 	readonly pijHome?: string;
 	readonly tickMs?: number;
 	readonly log?: (line: string) => void;
+}
+
+/** Heartbeat rider (#40 Defect 2): stamp the daemon.lock mtime `now` so downstream
+ *  liveness checks that stat the lock stop reading the hours-old STARTUP mtime as
+ *  "daemon stale". Called from the tick loop ONLY after a tick that did not throw.
+ *  Safe: the lock mtime is diagnostics-only — `evaluateLock` decides purely on pid
+ *  liveness — so refreshing it cannot affect single-instance reclaim. Best-effort:
+ *  a touch failure (the lock racing teardown, an unwritable path) is swallowed and
+ *  never breaks the loop; liveness is advisory, delivery is not. */
+export function touchDaemonHeartbeat(lockPath: string, at: Date = new Date()): void {
+	try {
+		utimesSync(lockPath, at, at);
+	} catch {
+		/* lock gone / unwritable — liveness is best-effort */
+	}
 }
 
 /** Acquire the single-instance lock (AC-10) and run the tick loop. Returns a
@@ -910,6 +933,9 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	const timer = setInterval(() => {
 		try {
 			daemon.tick();
+			// Heartbeat rider (#40 Defect 2): refresh the lock mtime AFTER a successful
+			// tick — a wedged tick (threw) must not advertise liveness.
+			touchDaemonHeartbeat(lockPath);
 		} catch (e) {
 			log(`tick error: ${(e as Error).message}`);
 		}
