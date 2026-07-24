@@ -131,6 +131,16 @@ exact ids with `pij models`, § C4):
   whole run, clean-slate each phase.
 - **Heal** — a dead/stale peer, or one that fails its canary, is closed and re-spawned on next
   need; **persist the updated roster before** re-delivering the packet (P9).
+- **Reviewer-never-binds → HALT, never self-review (control integrity).** Healing is for a peer
+  that *was* working and went stale. It is **not** a licence to proceed reviewer-less. If the
+  reviewer peer cannot be brought to `bound` — spawn fails, canary never passes, or `pij state`
+  shows it stuck `pending`/`failed` after one heal attempt — you **HALT the pair with a named
+  error** (e.g. `REVIEWER_UNAVAILABLE: <role/model> failed to bind after N attempts`) surfaced to
+  the human and recorded in the ledger. You do **NOT** fall through to reviewing the coder's work
+  yourself: the orchestrator sanity pass (§ below) is a spot-check *on top of* an independent
+  reviewer's verdict, never a *substitute* for it. With no reviewer peer there is **no verdict** —
+  the same law as the CLI refusing to mint one from zero findings (§ Verdict law). A degraded
+  self-review that *looks like* progress is the exact silent-no-op failure mode this route forbids.
 - **Teardown — end only** — close **only** peers with `spawnedByUs === true` (§ C1 verb); leave
   *provided* peers for their owner. Close is ownership-aware either way.
 - **Completion safety** — use the compact-EARLY interrupt above; fresh spawns already carry

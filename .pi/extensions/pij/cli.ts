@@ -120,6 +120,7 @@ import {
 	sessionEventsPath,
 	summarizeCopilotEvent,
 } from "./core/harness/copilot.js";
+import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import { supportsBranching } from "./core/harness/types.js";
 import {
 	consumeInbox,
@@ -571,23 +572,60 @@ function resolveAmbientSelf(registry: FsRegistry): Result<SessionId | undefined>
 
 interface CurrentRegistration {
 	readonly descriptor: SessionDescriptor;
-	readonly identity: AmbientNativeIdentity;
+	readonly identity: {
+		readonly harness: HarnessKind;
+		readonly harnessSessionId: string;
+		readonly transcriptPath?: string;
+	};
 	readonly existing: boolean;
+}
+
+function isPushedSeat(descriptor: SessionDescriptor): boolean {
+	return (
+		daemonOwnsDelivery(descriptor.harness ?? "pi", descriptor.deliveryMode) ||
+		Boolean(descriptor.paneId)
+	);
 }
 
 function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistration> {
 	const identity = resolveAmbientIdentity();
 	if (!identity.ok) return identity;
+	const currentPane =
+		process.env.TMUX_PANE && process.env.TMUX_PANE.trim() !== ""
+			? process.env.TMUX_PANE
+			: undefined;
 	if (!identity.value) {
+		if (currentPane) {
+			const byPane = registry
+				.list()
+				.filter(
+					(descriptor) =>
+						descriptor.paneId === currentPane &&
+						isPushedSeat(descriptor) &&
+						Boolean(descriptor.harnessSessionId) &&
+						descriptor.lifecycle !== "dissolved",
+				);
+			const snapshot = byPane.length === 1 ? byPane[0] : undefined;
+			const descriptor = snapshot ? registry.read(snapshot.id) : undefined;
+			if (descriptor?.harness && descriptor.harnessSessionId) {
+				return ok({
+					descriptor,
+					identity: {
+						harness: descriptor.harness,
+						harnessSessionId: descriptor.harnessSessionId,
+						...(descriptor.transcriptPath ? { transcriptPath: descriptor.transcriptPath } : {}),
+					},
+					existing: true,
+				});
+			}
+		}
+		// Residual: without ambient identity or TMUX_PANE, a pushed seat has no local
+		// signal; the daemon would need to thread paneId into this command.
 		return err(
 			"E-AMBIG",
 			"cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell",
 		);
 	}
-	const currentPane =
-		process.env.TMUX_PANE && process.env.TMUX_PANE.trim() !== ""
-			? process.env.TMUX_PANE
-			: undefined;
 	if (currentPane) {
 		const resolved = registry.resolveIdentity(
 			identity.value.harness,
@@ -712,8 +750,23 @@ function runInbox(argv: readonly string[]): void {
 		existing: registration.value.existing,
 	};
 	if (parsed.value.verb === "register") {
-		process.stdout.write(`${renderInboxRegistration(output, parsed.value.json)}\n`);
+		if (output.harness === "pi") {
+			const rendered = parsed.value.json
+				? JSON.stringify(output)
+				: `registered ${output.id} ↔ pi session ${output.harnessSessionId} (push${output.existing ? "; existing" : ""})`;
+			process.stdout.write(`${rendered}\n`);
+		} else {
+			process.stdout.write(
+				`${renderInboxRegistration({ ...output, harness: output.harness }, parsed.value.json)}\n`,
+			);
+		}
 		process.exit(0);
+	}
+	if (parsed.value.wait && isPushedSeat(registration.value.descriptor)) {
+		failInbox(
+			"error",
+			`this seat is a pushed-delivery peer (${registration.value.descriptor.harness ?? "pi"}, pane ${registration.value.descriptor.paneId ?? "unknown"}); it receives turns pushed by the daemon and must not block on 'pij inbox --wait'. End your turn instead.`,
+		);
 	}
 	const channel = new FsChannel(pijHome);
 	const consumed = consumeCurrentInbox(registration.value.descriptor.id, channel);

@@ -126,6 +126,24 @@ describe("portable pij CLI baseline", () => {
 		return JSON.parse(result.stdout) as { id: string; existing: boolean };
 	}
 
+	function bindPushedSeat(
+		sessionId: string,
+		paneId: string,
+	): { readonly id: string; readonly ambientEnv: Record<string, string> } {
+		const ambientEnv = ambientFixture("claude", sessionId);
+		const registration = register(ambientEnv);
+		const registry = new FsRegistry(pijHome);
+		const descriptor = registry.read(registration.id);
+		if (!descriptor) throw new Error("missing pushed-seat descriptor");
+		registry.write({
+			...descriptor,
+			deliveryMode: "push",
+			paneId,
+			lifecycle: "bound",
+		});
+		return { id: registration.id, ambientEnv };
+	}
+
 	function spawnPij(
 		args: readonly string[],
 		envOverrides: Record<string, string>,
@@ -261,6 +279,86 @@ describe("portable pij CLI baseline", () => {
 			messages: [],
 			timedOut: true,
 		});
+	});
+
+	it("refuses inbox --wait immediately for a pushed-delivery seat", {
+		timeout: 15_000,
+	}, () => {
+		const pushed = bindPushedSeat("claude-pushed-wait", "%42");
+
+		const result = runPij(["inbox", "--wait"], { ...pushed.ambientEnv, TMUX_PANE: "%42" }, 5000);
+
+		expect(result).toMatchObject({ code: 2, stdout: "" });
+		expect(result.stderr).toBe(
+			"error: this seat is a pushed-delivery peer (claude, pane %42); it receives turns pushed by the daemon and must not block on 'pij inbox --wait'. End your turn instead.\n",
+		);
+	});
+
+	it("keeps finite inbox waits available to pull-delivery seats", {
+		timeout: 15_000,
+	}, () => {
+		const ambientEnv = ambientFixture("claude", "claude-pull-wait");
+		const registration = register(ambientEnv);
+
+		const result = runPij(["inbox", "--wait", "10", "--json"], ambientEnv);
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(JSON.parse(result.stdout)).toEqual({
+			self: registration.id,
+			messages: [],
+			timedOut: true,
+		});
+	});
+
+	it("registers an already-bound pushed seat from TMUX_PANE without ambient identity", {
+		timeout: 15_000,
+	}, () => {
+		const pushed = bindPushedSeat("claude-pane-register", "%43");
+
+		const result = runPij(["inbox", "register", "--json"], { TMUX_PANE: "%43" });
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			id: pushed.id,
+			harness: "claude",
+			harnessSessionId: "claude-pane-register",
+			deliveryMode: "push",
+			existing: true,
+		});
+	});
+
+	it("registers a self-registered OMP seat from TMUX_PANE without ambient identity", {
+		timeout: 15_000,
+	}, () => {
+		const descriptor = writeDescriptor("pij-omp-pane-register");
+		const harnessSessionId = "019f8def-1111-4222-8333-bbbbbbbbbbbb";
+		new FsRegistry(pijHome).write({
+			...descriptor,
+			harness: "pi",
+			harnessSessionId,
+			paneId: "%44",
+		});
+
+		const result = runPij(["inbox", "register", "--json"], { TMUX_PANE: "%44" });
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			id: descriptor.id,
+			harness: "pi",
+			harnessSessionId,
+			existing: true,
+		});
+	});
+
+	it("keeps register fail-loud when ambient identity and TMUX_PANE are both absent", {
+		timeout: 15_000,
+	}, () => {
+		const result = runPij(["inbox", "register", "--json"]);
+
+		expect(result).toMatchObject({ code: 2, stdout: "" });
+		expect(result.stderr).toBe(
+			"E-AMBIG: cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell\n",
+		);
 	});
 
 	it("round-trips wait → dead-pid send → read → delivered receipt without tmux or daemon", {
