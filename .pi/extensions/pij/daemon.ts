@@ -78,7 +78,7 @@ import {
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { SessionDescriptor, SessionId } from "./core/types.js";
+import type { HarnessKind, SessionDescriptor, SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -165,9 +165,14 @@ export class Daemon {
 		// through `ports.sendText`, so gating HERE makes the content check
 		// unavoidable rather than something each call site has to remember.
 		// A held send types nothing and reports `held`; callers retry next tick.
-		this.ports = {
-			...rawPorts,
-			sendText: (paneId, text, harness, pid) => {
+		// NOT a spread: `{...rawPorts}` drops prototype methods, and the
+		// production adapter (DaemonTmux) is a class — spreading it produced a
+		// ports object with ONLY sendText, so every tick crashed on
+		// `this.ports.now is not a function` (2026-07-25 fleet outage). Delegate
+		// through the prototype chain so class adapters and plain-object fakes
+		// both keep their full surface.
+		this.ports = Object.assign(Object.create(Object.getPrototypeOf(rawPorts)), rawPorts, {
+			sendText: (paneId: string, text: string, harness?: HarnessKind, pid?: number) => {
 				// EMERGENCY BYPASS 2026-07-25: content gate disabled — fleet-wide
 				// delivery failure attributed to over-hold. Step-on protection is
 				// OFF until the hold algorithm is re-reviewed (s069 follow-up).
@@ -182,7 +187,7 @@ export class Daemon {
 				this.markSelfInjection(paneId, text, this.ports.now());
 				return outcome;
 			},
-		};
+		});
 		this.expectations = new FsSpawnExpectationStore(pijHome);
 		this.watchManager =
 			watchManager ??
