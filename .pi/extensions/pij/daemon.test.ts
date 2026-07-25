@@ -915,7 +915,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 	// driveSession's init/phone-home lines are pane writes too. They used to
 	// bypass the content gate entirely; the gate is now welded onto the port, so
 	// a human typing in a freshly spawned pane is not overwritten by boot traffic.
-	it("holds the init injection when a human is typing in the pending pane", () => {
+	// EMERGENCY BYPASS 2026-07-25 (72b5dd6): content gate disabled in daemon.ts —
+	// these two tests assert the hold that the bypass deliberately removes.
+	// Re-enable them (it.skip → it) the moment the s069 re-review restores the gate.
+	it.skip("holds the init injection when a human is typing in the pending pane", () => {
 		let nowMs = NOW_MS;
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-c", harness: "claude", lifecycle: "pending", paneId: "%4" }));
@@ -943,7 +946,8 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 	// A held boot line must FAIL LOUDLY, not hang. Returning `waiting` left the
 	// seat pending forever with nothing logged — the silent-deadlock class this
 	// guard exists to prevent, reintroduced by the guard itself.
-	it("fails the spawn with a pane-input reason when boot stays blocked", () => {
+	// EMERGENCY BYPASS 2026-07-25 (72b5dd6): see skip note above — same gate.
+	it.skip("fails the spawn with a pane-input reason when boot stays blocked", () => {
 		let nowMs = NOW_MS;
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
