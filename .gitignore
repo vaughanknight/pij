@@ -72,7 +72,13 @@ build/Release
 
 # Dependency directories
 node_modules/
+# Worktrees symlink node_modules at the canonical checkout; a trailing-slash
+# pattern only matches directories, so the symlink needs its own slash-less entry.
+node_modules
 jspm_packages/
+
+# Agent scratch: briefs, reports and probes written per worktree.
+.harness/temp/
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/

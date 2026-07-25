@@ -65,6 +65,44 @@ Between phases: compact, keep, reuse — never close-and-respawn a healthy peer.
 
 Default = the **side stack**: the first peer opens a ~1/3-width column on YOUR right; every later peer appends below it and the stack evens itself — **uncapped** (panes just get shorter). Explicit `--layout stack|right|below|window` (spawn + agent spawn, FX001-3): `stack` names the default; right/below split YOUR pane once (main+2 cap, E-FULL beyond); `window` opens a background window **in your session**, named after the peer. `headless` is not built. Prefer the default stack — `window` hides peers from the operator's view (use it only when asked, or for swarms too big to stack).
 
+**MANDATE — name every pane and window you create.** A tmux surface is a *human*
+interface: the operator scans it to see what the fleet is doing, and a wall of
+identical `pi-peer` windows is unreadable — they cannot tell which seat to look at,
+interrupt, or reap. Spawning is not finished until the seat is labelled. Immediately
+after any spawn:
+
+```
+tmux rename-window -t <window> "<stream>-<job>"          # e.g. s066-revive
+tmux select-pane   -t <pane>   -T "<stream> <job> · <peer> · <model>"
+```
+
+Rules: name by **what the seat is doing**, not what it is — `s066-revive`, not
+`pi-peer`/`worker-3`. Include the stream/plan id when there is one, so a window maps
+to a branch and a brief. Keep it short enough to read in a status bar. Re-label if the
+seat's job changes. This applies to every layout (`window` names the window; `stack`/
+`right`/`below` name the pane title) and to peers you adopt as well as ones you spawn.
+The operator should never have to ask "what is that pane?" — if they do, the mandate
+was skipped.
+
+**MANDATE — one window per stream: keep a team together, don't sprawl.** A coder and its
+reviewer belong to the same piece of work, so they belong in the same tmux **window**, as
+side-by-side panes. One window per stream/plan id, named for that stream — not one window
+per peer. Sprawl is the failure mode: a fleet spread over a dozen identically-named windows
+is unreadable, and the operator loses the ability to glance at a stream and see its whole
+state at once.
+
+`pij spawn --layout window` opens a *new* window, so after spawning a peer that joins an
+existing team, move it in:
+
+```
+tmux join-pane -h -s <new-pane> -t <stream-pane>   # -h side-by-side, -v stacked
+tmux select-layout -t <stream-pane> even-horizontal
+```
+
+Then title the pane per the naming mandate above. Expect roughly: orchestrator (wherever it
+already lives) + coder + reviewer per stream. Split a team into separate windows only when
+panes get too small to read — and say so when you do.
+
 ### C6 — Daemon restart rule
 
 The daemon runs `tsx` off source with **no hot-reload**: after ANY edit to daemon/core extension code, restart it (`pij daemon stop && pij daemon start`) or the change silently doesn't take effect. Freshly-spawned peers are unaffected; the daemon process itself is what goes stale.
