@@ -168,9 +168,12 @@ export class Daemon {
 		this.ports = {
 			...rawPorts,
 			sendText: (paneId, text, harness, pid) => {
-				if (refreshRenderedComposerHold(paneId, this.ports, this.buffer, this.composerHolds)) {
-					return "held";
-				}
+				// EMERGENCY BYPASS 2026-07-25: content gate disabled — fleet-wide
+				// delivery failure attributed to over-hold. Step-on protection is
+				// OFF until the hold algorithm is re-reviewed (s069 follow-up).
+				// if (refreshRenderedComposerHold(paneId, this.ports, this.buffer, this.composerHolds)) {
+				// 	return "held";
+				// }
 				const outcome = rawPorts.sendText(paneId, text, harness, pid);
 				// Marked HERE, after the write actually happened. Marking before the
 				// gate left a phantom echo exemption behind every HELD send — an
