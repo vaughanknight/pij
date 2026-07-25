@@ -184,6 +184,24 @@ function incompleteAllocationStep(allocation: Allocation): string | undefined {
 	return undefined;
 }
 
+/** Has this descriptor already been observed terminal (closed, or absent)?
+ *
+ *  LIVENESS anomalies must never fire for one. `pij close` stamps
+ *  `terminal: requested` BEFORE it dissolves (cli.ts / session.ts), and the
+ *  registry lists the record throughout that window — so a just-closed seat is
+ *  still `lifecycle: "bound"` (or `"pending"`) with a frozen `lastInboxScanAt`,
+ *  which is exactly the shape these detectors call an anomaly. The result was a
+ *  pij-REQUESTED close false-alerting its own owner, routed via
+ *  effectiveParent→spawnedBy.
+ *
+ *  Same failure class as the s070 `unrequested-by-pij` defect: terminal truth was
+ *  recorded correctly and the notify path simply never asked. Liveness is a claim
+ *  about a RUNNING seat; once a seat is terminal, "it stopped polling" is the
+ *  expected outcome, not an anomaly. */
+function isTerminallyObserved(node: SessionDescriptor): boolean {
+	return node.terminal !== undefined;
+}
+
 export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const threshold = inputs.idleThresholdMs ?? DEFAULT_IDLE_DISAGREEMENT_MS;
 	const out: Anomaly[] = [];
@@ -241,6 +259,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	// symptom, and the detail says so).
 	const limboMs = inputs.spawnLimboMs ?? DEFAULT_SPAWN_LIMBO_MS;
 	for (const node of inputs.descriptors) {
+		if (isTerminallyObserved(node)) continue;
 		if (node.lifecycle !== "pending" && node.lifecycle !== "ready") continue;
 		const bornMs = Date.parse(node.startedAt);
 		if (Number.isNaN(bornMs)) continue;
@@ -270,6 +289,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	// self-poll (tmux is drained by the daemon tick) — skipped, no false positive.
 	const stallMs = inputs.inboxPollStallMs ?? DEFAULT_INBOX_POLL_STALL_MS;
 	for (const node of inputs.descriptors) {
+		if (isTerminallyObserved(node)) continue;
 		if (node.lifecycle !== "bound") continue;
 		if (node.lastInboxScanAt === undefined) continue;
 		const scanMs = Date.parse(node.lastInboxScanAt);

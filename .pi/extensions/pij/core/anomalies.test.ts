@@ -451,6 +451,69 @@ describe("inbox-poll-stalled (plan 057 thread-1 — poll-primary delivery livene
 		expect(stalledOnly([desc({ id: "pij-tmux", lifecycle: "bound" })])).toHaveLength(0);
 	});
 
+	// s070 / warbler finding — the FOURTH owner-facing notify path. `pij close`
+	// stamps `terminal: requested` BEFORE it dissolves, and fs-registry lists the
+	// record throughout that window, so a just-closed seat is still `bound` with a
+	// frozen poll stamp — the exact shape this detector calls an anomaly. It then
+	// routed to effectiveParent→spawnedBy, so a pij-REQUESTED close false-alerted
+	// its own owner. Same failure class as the `unrequested-by-pij` defect: terminal
+	// truth was recorded correctly and the notify path never asked.
+	const CLOSED_TERMINAL = {
+		disposition: "requested" as const,
+		observedAt: new Date(NOW).toISOString(),
+		evidence: "pane-missing" as const,
+	};
+
+	it("CONTROL: the identical seat WITHOUT a terminal record does flag", () => {
+		// Byte-identical to the test below except for `terminal`. Without this, the
+		// suppression test below would pass even if the detector never fired at all.
+		const a = stalledOnly([
+			desc({
+				id: "pij-closing",
+				lifecycle: "bound",
+				lastInboxScanAt: new Date(NOW - (STALL + 2_000)).toISOString(),
+			}),
+		]);
+		expect(a).toHaveLength(1);
+	});
+
+	it("does NOT flag a seat already observed TERMINAL — a requested close is not a stall", () => {
+		expect(
+			stalledOnly([
+				desc({
+					id: "pij-closing",
+					lifecycle: "bound",
+					lastInboxScanAt: new Date(NOW - (STALL + 2_000)).toISOString(),
+					terminal: CLOSED_TERMINAL,
+				}),
+			]),
+		).toHaveLength(0);
+	});
+
+	it("does NOT flag a terminal seat in spawn-limbo either — same window, same rule", () => {
+		// warbler named inbox-poll-stalled; spawn-limbo has the identical exposure,
+		// because closing a PENDING seat leaves lifecycle 'pending' + terminal set in
+		// that same pre-dissolve window. CONTROL first, then the suppression.
+		const born = new Date(NOW - (DEFAULT_SPAWN_LIMBO_MS + 60_000)).toISOString();
+		const limboOnly = (descriptors: SessionDescriptor[]) =>
+			detectAnomalies({ descriptors, assignments: [], events: [], nowMs: NOW }).filter(
+				(x) => x.kind === "spawn-limbo",
+			);
+		expect(
+			limboOnly([desc({ id: "pij-limbo", lifecycle: "pending", startedAt: born })]),
+		).toHaveLength(1);
+		expect(
+			limboOnly([
+				desc({
+					id: "pij-limbo",
+					lifecycle: "pending",
+					startedAt: born,
+					terminal: CLOSED_TERMINAL,
+				}),
+			]),
+		).toHaveLength(0);
+	});
+
 	it("does NOT flag a non-bound seat even with a stale stamp (only live-bound delivery loops are watched)", () => {
 		expect(
 			stalledOnly([

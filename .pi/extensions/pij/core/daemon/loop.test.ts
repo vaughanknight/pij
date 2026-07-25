@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FakeDelivery, FakeRegistry } from "../../adapters/fakes.js";
 import { transcriptDir } from "../harness/claude.js";
 import type { SessionDescriptor } from "../types.js";
+import { reconcileDeaths } from "./death-reconciler.js";
 import {
 	backfillWindowId,
 	type DaemonPorts,
@@ -652,6 +653,82 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		const reg = new FakeRegistry([desc({ reportedAt: "2026-06-27T12:00:00.000Z" })]);
 		const written = writeMerged(reg, desc({ reportedAt: "2026-06-27T13:00:00.000Z" }));
 		expect(written.reportedAt).toBe("2026-06-27T13:00:00.000Z");
+	});
+
+	// s070 #3 — a pij-REQUESTED close still announced itself as "unrequested-by-pij"
+	// seconds later. `pij close` does everything right and in the right order:
+	// persist closeIntent → kill pane → stamp `terminal: requested` → dissolve. But
+	// none of those fields was preserved here, so a daemon tick holding a pre-close
+	// snapshot wrote all of it back off disk. The next death sweep then saw a dead
+	// PID with no intent and no terminal, and classified the operator's own close as
+	// unrequested. A lost update, not a missing check.
+	const CLOSED_ON_DISK = {
+		closeIntent: {
+			actor: "pij-boss",
+			kind: "cli-close" as const,
+			requestedAt: "2026-06-27T12:00:00.000Z",
+		},
+		terminal: {
+			disposition: "requested" as const,
+			observedAt: "2026-06-27T12:00:01.000Z",
+			evidence: "pane-missing" as const,
+		},
+		deathNoticeLatchedAt: "2026-06-27T12:00:01.000Z",
+		// NOT dissolved: this is the window that matters. `pij close` stamps intent
+		// and terminal truth BEFORE it dissolves, and only once the descriptor is
+		// dissolved does the registry start rejecting stale writes over it. Between
+		// those two moments the close record is completely unprotected.
+		lifecycle: "bound" as const,
+	};
+
+	it("preserves close intent and terminal truth against a stale pre-close daemon write", () => {
+		const reg = new FakeRegistry([desc({ ...CLOSED_ON_DISK })]);
+		// The daemon's tick-start snapshot: taken BEFORE the close, so it still
+		// believes the peer is a live bound session.
+		const written = writeMerged(reg, desc({ lifecycle: "bound", state: "working" }));
+		expect(written.closeIntent).toEqual(CLOSED_ON_DISK.closeIntent);
+		expect(written.terminal).toEqual(CLOSED_ON_DISK.terminal);
+		expect(written.deathNoticeLatchedAt).toBe(CLOSED_ON_DISK.deathNoticeLatchedAt);
+		expect(reg.read("pij-w")?.terminal?.disposition).toBe("requested");
+	});
+
+	it("still lets the daemon compute lifecycle — it is deliberately NOT preserved", () => {
+		// Guards against "just add lifecycle to the list too". `lifecycle` is
+		// daemon-owned (the spawn→bind machine computes pending→ready→bound), so a
+		// disk-wins rule there would pin a binding session at its stale value.
+		// Dissolution needs no rule here: the registry itself already refuses a
+		// stale non-dissolved write over a dissolved tombstone.
+		const reg = new FakeRegistry([desc({ lifecycle: "pending" })]);
+		const written = writeMerged(reg, desc({ lifecycle: "bound" }));
+		expect(written.lifecycle).toBe("bound");
+	});
+
+	it("stops a requested close from being announced as unrequested-by-pij", () => {
+		// The operator-visible symptom, end to end: close → overlapping tick → sweep.
+		const reg = new FakeRegistry([desc({ ...CLOSED_ON_DISK })]);
+		writeMerged(reg, desc({ lifecycle: "bound", state: "working" }));
+		const sweep = reconcileDeaths({
+			descriptors: reg.list(),
+			expectations: [],
+			nowIso: "2026-06-27T12:00:02.000Z",
+			isAlive: () => false, // pane was killed by the close
+		});
+		expect(sweep.notices).toEqual([]);
+	});
+
+	it("CONTROL: an absence with no close intent IS still announced as unrequested-by-pij", () => {
+		// Proves the assertion above is real suppression, not a sweep that was never
+		// going to fire. Same shape, minus the close.
+		const reg = new FakeRegistry([desc({ lifecycle: "bound", state: "working" })]);
+		writeMerged(reg, desc({ lifecycle: "bound", state: "working" }));
+		const sweep = reconcileDeaths({
+			descriptors: reg.list(),
+			expectations: [],
+			nowIso: "2026-06-27T12:00:02.000Z",
+			isAlive: () => false,
+		});
+		expect(sweep.notices).toHaveLength(1);
+		expect(sweep.notices[0]?.text).toContain("unrequested-by-pij");
 	});
 
 	it("lets the latest persisted prime=false beat a stale daemon prime=true snapshot", () => {

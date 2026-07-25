@@ -603,6 +603,13 @@ export class Daemon {
 	 *  transition, latched by `this.pushed`. */
 	private pushWholeLifeTransition(d: SessionDescriptor): void {
 		if (!d.spawnedBy) return; // no creator to notify
+		// A safety-exempted peer is intentionally idle on standby, so its silence is
+		// expected and must generate NO watchdog traffic in either direction. The
+		// watchdog's own path honours that via `isFireDue`; this detector derives
+		// `stalled` independently from descriptor state + event age, so it has to ask.
+		// Without this it kept notifying the owner about a peer they had already told
+		// pij to leave alone (3 stall notices in ~13 min, live).
+		if (this.watchdogManager.isExempt(d.id)) return;
 		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
 		this.pushed.set(d.id, latch);
 
@@ -674,6 +681,15 @@ export class Daemon {
 	 *  fires. Dead sessions are left to `pushWholeLifeTransition`'s dead branch.
 	 *  Latched once per session via the shared `this.pushed`. */
 	private pushProviderFailure(d: SessionDescriptor): void {
+		// DECIDED, not accidental (s070): this path deliberately does NOT consult
+		// `watchdog exempt`, unlike the stall detector above. Exempt means "this peer
+		// is intentionally idle, stop nagging me about SILENCE". A provider failure is
+		// not silence — it is a real, actionable fault, and it stays actionable while
+		// a peer is on standby. Swallowing a quota/auth/model-400 failure because
+		// someone exempted the peer would be a worse bug than the notification noise
+		// s070 set out to fix. `staleAge` is only the trigger for LOOKING; the notice
+		// fires on positively-identified provider-error evidence in the pane, never on
+		// silence alone. A test pins this so it cannot be "fixed" by accident.
 		if (!d.spawnedBy || !d.paneId) return; // no creator / no pane to peek
 		if (d.lifecycle === "pending") return; // mid-bind → driveSession owns it (its bad-model detect fails it)
 		if (!this.ports.isAlive(d.pid)) return; // dead → handled by the dead branch

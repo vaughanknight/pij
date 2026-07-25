@@ -189,6 +189,16 @@ const MUTABLE_EXTERNALLY_OWNED_FIELDS = [
 	// T006: stamped by spawn/adopt (externally to the daemon's snapshot); the
 	// daemon's own backfill only ever writes it where it was absent.
 	"windowId",
+	// s070 #3 — terminal truth is stamped by the CLOSE path (`pij close` and the
+	// in-process close), never computed by the daemon, and it is the evidence the
+	// death reconciler classifies from. Leaving these out made a pij-REQUESTED
+	// close announce itself as `unrequested-by-pij`: close persists intent, kills
+	// the pane, stamps `terminal: requested`, dissolves — then an overlapping tick
+	// wrote its pre-close snapshot back over all of it, and the next sweep saw a
+	// dead PID with no intent and no terminal. A lost update, not a missing check.
+	"closeIntent",
+	"terminal",
+	"deathNoticeLatchedAt",
 ] as const;
 
 /** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
