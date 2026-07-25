@@ -745,6 +745,60 @@ describe("FsRegistry", () => {
 		expect(reg.read("bob")?.lifecycle).toBe("dissolved");
 	});
 
+	it("revive replaces a dissolved tombstone even when the OS pid is reused", () => {
+		const reg = new FsRegistry(home);
+		const live: SessionDescriptor = {
+			...descriptor("revivable"),
+			harness: "claude",
+			harnessSessionId: "native-revivable",
+			lifecycle: "bound",
+			pid: 77,
+			paneId: "%7",
+		};
+		reg.write(live);
+		reg.dissolve(live.id);
+		const result = reg.revive({
+			...live,
+			pid: 77,
+			paneId: "%99",
+			lifecycle: "pending",
+		});
+		expect(result).toEqual({ ok: true, value: undefined });
+		expect(reg.read(live.id)).toMatchObject({ lifecycle: "pending", paneId: "%99" });
+	});
+
+	it("revive rejects either harness or native-session identity mismatch", () => {
+		const reg = new FsRegistry(home);
+		const live: SessionDescriptor = {
+			...descriptor("identity-guard"),
+			harness: "claude",
+			harnessSessionId: "native-original",
+			lifecycle: "bound",
+		};
+		reg.write(live);
+		reg.dissolve(live.id);
+		expect(
+			reg.revive({ ...live, pid: 88, lifecycle: "pending", harness: "copilot" }),
+		).toMatchObject({ ok: false, code: "E-AMBIG" });
+		expect(
+			reg.revive({ ...live, pid: 88, lifecycle: "pending", harnessSessionId: "native-other" }),
+		).toMatchObject({ ok: false, code: "E-AMBIG" });
+		expect(reg.read(live.id)).toMatchObject({
+			harness: "claude",
+			harnessSessionId: "native-original",
+			lifecycle: "dissolved",
+		});
+	});
+
+	it("ordinary write cannot bypass a dissolved tombstone with a different pid", () => {
+		const reg = new FsRegistry(home);
+		const live = { ...descriptor("write-guard"), lifecycle: "bound" as const, pid: 1 };
+		reg.write(live);
+		reg.dissolve(live.id);
+		reg.write({ ...live, pid: 2, lifecycle: "pending" });
+		expect(reg.read(live.id)?.lifecycle).toBe("dissolved");
+	});
+
 	it("read of an absent id is null; list of an empty home is []", () => {
 		const reg = new FsRegistry(join(home, "nope"));
 		expect(reg.read("ghost")).toBeNull();

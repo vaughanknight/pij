@@ -102,6 +102,12 @@ describe("PijSession.boot", () => {
 		expect(h.pi.injects[0]?.text).toContain("alice");
 	});
 
+	it("persists the selected Pi-family runtime on first boot", () => {
+		const h = harness();
+		h.session.boot(bootInput({ runtimeBin: "omp" }));
+		expect(h.registry.read("alice")?.runtimeBin).toBe("omp");
+	});
+
 	it("reload reuses the descriptor: no re-announce, startedAt preserved, fresh=false", () => {
 		const existing: SessionDescriptor = {
 			id: "alice",
@@ -156,6 +162,72 @@ describe("PijSession.boot", () => {
 			boundModel: "model-before-restart",
 			prime: true,
 		});
+	});
+
+	it("revives a dissolved Pi-family descriptor and clears terminal incarnation state", () => {
+		const existing: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			folder: "/old-repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			runtimeBin: "omp",
+			lifecycle: "dissolved",
+			paneId: "%old",
+			closeIntent: {
+				actor: "pij-parent",
+				kind: "cli-close",
+				requestedAt: "2026-06-15T01:00:00.000Z",
+			},
+			terminal: {
+				disposition: "requested",
+				observedAt: "2026-06-15T01:00:01.000Z",
+				evidence: "pane-missing",
+			},
+		};
+		const h = harness({ registry: [existing], now: T0 });
+		const result = h.session.boot(
+			bootInput({ paneId: "%new", resetRuntimeState: true, runtimeBin: "omp" }),
+		);
+		expect(result.fresh).toBe(true);
+		expect(h.registry.read("alice")).toMatchObject({
+			id: "alice",
+			pid: 4242,
+			paneId: "%new",
+			runtimeBin: "omp",
+		});
+		expect(h.registry.read("alice")).not.toHaveProperty("closeIntent");
+		expect(h.registry.read("alice")).not.toHaveProperty("terminal");
+		expect(h.registry.read("alice")?.lifecycle).not.toBe("dissolved");
+	});
+
+	it("injects a Pi-family revive reframe without an announcement target", () => {
+		const existing: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			folder: "/repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: "pi-native-alice",
+			lifecycle: "dissolved",
+			spawnedBy: "pij-dead-original-parent",
+		};
+		const h = harness({
+			registry: [existing],
+			vars: { PIJ_SPAWN_TASK: "REVIVED: wait for new instructions" },
+		});
+		h.session.boot(bootInput({ paneId: "%new", resetRuntimeState: true }));
+		expect(h.pi.injects).toEqual([
+			{ text: "REVIVED: wait for new instructions", mode: "immediate" },
+		]);
+		expect(h.registry.read("alice")?.spawnedBy).toBeUndefined();
 	});
 
 	it("hydrates durable metadata when the live descriptor was removed", () => {

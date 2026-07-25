@@ -33,6 +33,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { reattachIdentity } from "./core/binding.js";
+import { transcriptDir } from "./core/harness/claude.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
@@ -146,6 +147,9 @@ if [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; then
 fi
 if [ "$FAKE_TMUX_FAIL" = "1" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
 	exit 1
+fi
+if [ -n "$FAKE_TMUX_DELETE_DESCRIPTOR" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
+	rm -f "$PIJ_HOME/$FAKE_TMUX_DELETE_DESCRIPTOR.json"
 fi
 case "$1" in
 	display-message)
@@ -760,6 +764,9 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			expect.objectContaining({ spawnId: expectation?.spawnId, requestedHarness: "pi" }),
 		]);
 		expect(prelaunch[0]).not.toHaveProperty("paneId");
+		const namingLog = readFileSync(TMUX_LOG, "utf8");
+		expect(namingLog).toContain("select-pane -t %91 -T");
+		expect(namingLog).not.toContain("pi-peer");
 	});
 
 	it("pins an ambiguous OMP model to github-copilot before tmux launch", () => {
@@ -845,6 +852,272 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			ok: true,
 			value: false,
 		});
+	});
+
+	it("revives a dissolved Claude session under the same pij id with fail-loud resume argv", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-finished-fox";
+		const nativeId = "11111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(
+			transcript,
+			`${JSON.stringify({ type: "user", message: { content: "seed" } })}\n`,
+		);
+		new FsRegistry(HOME).write({
+			id,
+			role: "worker",
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 101,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			boundModel: "claude-sonnet-5",
+			effort: "high",
+			paneId: "%7",
+			spawnedBy: "pij-A",
+			parentId: "pij-A",
+			lifecycle: "dissolved",
+			closeIntent: {
+				actor: "pij-A",
+				kind: "cli-close",
+				requestedAt: "2026-07-24T01:00:00.000Z",
+			},
+			terminal: {
+				disposition: "requested",
+				observedAt: "2026-07-24T01:00:01.000Z",
+				evidence: "pane-missing",
+			},
+		});
+
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+
+		expect(result.code, result.out).toBe(0);
+		const output = JSON.parse(
+			result.out
+				.trim()
+				.split("\n")
+				.findLast((line) => line.startsWith("{")) ?? "{}",
+		) as { id: string; state: string; paneId: string };
+		expect(output).toMatchObject({ id, state: "pending-canary", paneId: "%91" });
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			id,
+			lifecycle: "pending",
+			plannedHarnessSessionId: nativeId,
+			revivePendingAt: expect.any(String),
+		});
+		expect(new FsRegistry(HOME).read(id)).not.toHaveProperty("terminal");
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).toContain(`claude --dangerously-skip-permissions --resume ${nativeId}`);
+		expect(log).not.toContain("--session-id");
+		expect(log).not.toContain("--fork-session");
+		expect(log).toMatch(new RegExp(`select-pane -t %91 -T .* revive · ${id}`));
+		expect(prelaunchSnapshots()[0]).not.toContain('"sessionId"');
+	});
+
+	it("cleans the expectation when revival pane launch fails", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-revive-spawn-failure";
+		const nativeId = "21111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(transcript, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 201,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			HOME,
+			FAKE_TMUX_FAIL: "1",
+		});
+		expect(result.code).toBe(2);
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+		expect(new FsRegistry(HOME).read(id)?.lifecycle).toBe("dissolved");
+	});
+
+	it("kills the spawned pane and removes its expectation when tombstone replacement fails", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-revive-registry-race";
+		const nativeId = "31111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(transcript, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 202,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			HOME,
+			FAKE_TMUX_DELETE_DESCRIPTOR: id,
+		});
+		expect(result.code).toBe(2);
+		expect(readFileSync(TMUX_LOG, "utf8")).toContain("kill-pane -t %91");
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
+	it.each([
+		["pi", ".pi", "pi --session"],
+		["omp", ".omp", "omp --auto-approve"],
+	] as const)("launches %s revival asynchronously with an unconditional reframe", (runtime, store, command) => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = `pij-${runtime}-revival`;
+		const nativeId =
+			runtime === "pi"
+				? "41111111-2222-4333-8444-555555555555"
+				: "51111111-2222-4333-8444-555555555555";
+		const sessions = join(HOME, store, "agent", "sessions", "repo");
+		mkdirSync(sessions, { recursive: true });
+		writeFileSync(join(sessions, `2026-07-25T00-00-00_${nativeId}.jsonl`), "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 203,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: nativeId,
+			runtimeBin: runtime,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		expect(result.code, result.out).toBe(0);
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).toContain(command);
+		expect(log).toContain("PIJ_SPAWN_TASK=You are a REVIVED session");
+		expect(log).not.toContain("kill-pane");
+		const expectation = new FsSpawnExpectationStore(HOME).list()[0];
+		expect(expectation).toMatchObject({ paneId: "%91" });
+		expect(expectation).not.toHaveProperty("sessionId");
+	});
+
+	it("reports the interim Copilot session-in-use action instead of waiting silently", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-copilot-needs-human";
+		const nativeId = "71111111-2222-4333-8444-555555555555";
+		const events = join(HOME, ".copilot", "session-state", nativeId, "events.jsonl");
+		mkdirSync(join(HOME, ".copilot", "session-state", nativeId), { recursive: true });
+		writeFileSync(events, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 204,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "copilot",
+			harnessSessionId: nativeId,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		expect(result.code, result.out).toBe(0);
+		const output = JSON.parse(
+			result.out
+				.trim()
+				.split("\n")
+				.findLast((line) => line.startsWith("{")) ?? "{}",
+		) as { operatorAction?: string };
+		expect(output.operatorAction).toContain("needs-human");
+		expect(output.operatorAction).toContain("press 1");
+	});
+
+	it("refuses a missing Copilot native artifact before tmux mutation", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-missing-memory";
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 102,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "copilot",
+			harnessSessionId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+			paneId: "%8",
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+
+		expect(result.code).toBe(3);
+		expect(result.out).toContain("E-NOREG");
+		expect(readFileSync(TMUX_LOG, "utf8")).toBe("display-message -p -t %8 #{pane_dead}\n");
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
+	it("refuses revival while the prior process incarnation is still alive", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-still-live";
+		const nativeId = "61111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(transcript, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			paneId: "%gone",
+			lifecycle: "bound",
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		expect(result.code).toBe(64);
+		expect(result.out).toContain("live prior attachment");
+		expect(readFileSync(TMUX_LOG, "utf8")).not.toMatch(/new-window|split-window/);
 	});
 
 	it("daemon-bound Copilot descriptor records github-copilot provider", () => {
@@ -934,6 +1207,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 
 	it("CLI close traces intent → kill → requested terminal → dissolve and retains history", () => {
 		const id = "pij-close-p3";
+		const spawnId = "spawn-close-p3";
 		new FsRegistry(HOME).write({
 			id,
 			folder: FOLDER,
@@ -945,6 +1219,15 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			spawnedBy: "pij-A",
 			harness: "claude",
 			lifecycle: "bound",
+			spawnId,
+		});
+		new FsSpawnExpectationStore(HOME).write({
+			spawnId,
+			creatorId: "pij-A",
+			requestedHarness: "claude",
+			requestedAt: "2026-07-20T00:00:00.000Z",
+			deadlineAt: "2026-07-20T00:05:00.000Z",
+			paneId: "%88",
 		});
 		const tracePath = join(HOME, "p3-close.trace");
 		const result = pij(["close", id], {
@@ -962,6 +1245,10 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			lifecycle: "dissolved",
 			closeIntent: { actor: "pij-A", kind: "cli-close" },
 			terminal: { disposition: "requested", evidence: "pane-missing" },
+		});
+		expect(new FsSpawnExpectationStore(HOME).read(spawnId)).toMatchObject({
+			spawnId,
+			closeIntent: { actor: "pij-A", kind: "cli-close" },
 		});
 	});
 

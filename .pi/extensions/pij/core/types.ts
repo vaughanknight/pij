@@ -229,6 +229,9 @@ export interface SessionDescriptor {
 	/** Which harness this session runs (`pi`/`claude`/`copilot`). Absent ⇒
 	 *  legacy pi session. Decides the message transport (inbox vs send-keys). */
 	readonly harness?: HarnessKind;
+	/** Pi-family executable that owns this native session. Pi and OMP both use
+	 * `harness: "pi"`, but their persisted session stores and resume argv differ. */
+	readonly runtimeBin?: "pi" | "omp";
 	/** Explicit pull peers keep durable mail for `pij inbox`; absent is legacy. */
 	readonly deliveryMode?: DeliveryMode;
 	/** The harness-native session id bound to this pij-id — for Claude, the
@@ -283,6 +286,9 @@ export interface SessionDescriptor {
 	readonly closeIntent?: CloseIntent;
 	/** Durable, evidence-based terminal absence classification. */
 	readonly terminal?: TerminalObservation;
+	/** A dissolved native session has been relaunched but still awaits golden
+	 * recall proof. Also selects the non-continuing revive init reframe. */
+	readonly revivePendingAt?: string;
 	/** Once-latch for the creator terminal notice across daemon recreation. */
 	readonly deathNoticeLatchedAt?: string;
 	// ─── agent-pack peer layer (Plan 029 Phase 3; additive — migration-safe) ──

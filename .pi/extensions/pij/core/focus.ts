@@ -7,6 +7,7 @@ import {
 	transcriptLayout,
 } from "./harness/transcript.js";
 import type { RegistryPort, SpawnExpectationStore, TmuxPort } from "./ports.js";
+import { buildSeatLabel } from "./seat-label.js";
 import {
 	buildControlSpawnCommand,
 	buildPendingDescriptor,
@@ -338,6 +339,12 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 		});
 	}
 	const peerPanes = livePeerPanes(deps.registry.list(), deps.tmux.currentWindowPanes(), ownPane);
+	const seatLabel = buildSeatLabel({
+		cwd: input.launchCwd,
+		job: `focus-${input.name}`,
+		peerId: pijId ?? `pending:${token}`,
+		model: manifest.model,
+	});
 	const placement = planControlSplit(ownPane, peerPanes);
 	if (!placement.ok) {
 		if (pijId !== undefined && ownerToken !== undefined) {
@@ -359,6 +366,7 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 		cmd: command.cmd,
 		args: command.args,
 		env: command.env,
+		title: seatLabel.paneTitle,
 		cwd: input.launchCwd,
 		target: placement.target,
 		direction: placement.direction,

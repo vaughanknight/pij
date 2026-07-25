@@ -149,8 +149,7 @@ export class FsRegistry implements RegistryPort {
 		if (
 			existing?.lifecycle === "dissolved" &&
 			descriptor.lifecycle !== undefined &&
-			descriptor.lifecycle !== "dissolved" &&
-			descriptor.pid === existing.pid
+			descriptor.lifecycle !== "dissolved"
 		) {
 			return;
 		}
@@ -165,6 +164,29 @@ export class FsRegistry implements RegistryPort {
 		// Once the live descriptor is durable, never roll its identity claim back;
 		// a snapshot failure is repairable, an unowned bound descriptor is not.
 		this.syncIdentitySnapshot(descriptor);
+	}
+
+	revive(descriptor: SessionDescriptor): Result<void> {
+		const existing = this.read(descriptor.id);
+		if (!existing) return err("E-NOID", `no terminal session '${descriptor.id}' to revive`);
+		const explicitRevive =
+			descriptor.revivePendingAt !== undefined && descriptor.pid !== existing.pid;
+		if (existing.lifecycle !== "dissolved" && existing.terminal === undefined && !explicitRevive) {
+			return err("E-ARG", `session '${descriptor.id}' has no terminal incarnation to replace`);
+		}
+		if (
+			existing.harness !== descriptor.harness ||
+			existing.harnessSessionId !== descriptor.harnessSessionId
+		) {
+			return err("E-AMBIG", `revive identity mismatch for '${descriptor.id}'`);
+		}
+		try {
+			this.writeAtomic(this.pathFor(descriptor.id), descriptor);
+			this.syncIdentitySnapshot(descriptor);
+			return ok(undefined);
+		} catch (error) {
+			return err("E-NOREG", `cannot revive '${descriptor.id}': ${String(error)}`);
+		}
 	}
 
 	/** Atomically create a deterministic live descriptor without replacing an

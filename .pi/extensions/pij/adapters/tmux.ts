@@ -87,6 +87,12 @@ export class TmuxAdapter implements TmuxPort {
 			if (parsed === null) {
 				return err("E-ARG", `unexpected pane_id format: ${JSON.stringify(raw.trim())}`);
 			}
+			try {
+				tmux(["select-pane", "-t", parsed.paneId, "-T", opts.title]);
+			} catch (error) {
+				tmuxSafe(["kill-pane", "-t", parsed.paneId]);
+				return err("E-ARG", `tmux pane naming failed: ${(error as Error).message}`);
+			}
 			return ok(parsed);
 		} catch (e) {
 			return err("E-ARG", `tmux new-window failed: ${(e as Error).message}`);
@@ -135,6 +141,12 @@ export class TmuxAdapter implements TmuxPort {
 			}
 			if (opts.columnPercent !== undefined) {
 				tmuxSafe(["resize-pane", "-t", paneId, "-x", `${opts.columnPercent}%`]);
+			}
+			try {
+				tmux(["select-pane", "-t", paneId, "-T", opts.title]);
+			} catch (error) {
+				tmuxSafe(["kill-pane", "-t", paneId]);
+				return err("E-ARG", `tmux pane naming failed: ${(error as Error).message}`);
 			}
 			return ok(parsed);
 		} catch (e) {
@@ -203,6 +215,15 @@ export class TmuxAdapter implements TmuxPort {
 				.filter((s) => /^%\d+$/.test(s));
 		} catch {
 			return [];
+		}
+	}
+
+	/** True only when tmux confirms the addressed pane exists and is not dead. */
+	isPaneLive(paneId: string): boolean {
+		try {
+			return tmux(["display-message", "-p", "-t", paneId, "#{pane_dead}"]).trim() === "0";
+		} catch {
+			return false;
 		}
 	}
 }

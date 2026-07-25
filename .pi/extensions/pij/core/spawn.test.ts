@@ -128,6 +128,7 @@ describe("buildSpawnCommand", () => {
 			expect(r.env.PIJ_ROLE).toBe("worker");
 			expect(r.env.PIJ_SPAWN_TASK).toBe("go");
 			expect(r.env.PIJ_SPAWN_MODEL).toBe("opus");
+			expect(r.env.PIJ_PI_BIN).toBe("omp");
 		});
 	});
 
@@ -136,6 +137,7 @@ describe("buildSpawnCommand", () => {
 		expect(result.env.PIJ_ANNOUNCE_TO).toBe("pij-parent01");
 		expect(result.env.PIJ_SPAWN_ID).toBe("abc123");
 		expect(result.env.PIJ_ROLE).toBe("worker");
+		expect(result.env.PIJ_PI_BIN).toBe("pi");
 	});
 
 	it("exposes the spawner id as PIJ_PARENT_ID (who spawned me)", () => {

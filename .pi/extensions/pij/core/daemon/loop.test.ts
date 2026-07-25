@@ -152,6 +152,70 @@ describe("driveSession state machine", () => {
 		).toBe(true);
 	});
 
+	it("answers the exact Copilot session-in-use modal once, then surfaces it", () => {
+		const pane = `Session in use
+This session was last active just now and appears to be in use by another CLI or application.
+❯ 1. Resume anyway
+  2. Go back (Esc)`;
+		const w = world({ pane });
+		const drive: DriveState = {};
+		const delivery = new FakeDelivery();
+		const descriptor = desc({
+			harness: "copilot",
+			revivePendingAt: "2026-07-25T00:00:00.000Z",
+		});
+		expect(driveSession(descriptor, drive, w.ports, new FakeRegistry(), delivery)).toEqual({
+			kind: "answered",
+			label: "session-in-use",
+		});
+		expect(w.sentKeys).toEqual([
+			{ pane: "%1", key: "1" },
+			{ pane: "%1", key: "Enter" },
+		]);
+		expect(driveSession(descriptor, drive, w.ports, new FakeRegistry(), delivery)).toEqual({
+			kind: "needs-human",
+			label: "session-in-use",
+		});
+		expect(w.sentKeys).toHaveLength(2);
+		expect(delivery.outbox.at(-1)?.message.body).toContain("session-in-use");
+	});
+
+	it("never answers a quoted resume modal in ready or busy output", () => {
+		const quoted = `Session in use
+This session was last active just now and appears to be in use by another CLI or application.
+❯ 1. Resume anyway
+  2. Go back (Esc)
+ordinary agent output
+◎ Working esc interrupt`;
+		const w = world({ pane: quoted });
+		const outcome = driveSession(
+			desc({ harness: "copilot", revivePendingAt: "2026-07-25T00:00:00.000Z" }),
+			{},
+			w.ports,
+			new FakeRegistry(),
+			new FakeDelivery(),
+		);
+		expect(outcome.kind).not.toBe("answered");
+		expect(w.sentKeys).toEqual([]);
+	});
+
+	it("answers folder trust and session resume independently", () => {
+		const w = world({ pane: TRUST });
+		const drive: DriveState = {};
+		const descriptor = desc({ harness: "copilot" });
+		expect(
+			driveSession(descriptor, drive, w.ports, new FakeRegistry(), new FakeDelivery()),
+		).toMatchObject({ kind: "answered", label: "folder-trust" });
+		w.setPane(`Session in use
+This session was last active just now and appears to be in use by another CLI or application.
+❯ 1. Resume anyway
+  2. Go back (Esc)`);
+		expect(
+			driveSession(descriptor, drive, w.ports, new FakeRegistry(), new FakeDelivery()),
+		).toMatchObject({ kind: "answered", label: "session-in-use" });
+		expect(w.sentKeys).toHaveLength(4);
+	});
+
 	it("ready + not-yet-injected → injects init once and marks initInjectedAt", () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry([desc()]);
@@ -167,6 +231,21 @@ describe("driveSession state machine", () => {
 		driveSession(desc({ branchedFrom: "claude-src" }), {}, w.ports, reg, new FakeDelivery());
 		expect(w.sentText[0]?.text).toMatch(/FORK/);
 		expect(w.sentText[0]?.text).toMatch(/do not (continue|spawn)/i);
+	});
+
+	it("revived descriptor wires the non-continuation reframe into init", () => {
+		const w = world({ pane: READY });
+		const reg = new FakeRegistry();
+		const outcome = driveSession(
+			desc({ revivePendingAt: "2026-07-25T00:00:00.000Z" }),
+			{},
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+		expect(outcome).toEqual({ kind: "injected-init" });
+		expect(w.sentText[0]?.text).toMatch(/REVIVED/);
+		expect(w.sentText[0]?.text).toMatch(/Do NOT continue the old work/i);
 	});
 
 	it("does NOT re-inject init once initInjectedAt is set (idempotent)", () => {

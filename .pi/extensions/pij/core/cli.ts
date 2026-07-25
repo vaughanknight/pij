@@ -2356,13 +2356,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				CODEX_THREAD_ID: deps.process.env("CODEX_THREAD_ID"),
 			});
 			let bound = d;
-			if (harnessSessionId && harnessSessionId.trim() !== "") {
-				if (d.harnessSessionId !== harnessSessionId) {
-					bound = applyBinding(d, harnessSessionId);
-					deps.registry.write(bound);
-				}
+			if (
+				harnessSessionId &&
+				harnessSessionId.trim() !== "" &&
+				(d.lifecycle === "pending" || d.lifecycle === undefined)
+			) {
+				bound = applyBinding(d, harnessSessionId);
+				deps.registry.write(bound);
 			}
-			const confirmed = Boolean(bound.harnessSessionId);
+			const confirmed = bound.lifecycle === "bound" && Boolean(bound.harnessSessionId);
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({

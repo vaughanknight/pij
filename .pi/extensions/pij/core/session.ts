@@ -26,6 +26,7 @@ import {
 	initialReceipt,
 	markDelivered,
 } from "./receipts.js";
+import { buildSeatLabel } from "./seat-label.js";
 import { SeqCounter } from "./seq.js";
 import {
 	buildSpawnCommand,
@@ -118,6 +119,8 @@ export interface BootInput {
 	/** Exact native identity persisted by Pi so hash collisions can be detected. */
 	readonly harness?: "pi";
 	readonly harnessSessionId?: string;
+	/** Actual Pi-family executable hosting this session. */
+	readonly runtimeBin?: "pi" | "omp";
 	readonly paneId?: string;
 	/** Structural parent from PIJ_PARENT_ID; null is an explicit root. */
 	readonly parentId?: SessionId | null;
@@ -147,6 +150,25 @@ export type InboundResult =
 interface PendingReceipt {
 	readonly injectIso: string;
 	readonly receipt: MessageReceipt;
+}
+
+function stripPriorRuntimeTermination(
+	descriptor: SessionDescriptor | null,
+): SessionDescriptor | null {
+	if (!descriptor) return null;
+	const {
+		closeIntent: _closeIntent,
+		terminal: _terminal,
+		deathNoticeLatchedAt: _deathNoticeLatchedAt,
+		failureReason: _failureReason,
+		initInjectedAt: _initInjectedAt,
+		lastTickAt: _lastTickAt,
+		lastInboxScanAt: _lastInboxScanAt,
+		compactingAt: _compactingAt,
+		lastWatchdogFireAt: _lastWatchdogFireAt,
+		...durable
+	} = descriptor;
+	return durable;
 }
 
 export class PijSession {
@@ -186,10 +208,12 @@ export class PijSession {
 		const existing = liveDescriptor ?? input.durableDescriptor ?? null;
 		const wasDissolved = liveDescriptor?.lifecycle === "dissolved";
 		const fresh = liveDescriptor === null || wasDissolved;
+		const persisted =
+			input.resetRuntimeState || wasDissolved ? stripPriorRuntimeTermination(existing) : existing;
 		const descriptor: SessionDescriptor = {
 			// Durable identity/history metadata survives a process or machine restart.
 			// Runtime attachment fields below deliberately replace the prior incarnation.
-			...existing,
+			...persisted,
 			id: input.id,
 			role: input.role ?? existing?.role,
 			folder: input.folder,
@@ -201,15 +225,24 @@ export class PijSession {
 			lastEventAt: existing?.lastEventAt,
 			harness: input.harness ?? existing?.harness,
 			harnessSessionId: input.harnessSessionId ?? existing?.harnessSessionId,
+			runtimeBin: input.runtimeBin ?? existing?.runtimeBin,
 			lifecycle: input.resetRuntimeState || wasDissolved ? undefined : existing?.lifecycle,
 			failureReason: input.resetRuntimeState ? undefined : existing?.failureReason,
 			// Runtime pane comes from this incarnation; creator relation is durable.
 			paneId: input.resetRuntimeState ? input.paneId : (input.paneId ?? existing?.paneId),
-			spawnedBy: existing?.spawnedBy,
+			spawnedBy:
+				wasDissolved && input.resetRuntimeState
+					? this.ports.process.env("PIJ_ANNOUNCE_TO") || undefined
+					: existing?.spawnedBy,
 			...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
 			...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
 		};
-		this.ports.registry.write(descriptor);
+		if (wasDissolved) {
+			const revived = this.ports.registry.revive(descriptor);
+			if (!revived.ok) throw new Error(`pij revive error: ${revived.message}`);
+		} else {
+			this.ports.registry.write(descriptor);
+		}
 		this.descriptor = descriptor;
 		this.self = input.id;
 		if (fresh && this.ports.process.env("PIJ_NO_WATCHDOG") === "1") {
@@ -275,8 +308,10 @@ export class PijSession {
 					this.ports.pi.inject(announceText(input.id, descriptor.role), "immediate");
 				}
 			} else {
-				// Normal fresh boot: announce to peers (no spawner context)
-				this.ports.pi.inject(announceText(input.id, descriptor.role), "immediate");
+				// A revive task is safety-critical even when invoked from a root/non-peer
+				// shell: do not let a missing announcement target suppress the reframe.
+				const task = this.ports.process.env("PIJ_SPAWN_TASK");
+				this.ports.pi.inject(task ?? announceText(input.id, descriptor.role), "immediate");
 			}
 		}
 		return { id: input.id, role: descriptor.role, fresh };
@@ -317,6 +352,12 @@ export class PijSession {
 		});
 		// §H2: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand itself when
 		// input.model is set — no post-process needed here.
+		const seatLabel = buildSeatLabel({
+			cwd: opts.cwd,
+			job: "worker",
+			peerId: `pending:${spawnId}`,
+			model: binding.value.model,
+		});
 
 		// Side stack — the DEFAULT (layout unset or "split"): place the worker in
 		// the CURRENT window. #1 splits the orchestrator pane LEFT/RIGHT (-h → a
@@ -351,6 +392,7 @@ export class PijSession {
 				cmd: spawnCmd.cmd,
 				args: spawnCmd.args,
 				env: spawnCmd.env,
+				title: seatLabel.paneTitle,
 				cwd: opts.cwd,
 				target,
 				direction: first ? "h" : "v",
@@ -378,7 +420,8 @@ export class PijSession {
 			cmd: spawnCmd.cmd,
 			args: spawnCmd.args,
 			env: spawnCmd.env,
-			name: `pi:${spawnId}`,
+			name: seatLabel.windowName,
+			title: seatLabel.paneTitle,
 			cwd: opts.cwd,
 		});
 		if (!winResult.ok) {

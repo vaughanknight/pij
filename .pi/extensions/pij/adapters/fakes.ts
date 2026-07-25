@@ -181,6 +181,22 @@ export class FakeRegistry implements RegistryPort {
 	remove(id: SessionId): void {
 		this.map.delete(id);
 	}
+	revive(descriptor: SessionDescriptor): Result<void> {
+		const existing = this.map.get(descriptor.id);
+		if (!existing) return err("E-NOID", `no dissolved session '${descriptor.id}' to revive`);
+		if (existing.lifecycle !== "dissolved") {
+			return err("E-ARG", `session '${descriptor.id}' is not dissolved`);
+		}
+		if (
+			existing.harness !== descriptor.harness ||
+			existing.harnessSessionId !== descriptor.harnessSessionId
+		) {
+			return err("E-AMBIG", `revive identity mismatch for '${descriptor.id}'`);
+		}
+		this.map.set(descriptor.id, descriptor);
+		return ok(undefined);
+	}
+
 	dissolve(id: SessionId): void {
 		const existing = this.map.get(id);
 		if (!existing || existing.lifecycle === "dissolved") return;

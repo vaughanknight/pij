@@ -98,11 +98,9 @@ export interface DriveState {
 	resentAtMs?: number;
 	/** A needs-human interstitial was already surfaced (don't spam). */
 	flaggedHuman?: boolean;
-	/** One-shot latch: an `answer` interstitial's keys were already pressed. If
-	 *  the modal persists on a later tick (marker/keymap drift in a new harness
-	 *  version) the branch degrades to the needs-human surface — never a
-	 *  key-spam loop (DL-001). */
-	trustAnswered?: boolean;
+	/** One-shot answer latches keyed by interstitial label. Distinct prompts may
+	 * legitimately occur in sequence (folder trust, then session resume). */
+	answeredInterstitials?: Set<string>;
 	/** A terminal notice (bound/failed) was already delivered. */
 	settled?: boolean;
 	/** ms the FIRST boot injection was refused because the pane had live human
@@ -288,21 +286,29 @@ export function driveSession(
 
 	const pane = ports.capturePane(paneId);
 	const readiness = classifyReadiness(pane);
+	const harnessVerdict = classifyInterstitial(pane, harness);
+	// The exact Copilot resume modal is intentionally invisible to harness-less
+	// readiness so ordinary prose can never become a keypress. Override booting
+	// only after harness-aware classification; ready/busy always win, preventing
+	// a verbatim modal quoted in live output from firing automation.
+	const actionableHarnessModal =
+		readiness === "booting" && harnessVerdict.label === "session-in-use";
 
 	if (readiness === "dead") {
 		const dr = classifyDeathReason(pane);
 		return fail(descriptor, drive, registry, delivery, "pane reported dead", dr);
 	}
-	if (readiness === "interstitial") {
-		const verdict = classifyInterstitial(pane, harness);
-		// Auto-answer (copilot folder-trust, DL-001): press the verdict's keys
-		// EXACTLY ONCE. If the modal is still up on a later tick, the latch makes
-		// this fall through to the needs-human surface below — version drift (or a
-		// wrong digit) degrades to a human ping, never a key-spam loop.
-		if (verdict.action === "answer" && !drive.trustAnswered) {
-			drive.trustAnswered = true;
+	if (readiness === "interstitial" || actionableHarnessModal) {
+		const verdict = harnessVerdict;
+		// Auto-answer each recognized prompt exactly once. A persistent modal
+		// degrades to needs-human; a second distinct prompt still gets one answer.
+		const label = verdict.label ?? "interstitial";
+		const answered = drive.answeredInterstitials ?? new Set<string>();
+		if (verdict.action === "answer" && !answered.has(label)) {
+			answered.add(label);
+			drive.answeredInterstitials = answered;
 			for (const key of verdict.keys ?? []) ports.sendKey(paneId, key);
-			return { kind: "answered", label: verdict.label ?? "interstitial" };
+			return { kind: "answered", label };
 		}
 		if (verdict.action === "dismiss") {
 			ports.sendKey(paneId, "Escape");
@@ -331,6 +337,7 @@ export function driveSession(
 			descriptor.id,
 			descriptor.branchedFrom != null,
 			descriptor.spawnedBy,
+			descriptor.revivePendingAt !== undefined,
 		);
 		beforeSelfInjection?.(paneId, init.body, ports.now());
 		// A human can be typing in a freshly spawned pane. `held` means nothing was

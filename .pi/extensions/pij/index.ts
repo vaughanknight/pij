@@ -273,7 +273,8 @@ export default function (pi: ExtensionAPI): void {
 		// extension statuses on a separate row. Mirror the pij identity into that
 		// native segment so the peer id remains visible in the actual bar.
 		const hostExecutable = basename(process.execPath || process.argv[0] || "");
-		if (process.env.OMPCODE === "1" || hostExecutable === "omp") {
+		const runtimeBin = process.env.OMPCODE === "1" || hostExecutable === "omp" ? "omp" : "pi";
+		if (runtimeBin === "omp") {
 			await pi.setSessionName(self);
 		} else {
 			ctx.ui.setStatus(PIJ_STATUS_KEY, self);
@@ -315,6 +316,7 @@ export default function (pi: ExtensionAPI): void {
 			eventsPath,
 			harness: "pi",
 			harnessSessionId: piSessionId,
+			runtimeBin,
 			paneId: process.env.TMUX_PANE,
 			...(process.env.PIJ_PARENT_ID !== undefined ? { parentId: process.env.PIJ_PARENT_ID } : {}),
 			...(gitCommonDir !== null ? { gitCommonDir } : {}),

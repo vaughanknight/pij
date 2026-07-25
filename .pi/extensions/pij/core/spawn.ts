@@ -193,6 +193,9 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		PIJ_SPAWN_ID: input.spawnId,
 		PIJ_ROLE: input.role,
 	};
+	// Pi and OMP share harness:"pi" but not their native session stores/resume argv.
+	// Carry the executable through boot so the descriptor can revive unambiguously.
+	env.PIJ_PI_BIN = input.bin ?? "pi";
 
 	// Thread the effective model selector through the ready ping. OMP keeps the
 	// model id unsuffixed and reports effort separately.

@@ -31,6 +31,8 @@ export interface RegistryPort {
 	read(id: SessionId): SessionDescriptor | null;
 	/** Upsert this session's descriptor. */
 	write(descriptor: SessionDescriptor): void;
+	/** Replace a dissolved tombstone with a new runtime incarnation. */
+	revive(descriptor: SessionDescriptor): Result<void>;
 	/** Remove a session's descriptor (on shutdown). */
 	remove(id: SessionId): void;
 	/** Persist a terminal tombstone so stale queued writes cannot resurrect a
@@ -113,6 +115,8 @@ export interface NewWindowOpts {
 	env: Record<string, string>;
 	/** Tmux window name, e.g. "pi:<spawnId>". */
 	name: string;
+	/** Human-readable pane title (`select-pane -T`); naming failure aborts spawn. */
+	title: string;
 	/** Working directory for the new window. */
 	cwd?: string;
 	/** Pass tmux `-d`: create the window in the BACKGROUND without switching the
@@ -129,6 +133,8 @@ export interface SplitWindowOpts {
 	args: string[];
 	/** Environment variables for the new pane. */
 	env: Record<string, string>;
+	/** Human-readable pane title (`select-pane -T`); naming failure aborts spawn. */
+	title: string;
 	/** Working directory for the new pane. */
 	cwd?: string;
 	/** Pane to split (%N): orchestrator pane for the right column; worker-1's

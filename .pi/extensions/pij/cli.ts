@@ -154,6 +154,8 @@ import {
 import { PrimeService } from "./core/orchestration/prime.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
+import { buildRevivedDescriptor, parseReviveArgs, planRevive } from "./core/revive.js";
+import { buildSeatLabel } from "./core/seat-label.js";
 import { buildExportLines } from "./core/session-join.js";
 import {
 	aliasAgentSpawnArgs,
@@ -176,7 +178,11 @@ import {
 	type SpawnLayout,
 	spawnIdentitySeed,
 } from "./core/spawn.js";
-import { createSpawnExpectation, spawnExpectationDeadline } from "./core/spawn-expectation.js";
+import {
+	createSpawnExpectation,
+	requestClose,
+	spawnExpectationDeadline,
+} from "./core/spawn-expectation.js";
 import { planLink } from "./core/tree.js";
 import {
 	err,
@@ -213,6 +219,7 @@ const USAGE = `pij — session messaging + tmux control plane
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij focus save|list|launch ...                      save immutable native-session focuses and fork them on demand
+  pij revive <id> [--layout ...]                     relaunch a dissolved native session under the same pij id (pending golden recall)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]    register/re-attach your pane
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
@@ -374,6 +381,14 @@ NOTES
   the operator verifies golden recall. pi must launch from the main checkout,
   not a git worktree (#21).
   copilot and codex adapters are not yet available in v1.`;
+
+const REVIVE_USAGE = `pij revive — relaunch one dissolved native session with its prior context
+
+USAGE
+  pij revive <pij-id> [--layout stack|right|below|window] [--json]
+
+The native transcript must still exist. The command never falls back to a fresh
+session and returns PENDING CANARY until golden recall is verified.`;
 
 /** Package version for `pij --version` (best-effort; "unknown" if unreadable). */
 function pijVersion(): string {
@@ -981,6 +996,7 @@ function ensureDaemonRunning(): string | null {
 	const daemonPath = fileURLToPath(new URL("./daemon.ts", import.meta.url));
 	const res = tmux.newWindow({
 		name: DAEMON_WINDOW_NAME,
+		title: "pij daemon",
 		cwd: process.cwd(),
 		env: { PIJ_DAEMON_OWNED: "1" },
 		cmd: "npx",
@@ -1096,6 +1112,27 @@ function focusTranscriptFiles() {
 		deep: (_dir: string): string[] => [],
 		read: (path: string): string => readFileSync(path, "utf8"),
 	};
+}
+
+function listJsonlDeep(root: string, depth = 8): string[] {
+	if (depth < 0) return [];
+	try {
+		const out: string[] = [];
+		for (const entry of readdirSync(root, { withFileTypes: true })) {
+			const path = join(root, entry.name);
+			if (entry.isDirectory()) out.push(...listJsonlDeep(path, depth - 1));
+			else if (entry.isFile() && entry.name.endsWith(".jsonl")) out.push(path);
+		}
+		return out;
+	} catch {
+		return [];
+	}
+}
+
+function exactPiFamilySessions(root: string, nativeId: string): string[] {
+	return listJsonlDeep(root).filter(
+		(path) => basename(path).endsWith(`_${nativeId}.jsonl`) && readableRegularFile(path),
+	);
 }
 
 function isLinkedGitWorktree(cwd: string): boolean {
@@ -1314,6 +1351,182 @@ function runFocus(argv: readonly string[]): void {
 	process.exit(64);
 }
 
+function runRevive(argv: readonly string[]): void {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		process.stdout.write(`${REVIVE_USAGE}\n`);
+		return;
+	}
+	const parsed = parseReviveArgs(argv);
+	if (!parsed.ok) {
+		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
+		process.exit(exitCodeForCore(parsed.code));
+	}
+	const registry = new FsRegistry(pijHome);
+	const descriptor = registry.read(parsed.value.id);
+	const tmux = new TmuxAdapter();
+	const reviverId = deriveCallerParent(
+		process.env.PIJ_SESSION_ID,
+		registry.list(),
+		process.env.TMUX_PANE,
+	);
+	const priorAttachmentAlive = Boolean(
+		descriptor &&
+			((descriptor.paneId ? tmux.isPaneLive(descriptor.paneId) : false) ||
+				(descriptor.terminal === undefined && new NodeProcess().isAlive(descriptor.pid))),
+	);
+	if (descriptor) {
+		try {
+			if (!statSync(descriptor.folder).isDirectory()) throw new Error("not a directory");
+		} catch {
+			process.stderr.write(
+				`E-NOREG: revive cwd '${descriptor.folder}' for '${descriptor.id}' is unavailable\n`,
+			);
+			process.exit(3);
+		}
+	}
+	const nativeId = descriptor?.harnessSessionId ?? "";
+	const claudePath =
+		descriptor?.harness === "claude"
+			? transcriptPathFor(homedir(), descriptor.folder, nativeId)
+			: undefined;
+	const copilotPath =
+		descriptor?.harness === "copilot" ? sessionEventsPath(homedir(), nativeId) : undefined;
+	const codexPaths =
+		descriptor?.harness === "codex"
+			? [
+					...(descriptor.transcriptPath ? [descriptor.transcriptPath] : []),
+					...listCodexRollouts((dir) => {
+						try {
+							return readdirSync(dir);
+						} catch {
+							return [];
+						}
+					}, codexTranscriptRoot(homedir())).filter(
+						(path) => codexRolloutForSession([path], nativeId, readableRegularFile) === path,
+					),
+				].filter(readableRegularFile)
+			: [];
+	const plan = planRevive(
+		descriptor,
+		{
+			claudePath: claudePath && readableRegularFile(claudePath) ? claudePath : undefined,
+			copilotPath: copilotPath && readableRegularFile(copilotPath) ? copilotPath : undefined,
+			codexPaths,
+			piPaths: exactPiFamilySessions(join(homedir(), ".pi", "agent", "sessions"), nativeId),
+			ompPaths: exactPiFamilySessions(join(homedir(), ".omp", "agent", "sessions"), nativeId),
+		},
+		{
+			spawnId: `revive-${Date.now()}-${process.pid}`,
+			parentId: reviverId,
+			priorAttachmentAlive,
+		},
+	);
+	if (!plan.ok) {
+		process.stderr.write(`${plan.code}: ${plan.message}\n`);
+		process.exit(exitCodeForCore(plan.code));
+	}
+	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
+		const daemonNote = ensureDaemonRunning();
+		if (daemonNote) (parsed.value.json ? process.stderr : process.stdout).write(`${daemonNote}\n`);
+	}
+	const ownPane = tmux.currentPane();
+	if (!ownPane || !tmux.currentSession()) {
+		process.stderr.write("E-NOTMUX: pij revive needs an active tmux session\n");
+		process.exit(2);
+	}
+	const placement = planPlacement(
+		parsed.value.layout,
+		ownPane,
+		livePeerPanes(registry.list(), tmux.currentWindowPanes(), ownPane),
+	);
+	if (!placement.ok) {
+		process.stderr.write(`${placement.code}: ${placement.message}\n`);
+		process.exit(2);
+	}
+	const spawnId = plan.value.command.env.PIJ_SPAWN_ID ?? `revive-${Date.now()}-${process.pid}`;
+	const requestedAt = new Date().toISOString();
+	const expectations = new FsSpawnExpectationStore(pijHome);
+	const expectation = createSpawnExpectation({
+		spawnId,
+		creatorId: plan.value.command.env.PIJ_PARENT_ID || undefined,
+		requestedHarness: plan.value.descriptor.harness ?? "pi",
+		requestedAt,
+		deadlineAt: spawnExpectationDeadline(requestedAt),
+	});
+	const seatLabel = buildSeatLabel({
+		cwd: plan.value.descriptor.folder,
+		job: "revive",
+		peerId: plan.value.id,
+		model: plan.value.descriptor.boundModel,
+	});
+	expectations.write(expectation);
+	const spawned =
+		"window" in placement
+			? tmux.newWindow({
+					cmd: plan.value.command.cmd,
+					args: plan.value.command.args,
+					env: plan.value.command.env,
+					cwd: plan.value.descriptor.folder,
+					name: seatLabel.windowName,
+					title: seatLabel.paneTitle,
+					detached: true,
+				})
+			: tmux.splitWindow({
+					cmd: plan.value.command.cmd,
+					args: plan.value.command.args,
+					env: plan.value.command.env,
+					cwd: plan.value.descriptor.folder,
+					title: seatLabel.paneTitle,
+					target: placement.target,
+					direction: placement.direction,
+					percent: placement.percent,
+					evenOut: placement.evenOut,
+					columnPercent: placement.columnPercent,
+					detached: true,
+				});
+	if (!spawned.ok) {
+		expectations.remove(spawnId);
+		process.stderr.write(`${spawned.code}: ${spawned.message}\n`);
+		process.exit(2);
+	}
+	const paneId = spawned.value.paneId;
+	expectations.write({ ...expectation, paneId });
+	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
+		const revived = buildRevivedDescriptor(plan.value.descriptor, {
+			paneId,
+			windowId: spawned.value.windowId,
+			pid: focusPanePid(paneId),
+			spawnId,
+			nowIso: new Date().toISOString(),
+			reviverId,
+		});
+		const persisted = registry.revive(revived);
+		if (!persisted.ok) {
+			tmux.killPane(paneId);
+			expectations.remove(spawnId);
+			process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
+			process.exit(exitCodeForCore(persisted.code));
+		}
+	}
+	const operatorAction =
+		plan.value.runtime === "copilot"
+			? "needs-human if Copilot shows 'Session in use': press 1 (Resume anyway), then Enter"
+			: undefined;
+	const output = {
+		id: plan.value.id,
+		paneId,
+		harness: plan.value.descriptor.harness,
+		runtime: plan.value.runtime,
+		state: "pending-canary" as const,
+		...(operatorAction ? { operatorAction } : {}),
+	};
+	process.stdout.write(
+		parsed.value.json
+			? `${JSON.stringify(output)}\n`
+			: `started revival of ${output.id} (${output.runtime}) in pane ${output.paneId} — PENDING CANARY (not ready); ask a golden-recall question before assigning work${operatorAction ? `; ${operatorAction}` : ""}\n`,
+	);
+}
+
 /** `pij spawn --harness claude|copilot` (T018, AC-01): split a pane right running
  *  the harness under a PRE-ALLOCATED pij-id, write the `pending` descriptor, and
  *  return the id IMMEDIATELY (<500ms). The running daemon (auto-started here if
@@ -1402,6 +1615,12 @@ function runSpawn(argv: readonly string[]): void {
 			task: req.value.task,
 			noWatchdog: req.value.noWatchdog,
 		});
+		const seatLabelPi = buildSeatLabel({
+			cwd: cwdPi,
+			job: "worker",
+			peerId: `pending:${spawnId}`,
+			model: resolvedPiModel,
+		});
 		// Same side-stack layout as the daemon-bound harnesses (shared helper → one
 		// behaviour across the whole mixed fleet): first peer → right ~1/3 column,
 		// later peers append to the stack (uncapped, evens itself).
@@ -1420,13 +1639,15 @@ function runSpawn(argv: readonly string[]): void {
 						args: spawnCmdPi.args,
 						env: spawnCmdPi.env,
 						cwd: cwdPi,
-						name: "pi-peer",
+						name: seatLabelPi.windowName,
+						title: seatLabelPi.paneTitle,
 						detached: true,
 					})
 				: tmux.splitWindow({
 						cmd: spawnCmdPi.cmd,
 						args: spawnCmdPi.args,
 						env: spawnCmdPi.env,
+						title: seatLabelPi.paneTitle,
 						cwd: cwdPi,
 						target: planPi.target,
 						direction: planPi.direction,
@@ -1571,6 +1792,12 @@ function runSpawn(argv: readonly string[]): void {
 		branchFrom,
 		forkSessionId,
 	});
+	const seatLabel = buildSeatLabel({
+		cwd,
+		job: "worker",
+		peerId: pijId,
+		model: req.value.model,
+	});
 	// Layout (parity with pi's pij_spawn): the FIRST peer splits the orchestrator
 	// pane right (a ~1/3 column); every later peer appends to the stack (vertical,
 	// evened out — uncapped). The shared helper derives the live peer panes
@@ -1597,13 +1824,15 @@ function runSpawn(argv: readonly string[]): void {
 					args: spawnCmd.args,
 					env: spawnCmd.env,
 					cwd,
-					name: pijId,
+					name: seatLabel.windowName,
+					title: seatLabel.paneTitle,
 					detached: true,
 				})
 			: tmux.splitWindow({
 					cmd: spawnCmd.cmd,
 					args: spawnCmd.args,
 					env: spawnCmd.env,
+					title: seatLabel.paneTitle,
 					cwd,
 					target: plan.target,
 					direction: plan.direction,
@@ -2360,6 +2589,7 @@ function runClose(argv: readonly string[]): void {
 		process.exit(0);
 	}
 	const tmux = new TmuxAdapter();
+	const expectations = new FsSpawnExpectationStore(pijHome);
 	const closeIntent = {
 		actor: self ?? "operator",
 		kind: "cli-close" as const,
@@ -2368,6 +2598,15 @@ function runClose(argv: readonly string[]): void {
 	if (descriptor) {
 		// Persist intent before touching tmux so a later observed absence is correctly classified.
 		reg.write({ ...descriptor, closeIntent });
+		// s070: the DESCRIPTOR write alone is not enough. Once close dissolves the
+		// descriptor it is filtered out of registry.list() and the death sweep can no
+		// longer see the intent; the sweep then falls through to the EXPECTATION,
+		// which has no closeIntent of its own and is classified `unrequested-by-pij`.
+		// session.ts:436 already does this; the CLI path was the asymmetry.
+		if (descriptor.spawnId) {
+			const expectation = expectations.read(descriptor.spawnId);
+			if (expectation) expectations.write(requestClose(expectation, closeIntent));
+		}
 		traceP3("close:intent-write");
 	}
 	traceP3("close:kill");
@@ -2777,6 +3016,12 @@ function spawnAgentPane(
 		...(copilotSessionId ? { copilotSessionId } : {}),
 	});
 	const env = buildAgentPeerEnv(base.env, { agentCwd: cwd });
+	const seatLabel = buildSeatLabel({
+		cwd,
+		job: "agent",
+		peerId: plan.id,
+		model: plan.model,
+	});
 	const peerPanes = livePeerPanes(
 		new FsRegistry(pijHome).list(),
 		tmux.currentWindowPanes(),
@@ -2787,11 +3032,20 @@ function spawnAgentPane(
 		return { ok: false, message: `${splitPlan.code}: ${splitPlan.message}`, exitCode: 2 };
 	const split =
 		"window" in splitPlan
-			? tmux.newWindow({ cmd: base.cmd, args: base.args, env, cwd, name: plan.id, detached: true })
+			? tmux.newWindow({
+					cmd: base.cmd,
+					args: base.args,
+					env,
+					cwd,
+					name: seatLabel.windowName,
+					title: seatLabel.paneTitle,
+					detached: true,
+				})
 			: tmux.splitWindow({
 					cmd: base.cmd,
 					args: base.args,
 					env,
+					title: seatLabel.paneTitle,
 					cwd,
 					target: splitPlan.target,
 					direction: splitPlan.direction,
@@ -3149,6 +3403,10 @@ function main(): void {
 	}
 	if (top === "focus") {
 		runFocus(process.argv.slice(3));
+		return;
+	}
+	if (top === "revive") {
+		runRevive(process.argv.slice(3));
 		return;
 	}
 	if (process.argv[2] === "adopt") {

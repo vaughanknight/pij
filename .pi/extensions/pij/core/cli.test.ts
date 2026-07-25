@@ -1167,6 +1167,50 @@ describe("dispatch phonehome (confirmatory binding, AC-03)", () => {
 		expect(d.registry.read("pij-copilot")?.harnessSessionId).toBe(copilotId);
 	});
 
+	it("rebinds a revived Copilot descriptor whose native id is unchanged", () => {
+		const copilotId = "df4f1111-2222-4333-8444-555555555555";
+		const d = deps({
+			descs: [
+				desc({
+					id: "pij-revived",
+					harness: "copilot",
+					harnessSessionId: copilotId,
+					lifecycle: "pending",
+					revivePendingAt: "2026-07-25T00:00:00.000Z",
+				}),
+			],
+			self: "pij-revived",
+			env: { COPILOT_AGENT_SESSION_ID: copilotId },
+		});
+		const result = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			id: "pij-revived",
+			harnessSessionId: copilotId,
+			lifecycle: "bound",
+			confirmed: true,
+		});
+		expect(d.registry.read("pij-revived")?.lifecycle).toBe("bound");
+	});
+
+	it("does not heal a failed descriptor when an old session phones home", () => {
+		const copilotId = "ef4f1111-2222-4333-8444-555555555555";
+		const d = deps({
+			descs: [
+				desc({
+					id: "pij-failed",
+					harness: "copilot",
+					harnessSessionId: copilotId,
+					lifecycle: "failed",
+				}),
+			],
+			self: "pij-failed",
+			env: { COPILOT_AGENT_SESSION_ID: copilotId },
+		});
+		const result = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(result.stdout)).toMatchObject({ lifecycle: "failed", confirmed: false });
+		expect(d.registry.read("pij-failed")?.lifecycle).toBe("failed");
+	});
+
 	it("without CLAUDE_CODE_SESSION_ID, confirms self but reports no binding yet", () => {
 		const d = deps({
 			descs: [desc({ id: "pij-w", harness: "claude", lifecycle: "pending" })],
