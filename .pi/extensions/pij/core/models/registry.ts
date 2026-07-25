@@ -160,6 +160,7 @@ export function copilotSeedFromPi(raw: unknown): ModelEntry[] {
 /** Known Claude CLI model aliases (best-effort, unverified — not from a live API). */
 export function claudeAliases(): ModelEntry[] {
 	return [
+		{ id: "claude-opus-5", name: "Claude Opus 5", provider: "claude", verified: false },
 		{ id: "claude-fable-5", name: "Claude Fable 5", provider: "claude", verified: false },
 		{ id: "claude-sonnet-5", name: "Claude Sonnet 5", provider: "claude", verified: false },
 		{ id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: "claude", verified: false },
@@ -297,8 +298,12 @@ export function loadModels(): ModelEntry[] {
 		...copilotSeed,
 		...copilotSnapshot().filter((m) => !copilotSeedIds.has(m.id)),
 	];
-	const seenIds = new Set(piModels.map((m) => m.id).concat(copilotModels.map((m) => m.id)));
-	const claude = claudeAliases().filter((m) => !seenIds.has(m.id));
+	// claude, like codex below, is a DISTINCT harness target, so its aliases are NOT
+	// deduped against pi/copilot: `claude-opus-5` on a Copilot subscription is a
+	// different spawn path, auth and entitlement from the same id in Claude Code.
+	// Cross-provider dedupe silently HID every shared id from the claude harness — an
+	// operator reading `pij models` could not see that the model was launchable there.
+	const claude = claudeAliases();
 	// Codex (#2): prefer the user's configured default model from ~/.codex/config.toml
 	// (best-effort; empty on any read/parse error), ahead of the thin static snapshot.
 	let codexToml = "";

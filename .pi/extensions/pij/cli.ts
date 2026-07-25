@@ -331,7 +331,7 @@ FLAGS
   --model <m>     model id for that harness:
                     pi      -> a pi model/preset (e.g. @preset/glm-1m; pair with the
                                session's configured provider)
-                    claude  -> sonnet | opus | haiku | claude-fable-5 | claude-sonnet-5
+                    claude  -> sonnet | opus | haiku | claude-opus-5 | claude-fable-5 | claude-sonnet-5
                     copilot -> gpt-5.5 | claude-sonnet-4.6 | …
                     codex   -> gpt-5.5 | o3 | … (codex -m model id)
                   NOTE: an unknown model is currently passed through to the harness,
