@@ -345,7 +345,10 @@ export function finalizeAgentSpawn(
 		agentPackDir: plan.packDir,
 		agentOnce: plan.lifecycle === "once",
 	};
-	deps.registry.write(descriptor);
+	// "cli": this PUBLISHES a fresh agent-peer descriptor and owns its graph fields
+	// (parentId/windowId). Undeclared, the law would take them from disk — and for a
+	// brand-new id "disk" is nothing, so the spawn would lose its own parent link.
+	deps.registry.write(descriptor, "cli");
 
 	const dataHome = join(deps.pijHome, plan.id);
 	mkdirSync(dataHome, { recursive: true });
@@ -440,6 +443,8 @@ export function executeAgentReport(
 		to,
 		body: `📋 agent report from ${self}:\n\n${JSON.stringify(payload, null, 2)}`,
 	});
-	deps.registry.write({ ...descriptor, reportedAt: new Date(deps.now()).toISOString() });
+	// "seat": `reportedAt` is stamped by the peer's OWN process and nothing else
+	// writes it, so the seat's value must win over a concurrent daemon snapshot.
+	deps.registry.write({ ...descriptor, reportedAt: new Date(deps.now()).toISOString() }, "seat");
 	return { ok: true, to };
 }

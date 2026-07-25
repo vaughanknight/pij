@@ -261,6 +261,30 @@ export function planRequest(
 	});
 }
 
+/** Do these two commit-ish strings name the same commit? (plan 071 D5.)
+ *
+ *  Git identifies one commit by many strings: `d5b9b6d7` and
+ *  `d5b9b6d7afe592cadbb5d115d0dc4ff37bc89c23` are the SAME commit, and string
+ *  equality said otherwise — so a baton pinned with an abbreviated sha demanded
+ *  `--repin` against an unmoved HEAD (observed on baton `landing-main`,
+ *  request ae8ba022). A prefix comparison is exactly git's own abbreviation rule.
+ *
+ *  Deliberately conservative: the shorter string must be a genuine prefix of the
+ *  longer one AND long enough to be a real abbreviation (git's own floor is 4),
+ *  so an empty or 1-char pin never silently matches everything. */
+export function sameCommit(left: string, right: string): boolean {
+	const a = left.trim().toLowerCase();
+	const b = right.trim().toLowerCase();
+	if (a === b) return true;
+	const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+	if (short.length < MIN_ABBREV_SHA_LEN) return false;
+	if (!/^[0-9a-f]+$/.test(short) || !/^[0-9a-f]+$/.test(long)) return false;
+	return long.startsWith(short);
+}
+
+/** Git's own minimum abbreviation length. Below this a "prefix match" is noise. */
+const MIN_ABBREV_SHA_LEN = 4;
+
 export function planGrant(
 	definition: BatonDefinition,
 	currentLease: BatonLease | null,
@@ -288,7 +312,9 @@ export function planGrant(
 	}
 	const pinUnverifiable = request.pin !== undefined && input.currentHead === null;
 	const pinMoved =
-		request.pin !== undefined && input.currentHead !== null && request.pin !== input.currentHead;
+		request.pin !== undefined &&
+		input.currentHead !== null &&
+		!sameCommit(request.pin, input.currentHead);
 	if (pinUnverifiable && input.repin !== true) {
 		return batonErr(
 			"E-PIN",

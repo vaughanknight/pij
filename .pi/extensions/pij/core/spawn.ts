@@ -10,11 +10,11 @@
 //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
-import { writeMerged } from "./daemon/loop.js";
 import { normalizeModelQuery } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
 import type { RegistryPort } from "./ports.js";
+import { persistDaemonWrite } from "./registry-write.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
 import { err, ok, type Result } from "./types.js";
 
@@ -412,6 +412,17 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 				"--session-id",
 				input.forkSessionId,
 			);
+		} else if (input.forkSessionId !== undefined) {
+			// s071 D4 — a PLAIN claude spawn now pins its id too. `claude --session-id
+			// <uuid>` is supported standalone (not just with --fork-session), so there
+			// is no reason to leave the non-branched path on transcript discovery.
+			//
+			// Discovery was the root of the never-bind wedge: it identifies a session
+			// by "the transcript path that wasn't there before", so two claude peers
+			// booting into ONE folder produce two new paths and discovery is
+			// permanently ambiguous. Pinning the id removes the race rather than
+			// recovering from it.
+			args.push("--session-id", input.forkSessionId);
 		}
 	} else if (input.harness === "copilot") {
 		args.push("--yolo");
@@ -578,7 +589,7 @@ export function parseCompactSelfArgs(
  *  compacts (a mid-compact injection is eaten by the harness's fresh-context
  *  reset). No id / unknown id → null and nothing written — an unregistered
  *  pane still compacts exactly as before. Persists via the daemon merge law
- *  (writeMerged) so a concurrent daemon tick write is never clobbered. */
+ *  (persistDaemonWrite) so a concurrent daemon tick write is never clobbered. */
 export function markCompactingSelf(
 	registry: RegistryPort,
 	selfId: SessionId | undefined,
@@ -587,7 +598,7 @@ export function markCompactingSelf(
 	if (selfId === undefined) return null;
 	const descriptor = registry.read(selfId);
 	if (!descriptor) return null;
-	return writeMerged(registry, { ...descriptor, compactingAt: nowIso });
+	return persistDaemonWrite(registry, { ...descriptor, compactingAt: nowIso });
 }
 
 /** The side stack's column width as a % of the window (~1/3 — the orchestrator

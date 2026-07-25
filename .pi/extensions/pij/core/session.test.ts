@@ -794,11 +794,14 @@ describe("PijSession.close", () => {
 		const h = harness({ registry: [spawnedDescriptor] });
 		const trace: string[] = [];
 		const originalWrite = h.registry.write.bind(h.registry);
-		h.registry.write = (descriptor) => {
+		// Forwards `writer` — a spy that drops it silently disarms the write law for
+		// everything under test (plan 071 review §1.2), and the close path's whole
+		// point is that it OWNS terminal truth.
+		h.registry.write = (descriptor, writer) => {
 			if (descriptor.id === "bob") {
 				trace.push(descriptor.terminal ? "terminal-write" : "intent-write");
 			}
-			originalWrite(descriptor);
+			originalWrite(descriptor, writer);
 		};
 		const originalKill = h.tmux.killPane.bind(h.tmux);
 		h.tmux.killPane = (paneId) => {

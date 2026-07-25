@@ -191,3 +191,37 @@ describe("FakeTmux windowId", () => {
 		expect(tmux.windowOf(split.value.paneId)).toBe(win.value.windowId);
 	});
 });
+
+// Review round 2 §MED-b — a fake that is MORE PERMISSIVE than the real adapter is
+// the plain-object-fake failure in another costume: every core test could
+// resurrect a tombstone that production drops.
+describe("FakeRegistry matches FsRegistry's tombstone guard", () => {
+	it("refuses a DIFFERENT-pid resurrection, exactly as the real registry does", () => {
+		const fake = new FakeRegistry();
+		fake.write({
+			id: "pij-tomb",
+			folder: "/repo",
+			dataDir: "/home/.pij/pij-tomb",
+			eventsPath: "/home/.pij/pij-tomb/events.ndjson",
+			pid: 100,
+			startedAt: "2026-07-25T11:00:00.000Z",
+			lifecycle: "bound",
+		});
+		fake.dissolve("pij-tomb");
+
+		// s066 dropped the `pid === existing.pid` clause from FsRegistry; the fake
+		// kept it, so a different-pid write was refused by real and ACCEPTED here.
+		fake.write({
+			id: "pij-tomb",
+			folder: "/repo",
+			dataDir: "/home/.pij/pij-tomb",
+			eventsPath: "/home/.pij/pij-tomb/events.ndjson",
+			pid: 999,
+			startedAt: "2026-07-25T12:00:00.000Z",
+			lifecycle: "bound",
+		});
+
+		expect(fake.read("pij-tomb")?.lifecycle).toBe("dissolved");
+		expect(fake.list().map((d) => d.id)).not.toContain("pij-tomb");
+	});
+});

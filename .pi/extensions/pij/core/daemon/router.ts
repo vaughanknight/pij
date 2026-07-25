@@ -87,9 +87,15 @@ export function route(target: SessionDescriptor, message: PijMessage): RouteDeci
 }
 
 /** A FIFO of sends to tmux targets that were unbound when they arrived. Flushed
- *  in arrival order the instant the target binds (R-02). In-memory only: the
- *  daemon holds one for its lifetime; nothing persists (a restart re-derives
- *  unsent work from the inbox files it has not yet consumed). */
+ *  in arrival order the instant the target binds (R-02).
+ *
+ *  In-memory only, and that is SAFE only because a buffered message is never
+ *  consumed from its durable inbox (plan 071 D7). The old comment claimed
+ *  restart safety on exactly that basis while the drain marked buffered messages
+ *  READ — so a daemon restart destroyed them, twice, on 2026-07-25, with the
+ *  sender holding a `queued` receipt and the operator hand-pasting the bodies.
+ *  The inbox file IS the queue; this buffer is only an ordering/coalescing view
+ *  of it, and every entry must remain independently recoverable from disk. */
 export class SendBuffer {
 	private readonly byTarget = new Map<SessionId, BufferedMessage[]>();
 	private readonly paneSignals = new Map<string, BufferedPaneSignal>();
@@ -137,6 +143,22 @@ export class SendBuffer {
 
 	forgetPane(paneId: string): void {
 		this.paneSignals.delete(paneId);
+	}
+
+	/** Drop a message that has been delivered by another path (plan 071 D7).
+	 *
+	 *  Because buffered messages stay durably unread, the ordinary drain can
+	 *  inject one the instant its target binds — so the buffered copy has to go,
+	 *  or the next flush would inject it a second time. Exactly-once is the
+	 *  contract; at-least-once is not good enough for a message a human wrote. */
+	forget(messageId: string): void {
+		for (const [target, queue] of this.byTarget) {
+			const remaining = queue.filter((entry) => entry.messageId !== messageId);
+			if (remaining.length === queue.length) continue;
+			if (remaining.length === 0) this.byTarget.delete(target);
+			else this.byTarget.set(target, remaining);
+			return;
+		}
 	}
 
 	/** How many messages are buffered for a target (0 if none). */

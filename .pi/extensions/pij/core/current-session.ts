@@ -62,6 +62,31 @@ export function resolveAmbientNativeIdentity(
 	return ok(candidates[0] ?? null);
 }
 
+/** The pre-bind descriptor already sitting on this pane, if there is exactly one.
+ *
+ *  This is the join that was missing on 2026-07-25 (plan 071 D4, defects A+B). A
+ *  spawned-but-unbound seat HAS a descriptor — it just has no `harnessSessionId`
+ *  yet, so every identity lookup keyed on the native id came back empty and the
+ *  tooling concluded "unregistered". It was registered; it was pre-bind.
+ *
+ *  The pane is the physical identity: one pane holds one agent, so a pending
+ *  descriptor naming this pane IS this session, and the remedy is to finish its
+ *  binding (`pij phonehome`) — never to mint a second id for the same pane. */
+export function pendingPaneOccupant(
+	descriptors: readonly SessionDescriptor[],
+	pane: string | undefined,
+): SessionDescriptor | undefined {
+	if (!pane || pane.trim() === "") return undefined;
+	const onPane = descriptors.filter(
+		(descriptor) =>
+			descriptor.paneId === pane &&
+			(descriptor.lifecycle === "pending" || descriptor.lifecycle === "ready"),
+	);
+	// Ambiguity is not a licence to guess: two pre-bind descriptors on one pane is
+	// itself a defect, and picking one would paper over it.
+	return onPane.length === 1 ? onPane[0] : undefined;
+}
+
 /** Validate the durable reverse join against live descriptor metadata. */
 export function resolveRegisteredAmbientSelf(
 	identity: AmbientNativeIdentity,
@@ -70,9 +95,17 @@ export function resolveRegisteredAmbientSelf(
 	currentPane: string | undefined,
 ): Result<SessionId> {
 	const pane = currentPane && currentPane.trim() !== "" ? currentPane : undefined;
-	const action = pane
-		? `run pij adopt "$TMUX_PANE" --harness ${identity.harness} from this exact pane`
-		: "run pij inbox register";
+	// Defect A (plan 071 D4): when a pending descriptor already owns this pane,
+	// `adopt` is the WRONG remedy — following that advice mints a duplicate id and
+	// self-inflicts E-AMBIG, which is exactly what happened to pij-impressed-antlion
+	// (it was told to adopt, minted pij-armed-shrimp, and then needed three files
+	// hand-deleted to recover). The seat is registered; it just has not bound yet.
+	const preBind = pendingPaneOccupant(descriptors, pane);
+	const action = preBind
+		? `run \`pij phonehome\` from this exact pane — pane ${pane} is ALREADY owned by pending descriptor ${preBind.id}, which just has not bound yet; \`pij adopt\` here would mint a DUPLICATE id`
+		: pane
+			? `run pij adopt "$TMUX_PANE" --harness ${identity.harness} from this exact pane`
+			: "run pij inbox register";
 	const reject = (code: "E-AMBIG" | "E-NOID", message: string): Result<SessionId> =>
 		err(code, `${message}; ${action}`);
 	const exact = descriptors.filter(

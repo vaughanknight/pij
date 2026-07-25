@@ -36,10 +36,10 @@ import type {
 import { buildSpineEvent } from "../platform/spine.js";
 import { SPINE_KIND_SYSTEM_STATE } from "../platform/types.js";
 import type { RegistryPort } from "../ports.js";
+import { persistDaemonWrite } from "../registry-write.js";
 import { STALE_AFTER_MS, systemStateOf } from "../state.js";
 import type { SessionDescriptor, SystemState } from "../types.js";
 import { err, ok, type Result } from "../types.js";
-import { writeMerged } from "./loop.js";
 
 export interface RuntimeAxisDeps {
 	readonly registry: RegistryPort;
@@ -91,7 +91,7 @@ export class RuntimeAxisTracker {
 		}
 		// Mechanical truth first — never gated on the spine.
 		if (descriptor.systemState !== verdict) {
-			writeMerged(this.deps.registry, { ...descriptor, systemState: verdict });
+			persistDaemonWrite(this.deps.registry, { ...descriptor, systemState: verdict });
 		}
 		const latched = this.appended.get(descriptor.id);
 		if (latched === verdict) return;

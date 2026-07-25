@@ -1499,7 +1499,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(registry.read("peer")?.lastEventAt).toBe(before);
 	});
 
-	it("stamps fires through writeMerged and emits one stalled notice across both detectors", () => {
+	it("stamps fires through persistDaemonWrite and emits one stalled notice across both detectors", () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-daemon-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([

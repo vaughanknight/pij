@@ -1488,7 +1488,8 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 		let intentSeen = false;
 		let terminalSeen = false;
 		const write = registry.write.bind(registry);
-		registry.write = (descriptor) => {
+		// Forwards `writer` — a spy that drops it disarms the write law under test.
+		registry.write = (descriptor, writer) => {
 			if (descriptor.id === "pij-agent" && descriptor.closeIntent && !intentSeen) {
 				trace.push("intent-write");
 				intentSeen = true;
@@ -1497,7 +1498,7 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 				trace.push("terminal-write");
 				terminalSeen = true;
 			}
-			write(descriptor);
+			write(descriptor, writer);
 		};
 		const dissolve = registry.dissolve.bind(registry);
 		registry.dissolve = (id) => {

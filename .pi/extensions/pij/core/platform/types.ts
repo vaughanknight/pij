@@ -141,9 +141,16 @@ export interface CanaryRecord {
 	readonly contextWindow?: {
 		readonly expected: number;
 		readonly expectedLabel: string;
+		/** The tier the pane actually showed, or `"unverified"` when the harness
+		 *  publishes no context marker at all (plan 071 D6). */
 		readonly observedLabel: string;
-		readonly source: "pane-footer";
-		readonly check: "matched";
+		/** `"unobservable"` when nothing could be read — the check did not run, as
+		 *  opposed to running and passing. */
+		readonly source: "pane-footer" | "unobservable";
+		/** `matched` = observed and agreed. `unverified` = the harness exposes no
+		 *  tier, so there is nothing to contradict. There is no passing `mismatched`
+		 *  — a contradiction refuses. */
+		readonly check: "matched" | "unverified";
 	};
 	readonly identity: {
 		readonly paneId: string;
@@ -418,8 +425,15 @@ function isCanaryRecord(value: unknown): value is CanaryRecord {
 					ownField(v, "expected", (n) => typeof n === "number" && Number.isFinite(n) && n > 0) &&
 					ownField(v, "expectedLabel", isString) &&
 					ownField(v, "observedLabel", isString) &&
-					ownField(v, "source", (source) => source === "pane-footer") &&
-					ownField(v, "check", (check) => check === "matched")),
+					// plan 071 D6: the RUNTIME validator is a second gate the type change
+					// alone does not reach — it rejected every unverified record with a
+					// bare E-ARG. Both variants are valid persisted shapes.
+					ownField(
+						v,
+						"source",
+						(source) => source === "pane-footer" || source === "unobservable",
+					) &&
+					ownField(v, "check", (check) => check === "matched" || check === "unverified")),
 		) &&
 		ownField(
 			value,

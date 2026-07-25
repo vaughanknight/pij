@@ -11,8 +11,8 @@ import {
 	drainTmuxInbox,
 	driveSession,
 	observeActivity,
+	persistDaemonWrite,
 	WATCHDOG_TIMEOUT_MS,
-	writeMerged,
 } from "./loop.js";
 import { ComposerHoldTracker } from "./pane-signals.js";
 import { SendBuffer } from "./router.js";
@@ -479,6 +479,75 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(out).toEqual({ kind: "ambiguous", count: 2 });
 	});
 
+	// s071 D3 — the never-bind wedge. Before this fix the `ambiguous` branch
+	// RETURNED, so the watchdog block below it never ran and a permanently
+	// ambiguous discovery sat `pending` forever with `failureReason: null`.
+	it("s071: a persistently ambiguous discovery re-sends phonehome, then FAILS with bind-timeout", () => {
+		const w = world({ pane: READY, transcripts: [`${DIR}/a.jsonl`, `${DIR}/b.jsonl`] });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = { before: [], readyAtMs: 1000 };
+		const d = desc({ initInjectedAt: "x" });
+		reg.write(d);
+
+		// Inside the window: still just reported, but the clock is now running.
+		expect(driveSession(d, drive, w.ports, reg, del)).toEqual({ kind: "ambiguous", count: 2 });
+
+		// Past the first window → the recovery nudge fires (it did NOT before).
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS + 1);
+		expect(driveSession(d, drive, w.ports, reg, del).kind).toBe("resent-phonehome");
+		expect(w.sentText.some((s) => s.text.includes("phonehome"))).toBe(true);
+
+		// Past the second window → terminal, loud, and machine-readable.
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS * 3);
+		const out = driveSession(d, drive, w.ports, reg, del);
+		expect(out.kind).toBe("failed");
+		const persisted = reg.read("pij-w");
+		expect(persisted?.lifecycle).toBe("failed");
+		expect(persisted?.failureReason).toBe("bind-timeout");
+		if (out.kind === "failed") {
+			expect(out.reason).toContain("ambiguous");
+			expect(out.reason).toContain("2 candidate transcripts");
+		}
+		expect(del.outbox.some((m) => m.message.body.includes("failed to bind"))).toBe(true);
+	});
+
+	// CONTROL: byte-identical timing, ONE candidate transcript instead of two.
+	// It binds, so the failure above is caused by the ambiguity — not by the
+	// watchdog simply firing on any slow seat.
+	it("s071 control — the same clock with ONE new transcript binds instead of failing", () => {
+		const w = world({ pane: READY, transcripts: [`${DIR}/a.jsonl`] });
+		const reg = new FakeRegistry();
+		const drive: DriveState = { before: [], readyAtMs: 1000 };
+		const d = desc({ initInjectedAt: "x" });
+		reg.write(d);
+
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS * 3);
+		const out = driveSession(d, drive, w.ports, reg, new FakeDelivery());
+
+		expect(out).toEqual({ kind: "bound", harnessSessionId: "a" });
+		expect(reg.read("pij-w")?.failureReason).toBeUndefined();
+	});
+
+	// CONTROL for the reason field: a plain (non-ambiguous) bind timeout must
+	// ALSO carry bind-timeout, so no fail path leaves failureReason null.
+	it("s071: a plain bind timeout also persists failureReason bind-timeout", () => {
+		const w = world({ pane: READY, transcripts: [] });
+		const reg = new FakeRegistry();
+		const drive: DriveState = { before: [], readyAtMs: 1000 };
+		const d = desc({ initInjectedAt: "x" });
+		reg.write(d);
+
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS + 1);
+		driveSession(d, drive, w.ports, reg, new FakeDelivery());
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS * 3);
+		const out = driveSession(d, drive, w.ports, reg, new FakeDelivery());
+
+		expect(out.kind).toBe("failed");
+		expect(reg.read("pij-w")?.failureReason).toBe("bind-timeout");
+		if (out.kind === "failed") expect(out.reason).not.toContain("ambiguous");
+	});
+
 	it("dead pane → failed immediately, creator notified", () => {
 		const w = world({ pane: READY, dead: true });
 		const reg = new FakeRegistry();
@@ -701,13 +770,13 @@ describe("first-inference gate (T009)", () => {
 	});
 });
 
-describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", () => {
+describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-16)", () => {
 	it("preserves an externally-stamped reportedAt the daemon's computed value lacks", () => {
 		// On-disk descriptor already carries a reportedAt (stamped by `pij agent report`
 		// after the daemon took its tick-start snapshot). The daemon-computed value —
 		// derived from that stale snapshot — has none.
 		const reg = new FakeRegistry([desc({ reportedAt: "2026-06-27T12:00:00.000Z" })]);
-		const written = writeMerged(reg, desc({ state: "idle" }));
+		const written = persistDaemonWrite(reg, desc({ state: "idle" }));
 		expect(written.reportedAt).toBe("2026-06-27T12:00:00.000Z");
 		expect(written.state).toBe("idle"); // daemon-owned field still applied
 		expect(reg.read("pij-w")?.reportedAt).toBe("2026-06-27T12:00:00.000Z");
@@ -716,21 +785,21 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 	it("does NOT re-add a daemon-owned field the write deliberately dropped (failureReason clear)", () => {
 		const reg = new FakeRegistry([desc({ failureReason: "quota" })]);
 		const { failureReason: _dropped, ...recovered } = desc({ failureReason: "quota" });
-		const written = writeMerged(reg, recovered);
+		const written = persistDaemonWrite(reg, recovered);
 		expect(written.failureReason).toBeUndefined(); // recovery clear survives
 		expect(reg.read("pij-w")?.failureReason).toBeUndefined();
 	});
 
 	it("writes through unchanged for a brand-new descriptor (no prior on disk)", () => {
 		const reg = new FakeRegistry();
-		const written = writeMerged(reg, desc({ state: "working" }));
+		const written = persistDaemonWrite(reg, desc({ state: "working" }));
 		expect(written).toEqual(desc({ state: "working" }));
 		expect(reg.read("pij-w")?.state).toBe("working");
 	});
 
 	it("keeps the daemon-computed reportedAt when both sides have one (idempotent)", () => {
 		const reg = new FakeRegistry([desc({ reportedAt: "2026-06-27T12:00:00.000Z" })]);
-		const written = writeMerged(reg, desc({ reportedAt: "2026-06-27T13:00:00.000Z" }));
+		const written = persistDaemonWrite(reg, desc({ reportedAt: "2026-06-27T13:00:00.000Z" }));
 		expect(written.reportedAt).toBe("2026-06-27T13:00:00.000Z");
 	});
 
@@ -764,7 +833,7 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		const reg = new FakeRegistry([desc({ ...CLOSED_ON_DISK })]);
 		// The daemon's tick-start snapshot: taken BEFORE the close, so it still
 		// believes the peer is a live bound session.
-		const written = writeMerged(reg, desc({ lifecycle: "bound", state: "working" }));
+		const written = persistDaemonWrite(reg, desc({ lifecycle: "bound", state: "working" }));
 		expect(written.closeIntent).toEqual(CLOSED_ON_DISK.closeIntent);
 		expect(written.terminal).toEqual(CLOSED_ON_DISK.terminal);
 		expect(written.deathNoticeLatchedAt).toBe(CLOSED_ON_DISK.deathNoticeLatchedAt);
@@ -778,14 +847,14 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		// Dissolution needs no rule here: the registry itself already refuses a
 		// stale non-dissolved write over a dissolved tombstone.
 		const reg = new FakeRegistry([desc({ lifecycle: "pending" })]);
-		const written = writeMerged(reg, desc({ lifecycle: "bound" }));
+		const written = persistDaemonWrite(reg, desc({ lifecycle: "bound" }));
 		expect(written.lifecycle).toBe("bound");
 	});
 
 	it("stops a requested close from being announced as unrequested-by-pij", () => {
 		// The operator-visible symptom, end to end: close → overlapping tick → sweep.
 		const reg = new FakeRegistry([desc({ ...CLOSED_ON_DISK })]);
-		writeMerged(reg, desc({ lifecycle: "bound", state: "working" }));
+		persistDaemonWrite(reg, desc({ lifecycle: "bound", state: "working" }));
 		const sweep = reconcileDeaths({
 			descriptors: reg.list(),
 			expectations: [],
@@ -799,7 +868,7 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		// Proves the assertion above is real suppression, not a sweep that was never
 		// going to fire. Same shape, minus the close.
 		const reg = new FakeRegistry([desc({ lifecycle: "bound", state: "working" })]);
-		writeMerged(reg, desc({ lifecycle: "bound", state: "working" }));
+		persistDaemonWrite(reg, desc({ lifecycle: "bound", state: "working" }));
 		const sweep = reconcileDeaths({
 			descriptors: reg.list(),
 			expectations: [],
@@ -812,7 +881,7 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 
 	it("lets the latest persisted prime=false beat a stale daemon prime=true snapshot", () => {
 		const reg = new FakeRegistry([desc({ prime: false })]);
-		const written = writeMerged(reg, desc({ prime: true, state: "working" }));
+		const written = persistDaemonWrite(reg, desc({ prime: true, state: "working" }));
 		expect(written.prime).toBe(false);
 		expect(written.state).toBe("working");
 	});
@@ -822,14 +891,14 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		undefined,
 	])("lets the latest persisted prime=true beat a stale daemon prime=%s snapshot", (stalePrime) => {
 		const reg = new FakeRegistry([desc({ prime: true })]);
-		const written = writeMerged(reg, desc({ prime: stalePrime, state: "idle" }));
+		const written = persistDaemonWrite(reg, desc({ prime: stalePrime, state: "idle" }));
 		expect(written.prime).toBe(true);
 		expect(written.state).toBe("idle");
 	});
 
 	it("lets the latest persisted oldPrime=false beat a stale daemon oldPrime=true snapshot", () => {
 		const reg = new FakeRegistry([desc({ oldPrime: false })]);
-		const written = writeMerged(reg, desc({ oldPrime: true, state: "working" }));
+		const written = persistDaemonWrite(reg, desc({ oldPrime: true, state: "working" }));
 		expect(written.oldPrime).toBe(false);
 		expect(written.state).toBe("working");
 	});
@@ -839,27 +908,30 @@ describe("writeMerged — concurrent-writer preservation (Finding 1 / AC-16)", (
 		undefined,
 	])("lets the latest persisted oldPrime=true beat a stale daemon oldPrime=%s snapshot", (staleOldPrime) => {
 		const reg = new FakeRegistry([desc({ oldPrime: true })]);
-		const written = writeMerged(reg, desc({ oldPrime: staleOldPrime, state: "idle" }));
+		const written = persistDaemonWrite(reg, desc({ oldPrime: staleOldPrime, state: "idle" }));
 		expect(written.oldPrime).toBe(true);
 		expect(written.state).toBe("idle");
 	});
 
 	it("lets the latest persisted parentId=null beat a stale daemon parent id", () => {
 		const reg = new FakeRegistry([desc({ parentId: null })]);
-		const written = writeMerged(reg, desc({ parentId: "pij-stale-parent", state: "working" }));
+		const written = persistDaemonWrite(
+			reg,
+			desc({ parentId: "pij-stale-parent", state: "working" }),
+		);
 		expect(written.parentId).toBeNull();
 		expect(written.state).toBe("working");
 	});
 
 	it("lets the latest persisted repository identity beat a stale daemon value", () => {
 		const reg = new FakeRegistry([desc({ gitCommonDir: "/new/.git" })]);
-		const written = writeMerged(reg, desc({ gitCommonDir: "/stale/.git", state: "idle" }));
+		const written = persistDaemonWrite(reg, desc({ gitCommonDir: "/stale/.git", state: "idle" }));
 		expect(written.gitCommonDir).toBe("/new/.git");
 		expect(written.state).toBe("idle");
 	});
 });
 
-describe("writeMerged — node-truth ownership (plan 054 P2 T002, Finding 04)", () => {
+describe("persistDaemonWrite — node-truth ownership (plan 054 P2 T002, Finding 04)", () => {
 	it("CLI-stamped currentAssignment/currentTask/semanticState survive a daemon tick write", () => {
 		// The CLI coupled-write denormed these onto the descriptor AFTER the
 		// daemon took its tick-start snapshot; the daemon's computed descriptor
@@ -872,7 +944,7 @@ describe("writeMerged — node-truth ownership (plan 054 P2 T002, Finding 04)", 
 				semanticState: "waiting",
 			}),
 		]);
-		const written = writeMerged(reg, desc({ state: "working" }));
+		const written = persistDaemonWrite(reg, desc({ state: "working" }));
 		expect(written.currentAssignment).toBe("asg-general-pij-w");
 		expect(written.currentTask).toBe("review the packet");
 		expect(written.semanticState).toBe("waiting");
@@ -883,7 +955,7 @@ describe("writeMerged — node-truth ownership (plan 054 P2 T002, Finding 04)", 
 		// Mutable-external semantics: when BOTH sides carry the field, latest
 		// disk wins — the daemon's copy is by construction a stale snapshot.
 		const reg = new FakeRegistry([desc({ semanticState: "done" })]);
-		const written = writeMerged(reg, desc({ semanticState: "waiting", state: "idle" }));
+		const written = persistDaemonWrite(reg, desc({ semanticState: "waiting", state: "idle" }));
 		expect(written.semanticState).toBe("done");
 	});
 
@@ -892,7 +964,7 @@ describe("writeMerged — node-truth ownership (plan 054 P2 T002, Finding 04)", 
 		// mechanical truth has no meaningful external writer) — a value that
 		// somehow landed on disk never overrides the daemon's fresh verdict.
 		const reg = new FakeRegistry([desc({ systemState: "idle" })]);
-		const written = writeMerged(reg, desc({ systemState: "working" }));
+		const written = persistDaemonWrite(reg, desc({ systemState: "working" }));
 		expect(written.systemState).toBe("working");
 	});
 
@@ -901,7 +973,7 @@ describe("writeMerged — node-truth ownership (plan 054 P2 T002, Finding 04)", 
 		// computed descriptor is authoritative for a daemon-owned field.
 		const reg = new FakeRegistry([desc({ systemState: "stalled" })]);
 		const { systemState: _dropped, ...computed } = desc({ systemState: "stalled" });
-		const written = writeMerged(reg, computed);
+		const written = persistDaemonWrite(reg, computed);
 		expect(written.systemState).toBeUndefined();
 	});
 });
@@ -978,7 +1050,7 @@ describe("backfillWindowId — legacy live nodes gain addressability once (plan 
 
 	it("a CLI-stamped windowId on disk survives a daemon write lacking it (merge law)", () => {
 		const reg = new FakeRegistry([desc({ windowId: "@5" })]);
-		const written = writeMerged(reg, desc({ state: "working" }));
+		const written = persistDaemonWrite(reg, desc({ state: "working" }));
 		expect(written.windowId).toBe("@5");
 	});
 });

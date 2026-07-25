@@ -90,6 +90,7 @@ import {
 import { parseCloseArgs, planClose } from "./core/close.js";
 import {
 	type AmbientNativeIdentity,
+	pendingPaneOccupant,
 	planCurrentSessionDescriptor,
 	resolveAmbientNativeIdentity,
 	resolveRegisteredAmbientSelf,
@@ -222,6 +223,8 @@ Control plane (spawn colleagues in tmux):
   pij revive <id> [--layout ...]                     relaunch a dissolved native session under the same pij id (pending golden recall)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]    register/re-attach your pane
+                                                        adopts INTO an existing pending descriptor for the same pane — it never mints a duplicate id
+  pij identity release <id> [--json]                 free a pij id's native-identity claim WITHOUT teardown (recovery; pane + descriptor survive)
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
   pij telegram <init|start|stop>                     bridge pij sessions to a Telegram bot
@@ -262,7 +265,9 @@ Messaging:
   pij inbox [check|register] [--wait [ms]] [--json]   pull messages; first use auto-registers this ambient session
                                                         non-tmux external peers use 'pij inbox --wait'; tmux/pi stay push-first
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
-  pij list [--here] [--prime] [--json]               known sessions
+  pij list [--here] [--prime] [--archived] [--json]  known sessions
+                                                        --here filters by FOLDER (cwd), so peers living in a worktree are invisible from the repo root — omit it to see the whole fleet
+                                                        --archived lists seats moved out of the hot registry (terminal >48h); they stay reachable by id
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)
   pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
                                                         repository forest by default; global forest or arbitrary subtree on request
@@ -682,7 +687,7 @@ function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistra
 		...(allocated.value.descriptor ? { existing: allocated.value.descriptor } : {}),
 	});
 	try {
-		registry.write(descriptor);
+		registry.write(descriptor, "cli");
 	} catch (error) {
 		return err("E-AMBIG", error instanceof Error ? error.message : String(error));
 	}
@@ -1362,6 +1367,14 @@ function runRevive(argv: readonly string[]): void {
 		process.exit(exitCodeForCore(parsed.code));
 	}
 	const registry = new FsRegistry(pijHome);
+	// s066 × s071 D1. `pij revive` targets DISSOLVED seats, which is exactly the
+	// population the two-tier janitor moves to `~/.pij/archive/` after 48h — so the
+	// seats most worth reviving are the ones most likely to be archived. Keyed
+	// `read()` still finds them, but an archived descriptor's dataDir/eventsPath
+	// point INTO the archive, so a revived session would write its events there and
+	// `pij list --archived` would keep listing a seat that is now live. Pull it back
+	// to the hot tier first; a non-archived id is a no-op.
+	registry.unarchive(parsed.value.id);
 	const descriptor = registry.read(parsed.value.id);
 	const tmux = new TmuxAdapter();
 	const reviverId = deriveCallerParent(
@@ -1491,6 +1504,17 @@ function runRevive(argv: readonly string[]): void {
 	}
 	const paneId = spawned.value.paneId;
 	expectations.write({ ...expectation, paneId });
+	// Review round 1 §2.1 — pi/omp deliberately get NO new descriptor here (they
+	// self-register on boot), so without a marker the record stays `dissolved` for
+	// the whole boot and the 60s archive janitor moves its session dir out from
+	// under the booting process. Stamp the in-flight marker on the EXISTING record
+	// so the tier policy can see the revive; the seat's own boot write replaces it.
+	if (plan.value.runtime === "pi" || plan.value.runtime === "omp") {
+		const current = registry.read(plan.value.descriptor.id);
+		if (current) {
+			registry.writeExact({ ...current, revivePendingAt: new Date().toISOString() });
+		}
+	}
 	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
 		const revived = buildRevivedDescriptor(plan.value.descriptor, {
 			paneId,
@@ -1733,6 +1757,14 @@ function runSpawn(argv: readonly string[]): void {
 	// exist) so new-path discovery is genuinely deterministic (the daemon's
 	// first-tick snapshot would race Claude's early transcript write — H1).
 	const copilotSessionId = isCopilot ? randomUUID() : undefined;
+	// s071 D4 — pin a PLAIN claude spawn's session id too (`claude --session-id
+	// <uuid>`, supported standalone). Transcript discovery identifies a session by
+	// "the path that wasn't there before", so two claude peers booting into one
+	// folder are permanently ambiguous and never bind. A pinned id makes the bind
+	// deterministic, exactly as copilot and branched-claude already are.
+	if (req.value.harness === "claude" && forkSessionId === undefined) {
+		forkSessionId = randomUUID();
+	}
 	const skipSnapshot = isCopilot || forkSessionId !== undefined;
 	let transcriptsAtSpawn: string[] = [];
 	if (!skipSnapshot) {
@@ -2255,7 +2287,25 @@ function runAdopt(argv: readonly string[]): void {
 		}
 		durableDescriptor = snapshot.value;
 	}
-	const requestedId = req.value.id;
+	// Defect B (plan 071 D4): adopt INTO the descriptor that already owns this
+	// pane instead of minting a second one. Without this, `pij adopt` on a
+	// spawned-but-unbound seat allocated a fresh memorable id and claimed the
+	// native identity for it, after which the ORIGINAL seat's `pij phonehome`
+	// failed with "identity claude:<uuid> is already mapped to <the duplicate>" —
+	// a self-inflicted E-AMBIG that took three hand-deleted files to undo.
+	//
+	// Only ever an INFERENCE for the id: an explicit `--id` still wins, and a pane
+	// with two pre-bind descriptors is left alone (ambiguity is a defect to
+	// surface, not to guess past).
+	const paneOccupant = req.value.id
+		? undefined
+		: pendingPaneOccupant(listAllDescriptors(registry), pane);
+	if (paneOccupant) {
+		process.stderr.write(
+			`note: pane ${pane} is already owned by pending descriptor ${paneOccupant.id} — adopting INTO it rather than minting a new id\n`,
+		);
+	}
+	const requestedId = req.value.id ?? paneOccupant?.id;
 	const requestedDescriptor = requestedId ? registry.read(requestedId) : null;
 	let requestedReservation = false;
 	if (requestedId) {
@@ -2351,7 +2401,7 @@ function runAdopt(argv: readonly string[]): void {
 					transcriptPath,
 				});
 				try {
-					registry.write(descriptor);
+					registry.write(descriptor, "cli");
 				} catch (error) {
 					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
 					process.exit(2);
@@ -2378,7 +2428,7 @@ function runAdopt(argv: readonly string[]): void {
 					process.exit(2);
 				}
 				try {
-					registry.write(descriptor);
+					registry.write(descriptor, "cli");
 				} catch (error) {
 					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
 					process.exit(2);
@@ -2429,7 +2479,7 @@ function runAdopt(argv: readonly string[]): void {
 				if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
 			}
 			try {
-				registry.write(descriptor);
+				registry.write(descriptor, "cli");
 			} catch (error) {
 				process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
 				process.exit(2);
@@ -2463,7 +2513,7 @@ function runAdopt(argv: readonly string[]): void {
 					lifecycle: "pending",
 				};
 			}
-			registry.write(descriptor);
+			registry.write(descriptor, "cli");
 		} else if (requestedId && requestedReservation) {
 			const dataDir = join(pijHome, requestedId);
 			descriptor = buildPendingDescriptor({
@@ -2517,7 +2567,7 @@ function runAdopt(argv: readonly string[]): void {
 		gitCommonDir,
 	};
 	try {
-		registry.write(descriptor);
+		registry.write(descriptor, "cli");
 	} catch (error) {
 		process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
 		process.exit(2);
@@ -2550,6 +2600,46 @@ function runAdopt(argv: readonly string[]): void {
  *  you may close a worker you spawned; closing one you don't own is refused
  *  (E-OWN) unless `--force`. Impure (tmux killPane + registry.remove), so it
  *  lives in the bin; the decision is the pure core. */
+/** `pij identity release <id>` — free a pij id's native-identity claim WITHOUT
+ *  teardown (plan 071 D4, defect C).
+ *
+ *  The recovery hole this closes: when a duplicate descriptor claimed a native
+ *  session id, the ONLY verb that could free the claim was `pij close`, which
+ *  kills the pane — so a peer trying to fix its own identity would have been
+ *  committing suicide. The operator instead hand-deleted three files under
+ *  `~/.pij/identities/`. Recovery must never require that. */
+function runIdentity(argv: readonly string[]): void {
+	const action = argv[0];
+	const id = argv[1];
+	const json = argv.includes("--json");
+	if (action !== "release" || !id || id.startsWith("--")) {
+		process.stderr.write("usage: pij identity release <id> [--json]\n");
+		process.exit(64);
+	}
+	const registry = new FsRegistry(pijHome);
+	if (!registry.read(id)) {
+		process.stderr.write(`E-NOID: no session '${id}' in registry\n`);
+		process.exit(2);
+	}
+	const released = registry.releaseIdentity(id);
+	if (!released.ok) {
+		process.stderr.write(`${released.code}: ${released.message}\n`);
+		process.exit(2);
+	}
+	if (json) {
+		process.stdout.write(`${JSON.stringify({ id, ...released.value })}\n`);
+		return;
+	}
+	if (!released.value.released) {
+		process.stdout.write(`${id} holds no native-identity claim — nothing to release\n`);
+		return;
+	}
+	process.stdout.write(
+		`released ${id}'s native-identity claim (${released.value.removedPaths.length} record(s)); ` +
+			"the pane and descriptor are untouched — re-bind with `pij phonehome` from that pane\n",
+	);
+}
+
 function runClose(argv: readonly string[]): void {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		process.stdout.write(
@@ -2597,7 +2687,8 @@ function runClose(argv: readonly string[]): void {
 	};
 	if (descriptor) {
 		// Persist intent before touching tmux so a later observed absence is correctly classified.
-		reg.write({ ...descriptor, closeIntent });
+		// "close": this verb IS the terminal-truth authority (s070/#47).
+		reg.write({ ...descriptor, closeIntent }, "close");
 		// s070: the DESCRIPTOR write alone is not enough. Once close dissolves the
 		// descriptor it is filtered out of registry.list() and the death sweep can no
 		// longer see the intent; the sweep then falls through to the EXPECTATION,
@@ -2619,12 +2710,15 @@ function runClose(argv: readonly string[]): void {
 	if (descriptor) {
 		// A successful idempotent kill is our owned observation: persist terminal
 		// truth before hiding the descriptor, so history can distinguish requested.
-		reg.write({
-			...descriptor,
-			closeIntent,
-			terminal: { disposition: "requested", observedAt, evidence: "pane-missing" },
-			deathNoticeLatchedAt: observedAt,
-		});
+		reg.write(
+			{
+				...descriptor,
+				closeIntent,
+				terminal: { disposition: "requested", observedAt, evidence: "pane-missing" },
+				deathNoticeLatchedAt: observedAt,
+			},
+			"close",
+		);
 		traceP3("close:terminal-write");
 	}
 	reg.dissolve(plan.value.id);
@@ -2984,7 +3078,11 @@ function spawnAgentPane(
 	const isCopilot = plan.harness === "copilot";
 	const isCodex = plan.harness === "codex";
 	const copilotSessionId = isCopilot ? randomUUID() : undefined;
-	const skipSnapshot = isCopilot;
+	// Same deterministic-bind pin as `pij spawn` (s071 D4): agent peers were on
+	// the identical discovery race.
+	const claudeSessionId = plan.harness === "claude" ? randomUUID() : undefined;
+	const plannedSessionId = copilotSessionId ?? claudeSessionId;
+	const skipSnapshot = isCopilot || claudeSessionId !== undefined;
 	let transcriptsAtSpawn: string[] = [];
 	if (!skipSnapshot) {
 		if (isCodex) {
@@ -3014,6 +3112,7 @@ function spawnAgentPane(
 		...(plan.effort ? { effort: plan.effort } : {}),
 		...(plan.spawnedBy ? { parentId: plan.spawnedBy } : {}),
 		...(copilotSessionId ? { copilotSessionId } : {}),
+		...(claudeSessionId ? { forkSessionId: claudeSessionId } : {}),
 	});
 	const env = buildAgentPeerEnv(base.env, { agentCwd: cwd });
 	const seatLabel = buildSeatLabel({
@@ -3075,7 +3174,7 @@ function spawnAgentPane(
 			eventsPath: join(dataDir, "events.ndjson"),
 			startedAtIso: new Date().toISOString(),
 			...(skipSnapshot ? {} : { transcriptsAtSpawn }),
-			...(copilotSessionId ? { plannedHarnessSessionId: copilotSessionId } : {}),
+			...(plannedSessionId ? { plannedHarnessSessionId: plannedSessionId } : {}),
 		},
 	};
 }
@@ -3203,12 +3302,20 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		process.exit(3);
 	}
 	const gitCommonDir = new GitRepositoryAdapter().gitCommonDir(cwd) ?? undefined;
-	reg.write({
-		...spawnedDescriptor,
-		spawnId: token,
-		...(spawnedBy !== undefined ? { parentId: spawnedBy } : {}),
-		...(gitCommonDir !== undefined ? { gitCommonDir } : {}),
-	});
+	// "cli" — REQUIRED, not decorative (review round 2 §MED-a). This carries the
+	// CLI-owned `parentId`/`gitCommonDir`. On a fresh spawn disk has neither, so an
+	// undeclared write happened to work; on adopt-into-pending — D4's own new path —
+	// the pending descriptor ALREADY has a parentId, so the law would take the old
+	// value from disk and the re-parent would silently pin to it.
+	reg.write(
+		{
+			...spawnedDescriptor,
+			spawnId: token,
+			...(spawnedBy !== undefined ? { parentId: spawnedBy } : {}),
+			...(gitCommonDir !== undefined ? { gitCommonDir } : {}),
+		},
+		"cli",
+	);
 	expectations.write({
 		...expectation,
 		paneId: paneRes.pane.paneId,
@@ -3411,6 +3518,10 @@ function main(): void {
 	}
 	if (process.argv[2] === "adopt") {
 		runAdopt(process.argv.slice(3));
+		return;
+	}
+	if (process.argv[2] === "identity") {
+		runIdentity(process.argv.slice(3));
 		return;
 	}
 	if (process.argv[2] === "close") {

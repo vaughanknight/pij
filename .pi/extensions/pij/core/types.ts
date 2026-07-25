@@ -54,6 +54,7 @@ export type DeathReason =
 	| "quota" // terminal quota: credit/billing/insufficient (429/529/overloaded are transient → unknown)
 	| "stalled" // shared whole-life/watchdog verdict: peer stayed silent through its response threshold
 	| "pane-input-blocked" // boot line never written: a human was typing in the pane (s069)
+	| "bind-timeout" // spawned, pane alive, but never bound inside the bind window (s071 D3)
 	| "dead" // pane exited (no specific error signal)
 	| "unknown"; // fallback when no pattern matched
 

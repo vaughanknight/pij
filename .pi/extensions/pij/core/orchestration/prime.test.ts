@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeRegistry } from "../../adapters/fakes.js";
+import type { DescriptorWriter } from "../registry-write.js";
 import type { SessionDescriptor } from "../types.js";
 import { PrimeService } from "./prime.js";
 
@@ -19,9 +20,11 @@ function descriptor(id: string, over: Partial<SessionDescriptor> = {}): SessionD
 class CountingRegistry extends FakeRegistry {
 	writes = 0;
 
-	override write(value: SessionDescriptor): void {
+	// Forwards `writer` — a double that drops it silently disarms the write law
+	// for everything under test (plan 071 review §1.2).
+	override write(value: SessionDescriptor, writer?: DescriptorWriter): void {
 		this.writes += 1;
-		super.write(value);
+		super.write(value, writer);
 	}
 }
 

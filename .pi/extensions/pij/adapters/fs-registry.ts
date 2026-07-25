@@ -6,18 +6,28 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import {
+	appendFileSync,
 	closeSync,
+	existsSync,
 	linkSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+	type ArchiveIndexEntry,
+	buildArchiveIndexEntry,
+	classifyRegistryRecord,
+	parseArchiveIndexLine,
+} from "../core/archive.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
-import type { RegistryPort } from "../core/ports.js";
+import type { ArchiveOutcome, RegistryPort } from "../core/ports.js";
+import { applyWriteLaw, type DescriptorWriter } from "../core/registry-write.js";
 import {
 	err,
 	type HarnessKind,
@@ -140,11 +150,57 @@ export class FsRegistry implements RegistryPort {
 		return out;
 	}
 
+	/** Hot-first, then the archive by DIRECT path (plan 071 D1). The archive is
+	 *  never globbed or listed here: `<pijHome>/archive/<id>.json` is one stat,
+	 *  so a keyed lookup stays O(1) no matter how many corpses are archived. */
 	read(id: SessionId): SessionDescriptor | null {
+		return this.readFile(this.pathFor(id)) ?? this.readFile(this.archivePathFor(id));
+	}
+
+	/** Hot tier only — for the paths where falling through to the archive would be
+	 *  wrong (publishing/claiming a fresh descriptor at this id). */
+	private readHot(id: SessionId): SessionDescriptor | null {
 		return this.readFile(this.pathFor(id));
 	}
 
-	write(descriptor: SessionDescriptor): void {
+	/** THE default write. Applies the ownership law (`core/registry-write.ts`)
+	 *  before publishing — at ZERO extra I/O, because the tombstone guard below
+	 *  already re-reads the latest record. Five lost-updates say the merge has to
+	 *  be the default rather than something each writer must remember. */
+	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void {
+		this.publish(descriptor, writer, false);
+	}
+
+	/** Exact last-write-wins, NO merge — see `RegistryPort.writeExact`. The only
+	 *  correct use is deliberately CLEARING a contested field. */
+	writeExact(descriptor: SessionDescriptor): void {
+		this.publish(descriptor, undefined, true);
+	}
+
+	private publish(
+		descriptor: SessionDescriptor,
+		writer: DescriptorWriter | undefined,
+		exact: boolean,
+	): void {
+		// Any write that brings a record back to life pulls it out of the archive
+		// first (review §2.2) — otherwise the id exists in BOTH tiers, the live
+		// descriptor's dataDir points into `archive/`, and `pij list --archived`
+		// keeps listing a seat that is running.
+		if (descriptor.lifecycle !== undefined && descriptor.lifecycle !== "dissolved") {
+			this.unarchive(descriptor.id);
+		}
+		// Review round 2 §3.1 — the REGISTRY owns the tier, therefore it owns the
+		// paths. `unarchive()` above corrects dataDir/eventsPath on disk, but the
+		// caller's descriptor was read BEFORE that and still names `archive/<id>`;
+		// those fields are uncontested, so the stale copy would win and overwrite the
+		// correction — leaving a live seat pointing at a directory that no longer
+		// exists. That is worse than the original split, because `pij path`/`pij tail`
+		// then name nothing at all. pi/omp happened to self-heal (session.ts computes
+		// its own dataDir); s066's buildRevivedDescriptor does not, so claude/copilot/
+		// codex — the harnesses whose revive is live-proven — kept the broken path.
+		//
+		// No caller gets to state which tier it is in.
+		descriptor = this.withHotPaths(descriptor);
 		const existing = this.read(descriptor.id);
 		if (
 			existing?.lifecycle === "dissolved" &&
@@ -153,6 +209,9 @@ export class FsRegistry implements RegistryPort {
 		) {
 			return;
 		}
+		// Reuses the `existing` the tombstone guard just read — the merge is free.
+		const proposed = exact ? descriptor : applyWriteLaw(descriptor, existing, writer);
+		descriptor = proposed;
 		const identity = this.claimDescriptorIdentity(descriptor);
 		if (!identity.ok) throw new Error(identity.message);
 		try {
@@ -167,6 +226,12 @@ export class FsRegistry implements RegistryPort {
 	}
 
 	revive(descriptor: SessionDescriptor): Result<void> {
+		// Review round 1 §2.2 — pull the tier back HERE, not in one CLI verb. The
+		// seat's own boot path (`session.ts` wasDissolved → revive()) runs in the
+		// SEAT's process, where no `pij revive` ever executed, so a CLI-only
+		// unarchive left a live seat writing events into `~/.pij/archive/` while
+		// `pij list --archived` still listed it.
+		this.unarchive(descriptor.id);
 		const existing = this.read(descriptor.id);
 		if (!existing) return err("E-NOID", `no terminal session '${descriptor.id}' to revive`);
 		const explicitRevive =
@@ -181,8 +246,12 @@ export class FsRegistry implements RegistryPort {
 			return err("E-AMBIG", `revive identity mismatch for '${descriptor.id}'`);
 		}
 		try {
-			this.writeAtomic(this.pathFor(descriptor.id), descriptor);
-			this.syncIdentitySnapshot(descriptor);
+			// Same tier-truth guarantee as publish() (review §3.1): s066's
+			// `buildRevivedDescriptor` carries the prior incarnation's dataDir
+			// verbatim, which for an archived seat points into `archive/`.
+			const revived = this.withHotPaths(descriptor);
+			this.writeAtomic(this.pathFor(revived.id), revived);
+			this.syncIdentitySnapshot(revived);
 			return ok(undefined);
 		} catch (error) {
 			return err("E-NOREG", `cannot revive '${descriptor.id}': ${String(error)}`);
@@ -482,9 +551,266 @@ export class FsRegistry implements RegistryPort {
 	}
 
 	dissolve(id: SessionId): void {
-		const existing = this.read(id);
+		// Hot-only: an already-archived record is terminal by construction, and
+		// re-publishing it into the hot tier would undo the archival.
+		const existing = this.readHot(id);
 		if (!existing || existing.lifecycle === "dissolved") return;
 		this.write({ ...existing, lifecycle: "dissolved", state: "idle" });
+	}
+
+	// ─── two-tier archive (plan 071 D1) ──────────────────────────────────────
+
+	/** Move one record out of the hot tier. DAEMON-ONLY (single-writer).
+	 *
+	 *  Ordering is chosen so a crash never makes a record unfindable: the session
+	 *  dir moves first, then the archived descriptor is published, then the index
+	 *  line is appended, and only then is the hot descriptor unlinked. Until that
+	 *  last unlink the hot copy is still authoritative, and after it the archive
+	 *  copy is — `read()` covers both, so there is no window where a keyed lookup
+	 *  returns null for a record that exists.
+	 *
+	 *  Re-running over a half-finished move is a no-op-and-continue at every step,
+	 *  which is what makes the sweep idempotent. The one case it refuses is a
+	 *  genuine conflict — a session dir present in BOTH tiers — because merging
+	 *  two histories could lose events; that returns `skipped` and leaves
+	 *  everything where it is. */
+	archive(id: SessionId, nowMs: number): ArchiveOutcome {
+		const hot = this.readFile(this.pathFor(id));
+		if (!hot) {
+			return this.readFile(this.archivePathFor(id)) ? "already-archived" : "skipped";
+		}
+		mkdirSync(this.archiveDir(), { recursive: true });
+
+		const hotDir = join(this.pijHome, id);
+		const archivedDir = join(this.archiveDir(), id);
+		const hotDirExists = existsSync(hotDir);
+		const archivedDirExists = existsSync(archivedDir);
+		if (hotDirExists && archivedDirExists) {
+			// Two session dirs for one id: a prior interrupted move plus fresh
+			// activity. Refuse rather than merge or clobber.
+			return "skipped";
+		}
+		if (hotDirExists) {
+			try {
+				renameSync(hotDir, archivedDir);
+			} catch {
+				return "skipped"; // cross-device or permissions — leave the record hot
+			}
+		}
+
+		// The archived copy's paths point at the archived location, so
+		// `pij path`/`pij tail` on a revived-or-archived id stay truthful.
+		const archived: SessionDescriptor = {
+			...hot,
+			dataDir: archivedDir,
+			eventsPath: join(archivedDir, "events.ndjson"),
+		};
+		try {
+			this.writeAtomic(this.archivePathFor(id), archived);
+			appendFileSync(
+				this.archiveIndexPath(),
+				`${JSON.stringify(buildArchiveIndexEntry(hot, nowMs))}\n`,
+			);
+		} catch {
+			return "skipped";
+		}
+		rmSync(this.pathFor(id), { force: true });
+		return "archived";
+	}
+
+	/** Archive every hot record the policy calls archivable, and report the tally.
+	 *  DAEMON-ONLY (single-writer).
+	 *
+	 *  This scans the hot directory DIRECTLY rather than going through `list()`,
+	 *  because `list()` hides `dissolved` records — and dissolved records are the
+	 *  overwhelming majority of the corpses this sweep exists to clear (1,945 of
+	 *  the 2,000 in the 2026-07-25 incident). A sweep built on `list()` would have
+	 *  looked correct and moved almost nothing. */
+	sweepArchivable(nowMs: number): { readonly archived: number; readonly skipped: number } {
+		let names: string[];
+		try {
+			names = readdirSync(this.pijHome);
+		} catch {
+			return { archived: 0, skipped: 0 };
+		}
+		let archived = 0;
+		let skipped = 0;
+		for (const name of names) {
+			if (!name.endsWith(".json")) continue;
+			const descriptor = this.readFile(join(this.pijHome, name));
+			if (!descriptor) continue;
+			if (classifyRegistryRecord(descriptor, nowMs) !== "archivable") continue;
+			if (this.archive(descriptor.id, nowMs) === "archived") archived += 1;
+			else skipped += 1;
+		}
+		return { archived, skipped };
+	}
+
+	/** Newest-archived first. Rows whose archived descriptor is gone (revived, or
+	 *  hand-removed) are dropped, so the listing reflects the archive as it IS
+	 *  rather than as the append-only index once recorded it. */
+	listArchived(): readonly ArchiveIndexEntry[] {
+		let raw: string;
+		try {
+			raw = readFileSync(this.archiveIndexPath(), "utf8");
+		} catch {
+			return [];
+		}
+		const newestById = new Map<string, ArchiveIndexEntry>();
+		for (const line of raw.split("\n")) {
+			const entry = parseArchiveIndexLine(line);
+			if (!entry) continue;
+			newestById.set(entry.id, entry); // later line wins (re-archived after revive)
+		}
+		return [...newestById.values()]
+			.filter((entry) => existsSync(this.archivePathFor(entry.id)))
+			.sort((left, right) => right.archivedAt.localeCompare(left.archivedAt));
+	}
+
+	/** Pull an ARCHIVED record back into the hot tier. Mirror of `archive`, same
+	 *  refuse-on-conflict rule. Returns the hot descriptor, or null if not archived.
+	 *
+	 *  Named `unarchive`, not `revive`: `revive(descriptor)` is s066's relaunch verb.
+	 *  This moves storage tiers and starts no process. */
+	unarchive(id: SessionId): SessionDescriptor | null {
+		const archived = this.readFile(this.archivePathFor(id));
+		if (!archived) return null;
+		if (this.readFile(this.pathFor(id))) return null; // already hot — nothing to revive
+
+		const hotDir = join(this.pijHome, id);
+		const archivedDir = join(this.archiveDir(), id);
+		const revived: SessionDescriptor = {
+			...archived,
+			dataDir: hotDir,
+			eventsPath: join(hotDir, "events.ndjson"),
+		};
+		// Ordering mirrors `archive()` (review §2.4): move the DATA first, then
+		// publish the descriptor that points at it. The reverse order left a window
+		// where `read()` returned a descriptor whose dataDir did not exist yet, and
+		// nothing re-ran the heal automatically.
+		if (existsSync(archivedDir) && !existsSync(hotDir)) {
+			try {
+				renameSync(archivedDir, hotDir);
+			} catch {
+				return null;
+			}
+		}
+		this.writeAtomic(this.pathFor(id), revived);
+		rmSync(this.archivePathFor(id), { force: true });
+		return revived;
+	}
+
+	/** Release this pij id's native-identity claim WITHOUT tearing anything down
+	 *  (plan 071 D4, defect C).
+	 *
+	 *  Recovering the 2026-07-25 wedge required hand-deleting three files under
+	 *  `~/.pij/identities/` with the operator watching, because the only verb that
+	 *  could free a claim was `pij close` — and closing the duplicate would have
+	 *  killed the peer's own pane. Recovery must never require reaching into the
+	 *  registry by hand.
+	 *
+	 *  Removes only the two identity records (by-native tuple + by-pij owner) and
+	 *  scrubs the binding fields from the live descriptor. The descriptor, its
+	 *  session dir, and the pane all survive — the seat simply becomes re-bindable
+	 *  by `pij phonehome` or `pij adopt`. */
+	releaseIdentity(
+		id: SessionId,
+	): Result<{ readonly released: boolean; readonly removedPaths: readonly string[] }> {
+		// Review round 1 §2.3 — read BOTH tiers. `runIdentity` checks existence with
+		// `read()`, so an archived id passed the CLI gate and then hit a `readHot()`
+		// null here: both identity records were unlinked while the archived
+		// descriptor kept claiming its `harnessSessionId`, and the verb reported
+		// `released: true`. A dishonest report is the one bug this branch cannot ship.
+		const descriptor = this.read(id);
+		// Review round 1 §1.1 — the FIFTH lost-update, and a recovery verb creating an
+		// unreconcilable zombie. Releasing a terminal record used to resurrect it:
+		// `writeAtomic` bypassed `write()`'s dissolved-tombstone guard and stamped
+		// `lifecycle: "pending"` unconditionally while LEAVING `terminal`/`closeIntent`
+		// in place. Nothing can then resolve the row — `reconcileDeaths` skips
+		// `terminal !== undefined` and the watchdog's `eligible()` excludes `pending` —
+		// and it is back in `list()`.
+		//
+		// A terminal seat's pane is gone, so there is nothing to re-bind and no reason
+		// to touch its descriptor. Refuse, and say which state blocked it.
+		if (descriptor) {
+			const blocking =
+				descriptor.lifecycle === "dissolved"
+					? "dissolved"
+					: descriptor.terminal !== undefined
+						? "terminal"
+						: descriptor.closeIntent !== undefined
+							? "closing"
+							: undefined;
+			if (blocking !== undefined) {
+				return err(
+					"E-DEAD",
+					`${id} is ${blocking} — its pane is gone, so there is no identity to re-bind. ` +
+						"Releasing it would resurrect the tombstone as an unreconcilable 'pending' row.",
+				);
+			}
+		}
+		const owner = this.readOwnerRecord(this.identityOwnerPath(id));
+		if (!owner.ok) return owner;
+		const ownerRecord = owner.value;
+		const claimed = ownerRecord !== undefined && isIdentityRecord(ownerRecord);
+		const harness = descriptor?.harness ?? (claimed ? ownerRecord.harness : undefined);
+		const harnessSessionId =
+			descriptor?.harnessSessionId ?? (claimed ? ownerRecord.harnessSessionId : undefined);
+		// Nothing claimed and nothing bound — releasing is a no-op, reported honestly
+		// rather than as a success that did nothing.
+		if (!claimed && harnessSessionId === undefined) {
+			return ok({ released: false, removedPaths: [] });
+		}
+		const removed: string[] = [];
+		if (harness && harnessSessionId) {
+			const tuplePath = this.identityPath(harness, harnessSessionId);
+			// Only ever unlink a record that names THIS id — never another seat's.
+			const tuple = this.readIdentityRecord(tuplePath);
+			if (tuple.ok && tuple.value?.pijId === id) {
+				rmSync(tuplePath, { force: true });
+				removed.push(tuplePath);
+			}
+		}
+		const ownerPath = this.identityOwnerPath(id);
+		if (claimed) {
+			rmSync(ownerPath, { force: true });
+			removed.push(ownerPath);
+		}
+		if (descriptor) {
+			const {
+				harnessSessionId: _harnessSessionId,
+				plannedHarnessSessionId: _planned,
+				transcriptPath: _transcriptPath,
+				...scrubbed
+			} = descriptor;
+			// Through the LAW, not `writeAtomic` (review §1.1). Two `rmSync` unlinks sit
+			// between the read above and this write — the widest RMW window in the
+			// registry — so anything the daemon stamped meanwhile (a bind, a
+			// failureReason, initInjectedAt) would otherwise be replayed away.
+			this.write({ ...scrubbed, lifecycle: "pending" });
+		}
+		return ok({ released: removed.length > 0, removedPaths: removed });
+	}
+
+	/** Force a descriptor's storage paths to the HOT tier. The tier is registry
+	 *  truth, never something a caller carries in a stale snapshot (review §3.1). */
+	private withHotPaths(descriptor: SessionDescriptor): SessionDescriptor {
+		const dataDir = join(this.pijHome, descriptor.id);
+		const eventsPath = join(dataDir, "events.ndjson");
+		if (descriptor.dataDir === dataDir && descriptor.eventsPath === eventsPath) return descriptor;
+		return { ...descriptor, dataDir, eventsPath };
+	}
+
+	private archiveDir(): string {
+		return join(this.pijHome, "archive");
+	}
+
+	private archivePathFor(id: SessionId): string {
+		return join(this.archiveDir(), `${id}.json`);
+	}
+
+	private archiveIndexPath(): string {
+		return join(this.archiveDir(), "index.jsonl");
 	}
 
 	private allocateCandidate(

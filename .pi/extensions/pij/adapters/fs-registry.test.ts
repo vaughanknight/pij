@@ -284,8 +284,12 @@ describe("FsRegistry", () => {
 		const verified = new FsRegistry(home).read("pij-original");
 		expect(verified).toMatchObject({
 			id: "pij-original",
-			dataDir: "/home/.pij/pij-original",
-			eventsPath: "/home/.pij/pij-original/events.ndjson",
+			// Derived from the REGISTRY's own home, not carried from the caller's
+			// snapshot (review round 2 §3.1): the registry owns the tier, so it owns
+			// the paths. The fixture's `/home/.pij/...` was a fiction that only held
+			// because nothing enforced the invariant.
+			dataDir: join(home, "pij-original"),
+			eventsPath: join(home, "pij-original", "events.ndjson"),
 			lastEventAt: "2026-07-10T00:00:00.000Z",
 			folder: "/repo-after-restart",
 			pid: 99,

@@ -241,7 +241,12 @@ export class PijSession {
 			const revived = this.ports.registry.revive(descriptor);
 			if (!revived.ok) throw new Error(`pij revive error: ${revived.message}`);
 		} else {
-			this.ports.registry.write(descriptor);
+			// writeExact, deliberately: boot REPLACES the prior incarnation. When a seat
+			// is re-adopted (or was dissolved), `stripPriorRuntimeTermination` clears
+			// `terminal`/`closeIntent`/`failureReason`, and the merging write would
+			// restore them from disk — leaving a live seat wearing a dead one's
+			// tombstone. Clearing a contested field is exactly what writeExact is for.
+			this.ports.registry.writeExact(descriptor);
 		}
 		this.descriptor = descriptor;
 		this.self = input.id;
@@ -473,7 +478,8 @@ export class PijSession {
 			requestedAt: this.nowIso(),
 		};
 		// Persist intent before touching tmux so a later absence is not misclassified.
-		this.ports.registry.write({ ...descriptor, closeIntent });
+		// "close": the close path is the sole writer of terminal truth (s070/#47).
+		this.ports.registry.write({ ...descriptor, closeIntent }, "close");
 		if (descriptor.spawnId) {
 			const expectation = this.ports.expectations?.read(descriptor.spawnId);
 			if (expectation) this.ports.expectations?.write(requestClose(expectation, closeIntent));
@@ -488,12 +494,16 @@ export class PijSession {
 			observedAt: this.nowIso(),
 			evidence: "pane-missing" as const,
 		};
-		this.ports.registry.write({
-			...descriptor,
-			closeIntent,
-			terminal,
-			deathNoticeLatchedAt: terminal.observedAt,
-		});
+		// "close": this IS the terminal-truth writer (s070/#47).
+		this.ports.registry.write(
+			{
+				...descriptor,
+				closeIntent,
+				terminal,
+				deathNoticeLatchedAt: terminal.observedAt,
+			},
+			"close",
+		);
 		if (descriptor.spawnId) {
 			const expectation = this.ports.expectations?.read(descriptor.spawnId);
 			if (expectation) {

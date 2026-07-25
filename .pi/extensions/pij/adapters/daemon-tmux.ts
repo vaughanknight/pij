@@ -313,12 +313,16 @@ export class DaemonTmux implements DaemonPorts {
 			try {
 				const detail = error instanceof Error ? error.message : String(error);
 				process.stderr.write(
-					`⚠️  tmux UNVERIFIED: send to pane ${paneId} failed before submission confirmation — ${detail}\n`,
+					`⚠️  tmux FAILED: send to pane ${paneId} threw before submission — nothing reliably landed; the message stays queued — ${detail}\n`,
 				);
 			} catch {
 				// logging is diagnostic-only — a write failure must not break delivery.
 			}
-			return "unverified";
+			// NOT `unverified` (plan 071 D7): this path threw BEFORE typing, so the
+			// payload did not land and there is no duplicate-turn risk in retrying.
+			// Reporting it as `unverified` made the caller consume the durable copy
+			// of a message that was never delivered.
+			return "failed";
 		}
 	}
 

@@ -211,7 +211,11 @@ describe("canary packet and pass record — AC-07", () => {
 		});
 	});
 
-	it("fails honestly when the effective context tier is not observable", () => {
+	// plan 071 D6 — REPLACES an earlier assertion that an unobservable tier is a
+	// refusal. It is not: absence of evidence is not evidence of a wrong tier, and
+	// hard-failing it red-flagged every claude-opus-5 canary machine-wide, which
+	// teaches seats to rationalise around a red gate until red means nothing.
+	it("PASSES with an explicitly unverified tier when the harness publishes no context marker", () => {
 		const result = evaluateCanary({
 			dispatch: dispatch(),
 			descriptor: descriptor(),
@@ -222,12 +226,55 @@ describe("canary packet and pass record — AC-07", () => {
 			actor: "pij-parent",
 			nowMs: NOW,
 		});
-		expect(result).toEqual({
-			ok: false,
-			code: "E-CANARY-CONTEXT",
-			message:
-				"target 'pij-worker' cannot observe effective context tier for pinned model 'github-copilot/gpt-5.6-sol'; catalog expects 1.1M",
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value.contextWindow).toMatchObject({
+			check: "unverified",
+			source: "unobservable",
+			expectedLabel: "1.1M",
 		});
+		// The verdict must SAY it was not checked — a silent pass would be the
+		// same lie in the opposite direction.
+		const rendered = renderCanaryPass(result.value);
+		expect(rendered).toContain("contextTier=unverified");
+		expect(rendered).toContain("catalog: 1.1M");
+		// (`check=matched` still appears for the MODEL check — it is the CONTEXT
+		// check that must not claim a match it never made.)
+		expect(rendered).not.toContain("context=");
+		expect(rendered).not.toContain("source=pane-footer");
+	});
+
+	it("treats an absent observation the same as a null one", () => {
+		const result = evaluateCanary({
+			dispatch: dispatch(),
+			descriptor: descriptor(),
+			nonce: "canary-nonce-7391",
+			expectedModel: "github-copilot/gpt-5.6-sol",
+			expectedContextWindow: 1_050_000,
+			actor: "pij-parent",
+			nowMs: NOW,
+		});
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value.contextWindow?.check).toBe("unverified");
+	});
+
+	// CONTROL for the relaxation: the gate's REAL target — a harness silently
+	// serving a smaller tier than the catalog promises — must still refuse. If
+	// this ever passes, D6 has disarmed the check instead of correcting it.
+	it("control — an OBSERVED contradiction still refuses (#45: 400K served against a 1.1M catalog)", () => {
+		const result = evaluateCanary({
+			dispatch: dispatch(),
+			descriptor: descriptor(),
+			nonce: "canary-nonce-7391",
+			expectedModel: "github-copilot/gpt-5.6-sol",
+			expectedContextWindow: 1_050_000,
+			observedContextWindow: { label: "400K", tokens: 400_000, source: "pane-footer" },
+			actor: "pij-parent",
+			nowMs: NOW,
+		});
+		expect(result).toMatchObject({ ok: false, code: "E-CANARY-CONTEXT" });
 	});
 
 	it("renders a named timeout with the real dispatch id and no false pass", () => {

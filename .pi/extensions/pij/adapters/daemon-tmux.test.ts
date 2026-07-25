@@ -246,7 +246,13 @@ describe("composerPending — submit verification (the cause-independent retry g
 	}
 
 	describe("DaemonTmux.sendText — pre-Enter recovery and at-most-once submission", () => {
-		it("returns unverified instead of throwing when the target pane disappeared", () => {
+		// plan 071 D7 — this used to assert `unverified`. That was the bug: the
+		// caller consumes on `unverified` (the payload was typed, so replay could
+		// duplicate a turn), but a pane that DISAPPEARED never received anything, so
+		// consuming destroyed the only durable copy of an undelivered message.
+		// The outcome is now `failed`, which retries. Still no throw — one dead pane
+		// must never abort the daemon's delivery tick.
+		it("returns FAILED (not unverified) instead of throwing when the target pane disappeared", () => {
 			const adapter = new DaemonTmux({
 				runner: () => {
 					throw new Error("can't find pane: %42");
@@ -254,7 +260,7 @@ describe("composerPending — submit verification (the cause-independent retry g
 				sleep: () => undefined,
 			});
 
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("failed");
 		});
 
 		it("(a) waits through redraw lag and types the payload exactly once", () => {
@@ -355,5 +361,28 @@ describe("composerPending — submit verification (the cause-independent retry g
 	it("composerRegion extracts the box between the last two rules", () => {
 		expect(composerRegion(STUCK_PANE)).toContain("pij delivery diagnostic");
 		expect(composerRegion(EMPTY_PANE).replace(/[❯\s]/g, "")).toBe("");
+	});
+});
+
+describe("sendText outcome vocabulary (plan 071 D7)", () => {
+	// The durability fix hinges entirely on this distinction. `unverified` means
+	// "the payload WAS typed, we just could not confirm submission" — replaying it
+	// could duplicate an accepted turn, so the caller consumes the durable copy.
+	// A pre-submission THROW means nothing landed, so consuming destroys the only
+	// copy of an undelivered message. Collapsing the two is the 2026-07-25 loss.
+	it("reports a send to a nonexistent pane as `failed`, never `unverified`", () => {
+		const adapter = new DaemonTmux();
+
+		const outcome = adapter.sendText("%99999999", "this pane does not exist");
+
+		expect(outcome).toBe("failed");
+		// The distinction is load-bearing: `unverified` would make the caller
+		// consume the message (see core/daemon/loop.ts drainTmuxInbox).
+		expect(outcome).not.toBe("unverified");
+	});
+
+	it("never throws out of sendText — one dead pane must not abort the tick", () => {
+		const adapter = new DaemonTmux();
+		expect(() => adapter.sendText("%99999999", "x")).not.toThrow();
 	});
 });

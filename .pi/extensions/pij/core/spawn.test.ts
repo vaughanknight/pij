@@ -351,6 +351,44 @@ describe("buildControlSpawnCommand", () => {
 		expect(r.args).toEqual(["--dangerously-skip-permissions"]);
 	});
 
+	// s071 D4 — the deterministic-bind pin for a PLAIN (non-branched) claude.
+	it("claude: a bare forkSessionId pins the session id WITHOUT --resume/--fork-session", () => {
+		const r = buildControlSpawnCommand({
+			...base,
+			forkSessionId: "11111111-2222-3333-4444-555555555555",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--session-id",
+			"11111111-2222-3333-4444-555555555555",
+		]);
+		expect(r.args).not.toContain("--fork-session");
+		expect(r.args).not.toContain("--resume");
+	});
+
+	// CONTROL: with a branchFrom present the SAME field still means "fork", so the
+	// new branch above did not cannibalise branch-from-self.
+	it("control — forkSessionId WITH branchFrom still emits the full fork form", () => {
+		const r = buildControlSpawnCommand({
+			...base,
+			branchFrom: "src-session",
+			forkSessionId: "11111111-2222-3333-4444-555555555555",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--resume",
+			"src-session",
+			"--fork-session",
+			"--session-id",
+			"11111111-2222-3333-4444-555555555555",
+		]);
+	});
+
+	// CONTROL: no id supplied ⇒ no flag invented.
+	it("control — without a forkSessionId claude gets no --session-id at all", () => {
+		expect(buildControlSpawnCommand(base).args).not.toContain("--session-id");
+	});
+
 	it("emits --model after --skip-permissions as discrete argv (AC-09: no shell string)", () => {
 		const r = buildControlSpawnCommand({ ...base, model: "claude-sonnet-4-6" });
 		expect(r.args).toEqual(["--dangerously-skip-permissions", "--model", "claude-sonnet-4-6"]);

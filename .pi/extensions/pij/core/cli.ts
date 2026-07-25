@@ -9,6 +9,13 @@
 // (fs, argv, exit) and the imperative --follow / --wait loops live in the bin.
 
 import { chainStateOf, detectAnomalies } from "./anomalies.js";
+import {
+	bindHealthDetail,
+	classifyBindHealth,
+	isBindDegraded,
+	type QueuedReason,
+	type SendDisposition,
+} from "./bind-health.js";
 import { applyBinding, resolvePhonehomeSessionId } from "./binding.js";
 import {
 	buildCanaryPacket,
@@ -218,6 +225,11 @@ export type ParsedCommand =
 			readonly verb: "list";
 			readonly here: boolean;
 			readonly prime: boolean;
+			/** Show the ARCHIVED tier instead of the live one (plan 071 D1).
+			 *  Optional: `tsconfig` excludes tests, so a REQUIRED field here would
+			 *  leave every existing test call site silently wrong with tsc still
+			 *  green — exactly the class of lie this plan exists to kill. */
+			readonly archived?: boolean;
 			readonly json: boolean;
 	  }
 	| { readonly verb: "sessions"; readonly here: boolean; readonly json: boolean }
@@ -771,7 +783,13 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		case "whoami":
 			return ok({ verb: "whoami", json, env: flags.env === true });
 		case "list":
-			return ok({ verb: "list", here: flags.here === true, prime: flags.prime === true, json });
+			return ok({
+				verb: "list",
+				here: flags.here === true,
+				prime: flags.prime === true,
+				archived: flags.archived === true,
+				json,
+			});
 		case "sessions":
 			return ok({ verb: "sessions", here: flags.here === true, json });
 		case "models": {
@@ -1626,7 +1644,11 @@ interface SendSuccess {
 	readonly to: SessionId;
 	readonly messageId: string;
 	readonly kind: string;
-	readonly receipt: "queued" | "delivered";
+	readonly receipt: SendDisposition;
+	/** Machine-stable WHY for a non-delivered receipt (plan 071 D3). `queued`
+	 *  alone was a single opaque word that covered "mid-turn", "not bound yet",
+	 *  and "will never bind" identically. */
+	readonly reason?: QueuedReason | "never-bound";
 	readonly liveness: SendLiveness;
 	readonly daemonLastTickAt?: string | null;
 	readonly daemonTickAgeMs?: number | null;
@@ -1663,20 +1685,39 @@ function preflightSendTargets(
 	return ok(targets);
 }
 
+/** What this send can honestly claim, and why (plan 071 D3).
+ *
+ *  `delivered` is reserved for the ONE case the sender can actually prove from
+ *  here: a peer that owns its own injection and was idle when we looked. Every
+ *  other outcome names its cause instead of hiding behind a bare `queued`. */
+function classifySendReceipt(
+	descriptor: SessionDescriptor,
+	now: number,
+): { receipt: SendDisposition; reason?: QueuedReason | "never-bound" } {
+	// A seat that has stopped binding will never inject this message. Saying
+	// `queued` here is the specific lie that let a wedged peer look healthy for
+	// 16 minutes.
+	const health = classifyBindHealth(descriptor, now);
+	if (isBindDegraded(health)) return { receipt: "blocked", reason: "never-bound" };
+	if (descriptor.deliveryMode === "pull") return { receipt: "queued", reason: "pull-inbox" };
+	// Checked BEFORE the transport branches: a seat that has not bound yet cannot
+	// have been delivered to, whatever harness it will turn out to be running.
+	if (health === "pre-bind") return { receipt: "queued", reason: "unbound" };
+	if (daemonReceiptAuthoritative(descriptor)) {
+		if (isCompacting(descriptor, now)) return { receipt: "queued", reason: "compacting" };
+		return { receipt: "queued", reason: "tick-pending" };
+	}
+	if ((descriptor.state ?? "idle") === "working") return { receipt: "queued", reason: "busy" };
+	return { receipt: "delivered" };
+}
+
 function sendSuccess(
 	target: PreflightTarget,
 	messageId: string,
 	kind: string,
 	now: number,
 ): SendSuccess {
-	const receipt =
-		target.descriptor.deliveryMode === "pull"
-			? "queued"
-			: daemonReceiptAuthoritative(target.descriptor)
-				? "queued"
-				: (target.descriptor.state ?? "idle") === "working"
-					? "queued"
-					: "delivered";
+	const { receipt, reason } = classifySendReceipt(target.descriptor, now);
 	const tickStatus = daemonReceiptAuthoritative(target.descriptor)
 		? daemonTickStatus(target.descriptor.lastTickAt, now)
 		: undefined;
@@ -1685,9 +1726,76 @@ function sendSuccess(
 		messageId,
 		kind,
 		receipt,
+		...(reason ? { reason } : {}),
 		liveness: target.liveness,
 		...(tickStatus ?? {}),
 	};
+}
+
+/** The human-readable half of a receipt. Every branch names its cause; the
+ *  `blocked` branch is deliberately the loudest thing `pij send` can print
+ *  without failing (plan 071 D3). */
+/** Stamp the SENDER's own activity axis after a successful outbound send
+ *  (plan 071 D3 addendum).
+ *
+ *  Proved by timed probe on 2026-07-25: a sender's `lastEventAt` grew
+ *  monotonically across a window containing a verified send, because only the
+ *  in-process pi receiver (`PijSession.capture`) ever refreshed it — the `pij
+ *  send` CLI is a separate short-lived process and stamped nothing. Sending is
+ *  work: anything keyed off last-event (watchdog deadness, stall detection,
+ *  liveness) otherwise reads a busy send-only orchestrator as quiet.
+ *
+ *  Best-effort by design: a failed stamp must never fail a delivered message, so
+ *  every fault is swallowed. Re-reads immediately before writing so it bumps one
+ *  field on current truth instead of replaying a stale snapshot. */
+function stampSenderActivity(deps: CliDeps, self: SessionId, nowMs: number): void {
+	try {
+		const latest = deps.registry.read(self);
+		if (!latest || latest.lifecycle === "dissolved") return;
+		// Never write over a seat that is closing or already terminal (s070/#47's
+		// lesson, applied to this CLI-side write). `pij close` persists
+		// `closeIntent` → kills the pane → stamps `terminal` → dissolves; a
+		// read-modify-write from another process that straddles any of those steps
+		// can replay a pre-close snapshot over them. That is a LOST UPDATE, not a
+		// missing check, and it is what made a pij-requested close announce itself
+		// as `unrequested-by-pij`. A closing seat's activity axis is worth nothing,
+		// so the safe move is simply not to write.
+		if (latest.closeIntent !== undefined || latest.terminal !== undefined) return;
+		if (latest.lifecycle === "failed") return;
+		deps.registry.write({ ...latest, lastEventAt: new Date(nowMs).toISOString() });
+	} catch {
+		/* the message is already delivered — never fail a send over telemetry */
+	}
+}
+
+function renderReceiptHint(
+	result: {
+		readonly receipt: SendDisposition;
+		readonly reason?: QueuedReason | "never-bound";
+		readonly daemonTickStale?: boolean;
+		readonly daemonTickAgeMs?: number | null;
+	},
+	target: SessionDescriptor,
+	now: number,
+): string {
+	if (result.receipt === "blocked") {
+		return `BLOCKED: peer never bound — ${bindHealthDetail(target, classifyBindHealth(target, now), now) ?? "no binding"}. Nothing will deliver this until the seat is re-spawned or recovered (\`pij state ${target.id}\`)`;
+	}
+	if (result.receipt === "delivered") return "delivered: peer was idle";
+	switch (result.reason) {
+		case "pull-inbox":
+			return "queued (pull-inbox): awaiting the peer's own inbox check";
+		case "compacting":
+			return "queued (compacting): target is compacting, drain resumes when it is ready";
+		case "unbound":
+			return "queued (unbound): peer is still binding — delivery starts at bind";
+		case "busy":
+			return "queued (busy): peer is mid-turn, will steer after the current turn";
+		default:
+			return result.daemonTickStale
+				? `queued (tick-pending): daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
+				: "queued (tick-pending): awaiting daemon delivery confirmation";
+	}
 }
 
 function renderBroadcastSuccess(
@@ -1695,18 +1803,7 @@ function renderBroadcastSuccess(
 	target: SessionDescriptor,
 	now: number,
 ): string {
-	const recvHint =
-		result.receipt === "queued"
-			? target.deliveryMode === "pull"
-				? "queued: awaiting inbox check"
-				: daemonReceiptAuthoritative(target)
-					? isCompacting(target, now)
-						? "queued: target compacting"
-						: result.daemonTickStale
-							? `queued: daemon tick stale (${humanAge(result.daemonTickAgeMs ?? null)} old)`
-							: "queued: awaiting daemon delivery confirmation"
-					: "queued: peer is busy, will steer after current turn"
-			: "delivered: peer was idle";
+	const recvHint = renderReceiptHint(result, target, now);
 	const targetAgeMs = descAgeMs(target, now);
 	const warn =
 		targetAgeMs === null || targetAgeMs > STALE_AFTER_MS
@@ -1892,19 +1989,38 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			);
 		}
 		case "list": {
+			// Archived tier (plan 071 D1): served entirely from the append-only
+			// `archive/index.jsonl`, so listing thousands of buried seats never
+			// opens thousands of descriptor files. Read-only — the daemon is the
+			// single writer for everything under `archive/`.
+			if (cmd.archived) {
+				const entries = deps.registry.listArchived?.() ?? [];
+				if (cmd.json) return okOut(JSON.stringify(entries));
+				if (entries.length === 0) return okOut("no archived pij sessions");
+				const archivedHeader = `  ${pad("id", 22)} ${pad("archived", 20)} ${pad("lifecycle", 10)} ${pad("reason", 20)} folder`;
+				const archivedLines = entries.map(
+					(entry) =>
+						`  ${pad(entry.id, 22)} ${pad(entry.archivedAt, 20)} ${pad(entry.lifecycle ?? "—", 10)} ${pad(entry.failureReason ?? "—", 20)} ${entry.folder ?? "—"}`,
+				);
+				return okOut(
+					[archivedHeader, ...archivedLines, `${entries.length} archived session(s)`].join("\n"),
+				);
+			}
 			let descs = deps.registry.list();
 			if (cmd.here) descs = filterByFolder(descs, deps.cwd);
 			if (cmd.prime) descs = filterPrime(descs);
 			const s = selfId(deps);
 			const self = s.ok ? s.value : undefined;
+			// ONE liveness probe and ONE bind-health verdict per row, computed here
+			// and reused by both the JSON and human renderings (plan 071 D5 T014).
 			const rows = descs.map((d) => {
 				const live = liveOf(deps, d, now);
-				return { d, live };
+				return { d, live, degraded: isBindDegraded(classifyBindHealth(d, now)) };
 			});
 			if (cmd.json)
 				return okOut(
 					JSON.stringify(
-						rows.map(({ d, live }) => ({
+						rows.map(({ d, live, degraded }) => ({
 							id: d.id,
 							folder: d.folder,
 							dataDir: d.dataDir,
@@ -1917,6 +2033,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							boundProvider: d.boundProvider ?? null,
 							effort: d.effort ?? null,
 							failureReason: d.failureReason ?? null,
+							bindHealth: classifyBindHealth(d, now),
+							degraded,
 							terminal: d.terminal ?? null,
 							watchdog: watchdogBlock(
 								d,
@@ -1943,8 +2061,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							: "no pij sessions",
 				);
 			const lines = rows.map(
-				({ d, live }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : " "} ${pad(activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundProvider ?? "—", 18)} ${pad(d.boundModel ?? "—", 28)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
+				({ d, live, degraded }) =>
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : " "} ${pad(degraded ? "DEGRADED" : activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundProvider ?? "—", 18)} ${pad(d.boundModel ?? "—", 28)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
 			);
 			const header = `  ${pad("id", 14)} P ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("provider", 18)} ${pad("model", 28)} ${pad("effort", 7)} folder`;
 			return okOut(
@@ -2030,7 +2148,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				attribution = { actor: resolved.value.actor, provenance: resolved.value.provenance };
 			}
 			const changed = current?.parentId !== cmd.parentId;
-			if (changed) deps.registry.write(planned.value);
+			// "cli": `pij link` OWNS parentId. Without the declaration the write law
+			// would take it from disk and the verb would silently no-op.
+			if (changed) deps.registry.write(planned.value, "cli");
 			// prev = the tree truth the link replaces (effectiveParent, the notion
 			// every projection uses), not the raw parentId override — a spawned
 			// child's first re-parent honestly records "was under its spawner".
@@ -2117,6 +2237,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						humanLines.push(`failed → ${target.id}  ${delivered.code}: ${delivered.message}`);
 						continue;
 					}
+					// A broadcast is activity too — stamped once per landed message so a
+					// fan-out orchestrator never reads as quiet (plan 071 D3 addendum).
+					stampSenderActivity(deps, self, now);
 					const result = sendSuccess(target, delivered.value.messageId, "text", now);
 					results.push(result);
 					waitTargets.push({ to: target.id, messageId: delivered.value.messageId });
@@ -2186,14 +2309,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							: "file"
 						: "text";
 			}
-			const initial =
-				target.deliveryMode === "pull"
-					? "queued"
-					: daemonReceiptAuthoritative(target)
-						? "queued"
-						: (target.state ?? "idle") === "working"
-							? "queued"
-							: "delivered";
+			// ONE rule, one place (plan 071 D3). This branch used to carry its own
+			// copy of the receipt ternary, so a fix applied to `sendSuccess` left
+			// the plain `pij send` path still saying `queued` — the single most
+			// used surface lying while the code looked fixed.
+			// Sending is activity on the SENDER's axis too (plan 071 D3 addendum).
+			stampSenderActivity(deps, self, now);
+			const { receipt: initial, reason: initialReason } = classifySendReceipt(target, now);
 			const tickStatus = daemonReceiptAuthoritative(target)
 				? daemonTickStatus(target.lastTickAt, now)
 				: undefined;
@@ -2222,6 +2344,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						messageId,
 						kind: kindNote,
 						receipt: initial,
+						...(initialReason ? { reason: initialReason } : {}),
 						liveness: live,
 						...(tickStatus ?? {}),
 					}),
@@ -2229,18 +2352,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					exitCode: 0,
 					follow,
 				};
-			const recvHint =
-				initial === "queued"
-					? target.deliveryMode === "pull"
-						? "queued: awaiting inbox check"
-						: daemonReceiptAuthoritative(target)
-							? isCompacting(target, now)
-								? "queued: target compacting"
-								: tickStatus?.daemonTickStale
-									? `queued: daemon tick stale (${humanAge(tickStatus.daemonTickAgeMs)} old)`
-									: "queued: awaiting daemon delivery confirmation"
-							: "queued: peer is busy, will steer after current turn"
-					: "delivered: peer was idle";
+			const recvHint = renderReceiptHint(
+				{
+					receipt: initial,
+					...(initialReason ? { reason: initialReason } : {}),
+					...(tickStatus ?? {}),
+				},
+				target,
+				now,
+			);
 			const tail = cmd.wait
 				? ""
 				: `\nreceipt → ${initial}   (also in: pij tail ${self} --type receipt)`;
@@ -2289,6 +2409,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				d.lastTickAt !== undefined || daemonReceiptAuthoritative(d)
 					? daemonTickStatus(d.lastTickAt, now)
 					: null;
+			// Pre-bind health, computed on READ (plan 071 D3 T007). The wedged seat
+			// in the 2026-07-25 report showed `idle · active` with failureReason null
+			// while the correct diagnosis existed only in an anomaly push that landed
+			// ~16 minutes later. A read surface must not need a push to tell the truth.
+			const bindHealth = classifyBindHealth(d, now);
+			const bindDetail = bindHealthDetail(d, bindHealth, now);
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({
@@ -2311,6 +2437,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						daemonTickAgeMs: tickStatus?.daemonTickAgeMs ?? null,
 						daemonTickStale: tickStatus?.daemonTickStale ?? null,
 						failureReason: d.failureReason ?? null,
+						bindHealth,
+						degraded: isBindDegraded(bindHealth),
+						degradedReason: bindDetail,
 						terminal: d.terminal ?? null,
 						watchdog: watchdogBlock(
 							d,
@@ -2333,8 +2462,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						d.terminal.unavailableReason ? ` — ${d.terminal.unavailableReason}` : ""
 					}`
 				: "";
+			// DEGRADED leads the line — an operator scanning output must not have to
+			// infer "wedged" from a healthy-looking activity badge.
+			const degradedBadge = isBindDegraded(bindHealth) ? "DEGRADED · " : "";
+			const degradedLine = bindDetail ? `\n  ⚠️  DEGRADED: ${bindDetail}` : "";
 			return okOut(
-				`${d.id}: ${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${effortLine}${tickLine}${failLine}${terminalLine}`,
+				`${d.id}: ${degradedBadge}${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${effortLine}${tickLine}${failLine}${terminalLine}${degradedLine}`,
 			);
 		}
 		case "phonehome": {
@@ -2569,7 +2702,11 @@ function denormDescriptor(
 		// A fresh assignment has no declared state yet: a stale semanticState
 		// from the previous assignment must not survive the pointer swap.
 		const { semanticState: _stale, ...rest } = latest;
-		deps.registry.write({
+		// writeExact, deliberately: this both OWNS the node-truth denorms and must be
+		// able to CLEAR a stale `semanticState` on an assignment swap. A merging write
+		// cannot clear a contested field (by design), and `latest` was re-read one line
+		// above, so exact semantics are safe here — the re-read IS the merge.
+		deps.registry.writeExact({
 			...rest,
 			currentAssignment: fields.currentAssignment,
 			currentTask: fields.currentTask,
@@ -2928,7 +3065,10 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			const success = sendSuccess(target, delivered.value.messageId, "packet", now);
 			const next = markDispatchDelivered(initial, {
 				messageId: delivered.value.messageId,
-				deliveryState: success.receipt,
+				// The durable dispatch record has no `blocked` state. `unverified` is
+				// the honest projection — it claims no delivery — and the CLI's printed
+				// receipt still carries the loud BLOCKED line (plan 071 D3).
+				deliveryState: success.receipt === "blocked" ? "unverified" : success.receipt,
 				updated: { actor: attribution.value.actor, ts: ts.value },
 			});
 			const deliveredEvent = buildSpineEvent({

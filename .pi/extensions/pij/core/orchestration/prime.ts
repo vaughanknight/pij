@@ -29,7 +29,10 @@ export class PrimeService {
 		const descriptor = this.registry.read(id);
 		if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
 		const changed = descriptor.prime !== prime || descriptor.oldPrime !== oldPrime;
-		if (changed) this.registry.write({ ...descriptor, prime, oldPrime });
+		// Declares "cli": PrimeService OWNS prime/oldPrime, so its computed values must
+		// win. Without the declaration the write law would take both from disk and the
+		// verb would silently no-op — the inversion the law's own header warns about.
+		if (changed) this.registry.write({ ...descriptor, prime, oldPrime }, "cli");
 		return ok({ id, prime, oldPrime, changed });
 	}
 }

@@ -24,6 +24,10 @@ import { buildInitInjection, discoverNewTranscript } from "../harness/claude.js"
 import { type TranscriptListing, transcriptLayout } from "../harness/transcript.js";
 import { classifyInterstitial } from "../interstitial.js";
 import type { DeliveryPort, RegistryPort, SendOutcome } from "../ports.js";
+import { persistDaemonWrite } from "../registry-write.js";
+
+export { persistDaemonWrite } from "../registry-write.js";
+
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import { classifyDeathReason } from "../state.js";
 import type {
@@ -165,74 +169,9 @@ export function observeActivity(
 	return { ...descriptor, state, lastEventAt };
 }
 
-/** Append-only external fields carry forward only when the stale daemon
- *  snapshot lacks them. A computed value still wins when both sides have one. */
-const APPEND_ONLY_EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
-
-/** Mutable external fields are always latest-disk-authoritative when present.
- *  `prime:false` and `oldPrime:false` are meaningful state, so truthiness/fill-only merging is wrong.
- *  The node-truth denorms (`currentAssignment`/`currentTask`/`semanticState`,
- *  plan 054 P2 T002) are CLI-stamped between the daemon's tick-start snapshot
- *  and its persist — Finding 04's clobber shape. `systemState` stays OUT:
- *  mechanical truth is daemon-computed with no meaningful external writer
- *  (WS-5), so the fresh verdict must always beat a disk value. */
-const MUTABLE_EXTERNALLY_OWNED_FIELDS = [
-	"prime",
-	"oldPrime",
-	"parentId",
-	"gitCommonDir",
-	"currentAssignment",
-	"currentTask",
-	"semanticState",
-	// T006: stamped by spawn/adopt (externally to the daemon's snapshot); the
-	// daemon's own backfill only ever writes it where it was absent.
-	"windowId",
-	// s070 #3 — terminal truth is stamped by the CLOSE path (`pij close` and the
-	// in-process close), never computed by the daemon, and it is the evidence the
-	// death reconciler classifies from. Leaving these out made a pij-REQUESTED
-	// close announce itself as `unrequested-by-pij`: close persists intent, kills
-	// the pane, stamps `terminal: requested`, dissolves — then an overlapping tick
-	// wrote its pre-close snapshot back over all of it, and the next sweep saw a
-	// dead PID with no intent and no terminal. A lost update, not a missing check.
-	"closeIntent",
-	"terminal",
-	"deathNoticeLatchedAt",
-] as const;
-
-/** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
- *  writer stamped after this tick's index snapshot was taken. Re-reads the latest
- *  on-disk descriptor and merges externally-owned fields according to their
- *  ownership semantics: append-only values fill gaps, while mutable values
- *  override stale daemon snapshots. Re-reads after the write and returns registry
- *  truth, which may be a concurrent dissolved tombstone when the registry rejects
- *  this stale daemon write. Use this for EVERY daemon descriptor write. */
-export function writeMerged(
-	registry: RegistryPort,
-	computed: SessionDescriptor,
-): SessionDescriptor {
-	const latest = registry.read(computed.id);
-	let merged = computed;
-	if (latest) {
-		for (const field of APPEND_ONLY_EXTERNALLY_OWNED_FIELDS) {
-			if (merged[field] === undefined && latest[field] !== undefined) {
-				merged = { ...merged, [field]: latest[field] };
-			}
-		}
-		for (const field of MUTABLE_EXTERNALLY_OWNED_FIELDS) {
-			if (latest[field] !== undefined) {
-				merged = { ...merged, [field]: latest[field] };
-			}
-		}
-	}
-	registry.write(merged);
-	const persisted = registry.read(merged.id);
-	if (!persisted) throw new Error(`daemon write for ${merged.id} did not persist`);
-	return persisted;
-}
-
 /** One-shot windowId backfill for a legacy live node (plan 054 P2 T006,
  *  AC-09): a pane-bearing descriptor that predates windowId capture gains it
- *  from a live tmux resolve, persisted through writeMerged so concurrent
+ *  from a live tmux resolve, persisted through persistDaemonWrite so concurrent
  *  writers survive. Self-latching — a node that already has one is never
  *  probed again. Returns the persisted descriptor, or null when nothing was
  *  (or could be) done. */
@@ -244,7 +183,13 @@ export function backfillWindowId(
 	if (descriptor.windowId !== undefined || descriptor.paneId === undefined) return null;
 	const windowId = resolveWindowId(descriptor.paneId);
 	if (windowId === null || !/^@\d+$/.test(windowId)) return null;
-	return writeMerged(registry, { ...descriptor, windowId });
+	// `windowId` is cli-owned (spawn/adopt stamp it), and this is the daemon
+	// BACKFILLING it for a legacy node that has none. Declaring "cli" is correct
+	// here and only here: the guard above already proved the field is absent, so
+	// this cannot clobber an owner's value — it can only fill a gap.
+	registry.write({ ...descriptor, windowId }, "cli");
+	const persisted = registry.read(descriptor.id);
+	return persisted ?? null;
 }
 
 export function driveSession(
@@ -347,7 +292,7 @@ export function driveSession(
 		}
 		drive.initHeldSinceMs = undefined;
 		const at = new Date(ports.now()).toISOString();
-		writeMerged(registry, markInitInjected(descriptor, at));
+		persistDaemonWrite(registry, markInitInjected(descriptor, at));
 		drive.readyAtMs = ports.now();
 		return { kind: "injected-init" };
 	}
@@ -404,7 +349,7 @@ export function driveSession(
 			...applyBinding(descriptor, descriptor.plannedHarnessSessionId),
 			...(model ? { boundModel: model } : {}),
 		};
-		writeMerged(registry, bound);
+		persistDaemonWrite(registry, bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
@@ -437,7 +382,7 @@ export function driveSession(
 			...applyBinding(descriptor, harnessSessionId),
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
 		};
-		writeMerged(registry, bound);
+		persistDaemonWrite(registry, bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
@@ -445,11 +390,17 @@ export function driveSession(
 		}
 		return { kind: "bound", harnessSessionId };
 	}
-	if (discovery.status === "ambiguous") {
-		// Concurrent boots discovery can't pick deterministically; surface it
-		// (review M4) and let phone-home + the watchdog resolve it.
-		return { kind: "ambiguous", count: discovery.paths.length };
-	}
+	// Concurrent boots discovery can't pick deterministically; surface it (review
+	// M4) and let phone-home + the watchdog resolve it.
+	//
+	// s071 D3 — this used to `return` here, which meant an ambiguity BYPASSED the
+	// watchdog block below entirely. Two claude peers sharing one cwd share one
+	// transcript dir, so both boots look "new" on every tick: discovery stayed
+	// ambiguous forever, the watchdog never ran, and the seat sat `pending` /
+	// `idle · active` with `failureReason: null` indefinitely. That is the exact
+	// never-bind wedge signature. It now FALLS THROUGH: the ambiguity is still
+	// reported while the clock is running, but the clock IS running.
+	const ambiguousCount = discovery.status === "ambiguous" ? discovery.paths.length : undefined;
 
 	// 3) Watchdog: re-send the confirm line once, then fail (AC-04).
 	const decision = evaluateWatchdog({
@@ -470,8 +421,22 @@ export function driveSession(
 		return { kind: "resent-phonehome" };
 	}
 	if (decision.kind === "fail") {
-		return fail(descriptor, drive, registry, delivery, decision.reason);
+		// Always carry a machine-stable reason. A `failed` lifecycle with
+		// `failureReason: null` is exactly the shape that made the wedge
+		// unreadable in `pij state`/`list --json`.
+		return fail(
+			descriptor,
+			drive,
+			registry,
+			delivery,
+			ambiguousCount === undefined
+				? decision.reason
+				: `${decision.reason}; transcript discovery stayed ambiguous across ${ambiguousCount} candidate transcripts ` +
+						"(concurrent boots in one folder) — nothing could be bound deterministically",
+			"bind-timeout",
+		);
 	}
+	if (ambiguousCount !== undefined) return { kind: "ambiguous", count: ambiguousCount };
 	return { kind: "waiting" };
 }
 
@@ -514,7 +479,7 @@ function fail(
 		...markFailed(descriptor),
 		...(deathReason ? { failureReason: deathReason } : {}),
 	};
-	writeMerged(registry, failed);
+	persistDaemonWrite(registry, failed);
 	if (!drive.settled && descriptor.spawnedBy) {
 		drive.settled = true;
 		const note = buildFailedNotice(failed, reason);
@@ -614,14 +579,25 @@ export function drainTmuxInbox(
 			}
 			beforeSelfInjection?.(decision.paneId, decision.text, ports.now());
 			const outcome = ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
-			if (outcome === "held") {
+			// `held` = nothing typed (a human is at the composer). `failed` = the send
+			// threw BEFORE submission, so nothing reliably landed either. Both must
+			// leave the inbox copy UNREAD, so a retry — or a daemon restart — can still
+			// deliver it (plan 071 D7). Only `unverified` consumes, because there the
+			// payload WAS typed and replaying could duplicate an accepted turn.
+			if (outcome === "held" || outcome === "failed") {
 				buffer.enqueue(m.messageId, msg);
 				continue;
 			}
 			consumed.push({ messageId: m.messageId, from: m.from, outcome });
 		} else if (decision.kind === "buffer") {
+			// Buffer WITHOUT consuming (plan 071 D7). Reporting this as consumed made
+			// the caller mark the message read, which deleted the only durable copy
+			// of a message that existed nowhere but in an in-memory FIFO — so a
+			// daemon restart silently destroyed it while the sender held a `queued`
+			// receipt. The inbox file stays unread until the text is actually in a
+			// pane; a restart therefore re-derives the work, exactly as the buffer's
+			// contract always claimed.
 			buffer.enqueue(m.messageId, msg);
-			consumed.push({ messageId: m.messageId, from: m.from }); // final receipt emits on flush
 		}
 		// `observe` (pi target) — never reached here; the bin doesn't drain pi inboxes.
 	}

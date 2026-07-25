@@ -391,6 +391,246 @@ describe("dispatch whoami / list", () => {
 		expect(human.stdout).toContain("xhigh");
 	});
 
+	// ── plan 071 D3 addendum: sending is activity on the SENDER's axis ───────
+	it("send refreshes the SENDER's lastEventAt — a send-only orchestrator is not quiet", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1", lastEventAt: stale }),
+				desc({ id: "w3", lifecycle: "bound", state: "idle" }),
+			],
+			alive: [100],
+		});
+
+		expect(d.registry.read("a1")?.lastEventAt).toBe(stale);
+		dispatch({ verb: "send", to: "w3", text: "do the thing", json: true }, d);
+
+		expect(d.registry.read("a1")?.lastEventAt).toBe(new Date(T).toISOString());
+	});
+
+	// CONTROL: a REFUSED send stamps nothing — otherwise the stamp would be a
+	// liveness lie of its own, keeping a peer "active" by failing to message.
+	it("control — a send that never delivers does not refresh the sender's activity", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		const d = deps({ self: "a1", descs: [desc({ id: "a1", lastEventAt: stale })], alive: [100] });
+
+		const r = dispatch({ verb: "send", to: "does-not-exist", text: "hi", json: true }, d);
+
+		expect(r.exitCode).not.toBe(0);
+		expect(d.registry.read("a1")?.lastEventAt).toBe(stale);
+	});
+
+	it("a broadcast refreshes the sender's activity too", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1", lastEventAt: stale }),
+				desc({ id: "w3", lifecycle: "bound" }),
+				desc({ id: "z9", lifecycle: "bound" }),
+			],
+			alive: [100],
+		});
+
+		dispatch(
+			{
+				verb: "send",
+				to: "w3",
+				targets: ["w3", "z9"],
+				broadcast: true,
+				text: "same message",
+				json: true,
+			},
+			d,
+		);
+
+		expect(d.registry.read("a1")?.lastEventAt).toBe(new Date(T).toISOString());
+	});
+
+	// s070/#47 lost-update family, applied to this CLI-side write: a closing seat
+	// must never have a pre-close snapshot replayed over its close fields.
+	it("does NOT stamp sender activity over a seat that is closing or terminal", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		for (const closing of [
+			{ closeIntent: { actor: "pij-boss", kind: "once-close" as const, requestedAt: stale } },
+			{
+				terminal: {
+					disposition: "requested" as const,
+					observedAt: stale,
+					evidence: "pane-missing" as const,
+				},
+			},
+			{ lifecycle: "failed" as const },
+		]) {
+			const d = deps({
+				self: "a1",
+				descs: [
+					desc({ id: "a1", lastEventAt: stale, ...closing }),
+					desc({ id: "w3", lifecycle: "bound" }),
+				],
+				alive: [100],
+			});
+
+			dispatch({ verb: "send", to: "w3", text: "hi", json: true }, d);
+
+			expect(d.registry.read("a1")?.lastEventAt).toBe(stale);
+		}
+	});
+
+	// ── plan 071 D3: honest receipts + DEGRADED surfacing ────────────────────
+	it("send to a WEDGED (long-pending) peer returns blocked, never a cheerful queued", () => {
+		const wedged = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 16 * 60_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), wedged], alive: [100] });
+
+		const r = dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d);
+		const parsed = JSON.parse(r.stdout) as { receipt: string; reason?: string };
+		expect(parsed.receipt).toBe("blocked");
+		expect(parsed.reason).toBe("never-bound");
+
+		const human = dispatch({ verb: "send", to: "w3", text: "hello" }, d);
+		expect(human.stdout).toContain("BLOCKED");
+		expect(human.stdout).toContain("never bound");
+	});
+
+	// CONTROL: byte-identical setup, only startedAt is recent — a genuinely
+	// still-binding peer must still queue, or `pij spawn --task` breaks.
+	it("control — a FRESHLY spawned pending peer still queues, with reason unbound", () => {
+		const fresh = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 5_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), fresh], alive: [100] });
+
+		const parsed = JSON.parse(
+			dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d).stdout,
+		) as { receipt: string; reason?: string };
+		expect(parsed.receipt).toBe("queued");
+		expect(parsed.reason).toBe("unbound");
+	});
+
+	it("send to a FAILED peer is blocked too", () => {
+		const failed = desc({ id: "w3", lifecycle: "failed", failureReason: "bind-timeout" });
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), failed], alive: [100] });
+
+		const parsed = JSON.parse(
+			dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d).stdout,
+		) as { receipt: string };
+		expect(parsed.receipt).toBe("blocked");
+	});
+
+	it("every queued receipt names WHY — busy is no longer indistinguishable from unbound", () => {
+		const busy = desc({ id: "w3", lifecycle: "bound", state: "working" });
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), busy], alive: [100] });
+
+		const parsed = JSON.parse(
+			dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d).stdout,
+		) as { receipt: string; reason?: string };
+		expect(parsed.receipt).toBe("queued");
+		expect(parsed.reason).toBe("busy");
+	});
+
+	it("state reports a wedged seat as DEGRADED with an actionable reason", () => {
+		const wedged = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 16 * 60_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [wedged], alive: [100] });
+
+		const parsed = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout) as {
+			degraded: boolean;
+			bindHealth: string;
+			degradedReason: string | null;
+		};
+		expect(parsed.degraded).toBe(true);
+		expect(parsed.bindHealth).toBe("bind-limbo");
+		expect(parsed.degradedReason).toContain("never bound");
+
+		const human = dispatch({ verb: "state", id: "w3" }, d);
+		expect(human.stdout).toContain("DEGRADED");
+	});
+
+	// CONTROL: same verb, healthy seat — no DEGRADED anywhere.
+	it("control — a bound seat's state carries no DEGRADED marker", () => {
+		const d = deps({ self: "a1", descs: [desc({ id: "w3", lifecycle: "bound" })], alive: [100] });
+
+		const parsed = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout) as {
+			degraded: boolean;
+			degradedReason: string | null;
+		};
+		expect(parsed.degraded).toBe(false);
+		expect(parsed.degradedReason).toBeNull();
+		expect(dispatch({ verb: "state", id: "w3" }, d).stdout).not.toContain("DEGRADED");
+	});
+
+	it("list shows DEGRADED in the activity column for a wedged seat", () => {
+		const wedged = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 16 * 60_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [wedged], alive: [100] });
+
+		expect(dispatch({ verb: "list", here: false, prime: false }, d).stdout).toContain("DEGRADED");
+		const rows = JSON.parse(
+			dispatch({ verb: "list", here: false, prime: false, json: true }, d).stdout,
+		) as Array<{ id: string; degraded: boolean }>;
+		expect(rows.find((row) => row.id === "w3")?.degraded).toBe(true);
+	});
+
+	it("list --archived reads the archive index, never the descriptor files (plan 071 D1)", () => {
+		const d = deps({ descs: [desc({ id: "a1" })] });
+		let listCalls = 0;
+		const registryList = d.registry.list.bind(d.registry);
+		d.registry.list = () => {
+			listCalls += 1;
+			return registryList();
+		};
+		(d.registry as { listArchived?: () => unknown }).listArchived = () => [
+			{
+				id: "pij-long-gone",
+				archivedAt: "2026-07-25T12:00:00.000Z",
+				lifecycle: "failed",
+				failureReason: "bind-timeout",
+				folder: "/repo",
+			},
+		];
+
+		const human = dispatch({ verb: "list", here: false, prime: false, archived: true }, d);
+		expect(human.stdout).toContain("pij-long-gone");
+		expect(human.stdout).toContain("bind-timeout");
+		expect(human.stdout).toContain("1 archived session(s)");
+		expect(listCalls).toBe(0); // the hot tier is never scanned for an archive listing
+
+		const json = dispatch(
+			{ verb: "list", here: false, prime: false, archived: true, json: true },
+			d,
+		);
+		expect(JSON.parse(json.stdout)).toMatchObject([{ id: "pij-long-gone" }]);
+	});
+
+	it("list --archived says so plainly when nothing is archived", () => {
+		const d = deps({ descs: [desc({ id: "a1" })] });
+		const r = dispatch({ verb: "list", here: false, prime: false, archived: true }, d);
+		expect(r.stdout).toBe("no archived pij sessions");
+	});
+
+	// CONTROL: the same deps WITHOUT --archived still render the live fleet, so the
+	// branch above is proving the flag and not a broken list verb.
+	it("control — without --archived the live tier is listed as before", () => {
+		const d = deps({ descs: [desc({ id: "a1" })] });
+		(d.registry as { listArchived?: () => unknown }).listArchived = () => [];
+		const r = dispatch({ verb: "list", here: false, prime: false }, d);
+		expect(r.stdout).toContain("a1");
+		expect(r.stdout).toContain("1 session(s)");
+	});
+
 	it("list --prime composes with --here and ordinary output marks prime rows", () => {
 		const d = deps({
 			self: "a1",
@@ -591,7 +831,7 @@ describe("dispatch send", () => {
 			{ verb: "send", to: "w3", text: "x", wait: false, json: false },
 			compacting,
 		);
-		expect(human.stdout).toContain("queued: target compacting");
+		expect(human.stdout).toContain("queued (compacting)");
 	});
 
 	it("an EXPIRED compact mark does not name the hold (drain has resumed)", () => {
@@ -613,7 +853,7 @@ describe("dispatch send", () => {
 			staleMark,
 		);
 		expect(human.stdout).not.toContain("target compacting");
-		expect(human.stdout).toContain("queued: awaiting daemon delivery confirmation");
+		expect(human.stdout).toContain("queued (tick-pending): awaiting daemon delivery confirmation");
 	});
 
 	it("codes: E-SELF, E-NOID, E-CMD, E-DEAD; stale warns + sends", () => {
@@ -690,7 +930,7 @@ describe("dispatch send", () => {
 			{ verb: "send", to: "pull-peer", text: "durable", wait: false, json: false },
 			d,
 		);
-		expect(human.stdout).toContain("awaiting inbox check");
+		expect(human.stdout).toContain("awaiting the peer's own inbox check");
 	});
 
 	it("still rejects dead push peers and dissolved pull peers", () => {
@@ -763,6 +1003,8 @@ describe("dispatch send", () => {
 					messageId: "fake-2",
 					kind: "text",
 					receipt: "queued",
+					// plan 071 D3 — every non-delivered receipt now names its cause.
+					reason: "tick-pending",
 					liveness: "active",
 					daemonLastTickAt: new Date(T - 1000).toISOString(),
 					daemonTickAgeMs: 1000,
@@ -4528,9 +4770,14 @@ describe("state clear (State-Model v2)", () => {
 
 		it("denorm failure is honest while the clear event and assignment history are preserved", () => {
 			const { d, assignmentId } = clearable();
-			d.registry.write = () => {
+			// Stubs BOTH write paths: the denorm uses `writeExact` (it must be able to
+			// clear a stale semanticState, which the merging write deliberately cannot).
+			// Injecting on only one would silently stop exercising the failure path.
+			const boom = () => {
 				throw new Error("injected descriptor write failure");
 			};
+			d.registry.write = boom;
+			d.registry.writeExact = boom;
 			const r = run(["state", "clear", "pij-node"], d);
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS cleared");
@@ -5460,7 +5707,7 @@ describe("state clear (State-Model v2)", () => {
 			}
 		});
 
-		it("real bin refuses a pass when the effective context tier is unobservable", {
+		it("real bin PASSES with an unverified tier when the effective context tier is unobservable", {
 			timeout: 15_000,
 		}, async () => {
 			const root = mkdtempSync(join(tmpdir(), "pij-canary-pass-bin-"));
@@ -5554,15 +5801,18 @@ describe("state clear (State-Model v2)", () => {
 					},
 				);
 				expect(acked.status, acked.stderr).toBe(0);
+				// plan 071 D6 — the fake tmux footer publishes NO context marker, which
+				// is what every real claude pane looks like. That used to be a hard
+				// E-CANARY-CONTEXT refusal; it is now a pass that says out loud the
+				// tier was never verified. (The observed-contradiction refusal is
+				// covered by the control in core/canary.test.ts.)
 				const completed = await canary;
-				expect(completed.status).toBe(3);
-				expect(completed.stderr).toBe(
-					"E-CANARY-CONTEXT: target 'pij-worker' cannot observe effective context tier for pinned model 'github-copilot/gpt-5.6-sol'; catalog expects 1.1M\n",
-				);
+				expect(completed.status, completed.stderr).toBe(0);
+				expect(completed.stdout).toContain("canary PASS");
+				expect(completed.stdout).toContain("contextTier=unverified");
 				const record = store.read(pending.id);
 				if (!record) throw new Error("missing acknowledged dispatch");
-				expect(record.state).toBe("acked");
-				expect(record.canary).toBeUndefined();
+				expect(record.canary?.contextWindow?.check).toBe("unverified");
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}
