@@ -46,11 +46,17 @@ import {
 	drainTmuxInbox,
 	driveSession,
 	flushedText,
+	INIT_HELD_TIMEOUT_MS,
 	observeActivity,
 	refreshRenderedComposerHold,
 	writeMerged,
 } from "./core/daemon/loop.js";
-import { PaneSignalMonitor, type PaneSignalSnapshot } from "./core/daemon/pane-signals.js";
+import {
+	ComposerHoldTracker,
+	PaneSignalMonitor,
+	type PaneSignalSnapshot,
+	renderedComposerPayload,
+} from "./core/daemon/pane-signals.js";
 import {
 	COMPACT_GRACE_MS,
 	COMPACT_MAX_MS,
@@ -101,8 +107,12 @@ export class Daemon {
 	private readonly drives = new Map<string, DriveState>();
 	private readonly buffer = new SendBuffer();
 	private readonly paneSignals = new PaneSignalMonitor();
+	/** Content-state delivery gate (see `ComposerHoldTracker`). Authoritative for
+	 * every known layout; the caret tracker above remains the unknown-layout path. */
+	private readonly composerHolds = new ComposerHoldTracker();
 	private readonly markSelfInjection = (paneId: string, payload: string, nowMs: number): void => {
 		this.paneSignals.markSelfInjection(paneId, payload, nowMs);
+		this.composerHolds.markSelfInjection(paneId, payload, nowMs);
 	};
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
@@ -137,9 +147,12 @@ export class Daemon {
 	/** The first sweep reconciles persisted state after boot; later passes are live. */
 	private deathSweepIsHistorical = true;
 
+	/** Ports with the composer gate WELDED ON — see the constructor. */
+	private readonly ports: DaemonPorts;
+
 	constructor(
 		private readonly pijHome: string,
-		private readonly ports: DaemonPorts,
+		rawPorts: DaemonPorts,
 		private readonly registry: RegistryPort,
 		private readonly channel: DeliveryPort & InboxPort,
 		private readonly log: (line: string) => void = () => {},
@@ -147,6 +160,26 @@ export class Daemon {
 		batonSweep?: BatonSweep,
 		watchdogManager?: WatchdogManager,
 	) {
+		// THE structural gate. Every pane write in the daemon — inbox delivery,
+		// buffered flush, AND driveSession's init/phone-home injections — goes
+		// through `ports.sendText`, so gating HERE makes the content check
+		// unavoidable rather than something each call site has to remember.
+		// A held send types nothing and reports `held`; callers retry next tick.
+		this.ports = {
+			...rawPorts,
+			sendText: (paneId, text, harness, pid) => {
+				if (refreshRenderedComposerHold(paneId, this.ports, this.buffer, this.composerHolds)) {
+					return "held";
+				}
+				const outcome = rawPorts.sendText(paneId, text, harness, pid);
+				// Marked HERE, after the write actually happened. Marking before the
+				// gate left a phantom echo exemption behind every HELD send — an
+				// exemption for output that was never written, which the caret
+				// fallback could then spend on the human's own keystrokes.
+				this.markSelfInjection(paneId, text, this.ports.now());
+				return outcome;
+			},
+		};
 		this.expectations = new FsSpawnExpectationStore(pijHome);
 		this.watchManager =
 			watchManager ??
@@ -319,9 +352,19 @@ export class Daemon {
 					this.ports,
 					this.registry,
 					this.channel,
-					this.markSelfInjection,
+					undefined, // self-injection is marked by the port wrapper, post-send
 				);
-				if (out.kind !== "waiting" && out.kind !== "boot") {
+				if (out.kind === "held-by-pane-input") {
+					// Never silent: say it once when it starts, and the eventual
+					// `failed` outcome below reports the terminal reason.
+					if (out.first) {
+						this.log(
+							`boot ${d.id}: init line HELD — live human input in pane ${d.paneId}; ` +
+								`retrying, will fail in ${Math.round(INIT_HELD_TIMEOUT_MS / 1000)}s if it persists`,
+						);
+					}
+				}
+				if (out.kind !== "waiting" && out.kind !== "boot" && out.kind !== "held-by-pane-input") {
 					const extra =
 						out.kind === "bound"
 							? ` ↔ ${out.harnessSessionId}`
@@ -386,14 +429,26 @@ export class Daemon {
 					// intentionally absent from this condition.
 					if (
 						current.paneId &&
-						!refreshRenderedComposerHold(current.paneId, this.ports, this.buffer) &&
+						!refreshRenderedComposerHold(
+							current.paneId,
+							this.ports,
+							this.buffer,
+							this.composerHolds,
+						) &&
 						this.buffer.pending(current.id) > 0
 					) {
 						const flushed = this.buffer.flush(current.id, this.ports.now(), current.paneId);
 						for (let index = 0; index < flushed.length; index++) {
 							const message = flushed[index];
 							if (!message) continue;
-							if (refreshRenderedComposerHold(current.paneId, this.ports, this.buffer)) {
+							if (
+								refreshRenderedComposerHold(
+									current.paneId,
+									this.ports,
+									this.buffer,
+									this.composerHolds,
+								)
+							) {
 								for (const remaining of flushed.slice(index)) {
 									this.buffer.enqueue(remaining.messageId, remaining.message);
 								}
@@ -401,13 +456,20 @@ export class Daemon {
 							}
 							this.watchdogManager.beforeTmuxInject(current.id, message.message, this.ports.now());
 							const injectedText = flushedText(message.message);
-							this.markSelfInjection(current.paneId, injectedText, this.ports.now());
 							const outcome = this.ports.sendText(
 								current.paneId,
 								injectedText,
 								current.harness,
 								current.pid,
 							);
+							if (outcome === "held") {
+								// The human started typing between the gate and the send.
+								// Put this message and the rest of the batch back.
+								for (const remaining of flushed.slice(index)) {
+									this.buffer.enqueue(remaining.messageId, remaining.message);
+								}
+								break;
+							}
 							const marked = this.channel.markRead(current.id, message.messageId, {
 								messageId: message.messageId,
 								readAt: new Date(this.ports.now()).toISOString(),
@@ -706,7 +768,9 @@ export class Daemon {
 		let consumedCount = 0;
 		let compactFired = false;
 		for (const message of messages) {
-			if (!refreshRenderedComposerHold(target.paneId, this.ports, this.buffer)) {
+			if (
+				!refreshRenderedComposerHold(target.paneId, this.ports, this.buffer, this.composerHolds)
+			) {
 				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			}
 			const consumed = drainTmuxInbox(
@@ -714,7 +778,8 @@ export class Daemon {
 				[message],
 				this.ports,
 				this.buffer,
-				this.markSelfInjection,
+				undefined, // self-injection is marked by the port wrapper, post-send
+				this.composerHolds,
 			);
 			// A remote `/compact` just went into the pane: mark the compact window
 			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
@@ -773,29 +838,43 @@ export class Daemon {
 			const safePane = pane.paneId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
 			this.ports.attachPaneTap(pane.paneId, join(this.pijHome, "pane-signals", `${safePane}.raw`));
 		}
+		// One capture per pane per tick, shared by the caret tracker and the
+		// content gate so both reason about the same rendered frame.
+		const captured = new Map<string, string>();
 		for (const paneId of this.paneSignals.paneIds()) {
 			const bytes = this.ports.drainPaneTap(paneId);
 			if (bytes.byteLength > 0) this.paneSignals.ingest(paneId, bytes, this.ports.now());
-			this.paneSignals.observeRenderedComposer(
-				paneId,
-				this.ports.capturePane(paneId),
-				this.ports.now(),
-			);
+			const pane = this.ports.capturePane(paneId);
+			captured.set(paneId, pane);
+			this.paneSignals.observeRenderedComposer(paneId, pane, this.ports.now());
 		}
 		this.paneSignals.tick(this.ports.now());
 		for (const paneId of this.paneSignals.paneIds()) {
 			const signal = this.paneSignals.snapshot(paneId, this.ports.now());
-			if (signal) {
-				this.buffer.setPaneSignal(paneId, {
-					busy: signal.busy,
-					userTyping: signal.userTyping,
-					lastActivityAt: signal.lastKeyAt,
-				});
-			}
+			if (!signal) continue;
+			// Keep the content gate current between sends; when it recognises the
+			// layout it OVERRIDES the caret tracker, which is the unknown-layout path.
+			const verdict = this.composerHolds.observe(
+				paneId,
+				renderedComposerPayload(captured.get(paneId) ?? ""),
+				this.ports.now(),
+			);
+			const userTyping = verdict.deferred ? signal.userTyping : verdict.hold;
+			const lastActivityAt = verdict.deferred
+				? signal.lastKeyAt
+				: verdict.hold
+					? (verdict.lastChangeAt ?? this.ports.now())
+					: undefined;
+			this.buffer.setPaneSignal(paneId, {
+				busy: signal.busy,
+				userTyping,
+				...(lastActivityAt === undefined ? {} : { lastActivityAt }),
+			});
 		}
 		for (const paneId of diff.retired) {
 			this.ports.detachPaneTap(paneId);
 			this.buffer.forgetPane(paneId);
+			this.composerHolds.forget(paneId);
 		}
 	}
 

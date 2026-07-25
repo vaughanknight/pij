@@ -1,0 +1,61 @@
+  Current   Sessions   Issues   Pull requests   Gists 
+
+ MD Read harness-engineering-sdd-training-2026-07-17.md 28 lines read                                                                                                            ┃
+ MD Read 20260719T222454.png.md 48 lines read                                                                                                                                    ┃
+                                                                                                                                                                                 ┃
+ $ Shell Verify FY27 feedback capture files 10 lines…                                                                                                                            ┃
+   set -e base=/Users/jordanknight/repos/jordo-work-iq/scratch/Jordo-IQ for path in \ "$base/FY27/index.md" \ "$base/FY27/MYOB/index.md" \ "$base/FY27/MYOB/harness-engineering… ┃
+                                                                                                                                                                                 ┃
+ ● Captured in the local FY27 MYOB journal at  FY27/MYOB/harness-engineering-sdd-training-2026-07-17.md .                                                                        ┃
+                                                                                                                                                                                 ┃
+   The screenshot, Gerard Ho’s verbatim feedback, structured sidecar, and FY27 indexes were added. Nothing was copied to OneDrive.                                               ┃
+                                                                                                                                                                                 ┃
+ ❯ for the journal, persetnted to large cohort of engineers at fonterra, thurs  2 july on harness engeineering (1 hour) and was very warmly received                       10:00 ┃
+                                                                                                                                                                                 ┃
+ ● I’ll add this as a July 2 FY27 Fonterra delivery, with the one-hour format, engineering audience, topic, and reception captured without overstating attendance.               ┃
+                                                                                                                                                                                 ┃
+ MD Read index.md 15 lines read                                                                                                                                                  ┃
+                                                                                                                                                                                 ┃
+ / Search "FY27/Fonterra/**/*" in scratch/Jordo-IQ No matches found                                                                                                              ┃
+                                                                                                                                                                                 ┃
+ $ Shell Check FY27 journal status 2 lines…                                                                                                                                      ┃
+   git -C /Users/jordanknight/repos/jordo-work-iq/scratch/Jordo-IQ status --short -- FY27                                                                                        ┃
+                                                                                                                                                                                 ┃
+ ● Edit  Edit scratch/Jordo-IQ/FY27/index.md  Create scratch/Jordo-IQ/FY27/Fonterra/index.md  Create scratch/Jordo-IQ/FY27/Fonterra/harness-engineering-presentation-2026-07-02… ┃
+                                                                                                                                                                                 ┃
+ MD Read harness-engineering-presentation-2026-07-02.md 20 lines read                                                                                                            ┃
+ MD Read index.md 17 lines read                                                                                                                                                  ┃
+                                                                                                                                                                                 ┃
+ $ Shell Verify Fonterra journal entry 3 lines…                                                                                                                                  ┃
+   base=/Users/jordanknight/repos/jordo-work-iq/scratch/Jordo-IQ && test -f "$base/FY27/Fonterra/index.md" && test -f "$base/FY27/Fonterra/harness-engineering-presentation-202… ┃
+                                                                                                                                                                                 ┃
+ ● Added the 2 July 2026 Fonterra Harness Engineering presentation to the FY27 journal, including the one-hour duration, large engineering cohort, and warm reception.           ┃
+                                                                                                                                                                                 ┃
+ ❯ upload this and attach to it [image: 20260721T000116.png]                                                                                                               10:01 ┃
+                                                                                                                                                                                 ┃
+   [Image: 20260721T000116.png [image/png] 1820x1346]                                                                                                                            ┃
+                                                                                                                                                                                 ┃
+ ● I’ll attach the email screenshot to the Fonterra entry and promote its concrete impact signals: remote contribution to the Auckland hack, broader reach, ongoing recording    ┃
+   distribution, and influence on Fonterra’s agentic-engineering thinking.                                                                                                       ┃
+                                                                                                                                                                                 ┃
+ $ Shell Attach Fonterra feedback screenshot 1 line…                                                                                                                             ┃
+   mkdir -p /Users/jordanknight/repos/jordo-work-iq/scratch/Jordo-IQ/FY27/Fonterra/Feedback/Andrew-Coates && cp -p /Users/jordanknight/repos/jordo-work-iq/scratch/paste/202607… ┃
+                                                                                                                                                                                 ┃
+ ❯ sync to onedrive                                                                                                                                                        10:01 ┃
+                                                                                                                                                                                 ┃
+ ● I’ll finish the evidence sidecar and journal links, then copy only the FY27 journal files changed in this session to the matching OneDrive paths and verify each readable     ┃
+   destination.                                                                                                                                                                  ┃
+                                                                                                                                                                                 ┃
+ ● Edit  Edit scratch/Jordo-IQ/FY27/index.md  Edit scratch/Jordo-IQ/FY27/Fonterra/index.md  Edit scratch/Jordo-IQ/FY27/Fonterra/harness-engineering-presentation-2026-07-02.md … ┃
+                                                                                                                                                                                 ┃
+ $ Shell Sync FY27 journal files to OneDrive 53 lines…                                                                                                                           ┃
+   src_root=/Users/jordanknight/repos/jordo-work-iq/scratch/Jordo-IQ dst_root=/Users/jordanknight/Library/CloudStorage/OneDrive-Microsoft/Jordo-IQ failed=0 for rel in \ index.… ┃
+                                                                                                                                                                                 ┃
+ ● Attached Andrew Coates’s email to the Fonterra journal entry and synced all FY27 MYOB/Fonterra additions to OneDrive under  Jordo-IQ/FY27/ .                                  ┃
+                                                                                                                                                                                 ┃
+ ~/repos/jordo-work-iq [⎇ main*%]                                                                                                                           Session: 133 AIC used
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯                                                                                                                                                  
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ← sidebar · / commands · ? help · → next tab                                                                                                          GPT-5.6 Sol · 1.1M context
+5% jordo-work-iq ⎇ main • gpt-5.6-sol · xhigh · 1.1M context • xhigh • 54k/1.1M • 133 AIU • 25h37m 

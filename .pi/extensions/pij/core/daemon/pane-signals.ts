@@ -104,11 +104,30 @@ function copilotComposerRegion(lines: readonly string[]): ComposerRegionMatch | 
 	};
 }
 
-/** Locate the live composer in a rendered `capture-pane` snapshot. Claude and
- * wide Copilot layouts place it between the final two horizontal rules; narrow
- * Copilot layouts leave a trailing prompt plus status footer. OMP renders input
- * inside its final `╰─ … ─╯` row. Unknown layouts retain the submit-verifier's
- * historical bottom-four-lines fallback but are not authoritative for holds. */
+/** Box-drawing junctions/corners/verticals. A composer rule is a PLAIN run of
+ * `─`; a markdown table or dialog border carries these. Real captures render
+ * `┌───────────┬──────────┐` inside assistant output, which `/─{8,}/` alone
+ * matches — treating one as a composer rule slides the region onto table data. */
+const BOX_DRAWING = /[┌┐└┘├┤┬┴┼╭╮╰╯╠╣╦╩╬│┃║╔╗╚╝]/u;
+
+function isComposerRule(line: string): boolean {
+	return /─{8,}/.test(line) && !BOX_DRAWING.test(line);
+}
+
+/** The composer's own prompt marker. Verified present on every live claude and
+ * copilot capture, empty composers included (they render a bare `❯`). */
+const PROMPT_MARKER = /^\s*❯/u;
+
+/** Locate the live composer in a rendered `capture-pane` snapshot. OMP renders
+ * input inside its final `╰─ … ─╯` row. Claude and wide Copilot layouts place it
+ * between a pair of horizontal rules — scanned bottom-up and accepted only when
+ * the bracketed text is POSITIVELY a composer, never merely "the last two rules"
+ * (a rule drawn below the composer slid that window onto the status line, which
+ * both false-held on non-empty status and false-RELEASED mid-keystroke on blank).
+ * Narrow Copilot layouts leave a trailing prompt plus status footer. An
+ * unrecognised layout keeps the submit-verifier's historical bottom-four-lines
+ * text but reports `recognized: false`, so holds fall back to the caret tracker:
+ * measuring the WRONG region is far worse than measuring nothing. */
 function matchComposerRegion(pane: string): ComposerRegionMatch {
 	const lines = pane.split("\n");
 	for (let index = lines.length - 1; index >= 0; index--) {
@@ -125,17 +144,35 @@ function matchComposerRegion(pane: string): ComposerRegionMatch {
 	}
 	const rules: number[] = [];
 	for (let index = 0; index < lines.length; index++) {
-		if (/─{8,}/.test(lines[index] ?? "")) rules.push(index);
+		if (isComposerRule(lines[index] ?? "")) rules.push(index);
 	}
+	const bracket = (lower: number, upper: number): ComposerRegionMatch => ({
+		region: lines.slice(lower + 1, upper).join("\n"),
+		recognized: true,
+		startRow: lower + 1,
+		firstColumn: 0,
+	});
+	const interiorOf = (pairIndex: number): string[] => {
+		const lower = rules[pairIndex - 1];
+		const upper = rules[pairIndex];
+		if (lower === undefined || upper === undefined) return [];
+		return lines.slice(lower + 1, upper);
+	};
+	// Prefer the lowest pair that actually brackets a prompt marker.
+	for (let pair = rules.length - 1; pair >= 1; pair--) {
+		if (PROMPT_MARKER.test(interiorOf(pair)[0] ?? "")) {
+			return bracket(rules[pair - 1] as number, rules[pair] as number);
+		}
+	}
+	// No marker anywhere: only the bottom-most pair may stand in, and only when it
+	// brackets a visibly blank composer. Any other text down there is not ours.
 	const lower = rules.at(-2);
 	const upper = rules.at(-1);
 	if (lower !== undefined && upper !== undefined) {
-		return {
-			region: lines.slice(lower + 1, upper).join("\n"),
-			recognized: true,
-			startRow: lower + 1,
-			firstColumn: 0,
-		};
+		const interior = lines.slice(lower + 1, upper);
+		if (interior.length > 0 && interior.every((line) => line.trim() === "")) {
+			return bracket(lower, upper);
+		}
 	}
 	const copilot = copilotComposerRegion(lines);
 	if (copilot !== undefined) return copilot;
@@ -203,6 +240,16 @@ export function renderedComposerLength(pane: string): number | undefined {
 	return payload?.replace(/\s/gu, "").length;
 }
 
+/** THE definition of an empty composer — whitespace-insensitive, used by every
+ * release path. `capture-pane -J` PRESERVES trailing spaces, so a visibly blank
+ * composer is almost never the empty string: measured on live panes, copilot
+ * rendered 145 spaces and omp/pi 74–144. The previous raw `=== ""` and
+ * `.length === 0` tests therefore never fired on those harnesses, which is why
+ * "press Enter → sends" had never worked outside claude. */
+export function isBlankComposer(content: string | undefined): boolean {
+	return content !== undefined && content.replace(/\s/gu, "").length === 0;
+}
+
 /** Cursor reports emitted by TUIs while redrawing. The final report in a burst
  * is the live composer caret; retaining every report also lets tests prove the
  * ordered key progression in recorded bursts. */
@@ -220,7 +267,11 @@ export function parseCaretPositions(bytes: Uint8Array): CaretPosition[] {
 
 const MAX_CONTROL_STRING_BYTES = 4_096;
 
-function hasPrintableInput(bytes: Uint8Array): boolean {
+/** Printable characters in a raw frame, with every escape/control string
+ * skipped. Used both to detect human input and to prove that a frame contains
+ * NOTHING beyond pij's own echo. */
+function printableInput(bytes: Uint8Array): string {
+	const out: number[] = [];
 	let escapePending = false;
 	let csi = false;
 	let controlString = false;
@@ -267,9 +318,13 @@ function hasPrintableInput(bytes: Uint8Array): boolean {
 			controlStringBytes = 0;
 			continue;
 		}
-		if ((byte >= 32 && byte <= 126) || byte >= 160) return true;
+		if ((byte >= 32 && byte <= 126) || byte >= 160) out.push(byte);
 	}
-	return false;
+	return Buffer.from(Uint8Array.from(out)).toString("utf8");
+}
+
+function hasPrintableInput(bytes: Uint8Array): boolean {
+	return printableInput(bytes).length > 0;
 }
 
 export class BusyDensityTracker {
@@ -305,6 +360,12 @@ export class BusyDensityTracker {
 	}
 }
 
+/** Whitespace-free view: terminals re-wrap and pad, so only the character
+ * sequence is stable enough to match an echo against. */
+function dense(text: string): string {
+	return text.replace(/\s/gu, "");
+}
+
 export class CaretTypingTracker {
 	private base: CaretPosition | undefined;
 	private composerLength = 0;
@@ -315,6 +376,9 @@ export class CaretTypingTracker {
 	private selfInjection:
 		| {
 				readonly payload: string;
+				/** Whitespace-free payload and how much of it the tap has echoed back. */
+				readonly expected: string;
+				echoed: number;
 				readonly baseline: string | undefined;
 				readonly expiresAt: number;
 		  }
@@ -324,13 +388,18 @@ export class CaretTypingTracker {
 		if (!this.isTyping()) this.base = position;
 	}
 
+	/** Record that pij is about to type into this pane, so its own echo is not
+	 * mistaken for a human keystroke. It EXEMPTS; it must never CLEAR — dropping
+	 * `lastKeyAt` here destroyed an ACTIVE human hold, so one step-on released the
+	 * guard and the rest of the queue landed on the same half-typed line. */
 	markSelfInjection(payload: string, nowMs: number): void {
 		this.selfInjection = {
 			payload,
+			expected: dense(payload),
+			echoed: 0,
 			baseline: this.renderedPayload,
 			expiresAt: nowMs + SELF_INJECTION_WINDOW_MS,
 		};
-		this.lastKeyAt = undefined;
 	}
 
 	private pendingSelfInjection(
@@ -343,21 +412,41 @@ export class CaretTypingTracker {
 	}
 
 	ingest(bytes: Uint8Array, nowMs: number, allowAcquire: boolean): TypingEvent[] {
+		// Certify a frame as OUR echo only by cumulative PROGRESS through the
+		// payload, and only once the whole payload is accounted for.
+		//
+		// Containment fails in both directions: `frame.includes(payload)` excused
+		// echo-plus-human-keystroke, and `payload.includes(frame)` excused any
+		// human character that happened to appear somewhere in the payload. Even a
+		// cursor alone is not enough — a lone keystroke equal to the NEXT expected
+		// character is byte-identical to the echo. So a partial match is treated as
+		// AMBIGUOUS and falls through to typing detection (it holds); only a frame
+		// sequence that completes the payload is certified as ours.
 		const pendingInjection = this.pendingSelfInjection(nowMs);
-		if (
-			pendingInjection !== undefined &&
-			Buffer.from(bytes).toString("utf8").includes(pendingInjection.payload)
-		) {
-			this.selfInjection = undefined;
-			return [];
+		if (pendingInjection !== undefined) {
+			const frame = dense(printableInput(bytes));
+			if (frame.length > 0) {
+				if (pendingInjection.expected.startsWith(frame, pendingInjection.echoed)) {
+					pendingInjection.echoed += frame.length;
+					if (pendingInjection.echoed >= pendingInjection.expected.length) {
+						this.selfInjection = undefined;
+						return [];
+					}
+					// Partial echo: ambiguous, NOT certified. Fall through.
+				} else {
+					// Diverged from what we typed ⇒ human input. Spend the exemption
+					// so it cannot excuse anything later.
+					this.selfInjection = undefined;
+				}
+			}
 		}
-		const printableInput = hasPrintableInput(bytes);
+		const hasPrintable = hasPrintableInput(bytes);
 		const events: TypingEvent[] = [];
 		const positions = parseCaretPositions(bytes);
 		if (this.renderedPayload !== undefined) {
 			const scopedAmbiguousInput =
 				allowAcquire &&
-				printableInput &&
+				hasPrintable &&
 				!this.renderedCaretPrecise &&
 				this.lastKeyAt === undefined &&
 				this.composerRows !== undefined &&
@@ -389,7 +478,7 @@ export class CaretTypingTracker {
 			}
 			if (
 				!allowAcquire ||
-				!printableInput ||
+				!hasPrintable ||
 				nextLength === this.composerLength ||
 				nextLength === 0
 			) {
@@ -433,8 +522,9 @@ export class CaretTypingTracker {
 		if (changed && pendingInjection !== undefined) this.selfInjection = undefined;
 		this.renderedPayload = payload;
 		this.composerLength = payload.replace(/\s/gu, "").length;
-		if (payload.length === 0) {
+		if (isBlankComposer(payload)) {
 			this.lastKeyAt = undefined;
+			this.selfInjection = undefined;
 			return wasTyping ? { kind: "enter", composerLength: 0 } : undefined;
 		}
 		if (suppressChange) return undefined;
@@ -462,6 +552,145 @@ export class CaretTypingTracker {
 
 	lastKeystrokeAt(): number | undefined {
 		return this.lastKeyAt;
+	}
+}
+
+export type ComposerHoldReason =
+	| "unknown-layout"
+	| "blank"
+	| "baseline"
+	| "typing"
+	| "idle-expired";
+
+export interface ComposerHoldVerdict {
+	readonly hold: boolean;
+	/** Layout unrecognised — the caller must fall back to the caret tracker
+	 * rather than act on a guess. `hold` is meaningless when this is true. */
+	readonly deferred: boolean;
+	readonly reason: ComposerHoldReason;
+	/** When the held content last changed — mirrored into the SendBuffer so the
+	 * 60s window is measured from the real keystroke, not from each poll. */
+	readonly lastChangeAt?: number;
+}
+
+interface ComposerHoldState {
+	content: string | undefined;
+	lastChangeAt: number | undefined;
+	injection:
+		| {
+				readonly payload: string;
+				readonly baseline: string | undefined;
+				readonly expiresAt: number;
+		  }
+		| undefined;
+}
+
+function collapse(text: string): string {
+	return text.replace(/\s+/gu, " ").trim();
+}
+
+/** Delivery gate on composer CONTENT (a state), not on render diffs (an event).
+ *
+ * The previous guard inferred typing from a difference between two renders but
+ * gated delivery on a flag refreshed once per 600ms daemon tick. Acquisition was
+ * therefore tick-quantised while release was instant and re-checked immediately
+ * before each send — a one-way valve toward delivery. The pre-send capture SAW
+ * the human's half-typed line and discarded it, because "static non-empty text
+ * never acquires a hold". That was the step-on.
+ *
+ * Here the same capture may ACQUIRE, so there is no blind window. This maps
+ * directly onto the stated contract: "Enter has not been pressed" ≡ the composer
+ * is non-blank; "recent typing" ≡ that content is fresh. */
+export class ComposerHoldTracker {
+	private readonly panes = new Map<string, ComposerHoldState>();
+
+	/** Exempt pij's own echo. Like the caret tracker's, this must never clear
+	 * `lastChangeAt`: an active human hold has to survive our own delivery. */
+	markSelfInjection(paneId: string, payload: string, nowMs: number): void {
+		const state = this.state(paneId);
+		state.injection = {
+			payload,
+			baseline: state.content,
+			expiresAt: nowMs + SELF_INJECTION_WINDOW_MS,
+		};
+	}
+
+	observe(paneId: string, content: string | undefined, nowMs: number): ComposerHoldVerdict {
+		const state = this.state(paneId);
+		// Unknown layout: PRESERVE whatever we knew and defer. Clearing here would
+		// drop a live hold the moment a dialog or menu covered the composer.
+		if (content === undefined) return { hold: false, deferred: true, reason: "unknown-layout" };
+
+		if (state.injection !== undefined && nowMs > state.injection.expiresAt) {
+			state.injection = undefined;
+		}
+		if (isBlankComposer(content)) {
+			state.content = content;
+			state.lastChangeAt = undefined;
+			// NOTE: a pending self-injection is deliberately NOT cleared here. The
+			// gate re-observes between marking an injection and its echo appearing,
+			// and the composer is still blank at that moment — clearing would drop
+			// the exemption and make our own echo look like human typing. The
+			// exemption is bounded by SELF_INJECTION_WINDOW_MS instead.
+			return { hold: false, deferred: false, reason: "blank" };
+		}
+		const previous = state.content;
+		if (previous === undefined) {
+			// First sight of this pane with text already in it. It is EITHER a parked
+			// draft OR a human typing through a daemon restart (the daemon is
+			// machine-wide and restarts routinely), and ONE capture cannot tell them
+			// apart. A static-content probation does not help: pausing mid-thought is
+			// ordinary, so a parked-looking draft may be a live one. So treat first
+			// sight as RECENT TYPING and let the existing 60s idle rule expire it —
+			// no new constant, no cross-restart persistence, and the over-hold is
+			// bounded at 60s so s064's forever-block cannot return.
+			state.content = content;
+			state.lastChangeAt = nowMs;
+			return { hold: true, deferred: false, reason: "typing", lastChangeAt: nowMs };
+		}
+		if (content !== previous) {
+			const echo = state.injection;
+			// EXACT normalised echo only. A substring test excused a first capture of
+			// `<echo><human text>`, which released and stepped on the human — the
+			// exemption must not be able to absorb text adjacent to our own.
+			const explained =
+				echo !== undefined &&
+				collapse(echo.payload).length > 0 &&
+				(collapse(content) === collapse(echo.payload) ||
+					collapse(content) === collapse(echo.baseline ?? ""));
+			state.content = content;
+			// One-shot: consuming the exemption anchors this exact content, so the
+			// NEXT change — a human typing after our echo — holds normally.
+			state.injection = undefined;
+			if (!explained) {
+				state.lastChangeAt = nowMs;
+				return { hold: true, deferred: false, reason: "typing", lastChangeAt: nowMs };
+			}
+			// Our own echo: adopt it silently, leaving any human hold untouched.
+		}
+		if (state.lastChangeAt === undefined) {
+			return { hold: false, deferred: false, reason: "baseline" };
+		}
+		if (nowMs - state.lastChangeAt < USER_TYPING_IDLE_MS) {
+			return { hold: true, deferred: false, reason: "typing", lastChangeAt: state.lastChangeAt };
+		}
+		// Timed out with no Enter: send, and stay released until content changes
+		// again — "after that, unless I type again, it chains off".
+		state.lastChangeAt = undefined;
+		return { hold: false, deferred: false, reason: "idle-expired" };
+	}
+
+	forget(paneId: string): void {
+		this.panes.delete(paneId);
+	}
+
+	private state(paneId: string): ComposerHoldState {
+		let state = this.panes.get(paneId);
+		if (state === undefined) {
+			state = { content: undefined, lastChangeAt: undefined, injection: undefined };
+			this.panes.set(paneId, state);
+		}
+		return state;
 	}
 }
 

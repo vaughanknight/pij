@@ -33,7 +33,12 @@ import type {
 	SessionDescriptor,
 	SessionId,
 } from "../types.js";
-import { type PaneListing, renderedComposerPayload } from "./pane-signals.js";
+import {
+	type ComposerHoldTracker,
+	isBlankComposer,
+	type PaneListing,
+	renderedComposerPayload,
+} from "./pane-signals.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -100,6 +105,12 @@ export interface DriveState {
 	trustAnswered?: boolean;
 	/** A terminal notice (bound/failed) was already delivered. */
 	settled?: boolean;
+	/** ms the FIRST boot injection was refused because the pane had live human
+	 * input. Anchors the bounded held-boot timeout so a held seat fails loudly
+	 * instead of sitting pending forever. Cleared the moment a boot line lands. */
+	initHeldSinceMs?: number;
+	/** One-shot: the held-boot condition was already logged for this session. */
+	heldBootLogged?: boolean;
 	/** Set true the first time the pane goes `busy` after init injection —
 	 *  the first-inference gate uses this to know the agent has started
 	 *  processing and the pane may now show a model error (T009/T010). */
@@ -116,6 +127,7 @@ export type DriveOutcome =
 	| { readonly kind: "bound"; readonly harnessSessionId: string }
 	| { readonly kind: "ambiguous"; readonly count: number }
 	| { readonly kind: "resent-phonehome" }
+	| { readonly kind: "held-by-pane-input"; readonly heldForMs: number; readonly first: boolean }
 	| { readonly kind: "failed"; readonly reason: string }
 	| { readonly kind: "waiting" };
 
@@ -311,7 +323,12 @@ export function driveSession(
 			descriptor.spawnedBy,
 		);
 		beforeSelfInjection?.(paneId, init.body, ports.now());
-		ports.sendText(paneId, init.body, harness, descriptor.pid);
+		// A human can be typing in a freshly spawned pane. `held` means nothing was
+		// typed — retry, but on a clock that ends in a legible failure.
+		if (ports.sendText(paneId, init.body, harness, descriptor.pid) === "held") {
+			return heldBoot(descriptor, drive, registry, delivery, ports.now());
+		}
+		drive.initHeldSinceMs = undefined;
 		const at = new Date(ports.now()).toISOString();
 		writeMerged(registry, markInitInjected(descriptor, at));
 		drive.readyAtMs = ports.now();
@@ -428,7 +445,10 @@ export function driveSession(
 	if (decision.kind === "resend-phonehome") {
 		const phonehomeLine = buildInitInjection(descriptor.id).phonehomeLine;
 		beforeSelfInjection?.(paneId, phonehomeLine, ports.now());
-		ports.sendText(paneId, phonehomeLine, harness, descriptor.pid);
+		if (ports.sendText(paneId, phonehomeLine, harness, descriptor.pid) === "held") {
+			return heldBoot(descriptor, drive, registry, delivery, ports.now());
+		}
+		drive.initHeldSinceMs = undefined;
 		drive.resentAtMs = ports.now();
 		return { kind: "resent-phonehome" };
 	}
@@ -436,6 +456,33 @@ export function driveSession(
 		return fail(descriptor, drive, registry, delivery, decision.reason);
 	}
 	return { kind: "waiting" };
+}
+
+/** A boot line was refused by live pane input. Anchor the clock on first refusal
+ * and fail loudly once the bounded window passes — never return to an unanchored
+ * `waiting`, which left the seat pending indefinitely and unlogged. */
+function heldBoot(
+	descriptor: SessionDescriptor,
+	drive: DriveState,
+	registry: RegistryPort,
+	delivery: DeliveryPort,
+	nowMs: number,
+): DriveOutcome {
+	const first = drive.initHeldSinceMs === undefined;
+	if (drive.initHeldSinceMs === undefined) drive.initHeldSinceMs = nowMs;
+	const heldForMs = nowMs - drive.initHeldSinceMs;
+	if (heldForMs >= INIT_HELD_TIMEOUT_MS) {
+		return fail(
+			descriptor,
+			drive,
+			registry,
+			delivery,
+			`boot injection blocked by active pane input for ${Math.round(heldForMs / 1000)}s — ` +
+				"a human was typing in this pane, so pij never wrote the init line",
+			"pane-input-blocked",
+		);
+	}
+	return { kind: "held-by-pane-input", heldForMs, first };
 }
 
 function fail(
@@ -463,21 +510,53 @@ function fail(
  *  via a wrapped port set; kept here as the documented default. */
 export const WATCHDOG_TIMEOUT_MS = 20_000;
 
+/** How long boot traffic may be refused by live pane input before the spawn is
+ * failed OUT LOUD. The composer gate protects a human mid-sentence, but a seat
+ * that can never be booted must say so — silence here would be the same
+ * indefinite-pending deadlock class this guard exists to prevent. */
+export const INIT_HELD_TIMEOUT_MS = 20_000;
+
 export interface DrainedTmuxMessage {
 	readonly messageId: string;
 	readonly from: SessionId;
 	readonly outcome?: SendOutcome;
 }
 
-/** Refresh the authoritative rendered-composer signal immediately before a
- * send-key. A known empty composer releases immediately. Static non-empty text
- * never acquires or reasserts a hold; only observed typing activity can do so. */
+/** Decide the hold from the composer's CONTENT, captured immediately before this
+ * one send-key. Called once per message, never once per batch.
+ *
+ * The capture taken here is authoritative and may ACQUIRE a hold, not only
+ * release one. That is the whole fix: the old gate re-checked before every send
+ * yet could only ever release, so a message arriving in the same 600ms tick the
+ * human started typing landed on top of a composer that visibly read `❯ hello`.
+ *
+ * An unrecognised layout defers to the caret tracker's byte-stream signal — we
+ * never act on a guessed region.
+ *
+ * `holds` is REQUIRED, not optional: this call is the capture immediately before
+ * `sendText`, so it is the only thing that can see a keystroke landing between
+ * the caller's own check and the send. Making it optional let that race back in. */
 export function refreshRenderedComposerHold(
 	paneId: string,
 	ports: Pick<DaemonPorts, "capturePane" | "now">,
 	buffer: SendBuffer,
+	holds: ComposerHoldTracker,
 ): boolean {
-	if (renderedComposerPayload(ports.capturePane(paneId)) === "") {
+	const nowMs = ports.now();
+	const content = renderedComposerPayload(ports.capturePane(paneId));
+	const verdict = holds.observe(paneId, content, nowMs);
+	if (!verdict.deferred) {
+		// Mirror the decision so `isPaneHeld` (and `flush`, which consults it)
+		// agree with the verdict just reached from live content.
+		const previous = buffer.paneSignal(paneId);
+		buffer.setPaneSignal(paneId, {
+			busy: previous?.busy ?? false,
+			userTyping: verdict.hold,
+			...(verdict.hold ? { lastActivityAt: verdict.lastChangeAt ?? nowMs } : {}),
+		});
+		return verdict.hold;
+	}
+	if (isBlankComposer(content)) {
 		const previous = buffer.paneSignal(paneId);
 		buffer.setPaneSignal(paneId, {
 			busy: previous?.busy ?? false,
@@ -485,7 +564,7 @@ export function refreshRenderedComposerHold(
 			lastActivityAt: undefined,
 		});
 	}
-	return buffer.isPaneHeld(paneId, ports.now());
+	return buffer.isPaneHeld(paneId, nowMs);
 }
 
 /** Route one bound tmux target's unread messages and return each completed
@@ -502,7 +581,8 @@ export function drainTmuxInbox(
 	}>,
 	ports: DaemonPorts,
 	buffer: SendBuffer,
-	beforeSelfInjection?: (paneId: string, payload: string, nowMs: number) => void,
+	beforeSelfInjection: ((paneId: string, payload: string, nowMs: number) => void) | undefined,
+	holds: ComposerHoldTracker,
 ): DrainedTmuxMessage[] {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
@@ -511,12 +591,16 @@ export function drainTmuxInbox(
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
-			if (refreshRenderedComposerHold(decision.paneId, ports, buffer)) {
+			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {
 				buffer.enqueue(m.messageId, msg);
 				continue;
 			}
 			beforeSelfInjection?.(decision.paneId, decision.text, ports.now());
 			const outcome = ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
+			if (outcome === "held") {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
 			consumed.push({ messageId: m.messageId, from: m.from, outcome });
 		} else if (decision.kind === "buffer") {
 			buffer.enqueue(m.messageId, msg);

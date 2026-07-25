@@ -13,6 +13,7 @@ import {
 	WATCHDOG_TIMEOUT_MS,
 	writeMerged,
 } from "./loop.js";
+import { ComposerHoldTracker } from "./pane-signals.js";
 import { SendBuffer } from "./router.js";
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
@@ -766,6 +767,8 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 			[{ messageId: "m1", from: "pij-boss", body: "review" }],
 			w.ports,
 			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
 		);
 
 		expect(sendCompleted).toBe(true);
@@ -778,6 +781,8 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 			[{ messageId: "m1", from: "pij-boss", body: "leave for pi" }],
 			world({ pane: READY }).ports,
 			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
 		);
 
 		expect(consumed).toEqual([]);

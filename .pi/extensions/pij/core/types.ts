@@ -53,6 +53,7 @@ export type DeathReason =
 	| "auth" // authentication failure (401)
 	| "quota" // terminal quota: credit/billing/insufficient (429/529/overloaded are transient → unknown)
 	| "stalled" // shared whole-life/watchdog verdict: peer stayed silent through its response threshold
+	| "pane-input-blocked" // boot line never written: a human was typing in the pane (s069)
 	| "dead" // pane exited (no specific error signal)
 	| "unknown"; // fallback when no pattern matched
 

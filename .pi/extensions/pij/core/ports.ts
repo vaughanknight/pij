@@ -19,7 +19,9 @@ import type {
 } from "./types.js";
 
 /** Outcome of a daemon-owned tmux text injection. */
-export type SendOutcome = "confirmed" | "unverified";
+/** `held` means the pane's composer had live human input, so NOTHING was typed.
+ * It is not a delivery failure: the caller must retry on a later tick. */
+export type SendOutcome = "confirmed" | "unverified" | "held";
 
 /** Reads/writes the ~/.pij/ peer registry (one descriptor per session). */
 export interface RegistryPort {
