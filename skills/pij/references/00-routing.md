@@ -91,17 +91,47 @@ per peer. Sprawl is the failure mode: a fleet spread over a dozen identically-na
 is unreadable, and the operator loses the ability to glance at a stream and see its whole
 state at once.
 
-`pij spawn --layout window` opens a *new* window, so after spawning a peer that joins an
-existing team, move it in:
+#### The standard team window (DEFAULT — build every project team this way)
+
+A project team is **PM + coder + reviewer**. Its window has one canonical shape: the **PM
+owns the left half**, and the **coder and reviewer stack in the right half**, coder on top.
 
 ```
-tmux join-pane -h -s <new-pane> -t <stream-pane>   # -h side-by-side, -v stacked
-tmux select-layout -t <stream-pane> even-horizontal
+┌──────────────────────┬──────────────────────┐
+│                      │  coder               │
+│  PM / orchestrator   ├──────────────────────┤
+│  (left 50%)          │  reviewer            │
+└──────────────────────┴──────────────────────┘
 ```
 
-Then title the pane per the naming mandate above. Expect roughly: orchestrator (wherever it
-already lives) + coder + reviewer per stream. Split a team into separate windows only when
-panes get too small to read — and say so when you do.
+Why this shape: the PM is the pane a human talks to, so it gets the stable half and stays put
+as workers come and go. Coder and reviewer are a *pair* — stacking them puts the work and its
+critique adjacent, and a two-round review reads top-to-bottom. The window is named for the
+stream, so one glance answers "what is this team doing, and where is it up to".
+
+Build it in this order — PM first, because it anchors the layout:
+
+```
+# 1. PM takes the window; split off the right half
+tmux split-window -h -t <pm-pane> -p 50
+
+# 2. coder joins the right half, reviewer stacks BELOW it (spawn with --layout window, then move)
+tmux join-pane -v -s <coder-pane>    -t <right-pane>
+tmux join-pane -v -s <reviewer-pane> -t <coder-pane>
+
+# 3. even the right column, then title every pane (naming mandate above)
+tmux select-layout -t <coder-pane> even-vertical
+```
+
+`pij spawn --layout window` always opens a *new* window, so every teammate is spawned then
+**moved in** — spawning is not finished until the peer is in its team window and titled.
+
+**When the PM is a central orchestrator** driving several streams at once, it cannot sit in
+every team window. Then the left half holds that stream's operator view — a shell in the
+stream's worktree, or a `pij tail` on the seat the human most needs to watch — and the slot is
+still reserved so a per-stream orchestrator can take it later without re-laying-out the window.
+
+Split a team across windows only when panes get too small to read — and say so when you do.
 
 ### C6 — Daemon restart rule
 
