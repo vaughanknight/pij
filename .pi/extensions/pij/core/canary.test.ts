@@ -85,6 +85,8 @@ describe("canary packet and pass record — AC-07", () => {
 			expectedModel: "github-copilot/gpt-5.6-sol",
 			actor: "pij-parent",
 			nowMs: NOW,
+			expectedContextWindow: 1_050_000,
+			observedContextWindow: { label: "1.1M", tokens: 1_100_000, source: "pane-footer" },
 		});
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error(result.message);
@@ -105,6 +107,13 @@ describe("canary packet and pass record — AC-07", () => {
 				model: "github-copilot/gpt-5.6-sol",
 				effort: "xhigh",
 				source: "self-report",
+			},
+			contextWindow: {
+				expected: 1_050_000,
+				expectedLabel: "1.1M",
+				observedLabel: "1.1M",
+				source: "pane-footer",
+				check: "matched",
 			},
 			passed: { actor: "pij-parent", ts: new Date(NOW).toISOString() },
 		});
@@ -181,6 +190,44 @@ describe("canary packet and pass record — AC-07", () => {
 		});
 		expect(result).toMatchObject({ ok: false, code });
 		expect(record.canary).toBeUndefined();
+	});
+
+	it("refuses the right model at the wrong effective context tier (Dim-0)", () => {
+		const result = evaluateCanary({
+			dispatch: dispatch(),
+			descriptor: descriptor(),
+			nonce: "canary-nonce-7391",
+			expectedModel: "github-copilot/gpt-5.6-sol",
+			expectedContextWindow: 1_050_000,
+			observedContextWindow: { label: "400K", tokens: 400_000, source: "pane-footer" },
+			actor: "pij-parent",
+			nowMs: NOW,
+		});
+		expect(result).toEqual({
+			ok: false,
+			code: "E-CANARY-CONTEXT",
+			message:
+				"target 'pij-worker' pinned model 'github-copilot/gpt-5.6-sol' expects 1.1M but pane footer reports 400K",
+		});
+	});
+
+	it("fails honestly when the effective context tier is not observable", () => {
+		const result = evaluateCanary({
+			dispatch: dispatch(),
+			descriptor: descriptor(),
+			nonce: "canary-nonce-7391",
+			expectedModel: "github-copilot/gpt-5.6-sol",
+			expectedContextWindow: 1_050_000,
+			observedContextWindow: null,
+			actor: "pij-parent",
+			nowMs: NOW,
+		});
+		expect(result).toEqual({
+			ok: false,
+			code: "E-CANARY-CONTEXT",
+			message:
+				"target 'pij-worker' cannot observe effective context tier for pinned model 'github-copilot/gpt-5.6-sol'; catalog expects 1.1M",
+		});
 	});
 
 	it("renders a named timeout with the real dispatch id and no false pass", () => {

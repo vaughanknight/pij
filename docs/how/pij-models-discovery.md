@@ -1,9 +1,10 @@
 # How `pij models` discovers models
 
 `pij models` (and the `--model` validation on `pij spawn` / `pij agent`) prints a
-**curated, best-effort list** — it is **not** a live probe of each harness. Neither
-copilot nor codex exposes an enumerable model API (both take a **freeform
-`--model <string>`**), so the list is composed from static + config sources in
+**curated, best-effort registry**, not an entitlement probe. The GitHub Copilot
+service exposes an authenticated `/models` endpoint, wrapped by `just copilot-models`,
+but neither the Copilot CLI nor Codex CLI provides a local model-list subcommand.
+`pij models` therefore composes static + config sources in
 [`.pi/extensions/pij/core/models/registry.ts`](../../.pi/extensions/pij/core/models/registry.ts)
 (`loadModels()` is the one impure composition root).
 
@@ -12,7 +13,8 @@ copilot nor codex exposes an enumerable model API (both take a **freeform
 | Provider | Source of truth | Notes |
 |---|---|---|
 | **pi** (`sakana`, etc.) | runtime `~/.pi/agent/models.json` `providers.*.models[]` + `modelOverrides`; portable providers are authored in repo `.pi/models.json` and installed by `just sync-models` | `verified: true`; carries `reasoning` + `thinkingLevelMap` → effort levels |
-| **copilot** | the runtime file's `github-copilot` section (`copilotSeedFromPi`) **+** a best-effort `copilotSnapshot()` fallback for newer ids not yet in that file | snapshot entries remain `verified: false`; curated capability data can still be known independently |
+| **omp** | OMP's built-in catalog + metadata-only overrides in repo `.omp/models.yml`, installed as `~/.omp/agent/models.yml` by `just link` | keeps OMP's built-in Copilot OAuth/plan transport while making entitlement-backed ids selectable with accurate context metadata |
+| **copilot** | the Pi runtime file's `github-copilot` section (`copilotSeedFromPi`) **+** a best-effort `copilotSnapshot()` fallback for newer ids not yet in that file | snapshot entries remain `verified: false`; curated capability data can still be known independently |
 | **codex** | the **default model in `~/.codex/config.toml`** (`codexConfigModels`) **+** a static `codexSnapshot()` fallback | codex has NO `--effort` flag and no list API; levels are a **curated** table (`gpt-5*` → `minimal…xhigh`, `o*` → `…high`) |
 | **claude** | `claudeAliases()` — hardcoded best-effort list | `verified: false` |
 
@@ -34,6 +36,11 @@ keeps only its command reference to the private `~/.pi/agent/auth.json`.
 
 Use `just sync-models --target <temporary-path>` for fixture or diagnostic proof. Tests
 must never target the real home file, and normal operation uses the default target.
+
+OMP's `.omp/models.yml` intentionally uses only `modelOverrides` under
+`github-copilot`. A full custom provider would require independent credentials and
+would replace the built-in subscription transport. `just link` links this repository
+file directly, so updates take effect on the next OMP process without copying secrets.
 
 ### GPT-5.6 Copilot effort correction
 
@@ -78,6 +85,20 @@ pij remains **warn-don't-block** for unknown model ids and unsupported effort
 levels. Provider ambiguity is different: guessing can silently bind credentials
 to the wrong backend, so non-Copilot ambiguity fails before launch. Canary the
 footer, first turn, and `pij list` provider before trusting a peer.
+
+### Canary validates the effective context tier
+
+`pij canary <peer> --expect-model <provider/model>` does not stop at model
+identity. It joins the requested selector to the catalog `contextWindow`, reads
+the harness's own pane footer (`1.0M context`, `145k/1.1M`, etc.), and records
+the matched label and `pane-footer` provenance in `CanaryRecord`. The canary
+returns `E-CANARY-CONTEXT` when the footer reports the wrong tier (for example,
+`400K` for a 1M catalog model) or exposes no effective-window evidence. It never
+substitutes catalog metadata for an unobservable runtime value.
+
+Copilot spawns with a pinned model always include `--context long_context`; the
+canary then independently proves that the launched seat actually received that
+tier.
 
 ## To make a new model *appear* in `pij models`
 

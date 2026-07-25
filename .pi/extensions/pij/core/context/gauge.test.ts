@@ -153,6 +153,10 @@ describe("contextMaxFor (boundModel → models registry join)", () => {
 		expect(contextMaxFor("gpt-5.6-sol", models)).toBe(258_400);
 	});
 
+	it("joins provider-qualified selectors without dropping the context tier", () => {
+		expect(contextMaxFor("copilot/gpt-5.6-sol", models)).toBe(258_400);
+	});
+
 	it("undefined when the model is unknown, has no window, or is unset", () => {
 		expect(contextMaxFor("claude-fable-5", models)).toBeUndefined();
 		expect(contextMaxFor("ghost-model", models)).toBeUndefined();

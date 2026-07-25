@@ -19,6 +19,7 @@ import {
 } from "./canary.js";
 import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
+import type { ContextWindowReaderPort } from "./context/window.js";
 import { isCompacting } from "./daemon/router.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
@@ -189,6 +190,9 @@ export interface CliDeps {
 	 *  readings or honest unknown, never estimates. Optional so legacy
 	 *  deps-sites compile; `node show` reports unknown/none when unwired. */
 	readonly contextReader?: ContextReaderPort;
+	/** Effective runtime tier evidence from the harness footer. Canary validation
+	 * fails honestly when a catalog window is expected but this observer has no reading. */
+	readonly contextWindowReader?: ContextWindowReaderPort;
 	/** CLI-owned watchdog sidecars. Optional for legacy/in-process send-only callers. */
 	readonly watchdogStore?: WatchdogCliStore;
 	readonly watchdogGlobalStore?: WatchdogGlobalCliStore;
@@ -2713,11 +2717,27 @@ export function finalizeCanary(input: FinalizeCanaryInput, deps: CliDeps): CliRe
 		}
 		const attribution = resolveActor(undefined, deps);
 		if (!attribution.ok) return fail(attribution.code, attribution.message, input.json);
+		let expectedContextWindow: number | undefined;
+		let observedContextWindow = null;
+		const contextModel = descriptor.boundModel;
+		if (contextModel !== undefined) {
+			expectedContextWindow = contextMaxFor(contextModel, deps.models ?? []);
+			if (expectedContextWindow === undefined) {
+				return failCanary(
+					"E-CANARY-CONTEXT",
+					`target '${descriptor.id}' pinned model '${contextModel}' has no catalog context window; cannot validate effective tier`,
+					input.json,
+				);
+			}
+			observedContextWindow = deps.contextWindowReader?.read(descriptor) ?? null;
+		}
 		const evaluated = evaluateCanary({
 			dispatch: previous,
 			descriptor,
 			nonce: input.nonce,
 			expectedModel: input.expectedModel,
+			expectedContextWindow,
+			observedContextWindow,
 			actor: attribution.value.actor,
 			nowMs: deps.process.now(),
 		});

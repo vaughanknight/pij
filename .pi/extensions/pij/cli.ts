@@ -30,6 +30,7 @@ import { writeTextAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsContextReader } from "./adapters/context-reader.js";
+import { TmuxContextWindowReader } from "./adapters/context-window-reader.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsFenceStore } from "./adapters/fence-store.js";
@@ -509,6 +510,7 @@ function deps(): CliDeps {
 		opJournal: new FsOpJournal(pijHome),
 		platformWriteLock: new FsPlatformWriteLock(pijHome),
 		contextReader: new FsContextReader(homedir()),
+		contextWindowReader: new TmuxContextWindowReader(),
 		watchdogStore: new FsWatchdogStore(pijHome),
 		watchdogGlobalStore: new FsWatchdogGlobalStore(pijHome),
 	};

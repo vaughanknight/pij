@@ -103,14 +103,22 @@ describe("buildSpawnCommand", () => {
 			expect(r.args).toEqual(["--auto-approve", "--model", "github-copilot/gpt-5.6-sol"]);
 		});
 
-		it("bin 'omp' threads effort onto a provider-qualified model", () => {
+		it("bin 'omp' passes effort through --thinking without corrupting the model id", () => {
 			const r = buildSpawnCommand({
 				...base,
 				bin: "omp",
 				model: "github-copilot/gpt-5.6-sol",
 				effort: "high",
 			});
-			expect(r.args).toEqual(["--auto-approve", "--model", "github-copilot/gpt-5.6-sol:high"]);
+			expect(r.args).toEqual([
+				"--auto-approve",
+				"--model",
+				"github-copilot/gpt-5.6-sol",
+				"--thinking",
+				"high",
+			]);
+			expect(r.env.PIJ_SPAWN_MODEL).toBe("github-copilot/gpt-5.6-sol");
+			expect(r.env.PIJ_SPAWN_EFFORT).toBe("high");
 		});
 
 		it("bin 'omp' env threading is identical to pi (same pij extension self-registers)", () => {
@@ -390,7 +398,26 @@ describe("buildControlSpawnCommand", () => {
 			copilotSessionId: "uuid-1",
 			model: "gpt-5.5",
 		});
-		expect(r.args).toEqual(["--yolo", "--session-id", "uuid-1", "--model", "gpt-5.5"]);
+		expect(r.args).toEqual([
+			"--yolo",
+			"--session-id",
+			"uuid-1",
+			"--model",
+			"gpt-5.5",
+			"--context",
+			"long_context",
+		]);
+	});
+
+	it("copilot: a pinned model always selects the long-context tier", () => {
+		const r = buildControlSpawnCommand({
+			harness: "copilot",
+			pijId: "pij-cop",
+			cwd: "/repo",
+			model: "claude-opus-5",
+		});
+		expect(r.args).toContain("claude-opus-5");
+		expect(r.args).toContain("long_context");
 	});
 
 	it("claude --branch: --resume <from> --fork-session --session-id <new> after skip-permissions (AC-01)", () => {

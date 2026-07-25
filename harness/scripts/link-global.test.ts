@@ -28,6 +28,8 @@ function checkout(names: readonly string[] = ["pij", "todo"]): string {
 	mkdirSync(join(root, ".git"), { recursive: true });
 	writeFileSync(join(root, "package.json"), JSON.stringify({ name: "pij" }));
 	for (const name of names) mkdirSync(join(root, ".pi", "extensions", name), { recursive: true });
+	mkdirSync(join(root, ".omp"), { recursive: true });
+	writeFileSync(join(root, ".omp", "models.yml"), "providers: {}\n");
 	return root;
 }
 
@@ -57,7 +59,7 @@ afterEach(() => {
 });
 
 describe("link-global", () => {
-	it("links the full inventory for Pi, only pij for OMP, and shares Pi MCP config", () => {
+	it("links the full Pi inventory, only pij for OMP, and shares Pi MCP + curated models", () => {
 		const root = checkout(["pij", "todo", "session-sql"]);
 		const home = tempDir("pij-link-home-");
 		const piMcp = join(home, ".pi", "agent", "mcp.json");
@@ -82,6 +84,10 @@ describe("link-global", () => {
 			join(root, ".pi", "extensions", "pij"),
 		);
 		expect(readlinkSync(join(home, ".omp", "agent", "mcp.json"))).toBe(piMcp);
+		expect(readlinkSync(join(home, ".omp", "agent", "models.yml"))).toBe(
+			join(root, ".omp", "models.yml"),
+		);
+		expect(run(root, home, ["--doctor-omp"])).toMatchObject({ code: 0, stderr: [] });
 	});
 
 	it("prunes only pij-owned non-pij OMP extension links", () => {
@@ -105,6 +111,7 @@ describe("link-global", () => {
 		const ompExtensions = join(home, ".omp", "agent", "extensions");
 		mkdirSync(piExtensions, { recursive: true });
 		mkdirSync(join(ompExtensions, "todo"), { recursive: true });
+		writeFileSync(join(home, ".omp", "agent", "models.yml"), "providers: {}\n");
 		symlinkSync(foreign, join(piExtensions, "pij"));
 
 		const result = run(root, home);
@@ -113,6 +120,8 @@ describe("link-global", () => {
 		expect(readlinkSync(join(piExtensions, "pij"))).toBe(foreign);
 		expect(lstatSync(join(ompExtensions, "todo")).isDirectory()).toBe(true);
 		expect(result.stderr.join("\n")).toContain("refusing to replace foreign symlink");
+		expect(readFileSync(join(home, ".omp", "agent", "models.yml"), "utf8")).toBe("providers: {}\n");
+		expect(result.stderr.join("\n")).toContain("models.yml: real file; refusing to clobber");
 		expect(result.stderr.join("\n")).toContain("real directory");
 	});
 

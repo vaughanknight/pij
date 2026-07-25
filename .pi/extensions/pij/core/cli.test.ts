@@ -1473,7 +1473,15 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 // Platform-section-local imports (the legacy import block above is frozen):
 // module-scope import declarations hoist, so placement here is behavior-neutral.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1487,7 +1495,7 @@ import { FsOpJournal } from "../adapters/op-journal.js";
 import { FsPlatformWriteLock } from "../adapters/platform-write-lock.js";
 import { FsProjectStore } from "../adapters/project-store.js";
 import { FsSpineLog } from "../adapters/spine-store.js";
-import { renderCanaryPass, renderCanaryTimeout } from "./canary.js";
+import { renderCanaryTimeout } from "./canary.js";
 import { canonicalAssignmentJson } from "./platform/assignment.js";
 import type {
 	AllocationStorePort,
@@ -5060,6 +5068,18 @@ describe("state clear (State-Model v2)", () => {
 			return {
 				...d,
 				packets,
+				models: [
+					{
+						id: "gpt-5.6-sol",
+						name: "GPT-5.6 Sol",
+						provider: "github-copilot",
+						verified: true,
+						contextWindow: 1_050_000,
+					},
+				],
+				contextWindowReader: {
+					read: () => ({ label: "1.1M", tokens: 1_100_000, source: "pane-footer" as const }),
+				},
 				nextCanaryNonce: () => "canary-nonce-7391",
 				writeCanaryPacket: (input: {
 					readonly caller: SessionDescriptor;
@@ -5143,6 +5163,13 @@ describe("state clear (State-Model v2)", () => {
 					pid: 100,
 					harnessSessionId: "native-worker",
 				},
+				contextWindow: {
+					expected: 1_050_000,
+					expectedLabel: "1.1M",
+					observedLabel: "1.1M",
+					source: "pane-footer",
+					check: "matched",
+				},
 			});
 			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(4);
 		});
@@ -5212,6 +5239,67 @@ describe("state clear (State-Model v2)", () => {
 			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("acked");
 			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
 			expect(d.spineLog.read()).toHaveLength(beforeEvents);
+		});
+
+		it("rejects a matching model whose observed footer is the wrong context tier", () => {
+			const d = canaryDeps();
+			expect(run(["canary", "pij-worker", "--expect-model", EXPECTED_MODEL], d).exitCode).toBe(0);
+			expect(
+				run(["ack", "dispatch-test-1", "--packet-sha", SHA], {
+					...d,
+					process: new FakeProcess(999, T + 100, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+				}).exitCode,
+			).toBe(0);
+
+			const refused = finalizeCanary(
+				{
+					dispatchId: "dispatch-test-1",
+					nonce: "canary-nonce-7391",
+					expectedModel: EXPECTED_MODEL,
+					json: false,
+				},
+				{
+					...d,
+					contextWindowReader: {
+						read: () => ({ label: "400K", tokens: 400_000, source: "pane-footer" as const }),
+					},
+				},
+			);
+			expect(refused).toEqual({
+				stdout: "",
+				stderr:
+					"E-CANARY-CONTEXT: target 'pij-worker' pinned model 'github-copilot/gpt-5.6-sol' expects 1.1M but pane footer reports 400K",
+				exitCode: 3,
+			});
+			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
+		});
+
+		it("distinguishes a missing catalog window from an unobservable pane footer", () => {
+			const d = canaryDeps();
+			expect(run(["canary", "pij-worker", "--expect-model", EXPECTED_MODEL], d).exitCode).toBe(0);
+			expect(
+				run(["ack", "dispatch-test-1", "--packet-sha", SHA], {
+					...d,
+					process: new FakeProcess(999, T + 100, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+				}).exitCode,
+			).toBe(0);
+
+			const refused = finalizeCanary(
+				{
+					dispatchId: "dispatch-test-1",
+					nonce: "canary-nonce-7391",
+					expectedModel: EXPECTED_MODEL,
+					json: false,
+				},
+				{ ...d, models: [] },
+			);
+			expect(refused).toEqual({
+				stdout: "",
+				stderr:
+					"E-CANARY-CONTEXT: target 'pij-worker' pinned model 'github-copilot/gpt-5.6-sol' has no catalog context window; cannot validate effective tier",
+				exitCode: 3,
+			});
+			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
 		});
 
 		function collectChild(
@@ -5328,15 +5416,41 @@ describe("state clear (State-Model v2)", () => {
 			}
 		});
 
-		it("real bin pass attaches the defensive triple to the real acked dispatch", {
+		it("real bin refuses a pass when the effective context tier is unobservable", {
 			timeout: 15_000,
 		}, async () => {
 			const root = mkdtempSync(join(tmpdir(), "pij-canary-pass-bin-"));
 			const home = join(root, "home");
 			const repo = join(root, "repo");
+			const userHome = join(root, "user-home");
+			const fakeBin = join(root, "bin");
 			try {
 				mkdirSync(home, { recursive: true });
 				mkdirSync(repo, { recursive: true });
+				mkdirSync(join(userHome, ".pi", "agent"), { recursive: true });
+				mkdirSync(fakeBin, { recursive: true });
+				writeFileSync(
+					join(userHome, ".pi", "agent", "models.json"),
+					JSON.stringify({
+						providers: {
+							"github-copilot": {
+								models: [
+									{
+										id: "gpt-5.6-sol",
+										name: "GPT-5.6 Sol",
+										contextWindow: 1_050_000,
+									},
+								],
+							},
+						},
+					}),
+				);
+				const fakeTmux = join(fakeBin, "tmux");
+				writeFileSync(
+					fakeTmux,
+					'#!/usr/bin/env node\nprocess.stdout.write("gpt-5.6-sol · ready\\n");\n',
+				);
+				chmodSync(fakeTmux, 0o755);
 				const registry = new FsRegistry(home);
 				registry.write(
 					desc({
@@ -5375,6 +5489,8 @@ describe("state clear (State-Model v2)", () => {
 					CLAUDE_CODE_SESSION_ID: "",
 					CODEX_THREAD_ID: "",
 					TMUX_PANE: "",
+					HOME: userHome,
+					PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
 				};
 				const canary = collectChild(
 					["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=2000"],
@@ -5395,19 +5511,14 @@ describe("state clear (State-Model v2)", () => {
 				);
 				expect(acked.status, acked.stderr).toBe(0);
 				const completed = await canary;
-				expect(completed.status, completed.stderr).toBe(0);
+				expect(completed.status).toBe(3);
+				expect(completed.stderr).toBe(
+					"E-CANARY-CONTEXT: target 'pij-worker' cannot observe effective context tier for pinned model 'github-copilot/gpt-5.6-sol'; catalog expects 1.1M\n",
+				);
 				const record = store.read(pending.id);
-				if (!record?.canary) throw new Error("missing CanaryRecord");
+				if (!record) throw new Error("missing acknowledged dispatch");
 				expect(record.state).toBe("acked");
-				expect(record.canary.identity).toEqual({
-					paneId: "%31",
-					pid: process.pid,
-					harnessSessionId: "native-worker",
-				});
-				expect(record.packetPath).toContain(join("pij-parent", "canary-packets"));
-				const terminalOutput = completed.stdout.trim().split(/\r?\n/).at(-1);
-				expect(terminalOutput).toBe(renderCanaryPass(record.canary));
-				expect(completed.stdout).not.toContain("E-CANARY-TIMEOUT");
+				expect(record.canary).toBeUndefined();
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}

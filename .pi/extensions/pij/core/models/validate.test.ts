@@ -20,6 +20,9 @@ describe("validateModel", () => {
 		const r = validateModel("FUGU-ULTRA", KNOWN);
 		expect(r.ok).toBe(true);
 	});
+	it("returns ok for an exact provider-qualified model id", () => {
+		expect(validateModel("sakana/fugu-ultra", KNOWN).ok).toBe(true);
+	});
 
 	it("returns unknown=true for an unrecognised model id", () => {
 		const r = validateModel("gpt-99", KNOWN);
@@ -88,6 +91,14 @@ describe("validateEffort", () => {
 	it("ok when the effort is one of the model's levels (case-insensitive)", () => {
 		expect(validateEffort("high", "fugu", LEVELED).ok).toBe(true);
 		expect(validateEffort("XHIGH", "fugu", LEVELED).ok).toBe(true);
+	});
+	it("validates effort for an exact provider-qualified model id", () => {
+		expect(validateEffort("xhigh", "sakana/fugu", LEVELED).ok).toBe(true);
+		expect(validateEffort("medium", "sakana/fugu", LEVELED)).toEqual({
+			ok: false,
+			unsupported: true,
+			levels: ["high", "xhigh"],
+		});
 	});
 
 	it("unsupported when the effort is NOT in the model's levels (carries the levels)", () => {

@@ -114,9 +114,8 @@ export interface SpawnInput {
 	 *  oh-my-pi and prepends its headless permission-bypass flag; everything else
 	 *  (env threading, --model, self-register) is identical because omp IS pi. */
 	bin?: PiFamilyBin;
-	/** Optional thinking/reasoning effort (#3). For pi it rides the model id as a
-	 *  `:<level>` suffix (e.g. `github-copilot/gpt-5.5:xhigh`); a no-op without a
-	 *  model. Unset ⇒ nothing emitted (the child uses its boot default). */
+	/** Optional thinking/reasoning effort (#3). Pi encodes it as a per-model
+	 * `:<level>` suffix; OMP takes `--thinking <level>`. Unset emits neither. */
 	effort?: string;
 	/** Optional first task; delivered via PIJ_SPAWN_TASK env (finding 01). */
 	task?: string;
@@ -166,22 +165,22 @@ export interface ReadyPayload {
  */
 export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	const args: string[] = [];
-	// pi sets effort via a per-model `:<level>` suffix on the model id (#3). It
-	// requires a model to attach to — with no model there's nothing to suffix, so
-	// effort is a silent no-op (validation warns separately). Unset ⇒ plain id.
-	const piModel =
-		input.model !== undefined && input.effort !== undefined
+	// Pi encodes effort in the model selector. OMP exposes a separate --thinking
+	// flag and rejects a suffixed selector as an unknown model.
+	const modelArg =
+		input.model !== undefined && input.effort !== undefined && input.bin !== "omp"
 			? `${input.model}:${input.effort}`
 			: input.model;
-	// omp (oh-my-pi) has no human at the daemon-driven pane to answer its approval
-	// prompts (interactive omp defaults to "bypass permissions on / shift+tab"), so
-	// mirror the claude/copilot/codex posture and skip approvals up front. pi takes
-	// no such flag today, so the default path stays byte-unchanged.
+	// OMP has no human at the daemon-driven pane to answer approval prompts, so
+	// mirror the other headless harnesses and skip approvals up front.
 	if (input.bin === "omp") {
 		args.push("--auto-approve");
 	}
-	if (piModel !== undefined) {
-		args.push("--model", piModel);
+	if (modelArg !== undefined) {
+		args.push("--model", modelArg);
+	}
+	if (input.bin === "omp" && input.effort !== undefined) {
+		args.push("--thinking", input.effort);
 	}
 
 	const env: Record<string, string> = {
@@ -195,11 +194,10 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		PIJ_ROLE: input.role,
 	};
 
-	// §H2: thread model via env so the child boot() reads PIJ_SPAWN_MODEL
-	// and includes it in the ready-ping body — same value as --model argv (incl.
-	// any `:<effort>` suffix).
-	if (piModel !== undefined) {
-		env.PIJ_SPAWN_MODEL = piModel;
+	// Thread the effective model selector through the ready ping. OMP keeps the
+	// model id unsuffixed and reports effort separately.
+	if (modelArg !== undefined) {
+		env.PIJ_SPAWN_MODEL = modelArg;
 	}
 	if (input.provider !== undefined) {
 		env.PIJ_SPAWN_PROVIDER = input.provider;
@@ -383,9 +381,9 @@ export function spawnIdentitySeed(spawnToken: string, pid: number): string {
  * pij-id rides PIJ_SESSION_ID (so `pij phonehome` from inside binds to it) and
  * the harness kind rides PIJ_HARNESS. argv stays an array (AC-09: no shell).
  *
- * - `claude`:  `claude --dangerously-skip-permissions [--model <model>]`.
- * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`.
- * - `codex`:   `codex --dangerously-bypass-approvals-and-sandbox [--model <model>]`.
+ * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`
+ *   and, when a model is pinned, `--context long_context` so the requested
+ *   catalog window is selected rather than Copilot's smaller default tier.
  *
  * The blanket-permission flag (`--dangerously-skip-permissions` for claude,
  * `--yolo` for copilot — the latter = --allow-all-tools/paths/urls,
@@ -426,6 +424,9 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	}
 	if (input.model !== undefined) {
 		args.push("--model", input.model);
+	}
+	if (input.harness === "copilot" && input.model !== undefined) {
+		args.push("--context", "long_context");
 	}
 	// Effort translation (#3) — pinned per harness (flag drift is the key risk):
 	//  • claude / copilot accept `--effort <level>` (verified in their --help).

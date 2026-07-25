@@ -10,18 +10,26 @@ export type ValidationResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly unknown: true; readonly suggestion: string | null };
 
+function findKnownModel(model: string, known: readonly ModelEntry[]): ModelEntry | undefined {
+	const norm = normalizeModelQuery(model);
+	return known.find(
+		(entry) =>
+			normalizeModelQuery(entry.id) === norm ||
+			normalizeModelQuery(`${entry.provider}/${entry.id}`) === norm,
+	);
+}
+
 /**
  * Validate a model id against the known model list. Returns `ok` when:
  *   - model is empty/undefined (no --model flag — nothing to validate)
  *   - known list is empty (cannot validate, so never block)
- *   - model matches an entry by exact normalised id (case-insensitive)
+ *   - model matches an entry by exact normalised bare or provider-qualified id (case-insensitive)
  * Returns `{ ok: false, unknown: true, suggestion }` otherwise. Suggestion is
  * the closest known id, or null if nothing is close.
  */
 export function validateModel(model: string, known: readonly ModelEntry[]): ValidationResult {
 	if (!model || known.length === 0) return { ok: true };
-	const norm = normalizeModelQuery(model);
-	const exactMatch = known.find((e) => normalizeModelQuery(e.id) === norm);
+	const exactMatch = findKnownModel(model, known);
 	if (exactMatch) return { ok: true };
 	const closest = closestModel(model, known);
 	return { ok: false, unknown: true, suggestion: closest?.id ?? null };
@@ -48,8 +56,7 @@ export function validateEffort(
 	known: readonly ModelEntry[],
 ): EffortValidation {
 	if (!effort || !model) return { ok: true };
-	const norm = normalizeModelQuery(model);
-	const entry = known.find((e) => normalizeModelQuery(e.id) === norm);
+	const entry = findKnownModel(model, known);
 	const levels = entry?.levels ?? [];
 	if (levels.length === 0) return { ok: true }; // unknown model / no level data → can't validate
 	const want = effort.toLowerCase();

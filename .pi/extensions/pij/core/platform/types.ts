@@ -138,6 +138,13 @@ export interface CanaryRecord {
 	readonly expectedModel?: string;
 	readonly declaredRuntime: DispatchAck["declaredRuntime"];
 	readonly modelCheck: CanaryModelCheck;
+	readonly contextWindow?: {
+		readonly expected: number;
+		readonly expectedLabel: string;
+		readonly observedLabel: string;
+		readonly source: "pane-footer";
+		readonly check: "matched";
+	};
 	readonly identity: {
 		readonly paneId: string;
 		readonly pid: number;
@@ -402,6 +409,18 @@ function isCanaryRecord(value: unknown): value is CanaryRecord {
 				ownField(v, "source", (source) => source === "self-report"),
 		) &&
 		ownField(value, "modelCheck", isCanaryModelCheck) &&
+		ownOptional(
+			value,
+			"contextWindow",
+			(v) =>
+				v === undefined ||
+				(isRecord(v) &&
+					ownField(v, "expected", (n) => typeof n === "number" && Number.isFinite(n) && n > 0) &&
+					ownField(v, "expectedLabel", isString) &&
+					ownField(v, "observedLabel", isString) &&
+					ownField(v, "source", (source) => source === "pane-footer") &&
+					ownField(v, "check", (check) => check === "matched")),
+		) &&
 		ownField(
 			value,
 			"identity",
