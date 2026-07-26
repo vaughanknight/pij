@@ -13,6 +13,8 @@
 			"!docs/plans",
 			"!scratch",
 			"!.harness",
+			"!.pi-subagents",
+			"!.serena",
 			"!**/prime-flow.json"
 		]
 	},

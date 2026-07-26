@@ -28,7 +28,12 @@ describe("s066 re-review probes", () => {
 		const pane = `● Read(core/interstitial.ts)\n  Here is the captured shape:\n${MODAL}\nThat is the fixture.\n\n> \n◎ Working (esc interrupt)`;
 		const verdict = classifyInterstitial(pane, "copilot");
 		// eslint-disable-next-line no-console
-		console.log("PROBE-2 verdict =", JSON.stringify(verdict), "readiness =", classifyReadiness(pane));
+		console.log(
+			"PROBE-2 verdict =",
+			JSON.stringify(verdict),
+			"readiness =",
+			classifyReadiness(pane),
+		);
 		expect(verdict.action).toBe("answer");
 	});
 
