@@ -15,11 +15,12 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, uptime } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeAgentAdapter } from "minih";
@@ -71,6 +72,7 @@ import {
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir } from "./core/agents/paths.js";
+import { archiveAgeAnchorMs } from "./core/archive.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import { renderCanaryTimeout } from "./core/canary.js";
 import {
@@ -155,7 +157,19 @@ import {
 import { PrimeService } from "./core/orchestration/prime.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
-import { buildRevivedDescriptor, parseReviveArgs, planRevive } from "./core/revive.js";
+import {
+	type AttachmentLiveness,
+	type AttachmentProbe,
+	buildRevivedDescriptor,
+	buildRevivePrintout,
+	classifyAttachment,
+	type PaneObservation,
+	parseReviveArgs,
+	planRevive,
+	resolveSeatForFolder,
+	type SeatCandidate,
+	uncertaintyReason,
+} from "./core/revive.js";
 import { buildSeatLabel } from "./core/seat-label.js";
 import { buildExportLines } from "./core/session-join.js";
 import {
@@ -220,7 +234,7 @@ const USAGE = `pij — session messaging + tmux control plane
 Control plane (spawn colleagues in tmux):
   pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij focus save|list|launch ...                      save immutable native-session focuses and fork them on demand
-  pij revive <id> [--layout ...]                     relaunch a dissolved native session under the same pij id (pending golden recall)
+  pij revive [<id>] [--print] [--attach] [--layout ...]   relaunch a native session under the same pij id; no id = the seat for this folder, --print = paste-able command (after a reboot)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]    register/re-attach your pane
                                                         adopts INTO an existing pending descriptor for the same pane — it never mints a duplicate id
@@ -387,10 +401,30 @@ NOTES
   not a git worktree (#21).
   copilot and codex adapters are not yet available in v1.`;
 
-const REVIVE_USAGE = `pij revive — relaunch one dissolved native session with its prior context
+const REVIVE_USAGE = `pij revive — relaunch one native session with its prior context
 
 USAGE
-  pij revive <pij-id> [--layout stack|right|below|window] [--json]
+  pij revive [<pij-id>] [--print] [--attach [%pane]] [--assume-dead]
+             [--layout stack|right|below|window] [--json]
+
+NO ID — resolve the seat from the CURRENT FOLDER (after a reboot you know the
+  path, not the id). Prefers the seat designated prime; a single non-prime seat
+  is used and said so; two or more with no prime is E-AMBIG listing them. Hot
+  tier first, then ~/.pij/archive/ (a reboot can outlast the 48h archive window);
+  the answer says which tier it came from.
+
+--print — render the paste-able launch command and EXIT. Touches no tmux pane,
+  spawns nothing, writes no descriptor. The line carries the PIJ_* env prefix
+  inline (without it the seat comes back nameless), and for claude/copilot/codex
+  it is prefixed with the \`--attach\` re-bind those harnesses need. --json emits
+  { id, harness, model, effort, cmd, args, env, shellLine, tier, ... }.
+
+--attach [%pane] — bind an EXISTING pane (default $TMUX_PANE) to the seat rather
+  than spawning one. This is what makes a hand-pasted launch addressable.
+
+--assume-dead — operator override when the prior pane is gone but its recorded
+  pid still answers (the OS recycles pids across a reboot). --print never needs
+  it: it mutates nothing, and says so when liveness is unproven.
 
 The native transcript must still exist. The command never falls back to a fresh
 session and returns PENDING CANARY until golden recall is verified.`;
@@ -1158,6 +1192,148 @@ function isLinkedGitWorktree(cwd: string): boolean {
 	}
 }
 
+/** realpath, falling back to the raw path when the folder is gone. Raw strings
+ *  never compare safely: worktrees, symlinked homes, `/tmp` → `/private/tmp`. */
+function resolvedRealPath(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch {
+		return path;
+	}
+}
+
+/** Every seat pij has ever recorded for a folder, hot tier and archive both
+ *  (s072 D1 — a reboot can outlast the 48h archive window). The archive index's
+ *  `folder` is a cheap pre-filter; only entries that could match are read. */
+function seatCandidatesForFolder(registry: FsRegistry, resolvedFolder: string): SeatCandidate[] {
+	const candidates: SeatCandidate[] = [];
+	for (const descriptor of listAllDescriptors(registry)) {
+		candidates.push({
+			descriptor,
+			resolvedFolder: resolvedRealPath(descriptor.folder),
+			tier: "hot",
+		});
+	}
+	const hotIds = new Set(candidates.map((candidate) => candidate.descriptor.id));
+	for (const entry of registry.listArchived()) {
+		if (hotIds.has(entry.id)) continue;
+		if (entry.folder !== undefined && resolvedRealPath(entry.folder) !== resolvedFolder) continue;
+		const descriptor = registry.read(entry.id);
+		if (!descriptor) continue;
+		candidates.push({
+			descriptor,
+			resolvedFolder: resolvedRealPath(descriptor.folder),
+			tier: "archive",
+		});
+	}
+	return candidates;
+}
+
+/** Epoch ms of the host's last boot — the corroboration that breaks the pid
+ *  recycle trap (s072 D3). `os.uptime()` is seconds since boot on every
+ *  platform Node supports. */
+function hostBootAtMs(): number | undefined {
+	const uptimeSeconds = uptime();
+	if (!Number.isFinite(uptimeSeconds) || uptimeSeconds <= 0) return undefined;
+	return Date.now() - uptimeSeconds * 1000;
+}
+
+/** Ask tmux what it knows about a recorded pane — and whether that pane is still
+ *  OURS (s072 FIX-1). `#{pane_pid}` is the exact field pij records as a seat's
+ *  pid at spawn/adopt time (see the `#{pane_pid}` reads at spawn), so comparing
+ *  it back is the identity check tmux will actually give us.
+ *
+ *  `ours` here means ONLY "the ids match". It is NOT a liveness verdict: pids are
+ *  recycled by a reboot exactly as pane ids are, so `classifyAttachment` weighs
+ *  this against absolute-time evidence before it will call anything `live`
+ *  (s072 FIX-6). Do not read `ours` as proof of life at any call site.
+ *
+ *  tmux exits 0 with an EMPTY body when the server is up but the pane does not
+ *  exist, and non-zero when there is no server (or no tmux binary) to ask. That
+ *  distinction is the whole point: "no such pane" is an answer, "no tmux" is
+ *  not, and only the former may count as evidence. */
+function observePane(paneId: string | undefined, recordedPid: number): PaneObservation {
+	if (!paneId) return "gone";
+	let raw: string;
+	try {
+		raw = execFileSync(
+			"tmux",
+			["display-message", "-p", "-t", paneId, "#{pane_dead},#{pane_pid}"],
+			{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+		);
+	} catch {
+		return "unprobed";
+	}
+	const answer = raw.trim();
+	if (answer === "") return "gone";
+	const match = /^([01]),(\d+)$/.exec(answer);
+	if (!match) return "unprobed";
+	if (match[1] !== "0") return "gone";
+	return Number(match[2]) === recordedPid ? "ours" : "not-ours";
+}
+
+/** When did the process holding a pane START? (s072 FIX-6.)
+ *
+ *  This is the ONLY non-recycled identity signal available here: an absolute
+ *  wall-clock instant that no allocator hands out twice. `ps -o lstart=` is the
+ *  signal — it exists on darwin and linux and prints e.g.
+ *  `Sun 26 Jul 12:49:51 2026`. (tmux's own `#{pane_start_time}` was probed on
+ *  tmux 3.6a and returns EMPTY — the format does not exist, so `ps` it is.)
+ *
+ *  Returns undefined when `ps` cannot be run, the pid is gone, or the stamp does
+ *  not parse. Undefined is honest: no evidence, not evidence of absence. */
+function processStartedAtMs(pid: number): number | undefined {
+	let raw: string;
+	try {
+		raw = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+	} catch {
+		return undefined;
+	}
+	const parsed = Date.parse(raw.trim());
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function probeAttachment(descriptor: SessionDescriptor): {
+	readonly liveness: AttachmentLiveness;
+	readonly probe: AttachmentProbe;
+} {
+	const anchorMs = archiveAgeAnchorMs(descriptor);
+	const pane = observePane(descriptor.paneId, descriptor.pid);
+	// Only worth a `ps` when the pane pid matched: `ours` is the sole verdict that
+	// needs corroborating, and in that branch the pane's pid IS `descriptor.pid`
+	// (that equality is what produced `ours`), so this asks about the very process
+	// tmux says is sitting in the pane.
+	const startedAtMs = pane === "ours" ? processStartedAtMs(descriptor.pid) : undefined;
+	const probe: AttachmentProbe = {
+		pane,
+		pidAlive: new NodeProcess().isAlive(descriptor.pid),
+		// An `unavailable` observation is pij saying it could NOT look; it proves
+		// nothing and must never count as evidence of death.
+		terminalObserved:
+			descriptor.terminal !== undefined && descriptor.terminal.disposition !== "unavailable",
+		...(hostBootAtMs() === undefined ? {} : { hostBootAtMs: hostBootAtMs() }),
+		...(anchorMs === null ? {} : { lastActivityAtMs: anchorMs }),
+		...(startedAtMs === undefined ? {} : { paneProcessStartedAtMs: startedAtMs }),
+	};
+	return { liveness: classifyAttachment(probe), probe };
+}
+
+/** The tmux window a pane belongs to (`@N`), or undefined when tmux can't say. */
+function tmuxWindowIdForPane(paneId: string): string | undefined {
+	try {
+		const raw = execFileSync("tmux", ["display-message", "-p", "-t", paneId, "#{window_id}"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		return /^@\d+$/.test(raw) ? raw : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function focusPanePid(paneId: string): number {
 	try {
 		const raw = execFileSync("tmux", ["display-message", "-p", "-t", paneId, "#{pane_pid}"], {
@@ -1367,6 +1543,25 @@ function runRevive(argv: readonly string[]): void {
 		process.exit(exitCodeForCore(parsed.code));
 	}
 	const registry = new FsRegistry(pijHome);
+	// s072 D1 — no id means "the seat that was driving THIS folder". Resolved
+	// against realpath'd folders across both tiers, prime first.
+	let seatId = parsed.value.id;
+	let seatViaPrime = true;
+	if (seatId === undefined) {
+		const here = resolvedRealPath(process.cwd());
+		const resolved = resolveSeatForFolder(seatCandidatesForFolder(registry, here), here);
+		if (!resolved.ok) {
+			process.stderr.write(`${resolved.code}: ${resolved.message}\n`);
+			process.exit(exitCodeForCore(resolved.code));
+		}
+		seatId = resolved.value.descriptor.id;
+		seatViaPrime = resolved.value.viaPrime;
+	}
+	// Read the tier from DISK, before any unarchive moves it — an explicitly
+	// named archived seat must not be reported as hot.
+	const seatTier: "hot" | "archive" = existsSync(join(pijHome, `${seatId}.json`))
+		? "hot"
+		: "archive";
 	// s066 × s071 D1. `pij revive` targets DISSOLVED seats, which is exactly the
 	// population the two-tier janitor moves to `~/.pij/archive/` after 48h — so the
 	// seats most worth reviving are the ones most likely to be archived. Keyed
@@ -1374,19 +1569,23 @@ function runRevive(argv: readonly string[]): void {
 	// point INTO the archive, so a revived session would write its events there and
 	// `pij list --archived` would keep listing a seat that is now live. Pull it back
 	// to the hot tier first; a non-archived id is a no-op.
-	registry.unarchive(parsed.value.id);
-	const descriptor = registry.read(parsed.value.id);
+	//
+	// s072 D2: NOT under `--print`, which must mutate nothing — `read()` already
+	// falls through to the archive, and unarchive is a file move.
+	if (!parsed.value.print) registry.unarchive(seatId);
+	const descriptor = registry.read(seatId);
 	const tmux = new TmuxAdapter();
 	const reviverId = deriveCallerParent(
 		process.env.PIJ_SESSION_ID,
 		registry.list(),
 		process.env.TMUX_PANE,
 	);
-	const priorAttachmentAlive = Boolean(
-		descriptor &&
-			((descriptor.paneId ? tmux.isPaneLive(descriptor.paneId) : false) ||
-				(descriptor.terminal === undefined && new NodeProcess().isAlive(descriptor.pid))),
-	);
+	// s072 D3 — the host-restart liveness path. A rebooted host leaves a
+	// `bound` descriptor with a stale pane id and a pid the OS has since handed
+	// to someone else, so "is that attachment still live" needs both probes plus
+	// the boot-time corroboration.
+	const attachmentProbe = descriptor ? probeAttachment(descriptor) : undefined;
+	const attachment: AttachmentLiveness | undefined = attachmentProbe?.liveness;
 	if (descriptor) {
 		try {
 			if (!statSync(descriptor.folder).isDirectory()) throw new Error("not a directory");
@@ -1431,16 +1630,149 @@ function runRevive(argv: readonly string[]): void {
 		{
 			spawnId: `revive-${Date.now()}-${process.pid}`,
 			parentId: reviverId,
-			priorAttachmentAlive,
+			...(attachment === undefined ? {} : { attachment }),
+			...(attachmentProbe === undefined
+				? {}
+				: { attachmentReason: uncertaintyReason(attachmentProbe.probe) }),
+			print: parsed.value.print,
+			assumeDead: parsed.value.assumeDead,
 		},
 	);
 	if (!plan.ok) {
 		process.stderr.write(`${plan.code}: ${plan.message}\n`);
 		process.exit(exitCodeForCore(plan.code));
 	}
+	// s072 D2 — hand the command to the human and exit. Amended contract (s072
+	// FIX-2): `--print` MUTATES NOTHING — no descriptor write, no unarchive, no
+	// spawn, no send-keys. It MAY issue read-only tmux queries, and it must still
+	// work when tmux is absent entirely (the real reboot case), degrading to an
+	// `unprobed` attachment rather than an error.
+	if (parsed.value.print) {
+		const printout = buildRevivePrintout(plan.value);
+		const seat = plan.value.descriptor;
+		const uncertain = attachment === "uncertain";
+		if (parsed.value.json) {
+			process.stdout.write(
+				`${JSON.stringify({
+					id: printout.id,
+					harness: seat.harness ?? "pi",
+					runtime: printout.runtime,
+					model: seat.boundModel ?? null,
+					effort: seat.effort ?? null,
+					cmd: plan.value.command.cmd,
+					args: plan.value.command.args,
+					env: plan.value.command.env,
+					shellLine: printout.shellLine,
+					launchLine: printout.launchLine,
+					attachLine: printout.attachLine ?? null,
+					selfAdopts: printout.selfAdopts,
+					tier: seatTier,
+					folder: seat.folder,
+					artifactPath: plan.value.artifactPath,
+					priorAttachment: attachment ?? "unprobed",
+					priorPane: attachmentProbe?.probe.pane ?? "unprobed",
+				})}\n`,
+			);
+			return;
+		}
+		const origin =
+			parsed.value.id === undefined
+				? ` · resolved from ${seat.folder} (${seatTier} tier, ${seatViaPrime ? "prime seat" : "NOT prime — the only seat for this folder"})`
+				: ` · ${seatTier} tier`;
+		const lines = [
+			`${printout.id} — ${printout.runtime}${seat.boundModel ? ` ${seat.boundModel}` : ""}${seat.effort ? `/${seat.effort}` : ""}${origin}`,
+			"",
+			"paste this into the pane you already opened:",
+			"",
+			`  ${printout.shellLine}`,
+			"",
+			printout.selfAdopts
+				? `${printout.runtime} self-adopts: the resumed session re-derives its own pij identity from its native session artifact, finds this dissolved descriptor, and calls registry.revive() itself. No follow-up adopt.`
+				: `${printout.runtime} does NOT self-adopt — nothing in it writes the pij registry. The leading \`pij revive ${printout.id} --attach "$TMUX_PANE"\` binds YOUR pane to the seat first; without it the seat comes back unaddressable.`,
+			`prior attachment: ${attachment ?? "unprobed"} (pane ${seat.paneId ?? "—"}: ${attachmentProbe?.probe.pane ?? "unprobed"}).`,
+			"nothing was written: --print issues read-only tmux and ps queries only — no descriptor write, no unarchive, no spawn.",
+		];
+		if (uncertain) {
+			lines.push(
+				`WARNING: the prior attachment could NOT be proven dead — ${attachmentProbe ? uncertaintyReason(attachmentProbe.probe) : "it was not probed"}. If that seat is in fact alive, running this will fight it.`,
+			);
+		}
+		process.stdout.write(`${lines.join("\n")}\n`);
+		return;
+	}
 	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
 		const daemonNote = ensureDaemonRunning();
 		if (daemonNote) (parsed.value.json ? process.stderr : process.stdout).write(`${daemonNote}\n`);
+	}
+	// s072 D2 — bind an EXISTING pane (the operator's own) to the seat instead of
+	// spawning one. This is the half of `--print` that has to run BEFORE the
+	// harness starts: claude/copilot/codex carry no pij extension, so nothing
+	// else ever rewrites the descriptor's pane.
+	if (parsed.value.attach !== undefined) {
+		const pane = parsed.value.attach !== "" ? parsed.value.attach : (process.env.TMUX_PANE ?? "");
+		if (pane === "") {
+			process.stderr.write(
+				"E-NOTMUX: --attach needs a pane — run it inside tmux ($TMUX_PANE) or pass --attach %N\n",
+			);
+			process.exit(2);
+		}
+		if (!tmux.isPaneLive(pane)) {
+			process.stderr.write(`E-ARG: pane ${pane} is not a live tmux pane\n`);
+			process.exit(2);
+		}
+		const attachSpawnId =
+			plan.value.command.env.PIJ_SPAWN_ID ?? `revive-${Date.now()}-${process.pid}`;
+		const attachRequestedAt = new Date().toISOString();
+		const attachExpectations = new FsSpawnExpectationStore(pijHome);
+		attachExpectations.write({
+			...createSpawnExpectation({
+				spawnId: attachSpawnId,
+				creatorId: plan.value.command.env.PIJ_PARENT_ID || undefined,
+				requestedHarness: plan.value.descriptor.harness ?? "pi",
+				requestedAt: attachRequestedAt,
+				deadlineAt: spawnExpectationDeadline(attachRequestedAt),
+			}),
+			paneId: pane,
+		});
+		// pi/omp self-register from the env at boot (session.ts), so they get the
+		// same in-flight marker the spawn path uses and nothing more — writing a
+		// descriptor for them here would race their own boot write.
+		if (plan.value.runtime === "pi" || plan.value.runtime === "omp") {
+			const current = registry.read(plan.value.descriptor.id);
+			if (current) {
+				registry.writeExact({ ...current, revivePendingAt: new Date().toISOString() });
+			}
+		} else {
+			const attachWindowId = tmuxWindowIdForPane(pane);
+			const revived = buildRevivedDescriptor(plan.value.descriptor, {
+				paneId: pane,
+				...(attachWindowId === undefined ? {} : { windowId: attachWindowId }),
+				pid: focusPanePid(pane),
+				spawnId: attachSpawnId,
+				nowIso: new Date().toISOString(),
+				reviverId,
+			});
+			const persisted = registry.revive(revived);
+			if (!persisted.ok) {
+				attachExpectations.remove(attachSpawnId);
+				process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
+				process.exit(exitCodeForCore(persisted.code));
+			}
+		}
+		const attachOutput = {
+			id: plan.value.id,
+			paneId: pane,
+			harness: plan.value.descriptor.harness,
+			runtime: plan.value.runtime,
+			state: "pending-canary" as const,
+			attached: true,
+		};
+		process.stdout.write(
+			parsed.value.json
+				? `${JSON.stringify(attachOutput)}\n`
+				: `attached ${attachOutput.id} (${attachOutput.runtime}) to pane ${attachOutput.paneId} — now launch the harness in it; PENDING CANARY until golden recall is verified\n`,
+		);
+		return;
 	}
 	const ownPane = tmux.currentPane();
 	if (!ownPane || !tmux.currentSession()) {
