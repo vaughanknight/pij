@@ -236,3 +236,32 @@ file directly is <0.01s. Cursor cadence therefore belongs on the file; derived
 views (`tree`, `node show`, `anomalies`) belong on the CLI at slow cadence,
 because re-implementing pij's derivation logic outside pij is the failure this
 document exists to prevent.
+
+## Daemon source provenance — the invariant, not the instance (2026-07-26)
+
+The machine-wide daemon runs `tsx` off **exactly**
+`/Users/jordanknight/pi-hacking/pij/.pi/extensions/pij/daemon.ts` — a fixed path in
+a repository that humans and agents both work in. Verify it in the live process
+argv, not from this document.
+
+The operating rule has been *"never restart the daemon from a worktree"*. That rule
+names an instance. **The invariant is: the daemon's source path must always be on
+canonical `main`.** A worktree is merely the common way to violate it.
+
+The uncommon way, hit on 2026-07-26: a foreign worker checked out its own branch
+**in the canonical checkout itself**. The rule as written read as satisfied
+throughout — nobody restarted from a worktree — while the fleet's supervisor sat one
+crash-restart away from booting on a worker's unreviewed branch. A running daemon
+keeps its already-loaded modules, which is the only reason nothing happened.
+
+**Practical consequences.**
+
+- Before any commit or merge in that checkout, run `git rev-parse --abbrev-ref HEAD`
+  and act on what it says. "It is my repo" does not entail "HEAD is on main".
+- `git branch --list` showing branches you did not create is the tell that another
+  worker is using the tree.
+- Foreign workers get `pij stream create` (an attributed worktree allocation) or
+  their own clone. Never the canonical checkout.
+- Known gap: nothing surfaces the daemon's own source branch/sha, so "what code is
+  the supervisor running" is an inference rather than a read. Recording it at boot
+  and reporting it in `pij daemon status` would close that.
