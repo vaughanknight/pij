@@ -56,6 +56,26 @@ fifth instance of the same disease, inside the fix for the fourth. Hence the acc
 for the round-2 guard, which is F9a applied to a seam: **the new test must go RED under the
 reviewer's own drop mutation**, or it is a second test that proves nothing.
 
+### The repair hierarchy — dove escalated past what item 11 proposes
+
+`004b23d` on main is the F8 lesson applied **structurally**, and it is a level above the repair
+this ledger had been arguing for. Three ways to handle "two things must agree":
+
+| level | repair | verdict |
+|---|---|---|
+| 1 | **document** the agreement | rots — serves the next reader, not the editor. This is what item 11 was asked for and refused. |
+| 2 | **assert** the agreement (a gate that fires on drift) | good — this is what item 11 builds |
+| 3 | **eliminate** the second thing, derive it from the first | **best — there is nothing left to disagree** |
+
+`3f881cb` fixed the symptom by adding `.pi-subagents` and `.serena` to biome's excludes — which
+left two independent lists. `004b23d` then derived biome's ignores **from `.gitignore`**, so the
+join cannot drift because the join no longer exists.
+
+**So the standing question has a preferred answer.** When asking *"what two things must now agree,
+and what asserts that they do?"*, the strongest response is not a better assertion — it is
+**"they no longer need to agree, because one is derived from the other."** Reach for level 3 when
+derivation is possible; fall back to level 2 when it is not. Never level 1.
+
 ## Findings — the tooling substrate
 
 ### F1. flow-pair is **not exposed to claude seats**; it is **not** missing (corrected)
