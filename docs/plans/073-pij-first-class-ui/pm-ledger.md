@@ -89,6 +89,39 @@ never a substitute for one — with no reviewer peer there is **no verdict**.
 Dove reports this same degradation is an open control-integrity bug in flow-pair's lazy-spawn
 reviewer path. Hold the line under time pressure.
 
+## Pinned baseline — the known-red set at `c4b6fb5`
+
+Pinned by `pij-sacred-pony` before any feature code, because **"inject the regression, confirm
+ONLY that guard fails" is not decidable against an unknown red set.** Every injection proof in
+this stream must read *"only my guard flipped, known-red set unchanged"*.
+
+**Exactly 3 failing tests across 2 files.**
+
+| # | test | class |
+|---|---|---|
+| 1 | `cli.integration.test.ts` › *top-level help advertises the prime list filter* | **deterministic** |
+| 2 | `daemon-push.test.ts` › *pushes a stalled notice to the creator when a bound session is working+stale* (T011/T012) | load-sensitive |
+| 3 | `daemon-push.test.ts` › *does NOT push for a non-stalled session (working with fresh events)* | load-sensitive |
+
+- **#1 is `afdb839`'s fallout, not ours.** Fails alone. Help emits
+  `pij list [--here] [--prime] [--archived] [--badge] [--json]` (`core/cli.ts:282`) while the
+  assertion still expects the substring without `[--badge]`.
+- **#2 and #3 are D-035, confirmed rather than assumed.** The whole `daemon-push.test.ts` file
+  passes in isolation (19 passed, 2 skipped) including both; they fail only under full-suite
+  contention against the 5s subprocess budget. Characterised, not defective.
+
+### F5. Injection proves your guard, not everyone else's
+
+`afdb839` ran the injection discipline correctly and still shipped main red. Injection proves the
+guard **you wrote** is load-bearing; it says nothing about a guard **someone else wrote against a
+surface you changed**. `afdb839` touched `cli.test.ts`; the stale assertion lives in
+`cli.integration.test.ts` — a file the change never opened. Help text is a shared contract surface
+with assertions scattered across files, and `tsconfig`'s `**/*.test.ts` exclusion (task #12) means
+nothing type-level was ever going to catch a stale string assertion either.
+
+Companion to F4. F4: *look beside the guard you are adding.* F5: *look for guards others wrote
+against the surface you are changing.*
+
 ## Standing rulings carried into this stream
 
 - **Merged is ADOPTED, not VERIFIED.** No item is reported shipped off a merge. Everything that
