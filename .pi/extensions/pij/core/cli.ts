@@ -239,6 +239,12 @@ export type ParsedCommand =
 	  }
 	| { readonly verb: "sessions"; readonly here: boolean; readonly json: boolean }
 	| {
+			readonly verb: "attest";
+			readonly id: SessionId;
+			readonly planId?: string;
+			readonly json: boolean;
+	  }
+	| {
 			readonly verb: "models";
 			readonly filter?: string;
 			/** Provider/harness filter: pi|claude|copilot (or any provider string). */
@@ -671,6 +677,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
+	attest: new Set(["plan-id", "json"]),
 	tree: new Set(["global", "activity", "liveness", "lifecycle", "all", "json"]),
 	link: new Set(["parent", "root", "actor", "json"]),
 	path: new Set(["events", "state", "dir", "json"]),
@@ -709,6 +716,7 @@ const MAX_POS: Record<string, number> = {
 	tail: 1,
 	state: 1,
 	phonehome: 0,
+	attest: 1,
 	tree: 1,
 	link: 1,
 	path: 1,
@@ -737,7 +745,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|stream|fence|spine|task|node|anomalies> …",
+			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|node|anomalies> …",
 		);
 	// Family verbs route "<verb> <subcommand>" into the same strict tables —
 	// no bin interception (Finding 06); everything downstream keys on `key`.
@@ -764,7 +772,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|stream|fence|spine|task|node|anomalies)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|node|anomalies)`,
 		);
 	// Valence is per verb key (plan 054): the same flag can be boolean for one
 	// verb and valued for another; existing verbs see the unchanged global set.
@@ -800,6 +808,19 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			});
 		case "sessions":
 			return ok({ verb: "sessions", here: flags.here === true, json });
+		case "attest": {
+			const id = pos[0];
+			if (id === undefined) return err("E-ARG", "usage: pij attest <id> <attested-field>...");
+			const planId = flags["plan-id"];
+			if (planId === true) return err("E-ARG", "--plan-id needs a non-empty id");
+			if (planId !== undefined && planId.trim() === "") {
+				return err("E-ARG", "--plan-id needs a non-empty id");
+			}
+			if (planId === undefined) {
+				return err("E-ARG", "pij attest needs at least one attested field");
+			}
+			return ok({ verb: "attest", id, planId, json });
+		}
 		case "models": {
 			const filter = pos[0];
 			const harnessFilter = typeof flags.harness === "string" ? flags.harness : undefined;
@@ -2071,6 +2092,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							// chain state and cannot be derived from these two.
 							currentAssignment: d.currentAssignment ?? null,
 							currentTask: d.currentTask ?? null,
+							planId: d.planId ?? null,
 							// Present ONLY under --badge. Absent (not null) when not
 							// asked for, so a consumer can tell "not requested" from
 							// "requested and genuinely unknown" (which is `"unknown"`).
@@ -2121,6 +2143,38 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			);
 			const header = `${pad("pij-id", 16)} ${pad("harness", 8)} ${pad("harness-session", 38)} ${pad("lifecycle", 8)} ${pad("model", 20)} ${pad("parent", 14)} transcript`;
 			return okOut([header, ...lines, `${rows.length} session(s)`].join("\n"));
+		}
+		case "attest": {
+			const attested = [
+				...(cmd.planId !== undefined ? [{ field: "planId" as const, value: cmd.planId }] : []),
+			];
+			if (attested.length === 0) {
+				return fail("E-ARG", "pij attest needs at least one attested field", cmd.json);
+			}
+			const current = deps.registry.read(cmd.id);
+			if (!current) return fail("E-NOID", `no session '${cmd.id}' in registry`, cmd.json);
+			const changed = attested.some(({ field, value }) => current[field] !== value);
+			try {
+				if (changed) {
+					const next = { ...current };
+					for (const { field, value } of attested) next[field] = value;
+					deps.registry.write(next, "cli");
+				}
+			} catch (error) {
+				return fail("E-NOREG", `could not attest '${cmd.id}' (${String(error)})`, cmd.json);
+			}
+			const persisted = deps.registry.read(cmd.id);
+			if (!persisted || attested.some(({ field, value }) => persisted[field] !== value)) {
+				return fail("E-NOREG", `attestation for '${cmd.id}' did not persist`, cmd.json);
+			}
+			const reported = Object.fromEntries(
+				attested.map(({ field, value }) => [field, value] as const),
+			);
+			if (cmd.json) {
+				return okOut(JSON.stringify({ id: cmd.id, ...reported, changed }));
+			}
+			const fields = attested.map(({ field, value }) => `${field}=${value}`).join(" ");
+			return okOut(`attested ${cmd.id}: ${fields}${changed ? "" : " (unchanged)"}`);
 		}
 		case "tree": {
 			const descriptors = [...(deps.treeDescriptors ?? deps.registry.list())];
@@ -4093,6 +4147,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				badge,
 				currentAssignment: d.currentAssignment ?? null,
 				currentTask: d.currentTask ?? null,
+				planId: d.planId ?? null,
 				assignments: assignments.map(({ assignment, chain }) => ({
 					id: assignment.id,
 					task: assignment.task,

@@ -12,6 +12,7 @@ import {
 	buildEffortWarning,
 	buildPendingDescriptor,
 	buildPiFocusSpawnCommand,
+	buildPlanIdWarning,
 	buildSpawnCommand,
 	buildSpawnOutput,
 	deriveCallerParent,
@@ -25,6 +26,7 @@ import {
 	planControlSplit,
 	planPlacement,
 	readyBody,
+	renderSpawnReceipt,
 	resolvePiBin,
 	resolvePiModelBinding,
 	spawnIdentitySeed,
@@ -143,6 +145,14 @@ describe("buildSpawnCommand", () => {
 	it("exposes the spawner id as PIJ_PARENT_ID (who spawned me)", () => {
 		const result = buildSpawnCommand(base);
 		expect(result.env.PIJ_PARENT_ID).toBe("pij-parent01");
+	});
+
+	it("exports an explicit plan id under both harness join names", () => {
+		const result = buildSpawnCommand({ ...base, planId: "073-pij-first-class-ui" });
+		expect(result.env).toMatchObject({
+			HARNESS_PLAN_ID: "073-pij-first-class-ui",
+			PIJ_PLAN_ID: "073-pij-first-class-ui",
+		});
 	});
 
 	it("omits PIJ_SPAWN_TASK when no task given", () => {
@@ -398,6 +408,14 @@ describe("buildControlSpawnCommand", () => {
 		const r = buildControlSpawnCommand(base);
 		expect(r.env.PIJ_SESSION_ID).toBe("pij-bright-otter");
 		expect(r.env.PIJ_HARNESS).toBe("claude");
+	});
+
+	it("exports an explicit plan id under both harness join names", () => {
+		const r = buildControlSpawnCommand({ ...base, planId: "073-pij-first-class-ui" });
+		expect(r.env).toMatchObject({
+			HARNESS_PLAN_ID: "073-pij-first-class-ui",
+			PIJ_PLAN_ID: "073-pij-first-class-ui",
+		});
 	});
 
 	it("omits PIJ_PARENT_ID when no parentId given (caller unresolved)", () => {
@@ -703,6 +721,15 @@ describe("buildPendingDescriptor", () => {
 		});
 	});
 
+	it("persists the explicit plan id on a daemon-bound descriptor", () => {
+		expect(
+			buildPendingDescriptor({
+				...input,
+				planId: "073-pij-first-class-ui",
+			}).planId,
+		).toBe("073-pij-first-class-ui");
+	});
+
 	it("keeps model + effort additive for legacy/default spawns", () => {
 		const descriptor = buildPendingDescriptor(input);
 		expect(descriptor.boundModel).toBeUndefined();
@@ -746,6 +773,8 @@ describe("buildSpawnOutput", () => {
 				lifecycle: "pending",
 				model: "gpt-5.6-sol",
 				effort: "xhigh",
+				planId: "073-pij-first-class-ui",
+				warnings: ["warning: unresolved plan"],
 			}),
 		).toEqual({
 			id: "pij-worker",
@@ -754,6 +783,8 @@ describe("buildSpawnOutput", () => {
 			lifecycle: "pending",
 			model: "gpt-5.6-sol",
 			effort: "xhigh",
+			planId: "073-pij-first-class-ui",
+			warnings: ["warning: unresolved plan"],
 		});
 	});
 
@@ -765,7 +796,51 @@ describe("buildSpawnOutput", () => {
 			lifecycle: null,
 			model: null,
 			effort: null,
+			planId: null,
+			warnings: [],
 		});
+	});
+
+	it("carries warnings in JSON and appends them as human receipt lines", () => {
+		const output = buildSpawnOutput({
+			paneId: "%43",
+			harness: "pi",
+			planId: "073-missing",
+			warnings: ["warning: unresolved plan"],
+		});
+		expect(JSON.parse(renderSpawnReceipt(output, "spawned pi worker", true))).toMatchObject({
+			warnings: ["warning: unresolved plan"],
+		});
+		expect(renderSpawnReceipt(output, "spawned pi worker", false)).toBe(
+			"spawned pi worker\nwarning: unresolved plan",
+		);
+	});
+});
+
+describe("buildPlanIdWarning", () => {
+	it("warns with the spawn cwd path when docs/plans/<id> is unresolved", () => {
+		expect(buildPlanIdWarning("073-missing", "/repo", () => false)).toBe(
+			"warning: plan id '073-missing' does not resolve to '/repo/docs/plans/073-missing' — spawn continues",
+		);
+	});
+
+	it("reports opaque non-segment plan ids as not checked without probing the filesystem", () => {
+		for (const planId of [".", "..", "../../opaque/value", String.raw`opaque\value`]) {
+			expect(
+				buildPlanIdWarning(planId, "/repo", () => {
+					throw new Error("non-segment plan ids must not be probed as paths");
+				}),
+			).toBe(
+				`warning: plan id '${planId}' was not checked against docs/plans (not a simple path segment) — spawn continues`,
+			);
+		}
+	});
+
+	it("is silent when the plan directory resolves or no plan id was supplied", () => {
+		expect(
+			buildPlanIdWarning("073-known", "/repo", (path) => path.endsWith("/073-known")),
+		).toBeNull();
+		expect(buildPlanIdWarning(undefined, "/repo", () => false)).toBeNull();
 	});
 });
 
@@ -847,6 +922,7 @@ describe("parseSpawnArgs (T018)", () => {
 				harness: "claude",
 				task: "review the diff",
 				model: undefined,
+				planId: undefined,
 				branch: false,
 				json: false,
 			},
@@ -854,6 +930,30 @@ describe("parseSpawnArgs (T018)", () => {
 		expect(parseSpawnArgs(["--harness=claude", "--model=opus", "--json"])).toMatchObject({
 			ok: true,
 			value: { harness: "claude", model: "opus", json: true },
+		});
+	});
+
+	it("parses --plan-id as an opaque identifier without path-shaped validation", () => {
+		expect(
+			parseSpawnArgs(["--harness", "claude", "--plan-id", "../../opaque/value"]),
+		).toMatchObject({
+			ok: true,
+			value: { harness: "claude", planId: "../../opaque/value" },
+		});
+	});
+
+	it("rejects missing, empty, and whitespace-only plan-id values", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id="])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id", "   "])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
 		});
 	});
 

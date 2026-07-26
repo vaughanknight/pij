@@ -10,6 +10,7 @@
 //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
+import { resolve } from "node:path";
 import { normalizeModelQuery } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
@@ -119,6 +120,8 @@ export interface SpawnInput {
 	effort?: string;
 	/** Optional first task; delivered via PIJ_SPAWN_TASK env (finding 01). */
 	task?: string;
+	/** Explicit opaque plan identifier for the spawned seat. */
+	planId?: string;
 	/** Correlation token — becomes PIJ_SPAWN_ID. */
 	spawnId: string;
 	/** The spawner's pij id — becomes PIJ_ANNOUNCE_TO. */
@@ -211,6 +214,10 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;
+	}
+	if (input.planId !== undefined) {
+		env.HARNESS_PLAN_ID = input.planId;
+		env.PIJ_PLAN_ID = input.planId;
 	}
 
 	if (input.paneId !== undefined) {
@@ -314,6 +321,8 @@ export interface ControlSpawnInput {
 	readonly effort?: string;
 	/** Optional first task — delivered later via the init inject, not argv. */
 	readonly task?: string;
+	/** Explicit opaque plan identifier for the spawned seat. */
+	readonly planId?: string;
 	/** The spawner's pij id — becomes PIJ_PARENT_ID so the child knows who
 	 *  spawned it (uniform with the pi path's PIJ_PARENT_ID). Omitted from env
 	 *  when the caller can't be resolved. */
@@ -372,6 +381,8 @@ export interface PendingDescriptorInput {
 	readonly provider?: string;
 	/** Reasoning effort pinned on the spawn command, persisted as registry truth. */
 	readonly effort?: string;
+	/** Explicit opaque plan identifier attested at spawn. */
+	readonly planId?: string;
 }
 
 /** Stable input for the registry-owned pre-bind memorable-id reservation. */
@@ -467,6 +478,10 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;
 	}
+	if (input.planId !== undefined) {
+		env.HARNESS_PLAN_ID = input.planId;
+		env.PIJ_PLAN_ID = input.planId;
+	}
 	const cmd = input.harness === "claude" ? "claude" : input.harness;
 	return { cmd, args, env };
 }
@@ -498,6 +513,7 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 				? { boundProvider: "github-copilot" }
 				: {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
+		...(input.planId !== undefined ? { planId: input.planId } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
 		...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
@@ -517,6 +533,8 @@ export interface SpawnOutputInput {
 	readonly lifecycle?: SessionLifecycle;
 	readonly model?: string;
 	readonly effort?: string;
+	readonly planId?: string;
+	readonly warnings?: readonly string[];
 	readonly branchedFrom?: string;
 	readonly note?: string;
 }
@@ -529,6 +547,8 @@ export function buildSpawnOutput(input: SpawnOutputInput): {
 	readonly lifecycle: SessionLifecycle | null;
 	readonly model: string | null;
 	readonly effort: string | null;
+	readonly planId: string | null;
+	readonly warnings: readonly string[];
 	readonly branchedFrom?: string;
 	readonly note?: string;
 } {
@@ -539,9 +559,19 @@ export function buildSpawnOutput(input: SpawnOutputInput): {
 		lifecycle: input.lifecycle ?? null,
 		model: input.model ?? null,
 		effort: input.effort ?? null,
+		planId: input.planId ?? null,
+		warnings: input.warnings ?? [],
 		...(input.branchedFrom !== undefined ? { branchedFrom: input.branchedFrom } : {}),
 		...(input.note !== undefined ? { note: input.note } : {}),
 	};
+}
+
+export function renderSpawnReceipt(
+	output: ReturnType<typeof buildSpawnOutput>,
+	humanLine: string,
+	json: boolean,
+): string {
+	return json ? JSON.stringify(output) : [humanLine, ...output.warnings].join("\n");
 }
 
 /** A parsed `pij compact-self [--pane %N] [--delay-ms N] [instruction…]` request. */
@@ -675,6 +705,8 @@ export interface SpawnRequest {
 	readonly harness: HarnessKind;
 	readonly task?: string;
 	readonly model?: string;
+	/** Explicit opaque plan identifier; never inferred from cwd or project metadata. */
+	readonly planId?: string;
 	/** Which pi-family binary to launch on the `--harness pi` path (`pi` | `omp`).
 	 *  Unset ⇒ the default `pi`. Only valid with `--harness pi`; `omp` additionally
 	 *  rejects `--branch` (omp has no `--session-id`, so focus-fork can't be wired). */
@@ -745,6 +777,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let harness: HarnessKind | undefined;
 	let task: string | undefined;
 	let model: string | undefined;
+	let planId: string | undefined;
 	let effort: string | undefined;
 	let layout: SpawnLayout | undefined;
 	let bin: PiFamilyBin | undefined;
@@ -783,6 +816,9 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			layout = value;
 		} else if (key === "model") {
 			model = value;
+		} else if (key === "plan-id") {
+			if (value.trim() === "") return err("E-ARG", "--plan-id needs a non-empty id");
+			planId = value;
 		} else if (key === "effort") {
 			effort = value;
 		} else if (key === "bin") {
@@ -796,7 +832,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	if (!harness)
 		return err(
 			"E-ARG",
-			"usage: pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--task …] [--model …] [--effort …]",
+			"usage: pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--task …] [--model …] [--effort …] [--plan-id <id>]",
 		);
 	// `--bin` selects the pi-family BINARY, so it only makes sense on the pi path
 	// (claude/copilot/codex are their own binaries with their own bind machinery).
@@ -814,6 +850,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		harness,
 		task,
 		model,
+		planId,
 		effort,
 		layout,
 		...(bin !== undefined ? { bin } : {}),
@@ -1035,6 +1072,26 @@ export function buildSpawnWarning(
 	if (!known.some((e) => e.verified)) return null;
 	const suggestion = result.suggestion ? ` (did you mean '${result.suggestion}'?)` : "";
 	return `warning: unknown model '${model}'${suggestion} — spawn continues; confirm the id is correct`;
+}
+
+export function buildPlanIdWarning(
+	planId: string | undefined,
+	cwd: string,
+	isDirectory: (path: string) => boolean,
+): string | null {
+	if (planId === undefined) return null;
+	if (
+		planId.trim() === "" ||
+		planId === "." ||
+		planId === ".." ||
+		planId.includes("/") ||
+		planId.includes("\\")
+	) {
+		return `warning: plan id '${planId}' was not checked against docs/plans (not a simple path segment) — spawn continues`;
+	}
+	const planPath = resolve(cwd, "docs", "plans", planId);
+	if (isDirectory(planPath)) return null;
+	return `warning: plan id '${planId}' does not resolve to '${planPath}' — spawn continues`;
 }
 
 /**

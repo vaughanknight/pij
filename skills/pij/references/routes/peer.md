@@ -57,13 +57,13 @@ the caller as both structural parent and close owner automatically.
 **Spawn**
 
 ```bash
-pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] \
-          [--task "first task"] [--layout stack|right|below|window] [--branch]
+pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] [--task "first task"] [--plan-id <id>] [--layout stack|right|below|window] [--branch]
 ```
 
 Flags, never positionals — `pij spawn claude` is an E-ARG; `--harness` is
 required. Effort levels are per-model (`off|minimal|low|medium|high|xhigh|max`,
 warn-don't-block): discover what a model accepts via `pij models`, never assume.
+`--plan-id` is opaque; it exports both plan env names, stamps the descriptor, and reports unresolved or non-segment ids without blocking spawn.
 
 **Focus** — immutable native-session checkpoints, spawn's sibling:
 `pij focus save <name>` (caller must be a bound pi/claude peer) ·

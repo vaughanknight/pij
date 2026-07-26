@@ -81,6 +81,7 @@ export const DESCRIPTOR_FIELD_OWNER = {
 	// #1 — node-truth denorms, stamped by CLI verbs between daemon tick and persist.
 	currentAssignment: "cli",
 	currentTask: "cli",
+	planId: "cli",
 	semanticState: "cli",
 	// Stamped by spawn/adopt; the daemon's backfill only ever writes it where absent.
 	windowId: "cli",

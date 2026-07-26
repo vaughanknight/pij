@@ -91,8 +91,9 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
 | `tree` | `pij tree [<id> \| --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all]` | Render the current Git repository forest by default, the global registry with `--global`, or an arbitrary subtree with `<id>`. Filters are repeatable; `--json` returns `{"roots":[...]}`. |
 | `link` | `pij link <child> --parent <parent> \| --root` | Reparent a session or make it an explicit structural root. Validates unknown ids, self-links, and cycles before writing; never changes close ownership. |
-| `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
+| `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"] [--plan-id <id>]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. An explicit plan id is exported as `HARNESS_PLAN_ID` + `PIJ_PLAN_ID` and stamped on the seat descriptor. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 | `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane and optionally place it structurally under an existing session. Parent validation happens before reservation or descriptor writes. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. |
+| `attest` | `pij attest <id> --plan-id <id>` | Add or correct an existing seat's explicit opaque plan id. Absent means unattested; pij never derives it from project paths or ambient environment. |
 | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
 | `orchestration prime` | `pij orchestration prime set\|retire\|unset [<id>]` | Mark a current prime, retire it into old-prime history, or clear both markers. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
 
@@ -435,6 +436,12 @@ warning: unknown model 'claude-zz-99' (did you mean 'claude-sonnet-4-6'?) — sp
 ```
 
 The spawn is never blocked. If the model truly does not exist, the session will fail at first inference and the fail-loud heartbeat (layer 3) notifies the creator.
+
+`--plan-id <id>` uses the same warn-don't-block posture. Pij probes simple-segment
+ids against `docs/plans/<id>` in the spawner's current directory; non-segment
+opaque ids are explicitly reported as not checked. Unresolved and not-checked
+outcomes appear in JSON and human spawn receipts, and spawn always proceeds.
+Existing seats can be corrected with `pij attest <id> --plan-id <id>`.
 
 ### 3. Fail-loud heartbeat — whole-life stalled/dead push
 
