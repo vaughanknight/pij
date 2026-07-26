@@ -75,6 +75,7 @@ import {
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	SPINE_KIND_TASK_SET,
+	type SpineEvent,
 	type SpineEventDraft,
 } from "./platform/types.js";
 import type {
@@ -111,6 +112,7 @@ import {
 	type SessionId,
 	type SessionLifecycle,
 	type SessionTreeNode,
+	type SystemState,
 	type TreeActivity,
 	type TreeFilters,
 	type TreeSession,
@@ -230,6 +232,9 @@ export type ParsedCommand =
 			 *  leave every existing test call site silently wrong with tsc still
 			 *  green — exactly the class of lie this plan exists to kill. */
 			readonly archived?: boolean;
+			/** Opt-in AC-05 badge per row (chainglass). Optional for the same
+			 *  tsconfig-excludes-tests reason as `archived` above. */
+			readonly badge?: boolean;
 			readonly json: boolean;
 	  }
 	| { readonly verb: "sessions"; readonly here: boolean; readonly json: boolean }
@@ -654,7 +659,9 @@ function booleanFlagsFor(key: string): ReadonlySet<string> {
 /** Flags each verb accepts — anything else is E-ARG. */
 const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	whoami: new Set(["json", "env"]),
-	list: new Set(["here", "prime", "json"]),
+	// `archived` was parsed and handled but never allowlisted, so plan 071's
+	// entire archived tier answered E-ARG and was unreachable from the CLI.
+	list: new Set(["here", "prime", "archived", "badge", "json"]),
 	sessions: new Set(["here", "json"]),
 	models: new Set(["harness", "json"]),
 	send: new Set(["to", "command", "file", "caption", "wait", "json"]),
@@ -788,6 +795,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				here: flags.here === true,
 				prime: flags.prime === true,
 				archived: flags.archived === true,
+				badge: flags.badge === true,
 				json,
 			});
 		case "sessions":
@@ -2009,6 +2017,15 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			let descs = deps.registry.list();
 			if (cmd.here) descs = filterByFolder(descs, deps.cwd);
 			if (cmd.prime) descs = filterPrime(descs);
+			// `--badge` is OPT-IN because it is the one part of this projection
+			// that costs a join. Everything else on a row is a descriptor field
+			// read, and seats that never wanted a badge keep `list` at ~0.45s.
+			let badges: ReadonlyMap<SessionId, SemanticState | SystemState> | undefined;
+			if (cmd.badge === true) {
+				const built = badgeIndex(deps, descs);
+				if (!built.ok) return fail(built.code, built.message, cmd.json);
+				badges = built.value;
+			}
 			const s = selfId(deps);
 			const self = s.ok ? s.value : undefined;
 			// ONE liveness probe and ONE bind-health verdict per row, computed here
@@ -2054,6 +2071,10 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							// chain state and cannot be derived from these two.
 							currentAssignment: d.currentAssignment ?? null,
 							currentTask: d.currentTask ?? null,
+							// Present ONLY under --badge. Absent (not null) when not
+							// asked for, so a consumer can tell "not requested" from
+							// "requested and genuinely unknown" (which is `"unknown"`).
+							...(badges ? { badge: badges.get(d.id) ?? "unknown" } : {}),
 							// Adoption axis (plan 054 P3, WS-1): explicit boolean in the
 							// row projection so a UI/skill can filter without joins.
 							unadopted: isUnadopted(d),
@@ -4271,6 +4292,50 @@ function renderSessionForestJson(forest: SessionForest): string {
 		stack.push({ nodes: children, index: 0, close: "]}" });
 	}
 	return output.join("");
+}
+
+/** Worst-first AC-05 badge for every row, in ONE pass over the spine.
+ *
+ *  ─── THE HOIST IS THE WHOLE POINT — MEASURE BEFORE YOU SIMPLIFY IT. ───
+ *  The obvious implementation is to do per row exactly what `node show` does:
+ *  `spineLog.read({ peer: d.id })`, then join that peer's open assignments.
+ *  That is CORRECT and it is what this function returns — but at fleet scale it
+ *  measured **4249 / 4184 / 4265 ms** over 179 rows and 20,059 spine events,
+ *  because it walks the whole log once per row. Reading the spine ONCE and
+ *  bucketing by peer measured **190 / 205 / 183 ms** for byte-identical badges
+ *  (verified: zero disagreements, and non-vacuously — 8 rows carried an open
+ *  assignment, all 8 produced a chain state, and on 7 that state changed the
+ *  badge away from `systemState` alone).
+ *
+ *  So a "cleanup" that inlines this back to a per-row read is a 20x regression
+ *  that no test will fail and no reviewer will see. If you change it, re-measure
+ *  at fleet scale — not on a fixture, where both shapes look free. */
+function badgeIndex(
+	deps: CliDeps,
+	descs: readonly SessionDescriptor[],
+): Result<ReadonlyMap<SessionId, SemanticState | SystemState>> {
+	const { assignmentStore, spineLog } = deps;
+	if (!assignmentStore || !spineLog)
+		return err("E-NOREG", "project/spine stores are not wired — update the pij bin");
+	const eventsByPeer = new Map<SessionId, SpineEvent[]>();
+	for (const event of spineLog.read()) {
+		const peer = event.peer;
+		if (peer === undefined) continue;
+		const bucket = eventsByPeer.get(peer);
+		if (bucket) bucket.push(event);
+		else eventsByPeer.set(peer, [event]);
+	}
+	const badges = new Map<SessionId, SemanticState | SystemState>();
+	for (const d of descs) {
+		const events = eventsByPeer.get(d.id) ?? [];
+		const openStates = assignmentStore
+			.listByNode(d.id)
+			.filter((assignment) => assignment.closed === undefined)
+			.map((assignment) => chainStateOf(assignment, events).state)
+			.filter((state): state is SemanticState => state !== undefined);
+		badges.set(d.id, badgeOf(d.systemState, openStates));
+	}
+	return ok(badges);
 }
 
 function liveOf(

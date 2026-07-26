@@ -279,7 +279,8 @@ Messaging:
   pij inbox [check|register] [--wait [ms]] [--json]   pull messages; first use auto-registers this ambient session
                                                         non-tmux external peers use 'pij inbox --wait'; tmux/pi stay push-first
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
-  pij list [--here] [--prime] [--archived] [--json]  known sessions
+  pij list [--here] [--prime] [--archived] [--badge] [--json]  known sessions
+                                                     (--badge: worst-first badge per row; opt-in, costs one spine read)
                                                         --here filters by FOLDER (cwd), so peers living in a worktree are invisible from the repo root — omit it to see the whole fleet
                                                         --archived lists seats moved out of the hot registry (terminal >48h); they stay reachable by id
   pij sessions [--here] [--json]                     telemetry join table: one row per session of the harness↔pij keys (pijId·harness·harnessSessionId·transcriptPath·boundModel)

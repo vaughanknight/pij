@@ -4466,6 +4466,115 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 	});
 });
 
+describe("`list --badge` (chainglass item 3 — the AC-05 badge, opt-in, hoisted)", () => {
+	function badgeDeps() {
+		return platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-two-jobs" }), desc({ id: "pij-calm" })],
+		});
+	}
+
+	type Row = { id: string; badge?: string; currentTask: string | null };
+
+	/** blocked on the FIRST (still open) assignment, done on the CURRENT one. */
+	function seedDivergent(d: ReturnType<typeof badgeDeps>) {
+		run(["task", "set", "pij-two-jobs", "alpha work", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-two-jobs", "blocked", "--actor", "pij-two-jobs"], d);
+		run(["task", "set", "pij-two-jobs", "beta work", "--actor", "pij-boss"], d);
+		run(["state", "set", "pij-two-jobs", "done", "--actor", "pij-two-jobs"], d);
+	}
+
+	it("omits the key entirely without the flag — absent means NOT REQUESTED", () => {
+		const r = run(["list", "--json"], badgeDeps());
+		const rows = JSON.parse(r.stdout) as Row[];
+		// Absent, not null: a consumer must distinguish "I did not ask for this"
+		// from "I asked and the answer is genuinely unknown" (which is "unknown").
+		for (const row of rows) expect(row).not.toHaveProperty("badge");
+	});
+
+	it("carries the badge on every row under --badge", () => {
+		const r = run(["list", "--badge", "--json"], badgeDeps());
+		expect(r.exitCode).toBe(0);
+		const rows = JSON.parse(r.stdout) as Row[];
+		expect(rows.length).toBeGreaterThan(0);
+		for (const row of rows) expect(typeof row.badge).toBe("string");
+	});
+
+	it("is WORST-FIRST across open assignments, not the current-assignment denorm", () => {
+		// The discriminating case, and the whole reason the cheap `semanticState`
+		// variant was rejected: the seat is `done` on its CURRENT assignment while
+		// still `blocked` on an earlier open one. A badge derived from the denorm
+		// renders it calm; the AC-05 badge must say `blocked`.
+		const d = badgeDeps();
+		seedDivergent(d);
+
+		const denorm = d.registry.read("pij-two-jobs")?.semanticState;
+		expect(denorm).toBe("done"); // what a cheap badge would have shown
+
+		const rows = JSON.parse(run(["list", "--badge", "--json"], d).stdout) as Row[];
+		expect(rows.find((row) => row.id === "pij-two-jobs")?.badge).toBe("blocked");
+	});
+
+	it("agrees with `node show` — one surface, two paths, same answer", () => {
+		const d = badgeDeps();
+		seedDivergent(d);
+		const rows = JSON.parse(run(["list", "--badge", "--json"], d).stdout) as Row[];
+		const card = JSON.parse(run(["node", "show", "pij-two-jobs", "--json"], d).stdout) as {
+			badge: string;
+		};
+		expect(rows.find((row) => row.id === "pij-two-jobs")?.badge).toBe(card.badge);
+	});
+
+	it("CONTROL: reads the spine EXACTLY ONCE regardless of row count", () => {
+		// The 20x that no correctness test can see. Reverting the hoist to a
+		// per-row `spineLog.read({peer})` — the shape `node show` legitimately
+		// uses — measured 4.2s vs 190ms at 179 rows, and produces IDENTICAL
+		// badges, so every other test here stays green through the regression.
+		// Pin the call COUNT, which is the only observable that changes.
+		const base = platformDeps({
+			self: "pij-self",
+			descs: Array.from({ length: 25 }, (_, i) => desc({ id: `pij-row-${i}` })),
+		});
+		let reads = 0;
+		const counting = {
+			...base,
+			spineLog: new Proxy(base.spineLog, {
+				get: (target, prop, receiver) => {
+					const value = Reflect.get(target, prop, receiver);
+					if (prop !== "read" || typeof value !== "function") return value;
+					return (...args: unknown[]) => {
+						reads++;
+						return (value as (...a: unknown[]) => unknown).apply(target, args);
+					};
+				},
+			}),
+		};
+
+		const r = run(["list", "--badge", "--json"], counting);
+		expect(r.exitCode).toBe(0);
+		expect(reads).toBe(1); // 25 rows, ONE spine read — not 25.
+	});
+
+	it("fails loudly rather than silently badge-less when the stores are unwired", () => {
+		const { assignmentStore: _a, spineLog: _s, ...unwired } = badgeDeps();
+		const r = run(["list", "--badge", "--json"], unwired as unknown as CliDeps);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-NOREG");
+	});
+});
+
+describe("`list --archived` reachability (regression: allowlisted flag)", () => {
+	it("is ACCEPTED — it was handled but never allowlisted, so the tier was dead", () => {
+		// The archived branch (plan 071 D1) has always existed in the handler, but
+		// `archived` was missing from the send-time flag allowlist, so every
+		// invocation answered `E-ARG: unknown flag --archived` (RC=64) and the
+		// whole tier was unreachable from the CLI. Implemented-but-unreachable.
+		const r = run(["list", "--archived", "--json"], platformDeps({ self: "pij-self" }));
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).not.toContain("unknown flag");
+	});
+});
+
 describe("pij link spine event (P3 T004 — node-linked, V-05 uncoupled)", () => {
 	const kindPin = "node-linked";
 
