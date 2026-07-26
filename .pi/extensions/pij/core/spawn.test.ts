@@ -809,7 +809,6 @@ describe("buildSpawnOutput", () => {
 			warnings: ["warning: unresolved plan"],
 		});
 		expect(JSON.parse(renderSpawnReceipt(output, "spawned pi worker", true))).toMatchObject({
-			planId: "073-missing",
 			warnings: ["warning: unresolved plan"],
 		});
 		expect(renderSpawnReceipt(output, "spawned pi worker", false)).toBe(

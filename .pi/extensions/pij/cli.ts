@@ -234,7 +234,7 @@ function traceP3(event: string): void {
 const USAGE = `pij — session messaging + tmux control plane
 
 Control plane (spawn colleagues in tmux):
-  pij spawn --harness pi|claude|copilot|codex [--model <m>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
+  pij spawn --harness pi|claude|copilot|codex [--model <m>] [--plan-id <id>]   spawn a colleague (pi self-registers; claude/copilot/codex daemon-bound)
   pij focus save|list|launch ...                      save immutable native-session focuses and fork them on demand
   pij revive [<id>] [--print] [--attach] [--layout ...]   relaunch a native session under the same pij id; no id = the seat for this folder, --print = paste-able command (after a reboot)
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)

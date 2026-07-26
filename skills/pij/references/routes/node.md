@@ -42,6 +42,17 @@ pij canary <id> [--expect-model <model>]
 
 Records live below `~/.pij/allocations/`, `fences/`, and `dispatches/`; canary pass evidence attaches to the real acknowledged dispatch. Worked flow and manifest example: [`../../../../docs/how/pij-team-scaffold.md`](../../../../docs/how/pij-team-scaffold.md).
 
+## Seat attestation
+
+```bash
+pij attest <id> --plan-id <id>
+```
+
+`planId` is an opaque, explicit seat-level attestation. Absent means
+unattested; it is never inferred from `Project.planPath`, a cwd, or ambient
+`HARNESS_PLAN_ID`. Spawn creates it with `--plan-id`; attest corrects an
+existing descriptor through the same CLI-owned write law.
+
 ## Node cards & the spine
 
 ```bash

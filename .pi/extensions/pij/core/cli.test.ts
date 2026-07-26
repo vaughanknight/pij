@@ -4285,7 +4285,6 @@ describe("node show (T009 — the full card, field by field)", () => {
 		};
 		const result = run(["node", "show", "pij-card", "--json"], d);
 		expect(result.exitCode).toBe(0);
-		expect((JSON.parse(result.stdout) as { planId: string }).planId).toBe("073-pij-first-class-ui");
 		expect(reads).toBe(1);
 	});
 });
@@ -4566,7 +4565,6 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 		expect(r.exitCode).toBe(0);
 		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
 		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
-		expect(byId.get("pij-busy")?.planId).toBe("073-pij-first-class-ui");
 		expect(descriptorReads).toBe(0);
 	});
 });
