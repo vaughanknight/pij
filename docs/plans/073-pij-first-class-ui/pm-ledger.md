@@ -57,8 +57,27 @@ only covers the *empty* list. So a reviewer who files three low-severity nits ge
 comments (`review.ts:217-218`) name this hazard — "a real reviewer's FIX_REQUIRED was shadowed by
 a default APPROVE".
 
-Conclusion is unchanged: **the verdict is the reviewer peer's judgment, hand-recorded.** We accept
-the ledger and prompt-learning loss.
+**The tool is honest; the risk is entirely caller-side.** `flow-pair --help` says it outright:
+*"review — Emit verdict from supplied findings (**contract gate — not a code review**)"*
+(`skills/flow-pair/lib/cli.ts:46`), and `review.ts:219`'s refusal carries the verdict-law comment.
+**Nothing in flow-pair reads code. Nothing in it reviews.** The verdict verb does exactly what it
+advertises. The failure mode is a *caller* mistaking a contract gate for a reviewer — which is
+precisely what the pair route exists to prevent.
+
+So: **hand-recording the verdict is not a workaround for a broken tool — it is supplying the input
+the tool is designed to consume.** The engine cannot be the reviewer, by construction. We accept
+the ledger and prompt-learning loss; we do not accept a verdict nothing read the diff to produce.
+
+### F4. Standing check — look for the guard before proposing one
+
+Twice on 2026-07-26 this fleet was one step from building a guard that already existed, from
+opposite directions: the archived tier, and the "refuses to mint from zero findings" case (the
+guard is there — the uncovered path is the adjacent all-`low` fall-through). Both times the real
+defect sat *next to* the existing guard, not in place of it.
+
+**Before proposing a guard: check whether it exists, then check the path immediately adjacent to
+it.** A gap beside a working guard reads exactly like a missing guard, and a fix aimed at the
+wrong one lands on code that is already correct while the real hole stays open.
 
 ### F3. Control integrity — no self-review, ever
 
