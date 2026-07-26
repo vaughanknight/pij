@@ -1992,8 +1992,8 @@ function spineEv(over: Partial<SpineEvent> & { seq: number }): SpineEvent {
 
 const seqsOf = (stdout: string): number[] => (JSON.parse(stdout) as SpineEvent[]).map((e) => e.seq);
 
-describe("attest --plan-id", () => {
-	it("parses one explicit opaque plan id and rejects an empty attestation", () => {
+describe("attest", () => {
+	it("parses one explicit opaque plan id", () => {
 		expect(parseArgs(["attest", "pij-node", "--plan-id", "../../opaque/value", "--json"])).toEqual({
 			ok: true,
 			value: {
@@ -2003,10 +2003,37 @@ describe("attest --plan-id", () => {
 				json: true,
 			},
 		});
-		expect(parseArgs(["attest", "pij-node"])).toMatchObject({ ok: false, code: "E-ARG" });
+	});
+
+	it("rejects missing, empty, and whitespace-only plan-id values", () => {
 		expect(parseArgs(["attest", "pij-node", "--plan-id"])).toMatchObject({
 			ok: false,
 			code: "E-ARG",
+		});
+		expect(parseArgs(["attest", "pij-node", "--plan-id="])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["attest", "pij-node", "--plan-id", "   "])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("rejects parsing and execution when no attested field is supplied", () => {
+		expect(parseArgs(["attest", "pij-node"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: "pij attest needs at least one attested field",
+		});
+		const result = dispatch(
+			{ verb: "attest", id: "pij-node", json: true },
+			deps({ descs: [desc({ id: "pij-node" })] }),
+		);
+		expect(result).toMatchObject({ exitCode: 64, stdout: "" });
+		expect(JSON.parse(result.stderr)).toEqual({
+			error: "E-ARG",
+			message: "pij attest needs at least one attested field",
 		});
 	});
 

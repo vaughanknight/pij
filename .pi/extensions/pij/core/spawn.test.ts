@@ -824,6 +824,18 @@ describe("buildPlanIdWarning", () => {
 		);
 	});
 
+	it("reports opaque non-segment plan ids as not checked without probing the filesystem", () => {
+		for (const planId of [".", "..", "../../opaque/value", String.raw`opaque\value`]) {
+			expect(
+				buildPlanIdWarning(planId, "/repo", () => {
+					throw new Error("non-segment plan ids must not be probed as paths");
+				}),
+			).toBe(
+				`warning: plan id '${planId}' was not checked against docs/plans (not a simple path segment) — spawn continues`,
+			);
+		}
+	});
+
 	it("is silent when the plan directory resolves or no plan id was supplied", () => {
 		expect(
 			buildPlanIdWarning("073-known", "/repo", (path) => path.endsWith("/073-known")),
@@ -927,6 +939,21 @@ describe("parseSpawnArgs (T018)", () => {
 		).toMatchObject({
 			ok: true,
 			value: { harness: "claude", planId: "../../opaque/value" },
+		});
+	});
+
+	it("rejects missing, empty, and whitespace-only plan-id values", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id="])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id", "   "])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
 		});
 	});
 

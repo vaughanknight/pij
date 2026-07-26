@@ -241,7 +241,7 @@ export type ParsedCommand =
 	| {
 			readonly verb: "attest";
 			readonly id: SessionId;
-			readonly planId: string;
+			readonly planId?: string;
 			readonly json: boolean;
 	  }
 	| {
@@ -810,11 +810,16 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			return ok({ verb: "sessions", here: flags.here === true, json });
 		case "attest": {
 			const id = pos[0];
-			if (id === undefined) return err("E-ARG", "usage: pij attest <id> --plan-id <id>");
-			if (flags["plan-id"] === true || flags["plan-id"] === undefined) {
-				return err("E-ARG", "pij attest needs --plan-id <id>");
+			if (id === undefined) return err("E-ARG", "usage: pij attest <id> <attested-field>...");
+			const planId = flags["plan-id"];
+			if (planId === true) return err("E-ARG", "--plan-id needs a non-empty id");
+			if (planId !== undefined && planId.trim() === "") {
+				return err("E-ARG", "--plan-id needs a non-empty id");
 			}
-			return ok({ verb: "attest", id, planId: flags["plan-id"], json });
+			if (planId === undefined) {
+				return err("E-ARG", "pij attest needs at least one attested field");
+			}
+			return ok({ verb: "attest", id, planId, json });
 		}
 		case "models": {
 			const filter = pos[0];
@@ -2140,24 +2145,36 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			return okOut([header, ...lines, `${rows.length} session(s)`].join("\n"));
 		}
 		case "attest": {
+			const attested = [
+				...(cmd.planId !== undefined ? [{ field: "planId" as const, value: cmd.planId }] : []),
+			];
+			if (attested.length === 0) {
+				return fail("E-ARG", "pij attest needs at least one attested field", cmd.json);
+			}
 			const current = deps.registry.read(cmd.id);
 			if (!current) return fail("E-NOID", `no session '${cmd.id}' in registry`, cmd.json);
-			const changed = current.planId !== cmd.planId;
+			const changed = attested.some(({ field, value }) => current[field] !== value);
 			try {
-				if (changed) deps.registry.write({ ...current, planId: cmd.planId }, "cli");
+				if (changed) {
+					const next = { ...current };
+					for (const { field, value } of attested) next[field] = value;
+					deps.registry.write(next, "cli");
+				}
 			} catch (error) {
 				return fail("E-NOREG", `could not attest '${cmd.id}' (${String(error)})`, cmd.json);
 			}
 			const persisted = deps.registry.read(cmd.id);
-			if (!persisted || persisted.planId !== cmd.planId) {
-				return fail("E-NOREG", `plan attestation for '${cmd.id}' did not persist`, cmd.json);
+			if (!persisted || attested.some(({ field, value }) => persisted[field] !== value)) {
+				return fail("E-NOREG", `attestation for '${cmd.id}' did not persist`, cmd.json);
 			}
-			if (cmd.json) {
-				return okOut(JSON.stringify({ id: cmd.id, planId: persisted.planId, changed }));
-			}
-			return okOut(
-				`attested ${cmd.id}: planId=${persisted.planId}${changed ? "" : " (unchanged)"}`,
+			const reported = Object.fromEntries(
+				attested.map(({ field, value }) => [field, value] as const),
 			);
+			if (cmd.json) {
+				return okOut(JSON.stringify({ id: cmd.id, ...reported, changed }));
+			}
+			const fields = attested.map(({ field, value }) => `${field}=${value}`).join(" ");
+			return okOut(`attested ${cmd.id}: ${fields}${changed ? "" : " (unchanged)"}`);
 		}
 		case "tree": {
 			const descriptors = [...(deps.treeDescriptors ?? deps.registry.list())];

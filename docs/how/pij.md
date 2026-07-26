@@ -437,11 +437,11 @@ warning: unknown model 'claude-zz-99' (did you mean 'claude-sonnet-4-6'?) — sp
 
 The spawn is never blocked. If the model truly does not exist, the session will fail at first inference and the fail-loud heartbeat (layer 3) notifies the creator.
 
-`--plan-id <id>` uses the same warn-don't-block posture. Pij checks
-`docs/plans/<id>` against the spawner's current directory and includes an
-unresolved warning in both JSON and human spawn receipts, but the identifier
-remains opaque and the spawn always proceeds. Existing seats can be corrected
-with `pij attest <id> --plan-id <id>`.
+`--plan-id <id>` uses the same warn-don't-block posture. Pij probes simple-segment
+ids against `docs/plans/<id>` in the spawner's current directory; non-segment
+opaque ids are explicitly reported as not checked. Unresolved and not-checked
+outcomes appear in JSON and human spawn receipts, and spawn always proceeds.
+Existing seats can be corrected with `pij attest <id> --plan-id <id>`.
 
 ### 3. Fail-loud heartbeat — whole-life stalled/dead push
 

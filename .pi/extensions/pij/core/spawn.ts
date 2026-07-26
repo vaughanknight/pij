@@ -817,6 +817,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		} else if (key === "model") {
 			model = value;
 		} else if (key === "plan-id") {
+			if (value.trim() === "") return err("E-ARG", "--plan-id needs a non-empty id");
 			planId = value;
 		} else if (key === "effort") {
 			effort = value;
@@ -1079,6 +1080,15 @@ export function buildPlanIdWarning(
 	isDirectory: (path: string) => boolean,
 ): string | null {
 	if (planId === undefined) return null;
+	if (
+		planId.trim() === "" ||
+		planId === "." ||
+		planId === ".." ||
+		planId.includes("/") ||
+		planId.includes("\\")
+	) {
+		return `warning: plan id '${planId}' was not checked against docs/plans (not a simple path segment) — spawn continues`;
+	}
 	const planPath = resolve(cwd, "docs", "plans", planId);
 	if (isDirectory(planPath)) return null;
 	return `warning: plan id '${planId}' does not resolve to '${planPath}' — spawn continues`;
