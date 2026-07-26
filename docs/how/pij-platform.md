@@ -194,3 +194,45 @@ acts on an anomaly itself.
   is the descriptor.
 - All record writes are atomic replaces — readers never see half a JSON file.
   NDJSON readers must skip torn/corrupt lines (every pij parser does).
+
+## Path stability — what an external reader may bind to (ruling, 2026-07-26)
+
+The contract above is a **schema** contract. It was silent on **paths**, and an
+external reader needs both. Ruled here after the chainglass UI workstream hit the
+gap.
+
+**Public and stable — bind to the file.**
+
+- `~/.pij/spine/` — the append-only spine. Append-only, schema-versioned per line,
+  open-vocabulary by design, and the highest-volume thing any consumer polls.
+  A cursor over this file is a supported access pattern. It will not move or change
+  format without notice to known consumers.
+
+**NOT stable — read through the CLI.**
+
+- Individual record paths, including `~/.pij/<id>.json`. The two-tier registry
+  (s071) *renames records between `~/.pij/` and `~/.pij/archive/`* — `renameSync`
+  in `adapters/fs-registry.ts` — on a 48h terminal TTL. 1,988 of ~2,184 seats
+  currently live in `archive/`. A watcher bound to a record path will see it
+  vanish and must not read that as deletion. Schema was preserved across that
+  change; **location was not**, and nothing in this document promised it would be.
+- Directory scans of `~/.pij/`. Atomic replace is implemented as write-temp +
+  rename, so `<id>.json.tmp-<pid>-<uuid>` files appear transiently and can be left
+  behind by a crash (there is one on this host today). Any consumer listing that
+  directory must filter them; the CLI already does.
+
+**What atomic replace does and does not buy a reader.** It does rule out torn
+reads — a reader never sees half a JSON file, exactly as stated above. It does
+**not** make a record self-consistent with the rest of the store at that instant:
+cross-file ordering skew is real (the `pij link` window above is one documented
+case) and is surface-independent. The per-field merge law is a **writer** hazard —
+read-modify-write from outside loses concurrent daemon updates — and a read-only
+consumer cannot enter that class.
+
+**Consequence for polling.** A CLI invocation costs ~0.42–0.48s wall clock
+(measured, two independent observers, 2026-07-26). At a 1–2s cursor cadence that
+is a 25–50% duty cycle of process spawning on a shared host. Reading the spine
+file directly is <0.01s. Cursor cadence therefore belongs on the file; derived
+views (`tree`, `node show`, `anomalies`) belong on the CLI at slow cadence,
+because re-implementing pij's derivation logic outside pij is the failure this
+document exists to prevent.
