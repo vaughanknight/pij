@@ -184,6 +184,48 @@ nothing type-level was ever going to catch a stale string assertion either.
 Companion to F4. F4: *look beside the guard you are adding.* F5: *look for guards others wrote
 against the surface you are changing.*
 
+## Queued behind item 1 — items 10 and 11 (from cheetah's brief addendum)
+
+**HOLD: nobody touches `core/cli.ts` until `pij-sacred-pony`'s work is committed and synced.**
+Currently trivially satisfied — the coder is the only seat in that file and there is no second
+coder on this stream. Standing until item 1 lands.
+
+### Item 10 — `node show` also emits `folder`
+
+Verified independently: `node show` emits `cwd: d.folder` (`core/cli.ts:4118`); `list` emits
+`folder: d.folder` (`:1984`, `:2042`). Same value, two names, so a UI joining list rows to node
+show cards must know the rename.
+
+Fix: `node show` **also** emits `folder`. **`cwd` stays as a permanent alias — not deprecated.**
+A named consumer already ships against it and breaking them for tidiness is a bad trade. Additive,
+one line plus a projection test. Rides with whatever coder is next in `cli.ts`.
+
+### Item 11 — the projection contract as a PINNED table, not a document
+
+Three projection inconsistencies surfaced on one store in one day — `currentTask` absent from
+`list`, `badge` absent from `list`, `folder`-vs-`cwd` — and none was visible from
+`pij-platform.md`.
+
+cheetah asked for a hand-maintained per-verb emitted-field table. **Dove ruled harder, and
+correctly:** a hand-maintained table is exactly what the maintenance-incentive law says will rot.
+It serves the *next reader*, not the person editing the projection, so whoever adds a key will not
+update it — and **a stale contract table is worse than none, because it reads as authoritative.**
+
+Build it as a **gate**: a test asserting each verb's actually-emitted key set against the
+documented set, failing when a projection gains or loses a key without the contract being updated.
+Same move as the badge call-count control. **Find the observable that changes when the rule is
+broken and assert it; never write a comment asking people to be careful.**
+
+It will likely fail on first run. **That is the point** — it will report what the surface actually
+emits, which nobody currently knows.
+
+**PM note on sequencing, raised to dove:** item 1 adds `planId` to all three projections and item 2
+adds `designation` to the same three. So the pinned table must be built *after* item 1 (as dove
+sequenced), and **item 2 will legitimately break it**. That break is the gate working, not a
+regression — the correct response is to update the contract in the same commit as the new key.
+Nobody should "fix" it by loosening the assertion. Worth stating before someone meets a red gate
+they did not expect and reaches for the wrong repair.
+
 ## Standing rulings carried into this stream
 
 - **Merged is ADOPTED, not VERIFIED.** No item is reported shipped off a merge. Everything that
