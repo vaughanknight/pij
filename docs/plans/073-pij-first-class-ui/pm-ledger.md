@@ -358,6 +358,37 @@ in a repo without the convention. *"An empty string is not an unresolvable ident
 ABSENCE of one. Rejecting it is not a resolution policy, it is argument validation."* `E-ARG` at
 parse time, after trimming — `"   "` is the same non-identifier in disguise.
 
+### F11. Both ends proven, the join unproven
+
+Round 2 closed F1–F3 with injection evidence and found one new gap: **the warning-to-receipt seam
+has no discriminating guard.**
+
+The behaviour is correct — `cli.ts:1922` does carry `buildPlanIdWarning`'s result into the receipt.
+But mutating the real caller to drop every non-null warning left **`just typecheck` green and
+`cli.integration.test.ts` green at 73 passed**. The pure helper test proves the string is produced;
+a generic renderer test proves a supplied warning is rendered; **nothing proves those two are
+connected.**
+
+| proven | not proven |
+|---|---|
+| helper returns the right string | the caller passes it on |
+| renderer renders a supplied warning | ...that these two are joined |
+
+**Unit-tested + unit-tested ≠ seam-tested.** Two guards can both be load-bearing and still leave
+the composition between them undefended — and the composition is where the ruled behaviour
+actually lives.
+
+This is the sharpest instance yet of the day's theme, because it is *self-referential*: the
+three-outcome probe was built specifically to stop **silence reading as validated**, and it was
+itself installed behind an unguarded seam where dropping it would be **silent**. The defect the fix
+was designed to prevent applied to the fix.
+
+**And the state is the dangerous one from F9/F10: it does not look broken, it looks finished.**
+Every gate green, behaviour correct today, one refactor away from silently reverting.
+
+Companion to F9a: name-derived injection catches an over-claiming *name*; seam guards catch an
+unclaimed *join*. Neither finds the other.
+
 ## Standing rulings carried into this stream
 
 - **Merged is ADOPTED, not VERIFIED.** No item is reported shipped off a merge. Everything that
