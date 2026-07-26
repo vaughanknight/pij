@@ -115,6 +115,27 @@ noise.
 3. Full-suite runs are **merge-time only**, and any failure in one is a **candidate for
    isolation-checking, never a fact**.
 
+### The variable red set — CLOSED. My mechanism was wrong.
+
+**Fixed on main: `646868f`.** I proposed the cause was parallelism contending on shared resources
+(PIJ_HOME sandboxes, ports, the daemon). **That was wrong, and the disproof is clean.**
+
+Discriminating experiment (dove): raise **only** `testTimeout`, change nothing else →
+**198 files, 3610 tests, ZERO failures.** Contention is not cured by a longer clock. Nothing was
+corrupting anything. It was a **budget**: `vitest.config.ts` carried a global `testTimeout` of
+5000 against ~16 parallel workers on a box that also runs the fleet, so tests lost a wall-clock
+race and *which* ones lost varied with scheduling. That is the entire variable red set.
+
+Now 30s — verified myself at `vitest.config.ts:79` on `646868f`. It costs nothing, because a
+healthy test never approaches the ceiling: 95.9s vs 98.1s wall-clock, and the post-commit
+verification run came in at 77.9s. 30s still catches a genuine hang. **D-035 is closed, not
+documented-around.**
+
+**And the file already knew.** The adjacent `PIJ_TEST_NO_FSYNC` comment records *"18 fsync sites ×
+16 parallel workers on one disk starved boot-path tests into 20s+ timeouts"* — same cause, same
+file, mitigated once for fsync and left standing for everything else. **F4 again**: the gap beside
+the guard.
+
 ### F6. The baseline is a measurement too
 
 We applied isolation rigour to the *suspicious* failure (D-035) and not to the *reference* that
@@ -123,9 +144,15 @@ observation, taken under conditions, with the same failure modes as any other. *
 measured under varying conditions is a signal that lies**, and it lies in the worst direction:
 it launders a real regression as expected noise.
 
+**Corollary, demonstrated the hard way an hour later: when a reference is unstable, do not build a
+procedure to tolerate it — FIX THE REFERENCE.** I was one message away from teaching a coder a
+per-file discipline to work around a broken baseline. The baseline was a one-line config bug. The
+per-file discipline is still right on its own merits and it is what made the diagnosis possible —
+but it was being asked to carry a load it should never have had to.
+
 Completes the set. F4: look beside the guard you are adding. F5: look for guards others wrote
 against the surface you are changing. **F6: hold your reference to the same standard as your
-subject.**
+subject — and when it fails that standard, repair it rather than routing around it.**
 
 ## Retracted pin — the reported red set at `c4b6fb5`
 
