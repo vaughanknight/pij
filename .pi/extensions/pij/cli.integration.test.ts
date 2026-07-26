@@ -879,6 +879,77 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 	});
 
+	it("real pi and daemon-bound spawns carry unresolved and not-probeable plan warnings into JSON and human receipts", () => {
+		const unresolvedPlanId = "missing-plan-receipt";
+		const cases = [
+			{
+				planId: unresolvedPlanId,
+				warning: `warning: plan id '${unresolvedPlanId}' does not resolve to '${join(FOLDER, "docs", "plans", unresolvedPlanId)}' — spawn continues`,
+			},
+			{
+				planId: "../../opaque/value",
+				warning:
+					"warning: plan id '../../opaque/value' was not checked against docs/plans (not a simple path segment) — spawn continues",
+			},
+		] as const;
+		const receipts: Array<{
+			harness: "pi" | "claude";
+			planId: string;
+			format: "json" | "human";
+			warnings: readonly string[];
+		}> = [];
+
+		for (const harness of ["pi", "claude"] as const) {
+			for (const { planId } of cases) {
+				for (const json of [true, false] as const) {
+					clearSpawnExpectations();
+					writeFileSync(TMUX_LOG, "");
+					const args = ["spawn", "--harness", harness, "--plan-id", planId];
+					if (json) args.push("--json");
+
+					const result = pij(args, { PIJ_SESSION_ID: "pij-A" });
+
+					expect(result.code).toBe(0);
+					if (json) {
+						const jsonLine = result.out
+							.trim()
+							.split("\n")
+							.findLast((line) => line.startsWith("{"));
+						const output = JSON.parse(jsonLine ?? "{}") as { warnings?: string[] };
+						receipts.push({
+							harness,
+							planId,
+							format: "json",
+							warnings: output.warnings ?? [],
+						});
+					} else {
+						receipts.push({
+							harness,
+							planId,
+							format: "human",
+							warnings: result.out
+								.split("\n")
+								.filter((line) => line.startsWith("warning: plan id")),
+						});
+					}
+				}
+			}
+		}
+
+		expect(receipts).toEqual(
+			(["pi", "claude"] as const).flatMap((harness) =>
+				cases.flatMap(({ planId, warning }) =>
+					(["json", "human"] as const).map((format) => ({
+						harness,
+						planId,
+						format,
+						warnings: [warning],
+					})),
+				),
+			),
+		);
+	});
+
 	it("revives a dissolved Claude session under the same pij id with fail-loud resume argv", () => {
 		clearSpawnExpectations();
 		writeFileSync(TMUX_LOG, "");
