@@ -13,11 +13,10 @@
 			"!docs/plans",
 			"!scratch",
 			"!.harness",
-			"!.pi-subagents",
-			"!.serena",
 			"!**/prime-flow.json"
 		]
 	},
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
