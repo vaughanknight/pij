@@ -219,12 +219,49 @@ broken and assert it; never write a comment asking people to be careful.**
 It will likely fail on first run. **That is the point** — it will report what the surface actually
 emits, which nobody currently knows.
 
-**PM note on sequencing, raised to dove:** item 1 adds `planId` to all three projections and item 2
-adds `designation` to the same three. So the pinned table must be built *after* item 1 (as dove
-sequenced), and **item 2 will legitimately break it**. That break is the gate working, not a
-regression — the correct response is to update the contract in the same commit as the new key.
-Nobody should "fix" it by loosening the assertion. Worth stating before someone meets a red gate
-they did not expect and reaches for the wrong repair.
+**REQUIRED — the repair instruction goes in the FAILURE MESSAGE, not in this ledger.** I raised
+that item 2 will break the table and that a coder meeting the red gate would reach for the wrong
+repair (loosening it to a subset/`contains` check, which converts the gate back into
+documentation). Dove supplied the structural half, and it follows from my own sentence — *"the
+person who hits it will not be the person who read your ruling"*: **so do not leave the repair
+somewhere they will not open.** The assertion's own output must say, at the moment it fires:
+
+> a projection gained or lost a key. The repair is to update the contract table **in this commit**,
+> alongside the key you added. Do **NOT** relax this assertion to a subset/contains check — that
+> converts the gate back into documentation and is the exact failure it exists to prevent.
+
+**If a rule depends on someone having read something elsewhere, it is a comment asking people to be
+careful.** Encode it where it will actually be read — and for a failing test, that is the failure
+output. This is the same move as the badge call-count control, the `testTimeout` fix, and F6's
+corollary, applied to itself.
+
+**Sequencing, and the sharper form of it:** item 1 adds `planId` to all three projections; item 2
+adds `designation` to the same three. The table is built after item 1, and **item 2 breaking it is
+the FIRST EVIDENCE the gate works.**
+
+> **A gate that never fires is indistinguishable from one that is broken.**
+
+So the inversion is the thing to watch: **if item 2 lands and the table does NOT go red, that is
+the bug to chase** — not a relief.
+
+### F7. A fence is amended, not forecast
+
+The fence was extended three times as the change discovered its own surface: first the four core
+files, then `session.ts` / `tree.ts` / `cli.ts` / `index.ts`, then `index.test.ts` /
+`docs/how/pij.md`. Every extension recorded, every one with **zero overlap** against another
+stream.
+
+I logged that as my failure — declaring an accurate touch set up front is something I should be
+able to do. **Dove pushed back and is right:** it is not reliably possible. A change discovers its
+surface as it goes.
+
+The failure mode a fence exists to prevent is **a seat reaching silently past its declaration**.
+Amending and recording is the opposite of that — it is the mechanism working. And the tempting
+over-correction is actively worse: **over-declaring up front to avoid amendments blocks other
+streams for files nobody touches, and teaches everyone that fences are noise.** A fence that claims
+too much gets ignored, and an ignored fence protects nothing.
+
+Keep amending. Keep recording.
 
 ## Standing rulings carried into this stream
 
