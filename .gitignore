@@ -188,3 +188,7 @@ vite.config.ts.timestamp-*
 .flow-pair/
 .pi/skills/pij
 reviews/
+
+# tool caches (per-machine, not project truth)
+.serena/
+.pi-subagents/
