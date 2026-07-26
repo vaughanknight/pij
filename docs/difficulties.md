@@ -161,3 +161,27 @@ and an encoded fix (durable). Severity guides priority.
   publication under stale consumers. Cold review found all four; permanent
   malformed-batch, invalid-identity, stale-consumer, and real two-process
   hard-link regressions now encode the missing back-pressure.
+
+- **D-035 [medium, open] Test suite's 5s subprocess budgets assume an unloaded
+  machine** (2026-07-26). Full `just test` runs failed intermittently on a
+  16-CPU box under load average ~190 (three concurrent `copilot --yolo` peers at
+  172%/80%/78% CPU). Every failure was `Test timed out in 5000ms` — **zero
+  assertion failures** — and the failing SET changed every run (8, then 5, then
+  11 tests), which is the signature of resource starvation, not a defect.
+  **Controlled proof:** the failing files run in isolation give 317 passed / 0
+  failed; the entire suite at `npx vitest run --maxWorkers=3` gives 198 files
+  passed, exit 0, at *higher* load (171→198) than the run that failed. So the
+  fragility is vitest's default worker count multiplying against tests that each
+  shell out to a subprocess under a fixed 5s budget. **Not fixed, deliberately:**
+  `--maxWorkers=3` was a diagnostic flag only — no repo config was changed, no
+  timeout loosened, no assertion weakened. Encoding it as the default would hide
+  the fragility rather than fix it, and would slow every clean run. **How to read
+  a red gate here:** before blaming a diff, check `uptime` and whether the
+  failures are timeouts with no assertion failures; if so, re-run the failing
+  files in isolation and the suite at reduced parallelism before concluding
+  anything. **Lesson:** a gate whose result depends on ambient machine load is
+  not pinning behaviour ([[green-that-lies]] mechanism 5) — and on this box the
+  ambient load is *our own fleet*, so the gate gets less trustworthy exactly when
+  the most work is in flight. Surfaced by pij-able-damselfly during s072 fix
+  round 01; routed here by pij-reasonable-dove because `docs/` was outside the
+  worker's allowed paths.
