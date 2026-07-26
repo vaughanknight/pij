@@ -265,3 +265,36 @@ keeps its already-loaded modules, which is the only reason nothing happened.
 - Known gap: nothing surfaces the daemon's own source branch/sha, so "what code is
   the supervisor running" is an inference rather than a read. Recording it at boot
   and reporting it in `pij daemon status` would close that.
+
+### The exposure, enumerated (2026-07-26)
+
+The invariant above understates it: **the canonical checkout is machine-wide live
+infrastructure, and its HEAD is a production configuration value.** It is not one
+process. Enumerated on this host — every one of these resolves into the working
+tree, not into a copy or a build artefact:
+
+| Entry point | Resolves to |
+|---|---|
+| `~/.npm-global/bin/pij` (on `PATH`) | `harness/scripts/pij-cli.cjs` |
+| `~/.npm-global/bin/flow-pair` (on `PATH`) | `skills/flow-pair/lib/cli.ts` |
+| `~/.claude/skills/pij` | `skills/pij` |
+| `~/.agents/skills/pij` | `skills/pij` (serves copilot **and** codex) |
+| `~/.copilot/skills/flow-pair` | `skills/flow-pair` |
+| the machine-wide daemon process | `.pi/extensions/pij/daemon.ts` |
+
+Re-run the enumeration rather than trusting this table; it was found by accident
+while checking something else, and nothing keeps it current:
+
+```sh
+for f in ~/.npm-global/bin/*; do t=$(readlink -f "$f"); case "$t" in <checkout>/*) echo "$f -> $t";; esac; done
+for d in ~/.pi/extensions ~/.omp/extensions ~/.claude/skills ~/.agents/skills ~/.copilot/skills; do
+  find "$d" -maxdepth 3 -type l 2>/dev/null | while read l; do t=$(readlink -f "$l"); case "$t" in <checkout>/*) echo "$l";; esac; done
+done
+```
+
+**Skills are more exposed than the daemon, not less.** A running daemon keeps its
+already-loaded modules, so a branch swap only bites on restart. A **skill file is
+read at invocation**, so a foreign branch checked out in this tree changes the
+contract every agent on the machine is following on their very next call — including
+the orchestrator doing the checking. There is no window of grace and no restart to
+notice.
