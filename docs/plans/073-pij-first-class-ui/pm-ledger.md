@@ -23,6 +23,39 @@ Assignments: `asg-ugliest-coral` (coder), `asg-diplomatic-caribou` (reviewer). R
 the moment of first review, never a phase early. Both compacted on their terminal report/verdict,
 before their output was read.
 
+## THE LAW OF THIS STREAM — the parts are fine and the connection is unproven
+
+**dove's synthesis, and it subsumes most of the findings below.** F11 is not a fourth finding. It
+is **the same defect at a fourth scale**, and item 1 has now produced that defect at *every scale
+it has*.
+
+| scale | the two things | the join |
+|---|---|---|
+| **two repos** | harness honours `$HARNESS_PLAN_ID`; pij never set it | absent — **this is why item 1 exists at all** |
+| **two tools** | `.gitignore` vs `biome.json` includes · `tsconfig` excludes tests vs vitest runs them | nothing keeps the lists in agreement (F8) |
+| **two files** | help text in `cli.ts` vs its assertion in `cli.integration.test.ts` | unasserted — main went red (F5) |
+| **two functions** | `buildPlanIdWarning` produces it; the receipt renders a supplied warning | nothing proves the caller carries one to the other (F11) |
+| **two paths** | pi vs daemon-bound spawn | the original item-1 defect, and nearly the guard against it |
+
+**One disease: the parts are fine and the connection is unproven.** And it is invisible at every
+scale for the same reason — **each end has an owner and a test; the join has neither.**
+
+### The standing question — cheaper than any individual lesson
+
+> **What two things must now agree, and what asserts that they do?**
+
+**"Both are tested" is not an answer.** That is precisely the state F11 describes.
+
+Ask it on every change. It costs one sentence and it is the only question in this ledger that
+would have caught all five instances.
+
+### And the guard needs the same test as any other
+
+A **seam guard that cannot be made to fail is a seam guard in name only** — which would be the
+fifth instance of the same disease, inside the fix for the fourth. Hence the acceptance criterion
+for the round-2 guard, which is F9a applied to a seam: **the new test must go RED under the
+reviewer's own drop mutation**, or it is a second test that proves nothing.
+
 ## Findings — the tooling substrate
 
 ### F1. flow-pair is **not exposed to claude seats**; it is **not** missing (corrected)
