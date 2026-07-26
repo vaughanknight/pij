@@ -23,6 +23,38 @@ Assignments: `asg-ugliest-coral` (coder), `asg-diplomatic-caribou` (reviewer). R
 the moment of first review, never a phase early. Both compacted on their terminal report/verdict,
 before their output was read.
 
+## Item 1 — APPROVED for merge (round 3). NOT verified.
+
+**Verdict**: `APPROVE` from `pij-managing-prawn`, round 3, at HEAD `9013dfb` with implementation
+pinned to `54bbaa0`. Three rounds: FIX_REQUIRED → FIX_REQUIRED → APPROVE.
+
+**Reviewer evidence** (independently re-run, not cited from the coder's report):
+- Global caller-drop mutation → failed **only** the named receipt test, emptied **all 8** cells
+- Daemon-only warnings drop → failed **only** that test, emptied **only the 4 daemon** cells while
+  all 4 pi cells stayed correct — proving the guard discriminates **per path**, not in aggregate
+- Every prior control independently flipped exactly one owning guard: write law, 3 projection
+  fan-outs, 2 env builders, spawn + attest empty-value, not-checked warning, parser and dispatcher
+  no-field, 151/150 skill budget
+- `harness checks`: **all 8 sensors green**, including lint and windows-compat (blocker cleared by
+  `3f881cb` / `004b23d`, inherited via sync `54bbaa0`)
+- Restored baselines green; worktree clean
+
+**PM sanity pass** (mine, on top of the verdict — not a substitute for it): read the guard itself.
+It drives real `pij spawn` through the CLI across 2 harnesses × 2 plan-id cases × 2 output formats,
+aggregating all 8 receipts into **one structural `toEqual`** — which is precisely why a single-path
+drop fails it. And its name is a **true claim**: every clause it states is actually asserted (F9a).
+
+### NOT VERIFIED — the item is NOT closed
+
+**MERGED IS ADOPTED, NOT VERIFIED.** Still owed, dove-owned, and strictly post-merge:
+
+> A **live spawn** on **both** paths (pi and one external) proving the child receives
+> `HARNESS_PLAN_ID` **and** `PIJ_PLAN_ID`, and that `planId` lands on the descriptor — after dove
+> restarts the daemon from canonical main.
+
+No approval here implies that happened. Everything that fooled this fleet on 2026-07-26 was green
+at exactly the merge stage.
+
 ## THE LAW OF THIS STREAM — the parts are fine and the connection is unproven
 
 **dove's synthesis, and it subsumes most of the findings below.** F11 is not a fourth finding. It
