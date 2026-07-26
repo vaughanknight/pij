@@ -47,14 +47,36 @@ segment**. So any id that is not a plain segment can accidentally resolve:
 
 Fix all of it:
 
-1. **Reject empty/whitespace-only at parse time**, on **both** `spawn` and `attest`. An empty
-   string is not an identifier — this is `E-ARG`, not a warning. (This is the one place a
-   hard-fail is correct: dove's never-hard-fail ruling is about *unresolvable* plan ids in repos
-   without the convention, not about syntactically invalid input.)
-2. **Make the resolution probe refuse to treat a non-segment id as a path.** An id containing a
-   path separator or resolving outside `docs/plans` must produce the **warn-and-proceed** message,
-   never a false "resolves". Keep the id itself opaque — you are constraining the *probe*, not the
-   value. `../../opaque/value` stays a legal plan id; it just must not silently claim to resolve.
+1. **Reject empty/whitespace-only at parse time**, on **both** `spawn` and `attest`. **Trim first**
+   — `"   "` is the same non-identifier wearing a disguise. This is `E-ARG`, not a warning.
+
+   **Dove has explicitly sanctioned this hard-fail**, and the boundary is worth understanding
+   rather than just obeying: the never-hard-fail ruling governs an identifier we cannot
+   **resolve** — a real id in a repo without the convention. An empty string is not an
+   unresolvable identifier, it is the **absence** of one. Rejecting it is not a resolution policy,
+   it is argument validation.
+
+2. **Make the resolution probe refuse to treat a non-segment id as a path** — and give it
+   **THREE outcomes, not two.**
+
+   This is dove's addition and it is the part that would otherwise have bitten us. Look at what
+   `buildPlanIdWarning` returns today: `null` for *"resolved fine"* **and** `null` for *"nothing to
+   say"*. The moment you stop probing traversal-shaped ids, **unprobed renders as silence — and
+   silence reads as validated.** That re-creates F2 with better manners.
+
+   **This is the same defect as the `badge` key**: absent must be distinguishable from null.
+
+   | outcome | meaning | behaviour |
+   |---|---|---|
+   | resolved | `docs/plans/<id>` exists | silent, continue |
+   | did-not-resolve | probed, not found | **warn**, continue |
+   | **not probeable** | id is not a simple path segment | **say so explicitly**, continue |
+
+   Wording for the third, or something equally honest: *"plan id 'X' was not checked against
+   docs/plans (not a simple path segment)"*. Returning `null` there is the bug, not the fix.
+
+   The id itself stays **opaque** — `../../opaque/value` remains a legal, if strange, plan id. You
+   are constraining the **probe**, never the value.
 3. **Fix the over-claiming test name.** `core/cli.test.ts:1996` is called
    *"parses one explicit opaque plan id and **rejects an empty attestation**"* but only asserts
    that a **missing** value is rejected (`attest pij-node`, and `--plan-id` with no argument). It
@@ -66,6 +88,17 @@ guard is load-bearing **for the assertion it actually makes**, not for the claim
 proof you ran was valid. A test whose name over-claims is invisible to the method — it will flip
 red exactly as designed, for the narrower thing it really checks. So: **when you name a test,
 the name is a claim, and it must be as true as the assertion.**
+
+### The procedure that makes that checkable — use it from now on (dove, doctrine)
+
+> **Derive the injection from the test's NAME, not from its body.**
+
+If the name says *"rejects an empty attestation"*, inject **an empty attestation** — not whatever
+the body happens to exercise. If the guard does not flip, **the name is a lie and you have found
+the gap without needing to read the assertion at all.**
+
+It costs nothing, because you are already injecting. Apply it to every guard you touch in this
+round, including the ones you are not changing.
 
 ---
 
