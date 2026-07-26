@@ -263,6 +263,54 @@ too much gets ignored, and an ignored fence protects nothing.
 
 Keep amending. Keep recording.
 
+### F8. Two tools, two independent lists, nothing keeping them in agreement
+
+Lint on main fixed at `3f881cb`. **There were FOUR format errors, not the two I reported** —
+clearing the first pair revealed two more in `.pi-subagents/artifacts/*.json` that biome had been
+reporting all along behind them. I read a partial observation as the whole population, the same
+measurement error as the retracted pin, twice in one day in two different tools.
+
+The second pair is the instructive one: that directory is a **tool cache**, gitignored earlier the
+same day (`1b97738`) and never added to `biome.json` excludes. **`.gitignore` and biome's
+`files.includes` are independent lists with nothing keeping them in agreement**, so the cache was
+invisible to git and fully visible to the linter — every cache write would have re-reddened main
+forever.
+
+The shape arrived from both ends at once:
+
+- **Mine**: a file **nobody owns** failing a gate **everybody shares**.
+- **Dove's**: a directory excluded from **one tool's view and not another's**.
+
+| instance | tool A | tool B |
+|---|---|---|
+| `.pi-subagents` cache | git ignores it | biome lints it |
+| test files | `tsconfig` excludes them | vitest runs them |
+| `--badge` | help text advertises it | the assertion in another file did not know |
+
+**Wherever two tools keep separate lists describing "the same" set, they drift, and the drift is
+invisible from inside either one.** Repair is item 11's repair: do not document the agreement,
+assert it.
+
+### F9. Injection proves the assertion, not the name
+
+Round-1 review returned **FIX_REQUIRED** on a diff carrying **22 valid injection proofs**. The
+sharpest finding (F2) was an empty `--plan-id` being accepted, persisted, and *silently validating*
+— because `buildPlanIdWarning` resolves `docs/plans/<id>` and `""` resolves to `docs/plans` itself,
+which exists.
+
+A test named *"parses one explicit opaque plan id and **rejects an empty attestation**"*
+(`core/cli.test.ts:1996`) sat right beside it — asserting only that a **missing** value is
+rejected. It never tested `--plan-id=`.
+
+**Every injection proof the coder ran was valid.** Injection proves a guard is load-bearing **for
+the assertion it actually makes**, not for the claim in its name. A test whose name over-claims is
+*invisible to the method*: it flips red exactly as designed, for the narrower thing it really
+checks. So the method has a blind spot, and the blind spot is naming.
+
+**A test name is a claim and must be as true as its assertion.** This is why an independent
+reviewer is not optional — no amount of self-run injection would have surfaced it, because the
+coder who wrote the name believed it.
+
 ## Standing rulings carried into this stream
 
 - **Merged is ADOPTED, not VERIFIED.** No item is reported shipped off a merge. Everything that
