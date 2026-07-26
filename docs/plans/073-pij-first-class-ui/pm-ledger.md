@@ -89,13 +89,48 @@ never a substitute for one — with no reviewer peer there is **no verdict**.
 Dove reports this same degradation is an open control-integrity bug in flow-pair's lazy-spawn
 reviewer path. Hold the line under time pressure.
 
-## Pinned baseline — the known-red set at `c4b6fb5`
+## Proof method — per file, in isolation (SUPERSEDES the pin below)
 
-Pinned by `pij-sacred-pony` before any feature code, because **"inject the regression, confirm
-ONLY that guard fails" is not decidable against an unknown red set.** Every injection proof in
-this stream must read *"only my guard flipped, known-red set unchanged"*.
+> **The pin of 3 recorded below is RETRACTED as a decision procedure.** It is kept because the
+> D-035 characterisation in it is still true and because the retraction is the lesson.
 
-**Exactly 3 failing tests across 2 files.**
+**The full-suite red set on this box is a random variable.** Two back-to-back runs from the repo
+root with `b05eba9` applied: **run A = 4 failed / 3 files, run B = 8 failed / 5 files.** The extra
+files were `worktree.test.ts` (2), `core/cli.test.ts` (1), `harness/scripts/packages-bootstrap.test.ts`
+(1), `skills/flow-pair/test/cli-observe.test.ts` (1). All four run in isolation on a clean tree:
+**7 passed, 298 passed, 2 passed, 3 passed** — every one green alone. At least seven different
+tests across five files have appeared so far, and *which* ones appear changes run to run.
+
+So **"only my guard flipped, known-red set unchanged" is not decidable here.** Against a pin of 3
+a coder either sees extra reds and wrongly concludes something landed underneath them, or — the
+dangerous one — sees their injected regression sitting among four unexplained reds and files it as
+noise.
+
+**The method, binding on this stream:**
+
+1. Prove **per file, in isolation**. Never against the full suite. Isolated runs *are*
+   deterministic here — the four greens above establish it.
+2. An injection proof is: **run that file alone → baseline green → inject → confirm exactly ONE
+   test flips → restore → confirm green.** Decidable, cheap, load-independent.
+3. Full-suite runs are **merge-time only**, and any failure in one is a **candidate for
+   isolation-checking, never a fact**.
+
+### F6. The baseline is a measurement too
+
+We applied isolation rigour to the *suspicious* failure (D-035) and not to the *reference* that
+framed it — because a baseline feels like ground truth rather than an observation. It is an
+observation, taken under conditions, with the same failure modes as any other. **A reference
+measured under varying conditions is a signal that lies**, and it lies in the worst direction:
+it launders a real regression as expected noise.
+
+Completes the set. F4: look beside the guard you are adding. F5: look for guards others wrote
+against the surface you are changing. **F6: hold your reference to the same standard as your
+subject.**
+
+## Retracted pin — the reported red set at `c4b6fb5`
+
+**Superseded by the section above. Not a valid baseline.** The D-035 characterisation stands; the
+count does not.
 
 | # | test | class |
 |---|---|---|
