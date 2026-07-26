@@ -192,3 +192,7 @@ reviews/
 # tool caches (per-machine, not project truth)
 .serena/
 .pi-subagents/
+
+# python bytecode caches (harness scripts)
+__pycache__/
+*.pyc
