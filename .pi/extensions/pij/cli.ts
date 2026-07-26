@@ -177,6 +177,7 @@ import {
 	buildControlSpawnCommand,
 	buildEffortWarning,
 	buildPendingDescriptor,
+	buildPlanIdWarning,
 	buildSpawnCommand,
 	buildSpawnOutput,
 	buildSpawnWarning,
@@ -188,6 +189,7 @@ import {
 	parseSpawnArgs,
 	planBranch,
 	planPlacement,
+	renderSpawnReceipt,
 	resolvePiBin,
 	resolvePiModelBinding,
 	type SpawnLayout,
@@ -238,6 +240,7 @@ Control plane (spawn colleagues in tmux):
   pij close <id> [--force]                            tear down a colleague's pane + descriptor (--force closes one you don't own)
   pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]    register/re-attach your pane
                                                         adopts INTO an existing pending descriptor for the same pane — it never mints a duplicate id
+  pij attest <id> --plan-id <id>                       explicitly attest or correct a seat's opaque plan id
   pij identity release <id> [--json]                 free a pij id's native-identity claim WITHOUT teardown (recovery; pane + descriptor survive)
   pij daemon <start|status|stop|kill>                manage the daemon (auto-started by spawn)
   pij compact-self [--pane %N] [--delay-ms N] [instruction…]   compact this pane, queue a follow-up
@@ -343,7 +346,7 @@ EXAMPLES
 const SPAWN_USAGE = `pij spawn — spawn a colleague in a tmux pane (one uniform surface for every harness)
 
 USAGE
-  pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--model <m>] [--effort <lvl>] [--task "<t>"] [--branch]
+  pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--model <m>] [--effort <lvl>] [--task "<t>"] [--plan-id <id>] [--branch]
 
 FLAGS
   --harness <h>   pi | claude | copilot | codex  (the harness to launch in a new tmux pane)
@@ -373,6 +376,8 @@ FLAGS
   --task "<t>"    first task. pi: rides PIJ_SPAWN_TASK env (finding 01). claude/copilot/
                   codex: queued to the peer's INBOX — the daemon injects it as the first
                   turn after bind (FX001-2; env alone was never read by these harnesses).
+  --plan-id <id>  opaque plan attestation. Exports HARNESS_PLAN_ID + PIJ_PLAN_ID and
+                  stamps the seat descriptor. Missing docs/plans/<id> warns but never blocks.
   --layout <l>    stack | right | below | window (FX001-3). Unset = stack (the DEFAULT):
                   peers stack in a ~1/3-width column on YOUR right — first spawn opens the
                   column, later spawns append below and the stack evens itself (no cap).
@@ -1906,6 +1911,15 @@ function runSpawn(argv: readonly string[]): void {
 	if (spawnWarn) process.stderr.write(`${spawnWarn}\n`);
 	const effortWarn = buildEffortWarning(req.value.effort, req.value.model, known);
 	if (effortWarn) process.stderr.write(`${effortWarn}\n`);
+	const spawnCwd = process.cwd();
+	const planWarn = buildPlanIdWarning(req.value.planId, spawnCwd, (path) => {
+		try {
+			return statSync(path).isDirectory();
+		} catch {
+			return false;
+		}
+	});
+	const warnings = planWarn === null ? [] : [planWarn];
 	let resolvedPiModel = req.value.model;
 	let resolvedPiProvider: string | undefined;
 	if (req.value.harness === "pi") {
@@ -1938,7 +1952,7 @@ function runSpawn(argv: readonly string[]): void {
 			process.stderr.write("E-BRANCH: --branch is not supported for pi (claude only)\n");
 			process.exit(64);
 		}
-		const cwdPi = process.cwd();
+		const cwdPi = spawnCwd;
 		const regPi = new FsRegistry(pijHome);
 		// announce-to = the child's parent (it self-registers spawnedBy from it),
 		// so it follows AC-08 caller truth: identity only (env id → pane-exact
@@ -1970,6 +1984,7 @@ function runSpawn(argv: readonly string[]): void {
 			provider: resolvedPiProvider,
 			effort: req.value.effort,
 			task: req.value.task,
+			planId: req.value.planId,
 			noWatchdog: req.value.noWatchdog,
 		});
 		const seatLabelPi = buildSeatLabel({
@@ -2020,23 +2035,17 @@ function runSpawn(argv: readonly string[]): void {
 		}
 		const panePi = splitPi.value.paneId;
 		expectations.write({ ...expectation, paneId: panePi });
-		if (req.value.json) {
-			process.stdout.write(
-				`${JSON.stringify(
-					buildSpawnOutput({
-						paneId: panePi,
-						harness: "pi",
-						model: resolvedPiModel,
-						effort: req.value.effort,
-						note: `${piBin} self-registers as harness:pi; its id is assigned by the child at boot — watch for its ready-ping or \`pij list\``,
-					}),
-				)}\n`,
-			);
-		} else {
-			process.stdout.write(
-				`spawned ${piBin} worker in pane ${panePi} (model ${resolvedPiModel ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)\n`,
-			);
-		}
+		const output = buildSpawnOutput({
+			paneId: panePi,
+			harness: "pi",
+			model: resolvedPiModel,
+			effort: req.value.effort,
+			planId: req.value.planId,
+			warnings,
+			note: `${piBin} self-registers as harness:pi; its id is assigned by the child at boot — watch for its ready-ping or \`pij list\``,
+		});
+		const humanLine = `spawned ${piBin} worker in pane ${panePi} (model ${resolvedPiModel ?? "default"}, effort ${req.value.effort ?? "default"}) — it self-registers at boot (no daemon); its pij-id arrives via the ready-ping (see \`pij list\`)`;
+		process.stdout.write(`${renderSpawnReceipt(output, humanLine, req.value.json)}\n`);
 		return;
 	}
 	// A control-plane spawn is inert without a daemon to drive it → ready → bound.
@@ -2044,7 +2053,7 @@ function runSpawn(argv: readonly string[]): void {
 	// knows a new tmux window appeared and that binding is now in motion).
 	const daemonNote = ensureDaemonRunning();
 	if (daemonNote) process.stdout.write(`${daemonNote}\n`);
-	const cwd = process.cwd();
+	const cwd = spawnCwd;
 	const isCopilot = req.value.harness === "copilot";
 	const isCodex = req.value.harness === "codex";
 	// Branch-from-self (Plan 020): `--branch` forks the CALLER's own session into the
@@ -2152,6 +2161,7 @@ function runSpawn(argv: readonly string[]): void {
 		model: req.value.model,
 		effort: req.value.effort,
 		task: req.value.task,
+		planId: req.value.planId,
 		parentId,
 		copilotSessionId,
 		branchFrom,
@@ -2250,6 +2260,7 @@ function runSpawn(argv: readonly string[]): void {
 		model: req.value.model,
 		provider: req.value.harness === "copilot" ? "github-copilot" : undefined,
 		effort: req.value.effort,
+		planId: req.value.planId,
 	});
 	const promoted = reg0.promoteReservation(pending, reservationOwnerToken);
 	if (!promoted.ok) {
@@ -2273,26 +2284,20 @@ function runSpawn(argv: readonly string[]): void {
 			body: req.value.task,
 		});
 	}
-	if (req.value.json) {
-		process.stdout.write(
-			`${JSON.stringify(
-				buildSpawnOutput({
-					id: pijId,
-					paneId,
-					harness: req.value.harness,
-					lifecycle: "pending",
-					model: req.value.model,
-					effort: req.value.effort,
-					branchedFrom: branchFrom,
-				}),
-			)}\n`,
-		);
-	} else {
-		const branchNote = branchFrom ? ` — branched from ${branchFrom}` : "";
-		process.stdout.write(
-			`spawned ${pijId} (${req.value.harness}, model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"})${branchNote} in pane ${paneId} — daemon will drive it to ready→bound (track: pij state ${pijId} · pij tail ${pijId})\n`,
-		);
-	}
+	const output = buildSpawnOutput({
+		id: pijId,
+		paneId,
+		harness: req.value.harness,
+		lifecycle: "pending",
+		model: req.value.model,
+		effort: req.value.effort,
+		planId: req.value.planId,
+		warnings,
+		branchedFrom: branchFrom,
+	});
+	const branchNote = branchFrom ? ` — branched from ${branchFrom}` : "";
+	const humanLine = `spawned ${pijId} (${req.value.harness}, model ${req.value.model ?? "default"}, effort ${req.value.effort ?? "default"})${branchNote} in pane ${paneId} — daemon will drive it to ready→bound (track: pij state ${pijId} · pij tail ${pijId})`;
+	process.stdout.write(`${renderSpawnReceipt(output, humanLine, req.value.json)}\n`);
 	process.exit(0);
 }
 

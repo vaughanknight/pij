@@ -126,6 +126,8 @@ export interface BootInput {
 	readonly parentId?: SessionId | null;
 	/** Fresh canonical git common directory for this registration. */
 	readonly gitCommonDir?: string;
+	/** Explicit plan attestation from the spawn environment. */
+	readonly planId?: string;
 	/** Presence-independent metadata restored when shutdown removed the descriptor. */
 	readonly durableDescriptor?: SessionDescriptor;
 	/** Startup/resume/new/fork replace a prior process incarnation; reload does not. */
@@ -236,6 +238,11 @@ export class PijSession {
 					: existing?.spawnedBy,
 			...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
 			...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
+			...(existing?.planId !== undefined
+				? { planId: existing.planId }
+				: input.planId !== undefined
+					? { planId: input.planId }
+					: {}),
 		};
 		if (wasDissolved) {
 			const revived = this.ports.registry.revive(descriptor);

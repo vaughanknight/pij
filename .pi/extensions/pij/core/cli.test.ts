@@ -1992,6 +1992,39 @@ function spineEv(over: Partial<SpineEvent> & { seq: number }): SpineEvent {
 
 const seqsOf = (stdout: string): number[] => (JSON.parse(stdout) as SpineEvent[]).map((e) => e.seq);
 
+describe("attest --plan-id", () => {
+	it("parses one explicit opaque plan id and rejects an empty attestation", () => {
+		expect(parseArgs(["attest", "pij-node", "--plan-id", "../../opaque/value", "--json"])).toEqual({
+			ok: true,
+			value: {
+				verb: "attest",
+				id: "pij-node",
+				planId: "../../opaque/value",
+				json: true,
+			},
+		});
+		expect(parseArgs(["attest", "pij-node"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["attest", "pij-node", "--plan-id"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("corrects an existing plan id through the CLI-owned write path", () => {
+		const d = deps({
+			descs: [desc({ id: "pij-node", planId: "071-old-attestation" })],
+		});
+		const result = run(["attest", "pij-node", "--plan-id", "073-pij-first-class-ui", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-node",
+			planId: "073-pij-first-class-ui",
+			changed: true,
+		});
+		expect(d.registry.read("pij-node")?.planId).toBe("073-pij-first-class-ui");
+	});
+});
+
 describe("project verbs", () => {
 	describe("project create", () => {
 		it("persists the record, mentions the slug in text, exit 0", () => {
@@ -4082,6 +4115,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 					id: "pij-card",
 					harness: "claude",
 					lifecycle: "bound",
+					planId: "073-pij-first-class-ui",
 					parentId: "pij-parent",
 					spawnedBy: "pij-spawner",
 					systemState: "idle",
@@ -4136,6 +4170,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 		expect(card.badge).toBe("blocked"); // worst-first across open assignments
 		expect(card.currentAssignment).toBe(asgB);
 		expect(card.currentTask).toBe("beta work");
+		expect(card.planId).toBe("073-pij-first-class-ui");
 		expect(card.paneId).toBe("%4");
 		expect(card.windowId).toBe("@2");
 		expect(card.boundModel).toBe("gpt-5.6-sol");
@@ -4182,6 +4217,8 @@ describe("node show (T009 — the full card, field by field)", () => {
 		expect(card.windowId).toBeNull();
 		expect(card.contextMax).toBeNull();
 		expect(card.assignments).toEqual([]);
+		expect(card).toHaveProperty("planId");
+		expect(card.planId).toBeNull();
 	});
 
 	it("unknown node is E-NOID; missing subcommand is E-ARG usage", () => {
@@ -4192,13 +4229,64 @@ describe("node show (T009 — the full card, field by field)", () => {
 	it("tree JSON carries the node-truth fields free (additive spread pin)", () => {
 		const d = platformDeps({
 			self: "pij-self",
-			treeDescs: [desc({ id: "pij-t", parentId: null, systemState: "working", windowId: "@9" })],
+			treeDescs: [
+				desc({
+					id: "pij-t",
+					parentId: null,
+					systemState: "working",
+					windowId: "@9",
+					planId: "073-pij-first-class-ui",
+				}),
+				desc({ id: "pij-unattested", parentId: null }),
+			],
 		});
 		const r = run(["tree", "--global", "--json"], d);
 		expect(r.exitCode).toBe(0);
 		const forest = JSON.parse(r.stdout) as { roots: Array<Record<string, unknown>> };
 		expect(forest.roots[0]?.systemState).toBe("working");
 		expect(forest.roots[0]?.windowId).toBe("@9");
+		expect(forest.roots[0]?.planId).toBe("073-pij-first-class-ui");
+		expect(forest.roots[1]).toHaveProperty("planId");
+		expect(forest.roots[1]?.planId).toBeNull();
+	});
+
+	it("tree plan projection performs no per-node registry reads", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			treeDescs: Array.from({ length: 25 }, (_, index) =>
+				desc({
+					id: `pij-tree-${index}`,
+					parentId: null,
+					planId: index === 0 ? "073-pij-first-class-ui" : undefined,
+				}),
+			),
+		});
+		let reads = 0;
+		const originalRead = d.registry.read.bind(d.registry);
+		d.registry.read = (id) => {
+			reads++;
+			return originalRead(id);
+		};
+		const result = run(["tree", "--global", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(reads).toBe(0);
+	});
+
+	it("node show reads the descriptor once for planId instead of joining again", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-card", planId: "073-pij-first-class-ui" })],
+		});
+		let reads = 0;
+		const originalRead = d.registry.read.bind(d.registry);
+		d.registry.read = (id) => {
+			reads++;
+			return originalRead(id);
+		};
+		const result = run(["node", "show", "pij-card", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect((JSON.parse(result.stdout) as { planId: string }).planId).toBe("073-pij-first-class-ui");
+		expect(reads).toBe(1);
 	});
 });
 
@@ -4411,13 +4499,19 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 					id: "pij-busy",
 					currentAssignment: "a-0001",
 					currentTask: "wire the fleet page",
+					planId: "073-pij-first-class-ui",
 				}),
 				desc({ id: "pij-unassigned" }),
 			],
 		});
 	}
 
-	type Row = { id: string; currentAssignment: string | null; currentTask: string | null };
+	type Row = {
+		id: string;
+		currentAssignment: string | null;
+		currentTask: string | null;
+		planId: string | null;
+	};
 
 	it("projects currentTask/currentAssignment from the descriptor denorm", () => {
 		const r = run(["list", "--json"], denormDeps());
@@ -4425,6 +4519,7 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
 		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
 		expect(byId.get("pij-busy")?.currentAssignment).toBe("a-0001");
+		expect(byId.get("pij-busy")?.planId).toBe("073-pij-first-class-ui");
 	});
 
 	it("emits an EXPLICIT null when unassigned — key-not-projected is the bug being fixed", () => {
@@ -4436,8 +4531,10 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 		// field". Presence-of-key is the contract, so assert the key, not the value.
 		expect(unassigned).toHaveProperty("currentTask");
 		expect(unassigned).toHaveProperty("currentAssignment");
+		expect(unassigned).toHaveProperty("planId");
 		expect(unassigned?.currentTask).toBeNull();
 		expect(unassigned?.currentAssignment).toBeNull();
+		expect(unassigned?.planId).toBeNull();
 	});
 
 	it("CONTROL: reads NEITHER the assignment store NOR the spine — no per-row fan-out", () => {
@@ -4458,11 +4555,19 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 			assignmentStore: poison(base.assignmentStore, "assignmentStore"),
 			spineLog: poison(base.spineLog, "spineLog"),
 		};
+		let descriptorReads = 0;
+		const originalRead = d.registry.read.bind(d.registry);
+		d.registry.read = (id) => {
+			descriptorReads++;
+			return originalRead(id);
+		};
 
 		const r = run(["list", "--json"], d);
 		expect(r.exitCode).toBe(0);
 		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
 		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
+		expect(byId.get("pij-busy")?.planId).toBe("073-pij-first-class-ui");
+		expect(descriptorReads).toBe(0);
 	});
 });
 

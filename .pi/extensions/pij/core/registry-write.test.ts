@@ -92,6 +92,16 @@ describe("applyWriteLaw", () => {
 // the imprecise wording shipped a bug. Omitting is safe for OTHER writers' data
 // and SILENTLY LOSSY for your own.
 describe("omitting the authority is lossy for your own contested fields", () => {
+	it("a second non-owner write cannot replace an existing planId", () => {
+		const disk = descriptor({ planId: "073-pij-first-class-ui" });
+		const staleSeatWrite = descriptor({ planId: "071-detection-integrity" });
+
+		expect(applyWriteLaw(staleSeatWrite, disk, "seat").planId).toBe("073-pij-first-class-ui");
+		expect(
+			applyWriteLaw(descriptor({ planId: "074-corrected-attestation" }), disk, "cli").planId,
+		).toBe("074-corrected-attestation");
+	});
+
 	it("discards a contested field you are trying to SET when disk already has one", () => {
 		const reparent = descriptor({ parentId: "pij-new-boss" });
 		const disk = descriptor({ parentId: "pij-old-boss" });

@@ -86,7 +86,7 @@ function memoryExpectationStore(): SpawnExpectationStore & { writes: SpawnExpect
 describe("PijSession.boot", () => {
 	it("fresh boot writes a descriptor, announces once, returns fresh=true", () => {
 		const h = harness();
-		const r = h.session.boot(bootInput());
+		const r = h.session.boot(bootInput({ planId: "073-pij-first-class-ui" }));
 		expect(r).toMatchObject({ id: "alice", role: "worker", fresh: true });
 		const d = h.registry.read("alice");
 		expect(d).toMatchObject({
@@ -95,6 +95,7 @@ describe("PijSession.boot", () => {
 			folder: "/repo",
 			pid: 4242,
 			startedAt: new Date(T0).toISOString(),
+			planId: "073-pij-first-class-ui",
 		});
 		// announce injected immediately, exactly once, stamped with self id
 		expect(h.pi.injects).toHaveLength(1);
@@ -124,6 +125,22 @@ describe("PijSession.boot", () => {
 		expect(h.pi.injects).toHaveLength(0); // no replay of the announce
 		expect(h.registry.read("alice")?.startedAt).toBe("2026-06-15T00:00:00.000Z");
 		expect(h.registry.read("alice")?.pid).toBe(4242); // pid refreshed
+	});
+
+	it("reload preserves an existing planId over a stale spawn environment", () => {
+		const existing: SessionDescriptor = {
+			id: "alice",
+			role: "worker",
+			folder: "/repo",
+			dataDir: "/home/.pij/alice",
+			eventsPath: "/home/.pij/alice/events.ndjson",
+			pid: 1,
+			startedAt: "2026-06-15T00:00:00.000Z",
+			planId: "073-pij-first-class-ui",
+		};
+		const h = harness({ registry: [existing], now: T0 });
+		h.session.boot(bootInput({ planId: "071-stale-spawn-env" }));
+		expect(h.registry.read("alice")?.planId).toBe("073-pij-first-class-ui");
 	});
 
 	it("resume preserves durable fields while replacing stale runtime attachment", () => {

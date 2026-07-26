@@ -313,6 +313,9 @@ export interface SessionDescriptor {
 	readonly currentAssignment?: string;
 	/** Denormalized task text of the current assignment (`pij task set`). */
 	readonly currentTask?: string;
+	/** Opaque plan identifier explicitly attested by `pij spawn --plan-id` or
+	 * `pij attest --plan-id`. Absent means unattested; never inferred from paths. */
+	readonly planId?: string;
 	/** Denormalized semantic state of the current assignment (`pij state set`)
 	 *  — agent-declared truth, externally owned (never daemon-clobbered). */
 	readonly semanticState?: SemanticState;
@@ -382,7 +385,8 @@ export interface TreeProjectionOptions {
 export type TreeProblem = "orphan" | "filtered-parent" | "cycle";
 
 /** Stable JSON tree node: raw descriptor fields stay top-level and additive. */
-export interface SessionTreeNode extends SessionDescriptor {
+export interface SessionTreeNode extends Omit<SessionDescriptor, "planId"> {
+	readonly planId: string | null;
 	readonly effectiveParentId: SessionId | null;
 	readonly activity: TreeActivity;
 	readonly liveness: LivenessVerdict;

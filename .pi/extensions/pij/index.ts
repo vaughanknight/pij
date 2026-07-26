@@ -320,6 +320,7 @@ export default function (pi: ExtensionAPI): void {
 			paneId: process.env.TMUX_PANE,
 			...(process.env.PIJ_PARENT_ID !== undefined ? { parentId: process.env.PIJ_PARENT_ID } : {}),
 			...(gitCommonDir !== null ? { gitCommonDir } : {}),
+			...(process.env.PIJ_PLAN_ID !== undefined ? { planId: process.env.PIJ_PLAN_ID } : {}),
 			durableDescriptor,
 			resetRuntimeState: event.reason !== "reload",
 		});

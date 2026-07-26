@@ -286,6 +286,7 @@ function toNode(
 ): SessionTreeNode {
 	return {
 		...session.descriptor,
+		planId: session.descriptor.planId ?? null,
 		effectiveParentId: effectiveParent(session.descriptor),
 		activity: session.activity,
 		liveness: session.liveness,
