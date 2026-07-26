@@ -208,7 +208,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 	it("top-level help advertises the prime list filter", () => {
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
-		expect(result.out).toContain("pij list [--here] [--prime] [--archived] [--json]");
+		expect(result.out).toContain("pij list [--here] [--prime] [--archived] [--badge] [--json]");
 		expect(result.out).toContain("pij tree [<id> | --global]");
 		expect(result.out).toContain("pij link <child> --parent <parent> | --root");
 		expect(result.out).toContain('pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]');

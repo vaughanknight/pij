@@ -59,7 +59,24 @@ export default defineConfig({
 			".pi/npm",
 			...(hasNodeSqlite() ? [] : SQLITE_DEPENDENT_TESTS),
 		],
-		testTimeout: 5000,
+		// 30s, not 5s (D-035). MEASURED, not guessed: at 5s the full suite on a
+		// loaded dev box failed a DIFFERENT set of tests every run — observed 4
+		// failures across 3 files, then 8 across 5, with membership varying
+		// (daemon-push, worktree, core/cli, packages-bootstrap, flow-pair
+		// cli-observe). Every one of them passes when its file is run alone.
+		//
+		// It is a BUDGET problem, not shared-state contention: raising ONLY this
+		// number turns the whole suite green (198 files / 3610 tests, 0 failures)
+		// and costs nothing — 95.9s vs 98.1s wall-clock, because the ceiling is
+		// never reached by a healthy test. Nothing was corrupting anything; tests
+		// were losing a wall-clock race against 16 parallel workers on a box that
+		// also runs the fleet. Same family as the fsync note below.
+		//
+		// A varying red set is worse than a slow suite: it launders a real
+		// regression as expected noise, and it makes "only my guard flipped"
+		// undecidable for anyone proving a guard by injection. 30s still catches
+		// a genuine hang.
+		testTimeout: 30000,
 		// Skip physical fsync barriers in tests (adapters/atomic-file.ts
 		// maybeFsyncSync): 18 fsync sites x 16 parallel workers on one disk
 		// starved boot-path tests into 20s+ timeouts. Ordering/content
