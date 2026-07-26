@@ -2044,6 +2044,16 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							),
 							prime: d.prime === true,
 							oldPrime: d.oldPrime === true,
+							// Assignment denorm (plan 054 P2): CLI-owned fields already
+							// stamped onto the descriptor by `task set`/`state set` via
+							// denormDescriptor, so projecting them here is a field read —
+							// NO spine read, NO assignmentStore join, NO per-row fan-out.
+							// A UI otherwise pays N × `node show` to answer "what is this
+							// seat doing" (measured: 179 rows ≈ 80s). Deliberately NOT
+							// `badge`, which is computed from every OPEN assignment's
+							// chain state and cannot be derived from these two.
+							currentAssignment: d.currentAssignment ?? null,
+							currentTask: d.currentTask ?? null,
 							// Adoption axis (plan 054 P3, WS-1): explicit boolean in the
 							// row projection so a UI/skill can filter without joins.
 							unadopted: isUnadopted(d),

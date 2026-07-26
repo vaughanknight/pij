@@ -4402,6 +4402,70 @@ describe("unadopted flow-through (P3 T003/T005 — AC-08/WS-1 machine-wide enume
 	});
 });
 
+describe("assignment denorm in `list --json` (chainglass item 2 — projection, not join)", () => {
+	function denormDeps() {
+		return platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({
+					id: "pij-busy",
+					currentAssignment: "a-0001",
+					currentTask: "wire the fleet page",
+				}),
+				desc({ id: "pij-unassigned" }),
+			],
+		});
+	}
+
+	type Row = { id: string; currentAssignment: string | null; currentTask: string | null };
+
+	it("projects currentTask/currentAssignment from the descriptor denorm", () => {
+		const r = run(["list", "--json"], denormDeps());
+		expect(r.exitCode).toBe(0);
+		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
+		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
+		expect(byId.get("pij-busy")?.currentAssignment).toBe("a-0001");
+	});
+
+	it("emits an EXPLICIT null when unassigned — key-not-projected is the bug being fixed", () => {
+		const r = run(["list", "--json"], denormDeps());
+		const rows = JSON.parse(r.stdout) as Row[];
+		const unassigned = rows.find((row) => row.id === "pij-unassigned");
+		// The distinction that cost chainglass 179 × `node show`: a consumer must be
+		// able to tell "this seat has no task" from "this surface does not carry the
+		// field". Presence-of-key is the contract, so assert the key, not the value.
+		expect(unassigned).toHaveProperty("currentTask");
+		expect(unassigned).toHaveProperty("currentAssignment");
+		expect(unassigned?.currentTask).toBeNull();
+		expect(unassigned?.currentAssignment).toBeNull();
+	});
+
+	it("CONTROL: reads NEITHER the assignment store NOR the spine — no per-row fan-out", () => {
+		// The whole value of this projection is that it costs one descriptor read.
+		// A future refactor that derives these fields from the assignment chain (the
+		// way `node show` legitimately does) would still pass the two tests above
+		// while reintroducing the 179-row fan-out it exists to remove. So make the
+		// join physically impossible and prove `list` never reaches for it.
+		const base = denormDeps();
+		const boom = (surface: string) => () => {
+			throw new Error(`list must not touch ${surface} — per-row fan-out reintroduced`);
+		};
+		const poison = <T extends object>(target: T, surface: string): T =>
+			new Proxy(target, { get: (_t, prop) => boom(`${surface}.${String(prop)}`) });
+		// Rebuilt rather than mutated: both stores are readonly on CliDeps.
+		const d = {
+			...base,
+			assignmentStore: poison(base.assignmentStore, "assignmentStore"),
+			spineLog: poison(base.spineLog, "spineLog"),
+		};
+
+		const r = run(["list", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
+		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
+	});
+});
+
 describe("pij link spine event (P3 T004 — node-linked, V-05 uncoupled)", () => {
 	const kindPin = "node-linked";
 
