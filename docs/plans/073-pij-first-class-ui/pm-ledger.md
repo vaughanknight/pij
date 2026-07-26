@@ -17,9 +17,11 @@ PM: pij-exclusive-whitefish · o-prime: pij-reasonable-dove · consumer: pij-che
 | seat | id | model | canary |
 |---|---|---|---|
 | coder | `pij-sacred-pony` | copilot `gpt-5.6-sol` xhigh | **PASS** — model matched via pane-footer, `pane:%2757 pid:57095 native:1e544d20…` |
-| reviewer | not yet spawned | cold seat, session-level independence (Jordan, ruled ×4) | acquired at first review, never a phase early |
+| reviewer | `pij-managing-prawn` | copilot `gpt-5.6-sol` xhigh, cold seat | **PASS** — model matched via pane-footer, `pane:%2778 pid:81681 native:741e2a92…` |
 
-Assignment `asg-ugliest-coral` on the coder.
+Assignments: `asg-ugliest-coral` (coder), `asg-diplomatic-caribou` (reviewer). Reviewer acquired at
+the moment of first review, never a phase early. Both compacted on their terminal report/verdict,
+before their output was read.
 
 ## Findings — the tooling substrate
 
@@ -310,6 +312,51 @@ checks. So the method has a blind spot, and the blind spot is naming.
 **A test name is a claim and must be as true as its assertion.** This is why an independent
 reviewer is not optional — no amount of self-run injection would have surfaced it, because the
 coder who wrote the name believed it.
+
+### F9a. Derive the injection from the NAME, not the body — F9 made executable
+
+F9 as I first wrote it was a **warning**: here is a blind spot, be careful. That is precisely the
+species of advice this stream has spent the day proving useless. Dove turned it into a procedure
+with an observable:
+
+> **Derive the injection from the test's NAME, not from its body.**
+
+If the name says *"rejects an empty attestation"*, inject **an empty attestation** — not whatever
+the body happens to exercise. **If the guard does not flip, the name is a lie** — and you found the
+gap without reading the assertion at all. It costs nothing, because you are already injecting.
+
+Same move as the pinned projection table and the call-count control: **do not ask people to be
+careful; find the observable that changes when the rule is broken.** This single procedure would
+have caught F2 in the coder's original pass.
+
+Standing procedure for every guard touched, including ones not being changed.
+
+### F10. Silence reads as validated — absent must be distinguishable from null
+
+I widened F2 from "empty is accepted" to "the probe treats an opaque id as a path segment", and
+then walked straight past the fact that **my own fix would have re-created the defect more
+quietly**. Dove caught it.
+
+`buildPlanIdWarning` returns `null` for *"resolved fine"* **and** `null` for *"nothing to say"*. The
+moment traversal-shaped ids stop being probed, **unprobed renders as silence, and silence reads as
+validated.** We would have shipped F2 with better manners.
+
+Three outcomes, not two:
+
+| outcome | behaviour |
+|---|---|
+| resolved | silent, continue |
+| did-not-resolve | **warn**, continue |
+| **not probeable** | **say so explicitly**, continue |
+
+**This is the same defect as the `badge` key** — absent must be distinguishable from null — which I
+had cited twice the same day and still did not see coming when it arrived wearing my own fix.
+
+**On the hard-fail boundary** (dove's words, kept verbatim because they stop this being
+re-litigated): the never-hard-fail ruling governs an identifier we cannot **resolve** — a real id
+in a repo without the convention. *"An empty string is not an unresolvable identifier, it is the
+ABSENCE of one. Rejecting it is not a resolution policy, it is argument validation."* `E-ARG` at
+parse time, after trimming — `"   "` is the same non-identifier in disguise.
 
 ## Standing rulings carried into this stream
 
