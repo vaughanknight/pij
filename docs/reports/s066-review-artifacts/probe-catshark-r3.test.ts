@@ -26,9 +26,12 @@ describe("round-3 seam probes", () => {
 	it("P1 the genuine footer-less modal DOES fire (and only for copilot)", () => {
 		// eslint-disable-next-line no-console
 		console.log(
-			"P1 readiness =", classifyReadiness(MODAL),
-			"| copilot fires =", seamFires(MODAL),
-			"| claude fires =", seamFires(MODAL, "claude"),
+			"P1 readiness =",
+			classifyReadiness(MODAL),
+			"| copilot fires =",
+			seamFires(MODAL),
+			"| claude fires =",
+			seamFires(MODAL, "claude"),
 		);
 	});
 
@@ -60,8 +63,10 @@ describe("round-3 seam probes", () => {
 		const prose = `I checked whether the harness would ask Do you trust the files in this folder? mid-sentence, and whether Log in with something appears.`;
 		// eslint-disable-next-line no-console
 		console.log(
-			"P6 prose =", JSON.stringify(classifyInterstitial(prose)),
-			"| readiness =", classifyReadiness(prose),
+			"P6 prose =",
+			JSON.stringify(classifyInterstitial(prose)),
+			"| readiness =",
+			classifyReadiness(prose),
 		);
 		expect(classifyInterstitial(prose).action).toBe("none");
 	});
