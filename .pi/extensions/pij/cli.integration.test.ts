@@ -1034,7 +1034,14 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			eventsPath: join(HOME, id, "events.ndjson"),
 			// A pid no live process can hold: post-reboot the recorded pid is dead.
 			pid: 999_999_999,
-			startedAt: "2026-07-24T00:00:00.000Z",
+			// RELATIVE TO HOST BOOT, never an absolute date. These tests are about the
+			// PANE axis (ours / reused / unprobed). Boot-time invalidation runs FIRST and
+			// is unconditional — "the host booted after this seat's last activity" ends the
+			// classification before the pane is ever considered. A hardcoded past date
+			// therefore silently STOPS EXERCISING the pane axis the moment the machine
+			// reboots: green for weeks, then two failures on 2026-07-27 caused by the
+			// operator restarting their laptop rather than by any code change.
+			startedAt: new Date(Date.now() - 60_000).toISOString(),
 			state: "idle",
 			harness: "claude",
 			harnessSessionId: nativeId,
@@ -1496,7 +1503,12 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			dataDir: join(HOME, id),
 			eventsPath: join(HOME, id, "events.ndjson"),
 			pid: process.pid, // alive
-			startedAt: "2026-07-24T00:00:00.000Z",
+			// Same reason as seedRebootedClaudeSeat: an absolute past date lets HOST BOOT
+			// decide this case. This test is about a LIVE pid whose terminal observation
+			// was `unavailable` — but "the host booted after its last activity" is a
+			// stronger, earlier signal and correctly returns `stale`, so after a reboot the
+			// fixture stopped reaching the rule it exists to pin.
+			startedAt: new Date(Date.now() - 60_000).toISOString(),
 			harness: "claude",
 			harnessSessionId: nativeId,
 			paneId: "%gone-too",

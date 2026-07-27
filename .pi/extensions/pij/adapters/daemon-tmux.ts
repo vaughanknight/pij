@@ -310,10 +310,18 @@ export class DaemonTmux implements DaemonPorts {
 		try {
 			return this.sendTextUnchecked(paneId, text, harness, pid);
 		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			// A pane that DOES NOT EXIST is a permanent condition, not a transient
+			// one. Retrying cannot bring it back, and the pane id itself is recycled
+			// (tmux restarts `%N` at `%0` in every new server), so a message left
+			// queued against a dead `%315` eventually lands in a STRANGER's pane.
+			// Report it distinctly so the caller unbinds instead of spinning.
+			const gone = /can't find pane|no such pane|pane not found/i.test(detail);
 			try {
-				const detail = error instanceof Error ? error.message : String(error);
 				process.stderr.write(
-					`⚠️  tmux FAILED: send to pane ${paneId} threw before submission — nothing reliably landed; the message stays queued — ${detail}\n`,
+					gone
+						? `⚠️  tmux GONE: pane ${paneId} does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — ${detail}\n`
+						: `⚠️  tmux FAILED: send to pane ${paneId} threw before submission — nothing reliably landed; the message stays queued — ${detail}\n`,
 				);
 			} catch {
 				// logging is diagnostic-only — a write failure must not break delivery.
@@ -322,7 +330,7 @@ export class DaemonTmux implements DaemonPorts {
 			// payload did not land and there is no duplicate-turn risk in retrying.
 			// Reporting it as `unverified` made the caller consume the durable copy
 			// of a message that was never delivered.
-			return "failed";
+			return gone ? "gone" : "failed";
 		}
 	}
 

@@ -584,6 +584,15 @@ export function drainTmuxInbox(
 			// leave the inbox copy UNREAD, so a retry — or a daemon restart — can still
 			// deliver it (plan 071 D7). Only `unverified` consumes, because there the
 			// payload WAS typed and replaying could duplicate an accepted turn.
+			if (outcome === "gone") {
+				// The pane does not exist. Falling through to `consumed` would mark this
+				// message READ — deleting the only durable copy of something that was
+				// never delivered. Not buffered either: an in-memory retry against a
+				// dead pane can never succeed, and the id is recycled, so a queued
+				// message eventually lands in whatever LIVE pane inherits it. Leave it
+				// unread on disk; the caller unbinds the seat.
+				continue;
+			}
 			if (outcome === "held" || outcome === "failed") {
 				buffer.enqueue(m.messageId, msg);
 				continue;

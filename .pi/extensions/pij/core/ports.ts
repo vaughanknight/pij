@@ -28,10 +28,17 @@ import type {
  *  - `held`       — the pane's composer had live human input, so NOTHING was
  *    typed. Not a delivery failure: retry on a later tick.
  *  - `failed`     — the send threw before submission, so nothing reliably landed
- *    (pane vanished, tmux unavailable). Distinguished from `unverified` in plan
+ *    (tmux unavailable, transient error). Distinguished from `unverified` in plan
  *    071 D7: collapsing the two let the caller consume the ONLY durable copy of
- *    a message that was never typed. The caller must retry, never consume. */
-export type SendOutcome = "confirmed" | "unverified" | "held" | "failed";
+ *    a message that was never typed. The caller must retry, never consume.
+ *  - `gone`       — tmux reports the target pane DOES NOT EXIST. Split out of
+ *    `failed` because it is PERMANENT, not transient: retrying can never succeed,
+ *    so requeueing spins forever (a host reboot produced ~200 such messages, one
+ *    tmux call each, every tick). Worse than the noise: tmux re-issues pane ids
+ *    from `%0` in every new server, so a queued message for a dead `%315` becomes
+ *    deliverable again — into whatever LIVE pane inherits that id. The caller must
+ *    stop targeting the binding; the durable copy stays unconsumed in the mailbox. */
+export type SendOutcome = "confirmed" | "unverified" | "held" | "failed" | "gone";
 
 /** Outcome of one archival attempt (plan 071 D1). `skipped` means the move was
  *  declined for safety (a conflicting half-archive) — never silent data loss. */

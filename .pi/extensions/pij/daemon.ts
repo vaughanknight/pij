@@ -117,6 +117,31 @@ export class Daemon {
 	/** Content-state delivery gate (see `ComposerHoldTracker`). Authoritative for
 	 * every known layout; the caret tracker above remains the unknown-layout path. */
 	private readonly composerHolds = new ComposerHoldTracker();
+	/** Retire the seat bound to a pane tmux says does not exist.
+	 *
+	 *  Not a delivery failure — a stale BINDING, and a permanent one. It is written
+	 *  as an arrow function assigned in the field position so it is defined before
+	 *  the `sendText` gate in the constructor can call it.
+	 *
+	 *  Idempotent by lookup: a pane with no live descriptor is a no-op, so repeated
+	 *  gone sends in one batch retire the seat once. */
+	private readonly unbindGonePane = (paneId: string): void => {
+		const owner = this.registry
+			.list()
+			.find((d) => d.paneId === paneId && d.lifecycle !== "dissolved");
+		if (!owner) return;
+		this.registry.dissolve(owner.id);
+		this.drives.delete(owner.id);
+		this.pushed.delete(owner.id);
+		this.watchdogStalled.delete(owner.id);
+		this.paneSig.delete(owner.id);
+		this.watchManager.disposeSession(owner.id);
+		this.watchdogManager.disposeSession(owner.id);
+		this.log(
+			`unbind ${owner.id}: pane ${paneId} does not exist — descriptor dissolved; unread mail left in the mailbox for a revive`,
+		);
+	};
+
 	private readonly markSelfInjection = (paneId: string, payload: string, nowMs: number): void => {
 		this.paneSignals.markSelfInjection(paneId, payload, nowMs);
 		this.composerHolds.markSelfInjection(paneId, payload, nowMs);
@@ -192,6 +217,14 @@ export class Daemon {
 				// 	return "held";
 				// }
 				const outcome = rawPorts.sendText(paneId, text, harness, pid);
+				// A GONE pane is a stale BINDING, not a failed send. Handled here rather
+				// than per-call-site for the same reason the content gate is: every pane
+				// write in the daemon comes through this function, so a seat whose
+				// terminal has vanished is unbound exactly once, wherever it is noticed.
+				// Left alone, the daemon re-targets that pane every tick forever — and
+				// because tmux re-issues pane ids from `%0`, the queued message would
+				// eventually land in whatever LIVE pane inherits the id (task #34).
+				if (outcome === "gone") this.unbindGonePane(paneId);
 				// Marked HERE, after the write actually happened. Marking before the
 				// gate left a phantom echo exemption behind every HELD send — an
 				// exemption for output that was never written, which the caret
@@ -487,6 +520,12 @@ export class Daemon {
 								current.harness,
 								current.pid,
 							);
+							if (outcome === "gone") {
+								// Pane is gone: stop this batch and do NOT requeue. The seat is
+								// unbound by the `sendText` gate, and every message stays unread
+								// on disk so a revived seat still receives it.
+								break;
+							}
 							if (outcome === "held" || outcome === "failed") {
 								// `held`: the human started typing between the gate and the
 								// send. `failed`: the send threw before submission. Either way
@@ -614,6 +653,15 @@ export class Daemon {
 		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
 		for (const notice of deathSweep.notices) {
 			this.channel.deliver({ from: notice.from, to: notice.to, body: notice.text });
+		}
+		// One line instead of N undeliverable pushes. A host reboot kills every seat
+		// in the same event, so the obituaries are all addressed to seats that died
+		// alongside their subject — the operator wants the COUNT, not 200 messages
+		// nobody can read (task #34).
+		if (deathSweep.noticesSuppressed > 0) {
+			this.log(
+				`death sweep: ${deathSweep.noticesSuppressed} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
+			);
 		}
 		this.watchdogManager.reconcile(this.registry.list());
 		this.sweepArchive();

@@ -80,10 +80,10 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 
 interface FakePortsOptions {
 	readonly alive?: boolean;
-	readonly isAlive?: () => boolean;
+	readonly isAlive?: (pid: number) => boolean;
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
-	readonly sendOutcome?: "confirmed" | "unverified";
+	readonly sendOutcome?: "confirmed" | "unverified" | "gone";
 	readonly sendErrorForPane?: string;
 	readonly paneListings?: () => readonly PaneListing[];
 	readonly tapChunks?: Uint8Array[];
@@ -124,7 +124,7 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 		listTranscripts: () => [],
 		home: () => home,
 		now: () => options.now?.() ?? options.nowMs ?? 1000,
-		isAlive: () => options.isAlive?.() ?? options.alive ?? true,
+		isAlive: (pid) => options.isAlive?.(pid) ?? options.alive ?? true,
 	};
 }
 
@@ -306,6 +306,39 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(messageBodies("pij-boss")).toContain(
 			`[pij receipt ${delivered.value.messageId}] unverified`,
 		);
+	});
+
+	it("unbinds the seat when its pane is GONE, and leaves the message unconsumed", () => {
+		// A gone pane is a stale BINDING, not a failed send: no retry can succeed, so
+		// requeueing spins forever (a reboot left ~200 such messages, one tmux call
+		// each, every tick). Unbind instead — and because tmux re-issues pane ids from
+		// `%0`, this also stops the message being deliverable into whatever LIVE pane
+		// later inherits `%4`.
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-gone",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const delivered = new FsChannel(home).deliver({
+			from: "pij-boss",
+			to: "pij-gone",
+			body: "are you there",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+
+		new Daemon(home, fakePorts({ sendOutcome: "gone" }), registry, new FsChannel(home)).tick();
+
+		expect(registry.read("pij-gone")?.lifecycle).toBe("dissolved");
+		// The durable copy survives with NO read marker: nothing was delivered, so
+		// nothing may be consumed. A revived seat still receives it.
+		expect(existsSync(messagePath("pij-gone", delivered.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-gone", delivered.value.messageId))).toBe(false);
 	});
 
 	it("isolates one target's send failure so unrelated live inboxes still drain", () => {
@@ -1279,7 +1312,10 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 			}),
 		);
 		const channel = new FsChannel(home);
-		const ports = fakePorts({ alive: false, nowMs: NOW_MS });
+		// pid 101 is the parent and it is ALIVE: this test is about the WORDING of a
+		// notice that reaches its recipient. A blanket `alive: false` also kills the
+		// recipient, and an obituary addressed to a corpse is correctly withheld.
+		const ports = fakePorts({ isAlive: (pid) => pid === 101, nowMs: NOW_MS });
 
 		new Daemon(home, ports, registry, channel).tick();
 
@@ -1292,19 +1328,18 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 			},
 			deathNoticeLatchedAt: new Date(NOW_MS).toISOString(),
 		});
-		expect(messageBodies("pij-parent")).toEqual([
-			expect.stringContaining("historical boot reconciliation"),
-		]);
-		expect(messageBodies("pij-parent")[0]).toContain(new Date(NOW_MS).toISOString());
+		const exitNotices = () => messageBodies("pij-parent").filter((b) => b.includes("has exited"));
+		expect(exitNotices()).toEqual([expect.stringContaining("historical boot reconciliation")]);
+		expect(exitNotices()[0]).toContain(new Date(NOW_MS).toISOString());
 
 		new Daemon(home, ports, registry, channel).tick();
-		expect(messageBodies("pij-parent")).toHaveLength(1);
+		expect(exitNotices()).toHaveLength(1);
 	});
 
 	it("uses live-observation wording after the daemon's first sweep", () => {
 		const registry = new FsRegistry(home);
 		const channel = new FsChannel(home);
-		const ports = fakePorts({ alive: false, nowMs: NOW_MS });
+		const ports = fakePorts({ isAlive: (pid) => pid === 101, nowMs: NOW_MS });
 		const daemon = new Daemon(home, ports, registry, channel);
 		daemon.tick();
 		registry.write(desc({ id: "pij-parent", pid: 101 }));
@@ -1319,7 +1354,9 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 
 		daemon.tick();
 
-		expect(messageBodies("pij-parent")).toEqual([expect.stringContaining("live observation")]);
+		expect(messageBodies("pij-parent").filter((b) => b.includes("has exited"))).toEqual([
+			expect.stringContaining("live observation"),
+		]);
 	});
 
 	it("contains an unavailable PID probe and persists explicit unavailable truth", () => {

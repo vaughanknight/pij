@@ -252,7 +252,7 @@ describe("composerPending — submit verification (the cause-independent retry g
 		// consuming destroyed the only durable copy of an undelivered message.
 		// The outcome is now `failed`, which retries. Still no throw — one dead pane
 		// must never abort the daemon's delivery tick.
-		it("returns FAILED (not unverified) instead of throwing when the target pane disappeared", () => {
+		it("returns GONE (not unverified) instead of throwing when the target pane disappeared", () => {
 			const adapter = new DaemonTmux({
 				runner: () => {
 					throw new Error("can't find pane: %42");
@@ -260,7 +260,7 @@ describe("composerPending — submit verification (the cause-independent retry g
 				sleep: () => undefined,
 			});
 
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("failed");
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("gone");
 		});
 
 		it("(a) waits through redraw lag and types the payload exactly once", () => {
@@ -370,15 +370,19 @@ describe("sendText outcome vocabulary (plan 071 D7)", () => {
 	// could duplicate an accepted turn, so the caller consumes the durable copy.
 	// A pre-submission THROW means nothing landed, so consuming destroys the only
 	// copy of an undelivered message. Collapsing the two is the 2026-07-25 loss.
-	it("reports a send to a nonexistent pane as `failed`, never `unverified`", () => {
+	it("reports a send to a nonexistent pane as `gone`, never `unverified` or `failed`", () => {
 		const adapter = new DaemonTmux();
 
 		const outcome = adapter.sendText("%99999999", "this pane does not exist");
 
-		expect(outcome).toBe("failed");
+		expect(outcome).toBe("gone");
 		// The distinction is load-bearing: `unverified` would make the caller
 		// consume the message (see core/daemon/loop.ts drainTmuxInbox).
 		expect(outcome).not.toBe("unverified");
+		// And NOT `failed` either: `failed` means "retry me", which against a pane
+		// that does not exist is an infinite loop — and worse, tmux re-issues pane
+		// ids from `%0`, so the retry eventually lands in a STRANGER's pane (#34).
+		expect(outcome).not.toBe("failed");
 	});
 
 	it("never throws out of sendText — one dead pane must not abort the tick", () => {
