@@ -57,7 +57,19 @@ if [ -z "$transcript" ]; then
   exit 1
 fi
 
-cmd="pij revive $id --attach \"\$TMUX_PANE\" && CLAUDE_CONFIG_DIR=\"$config_dir\" PIJ_SESSION_ID=$id claude --dangerously-skip-permissions --resume $native"
+# ONLY set CLAUDE_CONFIG_DIR for a NON-default root. Setting it to ~/.claude is NOT
+# a no-op: unset, claude reads $HOME/.claude.json (210KB of projects/MCP/history);
+# set, it reads <dir>/.claude.json — which does not exist under ~/.claude, so claude
+# creates an empty stub and starts with NO PROFILE. Measured: a 431-byte file appeared
+# at ~/.claude/.claude.json the first time this script ran. The config root and the
+# transcript root are not the same knob, and conflating them silently guts the session.
+if [ "$config_dir" = "$HOME/.claude" ]; then
+  env_prefix=""
+else
+  env_prefix="CLAUDE_CONFIG_DIR=\"$config_dir\" "
+fi
+
+cmd="pij revive $id --attach \"\$TMUX_PANE\" && ${env_prefix}PIJ_SESSION_ID=$id claude --dangerously-skip-permissions --resume $native"
 
 # -L follows the link. Without it a transcript reached through a #37 workaround
 # symlink reports 0B — the size of the link, not the artifact — which reads as
