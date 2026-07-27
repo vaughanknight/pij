@@ -15,7 +15,7 @@ folder="$(pwd -P)"
 # Read the DESCRIPTORS, not `pij list --json` / `pij node show --json`: neither
 # projects `harnessSessionId`, the one field revivability depends on. The registry
 # is axis truth; a projection that omits the field cannot answer this question.
-read -r id native harness < <(
+read -r id native harness bound_pane < <(
   python3 - "$folder" "$HOME/.pij" <<'PY'
 import glob, json, os, sys
 folder, pij_home = os.path.realpath(sys.argv[1]), sys.argv[2]
@@ -34,7 +34,7 @@ for path in glob.glob(f"{pij_home}/*.json") + glob.glob(f"{pij_home}/archive/*.j
         best = d
 if best is None:
     sys.exit(1)
-print(best["id"], best.get("harnessSessionId") or "-", best.get("harness") or "-")
+print(best["id"], best.get("harnessSessionId") or "-", best.get("harness") or "-", best.get("paneId") or "-")
 PY
 ) || { echo "no prime recorded for $folder — try: pij list --prime --json" >&2; exit 1; }
 
@@ -69,7 +69,21 @@ else
   env_prefix="CLAUDE_CONFIG_DIR=\"$config_dir\" "
 fi
 
-cmd="pij revive $id --attach \"\$TMUX_PANE\" && ${env_prefix}PIJ_SESSION_ID=$id claude --dangerously-skip-permissions --resume $native"
+# Skip --attach when the seat is ALREADY bound to this very pane. `pij revive`
+# refuses an attach whose prior attachment is live — and after one run of this
+# script that prior attachment IS this pane (bound to the shell's own pid), so a
+# second run refuses itself with "close it before reviving". `live` is checked
+# before --assume-dead, so no override rescues it. Re-binding a pane to the seat
+# it already holds is a no-op worth skipping, not an error worth hitting.
+if [ "$bound_pane" = "${TMUX_PANE:-}" ]; then
+  attach_step=""
+  already=" (already bound to this pane — skipping attach)"
+else
+  attach_step="pij revive $id --attach \"\$TMUX_PANE\" && "
+  already=""
+fi
+
+cmd="${attach_step}${env_prefix}PIJ_SESSION_ID=$id claude --dangerously-skip-permissions --resume $native"
 
 # -L follows the link. Without it a transcript reached through a #37 workaround
 # symlink reports 0B — the size of the link, not the artifact — which reads as
@@ -77,7 +91,7 @@ cmd="pij revive $id --attach \"\$TMUX_PANE\" && ${env_prefix}PIJ_SESSION_ID=$id 
 size=$(du -hL "$transcript" 2>/dev/null | cut -f1 | tr -d ' ')
 via=""
 [ -L "$transcript" ] && via=" (via a #37 symlink → $(readlink "$transcript"))"
-echo "# $id — transcript ${size:-?} in ${config_dir/#$HOME/~}$via"
+echo "# $id — transcript ${size:-?} in ${config_dir/#$HOME/~}$via${already:-}"
 # --print just looks. Anything else RUNS IT, here, in this pane. That is the point.
 if [ "${1:-}" = "--print" ]; then
   echo "$cmd"
