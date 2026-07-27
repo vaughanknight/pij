@@ -43,12 +43,32 @@ if [ "$harness" != "claude" ]; then
   exit 1
 fi
 
-# The whole point: search EVERY claude root, not just the default one.
+# Search EVERY claude root — and keep looking after the first hit. A #37 workaround
+# HARDLINK into ~/.claude is indistinguishable from a native file by path alone
+# (realpath resolves to ~/.claude, same inode as the alt original), so "where I
+# found it" is NOT "where the seat belongs". When the same artifact is reachable
+# under more than one root, the NON-DEFAULT root is the seat's true home: the link
+# was added as a workaround, the original lives in alt.
+#
+# This matters far more than it looks. CLAUDE_CONFIG_DIR is set inside a zsh
+# FUNCTION (cc-alt, ~/.zshrc:189), never exported — so a fresh pane has it UNSET.
+# Emit no override and claude resumes under the DEFAULT account: different
+# credentials, settings and MCP servers. With the transcript hardlinked in, that
+# resume SUCCEEDS — the seat comes back looking correct while running as the wrong
+# identity. The hardlink does not just fail to fix this, it makes it silent.
 slug="${folder//\//-}"
 transcript=""
+config_dir=""
+found_in=""
 for root in "$HOME/.claude" "$HOME/.claude-alt"; do
   cand="$root/projects/$slug/$native.jsonl"
-  [ -r "$cand" ] && { transcript="$cand"; config_dir="$root"; break; }
+  [ -r "$cand" ] || continue
+  found_in="$found_in $root"
+  # Non-default wins; the default root is only used when it is the ONLY hit.
+  if [ -z "$transcript" ] || [ "$root" != "$HOME/.claude" ]; then
+    transcript="$cand"
+    config_dir="$root"
+  fi
 done
 
 if [ -z "$transcript" ]; then
@@ -91,7 +111,11 @@ cmd="${attach_step}${env_prefix}PIJ_SESSION_ID=$id claude --dangerously-skip-per
 size=$(du -hL "$transcript" 2>/dev/null | cut -f1 | tr -d ' ')
 via=""
 [ -L "$transcript" ] && via=" (via a #37 symlink → $(readlink "$transcript"))"
-echo "# $id — transcript ${size:-?} in ${config_dir/#$HOME/~}$via${already:-}"
+multi=""
+case "$found_in" in *" $HOME/.claude "*" $HOME/.claude-alt"*)
+  multi=" [reachable under BOTH roots — using ${config_dir##*/} as the account]" ;;
+esac
+echo "# $id — transcript ${size:-?} in ${config_dir/#$HOME/~}$via$multi${already:-}"
 # --print just looks. Anything else RUNS IT, here, in this pane. That is the point.
 if [ "${1:-}" = "--print" ]; then
   echo "$cmd"
