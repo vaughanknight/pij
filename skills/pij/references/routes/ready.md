@@ -15,13 +15,20 @@ prime or operator will push the next turn.
      `pij adopt "$TMUX_PANE" --harness <h>`. Never discover or guess another pane.
    - With no `$TMUX_PANE`, run exactly `pij inbox register --json`; never adopt a
      pane in external pull mode.
-2. If registration succeeds, reply with exactly:
+2. **Verify the write, never the print.** "Succeeds" means `pij whoami` names
+   you and `pij phonehome` says `(bound)` — not that the previous command printed
+   a success line. `adopt` on a dissolved descriptor prints a correct-looking
+   `adopted <id> … (pane %N, bound)` and persists NOTHING; the remedy is
+   `pij revive <id> --attach "$TMUX_PANE"` (see peer route § Failure modes).
+   Resuming after a reboot or long gap? Treat every pane id, pid, and prior
+   finding as stale and re-derive before reusing it.
+3. Once verified, reply with exactly:
 
 ```text
 Ready.
 ```
 
-3. **STOP.** In push mode, ending the turn is the wait: the next message is
+4. **STOP.** In push mode, ending the turn is the wait: the next message is
 injected automatically. Do not run `pij inbox --wait` in push mode. In external
 pull mode, use `pij inbox --wait` only when the host can continue waiting after
 the readiness reply.

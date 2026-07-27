@@ -26,7 +26,7 @@ description: Route pij platform jobs — adopt a seat and wait (/pij ready), spa
 | `agent` | run a packaged agent pack — fire-and-forget or resident | `references/routes/agent.md` |
 | `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
-| `ops` | daemon health, registry & tmux hygiene | `references/routes/ops.md` |
+| `ops` | daemon health, registry & tmux hygiene — and **recovering a prime after a reboot** ("revive our prime") | `references/routes/ops.md` |
 | `node` | work durable project/stream/dispatch truth, node states, adoption repair, and anomaly queries | `references/routes/node.md` |
 | `prime` | govern many agents in one repo: one o-prime seat, stream orchestrators below, government as single-writer files | `references/routes/prime.md` |
 | `watch` | subscribe a non-pi peer to file-change notices — `pij watch`/`pij unwatch` (self-serve) | *(shipped, plan 033 — CLI verbs; see `docs/how/pij-peer-watch.md`; no route module)* |
@@ -38,6 +38,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | CLI verb | lives in |
 |---|---|
 | `spawn` `send` `tail` `close` `adopt` `whoami` `list` `state` `inbox` `tree` `link` | peer route |
+| `revive` (`--print` / `--attach [%pane]` / `--assume-dead`) | peer route — bring a seat back after a reboot or re-bind a live-but-orphaned session; `--print` mutates nothing |
 | `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |

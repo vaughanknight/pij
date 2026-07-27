@@ -144,6 +144,8 @@ pij inbox --wait 30000                        # prints [pij from pij-xxxxx] ok
 | `E-NOID` on send/close | id not in registry — `pij list`, or the peer already closed |
 | `E-NOID`/`E-ARG` on link/adopt parent | inspect `pij tree --global --all`; unknown/self/cyclic links and missing parents are no-write failures |
 | `E-NOID` for self in tmux control-plane mode | use only `pij adopt "$TMUX_PANE" --harness <h>` with the current process's exact non-empty pane |
+| `adopt` prints success, then `whoami`/`phonehome`/`send` still `E-NOID` | your descriptor is `lifecycle: dissolved` (check `pij node show <id> --json`); the write was silently discarded. `adopt` cannot revive a tombstone — run `pij revive <id> --attach "$TMUX_PANE"`, then VERIFY with `pij whoami && pij phonehome`. Refuses if the old pid was recycled; `--assume-dead` overrides |
+| Resuming after a reboot, a long gap, or a tmux-server restart | every pane id and pid you hold is from a dead epoch, and prior findings are stale. `pij daemon status` first, then re-derive liveness before reusing ANY earlier conclusion — see [`../prime/rituals/bootstrap.md#recovery`](../prime/rituals/bootstrap.md#recovery). `pij revive --print` (from the folder) names the seat and mutates nothing |
 | `E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`; first use auto-registers the ambient session |
 | `E-FULL` on spawn | window at split cap — free a slot or spawn from a scratch window (§ C5) |
 | Ready but 400 on first message | wrong model id — close, re-spawn with a `pij models` id (§ C2/C4) |
