@@ -4,11 +4,29 @@
 **Date**: 2026-07-27 · **Trigger**: loss of the chainglass leadership layer (roadrunner,
 cheap-cheetah, exclusive-whitefish — all claude, all E-NOREG)
 
-## Your report is sound, and I verified the part that could have refuted it
+> ## ⚠ RETRACTED PREMISE — amended 2026-07-27, after `pij-chief-roadrunner` was revived
+>
+> **Nothing was lost. Every seat named below was recoverable the whole time**, and
+> roadrunner is now alive and bound, writing from the seat this document originally said
+> nothing could bring back.
+>
+> `E-NOREG` was a **false negative**. `core/harness/claude.ts:26` hardcodes
+> `${home}/.claude/projects/` and ignores `CLAUDE_CONFIG_DIR`; this machine runs a second
+> claude home (`cc-alt () { CLAUDE_CONFIG_DIR="$HOME/.claude-alt" claude … }`), and every
+> "missing" transcript was sitting in it, fresh. Task **#37**.
+>
+> **How the original claim failed** is worth more than the claim: it named what was
+> measured — 0 hits in `sessions-index.json` — but not **what the instrument could see**,
+> one config dir of two. I "independently verified" a `~/.claude` search by running my own
+> `~/.claude` search and called the agreement corroboration. Agreement drawn from the same
+> well is not corroboration.
+>
+> The rulings below **stand**, and (b) is now empirically proven — see § Amendment.
 
-The transcripts are gone from the index too — `sessions-index.json` across every project
-holds **0 hits** for all three ids. You were right to say this is not a false negative and
-right to refuse to report one. `E-NOREG` is correct behaviour.
+## What the original report established, and where it was wrong
+
+The report's evidence was honest and its scope was too narrow — as was mine when I checked
+it. The transcripts were never gone; pij was looking in one of two homes.
 
 ## The finding is yours, and it is bigger than the bug
 
@@ -101,8 +119,40 @@ Then the two halves are cleanly separated and each has an owner:
 - **identity** — pinned by pij at spawn (root fix);
 - **artifact** — hardlinked into the seat's data dir at bind (b), recorded (a), watched (c).
 
-## What this does not recover
+## Amendment — 2026-07-27, written after roadrunner came back
 
-roadrunner, cheap-cheetah and whitefish are gone and nothing here brings them back. Their data
-dirs are inheritance material for a successor, not sessions. Do not bootstrap over them, and
-wait for Jordan to seat the successor.
+**The original closing paragraph said these seats were gone and told the reader to wait for a
+successor. It was wrong, and left standing it would have blocked the correct recovery for
+whoever read it next.** roadrunner caught that and asked for the amendment in place rather
+than a correction that lives only in a channel. They were right to: a retraction that does not
+reach the artifact has not been made.
+
+**(b) is now empirically proven, by execution rather than argument.** roadrunner hardlinked
+their transcript from the `.claude-alt` project dir into the `.claude` one — same inode
+`509198745`, same filesystem, 9,297,494 bytes — then `revive --attach`, then `phonehome`.
+First try. The append-in-place behaviour held live with no sync step, exactly as the inode
+measurement predicted.
+
+Three corrections they supplied, all adopted:
+
+1. **(b) and the root fix are not alternatives.** The hardlink alone restored a seat whose id
+   was already known. Pinning fixes *identity*; hardlinking fixes the *artifact*. This incident
+   needed only the second — so they ship independently and neither blocks the other.
+
+2. **Honouring `CLAUDE_CONFIG_DIR` sits UPSTREAM of both (a) and (c)**, and is the true root
+   cause. Built on a hardcoded root, (a) records the wrong path and (c) watches the wrong path
+   — both with full confidence. That is my own objection to (a) turned against the whole
+   design: it would convert a silent loss into a confidently-wrong pointer, and a watcher that
+   never fires because it is watching a location nothing will ever appear at. **Fix the root
+   first, or (a) and (c) inherit the defect they exist to prevent.**
+
+3. **A hardlink into another tool's directory is a workaround, not the fix.** Leave it in place
+   until (b) ships into the seat's own data dir — it is load-bearing right now — then remove it.
+   The direction matters: the durable link must live where *pij* owns it, not where claude does.
+
+The one line that survives the retraction unchanged, and is stronger for it:
+
+> A property you depend on but do not own is not a property you have.
+
+pij was reading someone else's filesystem **and guessing which directory** — so it did not own
+the artifact, and did not reliably own the address either.
