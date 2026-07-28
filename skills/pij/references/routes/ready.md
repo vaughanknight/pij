@@ -12,7 +12,10 @@ prime or operator will push the next turn.
    - Pi with in-process pij tools is already push-owned; run no identity command.
    - With an exact non-empty `$TMUX_PANE`, resolve `<h>` from the current host
      (`claude`, `copilot`, `codex`, or `pi`) and run exactly
-     `pij adopt "$TMUX_PANE" --harness <h>`. Never discover or guess another pane.
+     `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}`.
+     Carry the parent whenever the env has one — it is a self-declaration of who
+     governs you, validated and persisted, and it is the ONLY moment it can be
+     recorded without someone later remembering. Never discover or guess another pane.
    - With no `$TMUX_PANE`, run exactly `pij inbox register --json`; never adopt a
      pane in external pull mode.
 2. **Verify the write, never the print.** "Succeeds" means `pij whoami` names

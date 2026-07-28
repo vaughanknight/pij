@@ -23,7 +23,7 @@ pij whoami [--json]        # valid confirmation only after external registration
 
 ```bash
 pij whoami [--json]                     # your stable session id
-pij adopt "$TMUX_PANE" --harness <h>    # E-NOID only; exact non-empty current-process pane
+pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}   # E-NOID only; exact non-empty current-process pane
 ```
 
 **Views**
@@ -122,7 +122,7 @@ Tmux/pi push:
 
 ```bash
 pij whoami                                    # self resolves; E-NOID uses the tmux action in § C1
-pij adopt "$TMUX_PANE" --harness <h>           # only the exact non-empty current-process pane
+pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}   # only the exact non-empty current-process pane
 pij spawn --harness claude --model sonnet     # → pij-xxxxx
 pij tail pij-xxxxx                            # canary: footer shows expected model, no 400 (§ C2)
 pij send pij-xxxxx "reply with exactly: ok"   # round-trip lands back as [pij from pij-xxxxx]

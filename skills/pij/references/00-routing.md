@@ -29,7 +29,7 @@ Delivery-owner detection happens before any self-registration advice. Detect **o
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|
-| prereq | pi extension loaded | daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h>` | `pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned |
+| prereq | pi extension loaded | daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned |
 | spawn | `pij_spawn({model, layout})` | `pij spawn --harness claude\|copilot\|codex\|pi …` | unavailable without tmux; converse with existing peers |
 | message | `pij_send({to, message})` | `pij send <id> "<text>"` | register/inbox first, then `pij send <id> "<text>"` |
 | receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms]` |
@@ -37,7 +37,7 @@ Delivery-owner detection happens before any self-registration advice. Detect **o
 | peek | `pij tail <id>` | `pij tail <id> [--follow]` | `pij tail <id>` |
 | close | `pij_close({to})` | `pij close <id> [--force]` | ownership-aware CLI close only |
 
-Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. Without that exact self-adopt in tmux mode, replies have nowhere to land.
+Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}`. **Always carry the parent when the env has one** — `--parent` is a SELF-DECLARATION of who governs you, it is validated and persisted, and a seat that self-adopts without it can only be linked later by someone who remembers. 185 of 215 rows machine-wide carry `unadopted` because every runnable recipe omitted this. Without that exact self-adopt in tmux mode, replies have nowhere to land.
 
 Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers). That registration creates the durable address without a daemon or pane.
 
