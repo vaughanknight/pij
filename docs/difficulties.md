@@ -220,3 +220,30 @@ and an encoded fix (durable). Severity guides priority.
   assertion, so a rule worth commenting is a rule worth extracting and pinning.
   Reading the code beside it will not find the divergence; only executing the
   rule will.
+
+- **D-039 [high, open] Silence is not consent — it is absence of test**
+  (2026-07-30, spine 25526). The o-prime ruled s074's merge human-gated, then
+  accepted **seven** subsequent merges without once flagging that they bypassed
+  that gate. On the eighth, the PM cited the pattern as standing precedent and
+  merged unrelayed. Both readings of that were wrong in the same way: the prime
+  called its silence a *rule it had stopped enforcing*; the PM had read it as
+  *authority granted*. Neither was true — **seven unchallenged merges are not
+  approval, they are seven occasions on which the rule was never tested.** The
+  PM read *absence of contradiction* as *presence of evidence*.
+  **This is the third altitude of one failure shape in a single day**, and
+  seeing them together is what makes it nameable:
+  | altitude | the unexamined signal | what it was treated as |
+  |---|---|---|
+  | code (D-037) | a comment nobody executed | a description of the code |
+  | inference (INS-001) | a human's "should" nobody measured | a statement of current fact |
+  | governance (this) | a precedent nobody had challenged | a granted authority |
+  **Why governance is the worst of the three:** a prime's silence is the
+  cheapest thing in the system to mistake for a ruling — it costs nothing to
+  emit, arrives continuously, and looks identical whether it means *approved*,
+  *not looking*, or *asleep*. Code and comments at least sit still to be read.
+  **Encoding, when ruled:** the standing merge rule must be written down rather
+  than inferred from what has been tolerated — and any authority derived from
+  *"this went unchallenged N times"* should be stated as an explicit question,
+  not exercised. **Lesson:** before acting on a precedent, ask whether it was
+  ever *decided* or merely *never contested*. Surfaced by pij-unwilling-butterfly
+  against its own decision; recorded by pij-wee-albatross.
