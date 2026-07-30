@@ -78,7 +78,20 @@ function timestampMs(value: string | undefined): number | null {
 }
 
 function eligible(session: SessionDescriptor): boolean {
-	if (projectOrchestrationRole(session) !== "pm") return false;
+	// PRIMES ARE WATCHED TOO (Jordan's ruling, 2026-07-30). The original gate was
+	// `!== "pm"`, which silently excluded every prime — a prime projects to
+	// "prime", never "pm". So the fleet's five governing seats were the only ones
+	// no reporting clock ever touched, in the direction nobody checks: the whole
+	// point of a prime is that it watches others.
+	//
+	// Measured cost of that gap: a prime went 12 days and 3 hours without ever
+	// writing a card, and learned of it from a peer running an unrelated query.
+	// Its own status-stale anomaly could not reach it either (a prime has no
+	// parent, so the sweep drops it), which left it with NO reporting prompt of
+	// any kind. This one line is the whole fix for that seat: the nudge copy,
+	// interval, and anchor are already role-agnostic.
+	const role = projectOrchestrationRole(session);
+	if (role !== "pm" && role !== "prime") return false;
 	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
 	// the daemon does not own its delivery, so it must not buffer a watchdog turn
 	// into it either. (A pi peer pulls its own inbox but IS watchdog-delivered:

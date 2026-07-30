@@ -164,7 +164,13 @@ function intervalSidecar(
 }
 
 describe("WatchdogManager — reconciliation and delivery", () => {
-	it("watches only a seat whose projected orchestration role is exactly pm", () => {
+	it("watches the DESIGNATED seats — pm and prime — and nobody else", () => {
+		// Primes were excluded until 2026-07-30 (the gate read `!== "pm"`, and a
+		// prime projects to "prime"), so the fleet's governing seats were the only
+		// ones no reporting clock touched. Measured cost: a prime went 12 days
+		// without writing a card, with no prompt of any kind — its own status-stale
+		// anomaly could not reach it either, because a prime has no parent for the
+		// sweep to deliver to.
 		const h = managerHarness();
 		for (const id of ["pm", "worker", "unknown", "prime", "conflict"]) {
 			h.store.sidecars.set(id, intervalSidecar(1));
@@ -176,11 +182,21 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 			desc({ id: "worker", orchestrationRole: "worker" }),
 			desc({ id: "unknown", orchestrationRole: undefined }),
 			desc({ id: "prime", prime: true, orchestrationRole: undefined }),
+			// prime + a stored role is the conflict shape: prime WINS the projection
+			// (role.ts), so it is watched as a prime rather than skipped.
 			desc({ id: "conflict", prime: true, orchestrationRole: "pm" }),
 		]);
 
-		expect(h.delivery.outbox.map((entry) => entry.message.to)).toEqual(["pm"]);
-		expect(h.manager.activeCount()).toBe(1);
+		expect(h.delivery.outbox.map((entry) => entry.message.to).sort()).toEqual([
+			"conflict",
+			"pm",
+			"prime",
+		]);
+		expect(h.manager.activeCount()).toBe(3);
+		// Still nobody else: an unstamped seat and a worker are never watched,
+		// because a reporting clock on a seat whose card renders nowhere is noise.
+		expect(h.delivery.outbox.map((entry) => entry.message.to)).not.toContain("worker");
+		expect(h.delivery.outbox.map((entry) => entry.message.to)).not.toContain("unknown");
 	});
 
 	it("nudges a never-reported PM from startedAt even while ordinary activity stays fresh", () => {
