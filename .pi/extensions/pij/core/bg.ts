@@ -255,7 +255,15 @@ export function renderBgJobLine(
 	nowMs: number,
 ): string {
 	const startedMs = Date.parse(record.startedAt);
-	const age = Number.isNaN(startedMs) ? "?" : formatDuration(nowMs - startedMs);
+	// A RUNNING job's number is elapsed-so-far, measured from now. A FINISHED
+	// job's is how long it TOOK, measured from its own completion — reading `now`
+	// for that reports how long ago it started, which grows forever and made a
+	// 7m22s CI wait render as "ok in 82m05s" an hour later. Same word, two
+	// different questions.
+	const finishedMs = record.finishedAt === undefined ? undefined : Date.parse(record.finishedAt);
+	const endMs = state === "running" || finishedMs === undefined ? nowMs : finishedMs;
+	const age =
+		Number.isNaN(startedMs) || Number.isNaN(endMs) ? "?" : formatDuration(endMs - startedMs);
 	const verdict =
 		state === "running"
 			? `running ${age}`

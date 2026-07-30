@@ -207,6 +207,29 @@ describe("bg job records — what makes list/tail/kill possible", () => {
 			expect(line).toContain("harness checks");
 		});
 
+		it("reports how long a finished job TOOK, not how long ago it started", () => {
+			// Observed live: a 7m22s CI wait rendered as "ok in 82m05s" an hour after
+			// it finished, because the elapsed number was measured from `now` for
+			// running AND finished jobs alike. A finished job's duration must stop
+			// growing the moment it stops.
+			const done = record({
+				startedAt: new Date(NOW - 90 * 60_000).toISOString(),
+				finishedAt: new Date(NOW - 83 * 60_000).toISOString(),
+				outcome: "ok",
+			});
+			// NOW is an hour and a half after it started, seven minutes after it ran.
+			expect(renderBgJobLine(done, "done", NOW)).toContain("in 7m00s");
+			expect(renderBgJobLine(done, "done", NOW)).not.toContain("90m");
+			// …and a job still running is still measured against now.
+			expect(
+				renderBgJobLine(
+					record({ startedAt: new Date(NOW - 90_000).toISOString() }),
+					"running",
+					NOW,
+				),
+			).toContain("running 1m30s");
+		});
+
 		it("distinguishes killed from failed", () => {
 			// An operator who stopped a job must never wonder whether it broke.
 			const killed = renderBgJobLine(
