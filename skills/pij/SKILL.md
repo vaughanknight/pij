@@ -42,7 +42,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
-| `bg` | § Shared conventions C7 — run a slow command detached; its result arrives as an injected turn from `pij-bg` |
+| `bg` (`create/list/tail/kill`) | § Shared conventions C7 — run a slow command detached; its result arrives as an injected turn from `pij-bg` |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
 | `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C9 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
 | `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |

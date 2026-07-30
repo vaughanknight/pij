@@ -144,8 +144,10 @@ In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that r
 **The same rule applies to SLOW LOCAL COMMANDS — use `pij bg`.** A command you sit and wait on holds your turn open for its whole duration; you are idle-but-not-done, which is the shape the watchdog derives as a stall, and the human cannot talk to you meanwhile. `pij bg` runs it detached and delivers the result as an injected turn from `pij-bg`, so your turn ends now and the completion is what wakes you.
 
 ```bash
-pij bg --title "harness checks" --command "harness checks"
-pij bg --title "CI watch PR#53" --command "gh run watch <id> --repo <o/r> >/dev/null 2>&1; gh run view <id> --repo <o/r> --json jobs --jq '.jobs[] | \"\(.conclusion) \(.name)\"'"
+pij bg create --title "harness checks" --command "harness checks"
+pij bg list [--all]          # what is running (--all includes finished)
+pij bg tail <job> [--lines N]  # bounded snapshot of a job's output
+pij bg kill <job>            # stop it — and still get a turn back
 ```
 
 It returns immediately with a job id; later a turn arrives:
@@ -155,6 +157,8 @@ It returns immediately with a job id; later a turn arrives:
 ```
 
 Reach for it whenever a command runs longer than a few seconds — `harness checks`, builds, full test runs, `gh run watch`, long clones. **The `--command` string is passed to `sh` unexpanded** (it travels by environment, never interpolated into a wrapper), so pipe, redirect, and chain freely — shape the output to what you actually want back, because only a bounded tail rides inline. The full log is always written to a file and pointed at. Title it for the reader: it is how a human knows what just fired back.
+
+`list`/`tail`/`kill` are RECOVERY, not routine — the completion turn stays the primary signal. `tail` is deliberately a bounded snapshot with no `--follow`: a follow loop would quietly reinstate the blocking wait `bg` exists to remove. `kill` still delivers a turn (`[pij bg] KILLED — <title>`), because a silent kill leaves you waiting forever for a result that can never arrive. A job whose process died without recording a completion (reboot, SIGKILL) lists as `lost` rather than running forever.
 
 Two things it is NOT: not a way to message yourself (`pij send <self>` is still E-SELF — bg delivers as the `pij-bg` actor because the result genuinely comes from the runner), and not a substitute for peer delegation. One command whose output you want → `pij bg`. A unit of work needing judgement → a peer.
 
