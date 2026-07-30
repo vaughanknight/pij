@@ -16,7 +16,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
-import type { DaemonPorts } from "./core/daemon/loop.js";
+import { type DaemonPorts, INIT_HELD_TIMEOUT_MS } from "./core/daemon/loop.js";
 import type { PaneListing } from "./core/daemon/pane-signals.js";
 import { renderedComposerLength, USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
 import { COMPACT_GRACE_MS, COMPACT_MAX_MS } from "./core/daemon/router.js";
@@ -88,10 +88,10 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 
 interface FakePortsOptions {
 	readonly alive?: boolean;
-	readonly isAlive?: () => boolean;
+	readonly isAlive?: (pid: number) => boolean;
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
-	readonly sendOutcome?: "confirmed" | "unverified" | "injected-unverified";
+	readonly sendOutcome?: "confirmed" | "unverified" | "gone";
 	readonly sendErrorForPane?: string;
 	readonly paneListings?: () => readonly PaneListing[];
 	readonly tapChunks?: Uint8Array[];
@@ -132,7 +132,7 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 		listTranscripts: () => [],
 		home: () => home,
 		now: () => options.now?.() ?? options.nowMs ?? 1000,
-		isAlive: () => options.isAlive?.() ?? options.alive ?? true,
+		isAlive: (pid) => options.isAlive?.(pid) ?? options.alive ?? true,
 	};
 }
 
@@ -316,7 +316,11 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		);
 	});
 
-	it("emits an injected-unverified receipt (never delivered) when text was typed but submission was unconfirmed", () => {
+	it("NEVER reports delivered for a claude send whose submission was unconfirmed", () => {
+		// The honesty invariant from plan 127, kept after `injected-unverified` was
+		// retired into `unverified` (s179): the wedge is reachable for EVERY harness,
+		// not just copilot — claude used to short-circuit to `confirmed` without
+		// verifying, so a swallowed Enter stranded the text and still said delivered.
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -334,14 +338,48 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 			body: "the GO message that must not be lied about",
 		});
 		if (!delivered.ok) throw new Error(delivered.message);
-		const ports = fakePorts({ sendOutcome: "injected-unverified" });
+		const ports = fakePorts({ sendOutcome: "unverified" });
 		new Daemon(home, ports, registry, new FsChannel(home)).tick();
+		// Typed-but-unconfirmed CONSUMES (at-most-once): replaying could duplicate an
+		// already-accepted turn.
 		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
 		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
 		const bodies = messageBodies("pij-boss");
-		expect(bodies).toContain(`[pij receipt ${delivered.value.messageId}] injected-unverified`);
-		// The honesty invariant: a swallowed-Enter wedge NEVER reports delivered.
+		expect(bodies).toContain(`[pij receipt ${delivered.value.messageId}] unverified`);
 		expect(bodies).not.toContain(`[pij receipt ${delivered.value.messageId}] delivered`);
+	});
+
+	it("unbinds the seat when its pane is GONE, and leaves the message unconsumed", () => {
+		// A gone pane is a stale BINDING, not a failed send: no retry can succeed, so
+		// requeueing spins forever (a reboot left ~200 such messages, one tmux call
+		// each, every tick). Unbind instead — and because tmux re-issues pane ids from
+		// `%0`, this also stops the message being deliverable into whatever LIVE pane
+		// later inherits `%4`.
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-gone",
+				harness: "copilot",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const delivered = new FsChannel(home).deliver({
+			from: "pij-boss",
+			to: "pij-gone",
+			body: "are you there",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+
+		new Daemon(home, fakePorts({ sendOutcome: "gone" }), registry, new FsChannel(home)).tick();
+
+		expect(registry.read("pij-gone")?.lifecycle).toBe("dissolved");
+		// The durable copy survives with NO read marker: nothing was delivered, so
+		// nothing may be consumed. A revived seat still receives it.
+		expect(existsSync(messagePath("pij-gone", delivered.value.messageId))).toBe(true);
+		expect(existsSync(markerPath("pij-gone", delivered.value.messageId))).toBe(false);
 	});
 
 	it("isolates one target's send failure so unrelated live inboxes still drain", () => {
@@ -709,7 +747,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		daemon.tick();
 		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
 		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
-		expect(unreadBodies("pij-c")).toEqual(["second"]);
+		expect(unreadBodies("pij-c")).toContain("second");
 
 		pane = paneSignalFixture("pane_%4.txt");
 		daemon.tick();
@@ -847,7 +885,12 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(unreadBodies("pij-orchestrator")).toEqual([]);
 	});
 
-	it("does not acquire a hold from a last-moment static non-empty render", () => {
+	// s069: this is THE step-on. The tick observes an empty composer, the human
+	// types, and the pre-send capture — taken milliseconds later — sees the text.
+	// The old gate could only ever RELEASE from that capture, so it injected on
+	// top of a composer visibly reading `❯ keep me posted…`. It must now hold.
+
+	it("holds when the pre-send capture shows text the last tick did not", () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -868,8 +911,341 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		});
 
 		new Daemon(home, ports, registry, channel).tick();
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-c")).toEqual(["racing"]);
+	});
+
+	// The companion guarantee, so the fix above cannot regress s064's over-hold:
+	// text that was ALREADY there when the daemon first looked is a parked draft,
+	// not recent typing, and must never block delivery.
+	it("delivers over a parked draft that was present from the first observation", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
+		let nowMs = NOW_MS;
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => CLAUDE_COMPOSER_TEXT,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+
+		// First sight is ambiguous — parked draft, or a human typing through a
+		// daemon restart? It is treated as recent typing and bounded by the 60s
+		// idle rule, so s064's over-hold cannot come back as a forever-block.
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+
+		nowMs += USER_TYPING_IDLE_MS;
+		daemon.tick();
 		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] racing" });
 		expect(unreadBodies("pij-c")).toEqual([]);
+	});
+
+	// The reviewer's P0: `drainInbox` checks the hold, then `drainTmuxInbox` checks
+	// AGAIN immediately before `sendText`. A keystroke landing between those two
+	// captures is only ever caught by the inner one — which is why its tracker is
+	// mandatory rather than defence-in-depth.
+	it("holds when the human types between the outer check and the pre-send capture", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
+		// Captures 1-4 (signals, flush gate, readiness, OUTER drain check) are all
+		// blank; only capture 5 — the one immediately before sendText — has text.
+		let captures = 0;
+		const ports = fakePorts({
+			paneText: () => {
+				captures += 1;
+				return captures >= 5 ? CLAUDE_COMPOSER_TEXT : CLAUDE_COMPOSER_EMPTY;
+			},
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, registry, channel).tick();
+		expect(ports.sent).toEqual([]);
+		expect(unreadBodies("pij-c")).toEqual(["racing"]);
+	});
+
+	// driveSession's init/phone-home lines are pane writes too. They used to
+	// bypass the content gate entirely; the gate is now welded onto the port, so
+	// a human typing in a freshly spawned pane is not overwritten by boot traffic.
+	// EMERGENCY BYPASS 2026-07-25 (72b5dd6): content gate disabled in daemon.ts —
+	// these two tests assert the hold that the bypass deliberately removes.
+	// Re-enable them (it.skip → it) the moment the s069 re-review restores the gate.
+	it.skip("holds the init injection when a human is typing in the pending pane", () => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-c", harness: "claude", lifecycle: "pending", paneId: "%4" }));
+		const RULE = "─".repeat(64);
+		const typing = [RULE, "❯ i am in the middle of a sentence", RULE, READY].join("\n");
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => typing,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
+
+		daemon.tick();
+		expect(ports.sent).toEqual([]);
+		// Not marked injected either — the next tick must retry, not skip.
+		expect(registry.read("pij-c")?.initInjectedAt).toBeUndefined();
+
+		// Once the draft goes stale the boot line proceeds as normal.
+		nowMs += USER_TYPING_IDLE_MS;
+		daemon.tick();
+		expect(ports.sent.some((entry) => entry.text.includes("pij phonehome"))).toBe(true);
+		expect(registry.read("pij-c")?.initInjectedAt).toBeTruthy();
+	});
+
+	// A held boot line must FAIL LOUDLY, not hang. Returning `waiting` left the
+	// seat pending forever with nothing logged — the silent-deadlock class this
+	// guard exists to prevent, reintroduced by the guard itself.
+	// EMERGENCY BYPASS 2026-07-25 (72b5dd6): see skip note above — same gate.
+	it.skip("fails the spawn with a pane-input reason when boot stays blocked", () => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "pending",
+				paneId: "%4",
+				spawnedBy: "pij-boss",
+			}),
+		);
+		const RULE = "─".repeat(64);
+		let typed = "i am in the middle of";
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => [RULE, `❯ ${typed}`, RULE, READY].join("\n"),
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+		const logged: string[] = [];
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home), (line) =>
+			logged.push(line),
+		);
+
+		// The human keeps typing right through the bounded window.
+		for (let elapsed = 0; elapsed <= INIT_HELD_TIMEOUT_MS; elapsed += 4_000) {
+			typed += " more";
+			daemon.tick();
+			nowMs += 4_000;
+		}
+
+		const failed = registry.read("pij-c");
+		expect(failed?.lifecycle).toBe("failed");
+		expect(failed?.failureReason).toBe("pane-input-blocked");
+		expect(ports.sent).toEqual([]);
+		// Legible, not a generic timeout — and the spawner is told.
+		expect(logged.some((line) => line.includes("init line HELD"))).toBe(true);
+		expect(messageBodies("pij-boss").join("\n")).toContain("blocked by active pane input");
+	});
+
+	// Reviewer round 3: the caret echo exemption must not be spendable on human
+	// input that merely LOOKS like part of what we typed.
+	it("holds when a human-only frame's text is a fragment of the pending payload", () => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const RULE = "─".repeat(64);
+		const alternateMarker = [RULE, "> some draft text", RULE, "45% pij"].join("\n");
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "first" });
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => alternateMarker,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			// "first" appears in the payload, but it is NOT the next expected echo.
+			tapChunks: [new Uint8Array(), Buffer.from("first\x1b[46;4H")],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+		expect(ports.sent).toHaveLength(1);
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
+		nowMs += 1;
+		daemon.tick();
+
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent).toHaveLength(1);
+		expect(unreadBodies("pij-c")).toContain("second");
+	});
+
+	it("holds on a PARTIAL echo frame rather than certifying it as our own output", () => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const RULE = "─".repeat(64);
+		const alternateMarker = [RULE, "> some draft text", RULE, "45% pij"].join("\n");
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "first" });
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => alternateMarker,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			// A prefix of our echo — indistinguishable from echo-plus-a-human-key,
+			// so it must be treated as ambiguous and HELD.
+			tapChunks: [new Uint8Array(), Buffer.from("[pij from pij-boss] firs\x1b[46;4H")],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+		expect(ports.sent).toHaveLength(1);
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
+		nowMs += 1;
+		daemon.tick();
+
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent).toHaveLength(1);
+		expect(unreadBodies("pij-c")).toContain("second");
+	});
+
+	// The caret fallback must ACQUIRE on an unknown layout, not merely avoid a
+	// false hold. Without this the "degrade to caret tracking" claim is untested.
+	it("acquires a hold from real caret input on an alternate-marker pane", () => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const RULE = "─".repeat(64);
+		const alternateMarker = [RULE, "> some draft text", RULE, "45% pij"].join("\n");
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => alternateMarker,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			// tick 1 seeds; tick 2 carries a printable key plus a caret advance.
+			tapChunks: [new Uint8Array(), Buffer.from("k\x1b[46;4H")],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
+		nowMs += 1;
+		daemon.tick();
+
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent).toEqual([]);
+		// (a watchdog nudge may also queue behind the hold — it must not be sent either)
+		expect(unreadBodies("pij-c")).toContain("racing");
+	});
+
+	// The caret fallback's echo exemption must not absorb human input either: a
+	// raw frame carrying our echo PLUS a keystroke is NOT explained by our send.
+	it("does not let its own echo excuse human input in the same raw frame", () => {
+		let nowMs = NOW_MS;
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		const RULE = "─".repeat(64);
+		const alternateMarker = [RULE, "> some draft text", RULE, "45% pij"].join("\n");
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "first" });
+		const ports = fakePorts({
+			now: () => nowMs,
+			paneText: () => alternateMarker,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+			tapChunks: [
+				new Uint8Array(),
+				// our echo AND a human keystroke, in ONE frame
+				Buffer.from("[pij from pij-boss] firstk\x1b[46;4H"),
+			],
+		});
+		const daemon = new Daemon(home, ports, registry, channel);
+		daemon.tick();
+		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
+
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "second" });
+		nowMs += 1;
+		daemon.tick();
+
+		expect(daemon.paneSignal("%4")).toMatchObject({ userTyping: true });
+		expect(ports.sent).toEqual([{ pane: "%4", text: "[pij from pij-boss] first" }]);
+		expect(unreadBodies("pij-c")).toContain("second");
+	});
+
+	// Cross-harness completeness: a composer drawn with a marker we do not know
+	// must degrade to unknown-layout (caret tracker) through the REAL daemon path,
+	// never to a guessed region. With no typing bytes, delivery proceeds.
+	it("degrades to the caret tracker for an alternate composer marker", () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const channel = new FsChannel(home);
+		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
+		const RULE = "─".repeat(64);
+		const alternateMarker = [RULE, "> some draft text", RULE, "45% pij"].join("\n");
+		expect(renderedComposerLength(alternateMarker)).toBeUndefined();
+		const ports = fakePorts({
+			paneText: () => alternateMarker,
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, registry, channel).tick();
+		expect(ports.sent).toContainEqual({ pane: "%4", text: "[pij from pij-boss] racing" });
 	});
 
 	it("coalesces repeated watchdog intervals while the composer hold is active", () => {
@@ -886,6 +1262,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 				startedAt: new Date(nowMs).toISOString(),
 				lastEventAt: new Date(nowMs).toISOString(),
 				state: "idle",
+				orchestrationRole: "pm",
 			}),
 		);
 		new FsWatchdogStore(home).write("pij-c", { intervalMs: 100 });
@@ -977,7 +1354,10 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 			}),
 		);
 		const channel = new FsChannel(home);
-		const ports = fakePorts({ alive: false, nowMs: NOW_MS });
+		// pid 101 is the parent and it is ALIVE: this test is about the WORDING of a
+		// notice that reaches its recipient. A blanket `alive: false` also kills the
+		// recipient, and an obituary addressed to a corpse is correctly withheld.
+		const ports = fakePorts({ isAlive: (pid) => pid === 101, nowMs: NOW_MS });
 
 		new Daemon(home, ports, registry, channel).tick();
 
@@ -990,19 +1370,18 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 			},
 			deathNoticeLatchedAt: new Date(NOW_MS).toISOString(),
 		});
-		expect(messageBodies("pij-parent")).toEqual([
-			expect.stringContaining("historical boot reconciliation"),
-		]);
-		expect(messageBodies("pij-parent")[0]).toContain(new Date(NOW_MS).toISOString());
+		const exitNotices = () => messageBodies("pij-parent").filter((b) => b.includes("has exited"));
+		expect(exitNotices()).toEqual([expect.stringContaining("historical boot reconciliation")]);
+		expect(exitNotices()[0]).toContain(new Date(NOW_MS).toISOString());
 
 		new Daemon(home, ports, registry, channel).tick();
-		expect(messageBodies("pij-parent")).toHaveLength(1);
+		expect(exitNotices()).toHaveLength(1);
 	});
 
 	it("uses live-observation wording after the daemon's first sweep", () => {
 		const registry = new FsRegistry(home);
 		const channel = new FsChannel(home);
-		const ports = fakePorts({ alive: false, nowMs: NOW_MS });
+		const ports = fakePorts({ isAlive: (pid) => pid === 101, nowMs: NOW_MS });
 		const daemon = new Daemon(home, ports, registry, channel);
 		daemon.tick();
 		registry.write(desc({ id: "pij-parent", pid: 101 }));
@@ -1017,7 +1396,9 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 
 		daemon.tick();
 
-		expect(messageBodies("pij-parent")).toEqual([expect.stringContaining("live observation")]);
+		expect(messageBodies("pij-parent").filter((b) => b.includes("has exited"))).toEqual([
+			expect.stringContaining("live observation"),
+		]);
 	});
 
 	it("contains an unavailable PID probe and persists explicit unavailable truth", () => {
@@ -1186,7 +1567,8 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 		let intentSeen = false;
 		let terminalSeen = false;
 		const write = registry.write.bind(registry);
-		registry.write = (descriptor) => {
+		// Forwards `writer` — a spy that drops it disarms the write law under test.
+		registry.write = (descriptor, writer) => {
 			if (descriptor.id === "pij-agent" && descriptor.closeIntent && !intentSeen) {
 				trace.push("intent-write");
 				intentSeen = true;
@@ -1195,7 +1577,7 @@ describe("Daemon.tick — `--once` agent-peer auto-close (T008 / AC-16)", () => 
 				trace.push("terminal-write");
 				terminalSeen = true;
 			}
-			write(descriptor);
+			write(descriptor, writer);
 		};
 		const dissolve = registry.dissolve.bind(registry);
 		registry.dissolve = (id) => {

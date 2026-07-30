@@ -5,11 +5,22 @@
 // pure logic modules (seq/events/state/commands/discovery/message/receipts)
 // all build on these.
 
+import type { StoredOrchestrationRole } from "./orchestration/role.js";
+
 // ─── identity ────────────────────────────────────────────────────────────
 export type SessionId = string;
 
 /** Role a session plays in the parent/worker loop (rides in PIJ_ROLE). */
 export type Role = "parent" | "worker";
+
+type Exact<Left, Right> =
+	(<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+		? true
+		: false;
+type Assert<Condition extends true> = Condition;
+
+/** Compiled invariant: widening Role silently breaks PIJ_ROLE boot narrowing. */
+export type RoleExactnessInvariant = Assert<Exact<Role, "parent" | "worker">>;
 
 /** Which coding-agent harness a session runs under (Plan 019 control plane).
  *  The transport-selection contract (`HarnessKind` → inbox|sendkeys) lives in
@@ -53,6 +64,8 @@ export type DeathReason =
 	| "auth" // authentication failure (401)
 	| "quota" // terminal quota: credit/billing/insufficient (429/529/overloaded are transient → unknown)
 	| "stalled" // shared whole-life/watchdog verdict: peer stayed silent through its response threshold
+	| "pane-input-blocked" // boot line never written: a human was typing in the pane (s069)
+	| "bind-timeout" // spawned, pane alive, but never bound inside the bind window (s071 D3)
 	| "dead" // pane exited (no specific error signal)
 	| "unknown"; // fallback when no pattern matched
 
@@ -228,6 +241,9 @@ export interface SessionDescriptor {
 	/** Which harness this session runs (`pi`/`claude`/`copilot`). Absent ⇒
 	 *  legacy pi session. Decides the message transport (inbox vs send-keys). */
 	readonly harness?: HarnessKind;
+	/** Pi-family executable that owns this native session. Pi and OMP both use
+	 * `harness: "pi"`, but their persisted session stores and resume argv differ. */
+	readonly runtimeBin?: "pi" | "omp";
 	/** Explicit pull peers keep durable mail for `pij inbox`; absent is legacy. */
 	readonly deliveryMode?: DeliveryMode;
 	/** The harness-native session id bound to this pij-id — for Claude, the
@@ -282,6 +298,9 @@ export interface SessionDescriptor {
 	readonly closeIntent?: CloseIntent;
 	/** Durable, evidence-based terminal absence classification. */
 	readonly terminal?: TerminalObservation;
+	/** A dissolved native session has been relaunched but still awaits golden
+	 * recall proof. Also selects the non-continuing revive init reframe. */
+	readonly revivePendingAt?: string;
 	/** Once-latch for the creator terminal notice across daemon recreation. */
 	readonly deathNoticeLatchedAt?: string;
 	// ─── agent-pack peer layer (Plan 029 Phase 3; additive — migration-safe) ──
@@ -305,9 +324,28 @@ export interface SessionDescriptor {
 	readonly currentAssignment?: string;
 	/** Denormalized task text of the current assignment (`pij task set`). */
 	readonly currentTask?: string;
-	/** Denormalized semantic state of the current assignment (`pij state set`)
+	/** Opaque plan identifier explicitly attested by `pij spawn --plan-id` or
+	 * `pij attest --plan-id`. Absent means unattested; never inferred from paths. */
+	readonly planId?: string;
+	/** Denormalized semantic state of the current assignment (`pij report state`)
 	 *  — agent-declared truth, externally owned (never daemon-clobbered). */
 	readonly semanticState?: SemanticState;
+	/** Durable explanation attached to the current semantic state. */
+	readonly stateNote?: {
+		readonly text: string;
+		readonly state: SemanticState;
+		readonly at: string;
+	};
+	/** Previous projected status word. */
+	readonly statusPrev?: string;
+	/** Next projected status word. */
+	readonly statusNext?: string;
+	/** ISO-8601 timestamp of the projected status transition. */
+	readonly statusAt?: string;
+	/** Monotonic sequence of the projected status transition. */
+	readonly statusSeq?: number;
+	/** Stored partial orchestration role; prime remains a separate descriptor flag. */
+	readonly orchestrationRole?: StoredOrchestrationRole;
 	/** Mechanical axis verdict — computed and owned by the DAEMON only (WS-5
 	 *  exception): deliberately NOT in MUTABLE_EXTERNALLY_OWNED_FIELDS. */
 	readonly systemState?: SystemState;
@@ -374,7 +412,8 @@ export interface TreeProjectionOptions {
 export type TreeProblem = "orphan" | "filtered-parent" | "cycle";
 
 /** Stable JSON tree node: raw descriptor fields stay top-level and additive. */
-export interface SessionTreeNode extends SessionDescriptor {
+export interface SessionTreeNode extends Omit<SessionDescriptor, "planId"> {
+	readonly planId: string | null;
 	readonly effectiveParentId: SessionId | null;
 	readonly activity: TreeActivity;
 	readonly liveness: LivenessVerdict;
@@ -517,7 +556,7 @@ export type InboxMark =
 	| { readonly kind: "already-read"; readonly messageId: string };
 
 // ─── delivery receipts (finding 08; spec AC-13) ───────────────────────────
-export type ReceiptState = "queued" | "delivered" | "unverified" | "injected-unverified";
+export type ReceiptState = "queued" | "delivered" | "unverified";
 
 export interface MessageReceipt {
 	readonly messageId: string;
@@ -528,11 +567,9 @@ export interface MessageReceipt {
 	readonly queuedAt?: string;
 	/** ISO-8601 — set when the peer consumed it (next turn_start). */
 	readonly deliveredAt?: string;
-	/** ISO-8601 — set when daemon-owned tmux injection could not positively confirm. */
+	/** ISO-8601 — set when daemon-owned tmux injection typed the payload but could
+	 *  not positively confirm its submission (the swallowed-Enter wedge). */
 	readonly unverifiedAt?: string;
-	/** ISO-8601 — set when text WAS typed into the composer but its submission could
-	 *  not be confirmed after bounded Enter retries (the swallowed-Enter wedge). */
-	readonly injectedUnverifiedAt?: string;
 	/** Daemon heartbeat observed when this receipt was classified. Additive so
 	 *  legacy receipt consumers can continue reading `state` alone. */
 	readonly daemonLastTickAt?: string | null;

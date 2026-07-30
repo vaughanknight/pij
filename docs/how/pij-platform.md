@@ -194,3 +194,107 @@ acts on an anomaly itself.
   is the descriptor.
 - All record writes are atomic replaces — readers never see half a JSON file.
   NDJSON readers must skip torn/corrupt lines (every pij parser does).
+
+## Path stability — what an external reader may bind to (ruling, 2026-07-26)
+
+The contract above is a **schema** contract. It was silent on **paths**, and an
+external reader needs both. Ruled here after the chainglass UI workstream hit the
+gap.
+
+**Public and stable — bind to the file.**
+
+- `~/.pij/spine/` — the append-only spine. Append-only, schema-versioned per line,
+  open-vocabulary by design, and the highest-volume thing any consumer polls.
+  A cursor over this file is a supported access pattern. It will not move or change
+  format without notice to known consumers.
+
+**NOT stable — read through the CLI.**
+
+- Individual record paths, including `~/.pij/<id>.json`. The two-tier registry
+  (s071) *renames records between `~/.pij/` and `~/.pij/archive/`* — `renameSync`
+  in `adapters/fs-registry.ts` — on a 48h terminal TTL. 1,988 of ~2,184 seats
+  currently live in `archive/`. A watcher bound to a record path will see it
+  vanish and must not read that as deletion. Schema was preserved across that
+  change; **location was not**, and nothing in this document promised it would be.
+- Directory scans of `~/.pij/`. Atomic replace is implemented as write-temp +
+  rename, so `<id>.json.tmp-<pid>-<uuid>` files appear transiently and can be left
+  behind by a crash (there is one on this host today). Any consumer listing that
+  directory must filter them; the CLI already does.
+
+**What atomic replace does and does not buy a reader.** It does rule out torn
+reads — a reader never sees half a JSON file, exactly as stated above. It does
+**not** make a record self-consistent with the rest of the store at that instant:
+cross-file ordering skew is real (the `pij link` window above is one documented
+case) and is surface-independent. The per-field merge law is a **writer** hazard —
+read-modify-write from outside loses concurrent daemon updates — and a read-only
+consumer cannot enter that class.
+
+**Consequence for polling.** A CLI invocation costs ~0.42–0.48s wall clock
+(measured, two independent observers, 2026-07-26). At a 1–2s cursor cadence that
+is a 25–50% duty cycle of process spawning on a shared host. Reading the spine
+file directly is <0.01s. Cursor cadence therefore belongs on the file; derived
+views (`tree`, `node show`, `anomalies`) belong on the CLI at slow cadence,
+because re-implementing pij's derivation logic outside pij is the failure this
+document exists to prevent.
+
+## Daemon source provenance — the invariant, not the instance (2026-07-26)
+
+The machine-wide daemon runs `tsx` off **exactly**
+`/Users/jordanknight/pi-hacking/pij/.pi/extensions/pij/daemon.ts` — a fixed path in
+a repository that humans and agents both work in. Verify it in the live process
+argv, not from this document.
+
+The operating rule has been *"never restart the daemon from a worktree"*. That rule
+names an instance. **The invariant is: the daemon's source path must always be on
+canonical `main`.** A worktree is merely the common way to violate it.
+
+The uncommon way, hit on 2026-07-26: a foreign worker checked out its own branch
+**in the canonical checkout itself**. The rule as written read as satisfied
+throughout — nobody restarted from a worktree — while the fleet's supervisor sat one
+crash-restart away from booting on a worker's unreviewed branch. A running daemon
+keeps its already-loaded modules, which is the only reason nothing happened.
+
+**Practical consequences.**
+
+- Before any commit or merge in that checkout, run `git rev-parse --abbrev-ref HEAD`
+  and act on what it says. "It is my repo" does not entail "HEAD is on main".
+- `git branch --list` showing branches you did not create is the tell that another
+  worker is using the tree.
+- Foreign workers get `pij stream create` (an attributed worktree allocation) or
+  their own clone. Never the canonical checkout.
+- Known gap: nothing surfaces the daemon's own source branch/sha, so "what code is
+  the supervisor running" is an inference rather than a read. Recording it at boot
+  and reporting it in `pij daemon status` would close that.
+
+### The exposure, enumerated (2026-07-26)
+
+The invariant above understates it: **the canonical checkout is machine-wide live
+infrastructure, and its HEAD is a production configuration value.** It is not one
+process. Enumerated on this host — every one of these resolves into the working
+tree, not into a copy or a build artefact:
+
+| Entry point | Resolves to |
+|---|---|
+| `~/.npm-global/bin/pij` (on `PATH`) | `harness/scripts/pij-cli.cjs` |
+| `~/.npm-global/bin/flow-pair` (on `PATH`) | `skills/flow-pair/lib/cli.ts` |
+| `~/.claude/skills/pij` | `skills/pij` |
+| `~/.agents/skills/pij` | `skills/pij` (serves copilot **and** codex) |
+| `~/.copilot/skills/flow-pair` | `skills/flow-pair` |
+| the machine-wide daemon process | `.pi/extensions/pij/daemon.ts` |
+
+Re-run the enumeration rather than trusting this table; it was found by accident
+while checking something else, and nothing keeps it current:
+
+```sh
+for f in ~/.npm-global/bin/*; do t=$(readlink -f "$f"); case "$t" in <checkout>/*) echo "$f -> $t";; esac; done
+for d in ~/.pi/extensions ~/.omp/extensions ~/.claude/skills ~/.agents/skills ~/.copilot/skills; do
+  find "$d" -maxdepth 3 -type l 2>/dev/null | while read l; do t=$(readlink -f "$l"); case "$t" in <checkout>/*) echo "$l";; esac; done
+done
+```
+
+**Skills are more exposed than the daemon, not less.** A running daemon keeps its
+already-loaded modules, so a branch swap only bites on restart. A **skill file is
+read at invocation**, so a foreign branch checked out in this tree changes the
+contract every agent on the machine is following on their very next call — including
+the orchestrator doing the checking. There is no window of grace and no restart to
+notice.

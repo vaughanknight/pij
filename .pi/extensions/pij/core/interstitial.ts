@@ -34,15 +34,19 @@ const DISMISS_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
 	{ re: /Enter to confirm/i, label: "confirm-menu" },
 ];
 
-/** Prompts that need a human — surfaced to the creator, NEVER auto-answered. */
+const COPILOT_SESSION_IN_USE_TAIL_CHARS = 1_600;
+const COPILOT_SESSION_IN_USE_RE =
+	/^[ \t│]*Session in use[ \t│]*\r?$[\s\S]{0,400}^[ \t│]*This session was last active [^\r\n]{0,120}appears to be in use by another CLI or application\.[ \t│]*\r?$[\s\S]{0,300}^[ \t│]*(?:❯[ \t]*)?1\.[ \t]+Resume anyway[ \t│]*\r?$[\s\S]{0,100}^[ \t│]*2\.[ \t]+Go back \(Esc\)[ \t│]*\r?$/im;
+
+/** Prompts that need a human — exact enough to avoid classifying ordinary prose. */
 const NEEDS_HUMAN_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
-	{ re: /Do you trust|trust the files in/i, label: "folder-trust" },
-	{ re: /Select login method|Log in with|Sign in/i, label: "login" },
-	// Live-captured 2026-07-18 (codex-cli 0.144.1→0.144.5 pending): "✨ Update
-	// available!" with options 1=Update now / 2=Skip / 3=Skip until next
-	// version, cursor DEFAULTING to 1. The pre-footer wedge of the T1
-	// bind-zombie (2.5 days at osk).
-	{ re: /Update available!/i, label: "update-prompt" },
+	{ re: /^\s*Do you trust the files in this folder\?\s*$/im, label: "folder-trust" },
+	{
+		re: /^\s*(?:Select login method:|Log in with (?:Claude account|API key))\s*$/im,
+		label: "login",
+	},
+	// Live-captured 2026-07-18 (codex-cli 0.144.1→0.144.5 pending).
+	{ re: /^\s*✨\s*Update available!\s+\S+\s*->\s*\S+\s*$/im, label: "update-prompt" },
 ];
 
 /**
@@ -50,19 +54,21 @@ const NEEDS_HUMAN_PATTERNS: ReadonlyArray<{ re: RegExp; label: string }> = [
  * checked first so a trust/login prompt that also happens to show an "Enter to
  * confirm" affordance is never mistaken for an auto-dismissable menu.
  *
- * `harness` is optional so harness-less call sites (readiness.ts — it only asks
- * "is this an interstitial?") compile unchanged; without it every needs-human
- * prompt stays needs-human. WITH harness === "copilot", folder-trust upgrades
- * to `answer` (DL-001): a pij-SPAWNED copilot seat already runs --yolo on a
- * spawner-chosen cwd, so trust-once grants strictly less than what spawn
- * granted — posture-consistent to auto-accept. Esc is NEVER the answer here:
- * on this modal Esc = "No, exit" → dead pane (why needs-human outranks
- * dismiss). Login stays needs-human for every harness.
+ * `harness` is optional so harness-less call sites compile unchanged. The
+ * session-in-use modal is deliberately NOT in the generic pattern table: only
+ * an explicit Copilot caller may classify and answer its exact tail shape.
+ * Loose generic patterns remain fail-closed as needs-human.
  */
 export function classifyInterstitial(paneText: string, harness?: HarnessKind): InterstitialVerdict {
+	if (
+		harness === "copilot" &&
+		COPILOT_SESSION_IN_USE_RE.test(paneText.slice(-COPILOT_SESSION_IN_USE_TAIL_CHARS))
+	) {
+		return { action: "answer", label: "session-in-use", keys: ["1", "Enter"] };
+	}
 	for (const p of NEEDS_HUMAN_PATTERNS) {
 		if (p.re.test(paneText)) {
-			if (p.label === "folder-trust" && harness === "copilot") {
+			if (harness === "copilot" && p.label === "folder-trust") {
 				return { action: "answer", label: p.label, keys: ["1", "Enter"] };
 			}
 			// codex update prompt → Skip (option 2): session-scoped, mutates

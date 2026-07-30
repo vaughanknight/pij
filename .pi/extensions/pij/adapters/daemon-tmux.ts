@@ -187,6 +187,36 @@ export interface DaemonTmuxOptions {
 	sleep?: (ms: number) => void;
 }
 
+/** Decide what a THROWN tmux send means: a permanently dead target (`gone`) or a
+ *  condition worth retrying (`failed`).
+ *
+ *  `gone` is the strong verdict — the caller unbinds and stops targeting the pane
+ *  forever. It is reserved for the one case tmux actually ANSWERS: the server is
+ *  up and says there is no such pane. That is permanent (retrying cannot bring a
+ *  pane back) and it is dangerous to keep queueing against, because tmux restarts
+ *  `%N` at `%0` in every new server, so a message left queued against a dead
+ *  `%315` eventually lands in a STRANGER's pane.
+ *
+ *  EVERYTHING ELSE FALLS THROUGH TO `failed` ON PURPOSE — most importantly a dead
+ *  or unreachable server (`error connecting to …`, `no server running on …`),
+ *  which is not an answer at all. This mirrors `observePane` in cli.ts, which
+ *  holds the same line for liveness: "no such pane" is an answer, "no tmux" is
+ *  not, and only an answer may count as evidence. Treating an unreachable server
+ *  as `gone` would let one blip — a socket briefly absent, a server restarting
+ *  under us — unbind the ENTIRE fleet at once, which is far worse than retrying
+ *  into a server that never returns. The recycled-pane-id hazard on the way back
+ *  up is owned by the identity check at bind/send time (`#{pane_pid}`, s072
+ *  FIX-1), not by this classifier.
+ *
+ *  Behaviourally this is exactly the rule that shipped; extracting it changes
+ *  nothing at runtime. It is pulled out and exported so the rule can be PROVEN
+ *  without an ambient tmux server. Asserting it through a live `sendText` meant
+ *  the test silently exercised the no-server branch on any machine without a
+ *  server running (notably CI) while claiming to test the no-such-pane one. */
+export function classifySendFailure(detail: string): "gone" | "failed" {
+	return /can't find pane|no such pane|pane not found/i.test(detail) ? "gone" : "failed";
+}
+
 export class DaemonTmux implements DaemonPorts {
 	private readonly proc = new NodeProcess();
 	private readonly runner: TmuxRunner;
@@ -310,15 +340,22 @@ export class DaemonTmux implements DaemonPorts {
 		try {
 			return this.sendTextUnchecked(paneId, text, harness, pid);
 		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			const gone = classifySendFailure(detail) === "gone";
 			try {
-				const detail = error instanceof Error ? error.message : String(error);
 				process.stderr.write(
-					`⚠️  tmux UNVERIFIED: send to pane ${paneId} failed before submission confirmation — ${detail}\n`,
+					gone
+						? `⚠️  tmux GONE: pane ${paneId} does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — ${detail}\n`
+						: `⚠️  tmux FAILED: send to pane ${paneId} threw before submission — nothing reliably landed; the message stays queued — ${detail}\n`,
 				);
 			} catch {
 				// logging is diagnostic-only — a write failure must not break delivery.
 			}
-			return "unverified";
+			// NOT `unverified` (plan 071 D7): this path threw BEFORE typing, so the
+			// payload did not land and there is no duplicate-turn risk in retrying.
+			// Reporting it as `unverified` made the caller consume the durable copy
+			// of a message that was never delivered.
+			return gone ? "gone" : "failed";
 		}
 	}
 
@@ -395,17 +432,19 @@ export class DaemonTmux implements DaemonPorts {
 			if (!composerHasTextTail(lastPane, text) || composerIsEmpty(lastPane)) break;
 		}
 		// The text WAS typed into the composer but no submission was confirmed after the
-		// bounded retries — the swallowed-Enter wedge. Report `injected-unverified` (a
-		// distinct, honest state), NEVER `confirmed`/`delivered`. Log loudly.
+		// bounded retries — the swallowed-Enter wedge. `unverified` means exactly this
+		// (see `SendOutcome`): typed, unconfirmed, consumed at-most-once. NEVER
+		// `confirmed`/`delivered`; the "nothing landed" cases are `failed`/`gone`. Log
+		// loudly — the harness is named because this path is no longer copilot-only.
 		try {
 			const tail = text.replace(/\s+/g, " ").slice(-48);
 			process.stderr.write(
-				`⚠️  ${harness ?? "harness"} INJECTED-UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) typed the payload but never confirmed submission across ${SUBMIT_ATTEMPTS} Enter attempts — text tail «…${tail}».\n`,
+				`⚠️  ${harness ?? "harness"} UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) typed the payload but never confirmed submission across ${SUBMIT_ATTEMPTS} Enter attempts — text tail «…${tail}».\n`,
 			);
 		} catch {
 			// logging is diagnostic-only — a write failure must not break delivery.
 		}
-		return "injected-unverified";
+		return "unverified";
 	}
 
 	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void {

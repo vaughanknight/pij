@@ -44,6 +44,7 @@ import type {
 	SplitWindowOpts,
 	TmuxPort,
 } from "../core/ports.js";
+import { applyWriteLaw, type DescriptorWriter } from "../core/registry-write.js";
 import {
 	type DeliveredMessage,
 	type EventQuery,
@@ -166,21 +167,47 @@ export class FakeRegistry implements RegistryPort {
 	read(id: SessionId): SessionDescriptor | null {
 		return this.map.get(id) ?? null;
 	}
-	write(descriptor: SessionDescriptor): void {
+	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void {
 		const existing = this.map.get(descriptor.id);
+		// Review round 2 §MED-b — the pid clause is GONE, matching FsRegistry after the
+		// s066 hardening. While the fake still carried it, a DIFFERENT-pid write was
+		// refused by the real registry but ACCEPTED here, so every core test could
+		// resurrect a tombstone that production drops. A fake that is more permissive
+		// than the real adapter is the plain-object-fake failure in another costume.
 		if (
 			existing?.lifecycle === "dissolved" &&
 			descriptor.lifecycle !== undefined &&
-			descriptor.lifecycle !== "dissolved" &&
-			descriptor.pid === existing.pid
+			descriptor.lifecycle !== "dissolved"
 		) {
 			return;
 		}
+		// Same law as the real adapter (plan 071 review §1.2) — a fake that skipped
+		// it would let a merge bug pass every unit test, which is precisely the
+		// plain-object-fake failure this plan already paid for once.
+		this.map.set(descriptor.id, applyWriteLaw(descriptor, existing ?? null, writer));
+	}
+	writeExact(descriptor: SessionDescriptor): void {
 		this.map.set(descriptor.id, descriptor);
 	}
 	remove(id: SessionId): void {
 		this.map.delete(id);
 	}
+	revive(descriptor: SessionDescriptor): Result<void> {
+		const existing = this.map.get(descriptor.id);
+		if (!existing) return err("E-NOID", `no dissolved session '${descriptor.id}' to revive`);
+		if (existing.lifecycle !== "dissolved") {
+			return err("E-ARG", `session '${descriptor.id}' is not dissolved`);
+		}
+		if (
+			existing.harness !== descriptor.harness ||
+			existing.harnessSessionId !== descriptor.harnessSessionId
+		) {
+			return err("E-AMBIG", `revive identity mismatch for '${descriptor.id}'`);
+		}
+		this.map.set(descriptor.id, descriptor);
+		return ok(undefined);
+	}
+
 	dissolve(id: SessionId): void {
 		const existing = this.map.get(id);
 		if (!existing || existing.lifecycle === "dissolved") return;

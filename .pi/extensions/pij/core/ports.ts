@@ -4,6 +4,9 @@
 // tests, real fs/pi adapters in Phase 2/3) implement them. Only
 // adapters/pi-runtime.ts (Phase 2) may import @earendil-works/* — never here.
 
+import type { ArchiveIndexEntry } from "./archive.js";
+import type { BgJobRecord } from "./bg.js";
+import type { DescriptorWriter } from "./registry-write.js";
 import type {
 	DeliveredMessage,
 	EventQuery,
@@ -19,28 +22,90 @@ import type {
 } from "./types.js";
 
 /** Outcome of a daemon-owned tmux text injection.
- *  - `confirmed`: text typed AND submission positively verified (composer emptied
- *    / harness went busy). Only this becomes a `delivered` receipt.
- *  - `injected-unverified`: text WAS typed into the composer but submission could
- *    not be confirmed after bounded Enter retries (the swallowed-Enter wedge). An
- *    honest, distinct state — never `delivered`.
- *  - `unverified`: the send threw before anything was typed (pane vanished / tmux
- *    error) — nothing reached the composer. */
-export type SendOutcome = "confirmed" | "unverified" | "injected-unverified";
+ *
+ *  - `confirmed`  — the payload was typed AND submission was positively observed.
+ *  - `unverified` — the payload WAS typed, but submission could not be confirmed.
+ *    Replaying could duplicate an already-accepted turn, so the caller consumes.
+ *    Reachable for EVERY harness since plan 127 (merged here as s179): claude and
+ *    codex used to short-circuit to `confirmed` without verifying at all, so a
+ *    swallowed Enter stranded the text yet still reported delivered. This state
+ *    absorbed plan 127's `injected-unverified`, which named exactly this case back
+ *    when the throw path had taken the word `unverified` (now `failed`/`gone`).
+ *  - `held`       — the pane's composer had live human input, so NOTHING was
+ *    typed. Not a delivery failure: retry on a later tick.
+ *  - `failed`     — the send threw before submission, so nothing reliably landed
+ *    (tmux unavailable, transient error). Distinguished from `unverified` in plan
+ *    071 D7: collapsing the two let the caller consume the ONLY durable copy of
+ *    a message that was never typed. The caller must retry, never consume.
+ *  - `gone`       — tmux reports the target pane DOES NOT EXIST. Split out of
+ *    `failed` because it is PERMANENT, not transient: retrying can never succeed,
+ *    so requeueing spins forever (a host reboot produced ~200 such messages, one
+ *    tmux call each, every tick). Worse than the noise: tmux re-issues pane ids
+ *    from `%0` in every new server, so a queued message for a dead `%315` becomes
+ *    deliverable again — into whatever LIVE pane inherits that id. The caller must
+ *    stop targeting the binding; the durable copy stays unconsumed in the mailbox. */
+export type SendOutcome = "confirmed" | "unverified" | "held" | "failed" | "gone";
 
-/** Reads/writes the ~/.pij/ peer registry (one descriptor per session). */
+/** Outcome of one archival attempt (plan 071 D1). `skipped` means the move was
+ *  declined for safety (a conflicting half-archive) — never silent data loss. */
+export type ArchiveOutcome = "archived" | "already-archived" | "skipped";
+
+/** Reads/writes the ~/.pij/ peer registry (one descriptor per session).
+ *
+ *  Two-tier since plan 071 D1: `list()` scans ONLY the hot tier (live seats plus
+ *  terminal ones inside the 48h window) so tick cost is O(live); keyed lookup
+ *  (`read`) falls through to `~/.pij/archive/` transparently, by direct path. */
 export interface RegistryPort {
-	/** All known session descriptors. */
+	/** All known session descriptors in the HOT tier. Never reads the archive —
+	 *  that is the whole point of the tier split. */
 	list(): SessionDescriptor[];
-	/** One descriptor by id, or null if absent. */
+	/** One descriptor by id, or null if absent. Falls back to the archive by
+	 *  direct path (filename = id, no glob) so an archived seat stays addressable. */
 	read(id: SessionId): SessionDescriptor | null;
-	/** Upsert this session's descriptor. */
-	write(descriptor: SessionDescriptor): void;
+	/** Upsert this session's descriptor, APPLYING THE WRITE LAW
+	 *  (`core/registry-write.ts`): contested fields you do not own are taken from
+	 *  the latest on-disk record, so a stale snapshot can never replay over a field
+	 *  a concurrent writer just stamped. Five lost-updates say this must be the
+	 *  default rather than something the writer has to know about.
+	 *
+	 *  `writer` declares which side you are, so the fields you OWN keep the values
+	 *  you just computed. Omitting it is safe — you simply own nothing. */
+	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void;
+	/** Exact last-write-wins, NO merge. The only correct use is deliberately
+	 *  CLEARING a contested field (e.g. stripping a prior incarnation's `terminal`
+	 *  when a seat is re-adopted). Every call site must say why in a comment; the
+	 *  write-law test enumerates them so a new one has to justify itself. */
+	writeExact(descriptor: SessionDescriptor): void;
+	/** Replace a dissolved tombstone with a new runtime incarnation. */
+	revive(descriptor: SessionDescriptor): Result<void>;
 	/** Remove a session's descriptor (on shutdown). */
 	remove(id: SessionId): void;
 	/** Persist a terminal tombstone so stale queued writes cannot resurrect a
 	 *  session after close. Dissolved descriptors are hidden from list(). */
 	dissolve(id: SessionId): void;
+	/** Move one terminal record (descriptor + session dir) to the archive and
+	 *  append its index line. DAEMON-ONLY: the daemon is the single writer for
+	 *  archival moves; the CLI may only read the archive. Idempotent, and safe to
+	 *  re-run over a crash-interrupted half-move.
+	 *
+	 *  Optional so in-memory fakes and non-archiving callers stay source-compatible. */
+	archive?(id: SessionId, nowMs: number): ArchiveOutcome;
+	/** Archive every hot record the 48h terminal policy calls archivable, and
+	 *  report the tally. DAEMON-ONLY. Scans the hot tier directly — including
+	 *  `dissolved` records, which `list()` hides and which are the bulk of what
+	 *  needs clearing. */
+	sweepArchivable?(nowMs: number): { readonly archived: number; readonly skipped: number };
+	/** Archived records, newest-archived first, read from the append-only index.
+	 *  Backs `pij list --archived`. */
+	listArchived?(): readonly ArchiveIndexEntry[];
+	/** Pull an ARCHIVED record back into the hot tier (descriptor + session dir).
+	 *  Returns the restored descriptor, or null when the id is not archived.
+	 *
+	 *  Deliberately NOT called `revive`: `revive(descriptor)` above is s066's verb
+	 *  for relaunching a dissolved session's process. This one only moves storage
+	 *  tiers and starts nothing. The two compose — `pij revive` on a long-dead seat
+	 *  must unarchive first — but conflating them would be a genuine bug. */
+	unarchive?(id: SessionId): SessionDescriptor | null;
 }
 
 /** Resolves the canonical git common directory for a checkout/worktree path. */
@@ -118,6 +183,8 @@ export interface NewWindowOpts {
 	env: Record<string, string>;
 	/** Tmux window name, e.g. "pi:<spawnId>". */
 	name: string;
+	/** Human-readable pane title (`select-pane -T`); naming failure aborts spawn. */
+	title: string;
 	/** Working directory for the new window. */
 	cwd?: string;
 	/** Pass tmux `-d`: create the window in the BACKGROUND without switching the
@@ -134,6 +201,8 @@ export interface SplitWindowOpts {
 	args: string[];
 	/** Environment variables for the new pane. */
 	env: Record<string, string>;
+	/** Human-readable pane title (`select-pane -T`); naming failure aborts spawn. */
+	title: string;
 	/** Working directory for the new pane. */
 	cwd?: string;
 	/** Pane to split (%N): orchestrator pane for the right column; worker-1's
@@ -191,4 +260,25 @@ export interface ProcessPort {
 	now(): number;
 	/** Read an environment variable (e.g. PIJ_SESSION_ID). */
 	env(key: string): string | undefined;
+}
+
+/** Launches a detached background job. The child outlives this process — the
+ *  whole point of `pij bg` is that the caller's turn ends immediately. */
+export interface BackgroundLauncherPort {
+	/** Start `script` under `sh`, detached, with `env` overlaid on the ambient
+	 *  environment. Returns the child's pid. */
+	launch(input: {
+		readonly script: string;
+		readonly env: Readonly<Record<string, string>>;
+		readonly cwd: string;
+	}): Result<{ readonly pid: number }>;
+}
+
+/** Durable per-job records for `pij bg`. Without these a queued job leaves only
+ *  a log file, so `list` has nothing to render and `kill` nothing to target. */
+export interface BgJobStorePort {
+	write(record: BgJobRecord): void;
+	read(jobId: string): BgJobRecord | undefined;
+	/** Newest first. */
+	list(): readonly BgJobRecord[];
 }

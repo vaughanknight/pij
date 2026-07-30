@@ -18,6 +18,7 @@
 //  • foreign-hold-clear — a `hold` whose NEXT declared state comes from a
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
+import { cardCanMislead, hasRoleConflict, owesStatusCard } from "./orchestration/role.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
 	SPINE_KIND_STATE_CLEARED,
@@ -36,10 +37,12 @@ export type AnomalyKind =
 	| "axis-disagreement"
 	| "unverified-done"
 	| "foreign-hold-clear"
+	| "role-conflict"
 	| "spawn-limbo"
 	| "inbox-poll-stalled"
 	| "delivered-unacked-stale"
-	| "allocation-half-open";
+	| "allocation-half-open"
+	| "status-stale";
 
 /** A seat may sit pre-bind this long before it reads as a wedged boot. The
  *  watchdog cannot see pending/ready seats (eligible() excludes them by
@@ -64,6 +67,23 @@ export const DEFAULT_INBOX_POLL_STALL_MS = 6_000;
  * and operators free to choose a stricter observation window. */
 export const DEFAULT_DISPATCH_UNACKED_STALE_MS = 15 * 60_000;
 export const DEFAULT_ALLOCATION_HALF_OPEN_MS = 15 * 60_000;
+
+/** How far a seat's `now`/`next` card may lag its own activity before it reads
+ *  as STALE rather than merely quiet.
+ *
+ *  This sensor exists because the watchdog structurally cannot catch this case.
+ *  The watchdog measures SILENCE — it nudges a seat that stopped emitting. A
+ *  stale card belongs to the opposite seat: one emitting constantly while never
+ *  refreshing what it claims to be doing. It is never silent, so it is never
+ *  nudged, so the seats whose cards are read most are exactly the ones no alarm
+ *  covers (observed 2026-07-30: a PM shipped two merges and a skill change while
+ *  its card still read "waiting on Jordan to confirm this renders").
+ *
+ *  30min is chosen against the watchdog's own 20min nudge interval: a seat that
+ *  has been busy for longer than a nudge cycle without restating its work has
+ *  outlived the harness's other reporting prompt. Tighter would flag normal
+ *  focused work; looser and a whole phase can ship behind a stale card. */
+export const DEFAULT_STATUS_STALE_MS = 30 * 60_000;
 
 export interface Anomaly {
 	readonly kind: AnomalyKind;
@@ -90,6 +110,7 @@ export interface AnomalyInputs {
 	readonly inboxPollStallMs?: number;
 	readonly dispatchStaleMs?: number;
 	readonly allocationHalfOpenMs?: number;
+	readonly statusStaleMs?: number;
 }
 
 /** The declared-state view of one assignment's chain (states[] seqs joined
@@ -184,13 +205,116 @@ function incompleteAllocationStep(allocation: Allocation): string | undefined {
 	return undefined;
 }
 
+/** Has this descriptor already been observed terminal (closed, or absent)?
+ *
+ *  LIVENESS anomalies must never fire for one. `pij close` stamps
+ *  `terminal: requested` BEFORE it dissolves (cli.ts / session.ts), and the
+ *  registry lists the record throughout that window — so a just-closed seat is
+ *  still `lifecycle: "bound"` (or `"pending"`) with a frozen `lastInboxScanAt`,
+ *  which is exactly the shape these detectors call an anomaly. The result was a
+ *  pij-REQUESTED close false-alerting its own owner, routed via
+ *  effectiveParent→spawnedBy.
+ *
+ *  Same failure class as the s070 `unrequested-by-pij` defect: terminal truth was
+ *  recorded correctly and the notify path simply never asked. Liveness is a claim
+ *  about a RUNNING seat; once a seat is terminal, "it stopped polling" is the
+ *  expected outcome, not an anomaly. */
+function isTerminallyObserved(node: SessionDescriptor): boolean {
+	return node.terminal !== undefined;
+}
+
 export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const threshold = inputs.idleThresholdMs ?? DEFAULT_IDLE_DISAGREEMENT_MS;
 	const out: Anomaly[] = [];
 	const byNode = new Map<string, SessionDescriptor>();
 	for (const descriptor of inputs.descriptors) byNode.set(descriptor.id, descriptor);
 
+	for (const descriptor of inputs.descriptors) {
+		if (!hasRoleConflict(descriptor)) continue;
+		out.push({
+			kind: "role-conflict",
+			nodeId: descriptor.id,
+			detail: `'${descriptor.id}' is prime but also stores orchestrationRole='${descriptor.orchestrationRole}' — prime wins projection, but the conflicting writable source must be cleared`,
+			evidence: [],
+		});
+	}
+
 	const dispatchStaleMs = inputs.dispatchStaleMs ?? DEFAULT_DISPATCH_UNACKED_STALE_MS;
+
+	// status-stale — the seat is ACTIVELY EMITTING but its now/next card has not
+	// moved. The watchdog cannot reach this class: it fires on silence, and this
+	// seat is the opposite of silent.
+	const statusStaleMs = inputs.statusStaleMs ?? DEFAULT_STATUS_STALE_MS;
+	for (const descriptor of inputs.descriptors) {
+		if (descriptor.lifecycle === "dissolved" || descriptor.lifecycle === "failed") continue;
+		// Scoped by the TWO-PREDICATE split (Jordan's rulings, 2026-07-30):
+		//
+		//   owesStatusCard  — may this seat be CHASED for a card?   PM only.
+		//   cardCanMislead  — can its card MISINFORM a reader?      anyone holding one.
+		//
+		// Deliberately asymmetric, because THE CONSUMER CANNOT TELL WHO OWED THE
+		// CARD. A rotten card misinforms identically whether the seat was obliged
+		// to write it or chose to. Collapsing these into one role test is what put
+		// a card obligation on every prime in the first place.
+		//
+		// This gate is where BOTH exclusions actually land, so it is the line to
+		// keep honest: a worker holding a card is skipped (renders nowhere), and a
+		// prime holding none is skipped (nothing to rot). Its worker half also
+		// keeps the sensor CREDIBLE — measured on the live fleet the day it
+		// shipped, 26 of 29 live seats had never reported, so an unscoped rule
+		// fires on ~90% of the fleet on its first run (F-17: a detector nobody
+		// believes is worse than no detector).
+		const owesCard = owesStatusCard(descriptor);
+		if (!cardCanMislead(descriptor) && !owesCard) continue;
+		const lastEventMs =
+			descriptor.lastEventAt === undefined ? undefined : validTimestampMs(descriptor.lastEventAt);
+		// No telemetry at all means no proof of activity — and this sensor accuses
+		// a seat of working without reporting, so it must never fire on a seat it
+		// cannot prove was working.
+		if (lastEventMs === undefined) continue;
+		// Only judge a seat that is busy RIGHT NOW. One that stopped emitting is
+		// the watchdog's jurisdiction, and double-reporting it here would just
+		// re-flag every finished seat forever.
+		if (inputs.nowMs - lastEventMs > statusStaleMs) continue;
+		// A seat that has PARKED itself is exempt: `waiting`/`hold`/`blocked`/
+		// `question` are deliberate declarations, and re-nudging them punishes the
+		// seats that did the right thing (same exemption axis-disagreement uses).
+		if (descriptor.semanticState !== undefined && descriptor.semanticState !== "ready") continue;
+		const statusAtMs =
+			descriptor.statusAt === undefined ? undefined : validTimestampMs(descriptor.statusAt);
+		// Never reported at all: age from the seat's own start, so a PM that has
+		// worked an hour without filing one is caught (A-2 — keying on statusAt
+		// alone would never fire for exactly that seat).
+		//
+		// Only a card-OWING seat can reach this branch: a seat holding no card and
+		// owing none was already skipped by the scope gate above, which is what
+		// makes absence-without-obligation a non-event rather than the
+		// false-positive-by-CLASS it used to be. `owesCard` here is belt-and-braces
+		// so the intent survives if that gate is ever loosened — the gate is the
+		// mutation-verified half.
+		const anchorMs = statusAtMs ?? (owesCard ? validTimestampMs(descriptor.startedAt) : undefined);
+		if (anchorMs === undefined) continue;
+		const driftMs = lastEventMs - anchorMs;
+		if (driftMs <= statusStaleMs) continue;
+		out.push({
+			kind: "status-stale",
+			nodeId: descriptor.id,
+			detail:
+				`'${descriptor.id}' has been working for ${Math.round(driftMs / 60_000)}min since its card was last updated` +
+				`${statusAtMs === undefined ? " (it has never reported)" : ""} (threshold ${Math.round(statusStaleMs / 60_000)}min)` +
+				" — consumers render now/next as CURRENT, so a stale card actively misinforms." +
+				` Ask '${descriptor.id}' to run: pij report now "<what I just did>" "<what's next>"` +
+				" (or declare a parked state: waiting|hold|blocked|question — parked seats never flag)",
+			// Evidence carries the drift BUCKET, not an empty array: the sweep's
+			// latch keys on `kind:node:evidence`, so a constant key would alert the
+			// parent exactly once and then stay silent forever no matter how far
+			// the card drifted afterwards. Bucketing by 30min re-alerts as it gets
+			// materially worse without chattering every tick.
+			evidence: [Math.floor(driftMs / (30 * 60_000))],
+			ageMs: driftMs,
+		});
+	}
+
 	for (const dispatch of inputs.dispatches ?? []) {
 		if (dispatch.state !== "delivered-unacked") continue;
 		const updatedMs = validTimestampMs(dispatch.updated.ts);
@@ -241,6 +365,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	// symptom, and the detail says so).
 	const limboMs = inputs.spawnLimboMs ?? DEFAULT_SPAWN_LIMBO_MS;
 	for (const node of inputs.descriptors) {
+		if (isTerminallyObserved(node)) continue;
 		if (node.lifecycle !== "pending" && node.lifecycle !== "ready") continue;
 		const bornMs = Date.parse(node.startedAt);
 		if (Number.isNaN(bornMs)) continue;
@@ -270,6 +395,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	// self-poll (tmux is drained by the daemon tick) — skipped, no false positive.
 	const stallMs = inputs.inboxPollStallMs ?? DEFAULT_INBOX_POLL_STALL_MS;
 	for (const node of inputs.descriptors) {
+		if (isTerminallyObserved(node)) continue;
 		if (node.lifecycle !== "bound") continue;
 		if (node.lastInboxScanAt === undefined) continue;
 		const scanMs = Date.parse(node.lastInboxScanAt);
@@ -354,7 +480,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			kind: "axis-disagreement",
 			nodeId: assignment.nodeId,
 			assignmentId: assignment.id,
-			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, declare it: pij state set ${assignment.nodeId} waiting|hold|blocked|question (parked states never flag)`,
+			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, ask '${assignment.nodeId}' to run: pij report state waiting|hold|blocked|question (parked states never flag)`,
 			evidence,
 		});
 	}

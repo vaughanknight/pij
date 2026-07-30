@@ -1,5 +1,20 @@
 # s127 — Verified injection (plan-lite, gap analysis vs upstream s064)
 
+> **PARTIALLY SUPERSEDED by s179 (`docs/plans/179-upstream-merge/PLAN.md`).** Kept as
+> the historical record — do not read section B2's vocabulary as current.
+>
+> The **behaviour** below is live and load-bearing: submission verification for every
+> harness (the deleted `if (!wake) return "confirmed"`), the ghost-text tail break, the
+> generalised warning, and the lock heartbeat all survived the 89-commit upstream merge.
+>
+> The **word** did not. `injected-unverified` was minted here because `unverified` then
+> meant "the send threw before typing". Upstream plan 071 D7 split that throw path into
+> `failed`/`gone`, leaving `unverified` to mean precisely what this plan called
+> `injected-unverified` — typed, submission unconfirmed, consumed at-most-once. s179
+> retired the extra word rather than carry two names for one state. The honesty
+> invariant this plan exists to protect is unchanged: **never `delivered` for
+> unsubmitted text.**
+
 **Stream**: s127 · **Branch**: `fix/verified-injection` off `99d5f1e` (local main = s113 media stack + upstream **5abb38e / s064** merged).
 **Process**: plan-lite → STOP for prime GO → exec. Surgical only. NEVER merge; gate-green + HEAD SHA to prime.
 **Fences**: injection path + receipt states + heartbeat touch. Daemon is LIVE — no restart, no `~/.pij` writes during dev; prime owns deploy. No architecture rework, no watchdog rework, no registry/dissolution changes.

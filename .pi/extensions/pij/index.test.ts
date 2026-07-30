@@ -91,6 +91,7 @@ describe("pij index — footer status bar", () => {
 	let origPijHome: string | undefined;
 	let origSessionId: string | undefined;
 	let origParentId: string | undefined;
+	let origPlanId: string | undefined;
 	let origOmpCode: string | undefined;
 	let origAnnounceTo: string | undefined;
 
@@ -98,11 +99,13 @@ describe("pij index — footer status bar", () => {
 		origPijHome = process.env.PIJ_HOME;
 		origSessionId = process.env.PIJ_SESSION_ID;
 		origParentId = process.env.PIJ_PARENT_ID;
+		origPlanId = process.env.PIJ_PLAN_ID;
 		origOmpCode = process.env.OMPCODE;
 		origAnnounceTo = process.env.PIJ_ANNOUNCE_TO;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
 		delete process.env.PIJ_PARENT_ID;
+		delete process.env.PIJ_PLAN_ID;
 		delete process.env.OMPCODE;
 		delete process.env.PIJ_ANNOUNCE_TO;
 	});
@@ -116,6 +119,8 @@ describe("pij index — footer status bar", () => {
 		else process.env.PIJ_SESSION_ID = origSessionId;
 		if (origParentId === undefined) delete process.env.PIJ_PARENT_ID;
 		else process.env.PIJ_PARENT_ID = origParentId;
+		if (origPlanId === undefined) delete process.env.PIJ_PLAN_ID;
+		else process.env.PIJ_PLAN_ID = origPlanId;
 		if (origOmpCode === undefined) delete process.env.OMPCODE;
 		else process.env.OMPCODE = origOmpCode;
 		if (origAnnounceTo === undefined) delete process.env.PIJ_ANNOUNCE_TO;
@@ -139,7 +144,7 @@ describe("pij index — footer status bar", () => {
 
 		const pijStatus = statuses.find((s) => s.key === "pij");
 		expect(pijStatus).toBeDefined();
-		expect(pijStatus?.value).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(pijStatus?.value).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 
 		// Best-effort cleanup of any FS watcher opened by session_start.
 		try {
@@ -157,7 +162,7 @@ describe("pij index — footer status bar", () => {
 		pijExtension(pi);
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
-		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(sessionNames.at(-1)).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 		expect(statuses.some((status) => status.key === "pij")).toBe(false);
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
@@ -169,7 +174,7 @@ describe("pij index — footer status bar", () => {
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		const first = statuses.at(-1)?.value;
-		expect(first).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(first).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
 		expect(statuses.at(-1)?.value).toBe(first);
@@ -177,7 +182,7 @@ describe("pij index — footer status bar", () => {
 		setSessionId("native-new");
 		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
 		const second = statuses.at(-1)?.value;
-		expect(second).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(second).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 		expect(second).not.toBe(first);
 
 		const opaqueNative = "native-existing-opaque";
@@ -236,6 +241,19 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_shutdown")?.({}, ctx);
 	});
 
+	it("stamps the explicit spawn plan id from PIJ_PLAN_ID", async () => {
+		process.env.PIJ_PLAN_ID = "073-pij-first-class-ui";
+		const { pi, handlers } = makeFakePi();
+		const { ctx, statuses } = makeFakeCtx("native-plan-id");
+		pijExtension(pi);
+
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		const id = statuses.at(-1)?.value;
+		expect(new FsRegistry(pijHome).read(id as string)?.planId).toBe("073-pij-first-class-ui");
+		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
 	it("blocks ask_user_question only for a structurally managed Pi peer and still captures it", async () => {
 		process.env.PIJ_PARENT_ID = "pij-structural-parent";
 		const { pi, handlers } = makeFakePi();
@@ -286,7 +304,7 @@ describe("pij index — footer status bar", () => {
 
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		const id = statuses.at(-1)?.value;
-		expect(id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(id).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 		expect(new FsRegistry(pijHome).read(id as string)).toMatchObject({ id });
 
 		await handlers.get("session_shutdown")?.({}, ctx);

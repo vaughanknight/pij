@@ -18,6 +18,7 @@ import type { PiRuntimePort } from "../ports.js";
 import { PijSession } from "../session.js";
 import { buildSpawnCommand, parseSpawnArgs } from "../spawn.js";
 import type { PijMessage, SessionDescriptor, WatchdogSidecar, WatchdogWatcher } from "../types.js";
+import { isFireDue } from "../watchdog.js";
 import type { DaemonPorts } from "./loop.js";
 import { pauseForCompactMessage } from "./router.js";
 import {
@@ -52,6 +53,7 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 		harnessSessionId: "native",
 		state: "idle",
 		lastEventAt: STARTED_AT,
+		orchestrationRole: "pm",
 		...over,
 	};
 }
@@ -162,6 +164,89 @@ function intervalSidecar(
 }
 
 describe("WatchdogManager — reconciliation and delivery", () => {
+	it("watches the DESIGNATED seats — pm and prime — and nobody else", () => {
+		// Primes were excluded until 2026-07-30 (the gate read `!== "pm"`, and a
+		// prime projects to "prime"), so the fleet's governing seats were the only
+		// ones no reporting clock touched. Measured cost: a prime went 12 days
+		// without writing a card, with no prompt of any kind — its own status-stale
+		// anomaly could not reach it either, because a prime has no parent for the
+		// sweep to deliver to.
+		const h = managerHarness();
+		for (const id of ["pm", "worker", "unknown", "prime", "conflict"]) {
+			h.store.sidecars.set(id, intervalSidecar(1));
+			h.store.revisions.set(id, 1);
+		}
+		h.setNow(10);
+		h.manager.reconcile([
+			desc({ id: "pm", orchestrationRole: "pm" }),
+			desc({ id: "worker", orchestrationRole: "worker" }),
+			desc({ id: "unknown", orchestrationRole: undefined }),
+			desc({ id: "prime", prime: true, orchestrationRole: undefined }),
+			// prime + a stored role is the conflict shape: prime WINS the projection
+			// (role.ts), so it is watched as a prime rather than skipped.
+			desc({ id: "conflict", prime: true, orchestrationRole: "pm" }),
+		]);
+
+		expect(h.delivery.outbox.map((entry) => entry.message.to).sort()).toEqual([
+			"conflict",
+			"pm",
+			"prime",
+		]);
+		expect(h.manager.activeCount()).toBe(3);
+		// Still nobody else: an unstamped seat and a worker are never watched,
+		// because a reporting clock on a seat whose card renders nowhere is noise.
+		expect(h.delivery.outbox.map((entry) => entry.message.to)).not.toContain("worker");
+		expect(h.delivery.outbox.map((entry) => entry.message.to)).not.toContain("unknown");
+	});
+
+	it("nudges a never-reported PM from startedAt even while ordinary activity stays fresh", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-never-reported", intervalSidecar());
+		h.store.revisions.set("pij-never-reported", 1);
+		h.setNow(50);
+		h.manager.reconcile([
+			desc({
+				id: "pij-never-reported",
+				statusAt: undefined,
+				lastEventAt: new Date(40).toISOString(),
+			}),
+		]);
+		h.setNow(100);
+		h.manager.reconcile([
+			desc({
+				id: "pij-never-reported",
+				statusAt: undefined,
+				lastEventAt: new Date(90).toISOString(),
+			}),
+		]);
+
+		expect(h.fires).toEqual([{ id: "pij-never-reported", atMs: 100 }]);
+	});
+
+	it("keys the PM schedule on statusAt, so ordinary activity no longer re-anchors it", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-reporting-pm", intervalSidecar());
+		h.store.revisions.set("pij-reporting-pm", 1);
+		h.setNow(60);
+		h.manager.reconcile([
+			desc({
+				id: "pij-reporting-pm",
+				statusAt: new Date(10).toISOString(),
+				lastEventAt: new Date(50).toISOString(),
+			}),
+		]);
+		h.setNow(110);
+		h.manager.reconcile([
+			desc({
+				id: "pij-reporting-pm",
+				statusAt: new Date(10).toISOString(),
+				lastEventAt: new Date(100).toISOString(),
+			}),
+		]);
+
+		expect(h.fires).toEqual([{ id: "pij-reporting-pm", atMs: 110 }]);
+	});
+
 	it("keeps at most one due tmux watchdog turn in the durable channel", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-tmux", intervalSidecar());
@@ -600,7 +685,16 @@ describe("WatchdogManager — watcher captures", () => {
 });
 
 const TEMP_DIRS: string[] = [];
+/** Daemons built by a test, released in afterEach. A `Daemon` holds pane taps
+ *  plus watch/watchdog manager state; leaving instances alive across a long file
+ *  leaks handles and shows up as unrelated 5s timeouts elsewhere in the suite. */
+const DAEMONS: Daemon[] = [];
+function tracked(daemon: Daemon): Daemon {
+	DAEMONS.push(daemon);
+	return daemon;
+}
 afterEach(() => {
+	for (const daemon of DAEMONS.splice(0)) daemon.dispose();
 	for (const dir of TEMP_DIRS.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1067,6 +1161,327 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		).toHaveLength(1);
 	});
 
+	// s070 #1. `pij watchdog exempt` was one-directional: it silenced the peer-facing
+	// nudge but NOT the owner-facing stall notice, so an operator who had explicitly
+	// put a peer on standby still got 3 "gone quiet (stalled)" notices in ~13 min.
+	//
+	// These two tests are a matched pair and MUST be read together: byte-identical
+	// setup except for the exempt sidecar. The control proves the notice genuinely
+	// fires for this scenario, so the exempt case is asserting real suppression
+	// rather than the absence of something that was never going to happen.
+	function exemptHarness(sidecar: WatchdogSidecar | undefined): {
+		readonly delivery: FakeDelivery;
+		readonly tick: () => void;
+	} {
+		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-exempt-"));
+		TEMP_DIRS.push(home);
+		// state "working" + lastEventAt far past STALE_AFTER_MS (60s) = the legacy
+		// detector's exact stall trigger.
+		const registry = new FakeRegistry([
+			desc({
+				id: "peer",
+				spawnedBy: "owner",
+				state: "working",
+				lastEventAt: new Date(0).toISOString(),
+			}),
+			desc({ id: "owner", harness: "pi", lifecycle: undefined, paneId: undefined }),
+		]);
+		if (sidecar) new FsWatchdogStore(home).write("peer", sidecar);
+		const delivery = new FakeDelivery();
+		const nowMs = 1_000_000; // ~16 min of silence — comfortably past STALE_AFTER_MS
+		return {
+			delivery,
+			tick: () =>
+				tracked(
+					new Daemon(
+						home,
+						{
+							capturePane: () => "working pane",
+							isPaneDead: () => false,
+							sendText: () => "confirmed",
+							sendKey: () => {},
+							killPane: () => {},
+							listTranscripts: () => [],
+							home: () => home,
+							now: () => nowMs,
+							isAlive: () => true,
+						},
+						registry,
+						delivery,
+					),
+				).tick(),
+		};
+	}
+
+	const ownerStallNotices = (delivery: FakeDelivery): number =>
+		delivery.outbox.filter(
+			(item) => item.message.to === "owner" && item.message.body.includes("gone quiet"),
+		).length;
+
+	it("CONTROL: a stalled peer with no exemption does notify its owner", () => {
+		const h = exemptHarness(undefined);
+		h.tick();
+		expect(ownerStallNotices(h.delivery)).toBe(1);
+	});
+
+	it("sends the owner NO stall notice while the peer is watchdog-exempt", () => {
+		const h = exemptHarness({
+			intervalMs: 100,
+			pausedBy: "exempt",
+			pausedAtMs: 0,
+			exemptUntilMs: 3_600_000, // still live at now = 1_000_000
+		});
+		h.tick();
+		expect(ownerStallNotices(h.delivery)).toBe(0);
+		// Zero traffic in EITHER direction — the peer must not be nudged either.
+		expect(h.delivery.outbox.filter((item) => item.message.to === "peer")).toEqual([]);
+	});
+
+	it("resumes owner stall notices once the exemption has EXPIRED", () => {
+		// A lapsed safety exemption must never become permanent notification
+		// blindness — the whole reason exemptions carry a TTL.
+		const h = exemptHarness({
+			intervalMs: 100,
+			pausedBy: "exempt",
+			pausedAtMs: 0,
+			exemptUntilMs: 1_000, // long expired at now = 1_000_000
+		});
+		h.tick();
+		expect(ownerStallNotices(h.delivery)).toBe(1);
+	});
+
+	it("exempt does NOT suppress a genuine provider failure — decided, not accidental", () => {
+		// s070 ruling. `watchdog exempt` silences SILENCE notices (the peer is
+		// intentionally idle). It must never silence a real fault: a quota/auth/400
+		// failure stays actionable while a peer sits on standby, and swallowing one
+		// would be a worse bug than the notification noise s070 fixed.
+		// This test exists so nobody "completes" the exempt work by adding an
+		// isExempt() guard to pushProviderFailure. If you are here because you just
+		// added one: that is the bug, not this test.
+		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-exempt-provider-"));
+		TEMP_DIRS.push(home);
+		const nowMs = 1_000_000;
+		const registry = new FakeRegistry([
+			desc({
+				id: "peer",
+				spawnedBy: "owner",
+				state: "idle", // idle + stale is what makes the daemon peek at the pane
+				lastEventAt: new Date(0).toISOString(),
+			}),
+			desc({ id: "owner", harness: "pi", lifecycle: undefined, paneId: undefined }),
+		]);
+		new FsWatchdogStore(home).write("peer", {
+			intervalMs: 100,
+			pausedBy: "exempt",
+			pausedAtMs: 0,
+			exemptUntilMs: 3_600_000, // live exemption
+		});
+		const delivery = new FakeDelivery();
+		tracked(
+			new Daemon(
+				home,
+				{
+					capturePane: () => "Error: 401 Unauthorized — authentication_error",
+					isPaneDead: () => false,
+					sendText: () => "confirmed",
+					sendKey: () => {},
+					killPane: () => {},
+					listTranscripts: () => [],
+					home: () => home,
+					now: () => nowMs,
+					isAlive: () => true,
+				},
+				registry,
+				delivery,
+			),
+		).tick();
+
+		// The fault reaches the owner...
+		expect(
+			delivery.outbox.filter(
+				(item) => item.message.to === "owner" && item.message.body.includes("auth"),
+			),
+		).toHaveLength(1);
+		expect(registry.read("peer")?.failureReason).toBe("auth");
+		// ...while the silence notice stays suppressed. Both, in the same tick.
+		expect(
+			delivery.outbox.filter(
+				(item) => item.message.to === "owner" && item.message.body.includes("gone quiet"),
+			),
+		).toEqual([]);
+	});
+
+	it("derives NO watchdog response at all while paused — the unstated invariant, pinned", () => {
+		// s070 ruling. The watchdog's own stall notice (daemon.pushWatchdogResponse)
+		// is safe under exemption only BY CONSTRUCTION: isFireDue refuses to fire
+		// while paused, so no response is ever derived to notify from. Nothing stated
+		// that, which makes it a bug waiting for a refactor — any future path that
+		// derives a response outside a fire would start leaking notices immediately.
+		// Pin it at the pure seam AND at the manager.
+		const cfg = { enabled: true, intervalMs: 100, pausedBy: "exempt" as const };
+		expect(isFireDue(cfg, null, 0, 10_000_000)).toBe(false); // wildly overdue, still no
+		expect(isFireDue({ ...cfg, pausedBy: "self" }, null, 0, 10_000_000)).toBe(false);
+		expect(isFireDue({ ...cfg, pausedBy: undefined }, null, 0, 10_000_000)).toBe(true);
+
+		const h = managerHarness();
+		h.store.sidecars.set("pij-paused", {
+			intervalMs: 100,
+			pausedBy: "exempt",
+			pausedAtMs: 0,
+			exemptUntilMs: 3_600_000,
+		});
+		h.store.revisions.set("pij-paused", 1);
+		h.setNow(1_000_000); // far past due
+		h.manager.reconcile([desc({ id: "pij-paused" })]);
+		expect(h.responses).toEqual([]); // nothing to notify FROM
+		expect(h.fires).toEqual([]);
+		expect(h.delivery.outbox).toEqual([]);
+	});
+
+	it("clears a durable stalled flag on a creator-less peer that is demonstrably alive", () => {
+		// Reported live (s070 #2): `pij state` showed `failure: stalled` while
+		// `last-event` was 2–3 minutes fresh — peer alive, ticking, daemon tick fresh.
+		//
+		// Two clear paths exist and BOTH miss this peer:
+		//  - `pushWholeLifeTransition` returns early when `spawnedBy` is absent, so a
+		//    creator-less peer's flag is never cleared there — even though the watchdog
+		//    detector happily SETS the flag on one (see the root-session test below).
+		//  - the watchdog reported recovery only on an activity EDGE, and a daemon
+		//    restart rebuilds RuntimeState seeded from the descriptor, consuming the
+		//    edge at birth so it can never fire again.
+		// Net: set-without-clear pins `stalled` on a provably live peer forever.
+		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-liveness-clear-"));
+		TEMP_DIRS.push(home);
+		// Fresh event at t=990, interval 100, now=1000 → 10ms old: demonstrably alive.
+		const registry = new FakeRegistry([
+			desc({
+				id: "root",
+				harness: "pi",
+				lifecycle: undefined,
+				paneId: undefined,
+				spawnedBy: undefined,
+				state: "idle",
+				lastEventAt: new Date(990).toISOString(),
+				failureReason: "stalled",
+			}),
+		]);
+		new FsWatchdogStore(home).write("root", { intervalMs: 100 });
+		const nowMs = 1_000;
+		const ports: DaemonPorts = {
+			capturePane: () => "",
+			isPaneDead: () => false,
+			sendText: () => "confirmed",
+			sendKey: () => {},
+			killPane: () => {},
+			listTranscripts: () => [],
+			home: () => home,
+			now: () => nowMs,
+			isAlive: () => true,
+		};
+		// A NEW Daemon is the daemon-restart case: empty in-memory latches and a
+		// RuntimeState about to be rebuilt from this descriptor.
+		const daemon = tracked(new Daemon(home, ports, registry, new FakeDelivery()));
+
+		// Non-vacuity: the flag is really set going in, and no fix has run yet.
+		expect(registry.read("root")?.failureReason).toBe("stalled");
+
+		daemon.tick();
+
+		// Without the sustained-liveness verdict this stays "stalled" — no edge is
+		// ever produced (lastEventAt never changes) and the creator-less early return
+		// blocks the other clear path entirely.
+		expect(registry.read("root")?.failureReason).toBeUndefined();
+
+		// PM scheduling is deliberately status-keyed: fresh ordinary activity can
+		// prove liveness, but it no longer postpones a missing report.
+		expect(registry.read("root")?.lastWatchdogFireAt).toBe(new Date(nowMs).toISOString());
+	});
+
+	it("does not fabricate recovery for a peer whose newest event is older than the interval", () => {
+		// Guards the fix above from becoming a blanket amnesty: a genuinely silent
+		// peer keeps its stalled label. Same shape as the test above, only the event
+		// age changes (890 → 110ms old, past the 100ms interval).
+		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-liveness-stale-"));
+		TEMP_DIRS.push(home);
+		const registry = new FakeRegistry([
+			desc({
+				id: "root",
+				harness: "pi",
+				lifecycle: undefined,
+				paneId: undefined,
+				spawnedBy: undefined,
+				state: "idle",
+				lastEventAt: new Date(890).toISOString(),
+				failureReason: "stalled",
+			}),
+		]);
+		new FsWatchdogStore(home).write("root", { intervalMs: 100 });
+		const nowMs = 1_000;
+		const daemon = tracked(
+			new Daemon(
+				home,
+				{
+					capturePane: () => "",
+					isPaneDead: () => false,
+					sendText: () => "confirmed",
+					sendKey: () => {},
+					killPane: () => {},
+					listTranscripts: () => [],
+					home: () => home,
+					now: () => nowMs,
+					isAlive: () => true,
+				},
+				registry,
+				new FakeDelivery(),
+			),
+		);
+		daemon.tick();
+		expect(registry.read("root")?.failureReason).toBe("stalled");
+	});
+
+	it("does not call a peer alive on the DEFAULT interval when it is stale by the stall threshold", () => {
+		// Regression, caught by daemon-push.test.ts: the liveness window was first
+		// written as the watchdog interval, which defaults to 20 MINUTES. A peer
+		// 65s into its silence — already stalled by STALE_AFTER_MS (60s) — was
+		// therefore declared alive and had its flag cleared. Freshness has to
+		// satisfy the TIGHTER of the two detectors, so the window is
+		// min(interval, STALE_AFTER_MS). No sidecar here ⇒ the real 20-min default.
+		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-liveness-window-"));
+		TEMP_DIRS.push(home);
+		const nowMs = 1_000_000;
+		const registry = new FakeRegistry([
+			desc({
+				id: "root",
+				harness: "pi",
+				lifecycle: undefined,
+				paneId: undefined,
+				spawnedBy: undefined,
+				state: "idle",
+				lastEventAt: new Date(nowMs - 65_000).toISOString(), // past the 60s stall line
+				failureReason: "stalled",
+			}),
+		]);
+		tracked(
+			new Daemon(
+				home,
+				{
+					capturePane: () => "",
+					isPaneDead: () => false,
+					sendText: () => "confirmed",
+					sendKey: () => {},
+					killPane: () => {},
+					listTranscripts: () => [],
+					home: () => home,
+					now: () => nowMs,
+					isAlive: () => true,
+				},
+				registry,
+				new FakeDelivery(),
+			),
+		).tick();
+		expect(registry.read("root")?.failureReason).toBe("stalled");
+	});
+
 	it("stamps a watchdog-only stalled verdict on a root session", () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-root-stall-"));
 		TEMP_DIRS.push(home);
@@ -1169,7 +1584,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(registry.read("peer")?.lastEventAt).toBe(before);
 	});
 
-	it("stamps fires through writeMerged and emits one stalled notice across both detectors", () => {
+	it("stamps fires through persistDaemonWrite and emits one stalled notice across both detectors", () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-daemon-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([

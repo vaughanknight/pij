@@ -138,6 +138,20 @@ export interface CanaryRecord {
 	readonly expectedModel?: string;
 	readonly declaredRuntime: DispatchAck["declaredRuntime"];
 	readonly modelCheck: CanaryModelCheck;
+	readonly contextWindow?: {
+		readonly expected: number;
+		readonly expectedLabel: string;
+		/** The tier the pane actually showed, or `"unverified"` when the harness
+		 *  publishes no context marker at all (plan 071 D6). */
+		readonly observedLabel: string;
+		/** `"unobservable"` when nothing could be read — the check did not run, as
+		 *  opposed to running and passing. */
+		readonly source: "pane-footer" | "unobservable";
+		/** `matched` = observed and agreed. `unverified` = the harness exposes no
+		 *  tier, so there is nothing to contradict. There is no passing `mismatched`
+		 *  — a contradiction refuses. */
+		readonly check: "matched" | "unverified";
+	};
 	readonly identity: {
 		readonly paneId: string;
 		readonly pid: number;
@@ -210,6 +224,8 @@ export const SPINE_KIND_DISPATCH = "dispatch";
 // semantic transition rides in structured refs (`state:<word>`).
 export const SPINE_KIND_TASK_SET = "task-set";
 export const SPINE_KIND_STATE_SET = "state-set";
+/** First-person now/next report consumed by the rail and PM watchdog. */
+export const SPINE_KIND_STATUS = "status";
 /** Removes the current assignment's declaration; this is a transition event,
  * never a member of the closed semantic-state vocabulary. */
 export const SPINE_KIND_STATE_CLEARED = "state-cleared";
@@ -227,6 +243,10 @@ export const SPINE_KIND_SYSTEM_STATE = "system-state";
  *  never journaled — under the write lock + recovery gate like any
  *  platform append. */
 export const SPINE_KIND_NODE_LINKED = "node-linked";
+/** Stored orchestration-role designation history; prev/next carry role words. */
+export const SPINE_KIND_ROLE_SET = "role-set";
+/** Current/retired prime designation history; prev/next carry prime words. */
+export const SPINE_KIND_PRIME_SET = "prime-set";
 
 /** One spine log line. */
 export interface SpineEvent extends AttributionEnvelope {
@@ -402,6 +422,25 @@ function isCanaryRecord(value: unknown): value is CanaryRecord {
 				ownField(v, "source", (source) => source === "self-report"),
 		) &&
 		ownField(value, "modelCheck", isCanaryModelCheck) &&
+		ownOptional(
+			value,
+			"contextWindow",
+			(v) =>
+				v === undefined ||
+				(isRecord(v) &&
+					ownField(v, "expected", (n) => typeof n === "number" && Number.isFinite(n) && n > 0) &&
+					ownField(v, "expectedLabel", isString) &&
+					ownField(v, "observedLabel", isString) &&
+					// plan 071 D6: the RUNTIME validator is a second gate the type change
+					// alone does not reach — it rejected every unverified record with a
+					// bare E-ARG. Both variants are valid persisted shapes.
+					ownField(
+						v,
+						"source",
+						(source) => source === "pane-footer" || source === "unobservable",
+					) &&
+					ownField(v, "check", (check) => check === "matched" || check === "unverified")),
+		) &&
 		ownField(
 			value,
 			"identity",

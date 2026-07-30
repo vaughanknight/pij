@@ -11,6 +11,7 @@ import {
 	planHolderTransition,
 	planRelease,
 	planRequest,
+	sameCommit,
 } from "./baton.js";
 import { dispatchOrchestration, parseOrchestrationArgs } from "./cli.js";
 
@@ -401,6 +402,50 @@ describe("baton lifecycle decisions", () => {
 		);
 
 		expect(result).toMatchObject({ ok: false, code: "E-HELD" });
+	});
+
+	// plan 071 D5 — the observed false E-PIN: baton `landing-main`, request
+	// ae8ba022, pinned `d5b9b6d7` against an UNMOVED HEAD of the full sha.
+	it("does NOT demand --repin when an abbreviated pin names the same commit", () => {
+		const definition = baton({
+			queue: [
+				{
+					id: "request-ae8ba022-7618-418c-bbbe-82819e88f88b",
+					requester: "pij-worker",
+					purpose: "land on main",
+					pin: "d5b9b6d7",
+					requestedAt: T0,
+				},
+			],
+		});
+
+		const granted = planGrant(
+			definition,
+			null,
+			{
+				requestId: "request-ae8ba022-7618-418c-bbbe-82819e88f88b",
+				grantedBy: "pij-prime",
+				currentHead: "d5b9b6d7afe592cadbb5d115d0dc4ff37bc89c23",
+			},
+			"lease-pin",
+			T1,
+		);
+
+		expect(granted.ok).toBe(true);
+	});
+
+	it("sameCommit: prefixes match, different commits do not, and short noise never matches", () => {
+		expect(sameCommit("d5b9b6d7", "d5b9b6d7afe592cadbb5d115d0dc4ff37bc89c23")).toBe(true);
+		expect(sameCommit("d5b9b6d7afe592cadbb5d115d0dc4ff37bc89c23", "d5b9b6d7")).toBe(true);
+		expect(sameCommit("D5B9B6D7", "d5b9b6d7afe5")).toBe(true); // case-insensitive
+		expect(sameCommit(" d5b9b6d7 ", "d5b9b6d7afe5")).toBe(true); // trimmed
+		// A genuinely different commit is still a move.
+		expect(sameCommit("d5b9b6d7", "e0000000afe592cadbb5d115d0dc4ff37bc89c23")).toBe(false);
+		// Below git's own abbreviation floor, a "prefix" is noise, not a match.
+		expect(sameCommit("d", "d5b9b6d7")).toBe(false);
+		expect(sameCommit("", "d5b9b6d7")).toBe(false);
+		// Non-hex strings never prefix-match (branch names, tags, junk).
+		expect(sameCommit("main", "main-and-more")).toBe(false);
 	});
 
 	it("requires an explicit repin when the repo HEAD moved", () => {

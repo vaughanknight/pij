@@ -24,6 +24,10 @@ import { buildInitInjection, discoverNewTranscript } from "../harness/claude.js"
 import { type TranscriptListing, transcriptLayout } from "../harness/transcript.js";
 import { classifyInterstitial } from "../interstitial.js";
 import type { DeliveryPort, RegistryPort, SendOutcome } from "../ports.js";
+import { persistDaemonWrite } from "../registry-write.js";
+
+export { persistDaemonWrite } from "../registry-write.js";
+
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import { classifyDeathReason } from "../state.js";
 import type {
@@ -33,7 +37,12 @@ import type {
 	SessionDescriptor,
 	SessionId,
 } from "../types.js";
-import { type PaneListing, renderedComposerPayload } from "./pane-signals.js";
+import {
+	type ComposerHoldTracker,
+	isBlankComposer,
+	type PaneListing,
+	renderedComposerPayload,
+} from "./pane-signals.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
@@ -93,13 +102,17 @@ export interface DriveState {
 	resentAtMs?: number;
 	/** A needs-human interstitial was already surfaced (don't spam). */
 	flaggedHuman?: boolean;
-	/** One-shot latch: an `answer` interstitial's keys were already pressed. If
-	 *  the modal persists on a later tick (marker/keymap drift in a new harness
-	 *  version) the branch degrades to the needs-human surface — never a
-	 *  key-spam loop (DL-001). */
-	trustAnswered?: boolean;
+	/** One-shot answer latches keyed by interstitial label. Distinct prompts may
+	 * legitimately occur in sequence (folder trust, then session resume). */
+	answeredInterstitials?: Set<string>;
 	/** A terminal notice (bound/failed) was already delivered. */
 	settled?: boolean;
+	/** ms the FIRST boot injection was refused because the pane had live human
+	 * input. Anchors the bounded held-boot timeout so a held seat fails loudly
+	 * instead of sitting pending forever. Cleared the moment a boot line lands. */
+	initHeldSinceMs?: number;
+	/** One-shot: the held-boot condition was already logged for this session. */
+	heldBootLogged?: boolean;
 	/** Set true the first time the pane goes `busy` after init injection —
 	 *  the first-inference gate uses this to know the agent has started
 	 *  processing and the pane may now show a model error (T009/T010). */
@@ -116,6 +129,7 @@ export type DriveOutcome =
 	| { readonly kind: "bound"; readonly harnessSessionId: string }
 	| { readonly kind: "ambiguous"; readonly count: number }
 	| { readonly kind: "resent-phonehome" }
+	| { readonly kind: "held-by-pane-input"; readonly heldForMs: number; readonly first: boolean }
 	| { readonly kind: "failed"; readonly reason: string }
 	| { readonly kind: "waiting" };
 
@@ -155,64 +169,9 @@ export function observeActivity(
 	return { ...descriptor, state, lastEventAt };
 }
 
-/** Append-only external fields carry forward only when the stale daemon
- *  snapshot lacks them. A computed value still wins when both sides have one. */
-const APPEND_ONLY_EXTERNALLY_OWNED_FIELDS = ["reportedAt"] as const;
-
-/** Mutable external fields are always latest-disk-authoritative when present.
- *  `prime:false` and `oldPrime:false` are meaningful state, so truthiness/fill-only merging is wrong.
- *  The node-truth denorms (`currentAssignment`/`currentTask`/`semanticState`,
- *  plan 054 P2 T002) are CLI-stamped between the daemon's tick-start snapshot
- *  and its persist — Finding 04's clobber shape. `systemState` stays OUT:
- *  mechanical truth is daemon-computed with no meaningful external writer
- *  (WS-5), so the fresh verdict must always beat a disk value. */
-const MUTABLE_EXTERNALLY_OWNED_FIELDS = [
-	"prime",
-	"oldPrime",
-	"parentId",
-	"gitCommonDir",
-	"currentAssignment",
-	"currentTask",
-	"semanticState",
-	// T006: stamped by spawn/adopt (externally to the daemon's snapshot); the
-	// daemon's own backfill only ever writes it where it was absent.
-	"windowId",
-] as const;
-
-/** Persist a daemon-computed descriptor WITHOUT clobbering a field a concurrent
- *  writer stamped after this tick's index snapshot was taken. Re-reads the latest
- *  on-disk descriptor and merges externally-owned fields according to their
- *  ownership semantics: append-only values fill gaps, while mutable values
- *  override stale daemon snapshots. Re-reads after the write and returns registry
- *  truth, which may be a concurrent dissolved tombstone when the registry rejects
- *  this stale daemon write. Use this for EVERY daemon descriptor write. */
-export function writeMerged(
-	registry: RegistryPort,
-	computed: SessionDescriptor,
-): SessionDescriptor {
-	const latest = registry.read(computed.id);
-	let merged = computed;
-	if (latest) {
-		for (const field of APPEND_ONLY_EXTERNALLY_OWNED_FIELDS) {
-			if (merged[field] === undefined && latest[field] !== undefined) {
-				merged = { ...merged, [field]: latest[field] };
-			}
-		}
-		for (const field of MUTABLE_EXTERNALLY_OWNED_FIELDS) {
-			if (latest[field] !== undefined) {
-				merged = { ...merged, [field]: latest[field] };
-			}
-		}
-	}
-	registry.write(merged);
-	const persisted = registry.read(merged.id);
-	if (!persisted) throw new Error(`daemon write for ${merged.id} did not persist`);
-	return persisted;
-}
-
 /** One-shot windowId backfill for a legacy live node (plan 054 P2 T006,
  *  AC-09): a pane-bearing descriptor that predates windowId capture gains it
- *  from a live tmux resolve, persisted through writeMerged so concurrent
+ *  from a live tmux resolve, persisted through persistDaemonWrite so concurrent
  *  writers survive. Self-latching — a node that already has one is never
  *  probed again. Returns the persisted descriptor, or null when nothing was
  *  (or could be) done. */
@@ -224,7 +183,13 @@ export function backfillWindowId(
 	if (descriptor.windowId !== undefined || descriptor.paneId === undefined) return null;
 	const windowId = resolveWindowId(descriptor.paneId);
 	if (windowId === null || !/^@\d+$/.test(windowId)) return null;
-	return writeMerged(registry, { ...descriptor, windowId });
+	// `windowId` is cli-owned (spawn/adopt stamp it), and this is the daemon
+	// BACKFILLING it for a legacy node that has none. Declaring "cli" is correct
+	// here and only here: the guard above already proved the field is absent, so
+	// this cannot clobber an owner's value — it can only fill a gap.
+	registry.write({ ...descriptor, windowId }, "cli");
+	const persisted = registry.read(descriptor.id);
+	return persisted ?? null;
 }
 
 export function driveSession(
@@ -266,21 +231,29 @@ export function driveSession(
 
 	const pane = ports.capturePane(paneId);
 	const readiness = classifyReadiness(pane);
+	const harnessVerdict = classifyInterstitial(pane, harness);
+	// The exact Copilot resume modal is intentionally invisible to harness-less
+	// readiness so ordinary prose can never become a keypress. Override booting
+	// only after harness-aware classification; ready/busy always win, preventing
+	// a verbatim modal quoted in live output from firing automation.
+	const actionableHarnessModal =
+		readiness === "booting" && harnessVerdict.label === "session-in-use";
 
 	if (readiness === "dead") {
 		const dr = classifyDeathReason(pane);
 		return fail(descriptor, drive, registry, delivery, "pane reported dead", dr);
 	}
-	if (readiness === "interstitial") {
-		const verdict = classifyInterstitial(pane, harness);
-		// Auto-answer (copilot folder-trust, DL-001): press the verdict's keys
-		// EXACTLY ONCE. If the modal is still up on a later tick, the latch makes
-		// this fall through to the needs-human surface below — version drift (or a
-		// wrong digit) degrades to a human ping, never a key-spam loop.
-		if (verdict.action === "answer" && !drive.trustAnswered) {
-			drive.trustAnswered = true;
+	if (readiness === "interstitial" || actionableHarnessModal) {
+		const verdict = harnessVerdict;
+		// Auto-answer each recognized prompt exactly once. A persistent modal
+		// degrades to needs-human; a second distinct prompt still gets one answer.
+		const label = verdict.label ?? "interstitial";
+		const answered = drive.answeredInterstitials ?? new Set<string>();
+		if (verdict.action === "answer" && !answered.has(label)) {
+			answered.add(label);
+			drive.answeredInterstitials = answered;
 			for (const key of verdict.keys ?? []) ports.sendKey(paneId, key);
-			return { kind: "answered", label: verdict.label ?? "interstitial" };
+			return { kind: "answered", label };
 		}
 		if (verdict.action === "dismiss") {
 			ports.sendKey(paneId, "Escape");
@@ -309,11 +282,17 @@ export function driveSession(
 			descriptor.id,
 			descriptor.branchedFrom != null,
 			descriptor.spawnedBy,
+			descriptor.revivePendingAt !== undefined,
 		);
 		beforeSelfInjection?.(paneId, init.body, ports.now());
-		ports.sendText(paneId, init.body, harness, descriptor.pid);
+		// A human can be typing in a freshly spawned pane. `held` means nothing was
+		// typed — retry, but on a clock that ends in a legible failure.
+		if (ports.sendText(paneId, init.body, harness, descriptor.pid) === "held") {
+			return heldBoot(descriptor, drive, registry, delivery, ports.now());
+		}
+		drive.initHeldSinceMs = undefined;
 		const at = new Date(ports.now()).toISOString();
-		writeMerged(registry, markInitInjected(descriptor, at));
+		persistDaemonWrite(registry, markInitInjected(descriptor, at));
 		drive.readyAtMs = ports.now();
 		return { kind: "injected-init" };
 	}
@@ -370,7 +349,7 @@ export function driveSession(
 			...applyBinding(descriptor, descriptor.plannedHarnessSessionId),
 			...(model ? { boundModel: model } : {}),
 		};
-		writeMerged(registry, bound);
+		persistDaemonWrite(registry, bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
@@ -403,7 +382,7 @@ export function driveSession(
 			...applyBinding(descriptor, harnessSessionId),
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
 		};
-		writeMerged(registry, bound);
+		persistDaemonWrite(registry, bound);
 		if (!drive.settled && descriptor.spawnedBy) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
@@ -411,11 +390,17 @@ export function driveSession(
 		}
 		return { kind: "bound", harnessSessionId };
 	}
-	if (discovery.status === "ambiguous") {
-		// Concurrent boots discovery can't pick deterministically; surface it
-		// (review M4) and let phone-home + the watchdog resolve it.
-		return { kind: "ambiguous", count: discovery.paths.length };
-	}
+	// Concurrent boots discovery can't pick deterministically; surface it (review
+	// M4) and let phone-home + the watchdog resolve it.
+	//
+	// s071 D3 — this used to `return` here, which meant an ambiguity BYPASSED the
+	// watchdog block below entirely. Two claude peers sharing one cwd share one
+	// transcript dir, so both boots look "new" on every tick: discovery stayed
+	// ambiguous forever, the watchdog never ran, and the seat sat `pending` /
+	// `idle · active` with `failureReason: null` indefinitely. That is the exact
+	// never-bind wedge signature. It now FALLS THROUGH: the ambiguity is still
+	// reported while the clock is running, but the clock IS running.
+	const ambiguousCount = discovery.status === "ambiguous" ? discovery.paths.length : undefined;
 
 	// 3) Watchdog: re-send the confirm line once, then fail (AC-04).
 	const decision = evaluateWatchdog({
@@ -428,14 +413,58 @@ export function driveSession(
 	if (decision.kind === "resend-phonehome") {
 		const phonehomeLine = buildInitInjection(descriptor.id).phonehomeLine;
 		beforeSelfInjection?.(paneId, phonehomeLine, ports.now());
-		ports.sendText(paneId, phonehomeLine, harness, descriptor.pid);
+		if (ports.sendText(paneId, phonehomeLine, harness, descriptor.pid) === "held") {
+			return heldBoot(descriptor, drive, registry, delivery, ports.now());
+		}
+		drive.initHeldSinceMs = undefined;
 		drive.resentAtMs = ports.now();
 		return { kind: "resent-phonehome" };
 	}
 	if (decision.kind === "fail") {
-		return fail(descriptor, drive, registry, delivery, decision.reason);
+		// Always carry a machine-stable reason. A `failed` lifecycle with
+		// `failureReason: null` is exactly the shape that made the wedge
+		// unreadable in `pij state`/`list --json`.
+		return fail(
+			descriptor,
+			drive,
+			registry,
+			delivery,
+			ambiguousCount === undefined
+				? decision.reason
+				: `${decision.reason}; transcript discovery stayed ambiguous across ${ambiguousCount} candidate transcripts ` +
+						"(concurrent boots in one folder) — nothing could be bound deterministically",
+			"bind-timeout",
+		);
 	}
+	if (ambiguousCount !== undefined) return { kind: "ambiguous", count: ambiguousCount };
 	return { kind: "waiting" };
+}
+
+/** A boot line was refused by live pane input. Anchor the clock on first refusal
+ * and fail loudly once the bounded window passes — never return to an unanchored
+ * `waiting`, which left the seat pending indefinitely and unlogged. */
+function heldBoot(
+	descriptor: SessionDescriptor,
+	drive: DriveState,
+	registry: RegistryPort,
+	delivery: DeliveryPort,
+	nowMs: number,
+): DriveOutcome {
+	const first = drive.initHeldSinceMs === undefined;
+	if (drive.initHeldSinceMs === undefined) drive.initHeldSinceMs = nowMs;
+	const heldForMs = nowMs - drive.initHeldSinceMs;
+	if (heldForMs >= INIT_HELD_TIMEOUT_MS) {
+		return fail(
+			descriptor,
+			drive,
+			registry,
+			delivery,
+			`boot injection blocked by active pane input for ${Math.round(heldForMs / 1000)}s — ` +
+				"a human was typing in this pane, so pij never wrote the init line",
+			"pane-input-blocked",
+		);
+	}
+	return { kind: "held-by-pane-input", heldForMs, first };
 }
 
 function fail(
@@ -450,7 +479,7 @@ function fail(
 		...markFailed(descriptor),
 		...(deathReason ? { failureReason: deathReason } : {}),
 	};
-	writeMerged(registry, failed);
+	persistDaemonWrite(registry, failed);
 	if (!drive.settled && descriptor.spawnedBy) {
 		drive.settled = true;
 		const note = buildFailedNotice(failed, reason);
@@ -463,21 +492,53 @@ function fail(
  *  via a wrapped port set; kept here as the documented default. */
 export const WATCHDOG_TIMEOUT_MS = 20_000;
 
+/** How long boot traffic may be refused by live pane input before the spawn is
+ * failed OUT LOUD. The composer gate protects a human mid-sentence, but a seat
+ * that can never be booted must say so — silence here would be the same
+ * indefinite-pending deadlock class this guard exists to prevent. */
+export const INIT_HELD_TIMEOUT_MS = 20_000;
+
 export interface DrainedTmuxMessage {
 	readonly messageId: string;
 	readonly from: SessionId;
 	readonly outcome?: SendOutcome;
 }
 
-/** Refresh the authoritative rendered-composer signal immediately before a
- * send-key. A known empty composer releases immediately. Static non-empty text
- * never acquires or reasserts a hold; only observed typing activity can do so. */
+/** Decide the hold from the composer's CONTENT, captured immediately before this
+ * one send-key. Called once per message, never once per batch.
+ *
+ * The capture taken here is authoritative and may ACQUIRE a hold, not only
+ * release one. That is the whole fix: the old gate re-checked before every send
+ * yet could only ever release, so a message arriving in the same 600ms tick the
+ * human started typing landed on top of a composer that visibly read `❯ hello`.
+ *
+ * An unrecognised layout defers to the caret tracker's byte-stream signal — we
+ * never act on a guessed region.
+ *
+ * `holds` is REQUIRED, not optional: this call is the capture immediately before
+ * `sendText`, so it is the only thing that can see a keystroke landing between
+ * the caller's own check and the send. Making it optional let that race back in. */
 export function refreshRenderedComposerHold(
 	paneId: string,
 	ports: Pick<DaemonPorts, "capturePane" | "now">,
 	buffer: SendBuffer,
+	holds: ComposerHoldTracker,
 ): boolean {
-	if (renderedComposerPayload(ports.capturePane(paneId)) === "") {
+	const nowMs = ports.now();
+	const content = renderedComposerPayload(ports.capturePane(paneId));
+	const verdict = holds.observe(paneId, content, nowMs);
+	if (!verdict.deferred) {
+		// Mirror the decision so `isPaneHeld` (and `flush`, which consults it)
+		// agree with the verdict just reached from live content.
+		const previous = buffer.paneSignal(paneId);
+		buffer.setPaneSignal(paneId, {
+			busy: previous?.busy ?? false,
+			userTyping: verdict.hold,
+			...(verdict.hold ? { lastActivityAt: verdict.lastChangeAt ?? nowMs } : {}),
+		});
+		return verdict.hold;
+	}
+	if (isBlankComposer(content)) {
 		const previous = buffer.paneSignal(paneId);
 		buffer.setPaneSignal(paneId, {
 			busy: previous?.busy ?? false,
@@ -485,7 +546,7 @@ export function refreshRenderedComposerHold(
 			lastActivityAt: undefined,
 		});
 	}
-	return buffer.isPaneHeld(paneId, ports.now());
+	return buffer.isPaneHeld(paneId, nowMs);
 }
 
 /** Route one bound tmux target's unread messages and return each completed
@@ -502,7 +563,8 @@ export function drainTmuxInbox(
 	}>,
 	ports: DaemonPorts,
 	buffer: SendBuffer,
-	beforeSelfInjection?: (paneId: string, payload: string, nowMs: number) => void,
+	beforeSelfInjection: ((paneId: string, payload: string, nowMs: number) => void) | undefined,
+	holds: ComposerHoldTracker,
 ): DrainedTmuxMessage[] {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
@@ -511,16 +573,40 @@ export function drainTmuxInbox(
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
 		if (decision.kind === "inject") {
-			if (refreshRenderedComposerHold(decision.paneId, ports, buffer)) {
+			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {
 				buffer.enqueue(m.messageId, msg);
 				continue;
 			}
 			beforeSelfInjection?.(decision.paneId, decision.text, ports.now());
 			const outcome = ports.sendText(decision.paneId, decision.text, target.harness, target.pid);
+			// `held` = nothing typed (a human is at the composer). `failed` = the send
+			// threw BEFORE submission, so nothing reliably landed either. Both must
+			// leave the inbox copy UNREAD, so a retry — or a daemon restart — can still
+			// deliver it (plan 071 D7). Only `unverified` consumes, because there the
+			// payload WAS typed and replaying could duplicate an accepted turn.
+			if (outcome === "gone") {
+				// The pane does not exist. Falling through to `consumed` would mark this
+				// message READ — deleting the only durable copy of something that was
+				// never delivered. Not buffered either: an in-memory retry against a
+				// dead pane can never succeed, and the id is recycled, so a queued
+				// message eventually lands in whatever LIVE pane inherits it. Leave it
+				// unread on disk; the caller unbinds the seat.
+				continue;
+			}
+			if (outcome === "held" || outcome === "failed") {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
 			consumed.push({ messageId: m.messageId, from: m.from, outcome });
 		} else if (decision.kind === "buffer") {
+			// Buffer WITHOUT consuming (plan 071 D7). Reporting this as consumed made
+			// the caller mark the message read, which deleted the only durable copy
+			// of a message that existed nowhere but in an in-memory FIFO — so a
+			// daemon restart silently destroyed it while the sender held a `queued`
+			// receipt. The inbox file stays unread until the text is actually in a
+			// pane; a restart therefore re-derives the work, exactly as the buffer's
+			// contract always claimed.
 			buffer.enqueue(m.messageId, msg);
-			consumed.push({ messageId: m.messageId, from: m.from }); // final receipt emits on flush
 		}
 		// `observe` (pi target) — never reached here; the bin doesn't drain pi inboxes.
 	}

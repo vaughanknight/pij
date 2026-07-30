@@ -248,6 +248,107 @@ pij-skill-link-global:
 pij-skill-install:
     just pij-skill-link-global
 
+# Install the official OMP binary (GitHub releases, via https://omp.sh/install).
+# Downloads the installer to a file and runs it, rather than `curl … | sh`: in a
+# pipe the shell's exit status wins, so a failed download silently feeds an empty
+# script to a shell that exits 0 and the caller believes it installed something.
+_omp-binary-install *REF:
+    #!/bin/sh
+    set -eu
+    tmp=$(mktemp)
+    backup=""
+    prev=$(command -v omp 2>/dev/null || true)
+    if [ -n "$prev" ]; then
+        backup=$(mktemp)
+        cp "$prev" "$backup"
+    fi
+    trap 'rm -f "$tmp" "$backup"' EXIT
+    if ! curl -fsSL --connect-timeout 10 --max-time 300 https://omp.sh/install -o "$tmp"; then
+        echo "!! could not download the omp installer from https://omp.sh/install" >&2
+        exit 1
+    fi
+    if [ -n "${1:-}" ]; then
+        sh "$tmp" --binary --ref "$1"
+    else
+        sh "$tmp" --binary
+    fi
+    # A failed smoke check means we just replaced a working omp with one that does
+    # not run. Put the old one back rather than leaving the machine without omp.
+    if just _omp-smoke-check; then
+        exit 0
+    fi
+    # Observed on macOS 25.x: the upstream installer rewrites the binary in place
+    # (`curl -o "$INSTALL_DIR/omp"`), and a signed Mach-O rewritten over a vnode the
+    # kernel has already validated gets SIGKILLed on launch — rc 137, no output, even
+    # though the file is byte-complete, correctly signed and notarized. Re-materialising
+    # it at a fresh inode (copy + atomic rename) clears the stale validation.
+    now=$(command -v omp 2>/dev/null || true)
+    if [ -n "$now" ]; then
+        echo "= omp did not launch; re-materialising it at a fresh inode" >&2
+        cp "$now" "$now.reinstall"
+        chmod +x "$now.reinstall"
+        mv "$now.reinstall" "$now"
+        if just _omp-smoke-check; then
+            exit 0
+        fi
+    fi
+    if [ -n "$prev" ] && [ -n "$backup" ]; then
+        echo "= rolling back to the previous omp binary at $prev" >&2
+        cp "$backup" "$prev.rollback"
+        chmod +x "$prev.rollback"
+        mv "$prev.rollback" "$prev"
+        echo "= rolled back: $(omp --version 2>/dev/null | head -1 || echo '(still not running)')" >&2
+    fi
+    exit 1
+
+# A downloaded omp is not an installed omp. A byte-complete, correctly signed and
+# notarized binary can still be SIGKILLed on launch (see _omp-binary-install), and a
+# version delta alone would report that as a successful update. `--version` is the
+# cheapest proof it actually runs.
+_omp-smoke-check:
+    #!/bin/sh
+    set -eu
+    if ! v=$(omp --version 2>/dev/null | head -1) || [ -z "$v" ]; then
+        echo "!! the installed omp does not run — 'omp --version' produced no version." >&2
+        echo "   The download itself may be fine; check 'codesign -v' and the file size" >&2
+        echo "   against the release asset before assuming a network or registry fault." >&2
+        echo "   Recover by pinning a release known to run here, e.g.:" >&2
+        echo "     just _omp-binary-install v17.1.2" >&2
+        exit 1
+    fi
+    echo "= omp runs: $v"
+
+# Explain why omp's own updater could not reach its update source. omp's updater
+# fetches https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/latest directly: the
+# host is compiled into the binary, so it honours neither `.npmrc` nor
+# NPM_CONFIG_REGISTRY. On a machine where npmjs is blocked or proxied, that fetch
+# always fails — and omp still exits 0.
+_omp-update-diagnose:
+    #!/bin/sh
+    set -eu
+    if curl -fsS --connect-timeout 10 --max-time 20 -o /dev/null https://registry.npmjs.org/ 2>/dev/null; then
+        echo "  · registry.npmjs.org is reachable — the cause is not a blocked registry;"
+        echo "    read omp's own message above (rate limit, TLS, or a transient network fault)."
+    else
+        echo "  · registry.npmjs.org is NOT reachable from this machine."
+        echo "    omp's updater hardcodes that host, so it ignores your configured registry"
+        echo "    (npm config get registry = $(npm config get registry 2>/dev/null || echo unknown))."
+        echo "    The GitHub-releases installer used below is the supported path here."
+    fi
+
+# Latest omp release tag (bare version, no leading "v") from the same GitHub
+# releases feed the installer uses. Prints nothing and fails if unreachable, so
+# callers can tell "already latest" apart from "cannot reach any update source".
+_omp-latest-release:
+    #!/bin/sh
+    set -eu
+    json=$(curl -fsSL --connect-timeout 10 --max-time 30 \
+        https://api.github.com/repos/can1357/oh-my-pi/releases/latest 2>/dev/null) || exit 1
+    printf '%s' "$json" \
+        | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | head -1 \
+        | sed -e 's/.*"\(.*\)"/\1/' -e 's/^v//'
+
 # Install the official standalone OMP binary when absent, then restore pij's
 # managed OMP policy: only the pij extension plus Pi's shared MCP config.
 omp-install:
@@ -256,19 +357,62 @@ omp-install:
     if command -v omp >/dev/null 2>&1; then
         echo "= omp already installed: $(omp --version | head -1)"
     else
-        curl -fsSL https://omp.sh/install | sh -s -- --binary
+        just _omp-binary-install
     fi
     just link
     just omp-doctor
 
-# OMP owns its updater; re-apply managed links because updates may replace home state.
+# Update OMP, then re-apply managed links because updates may replace home state.
+#
+# `omp update` is tried first — it is the upstream path and works wherever npmjs is
+# reachable. But it exits 0 even when its update check fails, so its exit code
+# cannot be trusted: we detect failure from its output plus the version delta, then
+# fall back to the GitHub-releases installer (a different host, reachable on
+# npmjs-blocked machines). If neither path moves the version, this exits non-zero
+# and says which of the three cases it was. Nothing here reads or relaxes npm
+# policy — no registry URL is baked in, and .npmrc is untouched.
 update-omp:
     #!/bin/sh
     set -eu
-    if command -v omp >/dev/null 2>&1; then
-        omp update
+    if ! command -v omp >/dev/null 2>&1; then
+        echo "= omp not installed — installing"
+        just _omp-binary-install
     else
-        curl -fsSL https://omp.sh/install | sh -s -- --binary
+        before=$(omp --version 2>/dev/null | head -1)
+        echo "= current: $before"
+        out=$(omp update 2>&1) || true
+        printf '%s\n' "$out"
+        after=$(omp --version 2>/dev/null | head -1)
+        if [ "$before" != "$after" ]; then
+            echo "✓ omp updated in place: $before → $after"
+        elif printf '%s' "$out" | grep -qiE 'failed to check|error|socket'; then
+            echo "! 'omp update' could not check for updates (it exits 0 regardless, so"
+            echo "  the failure is invisible to the exit code — this is why we re-check)."
+            just _omp-update-diagnose
+            # Ask the fallback's own source what the latest release is, so
+            # "already on the latest" is never mistaken for "the install failed".
+            latest=$(just _omp-latest-release || true)
+            if [ -z "$latest" ]; then
+                echo "!! could not reach the GitHub releases API either — both update sources" >&2
+                echo "   are unavailable, so this is a network/egress problem, not just npmjs." >&2
+                exit 1
+            fi
+            echo "= latest release on GitHub: $latest (installed: $before)"
+            if [ "omp/$latest" = "$before" ] || [ "$latest" = "$before" ]; then
+                echo "= already on the latest release — nothing to install"
+            else
+                echo "= falling back to the GitHub-releases installer"
+                just _omp-binary-install
+                final=$(omp --version 2>/dev/null | head -1)
+                if [ -z "$final" ] || [ "$final" = "$before" ]; then
+                    echo "!! still at '$before' after installing $latest — the fallback did not take." >&2
+                    exit 1
+                fi
+                echo "✓ omp updated via GitHub releases: $before → $final"
+            fi
+        else
+            echo "= omp reports no update available: $after"
+        fi
     fi
     just link
     just omp-doctor

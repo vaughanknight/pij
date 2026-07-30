@@ -22,8 +22,8 @@ import {
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { tmpdir, uptime } from "node:os";
+import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
@@ -32,7 +32,9 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
+import { transcriptDir } from "./core/harness/claude.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
@@ -46,6 +48,8 @@ const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 let HOME: string;
 let FOLDER: string;
 let BIN: string;
+/** A PATH with NOTHING on it — the s072 FIX-2 "tmux binary absent" case. */
+let EMPTY_BIN: string;
 let TMUX_LOG: string;
 
 function clearSpawnExpectations(): void {
@@ -129,6 +133,7 @@ beforeAll(() => {
 	// the real cwd, so the descriptor folder must be the resolved path to match.
 	FOLDER = realpathSync(mkdtempSync(join(tmpdir(), "pij-folder-")));
 	BIN = mkdtempSync(join(tmpdir(), "pij-bin-"));
+	EMPTY_BIN = mkdtempSync(join(tmpdir(), "pij-emptybin-"));
 	TMUX_LOG = join(HOME, "tmux.log");
 	const tmux = join(BIN, "tmux");
 	writeFileSync(
@@ -147,12 +152,34 @@ fi
 if [ "$FAKE_TMUX_FAIL" = "1" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
 	exit 1
 fi
+if [ -n "$FAKE_TMUX_DELETE_DESCRIPTOR" ] && { [ "$1" = "split-window" ] || [ "$1" = "new-window" ]; }; then
+	rm -f "$PIJ_HOME/$FAKE_TMUX_DELETE_DESCRIPTOR.json"
+fi
 case "$1" in
 	display-message)
+		if [ "$FAKE_TMUX_NO_SERVER" = "1" ]; then
+			printf 'error connecting to /tmp/tmux-501/default (No such file or directory)\n' >&2
+			exit 1
+		fi
 		case "$*" in
 			*pane_current_path*) printf '%s\t%s\n' "$FAKE_TMUX_CWD" "$FAKE_TMUX_PID" ;;
-			*pane_pid*) printf '%s\n' "$FAKE_TMUX_PID" ;;
+			# s072 FIX-1: the pane-IDENTITY probe. Real tmux exits 0 with an EMPTY
+			# body when the server is up but the addressed pane does not exist, so
+			# the shim must too — "no such pane" is an answer, and it is the one
+			# that lets the classifier say \`gone\` rather than \`unprobed\`.
+			*pane_dead*pane_pid*)
+				if [ "$4" = "\${FAKE_TMUX_LIVE_PANE:-%none}" ]; then
+					printf '0,%s\n' "$FAKE_TMUX_PID"
+				fi
+				;;
+			# The pid of whatever occupies a pane RIGHT NOW (focusPanePid), as
+			# distinct from the identity probe above. Overridable so a test can put
+			# a DIFFERENT process in the pane it attaches to — the real machine
+			# never hands the same pid to two panes, but this shim otherwise would.
+			*pane_pid*) printf '%s\n' "\${FAKE_TMUX_FOCUS_PID:-$FAKE_TMUX_PID}" ;;
 			*session_name*) printf 'pij-test\n' ;;
+			*pane_dead*) if [ "$4" = "\${FAKE_TMUX_LIVE_PANE:-%none}" ]; then printf '0\n'; else printf '1\n'; fi ;;
+			*window_id*) printf '@9\n' ;;
 		esac
 		;;
 	list-panes) printf '%s\n' "\${TMUX_PANE:-%1}" ;;
@@ -175,16 +202,27 @@ afterAll(() => {
 	rmSync(HOME, { recursive: true, force: true });
 	rmSync(FOLDER, { recursive: true, force: true });
 	rmSync(BIN, { recursive: true, force: true });
+	rmSync(EMPTY_BIN, { recursive: true, force: true });
 });
 
 describe("pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME)", () => {
 	it("top-level help advertises the prime list filter", () => {
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
-		expect(result.out).toContain("pij list [--here] [--prime] [--json]");
+		expect(result.out).toContain("pij list [--here] [--prime] [--archived] [--badge] [--json]");
 		expect(result.out).toContain("pij tree [<id> | --global]");
 		expect(result.out).toContain("pij link <child> --parent <parent> | --root");
 		expect(result.out).toContain('pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]');
+	});
+
+	it("report help prints only the report family block", () => {
+		const result = pij(["report", "--help"]);
+		expect(result.code).toBe(0);
+		expect(result.out).toContain('pij report now "<did>" "<next>"');
+		expect(result.out).toContain("pij report state <state>");
+		expect(result.out).toContain("pij report clear");
+		expect(result.out).toContain("pij report verify <node>");
+		expect(result.out).not.toContain("pij spawn");
 	});
 
 	it("top-level help and skill guidance distinguish pull from push delivery", () => {
@@ -232,7 +270,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(tableCells("| prereq |")).toEqual([
 			"prereq",
 			"pi extension loaded",
-			'daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h>`',
+			`daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\``,
 			"`pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned",
 		]);
 
@@ -246,8 +284,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			expect(routing).toContain(clause);
 			expect(peer).toContain(clause);
 		}
-		const exactTmuxAdopt =
-			'Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.';
+		const exactTmuxAdopt = `Tmux self-adopt may use only the exact non-empty \`$TMUX_PANE\` supplied by the current process: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\`.`;
 		expect(routing).toContain(exactTmuxAdopt);
 		expect(peer).toContain(
 			'Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.',
@@ -266,6 +303,28 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		);
 		expect(skillGuidance).not.toMatch(/E-NOID[^\n]*adopt first/i);
 		expect(skillGuidance).not.toContain("adopt before anything conversational");
+	});
+
+	it("skill guidance routes first-person reports and retires completion self-pause", () => {
+		const skill = readFileSync(join(REPO_ROOT, "skills/pij/SKILL.md"), "utf8");
+		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
+		const node = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/node.md"), "utf8");
+		const watchdog = readFileSync(join(REPO_ROOT, "docs/how/pij-watchdog.md"), "utf8");
+
+		expect(skill).toContain("`report` (`now/question/blocked/state/clear/verify`)");
+		expect(node).toContain("Everything under `report` is a first-person claim about yourself.");
+		expect(node).toContain('pij report question "<what I need from you>"');
+		expect(node).toContain('pij report blocked "<what I am waiting on>"');
+		expect(node).toMatch(/Actively working has no semantic\s+state\s+word/);
+		expect(node).toContain("Inline markdown is supported");
+		expect(node).toContain("newlines are refused");
+
+		const liveGuidance = `${routing}\n${watchdog}`;
+		expect(liveGuidance).toContain("If done, run `pij report state done`");
+		expect(liveGuidance).not.toContain("If done, pause me");
+		expect(liveGuidance).not.toContain("pause the watchdog explicitly");
+		expect(liveGuidance).not.toContain("Genuinely done → `pij watchdog pause");
+		expect(liveGuidance).not.toContain("self-pause (`pij watchdog pause");
 	});
 
 	it("auto-registers an ambient session before E-NOREG and aliases adopt --current", {
@@ -309,7 +368,9 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 				folder: FOLDER,
 			});
 			if (!descriptor) throw new Error("missing registered descriptor");
-			registry.write({ ...descriptor, prime: true });
+			// Declares "cli" — `prime` is a CLI-owned field, and this line is standing in
+			// for the verb that would set it (plan 071 review §1.2).
+			registry.write({ ...descriptor, prime: true }, "cli");
 
 			const repeat = JSON.parse(pij(["inbox", "register", "--json"], env).out);
 			expect(repeat).toMatchObject({ id: registered.id, existing: true });
@@ -760,6 +821,9 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			expect.objectContaining({ spawnId: expectation?.spawnId, requestedHarness: "pi" }),
 		]);
 		expect(prelaunch[0]).not.toHaveProperty("paneId");
+		const namingLog = readFileSync(TMUX_LOG, "utf8");
+		expect(namingLog).toContain("select-pane -t %91 -T");
+		expect(namingLog).not.toContain("pi-peer");
 	});
 
 	it("pins an ambiguous OMP model to github-copilot before tmux launch", () => {
@@ -819,7 +883,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			.split("\n")
 			.findLast((line) => line.startsWith("{"));
 		const output = JSON.parse(jsonLine ?? "{}") as { id: string; paneId: string };
-		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 		const descriptor = new FsRegistry(HOME).read(output.id);
 		expect(descriptor).toMatchObject({
 			id: output.id,
@@ -845,6 +909,889 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			ok: true,
 			value: false,
 		});
+	});
+
+	it("real pi and daemon-bound spawns carry unresolved and not-probeable plan warnings into JSON and human receipts", () => {
+		const unresolvedPlanId = "missing-plan-receipt";
+		const cases = [
+			{
+				planId: unresolvedPlanId,
+				warning: `warning: plan id '${unresolvedPlanId}' does not resolve to '${join(FOLDER, "docs", "plans", unresolvedPlanId)}' — spawn continues`,
+			},
+			{
+				planId: "../../opaque/value",
+				warning:
+					"warning: plan id '../../opaque/value' was not checked against docs/plans (not a simple path segment) — spawn continues",
+			},
+		] as const;
+		const receipts: Array<{
+			harness: "pi" | "claude";
+			planId: string;
+			format: "json" | "human";
+			warnings: readonly string[];
+		}> = [];
+
+		for (const harness of ["pi", "claude"] as const) {
+			for (const { planId } of cases) {
+				for (const json of [true, false] as const) {
+					clearSpawnExpectations();
+					writeFileSync(TMUX_LOG, "");
+					const args = ["spawn", "--harness", harness, "--plan-id", planId];
+					if (json) args.push("--json");
+
+					const result = pij(args, { PIJ_SESSION_ID: "pij-A" });
+
+					expect(result.code).toBe(0);
+					if (json) {
+						const jsonLine = result.out
+							.trim()
+							.split("\n")
+							.findLast((line) => line.startsWith("{"));
+						const output = JSON.parse(jsonLine ?? "{}") as { warnings?: string[] };
+						receipts.push({
+							harness,
+							planId,
+							format: "json",
+							warnings: output.warnings ?? [],
+						});
+					} else {
+						receipts.push({
+							harness,
+							planId,
+							format: "human",
+							warnings: result.out
+								.split("\n")
+								.filter((line) => line.startsWith("warning: plan id")),
+						});
+					}
+				}
+			}
+		}
+
+		expect(receipts).toEqual(
+			(["pi", "claude"] as const).flatMap((harness) =>
+				cases.flatMap(({ planId, warning }) =>
+					(["json", "human"] as const).map((format) => ({
+						harness,
+						planId,
+						format,
+						warnings: [warning],
+					})),
+				),
+			),
+		);
+	});
+
+	it("revives a dissolved Claude session under the same pij id with fail-loud resume argv", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-finished-fox";
+		const nativeId = "11111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(
+			transcript,
+			`${JSON.stringify({ type: "user", message: { content: "seed" } })}\n`,
+		);
+		new FsRegistry(HOME).write({
+			id,
+			role: "worker",
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 101,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			boundModel: "claude-sonnet-5",
+			effort: "high",
+			paneId: "%7",
+			spawnedBy: "pij-A",
+			parentId: "pij-A",
+			lifecycle: "dissolved",
+			closeIntent: {
+				actor: "pij-A",
+				kind: "cli-close",
+				requestedAt: "2026-07-24T01:00:00.000Z",
+			},
+			terminal: {
+				disposition: "requested",
+				observedAt: "2026-07-24T01:00:01.000Z",
+				evidence: "pane-missing",
+			},
+		});
+
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+
+		expect(result.code, result.out).toBe(0);
+		const output = JSON.parse(
+			result.out
+				.trim()
+				.split("\n")
+				.findLast((line) => line.startsWith("{")) ?? "{}",
+		) as { id: string; state: string; paneId: string };
+		expect(output).toMatchObject({ id, state: "pending-canary", paneId: "%91" });
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			id,
+			lifecycle: "pending",
+			plannedHarnessSessionId: nativeId,
+			revivePendingAt: expect.any(String),
+		});
+		expect(new FsRegistry(HOME).read(id)).not.toHaveProperty("terminal");
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).toContain(`claude --dangerously-skip-permissions --resume ${nativeId}`);
+		expect(log).not.toContain("--session-id");
+		expect(log).not.toContain("--fork-session");
+		expect(log).toMatch(new RegExp(`select-pane -t %91 -T .* revive · ${id}`));
+		expect(prelaunchSnapshots()[0]).not.toContain('"sessionId"');
+	});
+
+	// ── s072 reboot rehydrate: the REAL cli path, not fakes ────────────────
+	// Its own folder: the shared FOLDER already holds other tests' seats (some of
+	// them prime), and D1 resolution is BY FOLDER.
+	const S072_FOLDER = realpathSync(mkdtempSync(join(tmpdir(), "pij-s072-")));
+
+	function seedRebootedClaudeSeat(id: string, nativeId: string, prime: boolean): void {
+		mkdirSync(transcriptDir(HOME, S072_FOLDER), { recursive: true });
+		writeFileSync(
+			join(transcriptDir(HOME, S072_FOLDER), `${nativeId}.jsonl`),
+			`${JSON.stringify({ type: "user", message: { content: "seed" } })}\n`,
+		);
+		new FsRegistry(HOME).write({
+			id,
+			role: "worker",
+			folder: S072_FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			// A pid no live process can hold: post-reboot the recorded pid is dead.
+			pid: 999_999_999,
+			// RELATIVE TO HOST BOOT, never an absolute date. These tests are about the
+			// PANE axis (ours / reused / unprobed). Boot-time invalidation runs FIRST and
+			// is unconditional — "the host booted after this seat's last activity" ends the
+			// classification before the pane is ever considered. A hardcoded past date
+			// therefore silently STOPS EXERCISING the pane axis the moment the machine
+			// reboots: green for weeks, then two failures on 2026-07-27 caused by the
+			// operator restarting their laptop rather than by any code change.
+			startedAt: new Date(Date.now() - 60_000).toISOString(),
+			state: "idle",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			boundModel: "claude-sonnet-5",
+			effort: "high",
+			// The reboot signature: still `bound`, pane id from the dead tmux server.
+			paneId: "%7",
+			lifecycle: "bound",
+			...(prime ? { prime: true } : {}),
+		});
+	}
+
+	it("resolves the prime seat from the CURRENT FOLDER and prints a paste-able line", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-rebooted-prime";
+		const nativeId = "77777777-2222-4333-8444-555555555555";
+		seedRebootedClaudeSeat(id, nativeId, true);
+		const before = readFileSync(join(HOME, `${id}.json`), "utf8");
+
+		const result = pij(["revive", "--print", "--json"], { PIJ_SESSION_ID: "", HOME }, S072_FOLDER);
+
+		expect(result.code, result.out).toBe(0);
+		// --json is machine output: ONE line, nothing else on stdout.
+		expect(result.out.trim().split("\n")).toHaveLength(1);
+		const printed = JSON.parse(result.out.trim()) as Record<string, unknown>;
+		expect(printed).toMatchObject({
+			id,
+			harness: "claude",
+			runtime: "claude",
+			model: "claude-sonnet-5",
+			effort: "high",
+			cmd: "claude",
+			tier: "hot",
+			selfAdopts: false,
+			priorAttachment: "stale",
+			priorPane: "gone",
+		});
+		expect(printed.shellLine).toBe(
+			`pij revive ${id} --attach "$TMUX_PANE" && PIJ_SESSION_ID=${id} PIJ_HARNESS=claude ` +
+				`PIJ_SPAWN_ID=${(printed.env as Record<string, string>).PIJ_SPAWN_ID} ` +
+				`claude --dangerously-skip-permissions --resume ${nativeId} --model claude-sonnet-5 --effort high`,
+		);
+		// --print mutates NOTHING: descriptor byte-identical, no pane touched, no
+		// spawn expectation written.
+		expect(readFileSync(join(HOME, `${id}.json`), "utf8")).toBe(before);
+		// s072 FIX-2, amended contract: --print MAY issue READ-ONLY tmux queries —
+		// knowing whether the old attachment is still alive is worth having before
+		// you paste. What it may never do is mutate. The one call below is the
+		// pane-identity probe; `display-message -p` is a read.
+		expect(readFileSync(TMUX_LOG, "utf8")).toBe(
+			"display-message -p -t %7 #{pane_dead},#{pane_pid}\n",
+		);
+		expect(existsSync(join(HOME, "spawn-expectations"))).toBe(false);
+	});
+
+	// s072 FIX-1 / reviewer F-001, through the REAL cli: a fresh tmux server hands
+	// the recorded `%7` to an unrelated pane. The bare id matches; the pane's own
+	// pid does not. That must NOT read as proof of life.
+	it("a REUSED pane id reads uncertain, not live, and says which id was recycled", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-rebooted-reused-pane";
+		const nativeId = "b0b0b0b0-2222-4333-8444-555555555555";
+		seedRebootedClaudeSeat(id, nativeId, false);
+
+		const printed = pij(
+			["revive", id, "--print", "--json"],
+			// %7 is live in the NEW server, but it is running this test process,
+			// not the seat's recorded pid 999_999_999.
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%7" },
+			S072_FOLDER,
+		);
+		expect(printed.code, printed.out).toBe(0);
+		expect(JSON.parse(printed.out.trim())).toMatchObject({
+			id,
+			priorAttachment: "uncertain",
+			priorPane: "not-ours",
+		});
+
+		// It is uncertain, so a WRITE is refused...
+		const refused = pij(
+			["revive", id],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%7" },
+			S072_FOLDER,
+		);
+		expect(refused.code).not.toBe(0);
+		expect(refused.out).toContain("re-issues pane ids from %0");
+		// ...and the documented escape hatch still rescues the reboot path, which a
+		// `live` verdict could not (planRevive refuses `live` before --assume-dead).
+		const forced = pij(
+			["revive", id, "--attach", "%42", "--assume-dead", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%42" },
+			S072_FOLDER,
+		);
+		expect(forced.code, forced.out).toBe(0);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({ id, paneId: "%42" });
+	});
+
+	// s072 FIX-6 / reviewer round 2, through the REAL cli. The compound case: a
+	// fresh server hands back the recorded `%7` AND that pane's `#{pane_pid}`
+	// equals the pid the descriptor recorded — a recycled pane id "corroborated"
+	// by a recycled pid. Both halves of that proof come from allocators the reboot
+	// reset, so only absolute time can settle it.
+	function seedRecycledPidSeat(id: string, nativeId: string, startedAt: string): void {
+		mkdirSync(transcriptDir(HOME, S072_FOLDER), { recursive: true });
+		writeFileSync(
+			join(transcriptDir(HOME, S072_FOLDER), `${nativeId}.jsonl`),
+			`${JSON.stringify({ type: "user", message: { content: "seed" } })}\n`,
+		);
+		new FsRegistry(HOME).write({
+			id,
+			role: "worker",
+			folder: S072_FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			// THE recycled pid: the fake tmux reports this same pid as `#{pane_pid}`
+			// for the live pane, so the identity check matches exactly.
+			pid: process.pid,
+			startedAt,
+			state: "idle",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			boundModel: "claude-sonnet-5",
+			effort: "high",
+			paneId: "%7",
+			lifecycle: "bound",
+		});
+	}
+
+	it("a matching pane pid does NOT rescue a descriptor that predates this host's boot", () => {
+		clearSpawnExpectations();
+		const id = "pij-rebooted-recycled-pid";
+		const nativeId = "c0c0c0c0-2222-4333-8444-555555555555";
+		// Older than any plausible uptime, so host-boot evidence is decisive on
+		// every machine this suite runs on.
+		seedRecycledPidSeat(id, nativeId, "2020-01-01T00:00:00.000Z");
+
+		const printed = pij(
+			["revive", id, "--print", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%7" },
+			S072_FOLDER,
+		);
+		expect(printed.code, printed.out).toBe(0);
+		// The pane still reports as ours — and the verdict is still NOT live.
+		expect(JSON.parse(printed.out.trim())).toMatchObject({
+			id,
+			priorPane: "ours",
+			priorAttachment: "stale",
+		});
+
+		// Before FIX-6 this errored with "still has a live prior attachment"
+		// irrevocably, ahead of --assume-dead. The boot evidence proves the old
+		// process cannot exist, so the revive path is reachable with NO override.
+		const revived = pij(
+			["revive", id, "--attach", "%42", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%42", FAKE_TMUX_FOCUS_PID: "424242" },
+			S072_FOLDER,
+		);
+		expect(revived.code, revived.out).toBe(0);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({ id, paneId: "%42" });
+	});
+
+	// The second, weaker rung: boot time cannot settle it (the seat WAS active in
+	// this boot epoch), so the non-recycled signal has to be the pane process's
+	// own start time — `ps -o lstart=`.
+	it("a matching pane pid is uncertain when ps says that process started after our last event", () => {
+		clearSpawnExpectations();
+		const id = "pij-rebooted-young-pane-process";
+		const nativeId = "d0d0d0d0-2222-4333-8444-555555555555";
+		const paneProcessStartedMs = Date.parse(
+			execFileSync("ps", ["-o", "lstart=", "-p", String(process.pid)], {
+				encoding: "utf8",
+			}).trim(),
+		);
+		const bootMs = Date.now() - uptime() * 1000;
+		// Inside this boot epoch, but a minute BEFORE the process now in the pane.
+		const anchorMs = paneProcessStartedMs - 60_000;
+		expect(anchorMs).toBeGreaterThan(bootMs);
+		seedRecycledPidSeat(id, nativeId, new Date(anchorMs).toISOString());
+
+		const printed = pij(
+			["revive", id, "--print", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%7" },
+			S072_FOLDER,
+		);
+		expect(printed.code, printed.out).toBe(0);
+		expect(JSON.parse(printed.out.trim())).toMatchObject({
+			id,
+			priorPane: "ours",
+			priorAttachment: "uncertain",
+		});
+
+		// Uncertain gates the write and names the signal that disqualified the pid.
+		const refused = pij(
+			["revive", id],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%7" },
+			S072_FOLDER,
+		);
+		expect(refused.code).not.toBe(0);
+		expect(refused.out).toContain(
+			"did not start before this seat's last recorded activity (ps lstart",
+		);
+		// ...and it remains overridable, which a `live` verdict never was.
+		const forced = pij(
+			["revive", id, "--attach", "%42", "--assume-dead", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%42", FAKE_TMUX_FOCUS_PID: "424243" },
+			S072_FOLDER,
+		);
+		expect(forced.code, forced.out).toBe(0);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({ id, paneId: "%42" });
+	});
+
+	// s072 FIX-7 / reviewer round 3, through the real CLI. The reviewer's case:
+	// a fresh %0 server whose pane process started at 03:30:25Z against a matching
+	// post-boot descriptor last active at 03:30:21Z. That returned an irrevocable
+	// `live` before the fix, ahead of --assume-dead.
+	it("a pane process born FOUR SECONDS after our last activity is uncertain, not live", () => {
+		clearSpawnExpectations();
+		const id = "pij-skew-window";
+		const nativeId = "e0e0e0e0-2222-4333-8444-555555555555";
+		const paneProcessStartedMs = Date.parse(
+			execFileSync("ps", ["-o", "lstart=", "-p", String(process.pid)], {
+				encoding: "utf8",
+			}).trim(),
+		);
+		// Activity four seconds BEFORE the process now in the pane — the exact
+		// window the old `activity + 5s` tolerance called proof of life.
+		const anchorMs = paneProcessStartedMs - 4_000;
+		expect(anchorMs).toBeGreaterThan(Date.now() - uptime() * 1000);
+		seedRecycledPidSeat(id, nativeId, new Date(anchorMs).toISOString());
+
+		const printed = pij(
+			["revive", id, "--print", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%7" },
+			S072_FOLDER,
+		);
+		expect(printed.code, printed.out).toBe(0);
+		expect(JSON.parse(printed.out.trim())).toMatchObject({
+			id,
+			priorPane: "ours",
+			priorAttachment: "uncertain",
+		});
+
+		// The whole point of the ruling: the operator can still get through.
+		const forced = pij(
+			["revive", id, "--attach", "%42", "--assume-dead", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_LIVE_PANE: "%42", FAKE_TMUX_FOCUS_PID: "424244" },
+			S072_FOLDER,
+		);
+		expect(forced.code, forced.out).toBe(0);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({ id, paneId: "%42" });
+	});
+
+	// s072 FIX-2: the actual reboot case is that there is no tmux server at all
+	// yet. --print must still hand over the line, reporting the pane as unprobed.
+	it("--print survives tmux being unreachable, degrading to an unprobed pane", () => {
+		clearSpawnExpectations();
+		const id = "pij-rebooted-no-tmux";
+		const nativeId = "aaaaaaaa-2222-4333-8444-555555555555";
+		seedRebootedClaudeSeat(id, nativeId, false);
+		const before = readFileSync(join(HOME, `${id}.json`), "utf8");
+
+		// (a) a tmux binary that cannot reach a server — real tmux exits non-zero
+		//     with "error connecting to /tmp/tmux-.../default".
+		const noServer = pij(
+			["revive", id, "--print", "--json"],
+			{ PIJ_SESSION_ID: "", HOME, FAKE_TMUX_NO_SERVER: "1", TMUX_PANE: "" },
+			S072_FOLDER,
+		);
+		expect(noServer.code, noServer.out).toBe(0);
+		expect(JSON.parse(noServer.out.trim())).toMatchObject({
+			id,
+			priorPane: "unprobed",
+			priorAttachment: "uncertain",
+		});
+
+		// (b) no tmux binary on PATH at all.
+		const noBinary = pij(
+			["revive", id, "--print"],
+			{
+				PIJ_SESSION_ID: "",
+				HOME,
+				PATH: `${EMPTY_BIN}:${dirname(process.execPath)}`,
+				TMUX_PANE: "",
+			},
+			S072_FOLDER,
+		);
+		expect(noBinary.code, noBinary.out).toBe(0);
+		expect(noBinary.out).toContain("pane %7: unprobed");
+		expect(noBinary.out).toContain(
+			"nothing was written: --print issues read-only tmux and ps queries only",
+		);
+		expect(noBinary.out).toContain("tmux could not be reached");
+		expect(readFileSync(join(HOME, `${id}.json`), "utf8")).toBe(before);
+	});
+
+	it("--attach binds the operator's OWN pane to the seat without spawning one", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-rebooted-attach";
+		const nativeId = "88888888-2222-4333-8444-555555555555";
+		seedRebootedClaudeSeat(id, nativeId, false);
+
+		const result = pij(
+			["revive", id, "--attach", "%42", "--json"],
+			{ PIJ_SESSION_ID: "pij-A", HOME, FAKE_TMUX_LIVE_PANE: "%42" },
+			S072_FOLDER,
+		);
+
+		expect(result.code, result.out).toBe(0);
+		expect(
+			JSON.parse(
+				result.out
+					.trim()
+					.split("\n")
+					.findLast((line) => line.startsWith("{")) ?? "{}",
+			),
+		).toMatchObject({ id, paneId: "%42", attached: true, state: "pending-canary" });
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			id,
+			paneId: "%42",
+			lifecycle: "pending",
+			plannedHarnessSessionId: nativeId,
+			revivePendingAt: expect.any(String),
+		});
+		// It attached — it never launched the harness itself. (`new-window` does
+		// appear: claude revival auto-starts the daemon, which lives in its own
+		// window. That is the daemon, not the seat.)
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).not.toContain("split-window");
+		expect(log).not.toContain("claude --dangerously-skip-permissions");
+		expect(log).toContain("display-message -p -t %42 #{pane_dead}");
+	});
+
+	it("resolves an ARCHIVED seat and --print leaves it archived", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const archivedFolder = realpathSync(mkdtempSync(join(tmpdir(), "pij-s072-arch-")));
+		const id = "pij-buried-seat";
+		const nativeId = "99999999-2222-4333-8444-555555555555";
+		mkdirSync(transcriptDir(HOME, archivedFolder), { recursive: true });
+		writeFileSync(
+			join(transcriptDir(HOME, archivedFolder), `${nativeId}.jsonl`),
+			`${JSON.stringify({ type: "user", message: { content: "seed" } })}\n`,
+		);
+		const registry = new FsRegistry(HOME);
+		registry.write({
+			id,
+			folder: archivedFolder,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 999_999_998,
+			startedAt: "2026-05-01T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			boundModel: "claude-sonnet-5",
+			lifecycle: "dissolved",
+		});
+		expect(registry.archive(id, Date.parse("2026-07-24T00:00:00.000Z"))).toBe("archived");
+		expect(existsSync(join(HOME, `${id}.json`))).toBe(false);
+
+		const result = pij(
+			["revive", "--print", "--json"],
+			{ PIJ_SESSION_ID: "", HOME },
+			archivedFolder,
+		);
+
+		expect(result.code, result.out).toBe(0);
+		expect(
+			JSON.parse(
+				result.out
+					.trim()
+					.split("\n")
+					.findLast((line) => line.startsWith("{")) ?? "{}",
+			),
+		).toMatchObject({ id, tier: "archive" });
+		// The whole point of --print: it did NOT pull the record back to the hot
+		// tier the way a real revive does.
+		expect(existsSync(join(HOME, `${id}.json`))).toBe(false);
+		expect(existsSync(join(HOME, "archive", `${id}.json`))).toBe(true);
+
+		// The tier is read from DISK, so an EXPLICITLY named archived seat is
+		// reported as archived too — not silently labelled hot.
+		const byId = pij(["revive", id, "--print", "--json"], { PIJ_SESSION_ID: "", HOME });
+		expect(byId.code, byId.out).toBe(0);
+		expect(JSON.parse(byId.out.trim())).toMatchObject({ id, tier: "archive" });
+		expect(existsSync(join(HOME, `${id}.json`))).toBe(false);
+		rmSync(archivedFolder, { recursive: true, force: true });
+	});
+
+	it("prints the human-readable form with the self-adopt truth spelled out", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-rebooted-human";
+		seedRebootedClaudeSeat(id, "66666666-2222-4333-8444-555555555555", false);
+		const before = readFileSync(join(HOME, `${id}.json`), "utf8");
+
+		const result = pij(["revive", id, "--print"], { PIJ_SESSION_ID: "", HOME }, S072_FOLDER);
+
+		expect(result.code, result.out).toBe(0);
+		expect(result.out).toContain("paste this into the pane you already opened:");
+		expect(result.out).toContain(`pij revive ${id} --attach "$TMUX_PANE" &&`);
+		expect(result.out).toContain("claude does NOT self-adopt");
+		expect(result.out).toContain("nothing was written");
+		expect(readFileSync(join(HOME, `${id}.json`), "utf8")).toBe(before);
+		expect(readFileSync(TMUX_LOG, "utf8")).not.toMatch(/new-window|split-window/);
+	});
+
+	// s072 FIX-4 / reviewer: the pi/omp branch used to tell the operator that pi
+	// "reads PIJ_SESSION_ID at boot". It does not — `PIJ_SESSION_ID` is produced
+	// at boot, not consumed from this line. Resumed pi re-derives its identity
+	// from its native session artifact, finds the dissolved descriptor, and calls
+	// registry.revive() itself (core/session.ts boot(), `wasDissolved`).
+	it("states the REAL reason a pi seat needs no attach step", () => {
+		clearSpawnExpectations();
+		const id = "pij-rebooted-pi";
+		const nativeId = "c0c0c0c0-2222-4333-8444-555555555555";
+		const sessions = join(HOME, ".pi", "agent", "sessions");
+		mkdirSync(sessions, { recursive: true });
+		writeFileSync(join(sessions, `2026-07-24_${nativeId}.jsonl`), "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			role: "worker",
+			folder: S072_FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 999_999_999,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			state: "idle",
+			harness: "pi",
+			harnessSessionId: nativeId,
+			paneId: "%7",
+			lifecycle: "bound",
+		});
+
+		const result = pij(["revive", id, "--print"], { PIJ_SESSION_ID: "", HOME }, S072_FOLDER);
+
+		expect(result.code, result.out).toBe(0);
+		expect(result.out).toContain("pi self-adopts");
+		expect(result.out).toContain(
+			"re-derives its own pij identity from its native session artifact",
+		);
+		expect(result.out).toContain("registry.revive()");
+		// The retracted rationale must not come back.
+		expect(result.out).not.toContain("reads PIJ_SESSION_ID at boot");
+	});
+
+	it("an UNAVAILABLE terminal observation is not evidence of death", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-unavailable-obs";
+		const nativeId = "55555555-2222-4333-8444-555555555555";
+		mkdirSync(transcriptDir(HOME, S072_FOLDER), { recursive: true });
+		writeFileSync(join(transcriptDir(HOME, S072_FOLDER), `${nativeId}.jsonl`), "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: S072_FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid, // alive
+			// Same reason as seedRebootedClaudeSeat: an absolute past date lets HOST BOOT
+			// decide this case. This test is about a LIVE pid whose terminal observation
+			// was `unavailable` — but "the host booted after its last activity" is a
+			// stronger, earlier signal and correctly returns `stale`, so after a reboot the
+			// fixture stopped reaching the rule it exists to pin.
+			startedAt: new Date(Date.now() - 60_000).toISOString(),
+			harness: "claude",
+			harnessSessionId: nativeId,
+			paneId: "%gone-too",
+			lifecycle: "bound",
+			terminal: {
+				disposition: "unavailable",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "observation-unavailable",
+				unavailableReason: "tmux not reachable",
+			},
+		});
+
+		// pij saying "I could not look" must not be read as "it is dead".
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME }, S072_FOLDER);
+		expect(result.code).toBe(64);
+		expect(result.out).toContain("may have recycled");
+		expect(readFileSync(TMUX_LOG, "utf8")).not.toMatch(/new-window|split-window/);
+	});
+
+	it("refuses to print for a folder that has no seat, naming the folder", () => {
+		const empty = realpathSync(mkdtempSync(join(tmpdir(), "pij-nofolder-")));
+		const result = pij(["revive", "--print"], { PIJ_SESSION_ID: "", HOME }, empty);
+		expect(result.code).not.toBe(0);
+		expect(result.out).toContain("E-NOID");
+		expect(result.out).toContain(empty);
+		rmSync(empty, { recursive: true, force: true });
+	});
+
+	it("cleans the expectation when revival pane launch fails", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-revive-spawn-failure";
+		const nativeId = "21111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(transcript, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 201,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			HOME,
+			FAKE_TMUX_FAIL: "1",
+		});
+		expect(result.code).toBe(2);
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+		expect(new FsRegistry(HOME).read(id)?.lifecycle).toBe("dissolved");
+	});
+
+	it("kills the spawned pane and removes its expectation when tombstone replacement fails", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-revive-registry-race";
+		const nativeId = "31111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(transcript, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 202,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: nativeId,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			HOME,
+			FAKE_TMUX_DELETE_DESCRIPTOR: id,
+		});
+		expect(result.code).toBe(2);
+		expect(readFileSync(TMUX_LOG, "utf8")).toContain("kill-pane -t %91");
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
+	it.each([
+		["pi", ".pi", "pi --session"],
+		["omp", ".omp", "omp --auto-approve"],
+	] as const)("launches %s revival asynchronously with an unconditional reframe", (runtime, store, command) => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = `pij-${runtime}-revival`;
+		const nativeId =
+			runtime === "pi"
+				? "41111111-2222-4333-8444-555555555555"
+				: "51111111-2222-4333-8444-555555555555";
+		const sessions = join(HOME, store, "agent", "sessions", "repo");
+		mkdirSync(sessions, { recursive: true });
+		writeFileSync(join(sessions, `2026-07-25T00-00-00_${nativeId}.jsonl`), "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 203,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: nativeId,
+			runtimeBin: runtime,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		expect(result.code, result.out).toBe(0);
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).toContain(command);
+		expect(log).toContain("PIJ_SPAWN_TASK=You are a REVIVED session");
+		expect(log).not.toContain("kill-pane");
+		const expectation = new FsSpawnExpectationStore(HOME).list()[0];
+		expect(expectation).toMatchObject({ paneId: "%91" });
+		expect(expectation).not.toHaveProperty("sessionId");
+	});
+
+	it("reports the interim Copilot session-in-use action instead of waiting silently", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-copilot-needs-human";
+		const nativeId = "71111111-2222-4333-8444-555555555555";
+		const events = join(HOME, ".copilot", "session-state", nativeId, "events.jsonl");
+		mkdirSync(join(HOME, ".copilot", "session-state", nativeId), { recursive: true });
+		writeFileSync(events, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 204,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "copilot",
+			harnessSessionId: nativeId,
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		expect(result.code, result.out).toBe(0);
+		const output = JSON.parse(
+			result.out
+				.trim()
+				.split("\n")
+				.findLast((line) => line.startsWith("{")) ?? "{}",
+		) as { operatorAction?: string };
+		expect(output.operatorAction).toContain("needs-human");
+		expect(output.operatorAction).toContain("press 1");
+	});
+
+	it("refuses a missing Copilot native artifact before tmux mutation", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-missing-memory";
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 102,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "copilot",
+			harnessSessionId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+			paneId: "%8",
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pid-missing",
+			},
+		});
+		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+
+		expect(result.code).toBe(3);
+		expect(result.out).toContain("E-NOREG");
+		expect(readFileSync(TMUX_LOG, "utf8")).toBe(
+			"display-message -p -t %8 #{pane_dead},#{pane_pid}\n",
+		);
+		expect(new FsSpawnExpectationStore(HOME).list()).toEqual([]);
+	});
+
+	it("refuses revival while the prior process incarnation is still alive", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-still-live";
+		const nativeId = "61111111-2222-4333-8444-555555555555";
+		const transcript = join(transcriptDir(HOME, FOLDER), `${nativeId}.jsonl`);
+		mkdirSync(transcriptDir(HOME, FOLDER), { recursive: true });
+		writeFileSync(transcript, "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			// s072 FIX-6/FIX-7: this fixture stands for a GENUINELY live seat, so its
+			// recorded activity must sit a provable full second AFTER the start of the
+			// process actually holding the pane — the classifier compares the two
+			// (`ps -o lstart=`, whole seconds) and now requires that lead before it
+			// will say `live`. Anchoring on this process's own start instead of a bare
+			// `new Date()` keeps the fixture's meaning independent of how quickly
+			// vitest reached this line.
+			startedAt: new Date(
+				Math.max(Date.now(), Date.now() - process.uptime() * 1000 + 2_000),
+			).toISOString(),
+			harness: "claude",
+			harnessSessionId: nativeId,
+			paneId: "%gone",
+			lifecycle: "bound",
+		});
+		// s072 D3: pane gone + pid alive is UNCERTAIN, not proven-live — the OS
+		// recycles pids across a reboot. Still refused, now with the honest reason
+		// and an explicit override rather than a silent guess.
+		const uncertain = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		expect(uncertain.code).toBe(64);
+		expect(uncertain.out).toContain("may have recycled");
+		expect(readFileSync(TMUX_LOG, "utf8")).not.toMatch(/new-window|split-window/);
+
+		// A pane that is genuinely still there is the un-overridable case.
+		const live = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			HOME,
+			FAKE_TMUX_LIVE_PANE: "%gone",
+		});
+		expect(live.code).toBe(64);
+		expect(live.out).toContain("live prior attachment");
+		expect(readFileSync(TMUX_LOG, "utf8")).not.toMatch(/new-window|split-window/);
 	});
 
 	it("daemon-bound Copilot descriptor records github-copilot provider", () => {
@@ -882,7 +1829,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 		expect(result.code).toBe(2);
 		const log = readFileSync(TMUX_LOG, "utf8");
-		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+(?:-[a-z]+)+)/)?.[1];
+		const id = log.match(/PIJ_SESSION_ID=(pij-[a-z]+(?:-[a-z]+)*)/)?.[1];
 		expect(id).toBeDefined();
 		expect(new FsRegistry(HOME).read(id as string)).toBeNull();
 		expect(new FsRegistry(HOME).hasReservation(id as string)).toEqual({
@@ -934,6 +1881,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 
 	it("CLI close traces intent → kill → requested terminal → dissolve and retains history", () => {
 		const id = "pij-close-p3";
+		const spawnId = "spawn-close-p3";
 		new FsRegistry(HOME).write({
 			id,
 			folder: FOLDER,
@@ -945,6 +1893,15 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			spawnedBy: "pij-A",
 			harness: "claude",
 			lifecycle: "bound",
+			spawnId,
+		});
+		new FsSpawnExpectationStore(HOME).write({
+			spawnId,
+			creatorId: "pij-A",
+			requestedHarness: "claude",
+			requestedAt: "2026-07-20T00:00:00.000Z",
+			deadlineAt: "2026-07-20T00:05:00.000Z",
+			paneId: "%88",
 		});
 		const tracePath = join(HOME, "p3-close.trace");
 		const result = pij(["close", id], {
@@ -962,6 +1919,10 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			lifecycle: "dissolved",
 			closeIntent: { actor: "pij-A", kind: "cli-close" },
 			terminal: { disposition: "requested", evidence: "pane-missing" },
+		});
+		expect(new FsSpawnExpectationStore(HOME).read(spawnId)).toMatchObject({
+			spawnId,
+			closeIntent: { actor: "pij-A", kind: "cli-close" },
 		});
 	});
 
@@ -1109,6 +2070,195 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(human.out).not.toContain("pending");
 	});
 
+	it("T001 regression-locks live and pending adopt outcomes before dissolved recovery", () => {
+		const registry = new FsRegistry(HOME);
+		const id = "pij-adopt-live-regression";
+		const harnessSessionId = "native-adopt-live-regression";
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId,
+			paneId: "%70",
+			lifecycle: "bound",
+		});
+
+		const adopted = pij([
+			"adopt",
+			"%71",
+			"--harness",
+			"claude",
+			"--id",
+			id,
+			"--session-id",
+			harnessSessionId,
+		]);
+		expect(adopted.code).toBe(0);
+		expect(adopted.out).toContain(
+			`adopted ${id} ↔ claude session ${harnessSessionId} (pane %71, bound)`,
+		);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			id,
+			harnessSessionId,
+			paneId: "%71",
+			lifecycle: "bound",
+		});
+
+		const whoami = pij(["whoami"], {
+			PIJ_SESSION_ID: id,
+			TMUX_PANE: "%71",
+			CLAUDE_CODE_SESSION_ID: harnessSessionId,
+		});
+		expect(whoami.code).toBe(0);
+		expect(whoami.out).toContain(id);
+
+		const phoned = pij(["phonehome"], {
+			PIJ_SESSION_ID: id,
+			TMUX_PANE: "%71",
+			CLAUDE_CODE_SESSION_ID: harnessSessionId,
+		});
+		expect(phoned.code).toBe(0);
+		expect(phoned.out).toContain(`phoned home: ${id}`);
+		expect(phoned.out).toContain("(bound)");
+
+		const pending = pij(["adopt", "%72", "--harness", "claude"], {
+			CLAUDE_CODE_SESSION_ID: "",
+		});
+		expect(pending.code).toBe(0);
+		expect(pending.out).toContain("(pane %72, pending)");
+		expect(pending.out).not.toContain("bound");
+	});
+
+	it("T002 refuses to report a dissolved adopt binding that was not persisted", () => {
+		const registry = new FsRegistry(HOME);
+		const id = "pij-adopt-dissolved-honesty";
+		const harnessSessionId = "native-adopt-dissolved-honesty";
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId,
+			paneId: "%73",
+			lifecycle: "bound",
+			systemState: "dead",
+			closeIntent: { actor: "pij-parent", kind: "cli-close" },
+			terminal: { disposition: "requested", evidence: "pane-missing" },
+			deathNoticeLatchedAt: "2026-07-29T00:01:00.000Z",
+			failureReason: "dead",
+		});
+		registry.dissolve(id);
+
+		const adopted = pij([
+			"adopt",
+			"%74",
+			"--harness",
+			"claude",
+			"--id",
+			id,
+			"--session-id",
+			harnessSessionId,
+		]);
+		const persisted = new FsRegistry(HOME).read(id);
+		const bindingPersisted =
+			persisted?.lifecycle === "bound" &&
+			persisted.harnessSessionId === harnessSessionId &&
+			persisted.paneId === "%74";
+		const namedRefusal =
+			adopted.code !== 0 &&
+			/^E-[A-Z]+:/.test(adopted.out) &&
+			adopted.out.includes(`pij revive ${id} --attach "$TMUX_PANE"`);
+		expect(
+			bindingPersisted || namedRefusal,
+			`AC-10: dissolved adopt must persist the reported binding or return a named error with a working revive remediation; exit=${adopted.code}; output=${JSON.stringify(adopted.out)}; persisted=${JSON.stringify(persisted)}`,
+		).toBe(true);
+		if (bindingPersisted) {
+			for (const key of [
+				"closeIntent",
+				"deathNoticeLatchedAt",
+				"failureReason",
+				"systemState",
+				"terminal",
+			]) {
+				expect(persisted).not.toHaveProperty(key);
+			}
+		} else {
+			expect(adopted.out).not.toContain("bound");
+		}
+
+		expect.soft(verifyPersistedAdoptDescriptor(null, "%74")).toEqual({
+			ok: false,
+			reason: "missing",
+		});
+
+		const stillDissolved: SessionDescriptor = {
+			id: "pij-adopt-still-dissolved",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-adopt-still-dissolved"),
+			eventsPath: join(HOME, "pij-adopt-still-dissolved", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			paneId: "%74",
+			lifecycle: "dissolved",
+		};
+		expect
+			.soft(verifyPersistedAdoptDescriptor(stillDissolved, "%74"))
+			.toEqual({ ok: false, reason: "dissolved" });
+
+		const wrongPane: SessionDescriptor = {
+			id: "pij-adopt-wrong-pane",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-adopt-wrong-pane"),
+			eventsPath: join(HOME, "pij-adopt-wrong-pane", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			paneId: "%73",
+			lifecycle: "bound",
+		};
+		expect
+			.soft(verifyPersistedAdoptDescriptor(wrongPane, "%74"))
+			.toEqual({ ok: false, reason: "pane-mismatch" });
+	});
+
+	it("T005 whoami directs a dissolved ambient identity to revive", () => {
+		const registry = new FsRegistry(HOME);
+		const id = "pij-whoami-dissolved-remediation";
+		const harnessSessionId = "native-whoami-dissolved-remediation";
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId,
+			paneId: "%75",
+			lifecycle: "bound",
+		});
+		registry.dissolve(id);
+
+		const whoami = pij(["whoami"], {
+			PIJ_SESSION_ID: "",
+			TMUX_PANE: "%75",
+			CLAUDE_CODE_SESSION_ID: harnessSessionId,
+		});
+		expect(whoami.code).toBe(2);
+		expect(whoami.out).toContain("E-NOID");
+		expect(whoami.out).toContain(`pij revive ${id} --attach "$TMUX_PANE"`);
+		expect(whoami.out).not.toContain("pij adopt");
+	});
+
 	it("adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation", () => {
 		const registry = new FsRegistry(HOME);
 		const opaque = "pij-existing-opaque";
@@ -1199,7 +2349,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.code).toBe(0);
 		const output = JSON.parse(result.out) as { id: string; harnessSessionId: string };
 		expect(output).toMatchObject({ harnessSessionId: "native-first-adopt" });
-		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 	});
 
 	it("no-native adopt reserves then publishes one memorable pending descriptor", () => {
@@ -1212,7 +2362,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			harnessSessionId: null;
 			lifecycle: string;
 		};
-		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)+$/);
+		expect(output.id).toMatch(/^pij-[a-z]+(-[a-z]+)*$/);
 		expect(output).toMatchObject({ harnessSessionId: null, lifecycle: "pending" });
 		expect(new FsRegistry(HOME).read(output.id)).toMatchObject({
 			id: output.id,
@@ -1302,11 +2452,17 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			const globalTree = pij(["tree", "--global", "--all", "--json"], env, main);
 			expect(globalTree.code).toBe(0);
 			expect(globalTree.out).toContain("pij-other");
-			expect(globalTree.out).toContain('"lifecycle":"dissolved"');
+			// `--all` shows the dead, never the buried — a dissolved seat is hidden
+			// from `list`, so emitting it here is a card with no row behind it.
+			expect(globalTree.out).not.toContain('"lifecycle":"dissolved"');
+			expect(globalTree.out).not.toContain("pij-closed");
+			// Burial stays reachable on an explicit axis.
+			const buried = pij(["tree", "--global", "--lifecycle", "dissolved", "--json"], env, main);
+			expect(buried.out).toContain("pij-closed");
 			const human = pij(["tree", "--global", "--all"], env, main);
 			expect(human.out).toContain("P pij-root");
 			expect(human.out).toContain("O pij-child");
-			expect(human.out).toContain("closed");
+			expect(human.out).not.toContain("pij-closed");
 
 			const subtree = pij(["tree", "pij-other", "--json"], env, main);
 			expect(subtree.code).toBe(0);
@@ -1591,17 +2747,40 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 	});
 
 	it("state clear round-trips through the real CLI without materializing a second assignment", () => {
-		const set = pij(["state", "set", "pij-B", "hold", "--actor", "pij-A", "--json"]);
+		const caller = { PIJ_SESSION_ID: "pij-B" };
+		const set = pij(["report", "state", "hold", "--json"], caller);
 		expect(set.code).toBe(0);
-		const clear = pij(["state", "clear", "pij-B", "--actor", "pij-A", "--json"]);
+		const clear = pij(["report", "clear", "--json"], caller);
 		expect(clear.code).toBe(0);
 		expect(JSON.parse(clear.out)).toMatchObject({ kind: "state-cleared", peer: "pij-B" });
 		const card = pij(["node", "show", "pij-B", "--json"]);
 		expect(card.code).toBe(0);
 		expect(JSON.parse(card.out)).toMatchObject({ semanticState: null });
-		const repeat = pij(["state", "clear", "pij-B", "--actor", "pij-A"]);
+		const repeat = pij(["report", "clear"], caller);
 		expect(repeat.code).toBe(64);
 		expect(repeat.out).toContain("undeclared");
+	});
+
+	it("report now round-trips state-set → status and projects the durable denorm", () => {
+		const caller = { PIJ_SESSION_ID: "pij-B" };
+		const result = pij(
+			["report", "now", "fixed the CLI", "review the diff", "--state", "ready", "--json"],
+			caller,
+		);
+		expect(result.code).toBe(0);
+		const status = JSON.parse(result.out) as { kind: string; seq: number; refs: string[] };
+		expect(status.kind).toBe("status");
+		expect(status.refs.some((ref) => ref.startsWith("state-set:"))).toBe(true);
+		const events = new FsSpineLog(HOME).read({ peer: "pij-B" });
+		expect(events.slice(-2).map((event) => event.kind)).toEqual(["state-set", "status"]);
+		const card = pij(["node", "show", "pij-B", "--json"]);
+		expect(card.code).toBe(0);
+		expect(JSON.parse(card.out)).toMatchObject({
+			semanticState: "ready",
+			statusPrev: "fixed the CLI",
+			statusNext: "review the diff",
+			statusSeq: status.seq,
+		});
 	});
 });
 

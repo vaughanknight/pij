@@ -142,6 +142,15 @@ describe("buildInitInjection", () => {
 		expect(init.phonehomeLine).toBe("pij phonehome");
 	});
 
+	it("a revived init restores context without continuing prior work", () => {
+		const init = buildInitInjection("pij-revived", false, "pij-parent", true);
+		expect(init.body).toMatch(/REVIVED/);
+		expect(init.body).toMatch(/context only/i);
+		expect(init.body).toMatch(/do not continue the old work/i);
+		expect(init.body).toContain("pij-revived");
+		expect(init.body).toContain("pij phonehome");
+	});
+
 	it("names the spawner and gives the concrete reply form when spawnedBy is set", () => {
 		const init = buildInitInjection("pij-child", false, "pij-parent");
 		expect(init.body).toContain("spawned by pij-parent");

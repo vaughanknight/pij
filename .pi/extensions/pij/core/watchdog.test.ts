@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WatchdogSidecar } from "./types.js";
 import {
 	applyCompactPause,
+	applyNewWorkTransition,
 	applyWatchdogExemption,
 	applyWatchdogResume,
 	applyWorkingTransition,
@@ -14,6 +15,7 @@ import {
 	parseWatchdogInterval,
 	reconcileWatchdogExemption,
 	shouldCapture,
+	watchdogScheduleAnchorMs,
 } from "./watchdog.js";
 
 describe("effectiveWatchdog and pause tiers", () => {
@@ -37,6 +39,25 @@ describe("effectiveWatchdog and pause tiers", () => {
 		const sidecar: WatchdogSidecar = { pausedBy: "self", pausedAtMs: 10 };
 		expect(applyWorkingTransition(sidecar)).toBe(sidecar);
 		expect(applyWatchdogResume(sidecar)).toEqual({});
+	});
+
+	it("re-arms only a self pause when new work is assigned", () => {
+		expect(
+			applyNewWorkTransition({
+				enabled: false,
+				intervalMs: 60_000,
+				pausedBy: "self",
+				pausedAtMs: 10,
+			}),
+		).toEqual({ enabled: false, intervalMs: 60_000 });
+
+		for (const sidecar of [
+			{ enabled: false },
+			{ pausedBy: "compact" as const, pausedAtMs: 10 },
+			{ pausedBy: "exempt" as const, pausedAtMs: 10, exemptUntilMs: 100 },
+		]) {
+			expect(applyNewWorkTransition(sidecar)).toBe(sidecar);
+		}
 	});
 
 	it("auto-resumes a compact pause on the next observed working transition", () => {
@@ -125,6 +146,27 @@ describe("isFireDue", () => {
 			effectiveWatchdog({ intervalMs: 1, pausedBy: "exempt" }),
 		];
 		for (const cfg of blocked) expect(isFireDue(cfg, 0, 0, 10_000)).toBe(false);
+	});
+});
+
+describe("watchdogScheduleAnchorMs", () => {
+	it("uses statusAt when present and startedAt as the never-null floor", () => {
+		expect(
+			watchdogScheduleAnchorMs({
+				statusAt: "1970-01-01T00:00:00.090Z",
+				startedAt: "1970-01-01T00:00:00.000Z",
+			}),
+		).toBe(90);
+		expect(
+			watchdogScheduleAnchorMs({
+				statusAt: undefined,
+				startedAt: "1970-01-01T00:00:00.000Z",
+			}),
+		).toBe(0);
+	});
+
+	it("returns null only when no scheduling timestamp can be proved", () => {
+		expect(watchdogScheduleAnchorMs({ statusAt: "invalid", startedAt: "also-invalid" })).toBeNull();
 	});
 });
 
@@ -217,10 +259,12 @@ describe("buildWatchdogTurn", () => {
 			paneAvailable: true,
 		});
 		expect(body).toMatchInlineSnapshot(
-			'"[pij watchdog #2 for pij-frozen-peer] Keep going if working. If done, pause me with `pij watchdog pause pij-frozen-peer`; resume with `pij watchdog resume pij-frozen-peer`."',
+			'"[pij watchdog #2 for pij-frozen-peer] Keep going if working. Report in one call with `pij report now "<what I just did>" "<what\'s next>"`. If done, run `pij report state done`."',
 		);
-		expect(body).toContain("pij watchdog pause");
-		expect(body).toContain("pij watchdog resume");
+		expect(body).toContain("pij report state done");
+		expect(body).not.toContain("pij watchdog pause");
+		expect(body).not.toContain("pij watchdog resume");
+		expect(body).toContain('pij report now "<what I just did>" "<what\'s next>"');
 		expect(body.length).toBeLessThanOrEqual(400);
 	});
 
@@ -231,6 +275,38 @@ describe("buildWatchdogTurn", () => {
 		});
 		expect(body).toContain("Pane capture unavailable; watching event activity only.");
 		expect(body.length).toBeLessThanOrEqual(400);
+	});
+
+	// ── a seat that owes no card still gets pinged, just not for a card ───────
+	it("asks a card-less seat for LIVENESS, never for a card", () => {
+		// Jordan's ruling 2026-07-30: a prime owes no status card. But it must not
+		// go silent either — a prime is the only seat with NO supervisor, so this
+		// ping is its sole external heartbeat.
+		const body = buildWatchdogTurn("pij-some-prime", 3, {
+			...effectiveWatchdog(),
+			paneAvailable: true,
+			owesCard: false,
+		});
+		expect(body).toContain("Keep going if working.");
+		expect(body).toContain("do NOT owe a status card");
+		expect(body).not.toContain('pij report now "<what I just did>"');
+		// Lifecycle survives: not owing a card is not the same as never finishing.
+		expect(body).toContain("pij report state done");
+		// Jordan's second ruling: altitude. A prime's card, if written at all, is
+		// about its own governance — restating a stream's fact double-renders it.
+		expect(body).toContain("never a restatement of what a stream already reported");
+	});
+
+	it("still demands a card when the seat owes one, wired or defaulted", () => {
+		for (const cfg of [{ owesCard: true }, {}]) {
+			const body = buildWatchdogTurn("pij-some-pm", 1, {
+				...effectiveWatchdog(),
+				paneAvailable: true,
+				...cfg,
+			});
+			expect(body).toContain('pij report now "<what I just did>" "<what\'s next>"');
+			expect(body).not.toContain("do NOT owe a status card");
+		}
 	});
 });
 

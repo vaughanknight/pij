@@ -79,6 +79,8 @@ export interface CloseAssignmentInput {
 	readonly reason: AssignmentCloseReason;
 }
 
+// No caller exists today. A future caller inherits the denorm clearing decision
+// for assignment pointers, semanticState/stateNote, and statusPrev/Next/At/Seq.
 /** Close into a NEW record. Double-close ⇒ E-ARG naming the id; invalid
  *  clock ⇒ E-ARG naming nowMs (review 001 F7). */
 export function closeAssignment(

@@ -23,7 +23,7 @@ pij whoami [--json]        # valid confirmation only after external registration
 
 ```bash
 pij whoami [--json]                     # your stable session id
-pij adopt "$TMUX_PANE" --harness <h>    # E-NOID only; exact non-empty current-process pane
+pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}   # E-NOID only; exact non-empty current-process pane
 ```
 
 **Views**
@@ -43,7 +43,7 @@ Repeated values OR within one axis; activity, liveness, and lifecycle axes AND.
 **Structure**
 
 ```bash
-pij link <child> --parent <parent> [--json]
+pij link <child> --parent <parent> [--role <pm|worker>] [--json]
 pij link <child> --root [--json]
 ```
 
@@ -52,18 +52,20 @@ root `null`, and an absent field keeps the legacy `spawnedBy` fallback.
 `spawnedBy` remains close authorization; `link` never changes it or other
 descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
 Use adopt `--parent <id>` to establish structure at registration; spawn records
-the caller as both structural parent and close owner automatically.
+the caller as both structural parent and close owner automatically. When a
+governor gives the seat work, it also passes `--role pm|worker` on `link`; a seat
+never infers or self-declares its own role.
 
 **Spawn**
 
 ```bash
-pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] \
-          [--task "first task"] [--layout stack|right|below|window] [--branch]
+pij spawn --harness claude --model claude-sonnet-5 [--effort <level>] [--task "first task"] [--plan-id <id>] [--layout stack|right|below|window] [--branch]
 ```
 
 Flags, never positionals — `pij spawn claude` is an E-ARG; `--harness` is
 required. Effort levels are per-model (`off|minimal|low|medium|high|xhigh|max`,
 warn-don't-block): discover what a model accepts via `pij models`, never assume.
+`--plan-id` is opaque; it exports both plan env names, stamps the descriptor, and reports unresolved or non-segment ids without blocking spawn.
 
 **Focus** — immutable native-session checkpoints, spawn's sibling:
 `pij focus save <name>` (caller must be a bound pi/claude peer) ·
@@ -122,7 +124,7 @@ Tmux/pi push:
 
 ```bash
 pij whoami                                    # self resolves; E-NOID uses the tmux action in § C1
-pij adopt "$TMUX_PANE" --harness <h>           # only the exact non-empty current-process pane
+pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}   # only the exact non-empty current-process pane
 pij spawn --harness claude --model sonnet     # → pij-xxxxx
 pij tail pij-xxxxx                            # canary: footer shows expected model, no 400 (§ C2)
 pij send pij-xxxxx "reply with exactly: ok"   # round-trip lands back as [pij from pij-xxxxx]
@@ -144,6 +146,8 @@ pij inbox --wait 30000                        # prints [pij from pij-xxxxx] ok
 | `E-NOID` on send/close | id not in registry — `pij list`, or the peer already closed |
 | `E-NOID`/`E-ARG` on link/adopt parent | inspect `pij tree --global --all`; unknown/self/cyclic links and missing parents are no-write failures |
 | `E-NOID` for self in tmux control-plane mode | use only `pij adopt "$TMUX_PANE" --harness <h>` with the current process's exact non-empty pane |
+| `adopt` prints success, then `whoami`/`phonehome`/`send` still `E-NOID` | your descriptor is `lifecycle: dissolved` (check `pij node show <id> --json`); the write was silently discarded. `adopt` cannot revive a tombstone — run `pij revive <id> --attach "$TMUX_PANE"`, then VERIFY with `pij whoami && pij phonehome`. Refuses if the old pid was recycled; `--assume-dead` overrides |
+| Resuming after a reboot, a long gap, or a tmux-server restart | every pane id and pid you hold is from a dead epoch, and prior findings are stale. `pij daemon status` first, then re-derive liveness before reusing ANY earlier conclusion — see [`../prime/rituals/bootstrap.md#recovery`](../prime/rituals/bootstrap.md#recovery). `pij revive --print` (from the folder) names the seat and mutates nothing |
 | `E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`; first use auto-registers the ambient session |
 | `E-FULL` on spawn | window at split cap — free a slot or spawn from a scratch window (§ C5) |
 | Ready but 400 on first message | wrong model id — close, re-spawn with a `pij models` id (§ C2/C4) |

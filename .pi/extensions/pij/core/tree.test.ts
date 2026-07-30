@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ADOPTION_HINT, effectiveParent, planLink, projectSessionForest } from "./tree.js";
+import {
+	ADOPTION_HINT,
+	effectiveParent,
+	isUnadopted,
+	planLink,
+	projectSessionForest,
+} from "./tree.js";
 import type {
 	LivenessVerdict,
 	SessionDescriptor,
@@ -207,22 +213,31 @@ describe("projectSessionForest", () => {
 		expect(forest.roots.map((node) => node.id)).toEqual(["done-bound", "working-bound"]);
 	});
 
-	it("hides dead/dissolved history by default but exposes it via --all or explicit axes", () => {
+	it("hides dead/dissolved history by default; --all exposes the dead but never the buried", () => {
 		const sessions = [
 			entry(desc("active")),
 			entry(desc("dead"), "done", "dead"),
 			entry(desc("closed", { lifecycle: "dissolved" }), "done", "dissolved"),
 		];
 		expect(project(sessions).roots.map((node) => node.id)).toEqual(["active"]);
+		// `--all` means "include the DEAD". A dead seat is membership evidence; a
+		// dissolved one is a closed seat still on disk for its 48h post-mortem
+		// window, and emitting it renders a card with no `list` row behind it.
 		expect(project(sessions, { filters: { all: true } }).roots.map((node) => node.id)).toEqual([
 			"active",
-			"closed",
 			"dead",
 		]);
+		// Escape hatch: burial is hidden from `--all`, never made unreachable.
 		expect(
 			project(sessions, { filters: { lifecycle: ["dissolved" as SessionLifecycle] } }).roots.map(
 				(node) => node.id,
 			),
+		).toEqual(["closed"]);
+		// …and still reachable alongside `--all`, which must not veto an explicit axis.
+		expect(
+			project(sessions, {
+				filters: { all: true, lifecycle: ["dissolved" as SessionLifecycle] },
+			}).roots.map((node) => node.id),
 		).toEqual(["closed"]);
 		expect(
 			project(sessions, { filters: { liveness: ["dead"] } }).roots.map((node) => node.id),
@@ -323,6 +338,12 @@ describe("unadopted adoption-axis projection (AC-08 / WS-1)", () => {
 	it("never flags prime — parentless prime is the legal root", () => {
 		const forest = project([entry(desc("pij-prime", { prime: true }))]);
 		expect(forest.roots[0]?.unadopted).toBeUndefined();
+	});
+
+	it("still flags a designated PM when prime is not true (Phase 2 T008 non-change)", () => {
+		const pm = desc("pij-pm", { orchestrationRole: "pm" });
+		expect(isUnadopted(pm)).toBe(true);
+		expect(project([entry(pm)]).roots[0]?.unadopted).toBe(true);
 	});
 
 	it("never flags a parented child, and an orphan is a problem — NOT unadopted", () => {

@@ -1,8 +1,15 @@
 // pij-orchestration — pure verb-family grammar, dispatch, and rendering.
 
+import { SPINE_KIND_PRIME_SET, SPINE_KIND_ROLE_SET } from "../platform/types.js";
 import type { PijErrorCode, Result, SessionId } from "../types.js";
 import type { BatonErrorCode, BatonResult, BatonService, BatonView } from "./baton.js";
 import type { PrimeService } from "./prime.js";
+import type {
+	DesignationAuditInput,
+	DesignationAuditPort,
+	RoleService,
+	StoredOrchestrationRole,
+} from "./role.js";
 
 export const ORCHESTRATION_USAGE = `pij orchestration — machine-wide coordination primitives
 
@@ -17,9 +24,11 @@ USAGE
   pij orchestration prime set [<id>] [--json]
   pij orchestration prime retire [<id>] [--json]
   pij orchestration prime unset [<id>] [--json]
+  pij orchestration role set [<id>] <pm|worker> [--json]
+  pij orchestration role unset [<id>] [--json]
 
 POSTURE
-  Honor system: any peer may designate any session prime, grant, or reclaim.
+  Honor system: any peer may designate any session prime or role, grant, or reclaim.
   The lease file enforces one baton holder.
   Dead/stalled holders alert the granter but are never auto-reclaimed.`;
 
@@ -27,6 +36,19 @@ export type ParsedOrchestrationCommand =
 	| {
 			readonly primitive: "prime";
 			readonly verb: "set" | "retire" | "unset";
+			readonly id?: SessionId;
+			readonly json: boolean;
+	  }
+	| {
+			readonly primitive: "role";
+			readonly verb: "set";
+			readonly id?: SessionId;
+			readonly role: StoredOrchestrationRole;
+			readonly json: boolean;
+	  }
+	| {
+			readonly primitive: "role";
+			readonly verb: "unset";
 			readonly id?: SessionId;
 			readonly json: boolean;
 	  }
@@ -236,10 +258,65 @@ export function parseOrchestrationArgs(args: readonly string[]): ParseOrchestrat
 			},
 		};
 	}
+	if (args[0] === "role") {
+		const verb = args[1];
+		if (verb !== "set" && verb !== "unset") {
+			return argError(verb === undefined ? "expected a role verb" : `unknown role verb '${verb}'`);
+		}
+		const lexed = lex(args.slice(2));
+		if ("ok" in lexed) return lexed;
+		for (const flag of Object.keys(lexed.flags)) {
+			if (flag !== "json") return argError(`unknown flag '--${flag}' for role ${verb}`);
+		}
+		const json = lexed.flags.json === true;
+		if (verb === "set") {
+			if (lexed.positionals.length < 1 || lexed.positionals.length > 2) {
+				return argError("role set needs [<id>] <pm|worker>");
+			}
+			const id = lexed.positionals.length === 2 ? lexed.positionals[0] : undefined;
+			const role = lexed.positionals.at(-1);
+			if (role !== "pm" && role !== "worker") {
+				return argError(`unknown orchestration role '${role ?? ""}' (expected pm|worker)`);
+			}
+			if (id !== undefined && !NAME_RE.test(id)) {
+				return argError(
+					`invalid session id '${id}' (use letters, digits, dot, underscore, or hyphen)`,
+				);
+			}
+			return {
+				ok: true,
+				command: {
+					primitive: "role",
+					verb,
+					...(id === undefined ? {} : { id }),
+					role,
+					json,
+				},
+			};
+		}
+		if (lexed.positionals.length > 1) {
+			return argError("role unset takes at most one <id>");
+		}
+		const id = lexed.positionals[0];
+		if (id !== undefined && !NAME_RE.test(id)) {
+			return argError(
+				`invalid session id '${id}' (use letters, digits, dot, underscore, or hyphen)`,
+			);
+		}
+		return {
+			ok: true,
+			command: {
+				primitive: "role",
+				verb,
+				...(id === undefined ? {} : { id }),
+				json,
+			},
+		};
+	}
 	if (args[0] !== "baton") {
 		return argError(
 			args[0] === undefined
-				? "expected primitive 'baton' or 'prime'"
+				? "expected primitive 'baton', 'prime', or 'role'"
 				: `unknown orchestration primitive '${args[0]}'`,
 		);
 	}
@@ -365,6 +442,8 @@ export interface OrchestrationDeps {
 	readonly actor: string;
 	readonly currentHead: (baton: string) => string | null;
 	readonly primeService?: PrimeService;
+	readonly roleService?: RoleService;
+	readonly designationAudit?: DesignationAuditPort;
 	readonly resolveSelf?: () => Result<SessionId>;
 }
 
@@ -380,6 +459,21 @@ function resultError<T>(
 
 function success(stdout: string): OrchestrationVerbResult {
 	return { stdout, stderr: "", exitCode: 0 };
+}
+
+function auditDesignation(
+	deps: OrchestrationDeps,
+	changed: boolean,
+	input: DesignationAuditInput,
+): { readonly spineSeq?: number | null; readonly spineWarning?: string } {
+	if (!changed || !deps.designationAudit) return {};
+	const appended = deps.designationAudit.append(input);
+	return appended.ok
+		? { spineSeq: appended.value }
+		: {
+				spineSeq: null,
+				spineWarning: `${input.kind} spine event not recorded: ${appended.code}: ${appended.message}`,
+			};
 }
 
 function receiptText(state: string): string {
@@ -428,6 +522,50 @@ export function dispatchOrchestration(
 	command: ParsedOrchestrationCommand,
 	deps: OrchestrationDeps,
 ): OrchestrationVerbResult {
+	if (command.primitive === "role") {
+		const resolved = command.id
+			? ({ ok: true, value: command.id } as const)
+			: (deps.resolveSelf?.() ?? {
+					ok: false,
+					code: "E-AMBIG",
+					message: "cannot resolve self for role designation",
+				});
+		if (!resolved.ok) return resultError(resolved);
+		if (!deps.roleService) {
+			return resultError({
+				ok: false,
+				code: "E-STORE",
+				message: "role service is unavailable",
+			});
+		}
+		const result =
+			command.verb === "set"
+				? deps.roleService.set(resolved.value, command.role)
+				: deps.roleService.unset(resolved.value);
+		if (!result.ok) return resultError(result);
+		const audit = auditDesignation(deps, result.value.changed, {
+			kind: SPINE_KIND_ROLE_SET,
+			id: result.value.id,
+			...(result.value.previousRole === undefined ? {} : { prev: result.value.previousRole }),
+			...(result.value.role === undefined ? {} : { next: result.value.role }),
+		});
+		const jsonValue = {
+			id: result.value.id,
+			role: result.value.role ?? null,
+			changed: result.value.changed,
+			...audit,
+		};
+		const human = `role ${command.verb}: ${result.value.id}${
+			command.verb === "set" ? ` → ${result.value.role}` : ""
+		}`;
+		return success(
+			command.json
+				? JSON.stringify(jsonValue)
+				: audit.spineWarning === undefined
+					? human
+					: `${human}  (WARNING: ${audit.spineWarning})`,
+		);
+	}
 	if (command.primitive === "prime") {
 		const resolved = command.id
 			? ({ ok: true, value: command.id } as const)
@@ -451,16 +589,44 @@ export function dispatchOrchestration(
 					? deps.primeService.retire(resolved.value)
 					: deps.primeService.unset(resolved.value);
 		if (!result.ok) return resultError(result);
+		const audit = auditDesignation(
+			deps,
+			result.value.previousDesignation !== result.value.designation,
+			{
+				kind: SPINE_KIND_PRIME_SET,
+				id: result.value.id,
+				...(result.value.previousDesignation === undefined
+					? {}
+					: { prev: result.value.previousDesignation }),
+				...(result.value.designation === undefined ? {} : { next: result.value.designation }),
+			},
+		);
+		const auditFailure =
+			audit.spineWarning === undefined
+				? {}
+				: { spineSeq: audit.spineSeq, spineWarning: audit.spineWarning };
 		const jsonValue =
 			command.verb === "retire"
-				? result.value
+				? {
+						id: result.value.id,
+						prime: result.value.prime,
+						oldPrime: result.value.oldPrime,
+						changed: result.value.changed,
+						...auditFailure,
+					}
 				: {
 						id: result.value.id,
 						prime: result.value.prime,
 						changed: result.value.changed,
+						...auditFailure,
 					};
+		const human = `prime ${command.verb}: ${result.value.id}`;
 		return success(
-			command.json ? JSON.stringify(jsonValue) : `prime ${command.verb}: ${result.value.id}`,
+			command.json
+				? JSON.stringify(jsonValue)
+				: audit.spineWarning === undefined
+					? human
+					: `${human}  (WARNING: ${audit.spineWarning})`,
 		);
 	}
 	if (command.verb === "help") return success(ORCHESTRATION_USAGE);

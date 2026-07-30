@@ -50,6 +50,8 @@ and an encoded fix (durable). Severity guides priority.
 | D-043 | 2026-06-17 | medium | Couldn't get an agent to **see a pasted image** over a remote xterm.js→tmux terminal. Three layered causes: (1) pi's interactive TUI only attaches images via clipboard paste (`Ctrl+V` / `app.clipboard.pasteImage`) — unavailable with no local clipboard; typing/dropping `@/path.png` inserts only the *path text* (file-reference feature), never image bytes. (2) The stale APPEND_SYSTEM note claimed “interactive never attaches images (bug 0.75.5)” — but 0.79.6 added Ctrl+V paste; print-mode `pi -p @img` always attached (`cli/file-processor.ts`). (3) Even with `-p @img`, the image is dropped unless the **model advertises `input:["text","image"]`** — the default `mai-code-1-flash-internal` is text-only, so it reported “image omitted/not accessible”; `claude-opus-4.8` has vision. Plus an earlier trap: a plain `pi -p` child activated pij and collided (“Agent is already processing”). | Shell a one-shot vision child: `PI_SUBAGENT_CHILD=1 pi --no-tools --model github-copilot/claude-opus-4.8 -p @<abs> "describe…"`. | Encoded: new **`image-see`** extension registers an agent-callable `see_image` tool that does exactly this (pure argv/model/validation in `store.ts`, fs+spawn in `index.ts`), defaulting to a vision model and forcing `PI_SUBAGENT_CHILD=1`. Symlinked globally via `just link` so it loads in every pi session, any cwd. Verified live: the child described the actual git-push screenshot. Diagnosis: Perplexity + reading installed pi dist (`file-processor.ts`, `keybindings.js`) + `~/.pi/agent/models.json` `input` arrays. | encoded |
 | D-044 | 2026-07-11 | high | A stale control-plane descriptor with queued mail pointed to a vanished tmux pane. `DaemonTmux.sendText` let `send-keys` throw; the interval-level catch aborted the entire tick, left the message queued, and retried it forever. Healthy peers stayed `active` but every send remained queued. A coincident tmux window rename was initially suspected, but pane IDs remained stable and correctly bound. | Force-close stale descriptors one at a time (`pij close <id> --force`) and restart the daemon. | FX002: `sendText` now maps pane errors to `unverified`; `Daemon.tick` isolates pending/bound work per descriptor so no peer can block unrelated sessions. Tests were RED before the fix; full pij suite and a live restart/canary passed. Residual automatic stale-descriptor cleanup is tracked separately. | encoded |
 | D-045 | 2026-07-21 | medium | Real `FsChannel` pollers in Telegram bridge/index and channel cleanup tests exceed their 10–20s budgets under shared-workstation load. Repeated full gates failed on different subsets; focused assertions passed, and even one-worker runs observed 32–45s tails. | Raise only these pre-existing test budgets to 60s so the ship gate remains bounded and truthful under load. | Replace wall-clock polling with deterministic/fake-timer scheduling so the tests prove drain order and routing without filesystem or machine-load dependence. | mitigated (fake-timer fix open) |
+| D-046 | 2026-07-29 | high | Plan 074 item #35: `pij adopt` used `RegistryPort.write()`, whose `void` signature made the dissolved-tombstone refusal at `adapters/fs-registry.ts:205-211` undetectable. `RegistryPort.revive()` already returned `Result<void>` for replacing that tombstone, but adopt never called it and printed the requested pane as `(bound)` despite persisting nothing. | Use `pij revive <id> --attach "$TMUX_PANE"` for a dissolved seat. | Resolved: adopt now routes the dissolved descriptor through `revive()`, fails on its tagged error, re-reads the persisted descriptor before rendering, and derives both pane and binding state from disk. Live and pending adopt paths remain regression-locked. | resolved |
+| D-047 | 2026-07-29 | high | A permanent baseline red in `cli.integration.test.ts` — a file edited by phases 3, 4, and 6 — became attribution noise that could absorb a new failure invisibly; it was loosely misattributed to Phase 6 before its independent doc drift was traced. The same morning's pre-fix T002 exited 0 claiming the requested `%74` was bound while disk remained dissolved on `%73`, direct proof that adopt interpolated the pane from intent rather than persisted state. | Run focused tests for every changed guard, then require an exact zero-failure full-suite count instead of carrying a standing red. | Fixed the stale C1 prerequisite expectation, restored the full suite to zero failures, and mutation-locked each persisted-adopt rejection arm (`missing`, `dissolved`, `pane-mismatch`) so the success-line guard cannot silently disappear. | resolved |
 
 ## Severity
 
@@ -161,3 +163,108 @@ and an encoded fix (durable). Severity guides priority.
   publication under stale consumers. Cold review found all four; permanent
   malformed-batch, invalid-identity, stale-consumer, and real two-process
   hard-link regressions now encode the missing back-pressure.
+
+- **D-035 [medium, open] Test suite's 5s subprocess budgets assume an unloaded
+  machine** (2026-07-26). Full `just test` runs failed intermittently on a
+  16-CPU box under load average ~190 (three concurrent `copilot --yolo` peers at
+  172%/80%/78% CPU). Every failure was `Test timed out in 5000ms` — **zero
+  assertion failures** — and the failing SET changed every run (8, then 5, then
+  11 tests), which is the signature of resource starvation, not a defect.
+  **Controlled proof:** the failing files run in isolation give 317 passed / 0
+  failed; the entire suite at `npx vitest run --maxWorkers=3` gives 198 files
+  passed, exit 0, at *higher* load (171→198) than the run that failed. So the
+  fragility is vitest's default worker count multiplying against tests that each
+  shell out to a subprocess under a fixed 5s budget. **Not fixed, deliberately:**
+  `--maxWorkers=3` was a diagnostic flag only — no repo config was changed, no
+  timeout loosened, no assertion weakened. Encoding it as the default would hide
+  the fragility rather than fix it, and would slow every clean run. **How to read
+  a red gate here:** before blaming a diff, check `uptime` and whether the
+  failures are timeouts with no assertion failures; if so, re-run the failing
+  files in isolation and the suite at reduced parallelism before concluding
+  anything. **Lesson:** a gate whose result depends on ambient machine load is
+  not pinning behaviour ([[green-that-lies]] mechanism 5) — and on this box the
+  ambient load is *our own fleet*, so the gate gets less trustworthy exactly when
+  the most work is in flight. Surfaced by pij-able-damselfly during s072 fix
+  round 01; routed here by pij-reasonable-dove because `docs/` was outside the
+  worker's allowed paths.
+
+- **D-036 [medium, encoded] An occurrence count over prose is a proxy, and the
+  requirement it stands in for is almost always assertable directly**
+  (2026-07-30). `acceptance-sweep.test.ts` asserted
+  `route.match(/pij report now/g)` had length **2** — a proxy for "the route
+  documents both edges of work". It broke the moment `orchestrator.md`
+  legitimately mentioned `pij report now` a third time (relaying it while
+  supervising the fleet's cards), turning **main red** on a docs-only commit.
+  The tempting fix is bumping 2 → 3, which leaves the brittleness armed for the
+  next legitimate edit. **Encoded instead as a proxy-to-direct upgrade:** assert
+  the two required commands verbatim, per route. That is simultaneously
+  **stricter** (a route could previously satisfy the count with two wrong
+  commands) and **stable** (unrelated prose cannot trip it) — rare, since most
+  stability fixes buy calm by weakening the assertion. **Lesson:** when a test
+  counts occurrences in prose, ask what requirement the count is standing in
+  for, then assert that instead.
+
+- **D-037 [high, encoded] A comment that lied about its own code, found only by
+  testing the predicate rather than reading it** (2026-07-30). The `status-stale`
+  scope gate read `projectOrchestrationRole(descriptor) === null`, and the
+  comment beside it said workers were excluded because their card renders
+  nowhere. But a seat explicitly stamped `worker` projects to `"worker"`, not
+  `null` — so it sailed through the gate, and holding a real `statusAt` it
+  **fired**. The comment described the intent; the code implemented something
+  narrower; the two had never been checked against each other. Existing coverage
+  used an *unstamped* seat, so the gap was invisible from tests too. Found only
+  by extracting the rule into `cardCanMislead()` and writing the truth table —
+  the stamped-worker row was the one that disagreed. Encoded as a named
+  predicate plus a test that kills exactly that mutation. **Lesson:** this is the
+  [[green-that-lies]] family at the *comment* layer — a comment is an unexecuted
+  assertion, so a rule worth commenting is a rule worth extracting and pinning.
+  Reading the code beside it will not find the divergence; only executing the
+  rule will.
+
+- **D-038 [high, open] A remedy that has the shape of the bug it fixes**
+  (2026-07-30). `c0c52b0` shipped the rule *"a scoped query must say what it did
+  NOT look at"* — `pij anomalies --here/--project` now names its scope and the
+  rows it hid. But the footer is guarded by `if (anomalies.length === 0)`, so it
+  **only speaks when it found nothing at all**. A scope that returns 1 row while
+  hiding 8 prints no footer whatsoever. The fix for silent-about-what-it-missed
+  is itself silent about what it missed, one level inside its own remedy — and
+  the partial case is the *more* dangerous one, because a non-empty result reads
+  as a complete answer where an empty one at least prompts suspicion.
+  **Why this class is the worst one:** a remedy is the last place anyone
+  re-audits. It carries the credibility of having *been* the fix, so the next
+  reader treats it as settled ground and reasons *from* it rather than *about*
+  it. Three of this week's defects share the parent shape — *a tool that is
+  correct and silent about what it did not look at* — and this is the first
+  instance found **inside a fix for that same shape**. **Encoding when fixed:**
+  the footer must fire on ANY filtering, not only total emptiness; more
+  generally, when you ship a rule, immediately apply that rule to the code you
+  just wrote. **Lesson:** ask of every fix "does my remedy exhibit the defect it
+  remedies?" — it is a cheap question and this fleet keeps finding the answer is
+  yes.
+
+- **D-039 [high, open] Silence is not consent — it is absence of test**
+  (2026-07-30, spine 25526). The o-prime ruled s074's merge human-gated, then
+  accepted **seven** subsequent merges without once flagging that they bypassed
+  that gate. On the eighth, the PM cited the pattern as standing precedent and
+  merged unrelayed. Both readings of that were wrong in the same way: the prime
+  called its silence a *rule it had stopped enforcing*; the PM had read it as
+  *authority granted*. Neither was true — **seven unchallenged merges are not
+  approval, they are seven occasions on which the rule was never tested.** The
+  PM read *absence of contradiction* as *presence of evidence*.
+  **This is the third altitude of one failure shape in a single day**, and
+  seeing them together is what makes it nameable:
+  | altitude | the unexamined signal | what it was treated as |
+  |---|---|---|
+  | code (D-037) | a comment nobody executed | a description of the code |
+  | inference (INS-001) | a human's "should" nobody measured | a statement of current fact |
+  | governance (this) | a precedent nobody had challenged | a granted authority |
+  **Why governance is the worst of the three:** a prime's silence is the
+  cheapest thing in the system to mistake for a ruling — it costs nothing to
+  emit, arrives continuously, and looks identical whether it means *approved*,
+  *not looking*, or *asleep*. Code and comments at least sit still to be read.
+  **Encoding, when ruled:** the standing merge rule must be written down rather
+  than inferred from what has been tolerated — and any authority derived from
+  *"this went unchallenged N times"* should be stated as an explicit question,
+  not exercised. **Lesson:** before acting on a precedent, ask whether it was
+  ever *decided* or merely *never contested*. Surfaced by pij-unwilling-butterfly
+  against its own decision; recorded by pij-wee-albatross.

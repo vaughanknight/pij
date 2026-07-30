@@ -1,0 +1,49 @@
+
+ Working hypothesis, explicitly unproven: the RED ledger marks CL-STD-04/05 measured from raw blob totals, while the Phase 2 reader downgrades a      
+ legacy-measured lane to partial with reason source_unavailable when any shard is missing. The runner counts only strict measured.                    
+
+ Two deliberate constraints on the correction:                             
+
+ - Add the missing diagnostic. The durable-read gate must report opaque case ID, observed coverage, closed reason, and the control count before       
+ stopping. Numbers and closed enums only.                                  
+ - Do not relax the threshold. Whether partial-with-measured-values satisfies a post-prune control is my ruling to make on observed evidence, not a   
+ quiet runner assumption. Loosening it now would manufacture a GREEN.      
+
+ Everything else stays byte-identical. Nothing was written; the tracked tree is unchanged.                                                            
+
+ Spine at Seq 424.                                                                                                                                    
+
+ 2026-07-25 10:27:46  ⤵ 2.5K  ⤴ 483  💾 321K  ⏱ 2.7s  ⚡ 55.2/s            
+
+                                                                                                                                                      
+ [pij from pij-similar-krill] P063 REVISION 3 PREPARATION COMPLETE — execution remains closed; T001/T003 remain open.                                 
+                                                                                                                                                      
+ Revised packet:                                                                                                                                      
+ /Users/jordanknight/substrate/harness-engineering-worktrees/s063-systemic-telemetry-repair/scratch/p063-phase3/replay/P063-T001-born-closed-green-re 
+ play-packet.md                                                                                                                                       
+ SHA-256: f2eb0c37f1d3ee43ebcd25177988c9b0872cdc927a2b733ae61e11b107046687                                                                            
+                                                                                                                                                      
+ Revised runner:                                                                                                                                      
+ /Users/jordanknight/substrate/harness-engineering-worktrees/s063-systemic-telemetry-repair/scratch/p063-phase3/replay/run-green-replay.ts            
+ SHA-256: 278ce1034e0169bc3a5b03f1d71d7bb1da005c97855ed01e7982a1a7295694e4                                                                            
+                                                                                                                                                      
+ Exact diff summary                                                                                                                                   
+ 1. Did not relax or reinterpret the durable threshold: success still requires measured_control_count >= 2 where aggregate coverage is exactly        
+ measured.                                                                                                                                            
+ 2. Before durable_read_failed, the runner now captures all five opaque standard-Claude lanes and writes the existing ignored green-stop.json         
+ atomically. Schema: closed reason durable_read_failed; numeric measured_control_count; exactly five rows with opaque case, fixed name                
+ durable_control, numeric expected=2 and observed=count, closed coverage enum, closed source_reason enum, and closed reason.                          
+ 3. Diagnostic contains numbers and closed enums only. Opaque case regex and exactly-five-row guard remain fail-closed; self-scan, no-overwrite rule, 
+ private mode 0600, and stdout verdict+closed-reason only remain unchanged.                                                                           
+ 4. Packet documents revision 3 diagnostic purpose/schema and pins the new runner hash. Everything else is unchanged: RED ledger, 15 identities,      
+ Claude prefix bounds, fence, oracle parity, parser/output allowlists, five scenarios, threshold, timeouts, Node/Jiti/product hashes, and exact §5    
+ argv.                                                                                                                                                
+                                                                                                                                                      
+ Verification: pinned local TypeScript static check passed. Private directory still contains only .prepared; revision 3 was not executed. No corpus   
+ touch, retry, fixture/product/test edit, dispatch, commit, or push occurred.                                                                         
+                                                                                                                                                      
+
+ ⠋ Working… ⟦esc⟧                    
+
+╭── ◫ 32.4%/1M ⟲ > pij-able-amphibian > ⬢ Opus 5 (1M) > ⑂ main *5 ?2 > $229.08 ★ 61 (sub) ▶──────────────────────────────────────────────────────────╮
+╰─                                                                                                                                                  ─╯

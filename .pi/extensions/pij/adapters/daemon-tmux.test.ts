@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	classifySendFailure,
 	composerHasTextTail,
 	composerIsEmpty,
 	composerPending,
@@ -246,7 +247,13 @@ describe("composerPending — submit verification (the cause-independent retry g
 	}
 
 	describe("DaemonTmux.sendText — pre-Enter recovery and at-most-once submission", () => {
-		it("returns unverified instead of throwing when the target pane disappeared", () => {
+		// plan 071 D7 — this used to assert `unverified`. That was the bug: the
+		// caller consumes on `unverified` (the payload was typed, so replay could
+		// duplicate a turn), but a pane that DISAPPEARED never received anything, so
+		// consuming destroyed the only durable copy of an undelivered message.
+		// The outcome is now `failed`, which retries. Still no throw — one dead pane
+		// must never abort the daemon's delivery tick.
+		it("returns GONE (not unverified) instead of throwing when the target pane disappeared", () => {
 			const adapter = new DaemonTmux({
 				runner: () => {
 					throw new Error("can't find pane: %42");
@@ -254,7 +261,23 @@ describe("composerPending — submit verification (the cause-independent retry g
 				sleep: () => undefined,
 			});
 
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("gone");
+		});
+
+		// The inverse wiring: tmux could not be REACHED, so it never answered. That
+		// must stay retryable — `gone` here would unbind every seat in the fleet the
+		// moment the server blinked. (This is the branch CI was silently taking.)
+		it("returns FAILED (not gone) when the tmux server itself is unreachable", () => {
+			const adapter = new DaemonTmux({
+				runner: () => {
+					throw new Error(
+						"error connecting to /private/tmp/tmux-501/default (No such file or directory)",
+					);
+				},
+				sleep: () => undefined,
+			});
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("failed");
 		});
 
 		it("(a) waits through redraw lag and types the payload exactly once", () => {
@@ -275,8 +298,8 @@ describe("composerPending — submit verification (the cause-independent retry g
 
 			expect(submissionConfirmed(STUCK_PANE, AMBIGUOUS_EMPTY_AFTER_ENTER, SENT)).toBe(false);
 			// The payload WAS typed but its submission was never positively confirmed →
-			// the honest `injected-unverified`, never `delivered`.
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("injected-unverified");
+			// the honest `unverified`, never `delivered`.
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
 			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
 		});
 
@@ -315,7 +338,7 @@ describe("composerPending — submit verification (the cause-independent retry g
 			const tmux = scriptedTmux(repeatedCapture(EMPTY_PANE, 90));
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("injected-unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
 			const typed = indexesOf(tmux.calls, typeArgv());
 			expect(typed).toHaveLength(3);
 			for (const index of typed.slice(1)) expect(tmux.calls[index - 1]).toEqual(clearArgv());
@@ -325,7 +348,7 @@ describe("composerPending — submit verification (the cause-independent retry g
 			const tmux = scriptedTmux(repeatedCapture(STUCK_PANE, 21));
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
-			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("injected-unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "copilot")).toBe("unverified");
 			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
 			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
 			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
@@ -428,11 +451,11 @@ describe("composerPending — submit verification (the cause-independent retry g
 			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
 		});
 
-		it("exhausted — payload stays stranded → injected-unverified, 3 Enters, never delivered", () => {
+		it("exhausted — payload stays stranded → unverified, 3 Enters, never delivered", () => {
 			const tmux = scriptedTmux(repeatedCapture(CLAUDE_PENDING_PANE, 30));
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("injected-unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
 			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
 			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
 			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
@@ -443,16 +466,16 @@ describe("composerPending — submit verification (the cause-independent retry g
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
 			// No positive confirmation, but the payload left the composer (only the dim
-			// hint remains) → honest injected-unverified with a SINGLE Enter, not three.
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("injected-unverified");
+			// hint remains) → honest unverified with a SINGLE Enter, not three.
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
 			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1);
 		});
 
-		it("empty composer, no busy — ambiguous submit → injected-unverified, at-most-once", () => {
+		it("empty composer, no busy — ambiguous submit → unverified, at-most-once", () => {
 			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, ...repeatedCapture(CLAUDE_EMPTY_PANE, 30)]);
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
 
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("injected-unverified");
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
 			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1); // no speculative replay
 		});
 	});
@@ -482,5 +505,45 @@ describe("composerPending — submit verification (the cause-independent retry g
 	it("composerRegion extracts the box between the last two rules", () => {
 		expect(composerRegion(STUCK_PANE)).toContain("pij delivery diagnostic");
 		expect(composerRegion(EMPTY_PANE).replace(/[❯\s]/g, "")).toBe("");
+	});
+});
+
+describe("sendText outcome vocabulary (plan 071 D7)", () => {
+	// The durability fix hinges entirely on this distinction. `unverified` means
+	// "the payload WAS typed, we just could not confirm submission" — replaying it
+	// could duplicate an accepted turn, so the caller consumes the durable copy.
+	// A pre-submission THROW means nothing landed, so consuming destroys the only
+	// copy of an undelivered message. Collapsing the two is the 2026-07-25 loss.
+	it("reports a send to a nonexistent pane as `gone`, never `unverified` or `failed`", () => {
+		// tmux ANSWERED — the server is up and there is no such pane. Proven on the
+		// classifier so the assertion cannot silently degrade into the no-server
+		// branch on a machine with no tmux server (CI). The adapter wiring for this
+		// branch is pinned separately by the injected-runner tests above.
+		const outcome = classifySendFailure("can't find pane: %99999999");
+
+		expect(outcome).toBe("gone");
+		// The distinction is load-bearing: `unverified` would make the caller
+		// consume the message (see core/daemon/loop.ts drainTmuxInbox).
+		expect(outcome).not.toBe("unverified");
+		// And NOT `failed` either: `failed` means "retry me", which against a pane
+		// that does not exist is an infinite loop — and worse, tmux re-issues pane
+		// ids from `%0`, so the retry eventually lands in a STRANGER's pane (#34).
+		expect(outcome).not.toBe("failed");
+	});
+
+	// The inverse, and the reason the test above is no longer run through a live
+	// adapter: with NO tmux server, tmux cannot answer at all. That is absence of
+	// evidence, not evidence of absence — the same line cli.ts's `observePane`
+	// holds. Calling it `gone` would unbind the whole fleet on one socket blip.
+	it.each([
+		"error connecting to /private/tmp/tmux-501/default (No such file or directory)",
+		"no server running on /tmp/tmux-1001/default",
+	])("treats an unreachable tmux server as `failed`, never `gone` (%s)", (detail) => {
+		expect(classifySendFailure(detail)).toBe("failed");
+	});
+
+	it("never throws out of sendText — one dead pane must not abort the tick", () => {
+		const adapter = new DaemonTmux();
+		expect(() => adapter.sendText("%99999999", "x")).not.toThrow();
 	});
 });

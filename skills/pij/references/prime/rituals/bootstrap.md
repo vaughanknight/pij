@@ -5,7 +5,11 @@
 > with platform-store verbs. The prose scaffold below remains authoritative for
 > repos already governed in prose (until their prime self-migrates).
 
-Use this only when the consuming repo has no `government/`. It is the day-zero
+Use this only when the store is SILENT for this repo — no current prime in
+unscoped `pij list --prime --json`, no project in `pij project list`. Absence of
+a `government/` directory is corroboration, never the trigger: store-native
+governance is the ruled default ([`store-native.md`](./store-native.md)), so a
+fully-governed repo legitimately has none. It is the day-zero
 ritual; role operation belongs in the orient files and protocol. Preconditions:
 a git repo, tmux, `pij`, the ambient `harness` CLI, one session for the
 `o-prime` window (registered via `pij phonehome` or `pij adopt`), and a human
@@ -18,9 +22,20 @@ ready to name the work — the seat never invents portfolio items.
    [`kickoff.md`](./kickoff.md#canary).
 3. Run the orient's boot audit: channel, dead descriptors, inherited government
    if any, and the human status channel.
-4. Persist the proved seat: `pij orchestration prime set --json`, then
-   confirm the id in `pij list --prime --here --json`. An ambiguous self is a
-   seating failure, never permission to target `"operator"`.
+4. **Refuse to seat over a living prime.** Before writing, run unscoped
+   `pij list --prime --json` and `pij project list`. If any current prime
+   reconciles to this repo's project, STOP and escalate to the human — you are
+   not the bootstrapper. An unscoped hit for a *different* repo never blocks.
+   `prime set` is honor-system: it accepts anyone, so `prime:true` proves
+   assertion, not authority.
+5. Persist the proved seat: `pij orchestration prime set --json`, then
+   confirm the id in **unscoped** `pij list --prime --json`. An ambiguous self is
+   a seating failure, never permission to target `"operator"`.
+
+> Confirm UNSCOPED, deliberately. Verifying with `--here` re-reads the same
+> narrow view that let you conclude "no prime" — so a usurping write confirms
+> itself green while the real prime sits one folder away. A check that shares the
+> failure mode of the decision it audits is not a check.
 
 ## 2. Derive the per-repo contract
 

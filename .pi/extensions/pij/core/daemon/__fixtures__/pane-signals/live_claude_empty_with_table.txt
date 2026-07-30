@@ -1,0 +1,49 @@
+  One thing is waiting on you: the live walk. Everything else is done or parked.
+
+  What got done this session                                                    
+                                                                                
+  Catherine's wave-2 review (44 comments on #119) went from raw feedback → indexed → ruled → built and verified, in one arc:
+                            
+  - You ruled 5 decisions: X1 (supplier-onboarding pivot, reversing A1), X3 (customer liable but OSK absorbs first), X4 (self-managed pays full price
+  at checkout), plus PD-ORG (auto-provision the billing org — "auto Catherine"). X2 terminology + X5 consent are apply-grade, no ruling needed.
+  - Phase 1 is built + o-prime verified: "No" → auto-approve + auto-link + auto-provision org, zero staff. "Yes/Unsure" → hold + email Catherine.    
+  Anomaly valve catches gamed "No" answers. Admin drops to exceptions-only. 1437/1437 tests, codex APPROVE, and I checked the money rails on disk    
+  myself — approval.ts untouched, tier CHECK extended not bypassed, TOCTOU fixed at the DB.                                                      
+  - Two false alarms cleaned up: s016's "stall" was healthy resting (lease untouched — it's the correct single-prober); the finished 019 review seat
+  is closed and will respawn fresh at thaw.                                                                                                      
+                                                                                                                                                     
+  The board                                                                                                                                           
+                                                                                                                                                      
+  ┌─────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐ 
+  │                         │                                                                                                                      │  
+  ├─────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ main                    │ 6e267cd — untouched. Nothing merged.                                                                                 │  
+  ├─────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤  
+  │ feat/016-onboarding-fix │ 5131de8, 110 commits ahead of main. The whole onboarding mission lives here.                                         │ 
+  ├─────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Next up                 │ Phase 2 — the surface/copy revision (Catherine's vocabulary, X3/X4 disclosures, X5 consent), driven by your walk     │
+  │                         │ findings.                                                                                                            │  
+  ├─────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Parked                  │ 019 npm hardening (post-onboarding), s014 E6, s-cath-intake — all behind the freeze.                                 │  
+  └─────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                                                                                                     
+  What needs you                                                                                                                                    
+                                                                                                                                                    
+  1. The live walk — say the word and s016 brings the dev store up (~2 min, it's down on purpose because of the reaper). Walk the new auto-approve  
+  behaviour; your findings shape Phase 2.                                                                                                           
+  2. Still open from earlier, no rush: want a draft PR on that 110-commit branch as a CI/review surface? Right now there's no PR at all — the real one
+  opens at the convergence merge.                                                                                                                   
+                                                                                                                                                      
+  Two loops to remember for later: Catherine still has to confirm X1/X3 on #119 before ship (gate is wired), and the absorb-then-recover billing      
+  mechanic is banked as an E5 epic candidate, not built.                                                                                              
+                                                                                                                                                     
+✻ Cogitated for 38s                                                                                                                                  
+                                                                                                                                                      
+※ recap: Goal is getting onboarding right; Catherine's #119 review is now ruled and Phase 1 is built and verified on the branch, with nothing merged 
+  to main. Next action: say the word and s016 brings the dev store up for your live walk. (disable recaps in /config)                                
+                                                                                                                                                     
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── oprime ──
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  18% alt osk-split-billing ⎇ main ⛓ pij-1ca01u5 • Opus 5 • high • 180k/1.0M • 3% ↻14:30
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

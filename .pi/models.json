@@ -11,6 +11,19 @@
 					"name": "Claude Opus 4.8-1M (Copilot)",
 					"contextWindow": 1000000,
 					"maxTokens": 64000
+				},
+				"claude-opus-5": {
+					"name": "Claude Opus 5 1M (Copilot)",
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"low": "low",
+						"medium": "medium",
+						"high": "high",
+						"xhigh": "xhigh",
+						"max": "max"
+					},
+					"contextWindow": 1000000,
+					"maxTokens": 64000
 				}
 			},
 			"models": [
@@ -49,6 +62,54 @@
 					"reasoning": true,
 					"thinkingLevelMap": {
 						"xhigh": "xhigh"
+					},
+					"input": ["text", "image"],
+					"contextWindow": 1000000,
+					"maxTokens": 64000
+				},
+				{
+					"id": "claude-opus-5",
+					"name": "Claude Opus 5 1M (Copilot)",
+					"api": "anthropic-messages",
+					"baseUrl": "https://api.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"low": "low",
+						"medium": "medium",
+						"high": "high",
+						"xhigh": "xhigh",
+						"max": "max"
+					},
+					"input": ["text", "image"],
+					"compat": {
+						"forceAdaptiveThinking": true
+					},
+					"contextWindow": 1000000,
+					"maxTokens": 64000
+				},
+				{
+					"id": "gemini-3.6-flash",
+					"name": "Gemini 3.6 Flash (Copilot)",
+					"api": "openai-completions",
+					"baseUrl": "https://api.githubcopilot.com",
+					"headers": {
+						"User-Agent": "GitHubCopilotChat/0.35.0",
+						"Editor-Version": "vscode/1.107.0",
+						"Editor-Plugin-Version": "copilot-chat/0.35.0",
+						"Copilot-Integration-Id": "vscode-chat"
+					},
+					"reasoning": true,
+					"thinkingLevelMap": {
+						"minimal": "minimal",
+						"low": "low",
+						"medium": "medium",
+						"high": "high"
 					},
 					"input": ["text", "image"],
 					"contextWindow": 1000000,

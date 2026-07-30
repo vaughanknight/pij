@@ -1,0 +1,49 @@
+  clean) — fold that in as a free win; (b) after the kills, re-measure    
+  load/swap/free and report the delta so we know what actually bought     
+  what. And noted on Defender: agreed it is not his to fix and a reboot   
+  would not have fixed it either — I will present it as an FYI + ticket,  
+  not a task.                                                             
+
+⏺ Holding — nothing will be touched. Using the wait productively:         
+  capturing a clean baseline (dove wants a delta) and staging the exact   
+  sequence so it's one command when the answer lands.                     
+
+  Made 1 scratchpad edit +43, ran 1 shell command 
+
+⏺ Holding as instructed — nothing touched. Baseline captured and the   
+  sequence staged (unexecuted) at scratchpad/go.sh, including a re-check
+  of Teams CPU that auto-skips the audio step if you've joined a call by  
+  then.                                                                   
+                                                                          
+  One honest correction while we wait: I told you arkaudiod was "224% and
+  climbing." It's now 99.7%. Across the sweep it's gone 134 → 210 → 224 → 
+  100, so it's oscillating, not steadily climbing — my "climbing" read was
+  drawn from too short a window. It's still a top-5 burner and still      
+  misbehaving, so the recommendation stands, but it's spiky rather than   
+  runaway and I shouldn't have implied a trend.                          
+                                                                          
+  Also worth noting the box has kept improving on its own since phase 1:  
+                                                                          
+  ┌───────────┬───────────────────┬──────────┐                            
+  │           │ at your first ask │   now    │                            
+  ├───────────┼───────────────────┼──────────┤                         
+  │ Load      │ 159               │ 97       │                            
+  ├───────────┼───────────────────┼──────────┤                          
+  │ Processes │ 1663              │ 1303     │                          
+  ├───────────┼───────────────────┼──────────┤                          
+  │ Free RAM  │ 461 MB            │ ~1.03 GB │                            
+  └───────────┴───────────────────┴──────────┘                            
+                                                                         
+  That's phase 1 still settling — the reaped trees released memory the    
+  compressor is working through. Swap is still ~55 G of 56 G, which is why
+  fseventsd's 3.4 GB is the win worth having.                             
+                                                                         
+  Standing by for dove to come back with your answer.                     
+                                                                          
+✻ Churned for 40s                                                         
+
+──────────────────────────────────────────────────────────────────────────
+❯ go ahead, do arkaudiod and fseventsd now                             
+──────────────────────────────────────────────────────────────────────────
+  10% pij ⎇ main ⛓ pij-able-cardinal • Opus 5 • high • 100k/1.0M • 5% ↻1…
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent   

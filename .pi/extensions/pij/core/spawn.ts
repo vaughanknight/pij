@@ -10,11 +10,12 @@
 //     child ever reads PIJ_PANE_ID (e.g. for self-close) or if it is
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
-import { writeMerged } from "./daemon/loop.js";
+import { resolve } from "node:path";
 import { normalizeModelQuery } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
 import type { RegistryPort } from "./ports.js";
+import { persistDaemonWrite } from "./registry-write.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
 import { err, ok, type Result } from "./types.js";
 
@@ -114,12 +115,13 @@ export interface SpawnInput {
 	 *  oh-my-pi and prepends its headless permission-bypass flag; everything else
 	 *  (env threading, --model, self-register) is identical because omp IS pi. */
 	bin?: PiFamilyBin;
-	/** Optional thinking/reasoning effort (#3). For pi it rides the model id as a
-	 *  `:<level>` suffix (e.g. `github-copilot/gpt-5.5:xhigh`); a no-op without a
-	 *  model. Unset ⇒ nothing emitted (the child uses its boot default). */
+	/** Optional thinking/reasoning effort (#3). Pi encodes it as a per-model
+	 * `:<level>` suffix; OMP takes `--thinking <level>`. Unset emits neither. */
 	effort?: string;
 	/** Optional first task; delivered via PIJ_SPAWN_TASK env (finding 01). */
 	task?: string;
+	/** Explicit opaque plan identifier for the spawned seat. */
+	planId?: string;
 	/** Correlation token — becomes PIJ_SPAWN_ID. */
 	spawnId: string;
 	/** The spawner's pij id — becomes PIJ_ANNOUNCE_TO. */
@@ -166,22 +168,22 @@ export interface ReadyPayload {
  */
 export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 	const args: string[] = [];
-	// pi sets effort via a per-model `:<level>` suffix on the model id (#3). It
-	// requires a model to attach to — with no model there's nothing to suffix, so
-	// effort is a silent no-op (validation warns separately). Unset ⇒ plain id.
-	const piModel =
-		input.model !== undefined && input.effort !== undefined
+	// Pi encodes effort in the model selector. OMP exposes a separate --thinking
+	// flag and rejects a suffixed selector as an unknown model.
+	const modelArg =
+		input.model !== undefined && input.effort !== undefined && input.bin !== "omp"
 			? `${input.model}:${input.effort}`
 			: input.model;
-	// omp (oh-my-pi) has no human at the daemon-driven pane to answer its approval
-	// prompts (interactive omp defaults to "bypass permissions on / shift+tab"), so
-	// mirror the claude/copilot/codex posture and skip approvals up front. pi takes
-	// no such flag today, so the default path stays byte-unchanged.
+	// OMP has no human at the daemon-driven pane to answer approval prompts, so
+	// mirror the other headless harnesses and skip approvals up front.
 	if (input.bin === "omp") {
 		args.push("--auto-approve");
 	}
-	if (piModel !== undefined) {
-		args.push("--model", piModel);
+	if (modelArg !== undefined) {
+		args.push("--model", modelArg);
+	}
+	if (input.bin === "omp" && input.effort !== undefined) {
+		args.push("--thinking", input.effort);
 	}
 
 	const env: Record<string, string> = {
@@ -194,12 +196,14 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		PIJ_SPAWN_ID: input.spawnId,
 		PIJ_ROLE: input.role,
 	};
+	// Pi and OMP share harness:"pi" but not their native session stores/resume argv.
+	// Carry the executable through boot so the descriptor can revive unambiguously.
+	env.PIJ_PI_BIN = input.bin ?? "pi";
 
-	// §H2: thread model via env so the child boot() reads PIJ_SPAWN_MODEL
-	// and includes it in the ready-ping body — same value as --model argv (incl.
-	// any `:<effort>` suffix).
-	if (piModel !== undefined) {
-		env.PIJ_SPAWN_MODEL = piModel;
+	// Thread the effective model selector through the ready ping. OMP keeps the
+	// model id unsuffixed and reports effort separately.
+	if (modelArg !== undefined) {
+		env.PIJ_SPAWN_MODEL = modelArg;
 	}
 	if (input.provider !== undefined) {
 		env.PIJ_SPAWN_PROVIDER = input.provider;
@@ -210,6 +214,10 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;
+	}
+	if (input.planId !== undefined) {
+		env.HARNESS_PLAN_ID = input.planId;
+		env.PIJ_PLAN_ID = input.planId;
 	}
 
 	if (input.paneId !== undefined) {
@@ -313,6 +321,8 @@ export interface ControlSpawnInput {
 	readonly effort?: string;
 	/** Optional first task — delivered later via the init inject, not argv. */
 	readonly task?: string;
+	/** Explicit opaque plan identifier for the spawned seat. */
+	readonly planId?: string;
 	/** The spawner's pij id — becomes PIJ_PARENT_ID so the child knows who
 	 *  spawned it (uniform with the pi path's PIJ_PARENT_ID). Omitted from env
 	 *  when the caller can't be resolved. */
@@ -371,6 +381,8 @@ export interface PendingDescriptorInput {
 	readonly provider?: string;
 	/** Reasoning effort pinned on the spawn command, persisted as registry truth. */
 	readonly effort?: string;
+	/** Explicit opaque plan identifier attested at spawn. */
+	readonly planId?: string;
 }
 
 /** Stable input for the registry-owned pre-bind memorable-id reservation. */
@@ -383,9 +395,9 @@ export function spawnIdentitySeed(spawnToken: string, pid: number): string {
  * pij-id rides PIJ_SESSION_ID (so `pij phonehome` from inside binds to it) and
  * the harness kind rides PIJ_HARNESS. argv stays an array (AC-09: no shell).
  *
- * - `claude`:  `claude --dangerously-skip-permissions [--model <model>]`.
- * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`.
- * - `codex`:   `codex --dangerously-bypass-approvals-and-sandbox [--model <model>]`.
+ * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`
+ *   and, when a model is pinned, `--context long_context` so the requested
+ *   catalog window is selected rather than Copilot's smaller default tier.
  *
  * The blanket-permission flag (`--dangerously-skip-permissions` for claude,
  * `--yolo` for copilot — the latter = --allow-all-tools/paths/urls,
@@ -411,6 +423,17 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 				"--session-id",
 				input.forkSessionId,
 			);
+		} else if (input.forkSessionId !== undefined) {
+			// s071 D4 — a PLAIN claude spawn now pins its id too. `claude --session-id
+			// <uuid>` is supported standalone (not just with --fork-session), so there
+			// is no reason to leave the non-branched path on transcript discovery.
+			//
+			// Discovery was the root of the never-bind wedge: it identifies a session
+			// by "the transcript path that wasn't there before", so two claude peers
+			// booting into ONE folder produce two new paths and discovery is
+			// permanently ambiguous. Pinning the id removes the race rather than
+			// recovering from it.
+			args.push("--session-id", input.forkSessionId);
 		}
 	} else if (input.harness === "copilot") {
 		args.push("--yolo");
@@ -426,6 +449,9 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	}
 	if (input.model !== undefined) {
 		args.push("--model", input.model);
+	}
+	if (input.harness === "copilot" && input.model !== undefined) {
+		args.push("--context", "long_context");
 	}
 	// Effort translation (#3) — pinned per harness (flag drift is the key risk):
 	//  • claude / copilot accept `--effort <level>` (verified in their --help).
@@ -451,6 +477,10 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	}
 	if (input.task !== undefined) {
 		env.PIJ_SPAWN_TASK = input.task;
+	}
+	if (input.planId !== undefined) {
+		env.HARNESS_PLAN_ID = input.planId;
+		env.PIJ_PLAN_ID = input.planId;
 	}
 	const cmd = input.harness === "claude" ? "claude" : input.harness;
 	return { cmd, args, env };
@@ -483,6 +513,7 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 				? { boundProvider: "github-copilot" }
 				: {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
+		...(input.planId !== undefined ? { planId: input.planId } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
 		...(input.gitCommonDir !== undefined ? { gitCommonDir: input.gitCommonDir } : {}),
@@ -502,6 +533,8 @@ export interface SpawnOutputInput {
 	readonly lifecycle?: SessionLifecycle;
 	readonly model?: string;
 	readonly effort?: string;
+	readonly planId?: string;
+	readonly warnings?: readonly string[];
 	readonly branchedFrom?: string;
 	readonly note?: string;
 }
@@ -514,6 +547,8 @@ export function buildSpawnOutput(input: SpawnOutputInput): {
 	readonly lifecycle: SessionLifecycle | null;
 	readonly model: string | null;
 	readonly effort: string | null;
+	readonly planId: string | null;
+	readonly warnings: readonly string[];
 	readonly branchedFrom?: string;
 	readonly note?: string;
 } {
@@ -524,9 +559,19 @@ export function buildSpawnOutput(input: SpawnOutputInput): {
 		lifecycle: input.lifecycle ?? null,
 		model: input.model ?? null,
 		effort: input.effort ?? null,
+		planId: input.planId ?? null,
+		warnings: input.warnings ?? [],
 		...(input.branchedFrom !== undefined ? { branchedFrom: input.branchedFrom } : {}),
 		...(input.note !== undefined ? { note: input.note } : {}),
 	};
+}
+
+export function renderSpawnReceipt(
+	output: ReturnType<typeof buildSpawnOutput>,
+	humanLine: string,
+	json: boolean,
+): string {
+	return json ? JSON.stringify(output) : [humanLine, ...output.warnings].join("\n");
 }
 
 /** A parsed `pij compact-self [--pane %N] [--delay-ms N] [instruction…]` request. */
@@ -574,7 +619,7 @@ export function parseCompactSelfArgs(
  *  compacts (a mid-compact injection is eaten by the harness's fresh-context
  *  reset). No id / unknown id → null and nothing written — an unregistered
  *  pane still compacts exactly as before. Persists via the daemon merge law
- *  (writeMerged) so a concurrent daemon tick write is never clobbered. */
+ *  (persistDaemonWrite) so a concurrent daemon tick write is never clobbered. */
 export function markCompactingSelf(
 	registry: RegistryPort,
 	selfId: SessionId | undefined,
@@ -583,7 +628,7 @@ export function markCompactingSelf(
 	if (selfId === undefined) return null;
 	const descriptor = registry.read(selfId);
 	if (!descriptor) return null;
-	return writeMerged(registry, { ...descriptor, compactingAt: nowIso });
+	return persistDaemonWrite(registry, { ...descriptor, compactingAt: nowIso });
 }
 
 /** The side stack's column width as a % of the window (~1/3 — the orchestrator
@@ -660,6 +705,8 @@ export interface SpawnRequest {
 	readonly harness: HarnessKind;
 	readonly task?: string;
 	readonly model?: string;
+	/** Explicit opaque plan identifier; never inferred from cwd or project metadata. */
+	readonly planId?: string;
 	/** Which pi-family binary to launch on the `--harness pi` path (`pi` | `omp`).
 	 *  Unset ⇒ the default `pi`. Only valid with `--harness pi`; `omp` additionally
 	 *  rejects `--branch` (omp has no `--session-id`, so focus-fork can't be wired). */
@@ -730,6 +777,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	let harness: HarnessKind | undefined;
 	let task: string | undefined;
 	let model: string | undefined;
+	let planId: string | undefined;
 	let effort: string | undefined;
 	let layout: SpawnLayout | undefined;
 	let bin: PiFamilyBin | undefined;
@@ -768,6 +816,9 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 			layout = value;
 		} else if (key === "model") {
 			model = value;
+		} else if (key === "plan-id") {
+			if (value.trim() === "") return err("E-ARG", "--plan-id needs a non-empty id");
+			planId = value;
 		} else if (key === "effort") {
 			effort = value;
 		} else if (key === "bin") {
@@ -781,7 +832,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 	if (!harness)
 		return err(
 			"E-ARG",
-			"usage: pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--task …] [--model …] [--effort …]",
+			"usage: pij spawn --harness pi|claude|copilot|codex [--bin pi|omp] [--task …] [--model …] [--effort …] [--plan-id <id>]",
 		);
 	// `--bin` selects the pi-family BINARY, so it only makes sense on the pi path
 	// (claude/copilot/codex are their own binaries with their own bind machinery).
@@ -799,6 +850,7 @@ export function parseSpawnArgs(argv: readonly string[]): Result<SpawnRequest> {
 		harness,
 		task,
 		model,
+		planId,
 		effort,
 		layout,
 		...(bin !== undefined ? { bin } : {}),
@@ -1020,6 +1072,26 @@ export function buildSpawnWarning(
 	if (!known.some((e) => e.verified)) return null;
 	const suggestion = result.suggestion ? ` (did you mean '${result.suggestion}'?)` : "";
 	return `warning: unknown model '${model}'${suggestion} — spawn continues; confirm the id is correct`;
+}
+
+export function buildPlanIdWarning(
+	planId: string | undefined,
+	cwd: string,
+	isDirectory: (path: string) => boolean,
+): string | null {
+	if (planId === undefined) return null;
+	if (
+		planId.trim() === "" ||
+		planId === "." ||
+		planId === ".." ||
+		planId.includes("/") ||
+		planId.includes("\\")
+	) {
+		return `warning: plan id '${planId}' was not checked against docs/plans (not a simple path segment) — spawn continues`;
+	}
+	const planPath = resolve(cwd, "docs", "plans", planId);
+	if (isDirectory(planPath)) return null;
+	return `warning: plan id '${planId}' does not resolve to '${planPath}' — spawn continues`;
 }
 
 /**

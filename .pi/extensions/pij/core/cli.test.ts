@@ -12,7 +12,7 @@ import {
 	FakeRegistry,
 	FakeSpineLog,
 } from "../adapters/fakes.js";
-import type { CliDeps, CliResult } from "./cli.js";
+import type { CliDeps, CliResult, WatchdogCliStore } from "./cli.js";
 import {
 	applyWaitReceipt,
 	applyWaitReceiptSources,
@@ -33,7 +33,10 @@ import {
 	type PijMessage,
 	type ReceiptState,
 	type Result,
+	SEMANTIC_STATES,
+	type SemanticState,
 	type SessionDescriptor,
+	type WatchdogSidecar,
 } from "./types.js";
 
 const T = Date.parse("2026-06-16T12:00:00.000Z");
@@ -90,6 +93,26 @@ function parsed(argv: readonly string[]) {
 	const result = parseArgs(argv);
 	if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
 	return result.value;
+}
+
+function memoryWatchdogStore(
+	id: string,
+	sidecar: WatchdogSidecar,
+): WatchdogCliStore & {
+	readonly sidecars: Map<string, WatchdogSidecar>;
+	readonly writes: WatchdogSidecar[];
+} {
+	const sidecars = new Map([[id, sidecar]]);
+	const writes: WatchdogSidecar[] = [];
+	return {
+		sidecars,
+		writes,
+		read: (target) => sidecars.get(target),
+		write: (target, next) => {
+			sidecars.set(target, next);
+			writes.push(next);
+		},
+	};
 }
 
 describe("parseArgs", () => {
@@ -391,6 +414,246 @@ describe("dispatch whoami / list", () => {
 		expect(human.stdout).toContain("xhigh");
 	});
 
+	// ── plan 071 D3 addendum: sending is activity on the SENDER's axis ───────
+	it("send refreshes the SENDER's lastEventAt — a send-only orchestrator is not quiet", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1", lastEventAt: stale }),
+				desc({ id: "w3", lifecycle: "bound", state: "idle" }),
+			],
+			alive: [100],
+		});
+
+		expect(d.registry.read("a1")?.lastEventAt).toBe(stale);
+		dispatch({ verb: "send", to: "w3", text: "do the thing", json: true }, d);
+
+		expect(d.registry.read("a1")?.lastEventAt).toBe(new Date(T).toISOString());
+	});
+
+	// CONTROL: a REFUSED send stamps nothing — otherwise the stamp would be a
+	// liveness lie of its own, keeping a peer "active" by failing to message.
+	it("control — a send that never delivers does not refresh the sender's activity", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		const d = deps({ self: "a1", descs: [desc({ id: "a1", lastEventAt: stale })], alive: [100] });
+
+		const r = dispatch({ verb: "send", to: "does-not-exist", text: "hi", json: true }, d);
+
+		expect(r.exitCode).not.toBe(0);
+		expect(d.registry.read("a1")?.lastEventAt).toBe(stale);
+	});
+
+	it("a broadcast refreshes the sender's activity too", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1", lastEventAt: stale }),
+				desc({ id: "w3", lifecycle: "bound" }),
+				desc({ id: "z9", lifecycle: "bound" }),
+			],
+			alive: [100],
+		});
+
+		dispatch(
+			{
+				verb: "send",
+				to: "w3",
+				targets: ["w3", "z9"],
+				broadcast: true,
+				text: "same message",
+				json: true,
+			},
+			d,
+		);
+
+		expect(d.registry.read("a1")?.lastEventAt).toBe(new Date(T).toISOString());
+	});
+
+	// s070/#47 lost-update family, applied to this CLI-side write: a closing seat
+	// must never have a pre-close snapshot replayed over its close fields.
+	it("does NOT stamp sender activity over a seat that is closing or terminal", () => {
+		const stale = new Date(T - 10 * 60_000).toISOString();
+		for (const closing of [
+			{ closeIntent: { actor: "pij-boss", kind: "once-close" as const, requestedAt: stale } },
+			{
+				terminal: {
+					disposition: "requested" as const,
+					observedAt: stale,
+					evidence: "pane-missing" as const,
+				},
+			},
+			{ lifecycle: "failed" as const },
+		]) {
+			const d = deps({
+				self: "a1",
+				descs: [
+					desc({ id: "a1", lastEventAt: stale, ...closing }),
+					desc({ id: "w3", lifecycle: "bound" }),
+				],
+				alive: [100],
+			});
+
+			dispatch({ verb: "send", to: "w3", text: "hi", json: true }, d);
+
+			expect(d.registry.read("a1")?.lastEventAt).toBe(stale);
+		}
+	});
+
+	// ── plan 071 D3: honest receipts + DEGRADED surfacing ────────────────────
+	it("send to a WEDGED (long-pending) peer returns blocked, never a cheerful queued", () => {
+		const wedged = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 16 * 60_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), wedged], alive: [100] });
+
+		const r = dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d);
+		const parsed = JSON.parse(r.stdout) as { receipt: string; reason?: string };
+		expect(parsed.receipt).toBe("blocked");
+		expect(parsed.reason).toBe("never-bound");
+
+		const human = dispatch({ verb: "send", to: "w3", text: "hello" }, d);
+		expect(human.stdout).toContain("BLOCKED");
+		expect(human.stdout).toContain("never bound");
+	});
+
+	// CONTROL: byte-identical setup, only startedAt is recent — a genuinely
+	// still-binding peer must still queue, or `pij spawn --task` breaks.
+	it("control — a FRESHLY spawned pending peer still queues, with reason unbound", () => {
+		const fresh = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 5_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), fresh], alive: [100] });
+
+		const parsed = JSON.parse(
+			dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d).stdout,
+		) as { receipt: string; reason?: string };
+		expect(parsed.receipt).toBe("queued");
+		expect(parsed.reason).toBe("unbound");
+	});
+
+	it("send to a FAILED peer is blocked too", () => {
+		const failed = desc({ id: "w3", lifecycle: "failed", failureReason: "bind-timeout" });
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), failed], alive: [100] });
+
+		const parsed = JSON.parse(
+			dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d).stdout,
+		) as { receipt: string };
+		expect(parsed.receipt).toBe("blocked");
+	});
+
+	it("every queued receipt names WHY — busy is no longer indistinguishable from unbound", () => {
+		const busy = desc({ id: "w3", lifecycle: "bound", state: "working" });
+		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), busy], alive: [100] });
+
+		const parsed = JSON.parse(
+			dispatch({ verb: "send", to: "w3", text: "hello", json: true }, d).stdout,
+		) as { receipt: string; reason?: string };
+		expect(parsed.receipt).toBe("queued");
+		expect(parsed.reason).toBe("busy");
+	});
+
+	it("state reports a wedged seat as DEGRADED with an actionable reason", () => {
+		const wedged = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 16 * 60_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [wedged], alive: [100] });
+
+		const parsed = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout) as {
+			degraded: boolean;
+			bindHealth: string;
+			degradedReason: string | null;
+		};
+		expect(parsed.degraded).toBe(true);
+		expect(parsed.bindHealth).toBe("bind-limbo");
+		expect(parsed.degradedReason).toContain("never bound");
+
+		const human = dispatch({ verb: "state", id: "w3" }, d);
+		expect(human.stdout).toContain("DEGRADED");
+	});
+
+	// CONTROL: same verb, healthy seat — no DEGRADED anywhere.
+	it("control — a bound seat's state carries no DEGRADED marker", () => {
+		const d = deps({ self: "a1", descs: [desc({ id: "w3", lifecycle: "bound" })], alive: [100] });
+
+		const parsed = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout) as {
+			degraded: boolean;
+			degradedReason: string | null;
+		};
+		expect(parsed.degraded).toBe(false);
+		expect(parsed.degradedReason).toBeNull();
+		expect(dispatch({ verb: "state", id: "w3" }, d).stdout).not.toContain("DEGRADED");
+	});
+
+	it("list shows DEGRADED in the activity column for a wedged seat", () => {
+		const wedged = desc({
+			id: "w3",
+			lifecycle: "pending",
+			startedAt: new Date(T - 16 * 60_000).toISOString(),
+		});
+		const d = deps({ self: "a1", descs: [wedged], alive: [100] });
+
+		expect(dispatch({ verb: "list", here: false, prime: false }, d).stdout).toContain("DEGRADED");
+		const rows = JSON.parse(
+			dispatch({ verb: "list", here: false, prime: false, json: true }, d).stdout,
+		) as Array<{ id: string; degraded: boolean }>;
+		expect(rows.find((row) => row.id === "w3")?.degraded).toBe(true);
+	});
+
+	it("list --archived reads the archive index, never the descriptor files (plan 071 D1)", () => {
+		const d = deps({ descs: [desc({ id: "a1" })] });
+		let listCalls = 0;
+		const registryList = d.registry.list.bind(d.registry);
+		d.registry.list = () => {
+			listCalls += 1;
+			return registryList();
+		};
+		(d.registry as { listArchived?: () => unknown }).listArchived = () => [
+			{
+				id: "pij-long-gone",
+				archivedAt: "2026-07-25T12:00:00.000Z",
+				lifecycle: "failed",
+				failureReason: "bind-timeout",
+				folder: "/repo",
+			},
+		];
+
+		const human = dispatch({ verb: "list", here: false, prime: false, archived: true }, d);
+		expect(human.stdout).toContain("pij-long-gone");
+		expect(human.stdout).toContain("bind-timeout");
+		expect(human.stdout).toContain("1 archived session(s)");
+		expect(listCalls).toBe(0); // the hot tier is never scanned for an archive listing
+
+		const json = dispatch(
+			{ verb: "list", here: false, prime: false, archived: true, json: true },
+			d,
+		);
+		expect(JSON.parse(json.stdout)).toMatchObject([{ id: "pij-long-gone" }]);
+	});
+
+	it("list --archived says so plainly when nothing is archived", () => {
+		const d = deps({ descs: [desc({ id: "a1" })] });
+		const r = dispatch({ verb: "list", here: false, prime: false, archived: true }, d);
+		expect(r.stdout).toBe("no archived pij sessions");
+	});
+
+	// CONTROL: the same deps WITHOUT --archived still render the live fleet, so the
+	// branch above is proving the flag and not a broken list verb.
+	it("control — without --archived the live tier is listed as before", () => {
+		const d = deps({ descs: [desc({ id: "a1" })] });
+		(d.registry as { listArchived?: () => unknown }).listArchived = () => [];
+		const r = dispatch({ verb: "list", here: false, prime: false }, d);
+		expect(r.stdout).toContain("a1");
+		expect(r.stdout).toContain("1 session(s)");
+	});
+
 	it("list --prime composes with --here and ordinary output marks prime rows", () => {
 		const d = deps({
 			self: "a1",
@@ -591,7 +854,7 @@ describe("dispatch send", () => {
 			{ verb: "send", to: "w3", text: "x", wait: false, json: false },
 			compacting,
 		);
-		expect(human.stdout).toContain("queued: target compacting");
+		expect(human.stdout).toContain("queued (compacting)");
 	});
 
 	it("an EXPIRED compact mark does not name the hold (drain has resumed)", () => {
@@ -613,7 +876,7 @@ describe("dispatch send", () => {
 			staleMark,
 		);
 		expect(human.stdout).not.toContain("target compacting");
-		expect(human.stdout).toContain("queued: awaiting daemon delivery confirmation");
+		expect(human.stdout).toContain("queued (tick-pending): awaiting daemon delivery confirmation");
 	});
 
 	it("codes: E-SELF, E-NOID, E-CMD, E-DEAD; stale warns + sends", () => {
@@ -690,7 +953,7 @@ describe("dispatch send", () => {
 			{ verb: "send", to: "pull-peer", text: "durable", wait: false, json: false },
 			d,
 		);
-		expect(human.stdout).toContain("awaiting inbox check");
+		expect(human.stdout).toContain("awaiting the peer's own inbox check");
 	});
 
 	it("still rejects dead push peers and dissolved pull peers", () => {
@@ -763,6 +1026,8 @@ describe("dispatch send", () => {
 					messageId: "fake-2",
 					kind: "text",
 					receipt: "queued",
+					// plan 071 D3 — every non-delivered receipt now names its cause.
+					reason: "tick-pending",
 					liveness: "active",
 					daemonLastTickAt: new Date(T - 1000).toISOString(),
 					daemonTickAgeMs: 1000,
@@ -1167,6 +1432,50 @@ describe("dispatch phonehome (confirmatory binding, AC-03)", () => {
 		expect(d.registry.read("pij-copilot")?.harnessSessionId).toBe(copilotId);
 	});
 
+	it("rebinds a revived Copilot descriptor whose native id is unchanged", () => {
+		const copilotId = "df4f1111-2222-4333-8444-555555555555";
+		const d = deps({
+			descs: [
+				desc({
+					id: "pij-revived",
+					harness: "copilot",
+					harnessSessionId: copilotId,
+					lifecycle: "pending",
+					revivePendingAt: "2026-07-25T00:00:00.000Z",
+				}),
+			],
+			self: "pij-revived",
+			env: { COPILOT_AGENT_SESSION_ID: copilotId },
+		});
+		const result = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			id: "pij-revived",
+			harnessSessionId: copilotId,
+			lifecycle: "bound",
+			confirmed: true,
+		});
+		expect(d.registry.read("pij-revived")?.lifecycle).toBe("bound");
+	});
+
+	it("does not heal a failed descriptor when an old session phones home", () => {
+		const copilotId = "ef4f1111-2222-4333-8444-555555555555";
+		const d = deps({
+			descs: [
+				desc({
+					id: "pij-failed",
+					harness: "copilot",
+					harnessSessionId: copilotId,
+					lifecycle: "failed",
+				}),
+			],
+			self: "pij-failed",
+			env: { COPILOT_AGENT_SESSION_ID: copilotId },
+		});
+		const result = dispatch({ verb: "phonehome", json: true }, d);
+		expect(JSON.parse(result.stdout)).toMatchObject({ lifecycle: "failed", confirmed: false });
+		expect(d.registry.read("pij-failed")?.lifecycle).toBe("failed");
+	});
+
 	it("without CLAUDE_CODE_SESSION_ID, confirms self but reports no binding yet", () => {
 		const d = deps({
 			descs: [desc({ id: "pij-w", harness: "claude", lifecycle: "pending" })],
@@ -1360,9 +1669,14 @@ describe("dispatch tree/link", () => {
 		const human = dispatch(parsed(["tree", "--global", "--all"]), d);
 		expect(human.stdout).toContain("P pij-root");
 		expect(human.stdout).toContain("O pij-child");
-		expect(human.stdout).toContain("pij-closed");
-		expect(human.stdout).toContain("closed");
+		// `--all` surfaces the dead, never the buried: pij-closed is dissolved and
+		// hidden from `list`, so emitting it here renders a card with no row.
+		expect(human.stdout).not.toContain("pij-closed");
 		expect(human.stdout).toContain("orphan");
+
+		// Burial stays reachable on an explicit axis.
+		const buried = dispatch(parsed(["tree", "--global", "--lifecycle", "dissolved"]), d);
+		expect(buried.stdout).toContain("pij-closed");
 	});
 
 	it("fails a bare repository tree outside git and an unknown subtree without writes", () => {
@@ -1473,7 +1787,15 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 // Platform-section-local imports (the legacy import block above is frozen):
 // module-scope import declarations hoist, so placement here is behavior-neutral.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1487,7 +1809,7 @@ import { FsOpJournal } from "../adapters/op-journal.js";
 import { FsPlatformWriteLock } from "../adapters/platform-write-lock.js";
 import { FsProjectStore } from "../adapters/project-store.js";
 import { FsSpineLog } from "../adapters/spine-store.js";
-import { renderCanaryPass, renderCanaryTimeout } from "./canary.js";
+import { renderCanaryTimeout } from "./canary.js";
 import { canonicalAssignmentJson } from "./platform/assignment.js";
 import type {
 	AllocationStorePort,
@@ -1497,7 +1819,11 @@ import type {
 } from "./platform/ports.js";
 import { createProject, setProject } from "./platform/project.js";
 import type { Allocation, Assignment, Dispatch, Fence, SpineEventDraft } from "./platform/types.js";
-import { SPINE_KIND_NODE_LINKED, SPINE_KIND_STATE_CLEARED } from "./platform/types.js";
+import {
+	SPINE_KIND_NODE_LINKED,
+	SPINE_KIND_STATE_CLEARED,
+	SPINE_KIND_STATE_SET,
+} from "./platform/types.js";
 import type { StreamWorktreePort } from "./stream.js";
 
 const platformRequire = createRequire(import.meta.url);
@@ -1676,6 +2002,51 @@ function run(argv: readonly string[], d: CliDeps): CliResult {
 	return dispatch(result.value, d);
 }
 
+function asReportingSelf(d: CliDeps, id: string): CliDeps {
+	const process = d.process;
+	return {
+		...d,
+		process: {
+			pid: () => process.pid(),
+			isAlive: (pid) => process.isAlive(pid),
+			now: () => process.now(),
+			env: (key) => (key === "PIJ_SESSION_ID" ? id : process.env(key)),
+		},
+	};
+}
+
+function reportState(
+	d: CliDeps,
+	id: string,
+	state: string,
+	args: readonly string[] = [],
+): CliResult {
+	return run(["report", "state", state, ...args], asReportingSelf(d, id));
+}
+
+function reportClear(d: CliDeps, id: string, args: readonly string[] = []): CliResult {
+	return run(["report", "clear", ...args], asReportingSelf(d, id));
+}
+
+function reportNote(
+	d: CliDeps,
+	id: string,
+	state: "question" | "blocked",
+	text: string,
+	args: readonly string[] = [],
+): CliResult {
+	return run(["report", state, text, ...args], asReportingSelf(d, id));
+}
+
+function reportVerify(
+	d: CliDeps,
+	reporter: string,
+	node: string,
+	args: readonly string[] = [],
+): CliResult {
+	return run(["report", "verify", node, ...args], asReportingSelf(d, reporter));
+}
+
 function seedProject(over: Partial<Project> & { slug: string }): Project {
 	return {
 		schema_version: 1,
@@ -1697,6 +2068,66 @@ function spineEv(over: Partial<SpineEvent> & { seq: number }): SpineEvent {
 }
 
 const seqsOf = (stdout: string): number[] => (JSON.parse(stdout) as SpineEvent[]).map((e) => e.seq);
+
+describe("attest", () => {
+	it("parses one explicit opaque plan id", () => {
+		expect(parseArgs(["attest", "pij-node", "--plan-id", "../../opaque/value", "--json"])).toEqual({
+			ok: true,
+			value: {
+				verb: "attest",
+				id: "pij-node",
+				planId: "../../opaque/value",
+				json: true,
+			},
+		});
+	});
+
+	it("rejects missing, empty, and whitespace-only plan-id values", () => {
+		expect(parseArgs(["attest", "pij-node", "--plan-id"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["attest", "pij-node", "--plan-id="])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["attest", "pij-node", "--plan-id", "   "])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+	});
+
+	it("rejects parsing and execution when no attested field is supplied", () => {
+		expect(parseArgs(["attest", "pij-node"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: "pij attest needs at least one attested field",
+		});
+		const result = dispatch(
+			{ verb: "attest", id: "pij-node", json: true },
+			deps({ descs: [desc({ id: "pij-node" })] }),
+		);
+		expect(result).toMatchObject({ exitCode: 64, stdout: "" });
+		expect(JSON.parse(result.stderr)).toEqual({
+			error: "E-ARG",
+			message: "pij attest needs at least one attested field",
+		});
+	});
+
+	it("corrects an existing plan id through the CLI-owned write path", () => {
+		const d = deps({
+			descs: [desc({ id: "pij-node", planId: "071-old-attestation" })],
+		});
+		const result = run(["attest", "pij-node", "--plan-id", "073-pij-first-class-ui", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-node",
+			planId: "073-pij-first-class-ui",
+			changed: true,
+		});
+		expect(d.registry.read("pij-node")?.planId).toBe("073-pij-first-class-ui");
+	});
+});
 
 describe("project verbs", () => {
 	describe("project create", () => {
@@ -3475,13 +3906,773 @@ function nodeDeps(over: Parameters<typeof platformDeps>[0] = {}) {
 	});
 }
 
+const reportTs = new Date(T).toISOString();
+
+function reportSelfDeps(over: Parameters<typeof platformDeps>[0] = {}) {
+	return platformDeps({
+		self: "pij-self",
+		descs: [desc({ id: "pij-self" })],
+		...over,
+	});
+}
+
+/** Let a contending writer complete after command preflight but before this
+ * command acquires the platform lock. */
+function interleaveBeforeNextPlatformWrite(
+	d: Pick<PlatformStores, "platformWriteLock">,
+	interleave: () => void,
+): void {
+	const lock = d.platformWriteLock;
+	const originalLock = lock.withPlatformWriteLock.bind(lock);
+	lock.withPlatformWriteLock = <T>(operation: () => T) => {
+		lock.withPlatformWriteLock = originalLock;
+		interleave();
+		return originalLock(operation);
+	};
+}
+
+function reportGeneralAssignment(stateRefs: readonly number[] = []): Assignment {
+	return {
+		schema_version: 1,
+		id: "asg-general-pij-self",
+		nodeId: "pij-self",
+		task: "general",
+		states: stateRefs,
+		opened: { actor: "pij-self", ts: reportTs },
+	};
+}
+
+describe("phase 3 report-family move regression locks", () => {
+	it("locks the exact state-set record before its command spelling moves", () => {
+		const d = reportSelfDeps();
+		const result = reportState(d, "pij-self", "waiting", ["--json"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe(
+			JSON.stringify({
+				schema_version: 1,
+				ts: reportTs,
+				actor: "pij-self",
+				kind: "state-set",
+				refs: ["node:pij-self", "assignment:asg-general-pij-self", "state:waiting"],
+				peer: "pij-self",
+				next: canonicalAssignmentJson(reportGeneralAssignment()),
+				actorProvenance: "resolved",
+				seq: 1,
+			}),
+		);
+	});
+
+	it("locks the exact state-cleared record before its command spelling moves", () => {
+		const d = reportSelfDeps();
+		expect(reportState(d, "pij-self", "hold").exitCode).toBe(0);
+		const result = reportClear(d, "pij-self", ["--json"]);
+		expect(result.exitCode).toBe(0);
+		const canonical = canonicalAssignmentJson(reportGeneralAssignment());
+		expect(result.stdout).toBe(
+			JSON.stringify({
+				schema_version: 1,
+				ts: reportTs,
+				actor: "pij-self",
+				kind: "state-cleared",
+				refs: ["node:pij-self", "assignment:asg-general-pij-self", "transition:clear"],
+				peer: "pij-self",
+				prev: canonical,
+				next: canonical,
+				actorProvenance: "resolved",
+				seq: 2,
+			}),
+		);
+	});
+
+	it("locks the exact state-verified record before its command spelling moves", () => {
+		const d = platformDeps({
+			self: "pij-reviewer",
+			descs: [desc({ id: "pij-reviewer" }), desc({ id: "pij-target" })],
+		});
+		expect(run(["task", "set", "pij-target", "ship it"], d).exitCode).toBe(0);
+		const assignment = d.assignmentStore.listByNode("pij-target")[0];
+		if (!assignment) throw new Error("task set did not create the assignment");
+		expect(reportState(d, "pij-target", "done").exitCode).toBe(0);
+		const result = reportVerify(d, "pij-reviewer", "pij-target", ["--json"]);
+		expect(result.exitCode).toBe(0);
+		const canonical = canonicalAssignmentJson(assignment);
+		expect(result.stdout).toBe(
+			JSON.stringify({
+				schema_version: 1,
+				ts: reportTs,
+				actor: "pij-reviewer",
+				kind: "state-verified",
+				refs: ["node:pij-target", `assignment:${assignment.id}`, "state:done", "event:2"],
+				peer: "pij-target",
+				prev: canonical,
+				next: canonical,
+				verifiedBy: "pij-reviewer",
+				actorProvenance: "resolved",
+				seq: 3,
+			}),
+		);
+	});
+});
+
+describe("report family + report now (plan 074 phase 3 RED)", () => {
+	it("parses the family grammar, keeps verify supervisory, and removes the old write spellings", () => {
+		expect(
+			parseArgs(["report", "state", "ready", "--refs", "pr:14,issue:6", "--json"]),
+		).toMatchObject({
+			ok: true,
+			value: {
+				verb: "state-set",
+				state: "ready",
+				refs: ["pr:14", "issue:6"],
+				json: true,
+			},
+		});
+		expect(parseArgs(["report", "clear", "--assignment", "asg-1"])).toMatchObject({
+			ok: true,
+			value: { verb: "state-clear", assignmentId: "asg-1" },
+		});
+		expect(parseArgs(["report", "verify", "pij-node", "--assignment", "asg-1"])).toMatchObject({
+			ok: true,
+			value: { verb: "state-verify", node: "pij-node", assignmentId: "asg-1" },
+		});
+		expect(parseArgs(["state", "set", "pij-self", "ready"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["state", "clear", "pij-self"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["state", "verify", "pij-self"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["state", "pij-self"])).toMatchObject({
+			ok: true,
+			value: { verb: "state", id: "pij-self" },
+		});
+	});
+
+	it("parses positional question/blocked notes, keeps report state note-free, and accepts compound notes only for those two states", () => {
+		for (const state of ["question", "blocked"] as const) {
+			expect(
+				parseArgs(["report", state, "  need   **input** on `core`  ", "--assignment", "asg-1"]),
+			).toMatchObject({
+				ok: true,
+				value: {
+					verb: "state-set",
+					state,
+					note: "need **input** on `core`",
+					assignmentId: "asg-1",
+					refs: [],
+				},
+			});
+		}
+
+		expect(parseArgs(["report", "state", "question", "--note", "not reachable"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		for (const state of SEMANTIC_STATES.filter(
+			(candidate): candidate is Exclude<SemanticState, "question" | "blocked"> =>
+				candidate !== "question" && candidate !== "blocked",
+		)) {
+			const parsed = parseArgs(["report", state, "not expressible"]);
+			expect(parsed).toMatchObject({ ok: false, code: "E-ARG" });
+			if (parsed.ok) throw new Error(`standalone note unexpectedly accepted for ${state}`);
+			expect(parsed.message).toContain("question");
+			expect(parsed.message).toContain("blocked");
+		}
+
+		for (const state of SEMANTIC_STATES) {
+			const parsed = parseArgs([
+				"report",
+				"now",
+				"did",
+				"next",
+				"--state",
+				state,
+				"--note",
+				"need input",
+			]);
+			if (state === "question" || state === "blocked") {
+				expect(parsed).toMatchObject({
+					ok: true,
+					value: { verb: "report-now", state, note: "need input" },
+				});
+			} else {
+				expect(parsed).toMatchObject({ ok: false, code: "E-ARG" });
+				if (parsed.ok) throw new Error(`compound note unexpectedly accepted for ${state}`);
+				expect(parsed.message).toContain("question");
+				expect(parsed.message).toContain("blocked");
+			}
+		}
+	});
+
+	it.each([
+		"standalone",
+		"compound",
+	] as const)("shares the 200-char, one-line, non-empty note validator across %s reports", (form) => {
+		const argv = (text: string | undefined): string[] =>
+			form === "standalone"
+				? ["report", "question", ...(text === undefined ? [] : [text])]
+				: [
+						"report",
+						"now",
+						"did",
+						"next",
+						"--state",
+						"question",
+						"--note",
+						...(text === undefined ? [] : [text]),
+					];
+
+		expect(parseArgs(argv("a".repeat(201)))).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: expect.stringContaining("200"),
+		});
+		expect(parseArgs(argv("need\nan answer"))).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: expect.stringContaining("one line"),
+		});
+		expect(parseArgs(argv(undefined))).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(argv(` ${"a".repeat(100)}   ${"b".repeat(99)} `))).toMatchObject({
+			ok: true,
+			value: { note: `${"a".repeat(100)} ${"b".repeat(99)}` },
+		});
+	});
+
+	it("requires two non-empty one-line texts, collapses whitespace before the 280-char check, and preserves inline markdown", () => {
+		expect(parseArgs(["report", "now", "did only"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["report", "now", "   ", "next"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["report", "now", "did\nmore", "next"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["report", "now", "a".repeat(281), "next"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: expect.stringContaining("280"),
+		});
+		expect(
+			parseArgs([
+				"report",
+				"now",
+				"  fixed   `core`  and **tests**  ",
+				" review   [the diff](https://example.test) ",
+			]),
+		).toMatchObject({
+			ok: true,
+			value: {
+				verb: "report-now",
+				did: "fixed `core` and **tests**",
+				next: "review [the diff](https://example.test)",
+			},
+		});
+	});
+
+	it("rejects an unknown --state word and names the whole vocabulary", () => {
+		const result = parseArgs(["report", "now", "did", "next", "--state", "working"]);
+		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
+		if (result.ok) throw new Error("unknown state unexpectedly parsed");
+		expect(result.message).toContain("blocked|question|hold|waiting|ready|failed|cancelled|done");
+	});
+
+	it("rejects an empty or non-kebab project attribution instead of stamping a false project", () => {
+		for (const project of ["", "   ", "../escape", "Not-Kebab"]) {
+			expect(parseArgs(["report", "now", "did", "next", `--project=${project}`])).toMatchObject({
+				ok: false,
+				code: "E-ARG",
+			});
+		}
+	});
+
+	it.each([
+		["now", ["report", "now", "did", "next"]],
+		["question", ["report", "question", "need input"]],
+		["blocked", ["report", "blocked", "waiting on input"]],
+		["state", ["report", "state", "ready"]],
+		["clear", ["report", "clear"]],
+		["verify", ["report", "verify", "pij-other"]],
+	] as const)("refuses report %s when PIJ_SESSION_ID merely asserts an unregistered seat", (_name, argv) => {
+		const d = platformDeps({
+			self: "pij-asserted",
+			descs: [desc({ id: "pij-other" })],
+			cwd: "/elsewhere",
+		});
+		const result = run(argv, d);
+		expect(result.exitCode).toBe(2);
+		expect(result.stderr).toContain("E-NOID");
+		expect(d.assignmentStore.list()).toEqual([]);
+		expect(d.spineLog.read()).toEqual([]);
+	});
+
+	it("refuses a dissolved reporting seat before any write", () => {
+		const d = reportSelfDeps({
+			descs: [desc({ id: "pij-self", lifecycle: "dissolved" })],
+		});
+		const result = run(["report", "now", "did", "next"], d);
+		expect(result.exitCode).toBe(2);
+		expect(result.stderr).toContain("dissolved");
+		expect(result.stderr).toContain("revive");
+		expect(d.spineLog.read()).toEqual([]);
+		expect(d.registry.read("pij-self")?.statusAt).toBeUndefined();
+	});
+
+	it("refuses self-verification because report verify is supervisory", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "ship it"], d).exitCode).toBe(0);
+		expect(reportState(d, "pij-self", "done").exitCode).toBe(0);
+		const before = d.spineLog.read().length;
+		const result = reportVerify(d, "pij-self", "pij-self");
+		expect(result.exitCode).toBe(64);
+		expect(result.stderr).toContain("cannot verify its own");
+		expect(d.spineLog.read()).toHaveLength(before);
+		expect(d.spineLog.read().filter((event) => event.kind === "state-verified")).toEqual([]);
+	});
+
+	it("bare report now refuses a dangling or foreign current assignment", () => {
+		const missing = reportSelfDeps({
+			descs: [desc({ id: "pij-self", currentAssignment: "asg-missing" })],
+		});
+		const missingResult = run(["report", "now", "did", "next"], missing);
+		expect(missingResult.exitCode).toBe(3);
+		expect(missingResult.stderr).toContain("asg-missing");
+		expect(missing.spineLog.read()).toEqual([]);
+
+		const foreign = reportSelfDeps({
+			descs: [desc({ id: "pij-self", currentAssignment: "asg-foreign" })],
+		});
+		const written = foreign.assignmentStore.write({
+			schema_version: 1,
+			id: "asg-foreign",
+			nodeId: "pij-other",
+			task: "other work",
+			states: [],
+			opened: { actor: "pij-other", ts: recent },
+		});
+		if (!written.ok) throw new Error(written.message);
+		const foreignResult = run(["report", "now", "did", "next"], foreign);
+		expect(foreignResult.exitCode).toBe(64);
+		expect(foreignResult.stderr).toContain("pij-other");
+		expect(foreign.spineLog.read()).toEqual([]);
+	});
+
+	it("bare report now appends one exact status event and never materializes an assignment", () => {
+		const d = reportSelfDeps();
+		const result = run(["report", "now", "fixed the parser", "wire the tests", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(d.platformWriteLock.acquisitions).toBe(1);
+		expect(JSON.parse(result.stdout)).toEqual({
+			schema_version: 1,
+			ts: reportTs,
+			actor: "pij-self",
+			kind: "status",
+			refs: ["node:pij-self"],
+			peer: "pij-self",
+			prev: "fixed the parser",
+			next: "wire the tests",
+			actorProvenance: "resolved",
+			seq: 1,
+		});
+		expect(d.assignmentStore.list()).toEqual([]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			statusPrev: "fixed the parser",
+			statusNext: "wire the tests",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+
+		const human = run(["report", "now", "fixed `core`", "review **tests**"], reportSelfDeps());
+		expect(human.exitCode).toBe(0);
+		expect(human.stdout.split("\n")).toHaveLength(1);
+		expect(human.stdout).toContain('reported by pij-self: "fixed `core`" → "review **tests**"');
+	});
+
+	it("attributes project by explicit flag, then current assignment, then omission", () => {
+		const explicit = reportSelfDeps();
+		expect(
+			run(["report", "now", "did", "next", "--project", "override", "--json"], explicit).exitCode,
+		).toBe(0);
+		expect(explicit.spineLog.read()[0]).toMatchObject({
+			project: "override",
+			refs: ["node:pij-self", "project:override"],
+		});
+
+		const assigned = reportSelfDeps();
+		expect(
+			run(["task", "set", "pij-self", "work", "--project", "alpha"], {
+				...assigned,
+				projectStore: new FakeProjectStore([seedProject({ slug: "alpha" })]),
+			}).exitCode,
+		).toBe(0);
+		expect(run(["report", "now", "did", "next", "--json"], assigned).exitCode).toBe(0);
+		expect(assigned.spineLog.read().at(-1)).toMatchObject({
+			project: "alpha",
+			refs: expect.arrayContaining([
+				`assignment:${assigned.registry.read("pij-self")?.currentAssignment ?? ""}`,
+				"project:alpha",
+			]),
+		});
+
+		const unassigned = reportSelfDeps();
+		expect(run(["report", "now", "did", "next"], unassigned).exitCode).toBe(0);
+		expect(unassigned.spineLog.read()[0]).not.toHaveProperty("project");
+		expect(unassigned.spineLog.read()[0]?.refs.some((ref) => ref.startsWith("assignment:"))).toBe(
+			false,
+		);
+	});
+
+	it("re-reads the reporting descriptor under the lock before selecting its assignment", () => {
+		const d = reportSelfDeps({
+			descs: [
+				desc({
+					id: "pij-self",
+					currentAssignment: "asg-old",
+					currentTask: "old work",
+				}),
+			],
+		});
+		for (const assignment of [
+			{
+				schema_version: 1,
+				id: "asg-old",
+				nodeId: "pij-self",
+				task: "old work",
+				projectSlug: "old-project",
+				states: [],
+				opened: { actor: "pij-self", ts: recent },
+			},
+			{
+				schema_version: 1,
+				id: "asg-new",
+				nodeId: "pij-self",
+				task: "new work",
+				projectSlug: "new-project",
+				states: [],
+				opened: { actor: "pij-self", ts: recent },
+			},
+		] satisfies Assignment[]) {
+			const written = d.assignmentStore.write(assignment);
+			if (!written.ok) throw new Error(written.message);
+		}
+		const originalLock = d.platformWriteLock.withPlatformWriteLock.bind(d.platformWriteLock);
+		d.platformWriteLock.withPlatformWriteLock = <T>(operation: () => T) => {
+			const current = d.registry.read("pij-self");
+			if (!current) throw new Error("reporter descriptor missing");
+			d.registry.writeExact({
+				...current,
+				currentAssignment: "asg-new",
+				currentTask: "new work",
+			});
+			return originalLock(operation);
+		};
+
+		const result = run(["report", "now", "did", "next", "--state", "ready", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		const events = d.spineLog.read();
+		expect(events[0]?.refs).toContain("assignment:asg-new");
+		expect(events[1]).toMatchObject({ project: "new-project" });
+		expect(events[1]?.refs).toContain("assignment:asg-new");
+		expect(events[1]?.refs).toContain("project:new-project");
+		expect(d.assignmentStore.read("asg-old")?.states).toEqual([]);
+		expect(d.assignmentStore.read("asg-new")?.states).toEqual([events[0]?.seq]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: "asg-new",
+			currentTask: "new work",
+			semanticState: "ready",
+		});
+	});
+
+	it("report state re-reads the reporter under the lock before selecting and denormalizing its assignment", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "old work"], d).exitCode).toBe(0);
+		const oldAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		if (!oldAssignmentId) throw new Error("old assignment missing");
+		let newAssignmentId: string | undefined;
+		interleaveBeforeNextPlatformWrite(d, () => {
+			expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+			newAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		});
+
+		const result = reportState(d, "pij-self", "ready");
+		expect(result.exitCode).toBe(0);
+		if (!newAssignmentId) throw new Error("concurrent assignment missing");
+		const stateEvent = d.spineLog.read().findLast((event) => event.kind === "state-set");
+		if (!stateEvent) throw new Error("state event missing");
+		expect(stateEvent.refs).toContain(`assignment:${newAssignmentId}`);
+		expect(d.assignmentStore.read(oldAssignmentId)?.states).toEqual([]);
+		expect(d.assignmentStore.read(newAssignmentId)?.states).toEqual([stateEvent.seq]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: newAssignmentId,
+			currentTask: "new work",
+			semanticState: "ready",
+		});
+	});
+
+	it("report clear re-reads the reporter under the lock and never restores a superseded assignment", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "old work"], d).exitCode).toBe(0);
+		const oldAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		if (!oldAssignmentId) throw new Error("old assignment missing");
+		expect(reportState(d, "pij-self", "waiting").exitCode).toBe(0);
+		const oldStates = d.assignmentStore.read(oldAssignmentId)?.states;
+		if (!oldStates) throw new Error("old assignment state chain missing");
+		let newAssignmentId: string | undefined;
+		interleaveBeforeNextPlatformWrite(d, () => {
+			expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+			newAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		});
+
+		const result = reportClear(d, "pij-self");
+		if (!newAssignmentId) throw new Error("concurrent assignment missing");
+		expect(result.exitCode).toBe(64);
+		expect(result.stderr).toContain(newAssignmentId);
+		expect(result.stderr).toContain("already undeclared");
+		expect(d.spineLog.read().filter((event) => event.kind === "state-cleared")).toEqual([]);
+		expect(d.assignmentStore.read(oldAssignmentId)?.states).toEqual(oldStates);
+		expect(d.assignmentStore.read(newAssignmentId)?.states).toEqual([]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: newAssignmentId,
+			currentTask: "new work",
+		});
+		expect(d.registry.read("pij-self")?.semanticState).toBeUndefined();
+	});
+
+	it.each([
+		"question",
+		"blocked",
+	] as const)("report %s appends the unchanged state-set record and stamps the note denorm", (state) => {
+		const d = reportSelfDeps();
+		const result = reportNote(d, "pij-self", state, "  need   [review](https://example.test)  ", [
+			"--json",
+		]);
+		expect(result.exitCode).toBe(0);
+		const event = JSON.parse(result.stdout) as SpineEvent;
+		expect(event).toMatchObject({
+			actor: "pij-self",
+			kind: "state-set",
+			refs: ["node:pij-self", "assignment:asg-general-pij-self", `state:${state}`],
+			peer: "pij-self",
+			actorProvenance: "resolved",
+		});
+		expect(event).not.toHaveProperty("note");
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: "asg-general-pij-self",
+			currentTask: "general",
+			semanticState: state,
+			stateNote: {
+				text: "need [review](https://example.test)",
+				state,
+				at: event.ts,
+			},
+		});
+	});
+
+	it("compound report now writes state-set then status under one lock and stamps the same note denorm", () => {
+		const d = reportSelfDeps();
+		const result = run(
+			[
+				"report",
+				"now",
+				"finished parser",
+				"waiting for review",
+				"--state",
+				"blocked",
+				"--note",
+				"review **requested**",
+				"--json",
+			],
+			d,
+		);
+		expect(result.exitCode).toBe(0);
+		expect(d.platformWriteLock.acquisitions).toBe(1);
+		const events = d.spineLog.read();
+		expect(events.map((event) => event.kind)).toEqual(["state-set", "status"]);
+		expect(events[1]?.refs).toContain(`state-set:${events[0]?.seq}`);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			semanticState: "blocked",
+			stateNote: { text: "review **requested**", state: "blocked", at: events[0]?.ts },
+			statusPrev: "finished parser",
+			statusNext: "waiting for review",
+		});
+	});
+
+	it("state clear removes a stale stateNote with the semantic state", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "question", "which path?").exitCode).toBe(0);
+		expect(reportClear(d, "pij-self").exitCode).toBe(0);
+		expect(d.registry.read("pij-self")?.semanticState).toBeUndefined();
+		expect(d.registry.read("pij-self")?.stateNote).toBeUndefined();
+	});
+
+	it("a note-free report state removes the prior stateNote", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "question", "which path?").exitCode).toBe(0);
+		expect(reportState(d, "pij-self", "ready").exitCode).toBe(0);
+		expect(d.registry.read("pij-self")?.semanticState).toBe("ready");
+		expect(d.registry.read("pij-self")?.stateNote).toBeUndefined();
+	});
+
+	it("a fresh task set removes stateNote but preserves the opposite-lifetime status denorm", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "blocked", "waiting on review").exitCode).toBe(0);
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+		expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentTask: "new work",
+			statusPrev: "did",
+			statusNext: "next",
+		});
+		expect(d.registry.read("pij-self")?.semanticState).toBeUndefined();
+		expect(d.registry.read("pij-self")?.stateNote).toBeUndefined();
+	});
+
+	it("projects semanticState and stateNote from the descriptor on list and node show", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "question", "review `core`?").exitCode).toBe(0);
+		const descriptor = d.registry.read("pij-self");
+		const rows = JSON.parse(run(["list", "--json"], d).stdout) as Array<Record<string, unknown>>;
+		expect(rows[0]).toMatchObject({
+			semanticState: "question",
+			stateNote: descriptor?.stateNote,
+		});
+		const card = JSON.parse(run(["node", "show", "pij-self", "--json"], d).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(card).toMatchObject({
+			semanticState: "question",
+			stateNote: descriptor?.stateNote,
+		});
+		expect(run(["node", "show", "pij-self"], d).stdout).toContain("note:        review `core`?");
+	});
+
+	it("report verify re-reads the reporter under the lock and refuses a dissolved supervisor", () => {
+		const d = platformDeps({
+			self: "pij-reviewer",
+			descs: [desc({ id: "pij-reviewer" }), desc({ id: "pij-target" })],
+		});
+		expect(run(["task", "set", "pij-target", "ship it"], d).exitCode).toBe(0);
+		expect(reportState(d, "pij-target", "done").exitCode).toBe(0);
+		const assignment = d.assignmentStore.listByNode("pij-target")[0];
+		if (!assignment) throw new Error("target assignment missing");
+		const statesBefore = assignment.states;
+		interleaveBeforeNextPlatformWrite(d, () => d.registry.dissolve("pij-reviewer"));
+
+		const result = reportVerify(d, "pij-reviewer", "pij-target");
+		expect(result.exitCode).toBe(2);
+		expect(result.stderr).toContain("dissolved");
+		expect(d.spineLog.read().filter((event) => event.kind === "state-verified")).toEqual([]);
+		expect(d.assignmentStore.read(assignment.id)?.states).toEqual(statesBefore);
+		expect(d.registry.read("pij-reviewer")?.lifecycle).toBe("dissolved");
+	});
+
+	it("--state appends state-set then status under one lock and correlates by stamped seq", () => {
+		const d = reportSelfDeps();
+		const result = run(
+			["report", "now", "fixed the parser", "wire the tests", "--state", "ready", "--json"],
+			d,
+		);
+		expect(result.exitCode).toBe(0);
+		expect(d.platformWriteLock.acquisitions).toBe(1);
+		const events = d.spineLog.read();
+		expect(events.map((event) => event.kind)).toEqual(["state-set", "status"]);
+		expect(events[1]?.refs).toContain(`state-set:${events[0]?.seq}`);
+		expect(events[1]?.refs).not.toContain("state:ready");
+		expect(JSON.parse(result.stdout)).toEqual(events[1]);
+		expect(d.assignmentStore.read("asg-general-pij-self")?.states).toEqual([events[0]?.seq]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: "asg-general-pij-self",
+			currentTask: "general",
+			semanticState: "ready",
+			statusPrev: "fixed the parser",
+			statusNext: "wire the tests",
+			statusAt: reportTs,
+			statusSeq: events[1]?.seq,
+		});
+	});
+
+	it("state-set failure attempts no status event", () => {
+		const d = reportSelfDeps();
+		d.opJournal.failNext("record");
+		const result = run(["report", "now", "did", "next", "--state", "ready"], d);
+		expect(result.exitCode).toBe(3);
+		expect(d.spineLog.read()).toEqual([]);
+		expect(d.assignmentStore.list()).toEqual([]);
+	});
+
+	it("status append failure names the state that landed", () => {
+		const d = reportSelfDeps();
+		d.spineLog.failNext("append");
+		const result = run(["report", "now", "did", "next", "--state", "ready"], d);
+		expect(result.exitCode).toBe(3);
+		expect(result.stderr).toContain("WAS set");
+		expect(result.stderr).toContain("status");
+		expect(d.spineLog.read().map((event) => event.kind)).toEqual(["state-set"]);
+		expect(d.registry.read("pij-self")?.semanticState).toBe("ready");
+	});
+
+	it("status denorm failure names both landed events and leaves the spine authoritative", () => {
+		const d = reportSelfDeps();
+		const originalWriteExact = d.registry.writeExact.bind(d.registry);
+		let writes = 0;
+		d.registry.writeExact = (descriptor) => {
+			writes += 1;
+			if (writes === 2) throw new Error("injected status denorm failure");
+			originalWriteExact(descriptor);
+		};
+		const result = run(["report", "now", "did", "next", "--state", "ready"], d);
+		expect(result.exitCode).toBe(3);
+		expect(result.stderr).toContain("WAS set");
+		expect(result.stderr).toContain("status event landed");
+		expect(result.stderr).toContain("injected status denorm failure");
+		expect(d.spineLog.read().map((event) => event.kind)).toEqual(["state-set", "status"]);
+	});
+
+	it("status denorm survives a later task set and projects on list + node show", () => {
+		const d = reportSelfDeps();
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+		expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+		const descriptor = d.registry.read("pij-self");
+		expect(descriptor).toMatchObject({
+			statusPrev: "did",
+			statusNext: "next",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+		const rows = JSON.parse(run(["list", "--json"], d).stdout) as Array<Record<string, unknown>>;
+		expect(rows[0]).toMatchObject({
+			statusPrev: "did",
+			statusNext: "next",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+		const card = JSON.parse(run(["node", "show", "pij-self", "--json"], d).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(card).toMatchObject({
+			statusPrev: "did",
+			statusNext: "next",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+	});
+});
+
 describe("task/state verb parsing (T004)", () => {
 	it.each([
 		[["task", "set"], "usage"],
 		[["task", "set", "pij-node"], "usage"],
 		[["task", "bogus"], "unknown task subcommand"],
-		[["state", "set", "pij-node"], "usage"],
-		[["state", "verify"], "usage"],
+		[["report", "state"], "usage"],
+		[["report", "verify"], "usage"],
 	])("%j is E-ARG exit 64", (argv, needle) => {
 		const r = run(argv as string[], nodeDeps());
 		expect(r.exitCode).toBe(64);
@@ -3489,7 +4680,7 @@ describe("task/state verb parsing (T004)", () => {
 	});
 
 	it("rejects a word outside the ruled semantic vocabulary, naming it (WS-6)", () => {
-		const r = run(["state", "set", "pij-node", "working"], nodeDeps());
+		const r = reportState(nodeDeps(), "pij-node", "working");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("working");
 		expect(r.stderr).toContain("blocked|question|hold|waiting|ready|failed|cancelled|done");
@@ -3497,7 +4688,7 @@ describe("task/state verb parsing (T004)", () => {
 
 	it("rejects unknown flags and extra positionals", () => {
 		expect(run(["task", "set", "pij-node", "t", "--bogus", "x"], nodeDeps()).exitCode).toBe(64);
-		expect(run(["state", "set", "pij-node", "ready", "extra"], nodeDeps()).exitCode).toBe(64);
+		expect(reportState(nodeDeps(), "pij-node", "ready", ["extra"]).exitCode).toBe(64);
 	});
 
 	it("legacy `pij state <id>` still routes to the state card (regression)", () => {
@@ -3508,6 +4699,25 @@ describe("task/state verb parsing (T004)", () => {
 });
 
 describe("task set (T005)", () => {
+	it("re-arms only a self-paused watchdog after a new assignment commits", () => {
+		for (const [label, sidecar, expected] of [
+			["self", { enabled: true, pausedBy: "self", pausedAtMs: 1 }, { enabled: true }],
+			["operator-disabled", { enabled: false }, { enabled: false }],
+			[
+				"exempt",
+				{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+				{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+			],
+		] as const) {
+			const watchdogStore = memoryWatchdogStore("pij-node", sidecar);
+			const d = { ...nodeDeps(), watchdogStore };
+			const r = run(["task", "set", "pij-node", `new work (${label})`], d);
+			expect(r.exitCode).toBe(0);
+			expect(watchdogStore.sidecars.get("pij-node")).toEqual(expected);
+			expect(watchdogStore.writes).toHaveLength(label === "self" ? 1 : 0);
+		}
+	});
+
 	it("opens an assignment, denorms the descriptor, couples EXACTLY ONE task-set event", () => {
 		const d = nodeDeps();
 		const r = run(["task", "set", "pij-node", "review the packet", "--json"], d);
@@ -3592,7 +4802,7 @@ describe("task set (T005)", () => {
 describe("state set (T005)", () => {
 	it("implicit general: first write materializes asg-general-<node>, chains the seq, denorms", () => {
 		const d = nodeDeps();
-		const r = run(["state", "set", "pij-node", "waiting", "--json"], d);
+		const r = reportState(d, "pij-node", "waiting", ["--json"]);
 		expect(r.exitCode).toBe(0);
 		const record = d.assignmentStore.read("asg-general-pij-node");
 		expect(record).not.toBeNull();
@@ -3618,11 +4828,11 @@ describe("state set (T005)", () => {
 		const d = nodeDeps();
 		run(["task", "set", "pij-node", "work", "--json"], d);
 		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
-		const r = run(["state", "set", "pij-node", "blocked", "--assignment", id], d);
+		const r = reportState(d, "pij-node", "blocked", ["--assignment", id]);
 		expect(r.exitCode).toBe(0);
 		expect(d.assignmentStore.read(id)?.states).toHaveLength(1);
 
-		const foreign = run(["state", "set", "pij-other", "ready", "--assignment", id], d);
+		const foreign = reportState(d, "pij-other", "ready", ["--assignment", id]);
 		expect(foreign.exitCode).toBe(64);
 		expect(foreign.stderr).toContain("pij-node");
 	});
@@ -3631,7 +4841,7 @@ describe("state set (T005)", () => {
 		const d = nodeDeps();
 		run(["task", "set", "pij-node", "focused work"], d);
 		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
-		const r = run(["state", "set", "pij-node", "ready"], d);
+		const r = reportState(d, "pij-node", "ready");
 		expect(r.exitCode).toBe(0);
 		expect(d.assignmentStore.read(id)?.states).toHaveLength(1);
 		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
@@ -3639,11 +4849,9 @@ describe("state set (T005)", () => {
 
 	it("a nonexistent --assignment is E-NOREG; user --refs ride the event", () => {
 		const d = nodeDeps();
-		expect(
-			run(["state", "set", "pij-node", "ready", "--assignment", "asg-ghost"], d).exitCode,
-		).toBe(3);
+		expect(reportState(d, "pij-node", "ready", ["--assignment", "asg-ghost"]).exitCode).toBe(3);
 
-		const r = run(["state", "set", "pij-node", "blocked", "--refs", "pr:14,issue:6"], d);
+		const r = reportState(d, "pij-node", "blocked", ["--refs", "pr:14,issue:6"]);
 		expect(r.exitCode).toBe(0);
 		const ev = d.spineLog.read()[0];
 		expect(ev?.refs).toContain("pr:14");
@@ -3654,7 +4862,7 @@ describe("state set (T005)", () => {
 		it("journal record failure aborts BEFORE any state commit", () => {
 			const d = nodeDeps();
 			d.opJournal.failNext("record");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
 			expect(d.spineLog.read()).toEqual([]);
@@ -3664,7 +4872,7 @@ describe("state set (T005)", () => {
 		it("record-write failure is the primary error; the intent entry is cleared (abort path)", () => {
 			const d = nodeDeps();
 			d.assignmentStore.failNext("write");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(d.spineLog.read()).toEqual([]);
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
@@ -3674,7 +4882,7 @@ describe("state set (T005)", () => {
 			const d = nodeDeps();
 			d.assignmentStore.failNext("write");
 			d.opJournal.failNext("clear");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("journal cleanup also failed");
 			expect(pendingOps(d.opJournal)).toHaveLength(1);
@@ -3683,7 +4891,7 @@ describe("state set (T005)", () => {
 		it("appendOnce failure keeps the journal entry; the NEXT platform write replays AND reconciles the chain", () => {
 			const d = nodeDeps();
 			d.spineLog.failNext("appendOnce");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).not.toBe(0);
 			expect(r.stderr).toContain("replayed by the next platform write");
 			expect(pendingOps(d.opJournal)).toHaveLength(1);
@@ -3702,7 +4910,7 @@ describe("state set (T005)", () => {
 		it("clear failure after a landed write is an honest non-zero naming the block", () => {
 			const d = nodeDeps();
 			d.opJournal.failNext("clear");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS");
 			expect(r.stderr).toContain("blocked until");
@@ -3717,7 +4925,7 @@ describe("state verify (T005, AC-06)", () => {
 		const d = nodeDeps();
 		run(["task", "set", "pij-node", "ship it"], d);
 		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
-		run(["state", "set", "pij-node", "done"], d);
+		reportState(d, "pij-node", "done");
 		return { d, id };
 	}
 
@@ -3727,11 +4935,11 @@ describe("state verify (T005, AC-06)", () => {
 		const before = d.spineLog.read().filter((e) => e.kind === "state-set");
 		expect(before[0]?.verifiedBy).toBeUndefined();
 
-		const r = run(["state", "verify", "pij-node", "--actor", "pij-reviewer", "--json"], d);
+		const r = reportVerify(d, "pij-other", "pij-node", ["--json"]);
 		expect(r.exitCode).toBe(0);
 		const verified = d.spineLog.read().filter((e) => e.kind === "state-verified");
 		expect(verified).toHaveLength(1);
-		expect(verified[0]?.verifiedBy).toBe("pij-reviewer");
+		expect(verified[0]?.verifiedBy).toBe("pij-other");
 		expect(verified[0]?.refs).toContain(`assignment:${id}`);
 		expect(verified[0]?.refs).toContain(`event:${before[0]?.seq}`);
 		// verify joins the chain
@@ -3741,26 +4949,26 @@ describe("state verify (T005, AC-06)", () => {
 
 	it("verifying an assignment whose latest state is not done is E-ARG naming the state", () => {
 		const d = nodeDeps();
-		run(["state", "set", "pij-node", "waiting"], d);
-		const r = run(["state", "verify", "pij-node"], d);
+		reportState(d, "pij-node", "waiting");
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("waiting");
 	});
 
 	it("a later state change after done also un-verifies: verify then is E-ARG on the new latest", () => {
 		const { d } = doneChain();
-		run(["state", "verify", "pij-node"], d);
-		run(["state", "set", "pij-node", "blocked"], d);
-		const r = run(["state", "verify", "pij-node"], d);
+		reportVerify(d, "pij-other", "pij-node");
+		reportState(d, "pij-node", "blocked");
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("blocked");
 	});
 
 	it("refuses done → clear → verify as already undeclared without a verify event", () => {
 		const { d } = doneChain();
-		expect(run(["state", "clear", "pij-node"], d).exitCode).toBe(0);
+		expect(reportClear(d, "pij-node").exitCode).toBe(0);
 		const before = d.spineLog.read().length;
-		const r = run(["state", "verify", "pij-node"], d);
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("no declared state to verify");
 		expect(d.spineLog.read()).toHaveLength(before);
@@ -3769,7 +4977,7 @@ describe("state verify (T005, AC-06)", () => {
 
 	it("verify with no resolvable assignment is E-NOREG (nothing to verify — the general is never materialized)", () => {
 		const d = nodeDeps();
-		const r = run(["state", "verify", "pij-node"], d);
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(3);
 		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
 	});
@@ -3788,6 +4996,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 					id: "pij-card",
 					harness: "claude",
 					lifecycle: "bound",
+					planId: "073-pij-first-class-ui",
 					parentId: "pij-parent",
 					spawnedBy: "pij-spawner",
 					systemState: "idle",
@@ -3797,6 +5006,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 					effort: "high",
 					state: "idle",
 				}),
+				desc({ id: "pij-reviewer" }),
 			],
 		});
 		return {
@@ -3821,13 +5031,13 @@ describe("node show (T009 — the full card, field by field)", () => {
 		// two assignments: one done-unverified, one blocked → badge worst-first
 		run(["task", "set", "pij-card", "alpha work", "--actor", "pij-boss"], d);
 		const asgA = d.assignmentStore.listByNode("pij-card")[0]?.id as string;
-		run(["state", "set", "pij-card", "done", "--actor", "pij-card"], d);
+		reportState(d, "pij-card", "done");
 		run(["task", "set", "pij-card", "beta work", "--actor", "pij-boss"], d);
 		const asgB = d.assignmentStore
 			.listByNode("pij-card")
 			.map((a) => a.id)
 			.find((id) => id !== asgA) as string;
-		run(["state", "set", "pij-card", "blocked", "--actor", "pij-card"], d);
+		reportState(d, "pij-card", "blocked");
 
 		const r = run(["node", "show", "pij-card", "--json"], d);
 		expect(r.exitCode).toBe(0);
@@ -3842,6 +5052,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 		expect(card.badge).toBe("blocked"); // worst-first across open assignments
 		expect(card.currentAssignment).toBe(asgB);
 		expect(card.currentTask).toBe("beta work");
+		expect(card.planId).toBe("073-pij-first-class-ui");
 		expect(card.paneId).toBe("%4");
 		expect(card.windowId).toBe("@2");
 		expect(card.boundModel).toBe("gpt-5.6-sol");
@@ -3865,12 +5076,12 @@ describe("node show (T009 — the full card, field by field)", () => {
 	it("an unverified done flips to verified:true after a verify write (AC-06 render)", () => {
 		const d = cardDeps();
 		run(["task", "set", "pij-card", "ship", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-card", "done", "--actor", "pij-card"], d);
+		reportState(d, "pij-card", "done");
 		const before = JSON.parse(run(["node", "show", "pij-card", "--json"], d).stdout) as {
 			assignments: Array<{ state: string; verified: boolean | null }>;
 		};
 		expect(before.assignments[0]).toMatchObject({ state: "done", verified: false });
-		run(["state", "verify", "pij-card", "--actor", "pij-reviewer"], d);
+		reportVerify(d, "pij-reviewer", "pij-card");
 		const after = JSON.parse(run(["node", "show", "pij-card", "--json"], d).stdout) as {
 			assignments: Array<{ state: string; verified: boolean | null }>;
 		};
@@ -3884,10 +5095,13 @@ describe("node show (T009 — the full card, field by field)", () => {
 		const card = JSON.parse(r.stdout) as Record<string, unknown>;
 		expect(card.systemState).toBeNull();
 		expect(card.semanticState).toBeNull();
+		expect(card.stateNote).toBeNull();
 		expect(card.badge).toBe("unknown");
 		expect(card.windowId).toBeNull();
 		expect(card.contextMax).toBeNull();
 		expect(card.assignments).toEqual([]);
+		expect(card).toHaveProperty("planId");
+		expect(card.planId).toBeNull();
 	});
 
 	it("unknown node is E-NOID; missing subcommand is E-ARG usage", () => {
@@ -3898,13 +5112,63 @@ describe("node show (T009 — the full card, field by field)", () => {
 	it("tree JSON carries the node-truth fields free (additive spread pin)", () => {
 		const d = platformDeps({
 			self: "pij-self",
-			treeDescs: [desc({ id: "pij-t", parentId: null, systemState: "working", windowId: "@9" })],
+			treeDescs: [
+				desc({
+					id: "pij-t",
+					parentId: null,
+					systemState: "working",
+					windowId: "@9",
+					planId: "073-pij-first-class-ui",
+				}),
+				desc({ id: "pij-unattested", parentId: null }),
+			],
 		});
 		const r = run(["tree", "--global", "--json"], d);
 		expect(r.exitCode).toBe(0);
 		const forest = JSON.parse(r.stdout) as { roots: Array<Record<string, unknown>> };
 		expect(forest.roots[0]?.systemState).toBe("working");
 		expect(forest.roots[0]?.windowId).toBe("@9");
+		expect(forest.roots[0]?.planId).toBe("073-pij-first-class-ui");
+		expect(forest.roots[1]).toHaveProperty("planId");
+		expect(forest.roots[1]?.planId).toBeNull();
+	});
+
+	it("tree plan projection performs no per-node registry reads", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			treeDescs: Array.from({ length: 25 }, (_, index) =>
+				desc({
+					id: `pij-tree-${index}`,
+					parentId: null,
+					planId: index === 0 ? "073-pij-first-class-ui" : undefined,
+				}),
+			),
+		});
+		let reads = 0;
+		const originalRead = d.registry.read.bind(d.registry);
+		d.registry.read = (id) => {
+			reads++;
+			return originalRead(id);
+		};
+		const result = run(["tree", "--global", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(reads).toBe(0);
+	});
+
+	it("node show reads the descriptor once for planId instead of joining again", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-card", planId: "073-pij-first-class-ui" })],
+		});
+		let reads = 0;
+		const originalRead = d.registry.read.bind(d.registry);
+		d.registry.read = (id) => {
+			reads++;
+			return originalRead(id);
+		};
+		const result = run(["node", "show", "pij-card", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(reads).toBe(1);
 	});
 });
 
@@ -3912,7 +5176,7 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 	it("surfaces an unverified done with spine-seq evidence; --json is the bare array", () => {
 		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
 		run(["task", "set", "pij-n", "ship", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-n", "done", "--actor", "pij-n"], d);
+		reportState(d, "pij-n", "done");
 		const r = run(["anomalies", "--json"], d);
 		expect(r.exitCode).toBe(0);
 		const anomalies = JSON.parse(r.stdout) as Array<Record<string, unknown>>;
@@ -3923,10 +5187,13 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 	});
 
 	it("a verified chain is clean; an empty machine prints an empty array", () => {
-		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-n" }), desc({ id: "pij-reviewer" })],
+		});
 		run(["task", "set", "pij-n", "ship", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-n", "done", "--actor", "pij-n"], d);
-		run(["state", "verify", "pij-n", "--actor", "pij-reviewer"], d);
+		reportState(d, "pij-n", "done");
+		reportVerify(d, "pij-reviewer", "pij-n");
 		const anomalies = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{
 			kind: string;
 		}>;
@@ -3938,8 +5205,32 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 
 	it("foreign hold-clear surfaces both actors", () => {
 		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
-		run(["state", "set", "pij-n", "hold", "--actor", "pij-issuer"], d);
-		run(["state", "set", "pij-n", "ready", "--actor", "pij-meddler"], d);
+		const assignment: Assignment = {
+			schema_version: 1,
+			id: "asg-foreign-clear",
+			nodeId: "pij-n",
+			task: "historical hold",
+			states: [],
+			opened: { actor: "pij-issuer", ts: recent },
+		};
+		const hold = d.spineLog.append({
+			schema_version: 1,
+			ts: recent,
+			actor: "pij-issuer",
+			kind: SPINE_KIND_STATE_SET,
+			refs: ["node:pij-n", "assignment:asg-foreign-clear", "state:hold"],
+			peer: "pij-n",
+		});
+		const ready = d.spineLog.append({
+			schema_version: 1,
+			ts: recent,
+			actor: "pij-meddler",
+			kind: SPINE_KIND_STATE_SET,
+			refs: ["node:pij-n", "assignment:asg-foreign-clear", "state:ready"],
+			peer: "pij-n",
+		});
+		if (!hold.ok || !ready.ok) throw new Error("failed to seed historical state events");
+		d.assignmentStore.write({ ...assignment, states: [hold.value.seq, ready.value.seq] });
 		const anomalies = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{
 			kind: string;
 			detail: string;
@@ -4035,9 +5326,9 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 		});
 		run(["project", "create", "here work", "--slug", "here-work", "--actor", "pij-boss"], d);
 		run(["task", "set", "pij-local", "ship", "--project", "here-work", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-local", "done", "--actor", "pij-local"], d);
+		reportState(d, "pij-local", "done");
 		run(["task", "set", "pij-far", "other errand", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-far", "done", "--actor", "pij-far"], d);
+		reportState(d, "pij-far", "done");
 
 		const all = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{ nodeId: string }>;
 		expect(new Set(all.map((a) => a.nodeId))).toEqual(new Set(["pij-local", "pij-far"]));
@@ -4105,6 +5396,213 @@ describe("unadopted flow-through (P3 T003/T005 — AC-08/WS-1 machine-wide enume
 		expect(strayLine).toContain("[unadopted]");
 		const primeLine = r.stdout.split("\n").find((line) => line.includes("pij-prime-root"));
 		expect(primeLine).not.toContain("[unadopted]");
+	});
+});
+
+describe("assignment denorm in `list --json` (chainglass item 2 — projection, not join)", () => {
+	function denormDeps() {
+		return platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({
+					id: "pij-busy",
+					currentAssignment: "a-0001",
+					currentTask: "wire the fleet page",
+					semanticState: "question",
+					stateNote: {
+						text: "which route?",
+						state: "question",
+						at: recent,
+					},
+					planId: "073-pij-first-class-ui",
+				}),
+				desc({ id: "pij-unassigned" }),
+			],
+		});
+	}
+
+	type Row = {
+		id: string;
+		currentAssignment: string | null;
+		currentTask: string | null;
+		semanticState: SemanticState | null;
+		stateNote: SessionDescriptor["stateNote"] | null;
+		planId: string | null;
+	};
+
+	it("projects assignment and semantic fields from the descriptor denorm", () => {
+		const r = run(["list", "--json"], denormDeps());
+		expect(r.exitCode).toBe(0);
+		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
+		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
+		expect(byId.get("pij-busy")?.currentAssignment).toBe("a-0001");
+		expect(byId.get("pij-busy")?.semanticState).toBe("question");
+		expect(byId.get("pij-busy")?.stateNote).toEqual({
+			text: "which route?",
+			state: "question",
+			at: recent,
+		});
+		expect(byId.get("pij-busy")?.planId).toBe("073-pij-first-class-ui");
+	});
+
+	it("emits an EXPLICIT null when unassigned — key-not-projected is the bug being fixed", () => {
+		const r = run(["list", "--json"], denormDeps());
+		const rows = JSON.parse(r.stdout) as Row[];
+		const unassigned = rows.find((row) => row.id === "pij-unassigned");
+		// The distinction that cost chainglass 179 × `node show`: a consumer must be
+		// able to tell "this seat has no task" from "this surface does not carry the
+		// field". Presence-of-key is the contract, so assert the key, not the value.
+		expect(unassigned).toHaveProperty("currentTask");
+		expect(unassigned).toHaveProperty("currentAssignment");
+		expect(unassigned).toHaveProperty("semanticState");
+		expect(unassigned).toHaveProperty("stateNote");
+		expect(unassigned).toHaveProperty("planId");
+		expect(unassigned?.currentTask).toBeNull();
+		expect(unassigned?.currentAssignment).toBeNull();
+		expect(unassigned?.semanticState).toBeNull();
+		expect(unassigned?.stateNote).toBeNull();
+		expect(unassigned?.planId).toBeNull();
+	});
+
+	it("CONTROL: reads NEITHER the assignment store NOR the spine — no per-row fan-out", () => {
+		// The whole value of this projection is that it costs one descriptor read.
+		// A future refactor that derives these fields from the assignment chain (the
+		// way `node show` legitimately does) would still pass the two tests above
+		// while reintroducing the 179-row fan-out it exists to remove. So make the
+		// join physically impossible and prove `list` never reaches for it.
+		const base = denormDeps();
+		const boom = (surface: string) => () => {
+			throw new Error(`list must not touch ${surface} — per-row fan-out reintroduced`);
+		};
+		const poison = <T extends object>(target: T, surface: string): T =>
+			new Proxy(target, { get: (_t, prop) => boom(`${surface}.${String(prop)}`) });
+		// Rebuilt rather than mutated: both stores are readonly on CliDeps.
+		const d = {
+			...base,
+			assignmentStore: poison(base.assignmentStore, "assignmentStore"),
+			spineLog: poison(base.spineLog, "spineLog"),
+		};
+		let descriptorReads = 0;
+		const originalRead = d.registry.read.bind(d.registry);
+		d.registry.read = (id) => {
+			descriptorReads++;
+			return originalRead(id);
+		};
+
+		const r = run(["list", "--json"], d);
+		expect(r.exitCode).toBe(0);
+		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
+		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
+		expect(descriptorReads).toBe(0);
+	});
+});
+
+describe("`list --badge` (chainglass item 3 — the AC-05 badge, opt-in, hoisted)", () => {
+	function badgeDeps() {
+		return platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-two-jobs" }), desc({ id: "pij-calm" })],
+		});
+	}
+
+	type Row = { id: string; badge?: string; currentTask: string | null };
+
+	/** blocked on the FIRST (still open) assignment, done on the CURRENT one. */
+	function seedDivergent(d: ReturnType<typeof badgeDeps>) {
+		run(["task", "set", "pij-two-jobs", "alpha work", "--actor", "pij-boss"], d);
+		reportState(d, "pij-two-jobs", "blocked");
+		run(["task", "set", "pij-two-jobs", "beta work", "--actor", "pij-boss"], d);
+		reportState(d, "pij-two-jobs", "done");
+	}
+
+	it("omits the key entirely without the flag — absent means NOT REQUESTED", () => {
+		const r = run(["list", "--json"], badgeDeps());
+		const rows = JSON.parse(r.stdout) as Row[];
+		// Absent, not null: a consumer must distinguish "I did not ask for this"
+		// from "I asked and the answer is genuinely unknown" (which is "unknown").
+		for (const row of rows) expect(row).not.toHaveProperty("badge");
+	});
+
+	it("carries the badge on every row under --badge", () => {
+		const r = run(["list", "--badge", "--json"], badgeDeps());
+		expect(r.exitCode).toBe(0);
+		const rows = JSON.parse(r.stdout) as Row[];
+		expect(rows.length).toBeGreaterThan(0);
+		for (const row of rows) expect(typeof row.badge).toBe("string");
+	});
+
+	it("is WORST-FIRST across open assignments, not the current-assignment denorm", () => {
+		// The discriminating case, and the whole reason the cheap `semanticState`
+		// variant was rejected: the seat is `done` on its CURRENT assignment while
+		// still `blocked` on an earlier open one. A badge derived from the denorm
+		// renders it calm; the AC-05 badge must say `blocked`.
+		const d = badgeDeps();
+		seedDivergent(d);
+
+		const denorm = d.registry.read("pij-two-jobs")?.semanticState;
+		expect(denorm).toBe("done"); // what a cheap badge would have shown
+
+		const rows = JSON.parse(run(["list", "--badge", "--json"], d).stdout) as Row[];
+		expect(rows.find((row) => row.id === "pij-two-jobs")?.badge).toBe("blocked");
+	});
+
+	it("agrees with `node show` — one surface, two paths, same answer", () => {
+		const d = badgeDeps();
+		seedDivergent(d);
+		const rows = JSON.parse(run(["list", "--badge", "--json"], d).stdout) as Row[];
+		const card = JSON.parse(run(["node", "show", "pij-two-jobs", "--json"], d).stdout) as {
+			badge: string;
+		};
+		expect(rows.find((row) => row.id === "pij-two-jobs")?.badge).toBe(card.badge);
+	});
+
+	it("CONTROL: reads the spine EXACTLY ONCE regardless of row count", () => {
+		// The 20x that no correctness test can see. Reverting the hoist to a
+		// per-row `spineLog.read({peer})` — the shape `node show` legitimately
+		// uses — measured 4.2s vs 190ms at 179 rows, and produces IDENTICAL
+		// badges, so every other test here stays green through the regression.
+		// Pin the call COUNT, which is the only observable that changes.
+		const base = platformDeps({
+			self: "pij-self",
+			descs: Array.from({ length: 25 }, (_, i) => desc({ id: `pij-row-${i}` })),
+		});
+		let reads = 0;
+		const counting = {
+			...base,
+			spineLog: new Proxy(base.spineLog, {
+				get: (target, prop, receiver) => {
+					const value = Reflect.get(target, prop, receiver);
+					if (prop !== "read" || typeof value !== "function") return value;
+					return (...args: unknown[]) => {
+						reads++;
+						return (value as (...a: unknown[]) => unknown).apply(target, args);
+					};
+				},
+			}),
+		};
+
+		const r = run(["list", "--badge", "--json"], counting);
+		expect(r.exitCode).toBe(0);
+		expect(reads).toBe(1); // 25 rows, ONE spine read — not 25.
+	});
+
+	it("fails loudly rather than silently badge-less when the stores are unwired", () => {
+		const { assignmentStore: _a, spineLog: _s, ...unwired } = badgeDeps();
+		const r = run(["list", "--badge", "--json"], unwired as unknown as CliDeps);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-NOREG");
+	});
+});
+
+describe("`list --archived` reachability (regression: allowlisted flag)", () => {
+	it("is ACCEPTED — it was handled but never allowlisted, so the tier was dead", () => {
+		// The archived branch (plan 071 D1) has always existed in the handler, but
+		// `archived` was missing from the send-time flag allowlist, so every
+		// invocation answered `E-ARG: unknown flag --archived` (RC=64) and the
+		// whole tier was unreachable from the CLI. Implemented-but-unreachable.
+		const r = run(["list", "--archived", "--json"], platformDeps({ self: "pij-self" }));
+		expect(r.exitCode).toBe(0);
+		expect(r.stderr).not.toContain("unknown flag");
 	});
 });
 
@@ -4254,7 +5752,7 @@ describe("denorm fresh-read basis (P3 T006b — p2-review-001 note 2)", () => {
 			}
 			return origRead(id);
 		};
-		const r = run(["state", "set", "pij-node", "ready", "--actor", "pij-boss"], d);
+		const r = reportState(d, "pij-node", "ready");
 		expect(r.exitCode).toBe(0);
 		const persisted = origRead("pij-node");
 		// The verb's denorm fields landed…
@@ -4313,32 +5811,18 @@ describe("spine render (P4 T002 — parse row + core E-NOREG naming the bin)", (
 
 describe("state clear (State-Model v2)", () => {
 	it("parses strict state clear grammar without changing the legacy state card", () => {
-		expect(
-			parseArgs([
-				"state",
-				"clear",
-				"pij-node",
-				"--assignment",
-				"asg-1",
-				"--actor",
-				"boss",
-				"--json",
-			]),
-		).toMatchObject({
+		expect(parseArgs(["report", "clear", "--assignment", "asg-1", "--json"])).toMatchObject({
 			ok: true,
 			value: {
 				verb: "state-clear",
-				node: "pij-node",
 				assignmentId: "asg-1",
-				actor: "boss",
 				json: true,
 			},
 		});
 		for (const argv of [
-			["state", "clear"],
-			["state", "clear", "pij-node", "extra"],
-			["state", "clear", "pij-node", "--refs", "issue:1"],
-			["state", "clear", "pij-node", "--assignment"],
+			["report", "clear", "extra"],
+			["report", "clear", "--refs", "issue:1"],
+			["report", "clear", "--assignment"],
 		] as const) {
 			expect(parseArgs(argv)).toMatchObject({ ok: false, code: "E-ARG" });
 		}
@@ -4377,7 +5861,7 @@ describe("state clear (State-Model v2)", () => {
 			peer: "pij-node",
 			refs: ["node:pij-node", "assignment:asg-clear", "state:hold"],
 		});
-		const r = run(["state", "clear", "pij-node", "--json"], d);
+		const r = reportClear(d, "pij-node", ["--json"]);
 		expect(r.exitCode).toBe(0);
 		const event = JSON.parse(r.stdout) as SpineEvent;
 		expect(event).toMatchObject({ kind: SPINE_KIND_STATE_CLEARED, peer: "pij-node" });
@@ -4396,7 +5880,7 @@ describe("state clear (State-Model v2)", () => {
 
 	it("refuses a missing-general target without an event or materialization", () => {
 		const d = nodeDeps();
-		const r = run(["state", "clear", "pij-node"], d);
+		const r = reportClear(d, "pij-node");
 		expect(r.exitCode).toBe(3);
 		expect(r.stderr).toContain("no assignment to clear");
 		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
@@ -4405,9 +5889,9 @@ describe("state clear (State-Model v2)", () => {
 
 	it("a later state set becomes current after a clear", () => {
 		const d = nodeDeps();
-		expect(run(["state", "set", "pij-node", "hold"], d).exitCode).toBe(0);
-		expect(run(["state", "clear", "pij-node"], d).exitCode).toBe(0);
-		expect(run(["state", "set", "pij-node", "ready"], d).exitCode).toBe(0);
+		expect(reportState(d, "pij-node", "hold").exitCode).toBe(0);
+		expect(reportClear(d, "pij-node").exitCode).toBe(0);
+		expect(reportState(d, "pij-node", "ready").exitCode).toBe(0);
 		const card = JSON.parse(run(["node", "show", "pij-node", "--json"], d).stdout) as {
 			assignments: Array<{ state: string | null }>;
 		};
@@ -4417,7 +5901,7 @@ describe("state clear (State-Model v2)", () => {
 	describe("journal-first cut points", () => {
 		function clearable() {
 			const d = nodeDeps();
-			expect(run(["state", "set", "pij-node", "hold"], d).exitCode).toBe(0);
+			expect(reportState(d, "pij-node", "hold").exitCode).toBe(0);
 			return { d, assignmentId: "asg-general-pij-node" };
 		}
 
@@ -4425,7 +5909,7 @@ describe("state clear (State-Model v2)", () => {
 			const { d, assignmentId } = clearable();
 			const before = d.assignmentStore.read(assignmentId);
 			d.opJournal.failNext("record");
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(d.spineLog.read()).toHaveLength(1);
 			expect(d.assignmentStore.read(assignmentId)).toEqual(before);
@@ -4435,7 +5919,7 @@ describe("state clear (State-Model v2)", () => {
 		it("assignment-write abort clears the clear intent and leaves the declaration intact", () => {
 			const { d, assignmentId } = clearable();
 			d.assignmentStore.failNext("write");
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(d.spineLog.read()).toHaveLength(1);
 			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1]);
@@ -4446,7 +5930,7 @@ describe("state clear (State-Model v2)", () => {
 		it("appendOnce failure reports WAS-cleared; the next write replays and chains one clear", () => {
 			const { d, assignmentId } = clearable();
 			d.spineLog.failNext("appendOnce");
-			const failed = run(["state", "clear", "pij-node"], d);
+			const failed = reportClear(d, "pij-node");
 			expect(failed.exitCode).toBe(3);
 			expect(failed.stderr).toContain("WAS cleared");
 			expect(d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED)).toEqual(
@@ -4465,7 +5949,7 @@ describe("state clear (State-Model v2)", () => {
 		it("journal clear failure is nonzero while the clear event and assignment chain stand", () => {
 			const { d, assignmentId } = clearable();
 			d.opJournal.failNext("clear");
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS cleared");
 			const cleared = d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED);
@@ -4476,10 +5960,15 @@ describe("state clear (State-Model v2)", () => {
 
 		it("denorm failure is honest while the clear event and assignment history are preserved", () => {
 			const { d, assignmentId } = clearable();
-			d.registry.write = () => {
+			// Stubs BOTH write paths: the denorm uses `writeExact` (it must be able to
+			// clear a stale semanticState, which the merging write deliberately cannot).
+			// Injecting on only one would silently stop exercising the failure path.
+			const boom = () => {
 				throw new Error("injected descriptor write failure");
 			};
-			const r = run(["state", "clear", "pij-node"], d);
+			d.registry.write = boom;
+			d.registry.writeExact = boom;
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS cleared");
 			expect(r.stderr).toContain("injected descriptor write failure");
@@ -4705,6 +6194,11 @@ describe("state clear (State-Model v2)", () => {
 				const help = runBin(["stream", "create", "--help"]);
 				expect(help.status).toBe(0);
 				expect(help.stdout).toContain("pij stream create");
+				const reportHelp = runBin(["report", "--help"]);
+				expect(reportHelp.status).toBe(0);
+				expect(reportHelp.stdout).toContain('pij report question "<what I need from you>"');
+				expect(reportHelp.stdout).toContain('pij report blocked "<what I am waiting on>"');
+				expect(reportHelp.stdout).toContain("[--note <text>]");
 
 				const created = runBin([
 					"stream",
@@ -4845,6 +6339,42 @@ describe("state clear (State-Model v2)", () => {
 				packetSha256: SHA,
 			});
 			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(3);
+		});
+
+		it("re-arms only a self-paused watchdog after a new dispatch is delivered", () => {
+			for (const [label, sidecar, expected] of [
+				["self", { enabled: true, pausedBy: "self", pausedAtMs: 1 }, { enabled: true }],
+				["operator-disabled", { enabled: false }, { enabled: false }],
+				[
+					"exempt",
+					{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+					{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+				],
+			] as const) {
+				const watchdogStore = memoryWatchdogStore("pij-worker", sidecar);
+				const d = { ...dispatchDeps(), watchdogStore };
+				const result = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], d);
+				expect(result.exitCode).toBe(0);
+				expect(watchdogStore.sidecars.get("pij-worker")).toEqual(expected);
+				expect(watchdogStore.writes).toHaveLength(label === "self" ? 1 : 0);
+			}
+		});
+
+		it("does not re-arm a self pause when dispatch delivery fails", () => {
+			const watchdogStore = memoryWatchdogStore("pij-worker", {
+				enabled: true,
+				pausedBy: "self",
+				pausedAtMs: 1,
+			});
+			const d = dispatchDeps();
+			const result = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], {
+				...d,
+				watchdogStore,
+				delivery: { deliver: () => err("E-NOREG", "injected channel failure") },
+			});
+			expect(result.exitCode).toBe(3);
+			expect(watchdogStore.sidecars.get("pij-worker")?.pausedBy).toBe("self");
+			expect(watchdogStore.writes).toEqual([]);
 		});
 
 		it("never holds the platform write lock across peer delivery", () => {
@@ -5060,6 +6590,18 @@ describe("state clear (State-Model v2)", () => {
 			return {
 				...d,
 				packets,
+				models: [
+					{
+						id: "gpt-5.6-sol",
+						name: "GPT-5.6 Sol",
+						provider: "github-copilot",
+						verified: true,
+						contextWindow: 1_050_000,
+					},
+				],
+				contextWindowReader: {
+					read: () => ({ label: "1.1M", tokens: 1_100_000, source: "pane-footer" as const }),
+				},
 				nextCanaryNonce: () => "canary-nonce-7391",
 				writeCanaryPacket: (input: {
 					readonly caller: SessionDescriptor;
@@ -5143,6 +6685,13 @@ describe("state clear (State-Model v2)", () => {
 					pid: 100,
 					harnessSessionId: "native-worker",
 				},
+				contextWindow: {
+					expected: 1_050_000,
+					expectedLabel: "1.1M",
+					observedLabel: "1.1M",
+					source: "pane-footer",
+					check: "matched",
+				},
 			});
 			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(4);
 		});
@@ -5212,6 +6761,67 @@ describe("state clear (State-Model v2)", () => {
 			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("acked");
 			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
 			expect(d.spineLog.read()).toHaveLength(beforeEvents);
+		});
+
+		it("rejects a matching model whose observed footer is the wrong context tier", () => {
+			const d = canaryDeps();
+			expect(run(["canary", "pij-worker", "--expect-model", EXPECTED_MODEL], d).exitCode).toBe(0);
+			expect(
+				run(["ack", "dispatch-test-1", "--packet-sha", SHA], {
+					...d,
+					process: new FakeProcess(999, T + 100, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+				}).exitCode,
+			).toBe(0);
+
+			const refused = finalizeCanary(
+				{
+					dispatchId: "dispatch-test-1",
+					nonce: "canary-nonce-7391",
+					expectedModel: EXPECTED_MODEL,
+					json: false,
+				},
+				{
+					...d,
+					contextWindowReader: {
+						read: () => ({ label: "400K", tokens: 400_000, source: "pane-footer" as const }),
+					},
+				},
+			);
+			expect(refused).toEqual({
+				stdout: "",
+				stderr:
+					"E-CANARY-CONTEXT: target 'pij-worker' pinned model 'github-copilot/gpt-5.6-sol' expects 1.1M but pane footer reports 400K",
+				exitCode: 3,
+			});
+			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
+		});
+
+		it("distinguishes a missing catalog window from an unobservable pane footer", () => {
+			const d = canaryDeps();
+			expect(run(["canary", "pij-worker", "--expect-model", EXPECTED_MODEL], d).exitCode).toBe(0);
+			expect(
+				run(["ack", "dispatch-test-1", "--packet-sha", SHA], {
+					...d,
+					process: new FakeProcess(999, T + 100, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+				}).exitCode,
+			).toBe(0);
+
+			const refused = finalizeCanary(
+				{
+					dispatchId: "dispatch-test-1",
+					nonce: "canary-nonce-7391",
+					expectedModel: EXPECTED_MODEL,
+					json: false,
+				},
+				{ ...d, models: [] },
+			);
+			expect(refused).toEqual({
+				stdout: "",
+				stderr:
+					"E-CANARY-CONTEXT: target 'pij-worker' pinned model 'github-copilot/gpt-5.6-sol' has no catalog context window; cannot validate effective tier",
+				exitCode: 3,
+			});
+			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
 		});
 
 		function collectChild(
@@ -5328,15 +6938,41 @@ describe("state clear (State-Model v2)", () => {
 			}
 		});
 
-		it("real bin pass attaches the defensive triple to the real acked dispatch", {
+		it("real bin PASSES with an unverified tier when the effective context tier is unobservable", {
 			timeout: 15_000,
 		}, async () => {
 			const root = mkdtempSync(join(tmpdir(), "pij-canary-pass-bin-"));
 			const home = join(root, "home");
 			const repo = join(root, "repo");
+			const userHome = join(root, "user-home");
+			const fakeBin = join(root, "bin");
 			try {
 				mkdirSync(home, { recursive: true });
 				mkdirSync(repo, { recursive: true });
+				mkdirSync(join(userHome, ".pi", "agent"), { recursive: true });
+				mkdirSync(fakeBin, { recursive: true });
+				writeFileSync(
+					join(userHome, ".pi", "agent", "models.json"),
+					JSON.stringify({
+						providers: {
+							"github-copilot": {
+								models: [
+									{
+										id: "gpt-5.6-sol",
+										name: "GPT-5.6 Sol",
+										contextWindow: 1_050_000,
+									},
+								],
+							},
+						},
+					}),
+				);
+				const fakeTmux = join(fakeBin, "tmux");
+				writeFileSync(
+					fakeTmux,
+					'#!/usr/bin/env node\nprocess.stdout.write("gpt-5.6-sol · ready\\n");\n',
+				);
+				chmodSync(fakeTmux, 0o755);
 				const registry = new FsRegistry(home);
 				registry.write(
 					desc({
@@ -5375,6 +7011,8 @@ describe("state clear (State-Model v2)", () => {
 					CLAUDE_CODE_SESSION_ID: "",
 					CODEX_THREAD_ID: "",
 					TMUX_PANE: "",
+					HOME: userHome,
+					PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
 				};
 				const canary = collectChild(
 					["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=2000"],
@@ -5394,23 +7032,140 @@ describe("state clear (State-Model v2)", () => {
 					},
 				);
 				expect(acked.status, acked.stderr).toBe(0);
+				// plan 071 D6 — the fake tmux footer publishes NO context marker, which
+				// is what every real claude pane looks like. That used to be a hard
+				// E-CANARY-CONTEXT refusal; it is now a pass that says out loud the
+				// tier was never verified. (The observed-contradiction refusal is
+				// covered by the control in core/canary.test.ts.)
 				const completed = await canary;
 				expect(completed.status, completed.stderr).toBe(0);
+				expect(completed.stdout).toContain("canary PASS");
+				expect(completed.stdout).toContain("contextTier=unverified");
 				const record = store.read(pending.id);
-				if (!record?.canary) throw new Error("missing CanaryRecord");
-				expect(record.state).toBe("acked");
-				expect(record.canary.identity).toEqual({
-					paneId: "%31",
-					pid: process.pid,
-					harnessSessionId: "native-worker",
-				});
-				expect(record.packetPath).toContain(join("pij-parent", "canary-packets"));
-				const terminalOutput = completed.stdout.trim().split(/\r?\n/).at(-1);
-				expect(terminalOutput).toBe(renderCanaryPass(record.canary));
-				expect(completed.stdout).not.toContain("E-CANARY-TIMEOUT");
+				if (!record) throw new Error("missing acknowledged dispatch");
+				expect(record.canary?.contextWindow?.check).toBe("unverified");
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}
 		});
+	});
+});
+
+describe("retired verb hints (field report, pij-long-skellor 2026-07-30)", () => {
+	// `pij state set` moved into the report family in s074. The old form then hit
+	// the generic arity check — "too many arguments for 'state'" — which names no
+	// replacement and reads like a typo rather than a migration. A seat following
+	// an older handover packet had no way to tell those apart, and paid a --help
+	// crawl to escape. Deleting a verb is fine; deleting the SIGNPOST is not.
+	const hint = (argv: readonly string[]) => {
+		const parsed = parseArgs([...argv]);
+		expect(parsed.ok).toBe(false);
+		return parsed.ok ? "" : parsed.message;
+	};
+
+	it("points the retired setter at its first-person replacement", () => {
+		const message = hint(["state", "set", "pij-long-skellor", "ready"]);
+		expect(message).toContain("pij report state ready");
+		expect(message).toContain("retired");
+		expect(message).not.toContain("too many arguments");
+	});
+
+	it("carries the state through the id-less form too", () => {
+		expect(hint(["state", "set", "ready"])).toContain("pij report state ready");
+	});
+
+	it("answers clear and verify with their own replacements", () => {
+		expect(hint(["state", "clear"])).toContain("pij report clear");
+		expect(hint(["state", "verify", "pij-x"])).toContain("pij report verify <node>");
+	});
+
+	it("leaves the surviving read-only form alone", () => {
+		expect(parseArgs(["state", "pij-long-skellor"]).ok).toBe(true);
+	});
+});
+
+describe("scoped anomalies name what they did NOT look at", () => {
+	// A narrowing flag that answers "no anomalies" is indistinguishable from "all
+	// clear", and the scoped query is the one a seat naturally runs to check its
+	// own area. Observed 2026-07-30: `--here` said "no anomalies" for a seat while
+	// the unscoped view carried 11 rows — one of them its own governing prime's
+	// twelve-day-stale card. Make the boundary of the answer part of the answer.
+	it("reports the hidden count when a scope empties the result", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-elsewhere", folder: "/other-repo" })],
+			cwd: "/repo-main",
+		});
+		run(["task", "set", "pij-elsewhere", "ship", "--actor", "pij-boss"], d);
+		reportState(d, "pij-elsewhere", "done");
+
+		// Guard against a vacuous pass: if the fixture stops producing an anomaly,
+		// this test must FAIL rather than silently assert nothing.
+		const unscoped = run(["anomalies"], d);
+		expect(unscoped.stdout).not.toContain("no anomalies");
+		expect(unscoped.stdout).toContain("pij-elsewhere");
+
+		const scoped = run(["anomalies", "--here"], d);
+		expect(scoped.stdout).toContain("no anomalies in this folder");
+		expect(scoped.stdout).toContain("elsewhere");
+		expect(scoped.stdout).toContain("pij anomalies");
+	});
+
+	it("stays terse when the scope hid nothing", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-quiet", folder: "/repo-main" })],
+			cwd: "/repo-main",
+		});
+		expect(run(["anomalies", "--here"], d).stdout).toBe(
+			"no anomalies in this folder (and none anywhere)",
+		);
+		expect(run(["anomalies"], d).stdout).toBe("no anomalies");
+	});
+
+	// ── D-038: the remedy had the shape of the bug it fixed ───────────────────
+	it("reports the hidden count when a scope PARTIALLY filters the result", () => {
+		// The footer originally fired only when the scoped result was EMPTY, so a
+		// scope returning some rows while hiding others printed nothing at all —
+		// the fix for "say what you did not look at" being silent about what IT
+		// did not look at. The partial case is the more dangerous one: a non-empty
+		// result reads as a complete answer, where an empty one invites suspicion.
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({ id: "pij-here", folder: "/repo-main" }),
+				desc({ id: "pij-elsewhere", folder: "/other-repo" }),
+			],
+			cwd: "/repo-main",
+		});
+		for (const id of ["pij-here", "pij-elsewhere"]) {
+			run(["task", "set", id, "ship", "--actor", "pij-boss"], d);
+			reportState(d, id, "done");
+		}
+
+		// Guard against a vacuous pass: both seats must actually be flagged.
+		const unscoped = run(["anomalies"], d);
+		expect(unscoped.stdout).toContain("pij-here");
+		expect(unscoped.stdout).toContain("pij-elsewhere");
+
+		const scoped = run(["anomalies", "--here"], d);
+		expect(scoped.stdout).toContain("pij-here");
+		expect(scoped.stdout).not.toContain("pij-elsewhere");
+		// The whole point: the answer names its own boundary even when non-empty.
+		expect(scoped.stdout).toContain("hidden by that scope");
+		expect(scoped.stdout).toContain("in this folder");
+	});
+
+	it("stays terse on a full result that hid nothing", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-here", folder: "/repo-main" })],
+			cwd: "/repo-main",
+		});
+		run(["task", "set", "pij-here", "ship", "--actor", "pij-boss"], d);
+		reportState(d, "pij-here", "done");
+		const scoped = run(["anomalies", "--here"], d);
+		expect(scoped.stdout).toContain("pij-here");
+		expect(scoped.stdout).not.toContain("hidden by that scope");
 	});
 });

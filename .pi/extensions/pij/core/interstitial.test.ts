@@ -26,6 +26,17 @@ const LOGIN_PROMPT = `
    Log in with API key
 `;
 
+const COPILOT_SESSION_IN_USE = `
+ Session in use
+
+ This session was last active just now and appears to be in use by another CLI or application.
+
+ ❯ 1. Resume anyway
+   2. Go back (Esc)
+
+ ↑/↓ to navigate · enter to select · esc to cancel
+`;
+
 describe("classifyInterstitial", () => {
 	it("Chrome-extension menu → dismiss (Esc)", () => {
 		expect(classifyInterstitial(CHROME_PROMPT)).toEqual({
@@ -72,10 +83,50 @@ describe("classifyInterstitial", () => {
 		});
 	});
 
+	it("answers only the exact Copilot session-in-use modal at the capture tail", () => {
+		expect(
+			classifyInterstitial(`${"old scrollback\n".repeat(200)}${COPILOT_SESSION_IN_USE}`, "copilot"),
+		).toEqual({
+			action: "answer",
+			label: "session-in-use",
+			keys: ["1", "Enter"],
+		});
+		expect(classifyInterstitial(COPILOT_SESSION_IN_USE)).toEqual({ action: "none" });
+		expect(classifyInterstitial(COPILOT_SESSION_IN_USE, "claude")).toEqual({ action: "none" });
+	});
+
+	it("never treats ordinary prose or a different modal as the Copilot resume modal", () => {
+		const prose = `I inspected the text Session in use and the options 1. Resume anyway and 2. Go back.\n◎ Working esc interrupt`;
+		const destructive = `
+ Overwrite checkpoint?
+
+ The documentation says Session in use and mentions the legacy labels.
+
+ ❯ 1. Delete existing checkpoint
+   2. Go back (Esc)
+
+ Previous wording: 1. Resume anyway
+`;
+		expect(classifyInterstitial(prose, "copilot")).toEqual({ action: "none" });
+		expect(classifyInterstitial(prose)).toEqual({ action: "none" });
+		expect(classifyInterstitial(destructive, "copilot")).toEqual({ action: "none" });
+	});
+
+	it("ignores an exact but stale modal outside the capture tail", () => {
+		const pane = `${COPILOT_SESSION_IN_USE}\n${"newer output\n".repeat(200)}`;
+		expect(classifyInterstitial(pane, "copilot")).toEqual({ action: "none" });
+	});
+
 	it("a ready footer is not an interstitial", () => {
 		expect(classifyInterstitial("⏵⏵ auto mode on (shift+tab to cycle)")).toEqual({
 			action: "none",
 		});
+	});
+
+	it("does not classify prose that merely discusses generic prompt phrases", () => {
+		const prose =
+			"The review discusses Do you trust, Log in with Claude account, and Update available! patterns.";
+		expect(classifyInterstitial(prose)).toEqual({ action: "none" });
 	});
 });
 

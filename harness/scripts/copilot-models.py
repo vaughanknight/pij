@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """List the GitHub Copilot models your account is actually entitled to.
 
-Reads the Copilot bearer token from ~/.pi/agent/auth.json, auto-selects the
-correct API host from the token's `proxy-ep` claim (individual vs enterprise),
-calls GET /models, and prints the entitled model ids.
+Prefers the Copilot bearer token from ~/.pi/agent/auth.json, then retries an
+unauthorized request with a fresh `omp token github-copilot` credential. The
+token's `proxy-ep` claim selects the correct individual/enterprise API host.
 
 Usage:
     just copilot-models            # list every entitled model id
@@ -14,6 +14,7 @@ Usage:
 import json
 import os
 import sys
+import subprocess
 import urllib.error
 import urllib.request
 
@@ -26,14 +27,30 @@ EDITOR_HEADERS = {
 }
 
 
-def load_token() -> str:
+def load_pi_token() -> str | None:
     try:
-        auth = json.load(open(AUTH_PATH))
+        with open(AUTH_PATH) as auth_file:
+            auth = json.load(auth_file)
     except FileNotFoundError:
-        sys.exit(f"❌ no auth file at {AUTH_PATH} — sign in to Copilot in pi first")
+        return None
     token = auth.get("github-copilot", {}).get("access")
+    return token if isinstance(token, str) and token else None
+
+
+def load_omp_token() -> str:
+    try:
+        result = subprocess.run(
+            ["omp", "token", "github-copilot"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        sys.exit(f"❌ unable to refresh the GitHub Copilot token through OMP: {exc}")
+    token = result.stdout.strip()
     if not token:
-        sys.exit("❌ no github-copilot.access token in auth.json")
+        sys.exit("❌ OMP returned an empty GitHub Copilot token")
     return token
 
 
@@ -62,11 +79,8 @@ def fetch_models(token: str) -> dict:
         f"https://{host}/models",
         headers={"Authorization": f"Bearer {token}", **EDITOR_HEADERS},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = resp.read().decode()
-    except urllib.error.HTTPError as exc:
-        sys.exit(f"❌ HTTP {exc.code} from {host}/models: {exc.read().decode()[:200]}")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = resp.read().decode()
     return {"host": host, "payload": json.loads(body)}
 
 
@@ -75,8 +89,20 @@ def main() -> None:
     as_json = "--json" in args
     filters = [a.lower() for a in args if not a.startswith("--")]
 
-    token = load_token()
-    result = fetch_models(token)
+    token = load_pi_token() or load_omp_token()
+    try:
+        result = fetch_models(token)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 401:
+            sys.exit(f"❌ HTTP {exc.code} from {host_for(token)}/models: {exc.read().decode()[:200]}")
+        token = load_omp_token()
+        try:
+            result = fetch_models(token)
+        except urllib.error.HTTPError as retry_exc:
+            sys.exit(
+                f"❌ HTTP {retry_exc.code} from {host_for(token)}/models after OMP token refresh: "
+                f"{retry_exc.read().decode()[:200]}"
+            )
     payload = result["payload"]
 
     if as_json:

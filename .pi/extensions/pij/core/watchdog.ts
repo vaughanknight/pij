@@ -116,6 +116,11 @@ export function applyWorkingTransition(sidecar: WatchdogSidecar): WatchdogSideca
 	return sidecar.pausedBy === "compact" ? withoutPause(sidecar) : sidecar;
 }
 
+/** A self pause applies to finished work, not to a later dispatch or assignment. */
+export function applyNewWorkTransition(sidecar: WatchdogSidecar): WatchdogSidecar {
+	return sidecar.pausedBy === "self" ? withoutPause(sidecar) : sidecar;
+}
+
 /** Shared pure seam used before either local or remote compact delivery. */
 export function applyCompactPause(
 	sidecar: WatchdogSidecar | undefined,
@@ -126,19 +131,38 @@ export function applyCompactPause(
 }
 
 // ─── scheduler ──────────────────────────────────────────────────────────────
+export interface WatchdogScheduleSource {
+	readonly statusAt?: string;
+	readonly startedAt: string;
+}
+
+/** The PM reporting clock, newest-wins. `startedAt` is the floor so a PM that
+ * has never reported still becomes due; null means no timestamp can be proved. */
+export function watchdogScheduleAnchorMs(source: WatchdogScheduleSource): number | null {
+	let newest: number | null = null;
+	for (const stamp of [source.statusAt, source.startedAt]) {
+		if (typeof stamp !== "string") continue;
+		const parsed = Date.parse(stamp);
+		if (!Number.isFinite(parsed)) continue;
+		if (newest === null || parsed > newest) newest = parsed;
+	}
+	return newest;
+}
+
 /**
- * A fire is due one full interval after the newest real activity or delivered
- * fire. Activity re-anchors the schedule; during a freeze each delivered fire
- * becomes the next anchor, so periodic turns continue rather than collapsing.
+ * A fire is due one full interval after the newest supplied schedule anchor or
+ * delivered fire. WatchdogManager supplies PM `statusAt` with a `startedAt`
+ * floor, deliberately removing ordinary activity re-anchoring: a PM that works
+ * without reporting is still nudged. Delivered fires retain the freeze cadence.
  */
 export function isFireDue(
 	cfg: EffectiveWatchdogConfig,
 	lastFireAt: number | null,
-	lastEventAt: number | null,
+	scheduleAnchorAt: number | null,
 	nowMs: number,
 ): boolean {
 	if (!cfg.enabled || cfg.pausedBy !== undefined) return false;
-	const anchors = [lastFireAt, lastEventAt].filter(
+	const anchors = [lastFireAt, scheduleAnchorAt].filter(
 		(value): value is number => value !== null && Number.isFinite(value),
 	);
 	if (anchors.length === 0) return false;
@@ -182,13 +206,34 @@ export function evaluateResponse(inputs: WatchdogResponseInputs): WatchdogRespon
 // ─── self-teaching watchdog turn ────────────────────────────────────────────
 export interface WatchdogTurnConfig extends EffectiveWatchdogConfig {
 	readonly paneAvailable?: boolean;
+	/** Does this seat owe a status card? See `owesStatusCard` — PM yes, prime no.
+	 *  Selects the COPY only; eligibility to be watched at all is a separate
+	 *  question and primes remain watched. Defaults to the card-owing copy so an
+	 *  un-wired caller keeps today's behaviour. */
+	readonly owesCard?: boolean;
 }
 
 export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurnConfig): string {
+	const head = `[pij watchdog #${ordinal} for ${id}] Keep going if working.`;
+	// A seat that owes no card still needs the ping — it must not go silent. A
+	// prime is the only seat on the box with NO supervisor: a wedged PM is caught
+	// by its prime, a wedged prime is caught by nobody, so this is its sole
+	// external heartbeat and it lands in the prime's own pane at no cost to the
+	// human. What changes is the ASK: liveness and lifecycle, never a card.
+	//
+	// The altitude clause is Jordan's second ruling (2026-07-30): a prime's card,
+	// if it writes one voluntarily, must be about its OWN governance work. A card
+	// restating what a stream already reported double-renders the same fact in the
+	// rail. Observed live: an o-prime led two consecutive cards with its stream's
+	// merge, a fact that stream had already filed itself.
 	const turn =
-		`[pij watchdog #${ordinal} for ${id}] Keep going if working. ` +
-		`If done, pause me with \`pij watchdog pause ${id}\`; ` +
-		`resume with \`pij watchdog resume ${id}\`.`;
+		cfg.owesCard === false
+			? `${head} You do NOT owe a status card — a prime reports to its human in-pane, so a card there duplicates a richer channel. ` +
+				"If you post one anyway, make it your OWN governance work, never a restatement of what a stream already reported. " +
+				"If done, run `pij report state done`."
+			: `${head} ` +
+				`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. ` +
+				"If done, run `pij report state done`.";
 	return cfg.paneAvailable === false
 		? `${turn} Pane capture unavailable; watching event activity only.`
 		: turn;

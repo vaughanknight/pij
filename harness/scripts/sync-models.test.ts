@@ -73,8 +73,15 @@ describe("portable models source", () => {
 		const openrouter = parsed.providers.openrouter;
 		assertJsonObject(copilot);
 		assertJsonObject(copilot.modelOverrides);
-		expect(Object.keys(copilot.modelOverrides)).toHaveLength(2);
-		expect(copilot.models).toHaveLength(5);
+		expect(copilot.modelOverrides).toMatchObject({
+			"claude-opus-5": expect.objectContaining({ contextWindow: 1_000_000, maxTokens: 64_000 }),
+		});
+		expect(copilot.models).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: "claude-opus-5", contextWindow: 1_000_000 }),
+				expect.objectContaining({ id: "gemini-3.6-flash", contextWindow: 1_000_000 }),
+			]),
+		);
 		assertJsonObject(sakana);
 		expect(sakana.models).toHaveLength(2);
 		expect(sakana.apiKey).toBe(

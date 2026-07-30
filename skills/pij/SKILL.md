@@ -26,7 +26,7 @@ description: Route pij platform jobs — adopt a seat and wait (/pij ready), spa
 | `agent` | run a packaged agent pack — fire-and-forget or resident | `references/routes/agent.md` |
 | `skill` | run an installed skill (`/validate-v2`, `/thesis`…) in a peer, output pushed back | `references/routes/skill.md` |
 | `peer` | spawn & talk to an ad-hoc colleague in any harness | `references/routes/peer.md` |
-| `ops` | daemon health, registry & tmux hygiene | `references/routes/ops.md` |
+| `ops` | daemon health, registry & tmux hygiene — and **recovering a prime after a reboot** ("revive our prime") | `references/routes/ops.md` |
 | `node` | work durable project/stream/dispatch truth, node states, adoption repair, and anomaly queries | `references/routes/node.md` |
 | `prime` | govern many agents in one repo: one o-prime seat, stream orchestrators below, government as single-writer files | `references/routes/prime.md` |
 | `watch` | subscribe a non-pi peer to file-change notices — `pij watch`/`pij unwatch` (self-serve) | *(shipped, plan 033 — CLI verbs; see `docs/how/pij-peer-watch.md`; no route module)* |
@@ -38,14 +38,16 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | CLI verb | lives in |
 |---|---|
 | `spawn` `send` `tail` `close` `adopt` `whoami` `list` `state` `inbox` `tree` `link` | peer route |
+| `revive` (`--print` / `--attach [%pane]` / `--assume-dead`) | peer route — bring a seat back after a reboot or re-bind a live-but-orphaned session; `--print` mutates nothing |
 | `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
+| `bg` (`create/list/tail/kill`) | § Shared conventions C7 — run a slow command detached; its result arrives as an injected turn from `pij-bg` |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
-| `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C8 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
+| `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C9 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
 | `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |
 | `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
-| `project` `stream` `fence` `dispatch` `ack` `canary` `spine` `task` (`set`) `state` (`set/verify`) `node` (`show`) `anomalies` | node route (platform governance + team-scaffold records) |
+| `project` `stream` `fence` `dispatch` `ack` `canary` `attest` `spine` `task` (`set`) `report` (`now/question/blocked/state/clear/verify`) `node` (`show`) `anomalies` | node route (platform governance + team-scaffold records) |
 
 `/pij prime` selects the skill route; `pij orchestration prime` invokes its CLI
 primitive. `baton` is the other orchestration subcommand.
@@ -63,6 +65,7 @@ primitive. `baton` is the other orchestration subcommand.
 9. **Non-blocking questions**: never `ask_user_question` or any modal question UI — ask inline through the active delivery channel, persist the pending decision, block only dependent work.
 10. **Questions stay with their context owner**: whoever needs the answer asks the human directly; parents receive a pointer and never proxy. Doctrine for 9–10: `references/prime/protocol.md` § Human rulings.
 11. **Isolation removes edit-time serialization, not convergence-time serialization**: work confined to a verified stream worktree/branch is notify-only under a recorded descriptive fence; synchronize at converging histories or shared mutable resources. Trigger matrix: `references/prime/rituals/batons.md`.
+12. **Report at both edges of work — if you owe a card**: `pij report now "<did>" "<next>"` when you START a unit of work and again when you FINISH it. **Who owes one: PMs and stream orchestrators** (any seat reporting up to a prime). A **prime does NOT** — it reports to its human in-pane, conversationally, so a card there duplicates a richer channel; a worker's card renders nowhere. A nudge is the **backstop** for a cadence you should already be keeping, never the trigger for it. A stale card is worse than no card: consumers render it as current, so a seat that shipped an hour ago still reads as waiting. Long units get a line at each visible boundary (dispatch, verdict, merge), not a running commentary. Once your card is >10min old **every pij command warns you on stderr** — that line is an instruction, not decoration. **If a prime writes one voluntarily it must be at ITS OWN ALTITUDE** — its governance work, never a restatement of what a stream already reported, which double-renders the same fact in the rail. And **if you supervise seats, their cards are your accountability too**: subordinates forget, and the layer above is answerable that they do not stay forgotten. `pij anomalies` (run it **unscoped** — `status-stale` is node-keyed, so `--project` filters it out and `--here` hides worktree-resident seats) lists every `status-stale` row with the exact line to relay; chasing each one until the card actually moves is the supervisor's job, not the subordinate's. A row against a **prime** is the exception: nobody supervises a prime, so that row is **self-service** — it exists so the seat can see its own rot, not so anyone can chase it.
 
 ## Aliases (read-time — never a second implementation)
 

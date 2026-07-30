@@ -40,6 +40,35 @@ pij phonehome [--json]   # run INSIDE a peer's pane: confirms a pending binding
 
 Use when a spawned peer booted but never bound (daemon log shows pending): the peer confirms its own identity deterministically instead of waiting on transcript discovery.
 
+## Recover a prime after a reboot
+
+The human asks "revive our prime". A reboot kills the tmux server, so every seat
+is dead and every recorded pane id belongs to a dead epoch.
+
+```bash
+cd /path/to/the/repo && pij daemon status   # daemon dies with its tmux server
+pij revive --print                          # NO id — resolves the prime FOR THIS FOLDER
+```
+
+`--print` mutates nothing (read-only tmux/ps probes) and prints a paste-able
+launch line. **Hand that line to the human — do not run it yourself.** The prime
+must come back in the pane the human will drive, and `--print` records the
+printer as `PIJ_PARENT_ID` when run from inside a pij seat, so a helper that
+prints and is then closed leaves the prime parented to a corpse.
+
+| Result | Meaning / move |
+|---|---|
+| Prints a line naming a seat | Human pastes it into the target pane. claude/copilot/codex lines carry a `pij revive <id> --attach "$TMUX_PANE" &&` prefix — those harnesses do not self-adopt, and without it the seat returns unaddressable |
+| `E-AMBIG: … has 2 prime seats` | Two current primes for one folder. Pass the explicit id; then have the human retire the wrong one (`pij orchestration prime retire <id>`) — never guess which is real |
+| `E-NOID`, naming the folder | No seat recorded there. Not a bootstrapper signal on its own — see prime route § Role triage |
+| Refuses: native transcript missing | **Not revivable.** `pij revive` requires it and correctly refuses rather than starting a fresh session wearing a dead seat's name. The data dir is inheritance material; the human seats a successor |
+
+The revived seat is **PENDING CANARY**: ask it a golden-recall question before
+assigning work. A session that lost its context looks identical to one that kept
+it. A live-but-orphaned session re-bound with `--attach` in the pane it is
+already running in is satisfied by continuity instead — the printed "now launch
+the harness in it" does not apply there.
+
 ## Telegram bridge
 
 ```bash

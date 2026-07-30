@@ -12,6 +12,7 @@ import {
 	buildEffortWarning,
 	buildPendingDescriptor,
 	buildPiFocusSpawnCommand,
+	buildPlanIdWarning,
 	buildSpawnCommand,
 	buildSpawnOutput,
 	deriveCallerParent,
@@ -25,6 +26,7 @@ import {
 	planControlSplit,
 	planPlacement,
 	readyBody,
+	renderSpawnReceipt,
 	resolvePiBin,
 	resolvePiModelBinding,
 	spawnIdentitySeed,
@@ -103,14 +105,22 @@ describe("buildSpawnCommand", () => {
 			expect(r.args).toEqual(["--auto-approve", "--model", "github-copilot/gpt-5.6-sol"]);
 		});
 
-		it("bin 'omp' threads effort onto a provider-qualified model", () => {
+		it("bin 'omp' passes effort through --thinking without corrupting the model id", () => {
 			const r = buildSpawnCommand({
 				...base,
 				bin: "omp",
 				model: "github-copilot/gpt-5.6-sol",
 				effort: "high",
 			});
-			expect(r.args).toEqual(["--auto-approve", "--model", "github-copilot/gpt-5.6-sol:high"]);
+			expect(r.args).toEqual([
+				"--auto-approve",
+				"--model",
+				"github-copilot/gpt-5.6-sol",
+				"--thinking",
+				"high",
+			]);
+			expect(r.env.PIJ_SPAWN_MODEL).toBe("github-copilot/gpt-5.6-sol");
+			expect(r.env.PIJ_SPAWN_EFFORT).toBe("high");
 		});
 
 		it("bin 'omp' env threading is identical to pi (same pij extension self-registers)", () => {
@@ -120,6 +130,7 @@ describe("buildSpawnCommand", () => {
 			expect(r.env.PIJ_ROLE).toBe("worker");
 			expect(r.env.PIJ_SPAWN_TASK).toBe("go");
 			expect(r.env.PIJ_SPAWN_MODEL).toBe("opus");
+			expect(r.env.PIJ_PI_BIN).toBe("omp");
 		});
 	});
 
@@ -128,11 +139,20 @@ describe("buildSpawnCommand", () => {
 		expect(result.env.PIJ_ANNOUNCE_TO).toBe("pij-parent01");
 		expect(result.env.PIJ_SPAWN_ID).toBe("abc123");
 		expect(result.env.PIJ_ROLE).toBe("worker");
+		expect(result.env.PIJ_PI_BIN).toBe("pi");
 	});
 
 	it("exposes the spawner id as PIJ_PARENT_ID (who spawned me)", () => {
 		const result = buildSpawnCommand(base);
 		expect(result.env.PIJ_PARENT_ID).toBe("pij-parent01");
+	});
+
+	it("exports an explicit plan id under both harness join names", () => {
+		const result = buildSpawnCommand({ ...base, planId: "073-pij-first-class-ui" });
+		expect(result.env).toMatchObject({
+			HARNESS_PLAN_ID: "073-pij-first-class-ui",
+			PIJ_PLAN_ID: "073-pij-first-class-ui",
+		});
 	});
 
 	it("omits PIJ_SPAWN_TASK when no task given", () => {
@@ -341,6 +361,44 @@ describe("buildControlSpawnCommand", () => {
 		expect(r.args).toEqual(["--dangerously-skip-permissions"]);
 	});
 
+	// s071 D4 — the deterministic-bind pin for a PLAIN (non-branched) claude.
+	it("claude: a bare forkSessionId pins the session id WITHOUT --resume/--fork-session", () => {
+		const r = buildControlSpawnCommand({
+			...base,
+			forkSessionId: "11111111-2222-3333-4444-555555555555",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--session-id",
+			"11111111-2222-3333-4444-555555555555",
+		]);
+		expect(r.args).not.toContain("--fork-session");
+		expect(r.args).not.toContain("--resume");
+	});
+
+	// CONTROL: with a branchFrom present the SAME field still means "fork", so the
+	// new branch above did not cannibalise branch-from-self.
+	it("control — forkSessionId WITH branchFrom still emits the full fork form", () => {
+		const r = buildControlSpawnCommand({
+			...base,
+			branchFrom: "src-session",
+			forkSessionId: "11111111-2222-3333-4444-555555555555",
+		});
+		expect(r.args).toEqual([
+			"--dangerously-skip-permissions",
+			"--resume",
+			"src-session",
+			"--fork-session",
+			"--session-id",
+			"11111111-2222-3333-4444-555555555555",
+		]);
+	});
+
+	// CONTROL: no id supplied ⇒ no flag invented.
+	it("control — without a forkSessionId claude gets no --session-id at all", () => {
+		expect(buildControlSpawnCommand(base).args).not.toContain("--session-id");
+	});
+
 	it("emits --model after --skip-permissions as discrete argv (AC-09: no shell string)", () => {
 		const r = buildControlSpawnCommand({ ...base, model: "claude-sonnet-4-6" });
 		expect(r.args).toEqual(["--dangerously-skip-permissions", "--model", "claude-sonnet-4-6"]);
@@ -350,6 +408,14 @@ describe("buildControlSpawnCommand", () => {
 		const r = buildControlSpawnCommand(base);
 		expect(r.env.PIJ_SESSION_ID).toBe("pij-bright-otter");
 		expect(r.env.PIJ_HARNESS).toBe("claude");
+	});
+
+	it("exports an explicit plan id under both harness join names", () => {
+		const r = buildControlSpawnCommand({ ...base, planId: "073-pij-first-class-ui" });
+		expect(r.env).toMatchObject({
+			HARNESS_PLAN_ID: "073-pij-first-class-ui",
+			PIJ_PLAN_ID: "073-pij-first-class-ui",
+		});
 	});
 
 	it("omits PIJ_PARENT_ID when no parentId given (caller unresolved)", () => {
@@ -390,7 +456,26 @@ describe("buildControlSpawnCommand", () => {
 			copilotSessionId: "uuid-1",
 			model: "gpt-5.5",
 		});
-		expect(r.args).toEqual(["--yolo", "--session-id", "uuid-1", "--model", "gpt-5.5"]);
+		expect(r.args).toEqual([
+			"--yolo",
+			"--session-id",
+			"uuid-1",
+			"--model",
+			"gpt-5.5",
+			"--context",
+			"long_context",
+		]);
+	});
+
+	it("copilot: a pinned model always selects the long-context tier", () => {
+		const r = buildControlSpawnCommand({
+			harness: "copilot",
+			pijId: "pij-cop",
+			cwd: "/repo",
+			model: "claude-opus-5",
+		});
+		expect(r.args).toContain("claude-opus-5");
+		expect(r.args).toContain("long_context");
 	});
 
 	it("claude --branch: --resume <from> --fork-session --session-id <new> after skip-permissions (AC-01)", () => {
@@ -636,6 +721,15 @@ describe("buildPendingDescriptor", () => {
 		});
 	});
 
+	it("persists the explicit plan id on a daemon-bound descriptor", () => {
+		expect(
+			buildPendingDescriptor({
+				...input,
+				planId: "073-pij-first-class-ui",
+			}).planId,
+		).toBe("073-pij-first-class-ui");
+	});
+
 	it("keeps model + effort additive for legacy/default spawns", () => {
 		const descriptor = buildPendingDescriptor(input);
 		expect(descriptor.boundModel).toBeUndefined();
@@ -679,6 +773,8 @@ describe("buildSpawnOutput", () => {
 				lifecycle: "pending",
 				model: "gpt-5.6-sol",
 				effort: "xhigh",
+				planId: "073-pij-first-class-ui",
+				warnings: ["warning: unresolved plan"],
 			}),
 		).toEqual({
 			id: "pij-worker",
@@ -687,6 +783,8 @@ describe("buildSpawnOutput", () => {
 			lifecycle: "pending",
 			model: "gpt-5.6-sol",
 			effort: "xhigh",
+			planId: "073-pij-first-class-ui",
+			warnings: ["warning: unresolved plan"],
 		});
 	});
 
@@ -698,7 +796,51 @@ describe("buildSpawnOutput", () => {
 			lifecycle: null,
 			model: null,
 			effort: null,
+			planId: null,
+			warnings: [],
 		});
+	});
+
+	it("carries warnings in JSON and appends them as human receipt lines", () => {
+		const output = buildSpawnOutput({
+			paneId: "%43",
+			harness: "pi",
+			planId: "073-missing",
+			warnings: ["warning: unresolved plan"],
+		});
+		expect(JSON.parse(renderSpawnReceipt(output, "spawned pi worker", true))).toMatchObject({
+			warnings: ["warning: unresolved plan"],
+		});
+		expect(renderSpawnReceipt(output, "spawned pi worker", false)).toBe(
+			"spawned pi worker\nwarning: unresolved plan",
+		);
+	});
+});
+
+describe("buildPlanIdWarning", () => {
+	it("warns with the spawn cwd path when docs/plans/<id> is unresolved", () => {
+		expect(buildPlanIdWarning("073-missing", "/repo", () => false)).toBe(
+			"warning: plan id '073-missing' does not resolve to '/repo/docs/plans/073-missing' — spawn continues",
+		);
+	});
+
+	it("reports opaque non-segment plan ids as not checked without probing the filesystem", () => {
+		for (const planId of [".", "..", "../../opaque/value", String.raw`opaque\value`]) {
+			expect(
+				buildPlanIdWarning(planId, "/repo", () => {
+					throw new Error("non-segment plan ids must not be probed as paths");
+				}),
+			).toBe(
+				`warning: plan id '${planId}' was not checked against docs/plans (not a simple path segment) — spawn continues`,
+			);
+		}
+	});
+
+	it("is silent when the plan directory resolves or no plan id was supplied", () => {
+		expect(
+			buildPlanIdWarning("073-known", "/repo", (path) => path.endsWith("/073-known")),
+		).toBeNull();
+		expect(buildPlanIdWarning(undefined, "/repo", () => false)).toBeNull();
 	});
 });
 
@@ -780,6 +922,7 @@ describe("parseSpawnArgs (T018)", () => {
 				harness: "claude",
 				task: "review the diff",
 				model: undefined,
+				planId: undefined,
 				branch: false,
 				json: false,
 			},
@@ -787,6 +930,30 @@ describe("parseSpawnArgs (T018)", () => {
 		expect(parseSpawnArgs(["--harness=claude", "--model=opus", "--json"])).toMatchObject({
 			ok: true,
 			value: { harness: "claude", model: "opus", json: true },
+		});
+	});
+
+	it("parses --plan-id as an opaque identifier without path-shaped validation", () => {
+		expect(
+			parseSpawnArgs(["--harness", "claude", "--plan-id", "../../opaque/value"]),
+		).toMatchObject({
+			ok: true,
+			value: { harness: "claude", planId: "../../opaque/value" },
+		});
+	});
+
+	it("rejects missing, empty, and whitespace-only plan-id values", () => {
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id="])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseSpawnArgs(["--harness", "claude", "--plan-id", "   "])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
 		});
 	});
 

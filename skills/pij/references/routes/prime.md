@@ -11,17 +11,27 @@ below it, and government as single-writer files.
 Use the first matching deterministic probe. Do not choose by persona or intent.
 Resolve the current id with `pij whoami --json`, then run
 `pij list --prime --here --json` and compare the `id` fields mechanically.
-`pij list --prime --here --json` is current-prime-only. `oldPrime` is history,
-never an active-seat signal; audit retired seats with
-`pij tree --global --all --json`.
+`--here` is current-prime-only. `oldPrime` is history, never an active-seat
+signal; audit retired seats with `pij tree --global --all --json`.
+
+**An empty `--here` result is NOT evidence that no prime exists.** Widen to
+unscoped `pij list --prime --json` before concluding absence — a repo's prime is
+routinely recorded against a different folder (worktree, symlinked path). A live
+o-prime was missed exactly this way on 2026-07-27, and the seat that missed it
+went on to designate itself prime over the top.
 
 | Probe | Role | Load exactly this next |
 |---|---|---|
-| No `government/` directory exists in the consuming repo | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
 | My current id appears in `pij list --prime --here --json` | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
 | Fallback: `government/spine.md` names my pij id as the o-prime seat, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
 | The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orchestrator.md`](../prime/orchestrator.md), then stop |
+| **No prime for this repo after BOTH the scoped and the unscoped probe**, and `pij project list` names no project here, and no `government/` directory exists | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
 | I am a fleet worker with a bounded packet | worker | Stop here; use `/pij pair` for a fleet or `/pij peer` for one colleague. |
+
+Bootstrapper is LAST and requires the store to be silent first. `government/`
+absence alone is **corroboration, not a trigger**: store-native governance is the
+ruled default ([`../prime/rituals/store-native.md`](../prime/rituals/store-native.md)),
+so a fully-governed repo legitimately has no `government/` directory.
 
 If probes conflict, registry designation is the seat signal; reconcile stale
 government rows with `pij whoami`, `pij state <id>`, and the human ruling.

@@ -2,9 +2,9 @@
 // Machine-wide pij link policy.
 //
 // `just link` links every repository extension into Pi, but only `pij` into
-// OMP. OMP shares Pi's MCP configuration and deliberately loads no other local
-// extensions or project package manifest. `--check-only` exposes the same
-// linked-worktree guard to the global skill recipe without mutating either home.
+// OMP. OMP shares Pi's MCP configuration and pij's curated OMP model catalog,
+// and deliberately loads no other local extensions or project package manifest.
+// `--check-only` exposes the same linked-worktree guard without mutating either home.
 
 import {
 	existsSync,
@@ -176,20 +176,22 @@ function enforceOmpPijOnly(
 	return { changed, skipped };
 }
 
-function manageOmpMcp(
+function manageOmpSharedFile(
 	home: string,
+	name: "mcp.json" | "models.yml",
+	source: string,
+	sourceLabel: string,
 	removeMode: boolean,
 	stdout: (line: string) => void,
 	stderr: (line: string) => void,
 ): { changed: number; skipped: number } {
-	const source = join(home, ".pi", "agent", "mcp.json");
-	const target = join(home, ".omp", "agent", "mcp.json");
+	const target = join(home, ".omp", "agent", name);
 	const stat = lstatSync(target, { throwIfNoEntry: false });
 	if (!stat) {
 		if (removeMode) return { changed: 0, skipped: 0 };
 		ensureDirectory(dirname(target));
 		symlinkSync(source, target);
-		stdout("→ omp/mcp.json -> pi/mcp.json");
+		stdout(`→ omp/${name} -> ${sourceLabel}`);
 		return { changed: 1, skipped: 0 };
 	}
 	if (!stat.isSymbolicLink()) {
@@ -202,11 +204,11 @@ function manageOmpMcp(
 		return { changed: 0, skipped: 1 };
 	}
 	if (!removeMode) {
-		stdout("= omp/mcp.json (already linked)");
+		stdout(`= omp/${name} (already linked)`);
 		return { changed: 0, skipped: 0 };
 	}
 	unlinkSync(target);
-	stdout("✗ omp/mcp.json");
+	stdout(`✗ omp/${name}`);
 	return { changed: 1, skipped: 0 };
 }
 
@@ -227,8 +229,10 @@ function doctorOmp(options: RunLinkGlobalOptions, sourceRoot: string): number {
 	}
 	const pijLink = join(ompExtensions, "pij");
 	const mcpLink = join(options.home, ".omp", "agent", "mcp.json");
+	const modelsLink = join(options.home, ".omp", "agent", "models.yml");
 	const expectedPij = join(sourceRoot, "pij");
 	const expectedMcp = join(options.home, ".pi", "agent", "mcp.json");
+	const expectedModels = join(options.pijRoot, ".omp", "models.yml");
 	if (
 		!lstatSync(pijLink, { throwIfNoEntry: false })?.isSymbolicLink() ||
 		absoluteLinkTarget(pijLink, readlinkSync(pijLink)) !== resolve(expectedPij)
@@ -243,7 +247,14 @@ function doctorOmp(options: RunLinkGlobalOptions, sourceRoot: string): number {
 		options.stderr(`OMP MCP link mismatch: expected ${expectedMcp}`);
 		return 1;
 	}
-	options.stdout("✓ OMP policy: pij-only extension + shared Pi MCP config");
+	if (
+		!lstatSync(modelsLink, { throwIfNoEntry: false })?.isSymbolicLink() ||
+		absoluteLinkTarget(modelsLink, readlinkSync(modelsLink)) !== resolve(expectedModels)
+	) {
+		options.stderr(`OMP models link mismatch: expected ${expectedModels}`);
+		return 1;
+	}
+	options.stdout("✓ OMP policy: pij-only extension + shared Pi MCP + curated model config");
 	return 0;
 }
 
@@ -295,9 +306,22 @@ export function runLinkGlobal(options: RunLinkGlobalOptions): number {
 	changed += omp.changed;
 	skipped += omp.skipped;
 	if (filter === undefined || filter === "pij") {
-		const mcp = manageOmpMcp(options.home, removeMode, options.stdout, options.stderr);
-		changed += mcp.changed;
-		skipped += mcp.skipped;
+		for (const [name, source, sourceLabel] of [
+			["mcp.json", join(options.home, ".pi", "agent", "mcp.json"), "pi/mcp.json"],
+			["models.yml", join(options.pijRoot, ".omp", "models.yml"), "pij/.omp/models.yml"],
+		] as const) {
+			const shared = manageOmpSharedFile(
+				options.home,
+				name,
+				source,
+				sourceLabel,
+				removeMode,
+				options.stdout,
+				options.stderr,
+			);
+			changed += shared.changed;
+			skipped += shared.skipped;
+		}
 	}
 	if (changed === 0 && skipped === 0) {
 		options.stdout(removeMode ? "nothing to remove" : "everything already linked");

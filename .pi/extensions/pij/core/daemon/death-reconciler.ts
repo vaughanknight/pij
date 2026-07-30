@@ -33,6 +33,10 @@ export interface DeathReconcileResult {
 	readonly descriptorUpdates: readonly SessionDescriptor[];
 	readonly expectationUpdates: readonly SpawnExpectation[];
 	readonly notices: readonly DeathNotice[];
+	/** Notices withheld because the RECIPIENT is dead too. Counted, never silent:
+	 *  a host reboot kills every seat in one event, so each corpse would otherwise
+	 *  address an obituary to another corpse. The caller logs one summary line. */
+	readonly noticesSuppressed: number;
 }
 
 function noticeText(
@@ -88,6 +92,19 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 		),
 	);
 
+	// A death notice is worth generating only if someone is ALIVE to read it.
+	// Seeded with the seats that were already gone before this sweep; the loops
+	// below add each seat they bury. Filtering happens after both loops so a
+	// notice addressed to a seat that dies LATER in the same sweep is still
+	// suppressed — on a reboot the order of the array is meaningless.
+	const dead = new Set<string>(
+		input.descriptors.flatMap((descriptor) =>
+			descriptor.lifecycle === "dissolved" || descriptor.terminal !== undefined
+				? [descriptor.id]
+				: [],
+		),
+	);
+
 	for (const descriptor of input.descriptors) {
 		if (descriptor.lifecycle === "dissolved" || descriptor.terminal !== undefined) continue;
 		let observation: Parameters<typeof applyTerminalObservation>[1] | undefined;
@@ -137,6 +154,7 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 			terminal: latched.terminal,
 			deathNoticeLatchedAt: latched.deathNoticeLatchedAt,
 		});
+		dead.add(descriptor.id);
 		if (descriptor.spawnedBy && latched.terminal) {
 			notices.push({
 				to: descriptor.spawnedBy,
@@ -194,6 +212,7 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 			input.nowIso,
 		);
 		expectationUpdates.push(next);
+		if (next.sessionId !== undefined) dead.add(next.sessionId);
 		if (next.creatorId && next.terminal) {
 			notices.push({
 				to: next.creatorId,
@@ -210,5 +229,17 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 		}
 	}
 
-	return { descriptorUpdates, expectationUpdates, notices };
+	// Deliverable only. A recipient this same sweep just buried cannot read
+	// anything, and the message does not simply sit harmlessly in its mailbox: the
+	// daemon keeps pushing it at that seat's recorded pane, which after a reboot
+	// belongs to a tmux server that no longer exists. Terminal truth is already
+	// recorded on every descriptor above — suppressing the notice drops the
+	// ANNOUNCEMENT, never the observation.
+	const deliverable = notices.filter((notice) => !dead.has(notice.to));
+	return {
+		descriptorUpdates,
+		expectationUpdates,
+		notices: deliverable,
+		noticesSuppressed: notices.length - deliverable.length,
+	};
 }

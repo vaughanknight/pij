@@ -17,6 +17,73 @@ const descriptor = (over: Partial<SessionDescriptor> = {}): SessionDescriptor =>
 });
 
 describe("death reconciler", () => {
+	describe("a notice is only generated if someone is alive to read it", () => {
+		// The parent is in the descriptor set and NOT alive, so it is buried by the
+		// same sweep that buries its child. Before this, each corpse still produced an
+		// obituary addressed to another corpse — which the daemon then pushed forever
+		// at a pane id from a tmux server that no longer exists (task #34).
+		const reboot = () =>
+			reconcileDeaths({
+				descriptors: [
+					descriptor(),
+					descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined }),
+				],
+				expectations: [],
+				nowIso: "2026-07-20T00:00:02.000Z",
+				isAlive: () => false,
+			});
+
+		it("withholds the obituary when the recipient died in the same sweep", () => {
+			const result = reboot();
+			expect(result.notices).toEqual([]);
+			expect(result.noticesSuppressed).toBe(1);
+		});
+
+		it("still records terminal truth on every descriptor it withheld a notice for", () => {
+			// Suppression must drop the ANNOUNCEMENT, never the OBSERVATION — otherwise a
+			// reboot would silently erase the fact that these seats ever died.
+			const result = reboot();
+			expect(result.descriptorUpdates).toHaveLength(2);
+			for (const update of result.descriptorUpdates) {
+				expect(update.terminal).toMatchObject({ evidence: "pid-missing" });
+			}
+		});
+
+		// CONTROL. Without this the suppression above is indistinguishable from
+		// "notices are never generated", and the ordinary child-dies-under-a-live-parent
+		// path — the whole point of death notices — would be silently dead.
+		it("DELIVERS the obituary when the recipient is alive", () => {
+			const result = reconcileDeaths({
+				descriptors: [
+					descriptor(),
+					descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined }),
+				],
+				expectations: [],
+				nowIso: "2026-07-20T00:00:02.000Z",
+				isAlive: (pid) => pid === 45,
+			});
+			expect(result.notices).toEqual([expect.objectContaining({ to: "pij-parent" })]);
+			expect(result.noticesSuppressed).toBe(0);
+		});
+
+		// The array order must not decide the outcome: here the RECIPIENT is listed
+		// first and dies later in the same pass. Filtering after both loops is what
+		// makes this hold.
+		it("withholds it even when the recipient is buried after the subject", () => {
+			const result = reconcileDeaths({
+				descriptors: [
+					descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined }),
+					descriptor(),
+				],
+				expectations: [],
+				nowIso: "2026-07-20T00:00:02.000Z",
+				isAlive: () => false,
+			});
+			expect(result.notices).toEqual([]);
+			expect(result.noticesSuppressed).toBe(1);
+		});
+	});
+
 	it("classifies a missing registered process as unrequested-by-pij and emits one live notice", () => {
 		const result = reconcileDeaths({
 			descriptors: [descriptor()],

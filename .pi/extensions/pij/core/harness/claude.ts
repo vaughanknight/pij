@@ -133,13 +133,17 @@ export function buildInitInjection(
 	pijId: SessionId,
 	branched = false,
 	spawnedBy?: SessionId,
+	revived = false,
 ): InitInjection {
 	const phonehomeLine = "pij phonehome";
-	const forkReframe = branched
-		? "You are a FORK of another session — its prior conversation is yours for CONTEXT only, " +
-			"NOT a task to resume. Do NOT continue the parent's previous work, and do NOT spawn or " +
-			"message other sessions; new instructions are coming. First, "
-		: "";
+	const contextReframe = revived
+		? "You are a REVIVED session. Your prior conversation is context only, NOT a task to resume. " +
+			"Do NOT continue the old work, spawn peers, or message anyone; wait for new instructions. First, "
+		: branched
+			? "You are a FORK of another session — its prior conversation is yours for CONTEXT only, " +
+				"NOT a task to resume. Do NOT continue the parent's previous work, and do NOT spawn or " +
+				"message other sessions; new instructions are coming. First, "
+			: "";
 	// Name the pij instance that spawned this peer (control-plane peers boot
 	// pij-blind), and give the concrete reply form so it can reach its spawner
 	// without being told. Omitted for adopted/root peers (no known spawner).
@@ -148,7 +152,7 @@ export function buildInitInjection(
 		? ` (reply to your spawner with \`pij send ${spawnedBy} "<text>"\`)`
 		: "";
 	const body =
-		`${forkReframe}You are now a pij peer (id: ${pijId})${spawnedByClause}. ` +
+		`${contextReframe}You are now a pij peer (id: ${pijId})${spawnedByClause}. ` +
 		`Message other sessions with \`pij send <id> "<text>"\`${replyHint} and list peers with \`pij list\`. ` +
 		`To confirm your binding, run: ${phonehomeLine}`;
 	return { pijId, phonehomeLine, body };

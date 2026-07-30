@@ -225,8 +225,9 @@ registry.
 | Driver SDK (typed smoke) | `harness/driver/` |
 | Smoke runner (adapter) | `harness/scripts/smoke.ts` |
 | Link script | `harness/scripts/link-global.ts` |
-| Portable model catalog | `.pi/models.json` |
-| Model sync script | `harness/scripts/sync-models.ts` |
+| Portable Pi model catalog | `.pi/models.json` |
+| Portable OMP model overrides | `.omp/models.yml` |
+| Model sync/link scripts | `harness/scripts/sync-models.ts`, `harness/scripts/link-global.ts` |
 | Package manifest script | `harness/scripts/packages.ts` |
 | Vetters (Plan 009) | `harness/scripts/vetters/` |
 | Vetter agent pack | `agents/package-vetter/` |
@@ -298,9 +299,17 @@ pi --model github-copilot/claude-opus-4.7-1m-internal
 
 Known Copilot long-context customizations in `.pi/models.json`:
 
+- `github-copilot/claude-opus-5` — entitlement-backed Opus 5 slug; `modelOverrides` labels it `Claude Opus 5 1M (Copilot)` and sets `contextWindow: 1000000` / `maxTokens: 64000`.
+- `github-copilot/gemini-3.6-flash` — entitlement-backed Gemini 3.6 Flash slug with a 1M context window.
+- `github-copilot/gpt-5.6-{luna,sol,terra}` — entitlement-backed 1.05M GPT-5.6 variants.
 - `github-copilot/gpt-5.5` — built-in Copilot entry exists, but `modelOverrides` bumps it to `contextWindow: 1050000`.
 - `github-copilot/claude-opus-4.8` — Copilot's supported slug for Opus 4.8. `modelOverrides` labels it `Claude Opus 4.8-1M (Copilot)` and sets `contextWindow: 1000000` / `maxTokens: 64000`. Do **not** create a `-1m` custom-model alias unless pi gains an upstream-model-id field: custom ids are sent to Copilot as-is and Copilot rejects unknown ids with `model_not_supported`.
 - `github-copilot/claude-opus-4.7-1m-internal` — custom model entry, not just an override.
+
+OMP uses its built-in GitHub Copilot provider and OAuth credentials. `.omp/models.yml`
+contains metadata-only `modelOverrides` for the same new slugs; `just link` installs it
+as `~/.omp/agent/models.yml`. Do not duplicate the provider transport or API key there:
+doing so turns the built-in coding-plan provider into an invalid custom provider.
 
 ### Per-family api routing
 

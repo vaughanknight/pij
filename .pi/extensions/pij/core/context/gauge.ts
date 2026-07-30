@@ -118,15 +118,21 @@ export function piContextFromEvents(ndjsonText: string): number | null {
 	return reading;
 }
 
-/** contextMax via the boundModel → models-registry join (exact id). Honest
- *  absence when the model is unset, unknown, or carries no window. */
+/** contextMax via the boundModel → models-registry join. Provider-qualified
+ * selectors match `${provider}/${id}`; bare ids retain the legacy exact-id
+ * behavior. Honest absence when unset, unknown, or windowless. */
 export function contextMaxFor(
 	boundModel: string | undefined,
 	models: readonly ModelEntry[],
 ): number | undefined {
 	if (boundModel === undefined) return undefined;
 	for (const model of models) {
-		if (model.id === boundModel && model.contextWindow !== undefined) return model.contextWindow;
+		if (
+			(model.id === boundModel || `${model.provider}/${model.id}` === boundModel) &&
+			model.contextWindow !== undefined
+		) {
+			return model.contextWindow;
+		}
 	}
 	return undefined;
 }

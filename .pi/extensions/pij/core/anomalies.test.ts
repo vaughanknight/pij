@@ -12,6 +12,7 @@ import {
 	DEFAULT_IDLE_DISAGREEMENT_MS,
 	DEFAULT_INBOX_POLL_STALL_MS,
 	DEFAULT_SPAWN_LIMBO_MS,
+	DEFAULT_STATUS_STALE_MS,
 	detectAnomalies,
 } from "./anomalies.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
@@ -406,7 +407,9 @@ describe("axis-disagreement remedy hint (mastodon intake — a confusing alarm b
 			events: [],
 			nowMs: NOW,
 		}).find((x) => x.kind === "axis-disagreement");
-		expect(a?.detail).toContain("pij state set pij-lost waiting|hold|blocked|question");
+		expect(a?.detail).toContain(
+			"ask 'pij-lost' to run: pij report state waiting|hold|blocked|question",
+		);
 		expect(a?.detail).toContain("parked states never flag");
 	});
 });
@@ -449,6 +452,69 @@ describe("inbox-poll-stalled (plan 057 thread-1 — poll-primary delivery livene
 
 	it("does NOT flag a seat with NO stamp — a non-self-polling seat (tmux, daemon-drained) never registers", () => {
 		expect(stalledOnly([desc({ id: "pij-tmux", lifecycle: "bound" })])).toHaveLength(0);
+	});
+
+	// s070 / warbler finding — the FOURTH owner-facing notify path. `pij close`
+	// stamps `terminal: requested` BEFORE it dissolves, and fs-registry lists the
+	// record throughout that window, so a just-closed seat is still `bound` with a
+	// frozen poll stamp — the exact shape this detector calls an anomaly. It then
+	// routed to effectiveParent→spawnedBy, so a pij-REQUESTED close false-alerted
+	// its own owner. Same failure class as the `unrequested-by-pij` defect: terminal
+	// truth was recorded correctly and the notify path never asked.
+	const CLOSED_TERMINAL = {
+		disposition: "requested" as const,
+		observedAt: new Date(NOW).toISOString(),
+		evidence: "pane-missing" as const,
+	};
+
+	it("CONTROL: the identical seat WITHOUT a terminal record does flag", () => {
+		// Byte-identical to the test below except for `terminal`. Without this, the
+		// suppression test below would pass even if the detector never fired at all.
+		const a = stalledOnly([
+			desc({
+				id: "pij-closing",
+				lifecycle: "bound",
+				lastInboxScanAt: new Date(NOW - (STALL + 2_000)).toISOString(),
+			}),
+		]);
+		expect(a).toHaveLength(1);
+	});
+
+	it("does NOT flag a seat already observed TERMINAL — a requested close is not a stall", () => {
+		expect(
+			stalledOnly([
+				desc({
+					id: "pij-closing",
+					lifecycle: "bound",
+					lastInboxScanAt: new Date(NOW - (STALL + 2_000)).toISOString(),
+					terminal: CLOSED_TERMINAL,
+				}),
+			]),
+		).toHaveLength(0);
+	});
+
+	it("does NOT flag a terminal seat in spawn-limbo either — same window, same rule", () => {
+		// warbler named inbox-poll-stalled; spawn-limbo has the identical exposure,
+		// because closing a PENDING seat leaves lifecycle 'pending' + terminal set in
+		// that same pre-dissolve window. CONTROL first, then the suppression.
+		const born = new Date(NOW - (DEFAULT_SPAWN_LIMBO_MS + 60_000)).toISOString();
+		const limboOnly = (descriptors: SessionDescriptor[]) =>
+			detectAnomalies({ descriptors, assignments: [], events: [], nowMs: NOW }).filter(
+				(x) => x.kind === "spawn-limbo",
+			);
+		expect(
+			limboOnly([desc({ id: "pij-limbo", lifecycle: "pending", startedAt: born })]),
+		).toHaveLength(1);
+		expect(
+			limboOnly([
+				desc({
+					id: "pij-limbo",
+					lifecycle: "pending",
+					startedAt: born,
+					terminal: CLOSED_TERMINAL,
+				}),
+			]),
+		).toHaveLength(0);
 	});
 
 	it("does NOT flag a non-bound seat even with a stale stamp (only live-bound delivery loops are watched)", () => {
@@ -752,5 +818,232 @@ describe("team-scaffold record anomalies (plan 061 AC-07)", () => {
 			}),
 		).toEqual([]);
 		expect({ dispatches, allocations }).toEqual(before);
+	});
+});
+
+describe("status-stale (the card a busy seat forgot to update)", () => {
+	const MIN = 60_000;
+	// Busy RIGHT NOW: emitting seconds ago, so the watchdog would never fire.
+	const busy = (over: Partial<SessionDescriptor> & { id: string }) =>
+		desc({ lastEventAt: new Date(NOW - 5_000).toISOString(), orchestrationRole: "pm", ...over });
+
+	function detect(descriptors: readonly SessionDescriptor[]) {
+		return detectAnomalies({
+			descriptors,
+			assignments: [],
+			events: [],
+			nowMs: NOW,
+		}).filter((a) => a.kind === "status-stale");
+	}
+
+	it("flags a seat that is actively emitting while its card has not moved", () => {
+		const found = detect([
+			busy({ id: "pij-busy", statusAt: new Date(NOW - 45 * MIN).toISOString() }),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-busy"]);
+		expect(found[0]?.detail).toContain("pij report now");
+		expect(found[0]?.ageMs).toBeGreaterThan(DEFAULT_STATUS_STALE_MS);
+	});
+
+	it("stays quiet when the card is fresh", () => {
+		expect(
+			detect([busy({ id: "pij-fresh", statusAt: new Date(NOW - 2 * MIN).toISOString() })]),
+		).toEqual([]);
+	});
+
+	it("flags a busy seat that has NEVER reported, ageing from its own start", () => {
+		// A-2's shape: keying on statusAt alone would never fire for exactly the
+		// seat that has never filed a card.
+		const found = detect([
+			busy({ id: "pij-never", startedAt: new Date(NOW - 90 * MIN).toISOString() }),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-never"]);
+		expect(found[0]?.detail).toContain("never reported");
+	});
+
+	// ── the two ways this sensor could earn distrust ──────────────────────────
+	it("never flags a seat that is merely QUIET — that is the watchdog's job", () => {
+		// Stale card AND stopped emitting: the watchdog owns this one. Flagging it
+		// here would re-accuse every finished seat forever.
+		expect(
+			detect([
+				desc({
+					id: "pij-quiet",
+					// MUST carry a role, or the role scope filters this row out and the
+					// assertion passes without ever reaching the busy-now gate it exists
+					// to pin (caught by mutation: dropping the gate failed 0 tests).
+					orchestrationRole: "pm",
+					lastEventAt: new Date(NOW - 3 * 3_600_000).toISOString(),
+					statusAt: new Date(NOW - 4 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+
+	it("never flags a seat that PARKED itself, however stale the card", () => {
+		// Declaring waiting/hold/blocked/question is the correct behaviour; a
+		// sensor that punishes it teaches seats not to declare.
+		for (const state of ["waiting", "hold", "blocked", "question"] as const) {
+			expect(
+				detect([
+					busy({
+						id: `pij-${state}`,
+						semanticState: state,
+						statusAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+					}),
+				]),
+			).toEqual([]);
+		}
+	});
+
+	it("never flags a seat it cannot prove was working, or one already buried", () => {
+		expect(detect([desc({ id: "pij-no-telemetry" })])).toEqual([]);
+		expect(
+			detect([
+				busy({
+					id: "pij-buried",
+					lifecycle: "dissolved",
+					statusAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+});
+
+describe("status-stale stays scoped to seats whose card is consumed", () => {
+	const MIN = 60_000;
+	function detect(descriptors: readonly SessionDescriptor[]) {
+		return detectAnomalies({
+			descriptors,
+			assignments: [],
+			events: [],
+			nowMs: NOW,
+		}).filter((a) => a.kind === "status-stale");
+	}
+
+	it("never flags a role-less worker — its now/next renders nowhere", () => {
+		// The credibility guard. Measured on the live fleet the day this shipped,
+		// 26 of 29 live seats had never reported; without this scope the sensor
+		// fires on ~90% of the fleet and becomes background noise.
+		expect(
+			detect([
+				desc({
+					id: "pij-worker",
+					lastEventAt: new Date(NOW - 5_000).toISOString(),
+					statusAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+
+	it("never flags an explicitly-STAMPED worker holding a rotten card", () => {
+		// The case the old `role === null` gate silently let through: a stamped
+		// worker projects to "worker", not null, so it passed the scope test and —
+		// holding a real statusAt — reached the anchor and fired, despite the
+		// comment beside that gate claiming workers were excluded. Only
+		// `cardCanMislead` (prime||pm) actually excludes it.
+		expect(
+			detect([
+				desc({
+					id: "pij-stamped-worker",
+					orchestrationRole: "worker",
+					lastEventAt: new Date(NOW - 5_000).toISOString(),
+					statusAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+
+	it("flags prime and pm seats alike", () => {
+		const stale = { statusAt: new Date(NOW - 90 * MIN).toISOString() };
+		const found = detect([
+			desc({
+				id: "pij-prime",
+				prime: true,
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				...stale,
+			}),
+			desc({
+				id: "pij-pm",
+				orchestrationRole: "pm",
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				...stale,
+			}),
+		]);
+		expect(found.map((a) => a.nodeId).sort()).toEqual(["pij-pm", "pij-prime"]);
+	});
+
+	// ── absence is not staleness (Jordan's ruling, 2026-07-30) ────────────────
+	it("never flags a PRIME that has never reported — it owes no card", () => {
+		// A prime reports to its human in-pane, so it owes no card. With no card
+		// nothing renders and nobody can be misinformed, so ageing from startedAt
+		// here was a false positive BY CLASS, not by threshold: it accused five
+		// primes of neglecting an obligation they never had.
+		expect(
+			detect([
+				desc({
+					id: "pij-prime-silent",
+					prime: true,
+					lastEventAt: new Date(NOW - 5_000).toISOString(),
+					startedAt: new Date(NOW - 12 * 24 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+
+	it("STILL flags a prime whose VOLUNTARY card has rotted", () => {
+		// The asymmetry that makes the two predicates worth splitting: the consumer
+		// cannot tell who owed the card, so a rotten one misinforms identically.
+		// Writing it is the act that creates the expectation. Observed live on
+		// 2026-07-30 — a prime wrote a real card and let it rot past threshold; a
+		// blanket prime exclusion would have left that unpoliced.
+		const found = detect([
+			desc({
+				id: "pij-prime-rotten",
+				prime: true,
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				statusAt: new Date(NOW - 90 * MIN).toISOString(),
+			}),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-prime-rotten"]);
+		expect(found[0]?.detail).not.toContain("never reported");
+	});
+
+	it("still flags a PM that has never reported — a PM does owe one", () => {
+		// The other side of the split: killing the fallback wholesale would have
+		// taken A-2's case with it.
+		const found = detect([
+			desc({
+				id: "pij-pm-silent",
+				orchestrationRole: "pm",
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				startedAt: new Date(NOW - 90 * MIN).toISOString(),
+			}),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-pm-silent"]);
+		expect(found[0]?.detail).toContain("never reported");
+	});
+});
+
+describe("status-stale re-alerts as it gets worse", () => {
+	it("keys evidence on a drift bucket, not a constant", () => {
+		// AnomalySweep latches on `kind:node:evidence`. With empty evidence the key
+		// never changes, so a seat is alerted once and then never again however
+		// stale it becomes — found by reading the sweep after writing this sensor.
+		const at = (driftMin: number) =>
+			detectAnomalies({
+				descriptors: [
+					desc({
+						id: "pij-drift",
+						orchestrationRole: "pm",
+						lastEventAt: new Date(NOW - 5_000).toISOString(),
+						statusAt: new Date(NOW - driftMin * 60_000).toISOString(),
+					}),
+				],
+				assignments: [],
+				events: [],
+				nowMs: NOW,
+			}).filter((a) => a.kind === "status-stale")[0];
+		expect(at(35)?.evidence).not.toEqual(at(95)?.evidence);
 	});
 });

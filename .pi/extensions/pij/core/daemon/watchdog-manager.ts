@@ -1,15 +1,19 @@
+import { owesStatusCard, projectOrchestrationRole } from "../orchestration/role.js";
 import type { DeliveryPort } from "../ports.js";
+import { STALE_AFTER_MS } from "../state.js";
 import type { SessionDescriptor, SessionId, WatchdogSidecar, WatchdogWatcher } from "../types.js";
 import {
 	applyWorkingTransition,
 	buildWatchdogTurn,
 	captureSlice,
+	type EffectiveWatchdogConfig,
 	effectiveWatchdog,
 	evaluateResponse,
 	isFireDue,
 	reconcileWatchdogExemption,
 	shouldCapture,
 	type WatchdogResponse,
+	watchdogScheduleAnchorMs,
 } from "../watchdog.js";
 import { pauseForCompactMessage } from "./router.js";
 
@@ -46,8 +50,10 @@ interface RuntimeState {
 	ordinal: number;
 	consecutiveSilentFires: number;
 	lastFireAtMs: number | null;
+	scheduleAnchorAtMs: number | null;
 	activityAnchorAtMs: number | null;
 	lastEventAt: string | undefined;
+	lastStatusAt: string | undefined;
 	lastState: SessionDescriptor["state"];
 	lastPane: string | undefined;
 	awaitingResponse: boolean;
@@ -60,6 +66,9 @@ interface RuntimeState {
 	workingTransition: boolean;
 	workingTransitionWasWatchdog: boolean;
 	anomalyWatcherStallsNotified: Set<SessionId>;
+	/** Activity anchor a liveness verdict was already reported for, so sustained
+	 *  freshness reports `responsive` once per anchor rather than every tick. */
+	livenessReportedForAnchorMs: number | null;
 }
 
 function timestampMs(value: string | undefined): number | null {
@@ -69,6 +78,22 @@ function timestampMs(value: string | undefined): number | null {
 }
 
 function eligible(session: SessionDescriptor): boolean {
+	// PRIMES ARE WATCHED TOO (Jordan's ruling, 2026-07-30). The original gate was
+	// `!== "pm"`, which silently excluded every prime — a prime projects to
+	// "prime", never "pm". So the fleet's governing seats were the only ones no
+	// reporting clock ever touched, in the direction nobody checks.
+	//
+	// ELIGIBILITY IS NOT `owesStatusCard`. A prime owes no card (Jordan's ruling
+	// the same day) yet is still watched, because being watched and owing a card
+	// are two different questions and only the NUDGE COPY branches on the second.
+	// The justification for watching a prime is not its card: it is that a prime
+	// is the only seat with NO SUPERVISOR. A wedged PM is caught by its prime; a
+	// wedged prime is caught by nobody — the owner-facing "stalled" notice cannot
+	// reach anyone for it either, since `pushWholeLifeTransition` returns early
+	// when `spawnedBy` is absent and a prime is creator-less. This ping is its
+	// only external heartbeat.
+	const role = projectOrchestrationRole(session);
+	if (role !== "pm" && role !== "prime") return false;
 	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
 	// the daemon does not own its delivery, so it must not buffer a watchdog turn
 	// into it either. (A pi peer pulls its own inbox but IS watchdog-delivered:
@@ -170,6 +195,28 @@ export class WatchdogManager {
 		return true;
 	}
 
+	/** Is this peer on a live safety exemption — i.e. is its silence DELIBERATE?
+	 *
+	 *  `pij watchdog exempt` says "this peer is intentionally idle on standby".
+	 *  That is a claim about the peer, not merely a request to stop nudging it, so
+	 *  it must silence watchdog traffic in BOTH directions: the peer-facing nudge
+	 *  AND the owner-facing "gone quiet (stalled)" notice. The nudge path gets this
+	 *  for free — `isFireDue` refuses to fire while paused — but the daemon runs a
+	 *  SECOND, independent stall detector that derives `stalled` straight from
+	 *  descriptor state and event age and never reads this sidecar at all. This is
+	 *  the seam that lets it ask.
+	 *
+	 *  Deliberately narrower than "any pause tier": `pause`/`compact` mean "stop
+	 *  nudging", which is not the same claim as "silence here is expected", so they
+	 *  are NOT treated as exemptions. Reconciled against the clock on every call so
+	 *  an EXPIRED exemption stops suppressing immediately — a lapsed safety
+	 *  exemption must never become permanent notification blindness. */
+	isExempt(id: SessionId): boolean {
+		const sidecar = this.readSidecar(id);
+		if (sidecar === undefined) return false;
+		return reconcileWatchdogExemption(sidecar, this.deps.now()).effectivePause === "exempt";
+	}
+
 	/** Persist the tmux compact pause before the router injects `/compact`. */
 	beforeTmuxInject(id: SessionId, message: { readonly command?: string }, nowMs: number): void {
 		const current = this.readSidecar(id);
@@ -196,13 +243,11 @@ export class WatchdogManager {
 				// On a global re-enable, anchor to now so the disabled window does
 				// not count as silence (else a long-disabled peer fires instantly).
 				lastFireAtMs: reanchorNowMs ?? timestampMs(session.lastWatchdogFireAt),
-				// A session that has never emitted an event still needs watching —
-				// it is the likeliest to be hung at boot. startedAt is its birth
-				// anchor; without this fallback both anchors are null and
-				// `isFireDue` never fires (found live, activation day).
+				scheduleAnchorAtMs: reanchorNowMs ?? watchdogScheduleAnchorMs(session),
 				activityAnchorAtMs:
 					reanchorNowMs ?? timestampMs(session.lastEventAt) ?? timestampMs(session.startedAt),
 				lastEventAt: session.lastEventAt,
+				lastStatusAt: session.statusAt,
 				lastState: session.state,
 				lastPane: undefined,
 				awaitingResponse: false,
@@ -215,6 +260,7 @@ export class WatchdogManager {
 				workingTransition: false,
 				workingTransitionWasWatchdog: false,
 				anomalyWatcherStallsNotified: new Set<SessionId>(),
+				livenessReportedForAnchorMs: null,
 			};
 			this.states.set(session.id, state);
 		}
@@ -231,6 +277,11 @@ export class WatchdogManager {
 				state.activityAnchorAtMs = timestampMs(session.lastEventAt);
 				this.reportRealRecovery(session, state);
 			}
+		}
+
+		if (session.statusAt !== state.lastStatusAt) {
+			state.scheduleAnchorAtMs = watchdogScheduleAnchorMs(session);
+			state.lastStatusAt = session.statusAt;
 		}
 
 		const idleTransition = state.lastState === "working" && session.state === "idle";
@@ -268,7 +319,9 @@ export class WatchdogManager {
 		) {
 			state.lastFireAtMs = descriptorFire;
 		}
-		if (!isFireDue(cfg, state.lastFireAtMs, state.activityAnchorAtMs, nowMs)) return;
+		this.reportSustainedLiveness(session, state, cfg, nowMs);
+
+		if (!isFireDue(cfg, state.lastFireAtMs, state.scheduleAnchorAtMs, nowMs)) return;
 		if (this.deps.hasPendingWatchdog(session.id)) {
 			state.lastFireAtMs = nowMs;
 			this.deps.log?.(`watchdog ${session.id}: pending ping exists — coalesced`);
@@ -320,7 +373,11 @@ export class WatchdogManager {
 		);
 
 		const ordinal = state.ordinal + 1;
-		const body = buildWatchdogTurn(session.id, ordinal, { ...cfg, paneAvailable });
+		const body = buildWatchdogTurn(session.id, ordinal, {
+			...cfg,
+			paneAvailable,
+			owesCard: owesStatusCard(session),
+		});
 		const outcome = this.deps.channel.deliver({
 			from: "pij-watchdog",
 			to: session.id,
@@ -344,6 +401,49 @@ export class WatchdogManager {
 		state.workingTransition = false;
 		state.workingTransitionWasWatchdog = false;
 		this.deps.onFire?.(session, nowMs);
+	}
+
+	/** Report `responsive` from DEMONSTRATED freshness, not only from an activity
+	 *  edge. A peer whose newest event is younger than one watchdog interval is
+	 *  alive by observation and must never keep a `stalled` label.
+	 *
+	 *  Why the edge alone is not enough: `reportRealRecovery` fires only when
+	 *  `lastEventAt` CHANGES between reconciles, and a freshly built RuntimeState
+	 *  seeds `lastEventAt` from the descriptor it was born with — so the edge is
+	 *  consumed at birth. After any `disposeSession` (daemon restart, the global
+	 *  disable→enable cycle, or a tick where the peer was briefly ineligible) a
+	 *  live peer can therefore never report recovery again.
+	 *
+	 *  That turns durable on a creator-less peer: the daemon's OTHER stalled-flag
+	 *  clear path (`pushWholeLifeTransition`) returns early when `spawnedBy` is
+	 *  absent, while the watchdog detector happily SETS the flag on such a peer.
+	 *  Set-without-clear leaves `failure: stalled` pinned on a peer that is
+	 *  provably ticking — reported live: `failure: stalled` alongside a
+	 *  `last-event` 2–3 minutes fresh.
+	 *
+	 *  Reported once per activity anchor, and never while a watchdog turn is
+	 *  outstanding — with a fire in flight, the attribution machinery above owns
+	 *  the verdict, and freshness there could be the watchdog's own injected turn
+	 *  echoing back as fabricated recovery. */
+	private reportSustainedLiveness(
+		session: SessionDescriptor,
+		state: RuntimeState,
+		cfg: EffectiveWatchdogConfig,
+		nowMs: number,
+	): void {
+		if (state.awaitingResponse) return;
+		const anchorMs = state.activityAnchorAtMs;
+		if (anchorMs === null || !Number.isFinite(anchorMs)) return;
+		// Freshness must satisfy BOTH detectors' notion of "not stale", so the window
+		// is the tighter of the two. STALE_AFTER_MS is what the descriptor-based
+		// detector calls stalled; the watchdog interval (20 min by default) is far
+		// looser, and using it alone would declare a peer alive that the other
+		// detector had just correctly flagged 65s into its silence.
+		const livenessWindowMs = Math.min(cfg.intervalMs, STALE_AFTER_MS);
+		if (nowMs - anchorMs >= livenessWindowMs) return;
+		if (state.livenessReportedForAnchorMs === anchorMs) return;
+		state.livenessReportedForAnchorMs = anchorMs;
+		this.deps.onResponse?.({ session, response: "responsive", consecutiveSilentFires: 0 });
 	}
 
 	private reportRealRecovery(session: SessionDescriptor, state: RuntimeState): void {

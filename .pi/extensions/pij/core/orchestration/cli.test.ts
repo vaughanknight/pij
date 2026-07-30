@@ -10,6 +10,8 @@ import {
 	parseOrchestrationArgs,
 } from "./cli.js";
 import { PrimeService } from "./prime.js";
+import type { DesignationAuditInput, DesignationAuditPort } from "./role.js";
+import { RoleService } from "./role.js";
 
 function ok(args: string[]) {
 	const parsed = parseOrchestrationArgs(args);
@@ -46,6 +48,33 @@ describe("parseOrchestrationArgs", () => {
 			primitive: "prime",
 			verb: "unset",
 			json: true,
+		});
+	});
+
+	it("parses role set/unset with optional targets and the closed role vocabulary", () => {
+		expect(ok(["role", "set", "pm"])).toEqual({
+			primitive: "role",
+			verb: "set",
+			role: "pm",
+			json: false,
+		});
+		expect(ok(["role", "set", "pij-a", "worker", "--json"])).toEqual({
+			primitive: "role",
+			verb: "set",
+			id: "pij-a",
+			role: "worker",
+			json: true,
+		});
+		expect(ok(["role", "unset", "--json"])).toEqual({
+			primitive: "role",
+			verb: "unset",
+			json: true,
+		});
+		expect(ok(["role", "unset", "pij-a"])).toEqual({
+			primitive: "role",
+			verb: "unset",
+			id: "pij-a",
+			json: false,
 		});
 	});
 
@@ -172,8 +201,20 @@ describe("parseOrchestrationArgs", () => {
 		[["prime", "set", "--wat"]],
 		[["prime", "retire", "--json=true"]],
 		[["prime", "unset", "--json=true"]],
+		[["role"]],
+		[["role", "show"]],
+		[["role", "set"]],
+		[["role", "set", "pm", "extra"]],
+		[["role", "unset", "a", "b"]],
+		[["role", "set", "pm", "--wat"]],
+		[["role", "unset", "--json=true"]],
 	])("rejects malformed invocation %j", (args) => {
 		expect(err(args).code).toBe("E-ARG");
+	});
+
+	it("names the two-word role vocabulary on an unknown role", () => {
+		const parsed = err(["role", "set", "manager"]);
+		expect(parsed.message).toContain("pm|worker");
 	});
 
 	it("rejects flags outside their verb", () => {
@@ -215,11 +256,18 @@ function descriptor(id: string, over: Partial<SessionDescriptor> = {}): SessionD
 	};
 }
 
+function requiredDescriptor(registry: FakeRegistry, id: string): SessionDescriptor {
+	const value = registry.read(id);
+	if (!value) throw new Error(`missing descriptor '${id}'`);
+	return value;
+}
+
 function dispatchPrime(
 	args: string[],
 	options: {
 		descriptors?: SessionDescriptor[];
 		resolveSelf?: () => Result<string>;
+		audit?: DesignationAuditPort;
 	} = {},
 ) {
 	const parsed = parseOrchestrationArgs(args);
@@ -235,9 +283,25 @@ function dispatchPrime(
 		actor: "operator",
 		currentHead: () => null,
 		primeService: new PrimeService(registry),
+		designationAudit: options.audit,
 		resolveSelf: options.resolveSelf ?? (() => resultOk("pij-a")),
 	});
 	return { result, registry };
+}
+
+class RecordingAudit implements DesignationAuditPort {
+	readonly inputs: DesignationAuditInput[] = [];
+
+	append(input: DesignationAuditInput): Result<number> {
+		this.inputs.push(input);
+		return resultOk(this.inputs.length);
+	}
+}
+
+class FailingAudit implements DesignationAuditPort {
+	append(): Result<number> {
+		return resultErr("E-NOREG", "injected audit failure");
+	}
 }
 
 describe("prime orchestration dispatch", () => {
@@ -327,6 +391,186 @@ describe("prime orchestration dispatch", () => {
 			stderr: expect.stringContaining("E-AMBIG"),
 		});
 		expect(ambiguous.registry.list().every((item) => item.prime === undefined)).toBe(true);
+	});
+
+	it("appends prime-set history on change only, including retire and unset transitions", () => {
+		const audit = new RecordingAudit();
+		const set = dispatchPrime(["prime", "set", "pij-a", "--json"], {
+			descriptors: [descriptor("pij-a")],
+			audit,
+		});
+		expect(JSON.parse(set.result.stdout)).toEqual({
+			id: "pij-a",
+			prime: true,
+			changed: true,
+		});
+		const retired = dispatchPrime(["prime", "retire", "pij-a", "--json"], {
+			descriptors: [requiredDescriptor(set.registry, "pij-a")],
+			audit,
+		});
+		expect(JSON.parse(retired.result.stdout)).toEqual({
+			id: "pij-a",
+			prime: false,
+			oldPrime: true,
+			changed: true,
+		});
+		const unset = dispatchPrime(["prime", "unset", "pij-a", "--json"], {
+			descriptors: [requiredDescriptor(retired.registry, "pij-a")],
+			audit,
+		});
+		expect(JSON.parse(unset.result.stdout)).toEqual({
+			id: "pij-a",
+			prime: false,
+			changed: true,
+		});
+		expect(audit.inputs).toEqual([
+			{ kind: "prime-set", id: "pij-a", next: "prime" },
+			{ kind: "prime-set", id: "pij-a", prev: "prime", next: "old-prime" },
+			{ kind: "prime-set", id: "pij-a", prev: "old-prime" },
+		]);
+
+		dispatchPrime(["prime", "unset", "pij-a"], {
+			descriptors: [requiredDescriptor(unset.registry, "pij-a")],
+			audit,
+		});
+		expect(audit.inputs).toHaveLength(3);
+	});
+
+	it("materializes legacy unset flags without appending a hollow prime-set event", () => {
+		const audit = new RecordingAudit();
+		const { result, registry } = dispatchPrime(["prime", "unset", "pij-a", "--json"], {
+			descriptors: [descriptor("pij-a")],
+			audit,
+		});
+
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-a",
+			prime: false,
+			changed: true,
+		});
+		expect(registry.read("pij-a")).toMatchObject({ prime: false, oldPrime: false });
+		expect(audit.inputs).toEqual([]);
+	});
+});
+
+describe("role orchestration dispatch", () => {
+	function dispatchRole(
+		args: string[],
+		options: {
+			descriptors?: SessionDescriptor[];
+			resolveSelf?: () => Result<string>;
+			audit?: DesignationAuditPort;
+		} = {},
+	) {
+		const parsed = parseOrchestrationArgs(args);
+		if (!parsed.ok) throw new Error(parsed.message);
+		const registry = new FakeRegistry(options.descriptors ?? []);
+		const result = dispatchOrchestration(parsed.command, {
+			service: new BatonService({
+				store: new FakeBatonStore(),
+				notices: new FakeBatonNoticeSink(),
+				now: () => 0,
+				newId: () => "id",
+			}),
+			actor: "operator",
+			currentHead: () => null,
+			primeService: new PrimeService(registry),
+			roleService: new RoleService(registry),
+			designationAudit: options.audit,
+			resolveSelf: options.resolveSelf ?? (() => resultOk("pij-a")),
+		});
+		return { result, registry };
+	}
+
+	it("sets resolved self through RoleService and appends role-set history", () => {
+		const audit = new RecordingAudit();
+		const { result, registry } = dispatchRole(["role", "set", "pm", "--json"], {
+			descriptors: [descriptor("pij-a")],
+			audit,
+		});
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toEqual({
+			id: "pij-a",
+			role: "pm",
+			changed: true,
+			spineSeq: 1,
+		});
+		expect(registry.read("pij-a")?.orchestrationRole).toBe("pm");
+		expect(audit.inputs).toEqual([{ kind: "role-set", id: "pij-a", next: "pm" }]);
+	});
+
+	it("unsets an explicit target, omits next from history, and emits no event on a no-op", () => {
+		const audit = new RecordingAudit();
+		const changed = dispatchRole(["role", "unset", "pij-b", "--json"], {
+			descriptors: [descriptor("pij-b", { orchestrationRole: "worker" })],
+			resolveSelf: () => resultErr("E-AMBIG", "ambiguous"),
+			audit,
+		});
+		expect(JSON.parse(changed.result.stdout)).toEqual({
+			id: "pij-b",
+			role: null,
+			changed: true,
+			spineSeq: 1,
+		});
+		expect(audit.inputs).toEqual([{ kind: "role-set", id: "pij-b", prev: "worker" }]);
+
+		dispatchRole(["role", "unset", "pij-b"], {
+			descriptors: [requiredDescriptor(changed.registry, "pij-b")],
+			audit,
+		});
+		expect(audit.inputs).toHaveLength(1);
+	});
+
+	it("keeps descriptor truth and reports an audit warning when the uncoupled append fails", () => {
+		const { result, registry } = dispatchRole(["role", "set", "pm", "--json"], {
+			descriptors: [descriptor("pij-a")],
+			audit: new FailingAudit(),
+		});
+		expect(result.exitCode).toBe(0);
+		expect(registry.read("pij-a")?.orchestrationRole).toBe("pm");
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			id: "pij-a",
+			role: "pm",
+			changed: true,
+			spineSeq: null,
+			spineWarning: expect.stringContaining("E-NOREG"),
+		});
+	});
+
+	it("fails loud for missing services, unknown targets, and ambiguous self without writing", () => {
+		const parsed = parseOrchestrationArgs(["role", "set", "pm"]);
+		if (!parsed.ok) throw new Error(parsed.message);
+		const unavailable = dispatchOrchestration(parsed.command, {
+			service: new BatonService({
+				store: new FakeBatonStore(),
+				notices: new FakeBatonNoticeSink(),
+				now: () => 0,
+				newId: () => "id",
+			}),
+			actor: "operator",
+			currentHead: () => null,
+			resolveSelf: () => resultOk("pij-a"),
+		});
+		expect(unavailable).toMatchObject({ exitCode: 2, stderr: expect.stringContaining("E-STORE") });
+
+		const missing = dispatchRole(["role", "set", "missing", "pm"], {
+			descriptors: [descriptor("pij-a")],
+		});
+		expect(missing.result).toMatchObject({
+			exitCode: 2,
+			stderr: expect.stringContaining("E-NOID"),
+		});
+		expect(missing.registry.read("pij-a")?.orchestrationRole).toBeUndefined();
+
+		const ambiguous = dispatchRole(["role", "set", "pm"], {
+			descriptors: [descriptor("pij-a")],
+			resolveSelf: () => resultErr("E-AMBIG", "cannot resolve self"),
+		});
+		expect(ambiguous.result).toMatchObject({
+			exitCode: 2,
+			stderr: expect.stringContaining("E-AMBIG"),
+		});
+		expect(ambiguous.registry.read("pij-a")?.orchestrationRole).toBeUndefined();
 	});
 });
 

@@ -4,6 +4,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -176,6 +177,14 @@ export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
 		writeFileSync(join(repo, "README.md"), "team scaffold smoke\n");
 		writeFileSync(join(repo, "src", "api", "index.ts"), "export const ready = true;\n");
 		writeFileSync(join(repo, "government", "briefs", "s061.md"), "# Stream brief\n");
+		const fakeBin = join(root, "bin");
+		mkdirSync(fakeBin, { recursive: true });
+		const fakeTmux = join(fakeBin, "tmux");
+		writeFileSync(
+			fakeTmux,
+			'#!/usr/bin/env node\nprocess.stdout.write("GPT-5.6 Sol · 1.1M context\\n");\n',
+		);
+		chmodSync(fakeTmux, 0o755);
 		for (const args of [
 			["init", "--quiet", repo],
 			["-C", repo, "config", "user.email", "pij@example.test"],
@@ -213,6 +222,7 @@ export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
 			CLAUDE_CODE_SESSION_ID: "",
 			CODEX_THREAD_ID: "",
 			TMUX_PANE: "",
+			PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
 		};
 		const workerEnv = { ...parentEnv, PIJ_SESSION_ID: "pij-worker" };
 

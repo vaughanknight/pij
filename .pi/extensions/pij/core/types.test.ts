@@ -6,6 +6,7 @@
 // own-property law (platform/types.ts precedent): required fields must be OWN
 // properties, prototype-supplied values are forgeries.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
 	type ContextGauge,
@@ -18,6 +19,14 @@ import {
 } from "./types.js";
 
 describe("WS-6 vocabularies (human-ruled, exact)", () => {
+	it("PIJ_ROLE narrowing accepts only Role words and discards any third word", () => {
+		const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+		const narrowing = indexSource.match(
+			/role = envRole === "([^"]+)" \|\| envRole === "([^"]+)" \? envRole : undefined;/,
+		);
+		expect(narrowing?.slice(1)).toEqual(["parent", "worker"]);
+	});
+
 	it("SEMANTIC_STATES is exactly the ruled 8-word semantic axis", () => {
 		expect(SEMANTIC_STATES).toEqual([
 			"blocked",

@@ -46,11 +46,16 @@ import {
 	drainTmuxInbox,
 	driveSession,
 	flushedText,
+	INIT_HELD_TIMEOUT_MS,
 	observeActivity,
 	refreshRenderedComposerHold,
-	writeMerged,
 } from "./core/daemon/loop.js";
-import { PaneSignalMonitor, type PaneSignalSnapshot } from "./core/daemon/pane-signals.js";
+import {
+	ComposerHoldTracker,
+	PaneSignalMonitor,
+	type PaneSignalSnapshot,
+	renderedComposerPayload,
+} from "./core/daemon/pane-signals.js";
 import {
 	COMPACT_GRACE_MS,
 	COMPACT_MAX_MS,
@@ -71,11 +76,19 @@ import {
 } from "./core/orchestration/baton.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
+import { persistDaemonWrite } from "./core/registry-write.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { ReceiptState, SessionDescriptor, SessionId } from "./core/types.js";
+import type { HarnessKind, SessionDescriptor, SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
+/** Delivery cadence (plan 071 D2). Independent of TICK_MS so a slow
+ *  reconciliation tick can never become delivery latency again. Matches the
+ *  poll-primary SLA `adapters/channel.ts` already gives pi seats. */
+const DELIVERY_PASS_MS = 200;
+/** How often the archival janitor runs. The policy window is 48h, so this only
+ *  needs to be "much more often than that, much less often than a tick". */
+const ARCHIVE_SWEEP_INTERVAL_MS = 60_000;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
 
 class DaemonBatonNoticeSink implements BatonNoticeSink {
@@ -101,8 +114,37 @@ export class Daemon {
 	private readonly drives = new Map<string, DriveState>();
 	private readonly buffer = new SendBuffer();
 	private readonly paneSignals = new PaneSignalMonitor();
+	/** Content-state delivery gate (see `ComposerHoldTracker`). Authoritative for
+	 * every known layout; the caret tracker above remains the unknown-layout path. */
+	private readonly composerHolds = new ComposerHoldTracker();
+	/** Retire the seat bound to a pane tmux says does not exist.
+	 *
+	 *  Not a delivery failure — a stale BINDING, and a permanent one. It is written
+	 *  as an arrow function assigned in the field position so it is defined before
+	 *  the `sendText` gate in the constructor can call it.
+	 *
+	 *  Idempotent by lookup: a pane with no live descriptor is a no-op, so repeated
+	 *  gone sends in one batch retire the seat once. */
+	private readonly unbindGonePane = (paneId: string): void => {
+		const owner = this.registry
+			.list()
+			.find((d) => d.paneId === paneId && d.lifecycle !== "dissolved");
+		if (!owner) return;
+		this.registry.dissolve(owner.id);
+		this.drives.delete(owner.id);
+		this.pushed.delete(owner.id);
+		this.watchdogStalled.delete(owner.id);
+		this.paneSig.delete(owner.id);
+		this.watchManager.disposeSession(owner.id);
+		this.watchdogManager.disposeSession(owner.id);
+		this.log(
+			`unbind ${owner.id}: pane ${paneId} does not exist — descriptor dissolved; unread mail left in the mailbox for a revive`,
+		);
+	};
+
 	private readonly markSelfInjection = (paneId: string, payload: string, nowMs: number): void => {
 		this.paneSignals.markSelfInjection(paneId, payload, nowMs);
+		this.composerHolds.markSelfInjection(paneId, payload, nowMs);
 	};
 	/** Per-bound-session latch: tracks which transitions have already been pushed
 	 *  so each stalled/dead/provider-failure notice fires exactly once (T012). */
@@ -136,10 +178,18 @@ export class Daemon {
 	private readonly expectations: FsSpawnExpectationStore;
 	/** The first sweep reconciles persisted state after boot; later passes are live. */
 	private deathSweepIsHistorical = true;
+	/** Clock anchor for the throttled archival sweep; undefined ⇒ never run, so
+	 *  the first tick after boot sweeps immediately. */
+	private lastArchiveSweepMs: number | undefined;
+	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
+	private deliveringNow = false;
+
+	/** Ports with the composer gate WELDED ON — see the constructor. */
+	private readonly ports: DaemonPorts;
 
 	constructor(
 		private readonly pijHome: string,
-		private readonly ports: DaemonPorts,
+		rawPorts: DaemonPorts,
 		private readonly registry: RegistryPort,
 		private readonly channel: DeliveryPort & InboxPort,
 		private readonly log: (line: string) => void = () => {},
@@ -147,6 +197,42 @@ export class Daemon {
 		batonSweep?: BatonSweep,
 		watchdogManager?: WatchdogManager,
 	) {
+		// THE structural gate. Every pane write in the daemon — inbox delivery,
+		// buffered flush, AND driveSession's init/phone-home injections — goes
+		// through `ports.sendText`, so gating HERE makes the content check
+		// unavoidable rather than something each call site has to remember.
+		// A held send types nothing and reports `held`; callers retry next tick.
+		// NOT a spread: `{...rawPorts}` drops prototype methods, and the
+		// production adapter (DaemonTmux) is a class — spreading it produced a
+		// ports object with ONLY sendText, so every tick crashed on
+		// `this.ports.now is not a function` (2026-07-25 fleet outage). Delegate
+		// through the prototype chain so class adapters and plain-object fakes
+		// both keep their full surface.
+		this.ports = Object.assign(Object.create(Object.getPrototypeOf(rawPorts)), rawPorts, {
+			sendText: (paneId: string, text: string, harness?: HarnessKind, pid?: number) => {
+				// EMERGENCY BYPASS 2026-07-25: content gate disabled — fleet-wide
+				// delivery failure attributed to over-hold. Step-on protection is
+				// OFF until the hold algorithm is re-reviewed (s069 follow-up).
+				// if (refreshRenderedComposerHold(paneId, this.ports, this.buffer, this.composerHolds)) {
+				// 	return "held";
+				// }
+				const outcome = rawPorts.sendText(paneId, text, harness, pid);
+				// A GONE pane is a stale BINDING, not a failed send. Handled here rather
+				// than per-call-site for the same reason the content gate is: every pane
+				// write in the daemon comes through this function, so a seat whose
+				// terminal has vanished is unbound exactly once, wherever it is noticed.
+				// Left alone, the daemon re-targets that pane every tick forever — and
+				// because tmux re-issues pane ids from `%0`, the queued message would
+				// eventually land in whatever LIVE pane inherits the id (task #34).
+				if (outcome === "gone") this.unbindGonePane(paneId);
+				// Marked HERE, after the write actually happened. Marking before the
+				// gate left a phantom echo exemption behind every HELD send — an
+				// exemption for output that was never written, which the caret
+				// fallback could then spend on the human's own keystrokes.
+				this.markSelfInjection(paneId, text, this.ports.now());
+				return outcome;
+			},
+		});
 		this.expectations = new FsSpawnExpectationStore(pijHome);
 		this.watchManager =
 			watchManager ??
@@ -177,7 +263,7 @@ export class Daemon {
 				},
 				onFire: (session, atMs) => {
 					const latest = this.registry.read(session.id) ?? session;
-					writeMerged(this.registry, {
+					persistDaemonWrite(this.registry, {
 						...latest,
 						lastWatchdogFireAt: new Date(atMs).toISOString(),
 					});
@@ -198,6 +284,7 @@ export class Daemon {
 
 	/** One pass: rebuild the index, drive pending tmux spawns, drain bound inboxes. */
 	tick(): void {
+		const tickStartedAtMs = Date.now();
 		const tickAt = new Date(this.ports.now()).toISOString();
 		for (const snapshot of this.registry.list()) {
 			if (!daemonOwnsDelivery(snapshot.harness ?? "pi", snapshot.deliveryMode)) continue;
@@ -319,9 +406,19 @@ export class Daemon {
 					this.ports,
 					this.registry,
 					this.channel,
-					this.markSelfInjection,
+					undefined, // self-injection is marked by the port wrapper, post-send
 				);
-				if (out.kind !== "waiting" && out.kind !== "boot") {
+				if (out.kind === "held-by-pane-input") {
+					// Never silent: say it once when it starts, and the eventual
+					// `failed` outcome below reports the terminal reason.
+					if (out.first) {
+						this.log(
+							`boot ${d.id}: init line HELD — live human input in pane ${d.paneId}; ` +
+								`retrying, will fail in ${Math.round(INIT_HELD_TIMEOUT_MS / 1000)}s if it persists`,
+						);
+					}
+				}
+				if (out.kind !== "waiting" && out.kind !== "boot" && out.kind !== "held-by-pane-input") {
 					const extra =
 						out.kind === "bound"
 							? ` ↔ ${out.harnessSessionId}`
@@ -353,15 +450,19 @@ export class Daemon {
 						requestedAt: new Date(this.ports.now()).toISOString(),
 					};
 					// Intent is durable before the owned pane teardown and dissolve.
-					this.registry.write({ ...d, closeIntent });
+					// "close": the once-close IS the terminal-truth authority here.
+					this.registry.write({ ...d, closeIntent }, "close");
 					if (d.paneId) this.ports.killPane(d.paneId);
 					const observedAt = new Date(this.ports.now()).toISOString();
-					this.registry.write({
-						...d,
-						closeIntent,
-						terminal: { disposition: "requested", observedAt, evidence: "pane-missing" },
-						deathNoticeLatchedAt: observedAt,
-					});
+					this.registry.write(
+						{
+							...d,
+							closeIntent,
+							terminal: { disposition: "requested", observedAt, evidence: "pane-missing" },
+							deathNoticeLatchedAt: observedAt,
+						},
+						"close",
+					);
 					this.registry.dissolve(d.id);
 					this.drives.delete(d.id);
 					this.pushed.delete(d.id);
@@ -386,14 +487,26 @@ export class Daemon {
 					// intentionally absent from this condition.
 					if (
 						current.paneId &&
-						!refreshRenderedComposerHold(current.paneId, this.ports, this.buffer) &&
+						!refreshRenderedComposerHold(
+							current.paneId,
+							this.ports,
+							this.buffer,
+							this.composerHolds,
+						) &&
 						this.buffer.pending(current.id) > 0
 					) {
 						const flushed = this.buffer.flush(current.id, this.ports.now(), current.paneId);
 						for (let index = 0; index < flushed.length; index++) {
 							const message = flushed[index];
 							if (!message) continue;
-							if (refreshRenderedComposerHold(current.paneId, this.ports, this.buffer)) {
+							if (
+								refreshRenderedComposerHold(
+									current.paneId,
+									this.ports,
+									this.buffer,
+									this.composerHolds,
+								)
+							) {
 								for (const remaining of flushed.slice(index)) {
 									this.buffer.enqueue(remaining.messageId, remaining.message);
 								}
@@ -401,13 +514,28 @@ export class Daemon {
 							}
 							this.watchdogManager.beforeTmuxInject(current.id, message.message, this.ports.now());
 							const injectedText = flushedText(message.message);
-							this.markSelfInjection(current.paneId, injectedText, this.ports.now());
 							const outcome = this.ports.sendText(
 								current.paneId,
 								injectedText,
 								current.harness,
 								current.pid,
 							);
+							if (outcome === "gone") {
+								// Pane is gone: stop this batch and do NOT requeue. The seat is
+								// unbound by the `sendText` gate, and every message stays unread
+								// on disk so a revived seat still receives it.
+								break;
+							}
+							if (outcome === "held" || outcome === "failed") {
+								// `held`: the human started typing between the gate and the
+								// send. `failed`: the send threw before submission. Either way
+								// nothing landed — put this message and the rest of the batch
+								// back, UNCONSUMED (plan 071 D7).
+								for (const remaining of flushed.slice(index)) {
+									this.buffer.enqueue(remaining.messageId, remaining.message);
+								}
+								break;
+							}
 							const marked = this.channel.markRead(current.id, message.messageId, {
 								messageId: message.messageId,
 								readAt: new Date(this.ports.now()).toISOString(),
@@ -450,12 +578,12 @@ export class Daemon {
 							updated = { ...updated, lastEventAt: current.lastEventAt };
 						}
 						if (updated) {
-							// writeMerged re-reads + preserves a reportedAt stamped concurrently by
+							// persistDaemonWrite re-reads + preserves a reportedAt stamped concurrently by
 							// `pij agent report` between this tick's index rebuild and now, so the
 							// activity write can't clobber the `--once` close latch (Finding 1). It
 							// returns the merged descriptor so `current` (fed to the stall/dead push
 							// below) also carries the preserved stamp.
-							current = writeMerged(this.registry, updated);
+							current = persistDaemonWrite(this.registry, updated);
 							if (current.lifecycle === "dissolved") continue;
 						}
 						// Compact-window release (DL-004): clear the mark once the pane reads
@@ -471,7 +599,7 @@ export class Daemon {
 							const compactStale = !(compactAgeMs <= COMPACT_MAX_MS); // NaN-safe: NaN clears too
 							if (compactDone || compactStale) {
 								const { compactingAt: _compactingAt, ...cleared } = current;
-								current = writeMerged(this.registry, cleared);
+								current = persistDaemonWrite(this.registry, cleared);
 								if (current.lifecycle === "dissolved") continue;
 								this.log(
 									compactStale
@@ -519,12 +647,104 @@ export class Daemon {
 			historical: this.deathSweepIsHistorical,
 		});
 		this.deathSweepIsHistorical = false;
-		for (const update of deathSweep.descriptorUpdates) this.registry.write(update);
+		// "close": the death reconciler observes a dead pane and classifies it — that
+		// IS terminal truth, the same authority `pij close` exercises.
+		for (const update of deathSweep.descriptorUpdates) this.registry.write(update, "close");
 		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
 		for (const notice of deathSweep.notices) {
 			this.channel.deliver({ from: notice.from, to: notice.to, body: notice.text });
 		}
+		// One line instead of N undeliverable pushes. A host reboot kills every seat
+		// in the same event, so the obituaries are all addressed to seats that died
+		// alongside their subject — the operator wants the COUNT, not 200 messages
+		// nobody can read (task #34).
+		if (deathSweep.noticesSuppressed > 0) {
+			this.log(
+				`death sweep: ${deathSweep.noticesSuppressed} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
+			);
+		}
 		this.watchdogManager.reconcile(this.registry.list());
+		this.sweepArchive();
+		// Every tick, unconditionally. Tick duration IS delivery latency for the
+		// tick-driven path, and on 2026-07-25 it silently grew to ~19s with nothing
+		// in the log to show it — the fleet felt it before anyone could measure it.
+		this.log(`tick: ${Date.now() - tickStartedAtMs}ms, ${this.index.all().length} live`);
+	}
+
+	/** Delivery, decoupled from the tick (plan 071 D2).
+	 *
+	 *  Delivery used to ride INSIDE `tick()`, so tick duration WAS delivery
+	 *  latency: when the registry scan grew to ~19s on 2026-07-25, every message
+	 *  waited that long. This pass runs on its own fast timer
+	 *  ({@link DELIVERY_PASS_MS}) and does one thing — get pending mail into panes.
+	 *  The tick keeps its own drain as RECONCILIATION, so a seat missed here (bound
+	 *  since the last index rebuild, mid-compact, momentarily held) still drains.
+	 *
+	 *  Deliberately a poll, not `fs.watch`. This codebase already paid for that
+	 *  lesson and wrote it down in `adapters/channel.ts`: the live inbox watchers
+	 *  DROPPED fs.watch because FSEvents costs ~0.6–1.6s per handle to open and
+	 *  drops events SILENTLY under load — precisely when a busy seat most needs
+	 *  delivery. A fixed-cadence pass instead gives a LOAD-INDEPENDENT SLA, which
+	 *  is the property the brief actually asks for ("sub-second delivery to an idle
+	 *  pane"), and it is the same choice `POLL_PRIMARY_DELIVERY_MS` already makes
+	 *  for pi seats.
+	 *
+	 *  Reads the in-memory index rather than the registry: a registry scan at this
+	 *  cadence would re-create the cost this pass exists to escape. A seat bound
+	 *  within the last tick therefore waits one tick for its first delivery — the
+	 *  tick's own drain covers exactly that case. */
+	deliverPass(): void {
+		if (this.deliveringNow) return; // never re-enter
+		this.deliveringNow = true;
+		try {
+			for (const d of this.index.all()) {
+				if (d.lifecycle !== "bound") continue;
+				if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) continue;
+				if (!d.paneId) continue;
+				// Same hold the tick honours: input injected mid-compaction is eaten by
+				// the harness's fresh-context reset, so mail stays durable-unread.
+				if (isCompacting(d, this.ports.now())) continue;
+				try {
+					this.drainInbox(d.id);
+				} catch (error) {
+					const detail = error instanceof Error ? error.message : String(error);
+					this.log(`delivery pass ${d.id}: ${detail}`);
+				}
+			}
+		} finally {
+			this.deliveringNow = false;
+		}
+	}
+
+	/** Two-tier janitor (plan 071 D1): move terminal records past the 48h window
+	 *  out of the hot tier, so the hot scan stays O(live).
+	 *
+	 *  Throttled to {@link ARCHIVE_SWEEP_INTERVAL_MS} rather than run per tick: the
+	 *  policy window is 48 hours, so sub-minute precision buys nothing and the
+	 *  sweep's own readdir would just be more per-tick cost. The daemon is the
+	 *  SINGLE WRITER for archival moves — no CLI path ever calls this. */
+	private sweepArchive(): void {
+		if (!this.registry.sweepArchivable) return;
+		const nowMs = this.ports.now();
+		if (
+			this.lastArchiveSweepMs !== undefined &&
+			nowMs - this.lastArchiveSweepMs < ARCHIVE_SWEEP_INTERVAL_MS
+		) {
+			return;
+		}
+		this.lastArchiveSweepMs = nowMs;
+		try {
+			const swept = this.registry.sweepArchivable(nowMs);
+			if (swept.archived > 0) this.log(`archive sweep: moved ${swept.archived} terminal record(s)`);
+			// Never silent: a refused move means a conflicting half-archive on disk,
+			// which a human has to look at.
+			if (swept.skipped > 0) {
+				this.log(`archive sweep: ${swept.skipped} record(s) SKIPPED (conflicting archive state)`);
+			}
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			this.log(`archive sweep error: ${detail}`);
+		}
 	}
 
 	/** Detect and push stalled/dead transitions for a bound session. The push
@@ -533,6 +753,13 @@ export class Daemon {
 	 *  transition, latched by `this.pushed`. */
 	private pushWholeLifeTransition(d: SessionDescriptor): void {
 		if (!d.spawnedBy) return; // no creator to notify
+		// A safety-exempted peer is intentionally idle on standby, so its silence is
+		// expected and must generate NO watchdog traffic in either direction. The
+		// watchdog's own path honours that via `isFireDue`; this detector derives
+		// `stalled` independently from descriptor state + event age, so it has to ask.
+		// Without this it kept notifying the owner about a peer they had already told
+		// pij to leave alone (3 stall notices in ~13 min, live).
+		if (this.watchdogManager.isExempt(d.id)) return;
 		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();
 		this.pushed.set(d.id, latch);
 
@@ -550,7 +777,7 @@ export class Daemon {
 		if (stalled && !latch.has("stalled")) {
 			latch.add("stalled");
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
-			const persisted = writeMerged(this.registry, { ...d, failureReason: "stalled" });
+			const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 			if (persisted.lifecycle === "dissolved") return;
 			const note = buildStalledNotice(persisted);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
@@ -560,7 +787,7 @@ export class Daemon {
 			!this.watchdogStalled.has(d.id) &&
 			(latch.delete("stalled") || d.failureReason === "stalled")
 		) {
-			writeMerged(this.registry, { ...d, failureReason: undefined });
+			persistDaemonWrite(this.registry, { ...d, failureReason: undefined });
 			this.log(`push ${d.id}: legacy stalled cleared on recovery`);
 		}
 	}
@@ -574,7 +801,7 @@ export class Daemon {
 		if (event.response === "responsive") {
 			this.watchdogStalled.delete(d.id);
 			if (latch.delete("stalled") || d.failureReason === "stalled") {
-				writeMerged(this.registry, { ...d, failureReason: undefined });
+				persistDaemonWrite(this.registry, { ...d, failureReason: undefined });
 				this.log(`push ${d.id}: watchdog stalled cleared on recovery`);
 			}
 			return;
@@ -583,7 +810,7 @@ export class Daemon {
 		this.watchdogStalled.add(d.id);
 		if (latch.has("stalled")) return;
 		latch.add("stalled");
-		const persisted = writeMerged(this.registry, { ...d, failureReason: "stalled" });
+		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 		if (persisted.lifecycle === "dissolved") return;
 		if (persisted.spawnedBy) {
 			const note = buildStalledNotice(persisted);
@@ -604,6 +831,15 @@ export class Daemon {
 	 *  fires. Dead sessions are left to `pushWholeLifeTransition`'s dead branch.
 	 *  Latched once per session via the shared `this.pushed`. */
 	private pushProviderFailure(d: SessionDescriptor): void {
+		// DECIDED, not accidental (s070): this path deliberately does NOT consult
+		// `watchdog exempt`, unlike the stall detector above. Exempt means "this peer
+		// is intentionally idle, stop nagging me about SILENCE". A provider failure is
+		// not silence — it is a real, actionable fault, and it stays actionable while
+		// a peer is on standby. Swallowing a quota/auth/model-400 failure because
+		// someone exempted the peer would be a worse bug than the notification noise
+		// s070 set out to fix. `staleAge` is only the trigger for LOOKING; the notice
+		// fires on positively-identified provider-error evidence in the pane, never on
+		// silence alone. A test pins this so it cannot be "fixed" by accident.
 		if (!d.spawnedBy || !d.paneId) return; // no creator / no pane to peek
 		if (d.lifecycle === "pending") return; // mid-bind → driveSession owns it (its bad-model detect fails it)
 		if (!this.ports.isAlive(d.pid)) return; // dead → handled by the dead branch
@@ -618,7 +854,7 @@ export class Daemon {
 			const hadProviderFailureLatch = latch.delete("provider-failure");
 			if (providerFailureReason || hadProviderFailureLatch) {
 				const { failureReason: _failureReason, ...recovered } = d;
-				writeMerged(this.registry, recovered);
+				persistDaemonWrite(this.registry, recovered);
 				this.log(`push ${d.id}: provider-failure cleared on recovery`);
 			}
 			return;
@@ -631,7 +867,7 @@ export class Daemon {
 		const isFatal = reason === "quota" || reason === "auth" || reason === "model-not-supported";
 		if (!isFatal) return;
 		latch.add("provider-failure");
-		const persisted = writeMerged(this.registry, { ...d, failureReason: reason });
+		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: reason });
 		if (persisted.lifecycle === "dissolved") return;
 		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false });
 		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
@@ -706,7 +942,9 @@ export class Daemon {
 		let consumedCount = 0;
 		let compactFired = false;
 		for (const message of messages) {
-			if (!refreshRenderedComposerHold(target.paneId, this.ports, this.buffer)) {
+			if (
+				!refreshRenderedComposerHold(target.paneId, this.ports, this.buffer, this.composerHolds)
+			) {
 				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			}
 			const consumed = drainTmuxInbox(
@@ -714,7 +952,8 @@ export class Daemon {
 				[message],
 				this.ports,
 				this.buffer,
-				this.markSelfInjection,
+				undefined, // self-injection is marked by the port wrapper, post-send
+				this.composerHolds,
 			);
 			// A remote `/compact` just went into the pane: mark the compact window
 			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
@@ -723,7 +962,7 @@ export class Daemon {
 			if (message.command === "compact" && consumed.some((item) => item.outcome !== undefined)) {
 				const latest = this.registry.read(target.id);
 				if (latest && latest.lifecycle !== "dissolved") {
-					writeMerged(this.registry, {
+					persistDaemonWrite(this.registry, {
 						...latest,
 						compactingAt: new Date(this.ports.now()).toISOString(),
 					});
@@ -740,6 +979,10 @@ export class Daemon {
 				if (!marked.ok) {
 					throw new Error(`${marked.code}: ${marked.message}`);
 				}
+				// Delivered by THIS path — drop any buffered copy so a later flush
+				// cannot inject it a second time (plan 071 D7). Buffered messages now
+				// stay durably unread, so the drain can legitimately reach one first.
+				this.buffer.forget(item.messageId);
 				if (target.lifecycle === "bound" && item.outcome !== undefined) {
 					this.emitSendReceipt(target.id, item.from, item.messageId, item.outcome);
 				}
@@ -773,29 +1016,43 @@ export class Daemon {
 			const safePane = pane.paneId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
 			this.ports.attachPaneTap(pane.paneId, join(this.pijHome, "pane-signals", `${safePane}.raw`));
 		}
+		// One capture per pane per tick, shared by the caret tracker and the
+		// content gate so both reason about the same rendered frame.
+		const captured = new Map<string, string>();
 		for (const paneId of this.paneSignals.paneIds()) {
 			const bytes = this.ports.drainPaneTap(paneId);
 			if (bytes.byteLength > 0) this.paneSignals.ingest(paneId, bytes, this.ports.now());
-			this.paneSignals.observeRenderedComposer(
-				paneId,
-				this.ports.capturePane(paneId),
-				this.ports.now(),
-			);
+			const pane = this.ports.capturePane(paneId);
+			captured.set(paneId, pane);
+			this.paneSignals.observeRenderedComposer(paneId, pane, this.ports.now());
 		}
 		this.paneSignals.tick(this.ports.now());
 		for (const paneId of this.paneSignals.paneIds()) {
 			const signal = this.paneSignals.snapshot(paneId, this.ports.now());
-			if (signal) {
-				this.buffer.setPaneSignal(paneId, {
-					busy: signal.busy,
-					userTyping: signal.userTyping,
-					lastActivityAt: signal.lastKeyAt,
-				});
-			}
+			if (!signal) continue;
+			// Keep the content gate current between sends; when it recognises the
+			// layout it OVERRIDES the caret tracker, which is the unknown-layout path.
+			const verdict = this.composerHolds.observe(
+				paneId,
+				renderedComposerPayload(captured.get(paneId) ?? ""),
+				this.ports.now(),
+			);
+			const userTyping = verdict.deferred ? signal.userTyping : verdict.hold;
+			const lastActivityAt = verdict.deferred
+				? signal.lastKeyAt
+				: verdict.hold
+					? (verdict.lastChangeAt ?? this.ports.now())
+					: undefined;
+			this.buffer.setPaneSignal(paneId, {
+				busy: signal.busy,
+				userTyping,
+				...(lastActivityAt === undefined ? {} : { lastActivityAt }),
+			});
 		}
 		for (const paneId of diff.retired) {
 			this.ports.detachPaneTap(paneId);
 			this.buffer.forgetPane(paneId);
+			this.composerHolds.forget(paneId);
 		}
 	}
 
@@ -806,15 +1063,15 @@ export class Daemon {
 		outcome: SendOutcome,
 	): void {
 		if (!this.registry.read(sender)) return;
-		// Honest 1:1 mapping — text that was typed but never confirmed submitted is
-		// `injected-unverified`, NEVER `delivered`. Only a positive submission
-		// confirmation earns `delivered`; a pre-type send failure stays `unverified`.
-		const state: ReceiptState =
-			outcome === "confirmed"
-				? "delivered"
-				: outcome === "injected-unverified"
-					? "injected-unverified"
-					: "unverified";
+		// Honest mapping: ONLY a positively observed submission earns `delivered`.
+		// Text that was typed but never confirmed submitted (the swallowed-Enter
+		// wedge, plan 127) reports `unverified` — never `delivered`.
+		//
+		// Precondition, and the reason two receipt words are enough: the callers only
+		// reach here for `confirmed`/`unverified`. `gone` returns early and `held`/
+		// `failed` requeue the message UNCONSUMED (plan 071 D7), so the outcomes where
+		// nothing landed never produce a receipt at all.
+		const state = outcome === "confirmed" ? "delivered" : "unverified";
 		this.channel.deliver({
 			from: peer,
 			to: sender,
@@ -833,6 +1090,8 @@ export class Daemon {
 export interface DaemonOptions {
 	readonly pijHome?: string;
 	readonly tickMs?: number;
+	/** Delivery-pass cadence (plan 071 D2); defaults to {@link DELIVERY_PASS_MS}. */
+	readonly deliveryMs?: number;
 	readonly log?: (line: string) => void;
 }
 
@@ -941,6 +1200,16 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		}
 	}, opts.tickMs ?? TICK_MS);
 
+	// Delivery on its OWN timer (plan 071 D2), so reconciliation cost and delivery
+	// latency stop being the same number.
+	const deliveryTimer = setInterval(() => {
+		try {
+			daemon.deliverPass();
+		} catch (e) {
+			log(`delivery pass error: ${(e as Error).message}`);
+		}
+	}, opts.deliveryMs ?? DELIVERY_PASS_MS);
+
 	// Auto-start the Telegram bridge IN-PROCESS when a scoped telegram.env is present
 	// (else a no-op, so a bridge-less daemon is unchanged). The bridge stays a harness:"pi"
 	// peer the tick loop OBSERVES, so co-locating it changes only who owns the long-poll.
@@ -950,6 +1219,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 
 	return () => {
 		clearInterval(timer);
+		clearInterval(deliveryTimer);
 		daemon.dispose();
 		stopBridge();
 		try {

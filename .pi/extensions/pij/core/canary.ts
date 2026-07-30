@@ -1,17 +1,20 @@
 // pij-control-plane — pure canary packet, validation, and evidence rendering.
 
+import { type ContextWindowObservation, expectedContextWindowLabel } from "./context/window.js";
 import { isoTimestamp } from "./platform/time.js";
 import type { CanaryRecord, Dispatch } from "./platform/types.js";
 import type { SessionDescriptor } from "./types.js";
 
 export const CANARY_IDENTITY_ERROR = "E-CANARY-IDENTITY";
 export const CANARY_MODEL_ERROR = "E-CANARY-MODEL";
+export const CANARY_CONTEXT_ERROR = "E-CANARY-CONTEXT";
 export const CANARY_PACKET_ERROR = "E-CANARY-PACKET";
 export const CANARY_TIMEOUT_ERROR = "E-CANARY-TIMEOUT";
 
 export type CanaryErrorCode =
 	| typeof CANARY_IDENTITY_ERROR
 	| typeof CANARY_MODEL_ERROR
+	| typeof CANARY_CONTEXT_ERROR
 	| typeof CANARY_PACKET_ERROR;
 
 export type CanaryResult =
@@ -42,6 +45,8 @@ export interface EvaluateCanaryInput {
 	readonly descriptor: SessionDescriptor;
 	readonly nonce: string;
 	readonly expectedModel?: string;
+	readonly expectedContextWindow?: number;
+	readonly observedContextWindow?: ContextWindowObservation | null;
 	readonly actor: string;
 	readonly nowMs: number;
 }
@@ -120,6 +125,47 @@ export function evaluateCanary(input: EvaluateCanaryInput): CanaryResult {
 		);
 	}
 
+	let contextWindow: CanaryRecord["contextWindow"];
+	if (input.expectedContextWindow !== undefined) {
+		const expectedLabel = expectedContextWindowLabel(input.expectedContextWindow);
+		if (expectedLabel === null) {
+			return refused(
+				CANARY_CONTEXT_ERROR,
+				`target '${descriptor.id}' has invalid catalog context window '${input.expectedContextWindow}'`,
+			);
+		}
+		// Only an OBSERVED CONTRADICTION fails (plan 071 D6). Unobservable is not
+		// evidence of a wrong tier — it is absence of evidence, and treating the two
+		// the same false-failed every claude-opus-5 canary machine-wide, which
+		// trains seats to rationalise around a red gate until a real red means
+		// nothing. The gate's actual target (#45: omp silently serving 400k when the
+		// catalog says 1M) is a CONTRADICTION, and that still refuses below.
+		if (input.observedContextWindow === null || input.observedContextWindow === undefined) {
+			contextWindow = {
+				expected: input.expectedContextWindow,
+				expectedLabel,
+				observedLabel: "unverified",
+				source: "unobservable",
+				check: "unverified",
+			};
+		} else {
+			const tolerance = Math.max(50_000, input.expectedContextWindow * 0.1);
+			if (Math.abs(input.observedContextWindow.tokens - input.expectedContextWindow) > tolerance) {
+				return refused(
+					CANARY_CONTEXT_ERROR,
+					`target '${descriptor.id}' pinned model '${pinnedModel ?? "default"}' expects ${expectedLabel} but pane footer reports ${input.observedContextWindow.label}`,
+				);
+			}
+			contextWindow = {
+				expected: input.expectedContextWindow,
+				expectedLabel,
+				observedLabel: input.observedContextWindow.label,
+				source: input.observedContextWindow.source,
+				check: "matched",
+			};
+		}
+	}
+
 	const passedAt = isoTimestamp(input.nowMs);
 	if (!passedAt.ok) {
 		return refused(CANARY_IDENTITY_ERROR, passedAt.message);
@@ -135,6 +181,7 @@ export function evaluateCanary(input: EvaluateCanaryInput): CanaryResult {
 			...(input.expectedModel === undefined ? {} : { expectedModel: input.expectedModel }),
 			declaredRuntime: declared,
 			modelCheck,
+			...(contextWindow === undefined ? {} : { contextWindow }),
 			identity: {
 				paneId: descriptor.paneId,
 				pid: descriptor.pid,
@@ -150,7 +197,14 @@ export function renderCanaryPass(record: CanaryRecord): string {
 		record.modelCheck === "unpinned-default"
 			? "model=default check=UNPINNED"
 			: `model=${record.declaredRuntime.model} check=matched`;
-	return `canary PASS target=${record.target} dispatch=${record.dispatchId} ${model} identity=pane:${record.identity.paneId} pid:${record.identity.pid} native:${record.identity.harnessSessionId}`;
+	// A PASS must never look identical whether or not the tier was actually
+	// checked (plan 071 D6): an unverified tier says so, in the verdict.
+	const context = record.contextWindow
+		? record.contextWindow.check === "unverified"
+			? ` contextTier=unverified (catalog: ${record.contextWindow.expectedLabel}; this harness publishes no context marker — not verified, not contradicted)`
+			: ` context=${record.contextWindow.observedLabel} check=matched source=${record.contextWindow.source}`
+		: "";
+	return `canary PASS target=${record.target} dispatch=${record.dispatchId} ${model}${context} identity=pane:${record.identity.paneId} pid:${record.identity.pid} native:${record.identity.harnessSessionId}`;
 }
 
 export function renderCanaryTimeout(dispatch: Dispatch): string {
