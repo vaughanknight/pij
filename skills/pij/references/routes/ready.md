@@ -42,3 +42,11 @@ Do not read plans, briefs, government files, repository docs, git state, task
 state, or another route. Do not run a harness boot, inspect peers, spawn, send,
 tail, delegate, claim work, or infer what the next task might be. Registration,
 the exact readiness reply, and waiting are the entire route.
+
+## Once work arrives
+
+Invariant 12 starts applying the moment you accept a unit of work: `pij report
+now "<did>" "<next>"` at its start and again at its finish. A seat adopted
+through this route is the likeliest to go stale — it can sit for hours, so its
+card is the one most often read while it is the one least often refreshed. Being
+watchdog-nudged means it was already stale.

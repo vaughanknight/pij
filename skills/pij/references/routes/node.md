@@ -46,6 +46,13 @@ progress is waiting on something external. In compound progress, `--note` is
 valid only with `--state question|blocked`. Actively working has no semantic state
 word: absence is the honest expression by design, so never invent `working`.
 
+**Cadence (invariant 12): report at BOTH edges — once when you start a unit of
+work, once when you finish it.** Do not wait for a watchdog nudge; the nudge is a
+backstop, and being nudged means the card was already stale. Consumers render
+`now`/`next` as CURRENT, so an un-updated card actively misinforms — a seat that
+merged an hour ago still reads as waiting on review. `report clear` drops a
+semantic state that no longer applies (e.g. you declared `waiting`, then resumed).
+
 Inline markdown is supported in report text (`` `code` ``, `**bold**`,
 `[links]`). Block markdown is not: newlines are refused. Shell-quote markdown
 containing backticks with single quotes so the shell does not execute it.

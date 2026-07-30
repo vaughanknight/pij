@@ -64,6 +64,7 @@ primitive. `baton` is the other orchestration subcommand.
 9. **Non-blocking questions**: never `ask_user_question` or any modal question UI — ask inline through the active delivery channel, persist the pending decision, block only dependent work.
 10. **Questions stay with their context owner**: whoever needs the answer asks the human directly; parents receive a pointer and never proxy. Doctrine for 9–10: `references/prime/protocol.md` § Human rulings.
 11. **Isolation removes edit-time serialization, not convergence-time serialization**: work confined to a verified stream worktree/branch is notify-only under a recorded descriptive fence; synchronize at converging histories or shared mutable resources. Trigger matrix: `references/prime/rituals/batons.md`.
+12. **Report at both edges of work**: `pij report now "<did>" "<next>"` when you START a unit of work and again when you FINISH it — every route, every seat, not only when a watchdog nudges. A nudge is the **backstop** for a cadence you should already be keeping, never the trigger for it. A stale card is worse than no card: consumers render it as current, so a seat that shipped an hour ago still reads as waiting. Long units get a line at each visible boundary (dispatch, verdict, merge), not a running commentary.
 
 ## Aliases (read-time — never a second implementation)
 
