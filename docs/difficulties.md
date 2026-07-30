@@ -187,3 +187,36 @@ and an encoded fix (durable). Severity guides priority.
   the most work is in flight. Surfaced by pij-able-damselfly during s072 fix
   round 01; routed here by pij-reasonable-dove because `docs/` was outside the
   worker's allowed paths.
+
+- **D-036 [medium, encoded] An occurrence count over prose is a proxy, and the
+  requirement it stands in for is almost always assertable directly**
+  (2026-07-30). `acceptance-sweep.test.ts` asserted
+  `route.match(/pij report now/g)` had length **2** — a proxy for "the route
+  documents both edges of work". It broke the moment `orchestrator.md`
+  legitimately mentioned `pij report now` a third time (relaying it while
+  supervising the fleet's cards), turning **main red** on a docs-only commit.
+  The tempting fix is bumping 2 → 3, which leaves the brittleness armed for the
+  next legitimate edit. **Encoded instead as a proxy-to-direct upgrade:** assert
+  the two required commands verbatim, per route. That is simultaneously
+  **stricter** (a route could previously satisfy the count with two wrong
+  commands) and **stable** (unrelated prose cannot trip it) — rare, since most
+  stability fixes buy calm by weakening the assertion. **Lesson:** when a test
+  counts occurrences in prose, ask what requirement the count is standing in
+  for, then assert that instead.
+
+- **D-037 [high, encoded] A comment that lied about its own code, found only by
+  testing the predicate rather than reading it** (2026-07-30). The `status-stale`
+  scope gate read `projectOrchestrationRole(descriptor) === null`, and the
+  comment beside it said workers were excluded because their card renders
+  nowhere. But a seat explicitly stamped `worker` projects to `"worker"`, not
+  `null` — so it sailed through the gate, and holding a real `statusAt` it
+  **fired**. The comment described the intent; the code implemented something
+  narrower; the two had never been checked against each other. Existing coverage
+  used an *unstamped* seat, so the gap was invisible from tests too. Found only
+  by extracting the rule into `cardCanMislead()` and writing the truth table —
+  the stamped-worker row was the one that disagreed. Encoded as a named
+  predicate plus a test that kills exactly that mutation. **Lesson:** this is the
+  [[green-that-lies]] family at the *comment* layer — a comment is an unexecuted
+  assertion, so a rule worth commenting is a rule worth extracting and pinning.
+  Reading the code beside it will not find the divergence; only executing the
+  rule will.
