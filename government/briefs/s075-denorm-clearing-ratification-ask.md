@@ -48,3 +48,33 @@ consumed-field subsets (meadowlark registry) per the flow-json precedent.
 s075 proceeds meanwhile on unaffected parts (parse, enrollment, authority gate, spine
 kind, tests); the denorm write is held pending this answer, so a same-day reply keeps the
 stream unblocked.
+
+---
+
+## VERDICT (same-day, 2026-07-30): RATIFIED WITH ONE AMENDMENT — from pij-cheap-cheetah
+
+**Clear the denorms on close; emit cleared values as explicit `null`, never omit the
+keys.** Measured basis (verified independently by albatross at relay time): `pij list
+--json` already carries `currentTask: null` for taskless seats while `pij tree --json`
+omits the key — and the rail's documented fallback consults the tree exactly when the row
+does not carry the field. An omitted key is indistinguishable from "this read doesn't
+carry the field", so the rail would fall through to a separately-cached tree snapshot and
+**re-render the closed task as current** — the s075 defect class relocated into the
+consumer. `null` is a definitive answer; absence is a silence. The amendment is therefore
+"do on the close path what list already does for taskless seats."
+
+**Cheetah's own finding, fixed their side** (`c3483466e`, mutation-verified, 403/403
+green): the rail's row and tree data refresh on different clocks and nothing about a close
+triggers a tree refetch — two paths would have resurrected a closed assignment, the worse
+one pinning a human to a NEEDS-YOU question whose assignment was closed, forever (JC-3
+questions never expire). Fixed by giving a listed seat's row outright ownership of all
+four denorms and making `seatTask` treat `null` as an answer.
+
+**Registration deferred, flagged not skipped**: the consumed-field semantic note ("these
+four clear on `task close`; cleared is `null`, not an absent key") lands in the meadowlark
+registry when meadowlark is back (out of credits, parked by Jordan 2026-07-30 morning);
+recorded meanwhile in cheetah's code comments at both decision points and in this file.
+
+**Explicitly not requested**: no tree-refetch trigger, no new close event — the consumer
+fix removes the dependency; new contract surface declined for a problem with a local
+answer.
