@@ -1634,3 +1634,64 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(registry.read("peer")?.failureReason).toBeUndefined();
 	});
 });
+
+describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
+	// Live evidence for this fix: the PM who wrote it burned four nudges while
+	// correctly parked on a human-gated merge. Both anomaly detectors already
+	// exempt the parked states; the watchdog — the only mechanism that pushes a
+	// turn into a human-visible pane — did not.
+	function parkedHarness(semanticState: SessionDescriptor["semanticState"]) {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-parked", intervalSidecar());
+		h.store.revisions.set("pij-parked", 1);
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined, semanticState })]);
+		return h;
+	}
+
+	it("sends NO nudge to a seat that declared a parked state", () => {
+		for (const state of ["waiting", "hold", "blocked", "question"] as const) {
+			const h = parkedHarness(state);
+			expect(h.delivery.outbox).toEqual([]);
+			expect(h.sent).toEqual([]);
+		}
+	});
+
+	it("STILL nudges an undeclared seat under identical conditions", () => {
+		// The control. Without it the assertion above would also pass if the
+		// watchdog were simply broken, which is the vacuous-pass shape.
+		const h = parkedHarness(undefined);
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
+	});
+
+	it("STILL nudges a seat claiming done — a terminal claim is verified, not trusted", () => {
+		// s075's lesson carried forward: muting and discharging are different acts.
+		const h = parkedHarness("done");
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
+	});
+
+	it("keeps the seat WATCHED — muting is not unwatching", () => {
+		// The design constraint from the brief: parked-state muting must not weaken
+		// the supervision axes. Muting records NO fire (it is not a nudge), but the
+		// seat must remain under management — proven by it firing normally once it
+		// un-parks and its interval elapses. A seat dropped from management would
+		// never fire again.
+		const h = parkedHarness("question");
+		expect(h.fires).toEqual([]);
+		h.setNow(200); // interval 50, muted tick at 100 → due again
+		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined })]);
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
+		expect(h.fires).toEqual([{ id: "pij-parked", atMs: 200 }]);
+	});
+
+	it("does not fire the instant a seat UN-parks — the clock advanced while muted", () => {
+		// If the muted tick left lastFireAt standing, the seat would be permanently
+		// overdue and get nudged the moment it un-parked: punishing the declaration
+		// one tick late rather than on time.
+		const h = parkedHarness("question");
+		h.delivery.outbox.length = 0;
+		h.setNow(120); // < interval (50) after the muted tick at 100
+		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined })]);
+		expect(h.delivery.outbox).toEqual([]);
+	});
+});

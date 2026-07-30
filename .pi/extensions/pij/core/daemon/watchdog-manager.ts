@@ -10,6 +10,7 @@ import {
 	effectiveWatchdog,
 	evaluateResponse,
 	isFireDue,
+	mutesWatchdogNudge,
 	reconcileWatchdogExemption,
 	shouldCapture,
 	type WatchdogResponse,
@@ -322,6 +323,27 @@ export class WatchdogManager {
 		this.reportSustainedLiveness(session, state, cfg, nowMs);
 
 		if (!isFireDue(cfg, state.lastFireAtMs, state.scheduleAnchorAtMs, nowMs)) return;
+		// PARKED SEATS ARE NOT NUDGED (plan 076, DL-002). Placed HERE, not in
+		// `eligible()`, and the distinction is the whole design: `eligible()` gates
+		// ALL watchdog involvement, so muting there would also switch off stall
+		// classification and the dead/provider-failure axes for a parked seat — and
+		// a parked seat can still die. This suppresses exactly one outbound nudge.
+		//
+		// Note `reportSustainedLiveness` above runs BEFORE this return, so liveness
+		// supervision continues unchanged for a parked seat; only the pane-facing
+		// ping stops.
+		//
+		// The fire clock is deliberately ADVANCED rather than left standing: not
+		// advancing it would leave the seat permanently "overdue", so the instant it
+		// un-parks it would be nudged immediately — punishing the declaration one
+		// tick late instead of on time.
+		if (mutesWatchdogNudge(session.semanticState)) {
+			state.lastFireAtMs = nowMs;
+			this.deps.log?.(
+				`watchdog ${session.id}: parked (${session.semanticState}) — nudge muted, supervision unchanged`,
+			);
+			return;
+		}
 		if (this.deps.hasPendingWatchdog(session.id)) {
 			state.lastFireAtMs = nowMs;
 			this.deps.log?.(`watchdog ${session.id}: pending ping exists — coalesced`);
