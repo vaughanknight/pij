@@ -1,15 +1,20 @@
 // pij-control-plane — background job planning + completion turns (pure).
 
 import { describe, expect, it } from "vitest";
+import type { BgJobRecord } from "./bg.js";
 import {
 	BG_ACTOR,
 	BG_ENV,
 	BG_TAIL_LIMIT,
+	bgJobPaths,
+	bgJobState,
 	bgWrapperScript,
 	buildBgCompletionTurn,
+	buildBgKilledTurn,
 	formatDuration,
 	jobStartedAtMs,
 	planBgJob,
+	renderBgJobLine,
 	tailOf,
 } from "./bg.js";
 
@@ -146,5 +151,92 @@ describe("jobStartedAtMs", () => {
 			expect(jobStartedAtMs(bad, NOW)).toBeUndefined();
 		}
 		expect(formatDuration(Number.NaN)).toBe("unknown");
+	});
+});
+
+describe("bg job records — what makes list/tail/kill possible", () => {
+	const NOW = Date.parse("2026-07-30T02:00:00.000Z");
+	const record = (over: Partial<BgJobRecord> = {}): BgJobRecord => ({
+		schema_version: 1,
+		jobId: "bg-abc-def",
+		title: "harness checks",
+		command: "harness checks",
+		owner: "pij-seat",
+		startedAt: new Date(NOW - 90_000).toISOString(),
+		pgid: 4242,
+		logPath: "/home/.pij/pij-seat/bg-abc-def.log",
+		...over,
+	});
+
+	it("puts a job's record beside its log", () => {
+		const paths = bgJobPaths("/home/.pij/pij-seat", "bg-abc-def");
+		expect(paths.record).toBe("/home/.pij/pij-seat/bg-abc-def.json");
+		expect(paths.log).toBe("/home/.pij/pij-seat/bg-abc-def.log");
+	});
+
+	it("carries the process GROUP, not just a pid", () => {
+		// The wrapper spawns the real command as a CHILD. Signalling the wrapper
+		// alone leaves the actual work running and orphaned, with nothing left to
+		// report its own completion.
+		expect(record().pgid).toBe(4242);
+	});
+
+	describe("bgJobState", () => {
+		const alive = () => true;
+		const dead = () => false;
+
+		it("is running while its group lives, done once it has finished", () => {
+			expect(bgJobState(record(), alive)).toBe("running");
+			expect(bgJobState(record({ finishedAt: "2026-07-30T01:59:00.000Z" }), alive)).toBe("done");
+		});
+
+		it("is LOST when the process is gone but no completion was ever recorded", () => {
+			// A reboot or SIGKILL kills the wrapper before it can deliver. Trusting
+			// the record alone would show that job as running forever; probing
+			// liveness is what makes the difference visible.
+			expect(bgJobState(record(), dead)).toBe("lost");
+		});
+	});
+
+	describe("renderBgJobLine", () => {
+		it("is ONE line per job — bg list is read at a glance", () => {
+			const line = renderBgJobLine(record(), "running", NOW);
+			expect(line).not.toContain("\n");
+			expect(line).toContain("bg-abc-def");
+			expect(line).toContain("running 1m30s");
+			expect(line).toContain("harness checks");
+		});
+
+		it("distinguishes killed from failed", () => {
+			// An operator who stopped a job must never wonder whether it broke.
+			const killed = renderBgJobLine(
+				record({ finishedAt: new Date(NOW).toISOString(), outcome: "killed" }),
+				"done",
+				NOW,
+			);
+			expect(killed).toContain("killed");
+			expect(killed).not.toContain("failed");
+		});
+
+		it("shows a failed job's exit code", () => {
+			expect(
+				renderBgJobLine(
+					record({ finishedAt: new Date(NOW).toISOString(), outcome: "failed", exitCode: 127 }),
+					"done",
+					NOW,
+				),
+			).toContain("exit 127");
+		});
+	});
+
+	it("a KILLED job still fires a turn back", () => {
+		// The load-bearing one: a silent kill re-creates the exact failure bg
+		// exists to abolish — the caller waits forever for a result that can now
+		// never arrive. Killing is an ending, and every ending reports.
+		const turn = buildBgKilledTurn(record(), record().logPath);
+		expect(turn).toContain("KILLED");
+		expect(turn).toContain("harness checks");
+		expect(turn).toContain(record().logPath);
+		expect(turn).not.toContain("\n");
 	});
 });

@@ -177,3 +177,99 @@ export function jobStartedAtMs(jobId: string, nowMs: number): number | undefined
 	if (parsed < 1_577_836_800_000 || parsed > nowMs + 60_000) return undefined;
 	return parsed;
 }
+
+// ─── job records (what makes list/tail/kill possible) ───────────────────────
+//
+// A queued job used to leave only its log file, so nothing on disk knew its
+// title, its pid, or whether it was still running. `list` had nothing to render
+// and `kill` had nothing to target. The record is written at launch, BEFORE the
+// child starts (persist-before-mutate, P9): a job that exists but is unlisted is
+// a job nobody can stop.
+
+/** Where a job's record and log live, derived from the owning seat's data dir. */
+export function bgJobPaths(
+	dataDir: string,
+	jobId: string,
+): {
+	readonly record: string;
+	readonly log: string;
+} {
+	return { record: `${dataDir}/${jobId}.json`, log: `${dataDir}/${jobId}.log` };
+}
+
+/** How a finished job ended. `killed` is deliberately distinct from a non-zero
+ *  exit: an operator who stopped a job should never wonder whether it failed. */
+export type BgJobOutcome = "ok" | "failed" | "killed";
+
+export interface BgJobRecord {
+	readonly schema_version: 1;
+	readonly jobId: string;
+	readonly title: string;
+	readonly command: string;
+	readonly owner: SessionId;
+	readonly startedAt: string;
+	/** The wrapper's process GROUP. `kill` must signal the group, not the pid —
+	 *  the wrapper spawns the real command as a child, so signalling only the
+	 *  wrapper leaves the actual work running and orphaned. */
+	readonly pgid: number;
+	readonly logPath: string;
+	/** Absent while running. */
+	readonly finishedAt?: string;
+	readonly outcome?: BgJobOutcome;
+	readonly exitCode?: number;
+}
+
+export function newBgJobRecord(input: {
+	readonly spec: BgJobSpec;
+	readonly pgid: number;
+	readonly nowIso: string;
+}): BgJobRecord {
+	return {
+		schema_version: 1,
+		jobId: input.spec.jobId,
+		title: input.spec.title,
+		command: input.spec.command,
+		owner: input.spec.to,
+		startedAt: input.nowIso,
+		pgid: input.pgid,
+		logPath: input.spec.outPath,
+	};
+}
+
+/** Is this job still going? Derived from the record plus a liveness probe, never
+ *  from the record alone — a job whose process died without ever writing its
+ *  completion (machine reboot, SIGKILL) would otherwise read as running forever. */
+export function bgJobState(
+	record: BgJobRecord,
+	isAlive: (pid: number) => boolean,
+): "running" | "done" | "lost" {
+	if (record.finishedAt !== undefined) return "done";
+	return isAlive(record.pgid) ? "running" : "lost";
+}
+
+/** One line per job. Deliberately terse and fixed-width-ish: `bg list` is read
+ *  at a glance, and a multi-line entry per job defeats the purpose. */
+export function renderBgJobLine(
+	record: BgJobRecord,
+	state: "running" | "done" | "lost",
+	nowMs: number,
+): string {
+	const startedMs = Date.parse(record.startedAt);
+	const age = Number.isNaN(startedMs) ? "?" : formatDuration(nowMs - startedMs);
+	const verdict =
+		state === "running"
+			? `running ${age}`
+			: state === "lost"
+				? `lost (no completion recorded)`
+				: `${record.outcome ?? "done"}${record.exitCode ? ` (exit ${record.exitCode})` : ""} in ${age}`;
+	return `${record.jobId}  ${verdict}  ${record.title}`;
+}
+
+/** The turn a KILLED job fires back.
+ *
+ *  A kill that stays silent re-creates the exact failure `pij bg` exists to
+ *  abolish: the caller waits forever for a result that can never arrive. Killing
+ *  is an ending, and every ending reports. */
+export function buildBgKilledTurn(record: BgJobRecord, outPath: string): string {
+	return `[pij bg] KILLED — ${record.title} · full log: ${outPath}`;
+}

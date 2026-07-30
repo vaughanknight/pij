@@ -32,6 +32,7 @@ import { writeTextAtomic } from "./adapters/atomic-file.js";
 
 import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
+import { FsBgJobStore } from "./adapters/bg-job-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsContextReader } from "./adapters/context-reader.js";
 import { TmuxContextWindowReader } from "./adapters/context-window-reader.js";
@@ -541,6 +542,18 @@ function deps(): CliDeps {
 		pijHome,
 		models: loadModels(),
 		backgroundLauncher: new NodeBackgroundLauncher(),
+		bgJobStore: bgDataDir() === undefined ? undefined : new FsBgJobStore(bgDataDir() as string),
+		killProcessGroup: (pgid, signal) => {
+			try {
+				// NEGATIVE pid = the whole process group. The bg wrapper runs
+				// detached (its own group leader), and its real work is a CHILD —
+				// signalling the wrapper alone would orphan the actual command.
+				process.kill(-pgid, signal as NodeJS.Signals);
+				return true;
+			} catch {
+				return false;
+			}
+		},
 		// How the detached wrapper re-enters this CLI. `process.argv[0..1]` is the
 		// exact invocation that got us here, so a bg job runs the SAME pij the
 		// caller ran — not whatever a PATH lookup happens to resolve later.
@@ -4165,6 +4178,37 @@ function emitStatusNudge(verb: string, d: ReturnType<typeof deps>): void {
 		if (line !== undefined) process.stderr.write(`${line}\n`);
 	} catch {
 		// diagnostic only — never break a command because its nudge failed.
+	}
+}
+
+/** Which data dir holds bg job records for THIS invocation.
+ *
+ *  `bg-deliver` runs inside the detached wrapper with its ambient identity
+ *  deliberately cleared, so it cannot resolve a seat at all — yet it is the very
+ *  process that must close the job's record. It does know `--out`, and a job's
+ *  record lives beside its log, so the log's directory is the answer there.
+ *  Everywhere else, the caller's own data dir. */
+function bgDataDir(): string | undefined {
+	const argv = process.argv.slice(2);
+	const outAt = argv.indexOf("--out");
+	if (argv[0] === "bg-deliver" && outAt !== -1) {
+		const out = argv[outAt + 1];
+		if (out !== undefined) return dirname(out);
+	}
+	return ambientDataDir();
+}
+
+/** The current seat's data dir, or undefined when we cannot resolve ourselves.
+ *  bg jobs live beside their owner's other state, so an unresolvable seat simply
+ *  has no job store rather than a guessed one. */
+function ambientDataDir(): string | undefined {
+	try {
+		const registry = new FsRegistry(pijHome);
+		const self = resolveAmbientSelf(registry);
+		if (!self.ok || self.value === undefined) return undefined;
+		return registry.read(self.value)?.dataDir;
+	} catch {
+		return undefined;
 	}
 }
 

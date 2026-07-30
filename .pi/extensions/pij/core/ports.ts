@@ -5,6 +5,7 @@
 // adapters/pi-runtime.ts (Phase 2) may import @earendil-works/* — never here.
 
 import type { ArchiveIndexEntry } from "./archive.js";
+import type { BgJobRecord } from "./bg.js";
 import type { DescriptorWriter } from "./registry-write.js";
 import type {
 	DeliveredMessage,
@@ -266,4 +267,13 @@ export interface BackgroundLauncherPort {
 		readonly env: Readonly<Record<string, string>>;
 		readonly cwd: string;
 	}): Result<{ readonly pid: number }>;
+}
+
+/** Durable per-job records for `pij bg`. Without these a queued job leaves only
+ *  a log file, so `list` has nothing to render and `kill` nothing to target. */
+export interface BgJobStorePort {
+	write(record: BgJobRecord): void;
+	read(jobId: string): BgJobRecord | undefined;
+	/** Newest first. */
+	list(): readonly BgJobRecord[];
 }

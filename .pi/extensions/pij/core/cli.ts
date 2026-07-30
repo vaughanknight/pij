@@ -12,10 +12,14 @@ import { chainStateOf, detectAnomalies } from "./anomalies.js";
 import {
 	BG_ACTOR,
 	BG_ENV,
+	bgJobState,
 	bgWrapperScript,
 	buildBgCompletionTurn,
+	buildBgKilledTurn,
 	jobStartedAtMs,
+	newBgJobRecord,
 	planBgJob,
+	renderBgJobLine,
 } from "./bg.js";
 import {
 	bindHealthDetail,
@@ -98,6 +102,7 @@ import {
 } from "./platform/types.js";
 import type {
 	BackgroundLauncherPort,
+	BgJobStorePort,
 	DeliveryPort,
 	EventLogPort,
 	InboxPort,
@@ -189,6 +194,10 @@ export interface CliDeps {
 	readonly bgNotifyArgv?: readonly string[];
 	/** Reads a bg job's captured log; supplied by the bin. */
 	readonly readTextFile?: (path: string) => string;
+	/** Durable bg job records — what makes `bg list|tail|kill` possible. */
+	readonly bgJobStore?: BgJobStorePort;
+	/** Signals a job's process GROUP; supplied by the bin. */
+	readonly killProcessGroup?: (pgid: number, signal: string) => boolean;
 	/** Model entries loaded by the bin (for pij models verb). Empty when absent. */
 	readonly models?: readonly ModelEntry[];
 	/** Exact ambient native-identity reverse lookup, supplied by the bin. */
@@ -303,11 +312,19 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| {
-			readonly verb: "bg";
+			readonly verb: "bg-create";
 			readonly title: string;
 			readonly command: string;
 			readonly json: boolean;
 	  }
+	| { readonly verb: "bg-list"; readonly all: boolean; readonly json: boolean }
+	| {
+			readonly verb: "bg-tail";
+			readonly jobId: string;
+			readonly lines?: number;
+			readonly json: boolean;
+	  }
+	| { readonly verb: "bg-kill"; readonly jobId: string; readonly json: boolean }
 	| {
 			readonly verb: "bg-deliver";
 			readonly to: SessionId;
@@ -700,6 +717,7 @@ const FAMILY_SUBCOMMANDS: Record<string, string> = {
 	spine: "append|events|render",
 	task: "set",
 	report: "now|question|blocked|state|clear|verify",
+	bg: "create|list|tail|kill",
 	node: "show",
 };
 
@@ -763,7 +781,10 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	ack: new Set(["packet-sha", "json"]),
 	canary: new Set(["expect-model", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
-	bg: new Set(["title", "command", "json"]),
+	"bg create": new Set(["title", "command", "json"]),
+	"bg list": new Set(["json", "all"]),
+	"bg tail": new Set(["lines", "json"]),
+	"bg kill": new Set(["json"]),
 	"bg-deliver": new Set(["to", "title", "out", "exit", "job", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
@@ -807,7 +828,10 @@ const MAX_POS: Record<string, number> = {
 	ack: 1,
 	canary: 1,
 	tail: 1,
-	bg: 0,
+	"bg create": 0,
+	"bg list": 0,
+	"bg tail": 1,
+	"bg kill": 1,
 	"bg-deliver": 0,
 	state: 1,
 	phonehome: 0,
@@ -1080,13 +1104,30 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				json,
 			});
 		}
-		case "bg": {
+		case "bg create": {
 			const title = typeof flags.title === "string" ? flags.title : undefined;
 			const command = typeof flags.command === "string" ? flags.command : undefined;
 			if (title === undefined || command === undefined) {
-				return err("E-ARG", 'usage: pij bg --title "<what this is>" --command "<shell command>"');
+				return err(
+					"E-ARG",
+					'usage: pij bg create --title "<what this is>" --command "<shell command>"',
+				);
 			}
-			return ok({ verb: "bg", title, command, json });
+			return ok({ verb: "bg-create", title, command, json });
+		}
+		case "bg list":
+			return ok({ verb: "bg-list", all: flags.all === true, json });
+		case "bg tail": {
+			const jobId = pos[0];
+			if (jobId === undefined) return err("E-ARG", "usage: pij bg tail <job> [--lines N]");
+			const lines = pnum(flags.lines);
+			if (lines === "bad") return err("E-ARG", "--lines takes a number");
+			return ok({ verb: "bg-tail", jobId, ...(lines === undefined ? {} : { lines }), json });
+		}
+		case "bg kill": {
+			const jobId = pos[0];
+			if (jobId === undefined) return err("E-ARG", "usage: pij bg kill <job>");
+			return ok({ verb: "bg-kill", jobId, json });
 		}
 		case "bg-deliver": {
 			// `--to` is a REPEATABLE flag (send broadcasts on it), so it lands in
@@ -2732,7 +2773,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				follow,
 			};
 		}
-		case "bg": {
+		case "bg-create": {
 			const s = selfId(deps);
 			if (!s.ok) return fail(s.code, s.message, cmd.json);
 			const self = s.value;
@@ -2766,6 +2807,16 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				},
 			});
 			if (!launched.ok) return fail(launched.code, launched.message, cmd.json);
+			// Persist-before-mutate (P9) in spirit: the record is what makes the job
+			// addressable, and a running job nobody can list is a job nobody can
+			// stop. Written immediately after launch, when the pgid first exists.
+			deps.bgJobStore?.write(
+				newBgJobRecord({
+					spec: job,
+					pgid: launched.value.pid,
+					nowIso: new Date(now).toISOString(),
+				}),
+			);
 			return {
 				stdout: cmd.json
 					? JSON.stringify({
@@ -2776,6 +2827,98 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							to: job.to,
 						})
 					: `bg started — ${job.title} (job ${job.jobId}, pid ${launched.value.pid})\nresult will arrive as an injected turn from ${BG_ACTOR}; full output at ${job.outPath}`,
+				stderr: "",
+				exitCode: 0,
+			};
+		}
+		case "bg-list": {
+			const store = deps.bgJobStore;
+			if (!store) return fail("E-CMD", "background jobs are unavailable in this build", cmd.json);
+			const rows = store
+				.list()
+				.map((record) => ({
+					record,
+					state: bgJobState(record, (pid) => deps.process.isAlive(pid)),
+				}))
+				// Finished jobs stay on disk for their logs, but `list` answers "what
+				// is running" unless asked — a default that grows without bound is one
+				// nobody reads.
+				.filter((row) => cmd.all || row.state !== "done");
+			if (cmd.json) {
+				return {
+					stdout: JSON.stringify(rows.map((row) => ({ ...row.record, state: row.state }))),
+					stderr: "",
+					exitCode: 0,
+				};
+			}
+			const empty = cmd.all ? "no bg jobs" : "no bg jobs running (--all includes finished)";
+			return {
+				stdout:
+					rows.length === 0
+						? empty
+						: rows.map((row) => renderBgJobLine(row.record, row.state, now)).join("\n"),
+				stderr: "",
+				exitCode: 0,
+			};
+		}
+		case "bg-tail": {
+			const store = deps.bgJobStore;
+			if (!store) return fail("E-CMD", "background jobs are unavailable in this build", cmd.json);
+			const record = store.read(cmd.jobId);
+			if (!record) return fail("E-NOID", `no bg job '${cmd.jobId}'`, cmd.json);
+			let output = "";
+			try {
+				output = deps.readTextFile?.(record.logPath) ?? "";
+			} catch {
+				output = "";
+			}
+			// A BOUNDED snapshot, never a follow loop: `bg` exists so a seat stops
+			// blocking on slow work, and `--follow` here would quietly reinstate the
+			// very wait it removed.
+			const wanted = cmd.lines ?? 40;
+			const all = output.trimEnd().split("\n");
+			const tail = all.slice(Math.max(0, all.length - wanted)).join("\n");
+			const state = bgJobState(record, (pid) => deps.process.isAlive(pid));
+			if (cmd.json) {
+				return {
+					stdout: JSON.stringify({ job: record.jobId, state, lines: tail.split("\n") }),
+					stderr: "",
+					exitCode: 0,
+				};
+			}
+			return {
+				stdout: `${renderBgJobLine(record, state, now)}\n${record.logPath}\n\n${tail}`,
+				stderr: "",
+				exitCode: 0,
+			};
+		}
+		case "bg-kill": {
+			const store = deps.bgJobStore;
+			if (!store) return fail("E-CMD", "background jobs are unavailable in this build", cmd.json);
+			const record = store.read(cmd.jobId);
+			if (!record) return fail("E-NOID", `no bg job '${cmd.jobId}'`, cmd.json);
+			const state = bgJobState(record, (pid) => deps.process.isAlive(pid));
+			if (state !== "running") {
+				return fail("E-ARG", `bg job '${cmd.jobId}' is not running (${state})`, cmd.json);
+			}
+			// Signal the process GROUP: the wrapper spawns the real command as a
+			// child, so signalling the wrapper alone leaves the actual work running
+			// and orphaned — with nothing left to report its own completion.
+			const signalled = deps.killProcessGroup?.(record.pgid, "SIGTERM") ?? false;
+			if (!signalled) return fail("E-CMD", `could not signal bg job '${cmd.jobId}'`, cmd.json);
+			// Persist before delivering (P9). A SILENT kill re-creates the exact
+			// failure bg exists to abolish: the caller waits forever for a result
+			// that can now never arrive. Killing is an ending, and endings report.
+			store.write({ ...record, finishedAt: new Date(now).toISOString(), outcome: "killed" });
+			deps.delivery.deliver({
+				from: BG_ACTOR,
+				to: record.owner,
+				body: buildBgKilledTurn(record, record.logPath),
+			});
+			return {
+				stdout: cmd.json
+					? JSON.stringify({ killed: true, job: record.jobId })
+					: `killed ${record.jobId} — ${record.title}`,
 				stderr: "",
 				exitCode: 0,
 			};
@@ -2800,6 +2943,18 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				outPath: cmd.outPath,
 				output,
 			});
+			// Close the record BEFORE delivering, so `bg list` can never show a job
+			// as still running after its result has already landed in the caller's
+			// context.
+			const existing = deps.bgJobStore?.read(cmd.jobId);
+			if (existing !== undefined && existing.finishedAt === undefined) {
+				deps.bgJobStore?.write({
+					...existing,
+					finishedAt: new Date(now).toISOString(),
+					outcome: cmd.exitCode === 0 ? "ok" : "failed",
+					exitCode: cmd.exitCode,
+				});
+			}
 			const delivered = deps.delivery.deliver({ from: BG_ACTOR, to: cmd.to, body });
 			if (!delivered.ok) return fail(delivered.code, delivered.message, cmd.json);
 			return {
