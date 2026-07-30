@@ -523,46 +523,65 @@ describe("FsRegistry", () => {
 		}
 	});
 
-	it("overlapping processes skip an unowned legacy attempt zero without changing its bytes", {
-		timeout: 30_000,
-	}, async () => {
-		const seed = "multiprocess-legacy";
-		for (let round = 0; round < 4; round++) {
-			const raceHome = join(home, `legacy-${round}`);
-			mkdirSync(raceHome, { recursive: true });
-			const legacyId = candidate(seed, 0);
-			const legacyPath = join(raceHome, `${legacyId}.json`);
-			const legacyBytes = `${JSON.stringify({
-				...descriptor(legacyId),
-				prime: round % 2 === 0,
-				customLegacyField: `round-${round}`,
-			})}\n`;
-			writeFileSync(legacyPath, legacyBytes);
+	// SKIPPED ON WINDOWS (Jordan's ruling, 2026-07-30). This spawns real OS
+	// processes that race for the same files; on the Windows CI runner it failed
+	// intermittently at roughly a 50% rate while passing on every rerun and on
+	// every local run. Two DIFFERENT concurrency tests failed the same way the
+	// same day, which points at the runner's file locking under concurrent
+	// access rather than at either test.
+	//
+	// The coverage loss is real and deliberately narrow: this is the ONLY
+	// multi-process assertion for identity allocation on Windows. Windows atomic-replace
+	// behaviour is still covered by the single-process tests (see the passing
+	// "retries transient Windows replace failures" case), and the full race
+	// still runs on darwin and linux, so a genuine regression in the logic is
+	// caught there. What is no longer covered is Windows-specific behaviour
+	// under real process contention — if that is ever suspected, run this file
+	// on Windows by hand rather than trusting CI green.
+	it.skipIf(process.platform === "win32")(
+		"overlapping processes skip an unowned legacy attempt zero without changing its bytes",
+		{
+			timeout: 30_000,
+		},
+		async () => {
+			const seed = "multiprocess-legacy";
+			for (let round = 0; round < 4; round++) {
+				const raceHome = join(home, `legacy-${round}`);
+				mkdirSync(raceHome, { recursive: true });
+				const legacyId = candidate(seed, 0);
+				const legacyPath = join(raceHome, `${legacyId}.json`);
+				const legacyBytes = `${JSON.stringify({
+					...descriptor(legacyId),
+					prime: round % 2 === 0,
+					customLegacyField: `round-${round}`,
+				})}\n`;
+				writeFileSync(legacyPath, legacyBytes);
 
-			const nativeId = `native-legacy-race-${round}`;
-			const outcomes = await runAllocationRace(raceHome, "copilot", nativeId, seed);
-			expect(
-				outcomes.every((outcome) => outcome.ok),
-				JSON.stringify(outcomes),
-			).toBe(true);
-			expect(new Set(outcomes.map((outcome) => outcome.value?.id))).toEqual(
-				new Set([candidate(seed, 1)]),
-			);
-			expect(readFileSync(legacyPath, "utf8")).toBe(legacyBytes);
+				const nativeId = `native-legacy-race-${round}`;
+				const outcomes = await runAllocationRace(raceHome, "copilot", nativeId, seed);
+				expect(
+					outcomes.every((outcome) => outcome.ok),
+					JSON.stringify(outcomes),
+				).toBe(true);
+				expect(new Set(outcomes.map((outcome) => outcome.value?.id))).toEqual(
+					new Set([candidate(seed, 1)]),
+				);
+				expect(readFileSync(legacyPath, "utf8")).toBe(legacyBytes);
 
-			const registry = new FsRegistry(raceHome);
-			expect(registry.resolveIdentity("copilot", nativeId)).toEqual({
-				ok: true,
-				value: candidate(seed, 1),
-			});
-			expect(registry.claimIdentity("copilot", nativeId, candidate(seed, 1))).toMatchObject({
-				ok: true,
-				value: { kind: "exists" },
-			});
-			const probe = registry.reserveMemorableId(seed, `probe-${round}`, process.pid);
-			expect(probe).toMatchObject({ ok: true, value: { id: candidate(seed, 2) } });
-		}
-	});
+				const registry = new FsRegistry(raceHome);
+				expect(registry.resolveIdentity("copilot", nativeId)).toEqual({
+					ok: true,
+					value: candidate(seed, 1),
+				});
+				expect(registry.claimIdentity("copilot", nativeId, candidate(seed, 1))).toMatchObject({
+					ok: true,
+					value: { kind: "exists" },
+				});
+				const probe = registry.reserveMemorableId(seed, `probe-${round}`, process.pid);
+				expect(probe).toMatchObject({ ok: true, value: { id: candidate(seed, 2) } });
+			}
+		},
+	);
 
 	it("fails loudly when durable identity coexists with multiple live descriptors for one tuple", () => {
 		const registry = new FsRegistry(home);

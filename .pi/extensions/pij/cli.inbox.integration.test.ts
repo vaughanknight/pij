@@ -361,57 +361,76 @@ describe("portable pij CLI baseline", () => {
 		);
 	});
 
-	it("round-trips wait → dead-pid send → read → delivered receipt without tmux or daemon", {
-		timeout: 30_000,
-	}, async () => {
-		const receiverEnv = ambientFixture("claude", "claude-portable-receiver");
-		const senderEnv = ambientFixture("claude", "claude-portable-sender");
-		const receiver = register(receiverEnv);
-		const sender = register(senderEnv);
+	// SKIPPED ON WINDOWS (Jordan's ruling, 2026-07-30). This spawns real OS
+	// processes that race for the same files; on the Windows CI runner it failed
+	// intermittently at roughly a 50% rate while passing on every rerun and on
+	// every local run. Two DIFFERENT concurrency tests failed the same way the
+	// same day, which points at the runner's file locking under concurrent
+	// access rather than at either test.
+	//
+	// The coverage loss is real and deliberately narrow: this is the ONLY
+	// multi-process assertion for the pull-inbox delivery round trip on Windows. Windows atomic-replace
+	// behaviour is still covered by the single-process tests (see the passing
+	// "retries transient Windows replace failures" case), and the full race
+	// still runs on darwin and linux, so a genuine regression in the logic is
+	// caught there. What is no longer covered is Windows-specific behaviour
+	// under real process contention — if that is ever suspected, run this file
+	// on Windows by hand rather than trusting CI green.
+	it.skipIf(process.platform === "win32")(
+		"round-trips wait → dead-pid send → read → delivered receipt without tmux or daemon",
+		{
+			timeout: 30_000,
+		},
+		async () => {
+			const receiverEnv = ambientFixture("claude", "claude-portable-receiver");
+			const senderEnv = ambientFixture("claude", "claude-portable-sender");
+			const receiver = register(receiverEnv);
+			const sender = register(senderEnv);
 
-		const receiverWait = spawnPij(["inbox", "--wait"], receiverEnv, 15_000);
-		await waitForOutput(receiverWait, "waiting for pij inbox messages");
-		const competingSenderInbox = spawnPij(
-			["inbox", "check", "--wait", "3000", "--json"],
-			senderEnv,
-			8000,
-		);
-		await new Promise<void>((resolve) => setTimeout(resolve, 250));
+			const receiverWait = spawnPij(["inbox", "--wait"], receiverEnv, 15_000);
+			await waitForOutput(receiverWait, "waiting for pij inbox messages");
+			const competingSenderInbox = spawnPij(
+				["inbox", "check", "--wait", "3000", "--json"],
+				senderEnv,
+				8000,
+			);
+			await new Promise<void>((resolve) => setTimeout(resolve, 250));
 
-		const registry = new FsRegistry(pijHome);
-		const receiverDescriptor = registry.read(receiver.id);
-		if (!receiverDescriptor) throw new Error("missing receiver descriptor");
-		registry.write({ ...receiverDescriptor, pid: 2_147_483_647 });
+			const registry = new FsRegistry(pijHome);
+			const receiverDescriptor = registry.read(receiver.id);
+			if (!receiverDescriptor) throw new Error("missing receiver descriptor");
+			registry.write({ ...receiverDescriptor, pid: 2_147_483_647 });
 
-		const sent = runPij(
-			["send", receiver.id, "hello from portable sender", "--wait", "10000"],
-			senderEnv,
-			15_000,
-		);
-		const received = await receiverWait.completed;
-		const competing = await competingSenderInbox.completed;
+			const sent = runPij(
+				["send", receiver.id, "hello from portable sender", "--wait", "10000"],
+				senderEnv,
+				15_000,
+			);
+			const received = await receiverWait.completed;
+			const competing = await competingSenderInbox.completed;
 
-		expect(sent).toMatchObject({ code: 0, stderr: "" });
-		expect(sent.stdout).toContain("queued (pull-inbox): awaiting the peer's own inbox check");
-		expect(sent.stdout).toContain("receipt → delivered");
-		expect(received).toMatchObject({ code: 0, stderr: "" });
-		expect(received.stdout).toContain("[pij from");
-		expect(received.stdout).toContain("hello from portable sender");
-		expect(competing).toMatchObject({ code: 0, stderr: "" });
-		expect(JSON.parse(competing.stdout)).toEqual({
-			self: sender.id,
-			messages: [],
-			timedOut: true,
-		});
+			expect(sent).toMatchObject({ code: 0, stderr: "" });
+			expect(sent.stdout).toContain("queued (pull-inbox): awaiting the peer's own inbox check");
+			expect(sent.stdout).toContain("receipt → delivered");
+			expect(received).toMatchObject({ code: 0, stderr: "" });
+			expect(received.stdout).toContain("[pij from");
+			expect(received.stdout).toContain("hello from portable sender");
+			expect(competing).toMatchObject({ code: 0, stderr: "" });
+			expect(JSON.parse(competing.stdout)).toEqual({
+				self: sender.id,
+				messages: [],
+				timedOut: true,
+			});
 
-		const senderEvents = new FsEventLog(pijHome, sender.id).read({ type: "receipt" });
-		expect(senderEvents).toHaveLength(1);
-		expect(JSON.stringify(senderEvents)).toContain("delivered");
-		expect(new FsChannel(pijHome).listUnread(sender.id)).toEqual({
-			ok: true,
-			value: [],
-		});
-	});
+			const senderEvents = new FsEventLog(pijHome, sender.id).read({ type: "receipt" });
+			expect(senderEvents).toHaveLength(1);
+			expect(JSON.stringify(senderEvents)).toContain("delivered");
+			expect(new FsChannel(pijHome).listUnread(sender.id)).toEqual({
+				ok: true,
+				value: [],
+			});
+		},
+	);
 
 	it("appendOnce hard-link race publishes one atomic event across two processes", {
 		timeout: 30_000,
