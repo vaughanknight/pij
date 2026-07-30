@@ -20,6 +20,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir, uptime } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +29,8 @@ import { validateInput } from "minih/runner";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeTextAtomic } from "./adapters/atomic-file.js";
+
+import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { FsContextReader } from "./adapters/context-reader.js";
@@ -203,6 +206,7 @@ import {
 	requestClose,
 	spawnExpectationDeadline,
 } from "./core/spawn-expectation.js";
+import { statusNudgeLine } from "./core/status-nudge.js";
 import { planLink } from "./core/tree.js";
 import {
 	err,
@@ -287,6 +291,10 @@ Platform (durable projects + the shared spine log):
 Messaging:
   pij inbox [check|register] [--wait [ms]] [--json]   pull messages; first use auto-registers this ambient session
                                                         non-tmux external peers use 'pij inbox --wait'; tmux/pi stay push-first
+  pij bg --title "<what this is>" --command "<shell command>" [--json]
+                                                     run a command detached; its result arrives as an injected turn from pij-bg
+                                                        for anything slow (harness checks, builds, long tests) — your turn ends now, the answer wakes you later
+                                                        full output is written to a file and POINTED at; only a short tail rides inline
   pij whoami [--json] [--env]                        your stable session id (--env: eval-able export PIJ_SESSION_ID line)
   pij list [--here] [--prime] [--archived] [--badge] [--json]  known sessions
                                                      (--badge: worst-first badge per row; opt-in, costs one spine read)
@@ -532,6 +540,12 @@ function deps(): CliDeps {
 		cwd,
 		pijHome,
 		models: loadModels(),
+		backgroundLauncher: new NodeBackgroundLauncher(),
+		// How the detached wrapper re-enters this CLI. `process.argv[0..1]` is the
+		// exact invocation that got us here, so a bg job runs the SAME pij the
+		// caller ran — not whatever a PATH lookup happens to resolve later.
+		bgNotifyArgv: bgNotifyArgv(),
+		readTextFile: (path) => readFileSync(path, "utf8"),
 		resolveAmbientSelf: () => resolveAmbientSelf(registry),
 		repository,
 		treeDescriptors: listAllDescriptors(registry),
@@ -4077,6 +4091,7 @@ function main(): void {
 	const d = deps();
 	const res = dispatch(parsed.value, d);
 	write(res);
+	emitStatusNudge(parsed.value.verb, d);
 	if (res.follow?.kind === "tail" && parsed.value.verb === "tail") {
 		followTail(parsed.value, d, res.follow.nextSince);
 		return; // loops until killed
@@ -4119,4 +4134,48 @@ if (
 	realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
 ) {
 	main();
+}
+
+/** How the detached `pij bg` wrapper re-enters this CLI to deliver its result.
+ *
+ *  This must reproduce the invocation that got US here, not guess at one. When
+ *  the entrypoint is TypeScript (the normal case — `pij` runs `cli.ts` through
+ *  tsx) a bare `node cli.ts` cannot execute it, so the tsx loader has to be
+ *  named explicitly. Getting this wrong fails ONLY in the detached child, where
+ *  nothing is watching: the job runs, produces correct output, and the result
+ *  silently never arrives.
+ *
+ *  Falls back to a bare `pij` on PATH when the loader cannot be resolved — the
+ *  documented global install, and better than a command we know cannot run. */
+/** Remind the caller when its own now/next card has gone stale.
+ *
+ *  Runs AFTER the command's own output and writes to stderr, so it can never
+ *  corrupt `--json` stdout. Best-effort by construction: a seat we cannot
+ *  resolve, or any failure resolving it, simply gets no reminder — a diagnostic
+ *  must never break the command it rides on. */
+function emitStatusNudge(verb: string, d: ReturnType<typeof deps>): void {
+	try {
+		const self = d.resolveAmbientSelf?.();
+		if (!self?.ok || self.value === undefined) return;
+		const line = statusNudgeLine({
+			descriptor: d.registry.read(self.value) ?? undefined,
+			verb,
+			nowMs: d.process.now(),
+		});
+		if (line !== undefined) process.stderr.write(`${line}\n`);
+	} catch {
+		// diagnostic only — never break a command because its nudge failed.
+	}
+}
+
+function bgNotifyArgv(): readonly string[] {
+	const entry = process.argv[1];
+	if (entry === undefined) return ["pij", "bg-deliver"];
+	if (!entry.endsWith(".ts")) return [process.execPath, entry, "bg-deliver"];
+	try {
+		const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
+		return [process.execPath, tsxCli, entry, "bg-deliver"];
+	} catch {
+		return ["pij", "bg-deliver"];
+	}
 }

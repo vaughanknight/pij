@@ -255,3 +255,15 @@ export interface ProcessPort {
 	/** Read an environment variable (e.g. PIJ_SESSION_ID). */
 	env(key: string): string | undefined;
 }
+
+/** Launches a detached background job. The child outlives this process — the
+ *  whole point of `pij bg` is that the caller's turn ends immediately. */
+export interface BackgroundLauncherPort {
+	/** Start `script` under `sh`, detached, with `env` overlaid on the ambient
+	 *  environment. Returns the child's pid. */
+	launch(input: {
+		readonly script: string;
+		readonly env: Readonly<Record<string, string>>;
+		readonly cwd: string;
+	}): Result<{ readonly pid: number }>;
+}

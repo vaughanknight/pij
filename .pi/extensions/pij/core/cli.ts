@@ -10,6 +10,14 @@
 
 import { chainStateOf, detectAnomalies } from "./anomalies.js";
 import {
+	BG_ACTOR,
+	BG_ENV,
+	bgWrapperScript,
+	buildBgCompletionTurn,
+	jobStartedAtMs,
+	planBgJob,
+} from "./bg.js";
+import {
 	bindHealthDetail,
 	classifyBindHealth,
 	isBindDegraded,
@@ -89,6 +97,7 @@ import {
 	type SpineEventDraft,
 } from "./platform/types.js";
 import type {
+	BackgroundLauncherPort,
 	DeliveryPort,
 	EventLogPort,
 	InboxPort,
@@ -173,6 +182,13 @@ export interface CliDeps {
 	readonly cwd: string;
 	/** Registry home (`~/.pij`) — only `path --state` needs it. */
 	readonly pijHome: string;
+	/** Detached job launcher; absent in builds/tests that never run `pij bg`. */
+	readonly backgroundLauncher?: BackgroundLauncherPort;
+	/** How the detached wrapper re-enters this CLI to deliver its result.
+	 *  Injected because only the bin knows how it was itself invoked. */
+	readonly bgNotifyArgv?: readonly string[];
+	/** Reads a bg job's captured log; supplied by the bin. */
+	readonly readTextFile?: (path: string) => string;
 	/** Model entries loaded by the bin (for pij models verb). Empty when absent. */
 	readonly models?: readonly ModelEntry[];
 	/** Exact ambient native-identity reverse lookup, supplied by the bin. */
@@ -284,6 +300,21 @@ export type ParsedCommand =
 			readonly caption?: string;
 			readonly wait: boolean;
 			readonly waitMs?: number;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "bg";
+			readonly title: string;
+			readonly command: string;
+			readonly json: boolean;
+	  }
+	| {
+			readonly verb: "bg-deliver";
+			readonly to: SessionId;
+			readonly title: string;
+			readonly outPath: string;
+			readonly exitCode: number;
+			readonly jobId: string;
 			readonly json: boolean;
 	  }
 	| {
@@ -732,6 +763,8 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	ack: new Set(["packet-sha", "json"]),
 	canary: new Set(["expect-model", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
+	bg: new Set(["title", "command", "json"]),
+	"bg-deliver": new Set(["to", "title", "out", "exit", "job", "json"]),
 	state: new Set(["json"]),
 	phonehome: new Set(["json"]),
 	attest: new Set(["plan-id", "json"]),
@@ -774,6 +807,8 @@ const MAX_POS: Record<string, number> = {
 	ack: 1,
 	canary: 1,
 	tail: 1,
+	bg: 0,
+	"bg-deliver": 0,
 	state: 1,
 	phonehome: 0,
 	attest: 1,
@@ -808,7 +843,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|report|node|anomalies> …",
+			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|bg|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|report|node|anomalies> …",
 		);
 	// Family verbs route "<verb> <subcommand>" into the same strict tables —
 	// no bin interception (Finding 06); everything downstream keys on `key`.
@@ -1044,6 +1079,38 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				waitMs,
 				json,
 			});
+		}
+		case "bg": {
+			const title = typeof flags.title === "string" ? flags.title : undefined;
+			const command = typeof flags.command === "string" ? flags.command : undefined;
+			if (title === undefined || command === undefined) {
+				return err("E-ARG", 'usage: pij bg --title "<what this is>" --command "<shell command>"');
+			}
+			return ok({ verb: "bg", title, command, json });
+		}
+		case "bg-deliver": {
+			// `--to` is a REPEATABLE flag (send broadcasts on it), so it lands in
+			// `repeated`, never in `flags`. Reading `flags.to` here silently yielded
+			// undefined and every delivery failed E-ARG inside the detached child.
+			const to = repeated.to?.[0];
+			const title = typeof flags.title === "string" ? flags.title : undefined;
+			const outPath = typeof flags.out === "string" ? flags.out : undefined;
+			const jobId = typeof flags.job === "string" ? flags.job : undefined;
+			const exitCode = pnum(flags.exit);
+			if (
+				to === undefined ||
+				title === undefined ||
+				outPath === undefined ||
+				jobId === undefined ||
+				exitCode === "bad" ||
+				exitCode === undefined
+			) {
+				return err(
+					"E-ARG",
+					"usage: pij bg-deliver --to <id> --title <t> --out <path> --exit <n> --job <id> (internal; queued by pij bg)",
+				);
+			}
+			return ok({ verb: "bg-deliver", to, title, outPath, exitCode, jobId, json });
 		}
 		case "tail": {
 			const id = pos[0];
@@ -2663,6 +2730,84 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				stderr: "",
 				exitCode: 0,
 				follow,
+			};
+		}
+		case "bg": {
+			const s = selfId(deps);
+			if (!s.ok) return fail(s.code, s.message, cmd.json);
+			const self = s.value;
+			const owner = deps.registry.read(self);
+			if (!owner) return fail("E-NOID", `no session '${self}' in registry`, cmd.json);
+			if (!deps.backgroundLauncher) {
+				return fail("E-CMD", "background jobs are unavailable in this build", cmd.json);
+			}
+			const jobId = `bg-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+			const planned = planBgJob({
+				title: cmd.title,
+				command: cmd.command,
+				to: self,
+				jobId,
+				outDir: owner.dataDir,
+			});
+			if (!planned.ok) return fail(planned.code, planned.message, cmd.json);
+			const job = planned.value;
+			const launched = deps.backgroundLauncher.launch({
+				script: bgWrapperScript(deps.bgNotifyArgv ?? ["pij", "bg-deliver"]),
+				cwd: deps.cwd,
+				env: {
+					[BG_ENV.command]: job.command,
+					[BG_ENV.out]: job.outPath,
+					[BG_ENV.title]: job.title,
+					[BG_ENV.to]: job.to,
+					[BG_ENV.jobId]: job.jobId,
+					// The child re-enters the CLI to deliver. It must not inherit an
+					// ambient identity that would make it resolve as somebody.
+					PIJ_SESSION_ID: "",
+				},
+			});
+			if (!launched.ok) return fail(launched.code, launched.message, cmd.json);
+			return {
+				stdout: cmd.json
+					? JSON.stringify({
+							job: job.jobId,
+							title: job.title,
+							pid: launched.value.pid,
+							out: job.outPath,
+							to: job.to,
+						})
+					: `bg started — ${job.title} (job ${job.jobId}, pid ${launched.value.pid})\nresult will arrive as an injected turn from ${BG_ACTOR}; full output at ${job.outPath}`,
+				stderr: "",
+				exitCode: 0,
+			};
+		}
+		case "bg-deliver": {
+			// Internal: the detached wrapper's final act. Runs with NO ambient
+			// identity, and delivers as the `pij-bg` pseudo-actor rather than as the
+			// queueing seat — the message is genuinely from the runner, and stamping
+			// it as the seat would also trip the E-SELF guard.
+			let output = "";
+			try {
+				output = deps.readTextFile?.(cmd.outPath) ?? "";
+			} catch {
+				output = "";
+			}
+			const startedMs = jobStartedAtMs(cmd.jobId, now);
+			const durationMs = startedMs === undefined ? Number.NaN : now - startedMs;
+			const body = buildBgCompletionTurn({
+				title: cmd.title,
+				exitCode: cmd.exitCode,
+				durationMs,
+				outPath: cmd.outPath,
+				output,
+			});
+			const delivered = deps.delivery.deliver({ from: BG_ACTOR, to: cmd.to, body });
+			if (!delivered.ok) return fail(delivered.code, delivered.message, cmd.json);
+			return {
+				stdout: cmd.json
+					? JSON.stringify({ delivered: true, job: cmd.jobId, to: cmd.to })
+					: `bg result delivered → ${cmd.to}`,
+				stderr: "",
+				exitCode: 0,
 			};
 		}
 		case "tail": {

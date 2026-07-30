@@ -18,7 +18,7 @@
 //  • foreign-hold-clear — a `hold` whose NEXT declared state comes from a
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
-import { hasRoleConflict } from "./orchestration/role.js";
+import { hasRoleConflict, projectOrchestrationRole } from "./orchestration/role.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
 	SPINE_KIND_STATE_CLEARED,
@@ -41,7 +41,8 @@ export type AnomalyKind =
 	| "spawn-limbo"
 	| "inbox-poll-stalled"
 	| "delivered-unacked-stale"
-	| "allocation-half-open";
+	| "allocation-half-open"
+	| "status-stale";
 
 /** A seat may sit pre-bind this long before it reads as a wedged boot. The
  *  watchdog cannot see pending/ready seats (eligible() excludes them by
@@ -66,6 +67,23 @@ export const DEFAULT_INBOX_POLL_STALL_MS = 6_000;
  * and operators free to choose a stricter observation window. */
 export const DEFAULT_DISPATCH_UNACKED_STALE_MS = 15 * 60_000;
 export const DEFAULT_ALLOCATION_HALF_OPEN_MS = 15 * 60_000;
+
+/** How far a seat's `now`/`next` card may lag its own activity before it reads
+ *  as STALE rather than merely quiet.
+ *
+ *  This sensor exists because the watchdog structurally cannot catch this case.
+ *  The watchdog measures SILENCE — it nudges a seat that stopped emitting. A
+ *  stale card belongs to the opposite seat: one emitting constantly while never
+ *  refreshing what it claims to be doing. It is never silent, so it is never
+ *  nudged, so the seats whose cards are read most are exactly the ones no alarm
+ *  covers (observed 2026-07-30: a PM shipped two merges and a skill change while
+ *  its card still read "waiting on Jordan to confirm this renders").
+ *
+ *  30min is chosen against the watchdog's own 20min nudge interval: a seat that
+ *  has been busy for longer than a nudge cycle without restating its work has
+ *  outlived the harness's other reporting prompt. Tighter would flag normal
+ *  focused work; looser and a whole phase can ship behind a stale card. */
+export const DEFAULT_STATUS_STALE_MS = 30 * 60_000;
 
 export interface Anomaly {
 	readonly kind: AnomalyKind;
@@ -92,6 +110,7 @@ export interface AnomalyInputs {
 	readonly inboxPollStallMs?: number;
 	readonly dispatchStaleMs?: number;
 	readonly allocationHalfOpenMs?: number;
+	readonly statusStaleMs?: number;
 }
 
 /** The declared-state view of one assignment's chain (states[] seqs joined
@@ -221,6 +240,66 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	}
 
 	const dispatchStaleMs = inputs.dispatchStaleMs ?? DEFAULT_DISPATCH_UNACKED_STALE_MS;
+
+	// status-stale — the seat is ACTIVELY EMITTING but its now/next card has not
+	// moved. The watchdog cannot reach this class: it fires on silence, and this
+	// seat is the opposite of silent.
+	const statusStaleMs = inputs.statusStaleMs ?? DEFAULT_STATUS_STALE_MS;
+	for (const descriptor of inputs.descriptors) {
+		if (descriptor.lifecycle === "dissolved" || descriptor.lifecycle === "failed") continue;
+		// Scoped to seats whose card is actually CONSUMED. Status renders for
+		// prime/PM seats (JC-1 OQ-7); a worker's now/next is recorded but shown
+		// nowhere, so its staleness misinforms nobody and flagging it is pure
+		// noise. This is not arbitrary tuning — it mirrors the consumer.
+		//
+		// It is also what keeps the sensor CREDIBLE. Measured on the live fleet the
+		// day this shipped: 26 of 29 live seats had never reported at all, so an
+		// unscoped rule would have fired on ~90% of the fleet on its first run, and
+		// a sensor that loud is one operators learn to scroll past (F-17's lesson:
+		// a detector nobody believes is worse than no detector).
+		if (projectOrchestrationRole(descriptor) === null) continue;
+		const lastEventMs =
+			descriptor.lastEventAt === undefined ? undefined : validTimestampMs(descriptor.lastEventAt);
+		// No telemetry at all means no proof of activity — and this sensor accuses
+		// a seat of working without reporting, so it must never fire on a seat it
+		// cannot prove was working.
+		if (lastEventMs === undefined) continue;
+		// Only judge a seat that is busy RIGHT NOW. One that stopped emitting is
+		// the watchdog's jurisdiction, and double-reporting it here would just
+		// re-flag every finished seat forever.
+		if (inputs.nowMs - lastEventMs > statusStaleMs) continue;
+		// A seat that has PARKED itself is exempt: `waiting`/`hold`/`blocked`/
+		// `question` are deliberate declarations, and re-nudging them punishes the
+		// seats that did the right thing (same exemption axis-disagreement uses).
+		if (descriptor.semanticState !== undefined && descriptor.semanticState !== "ready") continue;
+		const statusAtMs =
+			descriptor.statusAt === undefined ? undefined : validTimestampMs(descriptor.statusAt);
+		// Never reported at all: age from the seat's own start, so a seat that has
+		// been working for an hour without ever filing a card is caught. Mirrors
+		// A-2 — keying on statusAt alone would never fire for exactly that seat.
+		const anchorMs = statusAtMs ?? validTimestampMs(descriptor.startedAt);
+		if (anchorMs === undefined) continue;
+		const driftMs = lastEventMs - anchorMs;
+		if (driftMs <= statusStaleMs) continue;
+		out.push({
+			kind: "status-stale",
+			nodeId: descriptor.id,
+			detail:
+				`'${descriptor.id}' has been working for ${Math.round(driftMs / 60_000)}min since its card was last updated` +
+				`${statusAtMs === undefined ? " (it has never reported)" : ""} (threshold ${Math.round(statusStaleMs / 60_000)}min)` +
+				" — consumers render now/next as CURRENT, so a stale card actively misinforms." +
+				` Ask '${descriptor.id}' to run: pij report now "<what I just did>" "<what's next>"` +
+				" (or declare a parked state: waiting|hold|blocked|question — parked seats never flag)",
+			// Evidence carries the drift BUCKET, not an empty array: the sweep's
+			// latch keys on `kind:node:evidence`, so a constant key would alert the
+			// parent exactly once and then stay silent forever no matter how far
+			// the card drifted afterwards. Bucketing by 30min re-alerts as it gets
+			// materially worse without chattering every tick.
+			evidence: [Math.floor(driftMs / (30 * 60_000))],
+			ageMs: driftMs,
+		});
+	}
+
 	for (const dispatch of inputs.dispatches ?? []) {
 		if (dispatch.state !== "delivered-unacked") continue;
 		const updatedMs = validTimestampMs(dispatch.updated.ts);
