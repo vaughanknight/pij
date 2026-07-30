@@ -4938,6 +4938,14 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				allocations,
 				nowMs: now,
 			});
+			// Kept so an EMPTY scoped result can say what it did not look at. An
+			// empty answer is indistinguishable from "all clear", and that is the
+			// whole failure: a seat naturally runs the scoped query to check its own
+			// area, reads "no anomalies", and stops — while fleet rows about it sit
+			// in the unscoped view. Observed 2026-07-30: `--here` returned "no
+			// anomalies" for a seat while global carried 11 rows, one of which was
+			// its own governing prime's twelve-day-stale card.
+			const unscopedCount = anomalies.length;
 			if (cmd.here) {
 				const hereIds = new Set(filterByFolder(deps.registry.list(), deps.cwd).map((d) => d.id));
 				anomalies = anomalies.filter((a) => hereIds.has(a.nodeId));
@@ -4958,7 +4966,25 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				});
 			}
 			if (cmd.json) return okOut(JSON.stringify(anomalies));
-			if (anomalies.length === 0) return okOut("no anomalies");
+			if (anomalies.length === 0) {
+				// Name the scope and the rows it hid. Silence about what was filtered
+				// is how a narrowing flag turns into a false all-clear.
+				const scope =
+					cmd.here && cmd.project !== undefined
+						? `in this folder and project '${cmd.project}'`
+						: cmd.here
+							? "in this folder"
+							: cmd.project !== undefined
+								? `in project '${cmd.project}'`
+								: undefined;
+				if (scope === undefined) return okOut("no anomalies");
+				const hidden = unscopedCount;
+				return okOut(
+					hidden === 0
+						? `no anomalies ${scope} (and none anywhere)`
+						: `no anomalies ${scope} — but ${hidden} elsewhere; run 'pij anomalies' unscoped to see them`,
+				);
+			}
 			return okOut(
 				anomalies
 					.map((a) => {

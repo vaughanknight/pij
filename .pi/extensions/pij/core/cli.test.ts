@@ -7083,3 +7083,43 @@ describe("retired verb hints (field report, pij-long-skellor 2026-07-30)", () =>
 		expect(parseArgs(["state", "pij-long-skellor"]).ok).toBe(true);
 	});
 });
+
+describe("scoped anomalies name what they did NOT look at", () => {
+	// A narrowing flag that answers "no anomalies" is indistinguishable from "all
+	// clear", and the scoped query is the one a seat naturally runs to check its
+	// own area. Observed 2026-07-30: `--here` said "no anomalies" for a seat while
+	// the unscoped view carried 11 rows — one of them its own governing prime's
+	// twelve-day-stale card. Make the boundary of the answer part of the answer.
+	it("reports the hidden count when a scope empties the result", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-elsewhere", folder: "/other-repo" })],
+			cwd: "/repo-main",
+		});
+		run(["task", "set", "pij-elsewhere", "ship", "--actor", "pij-boss"], d);
+		reportState(d, "pij-elsewhere", "done");
+
+		// Guard against a vacuous pass: if the fixture stops producing an anomaly,
+		// this test must FAIL rather than silently assert nothing.
+		const unscoped = run(["anomalies"], d);
+		expect(unscoped.stdout).not.toContain("no anomalies");
+		expect(unscoped.stdout).toContain("pij-elsewhere");
+
+		const scoped = run(["anomalies", "--here"], d);
+		expect(scoped.stdout).toContain("no anomalies in this folder");
+		expect(scoped.stdout).toContain("elsewhere");
+		expect(scoped.stdout).toContain("pij anomalies");
+	});
+
+	it("stays terse when the scope hid nothing", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-quiet", folder: "/repo-main" })],
+			cwd: "/repo-main",
+		});
+		expect(run(["anomalies", "--here"], d).stdout).toBe(
+			"no anomalies in this folder (and none anywhere)",
+		);
+		expect(run(["anomalies"], d).stdout).toBe("no anomalies");
+	});
+});
