@@ -53,6 +53,18 @@ backstop, and being nudged means the card was already stale. Consumers render
 merged an hour ago still reads as waiting on review. `report clear` drops a
 semantic state that no longer applies (e.g. you declared `waiting`, then resumed).
 
+**pij tells you when you have drifted.** Once your card is >10min old, every pij
+command appends one line to **stderr**:
+
+```
+⚠ pij: your now/next card is 23m old — pij report now "<did>" "<next>"
+```
+
+Treat it as the instruction it is and report; it clears itself the moment you do.
+It never appears on stdout (`--json` stays parseable), never fires on `report`
+itself, and never fires for a seat that has parked itself in
+`waiting|hold|blocked|question` — those are correct declarations, not drift.
+
 **Who reads this.** Status renders for **prime/PM** seats. A worker's `report now`
 is recorded and auditable but surfaces in no card, so write it for the ledger, not
 for an audience. Roles are set with `pij orchestration role set <id> pm|worker`;
