@@ -141,6 +141,23 @@ The daemon runs `tsx` off source with **no hot-reload**: after ANY edit to daemo
 
 In pi/tmux push modes, done/stalled/dead notices arrive as injected turns that re-invoke you. After dispatch: do independent prep and let the push wake you; never poll `pij state`. In external pull mode there is deliberately no injector: use `pij inbox --wait` (first use auto-registers; optional milliseconds make it finite). This blocking inbox read is the delivery primitive, not a liveness poll. A known-broken push transport may use one slow `pij tail <id>` spot-check.
 
+**The same rule applies to SLOW LOCAL COMMANDS — use `pij bg`.** A command you sit and wait on holds your turn open for its whole duration; you are idle-but-not-done, which is the shape the watchdog derives as a stall, and the human cannot talk to you meanwhile. `pij bg` runs it detached and delivers the result as an injected turn from `pij-bg`, so your turn ends now and the completion is what wakes you.
+
+```bash
+pij bg --title "harness checks" --command "harness checks"
+pij bg --title "CI watch PR#53" --command "gh run watch <id> --repo <o/r> >/dev/null 2>&1; gh run view <id> --repo <o/r> --json jobs --jq '.jobs[] | \"\(.conclusion) \(.name)\"'"
+```
+
+It returns immediately with a job id; later a turn arrives:
+
+```
+[pij bg] OK — harness checks (5m12s) · full log: ~/.pij/<you>/bg-<job>.log · tail: …
+```
+
+Reach for it whenever a command runs longer than a few seconds — `harness checks`, builds, full test runs, `gh run watch`, long clones. **The `--command` string is passed to `sh` unexpanded** (it travels by environment, never interpolated into a wrapper), so pipe, redirect, and chain freely — shape the output to what you actually want back, because only a bounded tail rides inline. The full log is always written to a file and pointed at. Title it for the reader: it is how a human knows what just fired back.
+
+Two things it is NOT: not a way to message yourself (`pij send <self>` is still E-SELF — bg delivers as the `pij-bg` actor because the result genuinely comes from the runner), and not a substitute for peer delegation. One command whose output you want → `pij bg`. A unit of work needing judgement → a peer.
+
 ### C8 — Terminal and no-show interpretation
 
 Do not call an absent peer a crash from pane/PID absence alone. A persisted
@@ -160,6 +177,8 @@ owner for either observation.
 **If a nudge re-invokes you** (you are the watched peer): still working → report real now/next and keep going. Done → `pij report state done`. Need a human answer → `pij report question "<what I need from you>"`. Waiting on an external dependency → `pij report blocked "<what I am waiting on>"`. Actively working has no semantic state word; absence is honest by design. Never self-pause merely because work ended or blocked: declared state is visible, correctable, and independently verifiable.
 
 **A nudge is a BACKSTOP, not the trigger.** Invariant 12 already requires a report at the start and the end of every unit of work, so a well-behaved seat is usually current before the watchdog ever fires — being nudged at all is a mild signal you left your card stale. Reporting only when nudged is the failure mode this catches: the card then describes whatever you were doing up to 20 minutes ago, and every consumer renders that as NOW.
+
+**"I was waiting on a slow command" is no longer a reason to look stalled** — that is what `pij bg` (§ C7) is for. Blocking on a long build or test run makes you indistinguishable from a wedged seat, to the watchdog and to the human. Queue it, report what you just did, and let the result wake you.
 
 **Deliberate-silence class — some peers are born exempt and must stay so.** A **relay/bridge/control-plane** peer forwards its inbox to an external sink (the `pij-telegram` bridge → the operator's phone). Its idleness is *correct by design*; a watchdog nudge into it becomes a real-world message. Such peers carry `relay: true` on their descriptor and are **never watched** — set it at registration for any new bridge/relay you build; never watch, pause, or resume a seat that isn't yours (descriptor identity can collide — a nudge addressed to another id is registry evidence, not a command).
 

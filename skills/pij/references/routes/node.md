@@ -53,6 +53,23 @@ backstop, and being nudged means the card was already stale. Consumers render
 merged an hour ago still reads as waiting on review. `report clear` drops a
 semantic state that no longer applies (e.g. you declared `waiting`, then resumed).
 
+**Who reads this.** Status renders for **prime/PM** seats. A worker's `report now`
+is recorded and auditable but surfaces in no card, so write it for the ledger, not
+for an audience. Roles are set with `pij orchestration role set <id> pm|worker`;
+an unstamped seat renders as `ROLE UNKNOWN` and shows no status at all.
+
+**Limits, enforced at write** (measured in `core/cli.ts`, not aspirational):
+`now`'s did/next cap at **280 characters each**, `--note` at **200** — both after
+whitespace collapsing, and both rejected with `E-ARG` rather than truncated. Size
+your text; do not discover the cap by hitting it. Renderers may *additionally*
+visually truncate, which is a display concern and not a second limit.
+
+**A declared question does not expire.** `report question` puts your text in the
+consumer's needs-attention strip and it stays until you `report clear` (or declare
+another state). It WILL be seen — do not re-ask, do not self-nudge, and do not
+escalate by repetition; that only fills the spine with duplicates of a question
+already on someone's screen.
+
 Inline markdown is supported in report text (`` `code` ``, `**bold**`,
 `[links]`). Block markdown is not: newlines are refused. Shell-quote markdown
 containing backticks with single quotes so the shell does not execute it.
