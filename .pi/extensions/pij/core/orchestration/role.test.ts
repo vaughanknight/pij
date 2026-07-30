@@ -3,8 +3,10 @@ import { FakePlatformWriteLock, FakeRegistry, FakeSpineLog } from "../../adapter
 import type { DescriptorWriter } from "../registry-write.js";
 import { err, ok, type Result, type SessionDescriptor } from "../types.js";
 import {
+	cardCanMislead,
 	DesignationAuditService,
 	hasRoleConflict,
+	owesStatusCard,
 	projectOrchestrationRole,
 	RoleService,
 } from "./role.js";
@@ -176,5 +178,44 @@ describe("DesignationAuditService", () => {
 		});
 		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
 		expect(spineLog.read()).toEqual([]);
+	});
+});
+
+describe("owesStatusCard vs cardCanMislead — two questions, not one", () => {
+	// Jordan's ruling 2026-07-30: primes do not carry status cards. The predicates
+	// are deliberately ASYMMETRIC because the consumer of a rendered card cannot
+	// tell who was obliged to write it — a rotten card misinforms identically.
+	it("only a PM may be CHASED for a card", () => {
+		expect(owesStatusCard(descriptor("pij-pm", { orchestrationRole: "pm" }))).toBe(true);
+		expect(owesStatusCard(descriptor("pij-prime", { prime: true }))).toBe(false);
+		expect(owesStatusCard(descriptor("pij-worker", { orchestrationRole: "worker" }))).toBe(false);
+		expect(owesStatusCard(descriptor("pij-plain"))).toBe(false);
+	});
+
+	it("ANY rendered seat holding a card can mislead with it — prime included", () => {
+		const card = { statusAt: "2026-07-29T00:00:00.000Z" };
+		expect(cardCanMislead(descriptor("pij-prime", { prime: true, ...card }))).toBe(true);
+		expect(cardCanMislead(descriptor("pij-pm", { orchestrationRole: "pm", ...card }))).toBe(true);
+	});
+
+	it("no card means nothing renders, so nothing can mislead", () => {
+		expect(cardCanMislead(descriptor("pij-prime", { prime: true }))).toBe(false);
+		expect(cardCanMislead(descriptor("pij-pm", { orchestrationRole: "pm" }))).toBe(false);
+	});
+
+	it("a worker's card renders nowhere, so it never misleads even when held", () => {
+		const held = { orchestrationRole: "worker" as const, statusAt: "2026-07-29T00:00:00.000Z" };
+		expect(cardCanMislead(descriptor("pij-worker", held))).toBe(false);
+	});
+
+	it("the predicates genuinely disagree — a prime with a card owes nothing yet can mislead", () => {
+		// If this ever passes with both sides equal, the split has been collapsed
+		// back into one role test and the ruling has been silently re-broken.
+		const primeWithCard = descriptor("pij-prime", {
+			prime: true,
+			statusAt: "2026-07-29T00:00:00.000Z",
+		});
+		expect(owesStatusCard(primeWithCard)).toBe(false);
+		expect(cardCanMislead(primeWithCard)).toBe(true);
 	});
 });

@@ -18,7 +18,7 @@
 //  • foreign-hold-clear — a `hold` whose NEXT declared state comes from a
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
-import { hasRoleConflict, projectOrchestrationRole } from "./orchestration/role.js";
+import { cardCanMislead, hasRoleConflict, owesStatusCard } from "./orchestration/role.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
 	SPINE_KIND_STATE_CLEARED,
@@ -247,17 +247,25 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const statusStaleMs = inputs.statusStaleMs ?? DEFAULT_STATUS_STALE_MS;
 	for (const descriptor of inputs.descriptors) {
 		if (descriptor.lifecycle === "dissolved" || descriptor.lifecycle === "failed") continue;
-		// Scoped to seats whose card is actually CONSUMED. Status renders for
-		// prime/PM seats (JC-1 OQ-7); a worker's now/next is recorded but shown
-		// nowhere, so its staleness misinforms nobody and flagging it is pure
-		// noise. This is not arbitrary tuning — it mirrors the consumer.
+		// Scoped by the TWO-PREDICATE split (Jordan's rulings, 2026-07-30):
 		//
-		// It is also what keeps the sensor CREDIBLE. Measured on the live fleet the
-		// day this shipped: 26 of 29 live seats had never reported at all, so an
-		// unscoped rule would have fired on ~90% of the fleet on its first run, and
-		// a sensor that loud is one operators learn to scroll past (F-17's lesson:
-		// a detector nobody believes is worse than no detector).
-		if (projectOrchestrationRole(descriptor) === null) continue;
+		//   owesStatusCard  — may this seat be CHASED for a card?   PM only.
+		//   cardCanMislead  — can its card MISINFORM a reader?      anyone holding one.
+		//
+		// Deliberately asymmetric, because THE CONSUMER CANNOT TELL WHO OWED THE
+		// CARD. A rotten card misinforms identically whether the seat was obliged
+		// to write it or chose to. Collapsing these into one role test is what put
+		// a card obligation on every prime in the first place.
+		//
+		// This gate is where BOTH exclusions actually land, so it is the line to
+		// keep honest: a worker holding a card is skipped (renders nowhere), and a
+		// prime holding none is skipped (nothing to rot). Its worker half also
+		// keeps the sensor CREDIBLE — measured on the live fleet the day it
+		// shipped, 26 of 29 live seats had never reported, so an unscoped rule
+		// fires on ~90% of the fleet on its first run (F-17: a detector nobody
+		// believes is worse than no detector).
+		const owesCard = owesStatusCard(descriptor);
+		if (!cardCanMislead(descriptor) && !owesCard) continue;
 		const lastEventMs =
 			descriptor.lastEventAt === undefined ? undefined : validTimestampMs(descriptor.lastEventAt);
 		// No telemetry at all means no proof of activity — and this sensor accuses
@@ -274,10 +282,17 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 		if (descriptor.semanticState !== undefined && descriptor.semanticState !== "ready") continue;
 		const statusAtMs =
 			descriptor.statusAt === undefined ? undefined : validTimestampMs(descriptor.statusAt);
-		// Never reported at all: age from the seat's own start, so a seat that has
-		// been working for an hour without ever filing a card is caught. Mirrors
-		// A-2 — keying on statusAt alone would never fire for exactly that seat.
-		const anchorMs = statusAtMs ?? validTimestampMs(descriptor.startedAt);
+		// Never reported at all: age from the seat's own start, so a PM that has
+		// worked an hour without filing one is caught (A-2 — keying on statusAt
+		// alone would never fire for exactly that seat).
+		//
+		// Only a card-OWING seat can reach this branch: a seat holding no card and
+		// owing none was already skipped by the scope gate above, which is what
+		// makes absence-without-obligation a non-event rather than the
+		// false-positive-by-CLASS it used to be. `owesCard` here is belt-and-braces
+		// so the intent survives if that gate is ever loosened — the gate is the
+		// mutation-verified half.
+		const anchorMs = statusAtMs ?? (owesCard ? validTimestampMs(descriptor.startedAt) : undefined);
 		if (anchorMs === undefined) continue;
 		const driftMs = lastEventMs - anchorMs;
 		if (driftMs <= statusStaleMs) continue;

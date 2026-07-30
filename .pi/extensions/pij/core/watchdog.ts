@@ -206,13 +206,34 @@ export function evaluateResponse(inputs: WatchdogResponseInputs): WatchdogRespon
 // ─── self-teaching watchdog turn ────────────────────────────────────────────
 export interface WatchdogTurnConfig extends EffectiveWatchdogConfig {
 	readonly paneAvailable?: boolean;
+	/** Does this seat owe a status card? See `owesStatusCard` — PM yes, prime no.
+	 *  Selects the COPY only; eligibility to be watched at all is a separate
+	 *  question and primes remain watched. Defaults to the card-owing copy so an
+	 *  un-wired caller keeps today's behaviour. */
+	readonly owesCard?: boolean;
 }
 
 export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurnConfig): string {
+	const head = `[pij watchdog #${ordinal} for ${id}] Keep going if working.`;
+	// A seat that owes no card still needs the ping — it must not go silent. A
+	// prime is the only seat on the box with NO supervisor: a wedged PM is caught
+	// by its prime, a wedged prime is caught by nobody, so this is its sole
+	// external heartbeat and it lands in the prime's own pane at no cost to the
+	// human. What changes is the ASK: liveness and lifecycle, never a card.
+	//
+	// The altitude clause is Jordan's second ruling (2026-07-30): a prime's card,
+	// if it writes one voluntarily, must be about its OWN governance work. A card
+	// restating what a stream already reported double-renders the same fact in the
+	// rail. Observed live: an o-prime led two consecutive cards with its stream's
+	// merge, a fact that stream had already filed itself.
 	const turn =
-		`[pij watchdog #${ordinal} for ${id}] Keep going if working. ` +
-		`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. ` +
-		"If done, run `pij report state done`.";
+		cfg.owesCard === false
+			? `${head} You do NOT owe a status card — a prime reports to its human in-pane, so a card there duplicates a richer channel. ` +
+				"If you post one anyway, make it your OWN governance work, never a restatement of what a stream already reported. " +
+				"If done, run `pij report state done`."
+			: `${head} ` +
+				`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. ` +
+				"If done, run `pij report state done`.";
 	return cfg.paneAvailable === false
 		? `${turn} Pane capture unavailable; watching event activity only.`
 		: turn;

@@ -607,8 +607,18 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		for (const route of [pair, orchestrator]) {
 			expect(route).toContain("Start-of-work report");
 			expect(route).toContain("Stop-of-work report");
-			expect(route.match(/pij report now/g)).toHaveLength(2);
 		}
+		// Pin the two required commands per route, NOT a global occurrence count.
+		// The count proxy broke the moment orchestrator.md legitimately mentioned
+		// `pij report now` a third time (relaying it while supervising the fleet's
+		// cards) — which is not a regression in the two required steps this AC is
+		// about. Asserting the commands is both stricter and stable.
+		expect(orchestrator).toContain(
+			"pij report now 'Starting **<plan>**' 'Run the next Builder or pair step'",
+		);
+		expect(orchestrator).toContain(
+			"pij report now 'Completed **<phase>** after `harness checks`' 'Send the [phase report](<path>) and begin the next approved step'",
+		);
 		expect(pair).toContain(
 			"pij report now 'Starting **<phase>**' 'Compile the packet and dispatch the coder'",
 		);

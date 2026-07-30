@@ -936,6 +936,24 @@ describe("status-stale stays scoped to seats whose card is consumed", () => {
 		).toEqual([]);
 	});
 
+	it("never flags an explicitly-STAMPED worker holding a rotten card", () => {
+		// The case the old `role === null` gate silently let through: a stamped
+		// worker projects to "worker", not null, so it passed the scope test and —
+		// holding a real statusAt — reached the anchor and fired, despite the
+		// comment beside that gate claiming workers were excluded. Only
+		// `cardCanMislead` (prime||pm) actually excludes it.
+		expect(
+			detect([
+				desc({
+					id: "pij-stamped-worker",
+					orchestrationRole: "worker",
+					lastEventAt: new Date(NOW - 5_000).toISOString(),
+					statusAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+
 	it("flags prime and pm seats alike", () => {
 		const stale = { statusAt: new Date(NOW - 90 * MIN).toISOString() };
 		const found = detect([
@@ -953,6 +971,57 @@ describe("status-stale stays scoped to seats whose card is consumed", () => {
 			}),
 		]);
 		expect(found.map((a) => a.nodeId).sort()).toEqual(["pij-pm", "pij-prime"]);
+	});
+
+	// ── absence is not staleness (Jordan's ruling, 2026-07-30) ────────────────
+	it("never flags a PRIME that has never reported — it owes no card", () => {
+		// A prime reports to its human in-pane, so it owes no card. With no card
+		// nothing renders and nobody can be misinformed, so ageing from startedAt
+		// here was a false positive BY CLASS, not by threshold: it accused five
+		// primes of neglecting an obligation they never had.
+		expect(
+			detect([
+				desc({
+					id: "pij-prime-silent",
+					prime: true,
+					lastEventAt: new Date(NOW - 5_000).toISOString(),
+					startedAt: new Date(NOW - 12 * 24 * 3_600_000).toISOString(),
+				}),
+			]),
+		).toEqual([]);
+	});
+
+	it("STILL flags a prime whose VOLUNTARY card has rotted", () => {
+		// The asymmetry that makes the two predicates worth splitting: the consumer
+		// cannot tell who owed the card, so a rotten one misinforms identically.
+		// Writing it is the act that creates the expectation. Observed live on
+		// 2026-07-30 — a prime wrote a real card and let it rot past threshold; a
+		// blanket prime exclusion would have left that unpoliced.
+		const found = detect([
+			desc({
+				id: "pij-prime-rotten",
+				prime: true,
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				statusAt: new Date(NOW - 90 * MIN).toISOString(),
+			}),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-prime-rotten"]);
+		expect(found[0]?.detail).not.toContain("never reported");
+	});
+
+	it("still flags a PM that has never reported — a PM does owe one", () => {
+		// The other side of the split: killing the fallback wholesale would have
+		// taken A-2's case with it.
+		const found = detect([
+			desc({
+				id: "pij-pm-silent",
+				orchestrationRole: "pm",
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				startedAt: new Date(NOW - 90 * MIN).toISOString(),
+			}),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-pm-silent"]);
+		expect(found[0]?.detail).toContain("never reported");
 	});
 });
 

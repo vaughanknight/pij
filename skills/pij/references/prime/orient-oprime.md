@@ -61,6 +61,17 @@ files, not you — you are its current, replaceable operator.
    consumer, you included, renders it as CURRENT, so a PM that shipped an hour ago
    still reads as waiting. This is duty 1 one layer down: same hazard ("a stale
    roster row misleads every reader"), different writer.
+
+   **You do not write your own card, and you are not chased for one** (Jordan's
+   ruling, 2026-07-30): you report to your human in-pane, so a card would
+   duplicate a richer channel. If you choose to post one anyway it must be at
+   YOUR altitude — your governance work, never a restatement of what a stream
+   already reported, which double-renders the same fact in the rail. Expect an
+   asymmetry and do not "fix" it: the rail shows a prime card's age but never a
+   stale label, while `pij anomalies` still raises `status-stale` for a rotten
+   prime card. That row is **self-service** — nobody supervises you, so you are
+   the only party who can act on it, which is why it is signal rather than an
+   accusation.
 8. **Route cross-stream traffic**: streams never talk sideways. When one asks about
    another, answer with on-disk pointers + what you know that isn't on disk yet +
    the portfolio-level synthesis only your seat can see. Record the exchange.

@@ -276,6 +276,38 @@ describe("buildWatchdogTurn", () => {
 		expect(body).toContain("Pane capture unavailable; watching event activity only.");
 		expect(body.length).toBeLessThanOrEqual(400);
 	});
+
+	// ── a seat that owes no card still gets pinged, just not for a card ───────
+	it("asks a card-less seat for LIVENESS, never for a card", () => {
+		// Jordan's ruling 2026-07-30: a prime owes no status card. But it must not
+		// go silent either — a prime is the only seat with NO supervisor, so this
+		// ping is its sole external heartbeat.
+		const body = buildWatchdogTurn("pij-some-prime", 3, {
+			...effectiveWatchdog(),
+			paneAvailable: true,
+			owesCard: false,
+		});
+		expect(body).toContain("Keep going if working.");
+		expect(body).toContain("do NOT owe a status card");
+		expect(body).not.toContain('pij report now "<what I just did>"');
+		// Lifecycle survives: not owing a card is not the same as never finishing.
+		expect(body).toContain("pij report state done");
+		// Jordan's second ruling: altitude. A prime's card, if written at all, is
+		// about its own governance — restating a stream's fact double-renders it.
+		expect(body).toContain("never a restatement of what a stream already reported");
+	});
+
+	it("still demands a card when the seat owes one, wired or defaulted", () => {
+		for (const cfg of [{ owesCard: true }, {}]) {
+			const body = buildWatchdogTurn("pij-some-pm", 1, {
+				...effectiveWatchdog(),
+				paneAvailable: true,
+				...cfg,
+			});
+			expect(body).toContain('pij report now "<what I just did>" "<what\'s next>"');
+			expect(body).not.toContain("do NOT owe a status card");
+		}
+	});
 });
 
 describe("capture policy", () => {

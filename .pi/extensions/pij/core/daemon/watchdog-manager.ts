@@ -1,4 +1,4 @@
-import { projectOrchestrationRole } from "../orchestration/role.js";
+import { owesStatusCard, projectOrchestrationRole } from "../orchestration/role.js";
 import type { DeliveryPort } from "../ports.js";
 import { STALE_AFTER_MS } from "../state.js";
 import type { SessionDescriptor, SessionId, WatchdogSidecar, WatchdogWatcher } from "../types.js";
@@ -80,16 +80,18 @@ function timestampMs(value: string | undefined): number | null {
 function eligible(session: SessionDescriptor): boolean {
 	// PRIMES ARE WATCHED TOO (Jordan's ruling, 2026-07-30). The original gate was
 	// `!== "pm"`, which silently excluded every prime — a prime projects to
-	// "prime", never "pm". So the fleet's five governing seats were the only ones
-	// no reporting clock ever touched, in the direction nobody checks: the whole
-	// point of a prime is that it watches others.
+	// "prime", never "pm". So the fleet's governing seats were the only ones no
+	// reporting clock ever touched, in the direction nobody checks.
 	//
-	// Measured cost of that gap: a prime went 12 days and 3 hours without ever
-	// writing a card, and learned of it from a peer running an unrelated query.
-	// Its own status-stale anomaly could not reach it either (a prime has no
-	// parent, so the sweep drops it), which left it with NO reporting prompt of
-	// any kind. This one line is the whole fix for that seat: the nudge copy,
-	// interval, and anchor are already role-agnostic.
+	// ELIGIBILITY IS NOT `owesStatusCard`. A prime owes no card (Jordan's ruling
+	// the same day) yet is still watched, because being watched and owing a card
+	// are two different questions and only the NUDGE COPY branches on the second.
+	// The justification for watching a prime is not its card: it is that a prime
+	// is the only seat with NO SUPERVISOR. A wedged PM is caught by its prime; a
+	// wedged prime is caught by nobody — the owner-facing "stalled" notice cannot
+	// reach anyone for it either, since `pushWholeLifeTransition` returns early
+	// when `spawnedBy` is absent and a prime is creator-less. This ping is its
+	// only external heartbeat.
 	const role = projectOrchestrationRole(session);
 	if (role !== "pm" && role !== "prime") return false;
 	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
@@ -371,7 +373,11 @@ export class WatchdogManager {
 		);
 
 		const ordinal = state.ordinal + 1;
-		const body = buildWatchdogTurn(session.id, ordinal, { ...cfg, paneAvailable });
+		const body = buildWatchdogTurn(session.id, ordinal, {
+			...cfg,
+			paneAvailable,
+			owesCard: owesStatusCard(session),
+		});
 		const outcome = this.deps.channel.deliver({
 			from: "pij-watchdog",
 			to: session.id,
