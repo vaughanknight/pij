@@ -68,7 +68,7 @@ This is `bootstrap.md` § "What adequate looks like" executed by a stranger, ele
 
 ## R7 — The second objective (environment work rides the same rails)
 
-- **R7.1** Every layer works the goal AND the environment; observations ride reports upward; the o-prime aggregates them into encode candidates and walks the graduation path: pane lesson → local orient → global orient/protocol → tooling patch. *(Receipts: orient-global § second objective; orient-oprime duty 8; encode-candidates.md existing as the proof.)*
+- **R7.1** Every layer works the goal AND the environment; observations ride reports upward; the o-prime aggregates them into encode candidates and walks the graduation path: pane lesson → local orient → global orient/protocol → tooling patch. *(Receipts: orient-global § second objective; orient-oprime duty 9; encode-candidates.md existing as the proof.)*
 - **R7.2** Discrimination rule (anti-neurosis): capture if a reasonable next agent would hit it too; encode when small or costly-recurring; improvement offered, never imposed. *(Receipt: map.md § harness underneath.)*
 - **R7.3** *(added r4 — E-13, distinct from R6.4's traffic exception)* **Author-teaches-consumer beats doc-first**: when a producer's output has a waiting consumer, early dogfood via direct pairing (under a recorded never-sideways waiver, o-prime in the loop) precedes and INFORMS the formal doc/checklist — the checklist formalizes what the pairing taught, it does not gate it. This sequencing pattern applies to the route's own authoring: dogfood-then-formalize, not doc-first. *(Receipts: encode-candidates E-13; Jordan 04:45Z ruling; spine "Pairing r1 CLOSED" 04:53Z — checklist content produced BEFORE the checklist existed; validation finding M2.)*
 

@@ -107,6 +107,21 @@ after liveness and recovery pokes fail; repeated short-interval polling stays
 forbidden. A continuing report names current work, files, gates, remaining work,
 and its next reporting point.
 
+Silence is not the only failure shape, and the liveness protocol above cannot see
+the other one: a worker that is **busy, talking, and still stale** — pushing
+messages while its `pij report` card names work it finished an hour ago. It answers
+every poke, so it never trips a liveness check, and the pokes it answers are not
+reports. Your fleet's card freshness is YOUR accountability, not theirs: workers
+forget, you are answerable that they do it. Run `pij anomalies` **unscoped** and close
+every `status-stale` row for your fleet — each already carries the literal remediation
+line to relay (`pij report now "<did>" "<next>"`, or a parked state
+`waiting|hold|blocked|question`). Do not narrow with `--here` or `--project`:
+`status-stale` is node-keyed with no assignment or allocation ref, so `--project`
+filters it out entirely and `--here` hides every worker whose worktree is a different
+folder from yours. Confirm the card actually moved; a relayed
+instruction is not a fixed card. Until it moves, every consumer — you, the o-prime,
+the human — renders that stale now/next as CURRENT.
+
 Any path outside a packet allowlist triggers an immediate stop and classification
 before review. The known benign class is timestamp-only `.pi/packages.yaml`
 `vetted.date` churn after pi, harness, or package-audit boot: prove the diff is
