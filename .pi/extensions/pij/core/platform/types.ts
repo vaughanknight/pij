@@ -223,6 +223,13 @@ export const SPINE_KIND_DISPATCH = "dispatch";
 // canonicalAssignmentJson (states[] excluded — a log-derived index); the
 // semantic transition rides in structured refs (`state:<word>`).
 export const SPINE_KIND_TASK_SET = "task-set";
+/** Discharge of an assignment (plan 075). The far end of the lifecycle
+ *  `task-set` opens — absent until now, which is why 91 of 91 assignments on
+ *  the first measured box were open and none had ever been closed.
+ *  prev/next carry canonicalAssignmentJson like its sibling; the reason rides
+ *  in a structured ref (`reason:<word>`) so the discharge is auditable without
+ *  parsing the record. */
+export const SPINE_KIND_TASK_CLOSE = "task-close";
 export const SPINE_KIND_STATE_SET = "state-set";
 /** First-person now/next report consumed by the rail and PM watchdog. */
 export const SPINE_KIND_STATUS = "status";

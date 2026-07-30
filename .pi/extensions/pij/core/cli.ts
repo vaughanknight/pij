@@ -57,8 +57,11 @@ import {
 	appendStateRef,
 	assignmentIdCandidates,
 	canonicalAssignmentJson,
+	closeAssignment,
+	isAssignmentCloseReason,
 	materializeGeneralIfMissing,
 	openAssignment,
+	permittedCloseReasons,
 } from "./platform/assignment.js";
 import {
 	acknowledgeDispatch,
@@ -83,7 +86,9 @@ import { isoTimestamp } from "./platform/time.js";
 import {
 	type ActorProvenance,
 	type Allocation,
+	ASSIGNMENT_CLOSE_REASONS,
 	type Assignment,
+	type AssignmentCloseReason,
 	type Dispatch,
 	type Fence,
 	generalAssignmentId,
@@ -96,6 +101,7 @@ import {
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	SPINE_KIND_STATUS,
+	SPINE_KIND_TASK_CLOSE,
 	SPINE_KIND_TASK_SET,
 	type SpineEvent,
 	type SpineEventDraft,
@@ -482,6 +488,13 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| {
+			readonly verb: "task-close";
+			readonly assignmentId: string;
+			readonly reason: AssignmentCloseReason;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
 			readonly verb: "report-now";
 			readonly did: string;
 			readonly next: string;
@@ -715,7 +728,7 @@ const FAMILY_SUBCOMMANDS: Record<string, string> = {
 	stream: "create|close",
 	fence: "set|show",
 	spine: "append|events|render",
-	task: "set",
+	task: "set|close",
 	report: "now|question|blocked|state|clear|verify",
 	bg: "create|list|tail|kill",
 	node: "show",
@@ -836,6 +849,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	// plan 054 P2 (T005). --project/--assignment/--refs are not in
 	// BOOLEAN_FLAGS, so lex values them without VALUED_FLAG_OVERRIDES rows.
 	"task set": new Set(["project", "actor", "json"]),
+	"task close": new Set(["reason", "actor", "json"]),
 	"report now": new Set(["state", "note", "project", "json"]),
 	"report question": new Set(["assignment", "json"]),
 	"report blocked": new Set(["assignment", "json"]),
@@ -880,6 +894,7 @@ const MAX_POS: Record<string, number> = {
 	"spine events": 0,
 	"spine render": 0,
 	"task set": 2,
+	"task close": 1,
 	"report now": 2,
 	"report question": 1,
 	"report blocked": 1,
@@ -1519,6 +1534,29 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				node,
 				task,
 				projectSlug: typeof flags.project === "string" ? flags.project : undefined,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "task close": {
+			const assignmentId = pos[0];
+			if (assignmentId === undefined)
+				return err(
+					"E-ARG",
+					`usage: pij task close <assignment-id> --reason <${ASSIGNMENT_CLOSE_REASONS.join("|")}>`,
+				);
+			if (typeof flags.reason !== "string" || flags.reason === "")
+				return err("E-ARG", `--reason is required: one of ${ASSIGNMENT_CLOSE_REASONS.join("|")}`);
+			if (!isAssignmentCloseReason(flags.reason))
+				return err(
+					"E-ARG",
+					`unknown close reason '${flags.reason}' (expected ${ASSIGNMENT_CLOSE_REASONS.join("|")})`,
+				);
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "task-close",
+				assignmentId,
+				reason: flags.reason,
 				actor: typeof flags.actor === "string" ? flags.actor : undefined,
 				json,
 			});
@@ -3175,6 +3213,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "spine-events":
 		case "spine-render":
 		case "task-set":
+		case "task-close":
 		case "report-now":
 		case "state-set":
 		case "state-verify":
@@ -3292,6 +3331,7 @@ type PlatformCommand = Extract<
 			| "spine-events"
 			| "spine-render"
 			| "task-set"
+			| "task-close"
 			| "report-now"
 			| "state-set"
 			| "state-verify"
@@ -3329,6 +3369,21 @@ function denormDescriptor(
 			readonly at: string;
 			readonly seq: number;
 		};
+		/** Plan 075 — the DISCHARGE case, deliberately a separate branch from the
+		 *  `assignment` swap above rather than a nullable widening of it. A swap
+		 *  points the node at different work; a clear says the node has no current
+		 *  work at all. Collapsing them into one optional-field shape is how the
+		 *  next reader loses the distinction.
+		 *
+		 *  Ratified wire contract (o-prime + chainglass, 2026-07-30): cleared
+		 *  fields must reach consumers as EXPLICIT NULL, never as absent keys.
+		 *  `list` already maps each of these through `?? null`, so removing the
+		 *  descriptor keys here yields `null` on that surface — which is the whole
+		 *  requirement. It matters because `tree` OMITS absent keys, and the rail
+		 *  reads an omitted key as "this read does not carry the field" and falls
+		 *  through to a cached snapshot, re-rendering the closed task as current.
+		 *  **Null is an answer; absence is a silence.** */
+		readonly clearAssignment?: true;
 	},
 ): Result<void> {
 	try {
@@ -3350,6 +3405,22 @@ function denormDescriptor(
 					? {}
 					: { stateNote: fields.assignment.stateNote }),
 			};
+		}
+		if (fields.clearAssignment === true) {
+			// The obligation was discharged, so the node advertises no current work.
+			// statusPrev/Next/At/Seq deliberately SURVIVE, exactly as they do on an
+			// assignment swap: the last thing the seat said about itself is still
+			// true, and erasing it here would blank the card as a side effect of
+			// closing a ledger row — the coupled-write hazard this stream exists to
+			// stop repeating.
+			const {
+				currentAssignment: _asg,
+				currentTask: _task,
+				semanticState: _state,
+				stateNote: _note,
+				...cleared
+			} = nextDescriptor;
+			nextDescriptor = cleared;
 		}
 		if (fields.status !== undefined) {
 			nextDescriptor = {
@@ -4477,6 +4548,126 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				}
 				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
 				return okOut(`task set on ${cmd.node}: ${record.id} "${record.task}"`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		// ── plan 075 — the far end of the lifecycle `task-set` opens ───────────
+		// Until this verb existed NOTHING could close an assignment: measured
+		// 2026-07-30, 91 of 91 on the first box open, zero ever closed, because
+		// `closeAssignment` had no caller. It read as healthy because
+		// `report state done` silences `axis-disagreement` (any declared state
+		// does) WITHOUT discharging the record — masking, not closing.
+		case "task-close": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const existing = assignmentStore.read(cmd.assignmentId);
+			if (existing === null) return fail("E-NOID", `no assignment '${cmd.assignmentId}'`, cmd.json);
+			const self = selfId(deps);
+			if (!self.ok) return fail(self.code, self.message, cmd.json);
+			// AUTHORITY: close only in the direction of your own authorship.
+			// Evaluated against the SEAT, never the --actor label: --actor is an
+			// attribution override and letting it choose the authority set would
+			// make the gate self-service.
+			const permitted = permittedCloseReasons(existing, self.value);
+			if (permitted.length === 0) {
+				return fail(
+					"E-OWN",
+					`assignment '${existing.id}' is neither yours to complete (assignee '${existing.nodeId}') nor yours to withdraw (opened by '${existing.opened.actor}') — you are '${self.value}'`,
+					cmd.json,
+				);
+			}
+			if (!permitted.includes(cmd.reason)) {
+				const asAssignee = self.value === existing.nodeId;
+				return fail(
+					"E-OWN",
+					`'${self.value}' may close '${existing.id}' only with ${permitted.join("|")} (got '${cmd.reason}')${
+						asAssignee
+							? ""
+							: ` — only the assignee '${existing.nodeId}' may attest done|failed; an opener withdraws, it does not testify`
+					}`,
+					cmd.json,
+				);
+			}
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPlatformWrites(ports.value);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				// Re-read under the lock: the authority gate ran before it, so a
+				// concurrent close could have landed in between (double-close is
+				// E-ARG from the primitive, but the read must be fresh to see it).
+				const current = assignmentStore.read(cmd.assignmentId);
+				if (current === null)
+					return fail("E-NOID", `no assignment '${cmd.assignmentId}'`, cmd.json);
+				const closed = closeAssignment(current, {
+					actor: attribution.value.actor,
+					nowMs: now,
+					reason: cmd.reason,
+				});
+				if (!closed.ok) return fail(closed.code, closed.message, cmd.json);
+				const record = closed.value;
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_TASK_CLOSE,
+					refs: [
+						`node:${record.nodeId}`,
+						`assignment:${record.id}`,
+						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
+						`reason:${cmd.reason}`,
+					],
+					peer: record.nodeId,
+					project: record.projectSlug,
+					prev: canonicalAssignmentJson(current),
+					next: canonicalAssignmentJson(record),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				const recorded = opJournal.record(draft.value);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const written = assignmentStore.write(record);
+				if (!written.ok) {
+					return fail(
+						written.code,
+						withResidualDiagnostic(written.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				opJournal.markCommitted(opId);
+				const appended = spineLog.appendOnce(opId, draft.value);
+				if (!appended.ok) {
+					return fail(
+						appended.code,
+						`assignment '${record.id}' WAS closed, but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`assignment '${record.id}' WAS closed and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				// Clear the node's denorm ONLY if it still points at the assignment we
+				// just closed. A seat that has since moved to different work must not
+				// have that work blanked as a side effect of discharging an older row.
+				const descriptor = deps.registry.read(record.nodeId);
+				if (descriptor?.currentAssignment === record.id) {
+					const denormed = denormDescriptor(deps, record.nodeId, { clearAssignment: true });
+					if (!denormed.ok) {
+						return fail(
+							denormed.code,
+							`assignment '${record.id}' WAS closed and its spine event landed, but ${denormed.message}`,
+							cmd.json,
+						);
+					}
+				}
+				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
+				return okOut(`assignment ${record.id} closed: ${cmd.reason} (by ${self.value})`);
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}

@@ -7169,3 +7169,164 @@ describe("scoped anomalies name what they did NOT look at", () => {
 		expect(scoped.stdout).not.toContain("hidden by that scope");
 	});
 });
+
+describe("task close — the far end of the lifecycle, end to end", () => {
+	// Plan 075. Before this verb NOTHING could close an assignment: 91/91 open on
+	// the first box measured, zero ever closed. The detector-level short-circuit
+	// was already pinned; what was NOT pinned is that a real `task close` run
+	// through the CLI actually clears a live axis-disagreement row.
+	const ASSIGNEE = "pij-assignee-seat";
+	const OPENER = "pij-opener-seat";
+
+	function fleet() {
+		// An idle assignee is what makes axis-disagreement fire: open assignment
+		// + undeclared state + mechanically idle beyond the threshold.
+		const stale = new Date(T - 44 * 3_600_000).toISOString();
+		return platformDeps({
+			self: OPENER,
+			descs: [
+				desc({ id: ASSIGNEE, startedAt: stale, lastEventAt: stale, systemState: "idle" }),
+				desc({ id: OPENER, startedAt: stale, lastEventAt: stale, systemState: "idle" }),
+			],
+		});
+	}
+
+	function axisRows(d: CliDeps): string {
+		return run(["anomalies"], d).stdout;
+	}
+
+	function openTask(d: CliDeps): string {
+		const out = run(["task", "set", ASSIGNEE, "ship the thing"], d).stdout;
+		const id = out.match(/asg-[a-z-]+/)?.[0];
+		expect(id).toBeDefined();
+		return id as string;
+	}
+
+	it("opens an obligation, then DISCHARGES it — the row clears through the existing predicate", () => {
+		const d = fleet();
+		const id = openTask(d);
+
+		// Guard against a vacuous pass: the row must actually exist first, or the
+		// clearing assertion below proves nothing.
+		expect(axisRows(d)).toContain("axis-disagreement");
+		expect(axisRows(d)).toContain(ASSIGNEE);
+
+		// The assignee attests its own work.
+		const closed = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE));
+		expect(closed.exitCode).toBe(0);
+		expect(closed.stdout).toContain("closed: done");
+
+		expect(axisRows(d)).not.toContain("axis-disagreement");
+	});
+
+	it("an OPENER may withdraw its own request but may NOT attest done", () => {
+		const d = fleet();
+		const id = openTask(d);
+
+		// The laundering case, at the CLI boundary rather than the predicate.
+		const launder = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, OPENER));
+		expect(launder.exitCode).not.toBe(0);
+		expect(launder.stderr).toContain("E-OWN");
+		expect(launder.stderr).toContain("an opener withdraws, it does not testify");
+		// And it really did not write: the row is still there.
+		expect(axisRows(d)).toContain("axis-disagreement");
+
+		const withdrawn = run(
+			["task", "close", id, "--reason", "cancelled"],
+			asReportingSelf(d, OPENER),
+		);
+		expect(withdrawn.exitCode).toBe(0);
+		expect(axisRows(d)).not.toContain("axis-disagreement");
+	});
+
+	it("a passing stranger has no authority at all", () => {
+		const d = fleet();
+		const id = openTask(d);
+		const r = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, "pij-stranger"));
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+		expect(axisRows(d)).toContain("axis-disagreement");
+	});
+
+	it("--actor cannot buy authority — attribution is not authorisation", () => {
+		// The self-service hazard: --actor relabels WHO IS RECORDED, and if it also
+		// selected the authority set any caller could grant itself the assignee's
+		// rights by passing --actor <assignee>.
+		const d = fleet();
+		const id = openTask(d);
+		const r = run(
+			["task", "close", id, "--reason", "done", "--actor", ASSIGNEE],
+			asReportingSelf(d, "pij-stranger"),
+		);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+	});
+
+	it("clears the node's denorm on discharge, ON THE WIRE AS NULL not absent", () => {
+		// Ratified contract (o-prime + chainglass, 2026-07-30). `list` maps these
+		// through `?? null`, but `tree` OMITS absent keys and the rail reads an
+		// omitted key as "this read does not carry the field", falling through to a
+		// cached snapshot that would re-render the closed task as CURRENT.
+		// Null is an answer; absence is a silence.
+		const d = fleet();
+		const id = openTask(d);
+		const before = JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[];
+		expect(before.find((r) => r.id === ASSIGNEE)?.currentAssignment).toBe(id);
+
+		expect(
+			run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE)).exitCode,
+		).toBe(0);
+
+		const row = (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === ASSIGNEE,
+		);
+		expect(row).toBeDefined();
+		for (const field of ["currentAssignment", "currentTask", "semanticState", "stateNote"]) {
+			// `toBeNull` alone would pass on an absent key via undefined, which is
+			// exactly the bug: assert the KEY IS PRESENT and its value is null.
+			expect(Object.hasOwn(row as object, field)).toBe(true);
+			expect(row?.[field]).toBeNull();
+		}
+		// The card survives: the last thing the seat said about itself is still
+		// true, and closing a ledger row must not blank it as a side effect.
+		expect(Object.hasOwn(row as object, "statusAt")).toBe(true);
+	});
+
+	it("does NOT blank a node that has moved on to different work", () => {
+		const d = fleet();
+		const first = openTask(d);
+		const second = openTask(d);
+		expect(second).not.toBe(first);
+
+		expect(
+			run(["task", "close", first, "--reason", "done"], asReportingSelf(d, ASSIGNEE)).exitCode,
+		).toBe(0);
+
+		const row = (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === ASSIGNEE,
+		);
+		expect(row?.currentAssignment).toBe(second);
+	});
+
+	it("refuses double-close, unknown id, and an unknown reason — each naming the offender", () => {
+		const d = fleet();
+		const id = openTask(d);
+		expect(
+			run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE)).exitCode,
+		).toBe(0);
+
+		const again = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE));
+		expect(again.exitCode).not.toBe(0);
+		expect(again.stderr).toContain("already closed");
+
+		const missing = run(["task", "close", "asg-nope", "--reason", "done"], d);
+		expect(missing.stderr).toContain("asg-nope");
+
+		const badReason = run(["task", "close", id, "--reason", "finished"], d);
+		expect(badReason.stderr).toContain("finished");
+		expect(badReason.stderr).toContain("done|cancelled|failed|superseded");
+
+		const noReason = run(["task", "close", id], d);
+		expect(noReason.stderr).toContain("--reason is required");
+	});
+});

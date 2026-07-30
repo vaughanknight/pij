@@ -281,6 +281,7 @@ Platform (durable projects + the shared spine log):
   pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
   pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
   pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it
+  pij task close <assignment-id> --reason <done|cancelled|failed|superseded> [--actor <label>] [--json]   discharge an assignment — assignee closes done|failed, opener withdraws cancelled|superseded
   pij report now "<did>" "<next>" [--state <word>] [--note <text>] [--project <slug>] [--json]   record this seat's now/next; optional state writes state-set then status under one lock
   pij report question "<what I need from you>" [--assignment <id>] [--json]   declare this seat's question with its text
   pij report blocked "<what I am waiting on>" [--assignment <id>] [--json]   declare this seat blocked with its reason
