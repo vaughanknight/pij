@@ -7050,3 +7050,36 @@ describe("state clear (State-Model v2)", () => {
 		});
 	});
 });
+
+describe("retired verb hints (field report, pij-long-skellor 2026-07-30)", () => {
+	// `pij state set` moved into the report family in s074. The old form then hit
+	// the generic arity check — "too many arguments for 'state'" — which names no
+	// replacement and reads like a typo rather than a migration. A seat following
+	// an older handover packet had no way to tell those apart, and paid a --help
+	// crawl to escape. Deleting a verb is fine; deleting the SIGNPOST is not.
+	const hint = (argv: readonly string[]) => {
+		const parsed = parseArgs([...argv]);
+		expect(parsed.ok).toBe(false);
+		return parsed.ok ? "" : parsed.message;
+	};
+
+	it("points the retired setter at its first-person replacement", () => {
+		const message = hint(["state", "set", "pij-long-skellor", "ready"]);
+		expect(message).toContain("pij report state ready");
+		expect(message).toContain("retired");
+		expect(message).not.toContain("too many arguments");
+	});
+
+	it("carries the state through the id-less form too", () => {
+		expect(hint(["state", "set", "ready"])).toContain("pij report state ready");
+	});
+
+	it("answers clear and verify with their own replacements", () => {
+		expect(hint(["state", "clear"])).toContain("pij report clear");
+		expect(hint(["state", "verify", "pij-x"])).toContain("pij report verify <node>");
+	});
+
+	it("leaves the surviving read-only form alone", () => {
+		expect(parseArgs(["state", "pij-long-skellor"]).ok).toBe(true);
+	});
+});

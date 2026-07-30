@@ -263,6 +263,7 @@ Agents (run declarative minih agent packs):
 Orchestration (machine-wide coordination):
   pij orchestration baton <define|list|show|request|grant|return|reclaim>   atomic resource leases + pushed notices
   pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
+  pij orchestration role <set|unset> [<id>] <pm|worker> [--json]           stamp a seat's role; an unstamped seat renders ROLE UNKNOWN and shows no status card
 
 Platform (durable projects + the shared spine log):
   pij project create "<description>" [--slug <slug>] [--actor <label>] [--json]   create a project (kebab slug, collision-resolved; --slug is verbatim and errors on collision)
@@ -4104,7 +4105,7 @@ function main(): void {
 	const d = deps();
 	const res = dispatch(parsed.value, d);
 	write(res);
-	emitStatusNudge(parsed.value.verb, d);
+	emitStatusNudge(parsed.value.verb, parsed.value.json === true, d);
 	if (res.follow?.kind === "tail" && parsed.value.verb === "tail") {
 		followTail(parsed.value, d, res.follow.nextSince);
 		return; // loops until killed
@@ -4166,13 +4167,14 @@ if (
  *  corrupt `--json` stdout. Best-effort by construction: a seat we cannot
  *  resolve, or any failure resolving it, simply gets no reminder — a diagnostic
  *  must never break the command it rides on. */
-function emitStatusNudge(verb: string, d: ReturnType<typeof deps>): void {
+function emitStatusNudge(verb: string, json: boolean, d: ReturnType<typeof deps>): void {
 	try {
 		const self = d.resolveAmbientSelf?.();
 		if (!self?.ok || self.value === undefined) return;
 		const line = statusNudgeLine({
 			descriptor: d.registry.read(self.value) ?? undefined,
 			verb,
+			json,
 			nowMs: d.process.now(),
 		});
 		if (line !== undefined) process.stderr.write(`${line}\n`);

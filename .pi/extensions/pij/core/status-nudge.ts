@@ -55,6 +55,8 @@ export interface StatusNudgeInput {
 	readonly descriptor: SessionDescriptor | undefined;
 	readonly verb: string;
 	readonly nowMs: number;
+	/** `--json` was requested: this invocation has a MACHINE consumer. */
+	readonly json?: boolean;
 	readonly thresholdMs?: number;
 }
 
@@ -62,6 +64,18 @@ export interface StatusNudgeInput {
 export function statusNudgeLine(input: StatusNudgeInput): string | undefined {
 	const descriptor = input.descriptor;
 	if (descriptor === undefined) return undefined;
+	// `--json` declares a machine consumer, and a machine never wants a human
+	// nudge. Writing to stderr already keeps stdout parseable, but agents pipe
+	// with `2>&1` constantly, and then the warning lands in the parsed stream and
+	// eats the receipt — reported independently by two seats within an hour
+	// (pij-superior-mastodon and pij-unknown-guan, 2026-07-30), one of whom lost
+	// nine task-set receipts to it and could not tell whether ANY had landed.
+	//
+	// Stream separation is the correct mechanism but it is not sufficient
+	// protection: the caller controls the redirection, and the cost of being
+	// wrong is silently corrupted output. Declining to speak at all under --json
+	// removes the whole class rather than the instance.
+	if (input.json === true) return undefined;
 	if (SILENT_VERBS.has(input.verb.split(" ")[0] ?? input.verb)) return undefined;
 	// Scoped to seats whose card is CONSUMED (prime/PM — status renders for PM
 	// seats, JC-1 OQ-7). A worker's now/next surfaces in no card, so reminding

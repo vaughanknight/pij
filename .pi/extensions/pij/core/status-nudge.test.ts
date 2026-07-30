@@ -88,3 +88,18 @@ describe("statusNudgeLine", () => {
 		expect(at(STATUS_NUDGE_AFTER_MS + 1)).toBeDefined();
 	});
 });
+
+describe("--json is machine-clean, whatever the caller redirects", () => {
+	it("says nothing at all when --json was requested", () => {
+		// stderr keeps stdout parseable, but agents pipe with `2>&1` constantly and
+		// then the warning lands in the parsed stream. Two seats hit this within an
+		// hour; one lost nine task-set receipts and could not tell whether ANY had
+		// landed. Stream separation is correct but not sufficient — the CALLER owns
+		// the redirection, so the only safe answer under --json is silence.
+		expect(
+			statusNudgeLine({ descriptor: seat(), verb: "list", json: true, nowMs: NOW }),
+		).toBeUndefined();
+		// …and the same seat still gets nudged in human mode.
+		expect(statusNudgeLine({ descriptor: seat(), verb: "list", nowMs: NOW })).toBeDefined();
+	});
+});

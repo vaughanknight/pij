@@ -729,6 +729,35 @@ const VALUED_FLAG_OVERRIDES: Record<string, ReadonlySet<string>> = {
 	"report now": new Set(["state"]),
 };
 
+/** Retired call shapes, answered with the verb that replaced them.
+ *
+ *  When `pij state set|clear|verify` moved to the `report` family (s074), the
+ *  old form started failing the generic arity check — "too many arguments for
+ *  'state'" — which names no replacement and reads like a typo rather than a
+ *  migration. Every seat still following an older handover packet hit that wall
+ *  and paid a `--help` crawl to escape it (reported from the field by
+ *  pij-long-skellor, 2026-07-30).
+ *
+ *  A retired verb is a promise you already made. Deleting it is fine; deleting
+ *  the SIGNPOST is not, because the caller cannot tell "I typed it wrong" from
+ *  "this moved" — and only one of those has an answer they can act on. */
+function retiredSyntaxHint(key: string, pos: readonly string[]): string | undefined {
+	if (key !== "state") return undefined;
+	const sub = pos[0];
+	if (sub !== "set" && sub !== "clear" && sub !== "verify") return undefined;
+	// `state set <id> <state>` / `state set <state>` → the first-person report.
+	const example =
+		sub === "set"
+			? `pij report state ${pos[pos.length - 1] ?? "<state>"}`
+			: sub === "clear"
+				? "pij report clear"
+				: "pij report verify <node>";
+	return (
+		`'pij state ${sub}' was retired — the setter is now first-person: ${example}. ` +
+		"`pij state <id>` remains, read-only. (Update any handover packet that still teaches the old form.)"
+	);
+}
+
 function booleanFlagsFor(key: string): ReadonlySet<string> {
 	const valued = VALUED_FLAG_OVERRIDES[key];
 	if (!valued) return BOOLEAN_FLAGS;
@@ -903,6 +932,8 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	for (const k of [...Object.keys(flags), ...Object.keys(repeated)]) {
 		if (!allowed.has(k)) return err("E-ARG", `unknown flag --${k} for '${key}'`);
 	}
+	const retired = retiredSyntaxHint(key, pos);
+	if (retired !== undefined) return err("E-ARG", retired);
 	if (pos.length > (MAX_POS[key] ?? 0)) return err("E-ARG", `too many arguments for '${key}'`);
 	const json = flags.json === true;
 	// number | undefined (absent) | "bad" (present but non-numeric -> E-ARG).
