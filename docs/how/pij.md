@@ -87,10 +87,15 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
-| `state clear` | `pij state clear <node> [--assignment <id>]` | Remove the target assignment's declared semantic state while keeping its task, event history, and mechanical/runtime state. Refuses loudly when no assignment or declaration exists. |
+| `report now` | `pij report now "<did>" "<next>" [--state <word>] [--note "<text>"] [--project <slug>]` | Record this registered seat's now/next as one `status` event; with `--state`, write `state-set` then `status` under one platform lock. `--note` is valid only for `question`/`blocked`. |
+| `report question` | `pij report question "<what I need from you>" [--assignment <id>]` | Declare a human-facing question and stamp its bounded text on the same assignment. |
+| `report blocked` | `pij report blocked "<what I am waiting on>" [--assignment <id>]` | Declare an external blocker and stamp its bounded text on the same assignment. |
+| `report state` | `pij report state <state> [--assignment <id>] [--refs a,b,…]` | Declare this registered seat's assignment-scoped semantic state. A seat with no assignment materializes its fixed general assignment. |
+| `report clear` | `pij report clear [--assignment <id>]` | Remove this registered seat's declared semantic state while keeping its task, event history, and mechanical/runtime state. |
+| `report verify` | `pij report verify <node> [--assignment <id>]` | Supervisory verification: stamp the registered caller as `verifiedBy` on another node's latest `done` claim. |
 | `path` | `pij path <id> [--events\|--state\|--dir]` | Print the on-disk path (events file / descriptor / data dir) for direct reading with file tools. |
 | `tree` | `pij tree [<id> \| --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all]` | Render the current Git repository forest by default, the global registry with `--global`, or an arbitrary subtree with `<id>`. Filters are repeatable; `--json` returns `{"roots":[...]}`. |
-| `link` | `pij link <child> --parent <parent> \| --root` | Reparent a session or make it an explicit structural root. Validates unknown ids, self-links, and cycles before writing; never changes close ownership. |
+| `link` | `pij link <child> --parent <parent> [--role <pm\|worker>] \| --root` | Reparent a session or make it an explicit structural root. A governor may designate role in the same placement call. Validates unknown ids, self-links, and cycles before writing; never changes close ownership. |
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"] [--plan-id <id>]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. An explicit plan id is exported as `HARNESS_PLAN_ID` + `PIJ_PLAN_ID` and stamped on the seat descriptor. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 | `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane and optionally place it structurally under an existing session. Parent validation happens before reservation or descriptor writes. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. |
 | `attest` | `pij attest <id> --plan-id <id>` | Add or correct an existing seat's explicit opaque plan id. Absent means unattested; pij never derives it from project paths or ambient environment. |
@@ -111,12 +116,24 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 
 ## Semantic state declarations
 
-`pij state set <node> <state>` records an assignment-scoped declaration from the
-closed semantic vocabulary. `pij state clear <node> [--assignment <id>]` removes
-that declaration without creating an implicit general assignment, closing the task,
-or changing `systemState`. It appends one journaled `state-cleared` spine event and
-keeps earlier assignment history intact. A clear of an already undeclared assignment
-is an `E-ARG` refusal, not a silent success.
+Everything under `report` is a first-person claim about yourself.
+`pij report state <state>` records an assignment-scoped declaration from the
+closed semantic vocabulary. `pij report question "<text>"` and
+`pij report blocked "<text>"` carry the two human-facing note states. Actively
+working has no semantic state word; absence is the honest expression by design.
+
+Inline markdown is supported in report text (`` `code` ``, `**bold**`,
+`[links]`) and survives whitespace collapsing. Block markdown is not: newlines
+are refused. Use single shell quotes around text containing backticks.
+
+`pij report clear [--assignment <id>]` removes the declaration without creating
+an implicit general assignment, closing the task, or changing `systemState`. It
+appends one journaled `state-cleared` spine event and keeps earlier assignment
+history intact. A clear of an already undeclared assignment is an `E-ARG`
+refusal, not a silent success.
+
+Report writes require the calling seat to resolve to a registered descriptor;
+`PIJ_SESSION_ID` alone cannot attribute a claim to a missing seat.
 
 ---
 
@@ -160,7 +177,7 @@ and marked with an ellipsis while retaining every node.
 ### Linking and adoption
 
 ```bash
-pij link <child> --parent <parent> [--json]
+pij link <child> --parent <parent> [--role <pm|worker>] [--json]
 pij link <child> --root [--json]
 pij adopt "$TMUX_PANE" --harness <h> --parent <parent>
 ```
@@ -170,6 +187,8 @@ effective-parent cycles fail before any write. The JSON receipt is
 `{"id":"…","parentId":"…"|null,"changed":true|false}`. Automatic spawn records
 the caller as structural parent and close owner; adopted panes need `--parent`
 or an explicit post-identity `link` when they should join an existing hierarchy.
+Role is designated by the governor that gives a seat work, never inferred or
+self-declared by the seat; pass `--role pm|worker` on that placement call.
 
 ---
 

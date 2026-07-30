@@ -23,8 +23,8 @@ it must never nudge:
   sent ~20 nudges to the operator's phone). These peers carry `relay: true` on
   their descriptor and are **born exempt**: never watched, no sidecar needed. Any
   new bridge/relay must set `relay: true` at registration.
-- **A peer that has deliberately paused** (done, or blocked awaiting a human).
-  See § Blocked on a human below.
+- **A peer under an explicit operator/manual pause.** Completion and blockers
+  use the semantic report axis instead; see § Reporting state below.
 
 ## Commands
 
@@ -90,8 +90,9 @@ JSON exposes:
 
 The three ruled defaults are:
 
-1. **Explicit pause/resume verbs** — `pij watchdog pause <id>` and
-   `pij watchdog resume <id>`; completion is not inferred.
+1. **Explicit operator/manual pause/resume verbs** — `pij watchdog pause <id>`
+   and `pij watchdog resume <id>`. Completion is declared with
+   `pij report state done`; it is not encoded by silencing supervision.
 2. **First-class, bounded exemption** — `pij spawn --no-watchdog` or
    `pij watchdog exempt <id> [duration]`. It defaults to 60 minutes and accepts
    the same `30s`/`20m`/`1h`/milliseconds grammar as intervals. The persisted
@@ -110,34 +111,39 @@ notices but disables pane text.
 
 | Tier | Set by | Resume behavior |
 |---|---|---|
-| `self` | `pij watchdog pause <id>` | Only the explicit `resume` verb clears it. |
+| `self` | `pij watchdog pause <id>` | Explicit `resume`, or a newly delivered dispatch/committed assignment, clears it. |
 | `compact` | Remote `pij send <id> --command compact` or a bare `/compact` message | Clears automatically on the next **real** working transition. The sidecar is persisted before compact is injected. |
 | `exempt` | `pij watchdog exempt <id> [duration]` or spawn `--no-watchdog` | Bounded by a persisted absolute deadline (default 60m); excluded from watchdog-driven stall derivation only while live. `reset` clears it immediately; pause/resume do not weaken it. |
 
 A pause is the peer's claim that watchdog turns are unnecessary; it does not
 disable existing dead/provider-failure supervision.
 
-## Blocked on a human
+## Reporting state
 
-If a nudge reaches you while you are neither working nor done but **blocked
-awaiting a human ruling**, self-pause (`pij watchdog pause <your-id>`): that is
-the honest signal that your silence is intentional, not a stall. Known limitation
-(field-reported): a `self` pause for "blocked on human" is today
-indistinguishable from a `self` pause for "finished" — a supervisor cannot tell
-done from blocked. A richer `awaiting-human` pause reason (auto-resume-worthy,
-unlike a plain `self`) is a planned follow-up.
+If a nudge reaches you, use the visible semantic axis:
+
+- still working: `pij report now "<what I just did>" "<what's next>"`;
+- done: `pij report state done`;
+- awaiting a human answer: `pij report question "<what I need from you>"`;
+- waiting on an external dependency: `pij report blocked "<what I am waiting on>"`.
+
+Actively working has no semantic state word; absence is honest by design. These
+declarations are visible on the rail, can be corrected or cleared, and `done`
+can be independently verified. Do not encode completion or blockers as a
+watchdog pause.
 
 ## What a watchdog turn means
 
 A turn is self-teaching and ordinal, for example:
 
 ```text
-[pij watchdog #2 for pij-example] Keep going if working. If done, pause me with
-`pij watchdog pause pij-example`; resume with `pij watchdog resume pij-example`.
+[pij watchdog #2 for pij-example] Keep going if working. Report in one call with
+`pij report now "<what I just did>" "<what's next>"`. If done, run
+`pij report state done`.
 ```
 
 If work is still in progress, continue normally. If the assigned work is done,
-pause the watchdog explicitly. Watchdog-attributable pane, working-state, and
+declare `done`. Watchdog-attributable pane, working-state, and
 descriptor movement never counts as peer recovery; only typed real activity
 does.
 

@@ -42,7 +42,14 @@ describe("PrimeService", () => {
 		const result = new PrimeService(registry).set("pij-a");
 		expect(result).toEqual({
 			ok: true,
-			value: { id: "pij-a", prime: true, oldPrime: false, changed: true },
+			value: {
+				id: "pij-a",
+				prime: true,
+				oldPrime: false,
+				changed: true,
+				previousDesignation: "old-prime",
+				designation: "prime",
+			},
 		});
 		expect(registry.read("pij-a")).toMatchObject({
 			id: "pij-a",
@@ -62,7 +69,14 @@ describe("PrimeService", () => {
 		const result = new PrimeService(registry).retire("pij-a");
 		expect(result).toEqual({
 			ok: true,
-			value: { id: "pij-a", prime: false, oldPrime: true, changed: true },
+			value: {
+				id: "pij-a",
+				prime: false,
+				oldPrime: true,
+				changed: true,
+				previousDesignation: "prime",
+				designation: "old-prime",
+			},
 		});
 		expect(registry.read("pij-a")).toMatchObject({
 			id: "pij-a",
@@ -78,7 +92,13 @@ describe("PrimeService", () => {
 		const result = new PrimeService(registry).unset("pij-a");
 		expect(result).toEqual({
 			ok: true,
-			value: { id: "pij-a", prime: false, oldPrime: false, changed: true },
+			value: {
+				id: "pij-a",
+				prime: false,
+				oldPrime: false,
+				changed: true,
+				previousDesignation: "prime",
+			},
 		});
 		expect(registry.read("pij-a")).toMatchObject({
 			id: "pij-a",
@@ -95,7 +115,7 @@ describe("PrimeService", () => {
 	] as const)("%s is idempotent when both markers already match", (verb, prime, oldPrime) => {
 		const registry = new CountingRegistry([descriptor("pij-a", { prime, oldPrime })]);
 		const result = new PrimeService(registry)[verb]("pij-a");
-		expect(result).toEqual({
+		expect(result).toMatchObject({
 			ok: true,
 			value: { id: "pij-a", prime, oldPrime, changed: false },
 		});

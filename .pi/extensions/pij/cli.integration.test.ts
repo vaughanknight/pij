@@ -32,6 +32,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
 import { transcriptDir } from "./core/harness/claude.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
@@ -214,6 +215,16 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(result.out).toContain('pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]');
 	});
 
+	it("report help prints only the report family block", () => {
+		const result = pij(["report", "--help"]);
+		expect(result.code).toBe(0);
+		expect(result.out).toContain('pij report now "<did>" "<next>"');
+		expect(result.out).toContain("pij report state <state>");
+		expect(result.out).toContain("pij report clear");
+		expect(result.out).toContain("pij report verify <node>");
+		expect(result.out).not.toContain("pij spawn");
+	});
+
 	it("top-level help and skill guidance distinguish pull from push delivery", () => {
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
@@ -259,7 +270,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(tableCells("| prereq |")).toEqual([
 			"prereq",
 			"pi extension loaded",
-			'daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: `pij adopt "$TMUX_PANE" --harness <h>`',
+			`daemon (spawn auto-starts it) + self-adopt once using only the exact non-empty current-process pane: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\``,
 			"`pij inbox register` or first `pij inbox --wait` — auto-registers the ambient session as pull-owned",
 		]);
 
@@ -273,8 +284,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			expect(routing).toContain(clause);
 			expect(peer).toContain(clause);
 		}
-		const exactTmuxAdopt =
-			'Tmux self-adopt may use only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.';
+		const exactTmuxAdopt = `Tmux self-adopt may use only the exact non-empty \`$TMUX_PANE\` supplied by the current process: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\`.`;
 		expect(routing).toContain(exactTmuxAdopt);
 		expect(peer).toContain(
 			'Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.',
@@ -293,6 +303,28 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		);
 		expect(skillGuidance).not.toMatch(/E-NOID[^\n]*adopt first/i);
 		expect(skillGuidance).not.toContain("adopt before anything conversational");
+	});
+
+	it("skill guidance routes first-person reports and retires completion self-pause", () => {
+		const skill = readFileSync(join(REPO_ROOT, "skills/pij/SKILL.md"), "utf8");
+		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
+		const node = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/node.md"), "utf8");
+		const watchdog = readFileSync(join(REPO_ROOT, "docs/how/pij-watchdog.md"), "utf8");
+
+		expect(skill).toContain("`report` (`now/question/blocked/state/clear/verify`)");
+		expect(node).toContain("Everything under `report` is a first-person claim about yourself.");
+		expect(node).toContain('pij report question "<what I need from you>"');
+		expect(node).toContain('pij report blocked "<what I am waiting on>"');
+		expect(node).toMatch(/Actively working has no semantic\s+state\s+word/);
+		expect(node).toContain("Inline markdown is supported");
+		expect(node).toContain("newlines are refused");
+
+		const liveGuidance = `${routing}\n${watchdog}`;
+		expect(liveGuidance).toContain("If done, run `pij report state done`");
+		expect(liveGuidance).not.toContain("If done, pause me");
+		expect(liveGuidance).not.toContain("pause the watchdog explicitly");
+		expect(liveGuidance).not.toContain("Genuinely done → `pij watchdog pause");
+		expect(liveGuidance).not.toContain("self-pause (`pij watchdog pause");
 	});
 
 	it("auto-registers an ambient session before E-NOREG and aliases adopt --current", {
@@ -2038,6 +2070,195 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(human.out).not.toContain("pending");
 	});
 
+	it("T001 regression-locks live and pending adopt outcomes before dissolved recovery", () => {
+		const registry = new FsRegistry(HOME);
+		const id = "pij-adopt-live-regression";
+		const harnessSessionId = "native-adopt-live-regression";
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId,
+			paneId: "%70",
+			lifecycle: "bound",
+		});
+
+		const adopted = pij([
+			"adopt",
+			"%71",
+			"--harness",
+			"claude",
+			"--id",
+			id,
+			"--session-id",
+			harnessSessionId,
+		]);
+		expect(adopted.code).toBe(0);
+		expect(adopted.out).toContain(
+			`adopted ${id} ↔ claude session ${harnessSessionId} (pane %71, bound)`,
+		);
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			id,
+			harnessSessionId,
+			paneId: "%71",
+			lifecycle: "bound",
+		});
+
+		const whoami = pij(["whoami"], {
+			PIJ_SESSION_ID: id,
+			TMUX_PANE: "%71",
+			CLAUDE_CODE_SESSION_ID: harnessSessionId,
+		});
+		expect(whoami.code).toBe(0);
+		expect(whoami.out).toContain(id);
+
+		const phoned = pij(["phonehome"], {
+			PIJ_SESSION_ID: id,
+			TMUX_PANE: "%71",
+			CLAUDE_CODE_SESSION_ID: harnessSessionId,
+		});
+		expect(phoned.code).toBe(0);
+		expect(phoned.out).toContain(`phoned home: ${id}`);
+		expect(phoned.out).toContain("(bound)");
+
+		const pending = pij(["adopt", "%72", "--harness", "claude"], {
+			CLAUDE_CODE_SESSION_ID: "",
+		});
+		expect(pending.code).toBe(0);
+		expect(pending.out).toContain("(pane %72, pending)");
+		expect(pending.out).not.toContain("bound");
+	});
+
+	it("T002 refuses to report a dissolved adopt binding that was not persisted", () => {
+		const registry = new FsRegistry(HOME);
+		const id = "pij-adopt-dissolved-honesty";
+		const harnessSessionId = "native-adopt-dissolved-honesty";
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId,
+			paneId: "%73",
+			lifecycle: "bound",
+			systemState: "dead",
+			closeIntent: { actor: "pij-parent", kind: "cli-close" },
+			terminal: { disposition: "requested", evidence: "pane-missing" },
+			deathNoticeLatchedAt: "2026-07-29T00:01:00.000Z",
+			failureReason: "dead",
+		});
+		registry.dissolve(id);
+
+		const adopted = pij([
+			"adopt",
+			"%74",
+			"--harness",
+			"claude",
+			"--id",
+			id,
+			"--session-id",
+			harnessSessionId,
+		]);
+		const persisted = new FsRegistry(HOME).read(id);
+		const bindingPersisted =
+			persisted?.lifecycle === "bound" &&
+			persisted.harnessSessionId === harnessSessionId &&
+			persisted.paneId === "%74";
+		const namedRefusal =
+			adopted.code !== 0 &&
+			/^E-[A-Z]+:/.test(adopted.out) &&
+			adopted.out.includes(`pij revive ${id} --attach "$TMUX_PANE"`);
+		expect(
+			bindingPersisted || namedRefusal,
+			`AC-10: dissolved adopt must persist the reported binding or return a named error with a working revive remediation; exit=${adopted.code}; output=${JSON.stringify(adopted.out)}; persisted=${JSON.stringify(persisted)}`,
+		).toBe(true);
+		if (bindingPersisted) {
+			for (const key of [
+				"closeIntent",
+				"deathNoticeLatchedAt",
+				"failureReason",
+				"systemState",
+				"terminal",
+			]) {
+				expect(persisted).not.toHaveProperty(key);
+			}
+		} else {
+			expect(adopted.out).not.toContain("bound");
+		}
+
+		expect.soft(verifyPersistedAdoptDescriptor(null, "%74")).toEqual({
+			ok: false,
+			reason: "missing",
+		});
+
+		const stillDissolved: SessionDescriptor = {
+			id: "pij-adopt-still-dissolved",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-adopt-still-dissolved"),
+			eventsPath: join(HOME, "pij-adopt-still-dissolved", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			paneId: "%74",
+			lifecycle: "dissolved",
+		};
+		expect
+			.soft(verifyPersistedAdoptDescriptor(stillDissolved, "%74"))
+			.toEqual({ ok: false, reason: "dissolved" });
+
+		const wrongPane: SessionDescriptor = {
+			id: "pij-adopt-wrong-pane",
+			folder: FOLDER,
+			dataDir: join(HOME, "pij-adopt-wrong-pane"),
+			eventsPath: join(HOME, "pij-adopt-wrong-pane", "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			paneId: "%73",
+			lifecycle: "bound",
+		};
+		expect
+			.soft(verifyPersistedAdoptDescriptor(wrongPane, "%74"))
+			.toEqual({ ok: false, reason: "pane-mismatch" });
+	});
+
+	it("T005 whoami directs a dissolved ambient identity to revive", () => {
+		const registry = new FsRegistry(HOME);
+		const id = "pij-whoami-dissolved-remediation";
+		const harnessSessionId = "native-whoami-dissolved-remediation";
+		registry.write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-07-29T00:00:00.000Z",
+			state: "idle",
+			harness: "claude",
+			harnessSessionId,
+			paneId: "%75",
+			lifecycle: "bound",
+		});
+		registry.dissolve(id);
+
+		const whoami = pij(["whoami"], {
+			PIJ_SESSION_ID: "",
+			TMUX_PANE: "%75",
+			CLAUDE_CODE_SESSION_ID: harnessSessionId,
+		});
+		expect(whoami.code).toBe(2);
+		expect(whoami.out).toContain("E-NOID");
+		expect(whoami.out).toContain(`pij revive ${id} --attach "$TMUX_PANE"`);
+		expect(whoami.out).not.toContain("pij adopt");
+	});
+
 	it("adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation", () => {
 		const registry = new FsRegistry(HOME);
 		const opaque = "pij-existing-opaque";
@@ -2520,17 +2741,40 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 	});
 
 	it("state clear round-trips through the real CLI without materializing a second assignment", () => {
-		const set = pij(["state", "set", "pij-B", "hold", "--actor", "pij-A", "--json"]);
+		const caller = { PIJ_SESSION_ID: "pij-B" };
+		const set = pij(["report", "state", "hold", "--json"], caller);
 		expect(set.code).toBe(0);
-		const clear = pij(["state", "clear", "pij-B", "--actor", "pij-A", "--json"]);
+		const clear = pij(["report", "clear", "--json"], caller);
 		expect(clear.code).toBe(0);
 		expect(JSON.parse(clear.out)).toMatchObject({ kind: "state-cleared", peer: "pij-B" });
 		const card = pij(["node", "show", "pij-B", "--json"]);
 		expect(card.code).toBe(0);
 		expect(JSON.parse(card.out)).toMatchObject({ semanticState: null });
-		const repeat = pij(["state", "clear", "pij-B", "--actor", "pij-A"]);
+		const repeat = pij(["report", "clear"], caller);
 		expect(repeat.code).toBe(64);
 		expect(repeat.out).toContain("undeclared");
+	});
+
+	it("report now round-trips state-set → status and projects the durable denorm", () => {
+		const caller = { PIJ_SESSION_ID: "pij-B" };
+		const result = pij(
+			["report", "now", "fixed the CLI", "review the diff", "--state", "ready", "--json"],
+			caller,
+		);
+		expect(result.code).toBe(0);
+		const status = JSON.parse(result.out) as { kind: string; seq: number; refs: string[] };
+		expect(status.kind).toBe("status");
+		expect(status.refs.some((ref) => ref.startsWith("state-set:"))).toBe(true);
+		const events = new FsSpineLog(HOME).read({ peer: "pij-B" });
+		expect(events.slice(-2).map((event) => event.kind)).toEqual(["state-set", "status"]);
+		const card = pij(["node", "show", "pij-B", "--json"]);
+		expect(card.code).toBe(0);
+		expect(JSON.parse(card.out)).toMatchObject({
+			semanticState: "ready",
+			statusPrev: "fixed the CLI",
+			statusNext: "review the diff",
+			statusSeq: status.seq,
+		});
 	});
 });
 

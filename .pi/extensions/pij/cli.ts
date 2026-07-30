@@ -79,6 +79,7 @@ import {
 	applyWaitReceiptSources,
 	type CliDeps,
 	type CliResult,
+	createOrchestrationDesignationAudit,
 	dispatch,
 	finalizeCanary,
 	type ParsedCommand,
@@ -151,10 +152,12 @@ import {
 } from "./core/orchestration/baton.js";
 import {
 	dispatchOrchestration,
+	exitCodeForOrchestration,
 	ORCHESTRATION_USAGE,
 	parseOrchestrationArgs,
 } from "./core/orchestration/cli.js";
 import { PrimeService } from "./core/orchestration/prime.js";
+import { RoleService } from "./core/orchestration/role.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
 import {
@@ -272,9 +275,12 @@ Platform (durable projects + the shared spine log):
   pij spine events [--since N] [--peer <id>] [--project <slug>] [--json]   read the spine (exact filters, exclusive --since)
   pij spine render [--project <slug>] [--json]       regenerate spine/spine.md (--project: filtered view → spine/<slug>.spine.md; stale per-project files are never cleaned up)
   pij task set <node> "<task>" [--project <slug>] [--actor <label>] [--json]   open an assignment and point the node at it
-  pij state set <node> <state> [--assignment <id>] [--refs a,b,…] [--actor <label>] [--json]   declare a per-assignment semantic state
-  pij state clear <node> [--assignment <id>] [--actor <label>] [--json]   remove the current declared semantic state (assignment history remains)
-  pij state verify <node> [--assignment <id>] [--actor <label>] [--json]   verify a done state (stamps verifiedBy — done is a claim until verified)
+  pij report now "<did>" "<next>" [--state <word>] [--note <text>] [--project <slug>] [--json]   record this seat's now/next; optional state writes state-set then status under one lock
+  pij report question "<what I need from you>" [--assignment <id>] [--json]   declare this seat's question with its text
+  pij report blocked "<what I am waiting on>" [--assignment <id>] [--json]   declare this seat blocked with its reason
+  pij report state <state> [--assignment <id>] [--refs a,b,…] [--json]   declare this seat's per-assignment semantic state
+  pij report clear [--assignment <id>] [--json]      remove this seat's current declared semantic state (assignment history remains)
+  pij report verify <node> [--assignment <id>] [--json]   verify a done state (supervisory; stamps this seat as verifiedBy)
   pij node show <id> [--json]                        the full node card: both state axes, badge, assignments, terminal address, context gauges
   pij anomalies [--here] [--project <slug>] [--json]   derived safety queries: axis-disagreement, unverified done, foreign hold-clear (--here: this folder's peers; --project: one project's assignments)
 
@@ -615,6 +621,13 @@ function resolveAmbientIdentity(): Result<AmbientNativeIdentity | null> {
 	});
 }
 
+function dissolvedAmbientRemediation(harness: HarnessKind, id: SessionId): Result<never> {
+	return err(
+		"E-NOID",
+		`current ${harness} session descriptor is dissolved; run pij revive ${id} --attach "$TMUX_PANE" from this exact pane`,
+	);
+}
+
 function resolveAmbientSelf(registry: FsRegistry): Result<SessionId | undefined> {
 	const identity = resolveAmbientIdentity();
 	if (!identity.ok) return identity;
@@ -624,6 +637,10 @@ function resolveAmbientSelf(registry: FsRegistry): Result<SessionId | undefined>
 		identity.value.harnessSessionId,
 	);
 	if (!resolved.ok) return resolved;
+	const durableDescriptor = resolved.value ? registry.read(resolved.value) : null;
+	if (durableDescriptor?.lifecycle === "dissolved") {
+		return dissolvedAmbientRemediation(identity.value.harness, durableDescriptor.id);
+	}
 	return resolveRegisteredAmbientSelf(
 		identity.value,
 		registry.list(),
@@ -694,6 +711,10 @@ function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistra
 			identity.value.harnessSessionId,
 		);
 		if (!resolved.ok) return resolved;
+		const durableDescriptor = resolved.value ? registry.read(resolved.value) : null;
+		if (durableDescriptor?.lifecycle === "dissolved") {
+			return dissolvedAmbientRemediation(identity.value.harness, durableDescriptor.id);
+		}
 		const registered = resolveRegisteredAmbientSelf(
 			identity.value,
 			registry.list(),
@@ -2524,6 +2545,45 @@ function listCopilotStateDirs(root: string): CopilotSessionDir[] {
  *  else pending + `pij phonehome`. `--export` prints ONLY the eval-able
  *  `export PIJ_SESSION_ID=…` block (ergonomic self-resolution sugar — NOT the
  *  telemetry fix; finding 04). */
+function stripDissolvedAdoptRuntime(descriptor: SessionDescriptor): SessionDescriptor {
+	// Deliberate strip-list: fields not named here are durable by default and
+	// survive process-incarnation revival. Phase 1's statusPrev/statusNext/statusAt/
+	// statusSeq and orchestrationRole are durable; stateNote is durable here too
+	// and clears only on assignment or an explicit state clear.
+	const {
+		closeIntent: _closeIntent,
+		compactingAt: _compactingAt,
+		deathNoticeLatchedAt: _deathNoticeLatchedAt,
+		failureReason: _failureReason,
+		initInjectedAt: _initInjectedAt,
+		lastInboxScanAt: _lastInboxScanAt,
+		lastTickAt: _lastTickAt,
+		lastWatchdogFireAt: _lastWatchdogFireAt,
+		plannedHarnessSessionId: _plannedHarnessSessionId,
+		revivePendingAt: _revivePendingAt,
+		spawnId: _spawnId,
+		systemState: _systemState,
+		terminal: _terminal,
+		transcriptsAtSpawn: _transcriptsAtSpawn,
+		...revived
+	} = descriptor;
+	return revived;
+}
+
+type PersistedAdoptVerification =
+	| { readonly ok: true; readonly descriptor: SessionDescriptor }
+	| { readonly ok: false; readonly reason: "missing" | "dissolved" | "pane-mismatch" };
+
+export function verifyPersistedAdoptDescriptor(
+	descriptor: SessionDescriptor | null,
+	pane: string,
+): PersistedAdoptVerification {
+	if (descriptor === null) return { ok: false, reason: "missing" };
+	if (descriptor.lifecycle === "dissolved") return { ok: false, reason: "dissolved" };
+	if (descriptor.paneId !== pane) return { ok: false, reason: "pane-mismatch" };
+	return { ok: true, descriptor };
+}
+
 function runAdopt(argv: readonly string[]): void {
 	// `--export` is not a parseAdoptArgs flag (that parser lives in core/spawn.ts);
 	// strip it here so the rest parses cleanly, then emit the eval block instead of
@@ -2645,6 +2705,9 @@ function runAdopt(argv: readonly string[]): void {
 	}
 	const requestedId = req.value.id ?? paneOccupant?.id;
 	const requestedDescriptor = requestedId ? registry.read(requestedId) : null;
+	const revivesDissolvedDescriptor =
+		requestedDescriptor?.lifecycle === "dissolved" ||
+		(requestedDescriptor === null && durableDescriptor?.lifecycle === "dissolved");
 	let requestedReservation = false;
 	if (requestedId) {
 		const reservation = registry.hasReservation(requestedId);
@@ -2738,11 +2801,13 @@ function runAdopt(argv: readonly string[]): void {
 					paneId: pane,
 					transcriptPath,
 				});
-				try {
-					registry.write(descriptor, "cli");
-				} catch (error) {
-					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
-					process.exit(2);
+				if (!revivesDissolvedDescriptor) {
+					try {
+						registry.write(descriptor, "cli");
+					} catch (error) {
+						process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+						process.exit(2);
+					}
 				}
 			} else {
 				const dataDir = join(pijHome, requestedId);
@@ -2765,11 +2830,13 @@ function runAdopt(argv: readonly string[]): void {
 					process.stderr.write(`${recovered.code}: ${recovered.message}\n`);
 					process.exit(2);
 				}
-				try {
-					registry.write(descriptor, "cli");
-				} catch (error) {
-					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
-					process.exit(2);
+				if (!revivesDissolvedDescriptor) {
+					try {
+						registry.write(descriptor, "cli");
+					} catch (error) {
+						process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+						process.exit(2);
+					}
 				}
 			}
 		} else {
@@ -2816,11 +2883,13 @@ function runAdopt(argv: readonly string[]): void {
 				);
 				if (transcriptPath) descriptor = { ...descriptor, transcriptPath };
 			}
-			try {
-				registry.write(descriptor, "cli");
-			} catch (error) {
-				process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
-				process.exit(2);
+			if (!revivesDissolvedDescriptor) {
+				try {
+					registry.write(descriptor, "cli");
+				} catch (error) {
+					process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+					process.exit(2);
+				}
 			}
 		}
 	} else {
@@ -2851,7 +2920,7 @@ function runAdopt(argv: readonly string[]): void {
 					lifecycle: "pending",
 				};
 			}
-			registry.write(descriptor, "cli");
+			if (!revivesDissolvedDescriptor) registry.write(descriptor, "cli");
 		} else if (requestedId && requestedReservation) {
 			const dataDir = join(pijHome, requestedId);
 			descriptor = buildPendingDescriptor({
@@ -2904,29 +2973,50 @@ function runAdopt(argv: readonly string[]): void {
 		...(windowId !== undefined ? { windowId } : {}),
 		gitCommonDir,
 	};
-	try {
-		registry.write(descriptor, "cli");
-	} catch (error) {
-		process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
-		process.exit(2);
+	if (revivesDissolvedDescriptor) {
+		// Phase 6 only restores the registry incarnation. It does not clear #37
+		// or #36(b), release leech's symlink or roadrunner's two hardlinks, or
+		// transfer the o-prime's obligation to notify those workaround holders.
+		const revived = registry.revive(stripDissolvedAdoptRuntime(descriptor));
+		if (!revived.ok) {
+			process.stderr.write(`${revived.code}: ${revived.message}\n`);
+			process.exit(exitCodeForCore(revived.code));
+		}
+	} else {
+		try {
+			registry.write(descriptor, "cli");
+		} catch (error) {
+			process.stderr.write(`E-AMBIG: ${(error as Error).message}\n`);
+			process.exit(2);
+		}
 	}
-	const pijId = descriptor.id;
-	const finalHarnessSessionId = descriptor.harnessSessionId ?? null;
+	const persisted = verifyPersistedAdoptDescriptor(registry.read(descriptor.id), pane);
+	if (!persisted.ok) {
+		process.stderr.write(
+			`E-NOREG: adopt did not persist ${descriptor.id} on pane ${pane}; run pij revive ${descriptor.id} --attach "$TMUX_PANE" from this exact pane\n`,
+		);
+		process.exit(3);
+	}
+	const persistedDescriptor = persisted.descriptor;
+	const pijId = persistedDescriptor.id;
+	const finalPane = persistedDescriptor.paneId;
+	const finalHarness = persistedDescriptor.harness ?? harness;
+	const finalHarnessSessionId = persistedDescriptor.harnessSessionId ?? null;
 	const finalBindingIssue = finalHarnessSessionId ? undefined : bindingIssue;
 	if (wantExport) {
 		// AC-5: the eval-able block is the ONLY stdout, safe to `eval`.
-		process.stdout.write(`${buildExportLines(descriptor)}\n`);
+		process.stdout.write(`${buildExportLines(persistedDescriptor)}\n`);
 	} else if (req.value.json) {
 		process.stdout.write(
-			`${JSON.stringify({ id: pijId, paneId: pane, harness, harnessSessionId: finalHarnessSessionId, transcriptPath: descriptor.transcriptPath ?? null, lifecycle: descriptor.lifecycle, ...(finalBindingIssue ? { bindingIssue: finalBindingIssue } : {}) })}\n`,
+			`${JSON.stringify({ id: pijId, paneId: finalPane, harness: finalHarness, harnessSessionId: finalHarnessSessionId, transcriptPath: persistedDescriptor.transcriptPath ?? null, lifecycle: persistedDescriptor.lifecycle, ...(finalBindingIssue ? { bindingIssue: finalBindingIssue } : {}) })}\n`,
 		);
-	} else if (finalHarnessSessionId) {
+	} else if (finalHarnessSessionId && persistedDescriptor.lifecycle === "bound") {
 		process.stdout.write(
-			`adopted ${pijId} ↔ ${harness} session ${finalHarnessSessionId} (pane ${pane}, bound) — peers can now: pij send ${pijId} "<text>"\n`,
+			`adopted ${pijId} ↔ ${finalHarness} session ${finalHarnessSessionId} (pane ${finalPane}, bound) — peers can now: pij send ${pijId} "<text>"\n`,
 		);
 	} else {
 		process.stdout.write(
-			`adopted ${pijId} (pane ${pane}, pending) — ${finalBindingIssue ? `${finalBindingIssue}; ` : ""}run \`pij phonehome\` in that pane to confirm the binding\n`,
+			`adopted ${pijId} (pane ${finalPane}, pending) — ${finalBindingIssue ? `${finalBindingIssue}; ` : ""}run \`pij phonehome\` in that pane to confirm the binding\n`,
 		);
 	}
 	process.exit(0);
@@ -3249,6 +3339,12 @@ function runOrchestrationVerb(args: string[]): void {
 	const registry = new FsRegistry(pijHome);
 	const channel = new FsChannel(pijHome);
 	const proc = new NodeProcess();
+	const actor = orchestrationActor(registry);
+	const designationAudit = createOrchestrationDesignationAudit({ ...deps(), registry }, actor);
+	if (!designationAudit.ok) {
+		process.stderr.write(`${designationAudit.code}: ${designationAudit.message}\n`);
+		process.exit(exitCodeForOrchestration(designationAudit.code));
+	}
 	const service = new BatonService({
 		store,
 		notices: new CliBatonNoticeSink(registry, channel, proc),
@@ -3257,9 +3353,11 @@ function runOrchestrationVerb(args: string[]): void {
 	});
 	const result = dispatchOrchestration(parsed.command, {
 		service,
-		actor: orchestrationActor(registry),
+		actor,
 		currentHead: (name) => batonHead(store, name),
 		primeService: new PrimeService(registry),
+		roleService: new RoleService(registry),
+		designationAudit: designationAudit.value,
 		resolveSelf: () => orchestrationSelf(registry),
 	});
 	if (result.stdout) process.stdout.write(`${result.stdout}\n`);
@@ -4016,4 +4114,9 @@ function main(): void {
 	process.exitCode = res.exitCode;
 }
 
-main();
+if (
+	process.argv[1] !== undefined &&
+	realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
+	main();
+}

@@ -406,7 +406,9 @@ describe("axis-disagreement remedy hint (mastodon intake — a confusing alarm b
 			events: [],
 			nowMs: NOW,
 		}).find((x) => x.kind === "axis-disagreement");
-		expect(a?.detail).toContain("pij state set pij-lost waiting|hold|blocked|question");
+		expect(a?.detail).toContain(
+			"ask 'pij-lost' to run: pij report state waiting|hold|blocked|question",
+		);
 		expect(a?.detail).toContain("parked states never flag");
 	});
 });

@@ -78,11 +78,18 @@ export const DESCRIPTOR_FIELD_OWNER = {
 	oldPrime: "cli",
 	parentId: "cli",
 	gitCommonDir: "cli",
-	// #1 — node-truth denorms, stamped by CLI verbs between daemon tick and persist.
+	// Incident #1 (lines 9-11 above) — CLI-stamped node truth must survive a
+	// daemon write replaying its tick-start snapshot.
 	currentAssignment: "cli",
 	currentTask: "cli",
 	planId: "cli",
 	semanticState: "cli",
+	stateNote: "cli",
+	statusPrev: "cli",
+	statusNext: "cli",
+	statusAt: "cli",
+	statusSeq: "cli",
+	orchestrationRole: "cli",
 	// Stamped by spawn/adopt; the daemon's backfill only ever writes it where absent.
 	windowId: "cli",
 	// #2 — terminal truth belongs to the close path, never to a computed tick.

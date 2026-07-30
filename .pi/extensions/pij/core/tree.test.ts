@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ADOPTION_HINT, effectiveParent, planLink, projectSessionForest } from "./tree.js";
+import {
+	ADOPTION_HINT,
+	effectiveParent,
+	isUnadopted,
+	planLink,
+	projectSessionForest,
+} from "./tree.js";
 import type {
 	LivenessVerdict,
 	SessionDescriptor,
@@ -323,6 +329,12 @@ describe("unadopted adoption-axis projection (AC-08 / WS-1)", () => {
 	it("never flags prime — parentless prime is the legal root", () => {
 		const forest = project([entry(desc("pij-prime", { prime: true }))]);
 		expect(forest.roots[0]?.unadopted).toBeUndefined();
+	});
+
+	it("still flags a designated PM when prime is not true (Phase 2 T008 non-change)", () => {
+		const pm = desc("pij-pm", { orchestrationRole: "pm" });
+		expect(isUnadopted(pm)).toBe(true);
+		expect(project([entry(pm)]).roots[0]?.unadopted).toBe(true);
 	});
 
 	it("never flags a parented child, and an orphan is a problem — NOT unadopted", () => {

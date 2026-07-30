@@ -116,6 +116,11 @@ export function applyWorkingTransition(sidecar: WatchdogSidecar): WatchdogSideca
 	return sidecar.pausedBy === "compact" ? withoutPause(sidecar) : sidecar;
 }
 
+/** A self pause applies to finished work, not to a later dispatch or assignment. */
+export function applyNewWorkTransition(sidecar: WatchdogSidecar): WatchdogSidecar {
+	return sidecar.pausedBy === "self" ? withoutPause(sidecar) : sidecar;
+}
+
 /** Shared pure seam used before either local or remote compact delivery. */
 export function applyCompactPause(
 	sidecar: WatchdogSidecar | undefined,
@@ -126,19 +131,38 @@ export function applyCompactPause(
 }
 
 // ─── scheduler ──────────────────────────────────────────────────────────────
+export interface WatchdogScheduleSource {
+	readonly statusAt?: string;
+	readonly startedAt: string;
+}
+
+/** The PM reporting clock, newest-wins. `startedAt` is the floor so a PM that
+ * has never reported still becomes due; null means no timestamp can be proved. */
+export function watchdogScheduleAnchorMs(source: WatchdogScheduleSource): number | null {
+	let newest: number | null = null;
+	for (const stamp of [source.statusAt, source.startedAt]) {
+		if (typeof stamp !== "string") continue;
+		const parsed = Date.parse(stamp);
+		if (!Number.isFinite(parsed)) continue;
+		if (newest === null || parsed > newest) newest = parsed;
+	}
+	return newest;
+}
+
 /**
- * A fire is due one full interval after the newest real activity or delivered
- * fire. Activity re-anchors the schedule; during a freeze each delivered fire
- * becomes the next anchor, so periodic turns continue rather than collapsing.
+ * A fire is due one full interval after the newest supplied schedule anchor or
+ * delivered fire. WatchdogManager supplies PM `statusAt` with a `startedAt`
+ * floor, deliberately removing ordinary activity re-anchoring: a PM that works
+ * without reporting is still nudged. Delivered fires retain the freeze cadence.
  */
 export function isFireDue(
 	cfg: EffectiveWatchdogConfig,
 	lastFireAt: number | null,
-	lastEventAt: number | null,
+	scheduleAnchorAt: number | null,
 	nowMs: number,
 ): boolean {
 	if (!cfg.enabled || cfg.pausedBy !== undefined) return false;
-	const anchors = [lastFireAt, lastEventAt].filter(
+	const anchors = [lastFireAt, scheduleAnchorAt].filter(
 		(value): value is number => value !== null && Number.isFinite(value),
 	);
 	if (anchors.length === 0) return false;
@@ -187,8 +211,8 @@ export interface WatchdogTurnConfig extends EffectiveWatchdogConfig {
 export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurnConfig): string {
 	const turn =
 		`[pij watchdog #${ordinal} for ${id}] Keep going if working. ` +
-		`If done, pause me with \`pij watchdog pause ${id}\`; ` +
-		`resume with \`pij watchdog resume ${id}\`.`;
+		`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. ` +
+		"If done, run `pij report state done`.";
 	return cfg.paneAvailable === false
 		? `${turn} Pane capture unavailable; watching event activity only.`
 		: turn;

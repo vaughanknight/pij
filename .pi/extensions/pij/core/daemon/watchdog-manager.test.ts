@@ -53,6 +53,7 @@ function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescrip
 		harnessSessionId: "native",
 		state: "idle",
 		lastEventAt: STARTED_AT,
+		orchestrationRole: "pm",
 		...over,
 	};
 }
@@ -163,6 +164,73 @@ function intervalSidecar(
 }
 
 describe("WatchdogManager — reconciliation and delivery", () => {
+	it("watches only a seat whose projected orchestration role is exactly pm", () => {
+		const h = managerHarness();
+		for (const id of ["pm", "worker", "unknown", "prime", "conflict"]) {
+			h.store.sidecars.set(id, intervalSidecar(1));
+			h.store.revisions.set(id, 1);
+		}
+		h.setNow(10);
+		h.manager.reconcile([
+			desc({ id: "pm", orchestrationRole: "pm" }),
+			desc({ id: "worker", orchestrationRole: "worker" }),
+			desc({ id: "unknown", orchestrationRole: undefined }),
+			desc({ id: "prime", prime: true, orchestrationRole: undefined }),
+			desc({ id: "conflict", prime: true, orchestrationRole: "pm" }),
+		]);
+
+		expect(h.delivery.outbox.map((entry) => entry.message.to)).toEqual(["pm"]);
+		expect(h.manager.activeCount()).toBe(1);
+	});
+
+	it("nudges a never-reported PM from startedAt even while ordinary activity stays fresh", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-never-reported", intervalSidecar());
+		h.store.revisions.set("pij-never-reported", 1);
+		h.setNow(50);
+		h.manager.reconcile([
+			desc({
+				id: "pij-never-reported",
+				statusAt: undefined,
+				lastEventAt: new Date(40).toISOString(),
+			}),
+		]);
+		h.setNow(100);
+		h.manager.reconcile([
+			desc({
+				id: "pij-never-reported",
+				statusAt: undefined,
+				lastEventAt: new Date(90).toISOString(),
+			}),
+		]);
+
+		expect(h.fires).toEqual([{ id: "pij-never-reported", atMs: 100 }]);
+	});
+
+	it("keys the PM schedule on statusAt, so ordinary activity no longer re-anchors it", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-reporting-pm", intervalSidecar());
+		h.store.revisions.set("pij-reporting-pm", 1);
+		h.setNow(60);
+		h.manager.reconcile([
+			desc({
+				id: "pij-reporting-pm",
+				statusAt: new Date(10).toISOString(),
+				lastEventAt: new Date(50).toISOString(),
+			}),
+		]);
+		h.setNow(110);
+		h.manager.reconcile([
+			desc({
+				id: "pij-reporting-pm",
+				statusAt: new Date(10).toISOString(),
+				lastEventAt: new Date(100).toISOString(),
+			}),
+		]);
+
+		expect(h.fires).toEqual([{ id: "pij-reporting-pm", atMs: 110 }]);
+	});
+
 	it("keeps at most one due tmux watchdog turn in the durable channel", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-tmux", intervalSidecar());
@@ -1308,8 +1376,9 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		// blocks the other clear path entirely.
 		expect(registry.read("root")?.failureReason).toBeUndefined();
 
-		// And the peer must not have been nudged: it was never due, only proven alive.
-		expect(registry.read("root")?.lastWatchdogFireAt).toBeUndefined();
+		// PM scheduling is deliberately status-keyed: fresh ordinary activity can
+		// prove liveness, but it no longer postpones a missing report.
+		expect(registry.read("root")?.lastWatchdogFireAt).toBe(new Date(nowMs).toISOString());
 	});
 
 	it("does not fabricate recovery for a peer whose newest event is older than the interval", () => {

@@ -224,6 +224,8 @@ export const SPINE_KIND_DISPATCH = "dispatch";
 // semantic transition rides in structured refs (`state:<word>`).
 export const SPINE_KIND_TASK_SET = "task-set";
 export const SPINE_KIND_STATE_SET = "state-set";
+/** First-person now/next report consumed by the rail and PM watchdog. */
+export const SPINE_KIND_STATUS = "status";
 /** Removes the current assignment's declaration; this is a transition event,
  * never a member of the closed semantic-state vocabulary. */
 export const SPINE_KIND_STATE_CLEARED = "state-cleared";
@@ -241,6 +243,10 @@ export const SPINE_KIND_SYSTEM_STATE = "system-state";
  *  never journaled — under the write lock + recovery gate like any
  *  platform append. */
 export const SPINE_KIND_NODE_LINKED = "node-linked";
+/** Stored orchestration-role designation history; prev/next carry role words. */
+export const SPINE_KIND_ROLE_SET = "role-set";
+/** Current/retired prime designation history; prev/next carry prime words. */
+export const SPINE_KIND_PRIME_SET = "prime-set";
 
 /** One spine log line. */
 export interface SpineEvent extends AttributionEnvelope {

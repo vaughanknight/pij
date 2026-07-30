@@ -8,7 +8,11 @@ export interface PrimeChange {
 	readonly prime: boolean;
 	readonly oldPrime: boolean;
 	readonly changed: boolean;
+	readonly previousDesignation?: PrimeDesignation;
+	readonly designation?: PrimeDesignation;
 }
+
+export type PrimeDesignation = "prime" | "old-prime";
 
 export class PrimeService {
 	constructor(private readonly registry: RegistryPort) {}
@@ -29,10 +33,20 @@ export class PrimeService {
 		const descriptor = this.registry.read(id);
 		if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
 		const changed = descriptor.prime !== prime || descriptor.oldPrime !== oldPrime;
+		const previousDesignation =
+			descriptor.prime === true ? "prime" : descriptor.oldPrime === true ? "old-prime" : undefined;
+		const designation = prime ? "prime" : oldPrime ? "old-prime" : undefined;
 		// Declares "cli": PrimeService OWNS prime/oldPrime, so its computed values must
 		// win. Without the declaration the write law would take both from disk and the
 		// verb would silently no-op — the inversion the law's own header warns about.
 		if (changed) this.registry.write({ ...descriptor, prime, oldPrime }, "cli");
-		return ok({ id, prime, oldPrime, changed });
+		return ok({
+			id,
+			prime,
+			oldPrime,
+			changed,
+			...(previousDesignation === undefined ? {} : { previousDesignation }),
+			...(designation === undefined ? {} : { designation }),
+		});
 	}
 }

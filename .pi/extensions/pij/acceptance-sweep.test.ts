@@ -37,7 +37,7 @@ import { type CliDeps, type CliResult, dispatch, parseArgs } from "./core/cli.js
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { RuntimeAxisTracker } from "./core/daemon/runtime-axis.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
-import type { SpineEvent } from "./core/platform/types.js";
+import { SPINE_KIND_STATE_SET, type SpineEvent } from "./core/platform/types.js";
 import type { PijMessage, SessionDescriptor } from "./core/types.js";
 
 const NOW = Date.parse("2026-07-17T06:00:00.000Z");
@@ -59,12 +59,12 @@ let opJournal: FsOpJournal;
 let platformWriteLock: FsPlatformWriteLock;
 
 /** Real-fs CliDeps over the temp home; identity + clock faked (R3). */
-function deps(): CliDeps {
+function deps(self = ACTOR): CliDeps {
 	return {
 		registry,
 		eventLogFor: () => ({ append: () => 0, read: () => [], lastSeq: () => 0 }) as never,
 		delivery: { deliver: () => undefined },
-		process: new FakeProcess(999, NOW, { PIJ_SESSION_ID: ACTOR }, [100, 4242, 4243, 4244, 4245]),
+		process: new FakeProcess(999, NOW, { PIJ_SESSION_ID: self }, [100, 4242, 4243, 4244, 4245]),
 		cwd: "/sweep/repo",
 		pijHome: HOME,
 		models: [{ id: "test-model", contextWindow: 200_000 }, { id: "windowless-model" }] as never,
@@ -83,18 +83,41 @@ function deps(): CliDeps {
 	};
 }
 
-function run(argv: readonly string[]): CliResult {
+function run(argv: readonly string[], self = ACTOR): CliResult {
 	const parsed = parseArgs(argv);
 	if (!parsed.ok) {
 		return { stdout: "", stderr: `${parsed.code}: ${parsed.message}`, exitCode: 64 };
 	}
-	return dispatch(parsed.value, deps());
+	return dispatch(parsed.value, deps(self));
 }
 
-function runJson<T>(argv: readonly string[]): T {
-	const r = run(argv);
+function runJson<T>(argv: readonly string[], self = ACTOR): T {
+	const r = run(argv, self);
 	expect(r.exitCode, `${argv.join(" ")} → ${r.stderr}`).toBe(0);
 	return JSON.parse(r.stdout) as T;
+}
+
+function appendHistoricalState(nodeId: string, state: string, actor: string): void {
+	const descriptor = registry.read(nodeId);
+	const assignmentId = descriptor?.currentAssignment;
+	if (assignmentId === undefined) throw new Error(`node '${nodeId}' has no current assignment`);
+	const assignment = assignmentStore.read(assignmentId);
+	if (assignment === null) throw new Error(`assignment '${assignmentId}' is missing`);
+	const appended = spineLog.append({
+		schema_version: 1,
+		ts: new Date(NOW).toISOString(),
+		actor,
+		kind: SPINE_KIND_STATE_SET,
+		refs: [`node:${nodeId}`, `assignment:${assignmentId}`, `state:${state}`],
+		peer: nodeId,
+		project: assignment.projectSlug,
+	});
+	if (!appended.ok) throw new Error(appended.message);
+	const written = assignmentStore.write({
+		...assignment,
+		states: [...assignment.states, appended.value.seq],
+	});
+	if (!written.ok) throw new Error(written.message);
 }
 
 function desc(over: Partial<SessionDescriptor> & { id: string }): SessionDescriptor {
@@ -290,7 +313,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 	it("step 5 · AC-05 — implicit general + explicit assignments, denorms, worst-first badge", () => {
 		// Implicit: a state write on a node with NO assignment materializes
 		// the fixed-id general assignment.
-		expect(run(["state", "set", "pij-stray", "waiting"]).exitCode).toBe(0);
+		expect(run(["report", "state", "waiting"], "pij-stray").exitCode).toBe(0);
 		const general = JSON.parse(
 			readFileSync(join(HOME, "assignments", "asg-general-pij-stray.json"), "utf8"),
 		) as Record<string, unknown>;
@@ -320,9 +343,9 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(worker?.currentAssignment).toBe(assignmentA);
 		expect(worker?.currentTask).toBe("build the sweep");
 		// Declared done on the explicit assignment (the AC-06 claim under test).
-		expect(run(["state", "set", "pij-worker", "done", "--assignment", assignmentA]).exitCode).toBe(
-			0,
-		);
+		expect(
+			run(["report", "state", "done", "--assignment", assignmentA], "pij-worker").exitCode,
+		).toBe(0);
 		expect(registry.read("pij-worker")?.semanticState).toBe("done");
 	});
 
@@ -355,8 +378,8 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(
 			run(["task", "set", "pij-stray", "stray errand", "--project", "fix-the-cli"]).exitCode,
 		).toBe(0);
-		expect(run(["state", "set", "pij-stray", "hold"]).exitCode).toBe(0);
-		expect(run(["state", "set", "pij-stray", "ready", "--actor", "pij-other"]).exitCode).toBe(0);
+		expect(run(["report", "state", "hold"], "pij-stray").exitCode).toBe(0);
+		appendHistoricalState("pij-stray", "ready", "pij-other");
 		// axis-disagreement: open undeclared assignment on a 5h-idle node.
 		registry.write({ ...(registry.read("pij-idler") as SessionDescriptor), systemState: "idle" });
 		expect(run(["task", "set", "pij-idler", "lost dispatch"]).exitCode).toBe(0);
@@ -401,8 +424,8 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(
 			run(["task", "set", "pij-stray", "primeless errand", "--project", "fix-the-cli-2"]).exitCode,
 		).toBe(0);
-		expect(run(["state", "set", "pij-stray", "hold"]).exitCode).toBe(0);
-		expect(run(["state", "set", "pij-stray", "ready", "--actor", "pij-other"]).exitCode).toBe(0);
+		expect(run(["report", "state", "hold"], "pij-stray").exitCode).toBe(0);
+		appendHistoricalState("pij-stray", "ready", "pij-other");
 		const third = sweep.tick();
 		expect(third.alerts).toBe(0);
 		expect(third.dropped).toBe(1);
@@ -412,7 +435,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(fourth.dropped).toBe(0); // dropped transitions latch like delivered ones
 
 		// AC-06 flip: verify stamps verifiedBy and clears the anomaly.
-		expect(run(["state", "verify", "pij-worker", "--assignment", assignmentA]).exitCode).toBe(0);
+		expect(run(["report", "verify", "pij-worker", "--assignment", assignmentA]).exitCode).toBe(0);
 		const card = runJson<{
 			assignments: Array<{ id: string; verified: boolean | null; verifiedBy: string | null }>;
 		}>(["node", "show", "pij-worker", "--json"]);
@@ -561,10 +584,43 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		);
 	});
 
+	it("plan 074 P9 · PM routes automate start/stop reports and governors designate roles", () => {
+		const ready = readFileSync(
+			join(REPO_DOCS, "skills", "pij", "references", "routes", "ready.md"),
+			"utf8",
+		);
+		const pair = readFileSync(
+			join(REPO_DOCS, "skills", "pij", "references", "routes", "pair.md"),
+			"utf8",
+		);
+		const orchestrator = readFileSync(
+			join(REPO_DOCS, "skills", "pij", "references", "prime", "orchestrator.md"),
+			"utf8",
+		);
+		const kickoff = readFileSync(
+			join(REPO_DOCS, "skills", "pij", "references", "prime", "rituals", "kickoff.md"),
+			"utf8",
+		);
+
+		expect(ready).not.toMatch(/--role|orchestration role set/);
+		expect(kickoff).toContain("pij link <id> --parent <o-prime-id> --role pm --json");
+		for (const route of [pair, orchestrator]) {
+			expect(route).toContain("Start-of-work report");
+			expect(route).toContain("Stop-of-work report");
+			expect(route.match(/pij report now/g)).toHaveLength(2);
+		}
+		expect(pair).toContain(
+			"pij report now 'Starting **<phase>**' 'Compile the packet and dispatch the coder'",
+		);
+		expect(pair).toContain(
+			"pij report now 'Approved **<phase>** after `harness checks`' 'Send the [report](<path>) and await the next assignment'",
+		);
+	});
+
 	it("state clear makes a parked assignment undeclared without disturbing its mechanical axis", () => {
 		registry.write({ ...(registry.read("pij-stray") as SessionDescriptor), systemState: "idle" });
-		expect(run(["state", "set", "pij-stray", "hold"]).exitCode).toBe(0);
-		const cleared = runJson<SpineEvent>(["state", "clear", "pij-stray", "--json"]);
+		expect(run(["report", "state", "hold"], "pij-stray").exitCode).toBe(0);
+		const cleared = runJson<SpineEvent>(["report", "clear", "--json"], "pij-stray");
 		expect(cleared).toMatchObject({ kind: "state-cleared", peer: "pij-stray" });
 		const card = runJson<{ semanticState: string | null; systemState: string | null }>([
 			"node",

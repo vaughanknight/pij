@@ -5,11 +5,22 @@
 // pure logic modules (seq/events/state/commands/discovery/message/receipts)
 // all build on these.
 
+import type { StoredOrchestrationRole } from "./orchestration/role.js";
+
 // ─── identity ────────────────────────────────────────────────────────────
 export type SessionId = string;
 
 /** Role a session plays in the parent/worker loop (rides in PIJ_ROLE). */
 export type Role = "parent" | "worker";
+
+type Exact<Left, Right> =
+	(<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+		? true
+		: false;
+type Assert<Condition extends true> = Condition;
+
+/** Compiled invariant: widening Role silently breaks PIJ_ROLE boot narrowing. */
+export type RoleExactnessInvariant = Assert<Exact<Role, "parent" | "worker">>;
 
 /** Which coding-agent harness a session runs under (Plan 019 control plane).
  *  The transport-selection contract (`HarnessKind` → inbox|sendkeys) lives in
@@ -316,9 +327,25 @@ export interface SessionDescriptor {
 	/** Opaque plan identifier explicitly attested by `pij spawn --plan-id` or
 	 * `pij attest --plan-id`. Absent means unattested; never inferred from paths. */
 	readonly planId?: string;
-	/** Denormalized semantic state of the current assignment (`pij state set`)
+	/** Denormalized semantic state of the current assignment (`pij report state`)
 	 *  — agent-declared truth, externally owned (never daemon-clobbered). */
 	readonly semanticState?: SemanticState;
+	/** Durable explanation attached to the current semantic state. */
+	readonly stateNote?: {
+		readonly text: string;
+		readonly state: SemanticState;
+		readonly at: string;
+	};
+	/** Previous projected status word. */
+	readonly statusPrev?: string;
+	/** Next projected status word. */
+	readonly statusNext?: string;
+	/** ISO-8601 timestamp of the projected status transition. */
+	readonly statusAt?: string;
+	/** Monotonic sequence of the projected status transition. */
+	readonly statusSeq?: number;
+	/** Stored partial orchestration role; prime remains a separate descriptor flag. */
+	readonly orchestrationRole?: StoredOrchestrationRole;
 	/** Mechanical axis verdict — computed and owned by the DAEMON only (WS-5
 	 *  exception): deliberately NOT in MUTABLE_EXTERNALLY_OWNED_FIELDS. */
 	readonly systemState?: SystemState;

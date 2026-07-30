@@ -281,6 +281,17 @@ function unreadBodies(channel: FsChannel, id: string): readonly string[] {
 	return unread.value.map((message) => message.body);
 }
 
+function markUnreadWatchdogTurnsRead(channel: FsChannel, id: string): number {
+	const unread = channel.listUnread(id);
+	if (!unread.ok) throw new Error(unread.message);
+	const watchdogTurns = unread.value.filter((message) => message.body.startsWith("[pij watchdog"));
+	for (const message of watchdogTurns) {
+		const marked = channel.markRead(id, message.messageId);
+		if (!marked.ok) throw new Error(marked.message);
+	}
+	return watchdogTurns.length;
+}
+
 function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 	return withIsolatedHome("default", (home) =>
 		withScratchPane("default", (pane) => {
@@ -293,6 +304,7 @@ function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 					lifecycle: "bound",
 					paneId: pane.paneId,
 					harnessSessionId: "scratch-default",
+					orchestrationRole: "pm",
 				}),
 			);
 			assertThat(store.read("tmux-default") === undefined, "default proof unexpectedly has a sidecar");
@@ -308,25 +320,34 @@ function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 				channel,
 			);
 			daemon.tick();
+			const queuedTurns = unreadBodies(channel, "tmux-default").filter((body) =>
+				body.startsWith("[pij watchdog"),
+			);
+			const firedAt = registry.read("tmux-default")?.lastWatchdogFireAt;
+			assertThat(sent.length === 0, "default fire bypassed the durable channel");
+			assertThat(queuedTurns.length === 1, `expected one queued default fire, got ${queuedTurns.length}`);
+			assertThat(firedAt === new Date(nowMs).toISOString(), "default fire was not descriptor-stamped");
+			daemon.tick();
 			daemon.dispose();
 			sleepSync(25);
 			const body = sent[0] ?? "";
 			const paneText = pane.capture();
-			const firedAt = registry.read("tmux-default")?.lastWatchdogFireAt;
-			assertThat(sent.length === 1, `expected one default fire, got ${sent.length}`);
-			assertThat(firedAt === new Date(nowMs).toISOString(), "default fire was not descriptor-stamped");
+			assertThat(sent.length === 1, `expected one delivered default fire, got ${sent.length}`);
 			assertThat(body.includes("[pij watchdog #1 for tmux-default]"), "turn ordinal/id missing");
-			assertThat(body.includes("pij watchdog pause tmux-default"), "pause command missing");
-			assertThat(body.includes("pij watchdog resume tmux-default"), "resume command missing");
-			assertThat(body.includes("If done, pause me"), "pause etiquette missing");
-			assertThat(paneText.includes("pij watchdog pause tmux-default"), "turn did not reach scratch pane");
+			assertThat(body.includes("pij report state done"), "done report command missing");
+			assertThat(!body.includes("pij watchdog pause"), "retired pause direction returned");
+			assertThat(!body.includes("pij watchdog resume"), "retired resume direction returned");
+			assertThat(!body.includes("If done, pause me"), "retired pause etiquette returned");
+			assertThat(paneText.includes("pij report state done"), "done report did not reach scratch pane");
+			assertThat(!paneText.includes("pij watchdog pause"), "retired pause direction reached scratch pane");
 			return {
 				isolatedHome: HOME_PATTERN,
 				intervalMs: DEFAULT_WATCHDOG_INTERVAL_MS,
 				sidecarAbsent: true,
-				fires: sent.length,
+				queuedFires: queuedTurns.length,
+				deliveredFires: sent.length,
 				lastWatchdogFireAt: firedAt ?? null,
-				paneEvidence: "pause/resume commands and etiquette visible in scratch pane",
+				paneEvidence: "progress and done report commands visible in scratch pane; self-pause absent",
 			};
 		}),
 	);
@@ -336,7 +357,7 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 	return withIsolatedHome("pause", (home) => {
 		const registry = new FsRegistry(home);
 		const channel = new FsChannel(home);
-		const target = descriptor(home, "pause-target");
+		const target = descriptor(home, "pause-target", { orchestrationRole: "pm" });
 		registry.write(target);
 		let nowMs = DEFAULT_WATCHDOG_INTERVAL_MS;
 		const daemon = new Daemon(
@@ -346,14 +367,14 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 			channel,
 		);
 		daemon.tick();
-		const firstCount = unreadBodies(channel, target.id).filter((body) => body.startsWith("[pij watchdog")).length;
+		const firstCount = markUnreadWatchdogTurnsRead(channel, target.id);
 		assertThat(firstCount === 1, "initial paneless fire missing");
 
 		requireCli(home, ["watchdog", "pause", target.id, "--json"], target.id);
 		nowMs += DEFAULT_WATCHDOG_INTERVAL_MS;
 		daemon.tick();
 		const pausedCount = unreadBodies(channel, target.id).filter((body) => body.startsWith("[pij watchdog")).length;
-		assertThat(pausedCount === firstCount, "self pause allowed another fire");
+		assertThat(pausedCount === 0, "self pause allowed another fire");
 
 		const pausedState = parseJsonObject(requireCli(home, ["state", target.id, "--json"], target.id).stdout);
 		const pausedList = parseJsonRows(requireCli(home, ["list", "--json"], target.id).stdout);
@@ -365,9 +386,13 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 		const pausedWatchdogRow = pausedWatchdogList.find((row) => row.id === target.id);
 		const expectedPausedProjection = {
 			enabled: true,
+			globallyDisabled: false,
+			relay: false,
 			intervalMs: DEFAULT_WATCHDOG_INTERVAL_MS,
 			pausedBy: "self",
 			exempt: false,
+			exemptUntilMs: null,
+			exemptRemainingMs: null,
 			lastFireAt: new Date(DEFAULT_WATCHDOG_INTERVAL_MS).toISOString(),
 			watchers: [],
 		};
@@ -385,7 +410,7 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 		requireCli(home, ["watchdog", "resume", target.id, "--json"], target.id);
 		daemon.tick();
 		const resumedCount = unreadBodies(channel, target.id).filter((body) => body.startsWith("[pij watchdog")).length;
-		assertThat(resumedCount === firstCount + 1, "resume did not restart firing");
+		assertThat(resumedCount === 1, "resume did not restart firing");
 		const resumedState = parseJsonObject(requireCli(home, ["state", target.id, "--json"], target.id).stdout);
 		const resumedList = parseJsonRows(requireCli(home, ["list", "--json"], target.id).stdout);
 		const resumedWatchdogList = parseJsonRows(
@@ -396,9 +421,13 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 		const resumedWatchdogRow = resumedWatchdogList.find((row) => row.id === target.id);
 		const expectedResumedProjection = {
 			enabled: true,
+			globallyDisabled: false,
+			relay: false,
 			intervalMs: DEFAULT_WATCHDOG_INTERVAL_MS,
 			pausedBy: null,
 			exempt: false,
+			exemptUntilMs: null,
+			exemptRemainingMs: null,
 			lastFireAt: new Date(nowMs).toISOString(),
 			watchers: [],
 		};
@@ -500,6 +529,7 @@ function runCompactBothPaths(): Readonly<Record<string, unknown>> {
 					lifecycle: "bound",
 					paneId: pane.paneId,
 					harnessSessionId: "scratch-compact",
+					orchestrationRole: "pm",
 				}),
 			);
 			store.write("compact-owner", { pausedBy: "exempt", pausedAtMs: 0 });
@@ -595,6 +625,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 					lifecycle: "bound",
 					paneId: pane.paneId,
 					harnessSessionId: "scratch-frozen",
+					orchestrationRole: "pm",
 					spawnedBy: "owner",
 				}),
 			);
@@ -620,11 +651,21 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 					body.startsWith("watchdog stalled:"),
 				).length,
 			});
+			const queuedFireCount = (): number =>
+				unreadBodies(channel, "frozen-peer").filter((body) => body.startsWith("[pij watchdog"))
+					.length;
 			const firstEpisodeNotices = stallNoticeCounts();
-			assertThat(fires.length === 4, `blind scheduling skipped a fire: ${fires.length}`);
+			const firstEpisodeFires = fires.length + queuedFireCount();
+			assertThat(firstEpisodeFires === 4, `blind scheduling skipped a fire: ${firstEpisodeFires}`);
 			assertThat(registry.read("frozen-peer")?.failureReason === "stalled", "frozen peer not stamped stalled");
 			assertThat(firstEpisodeNotices.owner === 1, `owner stalled notices=${firstEpisodeNotices.owner}`);
 			assertThat(firstEpisodeNotices.watcher === 1, `watcher stalled notices=${firstEpisodeNotices.watcher}`);
+
+			// The fourth fire is queued on the fourth scheduler tick. Deliver it
+			// before driving the watchdog-attributed lifecycle pair.
+			nowMs = 401;
+			daemon.tick();
+			assertThat(fires.length === 4, `fourth queued fire was not delivered: ${fires.length}`);
 
 			// A real harness briefly goes busy for the injected watchdog turn, then
 			// returns idle. Drive that typed, watchdog-attributed pair explicitly;
@@ -635,7 +676,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			const activityAnchor = afterFinalFire.lastEventAt;
 			assertThat(activityAnchor === EPOCH, "watchdog fires moved descriptor activity");
 			registry.write({ ...afterFinalFire, state: "working" });
-			nowMs = 401;
+			nowMs = 402;
 			daemon.tick();
 			const afterAttributedWork = registry.read("frozen-peer");
 			assertThat(afterAttributedWork !== null, "frozen peer disappeared during attribution");
@@ -645,7 +686,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			assertThat(workEdgeNotices.owner === 1, `attributed working edge owner notices=${workEdgeNotices.owner}`);
 			assertThat(workEdgeNotices.watcher === 1, `attributed working edge watcher notices=${workEdgeNotices.watcher}`);
 			registry.write({ ...afterAttributedWork, state: "idle" });
-			nowMs = 402;
+			nowMs = 403;
 			daemon.tick();
 			const afterAttributedIdle = registry.read("frozen-peer");
 			assertThat(afterAttributedIdle !== null, "frozen peer disappeared on attributed idle return");
@@ -657,7 +698,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 
 			registry.write({ ...afterAttributedIdle, state: "working" });
 			pane.write("REAL RECOVERY OUTPUT");
-			nowMs = 403;
+			nowMs = 404;
 			daemon.tick();
 			const recovered = registry.read("frozen-peer");
 			assertThat(recovered !== null, "frozen peer disappeared after recovery");
@@ -669,9 +710,13 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			const recoveredFailureReason = recovered.failureReason ?? null;
 			const recoveredLastEventAt = recovered.lastEventAt ?? null;
 
-			for (nowMs of [503, 603, 703, 803]) daemon.tick();
+			for (nowMs of [504, 604, 704, 804]) daemon.tick();
 			const secondEpisodeNotices = stallNoticeCounts();
-			assertThat(fires.length === 8, `second silent episode skipped a fire: ${fires.length}`);
+			const secondEpisodeFires = fires.length + queuedFireCount();
+			assertThat(
+				secondEpisodeFires === 8,
+				`second silent episode skipped a fire: ${secondEpisodeFires}`,
+			);
 			assertThat(
 				registry.read("frozen-peer")?.failureReason === "stalled",
 				"second silent episode did not restamp stalled",
@@ -686,7 +731,11 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			);
 			daemon.dispose();
 			return {
-				fires: fires.length,
+				fires: {
+					scheduled: secondEpisodeFires,
+					delivered: fires.length,
+					queued: queuedFireCount(),
+				},
 				firstEpisodeNotices,
 				attributedWorking: {
 					failureReason: afterAttributedWork.failureReason ?? null,
@@ -712,7 +761,7 @@ function rootStallEvidence(): Readonly<Record<string, unknown>> {
 		const registry = new FsRegistry(home);
 		const channel = new FsChannel(home);
 		new FsWatchdogStore(home).write("root", { intervalMs: 1 });
-		registry.write(descriptor(home, "root"));
+		registry.write(descriptor(home, "root", { orchestrationRole: "pm" }));
 		let nowMs = 1;
 		const daemon = new Daemon(
 			home,
@@ -720,7 +769,10 @@ function rootStallEvidence(): Readonly<Record<string, unknown>> {
 			registry,
 			channel,
 		);
-		for (nowMs of [1, 2, 3]) daemon.tick();
+		for (nowMs of [1, 2, 3]) {
+			daemon.tick();
+			markUnreadWatchdogTurnsRead(channel, "root");
+		}
 		const failureReason = registry.read("root")?.failureReason ?? null;
 		assertThat(failureReason === "stalled", "unowned root was not stamped stalled");
 		daemon.dispose();
@@ -782,7 +834,13 @@ function assertCaptureContent(
 	assertThat(tailBytes.byteLength > maxBytes, `${label} did not exercise byte truncation`);
 	assertThat(
 		((tailBytes[naiveStart] ?? 0) >> 6) === 2,
-		`${label} byte limit did not bisect a multibyte fixture code point`,
+		`${label} byte limit did not bisect a multibyte fixture code point (bytes=${[
+			tailBytes[naiveStart - 1],
+			tailBytes[naiveStart],
+			tailBytes[naiveStart + 1],
+		].join(",")}, context=${JSON.stringify(
+			tailBytes.subarray(Math.max(0, naiveStart - 20), naiveStart + 20).toString("utf8"),
+		)})`,
 	);
 	assertThat(captured === expected, `${label} was not the exact bounded pane tail`);
 	assertThat(lineCount(captured) <= maxLines, `${label} line cap exceeded`);
@@ -832,6 +890,7 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 					lifecycle: "bound",
 					paneId: pane.paneId,
 					harnessSessionId: "scratch-capture",
+					orchestrationRole: "pm",
 				}),
 			);
 			store.write("capture-peer", {
@@ -846,9 +905,14 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 				],
 			});
 			let nowMs = 100;
+			// Keep the post-delivery tail's byte boundary inside a multibyte run,
+			// independent of ordinary watchdog copy changes.
+			const utf8BoundaryTail = "€".repeat(300);
 			const daemon = new Daemon(
 				home,
-				daemonPorts(home, () => nowMs, (id) => (id === pane.paneId ? pane : undefined), (_id, text) => pane.write(`${text}.`)),
+				daemonPorts(home, () => nowMs, (id) => (id === pane.paneId ? pane : undefined), (_id, text) =>
+					pane.write(`${text}.${utf8BoundaryTail}`),
+				),
 				registry,
 				channel,
 			);
@@ -875,13 +939,13 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 			);
 
 			sleepSync(25);
+			nowMs = 200;
+			daemon.tick();
 			const anomalySource = pane.capture();
 			assertThat(
 				orderedTailMarkers.every((marker) => anomalySource.includes(marker)),
 				"watchdog turn displaced deterministic anomaly markers",
 			);
-			nowMs = 200;
-			daemon.tick();
 			const anomalyNotice = unreadBodies(channel, "anomaly-watcher")[0];
 			assertThat(anomalyNotice !== undefined && anomalyNotice.startsWith("watchdog suspect:"), "anomaly capture missing");
 			const anomalyPath = pointerFromNotice(anomalyNotice);
@@ -935,7 +999,7 @@ function runSpawnExemption(): Readonly<Record<string, unknown>> {
 		const registry = new FsRegistry(home);
 		const channel = new FsChannel(home);
 		const store = new FsWatchdogStore(home);
-		let nowMs = 50;
+		let nowMs = Date.now();
 		proofSession(
 			home,
 			"exempt-child",
@@ -946,8 +1010,11 @@ function runSpawnExemption(): Readonly<Record<string, unknown>> {
 			() => nowMs,
 			{ isIdle: () => true, inject: () => {}, compact: () => {}, control: () => true },
 		);
+		const exemptChild = registry.read("exempt-child");
+		assertThat(exemptChild !== null, "exempt child descriptor missing");
+		registry.write({ ...exemptChild, orchestrationRole: "pm" });
 		assertThat(store.read("exempt-child")?.pausedBy === "exempt", "child boot did not persist exemption");
-		nowMs = DEFAULT_WATCHDOG_INTERVAL_MS * 3;
+		nowMs += DEFAULT_WATCHDOG_INTERVAL_MS * 2;
 		const daemon = new Daemon(
 			home,
 			daemonPorts(home, () => nowMs, () => undefined, () => {}),
@@ -994,14 +1061,16 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 					lifecycle: "bound",
 					paneId: pane.paneId,
 					harnessSessionId: "scratch-delivery",
+					orchestrationRole: "pm",
 				}),
 			);
-			registry.write(descriptor(home, "pi-peer"));
+			registry.write(descriptor(home, "pi-peer", { orchestrationRole: "pm" }));
 			registry.write(
 				descriptor(home, "prebind-peer", {
 					harness: "claude",
 					lifecycle: "ready",
 					paneId: pane.paneId,
+					orchestrationRole: "pm",
 				}),
 			);
 			store.write("tmux-peer", { intervalMs: 1 });
@@ -1033,10 +1102,25 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 			assertThat(firstPiTurns.length === 1, "pi peer did not receive durable inbox turn");
 			assertThat(firstPiTurns[0]?.includes("Pane capture unavailable"), "pi turn faked pane availability");
 			assertThat(unreadBodies(channel, "prebind-peer").length === 0, "pre-bind peer received inbox turn");
+			let consumedPiTurns = 0;
+			consumedPiTurns += markUnreadWatchdogTurnsRead(channel, "pi-peer");
+			assertThat(
+				consumedPiTurns === 1,
+				"pi peer first watchdog turn was not consumable",
+			);
 			daemon.tick();
 			assertThat(tmuxTurns.length === 1, `tmux queued delivery count=${tmuxTurns.length}`);
 
-			for (nowMs of [2, 3]) daemon.tick();
+			for (nowMs of [2, 3]) {
+				daemon.tick();
+				if (nowMs === 2) {
+					consumedPiTurns += markUnreadWatchdogTurnsRead(channel, "pi-peer");
+					assertThat(
+						consumedPiTurns === 2,
+						"pi peer second watchdog turn was not consumable",
+					);
+				}
+			}
 			const splitNotice = unreadBodies(channel, "split-watcher").find((body) =>
 				body.startsWith("watchdog stalled:"),
 			);
@@ -1047,11 +1131,16 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 				"paneless watcher unexpectedly wrote a capture file",
 			);
 			assertThat(registry.read("prebind-peer")?.lastWatchdogFireAt === undefined, "pre-bind peer was fired");
+			const unreadPiTurns = unreadBodies(channel, "pi-peer").filter((body) =>
+				body.startsWith("[pij watchdog"),
+			).length;
 			daemon.dispose();
 			return {
 				isolatedHome: HOME_PATTERN,
 				tmuxSendTextTurns: tmuxTurns.length,
-				piInboxTurns: unreadBodies(channel, "pi-peer").filter((body) => body.startsWith("[pij watchdog")).length,
+				piInboxTurns: consumedPiTurns + unreadPiTurns,
+				piConsumedTurns: consumedPiTurns,
+				piUnreadTurns: unreadPiTurns,
 				piEventOnlyFailureReason: registry.read("pi-peer")?.failureReason ?? null,
 				panelessNotice: splitNotice ?? null,
 				panelessCaptureDirectoryExists: false,
@@ -1074,6 +1163,7 @@ function runSmokeComposite(): Readonly<Record<string, unknown>> {
 					lifecycle: "bound",
 					paneId: pane.paneId,
 					harnessSessionId: "scratch-smoke",
+					orchestrationRole: "pm",
 				}),
 			);
 			store.write("smoke-owner", { pausedBy: "exempt", pausedAtMs: 0 });
@@ -1100,6 +1190,10 @@ function runSmokeComposite(): Readonly<Record<string, unknown>> {
 			);
 			daemon.tick();
 			assertThat(turns.length === 1, "smoke queued first fire missing");
+			const firstTurn = turns[0] ?? "";
+			assertThat(firstTurn.includes("pij report state done"), "smoke done report command missing");
+			assertThat(!firstTurn.includes("pij watchdog pause"), "smoke retired pause command returned");
+			assertThat(!firstTurn.includes("If done, pause me"), "smoke retired pause etiquette returned");
 			requireCli(home, ["watchdog", "pause", "smoke-peer", "--json"], "smoke-owner");
 			nowMs = 200;
 			daemon.tick();
@@ -1144,6 +1238,8 @@ function runSmokeComposite(): Readonly<Record<string, unknown>> {
 				isolatedHome: HOME_PATTERN,
 				spawnedScratchPane: true,
 				firstFire: true,
+				doneReportGuidance: true,
+				retiredPauseGuidanceAbsent: true,
 				pauseSuppressedFire: true,
 				resumeFired: true,
 				compactPausedBeforeInjection: true,

@@ -65,6 +65,10 @@ const RAW_WRITE_ALLOWLIST = new Map<string, string>([
 		"core/orchestration/prime.ts",
 		"prime designation deliberately overwrites the externally-owned prime flags",
 	],
+	[
+		"core/orchestration/role.ts",
+		'RoleService owns orchestrationRole and must declare "cli" so the write law keeps its computed value; mirrors prime.ts',
+	],
 	["telegram/index.ts", "bridge peer publishes its own fresh descriptor at boot"],
 	["cli.ts", "spawn/adopt/revive publish brand-new descriptors; reviewed in plan 071"],
 	["core/cli.ts", "reviewed in plan 071 review round 1"],

@@ -43,7 +43,7 @@ Repeated values OR within one axis; activity, liveness, and lifecycle axes AND.
 **Structure**
 
 ```bash
-pij link <child> --parent <parent> [--json]
+pij link <child> --parent <parent> [--role <pm|worker>] [--json]
 pij link <child> --root [--json]
 ```
 
@@ -52,7 +52,9 @@ root `null`, and an absent field keeps the legacy `spawnedBy` fallback.
 `spawnedBy` remains close authorization; `link` never changes it or other
 descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
 Use adopt `--parent <id>` to establish structure at registration; spawn records
-the caller as both structural parent and close owner automatically.
+the caller as both structural parent and close owner automatically. When a
+governor gives the seat work, it also passes `--role pm|worker` on `link`; a seat
+never infers or self-declares its own role.
 
 **Spawn**
 

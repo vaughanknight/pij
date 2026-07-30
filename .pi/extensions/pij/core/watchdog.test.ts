@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WatchdogSidecar } from "./types.js";
 import {
 	applyCompactPause,
+	applyNewWorkTransition,
 	applyWatchdogExemption,
 	applyWatchdogResume,
 	applyWorkingTransition,
@@ -14,6 +15,7 @@ import {
 	parseWatchdogInterval,
 	reconcileWatchdogExemption,
 	shouldCapture,
+	watchdogScheduleAnchorMs,
 } from "./watchdog.js";
 
 describe("effectiveWatchdog and pause tiers", () => {
@@ -37,6 +39,25 @@ describe("effectiveWatchdog and pause tiers", () => {
 		const sidecar: WatchdogSidecar = { pausedBy: "self", pausedAtMs: 10 };
 		expect(applyWorkingTransition(sidecar)).toBe(sidecar);
 		expect(applyWatchdogResume(sidecar)).toEqual({});
+	});
+
+	it("re-arms only a self pause when new work is assigned", () => {
+		expect(
+			applyNewWorkTransition({
+				enabled: false,
+				intervalMs: 60_000,
+				pausedBy: "self",
+				pausedAtMs: 10,
+			}),
+		).toEqual({ enabled: false, intervalMs: 60_000 });
+
+		for (const sidecar of [
+			{ enabled: false },
+			{ pausedBy: "compact" as const, pausedAtMs: 10 },
+			{ pausedBy: "exempt" as const, pausedAtMs: 10, exemptUntilMs: 100 },
+		]) {
+			expect(applyNewWorkTransition(sidecar)).toBe(sidecar);
+		}
 	});
 
 	it("auto-resumes a compact pause on the next observed working transition", () => {
@@ -125,6 +146,27 @@ describe("isFireDue", () => {
 			effectiveWatchdog({ intervalMs: 1, pausedBy: "exempt" }),
 		];
 		for (const cfg of blocked) expect(isFireDue(cfg, 0, 0, 10_000)).toBe(false);
+	});
+});
+
+describe("watchdogScheduleAnchorMs", () => {
+	it("uses statusAt when present and startedAt as the never-null floor", () => {
+		expect(
+			watchdogScheduleAnchorMs({
+				statusAt: "1970-01-01T00:00:00.090Z",
+				startedAt: "1970-01-01T00:00:00.000Z",
+			}),
+		).toBe(90);
+		expect(
+			watchdogScheduleAnchorMs({
+				statusAt: undefined,
+				startedAt: "1970-01-01T00:00:00.000Z",
+			}),
+		).toBe(0);
+	});
+
+	it("returns null only when no scheduling timestamp can be proved", () => {
+		expect(watchdogScheduleAnchorMs({ statusAt: "invalid", startedAt: "also-invalid" })).toBeNull();
 	});
 });
 
@@ -217,10 +259,12 @@ describe("buildWatchdogTurn", () => {
 			paneAvailable: true,
 		});
 		expect(body).toMatchInlineSnapshot(
-			'"[pij watchdog #2 for pij-frozen-peer] Keep going if working. If done, pause me with `pij watchdog pause pij-frozen-peer`; resume with `pij watchdog resume pij-frozen-peer`."',
+			'"[pij watchdog #2 for pij-frozen-peer] Keep going if working. Report in one call with `pij report now "<what I just did>" "<what\'s next>"`. If done, run `pij report state done`."',
 		);
-		expect(body).toContain("pij watchdog pause");
-		expect(body).toContain("pij watchdog resume");
+		expect(body).toContain("pij report state done");
+		expect(body).not.toContain("pij watchdog pause");
+		expect(body).not.toContain("pij watchdog resume");
+		expect(body).toContain('pij report now "<what I just did>" "<what\'s next>"');
 		expect(body.length).toBeLessThanOrEqual(400);
 	});
 

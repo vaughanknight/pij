@@ -18,6 +18,7 @@
 //  • foreign-hold-clear — a `hold` whose NEXT declared state comes from a
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
+import { hasRoleConflict } from "./orchestration/role.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
 	SPINE_KIND_STATE_CLEARED,
@@ -36,6 +37,7 @@ export type AnomalyKind =
 	| "axis-disagreement"
 	| "unverified-done"
 	| "foreign-hold-clear"
+	| "role-conflict"
 	| "spawn-limbo"
 	| "inbox-poll-stalled"
 	| "delivered-unacked-stale"
@@ -208,6 +210,16 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const byNode = new Map<string, SessionDescriptor>();
 	for (const descriptor of inputs.descriptors) byNode.set(descriptor.id, descriptor);
 
+	for (const descriptor of inputs.descriptors) {
+		if (!hasRoleConflict(descriptor)) continue;
+		out.push({
+			kind: "role-conflict",
+			nodeId: descriptor.id,
+			detail: `'${descriptor.id}' is prime but also stores orchestrationRole='${descriptor.orchestrationRole}' — prime wins projection, but the conflicting writable source must be cleared`,
+			evidence: [],
+		});
+	}
+
 	const dispatchStaleMs = inputs.dispatchStaleMs ?? DEFAULT_DISPATCH_UNACKED_STALE_MS;
 	for (const dispatch of inputs.dispatches ?? []) {
 		if (dispatch.state !== "delivered-unacked") continue;
@@ -374,7 +386,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			kind: "axis-disagreement",
 			nodeId: assignment.nodeId,
 			assignmentId: assignment.id,
-			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, declare it: pij state set ${assignment.nodeId} waiting|hold|blocked|question (parked states never flag)`,
+			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, ask '${assignment.nodeId}' to run: pij report state waiting|hold|blocked|question (parked states never flag)`,
 			evidence,
 		});
 	}

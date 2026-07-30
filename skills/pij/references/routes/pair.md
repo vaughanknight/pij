@@ -38,6 +38,31 @@ by hand.
 6. **Cluster isolation** — a prompt learning writes ONLY to the cluster it was tagged to,
    never cross-cluster.
 
+## Required PM report steps
+
+Everything under `report` is a first-person claim about yourself. These are
+route steps, not reminders:
+
+1. **Start-of-work report** — run before the first phase mutation or dispatch:
+
+   ```bash
+   pij report now 'Starting **<phase>**' 'Compile the packet and dispatch the coder'
+   ```
+
+2. **Stop-of-work report** — run after the final gate/verdict is persisted and
+   before sending the completion pointer or waiting:
+
+   ```bash
+   pij report now 'Approved **<phase>** after `harness checks`' 'Send the [report](<path>) and await the next assignment'
+   ```
+
+Inline markdown works in both text fields (`` `code` ``, `**bold**`,
+`[links]`); newlines are refused, so block markdown is not supported. Use
+`pij report question "<what I need from you>"` for a human answer and
+`pij report blocked "<what I am waiting on>"` for an external dependency.
+Actively working has no semantic state word: report progress without inventing
+`working`. Completion is `pij report state done`, never a watchdog self-pause.
+
 ## Completion interrupt — compact EARLY
 
 Treat a terminal completion or verdict as an interrupt, not a step to remember at redispatch:
@@ -127,6 +152,10 @@ exact ids with `pij models`, § C4):
 - **Canary-verify before trusting (§ C2)** — a ready-ping is NOT proof; a wrong `--model` is
   accepted silently then 400s on first inference. Verify footer + no-400 before first use —
   for *provided* peers too.
+- **Designate from above at placement.** After identity/parentage is proved, the
+  orchestrator runs `pij link <peer-id> --parent <orchestrator-id> --role worker --json`
+  for spawned and provided fleet workers. The call is idempotent when spawn
+  already recorded the parent. A seat never infers or self-declares its role.
 - **Reuse across phases — compact, never close (§ C3)** — the same coder + reviewer carry the
   whole run, clean-slate each phase.
 - **Heal** — a dead/stale peer, or one that fails its canary, is closed and re-spawned on next

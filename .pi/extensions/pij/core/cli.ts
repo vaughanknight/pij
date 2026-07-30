@@ -33,6 +33,13 @@ import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { type BriefAckReceipt, briefAckBody } from "./message.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
+import {
+	type DesignationAuditPort,
+	DesignationAuditService,
+	projectOrchestrationRole,
+	RoleService,
+	type StoredOrchestrationRole,
+} from "./orchestration/role.js";
 import { canonicalAllocationJson } from "./platform/allocation.js";
 import {
 	appendStateRef,
@@ -68,12 +75,15 @@ import {
 	type Dispatch,
 	type Fence,
 	generalAssignmentId,
+	isValidProjectSlug,
 	SPINE_KIND_DISPATCH,
 	SPINE_KIND_FENCE,
 	SPINE_KIND_NODE_LINKED,
+	SPINE_KIND_ROLE_SET,
 	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
+	SPINE_KIND_STATUS,
 	SPINE_KIND_TASK_SET,
 	type SpineEvent,
 	type SpineEventDraft,
@@ -120,6 +130,7 @@ import {
 	type WatchdogSidecar,
 } from "./types.js";
 import {
+	applyNewWorkTransition,
 	applyWatchdogExemption,
 	applyWatchdogResume,
 	DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
@@ -133,6 +144,14 @@ import {
 export interface WatchdogCliStore {
 	read(id: SessionId): WatchdogSidecar | undefined;
 	write(id: SessionId, sidecar: WatchdogSidecar): void;
+}
+
+function rearmWatchdogForNewWork(store: WatchdogCliStore | undefined, id: SessionId): void {
+	if (!store) return;
+	const current = store.read(id);
+	if (!current) return;
+	const next = applyNewWorkTransition(current);
+	if (next !== current) store.write(id, next);
 }
 
 /** The machine-wide watchdog switch (Plan 056), read/written by
@@ -298,6 +317,7 @@ export type ParsedCommand =
 			readonly verb: "link";
 			readonly childId: SessionId;
 			readonly parentId: SessionId | null;
+			readonly role?: StoredOrchestrationRole;
 			readonly actor?: string;
 			readonly json: boolean;
 	  }
@@ -414,26 +434,31 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| {
+			readonly verb: "report-now";
+			readonly did: string;
+			readonly next: string;
+			readonly state?: SemanticState;
+			readonly note?: string;
+			readonly projectSlug?: string;
+			readonly json: boolean;
+	  }
+	| {
 			readonly verb: "state-set";
-			readonly node: SessionId;
 			readonly state: SemanticState;
+			readonly note?: string;
 			readonly assignmentId?: string;
 			readonly refs: readonly string[];
-			readonly actor?: string;
 			readonly json: boolean;
 	  }
 	| {
 			readonly verb: "state-verify";
 			readonly node: SessionId;
 			readonly assignmentId?: string;
-			readonly actor?: string;
 			readonly json: boolean;
 	  }
 	| {
 			readonly verb: "state-clear";
-			readonly node: SessionId;
 			readonly assignmentId?: string;
-			readonly actor?: string;
 			readonly json: boolean;
 	  }
 	| { readonly verb: "node-show"; readonly id: SessionId; readonly json: boolean }
@@ -636,16 +661,14 @@ const BOOLEAN_FLAGS = new Set([
 ]);
 const REPEATABLE_FLAGS = new Set(["to", "activity", "liveness", "lifecycle"]);
 
-/** Family verbs (plan 054): the tables below key on "<verb> <subcommand>".
- *  `state` is deliberately NOT here — it is BOTH a positional verb
- *  (`pij state <id>`) and a family verb (P2: `state set|verify`), routed by
- *  the exact-subcommand special case in parseArgs. */
+/** Family verbs: the tables below key on "<verb> <subcommand>". */
 const FAMILY_SUBCOMMANDS: Record<string, string> = {
 	project: "create|list|show|set",
 	stream: "create|close",
 	fence: "set|show",
 	spine: "append|events|render",
 	task: "set",
+	report: "now|question|blocked|state|clear|verify",
 	node: "show",
 };
 
@@ -654,12 +677,46 @@ const FAMILY_SUBCOMMANDS: Record<string, string> = {
  *  boolean `list --prime`. Existing verbs keep the global BOOLEAN_FLAGS set. */
 const VALUED_FLAG_OVERRIDES: Record<string, ReadonlySet<string>> = {
 	"project set": new Set(["prime"]),
+	"report now": new Set(["state"]),
 };
 
 function booleanFlagsFor(key: string): ReadonlySet<string> {
 	const valued = VALUED_FLAG_OVERRIDES[key];
 	if (!valued) return BOOLEAN_FLAGS;
 	return new Set([...BOOLEAN_FLAGS].filter((flag) => !valued.has(flag)));
+}
+
+const REPORT_TEXT_MAX_LENGTH = 280;
+const REPORT_NOTE_MAX_LENGTH = 200;
+
+function normalizeReportText(label: "did" | "next", input: string): Result<string> {
+	if (/[\r\n\u2028\u2029]/.test(input)) {
+		return err("E-ARG", `report ${label} must be one line`);
+	}
+	const normalized = input.trim().replace(/\s+/g, " ");
+	if (normalized === "") return err("E-ARG", `report ${label} must not be empty`);
+	if (normalized.length > REPORT_TEXT_MAX_LENGTH) {
+		return err(
+			"E-ARG",
+			`report ${label} exceeds the ${REPORT_TEXT_MAX_LENGTH}-character limit after whitespace collapsing`,
+		);
+	}
+	return ok(normalized);
+}
+
+function normalizeReportNote(input: string): Result<string> {
+	if (/[\r\n\u2028\u2029]/.test(input)) {
+		return err("E-ARG", "report note must be one line");
+	}
+	const normalized = input.trim().replace(/\s+/g, " ");
+	if (normalized === "") return err("E-ARG", "report note must not be empty");
+	if (normalized.length > REPORT_NOTE_MAX_LENGTH) {
+		return err(
+			"E-ARG",
+			`report note exceeds the ${REPORT_NOTE_MAX_LENGTH}-character limit after whitespace collapsing`,
+		);
+	}
+	return ok(normalized);
 }
 
 /** Flags each verb accepts — anything else is E-ARG. */
@@ -679,7 +736,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	phonehome: new Set(["json"]),
 	attest: new Set(["plan-id", "json"]),
 	tree: new Set(["global", "activity", "liveness", "lifecycle", "all", "json"]),
-	link: new Set(["parent", "root", "actor", "json"]),
+	link: new Set(["parent", "root", "role", "actor", "json"]),
 	path: new Set(["events", "state", "dir", "json"]),
 	// --slug is not in BOOLEAN_FLAGS, so lex values it (no override row needed).
 	"project create": new Set(["slug", "actor", "json"]),
@@ -696,9 +753,12 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	// plan 054 P2 (T005). --project/--assignment/--refs are not in
 	// BOOLEAN_FLAGS, so lex values them without VALUED_FLAG_OVERRIDES rows.
 	"task set": new Set(["project", "actor", "json"]),
-	"state set": new Set(["assignment", "refs", "actor", "json"]),
-	"state verify": new Set(["assignment", "actor", "json"]),
-	"state clear": new Set(["assignment", "actor", "json"]),
+	"report now": new Set(["state", "note", "project", "json"]),
+	"report question": new Set(["assignment", "json"]),
+	"report blocked": new Set(["assignment", "json"]),
+	"report state": new Set(["assignment", "refs", "json"]),
+	"report clear": new Set(["assignment", "json"]),
+	"report verify": new Set(["assignment", "json"]),
 	"node show": new Set(["json"]),
 	anomalies: new Set(["json", "here", "project"]),
 	watchdog: new Set(["capture", "max-lines", "max-bytes", "json"]),
@@ -732,9 +792,12 @@ const MAX_POS: Record<string, number> = {
 	"spine events": 0,
 	"spine render": 0,
 	"task set": 2,
-	"state set": 2,
-	"state verify": 1,
-	"state clear": 1,
+	"report now": 2,
+	"report question": 1,
+	"report blocked": 1,
+	"report state": 1,
+	"report clear": 0,
+	"report verify": 1,
 	"node show": 1,
 	anomalies: 0,
 	watchdog: 3, // action + id + duration (for `interval <id> <duration>`)
@@ -745,19 +808,12 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (verb === undefined)
 		return err(
 			"E-ARG",
-			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|node|anomalies> …",
+			"usage: pij <whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|report|node|anomalies> …",
 		);
 	// Family verbs route "<verb> <subcommand>" into the same strict tables —
 	// no bin interception (Finding 06); everything downstream keys on `key`.
 	let key = verb;
 	let args = argv.slice(1);
-	// `state` dual routing (plan 054 P2): the family route engages ONLY on the
-	// exact reserved subcommands, so the legacy positional card
-	// (`pij state <id>`) keeps working for every other first argument.
-	if (verb === "state" && (argv[1] === "set" || argv[1] === "verify" || argv[1] === "clear")) {
-		key = `state ${argv[1]}`;
-		args = argv.slice(2);
-	}
 	const subcommands = key === verb ? FAMILY_SUBCOMMANDS[verb] : undefined;
 	if (subcommands !== undefined) {
 		const sub = argv[1];
@@ -772,7 +828,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 	if (!allowed)
 		return err(
 			"E-ARG",
-			`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|node|anomalies)`,
+			`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|attest|tree|link|path|project|stream|fence|spine|task|report|node|anomalies)`,
 		);
 	// Valence is per verb key (plan 054): the same flag can be boolean for one
 	// verb and valued for another; existing verbs see the unchanged global set.
@@ -1171,11 +1227,17 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if ((parentId === undefined) === !root) {
 				return err("E-ARG", "pij link requires exactly one of --parent <parent> or --root");
 			}
+			if (flags.role === true) return err("E-ARG", "--role needs pm|worker");
+			const role = typeof flags.role === "string" ? flags.role : undefined;
+			if (role !== undefined && role !== "pm" && role !== "worker") {
+				return err("E-ARG", `unknown orchestration role '${role}' (expected pm|worker)`);
+			}
 			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
 			return ok({
 				verb: "link",
 				childId,
 				parentId: root ? null : (parentId as string),
+				...(role === undefined ? {} : { role }),
 				actor: typeof flags.actor === "string" ? flags.actor : undefined,
 				json,
 			});
@@ -1322,21 +1384,79 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				json,
 			});
 		}
-		case "state set": {
-			const node = pos[0];
-			const state = pos[1];
-			if (node === undefined || state === undefined)
+		case "report now": {
+			const didInput = pos[0];
+			const nextInput = pos[1];
+			if (didInput === undefined || nextInput === undefined) {
 				return err(
 					"E-ARG",
-					"usage: pij state set <node> <state> [--assignment <id>] [--refs <r,s>]",
+					'usage: pij report now "<did>" "<next>" [--state <word>] [--project <slug>]',
 				);
-			// WS-6: the semantic vocabulary is human-ruled and closed — an
-			// unknown word is a user error naming the whole vocabulary.
-			if (!isSemanticState(state))
+			}
+			const did = normalizeReportText("did", didInput);
+			if (!did.ok) return did;
+			const next = normalizeReportText("next", nextInput);
+			if (!next.ok) return next;
+			if (flags.state === true || flags.state === "") {
+				return err("E-ARG", "--state takes a semantic state");
+			}
+			const state = typeof flags.state === "string" ? flags.state : undefined;
+			if (state !== undefined && !isSemanticState(state)) {
 				return err("E-ARG", `invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})`);
+			}
+			if (flags.note === true) return err("E-ARG", "--note takes text");
+			const noteInput = typeof flags.note === "string" ? flags.note : undefined;
+			if (noteInput !== undefined && state !== "question" && state !== "blocked") {
+				return err("E-ARG", "--note is permitted only with --state question or --state blocked");
+			}
+			const note = noteInput === undefined ? undefined : normalizeReportNote(noteInput);
+			if (note !== undefined && !note.ok) return note;
+			if (flags.project === true || flags.project === "") {
+				return err("E-ARG", "--project takes a project slug");
+			}
+			const projectSlug = typeof flags.project === "string" ? flags.project : undefined;
+			if (projectSlug !== undefined && !isValidProjectSlug(projectSlug)) {
+				return err("E-ARG", `invalid project slug '${projectSlug}' (use lowercase kebab-case)`);
+			}
+			return ok({
+				verb: "report-now",
+				did: did.value,
+				next: next.value,
+				state,
+				note: note?.value,
+				projectSlug,
+				json,
+			});
+		}
+		case "report question":
+		case "report blocked": {
+			const state: "question" | "blocked" = key === "report question" ? "question" : "blocked";
+			const noteInput = pos[0];
+			if (noteInput === undefined) {
+				return err("E-ARG", `usage: pij report ${state} "<text>" [--assignment <id>]`);
+			}
+			const note = normalizeReportNote(noteInput);
+			if (!note.ok) return note;
+			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
+			return ok({
+				verb: "state-set",
+				state,
+				note: note.value,
+				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
+				refs: [],
+				json,
+			});
+		}
+		case "report state": {
+			const state = pos[0];
+			if (state === undefined) {
+				return err("E-ARG", "usage: pij report state <state> [--assignment <id>] [--refs <r,s>]");
+			}
+			if (!isSemanticState(state)) {
+				return err("E-ARG", `invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})`);
+			}
 			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
 			if (flags.refs === true) return err("E-ARG", "--refs takes a comma-separated list");
-			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
 			const stateRefs =
 				typeof flags.refs === "string"
 					? flags.refs
@@ -1346,39 +1466,30 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 					: [];
 			return ok({
 				verb: "state-set",
-				node,
 				state,
 				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
 				refs: stateRefs,
-				actor: typeof flags.actor === "string" ? flags.actor : undefined,
 				json,
 			});
 		}
-		case "state verify": {
+		case "report verify": {
 			const node = pos[0];
-			if (node === undefined)
-				return err("E-ARG", "usage: pij state verify <node> [--assignment <id>]");
+			if (node === undefined) {
+				return err("E-ARG", "usage: pij report verify <node> [--assignment <id>]");
+			}
 			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
-			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
 			return ok({
 				verb: "state-verify",
 				node,
 				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
-				actor: typeof flags.actor === "string" ? flags.actor : undefined,
 				json,
 			});
 		}
-		case "state clear": {
-			const node = pos[0];
-			if (node === undefined)
-				return err("E-ARG", "usage: pij state clear <node> [--assignment <id>]");
+		case "report clear": {
 			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
-			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
 			return ok({
 				verb: "state-clear",
-				node,
 				assignmentId: typeof flags.assignment === "string" ? flags.assignment : undefined,
-				actor: typeof flags.actor === "string" ? flags.actor : undefined,
 				json,
 			});
 		}
@@ -1460,7 +1571,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 		default:
 			return err(
 				"E-ARG",
-				`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|node|anomalies)`,
+				`unknown command '${verb}' (whoami|list|sessions|models|send|dispatch|ack|canary|tail|state|watchdog|phonehome|tree|link|path|project|spine|task|report|node|anomalies)`,
 			);
 	}
 }
@@ -1558,6 +1669,27 @@ function selfId(deps: CliDeps): Result<SessionId> {
 	return resolveSelf(undefined, filterByFolder(deps.registry.list(), deps.cwd), pane);
 }
 
+/** First-person reports require a registry-backed seat. PIJ_SESSION_ID can
+ * assert an arbitrary id for compatibility elsewhere; a durable report cannot
+ * be attributed to that assertion unless the descriptor resolves here. */
+function readReportingDescriptor(deps: CliDeps, id: SessionId): Result<SessionDescriptor> {
+	const descriptor = deps.registry.read(id);
+	if (!descriptor) return err("E-NOID", `reporting seat '${id}' is not registered`);
+	if (descriptor.lifecycle === "dissolved") {
+		return err(
+			"E-NOID",
+			`reporting seat '${id}' is dissolved; run pij revive ${id} before reporting`,
+		);
+	}
+	return ok(descriptor);
+}
+
+function resolveReportingSelf(deps: CliDeps): Result<SessionDescriptor> {
+	const resolved = selfId(deps);
+	if (!resolved.ok) return err("E-NOID", `cannot resolve reporting seat (${resolved.message})`);
+	return readReportingDescriptor(deps, resolved.value);
+}
+
 // ─── platform attribution + ports (plan 054) ────────────────────────────────
 /** WRITE-verb attribution (convention F2): `--actor <label>` asserts and WINS
  *  even over a resolvable self; otherwise the resolved self attributes;
@@ -1641,6 +1773,26 @@ function recoverPlatformWrites(ports: PlatformWritePorts): Result<unknown> {
 		ports.allocationStore,
 		ports.fenceStore,
 		ports.dispatchStore,
+	);
+}
+
+/** Production composition seam for `pij orchestration role|prime`.
+ * Attribution is resolved by the bin before this port is created, so dispatch
+ * can refuse missing platform wiring before any descriptor write. */
+export function createOrchestrationDesignationAudit(
+	deps: CliDeps,
+	actor: string,
+): Result<DesignationAuditPort> {
+	const ports = platformWritePorts(deps);
+	if (!ports.ok) return ports;
+	return ok(
+		new DesignationAuditService({
+			spineLog: ports.value.spineLog,
+			platformWriteLock: ports.value.platformWriteLock,
+			recover: () => recoverPlatformWrites(ports.value),
+			now: () => deps.process.now(),
+			actor,
+		}),
 	);
 }
 
@@ -2082,16 +2234,23 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							),
 							prime: d.prime === true,
 							oldPrime: d.oldPrime === true,
-							// Assignment denorm (plan 054 P2): CLI-owned fields already
-							// stamped onto the descriptor by `task set`/`state set` via
-							// denormDescriptor, so projecting them here is a field read —
+							orchestrationRole: projectOrchestrationRole(d),
+							// Assignment/state denorm: CLI-owned fields already stamped
+							// by `task set` and the `report` family via denormDescriptor,
+							// so projecting them here is a field read —
 							// NO spine read, NO assignmentStore join, NO per-row fan-out.
 							// A UI otherwise pays N × `node show` to answer "what is this
-							// seat doing" (measured: 179 rows ≈ 80s). Deliberately NOT
+							// seat doing/asking" (measured: 179 rows ≈ 80s). Deliberately NOT
 							// `badge`, which is computed from every OPEN assignment's
-							// chain state and cannot be derived from these two.
+							// chain state and cannot be derived from these fields.
 							currentAssignment: d.currentAssignment ?? null,
 							currentTask: d.currentTask ?? null,
+							semanticState: d.semanticState ?? null,
+							stateNote: d.stateNote ?? null,
+							statusPrev: d.statusPrev ?? null,
+							statusNext: d.statusNext ?? null,
+							statusAt: d.statusAt ?? null,
+							statusSeq: d.statusSeq ?? null,
 							planId: d.planId ?? null,
 							// Present ONLY under --badge. Absent (not null) when not
 							// asked for, so a consumer can tell "not requested" from
@@ -2115,7 +2274,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			const lines = rows.map(
 				({ d, live, degraded }) =>
-					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : " "} ${pad(degraded ? "DEGRADED" : activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundProvider ?? "—", 18)} ${pad(d.boundModel ?? "—", 28)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
+					`${d.id === self ? "★ " : "  "}${pad(d.id, 14)} ${d.prime === true ? "P" : d.oldPrime === true ? "O" : d.orchestrationRole === "pm" ? "M" : " "} ${pad(degraded ? "DEGRADED" : activityOf(d.state, d.lastEventAt != null), 8)} ${pad(live, 7)} ${pad(d.boundProvider ?? "—", 18)} ${pad(d.boundModel ?? "—", 28)} ${pad(d.effort ?? "—", 7)} ${d.folder}`,
 			);
 			const header = `  ${pad("id", 14)} P ${pad("activity", 8)} ${pad("liveness", 7)} ${pad("provider", 18)} ${pad("model", 28)} ${pad("effort", 7)} folder`;
 			return okOut(
@@ -2226,6 +2385,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// unwired stores = legacy deps-sites, which keep the descriptor-only
 			// behavior byte-for-byte (the bin always wires).
 			const wired = platformWritePorts(deps);
+			if (cmd.role !== undefined && !wired.ok) {
+				return fail(wired.code, wired.message, cmd.json);
+			}
 			let attribution: { actor: string; provenance: ActorProvenance } | undefined;
 			if (wired.ok) {
 				const resolved = resolveActor(cmd.actor, deps);
@@ -2236,11 +2398,19 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// "cli": `pij link` OWNS parentId. Without the declaration the write law
 			// would take it from disk and the verb would silently no-op.
 			if (changed) deps.registry.write(planned.value, "cli");
+			const roleChange =
+				cmd.role === undefined
+					? undefined
+					: new RoleService(deps.registry).set(cmd.childId, cmd.role);
+			if (roleChange && !roleChange.ok) {
+				return fail(roleChange.code, roleChange.message, cmd.json);
+			}
 			// prev = the tree truth the link replaces (effectiveParent, the notion
 			// every projection uses), not the raw parentId override — a spawned
 			// child's first re-parent honestly records "was under its spawner".
 			const prevParent = current === null ? null : effectiveParent(current);
 			let spineSeq: number | null | undefined;
+			let roleSpineSeq: number | null | undefined;
 			let spineWarning: string | undefined;
 			if (wired.ok && attribution !== undefined) {
 				const ports = wired.value;
@@ -2248,33 +2418,61 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				// V-05 uncoupled append under lock + recovery gate (runtime-axis
 				// shape): descriptor truth already landed and never waits on the
 				// spine; a failed append is surfaced, never forged past.
-				const locked = ports.platformWriteLock.withPlatformWriteLock((): Result<number> => {
-					const recovered = recoverPlatformWrites(ports);
-					if (!recovered.ok) return recovered;
-					const draft = buildSpineEvent({
-						nowMs: now,
-						actor: att.actor,
-						kind: SPINE_KIND_NODE_LINKED,
-						refs: [
-							`node:${cmd.childId}`,
-							...(cmd.parentId === null ? [] : [`parent:${cmd.parentId}`]),
-						],
-						peer: cmd.childId,
-						...(prevParent === null ? {} : { prev: prevParent }),
-						...(cmd.parentId === null ? {} : { next: cmd.parentId }),
-						actorProvenance: att.provenance,
-					});
-					if (!draft.ok) return draft;
-					const event = ports.spineLog.append(draft.value);
-					if (!event.ok) return event;
-					return ok(event.value.seq);
-				});
-				const outcome: Result<number> = locked.ok ? locked.value : locked;
+				const locked = ports.platformWriteLock.withPlatformWriteLock(
+					(): Result<{ readonly nodeSeq: number; readonly roleSeq?: number }> => {
+						const recovered = recoverPlatformWrites(ports);
+						if (!recovered.ok) return recovered;
+						const draft = buildSpineEvent({
+							nowMs: now,
+							actor: att.actor,
+							kind: SPINE_KIND_NODE_LINKED,
+							refs: [
+								`node:${cmd.childId}`,
+								...(cmd.parentId === null ? [] : [`parent:${cmd.parentId}`]),
+							],
+							peer: cmd.childId,
+							...(prevParent === null ? {} : { prev: prevParent }),
+							...(cmd.parentId === null ? {} : { next: cmd.parentId }),
+							actorProvenance: att.provenance,
+						});
+						if (!draft.ok) return draft;
+						const event = ports.spineLog.append(draft.value);
+						if (!event.ok) return event;
+						let roleSeq: number | undefined;
+						if (roleChange?.ok && roleChange.value.changed) {
+							const roleDraft = buildSpineEvent({
+								nowMs: now,
+								actor: att.actor,
+								kind: SPINE_KIND_ROLE_SET,
+								refs: [`node:${cmd.childId}`],
+								peer: cmd.childId,
+								...(roleChange.value.previousRole === undefined
+									? {}
+									: { prev: roleChange.value.previousRole }),
+								next: roleChange.value.role,
+								actorProvenance: att.provenance,
+							});
+							if (!roleDraft.ok) return roleDraft;
+							const roleEvent = ports.spineLog.append(roleDraft.value);
+							if (!roleEvent.ok) return roleEvent;
+							roleSeq = roleEvent.value.seq;
+						}
+						return ok({
+							nodeSeq: event.value.seq,
+							...(roleSeq === undefined ? {} : { roleSeq }),
+						});
+					},
+				);
+				const outcome: Result<{ readonly nodeSeq: number; readonly roleSeq?: number }> = locked.ok
+					? locked.value
+					: locked;
 				if (outcome.ok) {
-					spineSeq = outcome.value;
+					spineSeq = outcome.value.nodeSeq;
+					roleSpineSeq = outcome.value.roleSeq;
 				} else {
 					spineSeq = null;
-					spineWarning = `node-linked spine event not recorded: ${outcome.code}: ${outcome.message}`;
+					if (roleChange?.ok && roleChange.value.changed) roleSpineSeq = null;
+					spineWarning = `link spine event not fully recorded: ${outcome.code}: ${outcome.message}`;
 				}
 			}
 			if (cmd.json) {
@@ -2283,7 +2481,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						id: cmd.childId,
 						parentId: cmd.parentId,
 						changed,
+						...(roleChange?.ok
+							? {
+									role: roleChange.value.role,
+									roleChanged: roleChange.value.changed,
+								}
+							: {}),
 						...(spineSeq !== undefined ? { spineSeq } : {}),
+						...(roleSpineSeq !== undefined ? { roleSpineSeq } : {}),
 						...(spineWarning !== undefined ? { spineWarning } : {}),
 					}),
 				);
@@ -2292,7 +2497,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				cmd.parentId === null
 					? `${changed ? "linked" : "unchanged"} ${cmd.childId} → root`
 					: `${changed ? "linked" : "unchanged"} ${cmd.childId} → ${cmd.parentId}`;
-			return okOut(spineWarning === undefined ? human : `${human}  (WARNING: ${spineWarning})`);
+			const designated =
+				roleChange?.ok === true ? `${human} · role ${roleChange.value.role}` : human;
+			return okOut(
+				spineWarning === undefined ? designated : `${designated}  (WARNING: ${spineWarning})`,
+			);
 		}
 		case "send": {
 			const s = selfId(deps);
@@ -2635,6 +2844,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "spine-events":
 		case "spine-render":
 		case "task-set":
+		case "report-now":
 		case "state-set":
 		case "state-verify":
 		case "state-clear":
@@ -2751,6 +2961,7 @@ type PlatformCommand = Extract<
 			| "spine-events"
 			| "spine-render"
 			| "task-set"
+			| "report-now"
 			| "state-set"
 			| "state-verify"
 			| "state-clear"
@@ -2759,9 +2970,8 @@ type PlatformCommand = Extract<
 	}
 >;
 
-/** Post-clear descriptor denorm for the assignment verbs (plan 054 P2): the
- *  UI-facing currentAssignment/currentTask/semanticState cache on the node
- *  descriptor. The registry is NOT platform state — the spine/record are
+/** Descriptor denorm for assignment, semantic-state, note, and status fields.
+ *  The registry is NOT platform state — the spine/record are
  *  truth and have already landed when this runs — so a failure here must be
  *  reported honestly (WAS-set framing at the call site) but can never forge
  *  or lose platform history. Reads the LATEST descriptor so a concurrent
@@ -2776,27 +2986,54 @@ function denormDescriptor(
 	deps: CliDeps,
 	nodeId: SessionId,
 	fields: {
-		readonly currentAssignment: string;
-		readonly currentTask: string;
-		readonly semanticState: SemanticState | undefined;
+		readonly assignment?: {
+			readonly currentAssignment: string;
+			readonly currentTask: string;
+			readonly semanticState: SemanticState | undefined;
+			readonly stateNote: SessionDescriptor["stateNote"];
+		};
+		readonly status?: {
+			readonly prev: string;
+			readonly next: string;
+			readonly at: string;
+			readonly seq: number;
+		};
 	},
 ): Result<void> {
 	try {
 		const latest = deps.registry.read(nodeId);
 		if (!latest) return err("E-NOID", `node descriptor '${nodeId}' vanished before the denorm`);
-		// A fresh assignment has no declared state yet: a stale semanticState
-		// from the previous assignment must not survive the pointer swap.
-		const { semanticState: _stale, ...rest } = latest;
+		let nextDescriptor = latest;
+		if (fields.assignment !== undefined) {
+			// Assignment swaps and state clears remove semanticState/stateNote;
+			// statusPrev/statusNext/statusAt/statusSeq deliberately survive them.
+			const { semanticState: _staleState, stateNote: _staleNote, ...rest } = nextDescriptor;
+			nextDescriptor = {
+				...rest,
+				currentAssignment: fields.assignment.currentAssignment,
+				currentTask: fields.assignment.currentTask,
+				...(fields.assignment.semanticState === undefined
+					? {}
+					: { semanticState: fields.assignment.semanticState }),
+				...(fields.assignment.stateNote === undefined
+					? {}
+					: { stateNote: fields.assignment.stateNote }),
+			};
+		}
+		if (fields.status !== undefined) {
+			nextDescriptor = {
+				...nextDescriptor,
+				statusPrev: fields.status.prev,
+				statusNext: fields.status.next,
+				statusAt: fields.status.at,
+				statusSeq: fields.status.seq,
+			};
+		}
 		// writeExact, deliberately: this both OWNS the node-truth denorms and must be
-		// able to CLEAR a stale `semanticState` on an assignment swap. A merging write
-		// cannot clear a contested field (by design), and `latest` was re-read one line
-		// above, so exact semantics are safe here — the re-read IS the merge.
-		deps.registry.writeExact({
-			...rest,
-			currentAssignment: fields.currentAssignment,
-			currentTask: fields.currentTask,
-			...(fields.semanticState === undefined ? {} : { semanticState: fields.semanticState }),
-		});
+		// able to CLEAR stale `semanticState`/`stateNote` on an assignment swap. A
+		// merging write cannot clear a contested field (by design), and `latest` was
+		// re-read one line above, so exact semantics are safe here — the re-read IS the merge.
+		deps.registry.writeExact(nextDescriptor);
 		return ok(undefined);
 	} catch (error) {
 		return err("E-NOREG", `the node descriptor could not be updated (${String(error)})`);
@@ -2836,6 +3073,99 @@ function resolveTargetAssignment(
 	}
 	const generalId = generalAssignmentId(node.id);
 	return ok({ id: generalId, existing: assignmentStore.read(generalId) ?? undefined });
+}
+
+function resolveCurrentReportAssignment(
+	assignmentStore: AssignmentStorePort,
+	node: SessionDescriptor,
+): Result<Assignment | undefined> {
+	if (node.currentAssignment === undefined) return ok(undefined);
+	const target = resolveTargetAssignment(assignmentStore, node, node.currentAssignment);
+	if (!target.ok) return target;
+	return ok(target.value.existing);
+}
+
+function setSemanticStateWithinLock(
+	cmd: Extract<PlatformCommand, { readonly verb: "state-set" }>,
+	deps: CliDeps,
+	ports: PlatformWritePorts,
+	node: SessionDescriptor,
+	attribution: { readonly actor: string; readonly provenance: ActorProvenance },
+	now: number,
+): Result<{ readonly event: SpineEvent; readonly record: Assignment }> {
+	const target = resolveTargetAssignment(ports.assignmentStore, node, cmd.assignmentId);
+	if (!target.ok) return target;
+	const materialized = materializeGeneralIfMissing(target.value.existing, {
+		nodeId: node.id,
+		actor: attribution.actor,
+		nowMs: now,
+	});
+	if (!materialized.ok) return materialized;
+	const record = materialized.value;
+	const draft = buildSpineEvent({
+		nowMs: now,
+		actor: attribution.actor,
+		kind: SPINE_KIND_STATE_SET,
+		refs: [
+			`node:${node.id}`,
+			`assignment:${record.id}`,
+			...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
+			`state:${cmd.state}`,
+			...cmd.refs,
+		],
+		peer: node.id,
+		project: record.projectSlug,
+		prev: target.value.existing === undefined ? undefined : canonicalAssignmentJson(record),
+		next: canonicalAssignmentJson(record),
+		actorProvenance: attribution.provenance,
+	});
+	if (!draft.ok) return draft;
+	const recorded = ports.opJournal.record(draft.value);
+	if (!recorded.ok) return recorded;
+	const opId = recorded.value;
+	const written = ports.assignmentStore.write(record);
+	if (!written.ok) {
+		return err(written.code, withResidualDiagnostic(written.message, ports.opJournal.clear(opId)));
+	}
+	ports.opJournal.markCommitted(opId);
+	const appended = ports.spineLog.appendOnce(opId, draft.value);
+	if (!appended.ok) {
+		return err(
+			appended.code,
+			`state '${cmd.state}' on '${node.id}' WAS recorded (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+		);
+	}
+	const event = appended.value.event;
+	const chained = ports.assignmentStore.write(appendStateRef(record, event.seq));
+	if (!chained.ok) {
+		return err(
+			chained.code,
+			`state '${cmd.state}' WAS set on '${node.id}' and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
+		);
+	}
+	const cleared = ports.opJournal.clear(opId);
+	if (!cleared.ok) {
+		return err(
+			cleared.code,
+			`state '${cmd.state}' WAS set on '${node.id}' and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+		);
+	}
+	const denormed = denormDescriptor(deps, node.id, {
+		assignment: {
+			currentAssignment: record.id,
+			currentTask: record.task,
+			semanticState: cmd.state,
+			stateNote:
+				cmd.note === undefined ? undefined : { text: cmd.note, state: cmd.state, at: event.ts },
+		},
+	});
+	if (!denormed.ok) {
+		return err(
+			denormed.code,
+			`state '${cmd.state}' WAS set on '${node.id}' and its spine event landed, but ${denormed.message}`,
+		);
+	}
+	return ok({ event, record });
 }
 
 function resolveStreamAllocation(store: AllocationStorePort, stream: string): Result<Allocation> {
@@ -3187,6 +3517,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				},
 			);
 			if (!committed.ok) return fail(committed.code, committed.message, cmd.json);
+			rearmWatchdogForNewWork(deps.watchdogStore, cmd.to);
 			const follow = cmd.wait
 				? ({
 						kind: "dispatch-wait",
@@ -3780,6 +4111,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 						cmd.json,
 					);
 				}
+				rearmWatchdogForNewWork(deps.watchdogStore, cmd.node);
 				opJournal.markCommitted(opId);
 				const appended = spineLog.appendOnce(opId, draft.value);
 				if (!appended.ok) {
@@ -3798,9 +4130,12 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 					);
 				}
 				const denormed = denormDescriptor(deps, cmd.node, {
-					currentAssignment: record.id,
-					currentTask: record.task,
-					semanticState: undefined,
+					assignment: {
+						currentAssignment: record.id,
+						currentTask: record.task,
+						semanticState: undefined,
+						stateNote: undefined,
+					},
 				});
 				if (!denormed.ok) {
 					return fail(
@@ -3814,101 +4149,131 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}
-		case "state-set": {
+		case "report-now": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
-			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
-			const node = deps.registry.read(cmd.node);
-			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
+			const reporter = resolveReportingSelf(deps);
+			if (!reporter.ok) return fail(reporter.code, reporter.message, cmd.json);
+			const { assignmentStore, spineLog, platformWriteLock } = ports.value;
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
 				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
-				const attribution = resolveActor(cmd.actor, deps);
-				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
-				const target = resolveTargetAssignment(assignmentStore, node, cmd.assignmentId);
-				if (!target.ok) return fail(target.code, target.message, cmd.json);
-				// Implicit-general fallback (AC-05): first write materializes it.
-				const materialized = materializeGeneralIfMissing(target.value.existing, {
-					nodeId: cmd.node,
-					actor: attribution.value.actor,
-					nowMs: now,
-				});
-				if (!materialized.ok) return fail(materialized.code, materialized.message, cmd.json);
-				const record = materialized.value;
+				const currentReporter = readReportingDescriptor(deps, reporter.value.id);
+				if (!currentReporter.ok) {
+					return fail(currentReporter.code, currentReporter.message, cmd.json);
+				}
+				const attribution = {
+					actor: currentReporter.value.id,
+					provenance: "resolved" as const,
+				};
+				let stateCommit: { readonly event: SpineEvent; readonly record: Assignment } | undefined;
+				if (cmd.state !== undefined) {
+					const stateResult = setSemanticStateWithinLock(
+						{
+							verb: "state-set",
+							state: cmd.state,
+							note: cmd.note,
+							refs: [],
+							json: cmd.json,
+						},
+						deps,
+						ports.value,
+						currentReporter.value,
+						attribution,
+						now,
+					);
+					if (!stateResult.ok) {
+						return fail(stateResult.code, stateResult.message, cmd.json);
+					}
+					stateCommit = stateResult.value;
+				}
+				let assignment = stateCommit?.record;
+				if (assignment === undefined) {
+					const currentAssignment = resolveCurrentReportAssignment(
+						assignmentStore,
+						currentReporter.value,
+					);
+					if (!currentAssignment.ok) {
+						return fail(currentAssignment.code, currentAssignment.message, cmd.json);
+					}
+					assignment = currentAssignment.value;
+				}
+				const assignmentId = assignment?.id;
+				const projectSlug = cmd.projectSlug ?? assignment?.projectSlug;
 				const draft = buildSpineEvent({
 					nowMs: now,
-					actor: attribution.value.actor,
-					kind: SPINE_KIND_STATE_SET,
+					actor: attribution.actor,
+					kind: SPINE_KIND_STATUS,
 					refs: [
-						`node:${cmd.node}`,
-						`assignment:${record.id}`,
-						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
-						`state:${cmd.state}`,
-						...cmd.refs,
+						`node:${currentReporter.value.id}`,
+						...(assignmentId === undefined ? [] : [`assignment:${assignmentId}`]),
+						...(projectSlug === undefined ? [] : [`project:${projectSlug}`]),
+						...(stateCommit === undefined ? [] : [`state-set:${stateCommit.event.seq}`]),
 					],
-					peer: cmd.node,
-					project: record.projectSlug,
-					// An existing record couples prev===next (the ruled no-op-set
-					// shape); a fresh general is creation-shaped (next only).
-					prev: target.value.existing === undefined ? undefined : canonicalAssignmentJson(record),
-					next: canonicalAssignmentJson(record),
-					actorProvenance: attribution.value.provenance,
+					peer: currentReporter.value.id,
+					project: projectSlug,
+					prev: cmd.did,
+					next: cmd.next,
+					actorProvenance: attribution.provenance,
 				});
 				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
-				const recorded = opJournal.record(draft.value);
-				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
-				const opId = recorded.value;
-				const written = assignmentStore.write(record);
-				if (!written.ok) {
-					return fail(
-						written.code,
-						withResidualDiagnostic(written.message, opJournal.clear(opId)),
-						cmd.json,
-					);
-				}
-				opJournal.markCommitted(opId);
-				const appended = spineLog.appendOnce(opId, draft.value);
+				const appended = spineLog.append(draft.value);
 				if (!appended.ok) {
-					return fail(
-						appended.code,
-						`state '${cmd.state}' on '${cmd.node}' WAS recorded (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
-						cmd.json,
-					);
+					const landed =
+						stateCommit === undefined
+							? `status on '${currentReporter.value.id}' did not land`
+							: `state '${cmd.state}' WAS set on '${currentReporter.value.id}' (spine ${stateCommit.event.seq}), but the status event did not land`;
+					return fail(appended.code, `${landed} (${appended.message})`, cmd.json);
 				}
-				const event = appended.value.event;
-				// The stamped seq joins the chain INSIDE the pend window: a cut
-				// here leaves a committed op recovery replays AND reconciles.
-				const chained = assignmentStore.write(appendStateRef(record, event.seq));
-				if (!chained.ok) {
-					return fail(
-						chained.code,
-						`state '${cmd.state}' WAS set on '${cmd.node}' and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
-						cmd.json,
-					);
-				}
-				const cleared = opJournal.clear(opId);
-				if (!cleared.ok) {
-					return fail(
-						cleared.code,
-						`state '${cmd.state}' WAS set on '${cmd.node}' and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
-						cmd.json,
-					);
-				}
-				const denormed = denormDescriptor(deps, cmd.node, {
-					currentAssignment: record.id,
-					currentTask: record.task,
-					semanticState: cmd.state,
+				const event = appended.value;
+				const denormed = denormDescriptor(deps, currentReporter.value.id, {
+					status: {
+						prev: cmd.did,
+						next: cmd.next,
+						at: event.ts,
+						seq: event.seq,
+					},
 				});
 				if (!denormed.ok) {
-					return fail(
-						denormed.code,
-						`state '${cmd.state}' WAS set on '${cmd.node}' and its spine event landed, but ${denormed.message}`,
-						cmd.json,
-					);
+					const landed =
+						stateCommit === undefined
+							? `status on '${currentReporter.value.id}' WAS recorded (spine ${event.seq})`
+							: `state '${cmd.state}' WAS set on '${currentReporter.value.id}' and its status event landed (spine ${event.seq})`;
+					return fail(denormed.code, `${landed}, but ${denormed.message}`, cmd.json);
 				}
 				if (cmd.json) return okOut(JSON.stringify(event));
 				return okOut(
-					`state ${cmd.state} set on ${cmd.node} (assignment ${record.id}, spine ${event.seq})`,
+					`reported by ${currentReporter.value.id}: "${cmd.did}" → "${cmd.next}" (spine ${event.seq})`,
+				);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
+		case "state-set": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const reporter = resolveReportingSelf(deps);
+			if (!reporter.ok) return fail(reporter.code, reporter.message, cmd.json);
+			const { platformWriteLock } = ports.value;
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPlatformWrites(ports.value);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const currentReporter = readReportingDescriptor(deps, reporter.value.id);
+				if (!currentReporter.ok) {
+					return fail(currentReporter.code, currentReporter.message, cmd.json);
+				}
+				const stateResult = setSemanticStateWithinLock(
+					cmd,
+					deps,
+					ports.value,
+					currentReporter.value,
+					{ actor: currentReporter.value.id, provenance: "resolved" },
+					now,
+				);
+				if (!stateResult.ok) return fail(stateResult.code, stateResult.message, cmd.json);
+				const { event, record } = stateResult.value;
+				if (cmd.json) return okOut(JSON.stringify(event));
+				return okOut(
+					`state ${cmd.state} set on ${currentReporter.value.id} (assignment ${record.id}, spine ${event.seq})`,
 				);
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
@@ -3916,23 +4281,27 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 		case "state-clear": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const reporter = resolveReportingSelf(deps);
+			if (!reporter.ok) return fail(reporter.code, reporter.message, cmd.json);
 			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
-			const node = deps.registry.read(cmd.node);
-			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
 				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
-				const attribution = resolveActor(cmd.actor, deps);
-				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const currentReporter = readReportingDescriptor(deps, reporter.value.id);
+				if (!currentReporter.ok) {
+					return fail(currentReporter.code, currentReporter.message, cmd.json);
+				}
+				const node = currentReporter.value;
+				const attribution = { actor: node.id, provenance: "resolved" as const };
 				const target = resolveTargetAssignment(assignmentStore, node, cmd.assignmentId);
 				if (!target.ok) return fail(target.code, target.message, cmd.json);
 				// Unlike state set, clear never materializes the implicit general: an
 				// absent record has no declaration to remove.
 				const record = target.value.existing;
 				if (record === undefined) {
-					return fail("E-NOREG", `no assignment to clear for node '${cmd.node}'`, cmd.json);
+					return fail("E-NOREG", `no assignment to clear for node '${node.id}'`, cmd.json);
 				}
-				const chain = chainStateOf(record, spineLog.read({ peer: cmd.node }));
+				const chain = chainStateOf(record, spineLog.read({ peer: node.id }));
 				if (chain.state === undefined) {
 					return fail(
 						"E-ARG",
@@ -3942,19 +4311,19 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				}
 				const draft = buildSpineEvent({
 					nowMs: now,
-					actor: attribution.value.actor,
+					actor: attribution.actor,
 					kind: SPINE_KIND_STATE_CLEARED,
 					refs: [
-						`node:${cmd.node}`,
+						`node:${node.id}`,
 						`assignment:${record.id}`,
 						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
 						"transition:clear",
 					],
-					peer: cmd.node,
+					peer: node.id,
 					project: record.projectSlug,
 					prev: canonicalAssignmentJson(record),
 					next: canonicalAssignmentJson(record),
-					actorProvenance: attribution.value.provenance,
+					actorProvenance: attribution.provenance,
 				});
 				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
 				const recorded = opJournal.record(draft.value);
@@ -3973,7 +4342,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				if (!appended.ok) {
 					return fail(
 						appended.code,
-						`state on '${cmd.node}' WAS cleared (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						`state on '${node.id}' WAS cleared (assignment ${record.id}), but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
 						cmd.json,
 					);
 				}
@@ -3982,7 +4351,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				if (!chained.ok) {
 					return fail(
 						chained.code,
-						`state on '${cmd.node}' WAS cleared and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
+						`state on '${node.id}' WAS cleared and its spine event landed, but the assignment's states chain could not be updated (${chained.message}); the op remains journaled and the next platform write will reconcile it`,
 						cmd.json,
 					);
 				}
@@ -3990,38 +4359,53 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				if (!cleared.ok) {
 					return fail(
 						cleared.code,
-						`state on '${cmd.node}' WAS cleared and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						`state on '${node.id}' WAS cleared and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
 						cmd.json,
 					);
 				}
-				const denormed = denormDescriptor(deps, cmd.node, {
-					currentAssignment: record.id,
-					currentTask: record.task,
-					semanticState: undefined,
+				const denormed = denormDescriptor(deps, node.id, {
+					assignment: {
+						currentAssignment: record.id,
+						currentTask: record.task,
+						semanticState: undefined,
+						stateNote: undefined,
+					},
 				});
 				if (!denormed.ok) {
 					return fail(
 						denormed.code,
-						`state on '${cmd.node}' WAS cleared and its spine event landed, but ${denormed.message}`,
+						`state on '${node.id}' WAS cleared and its spine event landed, but ${denormed.message}`,
 						cmd.json,
 					);
 				}
 				if (cmd.json) return okOut(JSON.stringify(event));
-				return okOut(`state cleared on ${cmd.node} (assignment ${record.id}, spine ${event.seq})`);
+				return okOut(`state cleared on ${node.id} (assignment ${record.id}, spine ${event.seq})`);
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}
 		case "state-verify": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const reporter = resolveReportingSelf(deps);
+			if (!reporter.ok) return fail(reporter.code, reporter.message, cmd.json);
 			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
-			const node = deps.registry.read(cmd.node);
-			if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
 				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
-				const attribution = resolveActor(cmd.actor, deps);
-				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				const currentReporter = readReportingDescriptor(deps, reporter.value.id);
+				if (!currentReporter.ok) {
+					return fail(currentReporter.code, currentReporter.message, cmd.json);
+				}
+				const node = deps.registry.read(cmd.node);
+				if (!node) return fail("E-NOID", `no session '${cmd.node}' in registry`, cmd.json);
+				if (currentReporter.value.id === node.id) {
+					return fail(
+						"E-ARG",
+						`report verify is supervisory; '${node.id}' cannot verify its own done claim`,
+						cmd.json,
+					);
+				}
+				const attribution = { actor: currentReporter.value.id, provenance: "resolved" as const };
 				const target = resolveTargetAssignment(assignmentStore, node, cmd.assignmentId);
 				if (!target.ok) return fail(target.code, target.message, cmd.json);
 				// Verify never materializes: an absent chain is nothing to verify.
@@ -4056,7 +4440,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				}
 				const draft = buildSpineEvent({
 					nowMs: now,
-					actor: attribution.value.actor,
+					actor: attribution.actor,
 					kind: SPINE_KIND_STATE_VERIFIED,
 					refs: [
 						`node:${cmd.node}`,
@@ -4069,8 +4453,8 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 					project: record.projectSlug,
 					prev: canonicalAssignmentJson(record),
 					next: canonicalAssignmentJson(record),
-					verifiedBy: attribution.value.actor,
-					actorProvenance: attribution.value.provenance,
+					verifiedBy: attribution.actor,
+					actorProvenance: attribution.provenance,
 				});
 				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
 				const recorded = opJournal.record(draft.value);
@@ -4144,10 +4528,16 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				spawnedBy: d.spawnedBy ?? null,
 				systemState: d.systemState ?? null,
 				semanticState: d.semanticState ?? null,
+				stateNote: d.stateNote ?? null,
 				badge,
 				currentAssignment: d.currentAssignment ?? null,
 				currentTask: d.currentTask ?? null,
+				statusPrev: d.statusPrev ?? null,
+				statusNext: d.statusNext ?? null,
+				statusAt: d.statusAt ?? null,
+				statusSeq: d.statusSeq ?? null,
 				planId: d.planId ?? null,
+				orchestrationRole: projectOrchestrationRole(d),
 				assignments: assignments.map(({ assignment, chain }) => ({
 					id: assignment.id,
 					task: assignment.task,
@@ -4181,7 +4571,9 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				`node:        ${d.id}  [${badge}]`,
 				`harness:     ${d.harness ?? "—"}  ·  lifecycle: ${d.lifecycle ?? "—"}  ·  pid ${d.pid}`,
 				`axes:        system ${d.systemState ?? "—"} · semantic ${d.semanticState ?? "—"}`,
+				`note:        ${d.stateNote?.text ?? "—"}`,
 				`task:        ${d.currentTask ?? "—"}  (${d.currentAssignment ?? "no assignment"})`,
+				`report:      ${d.statusPrev ?? "—"} → ${d.statusNext ?? "—"}  (${d.statusAt ?? "never"}${d.statusSeq === undefined ? "" : `, spine ${d.statusSeq}`})`,
 				...assignments.map(
 					({ assignment, chain }) =>
 						`  assignment ${assignment.id}: ${chain.state ?? "undeclared"}${
@@ -4342,6 +4734,7 @@ function renderSessionForestJson(forest: SessionForest): string {
 			...raw,
 			prime: node.prime === true,
 			oldPrime: node.oldPrime === true,
+			orchestrationRole: projectOrchestrationRole(node),
 		});
 		output.push(head.slice(0, -1), ',"children":[');
 		stack.push({ nodes: children, index: 0, close: "]}" });

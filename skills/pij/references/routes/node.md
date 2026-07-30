@@ -9,6 +9,11 @@
 
 `--actor <label>` asserts and wins; otherwise your resolved self (`PIJ_SESSION_ID`, else a unique pane match) is used; an unresolvable caller is refused naming `--actor` — nothing mutates on refusal. Seats that write often should `export PIJ_SESSION_ID=<own-id>`.
 
+Everything under `report` is a first-person claim about yourself.
+`report now|question|blocked|state|clear` take no node or `--actor` and require
+the caller to resolve to a registered descriptor. `report verify <node>` keeps
+its supervisory target but stamps the registered caller.
+
 ## Projects
 
 ```bash
@@ -18,15 +23,32 @@ pij project show <slug> [--json]
 pij project set <slug> [--plan <path>] [--prime <id>]
 ```
 
-## Tasks & states (per-assignment semantic truth)
+## Tasks & reports (per-assignment semantic truth)
 
 ```bash
 pij task set <node> "<task>" [--project <slug>]    # opens/points an assignment
-pij state set <node> <state> [--assignment <id>] [--refs a,b,…]
-pij state verify <node> [--assignment <id>]        # done is a CLAIM until verified
+pij report now "<did>" "<next>" [--state <word>] [--note "<text>"] [--project <slug>]
+pij report question "<what I need from you>" [--assignment <id>]
+pij report blocked "<what I am waiting on>" [--assignment <id>]
+pij report state <state> [--assignment <id>] [--refs a,b,…]
+pij report clear [--assignment <id>]
+pij report verify <node> [--assignment <id>]       # done is a CLAIM until verified
 ```
 
-Semantic states: `blocked|question|hold|waiting|ready|failed|cancelled|done`. A node with no assignment falls back to its implicit general assignment (`asg-general-<node>`). The node badge derives worst-first across open assignments; the mechanical axis (`starting|working|idle|stalled|stopped|dead|unknown`) is pij-computed and never writable here.
+Semantic states: `blocked|question|hold|waiting|ready|failed|cancelled|done`. A
+reporting seat with no assignment falls back to its implicit general assignment
+(`asg-general-<node>`). The node badge derives worst-first across open assignments;
+the mechanical axis (`starting|working|idle|stalled|stopped|dead|unknown`) is
+pij-computed and never writable here.
+
+Use `report question` when a human answer is needed and `report blocked` when
+progress is waiting on something external. In compound progress, `--note` is
+valid only with `--state question|blocked`. Actively working has no semantic state
+word: absence is the honest expression by design, so never invent `working`.
+
+Inline markdown is supported in report text (`` `code` ``, `**bold**`,
+`[links]`). Block markdown is not: newlines are refused. Shell-quote markdown
+containing backticks with single quotes so the shell does not execute it.
 
 ## Team-scaffold records
 
@@ -70,11 +92,15 @@ Unadopted = non-prime with **no effective parent** — legal to boot, invisible 
 
 ```bash
 pij tree --global --json                 # filter unadopted == true (pij list --json carries the same boolean per row)
-pij link <child> --parent <parent-id>    # audited on the spine as a node-linked event
+pij link <child> --parent <parent-id> --role <pm|worker>  # governor places + designates
 pij link <child> --root                  # sanctioned root placement (also audited)
 ```
 
-Prevention beats repair: spawn from a seat with `PIJ_SESSION_ID` exported so caller-truth parentage lands at spawn. Prime seats are legal roots and are never flagged.
+Role always arrives from above: the governor that gives a seat work designates
+it while placing it. A seat never infers or self-declares its own role.
+Prevention beats repair: spawn from a seat with `PIJ_SESSION_ID` exported so
+caller-truth parentage lands at spawn. Prime seats are legal roots and are never
+flagged.
 
 ## Anomalies (derived safety)
 

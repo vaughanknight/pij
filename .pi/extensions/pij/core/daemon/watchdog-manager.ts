@@ -1,3 +1,4 @@
+import { projectOrchestrationRole } from "../orchestration/role.js";
 import type { DeliveryPort } from "../ports.js";
 import { STALE_AFTER_MS } from "../state.js";
 import type { SessionDescriptor, SessionId, WatchdogSidecar, WatchdogWatcher } from "../types.js";
@@ -12,6 +13,7 @@ import {
 	reconcileWatchdogExemption,
 	shouldCapture,
 	type WatchdogResponse,
+	watchdogScheduleAnchorMs,
 } from "../watchdog.js";
 import { pauseForCompactMessage } from "./router.js";
 
@@ -48,8 +50,10 @@ interface RuntimeState {
 	ordinal: number;
 	consecutiveSilentFires: number;
 	lastFireAtMs: number | null;
+	scheduleAnchorAtMs: number | null;
 	activityAnchorAtMs: number | null;
 	lastEventAt: string | undefined;
+	lastStatusAt: string | undefined;
 	lastState: SessionDescriptor["state"];
 	lastPane: string | undefined;
 	awaitingResponse: boolean;
@@ -74,6 +78,7 @@ function timestampMs(value: string | undefined): number | null {
 }
 
 function eligible(session: SessionDescriptor): boolean {
+	if (projectOrchestrationRole(session) !== "pm") return false;
 	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
 	// the daemon does not own its delivery, so it must not buffer a watchdog turn
 	// into it either. (A pi peer pulls its own inbox but IS watchdog-delivered:
@@ -223,13 +228,11 @@ export class WatchdogManager {
 				// On a global re-enable, anchor to now so the disabled window does
 				// not count as silence (else a long-disabled peer fires instantly).
 				lastFireAtMs: reanchorNowMs ?? timestampMs(session.lastWatchdogFireAt),
-				// A session that has never emitted an event still needs watching —
-				// it is the likeliest to be hung at boot. startedAt is its birth
-				// anchor; without this fallback both anchors are null and
-				// `isFireDue` never fires (found live, activation day).
+				scheduleAnchorAtMs: reanchorNowMs ?? watchdogScheduleAnchorMs(session),
 				activityAnchorAtMs:
 					reanchorNowMs ?? timestampMs(session.lastEventAt) ?? timestampMs(session.startedAt),
 				lastEventAt: session.lastEventAt,
+				lastStatusAt: session.statusAt,
 				lastState: session.state,
 				lastPane: undefined,
 				awaitingResponse: false,
@@ -259,6 +262,11 @@ export class WatchdogManager {
 				state.activityAnchorAtMs = timestampMs(session.lastEventAt);
 				this.reportRealRecovery(session, state);
 			}
+		}
+
+		if (session.statusAt !== state.lastStatusAt) {
+			state.scheduleAnchorAtMs = watchdogScheduleAnchorMs(session);
+			state.lastStatusAt = session.statusAt;
 		}
 
 		const idleTransition = state.lastState === "working" && session.state === "idle";
@@ -298,7 +306,7 @@ export class WatchdogManager {
 		}
 		this.reportSustainedLiveness(session, state, cfg, nowMs);
 
-		if (!isFireDue(cfg, state.lastFireAtMs, state.activityAnchorAtMs, nowMs)) return;
+		if (!isFireDue(cfg, state.lastFireAtMs, state.scheduleAnchorAtMs, nowMs)) return;
 		if (this.deps.hasPendingWatchdog(session.id)) {
 			state.lastFireAtMs = nowMs;
 			this.deps.log?.(`watchdog ${session.id}: pending ping exists — coalesced`);

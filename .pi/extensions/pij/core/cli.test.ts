@@ -12,7 +12,7 @@ import {
 	FakeRegistry,
 	FakeSpineLog,
 } from "../adapters/fakes.js";
-import type { CliDeps, CliResult } from "./cli.js";
+import type { CliDeps, CliResult, WatchdogCliStore } from "./cli.js";
 import {
 	applyWaitReceipt,
 	applyWaitReceiptSources,
@@ -33,7 +33,10 @@ import {
 	type PijMessage,
 	type ReceiptState,
 	type Result,
+	SEMANTIC_STATES,
+	type SemanticState,
 	type SessionDescriptor,
+	type WatchdogSidecar,
 } from "./types.js";
 
 const T = Date.parse("2026-06-16T12:00:00.000Z");
@@ -90,6 +93,26 @@ function parsed(argv: readonly string[]) {
 	const result = parseArgs(argv);
 	if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
 	return result.value;
+}
+
+function memoryWatchdogStore(
+	id: string,
+	sidecar: WatchdogSidecar,
+): WatchdogCliStore & {
+	readonly sidecars: Map<string, WatchdogSidecar>;
+	readonly writes: WatchdogSidecar[];
+} {
+	const sidecars = new Map([[id, sidecar]]);
+	const writes: WatchdogSidecar[] = [];
+	return {
+		sidecars,
+		writes,
+		read: (target) => sidecars.get(target),
+		write: (target, next) => {
+			sidecars.set(target, next);
+			writes.push(next);
+		},
+	};
 }
 
 describe("parseArgs", () => {
@@ -1791,7 +1814,11 @@ import type {
 } from "./platform/ports.js";
 import { createProject, setProject } from "./platform/project.js";
 import type { Allocation, Assignment, Dispatch, Fence, SpineEventDraft } from "./platform/types.js";
-import { SPINE_KIND_NODE_LINKED, SPINE_KIND_STATE_CLEARED } from "./platform/types.js";
+import {
+	SPINE_KIND_NODE_LINKED,
+	SPINE_KIND_STATE_CLEARED,
+	SPINE_KIND_STATE_SET,
+} from "./platform/types.js";
 import type { StreamWorktreePort } from "./stream.js";
 
 const platformRequire = createRequire(import.meta.url);
@@ -1968,6 +1995,51 @@ function run(argv: readonly string[], d: CliDeps): CliResult {
 		return { stdout: "", stderr: `${result.code}: ${result.message}`, exitCode };
 	}
 	return dispatch(result.value, d);
+}
+
+function asReportingSelf(d: CliDeps, id: string): CliDeps {
+	const process = d.process;
+	return {
+		...d,
+		process: {
+			pid: () => process.pid(),
+			isAlive: (pid) => process.isAlive(pid),
+			now: () => process.now(),
+			env: (key) => (key === "PIJ_SESSION_ID" ? id : process.env(key)),
+		},
+	};
+}
+
+function reportState(
+	d: CliDeps,
+	id: string,
+	state: string,
+	args: readonly string[] = [],
+): CliResult {
+	return run(["report", "state", state, ...args], asReportingSelf(d, id));
+}
+
+function reportClear(d: CliDeps, id: string, args: readonly string[] = []): CliResult {
+	return run(["report", "clear", ...args], asReportingSelf(d, id));
+}
+
+function reportNote(
+	d: CliDeps,
+	id: string,
+	state: "question" | "blocked",
+	text: string,
+	args: readonly string[] = [],
+): CliResult {
+	return run(["report", state, text, ...args], asReportingSelf(d, id));
+}
+
+function reportVerify(
+	d: CliDeps,
+	reporter: string,
+	node: string,
+	args: readonly string[] = [],
+): CliResult {
+	return run(["report", "verify", node, ...args], asReportingSelf(d, reporter));
 }
 
 function seedProject(over: Partial<Project> & { slug: string }): Project {
@@ -3829,13 +3901,773 @@ function nodeDeps(over: Parameters<typeof platformDeps>[0] = {}) {
 	});
 }
 
+const reportTs = new Date(T).toISOString();
+
+function reportSelfDeps(over: Parameters<typeof platformDeps>[0] = {}) {
+	return platformDeps({
+		self: "pij-self",
+		descs: [desc({ id: "pij-self" })],
+		...over,
+	});
+}
+
+/** Let a contending writer complete after command preflight but before this
+ * command acquires the platform lock. */
+function interleaveBeforeNextPlatformWrite(
+	d: Pick<PlatformStores, "platformWriteLock">,
+	interleave: () => void,
+): void {
+	const lock = d.platformWriteLock;
+	const originalLock = lock.withPlatformWriteLock.bind(lock);
+	lock.withPlatformWriteLock = <T>(operation: () => T) => {
+		lock.withPlatformWriteLock = originalLock;
+		interleave();
+		return originalLock(operation);
+	};
+}
+
+function reportGeneralAssignment(stateRefs: readonly number[] = []): Assignment {
+	return {
+		schema_version: 1,
+		id: "asg-general-pij-self",
+		nodeId: "pij-self",
+		task: "general",
+		states: stateRefs,
+		opened: { actor: "pij-self", ts: reportTs },
+	};
+}
+
+describe("phase 3 report-family move regression locks", () => {
+	it("locks the exact state-set record before its command spelling moves", () => {
+		const d = reportSelfDeps();
+		const result = reportState(d, "pij-self", "waiting", ["--json"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe(
+			JSON.stringify({
+				schema_version: 1,
+				ts: reportTs,
+				actor: "pij-self",
+				kind: "state-set",
+				refs: ["node:pij-self", "assignment:asg-general-pij-self", "state:waiting"],
+				peer: "pij-self",
+				next: canonicalAssignmentJson(reportGeneralAssignment()),
+				actorProvenance: "resolved",
+				seq: 1,
+			}),
+		);
+	});
+
+	it("locks the exact state-cleared record before its command spelling moves", () => {
+		const d = reportSelfDeps();
+		expect(reportState(d, "pij-self", "hold").exitCode).toBe(0);
+		const result = reportClear(d, "pij-self", ["--json"]);
+		expect(result.exitCode).toBe(0);
+		const canonical = canonicalAssignmentJson(reportGeneralAssignment());
+		expect(result.stdout).toBe(
+			JSON.stringify({
+				schema_version: 1,
+				ts: reportTs,
+				actor: "pij-self",
+				kind: "state-cleared",
+				refs: ["node:pij-self", "assignment:asg-general-pij-self", "transition:clear"],
+				peer: "pij-self",
+				prev: canonical,
+				next: canonical,
+				actorProvenance: "resolved",
+				seq: 2,
+			}),
+		);
+	});
+
+	it("locks the exact state-verified record before its command spelling moves", () => {
+		const d = platformDeps({
+			self: "pij-reviewer",
+			descs: [desc({ id: "pij-reviewer" }), desc({ id: "pij-target" })],
+		});
+		expect(run(["task", "set", "pij-target", "ship it"], d).exitCode).toBe(0);
+		const assignment = d.assignmentStore.listByNode("pij-target")[0];
+		if (!assignment) throw new Error("task set did not create the assignment");
+		expect(reportState(d, "pij-target", "done").exitCode).toBe(0);
+		const result = reportVerify(d, "pij-reviewer", "pij-target", ["--json"]);
+		expect(result.exitCode).toBe(0);
+		const canonical = canonicalAssignmentJson(assignment);
+		expect(result.stdout).toBe(
+			JSON.stringify({
+				schema_version: 1,
+				ts: reportTs,
+				actor: "pij-reviewer",
+				kind: "state-verified",
+				refs: ["node:pij-target", `assignment:${assignment.id}`, "state:done", "event:2"],
+				peer: "pij-target",
+				prev: canonical,
+				next: canonical,
+				verifiedBy: "pij-reviewer",
+				actorProvenance: "resolved",
+				seq: 3,
+			}),
+		);
+	});
+});
+
+describe("report family + report now (plan 074 phase 3 RED)", () => {
+	it("parses the family grammar, keeps verify supervisory, and removes the old write spellings", () => {
+		expect(
+			parseArgs(["report", "state", "ready", "--refs", "pr:14,issue:6", "--json"]),
+		).toMatchObject({
+			ok: true,
+			value: {
+				verb: "state-set",
+				state: "ready",
+				refs: ["pr:14", "issue:6"],
+				json: true,
+			},
+		});
+		expect(parseArgs(["report", "clear", "--assignment", "asg-1"])).toMatchObject({
+			ok: true,
+			value: { verb: "state-clear", assignmentId: "asg-1" },
+		});
+		expect(parseArgs(["report", "verify", "pij-node", "--assignment", "asg-1"])).toMatchObject({
+			ok: true,
+			value: { verb: "state-verify", node: "pij-node", assignmentId: "asg-1" },
+		});
+		expect(parseArgs(["state", "set", "pij-self", "ready"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["state", "clear", "pij-self"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["state", "verify", "pij-self"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["state", "pij-self"])).toMatchObject({
+			ok: true,
+			value: { verb: "state", id: "pij-self" },
+		});
+	});
+
+	it("parses positional question/blocked notes, keeps report state note-free, and accepts compound notes only for those two states", () => {
+		for (const state of ["question", "blocked"] as const) {
+			expect(
+				parseArgs(["report", state, "  need   **input** on `core`  ", "--assignment", "asg-1"]),
+			).toMatchObject({
+				ok: true,
+				value: {
+					verb: "state-set",
+					state,
+					note: "need **input** on `core`",
+					assignmentId: "asg-1",
+					refs: [],
+				},
+			});
+		}
+
+		expect(parseArgs(["report", "state", "question", "--note", "not reachable"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		for (const state of SEMANTIC_STATES.filter(
+			(candidate): candidate is Exclude<SemanticState, "question" | "blocked"> =>
+				candidate !== "question" && candidate !== "blocked",
+		)) {
+			const parsed = parseArgs(["report", state, "not expressible"]);
+			expect(parsed).toMatchObject({ ok: false, code: "E-ARG" });
+			if (parsed.ok) throw new Error(`standalone note unexpectedly accepted for ${state}`);
+			expect(parsed.message).toContain("question");
+			expect(parsed.message).toContain("blocked");
+		}
+
+		for (const state of SEMANTIC_STATES) {
+			const parsed = parseArgs([
+				"report",
+				"now",
+				"did",
+				"next",
+				"--state",
+				state,
+				"--note",
+				"need input",
+			]);
+			if (state === "question" || state === "blocked") {
+				expect(parsed).toMatchObject({
+					ok: true,
+					value: { verb: "report-now", state, note: "need input" },
+				});
+			} else {
+				expect(parsed).toMatchObject({ ok: false, code: "E-ARG" });
+				if (parsed.ok) throw new Error(`compound note unexpectedly accepted for ${state}`);
+				expect(parsed.message).toContain("question");
+				expect(parsed.message).toContain("blocked");
+			}
+		}
+	});
+
+	it.each([
+		"standalone",
+		"compound",
+	] as const)("shares the 200-char, one-line, non-empty note validator across %s reports", (form) => {
+		const argv = (text: string | undefined): string[] =>
+			form === "standalone"
+				? ["report", "question", ...(text === undefined ? [] : [text])]
+				: [
+						"report",
+						"now",
+						"did",
+						"next",
+						"--state",
+						"question",
+						"--note",
+						...(text === undefined ? [] : [text]),
+					];
+
+		expect(parseArgs(argv("a".repeat(201)))).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: expect.stringContaining("200"),
+		});
+		expect(parseArgs(argv("need\nan answer"))).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: expect.stringContaining("one line"),
+		});
+		expect(parseArgs(argv(undefined))).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(argv(` ${"a".repeat(100)}   ${"b".repeat(99)} `))).toMatchObject({
+			ok: true,
+			value: { note: `${"a".repeat(100)} ${"b".repeat(99)}` },
+		});
+	});
+
+	it("requires two non-empty one-line texts, collapses whitespace before the 280-char check, and preserves inline markdown", () => {
+		expect(parseArgs(["report", "now", "did only"])).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["report", "now", "   ", "next"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["report", "now", "did\nmore", "next"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["report", "now", "a".repeat(281), "next"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+			message: expect.stringContaining("280"),
+		});
+		expect(
+			parseArgs([
+				"report",
+				"now",
+				"  fixed   `core`  and **tests**  ",
+				" review   [the diff](https://example.test) ",
+			]),
+		).toMatchObject({
+			ok: true,
+			value: {
+				verb: "report-now",
+				did: "fixed `core` and **tests**",
+				next: "review [the diff](https://example.test)",
+			},
+		});
+	});
+
+	it("rejects an unknown --state word and names the whole vocabulary", () => {
+		const result = parseArgs(["report", "now", "did", "next", "--state", "working"]);
+		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
+		if (result.ok) throw new Error("unknown state unexpectedly parsed");
+		expect(result.message).toContain("blocked|question|hold|waiting|ready|failed|cancelled|done");
+	});
+
+	it("rejects an empty or non-kebab project attribution instead of stamping a false project", () => {
+		for (const project of ["", "   ", "../escape", "Not-Kebab"]) {
+			expect(parseArgs(["report", "now", "did", "next", `--project=${project}`])).toMatchObject({
+				ok: false,
+				code: "E-ARG",
+			});
+		}
+	});
+
+	it.each([
+		["now", ["report", "now", "did", "next"]],
+		["question", ["report", "question", "need input"]],
+		["blocked", ["report", "blocked", "waiting on input"]],
+		["state", ["report", "state", "ready"]],
+		["clear", ["report", "clear"]],
+		["verify", ["report", "verify", "pij-other"]],
+	] as const)("refuses report %s when PIJ_SESSION_ID merely asserts an unregistered seat", (_name, argv) => {
+		const d = platformDeps({
+			self: "pij-asserted",
+			descs: [desc({ id: "pij-other" })],
+			cwd: "/elsewhere",
+		});
+		const result = run(argv, d);
+		expect(result.exitCode).toBe(2);
+		expect(result.stderr).toContain("E-NOID");
+		expect(d.assignmentStore.list()).toEqual([]);
+		expect(d.spineLog.read()).toEqual([]);
+	});
+
+	it("refuses a dissolved reporting seat before any write", () => {
+		const d = reportSelfDeps({
+			descs: [desc({ id: "pij-self", lifecycle: "dissolved" })],
+		});
+		const result = run(["report", "now", "did", "next"], d);
+		expect(result.exitCode).toBe(2);
+		expect(result.stderr).toContain("dissolved");
+		expect(result.stderr).toContain("revive");
+		expect(d.spineLog.read()).toEqual([]);
+		expect(d.registry.read("pij-self")?.statusAt).toBeUndefined();
+	});
+
+	it("refuses self-verification because report verify is supervisory", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "ship it"], d).exitCode).toBe(0);
+		expect(reportState(d, "pij-self", "done").exitCode).toBe(0);
+		const before = d.spineLog.read().length;
+		const result = reportVerify(d, "pij-self", "pij-self");
+		expect(result.exitCode).toBe(64);
+		expect(result.stderr).toContain("cannot verify its own");
+		expect(d.spineLog.read()).toHaveLength(before);
+		expect(d.spineLog.read().filter((event) => event.kind === "state-verified")).toEqual([]);
+	});
+
+	it("bare report now refuses a dangling or foreign current assignment", () => {
+		const missing = reportSelfDeps({
+			descs: [desc({ id: "pij-self", currentAssignment: "asg-missing" })],
+		});
+		const missingResult = run(["report", "now", "did", "next"], missing);
+		expect(missingResult.exitCode).toBe(3);
+		expect(missingResult.stderr).toContain("asg-missing");
+		expect(missing.spineLog.read()).toEqual([]);
+
+		const foreign = reportSelfDeps({
+			descs: [desc({ id: "pij-self", currentAssignment: "asg-foreign" })],
+		});
+		const written = foreign.assignmentStore.write({
+			schema_version: 1,
+			id: "asg-foreign",
+			nodeId: "pij-other",
+			task: "other work",
+			states: [],
+			opened: { actor: "pij-other", ts: recent },
+		});
+		if (!written.ok) throw new Error(written.message);
+		const foreignResult = run(["report", "now", "did", "next"], foreign);
+		expect(foreignResult.exitCode).toBe(64);
+		expect(foreignResult.stderr).toContain("pij-other");
+		expect(foreign.spineLog.read()).toEqual([]);
+	});
+
+	it("bare report now appends one exact status event and never materializes an assignment", () => {
+		const d = reportSelfDeps();
+		const result = run(["report", "now", "fixed the parser", "wire the tests", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		expect(d.platformWriteLock.acquisitions).toBe(1);
+		expect(JSON.parse(result.stdout)).toEqual({
+			schema_version: 1,
+			ts: reportTs,
+			actor: "pij-self",
+			kind: "status",
+			refs: ["node:pij-self"],
+			peer: "pij-self",
+			prev: "fixed the parser",
+			next: "wire the tests",
+			actorProvenance: "resolved",
+			seq: 1,
+		});
+		expect(d.assignmentStore.list()).toEqual([]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			statusPrev: "fixed the parser",
+			statusNext: "wire the tests",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+
+		const human = run(["report", "now", "fixed `core`", "review **tests**"], reportSelfDeps());
+		expect(human.exitCode).toBe(0);
+		expect(human.stdout.split("\n")).toHaveLength(1);
+		expect(human.stdout).toContain('reported by pij-self: "fixed `core`" → "review **tests**"');
+	});
+
+	it("attributes project by explicit flag, then current assignment, then omission", () => {
+		const explicit = reportSelfDeps();
+		expect(
+			run(["report", "now", "did", "next", "--project", "override", "--json"], explicit).exitCode,
+		).toBe(0);
+		expect(explicit.spineLog.read()[0]).toMatchObject({
+			project: "override",
+			refs: ["node:pij-self", "project:override"],
+		});
+
+		const assigned = reportSelfDeps();
+		expect(
+			run(["task", "set", "pij-self", "work", "--project", "alpha"], {
+				...assigned,
+				projectStore: new FakeProjectStore([seedProject({ slug: "alpha" })]),
+			}).exitCode,
+		).toBe(0);
+		expect(run(["report", "now", "did", "next", "--json"], assigned).exitCode).toBe(0);
+		expect(assigned.spineLog.read().at(-1)).toMatchObject({
+			project: "alpha",
+			refs: expect.arrayContaining([
+				`assignment:${assigned.registry.read("pij-self")?.currentAssignment ?? ""}`,
+				"project:alpha",
+			]),
+		});
+
+		const unassigned = reportSelfDeps();
+		expect(run(["report", "now", "did", "next"], unassigned).exitCode).toBe(0);
+		expect(unassigned.spineLog.read()[0]).not.toHaveProperty("project");
+		expect(unassigned.spineLog.read()[0]?.refs.some((ref) => ref.startsWith("assignment:"))).toBe(
+			false,
+		);
+	});
+
+	it("re-reads the reporting descriptor under the lock before selecting its assignment", () => {
+		const d = reportSelfDeps({
+			descs: [
+				desc({
+					id: "pij-self",
+					currentAssignment: "asg-old",
+					currentTask: "old work",
+				}),
+			],
+		});
+		for (const assignment of [
+			{
+				schema_version: 1,
+				id: "asg-old",
+				nodeId: "pij-self",
+				task: "old work",
+				projectSlug: "old-project",
+				states: [],
+				opened: { actor: "pij-self", ts: recent },
+			},
+			{
+				schema_version: 1,
+				id: "asg-new",
+				nodeId: "pij-self",
+				task: "new work",
+				projectSlug: "new-project",
+				states: [],
+				opened: { actor: "pij-self", ts: recent },
+			},
+		] satisfies Assignment[]) {
+			const written = d.assignmentStore.write(assignment);
+			if (!written.ok) throw new Error(written.message);
+		}
+		const originalLock = d.platformWriteLock.withPlatformWriteLock.bind(d.platformWriteLock);
+		d.platformWriteLock.withPlatformWriteLock = <T>(operation: () => T) => {
+			const current = d.registry.read("pij-self");
+			if (!current) throw new Error("reporter descriptor missing");
+			d.registry.writeExact({
+				...current,
+				currentAssignment: "asg-new",
+				currentTask: "new work",
+			});
+			return originalLock(operation);
+		};
+
+		const result = run(["report", "now", "did", "next", "--state", "ready", "--json"], d);
+		expect(result.exitCode).toBe(0);
+		const events = d.spineLog.read();
+		expect(events[0]?.refs).toContain("assignment:asg-new");
+		expect(events[1]).toMatchObject({ project: "new-project" });
+		expect(events[1]?.refs).toContain("assignment:asg-new");
+		expect(events[1]?.refs).toContain("project:new-project");
+		expect(d.assignmentStore.read("asg-old")?.states).toEqual([]);
+		expect(d.assignmentStore.read("asg-new")?.states).toEqual([events[0]?.seq]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: "asg-new",
+			currentTask: "new work",
+			semanticState: "ready",
+		});
+	});
+
+	it("report state re-reads the reporter under the lock before selecting and denormalizing its assignment", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "old work"], d).exitCode).toBe(0);
+		const oldAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		if (!oldAssignmentId) throw new Error("old assignment missing");
+		let newAssignmentId: string | undefined;
+		interleaveBeforeNextPlatformWrite(d, () => {
+			expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+			newAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		});
+
+		const result = reportState(d, "pij-self", "ready");
+		expect(result.exitCode).toBe(0);
+		if (!newAssignmentId) throw new Error("concurrent assignment missing");
+		const stateEvent = d.spineLog.read().findLast((event) => event.kind === "state-set");
+		if (!stateEvent) throw new Error("state event missing");
+		expect(stateEvent.refs).toContain(`assignment:${newAssignmentId}`);
+		expect(d.assignmentStore.read(oldAssignmentId)?.states).toEqual([]);
+		expect(d.assignmentStore.read(newAssignmentId)?.states).toEqual([stateEvent.seq]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: newAssignmentId,
+			currentTask: "new work",
+			semanticState: "ready",
+		});
+	});
+
+	it("report clear re-reads the reporter under the lock and never restores a superseded assignment", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "old work"], d).exitCode).toBe(0);
+		const oldAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		if (!oldAssignmentId) throw new Error("old assignment missing");
+		expect(reportState(d, "pij-self", "waiting").exitCode).toBe(0);
+		const oldStates = d.assignmentStore.read(oldAssignmentId)?.states;
+		if (!oldStates) throw new Error("old assignment state chain missing");
+		let newAssignmentId: string | undefined;
+		interleaveBeforeNextPlatformWrite(d, () => {
+			expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+			newAssignmentId = d.registry.read("pij-self")?.currentAssignment;
+		});
+
+		const result = reportClear(d, "pij-self");
+		if (!newAssignmentId) throw new Error("concurrent assignment missing");
+		expect(result.exitCode).toBe(64);
+		expect(result.stderr).toContain(newAssignmentId);
+		expect(result.stderr).toContain("already undeclared");
+		expect(d.spineLog.read().filter((event) => event.kind === "state-cleared")).toEqual([]);
+		expect(d.assignmentStore.read(oldAssignmentId)?.states).toEqual(oldStates);
+		expect(d.assignmentStore.read(newAssignmentId)?.states).toEqual([]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: newAssignmentId,
+			currentTask: "new work",
+		});
+		expect(d.registry.read("pij-self")?.semanticState).toBeUndefined();
+	});
+
+	it.each([
+		"question",
+		"blocked",
+	] as const)("report %s appends the unchanged state-set record and stamps the note denorm", (state) => {
+		const d = reportSelfDeps();
+		const result = reportNote(d, "pij-self", state, "  need   [review](https://example.test)  ", [
+			"--json",
+		]);
+		expect(result.exitCode).toBe(0);
+		const event = JSON.parse(result.stdout) as SpineEvent;
+		expect(event).toMatchObject({
+			actor: "pij-self",
+			kind: "state-set",
+			refs: ["node:pij-self", "assignment:asg-general-pij-self", `state:${state}`],
+			peer: "pij-self",
+			actorProvenance: "resolved",
+		});
+		expect(event).not.toHaveProperty("note");
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: "asg-general-pij-self",
+			currentTask: "general",
+			semanticState: state,
+			stateNote: {
+				text: "need [review](https://example.test)",
+				state,
+				at: event.ts,
+			},
+		});
+	});
+
+	it("compound report now writes state-set then status under one lock and stamps the same note denorm", () => {
+		const d = reportSelfDeps();
+		const result = run(
+			[
+				"report",
+				"now",
+				"finished parser",
+				"waiting for review",
+				"--state",
+				"blocked",
+				"--note",
+				"review **requested**",
+				"--json",
+			],
+			d,
+		);
+		expect(result.exitCode).toBe(0);
+		expect(d.platformWriteLock.acquisitions).toBe(1);
+		const events = d.spineLog.read();
+		expect(events.map((event) => event.kind)).toEqual(["state-set", "status"]);
+		expect(events[1]?.refs).toContain(`state-set:${events[0]?.seq}`);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			semanticState: "blocked",
+			stateNote: { text: "review **requested**", state: "blocked", at: events[0]?.ts },
+			statusPrev: "finished parser",
+			statusNext: "waiting for review",
+		});
+	});
+
+	it("state clear removes a stale stateNote with the semantic state", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "question", "which path?").exitCode).toBe(0);
+		expect(reportClear(d, "pij-self").exitCode).toBe(0);
+		expect(d.registry.read("pij-self")?.semanticState).toBeUndefined();
+		expect(d.registry.read("pij-self")?.stateNote).toBeUndefined();
+	});
+
+	it("a note-free report state removes the prior stateNote", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "question", "which path?").exitCode).toBe(0);
+		expect(reportState(d, "pij-self", "ready").exitCode).toBe(0);
+		expect(d.registry.read("pij-self")?.semanticState).toBe("ready");
+		expect(d.registry.read("pij-self")?.stateNote).toBeUndefined();
+	});
+
+	it("a fresh task set removes stateNote but preserves the opposite-lifetime status denorm", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "blocked", "waiting on review").exitCode).toBe(0);
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+		expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentTask: "new work",
+			statusPrev: "did",
+			statusNext: "next",
+		});
+		expect(d.registry.read("pij-self")?.semanticState).toBeUndefined();
+		expect(d.registry.read("pij-self")?.stateNote).toBeUndefined();
+	});
+
+	it("projects semanticState and stateNote from the descriptor on list and node show", () => {
+		const d = reportSelfDeps();
+		expect(reportNote(d, "pij-self", "question", "review `core`?").exitCode).toBe(0);
+		const descriptor = d.registry.read("pij-self");
+		const rows = JSON.parse(run(["list", "--json"], d).stdout) as Array<Record<string, unknown>>;
+		expect(rows[0]).toMatchObject({
+			semanticState: "question",
+			stateNote: descriptor?.stateNote,
+		});
+		const card = JSON.parse(run(["node", "show", "pij-self", "--json"], d).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(card).toMatchObject({
+			semanticState: "question",
+			stateNote: descriptor?.stateNote,
+		});
+		expect(run(["node", "show", "pij-self"], d).stdout).toContain("note:        review `core`?");
+	});
+
+	it("report verify re-reads the reporter under the lock and refuses a dissolved supervisor", () => {
+		const d = platformDeps({
+			self: "pij-reviewer",
+			descs: [desc({ id: "pij-reviewer" }), desc({ id: "pij-target" })],
+		});
+		expect(run(["task", "set", "pij-target", "ship it"], d).exitCode).toBe(0);
+		expect(reportState(d, "pij-target", "done").exitCode).toBe(0);
+		const assignment = d.assignmentStore.listByNode("pij-target")[0];
+		if (!assignment) throw new Error("target assignment missing");
+		const statesBefore = assignment.states;
+		interleaveBeforeNextPlatformWrite(d, () => d.registry.dissolve("pij-reviewer"));
+
+		const result = reportVerify(d, "pij-reviewer", "pij-target");
+		expect(result.exitCode).toBe(2);
+		expect(result.stderr).toContain("dissolved");
+		expect(d.spineLog.read().filter((event) => event.kind === "state-verified")).toEqual([]);
+		expect(d.assignmentStore.read(assignment.id)?.states).toEqual(statesBefore);
+		expect(d.registry.read("pij-reviewer")?.lifecycle).toBe("dissolved");
+	});
+
+	it("--state appends state-set then status under one lock and correlates by stamped seq", () => {
+		const d = reportSelfDeps();
+		const result = run(
+			["report", "now", "fixed the parser", "wire the tests", "--state", "ready", "--json"],
+			d,
+		);
+		expect(result.exitCode).toBe(0);
+		expect(d.platformWriteLock.acquisitions).toBe(1);
+		const events = d.spineLog.read();
+		expect(events.map((event) => event.kind)).toEqual(["state-set", "status"]);
+		expect(events[1]?.refs).toContain(`state-set:${events[0]?.seq}`);
+		expect(events[1]?.refs).not.toContain("state:ready");
+		expect(JSON.parse(result.stdout)).toEqual(events[1]);
+		expect(d.assignmentStore.read("asg-general-pij-self")?.states).toEqual([events[0]?.seq]);
+		expect(d.registry.read("pij-self")).toMatchObject({
+			currentAssignment: "asg-general-pij-self",
+			currentTask: "general",
+			semanticState: "ready",
+			statusPrev: "fixed the parser",
+			statusNext: "wire the tests",
+			statusAt: reportTs,
+			statusSeq: events[1]?.seq,
+		});
+	});
+
+	it("state-set failure attempts no status event", () => {
+		const d = reportSelfDeps();
+		d.opJournal.failNext("record");
+		const result = run(["report", "now", "did", "next", "--state", "ready"], d);
+		expect(result.exitCode).toBe(3);
+		expect(d.spineLog.read()).toEqual([]);
+		expect(d.assignmentStore.list()).toEqual([]);
+	});
+
+	it("status append failure names the state that landed", () => {
+		const d = reportSelfDeps();
+		d.spineLog.failNext("append");
+		const result = run(["report", "now", "did", "next", "--state", "ready"], d);
+		expect(result.exitCode).toBe(3);
+		expect(result.stderr).toContain("WAS set");
+		expect(result.stderr).toContain("status");
+		expect(d.spineLog.read().map((event) => event.kind)).toEqual(["state-set"]);
+		expect(d.registry.read("pij-self")?.semanticState).toBe("ready");
+	});
+
+	it("status denorm failure names both landed events and leaves the spine authoritative", () => {
+		const d = reportSelfDeps();
+		const originalWriteExact = d.registry.writeExact.bind(d.registry);
+		let writes = 0;
+		d.registry.writeExact = (descriptor) => {
+			writes += 1;
+			if (writes === 2) throw new Error("injected status denorm failure");
+			originalWriteExact(descriptor);
+		};
+		const result = run(["report", "now", "did", "next", "--state", "ready"], d);
+		expect(result.exitCode).toBe(3);
+		expect(result.stderr).toContain("WAS set");
+		expect(result.stderr).toContain("status event landed");
+		expect(result.stderr).toContain("injected status denorm failure");
+		expect(d.spineLog.read().map((event) => event.kind)).toEqual(["state-set", "status"]);
+	});
+
+	it("status denorm survives a later task set and projects on list + node show", () => {
+		const d = reportSelfDeps();
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+		expect(run(["task", "set", "pij-self", "new work"], d).exitCode).toBe(0);
+		const descriptor = d.registry.read("pij-self");
+		expect(descriptor).toMatchObject({
+			statusPrev: "did",
+			statusNext: "next",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+		const rows = JSON.parse(run(["list", "--json"], d).stdout) as Array<Record<string, unknown>>;
+		expect(rows[0]).toMatchObject({
+			statusPrev: "did",
+			statusNext: "next",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+		const card = JSON.parse(run(["node", "show", "pij-self", "--json"], d).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(card).toMatchObject({
+			statusPrev: "did",
+			statusNext: "next",
+			statusAt: reportTs,
+			statusSeq: 1,
+		});
+	});
+});
+
 describe("task/state verb parsing (T004)", () => {
 	it.each([
 		[["task", "set"], "usage"],
 		[["task", "set", "pij-node"], "usage"],
 		[["task", "bogus"], "unknown task subcommand"],
-		[["state", "set", "pij-node"], "usage"],
-		[["state", "verify"], "usage"],
+		[["report", "state"], "usage"],
+		[["report", "verify"], "usage"],
 	])("%j is E-ARG exit 64", (argv, needle) => {
 		const r = run(argv as string[], nodeDeps());
 		expect(r.exitCode).toBe(64);
@@ -3843,7 +4675,7 @@ describe("task/state verb parsing (T004)", () => {
 	});
 
 	it("rejects a word outside the ruled semantic vocabulary, naming it (WS-6)", () => {
-		const r = run(["state", "set", "pij-node", "working"], nodeDeps());
+		const r = reportState(nodeDeps(), "pij-node", "working");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("working");
 		expect(r.stderr).toContain("blocked|question|hold|waiting|ready|failed|cancelled|done");
@@ -3851,7 +4683,7 @@ describe("task/state verb parsing (T004)", () => {
 
 	it("rejects unknown flags and extra positionals", () => {
 		expect(run(["task", "set", "pij-node", "t", "--bogus", "x"], nodeDeps()).exitCode).toBe(64);
-		expect(run(["state", "set", "pij-node", "ready", "extra"], nodeDeps()).exitCode).toBe(64);
+		expect(reportState(nodeDeps(), "pij-node", "ready", ["extra"]).exitCode).toBe(64);
 	});
 
 	it("legacy `pij state <id>` still routes to the state card (regression)", () => {
@@ -3862,6 +4694,25 @@ describe("task/state verb parsing (T004)", () => {
 });
 
 describe("task set (T005)", () => {
+	it("re-arms only a self-paused watchdog after a new assignment commits", () => {
+		for (const [label, sidecar, expected] of [
+			["self", { enabled: true, pausedBy: "self", pausedAtMs: 1 }, { enabled: true }],
+			["operator-disabled", { enabled: false }, { enabled: false }],
+			[
+				"exempt",
+				{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+				{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+			],
+		] as const) {
+			const watchdogStore = memoryWatchdogStore("pij-node", sidecar);
+			const d = { ...nodeDeps(), watchdogStore };
+			const r = run(["task", "set", "pij-node", `new work (${label})`], d);
+			expect(r.exitCode).toBe(0);
+			expect(watchdogStore.sidecars.get("pij-node")).toEqual(expected);
+			expect(watchdogStore.writes).toHaveLength(label === "self" ? 1 : 0);
+		}
+	});
+
 	it("opens an assignment, denorms the descriptor, couples EXACTLY ONE task-set event", () => {
 		const d = nodeDeps();
 		const r = run(["task", "set", "pij-node", "review the packet", "--json"], d);
@@ -3946,7 +4797,7 @@ describe("task set (T005)", () => {
 describe("state set (T005)", () => {
 	it("implicit general: first write materializes asg-general-<node>, chains the seq, denorms", () => {
 		const d = nodeDeps();
-		const r = run(["state", "set", "pij-node", "waiting", "--json"], d);
+		const r = reportState(d, "pij-node", "waiting", ["--json"]);
 		expect(r.exitCode).toBe(0);
 		const record = d.assignmentStore.read("asg-general-pij-node");
 		expect(record).not.toBeNull();
@@ -3972,11 +4823,11 @@ describe("state set (T005)", () => {
 		const d = nodeDeps();
 		run(["task", "set", "pij-node", "work", "--json"], d);
 		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
-		const r = run(["state", "set", "pij-node", "blocked", "--assignment", id], d);
+		const r = reportState(d, "pij-node", "blocked", ["--assignment", id]);
 		expect(r.exitCode).toBe(0);
 		expect(d.assignmentStore.read(id)?.states).toHaveLength(1);
 
-		const foreign = run(["state", "set", "pij-other", "ready", "--assignment", id], d);
+		const foreign = reportState(d, "pij-other", "ready", ["--assignment", id]);
 		expect(foreign.exitCode).toBe(64);
 		expect(foreign.stderr).toContain("pij-node");
 	});
@@ -3985,7 +4836,7 @@ describe("state set (T005)", () => {
 		const d = nodeDeps();
 		run(["task", "set", "pij-node", "focused work"], d);
 		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
-		const r = run(["state", "set", "pij-node", "ready"], d);
+		const r = reportState(d, "pij-node", "ready");
 		expect(r.exitCode).toBe(0);
 		expect(d.assignmentStore.read(id)?.states).toHaveLength(1);
 		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
@@ -3993,11 +4844,9 @@ describe("state set (T005)", () => {
 
 	it("a nonexistent --assignment is E-NOREG; user --refs ride the event", () => {
 		const d = nodeDeps();
-		expect(
-			run(["state", "set", "pij-node", "ready", "--assignment", "asg-ghost"], d).exitCode,
-		).toBe(3);
+		expect(reportState(d, "pij-node", "ready", ["--assignment", "asg-ghost"]).exitCode).toBe(3);
 
-		const r = run(["state", "set", "pij-node", "blocked", "--refs", "pr:14,issue:6"], d);
+		const r = reportState(d, "pij-node", "blocked", ["--refs", "pr:14,issue:6"]);
 		expect(r.exitCode).toBe(0);
 		const ev = d.spineLog.read()[0];
 		expect(ev?.refs).toContain("pr:14");
@@ -4008,7 +4857,7 @@ describe("state set (T005)", () => {
 		it("journal record failure aborts BEFORE any state commit", () => {
 			const d = nodeDeps();
 			d.opJournal.failNext("record");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
 			expect(d.spineLog.read()).toEqual([]);
@@ -4018,7 +4867,7 @@ describe("state set (T005)", () => {
 		it("record-write failure is the primary error; the intent entry is cleared (abort path)", () => {
 			const d = nodeDeps();
 			d.assignmentStore.failNext("write");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(d.spineLog.read()).toEqual([]);
 			expect(pendingOps(d.opJournal)).toHaveLength(0);
@@ -4028,7 +4877,7 @@ describe("state set (T005)", () => {
 			const d = nodeDeps();
 			d.assignmentStore.failNext("write");
 			d.opJournal.failNext("clear");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("journal cleanup also failed");
 			expect(pendingOps(d.opJournal)).toHaveLength(1);
@@ -4037,7 +4886,7 @@ describe("state set (T005)", () => {
 		it("appendOnce failure keeps the journal entry; the NEXT platform write replays AND reconciles the chain", () => {
 			const d = nodeDeps();
 			d.spineLog.failNext("appendOnce");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).not.toBe(0);
 			expect(r.stderr).toContain("replayed by the next platform write");
 			expect(pendingOps(d.opJournal)).toHaveLength(1);
@@ -4056,7 +4905,7 @@ describe("state set (T005)", () => {
 		it("clear failure after a landed write is an honest non-zero naming the block", () => {
 			const d = nodeDeps();
 			d.opJournal.failNext("clear");
-			const r = run(["state", "set", "pij-node", "waiting"], d);
+			const r = reportState(d, "pij-node", "waiting");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS");
 			expect(r.stderr).toContain("blocked until");
@@ -4071,7 +4920,7 @@ describe("state verify (T005, AC-06)", () => {
 		const d = nodeDeps();
 		run(["task", "set", "pij-node", "ship it"], d);
 		const id = d.assignmentStore.listByNode("pij-node")[0]?.id as string;
-		run(["state", "set", "pij-node", "done"], d);
+		reportState(d, "pij-node", "done");
 		return { d, id };
 	}
 
@@ -4081,11 +4930,11 @@ describe("state verify (T005, AC-06)", () => {
 		const before = d.spineLog.read().filter((e) => e.kind === "state-set");
 		expect(before[0]?.verifiedBy).toBeUndefined();
 
-		const r = run(["state", "verify", "pij-node", "--actor", "pij-reviewer", "--json"], d);
+		const r = reportVerify(d, "pij-other", "pij-node", ["--json"]);
 		expect(r.exitCode).toBe(0);
 		const verified = d.spineLog.read().filter((e) => e.kind === "state-verified");
 		expect(verified).toHaveLength(1);
-		expect(verified[0]?.verifiedBy).toBe("pij-reviewer");
+		expect(verified[0]?.verifiedBy).toBe("pij-other");
 		expect(verified[0]?.refs).toContain(`assignment:${id}`);
 		expect(verified[0]?.refs).toContain(`event:${before[0]?.seq}`);
 		// verify joins the chain
@@ -4095,26 +4944,26 @@ describe("state verify (T005, AC-06)", () => {
 
 	it("verifying an assignment whose latest state is not done is E-ARG naming the state", () => {
 		const d = nodeDeps();
-		run(["state", "set", "pij-node", "waiting"], d);
-		const r = run(["state", "verify", "pij-node"], d);
+		reportState(d, "pij-node", "waiting");
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("waiting");
 	});
 
 	it("a later state change after done also un-verifies: verify then is E-ARG on the new latest", () => {
 		const { d } = doneChain();
-		run(["state", "verify", "pij-node"], d);
-		run(["state", "set", "pij-node", "blocked"], d);
-		const r = run(["state", "verify", "pij-node"], d);
+		reportVerify(d, "pij-other", "pij-node");
+		reportState(d, "pij-node", "blocked");
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("blocked");
 	});
 
 	it("refuses done → clear → verify as already undeclared without a verify event", () => {
 		const { d } = doneChain();
-		expect(run(["state", "clear", "pij-node"], d).exitCode).toBe(0);
+		expect(reportClear(d, "pij-node").exitCode).toBe(0);
 		const before = d.spineLog.read().length;
-		const r = run(["state", "verify", "pij-node"], d);
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr).toContain("no declared state to verify");
 		expect(d.spineLog.read()).toHaveLength(before);
@@ -4123,7 +4972,7 @@ describe("state verify (T005, AC-06)", () => {
 
 	it("verify with no resolvable assignment is E-NOREG (nothing to verify — the general is never materialized)", () => {
 		const d = nodeDeps();
-		const r = run(["state", "verify", "pij-node"], d);
+		const r = reportVerify(d, "pij-other", "pij-node");
 		expect(r.exitCode).toBe(3);
 		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
 	});
@@ -4152,6 +5001,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 					effort: "high",
 					state: "idle",
 				}),
+				desc({ id: "pij-reviewer" }),
 			],
 		});
 		return {
@@ -4176,13 +5026,13 @@ describe("node show (T009 — the full card, field by field)", () => {
 		// two assignments: one done-unverified, one blocked → badge worst-first
 		run(["task", "set", "pij-card", "alpha work", "--actor", "pij-boss"], d);
 		const asgA = d.assignmentStore.listByNode("pij-card")[0]?.id as string;
-		run(["state", "set", "pij-card", "done", "--actor", "pij-card"], d);
+		reportState(d, "pij-card", "done");
 		run(["task", "set", "pij-card", "beta work", "--actor", "pij-boss"], d);
 		const asgB = d.assignmentStore
 			.listByNode("pij-card")
 			.map((a) => a.id)
 			.find((id) => id !== asgA) as string;
-		run(["state", "set", "pij-card", "blocked", "--actor", "pij-card"], d);
+		reportState(d, "pij-card", "blocked");
 
 		const r = run(["node", "show", "pij-card", "--json"], d);
 		expect(r.exitCode).toBe(0);
@@ -4221,12 +5071,12 @@ describe("node show (T009 — the full card, field by field)", () => {
 	it("an unverified done flips to verified:true after a verify write (AC-06 render)", () => {
 		const d = cardDeps();
 		run(["task", "set", "pij-card", "ship", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-card", "done", "--actor", "pij-card"], d);
+		reportState(d, "pij-card", "done");
 		const before = JSON.parse(run(["node", "show", "pij-card", "--json"], d).stdout) as {
 			assignments: Array<{ state: string; verified: boolean | null }>;
 		};
 		expect(before.assignments[0]).toMatchObject({ state: "done", verified: false });
-		run(["state", "verify", "pij-card", "--actor", "pij-reviewer"], d);
+		reportVerify(d, "pij-reviewer", "pij-card");
 		const after = JSON.parse(run(["node", "show", "pij-card", "--json"], d).stdout) as {
 			assignments: Array<{ state: string; verified: boolean | null }>;
 		};
@@ -4240,6 +5090,7 @@ describe("node show (T009 — the full card, field by field)", () => {
 		const card = JSON.parse(r.stdout) as Record<string, unknown>;
 		expect(card.systemState).toBeNull();
 		expect(card.semanticState).toBeNull();
+		expect(card.stateNote).toBeNull();
 		expect(card.badge).toBe("unknown");
 		expect(card.windowId).toBeNull();
 		expect(card.contextMax).toBeNull();
@@ -4320,7 +5171,7 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 	it("surfaces an unverified done with spine-seq evidence; --json is the bare array", () => {
 		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
 		run(["task", "set", "pij-n", "ship", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-n", "done", "--actor", "pij-n"], d);
+		reportState(d, "pij-n", "done");
 		const r = run(["anomalies", "--json"], d);
 		expect(r.exitCode).toBe(0);
 		const anomalies = JSON.parse(r.stdout) as Array<Record<string, unknown>>;
@@ -4331,10 +5182,13 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 	});
 
 	it("a verified chain is clean; an empty machine prints an empty array", () => {
-		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-n" }), desc({ id: "pij-reviewer" })],
+		});
 		run(["task", "set", "pij-n", "ship", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-n", "done", "--actor", "pij-n"], d);
-		run(["state", "verify", "pij-n", "--actor", "pij-reviewer"], d);
+		reportState(d, "pij-n", "done");
+		reportVerify(d, "pij-reviewer", "pij-n");
 		const anomalies = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{
 			kind: string;
 		}>;
@@ -4346,8 +5200,32 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 
 	it("foreign hold-clear surfaces both actors", () => {
 		const d = platformDeps({ self: "pij-self", descs: [desc({ id: "pij-n" })] });
-		run(["state", "set", "pij-n", "hold", "--actor", "pij-issuer"], d);
-		run(["state", "set", "pij-n", "ready", "--actor", "pij-meddler"], d);
+		const assignment: Assignment = {
+			schema_version: 1,
+			id: "asg-foreign-clear",
+			nodeId: "pij-n",
+			task: "historical hold",
+			states: [],
+			opened: { actor: "pij-issuer", ts: recent },
+		};
+		const hold = d.spineLog.append({
+			schema_version: 1,
+			ts: recent,
+			actor: "pij-issuer",
+			kind: SPINE_KIND_STATE_SET,
+			refs: ["node:pij-n", "assignment:asg-foreign-clear", "state:hold"],
+			peer: "pij-n",
+		});
+		const ready = d.spineLog.append({
+			schema_version: 1,
+			ts: recent,
+			actor: "pij-meddler",
+			kind: SPINE_KIND_STATE_SET,
+			refs: ["node:pij-n", "assignment:asg-foreign-clear", "state:ready"],
+			peer: "pij-n",
+		});
+		if (!hold.ok || !ready.ok) throw new Error("failed to seed historical state events");
+		d.assignmentStore.write({ ...assignment, states: [hold.value.seq, ready.value.seq] });
 		const anomalies = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{
 			kind: string;
 			detail: string;
@@ -4443,9 +5321,9 @@ describe("anomalies verb (T010 — queries with evidence, AC-06/AC-07)", () => {
 		});
 		run(["project", "create", "here work", "--slug", "here-work", "--actor", "pij-boss"], d);
 		run(["task", "set", "pij-local", "ship", "--project", "here-work", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-local", "done", "--actor", "pij-local"], d);
+		reportState(d, "pij-local", "done");
 		run(["task", "set", "pij-far", "other errand", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-far", "done", "--actor", "pij-far"], d);
+		reportState(d, "pij-far", "done");
 
 		const all = JSON.parse(run(["anomalies", "--json"], d).stdout) as Array<{ nodeId: string }>;
 		expect(new Set(all.map((a) => a.nodeId))).toEqual(new Set(["pij-local", "pij-far"]));
@@ -4525,6 +5403,12 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 					id: "pij-busy",
 					currentAssignment: "a-0001",
 					currentTask: "wire the fleet page",
+					semanticState: "question",
+					stateNote: {
+						text: "which route?",
+						state: "question",
+						at: recent,
+					},
 					planId: "073-pij-first-class-ui",
 				}),
 				desc({ id: "pij-unassigned" }),
@@ -4536,15 +5420,23 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 		id: string;
 		currentAssignment: string | null;
 		currentTask: string | null;
+		semanticState: SemanticState | null;
+		stateNote: SessionDescriptor["stateNote"] | null;
 		planId: string | null;
 	};
 
-	it("projects currentTask/currentAssignment from the descriptor denorm", () => {
+	it("projects assignment and semantic fields from the descriptor denorm", () => {
 		const r = run(["list", "--json"], denormDeps());
 		expect(r.exitCode).toBe(0);
 		const byId = new Map((JSON.parse(r.stdout) as Row[]).map((row) => [row.id, row]));
 		expect(byId.get("pij-busy")?.currentTask).toBe("wire the fleet page");
 		expect(byId.get("pij-busy")?.currentAssignment).toBe("a-0001");
+		expect(byId.get("pij-busy")?.semanticState).toBe("question");
+		expect(byId.get("pij-busy")?.stateNote).toEqual({
+			text: "which route?",
+			state: "question",
+			at: recent,
+		});
 		expect(byId.get("pij-busy")?.planId).toBe("073-pij-first-class-ui");
 	});
 
@@ -4557,9 +5449,13 @@ describe("assignment denorm in `list --json` (chainglass item 2 — projection, 
 		// field". Presence-of-key is the contract, so assert the key, not the value.
 		expect(unassigned).toHaveProperty("currentTask");
 		expect(unassigned).toHaveProperty("currentAssignment");
+		expect(unassigned).toHaveProperty("semanticState");
+		expect(unassigned).toHaveProperty("stateNote");
 		expect(unassigned).toHaveProperty("planId");
 		expect(unassigned?.currentTask).toBeNull();
 		expect(unassigned?.currentAssignment).toBeNull();
+		expect(unassigned?.semanticState).toBeNull();
+		expect(unassigned?.stateNote).toBeNull();
 		expect(unassigned?.planId).toBeNull();
 	});
 
@@ -4609,9 +5505,9 @@ describe("`list --badge` (chainglass item 3 — the AC-05 badge, opt-in, hoisted
 	/** blocked on the FIRST (still open) assignment, done on the CURRENT one. */
 	function seedDivergent(d: ReturnType<typeof badgeDeps>) {
 		run(["task", "set", "pij-two-jobs", "alpha work", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-two-jobs", "blocked", "--actor", "pij-two-jobs"], d);
+		reportState(d, "pij-two-jobs", "blocked");
 		run(["task", "set", "pij-two-jobs", "beta work", "--actor", "pij-boss"], d);
-		run(["state", "set", "pij-two-jobs", "done", "--actor", "pij-two-jobs"], d);
+		reportState(d, "pij-two-jobs", "done");
 	}
 
 	it("omits the key entirely without the flag — absent means NOT REQUESTED", () => {
@@ -4851,7 +5747,7 @@ describe("denorm fresh-read basis (P3 T006b — p2-review-001 note 2)", () => {
 			}
 			return origRead(id);
 		};
-		const r = run(["state", "set", "pij-node", "ready", "--actor", "pij-boss"], d);
+		const r = reportState(d, "pij-node", "ready");
 		expect(r.exitCode).toBe(0);
 		const persisted = origRead("pij-node");
 		// The verb's denorm fields landed…
@@ -4910,32 +5806,18 @@ describe("spine render (P4 T002 — parse row + core E-NOREG naming the bin)", (
 
 describe("state clear (State-Model v2)", () => {
 	it("parses strict state clear grammar without changing the legacy state card", () => {
-		expect(
-			parseArgs([
-				"state",
-				"clear",
-				"pij-node",
-				"--assignment",
-				"asg-1",
-				"--actor",
-				"boss",
-				"--json",
-			]),
-		).toMatchObject({
+		expect(parseArgs(["report", "clear", "--assignment", "asg-1", "--json"])).toMatchObject({
 			ok: true,
 			value: {
 				verb: "state-clear",
-				node: "pij-node",
 				assignmentId: "asg-1",
-				actor: "boss",
 				json: true,
 			},
 		});
 		for (const argv of [
-			["state", "clear"],
-			["state", "clear", "pij-node", "extra"],
-			["state", "clear", "pij-node", "--refs", "issue:1"],
-			["state", "clear", "pij-node", "--assignment"],
+			["report", "clear", "extra"],
+			["report", "clear", "--refs", "issue:1"],
+			["report", "clear", "--assignment"],
 		] as const) {
 			expect(parseArgs(argv)).toMatchObject({ ok: false, code: "E-ARG" });
 		}
@@ -4974,7 +5856,7 @@ describe("state clear (State-Model v2)", () => {
 			peer: "pij-node",
 			refs: ["node:pij-node", "assignment:asg-clear", "state:hold"],
 		});
-		const r = run(["state", "clear", "pij-node", "--json"], d);
+		const r = reportClear(d, "pij-node", ["--json"]);
 		expect(r.exitCode).toBe(0);
 		const event = JSON.parse(r.stdout) as SpineEvent;
 		expect(event).toMatchObject({ kind: SPINE_KIND_STATE_CLEARED, peer: "pij-node" });
@@ -4993,7 +5875,7 @@ describe("state clear (State-Model v2)", () => {
 
 	it("refuses a missing-general target without an event or materialization", () => {
 		const d = nodeDeps();
-		const r = run(["state", "clear", "pij-node"], d);
+		const r = reportClear(d, "pij-node");
 		expect(r.exitCode).toBe(3);
 		expect(r.stderr).toContain("no assignment to clear");
 		expect(d.assignmentStore.read("asg-general-pij-node")).toBeNull();
@@ -5002,9 +5884,9 @@ describe("state clear (State-Model v2)", () => {
 
 	it("a later state set becomes current after a clear", () => {
 		const d = nodeDeps();
-		expect(run(["state", "set", "pij-node", "hold"], d).exitCode).toBe(0);
-		expect(run(["state", "clear", "pij-node"], d).exitCode).toBe(0);
-		expect(run(["state", "set", "pij-node", "ready"], d).exitCode).toBe(0);
+		expect(reportState(d, "pij-node", "hold").exitCode).toBe(0);
+		expect(reportClear(d, "pij-node").exitCode).toBe(0);
+		expect(reportState(d, "pij-node", "ready").exitCode).toBe(0);
 		const card = JSON.parse(run(["node", "show", "pij-node", "--json"], d).stdout) as {
 			assignments: Array<{ state: string | null }>;
 		};
@@ -5014,7 +5896,7 @@ describe("state clear (State-Model v2)", () => {
 	describe("journal-first cut points", () => {
 		function clearable() {
 			const d = nodeDeps();
-			expect(run(["state", "set", "pij-node", "hold"], d).exitCode).toBe(0);
+			expect(reportState(d, "pij-node", "hold").exitCode).toBe(0);
 			return { d, assignmentId: "asg-general-pij-node" };
 		}
 
@@ -5022,7 +5904,7 @@ describe("state clear (State-Model v2)", () => {
 			const { d, assignmentId } = clearable();
 			const before = d.assignmentStore.read(assignmentId);
 			d.opJournal.failNext("record");
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(d.spineLog.read()).toHaveLength(1);
 			expect(d.assignmentStore.read(assignmentId)).toEqual(before);
@@ -5032,7 +5914,7 @@ describe("state clear (State-Model v2)", () => {
 		it("assignment-write abort clears the clear intent and leaves the declaration intact", () => {
 			const { d, assignmentId } = clearable();
 			d.assignmentStore.failNext("write");
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(d.spineLog.read()).toHaveLength(1);
 			expect(d.assignmentStore.read(assignmentId)?.states).toEqual([1]);
@@ -5043,7 +5925,7 @@ describe("state clear (State-Model v2)", () => {
 		it("appendOnce failure reports WAS-cleared; the next write replays and chains one clear", () => {
 			const { d, assignmentId } = clearable();
 			d.spineLog.failNext("appendOnce");
-			const failed = run(["state", "clear", "pij-node"], d);
+			const failed = reportClear(d, "pij-node");
 			expect(failed.exitCode).toBe(3);
 			expect(failed.stderr).toContain("WAS cleared");
 			expect(d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED)).toEqual(
@@ -5062,7 +5944,7 @@ describe("state clear (State-Model v2)", () => {
 		it("journal clear failure is nonzero while the clear event and assignment chain stand", () => {
 			const { d, assignmentId } = clearable();
 			d.opJournal.failNext("clear");
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS cleared");
 			const cleared = d.spineLog.read().filter((event) => event.kind === SPINE_KIND_STATE_CLEARED);
@@ -5081,7 +5963,7 @@ describe("state clear (State-Model v2)", () => {
 			};
 			d.registry.write = boom;
 			d.registry.writeExact = boom;
-			const r = run(["state", "clear", "pij-node"], d);
+			const r = reportClear(d, "pij-node");
 			expect(r.exitCode).toBe(3);
 			expect(r.stderr).toContain("WAS cleared");
 			expect(r.stderr).toContain("injected descriptor write failure");
@@ -5307,6 +6189,11 @@ describe("state clear (State-Model v2)", () => {
 				const help = runBin(["stream", "create", "--help"]);
 				expect(help.status).toBe(0);
 				expect(help.stdout).toContain("pij stream create");
+				const reportHelp = runBin(["report", "--help"]);
+				expect(reportHelp.status).toBe(0);
+				expect(reportHelp.stdout).toContain('pij report question "<what I need from you>"');
+				expect(reportHelp.stdout).toContain('pij report blocked "<what I am waiting on>"');
+				expect(reportHelp.stdout).toContain("[--note <text>]");
 
 				const created = runBin([
 					"stream",
@@ -5447,6 +6334,42 @@ describe("state clear (State-Model v2)", () => {
 				packetSha256: SHA,
 			});
 			expect(d.spineLog.read().filter((event) => event.kind === "dispatch")).toHaveLength(3);
+		});
+
+		it("re-arms only a self-paused watchdog after a new dispatch is delivered", () => {
+			for (const [label, sidecar, expected] of [
+				["self", { enabled: true, pausedBy: "self", pausedAtMs: 1 }, { enabled: true }],
+				["operator-disabled", { enabled: false }, { enabled: false }],
+				[
+					"exempt",
+					{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+					{ enabled: true, pausedBy: "exempt", pausedAtMs: 1, exemptUntilMs: T + 60_000 },
+				],
+			] as const) {
+				const watchdogStore = memoryWatchdogStore("pij-worker", sidecar);
+				const d = { ...dispatchDeps(), watchdogStore };
+				const result = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], d);
+				expect(result.exitCode).toBe(0);
+				expect(watchdogStore.sidecars.get("pij-worker")).toEqual(expected);
+				expect(watchdogStore.writes).toHaveLength(label === "self" ? 1 : 0);
+			}
+		});
+
+		it("does not re-arm a self pause when dispatch delivery fails", () => {
+			const watchdogStore = memoryWatchdogStore("pij-worker", {
+				enabled: true,
+				pausedBy: "self",
+				pausedAtMs: 1,
+			});
+			const d = dispatchDeps();
+			const result = run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], {
+				...d,
+				watchdogStore,
+				delivery: { deliver: () => err("E-NOREG", "injected channel failure") },
+			});
+			expect(result.exitCode).toBe(3);
+			expect(watchdogStore.sidecars.get("pij-worker")?.pausedBy).toBe("self");
+			expect(watchdogStore.writes).toEqual([]);
 		});
 
 		it("never holds the platform write lock across peer delivery", () => {

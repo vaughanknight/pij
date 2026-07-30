@@ -1221,6 +1221,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 				startedAt: new Date(nowMs).toISOString(),
 				lastEventAt: new Date(nowMs).toISOString(),
 				state: "idle",
+				orchestrationRole: "pm",
 			}),
 		);
 		new FsWatchdogStore(home).write("pij-c", { intervalMs: 100 });

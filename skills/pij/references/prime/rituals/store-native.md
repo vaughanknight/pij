@@ -12,12 +12,12 @@ a prose-governed repo keeps prose as the live surface until ITS prime migrates.
 |---|---|
 | spine.md Event paragraph | `pij spine append --kind <kind> [--project <slug>] [--refs <seq,seq>] [--actor <label>]` |
 | prime-flow.json portfolio node | `pij project create "<description>"` then `pij project set <slug> [--plan <path>] [--prime <id>]` |
-| roster / assignment rows | `pij task set <id> "<task>" --project <slug>` · `pij state set <id> <state> [--actor <label>]` |
+| roster / assignment rows | `pij task set <id> "<task>" --project <slug>` · the assigned seat runs `pij report state <state>` |
 
 **Always pass `--project` on `task set`**: the assignment carries the slug and
 every later state-set/state-verified event inherits it — omit it and the
 claim/verify lifecycle is silently orphaned from the project's filtered spine.
-| verification of done | `pij state verify <id> --actor <verifier>` — done is a CLAIM until a **different** actor verifies |
+| verification of done | a different registered seat runs `pij report verify <id>` — done is a CLAIM until independently verified |
 | seat/liveness truth | `pij tree --json` · `pij node show <id> --json` · `pij anomalies --json` (surface, never act) |
 | human-readable spine | `pij spine render` (deterministic md from the store) |
 

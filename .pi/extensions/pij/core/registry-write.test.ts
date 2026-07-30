@@ -42,6 +42,60 @@ describe("applyWriteLaw", () => {
 		expect(applyWriteLaw(proposed, disk, "daemon").currentAssignment).toBe("asg-old");
 	});
 
+	it("AC-01: stateNote remains CLI-owned across daemon replay", () => {
+		const proposed = descriptor({
+			stateNote: {
+				text: "waiting for review",
+				state: "waiting",
+				at: "2026-07-29T01:00:00.000Z",
+			},
+		});
+		const disk = descriptor({
+			stateNote: {
+				text: "blocked on CI",
+				state: "blocked",
+				at: "2026-07-29T00:00:00.000Z",
+			},
+		});
+		expect(applyWriteLaw(proposed, disk, "cli").stateNote).toEqual(proposed.stateNote);
+		expect(applyWriteLaw(proposed, disk, "daemon").stateNote).toEqual(disk.stateNote);
+	});
+
+	it("AC-01: statusPrev remains CLI-owned across daemon replay", () => {
+		const proposed = descriptor({ statusPrev: "working" });
+		const disk = descriptor({ statusPrev: "idle" });
+		expect(applyWriteLaw(proposed, disk, "cli").statusPrev).toBe("working");
+		expect(applyWriteLaw(proposed, disk, "daemon").statusPrev).toBe("idle");
+	});
+
+	it("AC-01: statusNext remains CLI-owned across daemon replay", () => {
+		const proposed = descriptor({ statusNext: "done" });
+		const disk = descriptor({ statusNext: "working" });
+		expect(applyWriteLaw(proposed, disk, "cli").statusNext).toBe("done");
+		expect(applyWriteLaw(proposed, disk, "daemon").statusNext).toBe("working");
+	});
+
+	it("AC-01: statusAt remains CLI-owned across daemon replay", () => {
+		const proposed = descriptor({ statusAt: "2026-07-29T02:00:00.000Z" });
+		const disk = descriptor({ statusAt: "2026-07-29T01:00:00.000Z" });
+		expect(applyWriteLaw(proposed, disk, "cli").statusAt).toBe("2026-07-29T02:00:00.000Z");
+		expect(applyWriteLaw(proposed, disk, "daemon").statusAt).toBe("2026-07-29T01:00:00.000Z");
+	});
+
+	it("AC-01: statusSeq remains CLI-owned across daemon replay", () => {
+		const proposed = descriptor({ statusSeq: 8 });
+		const disk = descriptor({ statusSeq: 7 });
+		expect(applyWriteLaw(proposed, disk, "cli").statusSeq).toBe(8);
+		expect(applyWriteLaw(proposed, disk, "daemon").statusSeq).toBe(7);
+	});
+
+	it("AC-01: orchestrationRole remains CLI-owned across daemon replay", () => {
+		const proposed = descriptor({ orchestrationRole: "worker" });
+		const disk = descriptor({ orchestrationRole: "pm" });
+		expect(applyWriteLaw(proposed, disk, "cli").orchestrationRole).toBe("worker");
+		expect(applyWriteLaw(proposed, disk, "daemon").orchestrationRole).toBe("pm");
+	});
+
 	it("an undeclared writer owns nothing and can never clobber a contested field", () => {
 		const proposed = descriptor({ prime: false, terminal: undefined });
 		const disk = descriptor({

@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	classifySendFailure,
 	composerHasTextTail,
 	composerIsEmpty,
 	composerPending,
@@ -263,6 +264,22 @@ describe("composerPending — submit verification (the cause-independent retry g
 			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("gone");
 		});
 
+		// The inverse wiring: tmux could not be REACHED, so it never answered. That
+		// must stay retryable — `gone` here would unbind every seat in the fleet the
+		// moment the server blinked. (This is the branch CI was silently taking.)
+		it("returns FAILED (not gone) when the tmux server itself is unreachable", () => {
+			const adapter = new DaemonTmux({
+				runner: () => {
+					throw new Error(
+						"error connecting to /private/tmp/tmux-501/default (No such file or directory)",
+					);
+				},
+				sleep: () => undefined,
+			});
+
+			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("failed");
+		});
+
 		it("(a) waits through redraw lag and types the payload exactly once", () => {
 			const tmux = scriptedTmux([EMPTY_PANE, EMPTY_PANE, STUCK_PANE, STUCK_PANE, BUSY_PANE]);
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
@@ -371,9 +388,11 @@ describe("sendText outcome vocabulary (plan 071 D7)", () => {
 	// A pre-submission THROW means nothing landed, so consuming destroys the only
 	// copy of an undelivered message. Collapsing the two is the 2026-07-25 loss.
 	it("reports a send to a nonexistent pane as `gone`, never `unverified` or `failed`", () => {
-		const adapter = new DaemonTmux();
-
-		const outcome = adapter.sendText("%99999999", "this pane does not exist");
+		// tmux ANSWERED — the server is up and there is no such pane. Proven on the
+		// classifier so the assertion cannot silently degrade into the no-server
+		// branch on a machine with no tmux server (CI). The adapter wiring for this
+		// branch is pinned separately by the injected-runner tests above.
+		const outcome = classifySendFailure("can't find pane: %99999999");
 
 		expect(outcome).toBe("gone");
 		// The distinction is load-bearing: `unverified` would make the caller
@@ -383,6 +402,17 @@ describe("sendText outcome vocabulary (plan 071 D7)", () => {
 		// that does not exist is an infinite loop — and worse, tmux re-issues pane
 		// ids from `%0`, so the retry eventually lands in a STRANGER's pane (#34).
 		expect(outcome).not.toBe("failed");
+	});
+
+	// The inverse, and the reason the test above is no longer run through a live
+	// adapter: with NO tmux server, tmux cannot answer at all. That is absence of
+	// evidence, not evidence of absence — the same line cli.ts's `observePane`
+	// holds. Calling it `gone` would unbind the whole fleet on one socket blip.
+	it.each([
+		"error connecting to /private/tmp/tmux-501/default (No such file or directory)",
+		"no server running on /tmp/tmux-1001/default",
+	])("treats an unreachable tmux server as `failed`, never `gone` (%s)", (detail) => {
+		expect(classifySendFailure(detail)).toBe("failed");
 	});
 
 	it("never throws out of sendText — one dead pane must not abort the tick", () => {

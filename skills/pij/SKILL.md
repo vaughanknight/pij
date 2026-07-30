@@ -43,10 +43,10 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
-| `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C8 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
+| `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C9 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
 | `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |
 | `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
-| `project` `stream` `fence` `dispatch` `ack` `canary` `attest` `spine` `task` (`set`) `state` (`set/verify`) `node` (`show`) `anomalies` | node route (platform governance + team-scaffold records) |
+| `project` `stream` `fence` `dispatch` `ack` `canary` `attest` `spine` `task` (`set`) `report` (`now/question/blocked/state/clear/verify`) `node` (`show`) `anomalies` | node route (platform governance + team-scaffold records) |
 
 `/pij prime` selects the skill route; `pij orchestration prime` invokes its CLI
 primitive. `baton` is the other orchestration subcommand.
