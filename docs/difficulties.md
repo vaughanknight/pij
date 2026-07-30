@@ -221,6 +221,27 @@ and an encoded fix (durable). Severity guides priority.
   Reading the code beside it will not find the divergence; only executing the
   rule will.
 
+- **D-038 [high, open] A remedy that has the shape of the bug it fixes**
+  (2026-07-30). `c0c52b0` shipped the rule *"a scoped query must say what it did
+  NOT look at"* — `pij anomalies --here/--project` now names its scope and the
+  rows it hid. But the footer is guarded by `if (anomalies.length === 0)`, so it
+  **only speaks when it found nothing at all**. A scope that returns 1 row while
+  hiding 8 prints no footer whatsoever. The fix for silent-about-what-it-missed
+  is itself silent about what it missed, one level inside its own remedy — and
+  the partial case is the *more* dangerous one, because a non-empty result reads
+  as a complete answer where an empty one at least prompts suspicion.
+  **Why this class is the worst one:** a remedy is the last place anyone
+  re-audits. It carries the credibility of having *been* the fix, so the next
+  reader treats it as settled ground and reasons *from* it rather than *about*
+  it. Three of this week's defects share the parent shape — *a tool that is
+  correct and silent about what it did not look at* — and this is the first
+  instance found **inside a fix for that same shape**. **Encoding when fixed:**
+  the footer must fire on ANY filtering, not only total emptiness; more
+  generally, when you ship a rule, immediately apply that rule to the code you
+  just wrote. **Lesson:** ask of every fix "does my remedy exhibit the defect it
+  remedies?" — it is a cheap question and this fleet keeps finding the answer is
+  yes.
+
 - **D-039 [high, open] Silence is not consent — it is absence of test**
   (2026-07-30, spine 25526). The o-prime ruled s074's merge human-gated, then
   accepted **seven** subsequent merges without once flagging that they bypassed

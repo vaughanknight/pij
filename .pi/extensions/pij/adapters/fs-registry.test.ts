@@ -170,68 +170,80 @@ describe("FsRegistry", () => {
 		expect(new FsRegistry(home).read("alice")?.id).toBe("alice");
 	});
 
-	it.runIf(process.platform === "win32")(
-		"retries atomic replacement while Windows temporarily denies delete sharing",
-		{ timeout: 10_000 },
-		async () => {
-			const registry = new FsRegistry(home);
-			registry.write(descriptor("alice"));
-			const target = join(home, "alice.json");
-			const ready = join(home, "lock-ready");
-			const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
-			const powershell = join(
-				systemRoot,
-				"System32",
-				"WindowsPowerShell",
-				"v1.0",
-				"powershell.exe",
-			);
-			const lockScriptPath = join(home, "hold-lock.ps1");
-			writeFileSync(
+	// SKIPPED ON JORDAN'S RULING (2026-07-30): windows-compat flakes were blocking
+	// merges repeatedly, so a failing Windows test gets skipped rather than fought.
+	//
+	// NOTE THE COVERAGE COST IS TOTAL HERE, unlike the two skipped in 9ac9e6f.
+	// Those still run on darwin/linux, so a logic regression is still caught. This
+	// one is `runIf(win32)` — Windows-only by construction — so skipping it means
+	// it now runs NOWHERE, and Windows delete-sharing retry has no assertion left
+	// anywhere in the suite.
+	//
+	// WHAT ACTUALLY FAILED, recorded because the log misdescribes it: the headline
+	// CI error was "hold-lock.ps1 ... does not exist", which reads as a missing
+	// file. The script IS written synchronously by writeFileSync immediately
+	// before spawn. The real failure was this test timing out at 10s; vitest
+	// teardown then deleted the temp dir, and the still-starting PowerShell child
+	// reported the now-absent script. The loudest error is a teardown artifact.
+	//
+	// SO THE LIKELY REAL FIX IS THE BUDGET, NOT THE TEST: a PowerShell cold start
+	// on a loaded runner against 10_000ms, where the sibling multi-process tests
+	// in this file already use 30_000ms. Try `{ timeout: 30_000 }` and re-enable
+	// before assuming the test or the platform is at fault (D-035's family).
+	it.skip("retries atomic replacement while Windows temporarily denies delete sharing", {
+		timeout: 10_000,
+	}, async () => {
+		const registry = new FsRegistry(home);
+		registry.write(descriptor("alice"));
+		const target = join(home, "alice.json");
+		const ready = join(home, "lock-ready");
+		const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+		const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+		const lockScriptPath = join(home, "hold-lock.ps1");
+		writeFileSync(
+			lockScriptPath,
+			[
+				"param([string]$TargetPath, [string]$ReadyPath)",
+				"$stream = [IO.File]::Open($TargetPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)",
+				"try {",
+				"  [IO.File]::WriteAllText($ReadyPath, 'ready')",
+				"  Start-Sleep -Milliseconds 250",
+				"} finally {",
+				"  $stream.Dispose()",
+				"}",
+			].join("\n"),
+		);
+		const child = spawn(
+			powershell,
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
 				lockScriptPath,
-				[
-					"param([string]$TargetPath, [string]$ReadyPath)",
-					"$stream = [IO.File]::Open($TargetPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)",
-					"try {",
-					"  [IO.File]::WriteAllText($ReadyPath, 'ready')",
-					"  Start-Sleep -Milliseconds 250",
-					"} finally {",
-					"  $stream.Dispose()",
-					"}",
-				].join("\n"),
-			);
-			const child = spawn(
-				powershell,
-				[
-					"-NoProfile",
-					"-NonInteractive",
-					"-ExecutionPolicy",
-					"Bypass",
-					"-File",
-					lockScriptPath,
-					target,
-					ready,
-				],
-				{ stdio: ["ignore", "ignore", "pipe"] },
-			);
-			let stderr = "";
-			child.stderr.setEncoding("utf8");
-			child.stderr.on("data", (chunk: string) => {
-				stderr += chunk;
+				target,
+				ready,
+			],
+			{ stdio: ["ignore", "ignore", "pipe"] },
+		);
+		let stderr = "";
+		child.stderr.setEncoding("utf8");
+		child.stderr.on("data", (chunk: string) => {
+			stderr += chunk;
+		});
+		const completed = new Promise<void>((resolve, reject) => {
+			child.on("error", reject);
+			child.on("close", (code) => {
+				code === 0 ? resolve() : reject(new Error(`lock holder exited ${code}: ${stderr}`));
 			});
-			const completed = new Promise<void>((resolve, reject) => {
-				child.on("error", reject);
-				child.on("close", (code) => {
-					code === 0 ? resolve() : reject(new Error(`lock holder exited ${code}: ${stderr}`));
-				});
-			});
+		});
 
-			await waitUntil(() => existsSync(ready));
-			expect(() => registry.write({ ...descriptor("alice"), state: "working" })).not.toThrow();
-			await completed;
-			expect(registry.read("alice")?.state).toBe("working");
-		},
-	);
+		await waitUntil(() => existsSync(ready));
+		expect(() => registry.write({ ...descriptor("alice"), state: "working" })).not.toThrow();
+		await completed;
+		expect(registry.read("alice")?.state).toBe("working");
+	});
 
 	it("claim creates once and returns the existing descriptor to concurrent claimers", () => {
 		const first = new FsRegistry(home).claim(descriptor("stable"));

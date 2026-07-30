@@ -4966,35 +4966,45 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				});
 			}
 			if (cmd.json) return okOut(JSON.stringify(anomalies));
+			// Name the scope and the rows it hid. Silence about what was filtered is
+			// how a narrowing flag turns into a false all-clear.
+			//
+			// D-038: this footer originally fired ONLY when the scoped result was
+			// EMPTY, which made the fix for "a scoped query must say what it did not
+			// look at" itself silent about what it did not look at — the same defect
+			// one level inside its own remedy. The PARTIAL case is the more dangerous
+			// one: a non-empty result reads as a complete answer, where an empty one
+			// at least invites suspicion. So it now fires on ANY filtering.
+			const scope =
+				cmd.here && cmd.project !== undefined
+					? `in this folder and project '${cmd.project}'`
+					: cmd.here
+						? "in this folder"
+						: cmd.project !== undefined
+							? `in project '${cmd.project}'`
+							: undefined;
+			const hidden = unscopedCount - anomalies.length;
 			if (anomalies.length === 0) {
-				// Name the scope and the rows it hid. Silence about what was filtered
-				// is how a narrowing flag turns into a false all-clear.
-				const scope =
-					cmd.here && cmd.project !== undefined
-						? `in this folder and project '${cmd.project}'`
-						: cmd.here
-							? "in this folder"
-							: cmd.project !== undefined
-								? `in project '${cmd.project}'`
-								: undefined;
 				if (scope === undefined) return okOut("no anomalies");
-				const hidden = unscopedCount;
 				return okOut(
 					hidden === 0
 						? `no anomalies ${scope} (and none anywhere)`
 						: `no anomalies ${scope} — but ${hidden} elsewhere; run 'pij anomalies' unscoped to see them`,
 				);
 			}
+			const rows = anomalies
+				.map((a) => {
+					const evidence =
+						a.recordRef === undefined
+							? `spine ${a.evidence.join(",") || "—"}`
+							: `${a.recordRef}${a.ageMs === undefined ? "" : ` age=${a.ageMs}ms`}`;
+					return `${pad(a.kind, 26)} ${pad(a.nodeId, 20)} ${a.detail} [${evidence}]`;
+				})
+				.join("\n");
 			return okOut(
-				anomalies
-					.map((a) => {
-						const evidence =
-							a.recordRef === undefined
-								? `spine ${a.evidence.join(",") || "—"}`
-								: `${a.recordRef}${a.ageMs === undefined ? "" : ` age=${a.ageMs}ms`}`;
-						return `${pad(a.kind, 26)} ${pad(a.nodeId, 20)} ${a.detail} [${evidence}]`;
-					})
-					.join("\n"),
+				scope === undefined || hidden === 0
+					? rows
+					: `${rows}\n— showing ${anomalies.length} ${scope}; ${hidden} more hidden by that scope. Run 'pij anomalies' unscoped to see them.`,
 			);
 		}
 		case "spine-events": {

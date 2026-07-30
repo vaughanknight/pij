@@ -7122,4 +7122,50 @@ describe("scoped anomalies name what they did NOT look at", () => {
 		);
 		expect(run(["anomalies"], d).stdout).toBe("no anomalies");
 	});
+
+	// ── D-038: the remedy had the shape of the bug it fixed ───────────────────
+	it("reports the hidden count when a scope PARTIALLY filters the result", () => {
+		// The footer originally fired only when the scoped result was EMPTY, so a
+		// scope returning some rows while hiding others printed nothing at all —
+		// the fix for "say what you did not look at" being silent about what IT
+		// did not look at. The partial case is the more dangerous one: a non-empty
+		// result reads as a complete answer, where an empty one invites suspicion.
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [
+				desc({ id: "pij-here", folder: "/repo-main" }),
+				desc({ id: "pij-elsewhere", folder: "/other-repo" }),
+			],
+			cwd: "/repo-main",
+		});
+		for (const id of ["pij-here", "pij-elsewhere"]) {
+			run(["task", "set", id, "ship", "--actor", "pij-boss"], d);
+			reportState(d, id, "done");
+		}
+
+		// Guard against a vacuous pass: both seats must actually be flagged.
+		const unscoped = run(["anomalies"], d);
+		expect(unscoped.stdout).toContain("pij-here");
+		expect(unscoped.stdout).toContain("pij-elsewhere");
+
+		const scoped = run(["anomalies", "--here"], d);
+		expect(scoped.stdout).toContain("pij-here");
+		expect(scoped.stdout).not.toContain("pij-elsewhere");
+		// The whole point: the answer names its own boundary even when non-empty.
+		expect(scoped.stdout).toContain("hidden by that scope");
+		expect(scoped.stdout).toContain("in this folder");
+	});
+
+	it("stays terse on a full result that hid nothing", () => {
+		const d = platformDeps({
+			self: "pij-self",
+			descs: [desc({ id: "pij-here", folder: "/repo-main" })],
+			cwd: "/repo-main",
+		});
+		run(["task", "set", "pij-here", "ship", "--actor", "pij-boss"], d);
+		reportState(d, "pij-here", "done");
+		const scoped = run(["anomalies", "--here"], d);
+		expect(scoped.stdout).toContain("pij-here");
+		expect(scoped.stdout).not.toContain("hidden by that scope");
+	});
 });
