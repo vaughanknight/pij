@@ -2452,11 +2452,17 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			const globalTree = pij(["tree", "--global", "--all", "--json"], env, main);
 			expect(globalTree.code).toBe(0);
 			expect(globalTree.out).toContain("pij-other");
-			expect(globalTree.out).toContain('"lifecycle":"dissolved"');
+			// `--all` shows the dead, never the buried — a dissolved seat is hidden
+			// from `list`, so emitting it here is a card with no row behind it.
+			expect(globalTree.out).not.toContain('"lifecycle":"dissolved"');
+			expect(globalTree.out).not.toContain("pij-closed");
+			// Burial stays reachable on an explicit axis.
+			const buried = pij(["tree", "--global", "--lifecycle", "dissolved", "--json"], env, main);
+			expect(buried.out).toContain("pij-closed");
 			const human = pij(["tree", "--global", "--all"], env, main);
 			expect(human.out).toContain("P pij-root");
 			expect(human.out).toContain("O pij-child");
-			expect(human.out).toContain("closed");
+			expect(human.out).not.toContain("pij-closed");
 
 			const subtree = pij(["tree", "pij-other", "--json"], env, main);
 			expect(subtree.code).toBe(0);

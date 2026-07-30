@@ -186,7 +186,11 @@ function matchesFilters(session: TreeSession, filters: TreeFilters | undefined):
 	if (!filters) return !isHistorical(session);
 	const explicitHistoryFilter =
 		(filters.liveness?.length ?? 0) > 0 || (filters.lifecycle?.length ?? 0) > 0;
-	if (filters.all !== true && !explicitHistoryFilter && isHistorical(session)) return false;
+	if (!explicitHistoryFilter) {
+		if (filters.all !== true && isHistorical(session)) return false;
+		// `--all` means "include the DEAD", never "include the BURIED".
+		if (filters.all === true && isBuried(session)) return false;
+	}
 	if (filters.activity && !filters.activity.includes(session.activity)) return false;
 	if (filters.liveness && !filters.liveness.includes(session.liveness)) return false;
 	if (
@@ -205,6 +209,26 @@ function isHistorical(session: TreeSession): boolean {
 		session.liveness === "dissolved" ||
 		session.descriptor.lifecycle === "dissolved"
 	);
+}
+
+/** BURIED — the seat was explicitly torn down. Distinct from merely DEAD: a dead
+ *  seat is a corpse still lying where it fell and is real membership evidence
+ *  (`--all` exists to show it, so a dead seat in a sibling worktree is not
+ *  orphaned by both the tree and path containment). A buried one has been closed
+ *  and is only still on disk because `archive.ts` holds terminal records for a
+ *  48h post-mortem window before moving them out of the hot tier.
+ *
+ *  The line is drawn to AGREE WITH `list()`, which hides exactly `dissolved`
+ *  (adapters/fs-registry.ts:148). That agreement is the point: when the two
+ *  surfaces disagree a consumer renders a card with no row behind it, which is
+ *  precisely the 2026-07-30 wall of ROLE-UNKNOWN cards — 245 of the 250 nodes
+ *  `tree --all` emitted were dissolved and absent from `list`.
+ *
+ *  `failed` is deliberately NOT buried here even though `archive.ts` retires it
+ *  on the same 48h clock: `list()` still shows failed seats, so hiding them from
+ *  the tree would just invert the same defect into a row with no card. */
+function isBuried(session: TreeSession): boolean {
+	return session.liveness === "dissolved" || session.descriptor.lifecycle === "dissolved";
 }
 
 interface RenderFrame {

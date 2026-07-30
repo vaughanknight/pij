@@ -1669,9 +1669,14 @@ describe("dispatch tree/link", () => {
 		const human = dispatch(parsed(["tree", "--global", "--all"]), d);
 		expect(human.stdout).toContain("P pij-root");
 		expect(human.stdout).toContain("O pij-child");
-		expect(human.stdout).toContain("pij-closed");
-		expect(human.stdout).toContain("closed");
+		// `--all` surfaces the dead, never the buried: pij-closed is dissolved and
+		// hidden from `list`, so emitting it here renders a card with no row.
+		expect(human.stdout).not.toContain("pij-closed");
 		expect(human.stdout).toContain("orphan");
+
+		// Burial stays reachable on an explicit axis.
+		const buried = dispatch(parsed(["tree", "--global", "--lifecycle", "dissolved"]), d);
+		expect(buried.stdout).toContain("pij-closed");
 	});
 
 	it("fails a bare repository tree outside git and an unknown subtree without writes", () => {
