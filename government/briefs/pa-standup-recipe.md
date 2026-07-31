@@ -93,6 +93,43 @@
    > breaks streams-never-talk-sideways one layer down. Revisit only if a failure is found
    > that the local pairing cannot see.
 
+8. **Pick the sweep interval deliberately — step 7 makes two settings FIGHT.** (roadrunner)
+   A long interval stops an idle PA nudging constantly; the *same* interval is the blind
+   window on its **death**. `watchers: 1` at a 2h interval means a dead PA reads as healthy
+   for up to two hours. Say what you chose and why; nobody has the right number yet — it
+   wants a few sweeps of real duty cycle first.
+
+9. **Confirm the PRIME's own watchdog is not paused or exempt after the PA subscribes.**
+   (meadowlark) It subscribed `seahorse` while its own watchdog was `paused (self)` from an
+   earlier incident — the PA's whole designed trigger pointed at a silenced source. **A
+   subscription to a silenced source is a control that looks configured and delivers
+   nothing.** Open question, deliberately not asserted: whether a paused prime still
+   generates the anomalies its watcher subscribed to.
+
+10. **Timestamp everything in explicit UTC with the offset stated.** (mastodon) `gazelle`
+    stamped its instruments `08:44:48Z` when 08:44 was **local** (AEST +10); true UTC was
+    22:44Z. The *delta it computed was correct* — only the suffix was wrong — so a bad
+    label made correct work look wrong, and mastodon was one command from filing a false
+    "flash-class PA botched a time delta by 10 hours" against the very experiment the
+    pairing exists to run. With PAs across three governments and possibly three timezones,
+    **unqualified timestamps silently corrupt the comparison.** Shell-substitute
+    `date -u`, never type a time.
+
+## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
+
+Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
+no nudge will fire *and* no watcher would hear it — two independent silences stacked on
+one node — and **16 are armed but unwatched**. centipede predicted this from its own
+subtree and it holds fleet-wide.
+
+**The symmetric-watch argument is not special to prime↔PA** (centipede's generalisation,
+adopted): it applies to **any node whose supervisor cannot observe it**, including
+ordinary adopted peers with self-paused watchdogs. A paused watchdog plus zero watchers is
+an **unobservable seat at any depth**. Note the self-pause is normal etiquette when a seat
+goes idle — which is exactly what makes it invisible: **a legitimately parked seat and a
+dead one produce identical telemetry**, and nobody is notified that a seat opted itself
+out of supervision.
+
 ## The four things that cost us a cycle each — do not re-pay them
 
 1. **Require a MESSAGE per sweep; treat the card as optional.** albatross's PA ran two
