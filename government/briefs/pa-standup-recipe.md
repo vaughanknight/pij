@@ -62,6 +62,25 @@
    > notices changes no seat's policy). Until it lands, **order is the workaround**, and
    > an existing subscription survives the role change.
 
+7. **WATCH YOUR PA BACK — the loop must close both ways.** From YOUR prime seat:
+   `pij watchdog watch <pa-id> --capture anomaly`
+   `watch` subscribes the **caller**, and a prime is not gated on the watchdog family
+   (only role `pa` is), so this works today and needs no new code. Tested live on
+   albatross/anaconda before being written here: watchers went 0 → 1.
+
+   > **Why this step exists** (raised by mastodon, measured on `major-gazelle` which had
+   > `watchers: 0`): the PA's watchdog nudge is its sweep trigger, so **if the PA dies the
+   > nudge fires into a dead seat and what reaches you is silence** — absence-as-health
+   > reappearing inside the very component built to remove it. Subscribing yourself
+   > terminates it: a stall notice is PUSHED to you instead of inferred from a sweep that
+   > never came. The PA watches the prime because a prime has no parent; the prime watches
+   > the PA because nobody is above it either. **Mutual, one command each.**
+   >
+   > Ruled AGAINST cross-government PA-watches-PA for now: it couples one government's
+   > chore-runner to another's liveness for a failure already covered locally, and it
+   > breaks streams-never-talk-sideways one layer down. Revisit only if a failure is found
+   > that the local pairing cannot see.
+
 ## The four things that cost us a cycle each — do not re-pay them
 
 1. **Require a MESSAGE per sweep; treat the card as optional.** albatross's PA ran two
