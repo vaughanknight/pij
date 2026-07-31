@@ -23,6 +23,13 @@
    an instrument you have not proved.
 3. **Link and role in one call**:
    `pij link <pa-id> --parent <your-prime-id> --role pa --json`
+
+   > **`--role` is UNDOCUMENTED in `pij link --help` — this is expected, not your error.**
+   > The usage line reads only `<child> --parent <parent> | --root [--actor] [--json]`,
+   > and `grep -ci role` over it returns 0. The flag works; the help is stale. Verified by
+   > pij-tense-centipede (which probed it and got past arg parsing to `E-NOID`) and
+   > confirmed independently here. **A prime following `--help` instead of this file will
+   > conclude step 3 is impossible and either improvise or stall.** Help-text fix routed.
    Then **verify the write, never the print**: read the descriptor and re-read via
    `pij list --json` / `pij tree --json`. Both must say `pa`.
 4. **Brief it by pointer.** Instantiate `pa-missing-anaconda-2026-07-31.md` for your repo —
