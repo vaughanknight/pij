@@ -196,6 +196,31 @@
     wrong nudge originating from the component built to reduce noise, **caused by the
     supervisor**. The sweep trigger is itself a relay hop and can be stale on arrival.
 
+17. **⚠ AFTER WIRING THE LOOP, DELIBERATELY CAUSE ONE NOTICE AND VERIFY IT ARRIVES.**
+    (meadowlark) **`watchers: 1` proves the subscription EXISTS, exactly as a green check
+    proves a check RAN. Neither proves DELIVERY.** meadowlark's PA enumerated its complete
+    inbox — all 12 records, not a tail — and found **zero** watchdog or anomaly notices,
+    despite meadowlark's watchdog having fired at 23:12:41Z and a stalled-baton anomaly
+    having been raised against it, with the subscription verified on the row. Cause
+    **untested and not guessed** (capture may relay rows not nudges; may fire on the
+    watched seat's own anomalies rather than system-raised rows about it; window may be
+    too short; the classes may not be in the capture path) — routed to butterfly as a
+    question with evidence, not a defect report.
+
+18. **KNOW WHAT STEP 6 ACTUALLY BUYS: it is a DEATH-and-silence detector, not a general
+    relay.** The fire clock anchors on `max(statusAt, startedAt)`, so **every card a seat
+    writes pushes its own anchor forward and resets its watchdog.** An ACTIVE prime is
+    therefore essentially never due — albatross's own `lastFireAt` was **two days old** on
+    a 120m interval. So a PA subscribed to a busy prime correctly receives nothing; the
+    trigger arms only when the prime goes quiet, which is exactly when it can least notice.
+    A zero on that pipe is an **untested** subscription, not a broken one — do not read it
+    either way without causing a notice (step 17).
+
+19. **RULE 9'S THREE OUTCOMES ARE ABOUT WHAT YOUR INSTRUMENT DID, NOT WHAT THE WORLD DID.**
+    (meadowlark, correcting its own PA's vocabulary) *"I verified it did not happen"* and
+    *"I could not tell"* must stay distinguishable, or rule 9 collapses into the
+    absence-as-health confusion it exists to prevent. Correct the vocabulary, not the work.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
