@@ -258,6 +258,8 @@ and an encoded fix (durable). Severity guides priority.
   | code (D-037) | a comment nobody executed | a description of the code |
   | inference (INS-001) | a human's "should" nobody measured | a statement of current fact |
   | governance (this) | a precedent nobody had challenged | a granted authority |
+  | proof (D-040) | a type invariant nobody ran a parser against | a working vocabulary |
+  | measurement (D-041) | a key the projection never emitted | a value that is null |
   **Why governance is the worst of the three:** a prime's silence is the
   cheapest thing in the system to mistake for a ruling — it costs nothing to
   emit, arrives continuously, and looks identical whether it means *approved*,
@@ -268,3 +270,53 @@ and an encoded fix (durable). Severity guides priority.
   not exercised. **Lesson:** before acting on a precedent, ask whether it was
   ever *decided* or merely *never contested*. Surfaced by pij-unwilling-butterfly
   against its own decision; recorded by pij-wee-albatross.
+
+- **D-040 [high, encoded] A widened type is not a widened vocabulary**
+  (2026-07-31, PR #68). s078 added `pa` to `StoredOrchestrationRole`. Two
+  compiled exactness invariants (`Assert<Exact<…>>`) proved the union had
+  widened, the suite was green, and the PR was approved for merge. **`pij link
+  --role pa` had returned `E-ARG` the entire time.** Both producer parsers
+  guard with `role !== "pm" && role !== "worker"` — a comparison against a
+  `string`, which the compiler cannot relate to the union at all. So widening
+  the type produced **zero** compile errors at the exact two places that decide
+  whether the value may ever be typed. The type test passed on a vocabulary no
+  parser would accept.
+  **The near miss is the point:** the o-prime had already measured the failing
+  command and diagnosed it as *"the producer has not merged yet"* — a causal
+  story that was never tested. Had #68 merged on that reading, it would have
+  gone green, the PA chip would have stayed dormant, and three seats would each
+  have held a correct-looking half. It was caught only because someone went to
+  look at *why the reported command failed* instead of trusting the diff.
+  **Encoding:** the vocabulary is now DATA (`STORED_ORCHESTRATION_ROLES`) with
+  the type *derived from it*, one `isStoredOrchestrationRole` guard consumed by
+  both parsers, and `STORED_ROLE_CHOICES` in every usage and error string —
+  a member cannot be added to the type without the guard and the help text
+  widening with it. Tests **iterate the vocabulary** rather than naming members,
+  so a future member a parser refuses fails *with the parser named*.
+  **Lesson:** a compiled invariant proving a type is *exact* proves nothing
+  about a parser that compares *literals* against it. The technique that would
+  have caught this — an exhaustive table test — had been written by the same
+  seat, the same day, one file over, for the capability gate. **The failure was
+  not ignorance of the technique but not seeing that a second surface needed
+  it.** Surfaced by pij-wee-albatross's measurement; fixed and recorded by
+  pij-unwilling-butterfly.
+
+- **D-041 [medium, open] The reader can manufacture the absence**
+  (2026-07-31). Measuring how many seats lack a parent, the PM ran
+  `pij list --json` and counted `d.parent == null`, getting **122 of 122
+  parentless** — a number it did not believe and therefore checked.
+  `list` does **not project `parent` at all**; the reader had turned a *missing
+  key* into a *null value*, i.e. manufactured the very absence it was measuring.
+  The real answer, from a projection that carries lineage, is that every roled
+  seat has a parent except two workers.
+  **Why it is worth a row despite being caught:** nothing in the output would
+  have corrected it. A projection that omits a key and a projection that reports
+  the key as null are **indistinguishable to a reader that uses `?? null` or
+  `== null`**, and the fabricated answer is the *alarming* one — it reads as a
+  fleet-wide defect and would have justified work that was not needed.
+  **Lesson:** when a measurement returns a total or near-total result, suspect
+  the reader before believing the finding — check that the field being counted
+  is actually *present* in the projection being read. Same class as the doctrine
+  filed the same morning against `jq` object construction; this instance is the
+  agent-side twin. Recorded by pij-unwilling-butterfly against its own
+  measurement.
