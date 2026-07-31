@@ -24,14 +24,29 @@ and `pij revive`:
 | Tier | Where | Visible to |
 |---|---|---|
 | hot | `~/.pij/<id>.json` + `~/.pij/<id>/` data dir | `pij list`, `pij state`, `pij revive` |
-| archived | `~/.pij/archive/<id>.json` + `~/.pij/archive/<id>/` | **`pij list --archived`** only — still reachable by id |
+| archived | `~/.pij/archive/<id>.json` + `~/.pij/archive/<id>/` | **the FILE is the authority**; `pij list --archived` is a FILTERED BROWSE AID, not an existence check |
 | — | *(the platform moves a seat here once terminal >48h)* | |
 
 > **A descriptor missing from `~/.pij/` is NOT evidence the seat never existed, and NOT
 > data loss — CHECK `~/.pij/archive` FIRST.** This cost a real round-trip on 2026-08-01: a
 > repo's o-prime was reported UNREVIVABLE with "neither descriptor nor data dir exists",
-> and both were sitting in the archive tier with full terminal evidence. There are
-> currently ~4,845 archived entries on this box.
+> and both were sitting in the archive tier with full terminal evidence. **2,423 archived
+> seats** on this box at time of writing.
+>
+> **AND `pij list --archived` IS NOT THE EXISTENCE CHECK** — it is a filtered view and it
+> hides most of the tier. Measured 2026-08-01: **437 rows listed out of 2,423 descriptors
+> on disk (18%)**, and for one folder, **2 shown out of 33** — the hidden 31 included that
+> repo's own PREDECESSOR PRIME, dissolved and present on disk. `dissolved` is necessary
+> but not sufficient to appear; the additional filter is uncharacterised. So an agent that
+> runs `--archived`, does not find its id, and concludes "genuinely gone" reaches the same
+> wrong answer one tier deeper, now with an authoritative-feeling command behind it.
+>
+> **Use the filesystem as the authority:**
+> ```bash
+> ls ~/.pij/archive/<id>.json                                   # existence check
+> grep -l '"folder": *"<repo-path>"' ~/.pij/archive/*.json      # every archived seat for a repo
+> pij list --archived                                            # browse aid only — incomplete
+> ```
 
 Sessions that died without `pij close` leave **corpses** (descriptor present, process gone).
 
