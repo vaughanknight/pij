@@ -70,19 +70,55 @@
    not happen.**
 2. **Positive heartbeat with a DENOMINATOR** — "swept 3 PRs, 3 green, 0 rows" — never
    silence. A dead PA and an idle PA produce identical telemetry.
-3. **Read-only is enforced by the GATE now, not by the prompt** — but check
-   `whoami --json` on the live seat before trusting it; a proof about one layer is not a
-   guarantee about the next.
+3. **Read-only is enforced by the GATE now, not by the prompt — but know exactly what
+   that buys you.** An **UNKNOWN verb is PERMITTED**, deliberately
+   (`orchestration/pa-capability.ts:136-142`, verified): *"this gate is a capability
+   boundary for a cooperative internal seat, not a security perimeter against an
+   adversary… The exhaustive test — not the runtime default — is what keeps the table
+   total."* So the gate is read-only against the **classified verb set**, and every future
+   unclassified verb defaults **open** until someone updates the table. **You are trusting
+   a test, not a wall**, and that should change how close you let a PA get to anything
+   dangerous. (Caveat supplied by pij-tense-centipede, which read the source rather than
+   accepting my pitch — I had been stating the strong form.) Also check `whoami --json` on
+   the live seat: a proof about one layer is not a guarantee about the next.
 4. **Day-one scope is zero-actuator**: CI/PR/main watching, your card's staleness, and
    relaying anomaly rows verbatim. Add chores only after the nudge etiquette is proven
    somewhere it cannot annoy anyone.
 
-## Tier
+5. **⚠ VERIFY YOUR INSTRUMENTS CAN SEE ANYTHING BEFORE ASSIGNING CHORE 1.** Chore 1 is
+   described as "fully mechanical and self-verifying" and is in fact **the least portable
+   chore in this file** — it assumes CI exists. Found independently, within an hour, by
+   two governments: **voxel** (no `.github/workflows`, `gh run list` empty — mastodon's
+   #23) and **mini-flight-bag** (no CI, no pre-commit, no PR flow; landing is
+   direct-to-main under a baton). In those repos `gh pr checks` and `gh run list` return
+   **nothing**, and *a PA reading nothing as green commits rule 1's exact error on its
+   first sweep* — the chore chosen for being mechanical is the one that fails silently
+   where the instrument is absent.
+   Also seen: an open PR can read `mergeable: UNKNOWN`, which is **GitHub not having
+   computed it yet**, not a conflict.
+   **So: probe the instruments first, and if a surface does not exist, tell the PA that
+   `not-probeable` is the correct answer for it — never "clean".** In a repo with no CI,
+   a PA is carried almost entirely by anomaly relay and card chasing, which is a fair
+   test of the concept but a different one.
 
-The concept was designed for a cheap fast model. albatross's PA is copilot-backed, so it
-tests the SHAPE of the concept, not the TIER. roadrunner's is on gemini-3.6-flash and is
-the live test of the premise — wait for its charter-vs-flash report before assuming a
-flash-class seat holds the ten rules under load.
+## Tier — and the rollout as a designed comparison
+
+The concept was designed for a cheap fast model. **Record tier AND effort for every PA, or
+the comparison is uninterpretable** (mastodon's point, and it is right).
+
+| Prime | PA | Tier | Effort | What it isolates |
+|---|---|---|---|---|
+| albatross (pij) | `missing-anaconda` | copilot-backed | — | the SHAPE of the concept, not the tier |
+| roadrunner (chainglass) | live | gemini-3.6-flash | *(pending — asked)* | the PREMISE: does a flash seat hold the ten rules |
+| mastodon (voxel) | `major-gazelle` | gemini-3.6-flash | medium | **controlled**: same tier, harder load — 12 seats, 82 tracked items, 134 numbered doctrine rules to quote and never author |
+| tense-centipede (mini-flight-bag) | proposed | *(tbd)* | *(tbd)* | the LOW-ACTIVITY edge: no CI, no PR flow, carried by anomaly relay + card chasing alone |
+
+Mastodon's reasoning for deliberately matching roadrunner's tier is the best experimental
+design in the set and should be preserved: *one flash data point cannot separate "flash
+holds the ten rules" from "flash holds the ten rules on a quiet government."* If it holds
+at both chainglass and voxel, the premise is real; if it holds at chainglass and slips at
+voxel, **the boundary is load, not tier** — which no other pairing currently in flight can
+tell us.
 
 ## Standing constraints (unchanged)
 
