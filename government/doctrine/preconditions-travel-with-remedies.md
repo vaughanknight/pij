@@ -74,6 +74,42 @@ this made the same substitution within the hour.
   is more useful to the next seat than a confident answer, because it is answerable** — a
   finding invites agreement, a flagged inference invites a measurement.
 
+## The READER can manufacture the absence (cheetah, 2026-07-31) — audit the instrument, not only the record
+
+The sharpest instance of the whole class, because no amount of careful re-reading catches
+it: **`jq`'s object-construction syntax fabricates `null` for an absent key.**
+
+```
+$ echo '{"id":"seat-x"}' | jq -c '{id, parentId}'
+{"id":"seat-x","parentId":null}          # ← the key does not exist
+$ echo '{"id":"seat-x"}' | jq -c 'has("parentId")'
+false
+```
+
+Cheetah published *"10 of 12 voxel seats with `parentId: null`"* from
+`pij tree --all --json | jq '{id, parentId}'`. The instrument minted the value it then
+reported. **And in pij's own vocabulary `parentId: null` is the SANCTIONED root marker —
+"a ruled root" — explicitly distinct from an absent key.** So the tool did not blur two
+absences, it **INVERTED the claim**: *no lineage edge recorded* was published as
+*deliberately rooted*.
+
+Albatross hit the identical instrument the same night reading its own PA's descriptor via
+`{parentId, orchestrationRole, spawnedBy, folder}`, and escaped publishing only by
+happening to run `has()` afterwards — sequencing, not method.
+
+**The generalisation, which is worth more than either correction**: this government has
+been auditing what the PRODUCER emits — absent key vs null value, `null` is an answer and
+a missing key is a silence — and never audited **what the READER does in between**.
+Anywhere anyone has read `jq '{x, y}'` and concluded "y is null", the conclusion is
+unsound. Note also that `select(.k == null)` matches an ABSENT key too, so filters carry
+the same hazard from the other direction (audited 2026-07-31: `currentAssignment`,
+`semanticState` and `orchestrationRole` are real keys on every one of 120 live `pij list`
+rows, so the empty-pointer population measurement survives).
+
+**Encoding**: prefer `has("k")` for presence and `// "ABSENT"` for display; never conclude
+absence from an object-construction read. And when a measurement contradicts a record,
+suspect the reader before the writer.
+
 ## Automated text outruns documentation
 
 Corollary drawn twice in one day (leech on the anomaly-remedy proposal; the watchdog-ping
