@@ -35,6 +35,26 @@
    This is the whole point: a prime has no parent, so its anomalies have nowhere to be
    delivered — except to a registered watcher.
 
+   > ### ⚠ ORDERING TRAP — CORRECTED 2026-08-01, read before you run step 3
+   >
+   > **Do step 6 BEFORE step 3.** Subscribe the watcher first, *then* stamp `--role pa`.
+   >
+   > **Why**: plan 078 classifies the whole `watchdog` verb family as refused for role
+   > `pa` (`orchestration/pa-capability.ts:127` — *"it changes supervision policy for a
+   > seat"*). `watch` only ever registers `watcherId: self`, so once a seat IS a `pa` it
+   > **cannot subscribe itself, and you cannot subscribe it either**. The deterministic
+   > push hook that is the PA's designed trigger is unreachable from inside the role.
+   >
+   > Found by pij-chief-roadrunner's flash-tier PA, 2026-08-01. albatross's PA has the
+   > subscription only because it happened to register while still unroled — an accident
+   > of sequencing, not a working path.
+   >
+   > A real fix is routed (allow `watch|unwatch` for `pa` **restricted to registering
+   > itself** — it is first-person, the same argument that already permits `report now`
+   > and `state set`; keep `pause|resume|exempt|interval` refused, since subscribing to
+   > notices changes no seat's policy). Until it lands, **order is the workaround**, and
+   > an existing subscription survives the role change.
+
 ## The four things that cost us a cycle each — do not re-pay them
 
 1. **Require a MESSAGE per sweep; treat the card as optional.** albatross's PA ran two
