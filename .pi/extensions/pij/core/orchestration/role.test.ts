@@ -10,6 +10,7 @@ import {
 	hasRoleConflict,
 	isStoredOrchestrationRole,
 	owesStatusCard,
+	paLineageRefusal,
 	projectOrchestrationRole,
 	RoleService,
 	STORED_ORCHESTRATION_ROLES,
@@ -282,5 +283,54 @@ describe("stored role vocabulary is admitted by every parser", () => {
 		const orch = parseOrchestrationArgs(["role", "set", "some-seat", "regent"]);
 		expect(orch.ok).toBe(false);
 		if (!orch.ok) expect(orch.message).toContain(STORED_ROLE_CHOICES);
+	});
+});
+
+/** A pa is defined relative to a prime, so a pa with no parent has no referent.
+ *
+ * Three routes reach the identical floating card and each has its own door:
+ * stamp `pa` on an unadopted seat, `--root` a seat that already IS a `pa`, or
+ * do both at once. A guard on the role write alone would close the first and
+ * leave the second wide open, which is the "gate you can tick" shape.
+ */
+describe("paLineageRefusal — a pa is never left without a prime", () => {
+	it("permits every non-pa role without a parent, and pa WITH one", () => {
+		expect(paLineageRefusal("pm", null, "pij-a")).toBeNull();
+		expect(paLineageRefusal("worker", null, "pij-a")).toBeNull();
+		expect(paLineageRefusal(undefined, null, "pij-a")).toBeNull();
+		expect(paLineageRefusal("pa", "pij-prime", "pij-a")).toBeNull();
+	});
+
+	it("refuses a parentless pa and names the remedy with the seat id", () => {
+		const refusal = paLineageRefusal("pa", null, "pij-a");
+		expect(refusal).not.toBeNull();
+		expect(refusal).toContain("pij link pij-a --parent <prime> --role pa");
+	});
+
+	it("refuses at the role-write seam: pa onto an unadopted seat", () => {
+		const registry = new CountingRegistry([descriptor("pij-a", {})]);
+		const result = new RoleService(registry).set("pij-a", "pa");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.code).toBe("E-ARG");
+		expect(registry.writes, "a refusal must mutate nothing").toBe(0);
+		expect(registry.read("pij-a")?.orchestrationRole).toBeUndefined();
+	});
+
+	it("permits pa onto an adopted seat, by parentId or by spawnedBy", () => {
+		for (const over of [{ parentId: "pij-prime" }, { spawnedBy: "pij-prime" }]) {
+			const registry = new CountingRegistry([descriptor("pij-a", over)]);
+			const result = new RoleService(registry).set("pij-a", "pa");
+			expect(result.ok, `pa refused for ${JSON.stringify(over)}`).toBe(true);
+			expect(registry.read("pij-a")?.orchestrationRole).toBe("pa");
+		}
+	});
+
+	it("still lets a pa be unset or re-roled while parentless, so a seat is never stuck", () => {
+		const registry = new CountingRegistry([
+			descriptor("pij-a", { orchestrationRole: "pa", parentId: undefined }),
+		]);
+		expect(new RoleService(registry).unset("pij-a").ok).toBe(true);
+		const reroll = new CountingRegistry([descriptor("pij-b", { orchestrationRole: "pa" })]);
+		expect(new RoleService(reroll).set("pij-b", "worker").ok).toBe(true);
 	});
 });

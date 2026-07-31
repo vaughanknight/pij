@@ -54,6 +54,7 @@ import {
 	type DesignationAuditPort,
 	DesignationAuditService,
 	isStoredOrchestrationRole,
+	paLineageRefusal,
 	projectOrchestrationRole,
 	RoleService,
 	STORED_ROLE_CHOICES,
@@ -2514,6 +2515,17 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							...(badges ? { badge: badges.get(d.id) ?? "unknown" } : {}),
 							// Adoption axis (plan 054 P3, WS-1): explicit boolean in the
 							// row projection so a UI/skill can filter without joins.
+							// `parent` is the EVIDENCE `unadopted` is derived from, and
+							// withholding it while publishing the verdict is what made
+							// three separate governments draw false lineage conclusions
+							// (D-041): a consumer reading `d.parent == null` on a row that
+							// never carried the key gets `true` for every seat alive, and
+							// the fabricated answer is the alarming one. Deliberately
+							// `effectiveParent`, the SAME notion and the SAME key name
+							// `node show` projects — a raw `parentId` here would disagree
+							// with `node show` for every spawned-but-never-linked seat and
+							// buy back the class it was added to remove.
+							parent: effectiveParent(d),
 							unadopted: isUnadopted(d),
 						})),
 					),
@@ -2651,6 +2663,18 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				attribution = { actor: resolved.value.actor, provenance: resolved.value.provenance };
 			}
 			const changed = current?.parentId !== cmd.parentId;
+			// A pa must never be left unadopted (paLineageRefusal): check the state
+			// the write WOULD produce — the role after this command joined to the
+			// parent after it — so `--root` on an existing pa refuses as loudly as
+			// stamping pa on an unadopted seat. Before any write: refusal mutates
+			// nothing (F2).
+			const roleAfter = cmd.role ?? current?.orchestrationRole;
+			const lineageRefusal = paLineageRefusal(
+				roleAfter,
+				effectiveParent(planned.value),
+				cmd.childId,
+			);
+			if (lineageRefusal !== null) return fail("E-ARG", lineageRefusal, cmd.json);
 			// "cli": `pij link` OWNS parentId. Without the declaration the write law
 			// would take it from disk and the verb would silently no-op.
 			if (changed) deps.registry.write(planned.value, "cli");

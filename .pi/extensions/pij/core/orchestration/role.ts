@@ -4,6 +4,7 @@ import type { PlatformWriteLockPort, SpineLogPort } from "../platform/ports.js";
 import { buildSpineEvent } from "../platform/spine.js";
 import type { SPINE_KIND_PRIME_SET, SPINE_KIND_ROLE_SET } from "../platform/types.js";
 import type { RegistryPort } from "../ports.js";
+import { effectiveParent } from "../tree.js";
 import { err, ok, type Result, type SessionDescriptor, type SessionId } from "../types.js";
 
 /** The orchestration role persisted on a session descriptor.
@@ -121,6 +122,32 @@ export function cardCanMislead(descriptor: CardSource): boolean {
 	return role === "prime" || role === "pm";
 }
 
+/** A PA is defined RELATIVE TO a prime — so a PA with no effective parent is
+ *  not a lesser PA, it is an instrument with no attested subject. It renders as
+ *  a floating card wearing a PA chip and no visible prime, which invites the
+ *  reader to supply the missing prime from context: exactly the "unexamined
+ *  read as proven" shape, aimed at a human looking at a rail.
+ *
+ *  Every other role survives orphaning with a degraded but honest meaning — an
+ *  unadopted worker has nobody to report to, which is a real and readable
+ *  state. `pa` is the one role whose SUBJECT is the parent, so absence of the
+ *  parent is absence of the role's referent, not a property of it.
+ *
+ *  Pure, and consulted at BOTH role-writing seams (`pij link --role`,
+ *  `pij orchestration role set`) — the seams are separate parsers and a guard
+ *  in only one is a guard that looks total. Takes the state AFTER the write
+ *  would land, so it catches all three routes to a floating PA: stamping `pa`
+ *  on an unadopted seat, `--root`ing a seat that already IS a `pa`, and doing
+ *  both at once. Returns the refusal text, or null to permit. */
+export function paLineageRefusal(
+	roleAfter: StoredOrchestrationRole | undefined,
+	effectiveParentAfter: SessionId | null,
+	id: SessionId,
+): string | null {
+	if (roleAfter !== "pa" || effectiveParentAfter !== null) return null;
+	return `a pa has no meaning without a prime: '${id}' would be left with no parent, rendering as a PA chip with no visible subject — link it to its prime in the same breath (pij link ${id} --parent <prime> --role pa)`;
+}
+
 export interface RoleChange {
 	readonly id: SessionId;
 	readonly previousRole: StoredOrchestrationRole | undefined;
@@ -142,6 +169,13 @@ export class RoleService {
 	private update(id: SessionId, role: StoredOrchestrationRole | undefined): Result<RoleChange> {
 		const descriptor = this.registry.read(id);
 		if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
+		// The role-write seam: every caller of `set` passes through here, so a pa
+		// can never be stamped onto a seat with nobody to assist. The parent side
+		// of the same invariant lives at `pij link` — a role guard alone would
+		// permit orphaning an EXISTING pa, which reaches the identical floating
+		// card by the other door.
+		const lineage = paLineageRefusal(role, effectiveParent(descriptor), id);
+		if (lineage !== null) return err("E-ARG", lineage);
 		const previousRole = descriptor.orchestrationRole;
 		const changed = previousRole !== role;
 		// Declares "cli": RoleService OWNS orchestrationRole, so its computed value

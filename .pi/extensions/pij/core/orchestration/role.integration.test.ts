@@ -257,3 +257,82 @@ describe("designation spine vocabulary", () => {
 		expect(SPINE_KIND_PRIME_SET).toBe("prime-set");
 	});
 });
+
+describe("a pa is never left without a prime (both doors)", () => {
+	it("refuses stamping pa on an unadopted seat, and writes nothing", () => {
+		const d = deps([descriptor("pij-prime", { prime: true }), descriptor("pij-aide")]);
+		const res = run(["link", "pij-aide", "--root", "--role", "pa", "--actor", "test"], d);
+		expect(res.exitCode).not.toBe(0);
+		expect(res.stderr).toContain("--parent <prime> --role pa");
+		expect(d.registry.read("pij-aide")?.orchestrationRole).toBeUndefined();
+	});
+
+	it("refuses ROOTING an existing pa — the door a role-write guard cannot see", () => {
+		const d = deps([
+			descriptor("pij-prime", { prime: true }),
+			descriptor("pij-aide", { orchestrationRole: "pa", parentId: "pij-prime" }),
+		]);
+		const res = run(["link", "pij-aide", "--root", "--actor", "test"], d);
+		expect(res.exitCode).not.toBe(0);
+		expect(
+			d.registry.read("pij-aide")?.parentId,
+			"the refused link must leave the prime attached",
+		).toBe("pij-prime");
+	});
+
+	it("permits linking a pa to its prime in one command", () => {
+		const d = deps([descriptor("pij-prime", { prime: true }), descriptor("pij-aide")]);
+		const res = run(
+			["link", "pij-aide", "--parent", "pij-prime", "--role", "pa", "--actor", "test"],
+			d,
+		);
+		expect(res.exitCode).toBe(0);
+		expect(d.registry.read("pij-aide")).toMatchObject({
+			orchestrationRole: "pa",
+			parentId: "pij-prime",
+		});
+	});
+});
+
+/** The row published the VERDICT (`unadopted`) while withholding the EVIDENCE
+ *  (`parent`), so a consumer counting `row.parent == null` scored every seat
+ *  alive as parentless — a missing key read as a null value (D-041). Three
+ *  governments drew false lineage conclusions from exactly that. */
+describe("list rows carry lineage, in the same shape node show uses", () => {
+	it("projects parent on every row, present even when genuinely null", () => {
+		const d = deps([
+			descriptor("pij-prime", { prime: true }),
+			descriptor("pij-linked", { parentId: "pij-prime" }),
+			descriptor("pij-spawned", { spawnedBy: "pij-prime" }),
+			descriptor("pij-loose"),
+		]);
+		const res = run(["list", "--json"], d);
+		expect(res.exitCode).toBe(0);
+		const rows = JSON.parse(res.stdout) as { id: string; parent: string | null }[];
+		for (const row of rows) {
+			expect(Object.hasOwn(row, "parent"), `${row.id} row has no parent key`).toBe(true);
+		}
+		const byId = new Map(rows.map((r) => [r.id, r.parent]));
+		expect(byId.get("pij-linked")).toBe("pij-prime");
+		// spawnedBy is lineage too — a raw parentId here would report null and
+		// disagree with `node show`, which is the defect one layer along.
+		expect(byId.get("pij-spawned")).toBe("pij-prime");
+		expect(byId.get("pij-loose")).toBeNull();
+	});
+
+	it("agrees with node show for the same seat, key for key", () => {
+		const d = deps([
+			descriptor("pij-prime", { prime: true }),
+			descriptor("pij-spawned", { spawnedBy: "pij-prime" }),
+		]);
+		const listed = JSON.parse(run(["list", "--json"], d).stdout) as {
+			id: string;
+			parent: unknown;
+		}[];
+		const shown = JSON.parse(run(["node", "show", "pij-spawned", "--json"], d).stdout) as {
+			parent: unknown;
+		};
+		const row = listed.find((r) => r.id === "pij-spawned");
+		expect(row?.parent).toBe(shown.parent);
+	});
+});
