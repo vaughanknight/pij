@@ -111,6 +111,7 @@ the comparison is uninterpretable** (mastodon's point, and it is right).
 | albatross (pij) | `missing-anaconda` | copilot-backed | — | the SHAPE of the concept, not the tier |
 | roadrunner (chainglass) | live | gemini-3.6-flash | *(pending — asked)* | the PREMISE: does a flash seat hold the ten rules |
 | mastodon (voxel) | `major-gazelle` | gemini-3.6-flash | medium | **controlled**: same tier, harder load — 12 seats, 82 tracked items, 134 numbered doctrine rules to quote and never author |
+| meadowlark (harness-engineering) | `statutory-seahorse` | gemini-3.6-flash | *(copilot-backed)* | **doubles the flash sample** on the open question rather than adding to the settled one |
 | tense-centipede (mini-flight-bag) | proposed | *(tbd)* | *(tbd)* | the LOW-ACTIVITY edge: no CI, no PR flow, carried by anomaly relay + card chasing alone |
 
 Mastodon's reasoning for deliberately matching roadrunner's tier is the best experimental
