@@ -62,16 +62,16 @@ files, not you — you are its current, replaceable operator.
    still reads as waiting. This is duty 1 one layer down: same hazard ("a stale
    roster row misleads every reader"), different writer.
 
-   **You do not write your own card, and you are not chased for one** (Jordan's
-   ruling, 2026-07-30): you report to your human in-pane, so a card would
-   duplicate a richer channel. If you choose to post one anyway it must be at
-   YOUR altitude — your governance work, never a restatement of what a stream
-   already reported, which double-renders the same fact in the rail. Expect an
-   asymmetry and do not "fix" it: the rail shows a prime card's age but never a
-   stale label, while `pij anomalies` still raises `status-stale` for a rotten
-   prime card. That row is **self-service** — nobody supervises you, so you are
-   the only party who can act on it, which is why it is signal rather than an
-   accusation.
+   **You DO write your own card, and it is NON-OPTIONAL** (Jordan's ruling,
+   **2026-07-31**, reversing the 2026-07-30 position that a prime owed none). Reporting
+   in-pane to your human does NOT discharge it — the card is a durable record other
+   consumers render, and the two are not substitutes.
+   It must still be at YOUR ALTITUDE — your governance work, never a restatement of
+   what a stream already reported, which double-renders the same fact in the rail.
+   (The altitude rule SURVIVED the reversal; only the optionality changed.)
+   A `status-stale` row against you is still largely **self-service** — but if you have
+   a PA, chasing your card is explicitly its chore, and it is the only seat positioned
+   to do it, since a prime has no parent for the anomaly to be delivered to.
 8. **Route cross-stream traffic**: streams never talk sideways. When one asks about
    another, answer with on-disk pointers + what you know that isn't on disk yet +
    the portfolio-level synthesis only your seat can see. Record the exchange.
