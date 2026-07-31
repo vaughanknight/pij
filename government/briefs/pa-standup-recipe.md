@@ -153,6 +153,14 @@
     fabricates absence as null, in every language**). Verified here. Use the descriptor for
     step 3, or `node show --json` with the key `parent`.
 
+    **UPDATED after pij `b94b94a` (#69)** — `pij list --json` NOW carries lineage, as
+    **`parent`**, deliberately matching `node show` rather than the raw `parentId` I asked
+    for: a raw `parentId` would disagree with `node show` for every spawned-but-never-linked
+    seat and buy back the class it was added to remove (butterfly's call, and it is better
+    than my ask). **So the key is `parent` on BOTH `list --json` and `node show --json`;
+    only the descriptor file uses `parentId`.** Verified across all four live PAs — each
+    projects its prime correctly and the two surfaces agree.
+
 13. **NORMALISE EVERY TIMESTAMP TO EPOCH BEFORE ANY DELTA.** (meadowlark's PA, self-diagnosed)
     `seahorse` false-positived its prime's card as stale by comparing a local `+10:00` ISO
     string against a UTC `Z` string **as raw text**, reading a **61-second-old** card as
