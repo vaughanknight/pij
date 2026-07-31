@@ -7503,3 +7503,158 @@ describe("s077 reproduction — state-set general-fallback after closing the cur
 		expect(remediated.exitCode).toBe(0);
 	});
 });
+
+describe("s078 — the PA capability gate at the dispatch seam", () => {
+	const PA = "pij-assistant-seat";
+
+	function paSeat() {
+		return platformDeps({
+			self: PA,
+			descs: [desc({ id: PA, orchestrationRole: "pa" })],
+		});
+	}
+
+	function pmSeat() {
+		return platformDeps({
+			self: PA,
+			descs: [desc({ id: PA, orchestrationRole: "pm" })],
+		});
+	}
+
+	it("refuses the authority verbs with E-OWN naming the verb and the reason", () => {
+		// NOTE the gate sits AFTER parse, so a malformed authority command yields
+		// E-ARG (arity) rather than E-OWN (capability). That is acceptable — the
+		// command was refused either way — but it means these argvs must be VALID
+		// or the test proves the parser works rather than the gate.
+		const d = paSeat();
+		for (const argv of [
+			["task", "set", PA, "do a thing"],
+			["task", "close", "asg-x", "--reason", "done"],
+			["report", "verify", PA],
+			["link", PA, "--parent", "pij-boss"],
+		]) {
+			const r = run(argv, d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("E-OWN");
+			expect(r.stderr).toContain("role 'pa'");
+			expect(r.stderr).toContain("pij whoami --json");
+		}
+	});
+
+	it("PERMITS reads and the PA's own first-person card — the must-not-regress list", () => {
+		const d = paSeat();
+		expect(run(["list", "--json"], d).exitCode).toBe(0);
+		expect(run(["whoami", "--json"], d).exitCode).toBe(0);
+		expect(run(["anomalies"], d).exitCode).toBe(0);
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+	});
+
+	it("does NOT refuse the same verbs for a PM — no existing seat regresses", () => {
+		// The control. Without it, a gate that refused EVERYONE would pass the
+		// refusal assertions above and look correct.
+		const d = pmSeat();
+		expect(run(["task", "set", PA, "do a thing"], d).exitCode).toBe(0);
+	});
+
+	it("whoami makes the boundary OBSERVABLE — role and refused verbs, before attempting", () => {
+		// The binding constraint: a gate whose input is unobservable is the s075
+		// opened.actor defect, and this stream exists to make authority legible.
+		const card = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as {
+			orchestrationRole: string;
+			refusedVerbs: string[];
+		};
+		expect(card.orchestrationRole).toBe("pa");
+		expect(card.refusedVerbs).toContain("close");
+		expect(card.refusedVerbs).toContain("task-set");
+		expect(card.refusedVerbs).not.toContain("list");
+
+		const pm = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as {
+			orchestrationRole: string;
+			refusedVerbs: string[];
+		};
+		expect(pm.orchestrationRole).toBe("pm");
+		expect(pm.refusedVerbs).toEqual([]);
+	});
+});
+
+describe("s078 — writtenBy closes identity-borrowing", () => {
+	// Cheetah's argument, and it is why the verb gate alone was not enough: a
+	// gate that refuses `close` while permitting identity-borrowing is not
+	// read-only by construction. A PA doing its prime's chores NEEDS to post its
+	// prime's card; without a legitimate path it would have to assume the prime's
+	// identity outright, which no gate can detect. Given one, the relay is
+	// recorded AS a relay.
+	const PRIME = "pij-the-prime";
+	const PA = "pij-the-assistant";
+	const OTHER = "pij-unrelated";
+
+	function fleet() {
+		return platformDeps({
+			self: PA,
+			descs: [
+				desc({ id: PRIME, prime: true }),
+				desc({ id: PA, orchestrationRole: "pa", parentId: PRIME }),
+				desc({ id: OTHER, orchestrationRole: "pm" }),
+			],
+		});
+	}
+
+	function card(d: CliDeps, id: string): Record<string, unknown> | undefined {
+		return (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === id,
+		);
+	}
+
+	it("a PA relays its OWN prime's card, and the relay is attributed", () => {
+		const d = fleet();
+		expect(
+			run(["report", "now", "swept the fleet", "next sweep", "--for", PRIME], d).exitCode,
+		).toBe(0);
+		const prime = card(d, PRIME);
+		expect(prime?.statusPrev).toBe("swept the fleet");
+		// The card is the PRIME's, but it does not claim the prime wrote it.
+		expect(prime?.statusWrittenBy).toBe(PA);
+	});
+
+	it("a self-authored card records NO writer — absence is the answer", () => {
+		const d = fleet();
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+		expect(card(d, PA)?.statusWrittenBy).toBeNull();
+	});
+
+	it("CLEARS a stale writer when the subject writes its own card again", () => {
+		// Otherwise a prime that resumes reporting keeps advertising its PA as the
+		// author forever — a relay attribution outliving the relay.
+		const d = fleet();
+		run(["report", "now", "relayed", "next", "--for", PRIME], d);
+		expect(card(d, PRIME)?.statusWrittenBy).toBe(PA);
+		const asPrime = asReportingSelf(d, PRIME);
+		expect(run(["report", "now", "mine now", "next"], asPrime).exitCode).toBe(0);
+		expect(card(d, PRIME)?.statusWrittenBy).toBeNull();
+	});
+
+	it("refuses a PA relaying for a seat that is NOT its prime", () => {
+		const d = fleet();
+		const r = run(["report", "now", "did", "next", "--for", OTHER], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+		expect(r.stderr).toContain("its OWN prime");
+	});
+
+	it("refuses --for from a non-PA entirely", () => {
+		const d = platformDeps({
+			self: OTHER,
+			descs: [desc({ id: PRIME, prime: true }), desc({ id: OTHER, orchestrationRole: "pm" })],
+		});
+		const r = run(["report", "now", "did", "next", "--for", PRIME], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("only to a PA");
+	});
+
+	it("refuses --for combined with --state — a state is first-person testimony", () => {
+		const d = fleet();
+		const r = run(["report", "now", "did", "next", "--for", PRIME, "--state", "blocked"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("first-person");
+	});
+});

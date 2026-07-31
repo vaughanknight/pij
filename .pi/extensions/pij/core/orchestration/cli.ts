@@ -10,6 +10,7 @@ import type {
 	RoleService,
 	StoredOrchestrationRole,
 } from "./role.js";
+import { isStoredOrchestrationRole, STORED_ROLE_CHOICES } from "./role.js";
 
 export const ORCHESTRATION_USAGE = `pij orchestration — machine-wide coordination primitives
 
@@ -24,7 +25,7 @@ USAGE
   pij orchestration prime set [<id>] [--json]
   pij orchestration prime retire [<id>] [--json]
   pij orchestration prime unset [<id>] [--json]
-  pij orchestration role set [<id>] <pm|worker> [--json]
+  pij orchestration role set [<id>] <${STORED_ROLE_CHOICES}> [--json]
   pij orchestration role unset [<id>] [--json]
 
 POSTURE
@@ -271,12 +272,14 @@ export function parseOrchestrationArgs(args: readonly string[]): ParseOrchestrat
 		const json = lexed.flags.json === true;
 		if (verb === "set") {
 			if (lexed.positionals.length < 1 || lexed.positionals.length > 2) {
-				return argError("role set needs [<id>] <pm|worker>");
+				return argError(`role set needs [<id>] <${STORED_ROLE_CHOICES}>`);
 			}
 			const id = lexed.positionals.length === 2 ? lexed.positionals[0] : undefined;
 			const role = lexed.positionals.at(-1);
-			if (role !== "pm" && role !== "worker") {
-				return argError(`unknown orchestration role '${role ?? ""}' (expected pm|worker)`);
+			if (!isStoredOrchestrationRole(role)) {
+				return argError(
+					`unknown orchestration role '${role ?? ""}' (expected ${STORED_ROLE_CHOICES})`,
+				);
 			}
 			if (id !== undefined && !NAME_RE.test(id)) {
 				return argError(

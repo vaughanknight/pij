@@ -12,7 +12,29 @@ import { err, ok, type Result, type SessionDescriptor, type SessionId } from "..
  * stored here. Prime-ness remains `SessionDescriptor.prime?: boolean`, owned by
  * PrimeService; projections join that flag with this stored partial role.
  */
-export type StoredOrchestrationRole = "pm" | "worker";
+/** The stored role vocabulary, as DATA.
+ *
+ * The type is derived FROM this array rather than declared beside it, because a
+ * type and a hand-written validator drift silently: `role !== "pm" && role !==
+ * "worker"` compares a `string`, so widening a union produces ZERO compile
+ * errors at every parser that guards on literals. That is exactly how `pa`
+ * became a legal type and an illegal argument. Deriving the type from the array
+ * makes the vocabulary single-sourced: a new member is admitted by the guard and
+ * named in the usage text by construction, not by remembering.
+ */
+export const STORED_ORCHESTRATION_ROLES = ["pm", "worker", "pa"] as const;
+
+export type StoredOrchestrationRole = (typeof STORED_ORCHESTRATION_ROLES)[number];
+
+/** Runtime admission for the stored vocabulary — the ONLY parser-side guard. */
+export function isStoredOrchestrationRole(value: unknown): value is StoredOrchestrationRole {
+	return (
+		typeof value === "string" && (STORED_ORCHESTRATION_ROLES as readonly string[]).includes(value)
+	);
+}
+
+/** `pm|worker|pa` — the vocabulary rendered for usage and error text. */
+export const STORED_ROLE_CHOICES = STORED_ORCHESTRATION_ROLES.join("|");
 
 /** The total orchestration role exposed by projections. */
 export type OrchestrationRole = "prime" | StoredOrchestrationRole;
@@ -25,10 +47,10 @@ type Assert<Condition extends true> = Condition;
 
 /** Compiled invariants: widening either alias collapses store-partial/project-total. */
 export type StoredOrchestrationRoleExactnessInvariant = Assert<
-	Exact<StoredOrchestrationRole, "pm" | "worker">
+	Exact<StoredOrchestrationRole, "pm" | "worker" | "pa">
 >;
 export type OrchestrationRoleExactnessInvariant = Assert<
-	Exact<OrchestrationRole, "prime" | "pm" | "worker">
+	Exact<OrchestrationRole, "prime" | "pm" | "worker" | "pa">
 >;
 
 type RoleProjectionSource = Pick<SessionDescriptor, "prime" | "orchestrationRole">;

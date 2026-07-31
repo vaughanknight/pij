@@ -160,8 +160,9 @@ import {
 	ORCHESTRATION_USAGE,
 	parseOrchestrationArgs,
 } from "./core/orchestration/cli.js";
+import { paRefusal, paRefusalMessage } from "./core/orchestration/pa-capability.js";
 import { PrimeService } from "./core/orchestration/prime.js";
-import { RoleService } from "./core/orchestration/role.js";
+import { projectOrchestrationRole, RoleService } from "./core/orchestration/role.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
 import {
@@ -263,7 +264,7 @@ Agents (run declarative minih agent packs):
 Orchestration (machine-wide coordination):
   pij orchestration baton <define|list|show|request|grant|return|reclaim>   atomic resource leases + pushed notices
   pij orchestration prime <set|unset> [<id>] [--json]                      designate self or another session prime
-  pij orchestration role <set|unset> [<id>] <pm|worker> [--json]           stamp a seat's role; an unstamped seat renders ROLE UNKNOWN and shows no status card
+  pij orchestration role <set|unset> [<id>] <pm|worker|pa> [--json]           stamp a seat's role; an unstamped seat renders ROLE UNKNOWN and shows no status card
 
 Platform (durable projects + the shared spine log):
   pij project create "<description>" [--slug <slug>] [--actor <label>] [--json]   create a project (kebab slug, collision-resolved; --slug is verbatim and errors on collision)
@@ -509,6 +510,30 @@ function sleepSync(ms: number): void {
 function write(res: CliResult): void {
 	if (res.stdout) process.stdout.write(`${res.stdout}\n`);
 	if (res.stderr) process.stderr.write(`${res.stderr}\n`);
+}
+
+/** Seam 2's role lookup (plan 078). Resolves the caller's seat from the ambient
+ *  registry and asks the SAME predicate core dispatch() uses, so the two seams
+ *  cannot disagree about what a PA may do.
+ *
+ *  Fail-OPEN on anything unresolvable — no PIJ_HOME, no registry, no descriptor
+ *  — for the same reason as seam 1: refusing a caller we cannot identify would
+ *  break unregistered contexts to constrain a seat that is registered by
+ *  construction. This boundary is for a cooperative internal role. */
+function paBinRefusal(verb: string): string | null {
+	try {
+		const home = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+		if (!existsSync(home)) return null;
+		const registry = new FsRegistry(home);
+		const self = resolveAmbientSelf(registry);
+		if (!self.ok || self.value === undefined) return null;
+		const descriptor = registry.read(self.value);
+		if (!descriptor) return null;
+		const why = paRefusal(projectOrchestrationRole(descriptor), verb);
+		return why === null ? null : paRefusalMessage(verb, why);
+	} catch {
+		return null;
+	}
 }
 
 function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
@@ -3940,6 +3965,20 @@ function main(): void {
 	if (top === "--version" || top === "-v" || top === "version") {
 		process.stdout.write(`pij ${pijVersion()}\n`);
 		process.exit(0);
+	}
+	// ── PA capability boundary, seam 2 of 2 (plan 078) ───────────────────────
+	// spawn/adopt/close/orchestration/agent/daemon branch on RAW argv below and
+	// return BEFORE core parse, so the gate inside core dispatch() never sees
+	// them. A gate there alone would refuse `task set` and silently permit
+	// `close` — and it would LOOK complete. Both seams consult ONE predicate;
+	// `pa-capability.test.ts` scrapes BOTH files and fails if any verb is
+	// unclassified, which is what keeps this pair from drifting apart.
+	{
+		const refusal = paBinRefusal(top);
+		if (refusal !== null) {
+			process.stderr.write(`E-OWN: ${refusal}\n`);
+			process.exit(2);
+		}
 	}
 	// Inbox registration is the one messaging surface allowed to create PIJ_HOME,
 	// so it must run before the ordinary E-NOREG guard.
