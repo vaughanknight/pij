@@ -242,6 +242,15 @@
     *"I could not tell"* must stay distinguishable, or rule 9 collapses into the
     absence-as-health confusion it exists to prevent. Correct the vocabulary, not the work.
 
+20. **INTERVAL, NOT PAUSE, IS THE LEVER FOR NOISE.** (centipede) The obvious move when a
+    watchdog is noisy is `pij watchdog pause` — and it is what the fleet census shows
+    almost everyone doing. **That is how 10 of the 27 zero-watcher seats became
+    unobservable.** Pausing removes supervision entirely and tells nobody; extending the
+    interval (`pij watchdog interval <id> 60m`) cuts the noise, **retains supervision, and
+    keeps the seat observable**. This one substitution would have prevented a third of the
+    census. Tell every PA and every prime: reach for `interval` first, and treat `pause` as
+    a declaration you owe an explanation for (see step 9 and the `inert-subscription` row).
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
