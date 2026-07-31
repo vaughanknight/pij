@@ -50,6 +50,39 @@ this made the same substitution within the hour.
   and none by DESIGN. Warning people makes them careful; it does not make the path safe.
   Order: resolver guard (structural) → notice text → broadcast, or no broadcast.
 
+## Sibling clauses added 2026-07-31 (same class, different invisible thing)
+
+- **Invisible SCOPE** (leech): an automated message that creates work with an unbounded
+  addressee — `pij state set`'s retirement error says *"update any handover packet that
+  still teaches the old form"*. The reader cannot enumerate the set, so the obligation is
+  unfalsifiable and everyone reasonably assumes it is someone else's. Ten files carried
+  the dead form; nobody owned the instruction.
+- **Invisible INCOMPLETENESS** (leech, claiming its own error): *an instruction that names
+  a FLAG without its VERB is completed from the reader's last-successful form — which is
+  precisely the form most likely to have been retired — and the reader cannot detect that
+  they supplied it, because the flag matched and the sentence parsed.* Leech reported its
+  own stale verb as another seat's instruction and could not see the substitution.
+- **Invisible INPUT** (catshark, via butterfly): a rule whose precondition has no read
+  path. `opened.actor` gates who may close an assignment with which reason, and no verb
+  projects it — so every seat discovers its authorisation by attempting. Now binding on
+  s078: **do not build a gate whose input is unobservable.**
+- **Unnamed COUNTERFACTUAL** (butterfly, inverse case): *a correct conclusion reached
+  through a false rationale is not a validated decision — it is an unexamined one that
+  happened to land.* A conclusion must be able to say what would have changed it.
+- **Labelled weakness is a feature** (mastodon): the question that got resolved was its
+  weakest claim, *because* it was labelled untested. **An honestly-labelled open question
+  is more useful to the next seat than a confident answer, because it is answerable** — a
+  finding invites agreement, a flagged inference invites a measurement.
+
+## Automated text outruns documentation
+
+Corollary drawn twice in one day (leech on the anomaly-remedy proposal; the watchdog-ping
+precedent): a wrong form in a **document** waits to be read, a wrong form in **generated
+message text** is delivered on a timer to every seat. Fix the emitter first, the docs
+second. Best of all, prefer a remedy that **cannot go stale** — s077's
+`--assignment <id>` is precondition-free by construction because the row only exists for
+an assignment the detector just proved open.
+
 ## Proposed encoding (the ask)
 
 Four corrections is not the remedy; the remedy is that a remedy carries its preconditions.

@@ -32,6 +32,24 @@ chokepoint analysis, and tests are unblocked and are where your time should go f
 Explicitly ALLOWED and must not regress: every `--json` read, `spine events`,
 `anomalies`, `send`, and the PA's own card (`report now` on itself).
 
+## BINDING CONSTRAINT added 2026-07-31 — do not build a gate whose input is unobservable
+
+Butterfly's own, accepted verbatim and recorded before any code: catshark found that
+`opened.actor` — the input to s075's authority rule — **has no read path** (`pij task` is
+`set|close`; `node show` omits `opened`; verified independently by butterfly, mastodon and
+me). So a correct rule shipped with an unobservable precondition, and every seat learns
+its authorisation by attempting.
+
+**s078 part 2 must therefore specify how a caller determines its own capability BEFORE
+attempting a refused verb.** A capability gate that refuses on a property no seat can read
+would ship the identical defect twice in two days, in the stream whose entire purpose is
+making authority legible.
+
+The `opened` disclosure fix is a **fast follow in its own stream** (butterfly's call,
+accepted): different contract touch (node-show projection vs the role enum) and different
+shape (disclosure vs refusal), so coupling them would let one ratification block the other
+for no benefit.
+
 ## The design constraint that matters most
 
 **One predicate at one chokepoint.** Roadrunner's diagnosis of this week's defect cluster
