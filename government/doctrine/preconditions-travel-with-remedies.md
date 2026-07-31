@@ -110,6 +110,40 @@ rows, so the empty-pointer population measurement survives).
 absence from an object-construction read. And when a measurement contradicts a record,
 suspect the reader before the writer.
 
+## SNOOZE vs RESOLUTION — a remediation that writes the detector's own input (butterfly, 2026-08-01)
+
+Stated so it is testable:
+
+> **A remediation that writes the DETECTOR'S OWN INPUT is a SNOOZE.
+> A remediation that changes the CONDITION the detector describes is a RESOLUTION.**
+
+`status-stale`'s input is `statusAt`. `pij report now` **writes `statusAt`**. So the first
+remedy the row offers is, by construction, the one that **cannot resolve anything** — it
+resets the clock on an unchanged wait. Declaring a parked state changes the *condition*, so
+it is the only one of the two that ends the row. The line offered them as equals **and
+listed the ineffective one first**; a seat parked 39h on a human ruling took it, cleared
+the row, and would have re-fired every 30 minutes forever.
+
+**Snoozed and resolved are indistinguishable in the instrument** — the row is simply absent
+in both cases — while having opposite futures. And the harm compounds: the card-chasing
+machinery then nudges a correctly-behaving seat forever, which is how a fleet learns to
+discount an instrument.
+
+**This is the same animal as s075, four days earlier**: `report state done` SILENCED the
+open-assignment detector without DISCHARGING the assignment record, so 91 of 91 assignments
+sat open while nothing alerted. Same sentence applies — the remedy wrote the detector's
+input, not the condition. **We fixed that instance with `task close` and did not name the
+class, so it reappeared at a different kind.** That is the whole argument for naming
+classes rather than patching instances.
+
+**Encoding**: remediation text leads with the CONDITION, not the command ("if you are
+waiting on something with no known end, declare a parked state; otherwise update your
+card"), and says WHY — a seat that learns *refreshing the card resets the timer without
+changing the wait* will never make this mistake at any other anomaly. And two detectors
+that answer different questions about one seat must never share a remediation verb: a
+reader who clears one and watches the other persist concludes the instrument is broken and
+discounts both.
+
 ## Automated text outruns documentation
 
 Corollary drawn twice in one day (leech on the anomaly-remedy proposal; the watchdog-ping
