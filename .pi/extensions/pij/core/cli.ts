@@ -3442,11 +3442,39 @@ function denormDescriptor(
 	}
 }
 
+/** The refusal a closed target earns, carrying its own way out (plan 077).
+ *
+ * The remedy is IN the error, not in documentation: a seat that hits this has
+ * no open assignment, and `pij task set` always works and needs none — so the
+ * path forward is always one command and it is printed at the point of failure.
+ */
+function closedTargetError(record: Assignment, node: SessionDescriptor): Result<never> {
+	return err(
+		"E-ARG",
+		`assignment '${record.id}' is closed (${record.closed?.reason ?? "closed"}) — a state is a claim ABOUT an assignment, so open one first: pij task set ${node.id} "<task>"`,
+	);
+}
+
 /** Resolve which assignment a state verb targets: explicit --assignment
  *  (must exist and belong to the node), else the descriptor's
  *  currentAssignment (dangling is an honest error, never a silent fallback),
  *  else the node's general assignment — `existing` undefined means the
- *  general is not yet materialized. */
+ *  general is not yet materialized.
+ *
+ *  TERMINAL MEANS TERMINAL ON EVERY BRANCH (plan 077). Closure was enforced in
+ *  `closeAssignment` (double-close is E-ARG) and NOWHERE ELSE, so every path
+ *  through here would happily hand back a closed record to be written to. That
+ *  was unreachable until s075 made `currentAssignment` clearable on close —
+ *  after which ONE bare `report state` fell through to the general, repointed
+ *  the node at it, and wrote a state onto a CLOSED record, silently, exit 0.
+ *  Measured on a live seat (spine 26224) and reproduced hermetically.
+ *
+ *  ABSENT AND CLOSED MUST NOT SHARE A BRANCH (o-prime's binding constraint,
+ *  from a live measurement): 17 active seats across 5 governments currently
+ *  have an empty currentAssignment, and for them the fall-through with
+ *  `existing === undefined` is what lets them post a card at all. Refusing
+ *  absence would mute 17 seats to fix a hazard whose window is currently shut.
+ *  So: refuse CLOSED, materialize ABSENT. */
 function resolveTargetAssignment(
 	assignmentStore: AssignmentStorePort,
 	node: SessionDescriptor,
@@ -3461,6 +3489,7 @@ function resolveTargetAssignment(
 				`assignment '${record.id}' belongs to node '${record.nodeId}', not '${node.id}'`,
 			);
 		}
+		if (record.closed !== undefined) return closedTargetError(record, node);
 		return ok({ id: record.id, existing: record });
 	}
 	if (node.currentAssignment !== undefined) {
@@ -3471,10 +3500,17 @@ function resolveTargetAssignment(
 				`descriptor of '${node.id}' points at missing assignment '${node.currentAssignment}'`,
 			);
 		}
+		if (record.closed !== undefined) return closedTargetError(record, node);
 		return ok({ id: record.id, existing: record });
 	}
 	const generalId = generalAssignmentId(node.id);
-	return ok({ id: generalId, existing: assignmentStore.read(generalId) ?? undefined });
+	const general = assignmentStore.read(generalId);
+	// Absent → materialize as before (the 17-seat path). Closed → refuse: the
+	// general id is DETERMINISTIC, so a closed general permanently occupies it,
+	// and "skip it and materialize a fresh one" would either collide or silently
+	// re-open a retired record — erasing the retire from the other side.
+	if (general !== null && general.closed !== undefined) return closedTargetError(general, node);
+	return ok({ id: generalId, existing: general ?? undefined });
 }
 
 function resolveCurrentReportAssignment(

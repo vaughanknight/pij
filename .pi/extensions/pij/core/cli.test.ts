@@ -7330,3 +7330,176 @@ describe("task close — the far end of the lifecycle, end to end", () => {
 		expect(noReason.stderr).toContain("--reason is required");
 	});
 });
+
+describe("s077 reproduction — state-set general-fallback after closing the current assignment", () => {
+	// Mastodon's measured sequence on its own seat (spine 26224), rebuilt hermetically.
+	// resolveTargetAssignment's final fallback is generalAssignmentId(node.id) with
+	// `read(generalId) ?? undefined` and NO closed guard on any branch. s075's denorm
+	// clearing made that branch reachable: closing the current assignment sets
+	// currentAssignment undefined, so the next BARE report state falls through to it.
+	const SEAT = "pij-tidy-seat";
+
+	function seat() {
+		const stale = new Date(T - 44 * 3_600_000).toISOString();
+		return platformDeps({
+			self: SEAT,
+			descs: [desc({ id: SEAT, startedAt: stale, lastEventAt: stale, systemState: "idle" })],
+		});
+	}
+
+	function current(d: CliDeps): Record<string, unknown> | undefined {
+		return (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === SEAT,
+		);
+	}
+
+	function openTask(d: CliDeps, text: string): string {
+		const id = run(["task", "set", SEAT, text], d).stdout.match(/asg-[a-z-]+/)?.[0];
+		expect(id).toBeDefined();
+		return id as string;
+	}
+
+	it("VARIANT A (general never opened): a bare report after closing the current assignment", () => {
+		const d = seat();
+		const real = openTask(d, "the actual work");
+		expect(current(d)?.currentAssignment).toBe(real);
+
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+		// s075's clearing, confirmed: nothing is current.
+		expect(current(d)?.currentAssignment).toBeNull();
+
+		// Mastodon's step 3: ONE bare report, no --assignment flag.
+		const reported = run(["report", "state", "ready"], d);
+		const after = current(d);
+		// RAW RESULT, not graded here — recorded so the brief's decision has evidence.
+		expect({
+			exitCode: reported.exitCode,
+			names: reported.stdout.includes("asg-general"),
+			currentAssignment: after?.currentAssignment,
+			currentTask: after?.currentTask,
+		}).toMatchInlineSnapshot(`
+			{
+			  "currentAssignment": "asg-general-pij-tidy-seat",
+			  "currentTask": "general",
+			  "exitCode": 0,
+			  "names": true,
+			}
+		`);
+	});
+
+	it("VARIANT B (general already CLOSED): the sharper case the o-prime named", () => {
+		const d = seat();
+		// Materialize the general by reporting once, then retire it — the tidy-up shape.
+		run(["report", "state", "ready"], d);
+		const generalId = `asg-general-${SEAT}`;
+		expect(run(["task", "close", generalId, "--reason", "superseded"], d).exitCode).toBe(0);
+
+		const real = openTask(d, "the actual work");
+		expect(current(d)?.currentAssignment).toBe(real);
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+		expect(current(d)?.currentAssignment).toBeNull();
+
+		// Measure GROWTH, not presence: the general legitimately carries a state ref
+		// from before it was closed (the materializing report above). Asserting
+		// `states.length > 0` would have "passed" on that pre-existing history and
+		// proved nothing about the write we care about.
+		const statesBefore = d.assignmentStore.read(generalId)?.states.length ?? 0;
+		const reported = run(["report", "state", "ready"], d);
+		const after = current(d);
+		const generalRecord = d.assignmentStore.read(generalId);
+		expect({
+			exitCode: reported.exitCode,
+			currentAssignment: after?.currentAssignment,
+			currentTask: after?.currentTask,
+			generalStillClosed: generalRecord?.closed !== undefined,
+			stateWrittenOntoClosedNow: (generalRecord?.states.length ?? 0) > statesBefore,
+			errorNamesRemedy: reported.stderr.includes("pij task set"),
+		}).toMatchInlineSnapshot(`
+			{
+			  "currentAssignment": null,
+			  "currentTask": null,
+			  "errorNamesRemedy": true,
+			  "exitCode": 64,
+			  "generalStillClosed": true,
+			  "stateWrittenOntoClosedNow": false,
+			}
+		`);
+	});
+
+	it("ABSENT general still materializes — the 17-seat path is NOT refused", () => {
+		// The o-prime's binding constraint, from a live measurement: 17 active seats
+		// across 5 governments have an empty currentAssignment, and the fall-through
+		// with existing===undefined is what lets them post a card at all. Refusing
+		// ABSENCE alongside CLOSURE would mute them to fix a hazard whose window is
+		// currently shut. Absent and closed must never share a branch.
+		const d = seat();
+		const reported = run(["report", "state", "ready"], d);
+		expect(reported.exitCode).toBe(0);
+		expect(current(d)?.currentAssignment).toBe(`asg-general-${SEAT}`);
+	});
+
+	it("refuses an EXPLICITLY targeted closed assignment too", () => {
+		const d = seat();
+		const real = openTask(d, "the actual work");
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+		const r = run(["report", "state", "ready", "--assignment", real], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("is closed");
+		expect(r.stderr).toContain("pij task set");
+	});
+
+	it("pins `report now --state` too — the NAME says now, the FLAG makes it state-set", () => {
+		// Mastodon measured that `report now --state` hijacks exactly as `report
+		// state` does, because --state routes through the state-set path. Plain
+		// `report now` never resolves an assignment at all (resolveCurrentReport-
+		// Assignment early-returns on an empty pointer and the denorm writes only
+		// status{}), so the verb NAME is the misleading part and only the FLAG is
+		// dangerous. One guard in resolveTargetAssignment covers both forms; this
+		// pins that it really does, rather than assuming it from a shared callee.
+		const d = seat();
+		run(["report", "state", "ready"], d);
+		const generalId = `asg-general-${SEAT}`;
+		expect(run(["task", "close", generalId, "--reason", "superseded"], d).exitCode).toBe(0);
+		const real = openTask(d, "the actual work");
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+
+		const r = run(["report", "now", "did a thing", "next thing", "--state", "ready"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("is closed");
+		expect(r.stderr).toContain("pij task set");
+		expect(current(d)?.currentAssignment).toBeNull();
+	});
+
+	it("plain `report now` is UNAFFECTED — it resolves no assignment at all", () => {
+		// The other half of the same fact, and the reason the guard is safe: a card
+		// with no assignment still posts. Refusing state-set never costs a card.
+		const d = seat();
+		const r = run(["report", "now", "did a thing", "next thing"], d);
+		expect(r.exitCode).toBe(0);
+	});
+
+	it("the anomaly's own remediation SUCCEEDS exactly where a bare one is refused", () => {
+		// Closes the loop between the two surfaces. The axis-disagreement notice is
+		// emitted BY the platform, so it must never hand a seat a command the
+		// platform then rejects. Set up the refusing condition — closed general,
+		// empty pointer — and show the bare form fails while the remediation's
+		// --assignment form succeeds against the very assignment the row is about.
+		const d = seat();
+		run(["report", "state", "ready"], d);
+		const generalId = `asg-general-${SEAT}`;
+		expect(run(["task", "close", generalId, "--reason", "superseded"], d).exitCode).toBe(0);
+		const flagged = openTask(d, "the work the row is about");
+		// Detach the pointer the way a discharge does, leaving `flagged` open.
+		const other = openTask(d, "something else");
+		expect(run(["task", "close", other, "--reason", "done"], d).exitCode).toBe(0);
+		expect(current(d)?.currentAssignment).toBeNull();
+
+		// Bare form: refused, because resolution falls through to the closed general.
+		expect(run(["report", "state", "waiting"], d).exitCode).not.toBe(0);
+
+		// The remediation the notice actually prints — precondition-free by
+		// construction, because the row only exists for an assignment proved OPEN.
+		const remediated = run(["report", "state", "waiting", "--assignment", flagged], d);
+		expect(remediated.exitCode).toBe(0);
+	});
+});
