@@ -1,7 +1,7 @@
 # s179 — plan-lite: merge 89 upstream commits without losing the local delivery fixes
 
 **Worktree**: `~/GitHub/pij-worktrees/s179-upstream-merge` (local `main` tip `717ebe1`, 6 ahead / 89 behind `origin/main` @ `3e977b7`).
-**Status**: PLAN-LITE — awaiting GO from prime (pij-spare-wren). Nothing merged; trial merge was run and aborted, worktree clean.
+**Status**: **EXECUTED** — merged at `989f023`, ruling upheld by prime, gates and end-to-end proof recorded in §5.
 
 ---
 
@@ -87,3 +87,30 @@ Local-only stacks (s113 telegram media, `producers/` OSC-7337, docs) did not con
 Jumbotron reads them from `pij node show <id> --json` (`core/cli.ts:4866`); the human-rendered line is `core/cli.ts:4907`: `report: <prev> → <next> (<at>, spine <seq>)`. Optional companions on the same descriptor: `semanticState` and `stateNote {text, state, at}` (from `--state`/`--note`).
 
 Staleness: `core/status-nudge.ts` treats a card as stale at **`STATUS_NUDGE_AFTER_MS = 10min`** measured from `statusAt ?? startedAt`; `statusAt === undefined` means *never reported*. A Jumbotron should use the same threshold and the same "never reported" distinction rather than inventing one. The trex side is a separate stream.
+
+Confirmed live at exec: upstream's own suite carries `report now round-trips state-set → status and projects the durable denorm` ✓. Independently, `pij report now` does **not** exist on the currently installed CLI (it prints usage) — the Jumbotron's now/next card arrives only with this merge.
+
+---
+
+## 5. Results
+
+**Merge**: `989f023`, 89 commits, 3 conflicted files / 6 hunks resolved per §1–2.
+
+**Carry-forwards, verified by `git diff origin/main -- adapters/daemon-tmux.ts`** (the whole diff vs upstream is these changes and nothing else — the file auto-merged silently, which is exactly why it was audited rather than trusted):
+
+1. `if (!wake) return "confirmed";` — **deleted**, so submission verification runs for every harness.
+2. Ghost-text tail break — `!composerHasTextTail(lastPane, text) || composerIsEmpty(lastPane)`, kept.
+3. Warning generalised to `${harness} UNVERIFIED`, kept.
+4. `touchDaemonHeartbeat(lockPath)` on the **tick** timer (upstream split tick/delivery in two), kept.
+
+**Gates**
+- `npm run typecheck` — clean, no output.
+- `npm test` — **3834 passed**, 19 skipped, **1 failed**: `spawnSync pwsh ENOENT` in `harness/scripts/release-age-policy.test.ts`, a Windows-compat test on a host with no PowerShell. That file is byte-identical to `origin/main`; not a merge regression.
+- `npm run lint` — **not green repo-wide**: 12 errors across 9 files. Every erroring file is byte-identical to its pre-merge parent (6 to `origin/main`, 3 to local `717ebe1`), so the merge introduced none of them. The 8 files this merge touched pass `biome check` clean.
+
+**End-to-end delivery proof** — real tmux, real `DaemonTmux`, real `Daemon.tick()`, against a **temp pij home and a throwaway tmux session**; the live `~/.pij` and the running daemon were never read or written (harness: `scratchpad/e2e-s179.mts`).
+
+- **Leg 1 — real claude seat.** Message injected into a live `claude` pane; the seat received it *and acted on it*, replying `⏺ ARRIVED`. Receipt: `[pij receipt …-000001-77764] delivered`.
+- **Leg 2 — forced wedge (the one that matters).** A pane that echoes typed text but can never produce a submission signal. The payload was visibly typed, three Enter attempts were made, no confirmation followed; stderr logged `⚠️ claude UNVERIFIED: … typed the payload but never confirmed submission across 3 Enter attempts`. Receipt: `[pij receipt …-000002-77764] unverified` — **never `delivered`**.
+
+Both legs ran in the same tick sequence from one sender, so the two receipt words were produced side by side by the same code path. Teardown removed the tmux session and the temp home; `pij list` still shows the same 6 live sessions.
