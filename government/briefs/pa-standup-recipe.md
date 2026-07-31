@@ -187,6 +187,15 @@
     seat died"* reaches a watcher without polling — closing the parked case without
     weakening the parked-states-never-flag rule, which is correct and must not be touched.
 
+16. **VERIFY-DON'T-RELAY POINTS UPWARD TOO.** (roadrunner, first live sweep) A PA
+    **re-derives every observation from its own instrument even when its PRIME supplies
+    it**, and a disagreement with the prime is a **finding to report**, not an error to
+    reconcile. Measured: roadrunner pasted an anomaly row into its PA's trigger; the seat
+    had refreshed its card in between, the PA led with the delta and **sent nothing**. Had
+    it trusted its prime it would have nudged a seat to fix something already fixed — a
+    wrong nudge originating from the component built to reduce noise, **caused by the
+    supervisor**. The sweep trigger is itself a relay hop and can be stale on arrival.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
