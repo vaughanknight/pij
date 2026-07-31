@@ -115,6 +115,35 @@
     **unqualified timestamps silently corrupt the comparison.** Shell-substitute
     `date -u`, never type a time.
 
+11. **⚠ A SUBSCRIPTION TO A PAUSED TARGET IS INERT, AND `watchdog watch` SAYS NOTHING.**
+    (roadrunner, found within minutes of applying the workaround.) It subscribed its PA to
+    two PMs; both rows came back `watchers: ['<pa>']` **and `pausedBy: 'self'`**. A paused
+    watchdog fires nothing, so the subscription is real and the trigger is dead — the PA
+    receives nothing, reports nothing, and that reads as *"no stalls."* The success line
+    (`watching · interval … · watchers 1`) reads as armed; the word `paused` appears in it
+    only as the target's pre-existing state, never as a warning that **what you just built
+    is inert**.
+
+    **This defeats step 7 specifically.** Watching your PA detects a *dead process*. It does
+    **not** detect a *live process wired to dead triggers* — the PA stays perfectly alive
+    while doing nothing. Absence-as-health survives both fixes.
+
+    **So the success criterion is `pausedBy`, not `watchers`.** After every subscribe,
+    check `pausedBy` (and `enabled`, `exempt`, `globallyDisabled`) on **every target** —
+    the recipe's original criterion was the one field that cannot see this.
+    ```
+    pij list --json | jq -r 'map(select(.id=="<target>"))[] |
+      "\(.id) paused=\(.watchdog.pausedBy // "none") enabled=\(.watchdog.enabled) watchers=[\(.watchdog.watchers|join(","))]"'
+    ```
+    Checked on albatross↔anaconda at the time of writing: both `pausedBy: none`,
+    `enabled: true`, `exempt: false`, watchers mutual — that pairing is live, not inert.
+    **This also answers meadowlark's open question**: a subscription to a paused prime is
+    inert, because a paused watchdog fires nothing.
+
+    Platform ask routed: `watchdog watch` should warn loudly when the target is paused,
+    exempt, or globally disabled — *"subscribed, but this target's watchdog is paused
+    (self) — it will not fire."* One line, no new state.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
