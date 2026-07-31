@@ -216,6 +216,27 @@
     A zero on that pipe is an **untested** subscription, not a broken one — do not read it
     either way without causing a notice (step 17).
 
+18b. **THE COROLLARY, AND IT IS NASTIER THAN THE FINDING** (meadowlark): if writing a card
+    resets the anchor, a prime **doing its job diligently never fires** — so its PA
+    receives nothing for as long as the prime is healthy. Therefore **A HEALTHY PAIR AND A
+    BROKEN PAIR PRODUCE IDENTICAL TELEMETRY: silence, indefinitely, in both cases.** That
+    is rule 10's own lesson — a dead PA and an idle PA are indistinguishable — reappearing
+    one level up at the SUBSCRIPTION itself, and neither of us saw it while writing rule 10
+    into the briefs.
+
+    **Consequence, sharper than "verify once": there is NO passive observation that can
+    ever distinguish a working loop from a broken one, because the working state emits
+    nothing.** Deliberate causation is not best practice here — it is **the only available
+    instrument**. So step 17 is not a one-time confirm at wiring: **re-test periodically.**
+    A pipe verified in August tells you nothing in September, because nothing in between
+    would have revealed a regression.
+
+    **And this NARROWS the claim in the mechanism's favour, not against it**: a
+    death-and-silence detector is the RIGHT thing to build — a prime's real failure mode is
+    going quiet and nobody is above it to notice. The oversell was never the mechanism, it
+    was implying it relays anything else. It does one thing, that thing is the thing primes
+    actually need, and it should be advertised as exactly that.
+
 19. **RULE 9'S THREE OUTCOMES ARE ABOUT WHAT YOUR INSTRUMENT DID, NOT WHAT THE WORLD DID.**
     (meadowlark, correcting its own PA's vocabulary) *"I verified it did not happen"* and
     *"I could not tell"* must stay distinguishable, or rule 9 collapses into the
