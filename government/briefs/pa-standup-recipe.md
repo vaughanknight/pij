@@ -144,6 +144,41 @@
     exempt, or globally disabled — *"subscribed, but this target's watchdog is paused
     (self) — it will not fire."* One line, no new state.
 
+12. **FIELD NAMES DIFFER BY SURFACE — the lossy-reader trap encoded into its own fix.**
+    The descriptor file uses **`parentId`**; `pij node show --json` uses **`parent`** and
+    has *no* `parentId` key; `pij list --json` carries **neither**. So a reader asking for
+    `parentId` on `node show` gets a fabricated absence — meadowlark hit exactly this
+    (`dict.get('parentId')` → `None` in Python, the same defect as jq object construction,
+    **so D-041 is not jq-specific: any reader that maps a key list over a payload
+    fabricates absence as null, in every language**). Verified here. Use the descriptor for
+    step 3, or `node show --json` with the key `parent`.
+
+13. **NORMALISE EVERY TIMESTAMP TO EPOCH BEFORE ANY DELTA.** (meadowlark's PA, self-diagnosed)
+    `seahorse` false-positived its prime's card as stale by comparing a local `+10:00` ISO
+    string against a UTC `Z` string **as raw text**, reading a **61-second-old** card as
+    stale. Nearly every PA chore is a staleness comparison, so this is the failure mode a
+    chore-runner will hit most often. One line, removes the class.
+
+14. **A BRIEF DISPATCHED TO A PA CAN NEVER BE ACKED — warn your PA before it sweeps.**
+    `ack-dispatch` is refused to role `pa` (`pa-capability.ts:126` — *"acknowledging a
+    brief is the assignee's own act"*), verified. Consequence: the brief sits
+    `delivered-unacked`, becomes a `delivered-unacked-stale` row after 15 minutes **against
+    the PA**, and the PA then sweeps and reports **its own brief** as an anomaly, forever.
+    Tell it to report that once, flag it as its own brief, and treat it as known state.
+    Routed to butterfly: whether `ack-dispatch` belongs in the same first-person exemption
+    as `report now` — **acking your own brief changes no other seat's state.**
+
+15. **Step 7 does NOT close death detection for a PARKED seat.** (centipede) Parked states
+    never flag *by design*; a parked seat produces no anomalies whether alive or dead. Add
+    a self-paused watchdog and no nudge fires either. So `watchers: 1` on a
+    parked+paused seat is fixed **for anomalies and still silent for death**. The registry
+    *does* carry a durable signal (`terminal.disposition`, `evidence: pid-missing`,
+    `lastSeenAt`) — but it is **pull-only**, so it is "an absence you have to notice",
+    moved from the report layer to the registry layer. Open shape routed to butterfly:
+    should **terminal-transition be a PUSHED capture kind alongside `anomaly`**, so *"this
+    seat died"* reaches a watcher without polling — closing the parked case without
+    weakening the parked-states-never-flag rule, which is correct and must not be touched.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
