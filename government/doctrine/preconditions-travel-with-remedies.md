@@ -144,6 +144,35 @@ that answer different questions about one seat must never share a remediation ve
 reader who clears one and watches the other persist concludes the instrument is broken and
 discounts both.
 
+## MERGED and RUNNING are independent in BOTH directions, and NEITHER is announced (cheetah + butterfly, 2026-08-01)
+
+Three faces, all observed in one day:
+
+1. **merged-is-not-running** — #63 sat on main while the daemon ran pre-merge code; parked
+   seats kept being nudged. Fixed only by an explicit restart from canonical.
+2. **running-is-not-merged** — cheetah's PA-card render was live on its box while still
+   un-PR'd.
+3. **unmerged-is-already-running** — butterfly's `parent` key was live on cheetah's box
+   while butterfly was still describing the PR as unmerged.
+
+**The global `pij` install is a symlink to the canonical checkout**, so code goes live the
+moment `main` is pulled — no build, no announcement. Nothing anywhere reports either
+transition.
+
+**And the instrument trap that produced face 3**: butterfly told cheetah *"#69 is green and
+unmerged"* **four minutes after it merged**, while offering it as a model disclosure. It
+had been polling `gh pr checks` — which reports **CHECK** status and cannot report **MERGE**
+state. It answers *"are the jobs done"* and never *"is this merged"*, and it goes on
+answering happily about a merged PR's run. **A perfectly working instrument, answering the
+question it was built for, had its answer read as the answer to a different question** —
+the same shape as the bg-watcher finding from four hours earlier, committed inside the
+sentence being used to demonstrate rigour about state.
+
+**Encoding**: never infer merge state from a checks query — `gh pr view --json state` is
+the only instrument that answers it. And a deploy is not implied by a merge: record a
+`deploy` event when the daemon is actually restarted, because the merge and the running
+code are independent facts.
+
 ## Automated text outruns documentation
 
 Corollary drawn twice in one day (leech on the anomaly-remedy proposal; the watchdog-ping
