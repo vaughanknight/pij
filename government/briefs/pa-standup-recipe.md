@@ -30,8 +30,20 @@
    > pij-tense-centipede (which probed it and got past arg parsing to `E-NOID`) and
    > confirmed independently here. **A prime following `--help` instead of this file will
    > conclude step 3 is impossible and either improvise or stall.** Help-text fix routed.
-   Then **verify the write, never the print**: read the descriptor and re-read via
-   `pij list --json` / `pij tree --json`. Both must say `pa`.
+   Then **verify the write, never the print** — and verify **BOTH FIELDS, not just the
+   one you were thinking about**:
+   ```
+   node -e 'const a=require(process.env.HOME+"/.pij/<pa-id>.json");
+     console.log(a.orchestrationRole, a.parentId)'
+   ```
+   **`orchestrationRole` must be `pa` AND `parentId` must be non-null.** Checking only the
+   role is one-directional verification — and the parent is the field most likely to be
+   quietly wrong, because `pa` is the one role whose SUBJECT is its parent (meadowlark's
+   catch: the recipe told you to verify the role and said nothing about the parent).
+   Note `changed:false` in link's output means *the parent did not change*, which is
+   correct and expected when the seat was spawned by you — it does **not** mean nothing
+   was written. And do **not** read `parentId` from `pij list --json`: that projection
+   does not carry the key at all, so every reader sees a fabricated absence.
 4. **Brief it by pointer.** Instantiate `pa-missing-anaconda-2026-07-31.md` for your repo —
    its ten rules are the study's findings and are not optional.
 5. **Set its watchdog as its SWEEP TRIGGER**: `pij watchdog interval <pa-id> 20m`. Tell it
