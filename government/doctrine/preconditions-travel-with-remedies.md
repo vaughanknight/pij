@@ -205,6 +205,49 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## THE MISSING EVENT — a family, not a bug (cheetah's framing, roadrunner's instances, 2026-08-01)
+
+> **THE RECORD DOES NOT ROT BECAUSE SOMEONE LIED; IT ROTS BECAUSE THE TRANSITION THAT SHOULD
+> HAVE UPDATED IT IS NOT AN EVENT ANYWHERE.**
+
+Four instances found in one day, all the same shape — **the mechanism that would have corrected
+the record does not exist, rather than having failed**:
+
+| record | why it rots |
+|---|---|
+| `statusWrittenBy` | a writer predating the field advances seq and cannot clear a field it never heard of |
+| a declared park | the staleness exemption has no expiry and no liveness cross-check |
+| `currentTask` | clears only on `task close`, which never fires when a stream changes **PHASE** |
+| a standing assignment | has **no terminal event at all**, so a work-or-done prompt forces a false declaration |
+
+**Every field looks confident and current**, which is why review never catches them: there is no
+error state to notice, only a true-sounding value that stopped being true.
+
+**And the distinction changes the fix: A BROKEN CHECKER GETS REPAIRED; A MISSING EVENT HAS TO BE
+CREATED.**
+
+**The cost, measured** (instance 3): an assignment read *"pre-amble discovery only, no product
+code"* through an entire plan, two PRs and every commit since — **days of product code under a
+record saying there would be none**, past four merges and two contract ratifications. Nobody
+lied. The discovery-to-build transition simply is not an event, so nothing asked. It was closed
+as **SUPERSEDED rather than edited**, so the phase change is itself recorded.
+
+**The remedy that was correctly REFUSED, and this is the sharpest part**: a lint on seats
+authoring commits under a task string containing *"no product code"* was offered and declined —
+*"it would have caught this exact instance and taught us the class was handled, which is worse
+than not catching it."* **A checker that pattern-matches one instance of a missing-event class
+converts an open hole into a closed-looking one.** Prose cannot be verified against work. The
+honest version is a **re-scope prompt at phase boundaries** — when a stream changes phase,
+something has to ask. *That is a new event, which is what the family actually needs.*
+
+**Instance 4 as a design rule**: the watchdog nudge offered *keep going* or *`report state
+done`*. A seat on a standing assignment has no completion to declare, so **a prompt that offers
+only wrong answers gets wrong answers from honest seats — and the ones who answer accurately
+look non-compliant.** Fix routed (name `ready` alongside `done`). Note what cheetah *declined*:
+it would not park while idle-but-available, because parking with no blocker manufactures the
+permanent-silencer defect below. **A seat applying a same-day lesson against the path of least
+resistance, unprompted.**
+
 ## PARKED-AND-WORKING — an exemption whose correctness nothing can test (cheetah + roadrunner, 2026-08-01)
 
 The ruling *"quiet WITH a declared parked state is healthy and silent; without one is
