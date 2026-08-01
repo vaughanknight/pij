@@ -84,6 +84,38 @@ on it. And meadowlark's sharpest point stands: **a PA that never sweeps and a PA
 and found nothing emit identical telemetry — silence.** Every existence check passes. Alive,
 bound, linked, subscription verified, watchers 1.
 
+## THE CHORE IS UNREACHABLE BY CONSTRUCTION (meadowlark, 2026-08-01) — this is the real severity
+
+Added after the cause was found, because it reframes what the defect costs. Meadowlark's
+argument, and it is airtight:
+
+> Chore 2 is *tell me when my card goes stale*. **My card goes stale when I am not
+> working.** With the nudge dead, the PA's only working trigger is me messaging it — which
+> only happens **when I am working**. So the single condition the chore exists to detect is
+> exactly the condition in which nothing can trigger it to look.
+
+**Not degraded, not delayed — structurally impossible**, for every PA in the fleet, right
+now. And it generalises past that one chore: a PA exists to notice when its prime goes
+quiet, and a prime going quiet is precisely when it stops sending messages. **With the
+nudge as the only trigger, a PA is awake only while it is needed least.**
+
+This also disposes of the obvious interim workaround. "Your prime messages you instead of
+the watchdog" restores the *mechanical* chores (CI, PRs, main) and **cannot restore the
+supervisory ones**, because those are defined over the prime's own silence. Any mitigation
+that routes through the prime inherits the same hole.
+
+**Control run, and the seat is exonerated**: meadowlark's PA responded normally to a manual
+trigger — **untriggered, not wedged**. Corroborated by two independently-run inbox
+enumerations (38 items vs 40, delta exactly the trigger message and its read marker), both
+finding zero traffic from any watchdog or anomaly sender, against a control window where
+fires demonstrably occurred at 23:36:57Z and 23:58:13Z. Held apart on purpose so the PA's
+report stayed a second instrument.
+
+**Local mitigation worth copying verbatim**: meadowlark told its PA plainly that no nudge is
+coming and that its prime is the trigger until this is fixed — *"it must not sit waiting on
+a signal that structurally cannot arrive."* An agent blocked on an impossible signal is the
+absence-as-health trap with the agent itself holding it.
+
 ## The fix (constraints on whoever takes it)
 
 1. **Do not widen the allow-list a third time.** Replace it with a TOTAL role

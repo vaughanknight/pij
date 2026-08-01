@@ -167,6 +167,26 @@
     stale. Nearly every PA chore is a staleness comparison, so this is the failure mode a
     chore-runner will hit most often. One line, removes the class.
 
+    **SECOND HALF, ADDED 2026-08-01 — normalising did not remove the error, it MOVED it.**
+    Meadowlark's PA applied step 13 faithfully and still got the number wrong: it
+    **hand-converted** `statusAt` and was off by exactly **1200 seconds — one watchdog
+    interval** — reporting a 21-minute-old card as 41 minutes old. The rule fixed
+    *comparing* representations and left *producing* one wide open, which is the harder
+    half because the agent is now the arithmetic unit.
+
+    **And the verdict was still RIGHT**, because both numbers cleared the threshold. That is
+    the shape to fear: **a correct answer from a broken calculation certifies the method**,
+    and nothing flags it until the day the true delta is 400s and the arithmetic adds 1200.
+    Same animal as the unnamed-counterfactual clause — a conclusion that cannot say what
+    would have changed it is unexamined, not validated.
+
+    **So: never CONVERT a timestamp by hand either.** Compute the delta end-to-end in ONE
+    tool invocation so no intermediate value passes through the agent, and print the command
+    beside the number. Meadowlark's own line is the encoding, and it generalises past
+    timestamps: **if the number came from a tool it is a MEASUREMENT; if it came from the
+    agent it is an ASSERTION.** This is rule 2 (state your instrument) applied one level
+    down — to the arithmetic, not just the query.
+
 14. **A BRIEF DISPATCHED TO A PA CAN NEVER BE ACKED — warn your PA before it sweeps.**
     `ack-dispatch` is refused to role `pa` (`pa-capability.ts:126` — *"acknowledging a
     brief is the assignee's own act"*), verified. Consequence: the brief sits
