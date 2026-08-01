@@ -205,6 +205,39 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## TWO ABSENCES CAN BE BYTE-IDENTICAL AND MEAN OPPOSITE THINGS — and no consumer can fix that (butterfly, 2026-08-01)
+
+Butterfly found this in an arm **it had just written**, while its PR was green. `roleNeedsSupervision(null)`
+returns false, reasoned as *"an unroled seat has nobody to notify, and stamping a role is what
+opts a seat in."*
+
+**That is right for a seat that was NEVER STAMPED and wrong for one whose stamp THE STORE
+THREW AWAY — and the gate cannot tell them apart, because by the time it reads the descriptor
+the two are byte-identical.**
+
+> **Totality over a vocabulary does nothing when the value is ABSENT rather than
+> unclassified.** An exhaustive switch closes the *unclassified* hole and is structurally
+> incapable of closing the *destroyed* one.
+
+This is the reader-manufactures-absence clause from the other end. There, the reader invented
+a `null` the producer never emitted. Here the **producer destroys a value** and emits an
+absence indistinguishable from a legitimate one. Both leave a consumer reasoning correctly to
+a wrong answer, and in neither case can the consumer be fixed — **the meaning was lost
+upstream, so only the producer can preserve it.**
+
+**The presentation is the worst available**, and it is why this went 2,435 records without
+anyone noticing: parent survives (266) while role does not (0), so **a restored seat looks
+correctly parented and is unsupervised.** Every existence and hierarchy check passes; the one
+key that gates supervision is gone. **A seat that looked ORPHANED would get investigated —
+this one looks fine, so nobody looks.** Today's whole subject, relocated into a storage layer,
+with every hierarchy check we own as the deceived reader.
+
+**Encoding**: when a gate reads a field that a store may drop, the gate's default is a
+**policy about missing data**, never an inference about intent — say which it is in the arm.
+And the diagnostic that made this tractable is the ASYMMETRY, not the count: one field lost
+while its neighbour survives rules out general decay and points at **a single dropped key on
+one path**, which is a far smaller search than "the archived record degrades."
+
 ## VERIFYING THE COMPONENTS IS NOT VERIFYING THE COMPOSITION (osk prime + albatross, 2026-08-01)
 
 The osk prime reported a compound failure: unstamped seats have no watchdog **and** parked
