@@ -1,4 +1,8 @@
-import { owesStatusCard, projectOrchestrationRole } from "../orchestration/role.js";
+import {
+	type OrchestrationRole,
+	owesStatusCard,
+	projectOrchestrationRole,
+} from "../orchestration/role.js";
 import type { DeliveryPort } from "../ports.js";
 import { STALE_AFTER_MS } from "../state.js";
 import type { SessionDescriptor, SessionId, WatchdogSidecar, WatchdogWatcher } from "../types.js";
@@ -78,6 +82,88 @@ function timestampMs(value: string | undefined): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Does a seat in this role need the watchdog watching it?
+ *
+ * EXHAUSTIVE BY COMPILER, not by convention. This gate has been wrong twice in
+ * the same way: it first read `role !== "pm"`, silently excluding every prime;
+ * 94d4564 fixed that by widening one name to two — and the remedy PRESERVED
+ * THE SHAPE THAT CAUSED THE BUG, so when `pa` arrived the gate excluded all
+ * five PAs on the box before any anchor, interval or pause logic ran. Zero
+ * fires, ever. A widening buys exactly one role and re-arms the trap for the
+ * next, silently, because the failure mode is a role that is simply NOT
+ * MENTIONED and nothing knows the list was meant to be complete.
+ *
+ * This is not a new idea — it is a ruling this file did not get. role.ts:18
+ * already says that "a type and a hand-written validator drift silently …
+ * widening a union produces ZERO compile errors at every parser that guards on
+ * literals. That is exactly how `pa` became a legal type and an illegal
+ * argument." That comment diagnoses the old line 97 by description. The parser
+ * seam was fixed with a derived vocabulary; this gate was the straggler.
+ *
+ * `null` is a REAL inhabitant (an unroled seat), not an impossible case, so it
+ * is handled rather than defaulted. Every arm is a written decision INCLUDING
+ * the exclusions — an exclusion that exists because nobody listed the name is
+ * indistinguishable from one that was reasoned about, and this gate is the
+ * proof of that.
+ *
+ * Named for the QUESTION rather than the identity (meadowlark): the thing that
+ * matters is whether a seat needs supervision, and a role list is only the
+ * honest way to answer it while supervision is a hierarchy fact rather than a
+ * structural one. If a structural derivation ever exists, replace the body and
+ * keep the name.
+ *
+ * SCOPE — THIS ANSWERS THE NUDGE AXIS ONLY, and the seam is recorded rather
+ * than assumed away (albatross, s080). `eligible()` gates two different things
+ * with different right answers. The NUDGE is delivered to `session.id` itself,
+ * so a recipient ALWAYS exists and no has-someone-to-tell condition applies —
+ * which is why a role switch is the honest predicate here. `notifyWatchers()`
+ * is a separate call over `sidecar.watchers` and that axis genuinely does need
+ * somebody to tell. NOT split in this change: a structural
+ * `parent != null || watchers.length > 0` predicate was proposed for
+ * eligibility and REJECTED, because measured against the live fleet three of
+ * seven primes have neither, so it would silently un-watch them and reverse
+ * Jordan's 2026-07-30 ruling. Do not let this function's answer leak to the
+ * watcher axis on the assumption that one serves both.
+ */
+export function roleNeedsSupervision(role: OrchestrationRole | null): boolean {
+	switch (role) {
+		// The only seat with NO SUPERVISOR. A wedged PM is caught by its prime; a
+		// wedged prime is caught by nobody, and `pushWholeLifeTransition` returns
+		// early for a creator-less seat, so this ping is its only heartbeat.
+		case "prime":
+			return true;
+		// Reports up to a prime, and holds a card consumers render as current.
+		case "pm":
+			return true;
+		// WATCHED, for a reason stronger than either of the above: a PA's chore is
+		// to notice when its prime goes QUIET, so its only other trigger — the
+		// prime messaging it — fires precisely when the condition it exists to
+		// detect is ABSENT. Excluded, it is unreachable BY CONSTRUCTION rather
+		// than merely delayed.
+		case "pa":
+			return true;
+		// NOT watched, and this is a DECISION rather than an omission: a worker
+		// has a PM directly above it, and that PM is itself watched, so a wedged
+		// worker is caught one level up. The argument is the SUPERVISOR, not
+		// seniority — revisit if workers ever run unparented.
+		case "worker":
+			return false;
+		// NOT watched: an unroled seat has no declared place in the hierarchy, so
+		// there is nobody to notify and no cadence to hold it to. Stamping a role
+		// is what opts a seat in.
+		case null:
+			return false;
+		default: {
+			// Adding a role to OrchestrationRole FAILS THE BUILD here until someone
+			// makes an explicit supervision decision for it. The decision becomes
+			// unavoidable rather than remembered — considered by the compiler
+			// rather than by whoever happens to grep.
+			const _exhaustive: never = role;
+			return false;
+		}
+	}
+}
+
 function eligible(session: SessionDescriptor): boolean {
 	// PRIMES ARE WATCHED TOO (Jordan's ruling, 2026-07-30). The original gate was
 	// `!== "pm"`, which silently excluded every prime — a prime projects to
@@ -93,8 +179,7 @@ function eligible(session: SessionDescriptor): boolean {
 	// reach anyone for it either, since `pushWholeLifeTransition` returns early
 	// when `spawnedBy` is absent and a prime is creator-less. This ping is its
 	// only external heartbeat.
-	const role = projectOrchestrationRole(session);
-	if (role !== "pm" && role !== "prime") return false;
+	if (!roleNeedsSupervision(projectOrchestrationRole(session))) return false;
 	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
 	// the daemon does not own its delivery, so it must not buffer a watchdog turn
 	// into it either. (A pi peer pulls its own inbox but IS watchdog-delivered:

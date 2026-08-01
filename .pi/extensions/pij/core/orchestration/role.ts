@@ -119,6 +119,38 @@ export function owesStatusCard(descriptor: RoleProjectionSource): boolean {
 export function cardCanMislead(descriptor: CardSource): boolean {
 	if (descriptor.statusAt === undefined) return false;
 	const role = projectOrchestrationRole(descriptor);
+	// `pa` is EXCLUDED BY DECISION (s080), and the decision rests on the
+	// OBLIGATION — never on what renders.
+	//
+	// A PA's card DOES render. Measured in the emitted DOM 2026-08-01 from
+	// anaconda's real row: NOW/NEXT plus an "updated 22h ago" age line, muted
+	// rather than amber. So "a PA's card renders nowhere" — which an earlier
+	// version of this comment asserted — is simply false, and `floating card` in
+	// paLineageRefusal is literal.
+	//
+	// THE GROUND IS THAT A STALENESS LABEL IS WATCHDOG LANGUAGE, AND WATCHDOG
+	// LANGUAGE IS A LIE WHERE NO OBLIGATION EXISTS. This predicate gates "that
+	// card is rotten", which tells a reader someone is late. A PA owes no card
+	// (Jordan, 2026-07-31), so nobody is late and nothing is owed — the same
+	// reasoning that took primes off the card-obligation hook, extended.
+	// Supervision is what makes an age MEANINGFUL: labelling a seat nobody
+	// nudges does not remove a false claim, it swaps "this is current" for
+	// "someone is chasing this".
+	//
+	// DO NOT RE-GROUND THIS ON RENDERING. Rendering is another repo's live
+	// decision and will drift under this file: the consumer has deliberately
+	// SPLIT `carriesStatus` (who OWES a card) from `hasOptionalCard` (whose card
+	// RENDERS — prime|pa) precisely so the two cannot be re-welded, and an
+	// earlier version of this comment welded them here, in a file that outlives
+	// the memory of why. Obligation is checkable from inside pij; rendering is
+	// not.
+	//
+	// RUNNING IS NOT MERGED, which is why the rendering ground would have been
+	// doubly wrong: the consumer's PA-card fix is an UN-PR'd local commit
+	// (0e6da0a9b). Jordan's dev server runs that working tree, so PA cards
+	// render FOR HIM AND NOWHERE ELSE — pull main or clone clean and they
+	// silently vanish. Any comment here asserting what renders is describing one
+	// unmerged working tree.
 	return role === "prime" || role === "pm";
 }
 

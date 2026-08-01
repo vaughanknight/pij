@@ -14,6 +14,7 @@ import { FsRegistry } from "../../adapters/fs-registry.js";
 import { FsWatchdogStore } from "../../adapters/watchdog-store.js";
 import { Daemon } from "../../daemon.js";
 import { dispatch, parseArgs, type WatchdogCliStore } from "../cli.js";
+import { type OrchestrationRole, STORED_ORCHESTRATION_ROLES } from "../orchestration/role.js";
 import type { PiRuntimePort } from "../ports.js";
 import { PijSession } from "../session.js";
 import { buildSpawnCommand, parseSpawnArgs } from "../spawn.js";
@@ -22,6 +23,7 @@ import { isFireDue } from "../watchdog.js";
 import type { DaemonPorts } from "./loop.js";
 import { pauseForCompactMessage } from "./router.js";
 import {
+	roleNeedsSupervision,
 	WatchdogManager,
 	type WatchdogResponseEvent,
 	type WatchdogStorePort,
@@ -1693,5 +1695,63 @@ describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
 		h.setNow(120); // < interval (50) after the muted tick at 100
 		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined })]);
 		expect(h.delivery.outbox).toEqual([]);
+	});
+});
+
+/** The gate that was wrong twice, now total by compiler.
+ *
+ * It first read `role !== "pm"` and silently excluded every prime; 94d4564
+ * widened one name to two, PRESERVING THE SHAPE, so `pa` was excluded before
+ * any anchor or interval logic ran — five PAs, zero fires, ever. The previous
+ * test iterated a HAND-WRITTEN list of roles, which by construction cannot
+ * contain a role nobody added to it, which is why it passed throughout.
+ *
+ * These drive the vocabulary itself, so a role added to `StoredOrchestrationRole`
+ * and left unclassified fails HERE as well as at the compiler.
+ */
+describe("roleNeedsSupervision is total over the role vocabulary", () => {
+	it("classifies every member of the union, and null", () => {
+		const roles: readonly (OrchestrationRole | null)[] = [
+			"prime",
+			...STORED_ORCHESTRATION_ROLES,
+			null,
+		];
+		expect(roles.length).toBeGreaterThan(3);
+		for (const role of roles) {
+			expect(
+				typeof roleNeedsSupervision(role),
+				`role '${role ?? "unroled"}' has no supervision decision`,
+			).toBe("boolean");
+		}
+	});
+
+	it("watches a PA — the seat whose trigger is the condition it detects", () => {
+		expect(roleNeedsSupervision("pa")).toBe(true);
+	});
+
+	it("keeps watching prime and pm, the two the gate was widened for", () => {
+		expect(roleNeedsSupervision("prime")).toBe(true);
+		expect(roleNeedsSupervision("pm")).toBe(true);
+	});
+
+	it("records the exclusions as DECISIONS — worker and unroled stay out", () => {
+		expect(roleNeedsSupervision("worker")).toBe(false);
+		expect(roleNeedsSupervision(null)).toBe(false);
+	});
+});
+
+describe("a watched PA is nudged without being told to write a card", () => {
+	it("fires for a pa and gives it the card-less copy", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("aide", intervalSidecar(1));
+		h.store.revisions.set("aide", 1);
+		h.setNow(10);
+		h.manager.reconcile([desc({ id: "aide", orchestrationRole: "pa" })]);
+		const sent = h.delivery.outbox.filter((e) => e.message.to === "aide");
+		expect(sent, "a pa must be watched at all").toHaveLength(1);
+		// Jordan's ruling 2026-07-31: a PA owes no card. Eligibility and
+		// owesStatusCard are separate questions and only the COPY branches on the
+		// second — so the nudge must never teach a PA to break its own ruling.
+		expect(sent[0]?.message.body).not.toContain("pij report now");
 	});
 });
