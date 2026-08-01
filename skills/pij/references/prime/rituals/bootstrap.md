@@ -87,7 +87,40 @@ concurrent truth, `nav.now` only the seat's attention.
   technically neat, strategically wrong orient.
 - Use [`../templates/stream-brief.md`](../templates/stream-brief.md) per item — specifics live there, not the levers.
 
-## 5. Open intake and govern
+## 5. Stand up your PA and close your supervision graph
+
+**Jordan's ruling, 2026-08-01: a new prime stands up a cheap PA as standard practice.**
+Added because `pij-single-vrell` bootstrapped without one — nothing in this ritual, in
+`routes/prime.md`, or in duty 7 said to, and duty 7's *"if you have a PA"* reads as optional
+context rather than a deliverable. Jordan had to prompt it, and it reverse-engineered the
+pattern from live registry rows.
+
+**Do not follow a summary of the recipe — follow the recipe.** It is maintained against live
+defects and changes daily:
+**`government/briefs/pa-standup-recipe.md`** in the `pij` repo (`AI-Substrate/pij`).
+Only the parts a bootstrapping prime cannot discover are restated here:
+
+1. **Cheap tier is the design intent** — the fleet runs `gemini-3.6-flash` copilot seats.
+   Whether a cheap model holds the rules while doing chores is the **open experiment**, not a
+   settled result.
+2. **⚠️ ORDERING TRAP — register the subscription BEFORE stamping the role.** From the PA's own
+   seat run `pij watchdog watch <your-prime-id> --capture always`, *then*
+   `pij link <pa-id> --parent <your-prime-id> --role pa`. The capability gate refuses the whole
+   `watchdog` family to role `pa`, and `watch` only ever registers the **calling** seat — so a
+   PA stamped first can never subscribe itself and **you cannot do it for it**. Recovering costs
+   three mutations and an un-gated window. (Found by meadowlark; re-reported by vrell.)
+3. **Bound the capture**: `--max-bytes 1024 --max-lines 12`. The 4096-byte default is a
+   default, not a requirement, and captures accumulate with no expiry — a watcher subscription
+   is a standing grant to read the watched seat's pane.
+4. **Close the graph, and a PA is not required to do it.** The requirement is *somebody the
+   system can tell*: any watchdog-eligible non-`pa` child works, and today an ordinary peer is
+   **better at watching** than a PA is, because a PA cannot re-subscribe itself. **De-topple
+   with a peer; add the PA for the chores.** Verify with
+   `jq '.watchers' ~/.pij/<prime-id>/watchdog.json` — no `pij` verb projects the capture mode.
+5. **Prove delivery, not configuration.** A subscription is unproven until something has
+   travelled down it; verify at the **receiving** end.
+
+## 6. Open intake and govern
 
 1. Human-named items enter the prime-flow as `proposed` or `deciding`.
 2. At `preparing`, reserve ordinal/folder/window/worktree/branch/base, derive

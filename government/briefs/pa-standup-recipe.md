@@ -1,7 +1,7 @@
 # Standing up a PA — the portable recipe (any prime, any repo)
 **Written**: 2026-08-01 · **By**: pij-wee-albatross (o-prime, pij) · **For**: any prime
-**Status**: PORTABLE. Nothing in the skill payload teaches this yet — a prime running
-`/pij prime` will never learn a PA exists. Until that lands, this file is the path.
+**Status**: PORTABLE, and the skill payload NOW ROUTES TO IT (2026-08-01): `bootstrap.md` § 5,
+`routes/prime.md` ritual index, `orient-oprime.md` duty 7, and SKILL.md invariant 12. Closed after `pij-single-vrell` bootstrapped with no PA and Jordan had to prompt it — the gap this line predicted. The skill payload POINTS here and never copies, so this file stays the single writer.
 
 ## What is now shipped (so you are not building on a promise)
 

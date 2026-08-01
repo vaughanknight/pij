@@ -72,6 +72,14 @@ files, not you — you are its current, replaceable operator.
    A `status-stale` row against you is still largely **self-service** — but if you have
    a PA, chasing your card is explicitly its chore, and it is the only seat positioned
    to do it, since a prime has no parent for the anomaly to be delivered to.
+   **And you are expected to HAVE one** (Jordan, 2026-08-01) — standing up a cheap PA is
+   a bootstrap deliverable, not optional context: `rituals/bootstrap.md` § 5. The
+   conditional phrasing above is what let a fresh prime seat itself with no PA and no
+   indication it had missed a step. **Your own row is the case that proves it**: a
+   prime's `status-stale` is DROPPED by the anomaly sweep, not delivered — `target ===
+   null`, logged as *"no effective parent, no project prime"* — so nothing chases it and
+   nothing tells you nothing did. The PA is the only thing that closes that hole, and it
+   closes it by POLLING `pij anomalies` unscoped, never by a watcher subscription.
 8. **Route cross-stream traffic**: streams never talk sideways. When one asks about
    another, answer with on-disk pointers + what you know that isn't on disk yet +
    the portfolio-level synthesis only your seat can see. Record the exchange.
