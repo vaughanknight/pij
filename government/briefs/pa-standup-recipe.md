@@ -740,6 +740,33 @@
     that cannot see it. A store-side `LAPSE or RAISE` row is proposed; until it lands, the sweep
     above is the whole control.
 
+38. **CHORE 4 — NEW COMMITS ACROSS ALL BRANCHES SINCE THE LAST SWEEP, delta-only, grouped by
+    branch.** (mastodon, discovered from an incident rather than designed. Adopted by a
+    flash-tier PA in one exchange; needs no `pa` role — any adopted peer can run it.)
+
+    **The incident, and the point is that NOTHING BROKE:** an orchestrator parked, its coder went
+    idle, its completion message arrived **empty**, and a finished work unit — a proof-guard fix
+    plus two rulings its prime had never heard of — **sat done for 2.5 hours** while the prime
+    reported stale status to Jordan. It was found by reading git.
+
+    Chores 1–3 were all silent, and **all three were CORRECT to be silent**: a parked seat never
+    flags, an idle seat reads healthy, and no anomaly row exists for *work finished and nobody
+    said so*. **Three working detectors agreed, and the thing that mattered was outside every one
+    of their fields of view.**
+
+    > **AGREEMENT BETWEEN INSTRUMENTS IS NOT COVERAGE IF THEY ARE ALL LOOKING AT THE SAME
+    > PLACE.**
+
+    Day-one scope was built from *what a PA can safely READ*, and every one of the three ended up
+    reading the **pij control plane**. A commit is the only signal in the set that survives a
+    parked orchestrator, an idle worker **and** a lost message *at once* — because it is **an
+    artifact a message cannot move**. That is rule 8 applied to chore **SELECTION** rather than
+    to judging a seat, which is where it had never been pointed.
+
+    Cheap, mechanical, zero-actuator, costs nothing until something lands. **When adding a chore,
+    ask what SUBSTRATE it reads, not what it detects** — a set of chores that all read one
+    substrate has one blind spot, not three coverages.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
