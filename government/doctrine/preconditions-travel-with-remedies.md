@@ -232,6 +232,13 @@ key that gates supervision is gone. **A seat that looked ORPHANED would get inve
 this one looks fine, so nobody looks.** Today's whole subject, relocated into a storage layer,
 with every hierarchy check we own as the deceived reader.
 
+**This is DESTRUCTION, not concealment** (osk prime's reframing, and it is the operative one):
+a seat that never had a role and a seat whose role was deleted are **different facts about the
+world**, and the archive collapses them into one representation. **No downstream gate can be
+written to distinguish them, however clever, because the distinguishing information no longer
+exists.** *You cannot fix a lossy write with a smarter read* — the repair has to be at the
+WRITE, and any read-side mitigation is guesswork wearing a policy's clothes.
+
 **Encoding**: when a gate reads a field that a store may drop, the gate's default is a
 **policy about missing data**, never an inference about intent — say which it is in the arm.
 And the diagnostic that made this tractable is the ASYMMETRY, not the count: one field lost

@@ -198,13 +198,39 @@ Grepped every literal role comparison in `.pi/extensions/pij` outside tests. Res
 
 - **`watchdog-manager.ts:97` — the defect.** The only site where a role omission silently
   removes behaviour.
-- **`role.ts:122` `cardCanMislead` — `role === "prime" || role === "pm"`. CORRECT FOR `pa`,
-  BUT BY DEFAULT RATHER THAN BY DECISION.** A PA returns false, i.e. its card cannot
-  mislead — which happens to be right, because chainglass ruled `carriesStatus` PM-only so a
-  PA's card renders nowhere. But three PAs *do* carry a `statusAt`, and nothing recorded that
-  anyone considered them when `pa` was minted. Per the unnamed-counterfactual clause, **a
-  correct answer nobody examined is unexamined, not validated.** Fold it into the same total
-  classification pass so the decision is written down.
+- **`role.ts:122` `cardCanMislead` — `role === "prime" || role === "pm"`. ~~CORRECT FOR `pa`~~
+  — THE PREMISE IS FALSE AS OF 2026-08-01, MEASURED IN THE RENDERER.** I recorded this as
+  *correct by default*, on the ground that `carriesStatus` is PM-only so **a PA's card renders
+  nowhere.** Cheetah has now read the emitted DOM with anaconda's real row and real card:
+
+  ```
+  pij-missing-anaconda  PA  ⧉  project not read
+  NOW   Completed PA sweep 2 & registered watchdog on pij-wee-albatross
+  NEXT  Waiting for watchdog nudge or next instruction
+  updated 22h ago
+  ```
+
+  **The status text RENDERS.** `"floating card"` in `paLineageRefusal` is literal, the two
+  comments were never in contradiction, and my *"maybe it only means the node"* reading was
+  the wrong one. Cheetah's own diagnosis is the day's conflation for the third time: it ruled
+  *"a PA carries no status card"* and implemented it as **not-a-pm**, which renders nothing
+  ever — then measured against a live PA that **had written one its rail was dropping on the
+  floor.** ***"Owes no card" is not "has no card."*** It has split `carriesStatus` (who OWES)
+  from `hasOptionalCard` (whose card RENDERS) so the two cannot be re-welded.
+
+  **Jordan is NOT shown a stale claim as current** — the age line reads *"updated 22h ago"* in
+  muted grey, and that age line *is the reason it renders*. What it is **not** is flagged: no
+  amber, no stale label, no nudge promise. Deliberate, and it extends the prime-card ruling —
+  **a stale label carries watchdog language, and watchdog language is a lie when no obligation
+  exists.** Which is why #71 is the real fix and rendering is not a substitute: **supervision
+  is what makes a card's age meaningful.** A red label on a seat nobody nudges only moves the
+  false claim from *"this is current"* to *"someone is chasing this."*
+
+  **RUNNING IS NOT MERGED** (doctrine, face 2): the render fix is local commit `0e6da0a9b` on
+  an **un-PR'd branch**. Jordan's dev server runs that working tree, so it is live for him and
+  **nowhere else** — pull main or start from a clean checkout and PA cards silently vanish.
+  Cheetah's claim about main is read from source, not from a running main; nothing runs
+  chainglass main today, so nobody can measure it.
 - `message.ts:27-28` and `index.ts:283` use a **different** `role` vocabulary
   (`parent`/`worker`, message framing) — not instances.
 - `pa-capability.ts:145` is `role !== "pa"` — a **deny-list keyed on one role**, which fails
