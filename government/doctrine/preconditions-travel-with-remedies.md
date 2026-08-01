@@ -205,6 +205,46 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## THE SAME FIX IS RIGHT AT ONE EMITTER AND WRONG AT THE OTHER — audience, not symmetry (butterfly, 2026-08-01)
+
+One clause — *"name `ready` alongside `done`"* — was dispatched to two emitters of what looked
+like the same false dichotomy. **It was correct at one and worse-than-useless at the other, and
+only measuring each AUDIENCE separately showed which:**
+
+| emitter | who receives it | verdict |
+|---|---|---|
+| the watchdog nudge | fires on **silence** → reaches **idle** seats | `ready` is TRUE there — **keep** |
+| `status-stale` | *"only judge a seat that is busy RIGHT NOW"* (`anomalies.ts`) → reaches **working** seats | `ready` is FALSE for the row's **entire population** — **pull** |
+
+**Fixing by symmetry would have been wrong in exactly one of the two places**, and nothing in the
+text of either string distinguishes them — the difference is in *who the emitter can reach*, which
+lives in the trigger, not the copy.
+
+**Encoding**: before applying one remedy to several emitters of "the same" defect, derive each
+emitter's **audience** from its trigger condition and ask whether the remedy is true for that
+population. And record the asymmetric verdict *in the PR*, or a reviewer reads two opposite
+decisions about one word as inconsistency rather than as measurement.
+
+**Third-order note on the remedy that was pulled**: it was not merely ineffective — declaring
+`ready` does not mute the nudge, does not exempt the row, and **does not even snooze it**
+(`report state` never writes `statusAt`). *A remedy that changes literally nothing is a fourth
+kind, distinct from the snooze:* the snooze at least clears the row and hides the condition; this
+one leaves the row standing while the seat believes it complied. **The seat then learns the
+instrument is broken — from having done exactly what it was told.**
+
+## A GUARD THAT REPORTS FAILURE AND EXITS 0 IS NOT A GUARD (butterfly, self-disclosed)
+
+Butterfly's gate-and-push chain **printed FAILED and pushed anyway**: its script reported the
+failure in stdout but **exited 0**, so the `&&` continued. The failure was a transient
+tmux-socket test and the pushed commit was independently re-verified sound (3874 passed) — *but
+the guard it had was not a guard.*
+
+**Exit status is the only thing a shell chain reads.** A script that reports failure in prose and
+exits 0 is a **success-shaped failure** in the tooling layer — the same class this file catalogues
+in records and instruments, one level down, and it will hold as "verified" indefinitely because
+the chain it guards never disagrees with it. Disclosed rather than left to stand, which is the
+behaviour that makes the rest of a seat's verifications worth believing.
+
 ## THE MISSING EVENT — a family, not a bug (cheetah's framing, roadrunner's instances, 2026-08-01)
 
 > **THE RECORD DOES NOT ROT BECAUSE SOMEONE LIED; IT ROTS BECAUSE THE TRANSITION THAT SHOULD
