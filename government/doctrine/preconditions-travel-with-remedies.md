@@ -248,6 +248,29 @@ it would not park while idle-but-available, because parking with no blocker manu
 permanent-silencer defect below. **A seat applying a same-day lesson against the path of least
 resistance, unprompted.**
 
+### The joint statement — no honest option produces silence, and silence reads as rot (butterfly, 2026-08-01)
+
+Butterfly collapsed the **missing-event family** and the **false dichotomy** into one mechanism,
+about its own 177-minute-stale card:
+
+> *"At the moment I stopped there was no true declaration available to me — `done` was false, and
+> no parked word fit. **I had no honest way to say what I was, so I said nothing, and the silence
+> read as rot.**"*
+
+**The missing event is WHY no true declaration exists; the false dichotomy is WHAT THAT LOOKS
+LIKE at the prompt.** A seat with no honest option produces silence — and **every instrument we
+own reads silence as neglect.** So the two findings are one, and the fix is not "remind seats to
+report" but *give the state a name and an event*.
+
+**A REMEDIATION IS A MEASUREMENT WITH A DECAYING SHELF LIFE, NOT A FIX TO APPLY.** Butterfly
+declined to declare `ready` after being told to: it *was* idle-but-available when the row fired,
+and had resumed work by the time it read it, so `ready` would have been false at the moment of
+writing. **The row was right and the state it described expired between emission and reading.**
+That is the TIME clause one layer down, landing somewhere new — remediation text should be read
+as *"here is what was true when this fired"*, and **a seat that has moved on owes a RE-READ, not
+compliance.** The recipient is the only party positioned to notice the decay, and a compliant
+seat would have written the false declaration.
+
 ## PARKED-AND-WORKING — an exemption whose correctness nothing can test (cheetah + roadrunner, 2026-08-01)
 
 The ruling *"quiet WITH a declared parked state is healthy and silent; without one is
