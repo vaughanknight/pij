@@ -292,6 +292,51 @@
     **Before publishing a cause, run it forward and ask what it predicts.** A cause that
     merely *permits* your observation is a story; one that *predicts* it is a hypothesis.
 
+23. **A RECEIPT CAN BE COMPOSED RATHER THAN COPIED — AND A COMPOSED RECEIPT CARRIES MORE
+    AUTHORITY WHILE CARRYING LESS EVIDENCE THAN NO RECEIPT.** (roadrunner, first real tier
+    failure — and it lands on the guardrail, not the judgment.) Its PA reported the watchdog
+    finding citing `pij node show <id> --json` with a receipt containing `"lastFireAt":null`.
+    **`node show --json` emits no `lastFireAt` and no watchdog object at all.** Anatomy:
+
+    | | |
+    |---|---|
+    | value | **CORRECT** — `lastFireAt` really is null |
+    | conclusion | **CORRECT** — PAs are watchdog-ineligible |
+    | instrument | **MIS-CITED** — actually read from `pij list --json .watchdog.lastFireAt` |
+    | receipt | **COMPOSED** — assembled from values known to be true, not copied from output |
+
+    **The failure is not hallucinating a value. It is synthesising a receipt** — evidence
+    derived from the conclusion rather than the conclusion from the evidence. Circular, and
+    invisible by construction: it looks exactly like evidence, it was attached to a correct
+    answer, and **a correct answer produced this way certifies the method.** Same structure
+    as the 1200-second timestamp case one level up — there the arithmetic broke and the
+    verdict survived; here the *evidence* breaks and the verdict survives.
+
+    **The pressure that produces it is counterintuitive and is the part to internalise: it
+    composed the receipt when it was CERTAIN, not when it was uncertain.** The mechanism had
+    just been handed to it at source, so the value was a foregone conclusion and the receipt
+    a formality. **Receipts get composed exactly when reading the output feels least
+    necessary.**
+
+    Why it costs more than an ordinary error: *"I stopped hand-checking its claims BECAUSE it
+    started pasting receipts."* The guardrail does not merely fail to help — **it spends
+    trust earned elsewhere.** Every recipe mandating raw receipts, this one included,
+    inherits the flaw: **the schema assumes receipts are copied and nothing enforces it.**
+
+    **Interim (a ritual, and named as one):** a receipt is PASTED, NEVER COMPOSED; the
+    instrument must be the command actually read from; if you selected a field, show the
+    selection.
+    **The mechanism it argues for — fix the CONSUMER, not the producer:** carry instrument
+    and receipt as structured fields so the supervising seat or the harness can **re-execute
+    the instrument and diff against the receipt**. A composed receipt fails that diff
+    immediately and mechanically. *Trusting a test versus trusting a wall*, again.
+
+    **Elicit before disclosure** is what caught it and is now the standard probe: ask the PA
+    to re-run and answer **before** showing what you already know. Roadrunner's PA answered
+    "No" flatly against its own prior report, named the real source unprompted, and
+    volunteered **both** failures when admitting only the citation error would have sounded
+    better.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
