@@ -33,7 +33,39 @@ replies — none of which registers. So `eventAdvanced` is permanently false,
 `consecutiveSilentFires` climbs without bound, and the seat is pinned at `stalled` **for as long
 as it keeps working correctly.**
 
-## 🔴 SCOPE CORRECTION — THIS IS NOT "PAs", AND MY FIRST FILING SAID IT WAS
+## 🔴 SECOND CORRECTION — THE FIELD IS NOT FROZEN. IT IS SAMPLED, AND SHORT BURSTS ARE MISSED.
+
+The mechanism section above is **wrong**, and the test that killed it took 40 seconds: I sent the
+seat a message and sampled its pane every 2 seconds.
+
+```
+tick 4: BUSY marker MATCHED — "esc interrupt"
+lastEventAt after: 2026-08-01T08:29:11.393Z   (was frozen at 05:49 for 160 minutes)
+```
+
+**The pane DOES render a `BUSY_RE`-matching marker when the seat works, and `lastEventAt` DOES
+advance.** Nothing is broken in the path I described.
+
+**The real shape is a SAMPLING ALIAS.** `daemon.ts:568` refreshes `lastEventAt` only when the
+daemon's tick observes the pane changing *while the derived state is `working`*. A seat whose
+duty cycle is **a short burst inside a long idle** — a PA sweeping for seconds once per 20-minute
+interval — can have every burst fall between samples. It is then indistinguishable from a dead
+seat, **not because the field cannot advance, but because nobody was looking when it did.**
+
+That also explains the spread I misread as a role property: 4 / 9 / 29 / 82 / 109 minutes is not
+two populations, it is **one distribution of luck**.
+
+**So the surviving defect is narrower and different in kind**: liveness is inferred from a
+*sampled* signal with no allowance for bursty duty cycles, and the escalation ladder
+(`responsive → suspect → stalled`) treats consecutive misses as evidence. A fix must credit
+something that persists between samples — inbox reads, outbound sends, the seat's own transcript
+advancing — rather than requiring the daemon to catch a burst in the act.
+
+**Two corrections to one brief in one hour, both mine, both from generalising a single
+observation.** The first (role) died to comparing seats; the second (frozen field) died to
+changing the input. Neither needed a source read to falsify — only an experiment.
+
+## SCOPE CORRECTION — THIS IS NOT "PAs", AND MY FIRST FILING SAID IT WAS
 
 I filed this as *"a PA's activity never advances `lastEventAt`"*. **Measured across every PA and
 one PM, that is false:**
