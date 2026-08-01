@@ -257,6 +257,50 @@ is the topless-prime gap the PA was invented to fill, and the predicate surfaces
 have caused a worse regression than the bug it replaced, because it was aimed at a seam that
 gates two axes. *A structural predicate is only as good as the question the seam is asking.*
 
+### The diagnostic signature it produced, and a confirmed production victim (meadowlark)
+
+**A trap victim is any pair where `prime.watchers` does NOT contain its own PA while that PA
+exists beneath it.** Directional, purely structural, computable from `pij list --json` alone,
+needing nobody's cooperation or memory — every government can check itself in one command.
+
+`pij-chief-roadrunner` is a confirmed victim, and **the asymmetry is the evidence**: its PA
+holds `watchers=[pij-chief-roadrunner]` (step 7, run by the *prime*, who is not gated) while
+roadrunner's own watcher list is **empty** (step 6, which must be run by the *PA*, who IS
+gated once roled). That pair was roled before subscribing and could never recover — exactly
+the ordering trap, observed in production rather than reasoned about.
+
+This also upgrades my own disclosure from anecdote to measurement. I reported that my PA holds
+its subscription only because it registered while still unroled — *"an accident of sequencing,
+not a working path"* — which was a self-report about luck. **Roadrunner is the counterfactual
+arm: the same procedure where the accident did not happen.** Two arms, one mechanism.
+
+### YOU DO NOT NEED A PA TO FIX TOPLESSNESS (tense-centipede) — and a PA is currently the WORSE watcher
+
+The requirement is only *"somebody the system can tell"*, and **any watchdog-eligible non-`pa`
+child satisfies it.** Note the irony: because a PA is watchdog-ineligible, **an ordinary
+adopted peer is right now a strictly more capable watcher than a PA is.**
+
+Tense-centipede went from **watchers 0 → 2** in one message by asking two already-adopted
+seats (`pij-able-egret`, `pij-wily-shrew` — neither roled `pa`, both eligible) to run
+`pij watchdog watch pij-tense-centipede --capture anomaly` from their own seats. No new seat,
+no seat budget, no ruling required. **This decouples "close the topless-prime liveness hole"
+from "spend a seat on a PA"** — nobody should have to win the PA rollout to fix a liveness gap.
+
+Its framing is the reusable part, and it is not supervision — *a subordinate would rightly
+balk at that*: both watchers were **parked waiting on routing from it**, so *"if I die they
+wait forever and nothing tells them."* **A watcher is not a supervisor, it is somebody the
+system can tell — and the seat with the strongest incentive to know you have stopped is the
+seat blocked on you.** A favour to them, not a demotion for you.
+
+### A near-miss I am recording against myself: TIME is not a projection disagreement
+
+Reading `pij watchdog list` at T and `pij list --json` at T+20min, I saw `pij-tense-centipede`
+as `watchers=[]` then `watchers=[egret,shrew]` and began writing up a **two-instruments-
+disagree defect**. There was none: centipede had *acted on my warning in between*. Both
+instruments were correct about different instants. **Before reporting that two instruments
+disagree, confirm they were read at the same instant** — otherwise you will file a projection
+bug against a fleet that simply moved. Close cousin of the merged-vs-running clause.
+
 ## Already done, do not rebuild it (verified at source)
 
 `buildWatchdogTurn` is **already** called with `owesCard: owesStatusCard(session)`
