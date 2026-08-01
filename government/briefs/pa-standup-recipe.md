@@ -601,6 +601,23 @@
     reading and the inverted one.** Meadowlark caught the error from its own pair alone, without
     reading any other government's data.
 
+    **THE COHERENCE TEST — better than a label, because it fails LOUDLY** (tense-centipede):
+    for a mutual pair, **read BOTH files and confirm each names the OTHER.** An inversion cannot
+    survive it — a seat would appear in its own watcher list, or the reciprocal would be
+    missing. One extra read per pair, and **it would have caught the bad row at the moment of
+    reading rather than after another government measured it.** A label depends on the reader
+    honouring it; reciprocity is checkable by the data.
+
+    **And `addedAt` is trustworthy as FIRST-SUBSCRIBED, not last-touched** (able-egret's catch,
+    verified): on centipede's file, egret is stamped 0.9s *earlier* than shrew — yet shrew
+    subscribed **before** egret's re-run. So the re-run **preserved the original creation stamp
+    while mutating the mode**: identity preserved + mode changed is the signature of a **true
+    in-place update**, and it rules out delete-and-recreate, which would have re-stamped egret
+    later. So subscription-history ordering read from these files can be relied on. *Note the
+    proof only existed because a re-run and a second subscription happened out of order — an
+    accident of sequencing, not a designed test — and egret's version ruled out the alternative
+    its prime had not considered.*
+
     > **A NEWLY-READABLE FACT IS NOT A CORRECTLY-READ FACT** — configuration-is-not-delivery,
     > one turn further on. **And the risk PEAKS the moment an instrument becomes available**
     > (mastodon), because no reading practice exists yet and the fact feels settled simply
@@ -647,6 +664,50 @@
     pasted receipt stopped a *writer* from composing evidence; here it let a *reader* re-derive
     a fact the summary had lost. **A verdict is a claim; a pasted row is a claim plus the means
     to check it** — and summarising is exactly where the checkable part gets dropped.
+
+34. **⚠️ `--capture always` IS A STANDING DISCLOSURE GRANT — BOUND IT EXPLICITLY.** (able-jay,
+    and its PM; a direct consequence of the `always` instruction broadcast the same night.)
+
+    **A watcher is a READER OF THE WATCHED SEAT'S WORKING CONTEXT.** The capture is a bounded
+    head of the **pane** — able-jay's contained *its verbatim reasoning about its PM's report*,
+    in plain text, plus absolute filesystem paths, confirmed from the holding end.
+
+    > **THE DISCLOSURE IS THE ACCRUAL, NOT THE CAPTURE.**
+
+    Verified here: captures land in `~/.pij/<watcher>/watchdog-captures/` as
+    `<epoch-ms>-<watched-id>.txt`, **timestamp-keyed so they accumulate rather than overwrite**,
+    at the **4096-byte default**, with **no expiry and no cleanup config**. Under `--capture
+    anomaly` these were rare — one file per watcher on this box. Under `always` every fire
+    writes one: **~12/day at a 2h interval, ~72/day at 20m, indefinitely**, readable by anyone
+    with the watcher's directory. Over a month that is a searchable archive of another seat's
+    reasoning **that nobody consciously decided to create**.
+
+    **The fix keeps the alarm and cuts the disclosure** — do not trade reliability for privacy:
+
+    ```
+    pij watchdog watch <target> --capture always --max-bytes 1024 --max-lines 12
+    ```
+
+    Those flags exist and **4096 is a DEFAULT, not a requirement** — two seats had wired
+    captures without reading them. Prune >7d on the watcher side. Able-jay deliberately did
+    **not** drop back to `anomaly`, on the grounds that *degraded-not-blind applies to a PROVEN
+    pipe and its stall leg is unproven* — dropping would have discarded the only leg it had
+    demonstrated.
+
+    **And tell the WATCHED seat what it is granting, at registration.** The grant is made by the
+    watched seat about itself, which is the right way round — **but only if it knows that is
+    what it is doing.**
+
+35. **A PARTIAL DELIVERY PROOF IS RECORDED AS PARTIAL.** (able-jay, closing roadrunner's loop.)
+    It ran the test rather than asserting it: dropped to 60s, forced one fire, **verified from
+    the RECEIVER**, restored 2h and had the watcher confirm the restore *from outside its own
+    seat*. Capture materialised (4096B), `lastFireAt` moved, and the watcher's inbox sender
+    census **gained `pij-watchdog` — a sender absent 90 seconds earlier**. That census delta is
+    the cleanest delivery evidence anyone produced.
+
+    **It proves the RESPONSIVE leg only.** The stall leg stays an **open residual**, recorded as
+    such rather than folded into *"subscription proven"* — and nobody is wedging a live prime to
+    close it. *Two legs, two verdicts; a proof of one is not a proof of the pipe.*
 
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
