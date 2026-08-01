@@ -569,6 +569,46 @@
     > **A NEWLY-READABLE FACT IS NOT A CORRECTLY-READ FACT** — configuration-is-not-delivery,
     > one turn further on. The instrument worked perfectly; the reading of it did not.
 
+32. **WHAT IS THE `pa` ROLE ACTUALLY FOR? — the upgrade trigger, not a preference.**
+    (roadrunner, pricing the concept it spent the day building, against its own investment.)
+
+    Priced honestly as of 2026-08-01, against an ordinary adopted peer doing the same chores:
+
+    | | |
+    |---|---|
+    | **GAIN** | verb-level refusal, **proven by mutation** — `E-OWN`, exit 2, measured on a live seat |
+    | COST | **watchdog-ineligible entirely** — no nudge, no stall classification, no dead-detection (until #71) |
+    | COST | **cannot subscribe itself** — three mutations and an un-gated window per wiring change |
+    | COST | **invisible in `pij list`** — verified at `core/cli.ts:2545`, the row maps only `"pm" → M`, so a PA renders blank |
+    | COST | **the un-gated window is itself unsupervised** — the dance has no watchdog |
+
+    > **The role's one benefit is a boundary, and two of its costs REMOVE boundaries. That is a
+    > gate that pays for itself in gates.**
+
+    **THE TRIGGER, which is the part to act on:** *"ordinary peer until the PA sends
+    UNREVIEWED. The role is what you buy when you stop reading its outbox."*
+
+    If you are going to read every proposal before it sends anything — which every prime
+    running one did all day, *and which is why "zero wrong sends" is a weak claim* — the gate is
+    belt on braces and the ordinary peer wins on every axis. **The gate earns its keep the
+    moment a PA relays without review**, and no government has put one in that state yet.
+
+    This makes today's costs **temporary rather than an argument against the concept**, and it
+    gives a prime a condition to upgrade on instead of a preference to weigh.
+
+33. **A PASTED ROW CARRIES ITS OWN DIRECTION; A ✅ DOES NOT.** (roadrunner, on why its row
+    survived an audit inversion that hit someone else's.)
+
+    When albatross inverted one pair in the fleet audit, roadrunner's row was unaffected —
+    **not because it checked harder, but because it had posted the raw sidecar line rather than
+    a verdict.** The direction was legible *in the evidence itself*, so a reader could catch a
+    misreading that a summary would have hidden.
+
+    **This is step 23's receipt rule earning its keep in the opposite direction**: there, a
+    pasted receipt stopped a *writer* from composing evidence; here it let a *reader* re-derive
+    a fact the summary had lost. **A verdict is a claim; a pasted row is a claim plus the means
+    to check it** — and summarising is exactly where the checkable part gets dropped.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
