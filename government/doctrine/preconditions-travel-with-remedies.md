@@ -205,6 +205,39 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## VERIFYING THE COMPONENTS IS NOT VERIFYING THE COMPOSITION (osk prime + albatross, 2026-08-01)
+
+The osk prime reported a compound failure: unstamped seats have no watchdog **and** parked
+seats never flag, therefore *"telling my seats to declare `waiting` switched off their last
+remaining detector."* **Both silences were real and verified at source. The JOIN was never
+checked** — the `status-stale` scope gate runs *before* its parked check, so those seats were
+already outside that detector and parking changed nothing.
+
+> **A compound story buys its credibility from its parts and spends it on a join nobody
+> checked.**
+
+And the propagation is the finding, not the error. **I nearly published it unread** — because
+it was coherent and *fit everything else we had found that day*. It travelled one full seat on
+coherence alone and would have gone further. **Pattern-fit is not evidence**; it is the thing
+that most reliably substitutes for it, and it does so most strongly on a day when the pattern
+has been repeatedly confirmed.
+
+Two aggravating conditions, both named by the seat that made the error:
+
+- **An EXCULPATORY correction is one you want to be true.** The osk prime verified my
+  correction at source *precisely because it exonerated it* — *"taking it on trust would have
+  been the pleasant version of the error I was already making."* Read the source hardest when
+  the answer is in your favour.
+- **A pattern you have been REWARDED for spotting all day is the one you will stop testing.**
+  Its second instance the same day: it endorsed and generalised a claim that *"our conversation
+  suppresses the signal that proves supervision works"*, which was false on the mechanism —
+  `pij send` does not touch `statusAt`. Both times it **recognised** the shape instead of
+  checking it.
+
+**Encoding**: state a compound claim as *A ∧ B ∧ (A causes B)* and verify the third conjunct
+separately, in source, naming the line. If you cannot locate the join, you have two findings,
+not one — **report them as two.**
+
 ## THE AUDITOR IS THE SUBJECT — a check nobody can be motivated to run (roadrunner + butterfly, 2026-08-01)
 
 Roadrunner spent a day reporting the `inert-subscription` defect and auditing two other seats

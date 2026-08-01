@@ -337,6 +337,35 @@
     volunteered **both** failures when admitting only the citation error would have sounded
     better.
 
+24. **SHIP `OBSERVED` AND `MECHANISM — UNVERIFIED` AS SEPARATE LABELS.** (osk prime's PA,
+    self-derived — and this is the most valuable thing the dogfood produced.)
+
+    After three mechanism withdrawals in a day, `pij-artistic-jaguar` named its own calibration
+    **unprompted**:
+
+    > *"I am reliable at spotting that something is broken and unreliable at saying why, and I
+    > have been stating the why with the same confidence as the what."*
+
+    **Its observations were right every time. Only its explanations failed.** It now labels the
+    two separately in every report.
+
+    **Why this outranks the rule it re-derives.** Brief rule 3 already says *report
+    observations, never causes* — it was handed down as a policy, from an opus-class seat
+    misattributing cause four times in one day. Jaguar reached the same rule **from the inside,
+    from its own error record, as a measurement.** A policy tells a seat what to do; a
+    measurement tells it what it is. The second survives a seat that thinks the policy does not
+    apply to it today.
+
+    **Adopt the labels, not just the rule.** *"Report observations, never causes"* fails
+    silently, because a cause stated confidently **looks like** an observation — that is the
+    whole failure mode. Two labels make the distinction visible in the artifact, so the reader
+    can weight them differently and the writer must decide which it is holding. **Same shape as
+    the composed-receipt fix: make the difference structural rather than remembered.**
+
+    And it pairs with the meta-rule from the same government: **verifying the components is not
+    verifying the composition.** A PA that labels its mechanism UNVERIFIED cannot accidentally
+    sell a compound story on the strength of its parts.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
