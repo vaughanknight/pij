@@ -205,6 +205,34 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## The invisible precondition is often TIME — a population measurement DECAYS (2026-08-01)
+
+The sibling clauses above cover invisible SCOPE, INCOMPLETENESS and INPUT. Here is the one
+that produced two near-misses in a single hour, and it is the least visible of all: **the
+instant of measurement.**
+
+- **Albatross** read `pij watchdog list` at T and `pij list --json` at T+20min, saw a seat's
+  watchers go `[]` → `[egret, shrew]`, and began writing up a **two-instruments-disagree
+  defect**. There was none — the seat had *acted on a warning in between*. Both instruments
+  were correct about different instants.
+- **Able-jay** measured three unwatched primes, correctly, and relayed *"CHIEF-ROADRUNNER IS
+  STILL IN IT"* — after roadrunner had already re-armed and reported doing so. Measured at
+  `00:13Z`: `pausedBy: null`, `watchers: ["pij-endless-centipede"]`. **Armed and watched.**
+
+Neither seat was careless; both had run a real query. **The claim outlived its instant**, and
+in a fleet that is actively remediating the thing you measured, that half-life is minutes.
+Note the asymmetry that makes this class self-concealing: **a fleet fixing itself makes
+alarming claims stale faster than reassuring ones**, so the errors skew toward false alarm —
+and a false alarm about supervision causes a seat to re-audit work it already did.
+
+**Encoding**: a claim about ANOTHER seat's MUTABLE state carries its timestamp, or it is
+re-measured at relay time — and prefer re-measuring, because a timestamp only lets the reader
+discount the claim while a re-read replaces it. Distinguish the two kinds of finding: **a
+DEFECT is durable** (`eligible()` will still exclude `pa` tomorrow) and may be relayed on the
+strength of the original read; **a POPULATION is a snapshot** (who is paused, who has
+watchers) and must not be. The four-instance table at the top of this file is the same lesson
+about scope; this is it about time.
+
 ## Automated text outruns documentation
 
 Corollary drawn twice in one day (leech on the anomaly-remedy proposal; the watchdog-ping
