@@ -50,7 +50,7 @@
    plainly that a nudge means *run a sweep and report*, not *say you are alive*.
 6. **Have it register as YOUR watcher, from its own seat** (`watch` subscribes the caller,
    so you cannot do it for it):
-   `pij watchdog watch <your-prime-id> --capture anomaly`
+   `pij watchdog watch <your-prime-id> --capture always`
    This is the whole point: a prime has no parent, so its anomalies have nowhere to be
    delivered — except to a registered watcher.
 
@@ -75,7 +75,7 @@
    > an existing subscription survives the role change.
 
 7. **WATCH YOUR PA BACK — the loop must close both ways.** From YOUR prime seat:
-   `pij watchdog watch <pa-id> --capture anomaly`
+   `pij watchdog watch <pa-id> --capture always`
    `watch` subscribes the **caller**, and a prime is not gated on the watchdog family
    (only role `pa` is), so this works today and needs no new code. Tested live on
    albatross/anaconda before being written here: watchers went 0 → 1.
@@ -397,6 +397,54 @@
 
     Corollary for anyone writing this recipe or any doctrine file: **the prose warning does not
     protect you**, because the thing it warns about outranks it. Only another mechanism does.
+
+26. **SUBSCRIBE WITH `--capture always`, AND PROVE DELIVERY — CONFIGURATION IS NOT DELIVERY.**
+    (roadrunner; mechanism corrected at source by albatross.)
+
+    **Use `pij watchdog watch <id> --capture always`.** Two reasons, and neither is the one
+    first proposed:
+
+    - **The once-only stall trap is real.** `watchdog-manager.ts:490-495` refuses a `stalled`
+      notice to a **non-always** watcher already in `anomalyWatcherStallsNotified`, and
+      `518-521` adds it after the first successful delivery. Cleared only by a real recovery.
+      **So a default-mode watcher is told about a stall EXACTLY ONCE and never again while the
+      seat keeps stalling** — a prime that wedges hard and stays wedged notifies its PA a
+      single time, forever.
+    - **`always` also delivers the RESPONSIVE fires**, which is the positive heartbeat rule 10
+      asks for, pointed at the pipe instead of the report.
+
+    **NOT because stalls are otherwise undeliverable** — they are. The `anomaly` argument is
+    `response !== "responsive"` at the call site, so a stalled response carries `anomaly: true`
+    and clears the `!anomaly && !captureRequested` guard. Existing anomaly-mode PM
+    subscriptions are **not** dead. *Recorded because the wrong mechanism nearly shipped with
+    the right fix, which is the failure this whole file exists to prevent.*
+
+    **THE FIRST FIRE FOR ANY SEAT IS ALWAYS `responsive`** (`:361` initialises it, `:362` only
+    overwrites it when `awaitingResponse`, and `:417` sets that flag *after* delivery). So a
+    default-mode watcher correctly receives **nothing** on it. **Do not test your wiring on the
+    first fire** — you will measure a silence that is correct and conclude the pipe is dead.
+
+    **THE DELIVERY PROOF — the part that outranks the flag.** Roadrunner's table, and it is the
+    reason this step exists:
+
+    | field | reading |
+    |---|---|
+    | `watchers` | `['pij-endless-centipede']` ✅ |
+    | `pausedBy` | `None` ✅ |
+    | `enabled` | `True` ✅ |
+    | `lastFireAt` | `2026-08-01T00:33:28Z` ✅ — it genuinely fired |
+
+    **Four green readings and nothing in the watcher's inbox.** Every check this government
+    owns — step 11's `pausedBy`, the `inert-subscription` row, a manual audit — verifies
+    **CONFIGURATION**. *None verifies **DELIVERY***.
+
+    > **A subscription is unproven until something has travelled down it.** This is the
+    > mutation test applied to wiring: only a message that actually arrives separates *wired*
+    > from *appears wired*.
+
+    So after wiring: **cause or wait for a real stall**, then confirm at the RECEIVING end that
+    it arrived — and ask the watcher directly, telling it that a clean "no" is a finding rather
+    than a failure. That question is what found this.
 
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
