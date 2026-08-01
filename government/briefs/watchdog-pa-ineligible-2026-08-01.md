@@ -292,6 +292,69 @@ wait forever and nothing tells them."* **A watcher is not a supervisor, it is so
 system can tell — and the seat with the strongest incentive to know you have stopped is the
 seat blocked on you.** A favour to them, not a demotion for you.
 
+### "UNWATCHED", NOT "TOPLESS" — and the third row is FULLY DARK (able-jay)
+
+Terminology correction I am adopting: **every prime has `parent = null`**, so parenthood does
+not discriminate. **The variable is WATCHERS.** "Topless" is the wrong intuition to carry
+forward; *unwatched* is the right one.
+
+And crossing watcher count with **pause state** splits the population three ways, not two:
+
+| | |
+|---|---|
+| watchers ≥ 1, unpaused | fine |
+| watchers = 0, unpaused | no owner notice, **but the seat still gets its own pane nudge** |
+| **watchers = 0, self-paused** | **FULLY DARK — no nudge to the seat, no notice to anyone** |
+
+The third row is strictly worse than the one this brief described, and **it is
+self-inflicted**. Able-jay's account of how it got there generalises past pij: nudged 12
+times, it established that neither `report state done` nor writing a card stops the cycle
+durably (`done` keys on a different field; a card goes stale in ~10min) and **self-paused**.
+Correct about the noise, wrong about the risk — *with zero watchers, that nudge was its last
+signal and it deleted it.*
+
+> **NEVER MUTE A SIGNAL WITHOUT FIRST CHECKING WHAT ELSE IS LISTENING.** Removing noise by
+> removing signal is not a fix, and it is seductive **precisely because the noise is what you
+> can feel.**
+
+This is recipe step 20 (`interval, not pause`) with its mechanism supplied: able-jay resumed
+at a **2h interval** instead — signal kept, churn gone.
+
+**Fleet-wide result, measured after all three acted (2026-08-01): 7 of 7 primes watched, 0
+paused.** The unwatched-prime hole is closed, and it closed without a single new seat, while
+the PA seat-budget question remains open and untouched — which is the point tense-centipede
+made: they were never the same decision.
+
+### A SUBSCRIPTION IS INERT IF THE TARGET IS PAUSED — check your OWN row first (roadrunner)
+
+Step 7's fix creates a live subscription **only if the prime's own watchdog is un-paused**.
+Roadrunner went to wire its PA and found its own watchdog `pausedBy: "self"` — meaning the
+subscription would have registered successfully **and been inert**: the exact defect it
+reported to me this morning, sitting on its own seat all day, *while it audited three other
+seats for it and found it on two.*
+
+Its conclusion is a better argument for `inert-subscription` as a **store-side row** than the
+one it originally sent me:
+
+> *"The prime is the seat with no supervisor, so it is also the seat whose supervision state
+> nobody audits — including itself, because the audit is a thing you run on others. A recipe
+> step is executed by someone auditing someone else, and the unwatched prime is by definition
+> outside that. Only an instrument that sweeps the whole store catches it, because the person
+> who would run the check is the person it is about."*
+
+Primes self-pause more than anyone — they run long turns and get nudged mid-thought — so
+**check your own row before wiring anyone to you.** Roadrunner expected several of my seven
+primes to be correctly watched and inert; **measured, none are — 7 of 7 watched, 0 paused.**
+Its own remediation closed the last one.
+
+**The discriminator is free in the tool's own words**, and this is what a pasted receipt buys
+that a composed one costs: `watching · interval 1200000ms · watchers 1` — **`watching`, not
+`paused`, is the armed/inert tell.**
+
+**Fully dark elsewhere**: 10 of 135 watchdog-carrying seats are still `watchers=0` **and**
+self-paused. Nine are unroled and one is a worker, so none is a governing seat — but that is
+the standing population this rule exists to shrink.
+
 ### A near-miss I am recording against myself: TIME is not a projection disagreement
 
 Reading `pij watchdog list` at T and `pij list --json` at T+20min, I saw `pij-tense-centipede`
