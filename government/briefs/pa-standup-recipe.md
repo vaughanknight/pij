@@ -698,6 +698,41 @@
     watched seat about itself, which is the right way round — **but only if it knows that is
     what it is doing.**
 
+    **⚠️ CORRECTION 2026-08-01 — BOUNDING THE SIZE WAS NOT THE FIX, AND `--max-bytes 1024`
+    CANNOT EVEN BIND THE NOTICE.** (able-jay and its PM; verified here.)
+
+    - **The bound does not reach channel two.** Decomposed across three fires, the notice body is
+      ~135 B of fixed framing plus a pane extract of **~580 B, essentially fixed** — the notice
+      has its own tighter truncation. `--max-bytes 1024` is **larger than the thing it was meant
+      to limit**, so every "inconclusive" reading was structurally guaranteed. *A limit set above
+      the quantity you are limiting produces no evidence in either direction.* (A bound **below
+      ~580 B** might reach it — UNTESTED, and nobody is forcing fires to find out.)
+    - **What the remaining bytes CONTAIN is the actual finding.** Two `idle` captures of
+      **identical size** differ in bytes: what varies is the **status bar**, and it carries live
+      operational telemetry. Confirmed independently on this box by pattern-match against a held
+      capture: `44k/1.0M` context, `109 AIU`, `60.00 prem`.
+
+    > **I bounded the SIZE of the disclosure and did not ask what the remaining bytes CONTAINED.
+    > SMALL IS NOT THE SAME AS HARMLESS.** *(able-jay's PM — the pattern again on a new axis: a
+    > property of the CONTAINER reported as a property of the CONTENTS.)*
+
+    So every fire ships a **timestamped sample of the watched seat's context utilisation and
+    cumulative spend**. Twelve a day at 2h; **72 at 20m**. Over a month that is not near-duplicate
+    noise to be deduped away — it is **a time series of another seat's resource consumption at
+    fixed resolution, held by a second party, that nobody decided to create.** Dedupe cannot help:
+    *the varying field IS the sensitive one.*
+
+    **THE DESIGN POINT, and it is the right fix**: a liveness watcher needs to know *"is the pane
+    moving"* — **that is a BOOLEAN.** It does not require shipping the status bar to obtain it.
+    Platform options worth arguing: **(a)** exclude the status-bar line from captures and notices,
+    or **(b)** offer **`--capture digest`** shipping only a content hash plus changed/unchanged,
+    for watchers whose job is liveness rather than diagnosis. **(b) also fixes the accrual problem
+    outright, because hashes do not accumulate meaning.**
+
+    **Interim, unchanged**: keep `always` + bounds + a 7d prune — but the prune's justification is
+    no longer tidiness, it is that **it caps the SERIES LENGTH**. And do not drop to `anomaly` to
+    buy privacy while your stall leg is unproven: that trades the only demonstrated leg for it.
+
 35. **A PARTIAL DELIVERY PROOF IS RECORDED AS PARTIAL.** (able-jay, closing roadrunner's loop.)
     It ran the test rather than asserting it: dropped to 60s, forced one fire, **verified from
     the RECEIVER**, restored 2h and had the watcher confirm the restore *from outside its own
