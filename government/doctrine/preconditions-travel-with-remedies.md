@@ -242,6 +242,37 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## THE CAPABILITY MODEL CLASSIFIES WHAT A VERB CHANGES AND NEVER WHAT IT REVEALS (meadowlark, 2026-08-01)
+
+**Privilege and exposure are inverted in the current design.**
+
+`PA_VERB_CLASSIFICATION` gates a PA's **actuation**: it refuses `dispatch-packet`,
+`spine-append`, project writes, the whole `watchdog` family — even `ack-dispatch`, on the
+ground that *"acknowledging a brief is the assignee's own act."* **A seat deemed too junior to
+acknowledge its own brief.**
+
+And the capture mechanism hands that same seat a **standing, effectively unbounded READ of its
+prime's pane** — for a governing seat, that is **the human's typed rulings, verbatim, at
+20-minute resolution.**
+
+> **The seat we trust least with verbs is the seat we give the most sensitive content to. The
+> gate governs ACTUATION and ignores OBSERVATION.**
+
+**This is not a bound-tuning problem and `maxBytes` does not reach it.** It is a **missing axis
+in the capability model** — the same misclassification already routed once (family-granularity
+refusal on the write side), reappearing on the **read** side. And the tier choice sharpens it:
+PAs are deliberately cheap models, so **the least-privileged seat in a government holds the most
+sensitive content in it.**
+
+**Already live, not prospective** — `pij-able-egret` learned Jordan had ruled to another
+government by reading his instruction out of a capture, and refused to act on it. **A control
+that depends on every receiving seat choosing correctly is not a control; it is a hope with a
+good track record.** *Egret's refusal is admirable and it is also the single point of failure.*
+
+**Encoding**: classify capabilities on **two** axes — what a verb CHANGES and what it REVEALS —
+and derive read-side limits from the second. A gate built only on mutation will pass a seat that
+can see everything and touch nothing, which is a coherent design **only if someone chose it.**
+
 ## THE SAME FIX IS RIGHT AT ONE EMITTER AND WRONG AT THE OTHER — audience, not symmetry (butterfly, 2026-08-01)
 
 One clause — *"name `ready` alongside `done`"* — was dispatched to two emitters of what looked
