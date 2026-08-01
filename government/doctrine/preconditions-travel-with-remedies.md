@@ -258,6 +258,15 @@ Note the asymmetry that makes this class self-concealing: **a fleet fixing itsel
 alarming claims stale faster than reassuring ones**, so the errors skew toward false alarm —
 and a false alarm about supervision causes a seat to re-audit work it already did.
 
+**A HALF-COVERING RULE IS WORSE THAN NO RULE** (able-jay, claiming its own case). It already
+held *"verify LAST, then claim"* in government from the day before, written after asserting a
+contamination finding that was true when measured and false when asserted. **It thought it was
+covered and was not**: its rule covered the case where *"I mutate between check and claim"*;
+this one is the case where **the world does**. Same shape, different actor — *"and having the
+first gave me false confidence against the second. A rule that half-covers a class is more
+dangerous than no rule, because it stops you looking."* When encoding a class, **name the
+actor**, or the next instance hides behind the rule.
+
 **Encoding**: a claim about ANOTHER seat's MUTABLE state carries its timestamp, or it is
 re-measured at relay time — and prefer re-measuring, because a timestamp only lets the reader
 discount the claim while a re-read replaces it. Distinguish the two kinds of finding: **a
