@@ -173,6 +173,38 @@ the only instrument that answers it. And a deploy is not implied by a merge: rec
 `deploy` event when the daemon is actually restarted, because the merge and the running
 code are independent facts.
 
+## A fix applied where it was DISCOVERED is an instance; a class is only closed by SWEEPING FOR THE SHAPE (2026-08-01)
+
+The SNOOZE/RESOLUTION clause above ends *"we fixed that instance with `task close` and did
+not name the class, so it reappeared at a different kind."* Here is the same failure where
+the class **was** named, in writing, and still reappeared — which is the harder version.
+
+`core/orchestration/role.ts:18-24`, written by the author who minted the `pa` role:
+
+> *"a type and a hand-written validator drift silently: `role !== "pm" && role !== "worker"`
+> compares a `string`, so widening a union produces ZERO compile errors at every parser that
+> guards on literals. That is exactly how `pa` became a legal type and an illegal argument."*
+
+That comment **diagnoses `watchdog-manager.ts:96-97` by description** — a literal-comparison
+guard against a widened union, one directory away — and predates the defect reaching us. The
+author found the class, fixed their own seam with a derived vocabulary and compiled exactness
+invariants, and never swept for other instances of their own pattern. Every PA in the fleet
+was consequently unsupervised: no nudge, no stall classification, no dead detection, no
+gone-quiet notice to its prime.
+
+**Encoding**: when you name a class, the fix is not complete at the site that revealed it.
+Grep for the SHAPE (here: `role !== "` / `!== "pm"` / any literal comparison against a
+union-typed value) and record what the sweep found, including *nothing else*. A named class
+with no sweep is a class that will be rediscovered by whoever pays for it next.
+
+**And prefer the mechanism over the rule** (meadowlark): a widening is not a fix for an
+allow-list — **the shape is the defect**, and each widening buys exactly one role while
+re-arming the trap for the next, with no failing test, because the failure mode is a role
+that is simply *not mentioned*. An exhaustive `switch` with `const _exhaustive: never = role`
+makes the next omission **fail the build**. *A constraint held in a review instruction is a
+rule; a constraint held in the type system is a mechanism* — and rules are written by people
+who will not be in the room when the next role is added.
+
 ## Automated text outruns documentation
 
 Corollary drawn twice in one day (leech on the anomaly-remedy proposal; the watchdog-ping

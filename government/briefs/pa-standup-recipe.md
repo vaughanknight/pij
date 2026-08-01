@@ -271,6 +271,27 @@
     census. Tell every PA and every prime: reach for `interval` first, and treat `pause` as
     a declaration you owe an explanation for (see step 9 and the `inert-subscription` row).
 
+21. **THE NUDGE HAS NEVER FIRED FOR ANY PA — YOU ARE YOUR PA'S TRIGGER UNTIL IT IS FIXED.**
+    `watchdog-manager.ts:96-97` allow-lists roles `pm` and `prime`, so a PA is refused
+    eligibility before any anchor logic runs: **5 of 5 PAs fleet-wide, zero fires, ever**
+    (`watchdog-pa-ineligible-2026-08-01.md`; found by meadowlark, fix routed to butterfly).
+    Tell your PA **plainly** that no nudge is coming — *an agent waiting on a signal that
+    structurally cannot arrive is the absence-as-health trap with the agent itself holding
+    it*. Drive its sweeps on a cadence or from `pij bg`. And note the mitigation has a hole
+    you cannot close from here: **the supervisory chores are unreachable by construction**,
+    because "tell me when my prime goes quiet" can only be triggered by a prime that is not
+    quiet. Mechanical chores survive a prime-driven trigger; that one does not.
+
+22. **DOES YOUR CAUSE PREDICT THE EFFECT YOU MEASURED, OR MERELY PERMIT IT?** (meadowlark,
+    self-caught) The cheapest check on this list: it needs no code, no instrument and no
+    second seat, and it runs on the message you are about to send. Meadowlark proposed
+    *"a PA writes no `statusAt`, so the anchor never resolves"* to explain **zero fires** —
+    but `startedAt` is a fixed past instant, so that mechanism predicts a PA firing
+    **constantly**. The hypothesis was inconsistent with the observation it was invented to
+    explain, in the same message, and only a source read caught it.
+    **Before publishing a cause, run it forward and ask what it predicts.** A cause that
+    merely *permits* your observation is a story; one that *predicts* it is a hypothesis.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
