@@ -63,6 +63,32 @@ pij chore remove <name>
   reports the delta, assert un-acked deltas re-surface, assert `NO CHANGE` after ack — not by
   reading the diff code.
 
+## Relation to /builder chores — adjacent, NOT the same primitive (Jordan, 2026-08-02)
+
+Jordan: chores here and chores in `/builder` are "adjacent, but not replacing — chores in
+builder are more like gates." Pinned so nobody builds one on the other's machinery:
+
+| | /builder chore | pij chore |
+|---|---|---|
+| anchored to | a NODE in a finite flight plan | a SEAT |
+| fires | positionally, when `nav` arrives (`orient` → `due_chores`) | on a cadence, forever |
+| resolves | ONCE — `done` + receipt, or human's two-call decline | never — `ack` advances a baseline, completes nothing |
+| purpose | make a quality step un-skippable on a journey (GATE) | notice change nobody is watching (SENSOR) |
+| motto | "do this before you pass here" | "keep checking this; tell me when it moves" |
+
+**Shared DNA (why they rhyme):** both move the duty roster out of model context into a durable
+store; both surface mechanically, not by recall; both make the RECORD the arbiter of whether
+work happened. Builder's unresolved chore blocks nav; pij's un-acked delta re-surfaces. Same
+doctrine, two tenses.
+
+**Borrow from builder's field-tested model:**
+1. **"Un-run, not absent"** — a failing probe reports `NOT-PROBEABLE`, never silently drops
+   from the roster (mastodon's PA proved this is where the value hides).
+2. **Mandatory-for-agent, declinable-only-by-human** — a PA never skips a registered chore by
+   its own judgment; only the prime removes one, and removal is a recorded event.
+3. **Receipt-first decline** — dropping a chore writes the reason into the record BEFORE the
+   status changes.
+
 ## Relations
 
 - Answers the survey's #1 convergent ask (change-detector: mastodon, damselfly, meadowlark
