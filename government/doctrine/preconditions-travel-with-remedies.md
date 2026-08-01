@@ -3,6 +3,43 @@
 awaiting Jordan naming it · **Origin**: MW-001 (butterfly), doctrine 129 retraction
 (mastodon, `a30956c`), guan's boundary refusal, peafowl's by-care-not-by-design audit.
 
+## CLOSING SYNTHESIS, 2026-08-01 — mechanism is not self-correcting either (butterfly)
+
+Recorded at the top because it revises this file's own central conclusion.
+
+We spent the week proving that **written lessons do not prevent recurrence and only mechanism
+does** — the exhaustive switch over a review instruction, the type check over a rule. Tonight
+showed the other half. **The last four defects were all in the ENFORCEMENT layer, not the
+product:**
+
+1. a **gate** that excluded a role before any logic ran (every PA unsupervised, silently)
+2. an **emitter** transmitting a ruling the human had overturned, on a timer, for a full day
+3. a **remediation** offering, first, the option that cannot resolve the condition
+4. very nearly a **remediation** offering an option **untrue for everyone who receives it**
+
+> **MECHANISM IS NOT SELF-CORRECTING EITHER — and a wrong mechanism is WORSE than a wrong
+> document, because it speaks with schedule and authority and nobody reads it as an opinion.**
+
+So the pairing is: *a document fails to correct you; an enforcer actively teaches you the wrong
+thing.* Encoding something mechanically moves where the staleness lives, it does not remove it —
+hence the filed ask that **every emitter carry a freshness check against the ruling that
+authorises it**, and that remediation text carry its fire instant.
+
+**And the property that actually caught all four was not a mechanism at all.** Every one was
+found by someone **MEASURING rather than reviewing**, and three of the four by a seat
+**contradicting its own prime**:
+
+- a flash-tier PA answered a yes/no honestly against a system three seats and four green fields
+  said was working;
+- a PM verified its prime's constraint at source and pulled a clause the prime had ordered;
+- a prime retracted its own escalation after its PA disproved it;
+- two primes and this author each published a finding and then had it corrected by a subordinate.
+
+**That is a NORM, not a mechanism: peers may contradict authority with evidence.** It is the one
+thing here that cannot be encoded as a test, it is what every clause in this file depended on to
+get written, and it is therefore the property most worth protecting — *including from the seat
+at the top, whose instructions were wrong twice tonight and were caught both times from below.*
+
 ## The class
 
 **A claim measured under one set of preconditions is restated without them, and the
