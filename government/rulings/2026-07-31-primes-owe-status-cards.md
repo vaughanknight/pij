@@ -59,9 +59,46 @@ card becomes owed at the same moment something exists to chase it.
 Chore 2 in `government/briefs/pa-missing-anaconda-2026-07-31.md` already assigns exactly
 this to the PA; that brief now describes an obligation rather than a courtesy.
 
-## Status
+## Status — updated 2026-08-01, and the previous line had become FALSE
 
-**LOGGED, NOT YET IMPLEMENTED** — Jordan asked for it to be logged for after the current
-work. No code or skill text has been changed by this file. Next step when named: a stream
-that sweeps all seven sites with the enrollment-checklist discipline (name every registry
-touched) and a test that fails if any site still teaches the retired rule.
+**PARTIALLY IMPLEMENTED, IN EXACTLY THE WRONG ORDER.** Verified site-by-site at source by
+`pij-artistic-jaguar` (osk prime's PA) because this file's own warning demanded it — *"an
+unverified list is the defect this government keeps re-finding"*:
+
+| site | where | state |
+|---|---|---|
+| 1 | `role.ts:83-84` `owesStatusCard()` — `=== "pm"` | **NOT FIXED** |
+| 2 | `watchdog.ts:276` nudge text — *"You do NOT owe a…"* | **NOT FIXED** |
+| 3 | `SKILL.md` invariant 12 | FIXED |
+| 4 | `orient-oprime.md` duty 7 | FIXED |
+| 6 | both skill stores | FIXED |
+| 5, 7 | — | **UNVERIFIED**, claimed neither way |
+
+**Every DOCUMENTATION site is fixed. Neither CODE site is. That is this file's own sequencing
+doctrine exactly inverted** — it says *fix the EMITTER first (site 2), then the predicate (site
+1), then the skill text*, because *"a wrong form in a document waits to be read; a wrong form
+in generated message text is delivered on a timer to every seat."* The cheap half that waits
+is done; the expensive half on a timer is untouched.
+
+**THE PARTIAL FIX IS WORSE THAN NO FIX — not 60% of one.** Before 2026-07-31 the docs and the
+enforcer agreed and were both wrong: **consistent**, and a seat could act on either. Now a
+prime **reads** *"you DO owe one, non-optional"* and is **nudged** with *"you do NOT owe a
+status card"* — they actively contradict, and the seat cannot tell which is current. The osk
+prime is the worked example: it re-read duty 7 on revival, correctly took the new rule, was
+then told the opposite by the machine, **and believed the machine**, routing it back as a
+fresh defect. *An enforcer outranks a document in a seat's judgement, which is exactly why
+leaving it stale is the expensive half.*
+
+**MECHANISM — UNVERIFIED** (jaguar's label, held): `role.test.ts:196` pins
+`owesStatusCard(prime) === false` with a comment citing the **superseded** 2026-07-30 ruling
+as its justification. The shape fits — *the sites with no enforcement moved and the sites with
+enforcement did not* — but that the test is the CAUSE is not established.
+
+**In flight**: sites 1 + 2 + the pinning tests dispatched to `pij-unwilling-butterfly` as one
+change (`asg-preliminary-frog`), deliberately together, **because splitting them is what
+produced the contradiction.**
+
+**And the lesson this file is now itself an instance of**: a status line is a claim about the
+world that decays without anyone editing it. **The artefact written to track an unverified
+list became the unverified thing** — and it would have cost the next reader three redone sites
+while leaving the two that matter open.
