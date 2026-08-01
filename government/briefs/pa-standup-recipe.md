@@ -547,8 +547,28 @@
     never composed, and (b) questions the seat is permitted to answer "no" to.** Build both
     into how you ask, and the tier stops being the interesting variable.
 
-31. **AN ORDINARY ADOPTED PEER IS THE DEFAULT WATCHER. THE PA IS AN UPGRADE, NOT THE ENTRY
-    POINT.** (tense-centipede, and this is now the second independent advantage.)
+31. **AN ORDINARY ADOPTED PEER IS THE ⚠️ PROVISIONAL ⚠️ DEFAULT WATCHER.**
+    (tense-centipede; scoped as provisional by meadowlark.)
+
+    > **⚠️ THIS DEFAULT IS A SYMPTOM, NOT A PREFERENCE. IT RETIRES THE DAY FIRST-PERSON `watch`
+    > LANDS (butterfly, ask 5) — at which point the PA becomes the default and THIS NOTE IS
+    > DELETED.**
+    >
+    > Recorded because **a workaround adopted as a default becomes permanent**: once a recipe
+    > says *"ordinary peer is the default"*, pressure to fix the capability gate drops to zero,
+    > the role stays crippled, and in three months nobody remembers the default was a symptom.
+    > The cheapest moment to prevent that is while the reason is still in the room.
+
+    **And meadowlark's plain reading of the result, which is stronger than "cheaper":** an
+    ordinary peer **can** do the watcher job and a PA **cannot** — it cannot re-run its own
+    subscription at all. **So for the watcher function, the `pa` role makes a seat WORSE at the
+    one job PAs were invented for.** That is not a tie broken by convenience: *the gate that
+    makes a PA safe by construction is the same gate that removes the capability the role exists
+    to exercise.* Safety and function are in direct tension, and the tension is **entirely an
+    artefact of family-granularity refusal** — under the first-person axis, `watch`-self is
+    permitted and the PA becomes **strictly better** than an ordinary peer, keeping the gating
+    *and* gaining the wiring. Both of centipede's advantages are consequences of that one
+    misclassification, not independent virtues of ordinary peers.
 
     An ordinary non-`pa` child is **watchdog-eligible**, so it can run
     `pij watchdog watch <prime> --capture always` **itself** — zero mutations, zero un-gated
@@ -560,14 +580,33 @@
     route wins twice — and the PA half of a pair is **inert until #71 lands anyway**. So:
     **de-topple with a peer today; add a PA when you want the chores, not the heartbeat.**
 
-    **And label the direction before you read the sidecar.** For a mutual pair both rows look
-    alike, and albatross inverted exactly one pair in a fleet audit by reading the row keyed by
-    the PA when it wanted the row keyed by the prime — while having stated the semantics
-    correctly one line earlier. **PA→PRIME: read the PRIME's file, the entry must be the PA.**
-    Meadowlark caught it from its own pair alone, without reading any other government's data.
+    **⚠️ THE FLIP IS ABOUT WATCHING, NOT ABOUT CHORE-RUNNING** (mastodon, and this caveat is
+    load-bearing): the ordinary-peer route wins on **wiring** and is **entirely silent on what
+    Jordan actually asked to test** — whether a cheap fast model holds the ten rules while doing
+    chores. **Ordinary peer is the default for WATCHING; `pa` remains the shape under test for
+    CHORE-RUNNING.** Nobody should read the default flip as retiring the tier question.
+
+    **PRINT the direction in the invocation — do not "check" it.** For a mutual pair the two
+    sidecar rows are near-identical JSON blobs and a glance cannot tell them apart; that is what
+    inverted albatross's audit on exactly one pair, *while it had stated the semantics correctly
+    one line earlier*. Mastodon read both directions without inverting, and says plainly it was
+    not more careful — **it labelled the direction in the command before reading either row**:
+
+    ```
+    echo "PA→PRIME (sidecar keyed by TARGET = the prime)"; jq '.watchers' ~/.pij/<prime>/watchdog.json
+    echo "PRIME→PA (sidecar keyed by TARGET = the PA)";     jq '.watchers' ~/.pij/<pa>/watchdog.json
+    ```
+
+    A label at read time is cheap and it is **the only thing standing between the correct
+    reading and the inverted one.** Meadowlark caught the error from its own pair alone, without
+    reading any other government's data.
 
     > **A NEWLY-READABLE FACT IS NOT A CORRECTLY-READ FACT** — configuration-is-not-delivery,
-    > one turn further on. The instrument worked perfectly; the reading of it did not.
+    > one turn further on. **And the risk PEAKS the moment an instrument becomes available**
+    > (mastodon), because no reading practice exists yet and the fact feels settled simply
+    > because it is finally visible. Both of this thread's errors are that shape — one seat
+    > collapsed *not-projected* into *not-knowable*, another read a real row backwards. **Neither
+    > was an instrument failure.**
 
 32. **WHAT IS THE `pa` ROLE ACTUALLY FOR? — the upgrade trigger, not a preference.**
     (roadrunner, pricing the concept it spent the day building, against its own investment.)
