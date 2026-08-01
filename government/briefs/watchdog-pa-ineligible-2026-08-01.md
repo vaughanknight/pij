@@ -364,6 +364,58 @@ instruments were correct about different instants. **Before reporting that two i
 disagree, confirm they were read at the same instant** — otherwise you will file a projection
 bug against a fleet that simply moved. Close cousin of the merged-vs-running clause.
 
+## THE ARCHIVE MANUFACTURES UNDETECTABLE SEATS — 0 of 2,435 (osk prime, verified and worse than reported)
+
+The osk prime reported that its five revived seats had **no detectors at all**, and that their
+role was *"lost by the ARCHIVE — archived descriptors drop role and parent."* Measured across
+the whole archive:
+
+```
+{ "archived": 2435, "withRole": 0, "withParent": 266 }
+```
+
+**Not "some" — ZERO of 2,435 archived descriptors carry `orchestrationRole`.** Parent survives
+on 266. So **every revive/adopt from archive silently produces an unstamped seat**, and an
+unstamped seat is excluded by *two* independent gates:
+
+- **watchdog** — `projectOrchestrationRole` returns `orchestrationRole ?? null`, and `null` is
+  not supervised. No nudge, no stall classification, no dead detection.
+- **status-stale** — `anomalies.ts:268` skips any seat that neither `cardCanMislead` nor
+  `owesStatusCard`, and an unroled seat is neither.
+
+**This is a production line for seats nothing can see.** It is the same root as the PA bug —
+an allow-list over an open vocabulary where every excluded seat fails silently and looks fine
+— but reached without anyone adding a role: the archive simply *deletes the input the gate
+reads*. Routed to butterfly's backlog behind #71.
+
+### The correction: PARKING was not what silenced them, and `parked seats never flag` is NOT the conflation
+
+The osk prime's conclusion is right and its mechanism is not, which matters because it blames
+its own honest guidance. Its argument was that telling seats to declare `waiting` *"switched
+off their last remaining detector"*, moving them from *flags-falsely* to *cannot-flag-at-all*.
+
+Verified at source, both halves:
+
+1. **They were already outside `status-stale` before parking.** The scope gate at
+   `anomalies.ts:268` runs **before** the parked check at line 282. Unstamped ⇒ skipped
+   regardless. **Parking changed nothing** — that detector never covered them.
+2. **Parking does not suppress liveness for a seat that IS eligible.**
+   `reportSustainedLiveness` runs at `watchdog-manager.ts:323`, **before** the
+   `mutesWatchdogNudge` return at line 340, and the code says so explicitly: *"a parked seat
+   can still die… This suppresses exactly one outbound nudge."* The mute was deliberately
+   placed at the nudge rather than in `eligible()` **for precisely the reason the osk prime
+   feared** (plan 076, DL-002).
+
+So `parked seats never flag` is a statement about **card rot only**, where exempting a parked
+seat is correct — and the intent/heartbeat conflation it warns about **was designed against**.
+**The honest guidance was not the harm.** The harm was unstamped-by-archive, and stamping
+`--role pm` fixed it for the right reason.
+
+**Kept, because the general form is still right**: *parked is a statement of INTENT and not
+evidence of a HEARTBEAT.* It holds as a design rule; it just does not describe this code. The
+lesson is the day's own: **a compound-failure story is more persuasive than either half, so
+verify each half separately** — two true silences can be joined by a false mechanism.
+
 ## Already done, do not rebuild it (verified at source)
 
 `buildWatchdogTurn` is **already** called with `owesCard: owesStatusCard(session)`
