@@ -28,10 +28,39 @@ cycle — and the instrument reads it as dead.**
 `session.lastEventAt !== state.lastEventAt`, and `evaluateResponse` escalates
 `responsive → suspect → stalled` on consecutive fires with no observed advance.
 
-**The PA's activity does not advance `lastEventAt`.** It reads its inbox, runs sweeps, and
-replies — none of which registers. So `eventAdvanced` is permanently false, `consecutiveSilentFires`
-climbs without bound, and the seat is pinned at `stalled` **for as long as it keeps working
-correctly.**
+**This seat's activity does not advance `lastEventAt`.** It reads its inbox, runs sweeps, and
+replies — none of which registers. So `eventAdvanced` is permanently false,
+`consecutiveSilentFires` climbs without bound, and the seat is pinned at `stalled` **for as long
+as it keeps working correctly.**
+
+## 🔴 SCOPE CORRECTION — THIS IS NOT "PAs", AND MY FIRST FILING SAID IT WAS
+
+I filed this as *"a PA's activity never advances `lastEventAt`"*. **Measured across every PA and
+one PM, that is false:**
+
+| seat | harness | role | `lastEventAt` age |
+|---|---|---|---|
+| `pij-missing-anaconda` | copilot | pa | **109 min** ← the only frozen one |
+| `pij-endless-centipede` | copilot | pa | 82 min |
+| `pij-statutory-seahorse` | copilot | pa | 29 min |
+| `pij-major-gazelle` | copilot | pa | **9 min — fresh** |
+| `pij-artistic-jaguar` | claude | pa | **4 min — fresh** |
+| `pij-unwilling-butterfly` | copilot | pm | **0 min — fresh** |
+
+**It follows neither ROLE nor HARNESS.** Copilot PAs appear both fresh and stale; a copilot PM
+is fresh; a claude PA is fresh. So the generalisation is dead and **the defect is currently
+scoped to one seat**, with `pij-endless-centipede` a possible second instance and the middle rows
+plausibly just idle.
+
+**Recorded as an error of mine, and the third of the same kind in one night**: I measured one
+seat, reached for the population I had been thinking about (*"PAs"*), and filed it as a property
+of the role. The correct next step is the one that falsified it — *change the input and observe
+the output*, i.e. compare seats that differ on the axes you are proposing.
+
+**What survives, and it is still worth fixing**: one seat is demonstrably alive, working, and
+pinned at `stalled`, and each fire writes a capture. **The consequences below hold for that seat
+regardless of how many others share the cause** — but nobody should build a fix for "PAs" on
+this evidence.
 
 ## Why it matters more than a noisy label
 
