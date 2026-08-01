@@ -205,6 +205,28 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## THE FRESHER-LITERAL REPAIR — a more accurate version of a fact you cannot check is not a fix (butterfly, 2026-08-01)
+
+Told that its code comment rested on a false premise (*"a PA's card renders nowhere"*),
+butterfly had **already** pushed a repair — and had re-grounded it on *"it renders on the
+running instance and not on merged main."* **More accurate, same defect.** The comment still
+depended on **another repo's live rendering decision**, which pij cannot check from inside and
+which will drift under the file silently.
+
+> **A more accurate description of a fact you cannot verify from where you stand is not a
+> repair. Cite the thing your own system OWNS.**
+
+Butterfly's superseding comment rests on the **obligation** instead — a staleness label is
+*watchdog language*, and watchdog language is a lie where no obligation exists — which is a
+fact pij owns and can defend forever.
+
+**The generalisation, and it is why this needs a name**: the instinct on being corrected is to
+restate the same claim *more precisely*, because precision feels like rigour. But if the claim
+was unverifiable from your position, precision only makes a fragile dependency **harder to
+notice**. The repair is to change WHAT the claim rests on, not how exactly it is phrased.
+Butterfly walked into it *while believing it was applying the lesson* — the third time in one
+day that a seat reproduced a class inside its own cure.
+
 ## TWO ABSENCES CAN BE BYTE-IDENTICAL AND MEAN OPPOSITE THINGS — and no consumer can fix that (butterfly, 2026-08-01)
 
 Butterfly found this in an arm **it had just written**, while its PR was green. `roleNeedsSupervision(null)`
