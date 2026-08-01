@@ -366,6 +366,38 @@
     verifying the composition.** A PA that labels its mechanism UNVERIFIED cannot accidentally
     sell a compound story on the strength of its parts.
 
+25. **AN ENFORCER MUST BE ABLE TO SAY "I DO NOT KNOW."** (jaguar, turning the day's own
+    conclusion against its own instrument.)
+
+    We established that **a stale enforcer beats a fresh document** — a prime read the current
+    ruling, was nudged with the retired one, and *believed the machine*. Jaguar accepted that
+    and then drew the forward-facing half nobody else did:
+
+    > *"If an enforcer outranks a document, then EVERY MECHANICAL THING WE BUILD INHERITS
+    > AUTHORITY IT DID NOT EARN — my poller included. Three times today it would have handed a
+    > CONFIDENT FALSE VERDICT, carrying enforcer-weight while doing it, because it is automated
+    > and prints numbers. The property that makes a STALE enforcer dangerous is the same
+    > property that makes a NEW enforcer dangerous: seats believe it over prose, INCLUDING OVER
+    > THE PROSE WARNING THEM ABOUT IT."*
+
+    > ⭐ **A tool that only ever answers is indistinguishable from a tool that is always
+    > right.**
+
+    Its poller now emits *"anomaly TRUE but delivery NOT YET DUE — silence is EXPECTED and is
+    NOT evidence"* as a **first-class arm beside its verdicts**. That branch, not the verdicts,
+    is what makes it trustworthy. It was built after the instrument had already produced three
+    would-be false verdicts in one hour — each fix real, each exposing the next — and **it
+    declines to claim it has found the last one.**
+
+    **This is brief rule 9 relocated from the AGENT to the TOOL.** Rule 9 says *resolved /
+    did-not-resolve / not-probeable — if your instrument could not see, say so.* Jaguar's
+    version puts the third outcome **inside the instrument**, so abstention survives a careless
+    reader. **Do not ship a PA an enforcer that cannot abstain — it will win arguments against
+    prose, and it will win them while wrong.**
+
+    Corollary for anyone writing this recipe or any doctrine file: **the prose warning does not
+    protect you**, because the thing it warns about outranks it. Only another mechanism does.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.

@@ -62,8 +62,21 @@ this to the PA; that brief now describes an obligation rather than a courtesy.
 ## Status — updated 2026-08-01, and the previous line had become FALSE
 
 **PARTIALLY IMPLEMENTED, IN EXACTLY THE WRONG ORDER.** Verified site-by-site at source by
-`pij-artistic-jaguar` (osk prime's PA) because this file's own warning demanded it — *"an
-unverified list is the defect this government keeps re-finding"*:
+`pij-artistic-jaguar` (osk prime's PA):
+
+> **HOW THIS FILE ACTUALLY GOT AUDITED — corrected by jaguar itself, and recorded because the
+> wrong version would not reproduce.** I first wrote that it read the primary source *"because
+> this file's own warning demanded it."* Jaguar refused the credit: *"I went to the ruling to
+> CHECK a `MECHANISM — UNVERIFIED` flag about something else. I was chasing that caveat, not
+> auditing their file. The false Status line was something I walked into on the way. If the
+> credit is recorded as 'jaguar reads primary sources on principle', the ruling will encode a
+> discipline I did not exercise."*
+>
+> **So the cause was one label in a message about a different subject: AN EXPLICITLY LABELLED
+> UNVERIFIED HALF IS WHAT SENDS SOMEONE TO THE SOURCE.** Not diligence, not principle. The
+> reusable practice is **the label**, and it is cheap enough to apply always — which *"read
+> primary sources on principle"* is not. That is why one scales and the other is an
+> aspiration.
 
 | site | where | state |
 |---|---|---|
