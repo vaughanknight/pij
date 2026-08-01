@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WatchdogSidecar } from "./types.js";
+import { SEMANTIC_STATES, type WatchdogSidecar } from "./types.js";
 import {
 	applyCompactPause,
 	applyNewWorkTransition,
@@ -12,6 +12,7 @@ import {
 	effectiveWatchdog,
 	evaluateResponse,
 	isFireDue,
+	mutesWatchdogNudge,
 	parseWatchdogInterval,
 	reconcileWatchdogExemption,
 	shouldCapture,
@@ -453,5 +454,45 @@ describe("describeWatchdogState", () => {
 		]) {
 			expect(describeWatchdogState(state)).not.toBe("enabled");
 		}
+	});
+});
+
+describe("mutesWatchdogNudge — parked seats are not nudged (DL-002)", () => {
+	// Both anomaly detectors already exempt the parked states; the watchdog, the
+	// only mechanism that pushes a turn into a human-visible pane, did not. A seat
+	// punished for declaring learns to stay silent — which destroys the axis the
+	// declaration exists to populate.
+	it("mutes exactly the four parked states", () => {
+		for (const state of ["waiting", "hold", "blocked", "question"] as const) {
+			expect(mutesWatchdogNudge(state)).toBe(true);
+		}
+	});
+
+	it("does NOT mute an active or terminal seat", () => {
+		// `done`/`failed`/`cancelled` are claims to be VERIFIED, not reasons to stop
+		// watching — the s075 lesson that muting and discharging are different acts.
+		for (const state of ["ready", "done", "failed", "cancelled"] as const) {
+			expect(mutesWatchdogNudge(state)).toBe(false);
+		}
+	});
+
+	it("does not mute an UNDECLARED seat — absence is not a declaration", () => {
+		// The whole point is to reward declaring. Muting on undefined would reward
+		// silence instead, which is the exact inversion.
+		expect(mutesWatchdogNudge(undefined)).toBe(false);
+	});
+
+	it("covers every SEMANTIC_STATES member — no state defaults into muting", () => {
+		// Guards the enum growing without a decision: a new state must be classified
+		// deliberately, never inherit muting by omission.
+		for (const state of SEMANTIC_STATES) {
+			expect(typeof mutesWatchdogNudge(state)).toBe("boolean");
+		}
+		expect(SEMANTIC_STATES.filter((s) => mutesWatchdogNudge(s)).sort()).toEqual([
+			"blocked",
+			"hold",
+			"question",
+			"waiting",
+		]);
 	});
 });

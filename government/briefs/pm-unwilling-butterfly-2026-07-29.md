@@ -17,7 +17,11 @@ nothing pulls it.**
 ## Operating rules (each one paid for recently — do not re-derive)
 
 1. **Watchdog**: stay armed. Never `pij watchdog pause`. If idle, declare it:
-   `pij state set pij-unwilling-butterfly waiting`. If the 20-min nudge cadence is wrong for your
+   `pij report state waiting` — **CORRECTED 2026-07-31**: this brief originally taught
+   `pij state set <id> waiting`, which is RETIRED and now returns `E-ARG`. The working form
+   is `pij report state <state> [--assignment <id>]`; `pij state <id>` survives read-only.
+   Routed by `pij-resident-leech`, who was one hop from two packets carrying the dead form.
+   If the 20-min nudge cadence is wrong for your
    work, ask me for a longer interval — I set it with the reason recorded. (Note: intervals
    overshoot ~1.57× the configured value; quote behaviour, not setting.)
 2. **Instrument binding**: every value you report carries the name of the command that produced

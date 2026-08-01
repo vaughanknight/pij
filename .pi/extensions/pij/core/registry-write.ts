@@ -89,6 +89,7 @@ export const DESCRIPTOR_FIELD_OWNER = {
 	statusNext: "cli",
 	statusAt: "cli",
 	statusSeq: "cli",
+	statusWrittenBy: "cli",
 	orchestrationRole: "cli",
 	// Stamped by spawn/adopt; the daemon's backfill only ever writes it where absent.
 	windowId: "cli",

@@ -46,10 +46,18 @@ import { type BriefAckReceipt, briefAckBody } from "./message.js";
 import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import {
+	PA_VERB_CLASSIFICATION,
+	paRefusal,
+	paRefusalMessage,
+} from "./orchestration/pa-capability.js";
+import {
 	type DesignationAuditPort,
 	DesignationAuditService,
+	isStoredOrchestrationRole,
+	paLineageRefusal,
 	projectOrchestrationRole,
 	RoleService,
+	STORED_ROLE_CHOICES,
 	type StoredOrchestrationRole,
 } from "./orchestration/role.js";
 import { canonicalAllocationJson } from "./platform/allocation.js";
@@ -57,8 +65,11 @@ import {
 	appendStateRef,
 	assignmentIdCandidates,
 	canonicalAssignmentJson,
+	closeAssignment,
+	isAssignmentCloseReason,
 	materializeGeneralIfMissing,
 	openAssignment,
+	permittedCloseReasons,
 } from "./platform/assignment.js";
 import {
 	acknowledgeDispatch,
@@ -83,7 +94,9 @@ import { isoTimestamp } from "./platform/time.js";
 import {
 	type ActorProvenance,
 	type Allocation,
+	ASSIGNMENT_CLOSE_REASONS,
 	type Assignment,
+	type AssignmentCloseReason,
 	type Dispatch,
 	type Fence,
 	generalAssignmentId,
@@ -96,6 +109,7 @@ import {
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 	SPINE_KIND_STATUS,
+	SPINE_KIND_TASK_CLOSE,
 	SPINE_KIND_TASK_SET,
 	type SpineEvent,
 	type SpineEventDraft,
@@ -482,12 +496,24 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| {
+			readonly verb: "task-close";
+			readonly assignmentId: string;
+			readonly reason: AssignmentCloseReason;
+			readonly actor?: string;
+			readonly json: boolean;
+	  }
+	| {
 			readonly verb: "report-now";
 			readonly did: string;
 			readonly next: string;
 			readonly state?: SemanticState;
 			readonly note?: string;
 			readonly projectSlug?: string;
+			/** Relay a card FOR another seat (plan 078). Only a PA writing for its
+			 *  own prime is permitted; the written card records `statusWrittenBy`
+			 *  so the relay is attributable rather than indistinguishable from the
+			 *  subject writing it. */
+			readonly forSeat?: SessionId;
 			readonly json: boolean;
 	  }
 	| {
@@ -715,7 +741,7 @@ const FAMILY_SUBCOMMANDS: Record<string, string> = {
 	stream: "create|close",
 	fence: "set|show",
 	spine: "append|events|render",
-	task: "set",
+	task: "set|close",
 	report: "now|question|blocked|state|clear|verify",
 	bg: "create|list|tail|kill",
 	node: "show",
@@ -836,7 +862,8 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	// plan 054 P2 (T005). --project/--assignment/--refs are not in
 	// BOOLEAN_FLAGS, so lex values them without VALUED_FLAG_OVERRIDES rows.
 	"task set": new Set(["project", "actor", "json"]),
-	"report now": new Set(["state", "note", "project", "json"]),
+	"task close": new Set(["reason", "actor", "json"]),
+	"report now": new Set(["state", "note", "project", "for", "json"]),
 	"report question": new Set(["assignment", "json"]),
 	"report blocked": new Set(["assignment", "json"]),
 	"report state": new Set(["assignment", "refs", "json"]),
@@ -880,6 +907,7 @@ const MAX_POS: Record<string, number> = {
 	"spine events": 0,
 	"spine render": 0,
 	"task set": 2,
+	"task close": 1,
 	"report now": 2,
 	"report question": 1,
 	"report blocked": 1,
@@ -1366,10 +1394,13 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if ((parentId === undefined) === !root) {
 				return err("E-ARG", "pij link requires exactly one of --parent <parent> or --root");
 			}
-			if (flags.role === true) return err("E-ARG", "--role needs pm|worker");
+			if (flags.role === true) return err("E-ARG", `--role needs ${STORED_ROLE_CHOICES}`);
 			const role = typeof flags.role === "string" ? flags.role : undefined;
-			if (role !== undefined && role !== "pm" && role !== "worker") {
-				return err("E-ARG", `unknown orchestration role '${role}' (expected pm|worker)`);
+			if (role !== undefined && !isStoredOrchestrationRole(role)) {
+				return err(
+					"E-ARG",
+					`unknown orchestration role '${role}' (expected ${STORED_ROLE_CHOICES})`,
+				);
 			}
 			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
 			return ok({
@@ -1523,6 +1554,29 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				json,
 			});
 		}
+		case "task close": {
+			const assignmentId = pos[0];
+			if (assignmentId === undefined)
+				return err(
+					"E-ARG",
+					`usage: pij task close <assignment-id> --reason <${ASSIGNMENT_CLOSE_REASONS.join("|")}>`,
+				);
+			if (typeof flags.reason !== "string" || flags.reason === "")
+				return err("E-ARG", `--reason is required: one of ${ASSIGNMENT_CLOSE_REASONS.join("|")}`);
+			if (!isAssignmentCloseReason(flags.reason))
+				return err(
+					"E-ARG",
+					`unknown close reason '${flags.reason}' (expected ${ASSIGNMENT_CLOSE_REASONS.join("|")})`,
+				);
+			if (flags.actor === true || flags.actor === "") return err("E-ARG", "--actor needs a label");
+			return ok({
+				verb: "task-close",
+				assignmentId,
+				reason: flags.reason,
+				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
 		case "report now": {
 			const didInput = pos[0];
 			const nextInput = pos[1];
@@ -1557,6 +1611,19 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			if (projectSlug !== undefined && !isValidProjectSlug(projectSlug)) {
 				return err("E-ARG", `invalid project slug '${projectSlug}' (use lowercase kebab-case)`);
 			}
+			if (flags.for === true || flags.for === "") {
+				return err("E-ARG", "--for takes the seat id whose card you are relaying");
+			}
+			// A relay carries the CARD, never a state declaration. `--state` is
+			// first-person testimony about the subject's own work, and a PA
+			// asserting its prime is `blocked` would be exactly the identity
+			// borrowing the relay exists to make attributable instead of invisible.
+			if (typeof flags.for === "string" && state !== undefined) {
+				return err(
+					"E-ARG",
+					"--for relays a card only; a semantic state is first-person and cannot be declared on another seat's behalf",
+				);
+			}
 			return ok({
 				verb: "report-now",
 				did: did.value,
@@ -1564,6 +1631,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				state,
 				note: note?.value,
 				projectSlug,
+				forSeat: typeof flags.for === "string" ? flags.for : undefined,
 				json,
 			});
 		}
@@ -2133,7 +2201,41 @@ function renderBroadcastSuccess(
 }
 
 // ─── dispatch ───────────────────────────────────────────────────────────────
+/** The PA capability boundary, seam 1 of 2 (plan 078).
+ *
+ * Placed at the TOP of dispatch() so it covers every parsed verb and every
+ * caller — the bin, the extension, and the daemon alike. Seam 2 lives in the
+ * bin's main() because spawn/adopt/close/orchestration branch on raw argv and
+ * return BEFORE core parse ever runs; a gate here alone would refuse `task set`
+ * and silently permit `close`. Both seams consult ONE predicate
+ * (`paRefusal`), and `pa-capability.test.ts` asserts the classification table is
+ * total against BOTH source files, so a new verb cannot slip through unclassified.
+ *
+ * Fail-OPEN on an unresolvable self, deliberately: refusing a caller we cannot
+ * identify would break every unregistered context (tests, tooling, first-run)
+ * to constrain a seat that is always registered by construction. The boundary
+ * is for a cooperative internal role, not an adversary.
+ */
+function paGate(cmd: ParsedCommand, deps: CliDeps): CliResult | null {
+	// PURE TABLE FIRST, IDENTITY ONLY IF IT COULD MATTER. Resolving the caller
+	// means a registry read, and doing that on every verb would put an I/O hit on
+	// the whole CLI to constrain one role — existing read-count invariants caught
+	// exactly that. A verb nobody is ever refused for cannot need to know who is
+	// asking, so allowed verbs now cost nothing at all.
+	const capability = PA_VERB_CLASSIFICATION[cmd.verb];
+	if (capability === undefined || capability.kind === "allow") return null;
+	const self = selfId(deps);
+	if (!self.ok) return null;
+	const descriptor = deps.registry.read(self.value);
+	if (!descriptor) return null;
+	const why = paRefusal(projectOrchestrationRole(descriptor), cmd.verb);
+	if (why === null) return null;
+	return fail("E-OWN", paRefusalMessage(cmd.verb, why), cmd.json === true);
+}
+
 export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
+	const refused = paGate(cmd, deps);
+	if (refused !== null) return refused;
 	const now = deps.process.now();
 	switch (cmd.verb) {
 		case "watchdog": {
@@ -2289,6 +2391,17 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!d) return fail("E-NOID", `no session '${s.value}' in registry`, cmd.json);
 			// `--env` (AC-5): the eval-able self-identity block is the ONLY stdout.
 			if (cmd.env) return okOut(buildExportLines(d));
+			// ROLE AND CAPABILITY ARE PROJECTED HERE (plan 078) because a gate whose
+			// input is unobservable is the defect this stream exists to prevent. The
+			// s075 authority rule shipped with `opened.actor` unreadable, so seats
+			// discovered their own authorisation by attempting and reading refusals;
+			// the PA gate must not repeat that. A PA can now ask what it is and what
+			// it may do BEFORE it attempts anything. Internal surface — chainglass
+			// consumes list/tree/node-show and never whoami (o-prime verified).
+			const role = projectOrchestrationRole(d);
+			const refusedVerbs = Object.keys(PA_VERB_CLASSIFICATION)
+				.filter((verb) => paRefusal(role, verb) !== null)
+				.sort();
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({
@@ -2297,6 +2410,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						dataDir: d.dataDir,
 						state: d.state ?? "idle",
 						pid: d.pid,
+						orchestrationRole: role,
+						refusedVerbs,
 					}),
 				);
 			return okOut(
@@ -2305,6 +2420,8 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					`folder:      ${d.folder}`,
 					`data dir:    ${d.dataDir}`,
 					`state:       ${d.state ?? "idle"}`,
+					`role:        ${role ?? "—"}`,
+					...(refusedVerbs.length === 0 ? [] : [`refused:     ${refusedVerbs.join(" ")}`]),
 				].join("\n"),
 			);
 		}
@@ -2390,6 +2507,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							statusNext: d.statusNext ?? null,
 							statusAt: d.statusAt ?? null,
 							statusSeq: d.statusSeq ?? null,
+							statusWrittenBy: d.statusWrittenBy ?? null,
 							planId: d.planId ?? null,
 							// Present ONLY under --badge. Absent (not null) when not
 							// asked for, so a consumer can tell "not requested" from
@@ -2397,6 +2515,17 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							...(badges ? { badge: badges.get(d.id) ?? "unknown" } : {}),
 							// Adoption axis (plan 054 P3, WS-1): explicit boolean in the
 							// row projection so a UI/skill can filter without joins.
+							// `parent` is the EVIDENCE `unadopted` is derived from, and
+							// withholding it while publishing the verdict is what made
+							// three separate governments draw false lineage conclusions
+							// (D-041): a consumer reading `d.parent == null` on a row that
+							// never carried the key gets `true` for every seat alive, and
+							// the fabricated answer is the alarming one. Deliberately
+							// `effectiveParent`, the SAME notion and the SAME key name
+							// `node show` projects — a raw `parentId` here would disagree
+							// with `node show` for every spawned-but-never-linked seat and
+							// buy back the class it was added to remove.
+							parent: effectiveParent(d),
 							unadopted: isUnadopted(d),
 						})),
 					),
@@ -2534,6 +2663,18 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				attribution = { actor: resolved.value.actor, provenance: resolved.value.provenance };
 			}
 			const changed = current?.parentId !== cmd.parentId;
+			// A pa must never be left unadopted (paLineageRefusal): check the state
+			// the write WOULD produce — the role after this command joined to the
+			// parent after it — so `--root` on an existing pa refuses as loudly as
+			// stamping pa on an unadopted seat. Before any write: refusal mutates
+			// nothing (F2).
+			const roleAfter = cmd.role ?? current?.orchestrationRole;
+			const lineageRefusal = paLineageRefusal(
+				roleAfter,
+				effectiveParent(planned.value),
+				cmd.childId,
+			);
+			if (lineageRefusal !== null) return fail("E-ARG", lineageRefusal, cmd.json);
 			// "cli": `pij link` OWNS parentId. Without the declaration the write law
 			// would take it from disk and the verb would silently no-op.
 			if (changed) deps.registry.write(planned.value, "cli");
@@ -3175,6 +3316,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "spine-events":
 		case "spine-render":
 		case "task-set":
+		case "task-close":
 		case "report-now":
 		case "state-set":
 		case "state-verify":
@@ -3292,6 +3434,7 @@ type PlatformCommand = Extract<
 			| "spine-events"
 			| "spine-render"
 			| "task-set"
+			| "task-close"
 			| "report-now"
 			| "state-set"
 			| "state-verify"
@@ -3328,7 +3471,25 @@ function denormDescriptor(
 			readonly next: string;
 			readonly at: string;
 			readonly seq: number;
+			/** Absent for a self-authored card — the overwhelming case, and it keeps
+			 *  every existing descriptor byte-identical. Set when a PA relays. */
+			readonly writtenBy?: string;
 		};
+		/** Plan 075 — the DISCHARGE case, deliberately a separate branch from the
+		 *  `assignment` swap above rather than a nullable widening of it. A swap
+		 *  points the node at different work; a clear says the node has no current
+		 *  work at all. Collapsing them into one optional-field shape is how the
+		 *  next reader loses the distinction.
+		 *
+		 *  Ratified wire contract (o-prime + chainglass, 2026-07-30): cleared
+		 *  fields must reach consumers as EXPLICIT NULL, never as absent keys.
+		 *  `list` already maps each of these through `?? null`, so removing the
+		 *  descriptor keys here yields `null` on that surface — which is the whole
+		 *  requirement. It matters because `tree` OMITS absent keys, and the rail
+		 *  reads an omitted key as "this read does not carry the field" and falls
+		 *  through to a cached snapshot, re-rendering the closed task as current.
+		 *  **Null is an answer; absence is a silence.** */
+		readonly clearAssignment?: true;
 	},
 ): Result<void> {
 	try {
@@ -3351,13 +3512,39 @@ function denormDescriptor(
 					: { stateNote: fields.assignment.stateNote }),
 			};
 		}
+		if (fields.clearAssignment === true) {
+			// The obligation was discharged, so the node advertises no current work.
+			// statusPrev/Next/At/Seq deliberately SURVIVE, exactly as they do on an
+			// assignment swap: the last thing the seat said about itself is still
+			// true, and erasing it here would blank the card as a side effect of
+			// closing a ledger row — the coupled-write hazard this stream exists to
+			// stop repeating.
+			const {
+				currentAssignment: _asg,
+				currentTask: _task,
+				semanticState: _state,
+				stateNote: _note,
+				...cleared
+			} = nextDescriptor;
+			nextDescriptor = cleared;
+		}
 		if (fields.status !== undefined) {
+			// statusWrittenBy is CLEARED on a self-authored write, not merely left
+			// alone: a seat that writes its own card after a relay must not keep
+			// advertising the relay's author. Absence means self-authored, so the
+			// key is removed rather than set to the subject's own id — same
+			// null-is-an-answer discipline, inverted, because here ABSENCE is the
+			// meaningful value and a present one is the exception.
+			const { statusWrittenBy: _priorWriter, ...withoutWriter } = nextDescriptor;
 			nextDescriptor = {
-				...nextDescriptor,
+				...withoutWriter,
 				statusPrev: fields.status.prev,
 				statusNext: fields.status.next,
 				statusAt: fields.status.at,
 				statusSeq: fields.status.seq,
+				...(fields.status.writtenBy === undefined
+					? {}
+					: { statusWrittenBy: fields.status.writtenBy }),
 			};
 		}
 		// writeExact, deliberately: this both OWNS the node-truth denorms and must be
@@ -3371,11 +3558,76 @@ function denormDescriptor(
 	}
 }
 
+/** The refusal a closed target earns, carrying its own way out (plan 077).
+ *
+ * The remedy is IN the error, not in documentation: a seat that hits this has
+ * no open assignment, and `pij task set` always works and needs none — so the
+ * path forward is always one command and it is printed at the point of failure.
+ */
+function closedTargetError(record: Assignment, node: SessionDescriptor): Result<never> {
+	return err(
+		"E-ARG",
+		`assignment '${record.id}' is closed (${record.closed?.reason ?? "closed"}) — a state is a claim ABOUT an assignment, so open one first: pij task set ${node.id} "<task>"`,
+	);
+}
+
+/** Who is this card ABOUT, and who WROTE it (plan 078)?
+ *
+ * Without `--for` the answer is the caller for both — every existing call, byte
+ * identical. With `--for` the card is about another seat, which is a real
+ * capability and so is fenced tightly: the caller must be a `pa`, and the target
+ * must be that PA's own parent.
+ *
+ * Attribution is what makes this safe to GRANT rather than something to forbid.
+ * A PA doing its prime's chores needs to post its prime's card; without a
+ * legitimate path it would have to assume the prime's identity outright, which
+ * no gate can detect. Given one, the relay is recorded as a relay.
+ */
+function resolveRelayTarget(
+	deps: CliDeps,
+	self: SessionDescriptor,
+	forSeat: SessionId | undefined,
+): Result<{ readonly subjectId: SessionId; readonly writtenBy: string | undefined }> {
+	if (forSeat === undefined || forSeat === self.id) {
+		return ok({ subjectId: self.id, writtenBy: undefined });
+	}
+	if (projectOrchestrationRole(self) !== "pa") {
+		return err(
+			"E-OWN",
+			`--for relays another seat's card and is available only to a PA (role 'pa'); '${self.id}' is not one`,
+		);
+	}
+	const parent = effectiveParent(self);
+	if (parent === null || parent !== forSeat) {
+		return err(
+			"E-OWN",
+			`a PA may relay only for its OWN prime (${parent ?? "none recorded"}), not '${forSeat}'`,
+		);
+	}
+	if (!deps.registry.read(forSeat)) return err("E-NOID", `no session '${forSeat}' in registry`);
+	return ok({ subjectId: forSeat, writtenBy: self.id });
+}
+
 /** Resolve which assignment a state verb targets: explicit --assignment
  *  (must exist and belong to the node), else the descriptor's
  *  currentAssignment (dangling is an honest error, never a silent fallback),
  *  else the node's general assignment — `existing` undefined means the
- *  general is not yet materialized. */
+ *  general is not yet materialized.
+ *
+ *  TERMINAL MEANS TERMINAL ON EVERY BRANCH (plan 077). Closure was enforced in
+ *  `closeAssignment` (double-close is E-ARG) and NOWHERE ELSE, so every path
+ *  through here would happily hand back a closed record to be written to. That
+ *  was unreachable until s075 made `currentAssignment` clearable on close —
+ *  after which ONE bare `report state` fell through to the general, repointed
+ *  the node at it, and wrote a state onto a CLOSED record, silently, exit 0.
+ *  Measured on a live seat (spine 26224) and reproduced hermetically.
+ *
+ *  ABSENT AND CLOSED MUST NOT SHARE A BRANCH (o-prime's binding constraint,
+ *  from a live measurement): 17 active seats across 5 governments currently
+ *  have an empty currentAssignment, and for them the fall-through with
+ *  `existing === undefined` is what lets them post a card at all. Refusing
+ *  absence would mute 17 seats to fix a hazard whose window is currently shut.
+ *  So: refuse CLOSED, materialize ABSENT. */
 function resolveTargetAssignment(
 	assignmentStore: AssignmentStorePort,
 	node: SessionDescriptor,
@@ -3390,6 +3642,7 @@ function resolveTargetAssignment(
 				`assignment '${record.id}' belongs to node '${record.nodeId}', not '${node.id}'`,
 			);
 		}
+		if (record.closed !== undefined) return closedTargetError(record, node);
 		return ok({ id: record.id, existing: record });
 	}
 	if (node.currentAssignment !== undefined) {
@@ -3400,10 +3653,17 @@ function resolveTargetAssignment(
 				`descriptor of '${node.id}' points at missing assignment '${node.currentAssignment}'`,
 			);
 		}
+		if (record.closed !== undefined) return closedTargetError(record, node);
 		return ok({ id: record.id, existing: record });
 	}
 	const generalId = generalAssignmentId(node.id);
-	return ok({ id: generalId, existing: assignmentStore.read(generalId) ?? undefined });
+	const general = assignmentStore.read(generalId);
+	// Absent → materialize as before (the 17-seat path). Closed → refuse: the
+	// general id is DETERMINISTIC, so a closed general permanently occupies it,
+	// and "skip it and materialize a fresh one" would either collide or silently
+	// re-open a retired record — erasing the retire from the other side.
+	if (general !== null && general.closed !== undefined) return closedTargetError(general, node);
+	return ok({ id: generalId, existing: general ?? undefined });
 }
 
 function resolveCurrentReportAssignment(
@@ -4480,6 +4740,126 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}
+		// ── plan 075 — the far end of the lifecycle `task-set` opens ───────────
+		// Until this verb existed NOTHING could close an assignment: measured
+		// 2026-07-30, 91 of 91 on the first box open, zero ever closed, because
+		// `closeAssignment` had no caller. It read as healthy because
+		// `report state done` silences `axis-disagreement` (any declared state
+		// does) WITHOUT discharging the record — masking, not closing.
+		case "task-close": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const { assignmentStore, spineLog, opJournal, platformWriteLock } = ports.value;
+			const existing = assignmentStore.read(cmd.assignmentId);
+			if (existing === null) return fail("E-NOID", `no assignment '${cmd.assignmentId}'`, cmd.json);
+			const self = selfId(deps);
+			if (!self.ok) return fail(self.code, self.message, cmd.json);
+			// AUTHORITY: close only in the direction of your own authorship.
+			// Evaluated against the SEAT, never the --actor label: --actor is an
+			// attribution override and letting it choose the authority set would
+			// make the gate self-service.
+			const permitted = permittedCloseReasons(existing, self.value);
+			if (permitted.length === 0) {
+				return fail(
+					"E-OWN",
+					`assignment '${existing.id}' is neither yours to complete (assignee '${existing.nodeId}') nor yours to withdraw (opened by '${existing.opened.actor}') — you are '${self.value}'`,
+					cmd.json,
+				);
+			}
+			if (!permitted.includes(cmd.reason)) {
+				const asAssignee = self.value === existing.nodeId;
+				return fail(
+					"E-OWN",
+					`'${self.value}' may close '${existing.id}' only with ${permitted.join("|")} (got '${cmd.reason}')${
+						asAssignee
+							? ""
+							: ` — only the assignee '${existing.nodeId}' may attest done|failed; an opener withdraws, it does not testify`
+					}`,
+					cmd.json,
+				);
+			}
+			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
+				const recovered = recoverPlatformWrites(ports.value);
+				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
+				const attribution = resolveActor(cmd.actor, deps);
+				if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+				// Re-read under the lock: the authority gate ran before it, so a
+				// concurrent close could have landed in between (double-close is
+				// E-ARG from the primitive, but the read must be fresh to see it).
+				const current = assignmentStore.read(cmd.assignmentId);
+				if (current === null)
+					return fail("E-NOID", `no assignment '${cmd.assignmentId}'`, cmd.json);
+				const closed = closeAssignment(current, {
+					actor: attribution.value.actor,
+					nowMs: now,
+					reason: cmd.reason,
+				});
+				if (!closed.ok) return fail(closed.code, closed.message, cmd.json);
+				const record = closed.value;
+				const draft = buildSpineEvent({
+					nowMs: now,
+					actor: attribution.value.actor,
+					kind: SPINE_KIND_TASK_CLOSE,
+					refs: [
+						`node:${record.nodeId}`,
+						`assignment:${record.id}`,
+						...(record.projectSlug === undefined ? [] : [`project:${record.projectSlug}`]),
+						`reason:${cmd.reason}`,
+					],
+					peer: record.nodeId,
+					project: record.projectSlug,
+					prev: canonicalAssignmentJson(current),
+					next: canonicalAssignmentJson(record),
+					actorProvenance: attribution.value.provenance,
+				});
+				if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+				const recorded = opJournal.record(draft.value);
+				if (!recorded.ok) return fail(recorded.code, recorded.message, cmd.json);
+				const opId = recorded.value;
+				const written = assignmentStore.write(record);
+				if (!written.ok) {
+					return fail(
+						written.code,
+						withResidualDiagnostic(written.message, opJournal.clear(opId)),
+						cmd.json,
+					);
+				}
+				opJournal.markCommitted(opId);
+				const appended = spineLog.appendOnce(opId, draft.value);
+				if (!appended.ok) {
+					return fail(
+						appended.code,
+						`assignment '${record.id}' WAS closed, but its spine event failed to append (${appended.message}); the event is journaled and will be replayed by the next platform write`,
+						cmd.json,
+					);
+				}
+				const cleared = opJournal.clear(opId);
+				if (!cleared.ok) {
+					return fail(
+						cleared.code,
+						`assignment '${record.id}' WAS closed and its spine event landed, but its journal entry could not be cleared (${cleared.message}) — further platform writes are blocked until it is resolved`,
+						cmd.json,
+					);
+				}
+				// Clear the node's denorm ONLY if it still points at the assignment we
+				// just closed. A seat that has since moved to different work must not
+				// have that work blanked as a side effect of discharging an older row.
+				const descriptor = deps.registry.read(record.nodeId);
+				if (descriptor?.currentAssignment === record.id) {
+					const denormed = denormDescriptor(deps, record.nodeId, { clearAssignment: true });
+					if (!denormed.ok) {
+						return fail(
+							denormed.code,
+							`assignment '${record.id}' WAS closed and its spine event landed, but ${denormed.message}`,
+							cmd.json,
+						);
+					}
+				}
+				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
+				return okOut(`assignment ${record.id} closed: ${cmd.reason} (by ${self.value})`);
+			});
+			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
+		}
 		case "report-now": {
 			const ports = platformWritePorts(deps);
 			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
@@ -4489,12 +4869,21 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			const locked = platformWriteLock.withPlatformWriteLock((): CliResult => {
 				const recovered = recoverPlatformWrites(ports.value);
 				if (!recovered.ok) return fail(recovered.code, recovered.message, cmd.json);
-				const currentReporter = readReportingDescriptor(deps, reporter.value.id);
+				// RELAY (plan 078): `--for` is the one place the card's SUBJECT is not
+				// the caller, so it is the one place the boundary must be explicit
+				// rather than implied by a verb list. Only a PA, only for its own
+				// prime, and the write records who wrote it.
+				const relay = resolveRelayTarget(deps, reporter.value, cmd.forSeat);
+				if (!relay.ok) return fail(relay.code, relay.message, cmd.json);
+				const currentReporter = readReportingDescriptor(deps, relay.value.subjectId);
 				if (!currentReporter.ok) {
 					return fail(currentReporter.code, currentReporter.message, cmd.json);
 				}
+				// The ACTOR stays the writer even when the SUBJECT is someone else —
+				// that separation already existed on the spine (actor vs peer) and
+				// is exactly what the descriptor denorm was missing.
 				const attribution = {
-					actor: currentReporter.value.id,
+					actor: relay.value.writtenBy ?? currentReporter.value.id,
 					provenance: "resolved" as const,
 				};
 				let stateCommit: { readonly event: SpineEvent; readonly record: Assignment } | undefined;
@@ -4563,6 +4952,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 						next: cmd.next,
 						at: event.ts,
 						seq: event.seq,
+						writtenBy: relay.value.writtenBy,
 					},
 				});
 				if (!denormed.ok) {
@@ -4867,6 +5257,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				statusNext: d.statusNext ?? null,
 				statusAt: d.statusAt ?? null,
 				statusSeq: d.statusSeq ?? null,
+				statusWrittenBy: d.statusWrittenBy ?? null,
 				planId: d.planId ?? null,
 				orchestrationRole: projectOrchestrationRole(d),
 				assignments: assignments.map(({ assignment, chain }) => ({

@@ -463,6 +463,15 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 		const idleMs =
 			stamps.length === 0 ? Number.POSITIVE_INFINITY : inputs.nowMs - Math.max(...stamps);
 		if (idleMs <= threshold) continue;
+		// REMEDIATION MUST NAME THE ASSIGNMENT (plan 077). A bare `report state`
+		// resolves through currentAssignment and then the general fall-through, and
+		// under the s077 guard that REFUSES when the resolved record is closed — so
+		// a bare remediation line could hand a seat a command the platform then
+		// rejects. Naming `--assignment <id>` makes it precondition-free BY
+		// CONSTRUCTION: this row only exists for an assignment the detector just
+		// proved OPEN (`assignment.closed !== undefined` continues above), so the
+		// targeted record can never be the closed one. An automatically-emitted
+		// instruction must not be refusable by the system that emitted it.
 		// Evidence: the assignment's task-set event (the dispatch) plus its
 		// latest declared state, whichever exist.
 		const evidence: number[] = [];
@@ -480,7 +489,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			kind: "axis-disagreement",
 			nodeId: assignment.nodeId,
 			assignmentId: assignment.id,
-			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, ask '${assignment.nodeId}' to run: pij report state waiting|hold|blocked|question (parked states never flag)`,
+			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, ask '${assignment.nodeId}' to run: pij report state waiting|hold|blocked|question --assignment ${assignment.id} (parked states never flag)`,
 			evidence,
 		});
 	}

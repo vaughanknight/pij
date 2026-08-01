@@ -258,6 +258,9 @@ and an encoded fix (durable). Severity guides priority.
   | code (D-037) | a comment nobody executed | a description of the code |
   | inference (INS-001) | a human's "should" nobody measured | a statement of current fact |
   | governance (this) | a precedent nobody had challenged | a granted authority |
+  | proof (D-040) | a type invariant nobody ran a parser against | a working vocabulary |
+  | measurement (D-041) | a key the projection never emitted | a value that is null |
+  | policy (D-042) | a verb correctly refused in isolation | a role that can still do its job |
   **Why governance is the worst of the three:** a prime's silence is the
   cheapest thing in the system to mistake for a ruling — it costs nothing to
   emit, arrives continuously, and looks identical whether it means *approved*,
@@ -268,3 +271,91 @@ and an encoded fix (durable). Severity guides priority.
   not exercised. **Lesson:** before acting on a precedent, ask whether it was
   ever *decided* or merely *never contested*. Surfaced by pij-unwilling-butterfly
   against its own decision; recorded by pij-wee-albatross.
+
+- **D-040 [high, encoded] A widened type is not a widened vocabulary**
+  (2026-07-31, PR #68). s078 added `pa` to `StoredOrchestrationRole`. Two
+  compiled exactness invariants (`Assert<Exact<…>>`) proved the union had
+  widened, the suite was green, and the PR was approved for merge. **`pij link
+  --role pa` had returned `E-ARG` the entire time.** Both producer parsers
+  guard with `role !== "pm" && role !== "worker"` — a comparison against a
+  `string`, which the compiler cannot relate to the union at all. So widening
+  the type produced **zero** compile errors at the exact two places that decide
+  whether the value may ever be typed. The type test passed on a vocabulary no
+  parser would accept.
+  **The near miss is the point:** the o-prime had already measured the failing
+  command and diagnosed it as *"the producer has not merged yet"* — a causal
+  story that was never tested. Had #68 merged on that reading, it would have
+  gone green, the PA chip would have stayed dormant, and three seats would each
+  have held a correct-looking half. It was caught only because someone went to
+  look at *why the reported command failed* instead of trusting the diff.
+  **Encoding:** the vocabulary is now DATA (`STORED_ORCHESTRATION_ROLES`) with
+  the type *derived from it*, one `isStoredOrchestrationRole` guard consumed by
+  both parsers, and `STORED_ROLE_CHOICES` in every usage and error string —
+  a member cannot be added to the type without the guard and the help text
+  widening with it. Tests **iterate the vocabulary** rather than naming members,
+  so a future member a parser refuses fails *with the parser named*.
+  **Lesson:** a compiled invariant proving a type is *exact* proves nothing
+  about a parser that compares *literals* against it. The technique that would
+  have caught this — an exhaustive table test — had been written by the same
+  seat, the same day, one file over, for the capability gate. **The failure was
+  not ignorance of the technique but not seeing that a second surface needed
+  it.** Surfaced by pij-wee-albatross's measurement; fixed and recorded by
+  pij-unwilling-butterfly.
+
+- **D-041 [medium, open] The reader can manufacture the absence**
+  (2026-07-31). Measuring how many seats lack a parent, the PM ran
+  `pij list --json` and counted `d.parent == null`, getting **122 of 122
+  parentless** — a number it did not believe and therefore checked.
+  `list` does **not project `parent` at all**; the reader had turned a *missing
+  key* into a *null value*, i.e. manufactured the very absence it was measuring.
+  The real answer, from a projection that carries lineage, is that every roled
+  seat has a parent except two workers.
+  **Why it is worth a row despite being caught:** nothing in the output would
+  have corrected it. A projection that omits a key and a projection that reports
+  the key as null are **indistinguishable to a reader that uses `?? null` or
+  `== null`**, and the fabricated answer is the *alarming* one — it reads as a
+  fleet-wide defect and would have justified work that was not needed.
+  **Lesson:** when a measurement returns a total or near-total result, suspect
+  the reader before believing the finding — check that the field being counted
+  is actually *present* in the projection being read. Same class as the doctrine
+  filed the same morning against `jq` object construction; this instance is the
+  agent-side twin. Recorded by pij-unwilling-butterfly against its own
+  measurement.
+
+- **D-042 [high, open] Exhaustive classification cannot see a composition gap**
+  (2026-08-01, plan 078). The PA capability gate refuses the entire `watchdog`
+  family to role `pa` (`pa-capability.ts`, `watchdog: refuse("it changes
+  supervision policy for a seat")`), and `watchdog watch` only ever registers
+  `watcherId: self.value` — the caller, never a third party. **So a PA cannot
+  subscribe itself, and its prime cannot subscribe it on its behalf: the
+  deterministic push hook the entire PA concept names as its trigger is
+  unreachable from inside the role.** Found by a flash-tier PA within its first
+  hour of existing; verified at source independently by the o-prime and by the
+  seat that shipped it.
+  **Why this is a NEW altitude and not another D-040:** the same day's fix for
+  D-040 was an exhaustive table test asserting every verb is *explicitly*
+  classified, and that test **passed here and was right to pass** — `watchdog`
+  IS classified, correctly, as refused. **Neither half is wrong alone.**
+  Refusing a PA the ability to change supervision policy is defensible;
+  registering only the caller as watcher is defensible. The defect exists
+  *solely in their conjunction*, and lives in **two files neither of which is
+  incorrect**.
+  | technique | proves | cannot see |
+  |---|---|---|
+  | compiled exactness (D-040) | the type is the set we meant | any parser comparing literals |
+  | exhaustive classification | every verb has a verdict | whether the SET of verdicts leaves the role able to work |
+  **Lesson:** completeness over *items* is blind to defects that live in the
+  *relationships between* items. A table that is total is not a policy that is
+  coherent — "every verb is classified" and "the role can still do the job it
+  exists for" are different claims, and only the first is mechanically
+  checkable by the technique we leaned on all day. **The honest limit: a
+  capability boundary needs a test that the role's PURPOSE remains reachable,
+  not only that every verb has an answer.**
+  **Workaround in use:** order — `watchdog watch` BEFORE stamping the role; an
+  existing subscription survives the role change. (The o-prime's own PA holds
+  its subscription only by that accident of sequencing.)
+  **Proposed fix (roadrunner, endorsed, next stream):** permit `watch|unwatch`
+  for `pa` restricted to **first-person** registration — the same argument the
+  gate already makes for `report now` and `state set` — while keeping
+  `pause|resume|exempt|interval` refused, since subscribing to notices changes
+  no seat's policy.

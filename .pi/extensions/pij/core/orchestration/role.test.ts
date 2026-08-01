@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { FakePlatformWriteLock, FakeRegistry, FakeSpineLog } from "../../adapters/fakes.js";
+import { parseArgs } from "../cli.js";
 import type { DescriptorWriter } from "../registry-write.js";
 import { err, ok, type Result, type SessionDescriptor } from "../types.js";
+import { parseOrchestrationArgs } from "./cli.js";
 import {
 	cardCanMislead,
 	DesignationAuditService,
 	hasRoleConflict,
+	isStoredOrchestrationRole,
 	owesStatusCard,
+	paLineageRefusal,
 	projectOrchestrationRole,
 	RoleService,
+	STORED_ORCHESTRATION_ROLES,
+	STORED_ROLE_CHOICES,
 } from "./role.js";
 
 const NOW = Date.parse("2026-07-29T00:00:00.000Z");
@@ -217,5 +223,114 @@ describe("owesStatusCard vs cardCanMislead — two questions, not one", () => {
 		});
 		expect(owesStatusCard(primeWithCard)).toBe(false);
 		expect(cardCanMislead(primeWithCard)).toBe(true);
+	});
+});
+
+/** The vocabulary is only real where an ARGUMENT is admitted.
+ *
+ * `StoredOrchestrationRole` gained `pa` and every compiled invariant agreed —
+ * while `pij link --role pa` and `pij orchestration role set pa` both returned
+ * E-ARG, because a guard written as `role !== "pm" && role !== "worker"`
+ * compares a `string` and so widening the union changes NOTHING it checks. The
+ * type test passed on a vocabulary no parser would accept.
+ *
+ * So these iterate the vocabulary rather than naming members: a role added to
+ * `STORED_ORCHESTRATION_ROLES` and not admitted by a parser fails here, and the
+ * failure names the parser.
+ */
+describe("stored role vocabulary is admitted by every parser", () => {
+	it("has a guard that agrees with the array, in both directions", () => {
+		for (const role of STORED_ORCHESTRATION_ROLES) {
+			expect(isStoredOrchestrationRole(role)).toBe(true);
+		}
+		for (const notARole of ["prime", "", "PM", "assistant", "pa ", undefined, null, 7]) {
+			expect(isStoredOrchestrationRole(notARole)).toBe(false);
+		}
+	});
+
+	it("names every member in the choices string used by usage and error text", () => {
+		for (const role of STORED_ORCHESTRATION_ROLES) {
+			expect(STORED_ROLE_CHOICES.split("|")).toContain(role);
+		}
+	});
+
+	it("accepts every member at pij link --role", () => {
+		expect(STORED_ORCHESTRATION_ROLES.length).toBeGreaterThan(0);
+		for (const role of STORED_ORCHESTRATION_ROLES) {
+			const parsed = parseArgs(["link", "child-seat", "--parent", "parent-seat", "--role", role]);
+			expect(parsed.ok, `pij link --role ${role} was refused`).toBe(true);
+			if (parsed.ok) {
+				expect(parsed.value.verb).toBe("link");
+				expect((parsed.value as { role?: string }).role).toBe(role);
+			}
+		}
+	});
+
+	it("accepts every member at pij orchestration role set", () => {
+		for (const role of STORED_ORCHESTRATION_ROLES) {
+			const parsed = parseOrchestrationArgs(["role", "set", "some-seat", role]);
+			expect(parsed.ok, `pij orchestration role set ${role} was refused`).toBe(true);
+			if (parsed.ok && parsed.command.primitive === "role") {
+				expect(parsed.command.role).toBe(role);
+			}
+		}
+	});
+
+	it("still refuses a non-member at both parsers, quoting the full vocabulary", () => {
+		const link = parseArgs(["link", "child-seat", "--parent", "p", "--role", "regent"]);
+		expect(link.ok).toBe(false);
+		if (!link.ok) expect(link.message).toContain(STORED_ROLE_CHOICES);
+		const orch = parseOrchestrationArgs(["role", "set", "some-seat", "regent"]);
+		expect(orch.ok).toBe(false);
+		if (!orch.ok) expect(orch.message).toContain(STORED_ROLE_CHOICES);
+	});
+});
+
+/** A pa is defined relative to a prime, so a pa with no parent has no referent.
+ *
+ * Three routes reach the identical floating card and each has its own door:
+ * stamp `pa` on an unadopted seat, `--root` a seat that already IS a `pa`, or
+ * do both at once. A guard on the role write alone would close the first and
+ * leave the second wide open, which is the "gate you can tick" shape.
+ */
+describe("paLineageRefusal — a pa is never left without a prime", () => {
+	it("permits every non-pa role without a parent, and pa WITH one", () => {
+		expect(paLineageRefusal("pm", null, "pij-a")).toBeNull();
+		expect(paLineageRefusal("worker", null, "pij-a")).toBeNull();
+		expect(paLineageRefusal(undefined, null, "pij-a")).toBeNull();
+		expect(paLineageRefusal("pa", "pij-prime", "pij-a")).toBeNull();
+	});
+
+	it("refuses a parentless pa and names the remedy with the seat id", () => {
+		const refusal = paLineageRefusal("pa", null, "pij-a");
+		expect(refusal).not.toBeNull();
+		expect(refusal).toContain("pij link pij-a --parent <prime> --role pa");
+	});
+
+	it("refuses at the role-write seam: pa onto an unadopted seat", () => {
+		const registry = new CountingRegistry([descriptor("pij-a", {})]);
+		const result = new RoleService(registry).set("pij-a", "pa");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.code).toBe("E-ARG");
+		expect(registry.writes, "a refusal must mutate nothing").toBe(0);
+		expect(registry.read("pij-a")?.orchestrationRole).toBeUndefined();
+	});
+
+	it("permits pa onto an adopted seat, by parentId or by spawnedBy", () => {
+		for (const over of [{ parentId: "pij-prime" }, { spawnedBy: "pij-prime" }]) {
+			const registry = new CountingRegistry([descriptor("pij-a", over)]);
+			const result = new RoleService(registry).set("pij-a", "pa");
+			expect(result.ok, `pa refused for ${JSON.stringify(over)}`).toBe(true);
+			expect(registry.read("pij-a")?.orchestrationRole).toBe("pa");
+		}
+	});
+
+	it("still lets a pa be unset or re-roled while parentless, so a seat is never stuck", () => {
+		const registry = new CountingRegistry([
+			descriptor("pij-a", { orchestrationRole: "pa", parentId: undefined }),
+		]);
+		expect(new RoleService(registry).unset("pij-a").ok).toBe(true);
+		const reroll = new CountingRegistry([descriptor("pij-b", { orchestrationRole: "pa" })]);
+		expect(new RoleService(reroll).set("pij-b", "worker").ok).toBe(true);
 	});
 });

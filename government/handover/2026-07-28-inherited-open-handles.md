@@ -19,6 +19,11 @@ Ranked by the two seats that did the measuring. Sequencing is Jordan's decision 
    > "If you are idle, declare it with `pij state set <id> waiting` and stay armed; ask for a
    > longer interval if 2h is wrong for you."
 
+   **VERB CORRECTION 2026-07-31** (the quote above is left verbatim — it is leech's words as
+   spoken, and history is annotated, never rewritten): `pij state set` is **RETIRED** and
+   returns `E-ARG`. Working form: `pij report state <state> [--assignment <id>] [--refs <r,s>]`.
+   `pij state <id>` survives read-only. Anyone inheriting this pack must teach the new form.
+
    Dove objected that this would mislead; **mastodon refuted it at source** — `buildStalledNotice`
    sends to `spawnedBy`, so the STALL NOTICE goes to the **parent**, never the seat; a seat only
    ever receives **nudges**, which `intervalMs` does govern. **Dove withdrew the objection.**

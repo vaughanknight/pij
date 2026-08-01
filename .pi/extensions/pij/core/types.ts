@@ -344,6 +344,20 @@ export interface SessionDescriptor {
 	readonly statusAt?: string;
 	/** Monotonic sequence of the projected status transition. */
 	readonly statusSeq?: number;
+	/** WHO WROTE the card, when that is not the seat it is about (plan 078).
+	 *
+	 *  Absent for a self-authored card, which is the overwhelming case and keeps
+	 *  every existing descriptor byte-identical. Set to the writer's id when a PA
+	 *  relays its prime's card, so the rail can render "via <pa-id>".
+	 *
+	 *  The SPINE already distinguished these — a status event carries `actor`
+	 *  (who wrote) and `peer` (whose card) as separate fields. The denorm did
+	 *  not, so any consumer reading the descriptor instead of replaying the log
+	 *  saw a relayed card as self-authored. That is an attribution silence, and
+	 *  a PA that can write its prime's card without it is indistinguishable from
+	 *  the prime — which is why a capability gate that refuses `close` while
+	 *  permitting identity-borrowing is not read-only by construction. */
+	readonly statusWrittenBy?: string;
 	/** Stored partial orchestration role; prime remains a separate descriptor flag. */
 	readonly orchestrationRole?: StoredOrchestrationRole;
 	/** Mechanical axis verdict — computed and owned by the DAEMON only (WS-5

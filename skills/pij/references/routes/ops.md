@@ -18,7 +18,37 @@ pij daemon kill     # last resort
 
 ## Registry hygiene
 
-The registry is `~/.pij/<id>.json` descriptors + per-session data dirs. Sessions that died without `pij close` leave **corpses** (descriptor present, process gone).
+The registry has **THREE tiers**, and only the first is visible to `pij list`, `pij state`
+and `pij revive`:
+
+| Tier | Where | Visible to |
+|---|---|---|
+| hot | `~/.pij/<id>.json` + `~/.pij/<id>/` data dir | `pij list`, `pij state`, `pij revive` |
+| archived | `~/.pij/archive/<id>.json` + `~/.pij/archive/<id>/` | **the FILE is the authority**; `pij list --archived` is a FILTERED BROWSE AID, not an existence check |
+| — | *(the platform moves a seat here once terminal >48h)* | |
+
+> **A descriptor missing from `~/.pij/` is NOT evidence the seat never existed, and NOT
+> data loss — CHECK `~/.pij/archive` FIRST.** This cost a real round-trip on 2026-08-01: a
+> repo's o-prime was reported UNREVIVABLE with "neither descriptor nor data dir exists",
+> and both were sitting in the archive tier with full terminal evidence. **2,423 archived
+> seats** on this box at time of writing.
+>
+> **AND `pij list --archived` IS NOT THE EXISTENCE CHECK** — it is a filtered view and it
+> hides most of the tier. Measured 2026-08-01: **437 rows listed out of 2,423 descriptors
+> on disk (18%)**, and for one folder, **2 shown out of 33** — the hidden 31 included that
+> repo's own PREDECESSOR PRIME, dissolved and present on disk. `dissolved` is necessary
+> but not sufficient to appear; the additional filter is uncharacterised. So an agent that
+> runs `--archived`, does not find its id, and concludes "genuinely gone" reaches the same
+> wrong answer one tier deeper, now with an authoritative-feeling command behind it.
+>
+> **Use the filesystem as the authority:**
+> ```bash
+> ls ~/.pij/archive/<id>.json                                   # existence check
+> grep -l '"folder": *"<repo-path>"' ~/.pij/archive/*.json      # every archived seat for a repo
+> pij list --archived                                            # browse aid only — incomplete
+> ```
+
+Sessions that died without `pij close` leave **corpses** (descriptor present, process gone).
 
 ```bash
 pij list                      # every known session
@@ -26,7 +56,17 @@ pij state <id>                # dead|alive + working/idle for one id
 pij path <id> [--events|--state|--dir]   # resolve a session's on-disk paths
 ```
 
-There is no `pij prune` yet — sweep manually: for each `pij list` id whose `pij state` says dead, remove `~/.pij/<id>.json` and its `~/.pij/<id>/` data dir. Shell gotcha: pipe ids through `while read -r id` (zsh `for id in $VAR` does NOT word-split). Never remove a descriptor whose state is alive.
+**The platform archives terminal seats for you** (terminal >48h → the archive tier), so
+routine corpse-clearing is NOT your job and NOT a manual delete. Inspect with
+`pij list --archived`; archived seats stay reachable by id.
+
+> **Do not hand-delete descriptors as housekeeping.** Hand-editing `~/.pij/**` is
+> store-internals surgery and **operator-authorised only** — never routine. A bulk sweep
+> on 2026-07-31 found three descriptors whose recorded panes were LIVE, one of them the
+> operator's own `%0`; a naive delete would have killed it. If a genuine sweep is ever
+> authorised, re-verify liveness against the live system at execution time (never from the
+> descriptor), never bulk-mutate, and pipe ids through `while read -r id` (zsh
+> `for id in $VAR` does NOT word-split).
 
 ## Tmux hygiene
 
@@ -60,8 +100,11 @@ prints and is then closed leaves the prime parented to a corpse.
 |---|---|
 | Prints a line naming a seat | Human pastes it into the target pane. claude/copilot/codex lines carry a `pij revive <id> --attach "$TMUX_PANE" &&` prefix — those harnesses do not self-adopt, and without it the seat returns unaddressable |
 | `E-AMBIG: … has 2 prime seats` | Two current primes for one folder. Pass the explicit id; then have the human retire the wrong one (`pij orchestration prime retire <id>`) — never guess which is real |
+| `E-AMBIG: … N seats and none is prime` | **The OPPOSITE condition sharing one error code** — ZERO primes, not two. The remedy above is unactionable: there is no id to pass. It usually means the recorded prime is **dissolved and archived**, and the error names the candidate set rather than that fact. **Check `~/.pij/archive/<id>.json` and `pij list --archived` before concluding anything**, then read § Registry hygiene. Verified case, 2026-08-01 |
 | `E-NOID`, naming the folder | No seat recorded there. Not a bootstrapper signal on its own — see prime route § Role triage |
 | Refuses: native transcript missing | **Not revivable.** `pij revive` requires it and correctly refuses rather than starting a fresh session wearing a dead seat's name. The data dir is inheritance material; the human seats a successor |
+| **The two checks fail INDEPENDENTLY** | A present descriptor does not imply a present transcript, and vice versa. A reader who learns about the archive tier will reasonably try to restore a descriptor — **and still be refused at the transcript check.** Confirm both: `~/.pij/archive/<id>.json` for the record, and the `harnessSessionId` it names under the transcript store |
+| **THERE IS MORE THAN ONE TRANSCRIPT STORE — search ALL of them** | `CLAUDE_CONFIG_DIR` can point elsewhere (e.g. a `cc-alt` shell function using `~/.claude-alt`), and **`pij revive`'s transcript lookup is hardcoded to `~/.claude/projects` and is `CLAUDE_CONFIG_DIR`-blind** — setting the env var does not help. So `E-NOREG: claude native session artifact is missing` can mean **"not where I looked"**, not "absent". Measured 2026-08-01 on one repo's 32 archived seats: **13 transcripts in `~/.claude`, 4 in `~/.claude-alt`, 15 genuinely absent.** A prime declared unrevivable was recovered from the second store with full context. **Never conclude a transcript is missing until every config dir has been searched.** (Defect filed; the fix is config-dir awareness in general, never a special case for one shell function.) |
 
 The revived seat is **PENDING CANARY**: ask it a golden-recall question before
 assigning work. A session that lost its context looks identical to one that kept
@@ -84,4 +127,4 @@ pij telegram stop
 | Spawns hang at "booting" | `pij daemon status`; daemon log | restart daemon (§ C6); re-spawn |
 | Peer never binds | daemon log shows discovery pending | `pij phonehome` inside the pane |
 | Sends land nowhere | `pij state <id>` dead? | corpse — sweep it; re-spawn |
-| Registry bloated with dead ids | `pij list` count vs live panes | manual sweep (above) |
+| Registry bloated with dead ids | `pij list` count vs live panes | **Nothing to do** — the platform archives terminal seats (>48h) itself; inspect with `pij list --archived`. Never hand-delete (see § Registry hygiene) |

@@ -1,6 +1,6 @@
 // pij-messaging — whole-life peer watchdog decisions (pure).
 
-import type { WatchdogPauseTier, WatchdogSidecar } from "./types.js";
+import type { SemanticState, WatchdogPauseTier, WatchdogSidecar } from "./types.js";
 
 // ─── watchdog configuration ─────────────────────────────────────────────────
 export const DEFAULT_WATCHDOG_INTERVAL_MS = 20 * 60 * 1_000;
@@ -201,6 +201,51 @@ export function evaluateResponse(inputs: WatchdogResponseInputs): WatchdogRespon
 	if (inputs.consecutiveSilentFires >= 2) return "stalled";
 	if (inputs.consecutiveSilentFires === 1) return "suspect";
 	return "responsive";
+}
+
+// ─── parked-state nudge muting (plan 076, DL-002) ───────────────────────────
+/** Does this declared semantic state mute the PEER-FACING NUDGE?
+ *
+ * Both anomaly detectors already exempt the parked states; the watchdog — the
+ * only mechanism that actually pushes a turn into a human-visible pane — did
+ * not, so a seat that correctly declared `question` kept being nudged. The
+ * incentive damage is the mission: **a seat punished for declaring learns to
+ * stay silent**, which destroys the axis the declaration exists to populate.
+ * (Live evidence: the seat that wrote this fix burned four nudges while
+ * correctly parked on a human-gated merge.)
+ *
+ * MUTING IS NOT UNWATCHING. This suppresses one outbound nudge and nothing
+ * else — eligibility, liveness classification, the stall detector, and the
+ * dead/provider-failure axes are all untouched, because a parked seat can
+ * still die and that must still be noticed. Muting and supervising are
+ * different acts, exactly as muting and discharging were in s075.
+ *
+ * `done`/`failed`/`cancelled` are deliberately NOT parked: a terminal claim is
+ * something to be VERIFIED, not a reason to stop watching. `ready` is not
+ * parked either — it is the active word.
+ *
+ * Exhaustive by construction: a new SEMANTIC_STATES member fails the
+ * `satisfies never` check below rather than silently defaulting into muting.
+ * A state that mutes supervision must be chosen, never inherited.
+ */
+export function mutesWatchdogNudge(state: SemanticState | undefined): boolean {
+	if (state === undefined) return false;
+	switch (state) {
+		case "blocked":
+		case "question":
+		case "hold":
+		case "waiting":
+			return true;
+		case "ready":
+		case "failed":
+		case "cancelled":
+		case "done":
+			return false;
+		default: {
+			const exhaustive: never = state;
+			return exhaustive;
+		}
+	}
 }
 
 // ─── self-teaching watchdog turn ────────────────────────────────────────────

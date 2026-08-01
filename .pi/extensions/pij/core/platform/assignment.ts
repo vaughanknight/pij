@@ -8,7 +8,12 @@ import { memorablePijIdCandidates } from "../memorable-id.js";
 import { err, ok, type Result } from "../types.js";
 import { canonicalRecordLevel } from "./project.js";
 import { isoTimestamp } from "./time.js";
-import { type Assignment, type AssignmentCloseReason, generalAssignmentId } from "./types.js";
+import {
+	ASSIGNMENT_CLOSE_REASONS,
+	type Assignment,
+	type AssignmentCloseReason,
+	generalAssignmentId,
+} from "./types.js";
 
 /** Deterministic `asg-<adjective>-<animal>` candidates: the core memorable-id
  *  sequence with the `pij-` prefix swapped for `asg-`. */
@@ -77,6 +82,46 @@ export interface CloseAssignmentInput {
 	readonly actor: string;
 	readonly nowMs: number;
 	readonly reason: AssignmentCloseReason;
+}
+
+/** Type guard for the closed reason union — the CLI parses free strings. */
+export function isAssignmentCloseReason(value: string): value is AssignmentCloseReason {
+	return (ASSIGNMENT_CLOSE_REASONS as readonly string[]).includes(value);
+}
+
+/** Which reasons may a given seat close an assignment with?
+ *
+ * **You may close in the direction of your own AUTHORSHIP** (plan 075, ruled):
+ *
+ * | closer | reasons | why it is legitimate |
+ * |---|---|---|
+ * | assignee (`nodeId`) | `done`, `failed` | first-person testimony about its OWN work |
+ * | opener (`opened.actor`) | `cancelled`, `superseded` | retracting a request it authored |
+ *
+ * The asymmetry this repairs was real but mis-stated: `task set` is a cross-seat
+ * write that OPENS an obligation, and nothing anywhere could close one — measured
+ * 2026-07-30, 91 of 91 assignments open, zero ever closed, because
+ * `closeAssignment` had no caller. What made that invisible is that
+ * `report state done` silences `axis-disagreement` (any declared state does —
+ * see `isSemanticActive`) WITHOUT discharging the record, so a permanently-open
+ * ledger read as healthy.
+ *
+ * The split is what keeps the repair safe. A third party can never launder a
+ * `done`, because `done` is unreachable from the opener's authority set — the
+ * constraint holds BY CONSTRUCTION, not by policy. The opener may withdraw its
+ * own request; only the assignee may say the work happened.
+ *
+ * A seat that is BOTH assignee and opener (self-assigned work) gets the union,
+ * which is correct: it authored both the request and the work.
+ */
+export function permittedCloseReasons(
+	assignment: Assignment,
+	closer: string,
+): readonly AssignmentCloseReason[] {
+	const reasons: AssignmentCloseReason[] = [];
+	if (closer === assignment.nodeId) reasons.push("done", "failed");
+	if (closer === assignment.opened.actor) reasons.push("cancelled", "superseded");
+	return reasons;
 }
 
 // No caller exists today. A future caller inherits the denorm clearing decision

@@ -15,8 +15,10 @@ import {
 	assignmentIdCandidates,
 	canonicalAssignmentJson,
 	closeAssignment,
+	isAssignmentCloseReason,
 	materializeGeneralIfMissing,
 	openAssignment,
+	permittedCloseReasons,
 } from "./assignment.js";
 import {
 	ASSIGNMENT_CLOSE_REASONS,
@@ -363,5 +365,77 @@ describe("canonicalAssignmentJson", () => {
 		expect(canonical).toContain('"alpha":2');
 		expect(canonical).toContain('"zebra":1');
 		expect(canonical.indexOf('"alpha"')).toBeLessThan(canonical.indexOf('"zebra"'));
+	});
+});
+
+describe("permittedCloseReasons — close in the direction of your own authorship", () => {
+	// Plan 075. `task set` is a cross-seat write that OPENS an obligation, and
+	// until this verb NOTHING could close one (measured: 91/91 open, 0 ever
+	// closed). The repair must not become a free-for-all: `done` is testimony
+	// about work, so only the seat that did the work may say it.
+	const ASSIGNEE = "pij-assignee-seat";
+	const OPENER = "pij-opener-seat";
+	const asg = (over: Partial<Assignment> = {}): Assignment => ({
+		schema_version: 1,
+		id: "asg-brave-heron",
+		nodeId: ASSIGNEE,
+		task: "do the thing",
+		states: [],
+		opened: { actor: OPENER, ts: NOW_ISO },
+		...over,
+	});
+
+	it("lets the ASSIGNEE attest done or failed — and nothing else", () => {
+		expect([...permittedCloseReasons(asg(), ASSIGNEE)].sort()).toEqual(["done", "failed"]);
+	});
+
+	it("lets the OPENER withdraw cancelled or superseded — and nothing else", () => {
+		expect([...permittedCloseReasons(asg(), OPENER)].sort()).toEqual(["cancelled", "superseded"]);
+	});
+
+	it("NEVER lets an opener launder a done — the constraint holds by construction", () => {
+		// The whole safety argument: `done` is unreachable from the opener's
+		// authority set, so a third party cannot discharge someone's obligation
+		// by asserting the work happened. Not policy — reachability.
+		expect(permittedCloseReasons(asg(), OPENER)).not.toContain("done");
+		expect(permittedCloseReasons(asg(), OPENER)).not.toContain("failed");
+	});
+
+	it("gives an unrelated seat NO authority at all", () => {
+		expect(permittedCloseReasons(asg(), "pij-passing-stranger")).toEqual([]);
+	});
+
+	it("gives a self-assigned seat the UNION — it authored both request and work", () => {
+		const selfAssigned = asg({ nodeId: ACTOR, opened: { actor: ACTOR, ts: NOW_ISO } });
+		expect([...permittedCloseReasons(selfAssigned, ACTOR)].sort()).toEqual([
+			"cancelled",
+			"done",
+			"failed",
+			"superseded",
+		]);
+	});
+
+	it("partitions the reason vocabulary exactly — every reason has exactly one owner", () => {
+		// If a reason ever becomes reachable from BOTH sides (or neither), the
+		// authorship split has been broken and laundering is back on the table.
+		for (const reason of ASSIGNMENT_CLOSE_REASONS) {
+			const owners = [ASSIGNEE, OPENER].filter((who) =>
+				permittedCloseReasons(asg(), who).includes(reason),
+			);
+			expect({ reason, owners }).toEqual({
+				reason,
+				owners: [reason === "done" || reason === "failed" ? ASSIGNEE : OPENER],
+			});
+		}
+	});
+});
+
+describe("isAssignmentCloseReason", () => {
+	it("accepts exactly the union and rejects near-misses", () => {
+		for (const reason of ASSIGNMENT_CLOSE_REASONS)
+			expect(isAssignmentCloseReason(reason)).toBe(true);
+		for (const bad of ["", "DONE", "done ", "closed", "complete", "withdrawn"]) {
+			expect(isAssignmentCloseReason(bad)).toBe(false);
+		}
 	});
 });

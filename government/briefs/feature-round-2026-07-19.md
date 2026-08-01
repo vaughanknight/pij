@@ -39,7 +39,14 @@ Make it structurally impossible for a seat to die silently or a safety to be sil
 ### Stream 2 — State-Model v2
 The semantic axis should carry only what the daemon can't see.
 - **State-clear verb** (`pij state clear <node>` / `--clear`): return a node to undeclared so the mechanical axis speaks alone. Enables "declare-only-exceptions." My design lean over adding a `working` state (which would duplicate the mechanical axis and manufacture axis-disagreement). *(mastodon — 4 primes will adopt declare-only-exceptions when it lands)*
-- **Anomaly message self-serve hint**: alarms print their own remedy (`if legitimate: pij state set <node> waiting …`). *(small — in takin's loop now)*
+- **Anomaly message self-serve hint**: alarms print their own remedy (`if legitimate: pij report state waiting …`). *(small — in takin's loop now)*
+  **VERB CORRECTED 2026-07-31** — this line specified `pij state set <node> waiting`, which is
+  RETIRED and returns `E-ARG`. This is a LIVE proposal, so shipping it as written would have
+  minted a dead verb into automated alarm text delivered on a timer to every seat — which
+  outruns any documentation fix. Caught by `pij-resident-leech`. Note the s077 precedent for
+  the same surface: the axis-disagreement remediation now names `--assignment <id>`, which is
+  precondition-free BY CONSTRUCTION because the row only exists for an assignment the detector
+  just proved open. Prefer that shape here too over any form a reader must complete.
 
 ### Stream 3 — Identity Integrity  *(re-seat s051, expanded scope)*
 - **KEYSTONE: unify caller-identity resolution** *(INS-004 proven 3×)*: there are ≥3 "who am I" resolvers of varying strength (`orchestrationSelf` strong pane-first; `orchestrationActor` folder-filtered, consolidated `faf06c5`; the `whoAmI` at `cli.ts:1153-1163` used by close/reports — pane pre-check + **folder-filtered fallback** that still starves on `cwd ≠ folder` / pane-collision). Instance-by-instance patching (baton done, close open) is losing to the pattern. Fix ONCE: one canonical strong self-resolver (full-registry pane→pid, no folder starvation), every call site routed through it (close, reports, baton, adopt). `close` is highest-severity of the three — a mis-resolved teardown blocks close → seats accumulate (feeds reaping) AND the close-time billing protocol can't run (mastodon, 3rd instance). Absorbs hyena's adopt-guard PID-half as one seam.

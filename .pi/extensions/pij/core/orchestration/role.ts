@@ -4,6 +4,7 @@ import type { PlatformWriteLockPort, SpineLogPort } from "../platform/ports.js";
 import { buildSpineEvent } from "../platform/spine.js";
 import type { SPINE_KIND_PRIME_SET, SPINE_KIND_ROLE_SET } from "../platform/types.js";
 import type { RegistryPort } from "../ports.js";
+import { effectiveParent } from "../tree.js";
 import { err, ok, type Result, type SessionDescriptor, type SessionId } from "../types.js";
 
 /** The orchestration role persisted on a session descriptor.
@@ -12,7 +13,29 @@ import { err, ok, type Result, type SessionDescriptor, type SessionId } from "..
  * stored here. Prime-ness remains `SessionDescriptor.prime?: boolean`, owned by
  * PrimeService; projections join that flag with this stored partial role.
  */
-export type StoredOrchestrationRole = "pm" | "worker";
+/** The stored role vocabulary, as DATA.
+ *
+ * The type is derived FROM this array rather than declared beside it, because a
+ * type and a hand-written validator drift silently: `role !== "pm" && role !==
+ * "worker"` compares a `string`, so widening a union produces ZERO compile
+ * errors at every parser that guards on literals. That is exactly how `pa`
+ * became a legal type and an illegal argument. Deriving the type from the array
+ * makes the vocabulary single-sourced: a new member is admitted by the guard and
+ * named in the usage text by construction, not by remembering.
+ */
+export const STORED_ORCHESTRATION_ROLES = ["pm", "worker", "pa"] as const;
+
+export type StoredOrchestrationRole = (typeof STORED_ORCHESTRATION_ROLES)[number];
+
+/** Runtime admission for the stored vocabulary — the ONLY parser-side guard. */
+export function isStoredOrchestrationRole(value: unknown): value is StoredOrchestrationRole {
+	return (
+		typeof value === "string" && (STORED_ORCHESTRATION_ROLES as readonly string[]).includes(value)
+	);
+}
+
+/** `pm|worker|pa` — the vocabulary rendered for usage and error text. */
+export const STORED_ROLE_CHOICES = STORED_ORCHESTRATION_ROLES.join("|");
 
 /** The total orchestration role exposed by projections. */
 export type OrchestrationRole = "prime" | StoredOrchestrationRole;
@@ -25,10 +48,10 @@ type Assert<Condition extends true> = Condition;
 
 /** Compiled invariants: widening either alias collapses store-partial/project-total. */
 export type StoredOrchestrationRoleExactnessInvariant = Assert<
-	Exact<StoredOrchestrationRole, "pm" | "worker">
+	Exact<StoredOrchestrationRole, "pm" | "worker" | "pa">
 >;
 export type OrchestrationRoleExactnessInvariant = Assert<
-	Exact<OrchestrationRole, "prime" | "pm" | "worker">
+	Exact<OrchestrationRole, "prime" | "pm" | "worker" | "pa">
 >;
 
 type RoleProjectionSource = Pick<SessionDescriptor, "prime" | "orchestrationRole">;
@@ -96,7 +119,65 @@ export function owesStatusCard(descriptor: RoleProjectionSource): boolean {
 export function cardCanMislead(descriptor: CardSource): boolean {
 	if (descriptor.statusAt === undefined) return false;
 	const role = projectOrchestrationRole(descriptor);
+	// `pa` is EXCLUDED BY DECISION (s080), and the decision rests on the
+	// OBLIGATION — never on what renders.
+	//
+	// A PA's card DOES render. Measured in the emitted DOM 2026-08-01 from
+	// anaconda's real row: NOW/NEXT plus an "updated 22h ago" age line, muted
+	// rather than amber. So "a PA's card renders nowhere" — which an earlier
+	// version of this comment asserted — is simply false, and `floating card` in
+	// paLineageRefusal is literal.
+	//
+	// THE GROUND IS THAT A STALENESS LABEL IS WATCHDOG LANGUAGE, AND WATCHDOG
+	// LANGUAGE IS A LIE WHERE NO OBLIGATION EXISTS. This predicate gates "that
+	// card is rotten", which tells a reader someone is late. A PA owes no card
+	// (Jordan, 2026-07-31), so nobody is late and nothing is owed — the same
+	// reasoning that took primes off the card-obligation hook, extended.
+	// Supervision is what makes an age MEANINGFUL: labelling a seat nobody
+	// nudges does not remove a false claim, it swaps "this is current" for
+	// "someone is chasing this".
+	//
+	// DO NOT RE-GROUND THIS ON RENDERING. Rendering is another repo's live
+	// decision and will drift under this file: the consumer has deliberately
+	// SPLIT `carriesStatus` (who OWES a card) from `hasOptionalCard` (whose card
+	// RENDERS — prime|pa) precisely so the two cannot be re-welded, and an
+	// earlier version of this comment welded them here, in a file that outlives
+	// the memory of why. Obligation is checkable from inside pij; rendering is
+	// not.
+	//
+	// RUNNING IS NOT MERGED, which is why the rendering ground would have been
+	// doubly wrong: the consumer's PA-card fix is an UN-PR'd local commit
+	// (0e6da0a9b). Jordan's dev server runs that working tree, so PA cards
+	// render FOR HIM AND NOWHERE ELSE — pull main or clone clean and they
+	// silently vanish. Any comment here asserting what renders is describing one
+	// unmerged working tree.
 	return role === "prime" || role === "pm";
+}
+
+/** A PA is defined RELATIVE TO a prime — so a PA with no effective parent is
+ *  not a lesser PA, it is an instrument with no attested subject. It renders as
+ *  a floating card wearing a PA chip and no visible prime, which invites the
+ *  reader to supply the missing prime from context: exactly the "unexamined
+ *  read as proven" shape, aimed at a human looking at a rail.
+ *
+ *  Every other role survives orphaning with a degraded but honest meaning — an
+ *  unadopted worker has nobody to report to, which is a real and readable
+ *  state. `pa` is the one role whose SUBJECT is the parent, so absence of the
+ *  parent is absence of the role's referent, not a property of it.
+ *
+ *  Pure, and consulted at BOTH role-writing seams (`pij link --role`,
+ *  `pij orchestration role set`) — the seams are separate parsers and a guard
+ *  in only one is a guard that looks total. Takes the state AFTER the write
+ *  would land, so it catches all three routes to a floating PA: stamping `pa`
+ *  on an unadopted seat, `--root`ing a seat that already IS a `pa`, and doing
+ *  both at once. Returns the refusal text, or null to permit. */
+export function paLineageRefusal(
+	roleAfter: StoredOrchestrationRole | undefined,
+	effectiveParentAfter: SessionId | null,
+	id: SessionId,
+): string | null {
+	if (roleAfter !== "pa" || effectiveParentAfter !== null) return null;
+	return `a pa has no meaning without a prime: '${id}' would be left with no parent, rendering as a PA chip with no visible subject — link it to its prime in the same breath (pij link ${id} --parent <prime> --role pa)`;
 }
 
 export interface RoleChange {
@@ -120,6 +201,13 @@ export class RoleService {
 	private update(id: SessionId, role: StoredOrchestrationRole | undefined): Result<RoleChange> {
 		const descriptor = this.registry.read(id);
 		if (!descriptor) return err("E-NOID", `no session '${id}' in registry`);
+		// The role-write seam: every caller of `set` passes through here, so a pa
+		// can never be stamped onto a seat with nobody to assist. The parent side
+		// of the same invariant lives at `pij link` — a role guard alone would
+		// permit orphaning an EXISTING pa, which reaches the identical floating
+		// card by the other door.
+		const lineage = paLineageRefusal(role, effectiveParent(descriptor), id);
+		if (lineage !== null) return err("E-ARG", lineage);
 		const previousRole = descriptor.orchestrationRole;
 		const changed = previousRole !== role;
 		// Declares "cli": RoleService OWNS orchestrationRole, so its computed value

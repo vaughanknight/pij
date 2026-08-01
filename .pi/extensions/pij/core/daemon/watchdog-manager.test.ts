@@ -14,6 +14,7 @@ import { FsRegistry } from "../../adapters/fs-registry.js";
 import { FsWatchdogStore } from "../../adapters/watchdog-store.js";
 import { Daemon } from "../../daemon.js";
 import { dispatch, parseArgs, type WatchdogCliStore } from "../cli.js";
+import { type OrchestrationRole, STORED_ORCHESTRATION_ROLES } from "../orchestration/role.js";
 import type { PiRuntimePort } from "../ports.js";
 import { PijSession } from "../session.js";
 import { buildSpawnCommand, parseSpawnArgs } from "../spawn.js";
@@ -22,6 +23,7 @@ import { isFireDue } from "../watchdog.js";
 import type { DaemonPorts } from "./loop.js";
 import { pauseForCompactMessage } from "./router.js";
 import {
+	roleNeedsSupervision,
 	WatchdogManager,
 	type WatchdogResponseEvent,
 	type WatchdogStorePort,
@@ -1632,5 +1634,124 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		nowMs += 2;
 		daemon.tick();
 		expect(registry.read("peer")?.failureReason).toBeUndefined();
+	});
+});
+
+describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
+	// Live evidence for this fix: the PM who wrote it burned four nudges while
+	// correctly parked on a human-gated merge. Both anomaly detectors already
+	// exempt the parked states; the watchdog — the only mechanism that pushes a
+	// turn into a human-visible pane — did not.
+	function parkedHarness(semanticState: SessionDescriptor["semanticState"]) {
+		const h = managerHarness();
+		h.store.sidecars.set("pij-parked", intervalSidecar());
+		h.store.revisions.set("pij-parked", 1);
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined, semanticState })]);
+		return h;
+	}
+
+	it("sends NO nudge to a seat that declared a parked state", () => {
+		for (const state of ["waiting", "hold", "blocked", "question"] as const) {
+			const h = parkedHarness(state);
+			expect(h.delivery.outbox).toEqual([]);
+			expect(h.sent).toEqual([]);
+		}
+	});
+
+	it("STILL nudges an undeclared seat under identical conditions", () => {
+		// The control. Without it the assertion above would also pass if the
+		// watchdog were simply broken, which is the vacuous-pass shape.
+		const h = parkedHarness(undefined);
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
+	});
+
+	it("STILL nudges a seat claiming done — a terminal claim is verified, not trusted", () => {
+		// s075's lesson carried forward: muting and discharging are different acts.
+		const h = parkedHarness("done");
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
+	});
+
+	it("keeps the seat WATCHED — muting is not unwatching", () => {
+		// The design constraint from the brief: parked-state muting must not weaken
+		// the supervision axes. Muting records NO fire (it is not a nudge), but the
+		// seat must remain under management — proven by it firing normally once it
+		// un-parks and its interval elapses. A seat dropped from management would
+		// never fire again.
+		const h = parkedHarness("question");
+		expect(h.fires).toEqual([]);
+		h.setNow(200); // interval 50, muted tick at 100 → due again
+		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined })]);
+		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
+		expect(h.fires).toEqual([{ id: "pij-parked", atMs: 200 }]);
+	});
+
+	it("does not fire the instant a seat UN-parks — the clock advanced while muted", () => {
+		// If the muted tick left lastFireAt standing, the seat would be permanently
+		// overdue and get nudged the moment it un-parked: punishing the declaration
+		// one tick late rather than on time.
+		const h = parkedHarness("question");
+		h.delivery.outbox.length = 0;
+		h.setNow(120); // < interval (50) after the muted tick at 100
+		h.manager.reconcile([desc({ id: "pij-parked", lastEventAt: undefined })]);
+		expect(h.delivery.outbox).toEqual([]);
+	});
+});
+
+/** The gate that was wrong twice, now total by compiler.
+ *
+ * It first read `role !== "pm"` and silently excluded every prime; 94d4564
+ * widened one name to two, PRESERVING THE SHAPE, so `pa` was excluded before
+ * any anchor or interval logic ran — five PAs, zero fires, ever. The previous
+ * test iterated a HAND-WRITTEN list of roles, which by construction cannot
+ * contain a role nobody added to it, which is why it passed throughout.
+ *
+ * These drive the vocabulary itself, so a role added to `StoredOrchestrationRole`
+ * and left unclassified fails HERE as well as at the compiler.
+ */
+describe("roleNeedsSupervision is total over the role vocabulary", () => {
+	it("classifies every member of the union, and null", () => {
+		const roles: readonly (OrchestrationRole | null)[] = [
+			"prime",
+			...STORED_ORCHESTRATION_ROLES,
+			null,
+		];
+		expect(roles.length).toBeGreaterThan(3);
+		for (const role of roles) {
+			expect(
+				typeof roleNeedsSupervision(role),
+				`role '${role ?? "unroled"}' has no supervision decision`,
+			).toBe("boolean");
+		}
+	});
+
+	it("watches a PA — the seat whose trigger is the condition it detects", () => {
+		expect(roleNeedsSupervision("pa")).toBe(true);
+	});
+
+	it("keeps watching prime and pm, the two the gate was widened for", () => {
+		expect(roleNeedsSupervision("prime")).toBe(true);
+		expect(roleNeedsSupervision("pm")).toBe(true);
+	});
+
+	it("records the exclusions as DECISIONS — worker and unroled stay out", () => {
+		expect(roleNeedsSupervision("worker")).toBe(false);
+		expect(roleNeedsSupervision(null)).toBe(false);
+	});
+});
+
+describe("a watched PA is nudged without being told to write a card", () => {
+	it("fires for a pa and gives it the card-less copy", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("aide", intervalSidecar(1));
+		h.store.revisions.set("aide", 1);
+		h.setNow(10);
+		h.manager.reconcile([desc({ id: "aide", orchestrationRole: "pa" })]);
+		const sent = h.delivery.outbox.filter((e) => e.message.to === "aide");
+		expect(sent, "a pa must be watched at all").toHaveLength(1);
+		// Jordan's ruling 2026-07-31: a PA owes no card. Eligibility and
+		// owesStatusCard are separate questions and only the COPY branches on the
+		// second — so the nudge must never teach a PA to break its own ruling.
+		expect(sent[0]?.message.body).not.toContain("pij report now");
 	});
 });

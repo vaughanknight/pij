@@ -198,12 +198,20 @@ describe("portable pij CLI baseline", () => {
 		const result = runPij(["whoami", "--json"], { PIJ_SESSION_ID: descriptor.id });
 
 		expect(result).toMatchObject({ code: 0, stderr: "" });
+		// plan 078: whoami now also projects the seat's role and, for a PA, the
+		// verbs it will be refused — a capability boundary whose input the caller
+		// cannot read is the s075 opened.actor defect, so the gate had to come
+		// with a way to ask BEFORE attempting. An unroled seat reads null/[] and
+		// is otherwise unchanged; toEqual is kept deliberately (not toMatchObject)
+		// so a future addition to this surface has to be noticed here.
 		expect(JSON.parse(result.stdout)).toEqual({
 			id: descriptor.id,
 			folder,
 			dataDir: descriptor.dataDir,
 			state: "idle",
 			pid: process.pid,
+			orchestrationRole: null,
+			refusedVerbs: [],
 		});
 	});
 

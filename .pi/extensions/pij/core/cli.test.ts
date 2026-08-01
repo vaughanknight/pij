@@ -7169,3 +7169,492 @@ describe("scoped anomalies name what they did NOT look at", () => {
 		expect(scoped.stdout).not.toContain("hidden by that scope");
 	});
 });
+
+describe("task close — the far end of the lifecycle, end to end", () => {
+	// Plan 075. Before this verb NOTHING could close an assignment: 91/91 open on
+	// the first box measured, zero ever closed. The detector-level short-circuit
+	// was already pinned; what was NOT pinned is that a real `task close` run
+	// through the CLI actually clears a live axis-disagreement row.
+	const ASSIGNEE = "pij-assignee-seat";
+	const OPENER = "pij-opener-seat";
+
+	function fleet() {
+		// An idle assignee is what makes axis-disagreement fire: open assignment
+		// + undeclared state + mechanically idle beyond the threshold.
+		const stale = new Date(T - 44 * 3_600_000).toISOString();
+		return platformDeps({
+			self: OPENER,
+			descs: [
+				desc({ id: ASSIGNEE, startedAt: stale, lastEventAt: stale, systemState: "idle" }),
+				desc({ id: OPENER, startedAt: stale, lastEventAt: stale, systemState: "idle" }),
+			],
+		});
+	}
+
+	function axisRows(d: CliDeps): string {
+		return run(["anomalies"], d).stdout;
+	}
+
+	function openTask(d: CliDeps): string {
+		const out = run(["task", "set", ASSIGNEE, "ship the thing"], d).stdout;
+		const id = out.match(/asg-[a-z-]+/)?.[0];
+		expect(id).toBeDefined();
+		return id as string;
+	}
+
+	it("opens an obligation, then DISCHARGES it — the row clears through the existing predicate", () => {
+		const d = fleet();
+		const id = openTask(d);
+
+		// Guard against a vacuous pass: the row must actually exist first, or the
+		// clearing assertion below proves nothing.
+		expect(axisRows(d)).toContain("axis-disagreement");
+		expect(axisRows(d)).toContain(ASSIGNEE);
+
+		// The assignee attests its own work.
+		const closed = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE));
+		expect(closed.exitCode).toBe(0);
+		expect(closed.stdout).toContain("closed: done");
+
+		expect(axisRows(d)).not.toContain("axis-disagreement");
+	});
+
+	it("an OPENER may withdraw its own request but may NOT attest done", () => {
+		const d = fleet();
+		const id = openTask(d);
+
+		// The laundering case, at the CLI boundary rather than the predicate.
+		const launder = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, OPENER));
+		expect(launder.exitCode).not.toBe(0);
+		expect(launder.stderr).toContain("E-OWN");
+		expect(launder.stderr).toContain("an opener withdraws, it does not testify");
+		// And it really did not write: the row is still there.
+		expect(axisRows(d)).toContain("axis-disagreement");
+
+		const withdrawn = run(
+			["task", "close", id, "--reason", "cancelled"],
+			asReportingSelf(d, OPENER),
+		);
+		expect(withdrawn.exitCode).toBe(0);
+		expect(axisRows(d)).not.toContain("axis-disagreement");
+	});
+
+	it("a passing stranger has no authority at all", () => {
+		const d = fleet();
+		const id = openTask(d);
+		const r = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, "pij-stranger"));
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+		expect(axisRows(d)).toContain("axis-disagreement");
+	});
+
+	it("--actor cannot buy authority — attribution is not authorisation", () => {
+		// The self-service hazard: --actor relabels WHO IS RECORDED, and if it also
+		// selected the authority set any caller could grant itself the assignee's
+		// rights by passing --actor <assignee>.
+		const d = fleet();
+		const id = openTask(d);
+		const r = run(
+			["task", "close", id, "--reason", "done", "--actor", ASSIGNEE],
+			asReportingSelf(d, "pij-stranger"),
+		);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+	});
+
+	it("clears the node's denorm on discharge, ON THE WIRE AS NULL not absent", () => {
+		// Ratified contract (o-prime + chainglass, 2026-07-30). `list` maps these
+		// through `?? null`, but `tree` OMITS absent keys and the rail reads an
+		// omitted key as "this read does not carry the field", falling through to a
+		// cached snapshot that would re-render the closed task as CURRENT.
+		// Null is an answer; absence is a silence.
+		const d = fleet();
+		const id = openTask(d);
+		const before = JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[];
+		expect(before.find((r) => r.id === ASSIGNEE)?.currentAssignment).toBe(id);
+
+		expect(
+			run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE)).exitCode,
+		).toBe(0);
+
+		const row = (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === ASSIGNEE,
+		);
+		expect(row).toBeDefined();
+		for (const field of ["currentAssignment", "currentTask", "semanticState", "stateNote"]) {
+			// `toBeNull` alone would pass on an absent key via undefined, which is
+			// exactly the bug: assert the KEY IS PRESENT and its value is null.
+			expect(Object.hasOwn(row as object, field)).toBe(true);
+			expect(row?.[field]).toBeNull();
+		}
+		// The card survives: the last thing the seat said about itself is still
+		// true, and closing a ledger row must not blank it as a side effect.
+		expect(Object.hasOwn(row as object, "statusAt")).toBe(true);
+	});
+
+	it("does NOT blank a node that has moved on to different work", () => {
+		const d = fleet();
+		const first = openTask(d);
+		const second = openTask(d);
+		expect(second).not.toBe(first);
+
+		expect(
+			run(["task", "close", first, "--reason", "done"], asReportingSelf(d, ASSIGNEE)).exitCode,
+		).toBe(0);
+
+		const row = (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === ASSIGNEE,
+		);
+		expect(row?.currentAssignment).toBe(second);
+	});
+
+	it("refuses double-close, unknown id, and an unknown reason — each naming the offender", () => {
+		const d = fleet();
+		const id = openTask(d);
+		expect(
+			run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE)).exitCode,
+		).toBe(0);
+
+		const again = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE));
+		expect(again.exitCode).not.toBe(0);
+		expect(again.stderr).toContain("already closed");
+
+		const missing = run(["task", "close", "asg-nope", "--reason", "done"], d);
+		expect(missing.stderr).toContain("asg-nope");
+
+		const badReason = run(["task", "close", id, "--reason", "finished"], d);
+		expect(badReason.stderr).toContain("finished");
+		expect(badReason.stderr).toContain("done|cancelled|failed|superseded");
+
+		const noReason = run(["task", "close", id], d);
+		expect(noReason.stderr).toContain("--reason is required");
+	});
+});
+
+describe("s077 reproduction — state-set general-fallback after closing the current assignment", () => {
+	// Mastodon's measured sequence on its own seat (spine 26224), rebuilt hermetically.
+	// resolveTargetAssignment's final fallback is generalAssignmentId(node.id) with
+	// `read(generalId) ?? undefined` and NO closed guard on any branch. s075's denorm
+	// clearing made that branch reachable: closing the current assignment sets
+	// currentAssignment undefined, so the next BARE report state falls through to it.
+	const SEAT = "pij-tidy-seat";
+
+	function seat() {
+		const stale = new Date(T - 44 * 3_600_000).toISOString();
+		return platformDeps({
+			self: SEAT,
+			descs: [desc({ id: SEAT, startedAt: stale, lastEventAt: stale, systemState: "idle" })],
+		});
+	}
+
+	function current(d: CliDeps): Record<string, unknown> | undefined {
+		return (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === SEAT,
+		);
+	}
+
+	function openTask(d: CliDeps, text: string): string {
+		const id = run(["task", "set", SEAT, text], d).stdout.match(/asg-[a-z-]+/)?.[0];
+		expect(id).toBeDefined();
+		return id as string;
+	}
+
+	it("VARIANT A (general never opened): a bare report after closing the current assignment", () => {
+		const d = seat();
+		const real = openTask(d, "the actual work");
+		expect(current(d)?.currentAssignment).toBe(real);
+
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+		// s075's clearing, confirmed: nothing is current.
+		expect(current(d)?.currentAssignment).toBeNull();
+
+		// Mastodon's step 3: ONE bare report, no --assignment flag.
+		const reported = run(["report", "state", "ready"], d);
+		const after = current(d);
+		// RAW RESULT, not graded here — recorded so the brief's decision has evidence.
+		expect({
+			exitCode: reported.exitCode,
+			names: reported.stdout.includes("asg-general"),
+			currentAssignment: after?.currentAssignment,
+			currentTask: after?.currentTask,
+		}).toMatchInlineSnapshot(`
+			{
+			  "currentAssignment": "asg-general-pij-tidy-seat",
+			  "currentTask": "general",
+			  "exitCode": 0,
+			  "names": true,
+			}
+		`);
+	});
+
+	it("VARIANT B (general already CLOSED): the sharper case the o-prime named", () => {
+		const d = seat();
+		// Materialize the general by reporting once, then retire it — the tidy-up shape.
+		run(["report", "state", "ready"], d);
+		const generalId = `asg-general-${SEAT}`;
+		expect(run(["task", "close", generalId, "--reason", "superseded"], d).exitCode).toBe(0);
+
+		const real = openTask(d, "the actual work");
+		expect(current(d)?.currentAssignment).toBe(real);
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+		expect(current(d)?.currentAssignment).toBeNull();
+
+		// Measure GROWTH, not presence: the general legitimately carries a state ref
+		// from before it was closed (the materializing report above). Asserting
+		// `states.length > 0` would have "passed" on that pre-existing history and
+		// proved nothing about the write we care about.
+		const statesBefore = d.assignmentStore.read(generalId)?.states.length ?? 0;
+		const reported = run(["report", "state", "ready"], d);
+		const after = current(d);
+		const generalRecord = d.assignmentStore.read(generalId);
+		expect({
+			exitCode: reported.exitCode,
+			currentAssignment: after?.currentAssignment,
+			currentTask: after?.currentTask,
+			generalStillClosed: generalRecord?.closed !== undefined,
+			stateWrittenOntoClosedNow: (generalRecord?.states.length ?? 0) > statesBefore,
+			errorNamesRemedy: reported.stderr.includes("pij task set"),
+		}).toMatchInlineSnapshot(`
+			{
+			  "currentAssignment": null,
+			  "currentTask": null,
+			  "errorNamesRemedy": true,
+			  "exitCode": 64,
+			  "generalStillClosed": true,
+			  "stateWrittenOntoClosedNow": false,
+			}
+		`);
+	});
+
+	it("ABSENT general still materializes — the 17-seat path is NOT refused", () => {
+		// The o-prime's binding constraint, from a live measurement: 17 active seats
+		// across 5 governments have an empty currentAssignment, and the fall-through
+		// with existing===undefined is what lets them post a card at all. Refusing
+		// ABSENCE alongside CLOSURE would mute them to fix a hazard whose window is
+		// currently shut. Absent and closed must never share a branch.
+		const d = seat();
+		const reported = run(["report", "state", "ready"], d);
+		expect(reported.exitCode).toBe(0);
+		expect(current(d)?.currentAssignment).toBe(`asg-general-${SEAT}`);
+	});
+
+	it("refuses an EXPLICITLY targeted closed assignment too", () => {
+		const d = seat();
+		const real = openTask(d, "the actual work");
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+		const r = run(["report", "state", "ready", "--assignment", real], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("is closed");
+		expect(r.stderr).toContain("pij task set");
+	});
+
+	it("pins `report now --state` too — the NAME says now, the FLAG makes it state-set", () => {
+		// Mastodon measured that `report now --state` hijacks exactly as `report
+		// state` does, because --state routes through the state-set path. Plain
+		// `report now` never resolves an assignment at all (resolveCurrentReport-
+		// Assignment early-returns on an empty pointer and the denorm writes only
+		// status{}), so the verb NAME is the misleading part and only the FLAG is
+		// dangerous. One guard in resolveTargetAssignment covers both forms; this
+		// pins that it really does, rather than assuming it from a shared callee.
+		const d = seat();
+		run(["report", "state", "ready"], d);
+		const generalId = `asg-general-${SEAT}`;
+		expect(run(["task", "close", generalId, "--reason", "superseded"], d).exitCode).toBe(0);
+		const real = openTask(d, "the actual work");
+		expect(run(["task", "close", real, "--reason", "done"], d).exitCode).toBe(0);
+
+		const r = run(["report", "now", "did a thing", "next thing", "--state", "ready"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("is closed");
+		expect(r.stderr).toContain("pij task set");
+		expect(current(d)?.currentAssignment).toBeNull();
+	});
+
+	it("plain `report now` is UNAFFECTED — it resolves no assignment at all", () => {
+		// The other half of the same fact, and the reason the guard is safe: a card
+		// with no assignment still posts. Refusing state-set never costs a card.
+		const d = seat();
+		const r = run(["report", "now", "did a thing", "next thing"], d);
+		expect(r.exitCode).toBe(0);
+	});
+
+	it("the anomaly's own remediation SUCCEEDS exactly where a bare one is refused", () => {
+		// Closes the loop between the two surfaces. The axis-disagreement notice is
+		// emitted BY the platform, so it must never hand a seat a command the
+		// platform then rejects. Set up the refusing condition — closed general,
+		// empty pointer — and show the bare form fails while the remediation's
+		// --assignment form succeeds against the very assignment the row is about.
+		const d = seat();
+		run(["report", "state", "ready"], d);
+		const generalId = `asg-general-${SEAT}`;
+		expect(run(["task", "close", generalId, "--reason", "superseded"], d).exitCode).toBe(0);
+		const flagged = openTask(d, "the work the row is about");
+		// Detach the pointer the way a discharge does, leaving `flagged` open.
+		const other = openTask(d, "something else");
+		expect(run(["task", "close", other, "--reason", "done"], d).exitCode).toBe(0);
+		expect(current(d)?.currentAssignment).toBeNull();
+
+		// Bare form: refused, because resolution falls through to the closed general.
+		expect(run(["report", "state", "waiting"], d).exitCode).not.toBe(0);
+
+		// The remediation the notice actually prints — precondition-free by
+		// construction, because the row only exists for an assignment proved OPEN.
+		const remediated = run(["report", "state", "waiting", "--assignment", flagged], d);
+		expect(remediated.exitCode).toBe(0);
+	});
+});
+
+describe("s078 — the PA capability gate at the dispatch seam", () => {
+	const PA = "pij-assistant-seat";
+
+	function paSeat() {
+		return platformDeps({
+			self: PA,
+			descs: [desc({ id: PA, orchestrationRole: "pa" })],
+		});
+	}
+
+	function pmSeat() {
+		return platformDeps({
+			self: PA,
+			descs: [desc({ id: PA, orchestrationRole: "pm" })],
+		});
+	}
+
+	it("refuses the authority verbs with E-OWN naming the verb and the reason", () => {
+		// NOTE the gate sits AFTER parse, so a malformed authority command yields
+		// E-ARG (arity) rather than E-OWN (capability). That is acceptable — the
+		// command was refused either way — but it means these argvs must be VALID
+		// or the test proves the parser works rather than the gate.
+		const d = paSeat();
+		for (const argv of [
+			["task", "set", PA, "do a thing"],
+			["task", "close", "asg-x", "--reason", "done"],
+			["report", "verify", PA],
+			["link", PA, "--parent", "pij-boss"],
+		]) {
+			const r = run(argv, d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("E-OWN");
+			expect(r.stderr).toContain("role 'pa'");
+			expect(r.stderr).toContain("pij whoami --json");
+		}
+	});
+
+	it("PERMITS reads and the PA's own first-person card — the must-not-regress list", () => {
+		const d = paSeat();
+		expect(run(["list", "--json"], d).exitCode).toBe(0);
+		expect(run(["whoami", "--json"], d).exitCode).toBe(0);
+		expect(run(["anomalies"], d).exitCode).toBe(0);
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+	});
+
+	it("does NOT refuse the same verbs for a PM — no existing seat regresses", () => {
+		// The control. Without it, a gate that refused EVERYONE would pass the
+		// refusal assertions above and look correct.
+		const d = pmSeat();
+		expect(run(["task", "set", PA, "do a thing"], d).exitCode).toBe(0);
+	});
+
+	it("whoami makes the boundary OBSERVABLE — role and refused verbs, before attempting", () => {
+		// The binding constraint: a gate whose input is unobservable is the s075
+		// opened.actor defect, and this stream exists to make authority legible.
+		const card = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as {
+			orchestrationRole: string;
+			refusedVerbs: string[];
+		};
+		expect(card.orchestrationRole).toBe("pa");
+		expect(card.refusedVerbs).toContain("close");
+		expect(card.refusedVerbs).toContain("task-set");
+		expect(card.refusedVerbs).not.toContain("list");
+
+		const pm = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as {
+			orchestrationRole: string;
+			refusedVerbs: string[];
+		};
+		expect(pm.orchestrationRole).toBe("pm");
+		expect(pm.refusedVerbs).toEqual([]);
+	});
+});
+
+describe("s078 — writtenBy closes identity-borrowing", () => {
+	// Cheetah's argument, and it is why the verb gate alone was not enough: a
+	// gate that refuses `close` while permitting identity-borrowing is not
+	// read-only by construction. A PA doing its prime's chores NEEDS to post its
+	// prime's card; without a legitimate path it would have to assume the prime's
+	// identity outright, which no gate can detect. Given one, the relay is
+	// recorded AS a relay.
+	const PRIME = "pij-the-prime";
+	const PA = "pij-the-assistant";
+	const OTHER = "pij-unrelated";
+
+	function fleet() {
+		return platformDeps({
+			self: PA,
+			descs: [
+				desc({ id: PRIME, prime: true }),
+				desc({ id: PA, orchestrationRole: "pa", parentId: PRIME }),
+				desc({ id: OTHER, orchestrationRole: "pm" }),
+			],
+		});
+	}
+
+	function card(d: CliDeps, id: string): Record<string, unknown> | undefined {
+		return (JSON.parse(run(["list", "--json"], d).stdout) as Record<string, unknown>[]).find(
+			(r) => r.id === id,
+		);
+	}
+
+	it("a PA relays its OWN prime's card, and the relay is attributed", () => {
+		const d = fleet();
+		expect(
+			run(["report", "now", "swept the fleet", "next sweep", "--for", PRIME], d).exitCode,
+		).toBe(0);
+		const prime = card(d, PRIME);
+		expect(prime?.statusPrev).toBe("swept the fleet");
+		// The card is the PRIME's, but it does not claim the prime wrote it.
+		expect(prime?.statusWrittenBy).toBe(PA);
+	});
+
+	it("a self-authored card records NO writer — absence is the answer", () => {
+		const d = fleet();
+		expect(run(["report", "now", "did", "next"], d).exitCode).toBe(0);
+		expect(card(d, PA)?.statusWrittenBy).toBeNull();
+	});
+
+	it("CLEARS a stale writer when the subject writes its own card again", () => {
+		// Otherwise a prime that resumes reporting keeps advertising its PA as the
+		// author forever — a relay attribution outliving the relay.
+		const d = fleet();
+		run(["report", "now", "relayed", "next", "--for", PRIME], d);
+		expect(card(d, PRIME)?.statusWrittenBy).toBe(PA);
+		const asPrime = asReportingSelf(d, PRIME);
+		expect(run(["report", "now", "mine now", "next"], asPrime).exitCode).toBe(0);
+		expect(card(d, PRIME)?.statusWrittenBy).toBeNull();
+	});
+
+	it("refuses a PA relaying for a seat that is NOT its prime", () => {
+		const d = fleet();
+		const r = run(["report", "now", "did", "next", "--for", OTHER], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+		expect(r.stderr).toContain("its OWN prime");
+	});
+
+	it("refuses --for from a non-PA entirely", () => {
+		const d = platformDeps({
+			self: OTHER,
+			descs: [desc({ id: PRIME, prime: true }), desc({ id: OTHER, orchestrationRole: "pm" })],
+		});
+		const r = run(["report", "now", "did", "next", "--for", PRIME], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("only to a PA");
+	});
+
+	it("refuses --for combined with --state — a state is first-person testimony", () => {
+		const d = fleet();
+		const r = run(["report", "now", "did", "next", "--for", PRIME, "--state", "blocked"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("first-person");
+	});
+});
