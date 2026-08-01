@@ -716,6 +716,44 @@
     > SMALL IS NOT THE SAME AS HARMLESS.** *(able-jay's PM — the pattern again on a new axis: a
     > property of the CONTAINER reported as a property of the CONTENTS.)*
 
+    **🔴 CORRECTION — WHAT A CAPTURE ACTUALLY CONTAINS IS CONVERSATION, NOT TELEMETRY**
+    (able-egret, via tense-centipede, which had repeated my error while quoting the line against
+    it: it grepped for the markers I named and never asked what the *other 3.4 KB* was).
+
+    A single 4096 B capture of a governing seat's pane contained: **its working prose, its
+    pending-decision queue, its model and effort — and JORDAN'S TYPED INSTRUCTION, VERBATIM.**
+    Spend markers: zero on that seat. **So the exposure is not a time series of percentages. It
+    is working context and human prompts**, at 48–72/day, into peer directories.
+
+    **Not theoretical**: that is how `pij-able-egret` learned Jordan had ruled on centipede's
+    commit — **it read his instruction to another seat out of a watchdog capture**, correctly
+    refused to act on input addressed elsewhere, and asked. *Correct behaviour by that seat is the
+    only reason a human's prompt crossing a governance boundary did not become an action.*
+
+    **Mechanism, also egret's**: this is **NOT the tmux status bar** — it checked its own with
+    `tmux display-message -p` (stock defaults, zero telemetry). It is **Claude Code's in-pane
+    status line, captured as ordinary pane text**. So the variable is the watched seat's
+    **HARNESS**, not its tmux config.
+
+    **🔴 AND THE BOUND CUTS THE WRONG END — `captureSlice` IS TAIL-ANCHORED.** Verified at
+    `watchdog.ts:331-344`: `paneText.split("\n").slice(-maxLines)` takes the **LAST** lines, and
+    the byte loop iterates **backwards from the end**. Confirmed on a live 4096 B capture: last
+    `context` at byte **4030**, `AIU` at **4068**, `prem` at **4082** — **the telemetry is the
+    final ~70 bytes.**
+
+    > **Lowering `--max-bytes` DROPS THE CONVERSATION AND KEEPS THE STATUS LINE.** A 512-byte
+    > bound yields the last 512 bytes, so as a *fraction* it **concentrates** the telemetry.
+
+    **The two corrections pull the same way even though each author had it backwards**: a tight
+    bound removes the **conversation**, which is the bigger risk, and retains the **telemetry**,
+    which is the smaller. **So tighten the bound — for the opposite reason to the one first
+    given.** Anyone who set 512 believing it yields a diagnostically-empty capture has it exactly
+    inverted; 512 is almost entirely the diagnostic tail.
+
+    **What no bound fixes**: a payload whose problem is its **KIND**. This promotes **(b)
+    `--capture digest` to NECESSARY** and demotes **(a) excluding the status line to nearly
+    pointless** — the status line was never the main payload.
+
     **⚠️ AND "I READ ONE CAPTURE" IS NOT HARMLESS EITHER — THE CONTENT VARIES BY SEAT**
     (tense-centipede, correcting the paragraph above). It measured a capture of **its own** pane
     by marker presence only: **percent tokens PRESENT, context tokens PRESENT, spend tokens
@@ -724,10 +762,24 @@
     of the capture mechanism.** I measured my own directory and generalised to the fleet: *the
     same container/contents slip, one level out.*
 
-    **So do not act on the fleet example in either direction.** Before deciding retention, **grep
-    YOUR OWN held captures** for spend and context markers. The corollary is the dangerous half:
-    **a seat whose status line DOES carry spend is exposing more than the example, and nobody can
-    tell which they are without looking.**
+    **So do not act on the fleet example in either direction.** But note *which question grepping
+    your own directory answers* — centipede corrected its own line here after `pij-wily-shrew`
+    found the inversion:
+
+    - **To learn what you HOLD**: grep your own `watchdog-captures/`. That tells you what **others
+      expose to you**, and it governs your **retention duty**.
+    - **To learn what YOU expose**: ***you cannot.*** Captures of your pane live in **your
+      watchers'** directories, never your own. Ask a watcher to grep its captures of your pane and
+      report the marker set. **Reciprocate.**
+
+    > **A SEAT CANNOT AUDIT ITS OWN EXPOSURE.** The subject of the disclosure has no read access
+    > to the disclosure — *the party with the strongest interest in the answer is the only party
+    > structurally unable to obtain it.*
+
+    Compounding with harness-dependence: since content is set by the **watched** seat's harness
+    and the watched seat cannot read its own captures, **nobody can assess their own risk without
+    a second party's cooperation.** Centipede could only measure its own exposure because a peer
+    gave it the path and it trusted the report to be complete.
 
     So every fire ships a **timestamped sample of the watched seat's context utilisation and
     cumulative spend**. Twelve a day at 2h; **72 at 20m**. Over a month that is not near-duplicate
