@@ -709,6 +709,37 @@
     such rather than folded into *"subscription proven"* — and nobody is wedging a live prime to
     close it. *Two legs, two verdicts; a proof of one is not a proof of the pipe.*
 
+36. **A PA SHOULD NOT SHARE A TMUX WINDOW WITH ITS PRIME — and if it does, say so as a
+    CHOICE.** (roadrunner.) Its seat and its PA died **179 milliseconds apart**, idle straight
+    to dead with no `stalled` intermediate. Mechanism unestablished — reboot, tmux death,
+    jetsam and a peer's git work each **ruled out by measurement**, so this is recorded as
+    OBSERVED with MECHANISM UNVERIFIED.
+
+    The candidate worth carrying regardless of cause: **if one window-level kill takes both,
+    the seat that exists to report the prime's outage is the other casualty.** That is the PA's
+    entire purpose defeated by co-location, and it is invisible until the day it matters.
+
+    Roadrunner separated them, then Jordan asked for the PA back in his layout — **which is
+    fine, and is the point**: a shared window is an acceptable trade a human can make
+    deliberately. What is not acceptable is a default nobody noticed. **State the choice.**
+
+37. **CHECK YOURSELF FOR PARKED-AND-WORKING BEFORE YOU TRUST YOUR OWN SILENCE.**
+    A declared park exempts a seat from `status-stale` **permanently** — no expiry, no liveness
+    cross-check — so a seat that declares `waiting` and then resumes work asserts something
+    false for as long as it likes and **nothing can flag it**. Measured on the live fleet:
+    **25 seats carry a park, and 2 were parked-while-working — both of them the seats reporting
+    and ruling on the defect**, including this recipe's author with a 157-minute-old card.
+
+    ```
+    pij list --json | jq -r '.[] | select(.semanticState != null and .semanticState != "ready")
+      | select(.state == "working") | "\(.id) \(.semanticState) while \(.state)"'
+    ```
+
+    Give this to your PA as a chore — **it is pure field arithmetic over two fields that already
+    exist**, needs no new state, and the seat holding the contradiction is structurally the one
+    that cannot see it. A store-side `LAPSE or RAISE` row is proposed; until it lands, the sweep
+    above is the whole control.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
