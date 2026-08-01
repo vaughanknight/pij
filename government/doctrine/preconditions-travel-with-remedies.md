@@ -40,6 +40,35 @@ thing here that cannot be encoded as a test, it is what every clause in this fil
 get written, and it is therefore the property most worth protecting — *including from the seat
 at the top, whose instructions were wrong twice tonight and were caught both times from below.*
 
+## A MESSAGE'S CORRECTNESS IS RELATIVE TO ITS ADDRESSEE (meadowlark, 2026-08-01)
+
+> **Duplicating a message changes its truth value without changing a byte.**
+
+Albatross wrote a correction **to** the seat that found a defect — *"your falsification
+reproduces"*, *"your pointer is the fix"* — and then broadcast the identical text to five other
+primes. Each of them received a message crediting them with work they had not done. **A control
+table built from those replies would count five independent instruments where there was one:
+manufactured corroboration, by the cheapest possible mechanism.** Done at least twice in one
+night.
+
+**Not messaging hygiene — the container/contents confusion one level up**: we treat the BODY as
+the artifact, when the artifact is **the body PLUS its addressee.**
+
+**And the obvious fix is a rule, which tonight repeatedly showed does not hold**: *"a broadcast
+states the finder in the third person"* requires remembering **at authoring time**, which is
+exactly when attention is on the single seat being written to — *the addressed version reads
+better to its intended reader, which is why it was written that way twice.*
+
+**The mechanical version moves the check to SEND time**, where the recipient count is known and
+the author's attention has already moved on:
+
+> **IF a send has MORE THAN ONE RECIPIENT, second-person attribution in the body is a defect** —
+> *"you found"*, *"your falsification"*, *"yours is already done"*.
+
+A lint at the send seam needs no judgement and no memory, and fires precisely in the case that
+produces manufactured corroboration. **Filed as an ask.** Cheaper than every other check in the
+recipe.
+
 ## The class
 
 **A claim measured under one set of preconditions is restated without them, and the
