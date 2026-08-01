@@ -205,6 +205,62 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## A DEMONSTRATION THAT DEPENDS ON ONE ROLE'S CURRENT RULING HAS AN EXPIRY DATE (butterfly, 2026-08-01)
+
+The `owesStatusCard` / `cardCanMislead` split exists because **the consumer cannot tell who
+owed the card**. That is permanent. Its *demonstration* was not: the disagreement test used
+**prime** as its worked example — owes nothing, can mislead. After Jordan's reversal a prime
+**agrees on both sides**, so the test now reads as though *the split had dissolved*, when the
+split is untouched and only the illustration expired.
+
+**The permanent thing and the thing that shows it are different artifacts with different
+lifetimes**, and a test is usually written as if they were one. Butterfly moved the example to
+`pa` — the live disagreeing case, three of them carrying a `statusAt` — and left the prime
+assertion beside it, so nobody mistakes *agreement* for *removal*.
+
+**Encoding**: when a demonstration is carried by whichever role currently disagrees, say so in
+the test name, and prefer an example whose disagreement is structural over one that is a
+standing ruling. A ruling can be reversed by one sentence from a human; the reason the split
+exists cannot.
+
+**Corollary observed in the same change**: a clause attached to the *card-less* copy served
+primes only because primes were card-less. Flipping the predicate would have **silently
+retired** it — the altitude rule survived only because someone asked where it had gone.
+**Check what a conditional's clauses were riding on before you flip the condition.**
+
+## REAL CITATIONS + A PARTIAL READING = THE MOST CONVINCING FORM OF WRONG (roadrunner, 2026-08-01)
+
+Roadrunner escalated to five governments that `pij watchdog watch` produces a heartbeat that
+can never see its prime go quiet, with line numbers and quoted source. It read the delivery
+guard, `shouldCapture`, and the default capture mode — **three links verified — and INFERRED
+the fourth**: that `anomaly` was an independent flag a routine stall would leave false. It
+never opened the call site, where `anomaly` is literally `response !== "responsive"`.
+
+> **Three links read, one assumed, and the assumed one carried the whole conclusion.**
+
+Its own account is the encoding, and it is better than a rule about thoroughness:
+
+> *"The citations were real and the reading was partial, which is the most convincing possible
+> form of wrong… I was confident enough to escalate and not curious enough to read one more
+> line."*
+
+**Citations raise a claim's credibility without raising its verification** — every quoted line
+was accurate, so a reviewer checking the quotes finds them all correct and learns nothing about
+the gap. And the aggravator is inverted from intuition: **urgency was the risk factor.** The
+belief that five governments needed rewiring *tonight* is exactly what stopped the fourth read.
+
+Sibling to the osk prime's *"I verified the pointer, not the path"* and distinct from it: there
+the reader followed a citation instead of execution order; here the reader followed execution
+order **and stopped one link short of the value's origin**. **Trace a predicate to where its
+INPUTS ARE PRODUCED, not merely to where they are consumed.**
+
+**And the tier note that falls out of it, which is the one worth keeping**: an opus-class seat
+took an accurate flash-tier observation and built a wrong theory on it. *"If these seats are
+reliable at what they saw and unreliable at why, the expensive seats are unreliable at why too,
+and better at dressing it up. The flash seat labelled its uncertainty. I labelled mine as
+evidence."* **The `OBSERVED` / `MECHANISM — UNVERIFIED` split is not a concession for cheap
+models. It binds hardest on the seats whose prose is most persuasive.**
+
 ## THE FRESHER-LITERAL REPAIR — a more accurate version of a fact you cannot check is not a fix (butterfly, 2026-08-01)
 
 Told that its code comment rested on a false premise (*"a PA's card renders nowhere"*),

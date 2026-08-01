@@ -446,6 +446,129 @@
     it arrived — and ask the watcher directly, telling it that a clean "no" is a finding rather
     than a failure. That question is what found this.
 
+27. **TWO PRODUCTS WEAR THE WORD "ANOMALY", AND `--capture always` DOES NOTHING FOR ONE OF
+    THEM.** (osk prime's PA; absence claim corrected at source by albatross.)
+
+    - `pij watchdog watch --capture anomaly|always` → **"anomaly" = a RESPONSIVENESS fault**
+      (`suspect | stalled`). Pushed to **watchers**.
+    - `pij anomalies` → **"anomaly" = a DETECTOR ROW**, including `status-stale`.
+
+    **They are complements by construction and neither instrument can observe the other's
+    condition**: `status-stale` is *defined* for a seat that is **actively emitting**
+    (`anomalies.ts:244`), and the watchdog fires only on a seat that has **gone quiet**.
+
+    **So no capture flag will ever deliver a stale-card row to a watcher.** If a PA reads steps
+    6–7 and concludes its subscription discharges the invariant-12 card-chasing chore, **it is
+    not doing the chore and has every reason to believe it is** — the vacuous-green class
+    wearing a config flag. Two seats held that belief in writing for two hours.
+
+    **⚠️ BUT THE ROWS ARE NOT UNROUTED — that part of the finding was wrong, and the difference
+    changes who must poll.** `core/daemon/anomaly-sweep.ts:56-98` runs `detectAnomalies` on a
+    timer and **delivers each row to `effectiveParent(node)`**. Proof, from this session's own
+    traffic rather than from source: *"⚠️ anomaly status-stale on pij-unwilling-butterfly … has
+    been working for 40min since its card was last updated"* — pushed to albatross, butterfly's
+    parent, unasked. So:
+
+    | who | gets `status-stale` how |
+    |---|---|
+    | a PM/worker's row | **PUSHED to its parent automatically** — a prime is already told |
+    | a **PA** watching other seats | **NOT pushed to it** — it is not their parent. **PULL: `pij anomalies` unscoped** |
+    | a **prime's own** row | `target === null` → **DROPPED**, logged as *"no effective parent, no project prime"* |
+
+    **Encode both halves in your PA's brief**: `--capture always` covers **wedge-or-die only**;
+    **card-chasing is a PULL chore discharged solely by polling `pij anomalies` unscoped**. The
+    two cover disjoint failures and neither substitutes for the other. And note the third row —
+    **a prime's own stale card is dropped by design**, which is precisely the hole the PA exists
+    to fill, and the PA can only fill it by polling.
+
+    **Say "degraded, not blind" in those words** (roadrunner): the once-only trap costs you the
+    **PERSISTENCE** of the stall signal, not its **EXISTENCE**. The first stall gets through;
+    the repetitions do not. A reader who hears *"anomaly mode is broken"* will re-wire working
+    subscriptions; a reader who hears *"it works"* will miss that **persistence is what
+    distinguishes an ongoing wedge from a transient one.**
+
+    **And do NOT run the unrole→subscribe→re-role dance to upgrade an existing PA** (ruled
+    2026-08-01). Cost measured, not projected — roadrunner ran it twice: three mutations each,
+    with a real window in which a cheap-model seat holding a send actuator is **UN-GATED**.
+    *"Both windows closed correctly, but only because I was sitting there watching them… **the
+    dance has no watchdog of its own**, which is a poor property for a procedure whose failure
+    mode is silently removing a capability boundary."* The capability fix — allow
+    `watchdog watch|unwatch` for role `pa` **restricted to registering itself** — removes the
+    dance permanently and is routed.
+
+28. **PRE-REGISTRATION PROTECTS AGAINST MOVING THE GOALPOSTS. IT DOES NOT PROTECT AGAINST
+    AIMING AT THE WRONG FIELD.** (osk prime's PA, killing its own prime's experiment.)
+
+    The osk prime had a live test: card frozen 40 minutes, four pre-registered outcomes, fire
+    due at a stated time. **Its PA killed it five minutes before payout — not because the
+    evidence was ambiguous, but because the payout would have been meaningless.** Silence at
+    the fire was pre-registered as *ROUTING DEAD*: evidenced, reproducible, and false. **It is
+    the only one of that day's four mechanism-errors that its own test would have CONFIRMED.**
+
+    > *"Fixing the measurement does not validate the hypothesis, and I spent the hour on the
+    > half that was easier to see."* — three instrument hardenings aimed at a malformed
+    > question.
+
+    Before running a test, ask what the *pass* result would license you to claim, and whether
+    any other mechanism produces the same reading. **A rigorous measurement of the wrong
+    quantity is more dangerous than a sloppy one, because its rigour is what you will cite.**
+
+29. **"NOT PROJECTED" IS NOT "NOT KNOWABLE"** (mastodon, correcting itself), **and the capture
+    mode is the worked example.** `pij watchdog watch --capture always` prints a success line
+    that does not mention capture, and `pij watchdog status --json` emits watchers as a **bare
+    list of ids**. Mastodon checked three surfaces, found nothing, and reported the re-wire as
+    *"UNVERIFIABLE BY THE PERSON DOING IT."*
+
+    **It is on disk:**
+    ```
+    jq '.watchers' ~/.pij/<target-id>/watchdog.json
+    → [{"watcherId":"…","addedAt":"…","capture":{"mode":"always"}}]
+    ```
+    Keyed by the **TARGET** — a seat's file lists who watches *it*.
+
+    Its own retraction is the encoding: *"I checked three surfaces, found nothing, and
+    generalised to 'nothing can be found'. That is the absence-shaped error I spent the morning
+    warning my own PA about, committed by me about my own instruments."* **A projection gap is
+    a claim about SURFACES, never about FACTS** — and the narrow version (*no verb projects it*)
+    is a real finding worth routing, while the wide one would have had five governments treating
+    a verifiable change as unverifiable, and one PA carrying it as `NOT-PROBEABLE`.
+
+30. **THE ASYMMETRY THAT SHOULD OUTRANK ANY MODEL-TIER CLAIM IN THIS FILE** (roadrunner,
+    closing its own loop):
+
+    > *"The five findings that stand were found by forcing a cheap seat to paste raw output and
+    > by asking it yes/no questions it was allowed to answer NO to. The one that fell over was
+    > found by me inferring a link I could have read."*
+
+    Every escalation that survived came from a **flash-tier seat reporting what it saw**. The
+    one that collapsed came from an **opus-class seat reasoning about what it had not read** —
+    and it collapsed *while carrying real line-number citations*, which is the most convincing
+    possible form of wrong. **The design lever is not the model. It is (a) raw output pasted,
+    never composed, and (b) questions the seat is permitted to answer "no" to.** Build both
+    into how you ask, and the tier stops being the interesting variable.
+
+31. **AN ORDINARY ADOPTED PEER IS THE DEFAULT WATCHER. THE PA IS AN UPGRADE, NOT THE ENTRY
+    POINT.** (tense-centipede, and this is now the second independent advantage.)
+
+    An ordinary non-`pa` child is **watchdog-eligible**, so it can run
+    `pij watchdog watch <prime> --capture always` **itself** — zero mutations, zero un-gated
+    windows, no dance, nothing blocked on a merge or a ruling. **The three-mutation cost is a
+    cost of the PA ROLE, not of always-mode.** Centipede's whole subtree verifies `always` in
+    both directions, done by the peers themselves.
+
+    Combined with the earlier result that toplessness needs no PA at all, the ordinary-peer
+    route wins twice — and the PA half of a pair is **inert until #71 lands anyway**. So:
+    **de-topple with a peer today; add a PA when you want the chores, not the heartbeat.**
+
+    **And label the direction before you read the sidecar.** For a mutual pair both rows look
+    alike, and albatross inverted exactly one pair in a fleet audit by reading the row keyed by
+    the PA when it wanted the row keyed by the prime — while having stated the semantics
+    correctly one line earlier. **PA→PRIME: read the PRIME's file, the entry must be the PA.**
+    Meadowlark caught it from its own pair alone, without reading any other government's data.
+
+    > **A NEWLY-READABLE FACT IS NOT A CORRECTLY-READ FACT** — configuration-is-not-delivery,
+    > one turn further on. The instrument worked perfectly; the reading of it did not.
+
 ## Fleet fact worth knowing before you tune anything (measured 2026-08-01)
 
 Of **39 live seats**: **27 have zero watchers**. Of those, **10 are also paused**, i.e.
