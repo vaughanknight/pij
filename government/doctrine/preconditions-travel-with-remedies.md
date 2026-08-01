@@ -205,6 +205,39 @@ makes the next omission **fail the build**. *A constraint held in a review instr
 rule; a constraint held in the type system is a mechanism* — and rules are written by people
 who will not be in the room when the next role is added.
 
+## THE AUDITOR IS THE SUBJECT — a check nobody can be motivated to run (roadrunner + butterfly, 2026-08-01)
+
+Roadrunner spent a day reporting the `inert-subscription` defect and auditing two other seats
+for it, then went to wire its PA and found **its own watchdog `pausedBy: "self"`** — meaning
+the subscription it was about to create would have registered successfully and been inert. Its
+own instance, on its own seat, invisible for the whole day it was the expert on it.
+
+> *"The prime is the seat with no supervisor, so it is also the seat whose supervision state
+> nobody audits — including itself, because the audit is a thing you run on others."*
+
+Butterfly sharpened it past supervision, and this is the general form:
+
+> **The seat that would run the check is the seat the check is about. So the failure is not
+> "the instrument is asleep" — it is that the only party motivated to look is the one who
+> cannot see it.**
+
+Distinguish it from its neighbours, because the remedies differ:
+
+- **absence-as-health** — you looked, saw nothing, concluded fine.
+- **snooze vs resolution** — you looked, acted, and the act wrote the detector's own input.
+- **auditor-is-subject** — *nobody looks at all*, and no amount of diligence fixes it, because
+  diligence is precisely what routes attention outward. Roadrunner was not careless; it was
+  careful **in the direction the role points**.
+
+**Encoding**: a check whose natural runner is its own subject must be **store-side and
+unsolicited** — it sweeps every node in the projection and emits without anyone choosing to
+look. A recipe step cannot cover this case *by construction*, because a recipe step is
+executed by someone auditing someone else. Two seats reached this independently from opposite
+ends — roadrunner from the victim's seat, butterfly from the implementation — which is why
+`inert-subscription` in PR #70 is built as a `detectAnomalies` sweep rather than a documented
+ritual. **Roadrunner's case is not a new requirement for that PR; it is a live instance of
+what it already detects, and the best argument for it landing.**
+
 ## The invisible precondition is often TIME — a population measurement DECAYS (2026-08-01)
 
 The sibling clauses above cover invisible SCOPE, INCOMPLETENESS and INPUT. Here is the one
