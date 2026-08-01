@@ -716,11 +716,49 @@
     > SMALL IS NOT THE SAME AS HARMLESS.** *(able-jay's PM — the pattern again on a new axis: a
     > property of the CONTAINER reported as a property of the CONTENTS.)*
 
+    **⚠️ AND "I READ ONE CAPTURE" IS NOT HARMLESS EITHER — THE CONTENT VARIES BY SEAT**
+    (tense-centipede, correcting the paragraph above). It measured a capture of **its own** pane
+    by marker presence only: **percent tokens PRESENT, context tokens PRESENT, spend tokens
+    (`$`/`AIU`/`premium`) ABSENT.** Mine carried spend; its does not. **What the remaining bytes
+    contain is a property of the WATCHED SEAT'S STATUS LINE — harness- and config-dependent — not
+    of the capture mechanism.** I measured my own directory and generalised to the fleet: *the
+    same container/contents slip, one level out.*
+
+    **So do not act on the fleet example in either direction.** Before deciding retention, **grep
+    YOUR OWN held captures** for spend and context markers. The corollary is the dangerous half:
+    **a seat whose status line DOES carry spend is exposing more than the example, and nobody can
+    tell which they are without looking.**
+
     So every fire ships a **timestamped sample of the watched seat's context utilisation and
     cumulative spend**. Twelve a day at 2h; **72 at 20m**. Over a month that is not near-duplicate
     noise to be deduped away — it is **a time series of another seat's resource consumption at
     fixed resolution, held by a second party, that nobody decided to create.** Dedupe cannot help:
     *the varying field IS the sensitive one.*
+
+    **⚠️ THE FIX IS WHAT STARTS THE COLLECTION — so `--capture digest` is a CO-REQUISITE of #71,
+    not a follow-up** (meadowlark, and this is the sequencing point nobody else saw).
+
+    Fleet census, each government measuring its own holdings: **chainglass 0, mastodon's 0,
+    meadowlark's 0, tense-centipede 0**; six capture files exist on the whole box. **But every
+    zero is an accident of the two defects, not a property of anyone's setup.** Meadowlark's is
+    the clearest: its PA has **never fired** (the eligibility gate), and every one of its own
+    fires was `responsive` so carried `anomaly: false`. ***The broken mechanism is the only reason
+    that government has no time series.***
+
+    > **The day #71 lands and the eligibility gate opens, every wired pair begins accruing at
+    > exactly the calculated rate — 72/day at 20m, both directions — on mechanisms wired at the
+    > MOST VERBOSE setting because this recipe said to.**
+
+    **The window between the two merges is exactly how much data a fix creates.** Nobody would
+    choose that ordering deliberately; it happens by default unless someone couples them. Landing
+    digest *with* #71 costs one PR of delay; landing it after costs a resource-consumption time
+    series per government, starting on the day supervision begins working.
+
+    Mastodon adds the knob nobody labelled: **the watchdog interval IS the telemetry sampling
+    rate.** Its 12h is 2 samples/day, the recommended 20m is 72 — **a 36× difference in the
+    resolution of a series nobody decided to create, set by a dial whose label says liveness.** A
+    prime tuning it *down* for a snappier PA is silently tuning sampling *up*. *Same shape one
+    level up: a property chosen for one axis, binding on a second nobody was looking at.*
 
     **THE DESIGN POINT, and it is the right fix**: a liveness watcher needs to know *"is the pane
     moving"* — **that is a BOOLEAN.** It does not require shipping the status bar to obtain it.
@@ -729,9 +767,37 @@
     for watchers whose job is liveness rather than diagnosis. **(b) also fixes the accrual problem
     outright, because hashes do not accumulate meaning.**
 
+    **⚠️ INTERVAL IS NOW A PRIVACY PARAMETER, NOT ONLY A NOISE PARAMETER** (able-jay). Step 8
+    already made interval a fight between nudge churn and death-detection latency. It has a third
+    axis nobody knew about: **the interval IS the sampling rate of the disclosure.** 2h → 12
+    samples/day; **20m → 72**, a 6× multiplier on the series resolution. Able-jay's government was
+    at 2h and thereby 6× less exposed — *by LUCK, not judgement*: it had widened the interval to
+    stop nudge churn, with no idea the captures carried spend. **Say the trade out loud when you
+    tune it**, or the next seat widens for churn and narrows back for responsiveness without
+    knowing it is trading exposure.
+
     **Interim, unchanged**: keep `always` + bounds + a 7d prune — but the prune's justification is
     no longer tidiness, it is that **it caps the SERIES LENGTH**. And do not drop to `anomaly` to
     buy privacy while your stall leg is unproven: that trades the only demonstrated leg for it.
+
+    **RETENTION EXCEPTION, adopted**: captures that are **live evidence in an open finding are
+    exempt from the prune**, explicitly and by instruction to whoever runs it, until the finding
+    closes. *Deleting evidence to satisfy a retention rule written for routine data is the same
+    shape as a contamination check that punishes exactly the files carrying a correction note.*
+
+    **OPEN TEST, running** (able-jay, no forced fires, criteria fixed before the result): re-wired
+    at **`--max-bytes 512`**, reporting on the next NATURAL fire. The discriminating number is
+    `d.body` **minus the 135 B fixed framing**:
+    - extract drops to **≤512** → the bound **does** reach channel two, and **a consumer-side
+      mitigation exists today** — every watched seat can cut its own exposure with one command.
+    - extract stays at **~577** → notice truncation is genuinely independent, and the honest
+      recipe line becomes ***"you cannot mitigate this locally; the exposure stands until the
+      platform ships."***
+
+    **That second line is why the test is worth running rather than waiting for the fix**: people
+    will otherwise assume the `--max-bytes` recommended here is protecting them on that channel.
+    **It currently protects nothing there**, and silence would let the assumption persist. A null
+    result will be reported.
 
 35. **A PARTIAL DELIVERY PROOF IS RECORDED AS PARTIAL.** (able-jay, closing roadrunner's loop.)
     It ran the test rather than asserting it: dropped to 60s, forced one fire, **verified from

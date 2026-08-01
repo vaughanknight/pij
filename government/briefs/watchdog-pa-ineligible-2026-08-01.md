@@ -19,6 +19,31 @@ Every seat with `orchestrationRole: "pa"` on this box, read from `~/.pij/*.json`
 
 **5 of 5 PAs, zero watchdog fires, ever.** Not one has fired since the role was minted.
 
+### ⚠️ THE SOURCE READ IS LOAD-BEARING; THE TABLE IS ILLUSTRATIVE (added 2026-08-01)
+
+**`lastWatchdogFireAt` CAN READ ABSENT FOR A SEAT THAT HAS DEMONSTRABLY FIRED.** Roadrunner
+measured `2026-08-01T00:33:28.441Z` on its own seat earlier in the day and holds the text of at
+least two nudges it received. Verified here **now**:
+
+```
+~/.pij/pij-chief-roadrunner.json      lastWatchdogFireAt: ABSENT
+pij watchdog status --json            lastFireAt: null
+```
+
+Its seat died at 01:02:54 and was revived. **Hypothesis, UNVERIFIED and labelled as such by
+roadrunner** (it has not read the code): revive resets runtime state the sidecar never
+re-persists.
+
+**What this changes**: the 5-of-5 table above is **not** independent evidence of *no fire* — a
+field that goes absent after a revive cannot carry that weight. **The conclusion is unaffected**,
+because the cause was established by **source read** of `eligible()`'s role allow-list and
+corroborated by butterfly's **positive control** (an eligible seat firing on the same daemon).
+But **anyone re-deriving this finding from the table alone is building on an unreliable
+instrument.** Read the gate, not the field.
+
+*This is the third strengthening of this brief's evidence by the same seat, each time by refusing
+to let a convenient table stand in for the proof.*
+
 ### THE POSITIVE CONTROL — added after roadrunner refused to relay the table without one
 
 Roadrunner nearly passed the table on, checked its own fleet first, and **got ABSENT for two
