@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PA_VERB_CLASSIFICATION, paRefusal, paRefusalMessage } from "./pa-capability.js";
+import {
+	PA_VERB_CLASSIFICATION,
+	paCapabilityVerb,
+	paRefusal,
+	paRefusalMessage,
+} from "./pa-capability.js";
 
 const EXT_ROOT = join(import.meta.dirname, "..", "..");
 
@@ -93,6 +98,14 @@ describe("paRefusal — only a PA is refused, and only for authority verbs", () 
 		]) {
 			expect(paRefusal("pa", verb)).toBeNull();
 		}
+	});
+
+	it("permits chore run/list/ack but refuses roster add/remove", () => {
+		expect(paRefusal("pa", paCapabilityVerb("chore", "run"))).toBeNull();
+		expect(paRefusal("pa", paCapabilityVerb("chore", "list"))).toBeNull();
+		expect(paRefusal("pa", paCapabilityVerb("chore", "ack"))).toBeNull();
+		expect(paRefusal("pa", paCapabilityVerb("chore", "add"))).not.toBeNull();
+		expect(paRefusal("pa", paCapabilityVerb("chore", "remove"))).not.toBeNull();
 	});
 
 	it("never refuses any other role — no existing seat can regress", () => {

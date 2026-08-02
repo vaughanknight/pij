@@ -44,6 +44,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
 | `bg` (`create/list/tail/kill`) | § Shared conventions C7 — run a slow command detached; its result arrives as an injected turn from `pij-bg` |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
+| `chore` (`add/run/list/ack/remove`) | durable change detection — a named probe roster whose delta the TOOL computes, so a cheap seat relays what it cannot have invented. `run` NEVER advances a baseline; only `ack` does, so an un-relayed delta re-surfaces instead of vanishing. Definitions scope `seat`/`repo`/`fleet` and **union** (never shadow); fingerprints are ALWAYS per-seat. A failing probe reports `NOT-PROBEABLE` and stays in the roster. Deep reference `docs/how/pij-chore.md` (shipped plan 076) |
 | `watchdog` (`status/pause/resume/exempt/reset/interval/watch/unwatch/list/disable-all/enable-all`) | peer supervision — etiquette + intent in § Shared conventions C9 (00-routing.md); deep reference `docs/how/pij-watchdog.md` |
 | `focus` (`save/list/launch`) `sessions` | peer route (focus = immutable native-session checkpoints; launch forks pending-canary — canary-verify applies. sessions = telemetry join table) |
 | `orchestration` (`baton`/`prime`) | prime route + orchestration CLI (`pij orchestration …`) |
