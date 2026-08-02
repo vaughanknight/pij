@@ -54,6 +54,31 @@ A fix author needs both, and would have been misled by either alone: someone rea
 committed roster hunting for absolute paths finds none and could conclude the class does not
 reproduce.
 
+## The same principle from the other side — THE ARTIFACT IS THE EVIDENCE; A DESCRIPTION OF IT IS A LEAD
+
+**Mastodon's refinement, and it is the operationally important half.** The tempting summary
+of 2026-08-02 is *"none of the good findings came from a seat working alone"* — true, but
+misleading, because two seats **exchanging descriptions** would have produced none of them
+either. The evening contains its own control.
+
+Every finding came from someone opening the **artifact** rather than reading the **report**
+about it:
+
+- point-vs-path — mastodon measuring its own fingerprint sequence, not reasoning about it
+- inert-evidence — mastodon opening the o-prime's repo, not taking its standing note
+- the relative-vs-absolute correction — the o-prime reading its own committed file once named
+
+And the single **error** of the night is the control: mastodon's absolute-paths claim came
+from the one place it accepted a description instead of opening the file — with the file on
+the same disk, a `grep` away.
+
+> **The artifact is the evidence. A description of it is a lead.**
+
+This is the inherited-leg rule seen from the other side: **an inherited leg IS a description;
+a discovered leg is one you opened.** Two seats matter here only because a second seat gives
+you a second artifact to open, and a reason to open it. *"Get seats talking"* is cheap and
+wrong; *"go open the thing"* is what did the work.
+
 ## Related
 
 `a-baseline-stores-a-point-not-a-path.md` (same pair, same evening),
