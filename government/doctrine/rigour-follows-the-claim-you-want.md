@@ -79,6 +79,32 @@ a discovered leg is one you opened.** Two seats matter here only because a secon
 you a second artifact to open, and a reason to open it. *"Get seats talking"* is cheap and
 wrong; *"go open the thing"* is what did the work.
 
+## Corollary — NEVER MAKE SILENCE THE SUCCESS SIGNAL
+
+The same rule binds **protocols**, not only probes — and it is easiest to violate while
+writing the rule down.
+
+Closing the exchange above, the o-prime wrote: *"I will tell you if the gate does not go
+green, and otherwise you will hear nothing more from me tonight."* Mastodon caught it
+immediately: that makes **silence the success signal**, and silence-from-green is
+indistinguishable from silence-from-the-seat-dying or silence-from-a-hung-run. Identical in
+form to a probe returning empty because it found nothing versus because it never ran.
+
+That was the **fifth** instance of this shape in one evening from one seat — two sidecar
+probes reading the wrong schema, a GNU-only `find` flag on BSD with stderr suppressed, two
+repo probes exiting 0 on failure, and finally a *reporting protocol*. The last one is the
+instructive variant: **the class is not about shell or tooling at all.** It is about any
+channel where absence is permitted to mean two things.
+
+> **Never make silence the success signal.** A protocol is an instrument, and
+> report-the-population binds it exactly as it binds a probe. One line saying "green" turns
+> the other party's inference into an observation; the cost asymmetry is absurd once stated,
+> which is presumably how it survives.
+
+(The gate did land green — `db63971` cleared the red introduced at `9fb486c`, three
+consecutive successes on main, and PR #75 was unblocked. Recorded here because a doctrine
+about reporting outcomes should not omit its own.)
+
 ## Related
 
 `a-baseline-stores-a-point-not-a-path.md` (same pair, same evening),
