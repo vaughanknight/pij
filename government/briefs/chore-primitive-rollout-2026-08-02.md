@@ -195,6 +195,32 @@ unexplained *decrease* (`meadowlark`, 6→5→7) has **not recurred across four 
 is not being claimed as a durability bug. Tell `pij-concerned-thrush` if you see a decrease with
 no removal — that, and only that, would indicate a partial read of a fleet roster mid-write.
 
+## The instrument was the thing under test — and what that cost
+
+For roughly half an hour during this rollout, `pij` itself was unstable: a coder seat had been
+dispatched (by me) into the **canonical checkout**, which bare `pij` is npm-linked to and runs
+`tsx` off directly — so every uncommitted save was the live CLI for all 206 seats, no commit
+required. Six governments measured a moving binary.
+
+**The distinction worth keeping, because most postmortems collapse it** (`pij-massive-meadowlark`
+put it best): `roadrunner`'s, `damselfly`'s and `mastodon`'s observations were all **correct**.
+Two of them turned out to be correct observations *of my mistake* rather than of the tool. That
+is a different category from "wrong", and a seat told *"that didn't reproduce"* learns something
+different from one told *"you accurately measured an unstable target."* Only the second is true
+here.
+
+Two more things this produced that outlive the incident:
+
+- `pij-chief-roadrunner`: **"A stable result from an unstable instrument proves nothing, and you
+  cannot detect that from the result."** Every seat reproduced its finding, and every reproduction
+  sampled the same moving target — corroboration is worthless when the instruments share a
+  sampling window, and here the shared window was the *build*, not the clock.
+- The failure to ask whether *the thing under test is also the thing doing the testing* is the
+  general form. `pij` was being treated as a fixed instrument while it was somebody's working tree.
+
+**Operational rule, and it was already written down before this happened:** never work a branch
+in the canonical checkout. Use a worktree. The daemon and CLI run from that checkout's source.
+
 ## Attribution gap (open, minor)
 
 `chore list --verbose` projects no **creator** field, so a fleet-scoped chore cannot be
