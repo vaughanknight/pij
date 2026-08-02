@@ -5,8 +5,18 @@ Probe-authoring rule (rollout brief, 2026-08-02): a probe must not emit timestam
 ages — they move every tick, so the chore fires forever and the delta carries no
 information. Card staleness is the named trap: emit the verdict, not the clock.
 
-Usage:  pij-card-stale.py <seat-id> [threshold-minutes]   (default 60)
-Output: "<seat> stale=<true|false> state=<systemState>"
+A PROBE EMITS ONLY THE DECISION VARIABLE. Everything else diagnostic belongs in --full.
+This script first emitted `state=<systemState>` alongside the verdict. systemState flaps
+idle<->working whenever the watched seat does any work, so the chore opened a delta on every
+burst, and when the state returned before the next run the report rendered as
+`CHANGED pa-card: 2fc848f667f1 -> 2fc848f667f1` — an open delta whose endpoints are equal.
+Nothing was wrong with the tool: something really did move and move back. But a fast-moving
+field riding along in a probe about STALENESS makes the chore fire on an axis it is not
+about. Keep the fingerprint minimal; put the colour in --full.
+
+Usage:  pij-card-stale.py <seat-id> [threshold-minutes] [--full]
+Probe output: "<seat> stale=<true|false>"          (decision variable only)
+Full output:  "<seat> stale=<...> state=<...> assignment=<...>"   (diagnostic, unfingerprinted)
 Fails loud (exit 1, PROBE-ERR) rather than printing a clean verdict it did not compute.
 """
 import json
@@ -14,8 +24,10 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-seat = sys.argv[1] if len(sys.argv) > 1 else sys.exit("PROBE-ERR usage: <seat-id> [minutes]")
-threshold_min = int(sys.argv[2]) if len(sys.argv) > 2 else 60
+args = [a for a in sys.argv[1:] if a != "--full"]
+FULL = "--full" in sys.argv
+seat = args[0] if args else sys.exit("PROBE-ERR usage: <seat-id> [minutes] [--full]")
+threshold_min = int(args[1]) if len(args) > 1 else 60
 
 r = subprocess.run(["pij", "node", "show", seat, "--json"], capture_output=True, text=True)
 if r.returncode != 0 or not r.stdout.strip():
@@ -30,7 +42,7 @@ except json.JSONDecodeError:
 status_at = d.get("statusAt")
 if not status_at:
     # No card at all is a real, reportable state — not an error, and not "fresh".
-    print(f"{seat} stale=NO-CARD state={d.get('systemState')}")
+    print(f"{seat} stale=NO-CARD" + (f" state={d.get('systemState')}" if FULL else ""))
     sys.exit(0)
 
 try:
@@ -40,4 +52,7 @@ except ValueError:
     sys.exit(1)
 
 age_min = (datetime.now(timezone.utc) - then).total_seconds() / 60
-print(f"{seat} stale={'true' if age_min > threshold_min else 'false'} state={d.get('systemState')}")
+verdict = "true" if age_min > threshold_min else "false"
+detail = (f" state={d.get('systemState')} assignment={d.get('currentAssignment')}"
+          f" age={int(age_min)}m" if FULL else "")
+print(f"{seat} stale={verdict}{detail}")
