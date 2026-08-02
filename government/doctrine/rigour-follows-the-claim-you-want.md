@@ -137,6 +137,31 @@ instruction landing on the wrong seat and forcing someone to look for the artifa
 case the catch came from something that COUNTED, or from someone going to OPEN the thing.
 Neither is a matter of care, which is why both can be built in and vigilance cannot.
 
+### Applying the test to your own remedies — and the THIRD category
+
+**Mastodon audited its own night's fixes against this rule rather than accepting it as
+agreement, and returned a mixed result.** That audit produced a category the rule as first
+stated does not have:
+
+| verdict | example |
+|---|---|
+| **BUILT IN** — catches itself whether or not anyone is watching | four probes emitting a population and exiting non-zero on an empty one, each proven by a **red control** (a zero-ref repo, a nonexistent seat, a card missing its fields) |
+| **PURE VIGILANCE** — worthless the day the practitioner stops | a stall-notice discipline: bracket twice when the first read is stale, once when active. **91 verifications in one evening, 91 false, 0 true.** |
+| **VIGILANCE NOT BY CHOICE** ← the missing category | that same discipline — held in place by **three defects**: the per-seat stale dial exists in the signature with no caller supplying it (#56/#67), it cannot be wired under a standdown, and the alarm routes to a party who cannot act on it (#59) |
+
+The third case is not a remedy and must not be counted among fixes. It is **a person standing
+in for a mechanism that does not exist** — a liability, and one that expires by design: *the
+moment any of the three defects is fixed, it should stop being a discipline.*
+
+> **A discipline held in place by defects is DEBT, not practice. Log it with the defect
+> numbers that hold it up, so it can be retired rather than inherited.**
+
+The failure mode this prevents is quiet and expensive: a vigilance-based workaround that goes
+unrecorded gets copied by the next seat as though it were method, long after the defect that
+required it is gone. Naming the holding defects gives it an expiry date. Mastodon's framing —
+*"I would rather have that written down as an outstanding liability than counted among
+tonight's fixes"* — is the discipline that makes the distinction usable.
+
 ## Related
 
 `a-baseline-stores-a-point-not-a-path.md` (same pair, same evening),
