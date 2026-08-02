@@ -103,6 +103,40 @@ than the repo root, so relative paths are not portable either). That form of cor
 is not merely unused — it is presently unavailable to anyone, and this file must not imply
 it was achieved.
 
+## MORE OBSERVERS DOES NOT FIX INTERMITTENCY — decorrelated PHASE does, and nothing arranges it
+
+**Mastodon's refinement, offered against its own contribution.** Two hand-relays crossed the
+prime-has-no-parent gap (#79) on 2026-08-02. They are not the same kind of evidence, and the
+argument is stronger for saying so:
+
+| relay | why it worked | reproducible? |
+|---|---|---|
+| `status-stale` | the row is **monotonic** — any observer, at any time, sees it. Only ROUTING was missing. | **Architectural.** Always works. |
+| `axis-disagreement` | the row opened and closed with the subject's work bursts. Mastodon saw it **solely because its sampling phase happened to differ** from the subject's. | **Luck.** Both seats run ~20-minute rhythms; the offset was uncontrolled. |
+
+**Had the two cadences aligned, mastodon would have sampled the same closed phase, seen
+nothing, and the relay would never have happened.** Worse than that: *both boards would have
+read 5, both seats would have been satisfied, and the row would have been opening and closing
+unobserved the entire time — green from two seats, by construction.* The evening's shape
+again, one layer out.
+
+> **For intermittent state, adding observers only helps if they sample at DIFFERENT PHASES —
+> and nothing in the system arranges that.** An offset that happens to be favourable today
+> can drift into alignment tomorrow with nobody noticing, because alignment presents as
+> agreement.
+
+The consequence is a fix-selection rule, and it inverts the intuitive one:
+
+- **Expensive and mostly ineffective**: more seats, watching more often. Sampling harder does
+  not make a transition visible; it re-rolls the dice.
+- **Cheap and effective**: capture the row **when it OPENS** — event-driven, or a persisted
+  open/close record. One recorded transition beats any number of samples, because it is the
+  only thing that survives the gap between them.
+
+This is the file's own thesis arriving from the observation side: **a sample is a point; a
+transition is a path.** You cannot reconstruct the second from more of the first, and the
+temptation to try is strongest exactly when several observers agree.
+
 ## The general form
 
 **When an instrument's state is a single value, it can answer "is it different from before?"
