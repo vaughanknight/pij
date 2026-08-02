@@ -23,15 +23,29 @@ This was established the hard way the same evening
 probes, repeated agreement across a boundary, **both wrong**, because both read
 `pij anomalies` over one stale field.
 
-**How this survey scores against its own warning — and it scores WELL, which is why the
-warning is worth stating:**
+**How this survey scores against its own warning — SCORE PER CLAIM-TYPE, NOT PER DOCUMENT.**
+
+*(This table originally carried one favourable score for the whole survey. `pij-superior-mastodon`
+corrected it: **subject-diversity is a property of a CLAIM, not of a document**, and this
+document contains two kinds with opposite corroboration values. A single score would have been
+read across both.)*
+
+| claim type | example | corroboration value |
+|---|---|---|
+| **"MY PA DID X"** | *"gazelle caught my stale card"*, *"marlin found the unwatched print"* | **GENUINE.** Six primes, six different PAs, six repos, six sets of directly-read output. Paths converge only at the consolidator. Agreement here is real evidence. |
+| **"PIJ BEHAVES LIKE Y"** | the chore defects, anomaly-board readings, card-staleness | **N=1 REGARDLESS OF HOW MANY SEATS AGREE.** Nearly all of it went through `pij anomalies`, `pij node show`, or `pij chore run` — one shared upstream reader. Every seat that agrees inherits the same possible lie. |
+
+**Mastodon's own return is the worked example, cited at its own request**: its PA-behaviour
+observations came from reading `gazelle` output directly and are genuinely independent; its
+platform findings came from `pij` commands every other seat also ran, so those corroborate
+with everybody and with everybody at N=1. **Both kinds inside one return** — which is why
+scoring per *return* is what goes wrong, and per *claim* is what works.
 
 | | |
 |---|---|
-| **Genuine subject-diversity** | Six primes each observed a **different PA**, in a different repo, on different work. The paths do not converge until they reach *me*, the consolidator. That is the good case. |
-| **The real weakness is not correlation, it is INTEREST** | Every return is a prime self-reporting on a subordinate it stood up and briefed. A prime that reports its PA useless is also reporting its own charter poor. **Three did exactly that anyway** (see the honest-negatives column), which is the strongest evidence in the document. |
-| **What does NOT depend on any corroboration** | The measured counts (sweeps, prem, wake attribution) and the code-level defects. These stand alone. |
-| **What DOES depend on self-report** | Every counterfactual — "I would have burned context on this" — is unmeasurable and was labelled UNVERIFIED by the primes themselves, unprompted. |
+| **The weakness that is NOT correlation — it is INTEREST** | Every return is a prime self-reporting on a subordinate it stood up and briefed. A prime that reports its PA useless is also reporting its own charter poor. **Three filed honest negatives against their own charters anyway** (below), which is the strongest evidence in the document. |
+| **What depends on NOTHING** | The measured counts (sweeps, prem, wake attribution) and the code-level defects. These stand alone. |
+| **What depends on self-report** | Every counterfactual — "I would have burned context on this" — is unmeasurable, and was labelled UNVERIFIED by the primes themselves, unprompted. |
 
 ---
 
@@ -97,6 +111,11 @@ and error-catching, not token savings.**
 - **A PA cannot bound its own disclosure** — the capability gate refuses it the whole watchdog
   family, so its own supervision needs operator hand-edits.
 - **3 of 6 PAs keep no status card** while chasing everyone else's.
+- **mastodon, against its own charter's headline benefit** — quoted exactly at its request,
+  because loose attribution would overstate it: the context reduction was **not yet
+  measurable, UNVERIFIED either way**, and it would *"rather report **mechanism adopted,
+  benefit not yet measured** than perform a result."* The negative is aimed at the very thing
+  the PA programme was sold on.
 
 ## Beyond the recipe — every government extended it
 

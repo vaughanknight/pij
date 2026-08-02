@@ -105,6 +105,38 @@ channel where absence is permitted to mean two things.
 consecutive successes on main, and PR #75 was unblocked. Recorded here because a doctrine
 about reporting outcomes should not omit its own.)
 
+## THE LADDER — one shape, seven instances, three layers, one evening
+
+Every failure below is the same: **absence and never-ran produce identical output.** What
+makes it worth a section is that the class does not live in shell, or in tooling, or in
+process — it recurs at *every layer of abstraction*, and each layer's practitioners believe
+it is a problem of the layer below.
+
+| # | instance | layer |
+|---|---|---|
+| 1 | sidecar probe read the wrong schema → loop body never ran → printed a clean `none` for two known-open defects | instrument |
+| 2 | second probe, same wrong schema, same clean `none` | instrument |
+| 3 | `find -newermt` (GNU) on BSD `find`, stderr suppressed → empty → *"no source was touched, your stop can be narrowed"* — a false all-clear about another seat's live instability | instrument |
+| 4 | `git ls-remote` and `gh pr list` each exit **0** with empty output on total failure → a broken probe becomes a stable, healthy-looking fingerprint | instrument |
+| 5 | `… \|\| echo NONE` — the idiom recommended fleet-wide to make emptiness explicit; a broken command and a legitimately empty result fingerprint **identically** under it | instrument |
+| 6 | *"I'll tell you if it does NOT go green"* → **silence is the success signal**; silence-from-green is indistinguishable from silence-from-a-dead-seat | **protocol** |
+| 7 | `pij report now … >/dev/null 2>&1; echo CARD-POSTED` — an unconditional success line over a suppressed command, printed while the card was 262m stale | **protocol** |
+| 8 | a commissioned survey, six returns received, reported in conversation, **never written to disk for a day** — nothing reported it missing, because *a document that does not exist emits no signal* (thrush) | **governance artifact** |
+
+Instances 1–5 are instruments. 6–7 are protocols — the class survives when there is no code
+at all. 8 is a governed artifact, and it is the most dangerous, because an instrument that
+lies gets caught by the next reading and a document that was never written is not read by
+anyone, ever, until something forces a search for it.
+
+> **At every layer: never let absence speak for itself. Report the population you examined,
+> make no-data loud, and never let silence carry a meaning you would not accept in writing.**
+
+Note what actually caught each one. Not vigilance — **a denominator**. #4 was caught by a
+population count in a summary line, #6 by mastodon demanding the green be stated, #8 by an
+instruction landing on the wrong seat and forcing someone to look for the artifact. In every
+case the catch came from something that COUNTED, or from someone going to OPEN the thing.
+Neither is a matter of care, which is why both can be built in and vigilance cannot.
+
 ## Related
 
 `a-baseline-stores-a-point-not-a-path.md` (same pair, same evening),
