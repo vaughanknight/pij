@@ -46,7 +46,11 @@ revive.
   brief's comparison table.)
 - No scheduler, daemon integration, or cadence enforcement in this plan — `chore run` is
   invoked by whoever already has a loop.
-- No new permission model (F-07: pij has no role gating today; this plan adds none).
+- No **new** permission model. *(Corrected during implementation: F-07's claim that pij has
+  no role gating was wrong — `PA_VERB_CLASSIFICATION` in `core/orchestration/pa-capability.ts`
+  already gates every verb for `role: pa`. Classifying `chore` there is **required** to keep
+  that table total, and is not a new model. `chore` → ALLOW; `chore add`/`chore remove` →
+  refuse, so a PA may run/list/ack but never edit the roster — the brief's stated intent.)*
 - No notification/delivery path — the caller relays.
 
 ### Target Domains
