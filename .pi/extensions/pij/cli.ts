@@ -3320,6 +3320,8 @@ const CHORE_USAGE = `pij chore — durable named change detectors
 USAGE
   pij chore add <name> --probe '<cmd>' [--full '<cmd>'] [--full-every N]
                        [--scope seat|repo|fleet] [--timeout <ms>] [--json]
+  pij chore update <name|scope:name> [--probe '<cmd>'] [--full '<cmd>']
+                       [--full-every N] [--timeout <ms>] [--json]
   pij chore run [--dry] [--json]
   pij chore list [--verbose] [--json]
   pij chore ack <name|scope:name> [--json]
@@ -3329,7 +3331,10 @@ USAGE
 SEMANTICS
   run computes and re-reports pending deltas; it never advances a baseline.
   ack is the only baseline-advance operation.
-  definitions union across seat, repo, and fleet; fingerprints remain per seat.`;
+  definitions union across seat, repo, and fleet; fingerprints remain per seat.
+  update rewrites one definition atomically without a remove/add gap.
+  list/run print the resolved seat, repo, and fleet scope population.
+  PIJ_SESSION_ID is only a validated override of the seat derived from pane binding.`;
 
 function renderBatonNotice(notice: BatonNotice): string {
 	return renderBatonNoticeBody(notice);
@@ -3959,6 +3964,46 @@ function currentWorktreeRoot(cwd: string): string | undefined {
 	}
 }
 
+function resolveChoreSeatId(
+	registry: FsRegistry,
+	cwd: string,
+): { readonly seatId?: string; readonly error?: string } {
+	const explicit = process.env.PIJ_SESSION_ID?.trim() || undefined;
+	const descriptors = registry.list();
+	const local = filterByFolder(descriptors, cwd);
+	const pane = process.env.TMUX_PANE;
+	const byPane =
+		pane && pane.trim() !== ""
+			? descriptors.filter((descriptor) => descriptor.paneId === pane)
+			: [];
+	const derived =
+		byPane.length === 1 && byPane[0]
+			? { ok: true as const, value: byPane[0].id }
+			: resolveSelf(undefined, local, pane);
+
+	if (explicit) {
+		const descriptor = registry.read(explicit);
+		if (!descriptor || descriptor.lifecycle === "dissolved") {
+			return { error: `E-NOID: PIJ_SESSION_ID '${explicit}' is not a registered seat` };
+		}
+		if (!derived.ok) {
+			return {
+				error: `E-OWN: PIJ_SESSION_ID '${explicit}' cannot be validated as this process's bound seat: ${derived.message}`,
+			};
+		}
+		if (derived.value !== explicit) {
+			return {
+				error: `E-OWN: PIJ_SESSION_ID '${explicit}' does not match this process's bound seat '${derived.value}'`,
+			};
+		}
+		return { seatId: explicit };
+	}
+
+	if (derived.ok) return { seatId: derived.value };
+	if (local.length === 0 && byPane.length === 0) return {};
+	return { error: `${derived.code}: ${derived.message}` };
+}
+
 function runChoreVerb(args: string[]): void {
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
 		process.stdout.write(`${CHORE_USAGE}\n`);
@@ -3966,7 +4011,13 @@ function runChoreVerb(args: string[]): void {
 	}
 	const cwd = process.cwd();
 	const worktreeRoot = currentWorktreeRoot(cwd);
-	const seatId = process.env.PIJ_SESSION_ID?.trim() || undefined;
+	const registry = new FsRegistry(pijHome);
+	const seat = resolveChoreSeatId(registry, cwd);
+	if (seat.error) {
+		process.stderr.write(`${seat.error}\n`);
+		process.exit(1);
+	}
+	const seatId = seat.seatId;
 	const result = dispatchChore(args, {
 		cwd,
 		worktreeRoot: worktreeRoot ?? cwd,

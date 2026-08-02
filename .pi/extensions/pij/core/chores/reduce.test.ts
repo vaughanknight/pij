@@ -36,12 +36,19 @@ describe("chore delta reducer", () => {
 		const reduced = reduceProbe(undefined, { ok: true, output: "alpha\n" }, "2026-08-02T00:00:00Z");
 
 		expect(reduced.outcome).toEqual({
-			status: "changed",
+			status: "changed-value",
 			old: null,
-			new: fingerprint("alpha"),
+			new: "alpha\n",
+			oldFingerprint: null,
+			newFingerprint: fingerprint("alpha"),
 		});
 		expect(reduced.state).toEqual({
-			pending: { old: null, new: fingerprint("alpha") },
+			pending: {
+				old: null,
+				new: fingerprint("alpha"),
+				oldValue: null,
+				newValue: "alpha\n",
+			},
 			runsSinceFull: 0,
 			lastRunAt: "2026-08-02T00:00:00Z",
 			lastStatus: "changed",
@@ -51,16 +58,23 @@ describe("chore delta reducer", () => {
 
 	it("re-reports an unacked delta on every run", () => {
 		const pending: ChoreStateEntry = {
-			pending: { old: null, new: fingerprint("alpha") },
+			pending: {
+				old: null,
+				new: fingerprint("alpha"),
+				oldValue: null,
+				newValue: "alpha",
+			},
 			runsSinceFull: 0,
 		};
 
 		const reduced = reduceProbe(pending, { ok: true, output: "alpha" }, "2026-08-02T00:01:00Z");
 
 		expect(reduced.outcome).toEqual({
-			status: "changed",
+			status: "changed-value",
 			old: null,
-			new: fingerprint("alpha"),
+			new: "alpha",
+			oldFingerprint: null,
+			newFingerprint: fingerprint("alpha"),
 		});
 		expect(reduced.state.baseline).toBeUndefined();
 	});
@@ -69,20 +83,30 @@ describe("chore delta reducer", () => {
 		const baseline = fingerprint("acked");
 		const pending: ChoreStateEntry = {
 			baseline,
-			pending: { old: baseline, new: fingerprint("middle") },
+			baselineValue: "acked",
+			pending: {
+				old: baseline,
+				new: fingerprint("middle"),
+				oldValue: "acked",
+				newValue: "middle",
+			},
 			runsSinceFull: 0,
 		};
 
 		const reduced = reduceProbe(pending, { ok: true, output: "latest" }, "2026-08-02T00:02:00Z");
 
 		expect(reduced.outcome).toEqual({
-			status: "changed",
-			old: baseline,
-			new: fingerprint("latest"),
+			status: "changed-value",
+			old: "acked",
+			new: "latest",
+			oldFingerprint: baseline,
+			newFingerprint: fingerprint("latest"),
 		});
 		expect(reduced.state.pending).toEqual({
 			old: baseline,
 			new: fingerprint("latest"),
+			oldValue: "acked",
+			newValue: "latest",
 		});
 		expect(reduced.state.baseline).toBe(baseline);
 	});
@@ -90,28 +114,160 @@ describe("chore delta reducer", () => {
 	it("ack is the only transition that advances the baseline", () => {
 		const next = fingerprint("next");
 		const acked = ackPending({
-			pending: { old: null, new: next },
+			pending: {
+				old: null,
+				new: next,
+				oldValue: null,
+				newValue: "next",
+			},
 			runsSinceFull: 2,
 		});
 
-		expect(acked).toEqual({ baseline: next, runsSinceFull: 2, lastStatus: "unchanged" });
+		expect(acked).toEqual({
+			baseline: next,
+			baselineValue: "next",
+			runsSinceFull: 2,
+			lastStatus: "unchanged",
+		});
 
 		const unchanged = reduceProbe(acked, { ok: true, output: "next" }, "2026-08-02T00:03:00Z");
 		expect(unchanged.outcome).toEqual({
 			status: "unchanged",
-			old: next,
-			new: next,
+			old: "next",
+			new: "next",
+			oldFingerprint: next,
+			newFingerprint: next,
 		});
 		expect(unchanged.state.baseline).toBe(next);
 		expect(unchanged.state.pending).toBeUndefined();
 	});
 
+	it("keeps a pending delta as a flap when the sampled value returns to the baseline", () => {
+		const baseline = fingerprint("A");
+		const state: ChoreStateEntry = {
+			baseline,
+			baselineValue: "A",
+			pending: {
+				old: baseline,
+				new: fingerprint("B"),
+				oldValue: "A",
+				newValue: "B",
+			},
+			runsSinceFull: 0,
+		};
+
+		const reduced = reduceProbe(state, { ok: true, output: "A" }, "2026-08-02T00:03:30Z");
+
+		expect(reduced.outcome).toEqual({
+			status: "flapped",
+			old: "A",
+			new: "A",
+			oldFingerprint: baseline,
+			newFingerprint: baseline,
+		});
+		expect(reduced.state.pending).toEqual({
+			old: baseline,
+			new: baseline,
+			oldValue: "A",
+			newValue: "A",
+		});
+		expect(reduced.state.lastStatus).toBe("changed");
+	});
+
+	it("resets the baseline distinctly when the probe definition changes", () => {
+		const baseline = fingerprint("old");
+		const reduced = reduceProbe(
+			{
+				baseline,
+				baselineValue: "old",
+				definitionFingerprint: fingerprint("printf old"),
+				instrumentFingerprint: null,
+				runsSinceFull: 2,
+			},
+			{ ok: true, output: "new" },
+			"2026-08-02T00:03:45Z",
+			{
+				definitionFingerprint: fingerprint("printf new"),
+				contentFingerprint: null,
+			},
+		);
+
+		expect(reduced.outcome).toEqual({
+			status: "changed-probe",
+			reason: "instrument changed; ack resets baseline",
+			new: "new",
+			newFingerprint: fingerprint("new"),
+		});
+		expect(reduced.state).toMatchObject({
+			baseline,
+			baselineValue: "old",
+			definitionFingerprint: fingerprint("printf new"),
+			instrumentFingerprint: null,
+			pendingInstrumentChange: {
+				currentValue: "new",
+				currentFingerprint: fingerprint("new"),
+			},
+			lastStatus: "changed",
+		});
+		expect(reduced.state.pending).toBeUndefined();
+		expect(ackPending(reduced.state)).toMatchObject({
+			baseline: fingerprint("new"),
+			baselineValue: "new",
+			lastStatus: "unchanged",
+		});
+	});
+
+	it("preserves an open value delta across an instrument change until ack", () => {
+		const baseline = fingerprint("A");
+		const pending = {
+			old: baseline,
+			new: fingerprint("B"),
+			oldValue: "A",
+			newValue: "B",
+		};
+		const reduced = reduceProbe(
+			{
+				baseline,
+				baselineValue: "A",
+				definitionFingerprint: fingerprint("printf old"),
+				instrumentFingerprint: null,
+				pending,
+				runsSinceFull: 0,
+			},
+			{ ok: true, output: "C" },
+			"2026-08-02T00:03:50Z",
+			{
+				definitionFingerprint: fingerprint("printf new"),
+				contentFingerprint: null,
+			},
+		);
+
+		expect(reduced.outcome).toMatchObject({
+			status: "changed-probe",
+			preservedValueDelta: {
+				old: "A",
+				new: "B",
+				oldFingerprint: baseline,
+				newFingerprint: fingerprint("B"),
+			},
+		});
+		expect(reduced.state.pending).toEqual(pending);
+		expect(reduced.state.baseline).toBe(baseline);
+		expect(ackPending(reduced.state)).toMatchObject({
+			baseline: fingerprint("C"),
+			baselineValue: "C",
+		});
+	});
+
 	it("reports a failed probe without changing baseline or pending delta", () => {
 		const state: ChoreStateEntry = {
 			baseline: fingerprint("acked"),
+			baselineValue: "acked",
 			pending: {
 				old: fingerprint("acked"),
 				new: fingerprint("unacked"),
+				oldValue: "acked",
+				newValue: "unacked",
 			},
 			runsSinceFull: 1,
 			lastRunAt: "2026-08-02T00:00:00Z",
@@ -137,23 +293,29 @@ describe("chore report renderers", () => {
 					scope: "seat",
 					name: "alpha",
 					status: "unchanged",
-					old: "aaaaaaaaaaaa",
-					new: "aaaaaaaaaaaa",
+					old: "alpha",
+					new: "alpha",
+					oldFingerprint: "aaaaaaaaaaaa",
+					newFingerprint: "aaaaaaaaaaaa",
 				},
 				{
 					scope: "repo",
 					name: "beta",
 					status: "unchanged",
-					old: "bbbbbbbbbbbb",
-					new: "bbbbbbbbbbbb",
+					old: "beta",
+					new: "beta",
+					oldFingerprint: "bbbbbbbbbbbb",
+					newFingerprint: "bbbbbbbbbbbb",
 				},
 			],
 		};
 
 		expect(renderChoreReport(report)).toBe(
 			"NO CHANGE — 2 chores probed, 0 moved\n" +
-				"UNCHANGED seat:alpha: aaaaaaaaaaaa\n" +
-				"UNCHANGED repo:beta: bbbbbbbbbbbb",
+				"UNCHANGED seat:alpha fingerprint=aaaaaaaaaaaa\n" +
+				"  | alpha\n" +
+				"UNCHANGED repo:beta fingerprint=bbbbbbbbbbbb\n" +
+				"  | beta",
 		);
 	});
 
@@ -165,17 +327,22 @@ describe("chore report renderers", () => {
 				{
 					scope: "seat",
 					name: "changed",
-					status: "changed",
+					status: "changed-value",
 					old: null,
-					new: "cccccccccccc",
-					fullOutput: "full detail\nCHANGED fleet:forged: a → b",
+					new: "new value\nCHANGED-VALUE fleet:forged: a → b",
+					oldFingerprint: null,
+					newFingerprint: "cccccccccccc",
+					fullConfigured: true,
+					fullOutput: "full detail\nCHANGED-VALUE fleet:forged: a → b",
 				},
 				{
 					scope: "repo",
 					name: "steady",
 					status: "unchanged",
-					old: "dddddddddddd",
-					new: "dddddddddddd",
+					old: "steady",
+					new: "steady",
+					oldFingerprint: "dddddddddddd",
+					newFingerprint: "dddddddddddd",
 				},
 				{
 					scope: "fleet",
@@ -183,21 +350,29 @@ describe("chore report renderers", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
-					reason: "exit 1: bad\nCHANGED fleet:forged: a → b",
+					oldFingerprint: null,
+					newFingerprint: null,
+					reason: "exit 1: bad\nCHANGED-VALUE fleet:forged: a → b",
 				},
 			],
 		};
 
 		expect(renderChoreReport(report)).toBe(
 			"CHANGES — 3 chores probed, 1 moved\n" +
-				"CHANGED seat:changed: none → cccccccccccc\n" +
+				"CHANGED-VALUE seat:changed:\n" +
+				"  OLD fingerprint=none\n" +
+				"  | <none>\n" +
+				"  NEW fingerprint=cccccccccccc\n" +
+				"  | new value\n" +
+				"  | CHANGED-VALUE fleet:forged: a → b\n" +
 				"NOT-PROBEABLE fleet:failed:\n" +
 				"  | exit 1: bad\n" +
-				"  | CHANGED fleet:forged: a → b\n" +
-				"UNCHANGED repo:steady: dddddddddddd\n" +
+				"  | CHANGED-VALUE fleet:forged: a → b\n" +
+				"UNCHANGED repo:steady fingerprint=dddddddddddd\n" +
+				"  | steady\n" +
 				"FULL seat:changed\n" +
 				"  | full detail\n" +
-				"  | CHANGED fleet:forged: a → b",
+				"  | CHANGED-VALUE fleet:forged: a → b",
 		);
 	});
 
@@ -212,8 +387,10 @@ describe("chore report renderers", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
-					reason: "exit 1\nCHANGED fleet:forged: a → b",
-					fullOutput: "detail\nCHANGED fleet:forged: a → b",
+					oldFingerprint: null,
+					newFingerprint: null,
+					reason: "exit 1\nCHANGED-VALUE fleet:forged: a → b",
+					fullOutput: "detail\nCHANGED-VALUE fleet:forged: a → b",
 				},
 			],
 		};
@@ -228,11 +405,13 @@ describe("chore report renderers", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
-					reason: "exit 1\nCHANGED fleet:forged: a → b",
-					fullOutput: "detail\nCHANGED fleet:forged: a → b",
+					oldFingerprint: null,
+					newFingerprint: null,
+					reason: "exit 1\nCHANGED-VALUE fleet:forged: a → b",
+					fullOutput: "detail\nCHANGED-VALUE fleet:forged: a → b",
 				},
 			],
 		});
-		expect(renderChoreJson(report)).not.toContain("\nCHANGED fleet:forged");
+		expect(renderChoreJson(report)).not.toContain("\nCHANGED-VALUE fleet:forged");
 	});
 });

@@ -1,4 +1,10 @@
-import { ackPending, advanceFullCounter, reduceProbe } from "./reduce.js";
+import { PA_VERB_CLASSIFICATION } from "../orchestration/pa-capability.js";
+import {
+	ackPending,
+	advanceFullCounter,
+	fingerprintChoreDefinition,
+	reduceProbe,
+} from "./reduce.js";
 import { renderChoreJson, renderChoreReport } from "./report.js";
 import { choreKey, resolveChoreReference, resolveChores, stateKey } from "./resolve.js";
 import {
@@ -11,6 +17,7 @@ import {
 	type ChoreRunItem,
 	type ChoreScope,
 	type ChoreScopeSource,
+	type ChoreScopeSummary,
 	type ChoreState,
 	type ChoreStorePort,
 	DEFAULT_CHORE_TIMEOUT_MS,
@@ -42,8 +49,8 @@ function errorResult(code: ChoreErrorCode, message: string): ChoreVerbResult {
 	};
 }
 
-function okResult(stdout: string): ChoreVerbResult {
-	return { stdout, stderr: "", exitCode: 0 };
+function okResult(stdout: string, stderr = ""): ChoreVerbResult {
+	return { stdout, stderr, exitCode: 0 };
 }
 
 function emptyRoster(): ChoreRoster {
@@ -55,7 +62,9 @@ function emptyState(): ChoreState {
 }
 
 function unavailableReason(scope: ChoreScope, deps: ChoreVerbDeps): string {
-	if (scope === "seat" && !deps.seatId) return "no PIJ_SESSION_ID";
+	if (scope === "seat" && !deps.seatId) {
+		return "seat-scoped chore roster requires a registered seat id";
+	}
 	if (scope === "repo") return "not in a Git worktree";
 	return "roster unavailable";
 }
@@ -73,6 +82,18 @@ function scopeSources(deps: ChoreVerbDeps): ChoreScopeSource[] {
 	});
 }
 
+function scopeSummary(deps: ChoreVerbDeps): ChoreScopeSummary {
+	return {
+		seat: deps.seatId ?? null,
+		repo: deps.store.rosterPath("repo") ?? null,
+		fleet: deps.store.rosterPath("fleet") ?? "unavailable",
+	};
+}
+
+function renderScopeSummary(scopes: ChoreScopeSummary): string {
+	return `SCOPES seat: ${scopes.seat ?? "unresolved"} | repo: ${scopes.repo ?? "unavailable"} | fleet: ${scopes.fleet}`;
+}
+
 function loadWritableRoster(scope: ChoreScope, deps: ChoreVerbDeps): ChoreRoster | ChoreVerbResult {
 	const status = deps.store.rosterStatus(scope);
 	if (status === "unavailable") {
@@ -85,7 +106,9 @@ function loadWritableRoster(scope: ChoreScope, deps: ChoreVerbDeps): ChoreRoster
 }
 
 function loadState(deps: ChoreVerbDeps): ChoreState | ChoreVerbResult {
-	if (!deps.seatId) return errorResult("E-NOID", "chore state requires PIJ_SESSION_ID");
+	if (!deps.seatId) {
+		return errorResult("E-NOID", "per-seat chore state requires a registered seat id");
+	}
 	const status = deps.store.stateStatus();
 	if (status === "unavailable") {
 		return errorResult("E-NOID", "per-seat chore state is unavailable");
@@ -122,9 +145,14 @@ function writeState(state: ChoreState, deps: ChoreVerbDeps): ChoreVerbResult | u
 	}
 }
 
-function flagValue(args: readonly string[], index: number, flag: string): string | ChoreVerbResult {
+function flagValue(
+	args: readonly string[],
+	index: number,
+	flag: string,
+	allowLeadingDash = false,
+): string | ChoreVerbResult {
 	const value = args[index + 1];
-	return value === undefined || value.startsWith("--")
+	return value === undefined || (!allowLeadingDash && value.startsWith("--"))
 		? errorResult("E-ARG", `${flag} takes a value`)
 		: value;
 }
@@ -172,7 +200,7 @@ function parseAdd(args: readonly string[]): AddOptions | ChoreVerbResult {
 		) {
 			return errorResult("E-ARG", `unknown add flag '${arg ?? ""}'`);
 		}
-		const value = flagValue(args, index, arg);
+		const value = flagValue(args, index, arg, arg === "--probe" || arg === "--full");
 		if (typeof value !== "string") return value;
 		index += 1;
 		switch (arg) {
@@ -217,6 +245,50 @@ function parseAdd(args: readonly string[]): AddOptions | ChoreVerbResult {
 	};
 }
 
+function containsAbsolutePath(command: string): boolean {
+	return /(^|[\s"'=])(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(command);
+}
+
+function refusedPaProbeVerb(command: string): string | undefined {
+	for (const [key, capability] of Object.entries(PA_VERB_CLASSIFICATION)) {
+		if (capability.kind !== "refuse") continue;
+		const phrase = `pij ${key.replaceAll("-", " ")}`;
+		const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll(" ", "\\s+");
+		if (new RegExp(`(^|[;&|]\\s*|\\s)${escaped}(?=\\s|$)`).test(command)) return phrase;
+	}
+	return undefined;
+}
+
+function authoringNotices(chore: Chore, deps: ChoreVerbDeps): string[] {
+	const notices: string[] = [];
+	if (chore.scope !== "seat" && containsAbsolutePath(chore.probe)) {
+		notices.push(
+			`WARN: ${choreKey(chore)} probe contains an absolute path; shared probes should use a checkout-relative command, resolving the root with 'git rev-parse --show-toplevel' when needed.`,
+		);
+	}
+	if (chore.scope !== "seat") {
+		for (const [field, command] of [
+			["probe", chore.probe],
+			["full", chore.full],
+		] as const) {
+			if (!command) continue;
+			const refused = refusedPaProbeVerb(command);
+			if (refused) {
+				notices.push(
+					`WARN: ${choreKey(chore)} ${field} invokes '${refused}', which PA roles are refused; this shared chore may be permanently NOT-PROBEABLE for less-capable seats.`,
+				);
+			}
+		}
+	}
+	if (chore.scope === "repo") {
+		const path = deps.store.rosterPath("repo");
+		notices.push(
+			`NOTE: commit ${path ?? ".pij/chores.json"} so repo-scoped chores reach every checkout.`,
+		);
+	}
+	return notices;
+}
+
 export function addVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerbResult {
 	const options = parseAdd(args);
 	if ("exitCode" in options) return options;
@@ -229,6 +301,7 @@ export function addVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 		scope: options.scope,
 		name: options.name,
 		probe: options.probe,
+		...(deps.seatId ? { creatorSeatId: deps.seatId } : {}),
 		...(options.full ? { full: options.full } : {}),
 		...(options.fullEvery !== undefined ? { fullEvery: options.fullEvery } : {}),
 		timeoutMs: options.timeoutMs,
@@ -243,6 +316,7 @@ export function addVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 		options.json
 			? JSON.stringify(chore, null, 2)
 			: `added ${choreKey(chore)} — probe '${chore.probe}'`,
+		authoringNotices(chore, deps).join("\n"),
 	);
 }
 
@@ -278,11 +352,29 @@ function safeProbe(
 	}
 }
 
+function safeInstrumentFingerprint(
+	probe: ChoreProbePort,
+	command: string,
+	cwd: string,
+): string | null {
+	try {
+		return probe.instrumentFingerprint?.(command, cwd) ?? null;
+	} catch {
+		return null;
+	}
+}
+
 export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerbResult {
 	const options = parseRun(args);
 	if ("exitCode" in options) return options;
 	const loadedState = loadState(deps);
-	if (isVerbResult(loadedState)) return loadedState;
+	const scopes = scopeSummary(deps);
+	if (isVerbResult(loadedState)) {
+		return {
+			...loadedState,
+			stderr: `${renderScopeSummary(scopes)}\n${loadedState.stderr}`,
+		};
+	}
 	const resolved = resolveChores(scopeSources(deps));
 	const entries = { ...loadedState.entries };
 	const items: ChoreRunItem[] = [];
@@ -295,14 +387,31 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 			previous,
 			safeProbe(deps.probe, chore.probe, deps.cwd, chore.timeoutMs),
 			now,
+			{
+				definitionFingerprint: fingerprintChoreDefinition(chore.probe),
+				contentFingerprint: safeInstrumentFingerprint(deps.probe, chore.probe, deps.cwd),
+			},
 		);
-		const counter = advanceFullCounter(reduced.state, chore.fullEvery);
+		let nextEntry = reduced.state;
 		let fullOutput: string | undefined;
-		if (counter.due && chore.full) {
+		if (
+			(reduced.outcome.status === "changed-value" || reduced.outcome.status === "flapped") &&
+			chore.full
+		) {
 			const full = safeProbe(deps.probe, chore.full, deps.cwd, chore.timeoutMs);
-			fullOutput = full.ok ? full.output : `NOT-PROBEABLE: ${full.reason}`;
+			fullOutput = full.ok ? full.output.trim() : `NOT-PROBEABLE: ${full.reason}`;
+			nextEntry = { ...nextEntry, runsSinceFull: 0 };
+		} else if (reduced.outcome.status === "changed-probe") {
+			nextEntry = { ...nextEntry, runsSinceFull: 0 };
+		} else {
+			const counter = advanceFullCounter(nextEntry, chore.fullEvery);
+			nextEntry = counter.state;
+			if (counter.due && chore.full) {
+				const full = safeProbe(deps.probe, chore.full, deps.cwd, chore.timeoutMs);
+				fullOutput = full.ok ? full.output.trim() : `NOT-PROBEABLE: ${full.reason}`;
+			}
 		}
-		if (!options.dry) entries[key] = counter.state;
+		if (!options.dry) entries[key] = nextEntry;
 		const outcome = reduced.outcome;
 		items.push({
 			scope: chore.scope,
@@ -310,7 +419,13 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 			status: outcome.status,
 			old: "old" in outcome ? outcome.old : null,
 			new: "new" in outcome ? outcome.new : null,
+			oldFingerprint: "oldFingerprint" in outcome ? outcome.oldFingerprint : null,
+			newFingerprint: "newFingerprint" in outcome ? outcome.newFingerprint : null,
 			...("reason" in outcome ? { reason: outcome.reason } : {}),
+			...("preservedValueDelta" in outcome && outcome.preservedValueDelta !== undefined
+				? { preservedValueDelta: outcome.preservedValueDelta }
+				: {}),
+			fullConfigured: chore.full !== undefined,
 			...(fullOutput !== undefined ? { fullOutput } : {}),
 		});
 	}
@@ -322,6 +437,8 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 			status: "not-probeable",
 			old: null,
 			new: null,
+			oldFingerprint: null,
+			newFingerprint: null,
 			reason: issue.reason,
 		});
 	}
@@ -336,10 +453,19 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 
 	const report = {
 		probed: resolved.chores.length,
-		moved: items.filter((item) => item.status === "changed").length,
+		moved: items.filter(
+			(item) =>
+				item.status === "changed-value" ||
+				item.status === "changed-probe" ||
+				item.status === "flapped",
+		).length,
 		chores: items,
 	};
-	return okResult(options.json ? renderChoreJson(report) : renderChoreReport(report));
+	return okResult(
+		options.json
+			? renderChoreJson(report, scopes)
+			: `${renderScopeSummary(scopes)}\n${renderChoreReport(report)}`,
+	);
 }
 
 interface ListOptions {
@@ -374,19 +500,34 @@ export function listVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVer
 			...(entry?.baseline ? { baseline: entry.baseline } : {}),
 		};
 	});
-	if (options.json) return okResult(JSON.stringify(rows, null, 2));
+	const scopes = scopeSummary(deps);
+	if (options.json) {
+		return okResult(
+			JSON.stringify(
+				{
+					scopes,
+					chores: rows.map((row) => ({
+						...row,
+						creatorSeatId: row.creatorSeatId ?? null,
+					})),
+				},
+				null,
+				2,
+			),
+		);
+	}
 	if (rows.length === 0 && resolved.issues.length === 0) {
-		return okResult("No chores registered.");
+		return okResult(`${renderScopeSummary(scopes)}\nNo chores registered.`);
 	}
 	const lines = rows.map((row) =>
 		options.verbose
-			? `${row.key} scope=${row.scope} probe=${JSON.stringify(row.probe)} full=${JSON.stringify(row.full ?? null)} full-every=${row.fullEvery ?? "none"} timeout=${row.timeoutMs} last-run=${row.lastRunAt ?? "never"} last-delta=${row.pending ? `${row.pending.old ?? "none"}→${row.pending.new}` : "none"}`
+			? `${row.key} scope=${row.scope} creator=${row.creatorSeatId ?? "unknown"} probe=${JSON.stringify(row.probe)} full=${JSON.stringify(row.full ?? null)} full-every=${row.fullEvery ?? "none"} timeout=${row.timeoutMs} last-run=${row.lastRunAt ?? "never"} last-delta=${row.pending ? `${row.pending.old ?? "none"}→${row.pending.new}` : "none"}`
 			: row.key,
 	);
 	for (const issue of resolved.issues) {
 		lines.push(`NOT-PROBEABLE ${issue.scope}:<roster>: ${issue.reason}`);
 	}
-	return okResult(lines.join("\n"));
+	return okResult(`${renderScopeSummary(scopes)}\n${lines.join("\n")}`);
 }
 
 interface ReferenceOptions {
@@ -420,6 +561,111 @@ function resolveReference(reference: string, deps: ChoreVerbDeps): Chore | Chore
 	return match.ok ? match.chore : errorResult(match.code, match.message);
 }
 
+interface UpdateOptions {
+	readonly reference: string;
+	readonly probe?: string;
+	readonly full?: string;
+	readonly fullEvery?: number;
+	readonly timeoutMs?: number;
+	readonly json: boolean;
+}
+
+function parseUpdate(args: readonly string[]): UpdateOptions | ChoreVerbResult {
+	const reference = args[0];
+	if (!reference || reference.startsWith("--")) {
+		return errorResult("E-ARG", "update requires <name|scope:name>");
+	}
+	let probe: string | undefined;
+	let full: string | undefined;
+	let fullEvery: number | undefined;
+	let timeoutMs: number | undefined;
+	let json = false;
+	let changed = false;
+	for (let index = 1; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--json") {
+			json = true;
+			continue;
+		}
+		if (arg !== "--probe" && arg !== "--full" && arg !== "--full-every" && arg !== "--timeout") {
+			return errorResult("E-ARG", `unknown update flag '${arg ?? ""}'`);
+		}
+		const value = flagValue(args, index, arg, arg === "--probe" || arg === "--full");
+		if (typeof value !== "string") return value;
+		index += 1;
+		changed = true;
+		switch (arg) {
+			case "--probe":
+				if (!value.trim()) return errorResult("E-ARG", "--probe takes a non-empty command");
+				probe = value;
+				break;
+			case "--full":
+				if (!value.trim()) return errorResult("E-ARG", "--full takes a non-empty command");
+				full = value;
+				break;
+			case "--full-every": {
+				const parsed = positiveInteger(value, "--full-every");
+				if (typeof parsed !== "number") return parsed;
+				fullEvery = parsed;
+				break;
+			}
+			case "--timeout": {
+				const parsed = positiveInteger(value, "--timeout");
+				if (typeof parsed !== "number") return parsed;
+				timeoutMs = parsed;
+				break;
+			}
+		}
+	}
+	if (!changed) {
+		return errorResult(
+			"E-ARG",
+			"update requires at least one of --probe, --full, --full-every, or --timeout",
+		);
+	}
+	return {
+		reference,
+		...(probe !== undefined ? { probe } : {}),
+		...(full !== undefined ? { full } : {}),
+		...(fullEvery !== undefined ? { fullEvery } : {}),
+		...(timeoutMs !== undefined ? { timeoutMs } : {}),
+		json,
+	};
+}
+
+export function updateVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerbResult {
+	const options = parseUpdate(args);
+	if ("exitCode" in options) return options;
+	const chore = resolveReference(options.reference, deps);
+	if ("exitCode" in chore) return chore;
+	const roster = loadWritableRoster(chore.scope, deps);
+	if (isVerbResult(roster)) return roster;
+	const full = options.full ?? chore.full;
+	const fullEvery = options.fullEvery ?? chore.fullEvery;
+	if (fullEvery !== undefined && full === undefined) {
+		return errorResult("E-ARG", "--full-every requires a configured --full command");
+	}
+	const updated: Chore = {
+		...chore,
+		probe: options.probe ?? chore.probe,
+		...(full !== undefined ? { full } : {}),
+		...(fullEvery !== undefined ? { fullEvery } : {}),
+		timeoutMs: options.timeoutMs ?? chore.timeoutMs,
+	};
+	const next: ChoreRoster = {
+		...roster,
+		chores: roster.chores.map((entry) => (entry.name === chore.name ? updated : entry)),
+	};
+	const writeError = writeRoster(chore.scope, next, deps);
+	if (writeError) return writeError;
+	return okResult(
+		options.json
+			? JSON.stringify(updated, null, 2)
+			: `updated ${choreKey(updated)} — probe '${updated.probe}'`,
+		authoringNotices(updated, deps).join("\n"),
+	);
+}
+
 export function ackVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerbResult {
 	const options = parseReference(args, "ack");
 	if ("exitCode" in options) return options;
@@ -429,7 +675,7 @@ export function ackVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 	if (isVerbResult(state)) return state;
 	const key = stateKey(chore, deps.worktreeRoot);
 	const entry = state.entries[key];
-	if (!entry?.pending) {
+	if (!entry?.pending && !entry?.pendingInstrumentChange) {
 		return errorResult("E-ARG", `chore '${choreKey(chore)}' has no pending delta`);
 	}
 	const acked = ackPending(entry);
@@ -456,7 +702,7 @@ function parseRemove(args: readonly string[]): RemoveOptions | ChoreVerbResult {
 	const reasonIndex = args.indexOf("--reason");
 	if (reasonIndex === -1) return errorResult("E-ARG", "remove requires --reason '<why>'");
 	const reason = args[reasonIndex + 1];
-	if (!reason || reason.startsWith("--")) {
+	if (reason === undefined) {
 		return errorResult("E-ARG", "--reason takes a value");
 	}
 	return { ...base, reason };
@@ -525,6 +771,8 @@ export function dispatchChore(args: readonly string[], deps: ChoreVerbDeps): Cho
 	switch (subverb) {
 		case "add":
 			return addVerb(rest, deps);
+		case "update":
+			return updateVerb(rest, deps);
 		case "run":
 			return runVerb(rest, deps);
 		case "list":

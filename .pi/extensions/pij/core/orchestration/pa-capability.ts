@@ -94,9 +94,10 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 	agents: LINEAGE,
 	// Chore reads/runs plus ack are the PA's deterministic maintenance surface.
 	// Definition mutation stays outside the read-only PA boundary; the bin maps
-	// add/remove to the finer keys below before consulting this table.
+	// add/update/remove to the finer keys below before consulting this table.
 	chore: ALLOW,
 	"chore add": refuse("it edits the durable duty roster; a PA may run/list/ack chores"),
+	"chore update": refuse("it edits the durable duty roster; a PA may run/list/ack chores"),
 	"chore remove": refuse("it edits the durable duty roster; a PA may run/list/ack chores"),
 	// `pij agent report` — first-person, and unreachable for a PA anyway because
 	// the `agent` family above is refused. Classified so the table stays total.
@@ -155,7 +156,7 @@ export function paRefusal(role: string | null, verb: string): string | null {
 }
 
 export function paCapabilityVerb(top: string, subverb: string | undefined): string {
-	if (top === "chore" && (subverb === "add" || subverb === "remove")) {
+	if (top === "chore" && (subverb === "add" || subverb === "update" || subverb === "remove")) {
 		return `chore ${subverb}`;
 	}
 	return top;

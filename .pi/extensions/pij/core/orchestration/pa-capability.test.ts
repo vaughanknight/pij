@@ -100,11 +100,12 @@ describe("paRefusal — only a PA is refused, and only for authority verbs", () 
 		}
 	});
 
-	it("permits chore run/list/ack but refuses roster add/remove", () => {
+	it("permits chore run/list/ack but refuses roster add/update/remove", () => {
 		expect(paRefusal("pa", paCapabilityVerb("chore", "run"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "list"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "ack"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "add"))).not.toBeNull();
+		expect(paRefusal("pa", paCapabilityVerb("chore", "update"))).not.toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "remove"))).not.toBeNull();
 	});
 
