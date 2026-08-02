@@ -54,6 +54,29 @@ which a flap exists at all.
 A rendering-only fix (`FLAPPED … moved and returned`) is **not sufficient** — it can only
 render the un-acked case, i.e. the case where discipline failed.
 
+## Corollary — two seats CANNOT corroborate by fingerprint, and that is the good case
+
+**Correction, mastodon's, recorded because the tidy version was wrong and would have misled
+a later reader.** In relaying this I wrote that our boards agreed *at the same fingerprint*.
+They do not and cannot: mastodon's 5-row board fingerprints `60d7b0cf271a`, mine
+`f1244b12c06a`, for an **identical** row population. A fingerprint is sha256 of *probe
+output*, and we authored different probes — so two correct instruments observing one
+identical world necessarily disagree at the fingerprint level.
+
+The precise claim is: **our OBSERVATIONS corroborate; our FINGERPRINTS are incomparable by
+construction.** And that is stronger, not weaker. Identical fingerprints from identical
+probes would be one instrument run twice, which proves close to nothing (mastodon's own
+doctrine 139: *agreement is evidence only when the path is uniform*). Two independently
+authored probes reaching the same row population is genuine path diversity.
+
+**Nobody should reach for fingerprint-level cross-seat comparison as a corroboration check.**
+It would require a shared probe definition — i.e. working `repo` or `fleet` scope — and
+`repo` scope is currently broken two independent ways (probe strings stored verbatim, so
+absolute paths pin to one checkout; and `runChoreVerb` passes `cwd=process.cwd()` rather
+than the repo root, so relative paths are not portable either). That form of corroboration
+is not merely unused — it is presently unavailable to anyone, and this file must not imply
+it was achieved.
+
 ## The general form
 
 **When an instrument's state is a single value, it can answer "is it different from before?"
