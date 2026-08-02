@@ -69,6 +69,32 @@ probes would be one instrument run twice, which proves close to nothing (mastodo
 doctrine 139: *agreement is evidence only when the path is uniform*). Two independently
 authored probes reaching the same row population is genuine path diversity.
 
+### ⚠ CORRECTION TO THE ABOVE — path diversity at the PROBE is not path diversity at the SOURCE
+
+**Written same evening, after the round trip cited in this file turned out not to be a world
+event at all.** The section above claims our agreement was strong *because* we authored
+different probes. That overclaims, and the file's own headline instance is the disproof.
+
+Both probes read `pij anomalies`. The diversity was in **output formatting**, not in the
+observation path — and underneath both sat one stale field (`semanticState: waiting`,
+surviving a `report clear` that reported success and changed nothing). So two independently
+authored instruments agreed, repeatedly, across a seat boundary, **and were both wrong**.
+Thrush's phrase for it is the right one: *two seats sampled the same lie.*
+
+> **Two probes that converge on a shared upstream source are ONE instrument wearing two
+> hats.** Diversity has to exist where the reading is TAKEN, not where it is FORMATTED.
+> Agreement between them measures the formatting, and inherits every error above the split.
+
+The practical test is not *"did we write different probes?"* but *"where do our paths
+converge, and what is the FIRST shared thing upstream of both?"* Everything at or above that
+join is un-corroborated no matter how many seats agree — and the more seats agree, the more
+convincing the shared error becomes. This is *auditor-is-the-subject* one layer up: here the
+auditors differed and their **instrument** did not.
+
+What survives from the section above: fingerprints are still incomparable across seats by
+construction, and that fact is still not a defect. What dies: the claim that our agreement
+constituted independent corroboration. It did not.
+
 **Nobody should reach for fingerprint-level cross-seat comparison as a corroboration check.**
 It would require a shared probe definition — i.e. working `repo` or `fleet` scope — and
 `repo` scope is currently broken two independent ways (probe strings stored verbatim, so
