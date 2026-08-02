@@ -34,6 +34,8 @@ import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
 import { FsChannel } from "./adapters/channel.js";
+import { ShellChoreProbe } from "./adapters/chore-probe.js";
+import { FsChoreStore } from "./adapters/chore-store.js";
 import { FsContextReader } from "./adapters/context-reader.js";
 import { TmuxContextWindowReader } from "./adapters/context-window-reader.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
@@ -79,6 +81,7 @@ import { agentsDir } from "./core/agents/paths.js";
 import { archiveAgeAnchorMs } from "./core/archive.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import { renderCanaryTimeout } from "./core/canary.js";
+import { dispatchChore } from "./core/chores/cli-verbs.js";
 import {
 	applyWaitReceiptSources,
 	type CliDeps,
@@ -160,7 +163,11 @@ import {
 	ORCHESTRATION_USAGE,
 	parseOrchestrationArgs,
 } from "./core/orchestration/cli.js";
-import { paRefusal, paRefusalMessage } from "./core/orchestration/pa-capability.js";
+import {
+	paCapabilityVerb,
+	paRefusal,
+	paRefusalMessage,
+} from "./core/orchestration/pa-capability.js";
 import { PrimeService } from "./core/orchestration/prime.js";
 import { projectOrchestrationRole, RoleService } from "./core/orchestration/role.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
@@ -260,6 +267,13 @@ Agents (run declarative minih agent packs):
   pij agent run <slug> [-p k=v…] [--json]            run a named pack (--ephemeral to not record)
   pij agent run --prompt "<text>" [--json]           inline zero-setup run (nothing recorded)
   pij agent show|new|check|eject <slug>              inspect · scaffold · validate · customise a pack
+
+Chores (durable change detectors):
+  pij chore add <name> --probe '<cmd>' [--scope seat|repo|fleet]   register a named shell fingerprint
+  pij chore run [--dry] [--json]                     probe the union roster; deltas remain pending until acked
+  pij chore list [--verbose] [--json]                inspect seat · repo · fleet definitions
+  pij chore ack <name|scope:name> [--json]            advance one per-seat baseline
+  pij chore remove <name|scope:name> --reason '<why>' [--json]   record removal, delete definition, purge this seat's state
 
 Orchestration (machine-wide coordination):
   pij orchestration baton <define|list|show|request|grant|return|reclaim>   atomic resource leases + pushed notices
@@ -3301,6 +3315,22 @@ RUN FLAGS (override pack frontmatter — warn, never block)
 
 EXIT CODES  0 success · 1 user/agent error (bad input, run failed) · 2 system error (harness CLI missing)`;
 
+const CHORE_USAGE = `pij chore — durable named change detectors
+
+USAGE
+  pij chore add <name> --probe '<cmd>' [--full '<cmd>'] [--full-every N]
+                       [--scope seat|repo|fleet] [--timeout <ms>] [--json]
+  pij chore run [--dry] [--json]
+  pij chore list [--verbose] [--json]
+  pij chore ack <name|scope:name> [--json]
+  pij chore remove <name|scope:name> --reason '<why>' [--json]
+  pij chore --help | -h | help
+
+SEMANTICS
+  run computes and re-reports pending deltas; it never advances a baseline.
+  ack is the only baseline-advance operation.
+  definitions union across seat, repo, and fleet; fingerprints remain per seat.`;
+
 function renderBatonNotice(notice: BatonNotice): string {
 	return renderBatonNoticeBody(notice);
 }
@@ -3916,6 +3946,44 @@ async function runAgentVerb(args: string[]): Promise<void> {
 	}
 }
 
+function currentWorktreeRoot(cwd: string): string | undefined {
+	try {
+		const root = execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+			timeout: 2_000,
+		}).trim();
+		return root ? realpathSync(root) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function runChoreVerb(args: string[]): void {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+		process.stdout.write(`${CHORE_USAGE}\n`);
+		process.exit(0);
+	}
+	const cwd = process.cwd();
+	const worktreeRoot = currentWorktreeRoot(cwd);
+	const seatId = process.env.PIJ_SESSION_ID?.trim() || undefined;
+	const result = dispatchChore(args, {
+		cwd,
+		worktreeRoot: worktreeRoot ?? cwd,
+		...(seatId ? { seatId } : {}),
+		store: new FsChoreStore({
+			pijHome,
+			...(seatId ? { seatId } : {}),
+			...(worktreeRoot ? { repoRoot: worktreeRoot } : {}),
+		}),
+		probe: new ShellChoreProbe(),
+		now: () => new Date().toISOString(),
+	});
+	if (result.stdout) process.stdout.write(`${result.stdout}\n`);
+	if (result.stderr) process.stderr.write(`${result.stderr}\n`);
+	process.exit(result.exitCode);
+}
+
 /** `pij spine render` — bin-owned (plan 054 P4 T002, AC-10): SpineLogPort has
  *  no markdown-write method by design, so the bin reads the log and publishes
  *  `$PIJ_HOME/spine/spine.md` atomically. Core keeps the parse row for
@@ -3974,7 +4042,7 @@ function main(): void {
 	// `pa-capability.test.ts` scrapes BOTH files and fails if any verb is
 	// unclassified, which is what keeps this pair from drifting apart.
 	{
-		const refusal = paBinRefusal(top);
+		const refusal = paBinRefusal(paCapabilityVerb(top, process.argv[3]));
 		if (refusal !== null) {
 			process.stderr.write(`E-OWN: ${refusal}\n`);
 			process.exit(2);
@@ -4060,6 +4128,10 @@ function main(): void {
 	if (top === "agent" || top === "agents") {
 		const rest = top === "agents" ? ["list", ...process.argv.slice(3)] : process.argv.slice(3);
 		void runAgentVerb(rest);
+		return;
+	}
+	if (top === "chore") {
+		runChoreVerb(process.argv.slice(3));
 		return;
 	}
 	if (top === "orchestration") {

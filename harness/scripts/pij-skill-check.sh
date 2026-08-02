@@ -86,7 +86,7 @@ budget "$SKILL/references/prime/orchestrator.md" 120
 
 # 4. CLI-verb coverage: every required bin family is mapped in the coverage table.
 cli_rows=$(sed -n '/^## CLI-verb coverage/,/^## /p' "$SKILL/SKILL.md" | grep '^| `' || true)
-for v in spawn close adopt tree link daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime project spine task node anomalies; do
+for v in spawn close adopt tree link daemon compact-self telegram agent whoami list send tail state phonehome path models orchestration baton prime project spine task node anomalies chore; do
   printf '%s\n' "$cli_rows" | grep -Fq "\`$v\`" \
     || err "verb coverage: '$v' unmapped in CLI-verb coverage table"
 done
