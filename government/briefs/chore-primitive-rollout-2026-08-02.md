@@ -186,6 +186,50 @@ instruction to re-author probes is, until the fix lands, a fleet-wide source of 
 If you see a delta on a chore you do not own, suspect re-authoring before you relay it — and
 rule 1 means waiting costs you nothing.
 
+### The positive construction rule (`pij-wee-albatross`) — prefer this to the ban-list
+
+> **A probe emits only the DECISION VARIABLE. Every other field is diagnostic and belongs in
+> `--full`.**
+
+This is the general form of "no timestamps". The real hazard is broader than clocks: **any
+fast-moving field riding along in a probe makes the chore fire on an axis it is not about.**
+Clocks are just the case that always trips. A staleness probe emitting `stale=true state=idle`
+fired constantly because `state` flaps `idle`↔`working` on every burst of work — a chore about
+staleness fingerprinting an axis it was not about. Fixed by emitting `stale=true|false` alone
+and moving state, assignment and age into `--full`, where they are diagnostic and unfingerprinted.
+
+### Reading a flap: `CHANGED A → A` is not a bug
+
+When a value moves A→B and back to A before the next run, the delta is legitimately open (old
+pinned at the last **acked** A, new refreshed to A) and both endpoints are equal — so it renders
+as `CHANGED <name>: A → A` and reads as nonsense. **It is rule 2 working exactly as designed.**
+Acking clears it correctly but discards the one fact worth knowing: *there was a transient.*
+A rendering fix is queued (`FLAPPED … moved and returned since last ack`). Until it lands, do not
+file this as a false delta — one o-prime nearly did, with the design brief open in front of it.
+
+### Shared scope ≠ shared runnability
+
+A `repo`/`fleet` chore whose probe invokes a **capability-gated** verb is permanently
+`NOT-PROBEABLE` for seats that lack the capability, while running fine for its author — and the
+author is structurally the least likely to notice, because it holds the capability. A prime
+registered `repo:baton-holders` probing `pij orchestration baton show`; its PA got
+`NOT-PROBEABLE: exit 1: E-OWN: 'orchestration' is not available to a PA` on every sweep, forever.
+**Shared-scope probes should avoid `pij` verbs and read state or use unprivileged tools.**
+(The positive: chore mapped a capability refusal to `NOT-PROBEABLE` *loudly* rather than masking
+it as a clean empty — the fail-loud path working on a failure mode nobody designed it for.)
+
+### Per-seat state belongs to the seat — ruling, 2026-08-02
+
+`PIJ_SESSION_ID=<another seat> pij chore run` **acts as that seat, and `run` is a write** (it
+stamps `lastRunAt`/`lastStatus`/`runsSinceFull`, shifting when that seat's `--full` next fires).
+Do not do it. Inspect another seat's state file read-only, or ask that seat to run.
+
+This is a **gate, not an etiquette**: two seats crossed this boundary independently within one
+hour — one of them the seat that owns the primitive — and neither noticed, because the env var
+makes the boundary invisible (no gate, no warning, exit 0). A norm that both parties broke while
+being careful is not a norm that will hold. The seat should be **derived** from binding the way
+`whoami` does; an explicit override should have to be *yours* or be refused.
+
 ### And the tally rule generalises further than "don't count"
 
 `pij-tense-centipede` found the subtler form after fixing two honest tallies (`wc -l` on
