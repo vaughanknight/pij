@@ -1,1 +1,59 @@
-{"version":1,"chores":[{"scope":"repo","name":"main-head","probe":"python3 harness/scripts/pij-repo-probe.py main-head","full":"git log --oneline -3 origin/main","fullEvery":1,"timeoutMs":20000},{"scope":"repo","name":"pr-board","probe":"python3 harness/scripts/pij-repo-probe.py pr-board","full":"gh pr list --state open","fullEvery":1,"timeoutMs":30000}],"removals":[{"scope":"repo","name":"main-head","reason":"probe-only roster is undiagnosable (rollout correction 2026-08-02); re-authoring with --full","removedAt":"2026-08-02T02:39:35.057Z"},{"scope":"repo","name":"pr-board","reason":"probe-only roster is undiagnosable (rollout correction 2026-08-02); re-authoring with --full","removedAt":"2026-08-02T02:39:35.628Z"},{"scope":"repo","name":"main-head","reason":"re-author at --full-every 1","removedAt":"2026-08-02T02:42:26.155Z"},{"scope":"repo","name":"pr-board","reason":"re-author at --full-every 1","removedAt":"2026-08-02T02:42:27.168Z"},{"scope":"repo","name":"main-head","reason":"probe exited 0 with empty output on git failure — silent false all-clear; replacing with a fail-loud probe carrying a denominator","removedAt":"2026-08-02T02:52:39.534Z"},{"scope":"repo","name":"pr-board","reason":"probe exited 0 with empty output on gh failure — silent false all-clear; replacing with a fail-loud probe carrying a denominator","removedAt":"2026-08-02T02:52:40.577Z"}]}
+{
+	"version": 1,
+	"chores": [
+		{
+			"scope": "repo",
+			"name": "main-head",
+			"probe": "python3 harness/scripts/pij-repo-probe.py main-head",
+			"full": "git log --oneline -3 origin/main",
+			"fullEvery": 1,
+			"timeoutMs": 20000
+		},
+		{
+			"scope": "repo",
+			"name": "pr-board",
+			"probe": "python3 harness/scripts/pij-repo-probe.py pr-board",
+			"full": "gh pr list --state open",
+			"fullEvery": 1,
+			"timeoutMs": 30000
+		}
+	],
+	"removals": [
+		{
+			"scope": "repo",
+			"name": "main-head",
+			"reason": "probe-only roster is undiagnosable (rollout correction 2026-08-02); re-authoring with --full",
+			"removedAt": "2026-08-02T02:39:35.057Z"
+		},
+		{
+			"scope": "repo",
+			"name": "pr-board",
+			"reason": "probe-only roster is undiagnosable (rollout correction 2026-08-02); re-authoring with --full",
+			"removedAt": "2026-08-02T02:39:35.628Z"
+		},
+		{
+			"scope": "repo",
+			"name": "main-head",
+			"reason": "re-author at --full-every 1",
+			"removedAt": "2026-08-02T02:42:26.155Z"
+		},
+		{
+			"scope": "repo",
+			"name": "pr-board",
+			"reason": "re-author at --full-every 1",
+			"removedAt": "2026-08-02T02:42:27.168Z"
+		},
+		{
+			"scope": "repo",
+			"name": "main-head",
+			"reason": "probe exited 0 with empty output on git failure — silent false all-clear; replacing with a fail-loud probe carrying a denominator",
+			"removedAt": "2026-08-02T02:52:39.534Z"
+		},
+		{
+			"scope": "repo",
+			"name": "pr-board",
+			"reason": "probe exited 0 with empty output on gh failure — silent false all-clear; replacing with a fail-loud probe carrying a denominator",
+			"removedAt": "2026-08-02T02:52:40.577Z"
+		}
+	]
+}
