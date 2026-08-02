@@ -82,3 +82,52 @@ An honest "this did not help me" is the single most valuable reply. Do not perfo
   `chore list --verbose` shows you exactly what will run before you run it.
 - **A PA may `run`/`list`/`ack` but not `add`/`remove`** (`PA_VERB_CLASSIFICATION`). If you are a
   PA and need a roster change, ask your prime — that is the intended shape, not a bug.
+
+## ⚠️ CORRECTION (2026-08-02, from `pij-chief-roadrunner`) — "PA may never ack" is a TRAP
+
+A prime read "roster changes belong to the prime" and reasonably over-tightened it into
+*"the PA may run, but must never ack."* **Do not do this.** Because fingerprints are
+**per-seat**, a prime's `ack` does **not** advance its PA's baseline. A PA that runs but never
+acks re-reports the same deltas forever — building permanent alarm fatigue into the exact
+instrument designed to prevent it. It was caught only because a PA pasted a fingerprint that
+differed from its prime's by one field, which made the per-seat behaviour visible.
+
+**The rule**: *whoever runs must be able to ack.* `run`/`list`/`ack` for the PA, `add`/`remove`
+for the prime, is the correct split — and it is the whole split. The safety property ("nothing
+is lost by forgetting to relay") **holds only if the runner can ack**; a runner who cannot ack
+converts the tool into permanent noise.
+
+**The discipline that preserves the invariant**: a PA acks only a delta it has **already
+relayed**, and only **after** the send. Two seats independently sharpened this further — ack
+after *confirmed* delivery, not merely after issuing the send.
+
+## ⚠️ REGISTER WITH `--full`, OR YOUR DELTAS ARE UNDIAGNOSABLE
+
+The line above renders as `CHANGED <scope>:<name>: <old> → <new>`, which reads as though
+`old`/`new` are **values**. They are **fingerprints**. A roster registered with `--probe` alone
+tells a seat *that* something moved and never *what* — so the seat re-runs the probe by hand,
+which is the transcription work this exists to abolish.
+
+Register `--full '<cmd>'` (with `--full-every 1` if you want it every run). The `FULL` line
+carries the real value, framed, and `--json` carries it as `fullOutput`. A prime whose roster
+lacked it watched its own PA correctly conclude the primitive was useless; re-authored with
+`--full`, the same PA reversed its verdict. This is the single highest-value authoring rule.
+
+## Two more probe-authoring rules, learned in the field
+
+- **No timestamps or ages in a probe.** Any probe whose output contains a clock value changes on
+  every run and is 100% noise. The obvious "is the card stale" probe is the naive trap: emit a
+  **boolean verdict** (`prime-card=ok`), not an age.
+- **A probe that cannot parse must FAIL LOUD, not report clean.** An o-prime's first probe
+  assumed the wrong JSON shape, so its loop body never ran and it printed a clean result for two
+  *known-open* defects. Carry a **denominator** (`21subs clean`) so zero discriminates between
+  "nothing to report" and "the probe broke", and exit non-zero on no-data so it reads
+  `NOT-PROBEABLE` rather than a false all-clear.
+
+## Known limit — it detects movement; it cannot adjudicate stillness
+
+From `pij-artistic-jaguar`: a card that has not moved in 24h emits an identical fingerprint
+forever and reports `NO CHANGE` with perfect accuracy, while saying nothing about the only
+question that matters — *is that 24-hour-old sentence still true?* Movement-detection and
+stillness-adjudication are disjoint. `NO CHANGE — 4 chores probed, 0 moved` must not be read as
+"stillness was checked". It was not.
