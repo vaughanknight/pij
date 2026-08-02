@@ -29,6 +29,7 @@ hypotheses.
 
 | 14 — Plan 041 Phase 2 (`pij inbox`) | 2026-07-12 | T0 = `2026-07-12T06:19Z`; T1 = `2026-07-12T08:50Z`; Δ ≈ 2h 31m | Pull ownership, ambient registration, grouped inbox CLI, waits/receipts, and atomic per-envelope receipt events; 203 targeted tests plus Windows two-process race. | Long wall-clock reflects two deliberate review gates and four real correctness defects found after green happy-path gates; D-034 encodes the adversarial proof gained. |
 | 15 — Plan 041 Phase 3 (`pij inbox`) | 2026-07-12 | T0 = `2026-07-12T10:40Z`; T1 = `2026-07-12T21:09Z`; Δ ≈ 10h 29m | Durable tmux/pi push consumption, retained envelopes, post-outcome markers, push/pull guidance, cold review, and genuine no-tmux Terra/medium live proof; 1,850 tests. | Wall-clock includes the overnight live-proof pause, model-effort ruling, formal daemon baton, and one three-finding review/fix cycle; active implementation/review time was a minority of the window. |
+| 16 — Plan 076 (`pij chore`) | 2026-08-02 | T0 = `2026-08-02T01:16:32Z`; T1 = `2026-08-02T01:46:52Z`; Δ ≈ 30m 20s | Five-verb chore CLI, union scope rosters, per-seat pending fingerprints, ack-only baselines, docs/domain records, 51 focused tests, and full harness inventory. | One transient smoke pane-loss retry plus a two-finding correctness review/fix cycle are included. |
 
 ## Hypothesis (measurement-anchored)
 
