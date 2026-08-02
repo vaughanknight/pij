@@ -124,10 +124,79 @@ lacked it watched its own PA correctly conclude the primitive was useless; re-au
   "nothing to report" and "the probe broke", and exit non-zero on no-data so it reads
   `NOT-PROBEABLE` rather than a false all-clear.
 
-## Known limit — it detects movement; it cannot adjudicate stillness
+## THE probe-authoring rule — three governments converged on it independently
 
-From `pij-artistic-jaguar`: a card that has not moved in 24h emits an identical fingerprint
-forever and reports `NO CHANGE` with perfect accuracy, while saying nothing about the only
-question that matters — *is that 24-hour-old sentence still true?* Movement-detection and
-stillness-adjudication are disjoint. `NO CHANGE — 4 chores probed, 0 moved` must not be read as
-"stillness was checked". It was not.
+Stated first because it is the highest-value thing learned in the rollout, and because three
+seats reached it from three different directions in one evening:
+
+> **A probe must emit what it SAW alongside what it MATCHED. A probe that cannot distinguish
+> *empty* from *blind* is worse than no probe at all.**
+
+- `pij-defiant-damselfly` filtered anomaly rows on JSON keys that do not exist (`seat`,
+  `folder`; the real keys are `nodeId`/`kind`/`recordRef`). It parsed fine, exited 0, and
+  returned empty **for everything** — a permanent false all-clear that would have read as a
+  healthy fleet forever. *"A tally at least moves sometimes; a mis-keyed filter never fires."*
+- `pij-wee-albatross`'s first sidecar probe assumed a bare list where the real shape is
+  `{watchers:[{watcherId,capture:{…}}]}`, so its loop body never executed and it printed clean
+  for **two known-open defects**.
+- `pij-tense-centipede` hit the silent-zero on its own capture chore: `--full` returned nothing
+  at all on the zero case, indistinguishable from a command that failed.
+
+**So**: carry a denominator (`ours=0 of 5 rows over 8 seats`, `21subs clean`), make the empty
+case an explicit value (`| grep . || echo NONE`), and exit non-zero on no-data so it reads
+`NOT-PROBEABLE` rather than clean.
+
+### And the tally rule generalises further than "don't count"
+
+`pij-tense-centipede` found the subtler form after fixing two honest tallies (`wc -l` on
+captures; `rev-list --count` on unpushed commits — a rebase swaps commits and keeps the count):
+a subscription probe emitted `mode`+`maxBytes` **without the target id**, so two subscriptions
+swapping policy symmetrically would cancel out. No tally anywhere in it, blind for the same
+reason. The general rule:
+
+> **The probe must emit enough to distinguish any two states you would act on differently.**
+> A reader who fixes `wc -l` and stops will leave this whole class in place.
+
+## Known limit — the DELTA ENGINE detects movement; `--full-every` covers absolute state
+
+**Corrected 2026-08-02 by `pij-massive-meadowlark`, and the correction matters.** An earlier
+version of this brief said flatly that chore "cannot adjudicate stillness". That is true of the
+**delta engine** and false of the **reporting surface** — with `--full-every 1` the `FULL` block
+prints on **every** run, including unchanged ones:
+
+```
+NO CHANGE — 6 chores probed, 0 moved
+UNCHANGED repo:pr-states: c3599b725e94
+FULL repo:pr-states
+  | #68 green, #74 green, #75 RED, #76 green, #77 green, #78 RED, #82 RED, #84 green
+```
+
+Three PRs are RED, nothing moved, and the reader is still told. **A persistent bad state is
+invisible to any delta-only reporter** — meadowlark's PA faithfully reported "8 open PRs, main
+green, 0 deltas" for ~10 hours while three were red, because they were red *at baseline* and
+baseline never produces a delta. `--full-every N` subsumes the hand-rolled periodic-full-state
+rule that failure previously demanded, tool-side, where it cannot be transcribed wrongly.
+
+So persistent-failure watching is one of this primitive's **strongest** uses, not a gap.
+
+**What remains genuinely out of reach** (`pij-artistic-jaguar`): whether an *unchanged* value is
+still **true**. A prime's card unmoved for 24h emits an identical fingerprint forever; `--full`
+will show you the sentence, but nothing can tell you whether that 24-hour-old sentence still
+describes reality. `NO CHANGE — N probed, 0 moved` means movement was checked. It does not mean
+the standing claims were re-adjudicated.
+
+## Denominator drift — benign, and the one open question closed
+
+Fleet-scoped chores appear in your roster the moment another government registers them, so the
+probed denominator moves between runs. Two seats nearly filed "fleet chores do not probe" when
+the real cause was the chore not existing at their first run. Reported clean negatives:
+`damselfly` 6→7→8 monotonic, each step attributable; `centipede` 6→8, fully explained. The one
+unexplained *decrease* (`meadowlark`, 6→5→7) has **not recurred across four subsequent runs** and
+is not being claimed as a durability bug. Tell `pij-concerned-thrush` if you see a decrease with
+no removal — that, and only that, would indicate a partial read of a fleet roster mid-write.
+
+## Attribution gap (open, minor)
+
+`chore list --verbose` projects no **creator** field, so a fleet-scoped chore cannot be
+attributed without reading its probe body. Two governments spent messages working out whose
+`fleet:captures-held` it was. Worth exposing.
