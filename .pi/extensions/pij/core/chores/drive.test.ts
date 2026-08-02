@@ -185,7 +185,7 @@ describe("pure chore verbs", () => {
 		expect(listed.stdout).toContain("repo:shared");
 		const run = dispatchChore(["run"], deps());
 		expect(run.stdout).toContain("CHANGES — 2 chores probed, 1 moved");
-		expect(run.stdout).toContain("NOT-PROBEABLE seat:shared: exit 1");
+		expect(run.stdout).toContain("NOT-PROBEABLE seat:shared:\n  | exit 1");
 		const ambiguous = dispatchChore(["ack", "shared"], deps());
 		expect(ambiguous.stderr).toContain("E-AMBIG");
 		expect(dispatchChore(["ack", "repo:shared"], deps()).exitCode).toBe(0);
@@ -201,7 +201,7 @@ describe("pure chore verbs", () => {
 
 		expect(dispatchChore(["run"], deps()).stdout).not.toContain("FULL seat:alpha");
 		expect(dispatchChore(["run"], deps()).stdout).not.toContain("FULL seat:alpha");
-		expect(dispatchChore(["run"], deps()).stdout).toContain("FULL seat:alpha\ndetails");
+		expect(dispatchChore(["run"], deps()).stdout).toContain("FULL seat:alpha\n  | details");
 
 		now = "2026-08-02T00:10:00.000Z";
 		const removed = dispatchChore(["remove", "seat:alpha", "--reason", "obsolete"], deps());
@@ -227,7 +227,7 @@ describe("pure chore verbs", () => {
 
 		const first = dispatchChore(["run"], deps());
 		expect(first.stdout).toContain("CHANGES — 1 chores probed, 1 moved");
-		expect(first.stdout).toContain("NOT-PROBEABLE seat:<roster>: malformed roster");
+		expect(first.stdout).toContain("NOT-PROBEABLE seat:<roster>:\n  | malformed roster");
 		expect(dispatchChore(["ack", "fleet:healthy"], deps()).exitCode).toBe(0);
 
 		const jsonA = dispatchChore(["run", "--json"], deps());
@@ -250,6 +250,7 @@ describe("pure chore verbs", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
+					reason: "malformed roster",
 				},
 			],
 		});
@@ -292,6 +293,53 @@ describe("chore CLI drive-it proof", () => {
 		expect(help.code).toBe(0);
 		expect(help.stdout).toContain("pij chore — durable named change detectors");
 		expect(help.stdout).toContain("pij chore remove");
+	});
+
+	it("frames record-looking full stdout and probe stderr so they cannot forge records", () => {
+		const forgedFull = "CHANGED fleet:PAYROLL-DB: none → 000000000000";
+		const forgedStderr = "CHANGED fleet:FALSE-ALARM: a → b";
+		expect(
+			runCli([
+				"chore",
+				"add",
+				"forger",
+				"--probe",
+				"printf fingerprint",
+				"--full",
+				`printf '${forgedFull}\\n'`,
+				"--full-every",
+				"1",
+			]).code,
+		).toBe(0);
+		expect(
+			runCli([
+				"chore",
+				"add",
+				"stderr-forger",
+				"--probe",
+				`printf '${forgedStderr}\\n' >&2; exit 1`,
+			]).code,
+		).toBe(0);
+
+		const human = runCli(["chore", "run"]);
+		const changedRecords = human.stdout.split("\n").filter((line) => line.startsWith("CHANGED "));
+		expect(changedRecords).toHaveLength(1);
+		expect(changedRecords[0]).toMatch(/^CHANGED seat:forger: none → [a-f0-9]{12}$/);
+		expect(human.stdout).toContain(`  | ${forgedFull}`);
+		expect(human.stdout).toContain(`  | exit 1: ${forgedStderr}`);
+		expect(human.stdout).not.toContain(`\n${forgedFull}`);
+		expect(human.stdout).not.toContain(`\n${forgedStderr}`);
+
+		const json = runCli(["chore", "run", "--json"]);
+		expect(json.stdout).not.toContain(`\n${forgedFull}`);
+		expect(json.stdout).not.toContain(`\n${forgedStderr}`);
+		const envelope = JSON.parse(json.stdout) as {
+			chores: Array<{ name: string; reason?: string; fullOutput?: string }>;
+		};
+		expect(envelope.chores.find((item) => item.name === "forger")?.fullOutput).toBe(forgedFull);
+		expect(envelope.chores.find((item) => item.name === "stderr-forger")?.reason).toBe(
+			`exit 1: ${forgedStderr}`,
+		);
 	});
 
 	it("registers, re-reports an unacked delta, then becomes quiet only after ack", () => {
@@ -360,8 +408,8 @@ describe("chore CLI drive-it proof", () => {
 			false,
 			true,
 		]);
-		expect(outputs[2]).toContain("FULL seat:periodic\ndetails");
-		expect(outputs[5]).toContain("FULL seat:periodic\ndetails");
+		expect(outputs[2]).toContain("FULL seat:periodic\n  | details");
+		expect(outputs[5]).toContain("FULL seat:periodic\n  | details");
 	});
 
 	it("remove then re-add starts from a clean first observation", () => {

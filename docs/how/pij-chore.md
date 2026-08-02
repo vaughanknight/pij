@@ -60,6 +60,10 @@ the result to establish the initial baseline.
 for that chore and prints it under `FULL <scope>:<name>`. The counter is per seat and
 durable across CLI processes. `run --dry` does not advance it.
 
+Probe-controlled stdout and stderr are never emitted as record lines. Human output prefixes
+every untrusted line with `  | ` beneath its trusted `FULL` or `NOT-PROBEABLE` header;
+`--json` carries the same text only in escaped `fullOutput` or `reason` string fields.
+
 ## Probe-authoring rule
 
 The fingerprint probe must be a **superset signal** for the change you care about: every

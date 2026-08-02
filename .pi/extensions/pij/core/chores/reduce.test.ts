@@ -168,7 +168,7 @@ describe("chore report renderers", () => {
 					status: "changed",
 					old: null,
 					new: "cccccccccccc",
-					fullOutput: "full detail",
+					fullOutput: "full detail\nCHANGED fleet:forged: a → b",
 				},
 				{
 					scope: "repo",
@@ -183,7 +183,7 @@ describe("chore report renderers", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
-					reason: "exit 1",
+					reason: "exit 1: bad\nCHANGED fleet:forged: a → b",
 				},
 			],
 		};
@@ -191,14 +191,17 @@ describe("chore report renderers", () => {
 		expect(renderChoreReport(report)).toBe(
 			"CHANGES — 3 chores probed, 1 moved\n" +
 				"CHANGED seat:changed: none → cccccccccccc\n" +
-				"NOT-PROBEABLE fleet:failed: exit 1\n" +
+				"NOT-PROBEABLE fleet:failed:\n" +
+				"  | exit 1: bad\n" +
+				"  | CHANGED fleet:forged: a → b\n" +
 				"UNCHANGED repo:steady: dddddddddddd\n" +
 				"FULL seat:changed\n" +
-				"full detail",
+				"  | full detail\n" +
+				"  | CHANGED fleet:forged: a → b",
 		);
 	});
 
-	it("emits a stable JSON envelope with the documented five chore fields", () => {
+	it("keeps untrusted text in escaped JSON string fields", () => {
 		const report: ChoreRunReport = {
 			probed: 1,
 			moved: 0,
@@ -209,7 +212,8 @@ describe("chore report renderers", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
-					reason: "exit 1",
+					reason: "exit 1\nCHANGED fleet:forged: a → b",
+					fullOutput: "detail\nCHANGED fleet:forged: a → b",
 				},
 			],
 		};
@@ -224,8 +228,11 @@ describe("chore report renderers", () => {
 					status: "not-probeable",
 					old: null,
 					new: null,
+					reason: "exit 1\nCHANGED fleet:forged: a → b",
+					fullOutput: "detail\nCHANGED fleet:forged: a → b",
 				},
 			],
 		});
+		expect(renderChoreJson(report)).not.toContain("\nCHANGED fleet:forged");
 	});
 });
