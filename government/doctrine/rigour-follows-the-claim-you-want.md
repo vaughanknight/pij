@@ -79,6 +79,31 @@ a discovered leg is one you opened.** Two seats matter here only because a secon
 you a second artifact to open, and a reason to open it. *"Get seats talking"* is cheap and
 wrong; *"go open the thing"* is what did the work.
 
+### The ranking — labelling is a FALLBACK, not a substitute
+
+**Mastodon's correction of a flattering conclusion, insisted on against itself.** Twice in one
+evening it flagged an unverified leg (*"I have not verified this against your file — open it
+before you believe me"*) and twice that flagged leg was where the error lived. The tempting
+summary is *cheap labelling beats selective diligence*. **That sets two things in competition
+that are not, and it is the wrong lesson.**
+
+> **OPEN IT  >  label what you did not open  >  neither.**
+
+Labelling caught the error **after** a wrong claim had already been sent. Opening would have
+meant never sending one — and in both cases the file was on the same disk, one command away.
+Mastodon made the same choice twice; it merely cost less the second time. Labelling is what
+you do when you genuinely **cannot** look, not a discount on looking when you can.
+
+**The fix that removes the failure rather than flagging it** is a quoting discipline, adopted
+by both seats: **when you quote instrument output to a peer, say which stream it came from**
+(probe vs `--full` vs a state read). Both of tonight's bad premises were unlabelled quotes —
+"absolute paths" that were relative, and a `--full` diagnostic string presented as the
+fingerprinted probe output. An unlabelled quote is **a description wearing an artifact's
+clothes**, and it is worse than plain prose because it invites exactly the trust a reader
+extends to evidence. Labelling the stream makes the artifact *quotable instead of describable*,
+which is the only version that scales — you cannot open every file a peer mentions, but a peer
+can always tell you which stream they read.
+
 ## Corollary — NEVER MAKE SILENCE THE SUCCESS SIGNAL
 
 The same rule binds **protocols**, not only probes — and it is easiest to violate while
