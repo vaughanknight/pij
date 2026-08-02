@@ -8,7 +8,7 @@
     "intent": "pij chore: first-class change-detector + durable duty roster for PA seats — extensible, with fleet/repo/seat scoped chores",
     "bag": {
       "mode": "Simple",
-      "status": "active"
+      "status": "complete"
     }
   },
   "created_at": "2026-08-02T00:50:51.013Z",
@@ -272,6 +272,56 @@
         "from": "phase-1",
         "to": "ship"
       }
+    },
+    {
+      "id": "UPD-009",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-08-02T02:15:01.821Z",
+      "details": {
+        "node": "retro-ship",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-010",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-08-02T02:15:01.937Z",
+      "details": {
+        "node": "retro-ship",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "STA-011",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-08-02T02:15:02.058Z",
+      "details": {
+        "node": "ship",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-010",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-08-02T02:15:02.179Z",
+      "details": {
+        "node": "ship",
+        "fields": [
+          "note"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -355,14 +405,17 @@
       "id": "ship",
       "type": "ship",
       "label": "Ship",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 8 ship",
       "next": [],
       "instructions": [
         "Get the work out — push the branch, open a PR (using the repo's PR guidance), watch its CI checks, and report problems; the merge itself is optional.",
         "Run /builder 8 ship --plan \"<plan path>\"; push and PR-open each pause for a separate confirm, and any merge waits for a typed PROCEED.",
         "Done when the PR is open and its checks are green (or the failures are reported with a fix-loop offer); a diverged base hands off to 8c reconcile."
-      ]
+      ],
+      "modified_at": "2026-08-02T02:15:02.179Z",
+      "ran_at": "2026-08-02T02:15:02.057Z",
+      "note": "PR #74 open against main; CI green 3/3 (check(22), check(24), windows-compat). Not merged — merge was not requested."
     },
     {
       "id": "backpressure",
@@ -501,7 +554,7 @@
       "id": "retro-ship",
       "type": "harness-retro",
       "label": "Retro: ship (harvest)",
-      "status": "known",
+      "status": "done",
       "branch_of": "ship",
       "next": [
         "ship"
@@ -515,7 +568,17 @@
         "Post-flight seam: the terminal long-horizon harvest — fold this flight's learnings into durable memory at ship.",
         "Run /eng-harness-flow --hook post-flight --json — a REAL invocation; narrate its envelope verbatim.",
         "On done, receipt first, status second: harness flow comment --path <flow-path> --node retro-ship --kind validation --source agent --text \"verdict:<…> time:<…>\" (router missing / envelope noop/UNAVAILABLE → text \"decision:unavailable reason:<…> time:<…>\" — a completed attempt, not a skip) THEN harness flow status --path <flow-path> --node retro-ship --to done. Mandatory unless the human declines — a decline is: harness flow comment --path <flow-path> --node retro-ship --kind decision --source user --text \"<their verbatim words>\" THEN harness flow status --path <flow-path> --node retro-ship --to skipped."
-      ]
+      ],
+      "comments": [
+        {
+          "at": "2026-08-02T02:15:01.821Z",
+          "text": "decision:completed hook:post-flight harvest via 'harness retro insights --json': 51 records, 222 entries (159 open / 22 suggested / 21 encoded), range 2026-06-23..2026-08-02. Top clusters: difficulty/untargeted n=19 proof_gap, difficulty/tooling n=18 proof_gap, insight n=11, difficulty/project-sensor n=5, difficulty/harness-itself n=5. Stale: 4 entries open 39d from plan 029. buffer_pending:1 (the gitignore reviews/ defect, captured post-drain). Named highest-leverage encode: PA_VERB_CLASSIFICATION totality test (DL-004). No lifecycle mutations applied — left for the human. time:2026-08-02T02:20:00Z",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "modified_at": "2026-08-02T02:15:01.937Z",
+      "ran_at": "2026-08-02T02:15:01.937Z"
     }
   ]
 }
