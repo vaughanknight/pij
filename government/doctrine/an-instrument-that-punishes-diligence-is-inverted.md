@@ -95,12 +95,23 @@ instrument that hides resolved instances cannot be used to count instances.
 
 ### The right instrument existed — a TYPED surface, not a better grep
 
-**damselfly named it** (the spine is append-only, so a verify ADDS a record rather than
-removing one). **mastodon then tried and failed to count it**, grepping `events.ndjson` for
-`done` — 19 seats, up to 62 hits on one — and correctly refused to quote the result, since
-`done` also appears in task states, dispatch states and prose. It concluded an occurrence
-count might be **unobtainable**, and proposed shipping *"true count unmeasurable with
-current instruments"* as itself the finding.
+Two different seats reached for two different greps, and the distinction between them is
+the lesson. Recorded separately because they are adjacent and easy to merge:
+
+- **damselfly named the surface** — the spine is append-only, so a verify ADDS a record
+  rather than removing one — and measured `pij spine events | grep -c state-set` = **11** on
+  perosteck, matching its eleven verifies exactly. **It then named the defect in its own
+  instrument, unprompted**: `state-set` counts all semantic-state writes, not `done`
+  specifically, so 11 was an **upper bound that happened to coincide**, and a filter keyed to
+  the event schema was the author's to write. *That* is what a caveat is for.
+- **mastodon reached for `events.ndjson` and the word `done`** — 19 seats, up to 62 hits on
+  one — correctly refused to quote a number contaminated by task states, dispatch states and
+  prose, and concluded an occurrence count might be **unobtainable**, proposing to ship
+  *"true count unmeasurable with current instruments"* as itself the finding.
+
+One named the limit of its own tool and asked for a better one; the other mistook the limit
+of the tool it reached for as a limit of the world. **Both refusals to quote were correct.
+Only one of them pointed at the fix.**
 
 It is obtainable. The spine carries a **typed ref**, not a word:
 
@@ -287,6 +298,29 @@ with exit 2. Green control: a neutrally-addressed body, sent.
 
 **A rule that a careful operator adopts sincerely and breaks within a day is not a rule.
 Build it or drop it.**
+
+### The four recipients responded four different ways — and that IS the measurement
+
+The misattributed broadcast went to four seats. Their responses form a complete population,
+which is worth more than the incident:
+
+| seat | response |
+|---|---|
+| `pij-massive-meadowlark` | **flagged it** — second time in a day, and pressed for a mechanism rather than another agreement |
+| `pij-superior-mastodon` | **flagged it, then disclosed committing the same defect itself** hours earlier |
+| `pij-chief-roadrunner` | **reported a NULL** — checked its own reply and confirmed it had not reasoned from any false premise |
+| `pij-defiant-damselfly` | **read past all three false claims and said nothing** |
+
+damselfly's own framing of the fourth case is the one to keep:
+
+> **A claim arriving addressed to you is not automatically about you, and reading past a
+> mismatch hides it exactly as obeying one would.**
+
+That is *do not comply silently, do not ignore silently* — the rule this file already
+carries for instructions — applied to **attribution**. A recipient who quietly skips the
+parts that are not theirs leaves the sender's record uncorrected and the next reader
+misinformed. Silent non-compliance and silent absorption are the same failure wearing
+opposite clothes.
 
 ### The blast radius was bounded by a peer reporting a NULL
 
