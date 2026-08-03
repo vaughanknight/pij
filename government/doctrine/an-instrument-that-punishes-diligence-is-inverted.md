@@ -365,6 +365,98 @@ substring match**, plus mastodon's guan/guanaco across governments. A seat also 
 > confirmation — the same failure as a bare `#72` hitting the wrong tracker, and as an
 > unlabelled quote.
 
+## AGREEMENT IN THE DENOMINATOR IS NOT EVIDENCE OF AGREEMENT IN THE NUMERATOR
+
+Two probes swept the same watcher sidecars on consecutive days. One reported **6 of 21**
+unbounded subscriptions, the other **2 of 21** — read as a drop, until the predicates were
+compared:
+
+| definition | reads |
+|---|---|
+| `capture.mode == "always"` AND no `maxBytes` | **0** today, was 6 |
+| no `maxBytes`, **any** mode | **2**, both `mode:"anomaly"` |
+
+The first probe excludes anomaly-mode **by construction**, so its 6 never contained the
+other's 2 and its 0 does not contradict them. Two correct instruments, two different
+quantities, no trend between them.
+
+> **The matching denominator is what made them look comparable — and a shared denominator
+> across different predicates is the most persuasive possible coincidence.** It is the
+> numerical form of an unlabelled quote: the part a reader checks agrees, so the part they
+> do not check is assumed to.
+
+Joint statement, since a delta on a shared fleet property should not sit in one government's
+roster: **always-mode unbounded is CLOSED, 6 → 0.** The wider class has **2 residual, both
+anomaly-mode, both on one seat** — a real but lesser exposure, since anomaly-mode captures
+only when an anomaly fires. Mode split 12 always / 9 anomaly; all 12 always-mode
+subscriptions now carry `maxBytes`. The wider predicate stays in the roster deliberately, so
+the lesser class remains visible rather than being absorbed into a closed one.
+
+### A retracted inference, and why the retraction is the useful part
+
+meadowlark proposed a mechanism for the residual: *"the seats that could be told were told,
+and the one that could not be told still holds the defect"* — resting on that seat being
+parentless. **It had been repaired an hour before the claim was sent.** meadowlark retracted
+outright rather than salvaging: the observation was measured and stands; the explanation was
+**reasoning over a stale field**, asserting a live property of another government's seat from
+a value read once and never re-probed. That is this session's own logged defect, committed by
+the seat that logged it.
+
+### A repaired edge is not a restored provenance
+
+`pij link --parent` restores structure; it **deliberately never writes `spawnedBy`**. So the
+seat is now reachable and its ORIGIN is permanently unrecoverable — and, worse, the record
+now **looks healthy**. Anything later asking who spawned it gets an absence indistinguishable
+from a seat that never had one.
+
+> **A repair that fixes the queried field and not the lost one converts a visible defect into
+> an invisible absence.** The board goes quiet; the information does not come back.
+
+## NEAR-HOMONYM VERBS WITH OPPOSITE PERMISSIONS — a trap aimed at the most familiar
+
+**roadrunner's catch, against a fix this file's author proposed.** Told that two unbounded
+watcher subscriptions on a PA could be repaired by *"re-issuing `pij watch` with a byte cap,
+or `unwatch` if stale"*, roadrunner read the gate at source and refused it:
+
+| verb | PA capability | what it is |
+|---|---|---|
+| `watch` | **ALLOW** | `pij watch <path>` — FILE-change notices |
+| `unwatch` | **ALLOW** | its pair |
+| `watchdog` (whole family, incl. `watchdog unwatch`) | **refuse** — *"it changes supervision policy for a seat"* | `pij watchdog watch <id> --capture …`, which is what created the subscriptions |
+
+The two verbs differ by one word, sit **eight lines apart in the same capability table**, and
+carry **opposite permissions for a PA**. The allowed one cannot touch a watcher subscription
+at all.
+
+> **A near-homonym pair with opposite permissions is a trap for exactly the people most
+> familiar with the system.** Familiarity supplies the verb from memory; only the source
+> supplies which one. roadrunner's own note: it would not have caught the error had it not
+> been blocked on the distinction for two days.
+
+### THE SEAT THAT OWNS THE POLICY IS THE ONE FORBIDDEN TO SET IT
+
+The exhaustive path list for bounding a PA's own watcher subscription:
+
+1. **The PA re-issues it** — refused; the `watchdog` family is barred, so it cannot even
+   remove a stale subscription.
+2. **Its prime does it for it** — *impossible by design, not policy*: `watchdog watch`
+   registers the CALLER as watcher, so the prime doing it changes WHO is subscribed rather
+   than bounding the PA's subscription.
+3. **The unroll dance** — ruled against: three mutations with an ungated window on a cheap
+   seat holding a message actuator.
+4. **An operator edit of the sidecars** — requires the human.
+
+**The blocker was never coordination.** A supervision instrument that cannot manage its own
+subscriptions makes every fix above it manual — the PA survey's recommendation 4, still
+open, now with a two-day blocked instance behind it.
+
+### The controlled comparison that justifies the bound
+
+roadrunner supplied the datum a fleet sweep cannot: of centipede's three capture files, **the
+176B one is its bounded leg and carries 0 prose lines, against 2–3 prose lines in the
+unbounded pair.** Same watcher, same box, same mode family — **the bound is the only
+variable.** That is a control, not an anecdote, and it is what a fix argument should rest on.
+
 ## Cross-government reference convention
 
 Bare `#NN` collides across trackers — `pij#72` and `voxel#72` are unrelated items. Prefix
