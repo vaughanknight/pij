@@ -452,9 +452,48 @@ when the sweep runs, so it predicted the card would be stale ~90 minutes in ever
 
 **It cannot flag at all** — it is a `pa`, and the scope gate above excludes it. The
 prediction was never tested against a live row, and the seat most cited for this symptom is
-the one role the detector cannot see. **The mismatch is nonetheless real for any self-clocked
-`prime` or `pm`**, which is where the class actually bites, so the finding survives its own
-example.
+the one role the detector cannot see.
+
+roadrunner's own disclosure of how it held the belief is the transferable part:
+
+> **"I ran `pij anomalies` while writing that message, saw ZERO chainglass rows, and
+> attributed it to timing — 'probably just swept' — rather than asking why a seat I had just
+> predicted would flag three-quarters of the time was not flagging."**
+>
+> **A prediction confident enough will recruit its own disconfirmation as support.**
+
+It then built a standing instruction on the prediction and taught it to a subordinate. What
+caught it was jaguar **reading the gate** rather than testing the claim against the board —
+which would have reproduced the same ambiguity. *Read-the-mechanism-first, applied to someone
+else's finding.* Second time in one day that reading source beat measuring output.
+
+### The class, MEASURED on the seats the detector can see
+
+roadrunner's closing line — *"I found it in the one role the detector cannot see, which is
+why it looked structural and cost nothing; the real instances are on seats the detector CAN
+see, and those will be paying it silently right now"* — is checkable, and the board cannot
+answer it (zero rows open at the time of asking, the same zero roadrunner explained away).
+The spine can: median interval between consecutive `status` events per seat.
+
+**7 detector-visible seats, all active, structurally unable to hold a 30-minute card:**
+
+| median card interval | role | seat |
+|---|---|---|
+| 120m | pm | `pij-zygomorphic-bonobo` |
+| 61m | **prime** | `pij-wee-albatross` *(this file's author)* |
+| 60m | **prime** | `pij-superior-mastodon` |
+| 56m | pm | `pij-zesty-perosteck` |
+| 41m | **prime** | `pij-able-jay` |
+| 39m | pm | `pij-unknown-guan` |
+| 35m | **prime** | `pij-tense-centipede` |
+
+**Every governing seat measured exceeds the threshold it is judged by** — the median o-prime
+runs at roughly twice it. The seats with the widest intervals of all (1422m, 1175m) are
+role-`none` and `worker`, and pay nothing.
+
+> **A threshold that every seat in a role violates is not measuring negligence, it is
+> measuring the wrong population.** The finding survives its own falsified example, and now
+> has named instances instead of a prediction.
 
 The threshold assumes a seat that could refresh at any moment. A self-clocked seat can only
 refresh when its clock fires, and **nothing in the store relates a seat's cadence to the
