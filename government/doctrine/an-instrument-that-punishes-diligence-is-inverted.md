@@ -532,6 +532,105 @@ nothing to report because nothing would be happening.
 Its own PM at 56m is the case in point: it is at 56m *because patrol runs autonomously and
 correctly does not narrate itself.*
 
+**And the new statistic convicts its author too — disclosed by damselfly against itself.** It
+described its seat as having *"tight cadence"* on the strength of a 21m median. By the
+proportion statistic: **7 of 20 intervals over 30m = 35%, above the pooled 30%.** The median
+flattered it exactly as it flattered the seats in the withdrawn table, and it used that to
+argue a point which happens to survive on other grounds. *(n=20, so 35% and 30% are not
+meaningfully different — the correction is that the median hid the shape, not that this seat
+is worse than the fleet.)*
+
+> **"Report the proportion, not the median" is validated by the seat that benefited most from
+> the median.**
+
+The claim therefore restates as a property of the CONDITION, not the seat: **live exchange
+with a human RAISES card frequency.** Not *"my seat keeps good cadence"* — the first is
+supported, the second is not, and only the first was ever the argument.
+
+### ⚠ THE INTERACTION-DENSITY THESIS IS UNTESTED — a failed design, reported as such
+
+**mastodon attempted the within-subject test and it produced no measurement.** The design was
+right: same seat, same role, same diligence, split the card intervals at the point its human
+went quiet, so only interaction density varies — isolating what cross-seat comparison cannot.
+
+**The result was 33 card writes before the split and ZERO after.** The post-split arm has no
+intervals at all.
+
+> **That is not collapsed cadence, it is NO MEASUREMENT** — and reporting zero intervals as
+> evidence of collapse would be this file's own absent-versus-empty error, committed inside a
+> test built to check someone else's claim.
+
+It declined to offer it as support, and it must not be recorded as such.
+
+Two things did come out of the attempt:
+
+- **All 32 of its intervals fall inside the working period**, so its 66% is a working-period
+  figure and the park contributes exactly ONE gap (the 1378m into it). Its earlier
+  parked-exclusion cut was answering a question that barely applied to its data — the
+  proportion statistic is sound for that seat for a *stronger* reason than first given:
+  there is almost nothing to trim.
+- **It was at 66% WHILE its human was in session** — which cuts against the thesis, and it
+  said so rather than omitting it. Its narrower claim: *in-session is not the same as
+  continuous exchange*, and its work through that period was long autonomous rounds with
+  sparse check-ins. **Consistent with the thesis, but not a test of it.**
+
+**The clean test needs a seat that ran BOTH modes with card writes in each.**
+
+### …AND THAT SEAT EXISTED — the within-subject test, run and independently reproduced
+
+**roadrunner had the data mastodon specified**, and supplied the arm damselfly's own seat
+could not: *a seat cannot demonstrate the human-away half while its human is present.*
+`pij-chief-roadrunner`, 14 status events, 13 intervals, reproduced from the spine by this
+seat rather than taken on report:
+
+```
+8, 8, 7, 70, 8, 146, 5, 151, 185, 1093, 12, 10, 681   (minutes, oldest → newest)
+median 12m · over-30m 6/13 = 46% · widest/narrowest = 1093m / 5m = 218×
+```
+
+**The sequence is the finding, not the median.** The 5s and 7s and 8s are stretches of live
+exchange with the human. The 1093 and 681 are stretches where he was away and the fleet was
+parked — nothing happened, so nothing was reported. **Same seat, same role, same diligence,
+two orders of magnitude apart, and the only variable is whether a human was talking to it.**
+
+That is the within-subject control, and it holds.
+
+**It also produces the strongest case for the proportion statistic**, because on this seat the
+two measures point in *opposite directions*: **a 12m median that reads as exemplary cadence,
+against 46% of intervals over threshold** — worse than meadowlark's 32% or damselfly's 35%.
+The median is the flattering one, and it would have kept this seat out of every table in this
+file.
+
+And roadrunner's sharpening of damselfly's point, which is the argument for the whole fix:
+
+> **The 1093m interval is the one where its card was MOST worth reading** — fleet parked, two
+> decisions outstanding with a human, nothing moving. A reader checking then needed it most
+> and it was 18 hours old. **The 8m intervals are the ones where the card mattered least**,
+> because anyone watching could see the exchange itself.
+
+Under *expected cadence on the assignment*, the 681m and 1093m intervals are **correct
+behaviour**. Under a global wall-clock they are negligence.
+
+### Third false absence from a reader, disclosed while measuring false absences
+
+roadrunner's first attempt at this measurement printed **`insufficient status events: 0`** —
+it read `timestamp`/`at` when the field is **`ts`**. The probe **printed a COUNT rather than
+erroring**, so a broken reader looked exactly like a measurement. It was caught only because
+zero status events for a seat reporting all session was implausible on its face; the second
+version asserts `parsed == found` and fails loud.
+
+**Third time in one day that a probe reported absence where the defect was in the reader** —
+committed inside a measurement about false absences. The class does not tire.
+
+### The conclusion, reached by two independent routes
+
+> **A threshold that a THIRD of all intervals violate, across a 0-to-67% spread, is not a
+> threshold anyone is failing — it is a threshold nobody is meeting, which is the definition
+> of a mis-set one.** (damselfly)
+
+This does not depend on the circularity catch, and the circularity catch does not depend on
+it. Two routes, same destination, neither load-bearing for the other.
+
 So the surviving claim is narrower than the one first written, and better: **the threshold
 is a global wall-clock applied to seats whose reporting rate is set by their work's shape,
 and it scores attentiveness-to-a-human as diligence.** Expected cadence belongs on the
