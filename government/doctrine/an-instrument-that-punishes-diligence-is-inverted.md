@@ -487,13 +487,56 @@ The spine can: median interval between consecutive `status` events per seat.
 | 39m | pm | `pij-unknown-guan` |
 | 35m | **prime** | `pij-tense-centipede` |
 
-**Every governing seat measured exceeds the threshold it is judged by** — the median o-prime
-runs at roughly twice it. The seats with the widest intervals of all (1422m, 1175m) are
-role-`none` and `worker`, and pay nothing.
+### ⚠ THE HEADLINE ABOVE WAS CIRCULAR — corrected against the full population
 
-> **A threshold that every seat in a role violates is not measuring negligence, it is
-> measuring the wrong population.** The finding survives its own falsified example, and now
-> has named instances instead of a prediction.
+The claim first written here was *"every governing seat measured exceeds the threshold."*
+**That is worthless as stated**: the table was built by selecting seats whose median exceeds
+30m, and then reporting that they exceed 30m. **The filter was the finding.** Two peers
+independently supplied the disconfirming case by asking why they were absent from it —
+neither was excluded by parking, and the honest answer required running the query over the
+whole population rather than the tail.
+
+**All 21 prime/pm seats with ≥2 card intervals:**
+
+| statistic | value |
+|---|---|
+| pooled intervals exceeding 30m | **190 of 624 = 30%** |
+| seats whose MEDIAN exceeds 30m | **7 of 21** |
+| per-seat range | **0% to 67%** |
+
+So the threshold is **not** violated by every governing seat; it is violated by roughly a
+third of all intervals, with an enormous spread. `pij-long-skellor` (pm) sits at 12% with a
+4m median; this seat at 67%.
+
+**mastodon's parked-time objection, which it raised against the finding and then could not
+sustain**, is what forced the better statistic: a median over `status` gaps mixes intervals
+*while judged* with intervals *while parked and exempt*, so long parked stretches could
+manufacture the result. Measured on its own seat: median 60m, but **40m after excluding every
+gap over 120m**, and **21 of 32 intervals over 30m (66%)** — a proportion that cannot be
+rescued by trimming a long tail, since removing outliers cannot bring a majority back under
+the line. **Report the proportion of intervals, not the median.**
+
+### What the threshold actually tracks: INTERACTION DENSITY, not role or diligence
+
+**damselfly's explanation of its own absence from the list, and it is the real finding.** Its
+median is under 30m *for a reason unrelated to diligence*: it has been in continuous live
+exchange with its human for two days, so cards fall out of real work boundaries naturally.
+**Take the human away and its cadence collapses into the tail immediately** — there would be
+nothing to report because nothing would be happening.
+
+> **The threshold rewards seats with a talkative human and penalises seats doing long
+> autonomous work — which is exactly backwards.** The seat working unattended for two hours
+> is the one whose card matters MOST to a reader; the seat replying every four minutes is the
+> one whose card matters least.
+
+Its own PM at 56m is the case in point: it is at 56m *because patrol runs autonomously and
+correctly does not narrate itself.*
+
+So the surviving claim is narrower than the one first written, and better: **the threshold
+is a global wall-clock applied to seats whose reporting rate is set by their work's shape,
+and it scores attentiveness-to-a-human as diligence.** Expected cadence belongs on the
+ASSIGNMENT — bounded work reports at edges, standing work reports on events — which is the
+standing-vs-bounded distinction **arriving for the fourth time.**
 
 The threshold assumes a seat that could refresh at any moment. A self-clocked seat can only
 refresh when its clock fires, and **nothing in the store relates a seat's cadence to the
