@@ -224,8 +224,12 @@ Amended form, issued fleet-wide:
 against a **parentless PA** — the very case it was written for:
 
 - **No prime to ask.** That is the premise.
-- **No card that renders.** `carriesStatus` is PM-only; a PA's card renders nowhere, so
-  *"say so on a card"* is not durable-visible for a PA.
+- **A card that renders only in one unmerged working tree.** *(Corrected — the original
+  claim here was "a PA's card renders nowhere", and the source says otherwise in terms.
+  `cardCanMislead`'s comment records that a PA's card DOES render, measured in the emitted
+  DOM on 2026-08-01 from anaconda's own row. But the consumer's PA-card fix is an **un-PR'd
+  local commit `0e6da0a9b`** — so PA cards render for Jordan's dev server and **nowhere
+  else**; pull main or clone clean and they vanish. Durable-visible to exactly one reader.)*
 - **No row it can author.** Anomaly rows are minted by the system from observed state. A
   seat cannot post to that board.
 
@@ -364,6 +368,168 @@ substring match**, plus mastodon's guan/guanaco across governments. A seat also 
 > method must say so.** A substring hit returns a *plausible* seat, and plausibility reads as
 > confirmation — the same failure as a bare `#72` hitting the wrong tracker, and as an
 > unlabelled quote.
+
+## THERE IS NO HONEST QUIET STATE FOR A WORKING STANDING SEAT — five candidates, none correct
+
+The fix for the false `done` was *"use `ready` when idle but available"*. **damselfly found the
+cost in the field within the hour**: `ready` is not in the parked set — verified at
+`anomalies.ts:279`, which parks exactly `waiting|hold|blocked|question` — so a seat resting
+in `ready` mints a `status-stale` row every 30 minutes. Its PM flagged at 43 minutes after
+adopting the guidance.
+
+At fleet scale that trades 42 false-`done` occurrences for a continuous stale stream across
+the same 13 seats, **which reads as thirteen negligent seats rather than one guidance
+artefact.**
+
+Every candidate occupant of the gap, with what each one costs:
+
+| state | verdict |
+|---|---|
+| `done` | **FALSE** on a standing assignment |
+| `ready` | honest, but unparked — a row every 30 minutes, forever |
+| `blocked` | correct **only** with a named blocker; false otherwise |
+| `waiting` | parked and quiet — and a **permanent silencer**: parked-and-working is invisible by construction, and the seat cannot see its own rot |
+| *unset* | **51+ hours measured, zero rows ever** (mastodon/gazelle) — quiet because it says NOTHING; abandons observability entirely |
+
+mastodon's framing of the last two, offered while explicitly declining to recommend the one
+it uses: **`waiting` lies quietly; unset is silent honestly. Neither lets an observer
+distinguish a healthy seat from a rotting one.**
+
+> **The missing thing is not a better verb.** Five occupants, five different failure modes,
+> and the gap they share is that no state means *"standing assignment, working normally,
+> nothing to report."*
+
+### The trap in the corrected guidance — a state chosen for QUIET is a false claim too
+
+Issuing *"use `blocked` when you have a named blocker"* immediately produced one:
+`pij-missing-anaconda` declared `blocked` citing *"awaiting … Jordan PR merge calls"* — but
+its charter is fleet sweeps and card-chasing, none of which those merges block. Its own
+record read `systemState: idle, activity: done`. **It picked a parked state because it was
+QUIET, not because it was TRUE** — the false-`done` defect wearing a different verb, and it
+followed the guidance faithfully into it.
+
+roadrunner reached the opposite conclusion unprompted and left its PA in `ready` *because
+`blocked` would be false*. Same guidance, same night, two outcomes.
+
+> **A state chosen for its noise properties rather than its truth is a false declaration
+> whatever the noise consequences.** And a supervisor's blockers are not its subordinates' —
+> inheriting them is how one seat's state quietly becomes the whole tree's.
+
+### STATE ADVICE IS NOT PORTABLE ACROSS ROLES — a PA cannot mint `status-stale` at all
+
+**jaguar's source-read, via `pij-1ca01u5`, correcting the table above for one role.** The
+`status-stale` scope gate (`anomalies.ts:266`) is `if (!cardCanMislead(d) && !owesCard)
+continue;`, and **both predicates exclude `pa`** — `owesStatusCard` is `pm` only,
+`cardCanMislead` returns `role === "prime" || role === "pm"`. A PA is out of the detector
+**before** the parked check is ever reached.
+
+So **`ready` costs a PA nothing**. The guidance as first issued told six `pa`-role seats to
+price rows they cannot incur — and the predictable response is to choose `blocked` to dodge
+a phantom cost, landing parked-and-quiet: **the exact silencer the guidance was steering
+away from.** It produced one immediately (anaconda).
+
+| role | cost of resting in `ready` |
+|---|---|
+| `prime`, `pm` | a `status-stale` row every 30 min — real |
+| `pa` | **zero — the detector cannot see it** |
+| `worker` | zero — excluded by the same gate |
+
+> **State advice is not portable across roles. What differs is not the etiquette but WHICH
+> DETECTORS CAN SEE YOU AT ALL** (jaguar). Advice derived on a prime and forwarded to a PA
+> prices the wrong instrument, and a seat that trusts it pays a cost that does not exist by
+> incurring one that does.
+
+Note this was a **source read against zero live rows** — the claim is unfalsifiable from
+observation right now precisely because the detector never fires for these seats. Recorded
+with that limit attached.
+
+### FOURTH SYMPTOM — nothing relates a seat's CADENCE to the threshold judging it
+
+**roadrunner's instance — the CLASS is real, the instance was not.** Its PA sweeps on a
+**2-hour** self-clocked interval against a **30-minute** threshold, refreshing its card only
+when the sweep runs, so it predicted the card would be stale ~90 minutes in every 120 and
+*"flag roughly three-quarters of the time, correctly, forever."*
+
+**It cannot flag at all** — it is a `pa`, and the scope gate above excludes it. The
+prediction was never tested against a live row, and the seat most cited for this symptom is
+the one role the detector cannot see. **The mismatch is nonetheless real for any self-clocked
+`prime` or `pm`**, which is where the class actually bites, so the finding survives its own
+example.
+
+The threshold assumes a seat that could refresh at any moment. A self-clocked seat can only
+refresh when its clock fires, and **nothing in the store relates a seat's cadence to the
+threshold used to judge it.** The compounding harm is specific: such a seat is
+**structurally unable** to keep a 30-minute card, so it becomes the most persistent offender
+on the board *while being the most correctly behaved*.
+
+Disclosed rather than presented as a fix: roadrunner told that PA to expect `status-stale`
+rows naming **itself**, not to relay them, and to give one summary line per heartbeat —
+deliberately narrow, since *"ignore rows about yourself"* is the exact blind spot this file
+exists to name. The row stays true and visible; only the self-relay stopped. Nothing
+suppressed, no card refreshed to clear it, no threshold touched.
+
+### THE UNIFYING FIX — one declared fact that several detectors read
+
+roadrunner's formulation, and it covers both gaps:
+
+> **ONE DECLARED FACT THAT SEVERAL DETECTORS CONSULT, rather than each detector guessing.**
+
+Two facts, four symptoms between them:
+
+| declared fact | closes |
+|---|---|
+| **standing vs bounded** on the assignment | can't count occurrences at query time · can't offer the right verb at nudge time · no honest quiet state |
+| **expected cadence** on the seat | a 2h-loop seat judged at 30m, permanently and correctly flagged |
+
+`pij#72` closes only the nudge-time symptom. It should still merge — it is green and stops
+the bleeding — but it is the smaller half.
+
+### THIRD-ORDER COST — the workaround teaches monitors to distrust the detector
+
+**damselfly, pricing its own remedy as a harm.** Having moved both role-bearing seats to
+`ready`, it instructed its PA to classify their stale rows as KNOWN ARTEFACT and neither
+relay nor escalate them. Correct today — it knows why they fire. But:
+
+> **"I have created a blind spot maintained by hand, and if either seat goes genuinely stale
+> for a different reason the PA is now trained not to look."**
+
+Multiply by 13 seats and every supervisor independently reaching the same sensible local
+decision, and the `status-stale` detector quietly stops being trusted fleet-wide.
+
+> **A defect that degrades an instrument's CREDIBILITY outlives the defect itself.** Noise
+> is a cost you pay once; a monitor trained to ignore a class of true row is a cost you keep
+> paying after the noise is fixed, because nothing announces when it becomes safe to look
+> again.
+
+This is the same shape as *a discipline held in place by defects is DEBT* — one layer out.
+The debt here is not a habit in an operator, it is **a trained exception inside a monitor**,
+and it has no expiry unless someone records one.
+
+### A CORRECTION CAPTURED TOO EARLY BECOMES THE NEXT WRONG INSTRUCTION
+
+**damselfly's PM, and it applies to this file.** It wrote the first correction
+(*"use `ready`"*) into durable memory immediately — a memory that would have taught a future
+instance to sit in `ready` and flag forever, **confidently, citing damselfly**, long after
+the guidance was superseded.
+
+> **Record corrections with provenance and an explicit note that they may themselves be
+> superseded.** A correction inherits all the authority of the thing it corrected and none of
+> its testing.
+
+**Applied to this document, which is exactly such a memory**: the state guidance here was
+revised **three times in one evening** — `done` → `ready` → `blocked`-only-if-named, with
+`ready` restored as the default for unblocked seats. It is the best available reading of a
+vocabulary gap that **has no correct answer until the store carries a standing-vs-bounded
+flag**. Treat the table above as the current least-wrong mapping, not as settled doctrine,
+and re-derive it once that flag exists.
+
+### Guidance issued faster than it is verified is its own defect
+
+mastodon, correcting its PA for the second time in hours, **told it so explicitly** —
+that it should weight instructions accordingly and keep asking. Recorded because the
+alternative is a cheap seat inferring it silently, and because this file's author issued
+three corrections to its own guidance in one evening: `done` → `ready` → `blocked`-only-if-
+named. **A supervisor revising fast should say that it is revising fast.**
 
 ## AGREEMENT IN THE DENOMINATOR IS NOT EVIDENCE OF AGREEMENT IN THE NUMERATOR
 
