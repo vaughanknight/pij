@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { PA_VERB_CLASSIFICATION } from "../orchestration/pa-capability.js";
 import {
 	ackPending,
@@ -245,8 +247,265 @@ function parseAdd(args: readonly string[]): AddOptions | ChoreVerbResult {
 	};
 }
 
-function containsAbsolutePath(command: string): boolean {
-	return /(^|[\s"'=])(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(command);
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsAbsolutePathLiteral(command: string): boolean {
+	return /(^|[\s"'=<>|;&(])(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(command);
+}
+
+function normalizeWorktreePath(command: string, worktreeRoot: string): string {
+	const root = worktreeRoot.replace(/[\\/]+$/, "");
+	if (!root) return command;
+	const reference = new RegExp(`(^|[\\s"'=<>|;&(])${escapeRegExp(root)}(?=$|[\\\\/])`, "g");
+	const rooted = command.replace(reference, (_match, prefix: string) => `${prefix}.`);
+	const normalizeLiteral = (literal: string): string => {
+		try {
+			const path = relative(worktreeRoot, realpathSync(literal));
+			if (path === "") return ".";
+			if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) return literal;
+			return `./${path.split(sep).join("/")}`;
+		} catch {
+			return literal;
+		}
+	};
+	return rooted
+		.replace(
+			/"((?:\/(?!\/)|[A-Za-z]:[\\/])[^"]*)"/g,
+			(_match, literal: string) => `"${normalizeLiteral(literal)}"`,
+		)
+		.replace(
+			/'((?:\/(?!\/)|[A-Za-z]:[\\/])[^']*)'/g,
+			(_match, literal: string) => `'${normalizeLiteral(literal)}'`,
+		)
+		.replace(
+			/(^|[\s=<>|;&(])((?:\/(?!\/)|[A-Za-z]:[\\/])[^\s"'<>|;&)]*)/g,
+			(_match, prefix: string, literal: string) => `${prefix}${normalizeLiteral(literal)}`,
+		);
+}
+
+const REPO_CHORE_STATIC_EXECUTABLES = new Set([
+	"basename",
+	"cat",
+	"cut",
+	"df",
+	"dirname",
+	"du",
+	"find",
+	"gh",
+	"git",
+	"grep",
+	"head",
+	"jq",
+	"just",
+	"ls",
+	"npm",
+	"pij",
+	"printf",
+	"realpath",
+	"rg",
+	"sha256sum",
+	"shasum",
+	"sort",
+	"stat",
+	"tail",
+	"test",
+	"tr",
+	"uniq",
+	"wc",
+]);
+const PYTHON_RUNNER_FLAGS = ["-B", "-E", "-I", "-O", "-OO", "-P", "-S", "-s", "-u"] as const;
+const SHELL_RUNNER_FLAGS = ["-e", "-u", "-x"] as const;
+const REPO_CHORE_RUNNER_FLAGS = {
+	bash: SHELL_RUNNER_FLAGS,
+	bun: [],
+	dash: SHELL_RUNNER_FLAGS,
+	deno: [],
+	ksh: SHELL_RUNNER_FLAGS,
+	node: ["--enable-source-maps", "--no-warnings", "--trace-warnings"],
+	perl: [],
+	php: [],
+	python: PYTHON_RUNNER_FLAGS,
+	python3: PYTHON_RUNNER_FLAGS,
+	ruby: [],
+	sh: SHELL_RUNNER_FLAGS,
+	zsh: SHELL_RUNNER_FLAGS,
+} as const satisfies Readonly<Record<string, readonly string[]>>;
+const REPO_CHORE_STATIC_TOKEN_CHARACTER = /^[A-Za-z0-9._+:/@%=,-]$/;
+const REPO_CHORE_SCRIPT_PATH = /\.(?:cjs|js|mjs|php|pl|py|rb|sh|ts)$/;
+
+type RepoCommandGrammar =
+	| { readonly ok: true; readonly words: readonly string[] }
+	| {
+			readonly ok: false;
+			readonly kind: "not-permitted" | "unproven";
+			readonly reason: string;
+	  };
+
+function isPathToken(token: string): boolean {
+	return token === "." || token === ".." || /[\\/]/.test(token);
+}
+
+function isRepoScriptPath(token: string): boolean {
+	return isPathToken(token) || REPO_CHORE_SCRIPT_PATH.test(token);
+}
+
+function isRepoChoreScriptRunner(
+	executable: string,
+): executable is keyof typeof REPO_CHORE_RUNNER_FLAGS {
+	return Object.hasOwn(REPO_CHORE_RUNNER_FLAGS, executable);
+}
+
+/**
+ * Repo scope accepts one deliberately small grammar:
+ *   allowed-executable static-argument*
+ * Unknown executables, characters, quoting, and command forms fail closed.
+ * Complex logic belongs in a repo-relative script run by an allowed runner.
+ */
+function parseRepoCommandGrammar(command: string): RepoCommandGrammar {
+	const words: string[] = [];
+	let word = "";
+	const flush = () => {
+		if (word) words.push(word);
+		word = "";
+	};
+	for (let index = 0; index < command.length; index += 1) {
+		const character = command[index];
+		if (character === undefined) continue;
+		if (character === "'" || character === '"') {
+			let cursor = index + 1;
+			let escaped = false;
+			while (cursor < command.length) {
+				const next = command[cursor];
+				if (next === undefined) break;
+				if (character === '"' && next === "\\" && !escaped) {
+					escaped = true;
+					cursor += 1;
+					continue;
+				}
+				if (next === character && !escaped) break;
+				escaped = false;
+				cursor += 1;
+			}
+			if (cursor >= command.length) {
+				return {
+					ok: false,
+					kind: "unproven",
+					reason: `unterminated ${character === "'" ? "single" : "double"} quote`,
+				};
+			}
+			return { ok: false, kind: "not-permitted", reason: "quoted arguments" };
+		}
+		if (/\s/.test(character)) {
+			flush();
+			continue;
+		}
+		if (!REPO_CHORE_STATIC_TOKEN_CHARACTER.test(character)) {
+			return {
+				ok: false,
+				kind: "not-permitted",
+				reason: `character '${character}'`,
+			};
+		}
+		word += character;
+	}
+	flush();
+	const executableToken = words[0];
+	if (!executableToken) {
+		return { ok: false, kind: "unproven", reason: "empty command" };
+	}
+	const executable = basename(executableToken);
+	const runner = isRepoChoreScriptRunner(executable);
+	if (!isPathToken(executableToken) && !runner && !REPO_CHORE_STATIC_EXECUTABLES.has(executable)) {
+		return {
+			ok: false,
+			kind: "unproven",
+			reason: `executable '${executable}' is not in the repo command allow-list`,
+		};
+	}
+	if (runner) {
+		const args = words.slice(1);
+		const scriptIndex = args.findIndex((argument) => !argument.startsWith("-"));
+		const runnerFlags = scriptIndex === -1 ? args : args.slice(0, scriptIndex);
+		const safeFlags: readonly string[] = REPO_CHORE_RUNNER_FLAGS[executable];
+		const unsupportedFlag = runnerFlags.find((flag) => !safeFlags.includes(flag));
+		if (unsupportedFlag) {
+			return {
+				ok: false,
+				kind: "not-permitted",
+				reason: `runner flag '${unsupportedFlag}' is not permitted for '${executable}'`,
+			};
+		}
+		const script = scriptIndex === -1 ? undefined : args[scriptIndex];
+		if (!script || !isRepoScriptPath(script)) {
+			return {
+				ok: false,
+				kind: "not-permitted",
+				reason: `script runner '${executable}' requires a repo-relative script path`,
+			};
+		}
+	}
+	return { ok: true, words };
+}
+
+function canonicalResolvedPath(path: string): string {
+	let cursor = path;
+	const suffix: string[] = [];
+	while (true) {
+		try {
+			return resolve(realpathSync(cursor), ...suffix);
+		} catch {
+			const parent = dirname(cursor);
+			if (parent === cursor) return path;
+			suffix.unshift(basename(cursor));
+			cursor = parent;
+		}
+	}
+}
+
+function resolvesInsideWorktree(candidate: string, worktreeRoot: string): boolean {
+	const path = relative(worktreeRoot, canonicalResolvedPath(resolve(worktreeRoot, candidate)));
+	return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
+
+function outsideWorktreePath(words: readonly string[], worktreeRoot: string): string | undefined {
+	for (const word of words) {
+		const assignment = word.indexOf("=");
+		const candidates = assignment >= 0 ? [word.slice(assignment + 1), word] : [word];
+		for (const candidate of candidates) {
+			if (!candidate || (candidate !== "." && candidate !== ".." && !/[\\/]/.test(candidate))) {
+				continue;
+			}
+			if (!resolvesInsideWorktree(candidate, worktreeRoot)) return candidate;
+		}
+	}
+	return undefined;
+}
+
+function repoPortableCommand(
+	field: "probe" | "full",
+	command: string,
+	deps: ChoreVerbDeps,
+): string | ChoreVerbResult {
+	const normalized = normalizeWorktreePath(command, deps.worktreeRoot);
+	const grammar = parseRepoCommandGrammar(normalized);
+	if (!grammar.ok) {
+		const message =
+			grammar.kind === "not-permitted"
+				? `contains a construct not permitted in a shared roster: ${grammar.reason}`
+				: `could not be proven static: ${grammar.reason}`;
+		return errorResult(
+			"E-ARG",
+			`repo-scoped chore ${field} ${message}. Repo scope accepts only the documented static command grammar so committed rosters mean the same thing in every checkout; use --scope seat or --scope fleet for machine-local, dynamic, or unsupported commands.`,
+		);
+	}
+	const outsidePath = outsideWorktreePath(grammar.words, deps.worktreeRoot);
+	if (!outsidePath) return normalized;
+	return errorResult(
+		"E-ARG",
+		`repo-scoped chore ${field} path resolves outside this worktree: '${outsidePath}'. Committed repo rosters must resolve in every checkout. Use a repo-relative path (or 'git rev-parse --show-toplevel'), or use --scope seat or --scope fleet for a machine-local command.`,
+	);
 }
 
 function refusedPaProbeVerb(command: string): string | undefined {
@@ -261,7 +520,7 @@ function refusedPaProbeVerb(command: string): string | undefined {
 
 function authoringNotices(chore: Chore, deps: ChoreVerbDeps): string[] {
 	const notices: string[] = [];
-	if (chore.scope !== "seat" && containsAbsolutePath(chore.probe)) {
+	if (chore.scope !== "seat" && containsAbsolutePathLiteral(chore.probe)) {
 		notices.push(
 			`WARN: ${choreKey(chore)} probe contains an absolute path; shared probes should use a checkout-relative command, resolving the root with 'git rev-parse --show-toplevel' when needed.`,
 		);
@@ -297,12 +556,20 @@ export function addVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 	if (roster.chores.some((chore) => chore.name === options.name)) {
 		return errorResult("E-EXISTS", `chore '${options.scope}:${options.name}' already exists`);
 	}
+	const probe =
+		options.scope === "repo" ? repoPortableCommand("probe", options.probe, deps) : options.probe;
+	if (typeof probe !== "string") return probe;
+	const full =
+		options.scope === "repo" && options.full
+			? repoPortableCommand("full", options.full, deps)
+			: options.full;
+	if (full !== undefined && typeof full !== "string") return full;
 	const chore: Chore = {
 		scope: options.scope,
 		name: options.name,
-		probe: options.probe,
+		probe,
 		...(deps.seatId ? { creatorSeatId: deps.seatId } : {}),
-		...(options.full ? { full: options.full } : {}),
+		...(full ? { full } : {}),
 		...(options.fullEvery !== undefined ? { fullEvery: options.fullEvery } : {}),
 		timeoutMs: options.timeoutMs,
 	};
@@ -383,13 +650,14 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 	for (const chore of resolved.chores) {
 		const key = stateKey(chore, deps.worktreeRoot);
 		const previous = entries[key];
+		const cwd = chore.scope === "repo" ? deps.worktreeRoot : deps.cwd;
 		const reduced = reduceProbe(
 			previous,
-			safeProbe(deps.probe, chore.probe, deps.cwd, chore.timeoutMs),
+			safeProbe(deps.probe, chore.probe, cwd, chore.timeoutMs),
 			now,
 			{
 				definitionFingerprint: fingerprintChoreDefinition(chore.probe),
-				contentFingerprint: safeInstrumentFingerprint(deps.probe, chore.probe, deps.cwd),
+				contentFingerprint: safeInstrumentFingerprint(deps.probe, chore.probe, cwd),
 			},
 		);
 		let nextEntry = reduced.state;
@@ -398,7 +666,7 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 			(reduced.outcome.status === "changed-value" || reduced.outcome.status === "flapped") &&
 			chore.full
 		) {
-			const full = safeProbe(deps.probe, chore.full, deps.cwd, chore.timeoutMs);
+			const full = safeProbe(deps.probe, chore.full, cwd, chore.timeoutMs);
 			fullOutput = full.ok ? full.output.trim() : `NOT-PROBEABLE: ${full.reason}`;
 			nextEntry = { ...nextEntry, runsSinceFull: 0 };
 		} else if (reduced.outcome.status === "changed-probe") {
@@ -407,7 +675,7 @@ export function runVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreVerb
 			const counter = advanceFullCounter(nextEntry, chore.fullEvery);
 			nextEntry = counter.state;
 			if (counter.due && chore.full) {
-				const full = safeProbe(deps.probe, chore.full, deps.cwd, chore.timeoutMs);
+				const full = safeProbe(deps.probe, chore.full, cwd, chore.timeoutMs);
 				fullOutput = full.ok ? full.output.trim() : `NOT-PROBEABLE: ${full.reason}`;
 			}
 		}
@@ -640,14 +908,24 @@ export function updateVerb(args: readonly string[], deps: ChoreVerbDeps): ChoreV
 	if ("exitCode" in chore) return chore;
 	const roster = loadWritableRoster(chore.scope, deps);
 	if (isVerbResult(roster)) return roster;
-	const full = options.full ?? chore.full;
+	const probe =
+		options.probe !== undefined && chore.scope === "repo"
+			? repoPortableCommand("probe", options.probe, deps)
+			: options.probe;
+	if (probe !== undefined && typeof probe !== "string") return probe;
+	const normalizedFull =
+		options.full !== undefined && chore.scope === "repo"
+			? repoPortableCommand("full", options.full, deps)
+			: options.full;
+	if (normalizedFull !== undefined && typeof normalizedFull !== "string") return normalizedFull;
+	const full = normalizedFull ?? chore.full;
 	const fullEvery = options.fullEvery ?? chore.fullEvery;
 	if (fullEvery !== undefined && full === undefined) {
 		return errorResult("E-ARG", "--full-every requires a configured --full command");
 	}
 	const updated: Chore = {
 		...chore,
-		probe: options.probe ?? chore.probe,
+		probe: probe ?? chore.probe,
 		...(full !== undefined ? { full } : {}),
 		...(fullEvery !== undefined ? { fullEvery } : {}),
 		timeoutMs: options.timeoutMs ?? chore.timeoutMs,

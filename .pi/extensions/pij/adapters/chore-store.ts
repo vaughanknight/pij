@@ -9,7 +9,7 @@ import {
 	parseChoreRoster,
 	parseChoreState,
 } from "../core/chores/types.js";
-import { writeJsonAtomic } from "./atomic-file.js";
+import { writeFormattedJsonAtomic, writeJsonAtomic } from "./atomic-file.js";
 
 const FLEET_CHORE_DIR = "pij-chores";
 
@@ -69,7 +69,11 @@ export class FsChoreStore implements ChoreStorePort {
 		) {
 			throw new Error(`invalid ${scope} chore roster`);
 		}
-		writeJsonAtomic(path, parsed);
+		if (scope === "repo") {
+			writeFormattedJsonAtomic(path, parsed);
+		} else {
+			writeJsonAtomic(path, parsed);
+		}
 	}
 
 	statePath(): string | undefined {

@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
     SWS[session-work-state\ncontracts: session DB semantics, schema, reset, TodoSqlStore/widgetSnapshot/cleanup, Peacock replay]
-    ATI[agent-tooling-interface\ncontracts: sql tool, /sql, todo tool, /todo, /minih UX, /peacock footer chrome]
+    ATI[agent-tooling-interface\ncontracts: sql tool, /sql, todo tool, /todo, /minih UX, /peacock footer chrome, portable pij chore UX]
     H[extension-authoring-harness\ncontracts: generator, smoke, self-check, feedback, pkg vet/audit]
     PI[pi runtime\ncontracts: extension lifecycle, tools, commands]
     V[vetter pipeline\ncontracts: Verdict, Finding, Vetter; vetted: schema]
@@ -14,7 +14,7 @@ flowchart LR
     FWN[file-watch-notify\ncontracts: Config/parseConfig, reconcile/WatchReconciler, WatchDeps, InjectPort/deliverNotices, file_watch_notify tool]
     FP[flow-pair\ncontracts: packet/report schema, run/delegation/review/learning records, prompt-cluster taxonomy, review rubric, flow-pair CLI]
     TF[the-flow\nexternal: SDD route authority, flow-state files]
-    PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, whole-life WatchdogManager/store/captures, chore roster/probe/delta, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
+    PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, whole-life WatchdogManager/store/captures, portable chore roster/probe/delta, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
     PS[pij-skill\ncontracts: /pij routes, tree/link/adopt-parent guidance, watchdog CLI discoverability, current-only prime triage, shared conventions C1-C10, pij-skill-check gate]
@@ -97,7 +97,7 @@ flowchart LR
 | `flow-pair` ⇢ `the-flow` (external) | wraps-only | Wrapper-level delegation seam; **never** edits `the-flow` or writes `.the-flow-state.json`/`the-flow.json`/`the-flow.md`. Single flow-state-writer invariant. |
 | `pij-control-plane` → `pij-messaging` | extends (Plans 019/041/046/055) | Reuses `SessionDescriptor` (+delivery, parent, repository, prime history, watchdog fire stamp), watchdog sidecar/pure decisions, domain ports including `RepositoryIdentityPort`/`InboxPort`, tree/link contracts, immutable inbox markers, and `FsChannel`; daemon writes keep mutable graph/prime fields latest-disk-authoritative and descriptor activity remains watchdog axis truth. |
 | `pij-control-plane` → `extension-authoring-harness` | healthy | The shared `tmux-keys` lib (argv-only, injectable `TmuxRunner`) is re-exported by `harness/driver/tmux.ts` for parity; vitest + Biome + Driver smoke validate, including the disposable-home watchdog scenario. |
-| `pij-control-plane` → `agent-tooling-interface` | healthy | Control-plane CLI surfaces include spawn/daemon/adopt plus `pij chore` help, exact reports, JSON, and operator documentation. |
+| `pij-control-plane` → `agent-tooling-interface` | healthy | Control-plane CLI surfaces include spawn/daemon/adopt plus `pij chore` help, exact reports, JSON, checkout-portable repo path rules, and operator documentation. |
 | `agent-runtime` → `minih` (external) | embeds-only | Imports minih's `runAgent`, `IAgentAdapter`, `FakeAgentAdapter`, validators, and `SdkCopilotAdapter` as a library at exact tag `minih-v0.2.4`. The pack format, validators, and `runs/<ts>/` ledger are minih's — **never forked, never extended**; a pack that runs under pij runs under stock minih unchanged. AC-12 contract test guards the API against tag drift. |
 | `agent-runtime` → `extension-authoring-harness` | healthy | Rides the `*.live.test.ts` + `describe.skipIf` live-gate pattern, the vitest globs (contract + boundary tests auto-included), and `just self-check` / `harness checks`. |
 | `pij-control-plane` → `agent-runtime` | planned (Phase 2) | The `pij agent` verb family will consume `DiscoveredAgent`, the runner, and the inline engine; the daemon consumes only the `sweepStaleTmp()` crash-sweep hook (added Phase 1). Dependency direction is `cli → core/agents → minih`, never the reverse. |
@@ -139,3 +139,4 @@ flowchart LR
 | 2026-07-13 | Plan 046 — extended existing PIJ/PCP/PO/PS nodes and edges with tri-state structural parents, Git common-directory grouping, tree/link/filter projections, adopt-parent wiring, current/old-prime transitions, and sensor-backed guidance; no new node. |
 | 2026-07-17 | Plan 055 — extended PIJ/PCP/PS with whole-life watchdog sidecars and pure decisions, daemon manager/store/capture ownership, CLI discoverability, and a deterministic disposable-home smoke; no new domain node. |
 | 2026-08-02 | Plan 076 — extended PCP with union chore rosters, per-seat fingerprint/pending state, bounded probes, ack-only baselines, and a healthy CLI/documentation relationship to ATI; no new domain node. |
+| 2026-08-02 | Plan 077 PR A — extended the existing PCP/ATI chore contract with an unknown-refusing allow-list command grammar, exact source-reviewed runner flags, repo-root execution, worktree-relative stored paths, resolved worktree containment, and lint-safe committed roster JSON; no new domain node. |

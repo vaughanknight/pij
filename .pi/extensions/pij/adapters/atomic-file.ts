@@ -123,3 +123,7 @@ export function writeTextAtomic(path: string, text: string): void {
 export function writeJsonAtomic(path: string, value: unknown): void {
 	writeTextAtomic(path, JSON.stringify(value));
 }
+
+export function writeFormattedJsonAtomic(path: string, value: unknown): void {
+	writeTextAtomic(path, `${JSON.stringify(value, null, "\t")}\n`);
+}

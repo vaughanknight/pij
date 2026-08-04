@@ -44,7 +44,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Minih Workbench read-only pull UX | Minih run state is inspectable from Pi without opening the modal or writing to Minih. | `/minih status --json`, `/minih status <slug> <runId> --json`, `/minih report <slug> <runId> --json`, `minih_runs_list`, `minih_run_status`, and `minih_read_report`. |
 | Minih Workbench gated interaction UX | Coordinated Minih runs can be messaged or stopped only through explicit safe surfaces. | `/minih send`, `minih_send_message`, `/minih stop`, and `minih_stop_run` require explicit run id, fresh capability checks, audit persistence, adapter write wrappers, and exact stop confirmation. |
 | Peacock footer identity chrome | Operators can color the full bottom footer/status area while preserving useful footer information. | `/peacock` applies/list/status/off/reset; custom footer rendering preserves cwd/branch, provider/model/thinking, context usage, and `footerData.getExtensionStatuses()` when width permits. |
-| Chore CLI UX | Operators register, inspect, run, acknowledge, and remove durable named probes without asking a model to compute the delta. | `pij chore add|run|list|ack|remove`, exact denominator/change/failure lines, and stable run JSON. |
+| Chore CLI UX | Operators register, inspect, run, acknowledge, and remove durable named probes without asking a model to compute the delta. Repo authoring exposes the deliberate source-reviewed executable/runner-flag allow-list contract. | `pij chore add|run|list|ack|remove`, exact denominator/change/failure lines, stable run JSON, repo-root execution, distinct forbidden-vs-unproven refusals, and resolved worktree containment. |
 
 ## Contracts
 
@@ -63,7 +63,7 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | Minih interaction tools | LLM agent | `minih_send_message` sends only after capability/audit gating; `minih_stop_run` requires exact `confirm: "stop <slug>/<runId>"` and sends a dedicated control message only after audit persistence. |
 | Minih pushed context | Human/operator/model | Compact `minih.materialEvent` custom messages use `deliverAs: "steer"`, urgent `triggerTurn` only for urgent classified events, and redacted/deduped payloads. |
 | `/peacock` command and footer renderer | Human/operator/smoke | CLI-only color selection over Peacock presets/hex values; footer mode owns the singleton custom-footer slot while active and sanitizes external footer text before ANSI wrapping. |
-| `pij chore` command family | Human/operator/agent loop | Union roster discovery, explicit ambiguity errors, visible `NOT-PROBEABLE`, and baseline advancement only through `ack`. |
+| `pij chore` command family | Human/operator/agent loop | Union roster discovery, explicit ambiguity errors, visible `NOT-PROBEABLE`, baseline advancement only through `ack`, and repo-scope commands proven against an explicit grammar and worktree boundary. |
 
 ## Composition
 
@@ -133,3 +133,4 @@ Own the observable model and operator experience for using session SQL, SQL-back
 | 007-options-for-pi-extensions-that-do-subagents / Phase 3 | Added gated `/minih send`, `/minih stop`, `minih_send_message`, `minih_stop_run`, modal composer/controls, pushed-context delivery, fake-writer smoke hooks, and tool-ordering tests. | 2026-05-17 |
 | 013-pi-peacock | Added `/peacock` CLI, full-footer identity chrome, sanitized footer renderer, reload persistence, status JSON, smoke, and operator docs. | 2026-05-27 |
 | 076-pij-chore-primitive | Added the `pij chore` operator surface and guide for durable computed change detection. | 2026-08-02 |
+| 077-chore-field-round-2 / PR A | Documented repo-root execution, the unknown-refusing command/runner-flag grammar, source-only extensibility, automatic worktree-path normalization, resolved containment, and lint-safe committed roster JSON. | 2026-08-02 |

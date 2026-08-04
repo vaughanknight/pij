@@ -36,8 +36,8 @@ thin receiver). Plan 019.
 | `.pi/extensions/pij/core/chores/resolve.ts` | Pure seat/repo/fleet union resolver, scope-qualified lookup, and worktree-qualified repo state keys. |
 | `.pi/extensions/pij/core/chores/reduce.ts` | Pure value/fingerprint reducer with flap preservation and instrument-change reset; only explicit ack advances a world-change baseline. |
 | `.pi/extensions/pij/core/chores/report.ts` | Injection-safe human and JSON renderers for bounded values, fingerprints, full context, and re-instrumentation. |
-| `.pi/extensions/pij/core/chores/cli-verbs.ts` | Injected pure `add`/`update`/`run`/`list`/`ack`/`remove` result objects, shared-probe portability warnings, and creator projection. |
-| `.pi/extensions/pij/adapters/chore-store.ts` | Atomic scope rosters plus per-seat baseline/pending/cadence sidecar storage. |
+| `.pi/extensions/pij/core/chores/cli-verbs.ts` | Injected pure `add`/`update`/`run`/`list`/`ack`/`remove` result objects, repo-root probe execution, unknown-refusing allow-list command grammar, resolved path containment, shared-probe portability warnings, and creator projection. |
+| `.pi/extensions/pij/adapters/chore-store.ts` | Atomic scope rosters plus per-seat baseline/pending/cadence sidecar storage; repo rosters use formatted JSON while machine-owned state stays compact. |
 | `.pi/extensions/pij/adapters/chore-probe.ts` | Bounded `sh -c` probe runner with tagged failure results. |
 | `.pi/extensions/pij/core/daemon/index-state.ts` | In-memory index over `~/.pij/` (incl. `initInjectedAt`) with exact `(harness,harnessSessionId)` cardinality; rebuild on start. |
 | `.pi/extensions/pij/core/daemon/loop.ts` | Descriptor write coordinator: append-only external fields fill gaps; mutable `parentId`, `prime`, and `oldPrime` are latest-disk-authoritative before daemon writes. |
@@ -87,7 +87,7 @@ thin receiver). Plan 019.
 | Validation posture | Unknown ids and unsupported known effort values warn without blocking; provider ambiguity fails closed. | Warnings list known levels; ambiguous provider choices return `E-AMBIGUOUS` before expectation or tmux mutation. |
 | Tailing | A bound claude session's transcript path is resolvable and streamable. | `pij tail` (AC-09). |
 | Semantic clear audit | Removing a semantic declaration remains an append-only, recoverable platform action. | `state-cleared` is assignment-coupled under the platform write lock; journal-first recovery reconciles its stamped sequence exactly once. |
-| Durable chore roster | Named shell probes union across seat, repo, and fleet definitions while every fingerprint, bounded value, definition fingerprint, pending delta, and periodic counter remains per seat. | `pij chore add|update|run|list|ack|remove`; run-time definition changes reset distinctly; `run` never advances a world-change baseline; removal is recorded before definition deletion. |
+| Durable chore roster | Named shell probes union across seat, repo, and fleet definitions while every fingerprint, bounded value, definition fingerprint, pending delta, and periodic counter remains per seat. Repo definitions trade expressiveness for portability: a finite executable/token grammar and exact per-runner safe flags default unknown input to refusal, worktree-local absolute references normalize to relative form, every path-like token must resolve inside the worktree, and execution is rooted there. | `pij chore add|update|run|list|ack|remove`; executable/runner-flag allow-lists change only through reviewed source; complex repo logic lives in committed scripts; dynamic/unsupported commands belong to seat/fleet scope; run-time definition changes reset distinctly; `run` never advances a world-change baseline; removal is recorded before definition deletion. |
 | Single-instance daemon | A second `pij daemon` refuses/attaches — never a second injector. | PID/lockfile (AC-10). |
 
 ## Contracts
@@ -110,7 +110,7 @@ thin receiver). Plan 019.
 | Model registry entry | `pij models`, peer spawn, agent spawn | `{ id, name, provider, verified, reasoning?, levels? }`; source-derived data is preferred over same-harness fallbacks, while provider projections remain separate. |
 | Copilot GPT-5.6 effort correction | registry + validation consumers | The exact trio exposes ordered levels `none\|low\|medium\|high\|xhigh\|max`; fallback aliases retain `verified:false`; unsupported `minimal` is reported but does not block. |
 | Provider binding + projection | CLI spawn, model-facing spawn, registry/list | One resolver owns qualification; `boundProvider` persists separately from `boundModel` and projects in human/JSON list output. |
-| Chore store + verb family | CLI, PA/operator loops | Scope definitions union without shadowing; values stay framed and bounded; failures stay visible and counted; pending deltas and flaps re-surface until ack; creator and instrument changes are projected; fleet files stay below `~/.pij/pij-chores/`. |
+| Chore store + verb family | CLI, PA/operator loops | Scope definitions union without shadowing; repo definitions must match an explicit command grammar with unknown-default refusal, run at the active worktree root, and require every path-like token to resolve within it; refusals distinguish forbidden constructs from commands that cannot be proven static and point to seat/fleet scope; committed repo JSON is formatted; values stay framed and bounded; failures stay visible and counted; pending deltas and flaps re-surface until ack; creator and instrument changes are projected; fleet files stay below `~/.pij/pij-chores/`. |
 
 ## Boundary Owns
 
@@ -188,3 +188,4 @@ thin receiver). Plan 019.
 | 059-detection-integrity / Phase 2 | Made watchdog exemptions self-rearming: an expiry is persisted cleared before a manager can deliver a due watchdog turn. | 2026-07-20 |
 | 060-state-model-v2 | Added the assignment-coupled `state-cleared` spine event, journal-first recovery, and clear-state CLI wiring. | 2026-07-20 |
 | 076-pij-chore-primitive | Added union-merged chore rosters, then hardened field behavior with bounded sampled values, pane-resolved/validated seat identity, net-zero closure, full-on-delta, atomic update, creator attribution, forward-tolerant state, and re-instrumentation. | 2026-08-02 |
+| 077-chore-field-round-2 / PR A | Made repo chore rosters portable across linked worktrees and subdirectory invocation, enforced an unknown-refusing command grammar with exact safe runner flags plus resolved worktree containment, and formatted committed roster JSON without changing compact machine-state writers. | 2026-08-02 |

@@ -95,6 +95,8 @@ function runCli(
 	seatId: string | null = "seat-a",
 	tmuxPane = "",
 	registerSeat = true,
+	cwd = repoRoot,
+	seatFolder = cwd,
 ): {
 	readonly code: number;
 	readonly stdout: string;
@@ -105,7 +107,7 @@ function runCli(
 	if (seatId && registerSeat && !new FsRegistry(pijHome).read(seatId)) {
 		new FsRegistry(pijHome).write({
 			id: seatId,
-			folder: realpathSync(repoRoot),
+			folder: realpathSync(seatFolder),
 			dataDir: join(pijHome, seatId),
 			eventsPath: join(pijHome, seatId, "events.ndjson"),
 			pid: process.pid,
@@ -115,7 +117,7 @@ function runCli(
 		});
 	}
 	const result = spawnSync(process.execPath, [TSX, CLI, ...args], {
-		cwd: repoRoot,
+		cwd,
 		encoding: "utf8",
 		env: {
 			...process.env,
@@ -132,6 +134,66 @@ function runCli(
 		stdout: result.stdout.trim(),
 		stderr: result.stderr.trim(),
 	};
+}
+
+const STATIC_REPO_COMMAND =
+	"python3 ./scripts/probe.py --format summary --limit 10 data/input.json";
+const DYNAMIC_REPO_COMMAND_CASES = [
+	{
+		label: "quoted variable",
+		command: 'cat "$HOME/external.txt"',
+		category: "contains a construct not permitted in a shared roster",
+		reason: "quoted arguments",
+	},
+	{
+		label: "braced variable",
+		command: `cat "\${HOME}/external.txt"`,
+		category: "contains a construct not permitted in a shared roster",
+		reason: "quoted arguments",
+	},
+	{
+		label: "tilde expansion",
+		command: "cat ~/external.txt",
+		category: "contains a construct not permitted in a shared roster",
+		reason: "character '~'",
+	},
+	{
+		label: "later variable expansion",
+		command: 'TARGET=../external.txt; cat "$TARGET"',
+		category: "contains a construct not permitted in a shared roster",
+		reason: "character ';'",
+	},
+	{
+		label: "inline interpreter payload",
+		command: 'node -e \'require("node:fs").readFileSync(process.env.HOME + "/external.txt")\'',
+		category: "contains a construct not permitted in a shared roster",
+		reason: "quoted arguments",
+	},
+	{
+		label: "command substitution",
+		command: 'TARGET=$(printf ../external.txt); cat "$TARGET"',
+		category: "contains a construct not permitted in a shared roster",
+		reason: "character '$'",
+	},
+	{
+		label: "backtick substitution",
+		command: "cat `printf ../external.txt`",
+		category: "contains a construct not permitted in a shared roster",
+		reason: "character '`'",
+	},
+	{
+		label: "unterminated quote",
+		command: 'cat "../external.txt',
+		category: "could not be proven static",
+		reason: "unterminated double quote",
+	},
+] as const;
+
+function writeRepoGrammarFixtures(): void {
+	mkdirSync(join(repoRoot, "scripts"));
+	mkdirSync(join(repoRoot, "data"));
+	writeFileSync(join(repoRoot, "scripts", "probe.py"), "print('inside')\n");
+	writeFileSync(join(repoRoot, "data", "input.json"), "{}\n");
 }
 
 describe("pure chore verbs", () => {
@@ -201,9 +263,9 @@ describe("pure chore verbs", () => {
 
 	it("unions scopes, reports ambiguity, and keeps failing probes in the denominator", () => {
 		dispatchChore(["add", "shared", "--probe", "seat", "--scope", "seat"], deps());
-		dispatchChore(["add", "shared", "--probe", "repo", "--scope", "repo"], deps());
+		dispatchChore(["add", "shared", "--probe", "printf repo", "--scope", "repo"], deps());
 		probe.outputs.set("seat", { ok: false, reason: "exit 1" });
-		probe.outputs.set("repo", { ok: true, output: "repo-value" });
+		probe.outputs.set("printf repo", { ok: true, output: "repo-value" });
 
 		const listed = dispatchChore(["list"], deps());
 		expect(listed.stdout).toContain("seat:shared");
@@ -556,23 +618,384 @@ describe("chore CLI drive-it proof", () => {
 		expect(run.stderr).toContain("per-seat chore state requires a registered seat id");
 	});
 
-	it("warns shared-roster authors about absolute paths and tells repo authors to commit", () => {
-		const absoluteProbe = `cat ${join(repoRoot, "shared.txt")}`;
+	it("normalizes repo-local absolute paths, runs repo probes from another worktree and a subdirectory, and writes formatted JSON", () => {
+		execFileSync("git", ["-C", repoRoot, "config", "user.email", "pij@example.test"]);
+		execFileSync("git", ["-C", repoRoot, "config", "user.name", "pij test"]);
+		writeFileSync(join(repoRoot, "absolute.txt"), "main-absolute\n");
+		writeFileSync(join(repoRoot, "relative.txt"), "main-relative\n");
+		execFileSync("git", ["-C", repoRoot, "add", "absolute.txt", "relative.txt"]);
+		execFileSync("git", ["-C", repoRoot, "commit", "--quiet", "-m", "seed probe inputs"]);
+
 		const repo = runCli([
 			"chore",
 			"add",
 			"repo-absolute",
 			"--probe",
-			absoluteProbe,
+			`cat ${join(repoRoot, "absolute.txt")}`,
 			"--scope",
 			"repo",
 		]);
 		expect(repo.code).toBe(0);
-		expect(repo.stderr).toContain("WARN: repo:repo-absolute probe contains an absolute path");
-		expect(repo.stderr).toContain("use a checkout-relative command");
+		expect(repo.stderr).not.toContain("WARN:");
 		expect(repo.stderr).toContain("NOTE: commit");
 		expect(repo.stderr).toContain(".pij/chores.json");
+		expect(
+			runCli(["chore", "add", "repo-relative", "--probe", "cat relative.txt", "--scope", "repo"])
+				.code,
+		).toBe(0);
 
+		const rosterPath = join(repoRoot, ".pij", "chores.json");
+		const rosterText = readFileSync(rosterPath, "utf8");
+		const roster = JSON.parse(rosterText) as {
+			chores: Array<{ name: string; probe: string }>;
+		};
+		expect(roster.chores.find((chore) => chore.name === "repo-absolute")?.probe).toBe(
+			"cat ./absolute.txt",
+		);
+		expect(rosterText).toContain('\n\t"chores": [\n');
+		expect(rosterText.endsWith("\n")).toBe(true);
+		expect(rosterText).not.toBe(JSON.stringify(roster));
+
+		execFileSync("git", ["-C", repoRoot, "add", ".pij/chores.json"]);
+		execFileSync("git", ["-C", repoRoot, "commit", "--quiet", "-m", "add shared chores"]);
+		const otherWorktree = join(root, "other-worktree");
+		execFileSync("git", [
+			"-C",
+			repoRoot,
+			"worktree",
+			"add",
+			"--quiet",
+			"--detach",
+			otherWorktree,
+			"HEAD",
+		]);
+		writeFileSync(join(otherWorktree, "absolute.txt"), "other-absolute\n");
+		writeFileSync(join(otherWorktree, "relative.txt"), "other-relative\n");
+
+		const fromOtherRoot = runCli(
+			["chore", "run", "--json"],
+			"seat-b",
+			"%2",
+			true,
+			otherWorktree,
+			otherWorktree,
+		);
+		expect(fromOtherRoot.code).toBe(0);
+		const rootReport = JSON.parse(fromOtherRoot.stdout) as {
+			chores: Array<{ name: string; new: string | null; status: string }>;
+		};
+		expect(rootReport.chores.find((chore) => chore.name === "repo-absolute")).toMatchObject({
+			status: "changed-value",
+			new: "other-absolute\n",
+		});
+
+		const subdirectory = join(otherWorktree, "nested");
+		mkdirSync(subdirectory);
+		const fromSubdirectory = runCli(
+			["chore", "run", "--json"],
+			"seat-b",
+			"%2",
+			false,
+			subdirectory,
+			otherWorktree,
+		);
+		expect(fromSubdirectory.code).toBe(0);
+		const subdirectoryReport = JSON.parse(fromSubdirectory.stdout) as {
+			chores: Array<{ name: string; new: string | null; status: string }>;
+		};
+		expect(subdirectoryReport.chores).not.toContainEqual(
+			expect.objectContaining({ status: "not-probeable" }),
+		);
+		expect(subdirectoryReport.chores.find((chore) => chore.name === "repo-relative")).toMatchObject(
+			{
+				status: "changed-value",
+				new: "other-relative\n",
+			},
+		);
+	});
+
+	it("validates add/update probe/full paths by resolved worktree containment", () => {
+		writeFileSync(join(repoRoot, "inside.txt"), "inside\n");
+		const externalProbe = join(root, "machine-local-probe.sh");
+		writeFileSync(externalProbe, "#!/bin/sh\nprintf local\n");
+		const cases = [
+			{ label: "parent", command: "cat ../machine-local-probe.sh" },
+			{ label: "double-slash", command: `cat //${externalProbe.replace(/^\/+/, "")}` },
+		] as const;
+
+		for (const field of ["probe", "full"] as const) {
+			const args = [
+				"chore",
+				"add",
+				`inside-add-${field}`,
+				"--probe",
+				"cat inside.txt",
+				...(field === "full" ? ["--full", "cat inside.txt"] : []),
+				"--scope",
+				"repo",
+			];
+			const accepted = runCli(args);
+			expect(accepted.code).toBe(0);
+		}
+
+		const rosterPath = join(repoRoot, ".pij", "chores.json");
+		for (const field of ["probe", "full"] as const) {
+			for (const item of cases) {
+				const before = readFileSync(rosterPath, "utf8");
+				const args = [
+					"chore",
+					"add",
+					`refused-add-${field}-${item.label}`,
+					"--probe",
+					field === "probe" ? item.command : "cat inside.txt",
+					...(field === "full" ? ["--full", item.command] : []),
+					"--scope",
+					"repo",
+				];
+				const refused = runCli(args);
+				expect(refused.code).toBe(64);
+				expect(refused.stderr).toContain(
+					`repo-scoped chore ${field} path resolves outside this worktree`,
+				);
+				expect(refused.stderr).toContain("Use a repo-relative path");
+				expect(refused.stderr).toContain("--scope seat or --scope fleet");
+				expect(readFileSync(rosterPath, "utf8")).toBe(before);
+			}
+		}
+
+		expect(
+			runCli([
+				"chore",
+				"add",
+				"update-target",
+				"--probe",
+				"cat inside.txt",
+				"--full",
+				"cat inside.txt",
+				"--scope",
+				"repo",
+			]).code,
+		).toBe(0);
+		for (const field of ["probe", "full"] as const) {
+			const accepted = runCli([
+				"chore",
+				"update",
+				"repo:update-target",
+				`--${field}`,
+				"cat inside.txt",
+			]);
+			expect(accepted.code).toBe(0);
+			for (const item of cases) {
+				const before = readFileSync(rosterPath, "utf8");
+				const refused = runCli([
+					"chore",
+					"update",
+					"repo:update-target",
+					`--${field}`,
+					item.command,
+				]);
+				expect(refused.code).toBe(64);
+				expect(refused.stderr).toContain(
+					`repo-scoped chore ${field} path resolves outside this worktree`,
+				);
+				expect(readFileSync(rosterPath, "utf8")).toBe(before);
+			}
+		}
+	});
+
+	it("accepts static multi-argument commands and refuses unknown executables by default", () => {
+		writeRepoGrammarFixtures();
+		expect(
+			runCli([
+				"chore",
+				"add",
+				"static-multiword",
+				"--probe",
+				STATIC_REPO_COMMAND,
+				"--full",
+				STATIC_REPO_COMMAND,
+				"--scope",
+				"repo",
+			]).code,
+		).toBe(0);
+		const rosterPath = join(repoRoot, ".pij", "chores.json");
+		for (const field of ["probe", "full"] as const) {
+			expect(
+				runCli(["chore", "update", "repo:static-multiword", `--${field}`, STATIC_REPO_COMMAND])
+					.code,
+			).toBe(0);
+		}
+		const beforeUnknown = readFileSync(rosterPath, "utf8");
+		const unknown = runCli([
+			"chore",
+			"add",
+			"unknown-default",
+			"--probe",
+			"mystery-probe static-arg",
+			"--scope",
+			"repo",
+		]);
+		expect(unknown.code).toBe(64);
+		expect(unknown.stderr).toContain("repo-scoped chore probe could not be proven static");
+		expect(unknown.stderr).toContain(
+			"executable 'mystery-probe' is not in the repo command allow-list",
+		);
+		expect(readFileSync(rosterPath, "utf8")).toBe(beforeUnknown);
+	});
+
+	it.each(
+		DYNAMIC_REPO_COMMAND_CASES,
+	)("refuses $label across add/update and probe/full without roster mutation", (item) => {
+		writeRepoGrammarFixtures();
+		expect(
+			runCli([
+				"chore",
+				"add",
+				"dynamic-target",
+				"--probe",
+				STATIC_REPO_COMMAND,
+				"--full",
+				STATIC_REPO_COMMAND,
+				"--scope",
+				"repo",
+			]).code,
+		).toBe(0);
+		const rosterPath = join(repoRoot, ".pij", "chores.json");
+
+		for (const field of ["probe", "full"] as const) {
+			const before = readFileSync(rosterPath, "utf8");
+			const refused = runCli([
+				"chore",
+				"add",
+				`dynamic-add-${field}`,
+				"--probe",
+				field === "probe" ? item.command : STATIC_REPO_COMMAND,
+				...(field === "full" ? ["--full", item.command] : []),
+				"--scope",
+				"repo",
+			]);
+			expect(refused.code).toBe(64);
+			expect(refused.stderr).toContain(`repo-scoped chore ${field} ${item.category}`);
+			expect(refused.stderr).toContain(item.reason);
+			expect(refused.stderr).toContain("--scope seat or --scope fleet");
+			expect(readFileSync(rosterPath, "utf8")).toBe(before);
+		}
+
+		for (const field of ["probe", "full"] as const) {
+			const before = readFileSync(rosterPath, "utf8");
+			const refused = runCli([
+				"chore",
+				"update",
+				"repo:dynamic-target",
+				`--${field}`,
+				item.command,
+			]);
+			expect(refused.code).toBe(64);
+			expect(refused.stderr).toContain(`repo-scoped chore ${field} ${item.category}`);
+			expect(refused.stderr).toContain(item.reason);
+			expect(refused.stderr).toContain("--scope seat or --scope fleet");
+			expect(readFileSync(rosterPath, "utf8")).toBe(before);
+		}
+	});
+
+	it("allows only exact safe runner flags before the repo script path", () => {
+		mkdirSync(join(repoRoot, "scripts"));
+		writeFileSync(join(repoRoot, "scripts", "probe.py"), "print('inside')\n");
+		writeFileSync(join(repoRoot, "scripts", "probe.js"), "console.log('inside');\n");
+		writeFileSync(join(repoRoot, "scripts", "probe.sh"), "printf inside\n");
+		const accepted = [
+			{
+				name: "safe-node-flag",
+				command: "node --no-warnings ./scripts/probe.js arg",
+			},
+			{
+				name: "safe-python-flag",
+				command: "python3 -u ./scripts/probe.py arg",
+			},
+		] as const;
+		for (const item of accepted) {
+			expect(
+				runCli(["chore", "add", item.name, "--probe", item.command, "--scope", "repo"]).code,
+			).toBe(0);
+		}
+
+		expect(
+			runCli([
+				"chore",
+				"add",
+				"runner-target",
+				"--probe",
+				"node ./scripts/probe.js arg",
+				"--full",
+				"node ./scripts/probe.js arg",
+				"--scope",
+				"repo",
+			]).code,
+		).toBe(0);
+		const cases = [
+			{
+				label: "equals-print",
+				command: "node --print=process.env.HOME ./scripts/probe.js",
+				runner: "node",
+				flag: "--print=process.env.HOME",
+			},
+			{
+				label: "unknown-safe-looking",
+				command: "node --title=probe ./scripts/probe.js",
+				runner: "node",
+				flag: "--title=probe",
+			},
+			{
+				label: "bundled-shell",
+				command: "sh -eu ./scripts/probe.sh",
+				runner: "sh",
+				flag: "-eu",
+			},
+		] as const;
+		const rosterPath = join(repoRoot, ".pij", "chores.json");
+
+		for (const field of ["probe", "full"] as const) {
+			for (const item of cases) {
+				const before = readFileSync(rosterPath, "utf8");
+				const refused = runCli([
+					"chore",
+					"add",
+					`runner-add-${field}-${item.label}`,
+					"--probe",
+					field === "probe" ? item.command : "node ./scripts/probe.js arg",
+					...(field === "full" ? ["--full", item.command] : []),
+					"--scope",
+					"repo",
+				]);
+				expect(refused.code).toBe(64);
+				expect(refused.stderr).toContain(
+					`runner flag '${item.flag}' is not permitted for '${item.runner}'`,
+				);
+				expect(readFileSync(rosterPath, "utf8")).toBe(before);
+			}
+		}
+
+		for (const field of ["probe", "full"] as const) {
+			for (const item of cases) {
+				const before = readFileSync(rosterPath, "utf8");
+				const refused = runCli([
+					"chore",
+					"update",
+					"repo:runner-target",
+					`--${field}`,
+					item.command,
+				]);
+				expect(refused.code).toBe(64);
+				expect(refused.stderr).toContain(
+					`runner flag '${item.flag}' is not permitted for '${item.runner}'`,
+				);
+				expect(readFileSync(rosterPath, "utf8")).toBe(before);
+			}
+		}
+	});
+
+	it("still warns fleet-roster authors about absolute paths", () => {
+		const absoluteProbe = `cat ${join(repoRoot, "shared.txt")}`;
 		const fleet = runCli([
 			"chore",
 			"add",
