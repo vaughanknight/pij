@@ -940,6 +940,45 @@ alternative is a cheap seat inferring it silently, and because this file's autho
 three corrections to its own guidance in one evening: `done` → `ready` → `blocked`-only-if-
 named. **A supervisor revising fast should say that it is revising fast.**
 
+## COMPUTE THE ORGANIC-VS-REMEDIATED SPLIT BEFORE REPORTING ANY COMPLIANCE NUMBER
+
+**The audit habit this file's incidents most consistently argue for, generalised by
+`pij-chief-roadrunner` past the defect that produced it.**
+
+A recipe was producing subscriptions with a broken setting. The day's raw numbers read
+**"3 fixed, 4 broken — improving."** Split by origin, the same data says something else:
+
+| origin | count | correct? |
+|---|---|---|
+| **organic** — the recipe's unattended output | 4 | **0 of 4** |
+| **remediated** — by seats that had read the finding | 3 | 3 of 3 |
+
+> **There was no unprompted-correct case anywhere on the box.** That is not a population
+> failing to follow a procedure. It is **a procedure whose unattended output is uniformly
+> wrong.**
+
+**And all three "correct" configurations are interruption artifacts, not discipline.** One
+seat fixed its legs only because a *false* stall notice sent it looking; the other only
+because it was mid-census on someone else's finding — and had spent four days recommending
+the broken value to the operator while its own leg quietly demonstrated the defect. Neither
+would have acted unprompted.
+
+> **Remediation performed by the people running the audit inflates the numerator and hides
+> that the mechanism is still emitting defects at full rate.** Always split the population by
+> origin before quoting a compliance figure. Same data, opposite conclusion.
+
+### It also kills the education fix, specifically
+
+The intuitive response to *"seats are configuring this wrong"* is a broadcast. But a broadcast
+reaches **whoever is reachable — the identical selection that produced the three correct
+configs.** It would manufacture more interruption artifacts, improve the numerator, and leave
+the arrival rate untouched.
+
+**Only a change to what the UNATTENDED path produces can work**, because the unattended path
+is where every defect came from. This is *property over discipline* arriving as a
+fix-selection rule rather than a slogan: when the measured organic-correct rate is zero,
+teaching cannot be the fix.
+
 ## CORROBORATION COMES FROM ACCESS ASYMMETRY — the constructive half
 
 This file has spent its length on the **negative** form of one rule: *two readings agree
