@@ -720,6 +720,38 @@ its government: its PA reported all three seats `blocked` and `exempt` **while p
 the adjacent line, the delta refuting each one.** It had the evidence and no rule licensing it
 to look. **Delta-blindness to persistent bad state, in three distinct shapes now.**
 
+## THE FAILURE IS OFTEN IN THE PLUMBING, NOT THE QUERY — three mechanisms, one evening
+
+This fleet had **nine logged instances** of *a probe that could not have returned the
+contrary answer*, and every one was treated as a **discipline** problem: *"ask whether
+your probe could show you the negative."* Three more arrived in a single evening, in
+three **different mechanisms**, and they relocate the class:
+
+| mechanism | instance | what it produced |
+|---|---|---|
+| **pipeline exit code** | `grep … \| head` — the pipeline exits 0 regardless, so a `\|\| echo GONE` branch can never fire | a match and a no-match are **indistinguishable** |
+| **output truncation** | a tail view cut at *"duplicates a richer channe"*, with the searched-for text sitting past the cut | grepped a clipped view, **reported absence**, and acted on it |
+| **traversal timeout** | a recursive grep over every seat directory, killed at 120s | **no result at all** |
+
+> **A person can check their query. Nobody eyeballs a pipeline's exit semantics.** The
+> discipline framing assumes the defect is in what you asked; in all three of these it
+> was in the machinery carrying the question.
+
+### The timeout is the nastiest of the three
+
+A pipeline-exit failure and a truncation at least **return something**. A traversal that
+times out returns **nothing** — and the natural next move is to *narrow the scan*, which
+yields a clean-looking answer over a **smaller population, silently**. The failure hands
+you the tool for converting it into a confident wrong result.
+
+> **"No result, not a negative."** Five words, and it is the whole discipline: an
+> instrument that did not finish has not told you anything, and the correct output is a
+> refusal to report rather than a narrower report.
+
+**All three were self-disclosed by the seat that committed them**, and in each case the
+seat had spent the same evening applying the identical lesson to someone else's
+instrument. The class does not care how recently you taught it.
+
 ## A ROUTING GAP THAT SUSTAINS THE CONDITION IT CANNOT REPORT
 
 **`pij-concerned-thrush`'s addition, via mastodon, and it upgrades #79 from a delivery
