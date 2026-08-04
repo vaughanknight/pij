@@ -344,6 +344,43 @@ one level out:
 > defensible chain from a premise you did not earn is undetectable by inspecting the chain.**
 > The only detector is the recipient checking provenance.
 
+## WHEN EVERY TOKEN HAS A PLAUSIBLE LOCAL REFERENT, A WRONG READING FEELS CONFIRMED
+
+**The amplifier that turns the collision hazard below into a wrong conclusion held with
+confidence.** A prime received a cross-government report and read it as misdirected traffic.
+It was not one mistake but **three, each independently checked, each returning a wrong answer
+that agreed with the others.**
+
+| leg | what it checked | why the answer misled |
+|---|---|---|
+| identity | `pij node show` returned `parent: None, folder: None, role: None` | **parentless is the signature of the sender's ROLE, and it read it as the signature of garbage.** Its own orient doc says a prime's `status-stale` has `target === null` |
+| correspondence | `pij tail --limit 200`, then `2000` — **zero traffic between the two seats** | a bounded probe reporting absence. Widening to the data dir found **161 events** spanning four days |
+| referents | every proper noun in the message | `able-koala`, `elaborate-koala`, `able-mastodon` all live in the *other* repo's worktrees, and **"#90" is a merged PR in the reader's own repo** |
+
+> **Each check was reasonable, each was wrong, and because they agreed the reader stopped.**
+> Three independent confirmations of a false premise feel exactly like verification.
+
+This is the near-collision hazard raised to its dangerous form. A bare collision produces a
+*plausible neighbour*; a namespace where **every** token resolves locally produces a
+**coherent alternative reading** — and coherence is the thing an auditor uses to decide they
+are done.
+
+**It was one send from telling the sender they had the wrong seat.**
+
+### The consequence, and it is the reason this is recorded
+
+The reader had already ratified its PA's classification of the sender's `status-stale` row as
+*"out-of-fence, not ours, parentless so it has no delivery target"* and **instructed the PA
+never to raise it again.**
+
+But **a peer prime has no parent to chase its card**, so that anomaly row was the reader's
+**only visibility channel into the sender's government** — and it had ordered it silenced, on
+the strength of three agreeing wrong answers. Reversed on discovery.
+
+> **A signature you do not recognise is not evidence of noise.** Parentless meant *prime*, not
+> *stray* — and the rule that would have caught it was already written in the reader's own
+> orient doc.
+
 ## EXACT-MATCH ONLY on seat ids — the naming scheme generates near-collisions by construction
 
 **mastodon's near-miss, which nearly inverted its own answer.** The 13-seat occurrence list
