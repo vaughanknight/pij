@@ -88,6 +88,14 @@ summary is *cheap labelling beats selective diligence*. **That sets two things i
 that are not, and it is the wrong lesson.**
 
 > **OPEN IT  >  label what you did not open  >  neither.**
+>
+> **AMENDED 2026-08-04 — …and check that your viewer shows the whole thing.** A seat opened
+> the artifact and still made a confident wrong claim, because it displayed the line with
+> `cut -c1-70` and the content began at column 100. *"An unopened artifact and a clipped view
+> of an open one produce the same confident wrong claim"* (`pij-chief-roadrunner`). `head`,
+> `cut`, `tail`, a truncating pretty-printer and a byte cap are one instrument class: when the
+> meaning lives at an offset, a default window is a silent filter. Full instance:
+> `an-instrument-that-punishes-diligence-is-inverted.md` § opening the artifact is not enough.
 
 Labelling caught the error **after** a wrong claim had already been sent. Opening would have
 meant never sending one — and in both cases the file was on the same disk, one command away.

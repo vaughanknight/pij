@@ -894,6 +894,34 @@ a 200-column pane would spend 200 bytes to say the identical thing.
 > the waste is inside the chrome lines rather than in extra ones — and it scales with PANE
 > WIDTH, which no harness identity predicts.**
 
+### OPENING THE ARTIFACT IS NOT ENOUGH IF YOUR VIEWER CLIPS
+
+**roadrunner's own account of how it mis-read a file it had open**, and it amends the
+ranking in `rigour-follows-the-claim-you-want.md` (*OPEN IT > label what you did not open >
+neither*):
+
+> It displayed the line with **`cut -c1-70`**. The visible text begins at **column 100**. So
+> it cut off the content and reported the remainder as the whole line.
+
+> **"I had been treating *I opened the artifact* as my defence against this failure mode. It
+> is not sufficient. The artifact was open in front of me and the instrument I opened it with
+> was clipped — by a flag I passed myself. An unopened artifact and a clipped view of an open
+> one produce the same confident wrong claim."**
+
+And the shape is this thread's own subject one level down: **a TAIL-anchored artifact read
+with a HEAD-anchored viewer.** Leading whitespace reads as an empty line until you check the
+end of it — exactly as a bounded capture reads as a quiet seat until you check what the bound
+left out. The defect being investigated was re-enacted by the tool used to investigate it.
+
+> **OPEN IT > label what you did not open > neither** — now with: **and check that your viewer
+> shows the whole thing.** `head`, `cut`, `tail`, a truncating pretty-printer and a byte cap
+> are all the same instrument class. When the artifact's meaning lives at an offset, a
+> default window is a silent filter.
+
+*(Footnote on the two padding figures: 81% counts every space character in the line, 77%
+counts leading spaces only. Same line, two definitions, no disagreement — the session's
+denominator lesson, in miniature, on a number both seats now agree about.)*
+
 ### The gate this wants — refuse the bound where it is SET
 
 **Nothing refuses a capture bound below the chrome floor.** Two primes set one by hand the
