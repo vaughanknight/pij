@@ -256,6 +256,11 @@ export interface WatchdogTurnConfig extends EffectiveWatchdogConfig {
 	 *  question and primes remain watched. Defaults to the card-owing copy so an
 	 *  un-wired caller keeps today's behaviour. */
 	readonly owesCard?: boolean;
+	/** True for a PRIME: appends the altitude clause to the card ask, because a
+	 *  prime's card must be its own governance work rather than a restatement of
+	 *  what a stream already reported (Jordan's 2026-07-30 altitude ruling, which
+	 *  SURVIVED the 2026-07-31 reversal of the card obligation itself). */
+	readonly ownAltitude?: boolean;
 }
 
 export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurnConfig): string {
@@ -263,22 +268,51 @@ export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurn
 	// A seat that owes no card still needs the ping — it must not go silent. A
 	// prime is the only seat on the box with NO supervisor: a wedged PM is caught
 	// by its prime, a wedged prime is caught by nobody, so this is its sole
-	// external heartbeat and it lands in the prime's own pane at no cost to the
-	// human. What changes is the ASK: liveness and lifecycle, never a card.
+	// external heartbeat.
 	//
-	// The altitude clause is Jordan's second ruling (2026-07-30): a prime's card,
-	// if it writes one voluntarily, must be about its OWN governance work. A card
-	// restating what a stream already reported double-renders the same fact in the
+	// PRIMES OWE A CARD (Jordan, 2026-07-31 — government/rulings/
+	// 2026-07-31-primes-owe-status-cards.md, REVERSING the 2026-07-30 position).
+	// That reversal reached the skill payload and a ruling file and never reached
+	// this emitter, which went on telling every prime the opposite on a timer —
+	// roughly 3/hour/prime. A STALE DOCUMENT IS PASSIVE: it fails to correct you.
+	// A STALE ENFORCER IS ACTIVE: it propagates the wrong rule to every seat it
+	// touches, on schedule, and looks authoritative doing it.
+	//
+	// The card-less branch now serves the PA only, so it carries no prime
+	// language: a PA owes no card, and a staleness label is watchdog language
+	// that lies where no obligation exists.
+	//
+	// THE ALTITUDE CLAUSE SURVIVES the reversal and rides the card-owing copy for
+	// a prime: its card must be its OWN governance work, never a restatement of
+	// what a stream already reported, which double-renders the same fact in the
 	// rail. Observed live: an o-prime led two consecutive cards with its stream's
 	// merge, a fact that stream had already filed itself.
+	const ask =
+		`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`.` +
+		(cfg.ownAltitude === true
+			? " Make it your OWN governance work, never a restatement of what a stream already reported."
+			: "");
+	// THE CLOSE OFFERED A FALSE DICHOTOMY: keep going, or declare `done`. On a
+	// STANDING assignment — PM a stream, run a government — there is no
+	// completion to declare, so `done` asserts the stream is finished and
+	// silence rots the card. A prompt that offers only wrong answers gets wrong
+	// answers from honest seats, and the ones who answer accurately look
+	// non-compliant. `ready` already exists for exactly this (state.ts:
+	// "awaiting pickup"), so this names an existing state rather than adding
+	// vocabulary, and leads with the CONDITION rather than the verb.
+	//
+	// `waiting` is DELIBERATELY NOT OFFERED here: parking with no blocker
+	// recreates the parked-but-working state, which is a permanent silencer —
+	// offering it to an unblocked seat would manufacture that defect on a timer.
+	// `ready` is the honest answer for idle-but-available; `waiting` stays for an
+	// actual blocker.
+	const close =
+		"If this unit of work is finished, run `pij report state done`; " +
+		"if you are idle but available on a standing assignment, run `pij report state ready`.";
 	const turn =
 		cfg.owesCard === false
-			? `${head} You do NOT owe a status card — a prime reports to its human in-pane, so a card there duplicates a richer channel. ` +
-				"If you post one anyway, make it your OWN governance work, never a restatement of what a stream already reported. " +
-				"If done, run `pij report state done`."
-			: `${head} ` +
-				`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. ` +
-				"If done, run `pij report state done`.";
+			? `${head} You owe no status card — keep the ping honest by staying responsive. ${close}`
+			: `${head} ${ask} ${close}`;
 	return cfg.paneAvailable === false
 		? `${turn} Pane capture unavailable; watching event activity only.`
 		: turn;

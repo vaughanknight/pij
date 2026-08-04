@@ -1011,17 +1011,40 @@ describe("status-stale stays scoped to seats whose card is consumed", () => {
 		expect(found.map((a) => a.nodeId).sort()).toEqual(["pij-pm", "pij-prime"]);
 	});
 
-	// ── absence is not staleness (Jordan's ruling, 2026-07-30) ────────────────
-	it("never flags a PRIME that has never reported — it owes no card", () => {
-		// A prime reports to its human in-pane, so it owes no card. With no card
-		// nothing renders and nobody can be misinformed, so ageing from startedAt
-		// here was a false positive BY CLASS, not by threshold: it accused five
-		// primes of neglecting an obligation they never had.
+	// ── primes owe a card (Jordan's ruling, 2026-07-31, REVERSING 2026-07-30) ──
+	// government/rulings/2026-07-31-primes-owe-status-cards.md
+	it("DOES flag a prime that has never reported — a prime owes a card", () => {
+		// SPEC, not a pin. This test previously asserted the exact opposite and
+		// was not wrong about the code — it was WRONG ABOUT THE WORLD, pinning the
+		// 2026-07-30 position after the human overturned it. Its old rationale
+		// ("a prime owes no card, so nothing renders and nobody can be
+		// misinformed") is precisely the claim the reversal retired.
+		//
+		// A prime that has never written a card is now the clearest case for the
+		// never-reported fallback rather than an exclusion from it: it owes one
+		// and there is nothing there.
+		const found = detect([
+			desc({
+				id: "pij-prime-silent",
+				prime: true,
+				lastEventAt: new Date(NOW - 5_000).toISOString(),
+				startedAt: new Date(NOW - 12 * 24 * 3_600_000).toISOString(),
+			}),
+		]);
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-prime-silent"]);
+		expect(found[0]?.detail).toContain("it has never reported");
+	});
+
+	it("still never flags a PA that has never reported — a PA owes nothing", () => {
+		// The exclusion did not disappear, it MOVED. A PA assists a prime and does
+		// not report, so ageing it from startedAt would accuse it of neglecting an
+		// obligation it never had — which is what the retired prime rule was
+		// protecting against, now applied where it is actually true.
 		expect(
 			detect([
 				desc({
-					id: "pij-prime-silent",
-					prime: true,
+					id: "pij-aide-silent",
+					orchestrationRole: "pa",
 					lastEventAt: new Date(NOW - 5_000).toISOString(),
 					startedAt: new Date(NOW - 12 * 24 * 3_600_000).toISOString(),
 				}),

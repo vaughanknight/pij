@@ -170,9 +170,12 @@ function eligible(session: SessionDescriptor): boolean {
 	// "prime", never "pm". So the fleet's governing seats were the only ones no
 	// reporting clock ever touched, in the direction nobody checks.
 	//
-	// ELIGIBILITY IS NOT `owesStatusCard`. A prime owes no card (Jordan's ruling
-	// the same day) yet is still watched, because being watched and owing a card
-	// are two different questions and only the NUDGE COPY branches on the second.
+	// ELIGIBILITY IS NOT `owesStatusCard`. The two are separate questions and
+	// only the NUDGE COPY branches on the second — a PA is watched and owes no
+	// card, which is the live case that keeps them apart. (This comment used to
+	// justify the split with "a prime owes no card", citing the 2026-07-30
+	// ruling BY DATE — which Jordan REVERSED on 2026-07-31. The split is right;
+	// the example it leaned on had been overturned.)
 	// The justification for watching a prime is not its card: it is that a prime
 	// is the only seat with NO SUPERVISOR. A wedged PM is caught by its prime; a
 	// wedged prime is caught by nobody — the owner-facing "stalled" notice cannot
@@ -484,6 +487,7 @@ export class WatchdogManager {
 			...cfg,
 			paneAvailable,
 			owesCard: owesStatusCard(session),
+			ownAltitude: projectOrchestrationRole(session) === "prime",
 		});
 		const outcome = this.deps.channel.deliver({
 			from: "pij-watchdog",

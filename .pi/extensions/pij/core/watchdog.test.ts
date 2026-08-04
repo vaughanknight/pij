@@ -260,7 +260,7 @@ describe("buildWatchdogTurn", () => {
 			paneAvailable: true,
 		});
 		expect(body).toMatchInlineSnapshot(
-			'"[pij watchdog #2 for pij-frozen-peer] Keep going if working. Report in one call with `pij report now "<what I just did>" "<what\'s next>"`. If done, run `pij report state done`."',
+			`"[pij watchdog #2 for pij-frozen-peer] Keep going if working. Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. If this unit of work is finished, run \`pij report state done\`; if you are idle but available on a standing assignment, run \`pij report state ready\`."`,
 		);
 		expect(body).toContain("pij report state done");
 		expect(body).not.toContain("pij watchdog pause");
@@ -289,13 +289,18 @@ describe("buildWatchdogTurn", () => {
 			owesCard: false,
 		});
 		expect(body).toContain("Keep going if working.");
-		expect(body).toContain("do NOT owe a status card");
+		// SPEC, not a pin: this used to assert the prime copy "do NOT owe a status
+		// card". Jordan REVERSED that on 2026-07-31
+		// (government/rulings/2026-07-31-primes-owe-status-cards.md), so the
+		// card-less branch now serves the PA only and carries no prime language.
+		expect(body).toContain("You owe no status card");
+		expect(body).not.toContain("prime reports to its human in-pane");
 		expect(body).not.toContain('pij report now "<what I just did>"');
 		// Lifecycle survives: not owing a card is not the same as never finishing.
 		expect(body).toContain("pij report state done");
-		// Jordan's second ruling: altitude. A prime's card, if written at all, is
-		// about its own governance — restating a stream's fact double-renders it.
-		expect(body).toContain("never a restatement of what a stream already reported");
+		// The ALTITUDE clause moved with the obligation: it now rides the
+		// card-OWING copy for a prime, so a card-less seat must not carry it.
+		expect(body).not.toContain("never a restatement of what a stream already reported");
 	});
 
 	it("still demands a card when the seat owes one, wired or defaulted", () => {
