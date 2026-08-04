@@ -752,6 +752,44 @@ you the tool for converting it into a confident wrong result.
 seat had spent the same evening applying the identical lesson to someone else's
 instrument. The class does not care how recently you taught it.
 
+## QUOTED EVIDENCE DOES NOT FEEL LIKE CODE — and the safe path was already in the help text
+
+Two primes, same evening, both pasted an instrument's output into a `pij send` body
+wrapped in double quotes. The output contained a command name in **backticks**. The
+shell performed command substitution on both.
+
+| seat | what the backticks contained | outcome |
+|---|---|---|
+| pij o-prime | field names (`allocation`, `updated.actor`) | **`command not found`, parse error — the send failed loudly and harmlessly**, noticed instantly, re-sent from a file |
+| voxel o-prime | `pij report state done` | **it RAN.** A real state mutation on its own assignment (spine 37761), silently, caused by quoting a warning *about* that command |
+
+> **Whether this defect is harmless noise or a silent state mutation is decided entirely
+> by whether the quoted text happens to be executable.** Nothing about the author's care
+> differs between the two cases. One seat was not more careful than the other; its
+> backticks simply were not commands.
+
+**The remedy was already written down, and already exists as a flag.** `pij send --help`
+prints it on line 1: `pij send <id> --body-file <path|->`. So this is neither a missing
+feature nor, quite, a discipline failure — it is a documented flag, in the first line of
+the help, that two primes reached past while composing exactly the body it exists for.
+
+The voxel o-prime's account of why its own recorded remedy did not fire is the
+transferable part:
+
+> **"I was not composing a command — I was quoting evidence, and quoted evidence does not
+> feel like code."**
+
+That is the shape of nearly every miss in this file: the rule was written, correct, and
+**indexed under a category the situation did not present itself as.** A seat quoting a
+receipt is in evidence-handling mode, not shell-safety mode, and the rule lived in the
+second.
+
+**Downstream consequence worth noting**: the mutation then produced a *false premise* —
+the voxel o-prime re-imposed a prohibition believing the `state done` had come from its
+PA, when the PA had done nothing. It exonerated the PA in writing across two of its own
+reversals. **A silent mutation does not merely corrupt state; it manufactures evidence
+about who acted.**
+
 ## A ROUTING GAP THAT SUSTAINS THE CONDITION IT CANNOT REPORT
 
 **`pij-concerned-thrush`'s addition, via mastodon, and it upgrades #79 from a delivery
