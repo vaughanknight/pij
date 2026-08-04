@@ -24,7 +24,8 @@ inline body. Every packet states, at minimum:
 4. **Forbidden paths** — enumerate at least `.the-flow-state.json`, `the-flow.json`,
    `the-flow.md`, and any ledger dir; the peer must never read or write them.
 5. **Done-report shape** — what to send back (summary + files changed + gate results) and
-   the id to send it to (you).
+   the id to send it to (you). Both the packet pointer message and the done-report follow
+   § C10 (wire discipline): first line = outcome/next action; delta + ids, no restatement.
 
 Persist the packet (e.g. under a `scratch/` or task dir), then send the **path pointer**
 (§ C1 verb). Long context always travels as a file + pointer, never inline.

@@ -24,7 +24,7 @@ Three parts, one sentence each where possible:
 
 1. **Invocation** — name the skill as typed and give its args: `Invoke your /validate-v2 skill with: --artifact <path>`. Use absolute paths; add `cd <repo> first` when the target repo ≠ your cwd. Tell it to **fail loudly if the skill is missing** — never improvise the skill from memory.
 2. **Response shape** — "respond per the skill's own output format", or narrower ("verdict + findings table only").
-3. **Report shape** — short outputs ride inline: `{"summary":"<one line>","output":"<full text>"}`. Long outputs (review tables, dossiers): have the peer write a file and report the path (pointer discipline — dispatch invariant 2): `{"summary","verdict","path"}`.
+3. **Report shape** — short outputs ride inline: `{"summary":"<one line>","output":"<full text>"}`. Long outputs (review tables, dossiers): have the peer write a file and report the path (pointer discipline — dispatch invariant 2): `{"summary","verdict","path"}`. `summary` follows § C10: the verdict/action first, no restatement of the ask.
 
 ```bash
 pij agent spawn --once --model claude-sonnet-5 --prompt \

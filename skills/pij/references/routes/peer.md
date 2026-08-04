@@ -89,6 +89,7 @@ single-quote it, or use the literal channel — `pij send <id> --body-file
 - `--task` delivers the first task on every harness: pi reads it at boot (env); daemon-bound peers get it **injected after bind** (it rides the inbox, FX001-2). `--layout` places the pane (§ C5). `--branch` forks YOUR session into the pane (claude→claude only, same harness, bound session).
 - Placement: default = the side stack (~1/3 right column, uncapped, evens itself) — keep it unless told otherwise (§ C5).
 - **Always canary-verify before trusting** (§ C2) — spawned *and* provided peers.
+- Seed wire discipline at birth: a `--task` packet (and every later send) follows § C10, and tells the new seat its A2A replies do too — seats must inherit the discipline from their first turn, not learn style from verbose peers.
 
 **Converse**
 
@@ -107,7 +108,7 @@ pij inbox --wait          # block indefinitely
 pij inbox --wait 30000    # or one finite 30s wait
 ```
 
-This is pull delivery, not `pij state` polling (§ C7). Long content: write a file and send the path (pointer delivery — dispatch invariant 2).
+This is pull delivery, not `pij state` polling (§ C7). Long content: write a file and send the path (pointer delivery — dispatch invariant 2). Every body follows § C10 — line 1 = the recipient's action or `NO ACTION`.
 
 **Teardown**
 

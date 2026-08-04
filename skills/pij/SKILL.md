@@ -62,7 +62,7 @@ primitive. `baton` is the other orchestration subcommand.
 5. **Delivery-owned waiting**: tmux/pi peers receive pushed turns; non-tmux external peers block on `pij inbox --wait`. Never sit in a `pij state` wait loop.
 6. **Completion interrupt**: when a reusable/live coder completes or a reviewer returns a verdict, compact that peer as the first tool action, then continue immediately. § C3 owns the lifecycle boundary and command contract.
 7. **Ownership-aware teardown**: close only what you spawned; `--force` only on the owner's explicit ask.
-8. **Token-lean output**: cite conventions instead of restating them; say only what's needed.
+8. **Token-lean output & wire discipline**: cite conventions instead of restating them; say only what's needed. Every agent-to-agent message follows **C10 — Wire discipline** (`references/00-routing.md` § Shared conventions) — cite it, never restate it.
 9. **Non-blocking questions**: never `ask_user_question` or any modal question UI — ask inline through the active delivery channel, persist the pending decision, block only dependent work.
 10. **Questions stay with their context owner**: whoever needs the answer asks the human directly; parents receive a pointer and never proxy. Doctrine for 9–10: `references/prime/protocol.md` § Human rulings.
 11. **Isolation removes edit-time serialization, not convergence-time serialization**: work confined to a verified stream worktree/branch is notify-only under a recorded descriptive fence; synchronize at converging histories or shared mutable resources. Trigger matrix: `references/prime/rituals/batons.md`.

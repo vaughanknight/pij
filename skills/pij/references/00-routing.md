@@ -189,3 +189,17 @@ owner for either observation.
 **Tiers, strongest wins:** `exempt` (`pij watchdog exempt <id> [duration]` or spawn `--no-watchdog`; default duration 1h, never fires only until its persisted deadline, then re-arms automatically; `pause` cannot downgrade an active exemption) > `compact` (auto-set around `/compact`, auto-resumes on the next real working transition) > `self` (explicit resume, or a newly delivered dispatch/committed assignment re-arms it). `pij watchdog status|list [--json]` reports the effective state and any live exemption deadline.
 
 **Operator controls.** Per peer: `pij watchdog interval <id> <30s|20m|1h|ms>` sets the timeout (default 20m); `pij watchdog exempt <id> [duration]` creates the bounded exemption; `pij watchdog reset <id>` restores defaults and clears an active exemption early (`resume` won't). Machine-wide: `pij watchdog disable-all` / `enable-all` is the fleet kill switch — one command, honored for every session including ones spawned while off (no per-sidecar edits), re-anchoring cleanly on re-enable. The daemon picks up any of these on its next tick (no restart; C6 is only for code edits).
+
+### C10 — Wire discipline (A2A messages)
+
+**Canonical copy — cite "C10" from other modules; never restate these rules.** Governs every message from one agent to another (`pij send`, inbox replies, pushed reports). Human-facing prose is out of scope. The recipient is a machine — write for a machine reader. Evidence: plan 083 (fleet measured ~2.9M tokens of A2A bodies; the waste is acks, restatement, and praise — not long analysis).
+
+1. **Line 1 is the recipient's next ACTION or DECISION — or `NO ACTION`.** The reader may stop there; everything below line 1 is optional context.
+2. **Delta only, with the discriminating value.** State what changed + the one count/SHA/path that could have been wrong. Cite rulings and prior messages by id — never restate them, never restate the recipient's own words back to them, never itemize unchanged state (one denominator line max).
+3. **Don't send:** unsolicited confirmations — silence after a clean verify **is** the all-clear; a *requested* check returns one line (`checked X, clear`). Praise never travels as its own message — attach it to an instruction or drop it.
+4. **Acks are one line** and never restate the instruction.
+5. **Exception — reasoning IS the payload** when correcting a false belief, disagreeing, or acting on low confidence with high impact: send the full why and flag it (`confidence: low`) so the receiver knows to pull more. Rare; never use it as cover.
+6. **Telegraphic is fine; ambiguous is not.** Keep every identifier, number, path, and scope marker intact. Terse *common* words beat invented shorthand — tokenizers punish rare strings, and private codes fail silently across models. Do not mirror a verbose peer's style.
+7. **Never reconcile a contradiction.** A receipt or instrument output that contradicts itself is a FINDING, not a formatting problem — relay it verbatim, contradictions intact, with your summary ABOVE the raw output, never instead of it. Terseness compresses YOUR words; it never smooths EVIDENCE (a tidied "no notable changes" once nearly destroyed the only trace of a live fleet defect — plan 083).
+
+Pre-send check, two questions: could the receiver act on line 1 alone? Did I restate anything they already know?

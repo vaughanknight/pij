@@ -15,7 +15,8 @@ sent. File at preamble, each phase checkpoint, and ship.
 | `open[]` | Unresolved decisions, risks, escalations, and skips |
 
 Paths carry the detail; the report does not replace its artifacts. Send one
-short pointer message after the file exists.
+short pointer message after the file exists — per § C10 (wire discipline):
+first line = the claim/verdict + the path, nothing restated from the report.
 
 ## Receiver duty
 

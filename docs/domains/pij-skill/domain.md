@@ -47,6 +47,7 @@ The operator/agent-facing skill layer over the pij platform — a router (`/pij`
 
 | Plan | Change | Date |
 |---|---|---|
+| 083-a2a-wire-discipline | Added C10 — Wire discipline (canonical terse-A2A convention, prompting-only) to § Shared conventions; cited from SKILL.md invariant 8, 5 routes, prime doctrine, and 4 spawn/brief/packet surfaces. | 2026-08-03 |
 | 044-compact-before-redispatch | Restored completion-first, fire-and-forget peer compaction with structural mutation proof and bounded cold event-order evidence. | 2026-07-13 |
 | 041-pij-inbox-no-tmux | Added deterministic no-tmux pull detection and `pij inbox --wait` guidance while preserving push-first tmux/pi behavior and progressive disclosure. | 2026-07-12 |
 | 046-pij-real-trees | Added sensor-first tree/link/adopt-parent guidance, current-only prime triage, adopted-stream link-before-brief, and set-before-writers/retire-after-relay handover ordering. | 2026-07-13 |

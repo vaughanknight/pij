@@ -46,7 +46,9 @@ the exact readiness reply, and waiting are the entire route.
 ## Once work arrives
 
 Invariant 12 starts applying the moment you accept a unit of work: `pij report
-now "<did>" "<next>"` at its start and again at its finish. A seat adopted
+now "<did>" "<next>"` at its start and again at its finish. Every reply you send
+to another agent follows § C10 — Wire discipline (`00-routing.md` § Shared
+conventions). A seat adopted
 through this route is the likeliest to go stale — it can sit for hours, so its
 card is the one most often read while it is the one least often refreshed. Being
 watchdog-nudged means it was already stale.

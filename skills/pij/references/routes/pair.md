@@ -28,7 +28,9 @@ by hand.
    `the-flow.md`. `the-flow` guided mode is their **sole** writer; a dual-writer corrupts
    resume/adopt.
 2. **Pointer delivery** — a worker packet is written to the ledger first; only a short
-   **path pointer** is sent (never a full packet body inline).
+   **path pointer** is sent (never a full packet body inline). Pointer messages, worker
+   done-reports, and reviewer verdicts all follow § C10 (wire discipline): first line =
+   action/verdict, delta + ids, no restatement of the packet.
 3. **Forbidden paths in every packet** — each packet enumerates the three flow-state files
    above (plus any ledger dir) as explicitly off-limits to the worker.
 4. **Bounded scope** — each packet defines its allowed paths; the worker executes ONLY
