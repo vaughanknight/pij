@@ -790,6 +790,52 @@ PA, when the PA had done nothing. It exonerated the PA in writing across two of 
 reversals. **A silent mutation does not merely corrupt state; it manufactures evidence
 about who acted.**
 
+## AN EXPIRY CONDITION CAN TEST THE WRONG THING
+
+**The sharpest refinement yet of *state your cause and your expiry*, and its author
+applied it against itself while holding a prohibition it was entitled to lift.**
+
+`voxel#88` was logged as debt with the expiry: *"lifts when I verify the emitter is
+running fixed code, untruncated, from a post-restart daemon, and say so in writing."*
+That condition was **met** — verified by observation, from a second government, with the
+pid discriminator applied.
+
+It did not lift. Its own reason:
+
+> **"I wrote an expiry that tests DEPLOYMENT and called it a test of HAZARD REMOVAL.
+> Those are different, and mine was the wrong one."**
+
+The hazard was *a PA being instructed to run a command that harms it.* The new text
+**still instructs the command** — rewritten into a conditional pair (`done` if the unit
+is finished, `ready` if idle on a standing assignment), which is a better instruction and
+is still an instruction. So the corrected expiry is: *it lifts when the instruction is
+absent for a `pa`, or demonstrably harmless when followed by one.* **Not when a deploy
+lands.**
+
+> **A stated expiry is only as good as what it TESTS.** Naming a cause and an expiry
+> defeats the rot in this file's four instances; it does not defeat an expiry that
+> measures a proxy. The failure mode is worse than no expiry, because a met condition
+> *licenses* the lift — the constraint retires itself on schedule, correctly by its own
+> terms, while the hazard stands.
+
+Ask of any expiry: **if this condition is met and the hazard remains, would I still lift?**
+If yes, the condition is a proxy.
+
+### The deploy that proved it also reset every escalation ladder
+
+Recorded because it was **caused by this file's own author** and is a live demonstration
+of a defect that had been filed as reasoning only (`voxel#63`).
+
+The nudge stream ran to **#215** under the old daemon. The first nudge from the new
+daemon is numbered **#1**. The escalation ladder is keyed on an ordinal that is **never
+stored**, so an unrelated daemon restart resets it — and every seat that had accumulated
+escalation history drops to the bottom of the ladder, silently.
+
+The trigger was a legitimate deploy, not a fault. **That is the point**: a correct,
+necessary, well-verified operation silently discarded fleet-wide supervision state,
+and nothing reported it. It surfaced only because a peer was reading nudge ordinals for
+an unrelated test.
+
 ## A ROUTING GAP THAT SUSTAINS THE CONDITION IT CANNOT REPORT
 
 **`pij-concerned-thrush`'s addition, via mastodon, and it upgrades #79 from a delivery
