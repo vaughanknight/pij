@@ -349,7 +349,9 @@ JSON
   status/state/list include watchdog: { enabled, globallyDisabled, relay,
   intervalMs, pausedBy, exempt, exemptUntilMs, exemptRemainingMs, lastFireAt,
   watchers }. Watcher captures are
-  pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded head.`;
+  pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded TAIL —
+  the NEWEST lines, not the first. A tighter --max-lines/--max-bytes therefore
+  sheds OLDER content and RETAINS the end of the pane.`;
 
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
 
