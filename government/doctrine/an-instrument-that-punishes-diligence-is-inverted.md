@@ -1163,6 +1163,34 @@ gemini pane the line cap was irrelevant and the byte cap did all the blinding.
 
 > **Neither axis is reliably the binding one. A capture bound must clear BOTH floors on the
 > pane it is aimed at, and you cannot know which binds without measuring that pane's chrome.**
+
+### The mechanism, established later from an artifact — TAIL-ANCHORED AT BOTH STAGES
+
+Recorded here rather than only in the recipe, because it is a **measurement** and the recipe
+carries only the prescription. roadrunner published a front-truncation model — a 4096-byte cut
+taking the *front* of a 40-line window, so a generous line budget would salvage a mean byte
+budget — and then **disproved it with a live capture**:
+
+| observation | value | meaning |
+|---|---|---|
+| bytes | **4096, exactly at cap** | the byte cut fired |
+| lines | 18 against a 40 cap | the line cut did **not** bind |
+| last non-empty line | **status line, intact** | first thing lost under front-truncation |
+| **first line** | **a mid-line fragment** | **the front was chopped** |
+
+**Capture takes the last `maxLines` lines, then the last `maxBytes` OF THOSE.** Tail-anchored
+at both stages — independent confirmation of PR #73's conclusion, from an artifact never
+examined for the purpose, arrived at from the opposite end from the code read that filed it.
+
+**The consequence that changes the rule**: `maxLines` **cannot rescue** a small `maxBytes`.
+The byte cut also keeps the tail, the tail is chrome, so **a low byte cap yields chrome no
+matter how many lines you allow.** The two floors are independent and whichever is tighter
+binds — so a floor must be stated as a **conjunction**, never as "at least one of".
+
+*Why this belongs in doctrine and not only in `bootstrap.md`: the recipe should carry one
+bound, not a derivation. These measurements are what lets the next reader **re-derive** the
+floor when the chrome changes — and it will, since 450 of those bytes are a single horizontal
+rule that a harness restyle could double.*
 > This is why the defaults (40 lines / 4096 bytes) work and why hand-tuning either number is
 > the trap — *"raise bytes"* and *"raise lines because lines do the work"* are each correct on
 > one pane and wrong on the other.
