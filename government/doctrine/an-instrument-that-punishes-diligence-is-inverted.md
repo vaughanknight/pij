@@ -825,16 +825,57 @@ capture fix was correct, and over-tightening converted an unbounded read into a 
 Both fail the same way — the reader cannot distinguish *nothing happened* from *I could not
 see*.
 
-### ⚠ RE-READING THE DATUM BELOW — it argues both ways
+### ⚠ THE 176B DATUM IS WITHDRAWN — it supports neither reading
 
-The controlled comparison recorded next was offered, and recorded here, as *the measured case
-for bounding*: same watcher, same box, same mode family, bound the only variable, **0 prose
-lines on the 176B bounded leg against 2–3 on the unbounded pair**.
+roadrunner offered it as the measured case FOR bounding; this seat then re-read it as evidence
+bounds are blind. **Both readings are wrong, and roadrunner withdrew it against its own
+earlier use.**
 
-Those same numbers say the bounded leg **captured no content at all**. A bound that yields
-zero prose lines is not a well-behaved bound; it is the blind case above, measured and filed
-under the opposite heading. The datum is sound and the reading was half of it: **it proves
-bounds bind. It does not show these bounds preserve signal, and it is evidence they do not.**
+The capture is **176 bytes in 2 lines against caps of 256 bytes / 3 lines — under cap on BOTH
+axes.** It was never truncated. It shows there was no prose in the tail window at that
+instant, not that the bound removed it. 80 bytes and one full line of unused headroom.
+
+> **A number consistent with every hypothesis is not evidence for the one being argued.**
+
+Both seats reached for it in the direction that flattered a recommendation they had just
+made. The blindness principle stands on the five 256B captures, which *are* at cap and *are*
+truncated; it never needed this datum and this datum cannot carry it.
+
+### The floor is POSITIONAL — and WHICH AXIS BINDS IS PANE-DEPENDENT
+
+Capture is tail-anchored and the bottom of a pane is fixed chrome, so the floor must be
+subtracted before a bound means anything. **But the chrome differs per harness, and so does
+the binding axis** — measured on two panes the same evening:
+
+| pane | chrome | binding axis |
+|---|---|---|
+| Claude Code (roadrunner) | 3 lines / 629B — permissions hint 69B, status line 110B, **horizontal rule 450B** (~140 box-drawing chars at 3 bytes each) | **lines**: `maxLines:3` sits exactly ON the 3-line floor, so raising bytes alone still yields 3 chrome lines and zero prose |
+| gemini (this seat's PA) | 2-line status block, no permissions hint, no rule | **bytes**: 256B reached in 2 lines, one line UNDER the 3-line cap, so the line axis never engaged |
+
+To clear Claude Code's floor by one prose line needs **≥4 lines AND ≥779 bytes**. On the
+gemini pane the line cap was irrelevant and the byte cap did all the blinding.
+
+> **Neither axis is reliably the binding one. A capture bound must clear BOTH floors on the
+> pane it is aimed at, and you cannot know which binds without measuring that pane's chrome.**
+> This is why the defaults (40 lines / 4096 bytes) work and why hand-tuning either number is
+> the trap — *"raise bytes"* and *"raise lines because lines do the work"* are each correct on
+> one pane and wrong on the other.
+
+**Consequence for the pending operator edit**: roadrunner had been asking Jordan to bound two
+subscriptions at 256/3 and **withdrew that ask** — it would have traded two unbounded captures
+for two blind ones, *"which is the worse failure, because a blind capture reports the same
+silence as a dead seat while looking bounded and healthy."* Revised ask: **the defaults, both
+axes.**
+
+### The gate this wants — refuse the bound where it is SET
+
+**Nothing refuses a capture bound below the chrome floor.** Two primes set one by hand the
+same evening, neither noticed, and both discovered it only when an alarm fired on a healthy
+seat. The floor is knowable at write time: the watchdog knows the capture is tail-anchored and
+could measure the chrome itself.
+
+> **A bound under the floor is not a small capture, it is a broken instrument — reject or warn
+> at the point it is set, rather than leaving it to be discovered five captures later.**
 
 ### The controlled comparison that justifies the bound
 
