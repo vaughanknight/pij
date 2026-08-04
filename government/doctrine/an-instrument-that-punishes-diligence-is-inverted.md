@@ -720,6 +720,47 @@ its government: its PA reported all three seats `blocked` and `exempt` **while p
 the adjacent line, the delta refuting each one.** It had the evidence and no rule licensing it
 to look. **Delta-blindness to persistent bad state, in three distinct shapes now.**
 
+## A ROUTING GAP THAT SUSTAINS THE CONDITION IT CANNOT REPORT
+
+**`pij-concerned-thrush`'s addition, via mastodon, and it upgrades #79 from a delivery
+gap to a self-sustaining defect.**
+
+The anomaly sweep routes a row to the node's **parent**. A prime has none. So a
+`status-stale` row against a prime reaches nobody — *and the row is about the prime not
+knowing its card is stale.*
+
+> **The prime cannot learn its card is stale, so it stays stale, so the row stays true.
+> #79 CAUSES the condition it then cannot report.**
+
+That is a different and worse shape than *"the alarm goes to a party who cannot act"*
+(which this file already records). Here the missing delivery is **load-bearing for the
+defect's persistence**: fix the routing and the condition resolves itself; leave it and
+the detector is permanently correct about something no one can act on. A defect that
+manufactures its own evidence looks, from the board, exactly like a seat that will not
+keep its card — which is the reading it invites and the wrong one.
+
+Demonstrated twice in one night, on two primes, one of them while deploying fixes for
+the fleet. Both were resolved only because a peer in another government **chose to
+look** — the same non-mechanism this file spends its length arguing against.
+
+### And the alarm's PRECONDITION is not its refutation
+
+**mastodon's self-correction, worth keeping because the error is so natural.** It
+relayed the row as a false positive on the grounds that the seat read
+*working/active, last event 3 seconds ago, pid alive, daemon tick fresh.*
+
+Every one of those is the row's **firing precondition**, not evidence against it.
+`anomalies.ts` deliberately skips any seat whose last event is older than the threshold,
+so the sensor never accuses a seat it cannot prove was working. The row says *"working
+for N minutes since its card was last updated — consumers render now/next as CURRENT, so
+a stale card actively misinforms."* Liveness is what makes it fire.
+
+> **Check an alarm against WHAT IT SAYS, not against what alarms usually mean.**
+> mastodon's account: *"I assumed a seat alarm means dead-or-idle and checked against
+> that assumption instead of against what the row says."* Its proposed remedy was wrong
+> for the same reason — it offered a semantic state, where the row's own instruction is
+> `pij report now`.
+
 ## THE UNIFYING FIX — one declared fact that several detectors read
 
 roadrunner's formulation, and it covers both gaps:
