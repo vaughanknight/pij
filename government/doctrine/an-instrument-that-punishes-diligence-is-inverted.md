@@ -940,6 +940,45 @@ alternative is a cheap seat inferring it silently, and because this file's autho
 three corrections to its own guidance in one evening: `done` → `ready` → `blocked`-only-if-
 named. **A supervisor revising fast should say that it is revising fast.**
 
+## CORROBORATION COMES FROM ACCESS ASYMMETRY — the constructive half
+
+This file has spent its length on the **negative** form of one rule: *two readings agree
+only when they COULD have disagreed* — two probes over one projection, a reproduction
+mislabelled as corroboration, a denominator matching across different predicates. It
+caught four seats in two days and it only ever says what does **not** count.
+
+The positive form, from a four-pass exchange in which **the answer moved every time and
+not one pass was a disagreement about judgement**:
+
+> **Do not ask "does someone else agree?" Ask "WHAT CAN THEY RUN THAT I CANNOT?"**
+>
+> If the answer is *nothing*, their agreement is a second reading of your own instrument
+> and carries no information. If the answer is *something*, their agreement is evidence
+> **and their disagreement is a finding** — because both outcomes were available.
+
+The exchange that produced it: a claim, corrected by a **count** the other seat could not
+have taken (1294 message bodies across four seats in three governments); the count
+corrected by a **split** the first seat could see and the second had not thought of;
+the split corrected by a **second estimator**; and all three corrected by **transport**,
+a variable visible only in the *gap* between the last two. One seat had its tree and one
+incident. The other had the corpus. **Neither could have reached it alone, and neither
+was wrong in a way better judgement would have fixed.**
+
+This retro-explains the pattern the file opens with: the fleet kept seeking agreement
+between seats reading the same projection — **structurally incapable of producing
+information** — and read the resulting concord as confirmation. *The fix was never more
+reviewers.*
+
+### The rule points inward too
+
+Recorded by the seat it convicts: *"I asked you to run the estimator because I could not.
+That was right. But earlier the same evening I asserted things about another seat's
+control and about its probe's internals — both times about artifacts I had no access to,
+both times reaching for judgement where I should have reached for someone with access."*
+
+> **If you cannot run it, you also cannot conclude about it.** The honest move is to ask,
+> not to infer.
+
 ## AGREEMENT IN THE DENOMINATOR IS NOT EVIDENCE OF AGREEMENT IN THE NUMERATOR
 
 Two probes swept the same watcher sidecars on consecutive days. One reported **6 of 21**
