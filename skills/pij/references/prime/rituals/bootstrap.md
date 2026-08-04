@@ -103,15 +103,44 @@ Only the parts a bootstrapping prime cannot discover are restated here:
 1. **Cheap tier is the design intent** — the fleet runs `gemini-3.6-flash` copilot seats.
    Whether a cheap model holds the rules while doing chores is the **open experiment**, not a
    settled result.
-2. **⚠️ ORDERING TRAP — register the subscription BEFORE stamping the role.** From the PA's own
-   seat run `pij watchdog watch <your-prime-id> --capture always`, *then*
-   `pij link <pa-id> --parent <your-prime-id> --role pa`. The capability gate refuses the whole
-   `watchdog` family to role `pa`, and `watch` only ever registers the **calling** seat — so a
-   PA stamped first can never subscribe itself and **you cannot do it for it**. Recovering costs
-   three mutations and an un-gated window. (Found by meadowlark; re-reported by vrell.)
-3. **Bound the capture**: `--max-bytes 1024 --max-lines 12`. The 4096-byte default is a
-   default, not a requirement, and captures accumulate with no expiry — a watcher subscription
-   is a standing grant to read the watched seat's pane.
+2. **⚠️ ORDERING TRAP — register the subscription, WITH ITS BOUNDS, BEFORE stamping the role.**
+   From the PA's own seat run **one** command:
+
+   ```
+   pij watchdog watch <your-prime-id> --capture always --max-bytes 1024 --max-lines 12
+   ```
+
+   *then* `pij link <pa-id> --parent <your-prime-id> --role pa`. The capability gate refuses the
+   whole `watchdog` family to role `pa`, and `watch` only ever registers the **calling** seat —
+   so a PA stamped first can never subscribe itself and **you cannot do it for it**. Recovering
+   costs three mutations and an un-gated window. (Found by meadowlark; re-reported by vrell.)
+
+   **The bounds MUST ride on this call.** They cannot be added afterwards: a second
+   `watchdog watch` is refused to the PA by the same gate, and a prime running it would
+   subscribe *itself* instead. This step used to register unbounded and defer bounding to a
+   later step — **which was unperformable by anyone**, and left a permanently unbounded
+   subscription behind. Measured 2026-08-04: five such subscriptions on one box, **three of
+   them created within 100 minutes** by seats still following the old sequence.
+3. **The bounds in step 2 are a FLOOR, not a starting point.** They ride on step 2's command
+   and cannot be applied later. The 4096-byte default is a default rather than a requirement,
+   and captures accumulate with no expiry — a watcher subscription is a standing grant to read
+   the watched seat's pane — so there is real pressure to shrink. Resist it below the floor.
+   **NEVER go below `--max-bytes 1024 --max-lines 12` — both, as a conjunction, never
+   "at least one of".** Capture is tail-anchored at **BOTH** stages: it takes the last
+   `maxLines` lines, then the last `maxBytes` **of those**. So **`maxLines` cannot rescue a
+   small `maxBytes`** — a generous line budget does not salvage a mean byte budget, because
+   the byte cut also keeps the tail and the tail is chrome. **A low byte cap yields chrome no
+   matter how many lines you allow.** The two floors are independent and whichever is tighter
+   binds. Capture is **tail-anchored**
+   and the bottom of a pane is fixed chrome: measured at **3 lines / 629 B** on a Claude Code
+   pane (a 450 B horizontal rule, a 110 B status line, a 69 B hint) and **2 lines / 256 B** on
+   a Gemini pane, against a measured prose line of ~150 B. **A bound at or below that floor
+   does not capture less, it captures NOTHING — and a blind capture reports the same silence
+   as a dead seat.** Which axis binds is **pane-dependent**, so lower both numbers only
+   together and never below this floor. Measured 2026-08-04: **19 of 26 subscriptions were at
+   256 B and 92% of all capture files on the box contained no content at all**, arrived at
+   over four days by seats independently ratcheting below this recipe — the three sentences
+   above supply a motive to shrink and, until this line, no floor to stop at.
 4. **Close the graph, and a PA is not required to do it.** The requirement is *somebody the
    system can tell*: any watchdog-eligible non-`pa` child works, and today an ordinary peer is
    **better at watching** than a PA is, because a PA cannot re-subscribe itself. **De-topple
