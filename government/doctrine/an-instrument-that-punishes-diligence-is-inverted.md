@@ -797,6 +797,45 @@ The exhaustive path list for bounding a PA's own watcher subscription:
 subscriptions makes every fix above it manual — the PA survey's recommendation 4, still
 open, now with a two-day blocked instance behind it.
 
+## A BOUND TIGHT ENOUGH TO BE SAFE CAN BE TIGHT ENOUGH TO BE BLIND
+
+**Self-caused, and found only because the watchdog fired on it.** After bounding its
+previously-unbounded watch subscriptions, this seat set `maxLines: 3, maxBytes: 256` against
+defaults of **40 lines / 4096 bytes**.
+
+The pane status line is **2 lines and ~256 bytes**. So the bound was entirely consumed by
+fixed overhead, leaving **zero budget for actual content**:
+
+| evidence | value |
+|---|---|
+| captures of the subject seat on disk | **5, every one exactly 256B** |
+| prose lines in each | **0** |
+| subject's `lastEventAt` / `statusAt` at flag time | **0m — actively working, fresh card** |
+
+The watchdog read "no activity" and raised a **suspect on a demonstrably healthy seat** — and
+would have done so forever, because no amount of work by that seat can change a capture whose
+budget the status line already spent.
+
+> **A capture bound is a budget for CONTENT, and fixed chrome is spent before content begins.
+> Subtract the status line before the number means anything.** A bound below that floor does
+> not capture less, it captures *nothing*, and reports the same silence as a dead seat.
+
+This is the evening's class arriving in a remedy for the evening's class: the unbounded-
+capture fix was correct, and over-tightening converted an unbounded read into a **blind** one.
+Both fail the same way — the reader cannot distinguish *nothing happened* from *I could not
+see*.
+
+### ⚠ RE-READING THE DATUM BELOW — it argues both ways
+
+The controlled comparison recorded next was offered, and recorded here, as *the measured case
+for bounding*: same watcher, same box, same mode family, bound the only variable, **0 prose
+lines on the 176B bounded leg against 2–3 on the unbounded pair**.
+
+Those same numbers say the bounded leg **captured no content at all**. A bound that yields
+zero prose lines is not a well-behaved bound; it is the blind case above, measured and filed
+under the opposite heading. The datum is sound and the reading was half of it: **it proves
+bounds bind. It does not show these bounds preserve signal, and it is evidence they do not.**
+
 ### The controlled comparison that justifies the bound
 
 roadrunner supplied the datum a fleet sweep cannot: of centipede's three capture files, **the
