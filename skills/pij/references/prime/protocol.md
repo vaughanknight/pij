@@ -109,9 +109,10 @@ human receives short main-event digests, and numbered reports exist only for a
 real optional audit layer.
 
 Wire traffic around reports follows § C10 (`00-routing.md` § Shared
-conventions): a clean verification sends **nothing** — silence after a clean
-verify is the all-clear, and unsolicited confirmations are the fleet's measured
-top waste. A governor enforces C10's exception as firmly as its terseness: a
+conventions): a clean verification **of a received claim** sends nothing back
+to the sender — silence after a clean verify is the all-clear, and unsolicited
+confirmations are the fleet's measured top waste. Contract-mandated reports
+(preamble, phase checkpoints, ship) still file and still send their pointer. A governor enforces C10's exception as firmly as its terseness: a
 correction of a false belief carries its full reasoning (a bare "no" gets acked,
 not internalised), and a reviewer should treat a reason-less correction as a
 defect.

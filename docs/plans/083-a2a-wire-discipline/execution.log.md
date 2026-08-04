@@ -43,3 +43,7 @@ All 8 tasks [x]. 13 skill files modified + 1 domain history row. Proof: citation
 
 ## Post-T008 amendment — 2026-08-04 (pre-review delta from o-prime albatross)
 Live incident: chief-roadrunner's fleet-scoped chore defect surfaced ONLY because a PA relayed a self-contradictory receipt (26→27 population + "no membership change") verbatim instead of tidying it. Added C10 rule 7: never reconcile a contradiction — verbatim instrument output, summary above never instead. Plan Key Finding 07 added. Drift sweep still clean (new phrase exists only in canonical copy).
+
+## Review + fixes — 2026-08-04
+Review verdict: APPROVE (reviews/review.md; 0 HIGH, 2 MEDIUM fixed, 4 LOW fixed/accepted). Applied: C10 r7 now requires line 1 to NAME the contradiction (F001); C10 r5 flags the trigger (correction:/dissent:/confidence: low), not one fixed flag (F003); protocol.md silence norm scoped to received-claim verification, mandated reports still send pointers (F002); domain-map pij-skill node label C1–C10 (F006, pre-existing staleness).
+Noteworthy (F004): `.harness/records/retro/2026-08-03/001-083-a2a-wire-discipline.md` is a second AC-08 bookkeeping deviation (harness retro drain output) — same rationale as domain.md; disclosed here so the diff-confinement proof matches the actual diff. Post-amendment sweeps re-verified by reviewer 3 against the current tree: 13/13 citations, drift clean, checks ok.

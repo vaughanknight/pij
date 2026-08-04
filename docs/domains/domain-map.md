@@ -17,7 +17,7 @@ flowchart LR
     PCP[pij-control-plane\ncontracts: tmux-keys, binding record, daemon switchboard, whole-life WatchdogManager/store/captures, chore roster/probe/delta, Git common-dir adapter, tree/link/adopt-parent wiring, push ownership]
     AR[agent-runtime\ncontracts: DiscoveredAgent, agentsDir/tmpDir, IAgentAdapter claude/codex/copilot, runAgent wrapper, inline engine + sweepStaleTmp]
     MINIH[minih\nexternal library: runAgent, IAgentAdapter, FakeAgentAdapter, validators, SdkCopilotAdapter, pack format + run ledger]
-    PS[pij-skill\ncontracts: /pij routes, tree/link/adopt-parent guidance, watchdog CLI discoverability, current-only prime triage, shared conventions C1-C7, pij-skill-check gate]
+    PS[pij-skill\ncontracts: /pij routes, tree/link/adopt-parent guidance, watchdog CLI discoverability, current-only prime triage, shared conventions C1-C10, pij-skill-check gate]
     PO[pij-orchestration\ncontracts: PrimeService set/retire/unset, BatonDefinition/Request/Lease, BatonStorePort, BatonNoticeSink, blocked-time]
 
     ATI -->|uses current-session store + todo contracts| SWS
