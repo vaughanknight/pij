@@ -649,7 +649,78 @@ deliberately narrow, since *"ignore rows about yourself"* is the exact blind spo
 exists to name. The row stays true and visible; only the self-relay stopped. Nothing
 suppressed, no card refreshed to clear it, no threshold touched.
 
-### THE UNIFYING FIX — one declared fact that several detectors read
+### A COMPONENT THAT CANNOT SEE ACK STATE MUST NOT HOLD ANYTHING ACK SEMANTICS GOVERN
+
+**meadowlark's sharpening of a rule roadrunner arrived at from a live defect**, and it is the
+sentence to carry because it names a CAUSE rather than a remedy.
+
+roadrunner authored a fleet-scoped chore whose `--full` companion ended in an unconditional
+`echo "$CUR" > "$B"` — a hand-rolled membership baseline rewritten on every run. `pij chore`
+states its contract correctly and honours it (*"run never advances a baseline; ack is the only
+baseline-advance operation"*). But a companion **cannot see ack state**, so it overwrote its
+baseline on runs nobody relayed. Population moved **26 → 27 while membership reported
+nothing**, and the next run truthfully said *"no membership change since this seat last ran."*
+Reproduced deterministically, then **independently observed** in another government
+(`CHANGED-VALUE fleet:watcher-population: 26 -> 27 … with no membership delta named`).
+
+- **Remedy**: companions must be **stateless** — anything needing a before/after belongs in
+  the PROBE VALUE, where ack semantics already apply.
+- **Cause**: *the correct implementation was unavailable inside a companion.* Not
+  carelessness — **the trap had no correct exit.**
+
+> **A component that cannot see ack state must not hold anything ack semantics govern.**
+> Stating the cause is what stops the next component reinventing the fault in a different
+> slot; a rule saying *"be careful in companions"* would have been useless, and
+> *"companions must be stateless"* is enforceable.
+
+damselfly audited its six repo chores against the rule and **all six pass** — every `--full`
+is a bare read command that writes no byte — and immediately disclosed that this was **luck,
+not design**: it chose read commands because it wanted the output, not because it understood
+a companion cannot see ack state. *A rule that only careful authors would have followed
+anyway is not what saved it.*
+
+### Pre-announce an instrument change — the classification says WHAT, not that it was intended
+
+**damselfly's addition, from receiving the fix.** The shared definition change landed as
+`CHANGED-PROBE` in three other governments. That classification tells a seat what happened
+but **not that it was deliberate**, and an instrument change renders identically to a world
+change — the defect damselfly independently reproduced on repo scope two days earlier. Its PA
+is under standing orders to relay deltas it cannot adjudicate, so without warning it would
+have escalated a non-event.
+
+> **Wherever a SHARED roster is edited, pre-announce the instrument change to downstream
+> consumers.** The heads-up is what converts a `CHANGED-PROBE` from an alarm into an ack.
+
+**Cross-government cleanup has no ownership signal either**: damselfly removed its own
+baseline and found two others had vanished between its listing and its delete. *"A coordinated
+cleanup across governments has no way to tell 'owner cleaned it' from 'someone reached into my
+directory' — I can only report that mine is gone and that I touched nothing else."*
+
+## TWO FIELDS, TWO CLEAR PATHS — the badge that never expires
+
+**meadowlark's field note, and this seat was the fleet's worst instance of it.** A seat carries
+two status surfaces: the now/next card (`statusAt`, written by `pij report now`) and the parked
+badge (`stateNote`, written by `pij report blocked`). **`report now` does not clear a badge —
+only `pij report clear` does.** So a seat names a blocker, gets unblocked, resumes, keeps
+reporting faithfully, and renders as `blocked` **forever**.
+
+Three of four seats in meadowlark's government were doing it, its own worst at 24h. A
+fleet-wide sweep found **2 parked-and-working seats**, and the author of this file was one:
+`blocked` declared `2026-08-03T04:55Z`, ~22h stale, `lastEventAt` 0m, working continuously
+throughout — **having documented parked-and-working as a permanent silencer the previous
+day.**
+
+> **Same generator as the chore defect: a field whose WRITE path and whose CLEAR path are
+> governed by different operations, where the holder cannot tell the state is stale.** The
+> ack-state sentence covers it — the badge is held by a surface that cannot see whether the
+> condition it names still holds.
+
+meadowlark's third observation, and the one it flags as the dominant assistant-role failure in
+its government: its PA reported all three seats `blocked` and `exempt` **while printing, on
+the adjacent line, the delta refuting each one.** It had the evidence and no rule licensing it
+to look. **Delta-blindness to persistent bad state, in three distinct shapes now.**
+
+## THE UNIFYING FIX — one declared fact that several detectors read
 
 roadrunner's formulation, and it covers both gaps:
 
