@@ -5321,13 +5321,38 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			// repo primes drown in other repos' peers otherwise).
 			const assignments = deps.assignmentStore.list();
 			const allocations = deps.allocationStore?.list() ?? [];
+			const anomalyDescriptors = deps.registry.list();
+			// Watchdog state as a PLAIN PROJECTION built HERE, at the I/O edge, so
+			// the detector stays pure (s079). Absent when the stores are unwired,
+			// which keeps `inert-subscription` silent rather than guessing.
+			const watchdogView =
+				deps.watchdogStore === undefined
+					? undefined
+					: {
+							globallyDisabled: deps.watchdogGlobalStore?.disabled() ?? false,
+							nodes: anomalyDescriptors.flatMap((d) => {
+								const sidecar = deps.watchdogStore?.read(d.id);
+								if (sidecar === undefined) return [];
+								return [
+									{
+										nodeId: d.id,
+										watchers: (sidecar.watchers ?? []).map((w) => w.watcherId),
+										...(sidecar.pausedBy === undefined ? {} : { pausedBy: sidecar.pausedBy }),
+										...(sidecar.exemptUntilMs === undefined
+											? {}
+											: { exemptUntilMs: sidecar.exemptUntilMs }),
+									},
+								];
+							}),
+						};
 			let anomalies = detectAnomalies({
-				descriptors: deps.registry.list(),
+				descriptors: anomalyDescriptors,
 				assignments,
 				events: ports.value.spineLog.read(),
 				dispatches: deps.dispatchStore?.list() ?? [],
 				allocations,
 				nowMs: now,
+				...(watchdogView === undefined ? {} : { watchdog: watchdogView }),
 			});
 			// Kept so an EMPTY scoped result can say what it did not look at. An
 			// empty answer is indistinguishable from "all clear", and that is the

@@ -25,7 +25,13 @@ import {
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
 } from "./platform/types.js";
-import { isSemanticState, type SemanticState, type SessionDescriptor } from "./types.js";
+import {
+	isSemanticState,
+	type SemanticState,
+	type SessionDescriptor,
+	type SessionId,
+} from "./types.js";
+import { mutesWatchdogNudge } from "./watchdog.js";
 
 /** Default semantic-active + system-idle disagreement threshold (AC-07's
  *  "> threshold"). Hours-scale: a seat quietly idle for a work-morning with
@@ -42,6 +48,7 @@ export type AnomalyKind =
 	| "inbox-poll-stalled"
 	| "delivered-unacked-stale"
 	| "allocation-half-open"
+	| "inert-subscription"
 	| "status-stale";
 
 /** A seat may sit pre-bind this long before it reads as a wedged boot. The
@@ -111,6 +118,30 @@ export interface AnomalyInputs {
 	readonly dispatchStaleMs?: number;
 	readonly allocationHalfOpenMs?: number;
 	readonly statusStaleMs?: number;
+	/** Watchdog state as a PLAIN PROJECTION, passed IN like every other input.
+	 *
+	 *  Deliberately NOT a store handle and NOT a live probe: the sensor's purity
+	 *  is the only reason its mutation proofs mean anything, so a new INPUT is
+	 *  safe where a new READ would destroy it (albatross's ruling, s079). Absent
+	 *  keeps every existing caller's behaviour byte-for-byte. */
+	readonly watchdog?: WatchdogSubscriptionInputs;
+}
+
+/** One node's supervision wiring, projected. */
+export interface WatchdogNodeView {
+	readonly nodeId: SessionId;
+	/** Seats subscribed to this node's notices. */
+	readonly watchers: readonly SessionId[];
+	/** Who paused it, if paused at all (`"self"` for a self-pause). */
+	readonly pausedBy?: string;
+	/** Absolute deadline of a time-bounded exemption. */
+	readonly exemptUntilMs?: number;
+}
+
+export interface WatchdogSubscriptionInputs {
+	/** The fleet-wide switch — ONE row when off, never one per seat. */
+	readonly globallyDisabled: boolean;
+	readonly nodes: readonly WatchdogNodeView[];
 }
 
 /** The declared-state view of one assignment's chain (states[] seqs joined
@@ -239,6 +270,62 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 		});
 	}
 
+	// inert-subscription — the wiring is REAL and the trigger is DEAD. A watcher
+	// subscribed to a paused seat receives nothing, so it reports nothing, and
+	// that reads as "no stalls". The subscription succeeds silently at install
+	// and rots later when the target pauses itself mid-flight, so a setup-time
+	// check is a chore that cannot catch the case it exists for — and the PA
+	// cannot self-check it, because if its triggers are dead no sweep runs to
+	// notice. So the check lives HERE, where dead triggers cannot silence it.
+	if (inputs.watchdog !== undefined) {
+		const wd = inputs.watchdog;
+		const parked = new Map(
+			inputs.descriptors.map((d) => [d.id, mutesWatchdogNudge(d.semanticState)]),
+		);
+		if (wd.globallyDisabled) {
+			// ONE fleet-level row, NEVER one per seat: disable-all is a deliberate
+			// operator action across every seat, and N rows for one switch is an
+			// alarm storm that teaches everyone to ignore the instrument.
+			const watched = wd.nodes.filter((n) => n.watchers.length > 0);
+			if (watched.length > 0) {
+				out.push({
+					kind: "inert-subscription",
+					nodeId: watched[0]?.nodeId ?? "",
+					detail:
+						`the watchdog is DISABLED FLEET-WIDE, so ${watched.length} live subscription(s) across ${watched.length} seat(s) will not fire —` +
+						" every watcher is receiving silence and reading it as 'no stalls'." +
+						" Re-arm with: pij watchdog enable-all",
+					evidence: [watched.length],
+				});
+			}
+		} else {
+			for (const node of wd.nodes) {
+				if (node.watchers.length === 0) continue;
+				// (c) EXEMPT is silent while live: an exemption is time-bounded with a
+				// persisted absolute deadline that re-arms itself, so it cannot rot —
+				// that is precisely what distinguishes it from a pause.
+				if (node.exemptUntilMs !== undefined && node.exemptUntilMs > inputs.nowMs) continue;
+				if (node.pausedBy === undefined) continue;
+				// (a) PAUSED + a DECLARED parked state is SILENT: the seat said out
+				// loud why it is quiet, and that is healthy. This keeps faith with
+				// parked-states-never-flag rather than carving an exception into it.
+				// (b) PAUSED + NO declared state EMITS: a seat has removed itself from
+				// supervision unilaterally while its watchers believe they are armed.
+				if (parked.get(node.nodeId) === true) continue;
+				out.push({
+					kind: "inert-subscription",
+					nodeId: node.nodeId,
+					detail:
+						`'${node.nodeId}' has ${node.watchers.length} watcher(s) (${node.watchers.join(", ")}) but its watchdog is PAUSED by ${node.pausedBy} with no declared state —` +
+						" the subscription is real and the trigger is dead, so its watchers receive silence and read it as 'no stalls'." +
+						` Either resume supervision (pij watchdog resume ${node.nodeId}) or declare why it is quiet (pij report state waiting|hold|blocked|question).` +
+						" This row is about SUPERVISION WIRING, not card freshness — it is not resolved by reporting.",
+					evidence: [node.watchers.length],
+				});
+			}
+		}
+	}
+
 	const dispatchStaleMs = inputs.dispatchStaleMs ?? DEFAULT_DISPATCH_UNACKED_STALE_MS;
 
 	// status-stale — the seat is ACTIVELY EMITTING but its now/next card has not
@@ -303,8 +390,23 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 				`'${descriptor.id}' has been working for ${Math.round(driftMs / 60_000)}min since its card was last updated` +
 				`${statusAtMs === undefined ? " (it has never reported)" : ""} (threshold ${Math.round(statusStaleMs / 60_000)}min)` +
 				" — consumers render now/next as CURRENT, so a stale card actively misinforms." +
-				` Ask '${descriptor.id}' to run: pij report now "<what I just did>" "<what's next>"` +
-				" (or declare a parked state: waiting|hold|blocked|question — parked seats never flag)",
+				// ORDERED BY SITUATION, not by preference, and the ordering is
+				// load-bearing. status-stale's detector INPUT is `statusAt`, and
+				// `report now` writes `statusAt` — so for a seat parked on something
+				// with no known end, the card refresh CANNOT resolve this row by
+				// construction: it resets the clock on an unchanged wait and the row
+				// returns every threshold, forever. Offering both as equals (and the
+				// ineffective one first) taught a correctly-parked seat to snooze an
+				// alarm indefinitely, which is how a fleet learns to discount an
+				// instrument. Declaring a parked state changes the CONDITION, so it
+				// is the only one of the two that ends the row.
+				//
+				// The `why` is stated rather than implied: a seat that learns the
+				// difference once will not make this mistake at any OTHER detector.
+				` If '${descriptor.id}' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question` +
+				" (parked seats never flag). Otherwise it should update its card:" +
+				` pij report now "<what I just did>" "<what's next>"` +
+				" — note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.",
 			// Evidence carries the drift BUCKET, not an empty array: the sweep's
 			// latch keys on `kind:node:evidence`, so a constant key would alert the
 			// parent exactly once and then stay silent forever no matter how far

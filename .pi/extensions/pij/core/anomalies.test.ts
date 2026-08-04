@@ -845,6 +845,44 @@ describe("status-stale (the card a busy seat forgot to update)", () => {
 		expect(found[0]?.ageMs).toBeGreaterThan(DEFAULT_STATUS_STALE_MS);
 	});
 
+	/** A REMEDIATION THAT WRITES THE DETECTOR'S OWN INPUT IS A SNOOZE; ONE THAT
+	 *  CHANGES THE CONDITION IS A RESOLUTION. This detector's input is `statusAt`
+	 *  and `report now` writes `statusAt`, so for a seat parked on something with
+	 *  no known end the card refresh cannot resolve the row by construction — it
+	 *  returns every threshold, forever. The line used to offer both as equals
+	 *  with the ineffective one FIRST, and a seat parked 39h on a human ruling
+	 *  took it, clearing the row and re-arming it indefinitely.
+	 *
+	 *  Asserted on ORDER and on the stated WHY, because a reader picks the first
+	 *  option offered and only the reason generalises to other detectors. */
+	it("leads with the remedy that RESOLVES, not the one that resets the timer", () => {
+		const detail =
+			detect([busy({ id: "pij-parked", statusAt: new Date(NOW - 45 * MIN).toISOString() })])[0]
+				?.detail ?? "";
+		const parked = detail.indexOf("declare a parked state");
+		const refresh = detail.indexOf("pij report now");
+		expect(parked, "the parked-state remedy is missing").toBeGreaterThan(-1);
+		expect(refresh, "the card-refresh remedy is missing").toBeGreaterThan(-1);
+		expect(parked, "the resetting remedy is offered before the resolving one").toBeLessThan(
+			refresh,
+		);
+	});
+
+	it("says WHY refreshing does not resolve it, so the lesson generalises", () => {
+		const detail =
+			detect([busy({ id: "pij-parked", statusAt: new Date(NOW - 45 * MIN).toISOString() })])[0]
+				?.detail ?? "";
+		expect(detail).toContain("resets this timer");
+		expect(detail).toContain("WITHOUT changing the wait");
+	});
+
+	it("gates the remedy on the seat's SITUATION rather than its preference", () => {
+		const detail =
+			detect([busy({ id: "pij-parked", statusAt: new Date(NOW - 45 * MIN).toISOString() })])[0]
+				?.detail ?? "";
+		expect(detail).toContain("waiting on something with no known end");
+	});
+
 	it("stays quiet when the card is fresh", () => {
 		expect(
 			detect([busy({ id: "pij-fresh", statusAt: new Date(NOW - 2 * MIN).toISOString() })]),
@@ -1045,5 +1083,95 @@ describe("status-stale re-alerts as it gets worse", () => {
 				nowMs: NOW,
 			}).filter((a) => a.kind === "status-stale")[0];
 		expect(at(35)?.evidence).not.toEqual(at(95)?.evidence);
+	});
+});
+
+/** A subscription that EXISTS but cannot FIRE. `watchers:1` proves the wiring
+ *  is present exactly as a green check proves a check RAN — neither proves
+ *  delivery. A watcher on a paused seat receives silence and reads it as "no
+ *  stalls", and the PA cannot self-check it: if its triggers are dead, no sweep
+ *  runs to notice. So it is detected here, where dead triggers cannot silence
+ *  it. Intent ruling (albatross, s079): the discriminator is an EXPLICIT
+ *  DECLARATION, never the pause itself. */
+describe("inert-subscription (the wiring is real, the trigger is dead)", () => {
+	const seat = (id: string, over: Partial<SessionDescriptor> = {}) => desc({ id, ...over });
+	const detectWd = (
+		descriptors: readonly SessionDescriptor[],
+		watchdog: NonNullable<Parameters<typeof detectAnomalies>[0]["watchdog"]>,
+	) =>
+		detectAnomalies({ descriptors, assignments: [], events: [], nowMs: NOW, watchdog }).filter(
+			(a) => a.kind === "inert-subscription",
+		);
+
+	it("(b) EMITS for paused with NO declared state — unilateral removal from supervision", () => {
+		const found = detectWd([seat("pij-quiet")], {
+			globallyDisabled: false,
+			nodes: [{ nodeId: "pij-quiet", watchers: ["pij-pa"], pausedBy: "self" }],
+		});
+		expect(found.map((a) => a.nodeId)).toEqual(["pij-quiet"]);
+		expect(found[0]?.detail).toContain("pij-pa");
+		// The interlock: it must not read as a status-stale contradiction.
+		expect(found[0]?.detail).toContain("not card freshness");
+	});
+
+	it("(a) SILENT for paused WITH a declared parked state — the seat said why", () => {
+		for (const state of ["waiting", "hold", "blocked", "question"] as const) {
+			expect(
+				detectWd([seat("pij-quiet", { semanticState: state })], {
+					globallyDisabled: false,
+					nodes: [{ nodeId: "pij-quiet", watchers: ["pij-pa"], pausedBy: "self" }],
+				}),
+				`declared '${state}' should stay silent`,
+			).toEqual([]);
+		}
+	});
+
+	it("(c) SILENT for a LIVE exemption, and emits once it lapses", () => {
+		const node = { nodeId: "pij-quiet", watchers: ["pij-pa"], pausedBy: "self" };
+		expect(
+			detectWd([seat("pij-quiet")], {
+				globallyDisabled: false,
+				nodes: [{ ...node, exemptUntilMs: NOW + 60_000 }],
+			}),
+		).toEqual([]);
+		expect(
+			detectWd([seat("pij-quiet")], {
+				globallyDisabled: false,
+				nodes: [{ ...node, exemptUntilMs: NOW - 1 }],
+			}),
+		).toHaveLength(1);
+	});
+
+	it("(d) globallyDisabled raises ONE fleet row, never one per seat", () => {
+		const found = detectWd([seat("pij-a"), seat("pij-b"), seat("pij-c")], {
+			globallyDisabled: true,
+			nodes: [
+				{ nodeId: "pij-a", watchers: ["pij-pa"] },
+				{ nodeId: "pij-b", watchers: ["pij-pa"] },
+				{ nodeId: "pij-c", watchers: ["pij-pa"] },
+			],
+		});
+		expect(found, "an alarm storm teaches everyone to ignore the instrument").toHaveLength(1);
+		expect(found[0]?.detail).toContain("FLEET-WIDE");
+	});
+
+	it("says nothing about a seat nobody is watching — there is no promise to break", () => {
+		expect(
+			detectWd([seat("pij-quiet")], {
+				globallyDisabled: false,
+				nodes: [{ nodeId: "pij-quiet", watchers: [], pausedBy: "self" }],
+			}),
+		).toEqual([]);
+	});
+
+	it("is ABSENT entirely when no watchdog projection is supplied", () => {
+		expect(
+			detectAnomalies({
+				descriptors: [seat("pij-quiet")],
+				assignments: [],
+				events: [],
+				nowMs: NOW,
+			}).filter((a) => a.kind === "inert-subscription"),
+		).toEqual([]);
 	});
 });
