@@ -415,3 +415,45 @@ export function describeWatchdogState(state: {
 	if (state.pausedBy) return `paused (${state.pausedBy})`;
 	return "watching";
 }
+
+/** Render a duration for HUMANS, keeping the exact ms in `--json`.
+ *
+ * The text surface printed `interval 7200000ms`, so every reader hand-divided
+ * — and a hand-conversion is exactly what produced a 1200-second error in
+ * another government the same day. The machine surface is unchanged; this is
+ * only for the line a person reads.
+ *
+ * Deliberately COARSE and exact-only: `2h`, `20m`, `45s`. A duration that is
+ * not a whole unit keeps the larger unit plus the remainder (`2h 30m`) rather
+ * than rounding, because a rounded supervision interval invites the same
+ * arithmetic the raw ms did.
+ */
+export function humanizeDurationMs(ms: number): string {
+	if (!Number.isFinite(ms) || ms < 0) return `${ms}ms`;
+	if (ms === 0) return "0s";
+	if (ms < 1_000) return `${ms}ms`;
+	const parts: string[] = [];
+	const h = Math.floor(ms / 3_600_000);
+	const m = Math.floor((ms % 3_600_000) / 60_000);
+	const s = Math.floor((ms % 60_000) / 1_000);
+	if (h > 0) parts.push(`${h}h`);
+	if (m > 0) parts.push(`${m}m`);
+	if (s > 0) parts.push(`${s}s`);
+	return parts.join(" ");
+}
+
+/** Render the watcher ROSTER, not just its size.
+ *
+ * The text line printed `watchers 2` while `--json` carried the ids. Two primes
+ * hit that within an hour: one read `watchers 2`, inferred "me plus presumably
+ * some earlier registrant", and was WRONG — there was no earlier registrant. At
+ * count >= 2 it is a coin flip whether a government believes an external party
+ * is in its notification path when nobody is.
+ *
+ * A COUNT IS AN ANSWER TO A QUESTION NOBODY ASKED. The names were already in
+ * the projection; only the human surface dropped them.
+ */
+export function renderWatcherRoster(watchers: readonly string[]): string {
+	if (watchers.length === 0) return "watchers none";
+	return `watchers ${watchers.length} (${watchers.join(", ")})`;
+}

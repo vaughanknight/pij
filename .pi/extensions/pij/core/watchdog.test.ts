@@ -11,10 +11,12 @@ import {
 	describeWatchdogState,
 	effectiveWatchdog,
 	evaluateResponse,
+	humanizeDurationMs,
 	isFireDue,
 	mutesWatchdogNudge,
 	parseWatchdogInterval,
 	reconcileWatchdogExemption,
+	renderWatcherRoster,
 	shouldCapture,
 	watchdogScheduleAnchorMs,
 } from "./watchdog.js";
@@ -499,5 +501,46 @@ describe("mutesWatchdogNudge — parked seats are not nudged (DL-002)", () => {
 			"question",
 			"waiting",
 		]);
+	});
+});
+
+/** Two primes hit these within an hour, and one drew a false conclusion from
+ *  the count that cost it a wrong belief about its own notification path. */
+describe("watchdog status is legible to the human reading it", () => {
+	it("names the watchers instead of counting them", () => {
+		expect(renderWatcherRoster(["pij-mere-mackerel"])).toBe("watchers 1 (pij-mere-mackerel)");
+		expect(renderWatcherRoster(["pij-a", "pij-b"])).toBe("watchers 2 (pij-a, pij-b)");
+	});
+
+	it("says none rather than zero — an absence a reader can act on", () => {
+		expect(renderWatcherRoster([])).toBe("watchers none");
+	});
+
+	it("renders a count of 2 with BOTH names, which is the case that misled a prime", () => {
+		// It read "watchers 2", inferred "me plus presumably an earlier
+		// registrant", and was wrong — there was no earlier registrant. At
+		// count >= 2 a bare number is a coin flip about who is in the path.
+		const line = renderWatcherRoster(["pij-statutory-seahorse", "pij-wee-albatross"]);
+		expect(line).toContain("pij-statutory-seahorse");
+		expect(line).toContain("pij-wee-albatross");
+	});
+
+	it("humanises durations so nobody hand-divides milliseconds", () => {
+		expect(humanizeDurationMs(7_200_000)).toBe("2h");
+		expect(humanizeDurationMs(1_200_000)).toBe("20m");
+		expect(humanizeDurationMs(45_000)).toBe("45s");
+	});
+
+	it("keeps the remainder rather than rounding a supervision interval", () => {
+		// A rounded interval invites the same arithmetic the raw ms did.
+		expect(humanizeDurationMs(9_000_000)).toBe("2h 30m");
+		expect(humanizeDurationMs(90_000)).toBe("1m 30s");
+	});
+
+	it("degrades honestly on sub-second, zero, and nonsense inputs", () => {
+		expect(humanizeDurationMs(0)).toBe("0s");
+		expect(humanizeDurationMs(250)).toBe("250ms");
+		expect(humanizeDurationMs(-1)).toBe("-1ms");
+		expect(humanizeDurationMs(Number.NaN)).toBe("NaNms");
 	});
 });

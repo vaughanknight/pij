@@ -164,8 +164,10 @@ import {
 	DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
 	describeWatchdogState,
 	effectiveWatchdog,
+	humanizeDurationMs,
 	parseWatchdogInterval,
 	reconcileWatchdogExemption,
+	renderWatcherRoster,
 } from "./watchdog.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
@@ -2266,7 +2268,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						: rows
 								.map(
 									(row) =>
-										`${row.id}: ${describeWatchdogState(row.watchdog)} · watchers ${row.watchdog.watchers.length}`,
+										`${row.id}: ${describeWatchdogState(row.watchdog)} · ${renderWatcherRoster(row.watchdog.watchers)}`,
 								)
 								.join("\n"),
 				);
@@ -2338,9 +2340,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const expiry =
 				block.exemptUntilMs === null
 					? ""
-					: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${block.exemptRemainingMs}ms remaining)`;
+					: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${humanizeDurationMs(block.exemptRemainingMs ?? 0)} remaining)`;
+			// `describeWatchdogState` stays FIRST and untouched: watching-vs-paused
+			// is the armed/inert discriminator in the tool's own words, and a prime
+			// got it for free from a pasted receipt. Do not lose that token while
+			// tidying the rest of the line.
 			return okOut(
-				`${id}: ${describeWatchdogState(block)} · interval ${block.intervalMs}ms${expiry} · watchers ${block.watchers.length}`,
+				`${id}: ${describeWatchdogState(block)} · interval ${humanizeDurationMs(block.intervalMs)}${expiry} · ${renderWatcherRoster(block.watchers)}`,
 			);
 		}
 		case "models": {
