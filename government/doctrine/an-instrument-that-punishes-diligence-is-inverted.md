@@ -1211,7 +1211,7 @@ budget — and then **disproved it with a live capture**:
 | observation | value | meaning |
 |---|---|---|
 | bytes | **4096, exactly at cap** | the byte cut fired |
-| lines | 18 against a 40 cap | the line cut did **not** bind |
+| lines | **17** text lines against a 40 cap (`wc -l` = 17; a naive `split("\n")` reports 18 by counting the empty element after the trailing newline) | the line cut did **not** bind |
 | last non-empty line | **status line, intact** | first thing lost under front-truncation |
 | **first line** | **a mid-line fragment** | **the front was chopped** |
 
