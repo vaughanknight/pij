@@ -587,11 +587,27 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			}
 		}
 		if (chainState.stateSeq !== undefined) evidence.push(chainState.stateSeq);
+		// THE REMEDY OMITTED THE COMMONEST CAUSE. This row correctly detects an
+		// open assignment with no matching activity, but it offered ONLY parked
+		// states — and the usual reason is neither: THE WORK IS FINISHED AND THE
+		// RECORD IS STALE. `task close --reason done` is the discharging action
+		// and the line never named it.
+		//
+		// That made it the worst of the three bad-remedy sites we found: a
+		// COMPLIANT seat, following the instruction exactly, would declare a
+		// parked state and PERMANENTLY SILENCE a row pointing at genuine
+		// undischarged work — the snooze, arrived at by obeying. Found on this
+		// government's own record: #71's assignment sat open four hours after it
+		// merged, and every option the row offered was false of it.
+		//
+		// Condition first, verb second, and all three causes named — including
+		// the one where the row is RIGHT, so a reader can tell "I should discharge
+		// this" from "I should declare a wait" from "this is a real lost dispatch".
 		out.push({
 			kind: "axis-disagreement",
 			nodeId: assignment.nodeId,
 			assignmentId: assignment.id,
-			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If this idle is legitimate, ask '${assignment.nodeId}' to run: pij report state waiting|hold|blocked|question --assignment ${assignment.id} (parked states never flag)`,
+			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If the WORK IS FINISHED and only the record is stale, ask '${assignment.nodeId}' to run: pij task close ${assignment.id} --reason done (only the assignee may attest done). If it is genuinely WAITING on something with no known end: pij report state waiting|hold|blocked|question --assignment ${assignment.id} (parked states never flag). If neither is true, the dispatch really is lost and this row is the alarm`,
 			evidence,
 		});
 	}

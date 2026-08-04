@@ -126,6 +126,60 @@ describe("axis-disagreement (AC-07 — the 44h lost-dispatch shape, ruled non-ne
 		expect(anomalies[0]?.evidence).toContain(7);
 	});
 
+	/** The remedy omitted the COMMONEST cause. This row detects an open
+	 *  assignment with no matching activity, and the usual reason is neither
+	 *  waiting nor a lost dispatch — the work is FINISHED and the record is
+	 *  stale. `task close --reason done` discharges it, and the line never named
+	 *  it, so a COMPLIANT seat would declare a parked state and permanently
+	 *  silence a row pointing at genuine undischarged work.
+	 *
+	 *  Found on this government's own record: #71's assignment sat open four
+	 *  hours after it merged and every option offered was false of it. */
+	it("offers `task close` for the finished-work case, which had no true option", () => {
+		const taskSet = ev({
+			seq: 7,
+			kind: "task-set",
+			peer: "pij-lost",
+			refs: ["node:pij-lost", "assignment:asg-dispatch"],
+		});
+		const detail =
+			detectAnomalies({
+				descriptors: [idleFor44h],
+				assignments: [dispatched],
+				events: [taskSet],
+				nowMs: NOW,
+			})[0]?.detail ?? "";
+		expect(detail).toContain("pij task close asg-dispatch --reason done");
+		expect(detail).toContain("WORK IS FINISHED");
+		// The authorship rule is stated where it is needed, not left to be
+		// discovered by tripping an E-OWN refusal.
+		expect(detail).toContain("only the assignee may attest done");
+	});
+
+	it("keeps the parked option GATED on a genuine wait, and still names the alarm case", () => {
+		const taskSet = ev({
+			seq: 7,
+			kind: "task-set",
+			peer: "pij-lost",
+			refs: ["node:pij-lost", "assignment:asg-dispatch"],
+		});
+		const detail =
+			detectAnomalies({
+				descriptors: [idleFor44h],
+				assignments: [dispatched],
+				events: [taskSet],
+				nowMs: NOW,
+			})[0]?.detail ?? "";
+		// Condition first, verb second — the discharge option must come BEFORE
+		// the parked one, since a stale record is the commoner cause and a seat
+		// takes the first option that looks plausible.
+		expect(detail.indexOf("task close")).toBeLessThan(detail.indexOf("report state waiting"));
+		expect(detail).toContain("genuinely WAITING");
+		// The third cause: the row is simply RIGHT. A remediation that never
+		// admits this teaches seats that every row has a way to make it go away.
+		expect(detail).toContain("the dispatch really is lost and this row is the alarm");
+	});
+
 	it("idle BELOW the threshold is not an anomaly", () => {
 		const fresh = { ...idleFor44h, lastEventAt: new Date(NOW - 60_000).toISOString() };
 		expect(
@@ -407,8 +461,14 @@ describe("axis-disagreement remedy hint (mastodon intake — a confusing alarm b
 			events: [],
 			nowMs: NOW,
 		}).find((x) => x.kind === "axis-disagreement");
+		// The remedy is still self-serve and still names the node's own id — what
+		// changed is that it now names the DISCHARGING action too. This assertion
+		// used to pin the parked-only text; that was not wrong about the code, it
+		// was wrong about the world, since the commonest cause is a finished unit
+		// with a stale record and the line had no option for it.
+		expect(a?.detail).toContain("pij task close asg-d --reason done");
 		expect(a?.detail).toContain(
-			"ask 'pij-lost' to run: pij report state waiting|hold|blocked|question",
+			"pij report state waiting|hold|blocked|question --assignment asg-d",
 		);
 		expect(a?.detail).toContain("parked states never flag");
 	});
