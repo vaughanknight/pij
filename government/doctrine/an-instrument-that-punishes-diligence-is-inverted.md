@@ -867,6 +867,33 @@ for two blind ones, *"which is the worse failure, because a blind capture report
 silence as a dead seat while looking bounded and healthy."* Revised ask: **the defaults, both
 axes.**
 
+### The waste is INSIDE the chrome lines, not in extra ones — 81% padding
+
+Two seats described the same 256B capture and both got its composition wrong. Measured
+byte-wise, third pass:
+
+| line | bytes | visible text | padding |
+|---|---|---|---|
+| 1 | 129B | `Gemini 3.6 Flash · 1M context` — **29 chars**, behind **99 leading spaces** | **104 of 128 chars = 81%** |
+| 2 | 125B | the full status line | 20% |
+| 3 | 0B | — | — |
+
+- This seat called it *"a 2-line status block"* — right structure, never checked the ratio,
+  so it missed that most of the budget is dead space.
+- roadrunner called line 1 *"129 bytes of spaces, WHITESPACE ONLY"* — it **opened the
+  artifact** and still mis-read it, because leading whitespace makes a line read as blank
+  until you check the far end of it. **A tail-anchored mis-read, one level down**, inside a
+  thread about tail-anchored captures.
+
+The conclusion survives at greater strength than either description: **padding does not need
+to be a whole blank line to eat a budget.** It is spent *per line, at pane width*, to
+position a fragment — **29 characters of meaning cost 129 bytes here**, and the same seat on
+a 200-column pane would spend 200 bytes to say the identical thing.
+
+> **A floor computed from "how many chrome lines does this harness draw" undercounts, because
+> the waste is inside the chrome lines rather than in extra ones — and it scales with PANE
+> WIDTH, which no harness identity predicts.**
+
 ### The gate this wants — refuse the bound where it is SET
 
 **Nothing refuses a capture bound below the chrome floor.** Two primes set one by hand the
