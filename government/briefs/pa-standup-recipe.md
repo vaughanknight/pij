@@ -685,8 +685,12 @@
     **The fix keeps the alarm and cuts the disclosure** — do not trade reliability for privacy:
 
     ```
-    pij watchdog watch <target> --capture always --max-bytes 1024 --max-lines 12
+    pij watchdog watch <target> --capture always --max-lines 12
     ```
+
+    > **⚠️ SUPERSEDED 2026-08-05 — this command previously carried `--max-bytes 1024`, and that
+    > value is BLIND on most panes measured here. Do not restore it. See the width correction at
+    > the end of this section.**
 
     Those flags exist and **4096 is a DEFAULT, not a requirement** — two seats had wired
     captures without reading them. Prune >7d on the watcher side. Able-jay deliberately did
@@ -707,6 +711,26 @@
       to limit**, so every "inconclusive" reading was structurally guaranteed. *A limit set above
       the quantity you are limiting produces no evidence in either direction.* (A bound **below
       ~580 B** might reach it — UNTESTED, and nobody is forcing fires to find out.)
+    **⚠️ CORRECTION 2026-08-05 — `--max-bytes 1024` IS WITHDRAWN. NO BYTE CONSTANT CAN WORK.**
+    (Found by `pij-chief-roadrunner`; measured across 25 captures.)
+
+    A horizontal rule is box-drawing, and `U+2500` is **3 bytes**, so `rule_bytes = 3 × pane_width`
+    **necessarily** — arithmetic, not a fitted constant. Measured widths on one box ran **49 → 202
+    columns**, a 4.1× spread, so chrome's byte cost varies by the same factor.
+
+    Measured, not derived: **at width 125 a 1023-byte capture held two rules, hint, status, prompt
+    and ZERO content lines.** One prose line at that width needs ~1150 B.
+
+    | bound | goes blind at |
+    |---|---|
+    | `--max-bytes 1024` | width **≥ ~125** — 4 of the 7 panes measured |
+    | default `4096` | width ~445 |
+
+    **The default is safe ~3.5× wider than the floor written to stop people going below it.** A
+    floor legitimising 1024 is worse than no floor, because absent gets you 4096. **Bound the LINE
+    axis only** — it does not scale with width. To set a byte bound anyway, measure your pane
+    first: `rule_bytes / 3` recovers the width from any pure rule line.
+
     - **What the remaining bytes CONTAIN is the actual finding.** Two `idle` captures of
       **identical size** differ in bytes: what varies is the **status bar**, and it carries live
       operational telemetry. Confirmed independently on this box by pattern-match against a held
