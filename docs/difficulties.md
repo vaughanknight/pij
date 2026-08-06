@@ -359,3 +359,47 @@ and an encoded fix (durable). Severity guides priority.
   gate already makes for `report now` and `state set` — while keeping
   `pause|resume|exempt|interval` refused, since subscribing to notices changes
   no seat's policy.
+
+- **D-043 [high, encoded] A remediation that cannot resolve what it detects**
+  (2026-08-04). Five PRs shipped this week; **three were one class**, found at
+  three different emitters, none of them findable by reading the code.
+  A detector fires correctly and hands the reader an action. The action is
+  wrong — and *wrong in a specific way that is invisible from inside the file*,
+  because the string is locally sensible and only fails against the **state of
+  the seat receiving it**.
+  | site | the remedy offered | why it could not work |
+  |---|---|---|
+  | `status-stale` (#70) | `report now`, listed first | it writes `statusAt` — **the detector's own input** — so it resets the clock on an unchanged wait and the row returns forever |
+  | the watchdog nudge (#72) | "you do NOT owe a status card" | it transmitted a ruling **the human had overturned** three days earlier |
+  | `axis-disagreement` (#80) | parked states only | the commonest cause is neither waiting nor a lost dispatch — **the work is finished and the record is stale**, and `task close` was never named |
+  **The property that unifies them**, and the one worth testing for:
+  > **A remediation that writes the detector's own INPUT is a snooze.
+  > A remediation that changes the CONDITION it describes is a resolution.**
+  **Why none was findable by review.** Each string is coherent read on its own.
+  The defect only exists in the *relation* between the string and the
+  population that receives it — so you cannot see it in the diff, and a test
+  asserting the string's content passes happily. Every one was found by a seat
+  **measuring**: cheetah proving `ready` quieted nothing; roadrunner's PA
+  watching a correctly-parked seat snooze a row every 30 minutes; and #80 found
+  because *our own* assignment sat open four hours after it merged, with every
+  option the row offered false of it.
+  **The worst variant is the one where compliance produces the harm.** #80's
+  remediation would have led an obedient seat to declare a parked state and
+  **permanently silence a row pointing at genuine undischarged work** — the
+  snooze, arrived at by following instructions correctly. A remedy that is
+  merely ineffective wastes a cycle; a remedy that is *plausible and wrong*
+  recruits the reader into the failure and leaves them believing they complied.
+  **Encoding.** Remediation text now leads with the **condition**, not the
+  verb — *"if X is true, do A; otherwise do B"* — and names **every** cause
+  including the one where the row is simply **right**. A remediation that never
+  admits the alarm might be real teaches seats that every row has a way to make
+  it go away, which is how a fleet learns to discount an instrument.
+  **The generalisation past remediations:** the same shape governs any
+  automated text that instructs. A **stale document is passive** — it fails to
+  correct you. A **stale enforcer is active** — it propagates the wrong rule to
+  every seat it touches, on schedule, and looks authoritative doing it. So
+  *"encode it mechanically"* is **necessary and not sufficient**: the encoded
+  thing needs its own freshness check against the ruling that authorises it, or
+  staleness has only moved from a file nobody reads to a channel everybody
+  obeys. Recorded by pij-unwilling-butterfly; sites found by pij-cheap-cheetah,
+  pij-chief-roadrunner and this seat.
