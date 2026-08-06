@@ -13,6 +13,9 @@ markers for current and retired o-prime seats.
 |------|------|
 | `.pi/extensions/pij/core/orchestration/baton.ts` | Pi-free baton vocabulary, lifecycle decisions, local store/notice ports, blocked-time and holder-transition rules. |
 | `.pi/extensions/pij/core/orchestration/prime.ts` | Pure `PrimeService` over `RegistryPort`; idempotent set/retire/unset transitions preserve the full descriptor. |
+| `.pi/extensions/pij/core/orchestration/role.ts` | Stored role vocabulary (`pm\|worker\|pa`), the total `projectOrchestrationRole` projection, the PA lineage guard, and the designation audit append. |
+| `.pi/extensions/pij/core/orchestration/pa-capability.ts` | The PA capability boundary: the total `PA_VERB_CLASSIFICATION` table, the `allow\|conditional\|refuse` union, and the one refusal message both gate seams emit. |
+| `.pi/extensions/pij/core/orchestration/pa-target.ts` | Pure target predicate for conditionally-permitted PA verbs — self or `effectiveParent` allow, everything else fails closed. |
 | `.pi/extensions/pij/core/orchestration/cli.ts` | Pure baton/prime family grammar, dispatch, rendering, and exit-code mapping. |
 | `.pi/extensions/pij/adapters/baton-store.ts` | Filesystem adapter for definitions, atomic no-replace lease files, and the append-only machine log under `PIJ_HOME/orchestration/`. |
 | `.pi/extensions/pij/core/daemon/baton-sweep.ts` | Holder liveness classification and alert-once-per-transition sweep. |
@@ -32,6 +35,9 @@ markers for current and retired o-prime seats.
 | Holder alert | A dead/stalled transition is pushed once to the granter. | Alert records transition state; lease remains untouched until explicit reclaim. |
 | Machine log | One structured line per command/action. | `PIJ_HOME/orchestration/log.ndjson`; human narrative remains outside this domain. |
 | Prime marker/history | Durable current and retired session designations for registry-first o-prime detection and audit. | `set` → current only; `retire` → old only; `unset` → neither. Multiple current primes remain valid during bounded handover overlap. |
+| PA capability class | Every verb a PA may be asked to run is classified `allow`, `conditional`, or `refuse`. The table is TOTAL: `pa-capability.test.ts` scrapes both `core/cli.ts` and `cli.ts` and fails the build on any unclassified verb. | `PaCapability`; consulted identically at both gate seams. |
+| Conditional capability | A verb the table cannot decide because the answer depends on the TARGET, not the verb. Passed through both seams; the handler that can see the target decides. | `paRefusal` returns `null`; `paConditionalWhy` carries the rule, projected by `pij whoami`. |
+| PA target scope | A PA may act only on ITSELF or its own parent, where parent means `effectiveParent` (`parentId`, falling back to `spawnedBy`) — never the raw `parentId`, or a spawned-but-never-linked PA is refused over its real prime. | `paTargetDecision`; unresolvable target, absent parent, and third-party targets all REFUSE. |
 
 ## Contracts
 

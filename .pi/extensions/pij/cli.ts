@@ -330,6 +330,7 @@ Messaging:
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
   pij watchdog status|pause|resume|exempt|reset|interval|watch|unwatch|list|disable-all|enable-all …   supervise peers
+  pij watchdog watch|unwatch <id> [--for <seat>]     bind/unbind a watcher, or repair one on its behalf
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
 
@@ -340,8 +341,8 @@ USAGE
   pij watchdog pause|resume|exempt <id> [--json]     pause / clear pause / bounded exempt
   pij watchdog reset <id> [--json]                   back to default (on, 20m, un-paused, UN-exempt)
   pij watchdog interval <id> <duration> [--json]     set the timeout (e.g. 30s, 20m, 1h, or ms)
-  pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
-  pij watchdog unwatch <id> [--json]
+  pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N] [--for <seat>]
+  pij watchdog unwatch <id> [--for <seat>] [--json]
   pij watchdog list [--json]
   pij watchdog disable-all | enable-all [--json]     machine-wide kill switch (no id)
 
@@ -351,7 +352,16 @@ JSON
   watchers }. Watcher captures are
   pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded TAIL —
   the NEWEST lines, not the first. A tighter --max-lines/--max-bytes therefore
-  sheds OLDER content and RETAINS the end of the pane.`;
+  sheds OLDER content and RETAINS the end of the pane.
+
+--for <seat>  BIND ON ANOTHER SEAT'S BEHALF (recovery path)
+  watch/unwatch normally bind YOU as the watcher. --for names a different seat,
+  so a prime or PM can subscribe or unsubscribe for a seat that is already
+  stamped, unreachable, or dead. Re-binding replaces the existing entry rather
+  than adding a second one, and the original addedAt is preserved on every
+  re-bind. Valid only on watch/unwatch — every other action rejects it. A 'pa'
+  caller is refused --for, including when it names itself: a PA acts only for
+  itself, which the plain form already does.`;
 
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
 

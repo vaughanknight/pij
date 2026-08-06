@@ -3082,3 +3082,329 @@ describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", (
 		rmSync(home, { recursive: true, force: true });
 	});
 });
+
+// ── plan 084 Phase 2, AC-06: the allowance must survive BOTH gate seams ─────
+// THE TEST THAT WOULD HAVE CAUGHT KEY FINDING 02. The gate has two seams: the
+// bin's `paBinRefusal` runs on raw argv before core parse, and `paGate` runs
+// inside `dispatch()`. Every other PA test in this repo calls the pure
+// predicate, so a fix that lived only in `paGate` would pass all of them and
+// STILL refuse at the command line. This drives the REAL bin as a subprocess.
+//
+// Ambient identity is established deliberately (`harness`/`harnessSessionId` +
+// `CLAUDE_CODE_SESSION_ID`) rather than relying on `PIJ_SESSION_ID`, because
+// the bin seam resolves the caller through `resolveAmbientSelf` and does NOT
+// read `PIJ_SESSION_ID` — a test that set only the env var would leave the bin
+// seam failing open and prove nothing about it.
+describe("PA capability gate — enforced identically at BOTH seams (AC-06)", () => {
+	function sandbox(): { home: string; folder: string; env: Record<string, string> } {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "pij-pa-seams-")));
+		const home = join(root, "home");
+		const folder = join(root, "repo");
+		mkdirSync(home, { recursive: true });
+		mkdirSync(folder, { recursive: true });
+		const registry = new FsRegistry(home);
+		const write = (id: string, extra: Partial<SessionDescriptor> = {}): void => {
+			registry.write({
+				id,
+				folder,
+				dataDir: join(home, id),
+				eventsPath: join(home, id, "events.ndjson"),
+				pid: process.pid,
+				startedAt: "2026-08-05T00:00:00.000Z",
+				state: "idle",
+				...extra,
+			});
+		};
+		// A `pm`, NOT a prime. The gate keys on effectiveParent and the
+		// parent's ROLE is no part of the rule — but every fixture here was
+		// once a prime, so a regression requiring a prime parent would have
+		// passed the whole suite while breaking the real configuration this
+		// phase's live proof ran on (a PA whose parent is a `pm`).
+		write("pij-parent", { parentId: null, orchestrationRole: "pm" });
+		write("pij-pa", {
+			parentId: "pij-parent",
+			orchestrationRole: "pa",
+			harness: "claude",
+			harnessSessionId: "native-pa",
+			paneId: "%1",
+			lifecycle: "bound",
+		});
+		write("pij-stranger", { parentId: null });
+		return {
+			home,
+			folder,
+			// CLAUDE_CODE_SESSION_ID is what makes the BIN seam resolve this caller
+			// as the PA. Without it the bin fails open and only seam 2 is exercised.
+			env: { PIJ_HOME: home, PIJ_SESSION_ID: "pij-pa", CLAUDE_CODE_SESSION_ID: "native-pa" },
+		};
+	}
+
+	it("lets a PA watch and unwatch its own parent THROUGH THE REAL BIN", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			const watched = pij(["watchdog", "watch", "pij-parent"], env, folder);
+			expect(watched.code, `bin refused a permitted watch: ${watched.out}`).toBe(0);
+
+			// Verified through `pij state`, not `watchdog status` — a PA is refused
+			// `status` (it is not watch/unwatch), and `pij state` is the read
+			// Phase 1 made carry this. That is Phase 1 earning its stated purpose:
+			// the projection is the instrument this phase is verified WITH.
+			const roster = pij(["state", "pij-parent", "--json"], env, folder);
+			expect(roster.code).toBe(0);
+			const before = JSON.parse(roster.out) as { watchdog: { watchers: string[] } };
+			expect(before.watchdog.watchers).toContain("pij-pa");
+
+			const unwatched = pij(["watchdog", "unwatch", "pij-parent"], env, folder);
+			expect(unwatched.code, `bin refused a permitted unwatch: ${unwatched.out}`).toBe(0);
+
+			const after = JSON.parse(pij(["state", "pij-parent", "--json"], env, folder).out) as {
+				watchdog: { watchers: string[] };
+			};
+			expect(after.watchdog.watchers).not.toContain("pij-pa");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses a PA watching a stranger THROUGH THE REAL BIN, naming role and field", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			const refused = pij(["watchdog", "watch", "pij-stranger"], env, folder);
+			expect(refused.code).not.toBe(0);
+			expect(refused.out).toContain("E-OWN");
+			expect(refused.out).toContain("role 'pa'");
+			expect(refused.out).toContain("orchestrationRole");
+			// The refusal must be identical text at both seams — it is built in one
+			// place by design, and this is the end-to-end confirmation of that.
+			expect(refused.out).toContain("pij whoami --json");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses a policy-changing watchdog action through the bin, even on its own parent", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			const refused = pij(["watchdog", "pause", "pij-parent"], env, folder);
+			expect(refused.code).not.toBe(0);
+			expect(refused.out).toContain("role 'pa'");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("still refuses a FLATLY refused verb at the bin seam — the gate is not disarmed", () => {
+		// The control for the whole conditional mechanism: introducing a third
+		// arm must not have turned the bin seam into a pass-through.
+		const { home, folder, env } = sandbox();
+		try {
+			const refused = pij(["close", "pij-stranger"], env, folder);
+			expect(refused.code).not.toBe(0);
+			expect(refused.out).toContain("E-OWN");
+			expect(refused.out).toContain("role 'pa'");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("whoami through the bin reports watchdog as CONDITIONAL, not flatly refused", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			const card = pij(["whoami", "--json"], env, folder);
+			expect(card.code).toBe(0);
+			const parsed = JSON.parse(card.out) as {
+				orchestrationRole: string;
+				refusedVerbs: string[];
+				conditionalVerbs: string[];
+			};
+			expect(parsed.orchestrationRole).toBe("pa");
+			expect(parsed.conditionalVerbs).toContain("watchdog");
+			expect(parsed.refusedVerbs).not.toContain("watchdog");
+			expect(parsed.refusedVerbs).toContain("close");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
+
+// ── plan 084 Phase 3, AC-07/08/09/10: the repair path THROUGH THE REAL BIN ──
+// The unit tests drive `dispatch()`. This drives the actual binary, because a
+// new FLAG has a parse seam the pure tests never touch — an unregistered flag
+// fails at the bin with "unknown flag" long before any handler logic runs.
+describe("watchdog --for and addedAt — the repair path through the real bin", () => {
+	function sandbox(): { home: string; folder: string; env: Record<string, string> } {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "pij-repair-")));
+		const home = join(root, "home");
+		const folder = join(root, "repo");
+		mkdirSync(home, { recursive: true });
+		mkdirSync(folder, { recursive: true });
+		const registry = new FsRegistry(home);
+		const write = (id: string, extra: Partial<SessionDescriptor> = {}): void => {
+			registry.write({
+				id,
+				folder,
+				dataDir: join(home, id),
+				eventsPath: join(home, id, "events.ndjson"),
+				pid: process.pid,
+				startedAt: "2026-08-05T00:00:00.000Z",
+				state: "idle",
+				...extra,
+			});
+		};
+		write("pij-boss", {
+			parentId: null,
+			orchestrationRole: "pm",
+			harness: "claude",
+			harnessSessionId: "native-boss",
+			paneId: "%1",
+			lifecycle: "bound",
+		});
+		write("pij-target", { parentId: "pij-boss" });
+		// The seat bound BY the caller and never equal to it — the whole point of
+		// `--for` is that watcher and caller differ.
+		write("pij-absent", { parentId: "pij-boss" });
+		return {
+			home,
+			folder,
+			env: { PIJ_HOME: home, PIJ_SESSION_ID: "pij-boss", CLAUDE_CODE_SESSION_ID: "native-boss" },
+		};
+	}
+
+	const watchers = (env: Record<string, string>, folder: string, id: string): string[] =>
+		(
+			JSON.parse(pij(["state", id, "--json"], env, folder).out) as {
+				watchdog: { watchers: string[] };
+			}
+		).watchdog.watchers;
+
+	it("registers the NAMED seat, re-binds without duplicating, and unwatches it again", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			const bound = pij(["watchdog", "watch", "pij-target", "--for", "pij-absent"], env, folder);
+			expect(bound.code, `--for rejected at the bin: ${bound.out}`).toBe(0);
+			expect(watchers(env, folder, "pij-target")).toEqual(["pij-absent"]);
+
+			// Re-bind: one entry, not two. This is the KF-03 duplicate.
+			const again = pij(["watchdog", "watch", "pij-target", "--for", "pij-absent"], env, folder);
+			expect(again.code).toBe(0);
+			expect(again.out).toContain("re-bound");
+			expect(watchers(env, folder, "pij-target")).toEqual(["pij-absent"]);
+
+			// And the owner's subscription is removable — the KF-03 orphan.
+			const removed = pij(
+				["watchdog", "unwatch", "pij-target", "--for", "pij-absent"],
+				env,
+				folder,
+			);
+			expect(removed.code).toBe(0);
+			expect(watchers(env, folder, "pij-target")).toEqual([]);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("preserves addedAt across a re-bind THROUGH THE BIN, and stamps a new one", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			expect(pij(["watchdog", "watch", "pij-target"], env, folder).code).toBe(0);
+			const sidecarPath = join(home, "pij-target", "watchdog.json");
+			const readAddedAt = (): string => {
+				const raw = JSON.parse(readFileSync(sidecarPath, "utf8")) as {
+					watchers?: Array<{ watcherId: string; addedAt: string }>;
+				};
+				const entry = (raw.watchers ?? []).find((w) => w.watcherId === "pij-boss");
+				if (!entry) throw new Error(`no watcher entry for pij-boss in ${sidecarPath}`);
+				return entry.addedAt;
+			};
+			const original = readAddedAt();
+
+			const rebound = pij(
+				["watchdog", "watch", "pij-target", "--capture", "always", "--json"],
+				env,
+				folder,
+			);
+			expect(rebound.code).toBe(0);
+			expect(JSON.parse(rebound.out).watcherRebound).toBe(true);
+			expect(readAddedAt()).toBe(original);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses --for to a PA through the bin, while the plain form still works", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			// Re-stamp the caller as a PA whose parent IS the target, so the Phase-2
+			// target rule would ALLOW it — only the --for rule can refuse.
+			const registry = new FsRegistry(home);
+			const boss = registry.read("pij-boss");
+			if (!boss) throw new Error("fixture missing");
+			registry.write({ ...boss, orchestrationRole: "pa", parentId: "pij-target" }, "cli");
+
+			// CONTROL: permitted without the flag.
+			expect(pij(["watchdog", "watch", "pij-target"], env, folder).code).toBe(0);
+
+			const refused = pij(["watchdog", "watch", "pij-target", "--for", "pij-absent"], env, folder);
+			expect(refused.code).not.toBe(0);
+			expect(refused.out).toContain("E-OWN");
+			expect(refused.out).toContain("role 'pa'");
+			expect(refused.out).toContain("--for");
+			// The refusal did not bind anyone.
+			expect(watchers(env, folder, "pij-target")).toEqual(["pij-boss"]);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
+
+// ── review-3 fix 3: the help a HUMAN reads must document the recovery path ──
+// We documented `--for` in the one-line usage at cli.ts:332 because
+// `usage-flags.test.ts` pinned it, and left the dedicated `pij watchdog --help`
+// block — the canonical place a prime actually looks — silent. The flag was
+// therefore documented in the string a TEST reads and not in the one a HUMAN
+// reads, which is this plan's own defect wearing a patch: a prime cannot use a
+// recovery path it cannot discover.
+//
+// This pins the HELP PATH ITSELF, not the flag list, so the failure mode
+// recurs loudly rather than silently for the next flag too.
+describe("pij watchdog --help documents every watcher flag it accepts", () => {
+	function helpText(): string {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "pij-help-")));
+		const home = join(root, "home");
+		mkdirSync(home, { recursive: true });
+		try {
+			const out = pij(["watchdog", "--help"], { PIJ_HOME: home }, root);
+			expect(out.code, `watchdog --help failed: ${out.out}`).toBe(0);
+			return out.out;
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	}
+
+	it("names --for on BOTH the watch and the unwatch usage lines", () => {
+		const text = helpText();
+		const lines = text.split("\n");
+		const watchLine = lines.find((l) => l.includes("pij watchdog watch <id>"));
+		const unwatchLine = lines.find((l) => l.includes("pij watchdog unwatch <id>"));
+		expect(watchLine, "no `pij watchdog watch <id>` usage line in --help").toBeDefined();
+		expect(unwatchLine, "no `pij watchdog unwatch <id>` usage line in --help").toBeDefined();
+		expect(watchLine).toContain("--for");
+		expect(unwatchLine).toContain("--for");
+	});
+
+	it("explains what --for DOES, not merely that it exists", () => {
+		// A flag name in a usage line tells a prime the syntax and nothing about
+		// whether it is the thing they need. The recovery path has to be findable
+		// by someone who does not already know its name.
+		const text = helpText().toLowerCase();
+		expect(text).toContain("behalf");
+		expect(text).toContain("addedat");
+	});
+
+	it("the help path is REACHABLE — guards this whole pin against being vacuous", () => {
+		// If `watchdog --help` ever stopped printing the watchdog block, every
+		// assertion above would still pass against whatever text came back. Pin a
+		// token that only this block contains.
+		expect(helpText()).toContain("pij watchdog — supervise peer progress");
+	});
+});

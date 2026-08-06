@@ -212,6 +212,7 @@ describe("portable pij CLI baseline", () => {
 			pid: process.pid,
 			orchestrationRole: null,
 			refusedVerbs: [],
+			conditionalVerbs: [],
 		});
 	});
 
