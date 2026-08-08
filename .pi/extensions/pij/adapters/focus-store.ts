@@ -7,8 +7,8 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { resolvePijHome } from "../core/agents/paths.js";
 import type { FocusManifest, HarnessKind } from "../core/types.js";
 import { maybeFsyncSync, writeJsonAtomic } from "./atomic-file.js";
 
@@ -50,7 +50,7 @@ function isFocusManifest(value: unknown): value is FocusManifest {
 export class FsFocusStore {
 	private readonly root: string;
 
-	constructor(pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij")) {
+	constructor(pijHome = resolvePijHome()) {
 		this.root = join(pijHome, "focus");
 	}
 

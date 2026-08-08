@@ -17,13 +17,13 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type FileFlavor, hydrateFiles } from "@grammyjs/files";
 import { type Bot, type Context, InputFile } from "grammy";
 import { FsChannel, pollPrimaryWatchOpts } from "../adapters/channel.js";
 import { FsEventLog } from "../adapters/event-log.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
+import { resolvePijHome } from "../core/agents/paths.js";
 import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";
 import { createBot, startForwarder, TELEGRAM_PEER_ID } from "./bridge.js";
 import { loadConfig, type TelegramConfig } from "./config.js";
@@ -76,7 +76,7 @@ injected turns in your session. Keep messages phone-short. (Requires: pij telegr
 
 /** PIJ_HOME (default ~/.pij) — same resolution the rest of the extension uses. */
 function pijHomeOf(): string {
-	return process.env.PIJ_HOME ?? join(homedir(), ".pij");
+	return resolvePijHome();
 }
 
 /** Where the scoped `.env` lives. Overridable via PIJ_TELEGRAM_ENV; onboarding that

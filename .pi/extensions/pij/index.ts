@@ -1,5 +1,4 @@
 import { mkdirSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type {
@@ -18,6 +17,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { resolvePijHome } from "./core/agents/paths.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
@@ -45,7 +45,7 @@ export default function (pi: ExtensionAPI): void {
 	// and a throwaway child should never register as a peer. Skip ALL wiring.
 	if (isSubagentChild(process.env)) return;
 
-	const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+	const pijHome = resolvePijHome();
 	const repositories = new GitRepositoryAdapter();
 
 	// Native send tool (the model-facing comms seam). Agents call this instead of

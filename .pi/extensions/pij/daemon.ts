@@ -11,9 +11,8 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
@@ -33,6 +32,7 @@ import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
+import { resolvePijHome } from "./core/agents/paths.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
@@ -1091,7 +1091,7 @@ export interface DaemonOptions {
  *  stop() disposer (clears the timer + releases the lock). Throws if a live
  *  daemon already holds the lock (the caller prints + exits). */
 export function runDaemon(opts: DaemonOptions = {}): () => void {
-	const pijHome = opts.pijHome ?? process.env.PIJ_HOME ?? join(homedir(), ".pij");
+	const pijHome = opts.pijHome ?? resolvePijHome();
 	const log = opts.log ?? ((line: string) => process.stdout.write(`${line}\n`));
 	const proc = new NodeProcess();
 	const lockPath = join(pijHome, "daemon.lock");
@@ -1121,6 +1121,13 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		startedAt: new Date().toISOString(),
 		...(ownedWindow ? { window: ownedWindow } : {}),
 	});
+	// FIRST RUN: on a fresh install nothing has created PIJ_HOME yet, so the lock
+	// write below — the daemon's very first filesystem write — dies with ENOENT
+	// before anything can report why (pij#118). Invisible to every developer,
+	// because their ~/.pij already exists. `dirname(lockPath)`, not `pijHome`:
+	// with PIJ_HOME="" the lock is the cwd-relative "daemon.lock", where dirname
+	// is "." (a no-op) but mkdirSync("") would itself throw ENOENT.
+	mkdirSync(dirname(lockPath), { recursive: true });
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
 			writeFileSync(lockPath, lockBody, { flag: "wx" });

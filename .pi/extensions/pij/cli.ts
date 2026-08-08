@@ -51,7 +51,7 @@ import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
-import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
+import { capturePane, execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import {
@@ -77,7 +77,7 @@ import {
 	type VerbDeps,
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
-import { agentsDir } from "./core/agents/paths.js";
+import { agentsDir, resolvePijHome } from "./core/agents/paths.js";
 import { archiveAgeAnchorMs } from "./core/archive.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import { renderCanaryTimeout } from "./core/canary.js";
@@ -105,7 +105,12 @@ import {
 	resolveAmbientNativeIdentity,
 	resolveRegisteredAmbientSelf,
 } from "./core/current-session.js";
-import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
+import {
+	daemonStatus,
+	needsAutoStart,
+	planStop,
+	reportDaemonStart,
+} from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
 import {
 	deriveHarnessPijId,
@@ -232,7 +237,7 @@ import { applyWatchdogExemption } from "./core/watchdog.js";
 import { WorktreeManager } from "./core/worktree.js";
 import { runTelegram } from "./telegram/index.js";
 
-const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+const pijHome = resolvePijHome();
 const FOLLOW_MS = 200;
 const WAIT_TIMEOUT_MS = 15_000;
 
@@ -548,7 +553,7 @@ function write(res: CliResult): void {
  *  construction. This boundary is for a cooperative internal role. */
 function paBinRefusal(verb: string): string | null {
 	try {
-		const home = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+		const home = resolvePijHome();
 		if (!existsSync(home)) return null;
 		const registry = new FsRegistry(home);
 		const self = resolveAmbientSelf(registry);
@@ -1131,7 +1136,11 @@ function daemonWindows(): string[] {
  *  booting — the convention guard against a double-start race before the lock is
  *  written). Otherwise create a tmux window that runs the daemon and return a
  *  note so the calling agent KNOWS one was auto-started. Returns null if a daemon
- *  was already up (nothing to report). */
+ *  was already up (nothing to report).
+ *
+ *  Wiring only: what the note SAYS — and whether a start counts as verified — is
+ *  `reportDaemonStart()` in core/daemon/lifecycle.ts, where it is testable
+ *  without tmux (P8). */
 function ensureDaemonRunning(): string | null {
 	if (!needsAutoStart(readDaemonStatus())) return null; // lock says a live daemon
 	const tmux = new TmuxAdapter();
@@ -1150,7 +1159,16 @@ function ensureDaemonRunning(): string | null {
 		detached: true, // background — never steal the operator's focus
 	});
 	if (!res.ok) return `⚠️ could not auto-start pij daemon: ${res.message}`;
-	return `⚙ no pij daemon was running — started one in tmux window '${DAEMON_WINDOW_NAME}' (pane ${res.value.paneId}); it will drive control-plane sessions to bound.`;
+
+	const paneId = res.value.paneId;
+	return reportDaemonStart(
+		{ windowName: DAEMON_WINDOW_NAME, paneId },
+		{
+			status: readDaemonStatus,
+			sleep: sleepSync,
+			capturePane: () => capturePane(paneId, { scrollback: 30 }, execFileRunner),
+		},
+	);
 }
 
 /** `pij daemon [start|status|stop|kill]` — lifecycle for the machine-wide daemon.
