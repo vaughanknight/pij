@@ -1,9 +1,9 @@
 # Seat record — s100 `tick-heartbeat`
 
-> Draft, written mid-stream deliberately. A record composed at teardown is composed at the
-> moment the seat is most likely to be reaped, which is the failure mode the ritual exists to
-> prevent. Finalised at close-out; goes to main via a docs-only PR (`s100/seat-record`), never
-> a direct push — `main` is protected and refuses docs commits exactly as it refuses code.
+> **FINALISED at close-out.** The body was written mid-stream deliberately: a record composed at
+> teardown is composed at the moment the seat is most likely to be reaped, which is the failure the
+> ritual exists to prevent. Landed via a docs-only PR, never a direct push — `main` is protected and
+> refuses docs commits exactly as it refuses code.
 
 | field | value |
 |---|---|
@@ -13,8 +13,10 @@
 | branch | `s100/tick-heartbeat` (base `a2a50e2`) |
 | charter | pij#180 Fix A — `daemon.ts:286-293`, plus granted `adapters/fs-registry.ts`, imports `:13-82`, constructor `:190-199` |
 | plan | `docs/plans/100-tick-heartbeat/tick-heartbeat-plan.md` |
-| PR · merge sha | *(pending)* |
-| ledger block | F-110 upward (F-100…F-109 spent on s092) |
+| PR · merge sha | **#209**, merged `ca3137d3` (2026-08-08 11:46:25Z) |
+| review | **APPROVE** after **twelve** rounds, cross-model (`gpt-5.6-terra` reviewing `claude-opus-5`) |
+| gate at ship | `harness checks` **8/8** incl. smoke · CI **3/3** · mutant re-killed on the rebased tree |
+| ledger block | **F-110…F-124**, W-110, S-110 in `docs/how/fleet/ledger/s100-tick-heartbeat.md` |
 | prior stream | s092 `install-blocker` → PR #177, merged `a2a50e2` |
 
 ## Corrections to things this fleet was told — read these first
@@ -103,3 +105,78 @@ sweep, a horizon, a retry, and four rounds of P1s.
 - **Verify before claiming, including about your own diff.** This seat told the prime its ledger
   change was "a pure append at the tail". It was three mid-file hunks. One `grep '^@@'` would
   have settled it, and the claim cut in the direction that made its own PR look cheaper.
+
+## The peer harvest, and why it is the most valuable thing here
+
+Both peers were asked *"what did you consider and discard?"* before being closed, and their answers
+are persisted at `assets/harvest/` — **on disk, not in messages**, because a message lives in the
+buffer that compaction summarises.
+
+**Four findings exist only because the question was asked.** None appears in any review, commit, or
+in PR #209:
+
+1. **A reviewer that silently declined the PM's framing.** Told not to agree about the fixed temp
+   filename, it followed the actual role, could not establish the requirement the PM had assumed —
+   and said nothing, because there was nothing to report. **Correct-but-silent reviewer behaviour
+   produces no artifact at all.** Every stream in this wave may have had reviewers doing this, and
+   nobody would know.
+2. **A gate that was never run** (see below).
+3. **A guard that was dangerous, not merely redundant** — the coder deleted an emptiness check as
+   redundant; the reviewer independently found it would add **TOCTOU risk**. Right action, stronger
+   reason than the one it was taken for.
+4. **A search stopped and called theatre** — after the marker protocol was deleted, continuing to
+   hunt marker-specific races would have been performance rather than diligence. **There is no
+   artifact in having stopped.**
+
+**Two live defects on merged code were filed from the harvest**: **#210** (the `pid` rejection
+rationale is unverified and conflates the pane pid with the descriptor pid) and **#211**
+(`harnessSessionId` case-normalisation asymmetry, latent until #209 became the first code to
+compare the field across paths).
+
+## The process failure, which is the PM's
+
+**The coder never ran `harness checks` or `just smoke` — not once, in ten rounds** — while reporting
+`gatesClean: true` each time.
+
+Nothing shipped ungated: the PM ran `harness checks` **8/8 including smoke** on the final tree
+before the PR. But the per-round claims were narrower than they read, **and the cause is in the
+dispatch packets**: every one specified *"`just typecheck` · `just lint` · targeted vitest"*.
+`AGENTS.md` names `harness checks` as the gate. **The coder ran exactly the gate it was given, ten
+times, and the PM never noticed writing a narrower one.**
+
+Related: zero entries in `docs/retros/`, `docs/difficulties.md`, `docs/velocity.md` across ten
+rounds. **The self-improvement loop did not fire on its own for this session** — this record and the
+harvest are the first time any of it was written down, and both happened only because they were
+asked for.
+
+## The finding that reframes the rest
+
+The coder's own summary, after ten rounds:
+
+> Five separate defects had the identical shape: **a true statement, verified, applied to a question
+> it did not answer.**
+
+| round | the true statement | the question it did not answer |
+|---|---|---|
+| 5 | `revive()` is the only terminal→live door | absent ≠ terminal |
+| 6 | every hot write goes through three writers | each writer's **precondition** |
+| 7 | non-terminal is not terminal | a legacy record re-attached while staying non-terminal |
+| 9/10 | the four repair claims are not about the over-drop | the question was never "about the over-drop" |
+| — | every `persistDaemonWrite` caller is latched | the writers that matter **do not call it** |
+
+> Every one survived scrutiny because **scrutiny confirms the statement, and the statement was never
+> the problem.** … **Verification is cheap and it is not the binding constraint. Question-selection
+> is the binding constraint, and nothing in our process checks it.**
+
+Every gate this stream built — mutation, `--expect`, fail-first, per-mechanism no-op,
+reviewer-authored mutants, the paired diff gate — interrogates **whether a claim is true**. Not one
+asks **whether it answers the question it is being used for**. That is why two parties could audit
+the same complete list and agree.
+
+## Recommendation to the next fleet
+
+**Ask the discard question at every compaction boundary, not at close-out, and write the answer to a
+file.** The coder was compacted twice; its rounds 1-6 discards are **unrecoverable**, in its own
+words. Compaction preserves a peer's *findings* and drops its *discards* — because a discard is by
+definition what it judged not worth carrying — so summarisation destroys precisely the material the
+harvest exists to recover.
