@@ -5037,7 +5037,25 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 					}
 				}
 				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
-				return okOut(`assignment ${record.id} closed: ${cmd.reason} (by ${self.value})`);
+				// THE PRECONDITION TRAVELS WITH THE REMEDY (doctrine,
+				// government/doctrine/preconditions-travel-with-remedies.md). Closing a
+				// GENERAL assignment is not like closing a dispatch: the id is
+				// DETERMINISTIC (`asg-general-<node>`), so it is burned permanently and
+				// can never be recycled, and until the seat has some OTHER open
+				// assignment it cannot declare a semantic state at all.
+				//
+				// That is recoverable — `pij task set` re-arms it in one command — but
+				// it arrives SILENTLY: nothing tells the seat until it next tries to
+				// park, which can be days, while `report now` keeps working and its card
+				// keeps rendering as current. A consequence nobody is told about at the
+				// moment they cause it is a consequence discovered by its victim.
+				const generalNote =
+					record.id === generalAssignmentId(record.nodeId)
+						? ` — NOTE: that was the GENERAL assignment. Its id is deterministic and is now permanently burned; '${record.nodeId}' cannot declare a semantic state until it has another open assignment. Re-arm with: pij task set ${record.nodeId} "<task>"`
+						: "";
+				return okOut(
+					`assignment ${record.id} closed: ${cmd.reason} (by ${self.value})${generalNote}`,
+				);
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}

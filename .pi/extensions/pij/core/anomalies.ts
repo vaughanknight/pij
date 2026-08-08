@@ -21,6 +21,7 @@
 import { cardCanMislead, hasRoleConflict, owesStatusCard } from "./orchestration/role.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
+	generalAssignmentId,
 	SPINE_KIND_STATE_CLEARED,
 	SPINE_KIND_STATE_SET,
 	SPINE_KIND_STATE_VERIFIED,
@@ -252,6 +253,42 @@ function incompleteAllocationStep(allocation: Allocation): string | undefined {
  *  expected outcome, not an anomaly. */
 function isTerminallyObserved(node: SessionDescriptor): boolean {
 	return node.terminal !== undefined;
+}
+
+/** The remedies for an idle open assignment, BRANCHED ON TARGET KIND.
+ *
+ * A GENERAL assignment must never be offered `task close`. All three causes the
+ * original text enumerated — work finished, genuinely waiting, real lost
+ * dispatch — presuppose a record that CAN complete. A general assignment by
+ * design never completes: it is the seat's standing existence, not a unit of
+ * work. So "the work is finished" is not a case that can arise for it, and
+ * offering a terminal action for a record with no terminal case is a category
+ * error in the TEXT rather than a bug in the guard that refuses it.
+ *
+ * The cost of getting this wrong was measured: a seat that closes its general
+ * burns a DETERMINISTIC id (`asg-general-<node>`) that can never be recycled,
+ * and cannot declare a semantic state again until it has some other open
+ * assignment. Recoverable via `pij task set`, but SILENT — nothing tells the
+ * seat until it next tries to park, which can be days, while `report now` keeps
+ * working and its card keeps rendering as current.
+ *
+ * Condition first, verb second, and no option offered that is untrue of the
+ * target it is offered to.
+ */
+export function axisRemedy(nodeId: string, assignmentId: string): string {
+	if (assignmentId === generalAssignmentId(nodeId)) {
+		return (
+			`'${assignmentId}' is the seat's GENERAL assignment, which never completes — do NOT close it (the id is deterministic and is not recyclable).` +
+			` If the card is merely stale, ask '${nodeId}' to run: pij report now "<what I just did>" "<what's next>".` +
+			` If it is genuinely parked, ask it to declare the state: pij report state waiting|hold|blocked|question --assignment ${assignmentId} (parked states never flag).` +
+			" If neither is true, the seat really is idle with standing work and this row is the alarm"
+		);
+	}
+	return (
+		`If the WORK IS FINISHED and only the record is stale, ask '${nodeId}' to run: pij task close ${assignmentId} --reason done (only the assignee may attest done).` +
+		` If it is genuinely WAITING on something with no known end: pij report state waiting|hold|blocked|question --assignment ${assignmentId} (parked states never flag).` +
+		" If neither is true, the dispatch really is lost and this row is the alarm"
+	);
 }
 
 export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
@@ -607,7 +644,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			kind: "axis-disagreement",
 			nodeId: assignment.nodeId,
 			assignmentId: assignment.id,
-			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. If the WORK IS FINISHED and only the record is stale, ask '${assignment.nodeId}' to run: pij task close ${assignment.id} --reason done (only the assignee may attest done). If it is genuinely WAITING on something with no known end: pij report state waiting|hold|blocked|question --assignment ${assignment.id} (parked states never flag). If neither is true, the dispatch really is lost and this row is the alarm`,
+			detail: `'${assignment.nodeId}' has open ${chainState.state === "ready" ? "ready" : "undeclared"} assignment '${assignment.id}' but has been mechanically idle ${Number.isFinite(idleMs) ? `${Math.round(idleMs / 3_600_000)}h` : "since forever"} (threshold ${Math.round(threshold / 3_600_000)}h) — the lost-dispatch shape. ${axisRemedy(assignment.nodeId, assignment.id)}`,
 			evidence,
 		});
 	}

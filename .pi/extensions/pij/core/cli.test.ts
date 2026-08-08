@@ -7375,6 +7375,37 @@ describe("task close — the far end of the lifecycle, end to end", () => {
 		return id as string;
 	}
 
+	/** The precondition travels with the remedy. Closing a GENERAL assignment
+	 *  burns a deterministic id permanently and leaves the seat unable to declare
+	 *  a semantic state until it has another open assignment — recoverable via
+	 *  `task set`, but SILENT: nothing tells the seat until it next tries to
+	 *  park, which can be days. A consequence nobody is told about at the moment
+	 *  they cause it is a consequence discovered by its victim. */
+	it("WARNS at close time when the target is the general, and names the re-arm path", () => {
+		const d = fleet();
+		// Materialize the general: a state declaration with no named assignment
+		// resolves to it and creates it (the 17-seat path).
+		const mat = run(["report", "state", "ready"], asReportingSelf(d, ASSIGNEE));
+		expect(mat.exitCode, mat.stderr).toBe(0);
+		const closed = run(
+			["task", "close", `asg-general-${ASSIGNEE}`, "--reason", "done"],
+			asReportingSelf(d, ASSIGNEE),
+		);
+		expect(closed.exitCode, closed.stderr).toBe(0);
+		expect(closed.stdout).toContain("GENERAL assignment");
+		expect(closed.stdout).toContain("permanently burned");
+		expect(closed.stdout).toContain(`pij task set ${ASSIGNEE}`);
+	});
+
+	it("stays SILENT about the general when an ordinary dispatch is closed", () => {
+		// The warning must not become noise on every close, or it stops being read.
+		const d = fleet();
+		const id = openTask(d);
+		const closed = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE));
+		expect(closed.exitCode).toBe(0);
+		expect(closed.stdout).not.toContain("GENERAL assignment");
+	});
+
 	it("opens an obligation, then DISCHARGES it — the row clears through the existing predicate", () => {
 		const d = fleet();
 		const id = openTask(d);

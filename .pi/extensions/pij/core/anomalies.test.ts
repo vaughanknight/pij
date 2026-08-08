@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	axisRemedy,
 	chainStateOf,
 	DEFAULT_IDLE_DISAGREEMENT_MS,
 	DEFAULT_INBOX_POLL_STALL_MS,
@@ -1256,5 +1257,58 @@ describe("inert-subscription (the wiring is real, the trigger is dead)", () => {
 				nowMs: NOW,
 			}).filter((a) => a.kind === "inert-subscription"),
 		).toEqual([]);
+	});
+});
+
+/** A GENERAL assignment never completes — it is the seat's standing existence,
+ *  not a unit of work. So `task close` must never be offered against one: all
+ *  three causes the original text enumerated presuppose a record that CAN
+ *  complete, and offering a terminal action for a record with no terminal case
+ *  is a category error in the TEXT rather than a bug in the guard.
+ *
+ *  Measured cost of the old text: a compliant seat closing its general burns a
+ *  deterministic id that cannot be recycled, and cannot declare a semantic
+ *  state until it has some other open assignment. */
+describe("axisRemedy never offers a terminal action against a general assignment", () => {
+	const NODE = "pij-seat";
+	const GENERAL = `asg-general-${NODE}`;
+
+	it("does NOT offer task close for the general, and says why", () => {
+		const r = axisRemedy(NODE, GENERAL);
+		expect(r).not.toContain("task close");
+		expect(r).toContain("never completes");
+		expect(r).toContain("not recyclable");
+	});
+
+	it("offers only remedies that are true of a general — report now, or declare a state", () => {
+		const r = axisRemedy(NODE, GENERAL);
+		expect(r).toContain("pij report now");
+		expect(r).toContain("pij report state waiting|hold|blocked|question");
+		// The alarm case survives: a remediation that never admits the row may be
+		// right teaches seats that every row has a way to make it go away.
+		expect(r).toContain("this row is the alarm");
+	});
+
+	it("STILL offers task close for an ordinary dispatch — the fix is scoped, not a retreat", () => {
+		const r = axisRemedy(NODE, "asg-dispatch-1");
+		expect(r).toContain("pij task close asg-dispatch-1 --reason done");
+		expect(r).toContain("only the assignee may attest done");
+	});
+
+	it("keys on the DERIVED general id, not on the `asg-general-` PREFIX", () => {
+		// `general` is a LIVE ADJECTIVE (name-corpus.ts) and named assignments mint
+		// as `asg-<adjective>-<animal>` (platform/assignment.ts), so
+		// `asg-general-eel` is a perfectly ordinary MINTABLE DISPATCH that must
+		// keep its terminal remedy.
+		//
+		// What separates the families is that a general always embeds the full
+		// `pij-` id — `asg-general-pij-<adj>-<animal>` — and an animal token can
+		// never be one, so the two cannot collide.
+		//
+		// THIS IS THE TEST THAT MATTERS: it fails the moment someone "hardens" the
+		// guard to `startsWith("asg-general-")`, which is the obvious next edit and
+		// reads as strictly safer, and which would silently make every
+		// `asg-general-<animal>` dispatch un-closeable.
+		expect(axisRemedy(NODE, "asg-general-eel")).toContain("task close");
 	});
 });
