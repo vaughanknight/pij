@@ -126,6 +126,10 @@ export const ORCHESTRATION_EXIT: Record<OrchestrationErrorCode, 1 | 2 | 3 | 64> 
 	"E-NOTMUX": 2,
 	"E-FULL": 2,
 	"E-BRANCH": 64,
+	// plan 093: a second exhaustive map over `PijErrorCode` that the plan's edit
+	// fence did not name — the compiler found it, which is the point of keeping
+	// these maps exhaustive. Same code as `EXIT` in core/cli.ts, deliberately.
+	"E-EMPTY": 2,
 	"E-OWN": 2,
 };
 

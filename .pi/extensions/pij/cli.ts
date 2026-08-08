@@ -328,8 +328,12 @@ Messaging:
                                                         repository forest by default; global forest or arbitrary subtree on request
   pij link <child> --parent <parent> | --root [--role pm|worker|pa] [--actor <label>] [--json]  reparent or explicitly root a session without changing close ownership (audited as a node-linked spine event); --role stamps the seat in the same command, which is how a pa is linked to its prime
   pij send <id> "<text>" | <id> --body-file <path|-> | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
-                                                     (--body-file/- reads the body LITERALLY — use it for text with backticks/$( ; a double-quoted body substitutes in YOUR shell before pij runs)
                                                         deliver one message, broadcast text, or run a control command
+                                                     SAFE (use for RELAYED or UNTRUSTED text — a log line, a peer's report, a source excerpt):
+                                                        pij send <id> --body-file <path>   reads the file as the body, byte-for-byte
+                                                        pij send <id> --body-file - <<'PIJ'   … your text …   PIJ   (quoted heredoc; your shell expands nothing)
+                                                     UNSAFE for text you did not author: the double-quoted form above. Backticks and $( ) substitute in YOUR shell before pij runs — the message still delivers, mangled, and the command has already executed. pij cannot prevent this; use --body-file instead.
+                                                        --file <path> [--caption <text>] is DIFFERENT: it attaches a path by REFERENCE (it never reads the file), and only a pull/telegram peer renders it — use --body-file to send a file's CONTENTS
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
@@ -4231,7 +4235,30 @@ function main(): void {
 	// the documented one.
 	if (process.argv.includes("--help") && process.argv.length > 3) {
 		const verb = process.argv[2] ?? "";
-		const lines = USAGE.split("\n").filter((l) => l.includes(`pij ${verb}`));
+		// plan 093 T010: keep a matched line's INDENTED CONTINUATION lines too.
+		// USAGE wraps a verb's detail onto following indented lines, and a
+		// substring filter dropped every one of them — which silently truncated
+		// `pij send --help` to its signature and hid the only shell-safety note
+		// pij ships. A caller ran the command that exists to explain safety and
+		// was shown the part that does not mention it. Generic on purpose: this
+		// repairs the same truncation for every other verb at once.
+		const lines: string[] = [];
+		let matched = false;
+		for (const line of USAGE.split("\n")) {
+			if (line.includes(`pij ${verb}`)) {
+				lines.push(line);
+				matched = true;
+				continue;
+			}
+			// A continuation is indented and does NOT begin a new `pij <verb>`
+			// entry; a blank line or a section header ends the block.
+			const isContinuation = /^\s/.test(line) && line.trim() !== "" && !/^\s*pij\s/.test(line);
+			if (matched && isContinuation) {
+				lines.push(line);
+				continue;
+			}
+			matched = false;
+		}
 		process.stdout.write(lines.length > 0 ? `${lines.join("\n")}\n` : USAGE);
 		process.exit(0);
 	}
@@ -4239,7 +4266,39 @@ function main(): void {
 	// shell entirely — double-quoted backticks/$( substitute in the SENDER'S
 	// shell before pij ever runs (osk accidentally executed `pij close` from
 	// quoted text). `--body-file <path>` (or `-` for stdin) reads the body raw.
+	//
+	// The one token that stands in for the body during parsing. It is NOT the
+	// body: it is a fixed, flag-free sentinel whose only job is to occupy the
+	// body's positional slot so core's arity checks still run. NUL-delimited so
+	// it cannot collide with anything a caller could type.
+	const BODY_FILE_PLACEHOLDER = "\u0000pij-body-file\u0000";
+	/** Indices of the POSITIONAL tokens in a `send` argv — index 0 is the verb,
+	 *  index 1 the target id, index 2 (if present) an inline body.
+	 *
+	 *  It mirrors core's `lex()` for the send flag set: a valued flag consumes
+	 *  the following token, so `--to a --to b` contributes no positionals. A
+	 *  naive "not preceded by a flag" filter got this wrong for broadcast, and
+	 *  would have refused every `--to … --body-file` send as "inline text". */
+	const sendPositionalIndices = (argv: readonly string[]): number[] => {
+		// `json` is the only send flag that is boolean; the rest (`to`, `command`,
+		// `file`, `caption`, `wait`) take a value when one follows.
+		const booleans = new Set(["json"]);
+		const indices: number[] = [];
+		for (let i = 0; i < argv.length; i++) {
+			const token = argv[i];
+			if (token === undefined) continue;
+			if (token.startsWith("--")) {
+				if (token.includes("=")) continue;
+				const next = argv[i + 1];
+				if (!booleans.has(token.slice(2)) && next !== undefined && !next.startsWith("--")) i++;
+				continue;
+			}
+			indices.push(i);
+		}
+		return indices;
+	};
 	let argvForParse = process.argv.slice(2);
+	let bodyFileBody: string | undefined;
 	const bodyFileIdx = argvForParse.indexOf("--body-file");
 	if (bodyFileIdx !== -1) {
 		if (argvForParse[0] !== "send") {
@@ -4259,18 +4318,40 @@ function main(): void {
 			process.exit(64);
 		}
 		const rest = [...argvForParse.slice(0, bodyFileIdx), ...argvForParse.slice(bodyFileIdx + 2)];
+		// A remote command has no body to read (plan 093 T008). Said explicitly,
+		// naming BOTH flags the caller actually typed — core's generic
+		// "takes a <text> OR --command" names neither, so the caller was told the
+		// wrong thing about their own command line.
+		if (rest.some((token) => token === "--command" || token.startsWith("--command="))) {
+			process.stderr.write(
+				"E-ARG: pij send takes --body-file OR --command <name>, not both (a control command carries no body)\n",
+			);
+			process.exit(64);
+		}
 		// The file IS the body: refuse a competing positional body (send's body
 		// is the sole non-flag positional after the target id).
-		const positionals = rest.filter(
-			(a, i) => i > 0 && !a.startsWith("--") && rest[i - 1]?.startsWith("--") !== true,
-		);
-		if (positionals.length > 1) {
+		const positionals = sendPositionalIndices(rest);
+		if (positionals.length > 2) {
 			process.stderr.write("E-ARG: --body-file replaces the body — drop the inline text\n");
 			process.exit(64);
 		}
-		argvForParse = [...rest, body.trimEnd()];
+		// plan 093 D4 — the body is NEVER a token the lexer sees, and is NEVER
+		// transformed. It used to be re-appended to argv and re-parsed, which is
+		// the same class of defect as #128 one layer down: a body starting `--`
+		// became a FLAG, and `--wait` (valued on send) silently swallowed the
+		// file's entire contents. A `trimEnd()` on the same line destroyed
+		// trailing whitespace and newlines. Both are gone: a fixed placeholder
+		// occupies the body's argv slot, and the literal bytes are attached to
+		// the PARSED command below.
+		//
+		// The placeholder goes immediately after the target id rather than at the
+		// end, so a trailing valued flag (`pij send x --wait --body-file f`)
+		// cannot consume it either.
+		const insertAt = positionals.length >= 2 ? (positionals[1] as number) + 1 : rest.length;
+		argvForParse = [...rest.slice(0, insertAt), BODY_FILE_PLACEHOLDER, ...rest.slice(insertAt)];
+		bodyFileBody = body;
 	}
-	const parsed = parseArgs(argvForParse);
+	let parsed = parseArgs(argvForParse);
 	if (!parsed.ok) {
 		// A top-level unknown verb gets the COMPLETE surface (core only lists the
 		// messaging verbs); per-verb arity/flag errors keep core's precise message.
@@ -4280,6 +4361,11 @@ function main(): void {
 		}
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(64);
+	}
+	// Swap the placeholder for the file's literal bytes, AFTER parsing (D4). The
+	// body never influenced, and was never influenced by, argv lexing.
+	if (bodyFileBody !== undefined && parsed.value.verb === "send") {
+		parsed = { ok: true, value: { ...parsed.value, text: bodyFileBody } };
 	}
 	// `spine render` writes markdown the pure core cannot (bin-owned, plan 054
 	// P4 T002) — intercept BEFORE dispatch, after core's parse gave E-ARG parity.

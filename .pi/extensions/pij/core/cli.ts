@@ -674,6 +674,10 @@ const EXIT: Record<PijErrorCode, number> = {
 	"E-NOTMUX": 2,
 	"E-FULL": 2,
 	"E-BRANCH": 64,
+	// A refusal about the request's CONTENT, not its shape — so `2` (like
+	// E-SELF), never `64`. A wrapper must be able to tell "you sent nothing"
+	// apart from "you typed the flags wrong" (plan 093 D3).
+	"E-EMPTY": 2,
 	"E-OWN": 2,
 };
 
@@ -1019,6 +1023,18 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				if (new Set(broadcastTargets).size !== broadcastTargets.length)
 					return err("E-ARG", "broadcast targets must be unique");
 				if (pos.length !== 1) return err("E-ARG", 'usage: pij send --to <id> --to <id> "<text>"');
+				// plan 093 AC-04: broadcast returns from HERE, before the shared
+				// "nothing to send" check further down, so it needs its own. An
+				// empty broadcast fans a zero-byte message out to every target and
+				// reports success N times.
+				//
+				// `.trim()` because whitespace is not content (F1). The test trims;
+				// the delivered body never does — see the dispatch guard.
+				if ((pos[0] ?? "").trim() === "")
+					return err(
+						"E-EMPTY",
+						"nothing to send: the broadcast body is empty — pass text, or read it literally with `pij send <id> --body-file <path|->` (single-target)",
+					);
 				if (flags.command !== undefined || flags.file !== undefined || flags.caption !== undefined)
 					return err(
 						"E-ARG",
@@ -2103,7 +2119,15 @@ function preflightSendTargets(
  *
  *  `delivered` is reserved for the ONE case the sender can actually prove from
  *  here: a peer that owns its own injection and was idle when we looked. Every
- *  other outcome names its cause instead of hiding behind a bare `queued`. */
+ *  other outcome names its cause instead of hiding behind a bare `queued`.
+ *
+ *  It keys on descriptor liveness and daemon authority ONLY — body length is
+ *  deliberately not an input here. Whether there is anything worth a receipt at
+ *  all is decided EARLIER, by the empty-payload guard in the send dispatch
+ *  branch (plan 093 D1, search `E-EMPTY`), which refuses before
+ *  `deps.delivery.deliver` runs. That ordering is the fix for pij#132: no
+ *  receipt can describe a payload that was never delivered, because this
+ *  function is unreachable for a refused send. */
 function classifySendReceipt(
 	descriptor: SessionDescriptor,
 	now: number,
@@ -2144,6 +2168,42 @@ function sendSuccess(
 		liveness: target.liveness,
 		...(tickStatus ?? {}),
 	};
+}
+
+/** A descriptor's EFFECTIVE delivery mode (plan 093 T002).
+ *
+ *  `deliveryMode` is optional on the descriptor; a seat that predates the field
+ *  is `push` iff it owns a pane. The bin already derives it this way for
+ *  `pij inbox`, so this is that same one expression, named once, rather than a
+ *  third copy of it.
+ *
+ *  Return type is spelled `NonNullable<SessionDescriptor["deliveryMode"]>`
+ *  rather than the `DeliveryMode` alias ON PURPOSE: this file is co-owned with
+ *  another stream this wave, and the type-import block is outside this change's
+ *  edit fence. Same type, no import churn, no merge conflict for a seat that has
+ *  no idea this edit exists. */
+export function effectiveDeliveryMode(
+	descriptor: SessionDescriptor,
+): NonNullable<SessionDescriptor["deliveryMode"]> {
+	return descriptor.deliveryMode ?? (descriptor.paneId ? "push" : "pull");
+}
+
+/** Can this target render a reference-passing attachment at all?
+ *
+ *  Only two consumers ever read `attachments`: the `pij inbox` PULL renderer and
+ *  the telegram bridge (which is a pull seat). BOTH push injectors — the daemon
+ *  router and the in-session handler — drop the field and inject `frame(from,
+ *  body)`, so an attachment sent to a pushed peer is not "degraded", it is
+ *  invisible. That asymmetry is the whole of pij#132, and it is a property of
+ *  the TARGET, which is why the guard cannot live in the pure parse. */
+export function targetRendersAttachments(descriptor: SessionDescriptor): boolean {
+	return effectiveDeliveryMode(descriptor) === "pull";
+}
+
+/** The safe literal channel, named in every refusal and warning (AC-13). A
+ *  caller who hits a guard is told what to do, at the surface — not in an issue. */
+function safeBodyHint(to: SessionId): string {
+	return `put the content in the BODY: pij send ${to} --body-file <path|-> (reads the file/stdin literally)`;
 }
 
 /** The human-readable half of a receipt. Every branch names its cause; the
@@ -2941,6 +3001,21 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!preflight.ok) return fail(preflight.code, preflight.message, cmd.json);
 
 			if (cmd.broadcast) {
+				// plan 093 AC-04: refuse BEFORE the loop, so an empty broadcast
+				// cannot deliver to target 1 and then discover it had nothing to
+				// say. Broadcast is text-only (no attachments to make an empty body
+				// meaningful), so the capability question of D2 does not arise.
+				//
+				// F1: `.trim()` catches the whitespace-only body that the parse
+				// guard above cannot see when the body arrived via `--body-file`
+				// (the bytes are attached to the parsed command, so parse only ever
+				// saw a placeholder). The value delivered below is untouched.
+				if ((cmd.text ?? "").trim() === "")
+					return fail(
+						"E-EMPTY",
+						"nothing to send: the broadcast body is empty — pass text, or read it literally with `pij send <id> --body-file <path|->` (single-target)",
+						cmd.json,
+					);
 				const results: Array<SendSuccess | SendFailure> = [];
 				const humanLines: string[] = [];
 				const waitTargets: WaitTarget[] = [];
@@ -2994,6 +3069,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const live = firstTarget.liveness;
 			let messageId: string;
 			let kindNote: string;
+			// AC-07: set when the message DID deliver but carried a reference the
+			// target cannot render. The text lands; the drop is never silent.
+			let attachmentWarning: string | undefined;
 			if (cmd.command !== undefined) {
 				const v = validateCommand(cmd.command);
 				if (!v.ok)
@@ -3019,6 +3097,55 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 									: { path: cmd.file },
 							]
 						: undefined;
+				// ── plan 093: the empty-payload guard (pij#132) ──────────────────
+				//
+				// Placed AFTER target preflight and BEFORE `deliver`, which is the
+				// only position that works: the rule needs the target descriptor
+				// (so the pure parse cannot decide it), and it must precede
+				// `classifySendReceipt` (so a refused send can never acquire a
+				// receipt). Every caller inherits it here — the CLI, the `pij_send`
+				// tool, and any direct `dispatch()` caller (AC-03).
+				//
+				// The rule, in one sentence: REFUSE WHEN THE TARGET WOULD RECEIVE NO
+				// CONTENT IT CAN RENDER. Deliberately NOT "refuse empty bodies" —
+				// that global form would delete the shipped Plan-026 capability of
+				// sending an attachment-only message to a pull/telegram seat, which
+				// is a real, tested feature (AC-06). Capability, not flag shape.
+				//
+				// F1 (cross-model review): "no content" is `.trim()`-empty, not
+				// `""`-empty. A body of "\n" — what `pij send peer "$(cat notes)"`
+				// yields against a blank file — is a message the receiver sees as
+				// blank, so a success receipt for it is exactly as dishonest.
+				//
+				// The asymmetry is the whole point and must not be collapsed: the
+				// EMPTINESS TEST trims, the DELIVERED BODY never does. `"  hello  "`
+				// arrives with both pads intact (AC-08 byte-for-byte). Trimming what
+				// we deliver would reintroduce the `trimEnd()` defect this plan
+				// removed one layer up.
+				const body = cmd.text ?? "";
+				const rendersAttachments = targetRendersAttachments(target);
+				if (body.trim() === "" && !(attachments !== undefined && rendersAttachments)) {
+					// `--command` never reaches here (it returns above): a command
+					// message legitimately carries an empty body (AC-05).
+					//
+					// F1: a caller who typed `"$(cat notes)"` DID pass an argument,
+					// so "the message body is empty" reads as a lie and sends them
+					// looking for the wrong bug. Name what actually happened.
+					const blankKind = body === "" ? "empty" : "blank (whitespace only)";
+					const why =
+						attachments !== undefined
+							? `${cmd.to} receives PUSHED messages and cannot render attachments, so it would receive an ${body === "" ? "empty" : "effectively empty"} message`
+							: `the message body is ${blankKind}`;
+					return fail("E-EMPTY", `nothing to send: ${why} — ${safeBodyHint(cmd.to)}`, cmd.json);
+				}
+				if (attachments !== undefined && !rendersAttachments) {
+					// AC-07: text + an unrenderable reference. The text is worth
+					// delivering, but the sender must not read `delivered` and
+					// believe the file went with it.
+					attachmentWarning =
+						`${cmd.to} receives PUSHED messages and cannot render attachments — ` +
+						`'${cmd.file}' was NOT delivered, only the text. ${safeBodyHint(cmd.to)}`;
+				}
 				const del = deps.delivery.deliver(
 					attachments !== undefined
 						? { from: self, to: cmd.to, body: cmd.text ?? "", attachments }
@@ -3028,7 +3155,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				messageId = del.value.messageId;
 				kindNote =
 					attachments !== undefined
-						? cmd.text !== undefined && cmd.text !== ""
+						? // F1: same reading as the guard — a whitespace-only body is
+							// not text the receiver can perceive, so a receipt saying
+							// `text+file` would overstate what arrived. The BYTES are
+							// still delivered untouched; only the label trims.
+							(cmd.text ?? "").trim() !== ""
 							? "text+file"
 							: "file"
 						: "text";
@@ -3071,8 +3202,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						...(initialReason ? { reason: initialReason } : {}),
 						liveness: live,
 						...(tickStatus ?? {}),
+						// AC-07: machine-readable, and additive — a consumer that has
+						// never heard of it is unaffected, and one that wants to gate
+						// on "my attachment was dropped" no longer has to parse prose.
+						...(attachmentWarning ? { attachmentWarning } : {}),
 					}),
-					stderr: "",
+					stderr: attachmentWarning ? `warning: ${attachmentWarning}` : "",
 					exitCode: 0,
 					follow,
 				};
@@ -3090,7 +3225,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				: `\nreceipt → ${initial}   (also in: pij tail ${self} --type receipt)`;
 			return {
 				stdout: `sent → ${cmd.to}  ${kindNote}${warn}  (${recvHint})${tail}`,
-				stderr: "",
+				stderr: attachmentWarning ? `warning: ${attachmentWarning}` : "",
 				exitCode: 0,
 				follow,
 			};

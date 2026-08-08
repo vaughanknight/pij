@@ -23,6 +23,7 @@ import {
 	renderWaitReceipt,
 	renderWaitTimeout,
 } from "./cli.js";
+import { buildInitInjection } from "./harness/claude.js";
 import { parseBriefAckBody, parseReceiptBody, receiptBody } from "./message.js";
 import { PROJECT_SLUG_MAX_LENGTH, type Project, type SpineEvent } from "./platform/types.js";
 import type { DeliveryPort } from "./ports.js";
@@ -742,9 +743,19 @@ describe("dispatch send", () => {
 		});
 	});
 
-	it("--file attaches a reference-passing entry; plain text carries NO attachments key", () => {
+	// CONTRACT CHANGE (plan 093 T006, issue pij#132). This test used to pin
+	// "attachment-only always delivers an empty body" as correct for EVERY
+	// target. That is what let `--file` report `queued`/`delivered` while a
+	// pushed peer received the literal string `[pij from <id>] ` and nothing
+	// else. The contract is now CAPABILITY-AWARE, not global (plan 093 D2):
+	// reference-passing still delivers to a target that can render attachments
+	// (pull-inbox / telegram — the shipped Plan-026 capability), and is refused
+	// for a target that cannot. The third assertion — a plain text send carries
+	// no `attachments` key at all — is unchanged and deliberately kept.
+	it("--file attaches a reference-passing entry for an attachment-capable (pull) target", () => {
 		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
-		// attachment-only (empty body) with a caption
+		// attachment-only (empty body) with a caption — `w3` has no paneId and no
+		// deliveryMode, so its effective mode is `pull`: it renders attachments.
 		dispatch(
 			{ verb: "send", to: "w3", file: "/tmp/chart.png", caption: "done", wait: false, json: false },
 			d,
@@ -767,6 +778,381 @@ describe("dispatch send", () => {
 		// Mutation: always set `attachments` and this toEqual flips RED.
 		dispatch({ verb: "send", to: "w3", text: "just text", wait: false, json: false }, d);
 		expect(d.delivery.outbox[2]?.message).toEqual({ from: "a1", to: "w3", body: "just text" });
+	});
+
+	// ── plan 093: the empty-payload guard (pij#132) ──────────────────────────
+	//
+	// Every refusal case asserts `delivery.outbox` length UNCHANGED. That is the
+	// assertion that distinguishes a refusal from a delivery — an exit-code-only
+	// assertion would still pass if the message went out and the process merely
+	// complained afterwards. Against the pre-fix tree each of these is RED
+	// because the outbox grows by one (recorded in
+	// docs/plans/093-send-path/assets/execution.log.md).
+	describe("send: empty-payload guard (plan 093, pij#132)", () => {
+		const pushDescs = () => [
+			desc({ id: "a1" }),
+			desc({ id: "w3", deliveryMode: "push", paneId: "%9" }),
+		];
+
+		it("AC-01: attachment-only to a PUSH target is refused with E-EMPTY and nothing is delivered", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+			const before = d.delivery.outbox.length;
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					file: "/tmp/chart.png",
+					caption: "done",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			// The control assertion, FIRST on purpose: against the pre-fix tree the
+			// outbox grows by one here. An exit-code assertion alone would still
+			// pass for a code that delivered the message and complained afterwards.
+			expect(d.delivery.outbox).toHaveLength(before);
+			expect(r.exitCode).toBe(2);
+			expect(r.stderr).toContain("E-EMPTY");
+			expect(r.stdout).toBe("");
+			// AC-13: the refusal names the safe path.
+			expect(r.stderr).toContain("--body-file");
+		});
+
+		it("AC-02: an explicit empty text body is refused identically (flag shape is irrelevant)", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const r = dispatch({ verb: "send", to: "w3", text: "", wait: false, json: false }, d);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.exitCode).toBe(2);
+			expect(r.stderr).toContain("E-EMPTY");
+		});
+
+		it("AC-02: an empty text body to a PULL target is refused too (no attachment to carry it)", () => {
+			const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+			const r = dispatch({ verb: "send", to: "w3", text: "", wait: false, json: true }, d);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.exitCode).toBe(2);
+			expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-EMPTY" });
+		});
+
+		it("AC-03: the guard lives in dispatch, so a direct caller inherits it (no receipt emitted)", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const r = dispatch({ verb: "send", to: "w3", text: "", wait: false, json: true }, d);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.stdout).toBe("");
+			expect(r.follow).toBeUndefined();
+		});
+
+		it("AC-04: broadcast refuses an empty text body before ANY target is delivered to", () => {
+			const d = deps({
+				self: "a1",
+				descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+			});
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					targets: ["w3", "z9"],
+					broadcast: true,
+					text: "",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.exitCode).toBe(2);
+			expect(r.stderr).toContain("E-EMPTY");
+		});
+
+		it("AC-04: broadcast with an empty text body is also refused at parse", () => {
+			expect(parseArgs(["send", "--to", "w3", "--to", "z9", ""])).toMatchObject({
+				ok: false,
+				code: "E-EMPTY",
+			});
+		});
+
+		it("AC-05: --command sends are exempt — they legitimately carry an empty body", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const r = dispatch(
+				{ verb: "send", to: "w3", command: "compact", wait: false, json: true },
+				d,
+			);
+
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox).toHaveLength(1);
+			expect(d.delivery.outbox[0]?.message).toMatchObject({ body: "", command: "compact" });
+		});
+
+		it("AC-06: attachment-only to a PULL target still delivers (Plan-026 capability preserved)", () => {
+			const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					file: "/tmp/chart.png",
+					caption: "done",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox).toHaveLength(1);
+			expect(d.delivery.outbox[0]?.message).toEqual({
+				from: "a1",
+				to: "w3",
+				body: "",
+				attachments: [{ path: "/tmp/chart.png", caption: "done" }],
+			});
+		});
+
+		it("AC-07: text + an unrenderable attachment delivers the text and SAYS the reference was dropped", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const human = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					text: "see this",
+					file: "/tmp/chart.png",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			expect(human.exitCode).toBe(0);
+			expect(d.delivery.outbox).toHaveLength(1);
+			expect(d.delivery.outbox[0]?.message).toMatchObject({ body: "see this" });
+			expect(human.stderr).toContain("/tmp/chart.png");
+			expect(human.stderr).toContain("cannot render attachments");
+			// AC-13: the warning names the safe path too.
+			expect(human.stderr).toContain("--body-file");
+
+			const jsonDeps = deps({ self: "a1", descs: pushDescs() });
+			const machine = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					text: "see this",
+					file: "/tmp/chart.png",
+					wait: false,
+					json: true,
+				},
+				jsonDeps,
+			);
+			expect(machine.exitCode).toBe(0);
+			const payload = JSON.parse(machine.stdout) as { attachmentWarning?: string };
+			expect(payload.attachmentWarning).toContain("/tmp/chart.png");
+		});
+
+		// AC-12 lives HERE rather than beside `buildInitInjection` in
+		// core/harness/claude.test.ts because that spec is outside this change's
+		// allowed scope this wave. The subject under test is still the real
+		// function, imported directly.
+		it("AC-12: the boot message every spawned peer receives teaches the SAFE form too", () => {
+			const child = buildInitInjection("pij-child", false, "pij-parent");
+
+			expect(child.body).toContain("--body-file");
+			expect(child.body).toContain("RELAYED");
+			expect(child.body).toContain("expanded by YOUR shell");
+			// The quoted reply form is still taught — it is correct for text the
+			// peer authors itself. This is additive labelling, not a removal.
+			expect(child.body).toContain('pij send pij-parent "<text>"');
+		});
+
+		it("AC-07: an attachment-capable target gets NO warning", () => {
+			const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					text: "see this",
+					file: "/tmp/chart.png",
+					wait: false,
+					json: true,
+				},
+				d,
+			);
+
+			expect(r.stderr).toBe("");
+			expect(JSON.parse(r.stdout)).not.toHaveProperty("attachmentWarning");
+		});
+
+		// ── F1 (cross-model review of ead905e): whitespace-only bodies ──────────
+		//
+		// The first cut of the guard tested `body === ""`, which is the shape of
+		// the defect rather than the defect itself. `pij send peer "$(cat notes)"`
+		// against a blank or newline-only file produces a body of "\n" — the
+		// pushed peer then receives `[pij from a1] ` behind a success receipt,
+		// which is precisely the dishonest receipt this plan exists to close.
+		//
+		// The asymmetry that makes this safe: the EMPTINESS TEST trims, the
+		// DELIVERED BODY never does. AC-08 (byte-for-byte) still governs, so a
+		// body of "  hello  " must arrive with both pads intact — the two
+		// "preserved" cases below are what stops this fix from becoming the
+		// `trimEnd()` bug it replaced.
+		describe("F1: a whitespace-only body is as empty as an empty one", () => {
+			it("F1: spaces-only text to a PUSH target is refused, and nothing is delivered", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch({ verb: "send", to: "w3", text: "   ", wait: false, json: false }, d);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(r.stderr).toContain("E-EMPTY");
+			});
+
+			it('F1: a newline-only body — the `"$(cat blank-file)"` case — is refused on a PULL target', () => {
+				const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+				const r = dispatch({ verb: "send", to: "w3", text: "\n", wait: false, json: true }, d);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-EMPTY" });
+			});
+
+			it("F1: mixed whitespace (tabs, CR, newlines) is refused too", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch(
+					{ verb: "send", to: "w3", text: " \t\r\n \n", wait: false, json: false },
+					d,
+				);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+			});
+
+			it("F1: a whitespace-only body with an UNRENDERABLE attachment is refused (AC-01 extended)", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch(
+					{
+						verb: "send",
+						to: "w3",
+						text: "  \n",
+						file: "/tmp/chart.png",
+						wait: false,
+						json: false,
+					},
+					d,
+				);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(r.stderr).toContain("E-EMPTY");
+			});
+
+			it("F1: broadcast refuses a whitespace-only body before ANY target is delivered to", () => {
+				const d = deps({
+					self: "a1",
+					descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+				});
+
+				const r = dispatch(
+					{
+						verb: "send",
+						to: "w3",
+						targets: ["w3", "z9"],
+						broadcast: true,
+						text: "  \n  ",
+						wait: false,
+						json: false,
+					},
+					d,
+				);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(r.stderr).toContain("E-EMPTY");
+			});
+
+			it("F1: broadcast with a whitespace-only body is also refused at parse", () => {
+				expect(parseArgs(["send", "--to", "w3", "--to", "z9", "   "])).toMatchObject({
+					ok: false,
+					code: "E-EMPTY",
+				});
+			});
+
+			it("F1 preserved: a padded body with real content is delivered BYTE-FOR-BYTE (no trimming)", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch(
+					{ verb: "send", to: "w3", text: "  hello  \n\n", wait: false, json: false },
+					d,
+				);
+
+				expect(r.exitCode).toBe(0);
+				expect(d.delivery.outbox).toHaveLength(1);
+				// The emptiness TEST trims; the delivered VALUE must not. If this
+				// ever goes red the fix has become the `trimEnd()` bug it replaced.
+				expect(d.delivery.outbox[0]?.message.body).toBe("  hello  \n\n");
+			});
+
+			it("F1 preserved: broadcast delivers a padded body byte-for-byte to every target", () => {
+				const d = deps({
+					self: "a1",
+					descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+				});
+
+				const r = dispatch(
+					{
+						verb: "send",
+						to: "w3",
+						targets: ["w3", "z9"],
+						broadcast: true,
+						text: "  hello  \n",
+						wait: false,
+						json: false,
+					},
+					d,
+				);
+
+				expect(r.exitCode).toBe(0);
+				expect(d.delivery.outbox).toHaveLength(2);
+				for (const sent of d.delivery.outbox) expect(sent.message.body).toBe("  hello  \n");
+			});
+
+			it("F1 preserved: AC-06 survives — whitespace body + attachment to a PULL target still delivers", () => {
+				const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+				const r = dispatch(
+					{ verb: "send", to: "w3", text: "  ", file: "/tmp/chart.png", wait: false, json: false },
+					d,
+				);
+
+				// Capability, not flag shape: the target renders the attachment, so
+				// there IS content to receive. A "refuse blank bodies" rule would
+				// delete this shipped Plan-026 behaviour.
+				expect(r.exitCode).toBe(0);
+				expect(d.delivery.outbox).toHaveLength(1);
+				expect(d.delivery.outbox[0]?.message).toMatchObject({ body: "  " });
+				// …and the receipt calls it `file`, not `text+file`. Same reading of
+				// "blank" as the guard: the bytes go out untouched, but a receipt
+				// claiming text arrived would overstate what the receiver can see.
+				// (Added in the FIX commit, not the RED one — it is a consequence of
+				// F1 found while implementing, not one of the reviewer's findings.)
+				expect(r.stdout).toContain("file");
+				expect(r.stdout).not.toContain("text+file");
+			});
+		});
 	});
 
 	it("queued vs delivered receipt hint follows the pi peer's state", () => {

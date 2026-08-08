@@ -154,6 +154,14 @@ export function buildInitInjection(
 	const body =
 		`${contextReframe}You are now a pij peer (id: ${pijId})${spawnedByClause}. ` +
 		`Message other sessions with \`pij send <id> "<text>"\`${replyHint} and list peers with \`pij list\`. ` +
+		// AC-12: pij's own onboarding used to teach ONLY the quoted form, to every
+		// peer on the box — which is how a fleet that relays log lines and source
+		// excerpts all day learned the one form that lets the caller's shell
+		// execute them. The quoted form stays (it is right for text you author);
+		// the safe form is now taught alongside it, where the peer reads it.
+		"For RELAYED or UNTRUSTED text (a log line, a peer's report, a source excerpt) send it as a file " +
+		"or on stdin instead: `pij send <id> --body-file <path|->` — a double-quoted body is expanded by " +
+		"YOUR shell before pij ever runs, so backticks and $( ) in it execute. " +
 		`To confirm your binding, run: ${phonehomeLine}`;
 	return { pijId, phonehomeLine, body };
 }
