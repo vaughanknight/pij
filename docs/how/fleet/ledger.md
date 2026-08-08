@@ -19,7 +19,7 @@ row to the index below.
 | `s097` | silent-detectors | [`ledger/s097-silent-detectors.md`](./ledger/s097-silent-detectors.md) | **moved** |
 | `s098` | daemon-perf | [`ledger/s098-daemon-perf.md`](./ledger/s098-daemon-perf.md) | **moved** |
 | `s099` | send-tool-xor | `ledger/s099-send-tool-xor.md` | *pending* |
-| `s100` | tick-heartbeat | `ledger/s100-tick-heartbeat.md` | *pending* |
+| `s100` | tick-heartbeat | [`ledger/s100-tick-heartbeat.md`](./ledger/s100-tick-heartbeat.md) | **moved** |
 
 > **The last column tracks the LEDGER MIGRATION ONLY — whether this stream's rows have been
 > relocated out of `ledger.md`.** It says nothing about whether the stream's own work is

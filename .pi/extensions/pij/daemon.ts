@@ -63,6 +63,7 @@ import {
 	SendBuffer,
 } from "./core/daemon/router.js";
 import { RuntimeAxisTracker } from "./core/daemon/runtime-axis.js";
+import { FsTickHeartbeatStore, type TickHeartbeatPort } from "./core/daemon/tick-heartbeat.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
@@ -196,6 +197,10 @@ export class Daemon {
 		watchManager?: PeerWatchManager,
 		batonSweep?: BatonSweep,
 		watchdogManager?: WatchdogManager,
+		/** Tick-liveness telemetry (pij#180 Fix A). A parameter PROPERTY with a
+		 *  default, so the collaborator is injected (P3) without the constructor
+		 *  body growing a line — plan 100 grants only the signature here. */
+		private readonly heartbeat: TickHeartbeatPort = new FsTickHeartbeatStore(pijHome),
 	) {
 		// THE structural gate. Every pane write in the daemon — inbox delivery,
 		// buffered flush, AND driveSession's init/phone-home injections — goes
@@ -286,11 +291,16 @@ export class Daemon {
 	tick(): void {
 		const tickStartedAtMs = Date.now();
 		const tickAt = new Date(this.ports.now()).toISOString();
+		// ONE persist for the whole owned set, not one publish per seat (pij#180
+		// Fix A). The filter is unchanged — only the persistence SHAPE moved.
+		// `daemonOwnsDelivery` is harness/delivery-mode only, so a long-dead seat
+		// is still listed; that costs a map entry now instead of ~5 fsyncs.
+		const ownedIds: string[] = [];
 		for (const snapshot of this.registry.list()) {
 			if (!daemonOwnsDelivery(snapshot.harness ?? "pi", snapshot.deliveryMode)) continue;
-			const latest = this.registry.read(snapshot.id);
-			if (latest) this.registry.write({ ...latest, lastTickAt: tickAt });
+			ownedIds.push(snapshot.id);
 		}
+		this.heartbeat.write(ownedIds, tickAt);
 		this.index.rebuild(this.registry.list());
 		this.refreshPaneSignals();
 		// Legacy-node windowId backfill (plan 054 P2 T006, AC-09): once per
