@@ -11,7 +11,9 @@
 // (Hamilton) universes — fitting, since pij seats are themselves AIs.
 //
 // Removed from the upstream corpus for tone (adult/suggestive + morbid/negative):
-//   sexual, pregnant, intimate, naked, attractive, desirable, drunk, filthy, dirty, dead, grieving, condemned, crazy, disturbed, sick, creepy, scary, cruel, vicious, violent, toxic, bloody, embarrassed, embarrassing, colonial, booby
+//   sexual, pregnant, intimate, naked, attractive, desirable, drunk, filthy, dirty, dead, grieving, condemned, crazy, disturbed, sick, creepy, scary, cruel, vicious, violent, toxic, bloody, embarrassed, embarrassing, colonial, booby, wet
+// Removed for the same reason from NAME_NOUNS: beaver (slang; the noun slot also
+// carries ~30 human names, so a pair reads as a statement about a person).
 // Re-adding any of these will fail the corpus-hygiene test on purpose.
 
 /** Words intentionally removed from the corpus. The test asserts none reappear. */
@@ -42,6 +44,8 @@ export const EXCLUDED_NAME_WORDS: ReadonlySet<string> = new Set([
 	"embarrassing",
 	"colonial",
 	"booby",
+	"wet",
+	"beaver",
 ]);
 
 export const NAME_ADJECTIVES: string[] = [
@@ -1163,7 +1167,6 @@ export const NAME_ADJECTIVES: string[] = [
 	"welcome",
 	"well",
 	"western",
-	"wet",
 	"whispering",
 	"whole",
 	"wicked",
@@ -1251,7 +1254,6 @@ export const NAME_NOUNS: string[] = [
 	"bass",
 	"bat",
 	"bear",
-	"beaver",
 	"bedbug",
 	"bee",
 	"beetle",
