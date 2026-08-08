@@ -614,3 +614,136 @@ just test        → 211 files passed, 4 skipped · 4107 tests passed, 19 skippe
 
 Counts rose (4076 → 4107 tests, 210 → 211 files) because `main` brought siblings' tests
 in. `git status --short` is clean.
+
+---
+
+## THIRD RE-PROOF — 2026-08-08, after s093's PR #191 merged (`c0ebf0e`)
+
+Third tree, third claim. Kept separate from the two sections above **because the
+provenance IS the content of a re-proof**: merging these sections would erase which tree
+each proof was established against, which is the only thing they assert.
+
+**What moved.** s093's PR #191 merged first and this branch was rebased onto it — cleanly,
+no conflicts. It touched `core/cli.ts`, the bin `cli.ts`, `core/types.ts` and
+`core/orchestration/cli.ts`, and we share `cli.inbox.integration.test.ts` with it. **A
+clean textual merge says nothing about whether a guard is still reachable** — which the
+previous section demonstrated concretely when `main` changed `paBinRefusal`'s internals
+underneath us.
+
+| # | Mutation | Named test expected red | Result | Failure kind | Neighbour |
+|---|---|---|---|---|---|
+| **2b** | `"chore add": ALLOW` → `refuse(...)` | `lets a PA` `chore add` `THROUGH THE REAL BIN` | **RED** — carried the mutant's own invented string (`POST-MERGE RE-PROOF vs #191: …`) out through the real bin | AssertionError | `still refuses a FLATLY refused verb at the bin seam` — green |
+| **14** | `if (cmd.forSeat !== undefined)` → `if (false)` | `refuses --for to a PA through the bin` | **RED** | AssertionError | `lets a PA watch and unwatch its own parent THROUGH THE REAL BIN` — green |
+| **15b** | Drop `close` from the emitted `verbs` map | `runs whoami through process.execPath…` | **RED** — `[ …(60) ] to deeply equal [ …(61) ]` | AssertionError | — |
+
+All on disk, `--expect` enforced by reading the output, each named test verified to have
+**run and passed** on the clean tree first, target verified changed against a byte
+snapshot, tree verified byte-identical afterwards.
+
+### Gates on the #191 tree
+
+```
+just typecheck   → clean
+just lint        → 0 errors · 9 warnings · 1 info  (baseline; 471 files)
+just test        → 4151 passed · 19 skipped · 2 FAILED
+```
+
+**The two failures are investigated in full below. They are not ours — and the process of
+establishing that contains a worse error than the failures did.**
+
+---
+
+## FOURTH RE-PROOF — 2026-08-08, on the SHIPPED tree, after our own PR #199 merged (`752fd2c`)
+
+**This section was not requested and is the most valuable of the four.** While the third
+re-proof was running, this stream's own PR **#199** merged to `main` as `752fd2c`
+(*"widen the PA gate to a harm test, and make the capability payload unreadable-when-stale
+(#102, #153)"*), and the worktree moved to the `s094/seat-record` branch cut from merged
+main. Every proof in this document up to here was therefore established against a tree
+that **no longer exists**, including the one dated minutes earlier.
+
+So all three bin-seam mutations were run a **fourth** time, against the tree that
+**actually shipped** — the only tree whose behaviour is now a fact about the product
+rather than about a branch.
+
+| # | Mutation | Named test expected red | Result | Failure kind | Neighbour |
+|---|---|---|---|---|---|
+| **2b** | `"chore add": ALLOW` → `refuse(...)` | `lets a PA` `chore add` `THROUGH THE REAL BIN` | **RED** | AssertionError | `still refuses a FLATLY refused verb at the bin seam` — green |
+| **14** | `if (cmd.forSeat !== undefined)` → `if (false)` | `refuses --for to a PA through the bin` | **RED** | AssertionError | `lets a PA watch and unwatch its own parent THROUGH THE REAL BIN` — green |
+| **15b** | Drop `close` from the emitted `verbs` map | `runs whoami through process.execPath…` | **RED** | AssertionError | — |
+
+2b's failure on the shipped tree, again carrying a string that exists only inside the
+mutation, read out of the table by the **real bin in a subprocess**:
+
+```
+AssertionError: bin refused a permitted chore add: E-OWN: 'chore add' is not available
+to a PA — refused by role 'pa' (field: orchestrationRole): POST-MERGE RE-PROOF on the
+SHIPPED tree (#199): reverted to the pre-plan-094 classification. …
+```
+
+That is the whole path demonstrated on shipped code: home resolution → descriptor lookup
+→ role projection → `paCapabilityVerb(top, argv[3])` subverb mapping → table consultation
+→ refusal render. **The gate is load-bearing in the product, not merely in a branch.**
+
+### The two suite failures — and an error of mine that is worth more than the finding
+
+**Outcome first: both failures are pre-existing intermittents in `afterEach` tmpdir
+cleanup, unrelated to this stream and unrelated to #191.** They are
+`.pi/extensions/pij/adapters/git-repository.test.ts` and
+`skills/flow-pair/test/observe.test.ts`, both failing with `ENOTEMPTY, Directory not
+empty` inside `rmSync(..., { recursive: true, force: true })`. Neither file contains a
+single reference to any surface this stream touches — grepped for `refusedVerbs`,
+`conditionalVerbs`, `capabilitySchema`, `PA_VERB_CLASSIFICATION`, `paRefusal`, `whoami`,
+`watchdog`, `chore`: **zero hits in both**.
+
+**How I got there was wrong twice, in opposite directions, and both times from a single
+run.**
+
+1. I ran each spec **once** in isolation, saw it fail, and wrote *"reproducible, not a
+   flake"*.
+2. I then ran one of them **once** on the canonical checkout, saw it pass, and was one
+   step from reporting a **#191 regression**.
+
+Neither statement was supported. A single run distinguishes nothing: the first was one
+sample of an intermittent, and the second was one sample of the same intermittent landing
+the other way — on a *stale* main, which was not even the right control.
+
+**What replaced it: two clean detached probe worktrees and a measured rate.** One at the
+merge base `c0ebf0e`, one at old main `0842380` — **neither containing any commit of
+mine** — both with `node_modules` symlinked to the canonical checkout so the environment
+was held constant, differing only in the commit.
+
+| Tree | `git-repository.test.ts`, 8 consecutive runs |
+|---|---|
+| `c0ebf0e` (post-#191, pre-ours) | **3 failed / 8** |
+| `0842380` (old main) | **5 failed / 8** |
+
+**Pre-existing, and if anything LESS frequent after #191.** There is no regression and
+there never was one. `observe.test.ts` behaved the same way and failed at old main too.
+
+**A hypothesis tested and REJECTED, recorded because a rejected hypothesis with its
+measurement is worth more than a confirmed one asserted.** The obvious explanation was
+accumulation — stale temp directories from earlier runs making a later `rmSync` fail. I
+counted **19** leftover `pij-git-repository-*` directories, deleted them all, and re-ran
+from clean: **2 of 6 still failed.** Accumulation is not the cause. The remaining
+explanation is a genuine race inside the test's own cleanup, load-dependent, which is why
+it varies with what else the machine is doing.
+
+Probe worktrees were removed afterwards (`git worktree list` clean, `node_modules`
+symlinks unlinked first so no real directory could be followed and deleted).
+
+### The generalisable lesson, and it points at my own habit
+
+**A single RED is no more evidence of determinism than a single GREEN is of correctness.**
+
+This whole stream has insisted that a green suite proves nothing without a mutation to
+give it meaning. Presented with a red suite, I immediately treated **one** red run as
+proof of a defect and **one** green run as proof of its absence — the identical error,
+wearing the opposite colour, committed by the person who had spent two phases arguing
+against it. The corrective is the same in both directions and it is not subtle: **rates,
+not runs.**
+
+This matters beyond one flake, because *"the suite is red, it must be the merge"* is the
+most available inference for every stream converging today, it costs a bisect to check,
+and here it was **false in both directions** — the failure predated the merge, and the
+merge had made it *rarer*.
