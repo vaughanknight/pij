@@ -7,6 +7,12 @@
 // non-issuer — each with spine-seq evidence refs.
 
 import { describe, expect, it } from "vitest";
+import type {
+	ActivityCredibility,
+	ActivityCredibilityInput,
+	RetiredWatcherRecord,
+	WatchdogSubscriptionInputs,
+} from "./anomalies.js";
 import {
 	axisRemedy,
 	chainStateOf,
@@ -17,7 +23,7 @@ import {
 	detectAnomalies,
 } from "./anomalies.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
-import type { SessionDescriptor } from "./types.js";
+import type { SessionDescriptor, TerminalObservation } from "./types.js";
 
 const NOW = Date.parse("2026-07-17T05:00:00.000Z");
 const H44 = 44 * 3_600_000;
@@ -1257,6 +1263,475 @@ describe("inert-subscription (the wiring is real, the trigger is dead)", () => {
 				nowMs: NOW,
 			}).filter((a) => a.kind === "inert-subscription"),
 		).toEqual([]);
+	});
+});
+
+/** #154 — the OTHER half of an inert subscription: the wiring is live and the
+ *  TRIGGER is fine, but every RECIPIENT is gone, so the notices are delivered
+ *  to nobody. Live instance: `pij-continuing-ermine` ran 42 hours with its sole
+ *  watcher terminal since 2026-08-06T01:31:59Z and produced zero rows.
+ *
+ *  Three buckets, and `unknown` is NEVER counted as gone: an unresolvable id is
+ *  not a death (watcher ids are never referentially validated at write time),
+ *  and `probe-unavailable` means the observation itself failed. */
+describe("inert-subscription — dead RECIPIENTS (#154)", () => {
+	const seat = (id: string, over: Partial<SessionDescriptor> = {}) => desc({ id, ...over });
+
+	const terminalRecord = (over: Partial<TerminalObservation> = {}): TerminalObservation => ({
+		disposition: "unrequested-by-pij",
+		observedAt: new Date(NOW - H44).toISOString(),
+		evidence: "pid-missing",
+		...over,
+	});
+
+	/** Stands in for `s095`'s `activityCredibility`, which lives in `state.ts` and
+	 *  is INJECTED here rather than imported (T-0). It sees only the structural
+	 *  input, never the id — so fixtures must differ in descriptor FIELDS. */
+	const credibility = (input: ActivityCredibilityInput): ActivityCredibility => {
+		if (input.terminal !== undefined) {
+			return input.terminal.disposition === "unavailable"
+				? {
+						verdict: "unknown",
+						cause: "probe-unavailable",
+						reason: "the liveness observation itself was unavailable",
+						asOf: input.terminal.observedAt,
+					}
+				: {
+						verdict: "superseded",
+						cause: "agent-absent",
+						reason: "a terminal observation is on record",
+						asOf: input.terminal.observedAt,
+					};
+		}
+		if (input.lifecycle === "dissolved") {
+			return { verdict: "superseded", cause: "dissolved", reason: "lifecycle is dissolved" };
+		}
+		return {
+			verdict: "current",
+			cause: "uncontradicted",
+			reason: "nothing contradicts the recorded activity",
+		};
+	};
+
+	const detectWd = (
+		descriptors: readonly SessionDescriptor[],
+		watchdog: WatchdogSubscriptionInputs,
+		withCredibility = true,
+	) =>
+		detectAnomalies({
+			descriptors,
+			assignments: [],
+			events: [],
+			nowMs: NOW,
+			watchdog,
+			...(withCredibility ? { activityCredibility: credibility } : {}),
+		}).filter((a) => a.kind === "inert-subscription");
+
+	/** Both rows carry `kind: "inert-subscription"`, so filtering by kind cannot
+	 *  tell them apart — an assertion over the SET is not evidence about the
+	 *  MEMBER this phase adds. Discriminate on the new row's own content. */
+	const deadRecipientRows = (rows: readonly { readonly detail: string }[]) =>
+		rows.filter((a) => a.detail.includes("no LIVE watcher remains"));
+
+	it("1 · BEHAVIOURAL — all watchers superseded FIRES the dead-recipient row", () => {
+		const rows = detectWd(
+			[
+				seat("pij-continuing-ermine"),
+				seat("pij-respectable-starfish", { terminal: terminalRecord() }),
+			],
+			{
+				globallyDisabled: false,
+				nodes: [
+					{
+						nodeId: "pij-continuing-ermine",
+						watchers: ["pij-respectable-starfish"],
+						pausedBy: "self",
+					},
+				],
+			},
+		);
+		// NOT `rows.length === 1`: the paused-trigger row shares the kind and
+		// would satisfy that assertion on PRE-FIX code (measured — it did).
+		const dead = deadRecipientRows(rows);
+		expect(dead).toHaveLength(1);
+		expect(dead[0]?.nodeId).toBe("pij-continuing-ermine");
+		// names the composition
+		expect(dead[0]?.detail).toContain("1 watcher(s)");
+		expect(dead[0]?.detail).toContain("1 carry a terminal or retirement observation");
+		expect(dead[0]?.detail).toContain("0 unresolvable/unknown");
+		// reports an OBSERVATION, never a death
+		expect(dead[0]?.detail).not.toMatch(/\bis dead\b|\bare dead\b/);
+		// remedy = re-subscribe a LIVE watcher, explicitly not resuming a pause
+		expect(dead[0]?.detail).toContain("pij watchdog watch pij-continuing-ermine --for");
+		expect(dead[0]?.detail).toContain("not resolved by resuming a pause");
+	});
+
+	it("2 · one CURRENT watcher among several superseded does NOT fire", () => {
+		const rows = detectWd(
+			[
+				seat("pij-node"),
+				seat("pij-gone-a", { terminal: terminalRecord() }),
+				seat("pij-gone-b", { lifecycle: "dissolved" }),
+				seat("pij-live"),
+			],
+			{
+				globallyDisabled: false,
+				nodes: [{ nodeId: "pij-node", watchers: ["pij-gone-a", "pij-gone-b", "pij-live"] }],
+			},
+		);
+		expect(
+			deadRecipientRows(rows),
+			"partial degradation is a DELIBERATE scope decision, not an oversight",
+		).toEqual([]);
+	});
+
+	it("3 · zero watchers does NOT fire — unwatched by choice is healthy", () => {
+		const rows = detectWd([seat("pij-node")], {
+			globallyDisabled: false,
+			nodes: [{ nodeId: "pij-node", watchers: [] }],
+		});
+		expect(deadRecipientRows(rows)).toEqual([]);
+	});
+
+	it("4 · an UNRESOLVABLE watcher id is never counted as gone", () => {
+		const rows = detectWd([seat("pij-node")], {
+			globallyDisabled: false,
+			nodes: [{ nodeId: "pij-node", watchers: ["pij-typo-or-cross-home"] }],
+		});
+		expect(
+			deadRecipientRows(rows),
+			"watcher ids are never referentially validated at write time — unknown is not death",
+		).toEqual([]);
+	});
+
+	it("5 · verdict `unknown` (probe-unavailable) is never counted as gone", () => {
+		const rows = detectWd(
+			[
+				seat("pij-node"),
+				seat("pij-unprobed", {
+					terminal: terminalRecord({
+						disposition: "unavailable",
+						evidence: "observation-unavailable",
+					}),
+				}),
+			],
+			{
+				globallyDisabled: false,
+				nodes: [{ nodeId: "pij-node", watchers: ["pij-unprobed"] }],
+			},
+		);
+		expect(
+			deadRecipientRows(rows),
+			"the observation ITSELF failed — that is not evidence of anything",
+		).toEqual([]);
+	});
+
+	it("6 · PRESERVED-PROPERTY — the paused-trigger row still fires exactly as before", () => {
+		const nodes = [{ nodeId: "pij-quiet", watchers: ["pij-live-pa"], pausedBy: "self" }];
+		const descriptors = [seat("pij-quiet"), seat("pij-live-pa")];
+		const before = detectAnomalies({
+			descriptors,
+			assignments: [],
+			events: [],
+			nowMs: NOW,
+			watchdog: { globallyDisabled: false, nodes },
+		}).filter((a) => a.kind === "inert-subscription");
+		const after = detectWd(descriptors, { globallyDisabled: false, nodes });
+		expect(before).toHaveLength(1);
+		// byte-identical for an input that already produced a row: the live
+		// watcher means the new row is silent, so the set is unchanged.
+		expect(after).toEqual(before);
+		expect(after[0]?.detail).toContain("PAUSED by self");
+	});
+
+	it("7 · BEHAVIOURAL — a NON-PAUSED node with all-superseded watchers fires", () => {
+		const rows = detectWd([seat("pij-node"), seat("pij-gone", { terminal: terminalRecord() })], {
+			globallyDisabled: false,
+			nodes: [{ nodeId: "pij-node", watchers: ["pij-gone"] }],
+		});
+		// A node with live wiring and dead recipients is NOT paused, so pre-fix
+		// it falls straight through the `pausedBy === undefined` guard.
+		expect(rows).toHaveLength(1);
+		expect(deadRecipientRows(rows)).toHaveLength(1);
+		expect(rows[0]?.nodeId).toBe("pij-node");
+	});
+
+	it("8 · with NO `activityCredibility` injected the row CANNOT fire", () => {
+		const rows = detectWd(
+			[seat("pij-node"), seat("pij-gone", { terminal: terminalRecord() })],
+			{
+				globallyDisabled: false,
+				nodes: [{ nodeId: "pij-node", watchers: ["pij-gone"] }],
+			},
+			false,
+		);
+		expect(
+			rows,
+			"'wiring absent' and 'no row' must be the SAME observable — that is how an unwired production call site becomes detectable",
+		).toEqual([]);
+	});
+
+	it("evidence is the CHANGING gone-count, never a constant (the sweep latches on it)", () => {
+		const goneCount = (n: number) => {
+			const watchers = Array.from({ length: n }, (_, i) => `pij-gone-${i}`);
+			const rows = detectWd(
+				[seat("pij-node"), ...watchers.map((id) => seat(id, { terminal: terminalRecord() }))],
+				{ globallyDisabled: false, nodes: [{ nodeId: "pij-node", watchers }] },
+			);
+			return deadRecipientRows(rows)[0]?.evidence;
+		};
+		expect(goneCount(1)).not.toEqual(goneCount(3));
+	});
+
+	it("renders the credibility `reason`/`asOf` for the human, and never parses it", () => {
+		const rows = detectWd([seat("pij-node"), seat("pij-gone", { terminal: terminalRecord() })], {
+			globallyDisabled: false,
+			nodes: [{ nodeId: "pij-node", watchers: ["pij-gone"] }],
+		});
+		const dead = deadRecipientRows(rows)[0];
+		expect(dead?.detail).toContain("a terminal observation is on record");
+	});
+
+	/** ── F-1 · the RETIRED watcher, the one case the first cut could not see ──
+	 *
+	 *  `FsRegistry.list()` deliberately omits `lifecycle: "dissolved"` records
+	 *  (`adapters/fs-registry.ts:148`) — correct, a dissolved seat is not live.
+	 *  And `unknown` is never counted as gone — also correct, and mandated. But
+	 *  COMPOSED they silence the clearest death available: a seat pij itself
+	 *  dissolved never lands in `byNode`, buckets `unknown`, and suppresses the
+	 *  row. That is this stream's own defect class, reproduced inside its fix.
+	 *
+	 *  So the detector must be able to tell "absent because RETIRED" from
+	 *  "absent because it NEVER EXISTED" — two different facts that collapsed
+	 *  into one bucket. Retirement arrives as an INPUT (purity holds), is fed
+	 *  through the SAME credibility predicate (the detector never decides death
+	 *  on its own), and an id nobody can resolve is STILL unknown. */
+	const detectRetired = (
+		descriptors: readonly SessionDescriptor[],
+		watchdog: WatchdogSubscriptionInputs,
+		resolveRetired?: (id: string) => RetiredWatcherRecord | undefined,
+	) =>
+		detectAnomalies({
+			descriptors,
+			assignments: [],
+			events: [],
+			nowMs: NOW,
+			watchdog,
+			activityCredibility: credibility,
+			...(resolveRetired === undefined ? {} : { resolveRetired }),
+		}).filter((a) => a.kind === "inert-subscription");
+
+	/** ── THE ORIGINAL INCIDENT, RECONSTRUCTED — not the current fleet state ──
+	 *
+	 *  This fixture is the actual 42-hour `#154` case, field for field:
+	 *  `pij-continuing-ermine` with the sole watcher `pij-respectable-starfish`,
+	 *  `lifecycle: "dissolved"`, terminal `requested` / `pane-missing` observed
+	 *  at 2026-08-06T01:31:59.006Z. It is deliberately NOT the shape ermine has
+	 *  today.
+	 *
+	 *  The reason is general and worth stating plainly: THE CURRENT FLEET STATE
+	 *  IS WHERE THE FIX WAS DEVELOPED, so it is the one configuration guaranteed
+	 *  to agree with it. Testing against it proves the fix agrees with itself.
+	 *  Measured here: ermine's watcher TODAY is terminal-but-NOT-dissolved, so
+	 *  it survives `list()`, lands in `byNode`, and the first cut fired on it
+	 *  correctly — while the seat from the incident, dissolved and therefore
+	 *  omitted from `list()`, produced nothing at all. The passing case and the
+	 *  motivating case differed by ONE LIFECYCLE VALUE, and that single value
+	 *  was the whole defect. A regression test that reconstructs the incident
+	 *  catches that; one that mirrors current state cannot, by construction.
+	 *
+	 *  `descriptors` omits starfish ON PURPOSE — that is exactly what
+	 *  `FsRegistry.list()` does with a dissolved record, and it is the only
+	 *  faithful way to reproduce the case. */
+	const STARFISH_RECORD: RetiredWatcherRecord = {
+		lifecycle: "dissolved",
+		terminal: {
+			disposition: "requested",
+			observedAt: "2026-08-06T01:31:59.006Z",
+			evidence: "pane-missing",
+		},
+	};
+
+	const ERMINE = {
+		descriptors: [seat("pij-continuing-ermine")],
+		watchdog: {
+			globallyDisabled: false,
+			nodes: [{ nodeId: "pij-continuing-ermine", watchers: ["pij-respectable-starfish"] }],
+		},
+	} as const;
+
+	const archive = (records: Readonly<Record<string, RetiredWatcherRecord>>) => {
+		const asked: string[] = [];
+		const lookup = (id: string): RetiredWatcherRecord | undefined => {
+			asked.push(id);
+			return records[id];
+		};
+		return { asked, lookup };
+	};
+
+	it("F-1 · BEHAVIOURAL — REGRESSION for the original 42h incident: ermine + DISSOLVED starfish fires", () => {
+		const { lookup } = archive({ "pij-respectable-starfish": STARFISH_RECORD });
+		const dead = deadRecipientRows(detectRetired(ERMINE.descriptors, ERMINE.watchdog, lookup));
+		expect(
+			dead,
+			"a seat pij deliberately dissolved is the most clearly-dead watcher there is, and was the one case the detector could not see",
+		).toHaveLength(1);
+		expect(dead[0]?.nodeId).toBe("pij-continuing-ermine");
+		expect(dead[0]?.detail).toContain("pij-respectable-starfish");
+		expect(dead[0]?.detail).toContain("1 carry a terminal or retirement observation");
+		expect(dead[0]?.detail).toContain("0 unresolvable/unknown");
+		// the incident's own evidence timestamp is rendered for the human
+		expect(dead[0]?.detail).toContain("2026-08-06T01:31:59.006Z");
+		// still an OBSERVATION, never a death sentence
+		expect(dead[0]?.detail).not.toMatch(/\bis dead\b|\bare dead\b/);
+	});
+
+	it("F-1 · the incident shape and the CURRENT-STATE shape differ by ONE lifecycle value", () => {
+		// Ermine's watcher TODAY is terminal but NOT dissolved, so `list()` keeps
+		// it, `byNode` resolves it, and the row fires with no archive lookup at
+		// all — which is why developing against current state could not surface
+		// the defect. Same node, same watcher id, same terminal record; the only
+		// difference is `lifecycle`, and it decided whether the seat was VISIBLE.
+		const { lifecycle: _dissolved, ...notDissolved } = STARFISH_RECORD;
+		const currentShape = deadRecipientRows(
+			detectRetired(
+				[...ERMINE.descriptors, seat("pij-respectable-starfish", notDissolved)],
+				ERMINE.watchdog,
+			),
+		);
+		expect(
+			currentShape,
+			"the shape that already worked — and therefore proved nothing",
+		).toHaveLength(1);
+
+		const incidentShape = deadRecipientRows(detectRetired(ERMINE.descriptors, ERMINE.watchdog));
+		expect(
+			incidentShape,
+			"and the shape that mattered, still invisible without the retirement input",
+		).toEqual([]);
+	});
+
+	it("F-1 · PRESERVED-PROPERTY — with NO retirement input, behaviour is byte-for-byte today's", () => {
+		const withOut = detectRetired(ERMINE.descriptors, ERMINE.watchdog);
+		expect(
+			deadRecipientRows(withOut),
+			"absent input must change nothing — the dissolved watcher buckets `unknown`, as before",
+		).toEqual([]);
+		expect(withOut).toEqual(
+			detectAnomalies({
+				descriptors: ERMINE.descriptors,
+				assignments: [],
+				events: [],
+				nowMs: NOW,
+				watchdog: ERMINE.watchdog,
+				activityCredibility: credibility,
+			}).filter((a) => a.kind === "inert-subscription"),
+		);
+	});
+
+	it("F-1 · an id NO tier can resolve is STILL unknown, never a death", () => {
+		const { lookup } = archive({});
+		expect(
+			deadRecipientRows(
+				detectRetired(
+					[seat("pij-node")],
+					{
+						globallyDisabled: false,
+						nodes: [{ nodeId: "pij-node", watchers: ["pij-typo-or-cross-home"] }],
+					},
+					lookup,
+				),
+			),
+			"a typo must never be reported as a fatality — the retirement lookup widens WHO can be resolved, never WHAT counts as gone",
+		).toEqual([]);
+	});
+
+	it("F-1 · a retired lookup NEVER overrides a watcher the live tier already resolved", () => {
+		const { asked, lookup } = archive({
+			// a stale archive copy that would wrongly kill a live watcher if the
+			// lookup were consulted (or preferred) for an id already in `byNode`
+			"pij-live": { lifecycle: "dissolved" },
+		});
+		const rows = detectRetired(
+			[seat("pij-node"), seat("pij-live")],
+			{ globallyDisabled: false, nodes: [{ nodeId: "pij-node", watchers: ["pij-live"] }] },
+			lookup,
+		);
+		expect(deadRecipientRows(rows)).toEqual([]);
+		expect(
+			asked,
+			"the live tier is authoritative — the archive is a FALLBACK, not a merge",
+		).toEqual([]);
+	});
+
+	it("F-1 · the lookup is asked ONLY for the ids held, never enumerated", () => {
+		const { asked, lookup } = archive({
+			"pij-respectable-starfish": { lifecycle: "dissolved" },
+		});
+		detectRetired(
+			[seat("pij-continuing-ermine"), seat("pij-live")],
+			{
+				globallyDisabled: false,
+				nodes: [
+					{ nodeId: "pij-continuing-ermine", watchers: ["pij-respectable-starfish", "pij-live"] },
+				],
+			},
+			lookup,
+		);
+		expect(
+			asked,
+			"keyed O(1) lookup of ids we already hold — the archive is never listed or globbed",
+		).toEqual(["pij-respectable-starfish"]);
+	});
+
+	it("F-1 · a DISSOLVED record with no terminal observation still fires, via the predicate", () => {
+		const { lookup } = archive({ "pij-respectable-starfish": { lifecycle: "dissolved" } });
+		const dead = deadRecipientRows(detectRetired(ERMINE.descriptors, ERMINE.watchdog, lookup));
+		expect(dead).toHaveLength(1);
+		// the verdict came from the injected predicate reading `lifecycle`, NOT
+		// from set membership — this module still never decides death itself.
+		expect(dead[0]?.detail).toContain("lifecycle is dissolved");
+	});
+});
+
+/** ── F-2 · `compact` pauses are SYSTEM-initiated and self-clearing ──
+ *
+ *  Latent until Phase 0 turned the paused-trigger row on in the daemon for the
+ *  first time. `applyCompactPause` is set by pij itself around a compaction
+ *  (`core/watchdog.ts:124-130`) and cleared automatically on the next working
+ *  transition (`:114-116`), so it is neither unilateral nor durable — but the
+ *  600ms sweep can observe that transient window, call it a withdrawal from
+ *  supervision, and prescribe a manual `pij watchdog resume` for a pause that
+ *  was already going to lift itself. A row whose remedy is "wait" is a row that
+ *  teaches people to ignore the instrument. */
+describe("inert-subscription — a `compact` pause is not a withdrawal from supervision (F-2)", () => {
+	const wd = (pausedBy: string) =>
+		detectAnomalies({
+			descriptors: [desc({ id: "pij-node" }), desc({ id: "pij-watcher" })],
+			assignments: [],
+			events: [],
+			nowMs: NOW,
+			watchdog: {
+				globallyDisabled: false,
+				nodes: [{ nodeId: "pij-node", watchers: ["pij-watcher"], pausedBy }],
+			},
+		}).filter((a) => a.kind === "inert-subscription");
+
+	it('F-2 · BEHAVIOURAL — `pausedBy: "compact"` does NOT emit', () => {
+		expect(
+			wd("compact"),
+			"system-initiated and auto-cleared: the operator has nothing to do, so there is nothing to say",
+		).toEqual([]);
+	});
+
+	it('F-2 · PRESERVED-PROPERTY — `pausedBy: "self"` still emits', () => {
+		const rows = wd("self");
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.detail).toContain("PAUSED by self");
+	});
+
+	it("F-2 · PRESERVED-PROPERTY — an operator pause by any other hand still emits", () => {
+		expect(wd("pij-orchestrator")).toHaveLength(1);
 	});
 });
 

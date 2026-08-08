@@ -1015,3 +1015,41 @@ carries the ordering as a fact anyone can check with `git show <test-commit> && 
 and the claim stops depending on the author's honesty. Adopted mid-run here after the review.
 *Cost of not doing it*: the discipline still works, but its evidence is a **self-report**, which is
 the same category of proof this wave keeps filing issues about.
+
+
+---
+
+---
+
+## Per-stream ledger blocks
+
+**A stream's block lives in its own file under [`ledger/`](./ledger/), not here.** Appending a
+block to this file — at the end of a *section* or the end of the *file* — puts every concurrent
+stream on the same line range, which is a guaranteed three-way conflict and exactly what
+append-only was supposed to avoid. Measured: `s097` hit it on three consecutive rebases, each
+time resolving the same file by hand while its own PR checks were already green (`F-604`,
+`S-602`).
+
+### How to add yours — INSERT, never append
+
+> ⚠ **The index below is a SECOND shared surface.** The split moves the contention out of the
+> ledger *body*; it does not remove it. Six streams each **appending** a pointer at the end of
+> this table land on **the same line range** and collide identically — and it will read as *"the
+> split did not work"* rather than *"the split worked and the index is a second surface"*.
+>
+> **The table is maintained in sorted order by stream ordinal, and you INSERT at your own
+> position.** Streams inserting into a sorted list touch **different lines by construction**;
+> appending, they touch the same one. This is the rule the partition doc already states for
+> ordinals — **derivation cannot collide, allocation needs a broadcast** — applied to the file
+> that indexes them.
+
+Both halves land **together, on `main`, in the same PR**: your `ledger/<file>` and your index row.
+Never split those across trees — an index line on `main` pointing at a file that only exists on a
+fleet branch is a dangling citation.
+
+Already-**merged** streams' blocks are moved by the o-prime in one pass, not by the streams
+themselves.
+
+| stream | block |
+|---|---|
+| `s097` silent-detectors | [`ledger/s097-silent-detectors.md`](./ledger/s097-silent-detectors.md) |

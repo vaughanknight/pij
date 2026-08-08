@@ -31,6 +31,8 @@ import {
 	type SemanticState,
 	type SessionDescriptor,
 	type SessionId,
+	type SessionLifecycle,
+	type TerminalObservation,
 } from "./types.js";
 import { mutesWatchdogNudge } from "./watchdog.js";
 
@@ -93,6 +95,61 @@ export const DEFAULT_ALLOCATION_HALF_OPEN_MS = 15 * 60_000;
  *  focused work; looser and a whole phase can ship behind a stale card. */
 export const DEFAULT_STATUS_STALE_MS = 30 * 60_000;
 
+/** ── The `activityCredibility` contract, DECLARED STRUCTURALLY, never imported ──
+ *
+ *  The implementation is `s095`'s and lives in `core/state.ts`, which is that
+ *  stream's file: a direct import would couple this module's merge to theirs
+ *  and would not even resolve on this branch. So the shape is declared here and
+ *  the function arrives as an INPUT — the same decision this module already
+ *  made for `watchdog` above: a new INPUT is safe where a new READ would
+ *  destroy the purity that makes its proofs mean anything (ruling s079).
+ *
+ *  These names are BYTE-STABLE; another stream implements against them. */
+export type ActivityCredibilityCause =
+	| "observed-live" // a live probe corroborated the agent
+	| "uncontradicted" // nothing contradicts the recorded activity
+	| "agent-absent" // observed absent (terminal record, or a live absent probe)
+	| "dissolved" // lifecycle: "dissolved"
+	| "close-requested" // pij asked for this teardown
+	| "probe-unavailable" // the liveness observation itself was unavailable — we do not know
+	| "no-activity-recorded"; // no telemetry ever recorded — NOT the same as "it was idle"
+
+export type ActivityVerdict = "current" | "superseded" | "unknown";
+
+export interface ActivityCredibility {
+	readonly verdict: ActivityVerdict;
+	readonly cause: ActivityCredibilityCause;
+	/** HUMAN-READABLE. Render it, NEVER parse it — it is prose and may be
+	 *  reworded at any time. Branch on `verdict`/`cause` instead. */
+	readonly reason: string;
+	/** ISO-8601 of the evidence (e.g. `terminal.observedAt`). */
+	readonly asOf?: string;
+}
+
+export interface ActivityCredibilityInput {
+	readonly state?: "working" | "idle";
+	readonly lastEventAt?: string;
+	readonly lifecycle?: SessionLifecycle;
+	readonly terminal?: TerminalObservation;
+	/** Only ever set by a caller holding a LIVE PROBE. This module reads the
+	 *  registry, so it deliberately never sets it. */
+	readonly agentLiveness?: "alive" | "absent" | "unknown";
+}
+
+/** What a RETIRED watcher's record still says about it (#154 F-1).
+ *
+ *  Structurally a narrowed `SessionDescriptor`, so a caller hands back what its
+ *  registry already returned — no mapping, no cast at the call site (P6). It
+ *  deliberately omits `agentLiveness`: an archived record is a RECORD, and
+ *  handing one to the predicate as though it were a probe would launder it into
+ *  an observation. */
+export interface RetiredWatcherRecord {
+	readonly state?: "working" | "idle";
+	readonly lastEventAt?: string;
+	readonly lifecycle?: SessionLifecycle;
+	readonly terminal?: TerminalObservation;
+}
+
 export interface Anomaly {
 	readonly kind: AnomalyKind;
 	readonly nodeId: string;
@@ -126,6 +183,36 @@ export interface AnomalyInputs {
 	 *  safe where a new READ would destroy it (albatross's ruling, s079). Absent
 	 *  keeps every existing caller's behaviour byte-for-byte. */
 	readonly watchdog?: WatchdogSubscriptionInputs;
+	/** Injected, never imported: `state.ts` is another stream's file and a direct
+	 *  import would couple this module's merge to theirs. Optional by
+	 *  construction — absent keeps every existing caller byte-for-byte, and makes
+	 *  "wiring absent" and "no row" the SAME observable, so an unwired production
+	 *  call site is detectable rather than silently inert. */
+	readonly activityCredibility?: (input: ActivityCredibilityInput) => ActivityCredibility;
+	/** Resolves a watcher id the LIVE tier could not — i.e. a RETIRED seat.
+	 *
+	 *  Without this, the detector cannot see the one death it was built for.
+	 *  `FsRegistry.list()` omits `lifecycle: "dissolved"` records by design
+	 *  (`adapters/fs-registry.ts:148` — a dissolved seat is not live), and this
+	 *  module never counts `unknown` as gone (also by design — an id that does
+	 *  not resolve was never validated at write time, so calling it a death
+	 *  reports a typo as a fatality). Each rule is right; COMPOSED they mean a
+	 *  seat pij itself dissolved — the most clearly-dead watcher there is —
+	 *  is precisely the case that produces no row. Measured against
+	 *  `pij-continuing-ermine` / `pij-respectable-starfish`.
+	 *
+	 *  The repair is to distinguish "absent because RETIRED" from "absent
+	 *  because it NEVER EXISTED", which are different facts that collapsed into
+	 *  one bucket. It arrives as an INPUT like `watchdog` and
+	 *  `activityCredibility`, so purity holds; it is consulted ONLY for ids that
+	 *  miss the live tier, so the caller can serve it from a keyed O(1) archive
+	 *  read and never enumerate; and what it returns is fed through the SAME
+	 *  credibility predicate, so this module still never decides death itself.
+	 *
+	 *  Absent ⇒ behaviour byte-for-byte as before. Returning `undefined` for an
+	 *  id keeps it `unknown` — this widens WHO can be resolved, never WHAT
+	 *  counts as gone. */
+	readonly resolveRetired?: (id: SessionId) => RetiredWatcherRecord | undefined;
 }
 
 /** One node's supervision wiring, projected. */
@@ -291,6 +378,75 @@ export function axisRemedy(nodeId: string, assignmentId: string): string {
 	);
 }
 
+/** The three buckets a subscription's watchers resolve into (#154).
+ *
+ *  `unknown` is a THIRD bucket and never folds into `gone`, for two independently
+ *  measured reasons: verdict `unknown` covers `probe-unavailable`, where the
+ *  observation ITSELF failed and is evidence of nothing; and an id that does not
+ *  resolve at all is not a death, because watcher ids are never referentially
+ *  validated at write time (`pij watchdog watch <target> --for <id>` validates
+ *  only the TARGET, and the sidecar parser accepts any string), so a typo'd or
+ *  cross-home `--for` would otherwise be reported as a fatality.
+ *
+ *  That guard stands. What F-1 fixes is a DIFFERENT confusion hiding under it:
+ *  "absent because RETIRED" was collapsing into "absent because it NEVER
+ *  EXISTED". `resolveRetired` separates them — and it does so by widening WHO
+ *  can be resolved, never by widening WHAT counts as gone. Every id it resolves
+ *  still goes through the credibility predicate; an id it cannot resolve is
+ *  still `unknown`. */
+interface WatcherComposition {
+	readonly live: number;
+	/** One rendered line per gone watcher — `reason`/`asOf` verbatim, for the
+	 *  human. Rendered, never parsed. */
+	readonly gone: readonly string[];
+	readonly unknown: number;
+}
+
+function classifyWatchers(
+	watchers: readonly SessionId[],
+	byNode: ReadonlyMap<string, SessionDescriptor>,
+	activityCredibility: (input: ActivityCredibilityInput) => ActivityCredibility,
+	resolveRetired?: (id: SessionId) => RetiredWatcherRecord | undefined,
+): WatcherComposition {
+	let live = 0;
+	let unknown = 0;
+	const gone: string[] = [];
+	for (const watcherId of watchers) {
+		// LIVE TIER FIRST, and it is authoritative: a watcher the registry still
+		// lists is present, and an archived copy of the same id is by definition
+		// staler. The retirement lookup is a FALLBACK, never a merge — so it is
+		// consulted only on a miss, which is also what keeps it a keyed O(1) read
+		// of ids we already hold rather than an enumeration of the archive.
+		const watcher: RetiredWatcherRecord | undefined =
+			byNode.get(watcherId) ?? resolveRetired?.(watcherId);
+		if (watcher === undefined) {
+			unknown += 1;
+			continue;
+		}
+		// `agentLiveness` is deliberately OMITTED: this module reads the registry,
+		// it never holds a probe, and claiming one would launder a record into an
+		// observation.
+		const credibility = activityCredibility({
+			...(watcher.state === undefined ? {} : { state: watcher.state }),
+			...(watcher.lastEventAt === undefined ? {} : { lastEventAt: watcher.lastEventAt }),
+			...(watcher.lifecycle === undefined ? {} : { lifecycle: watcher.lifecycle }),
+			...(watcher.terminal === undefined ? {} : { terminal: watcher.terminal }),
+		});
+		if (credibility.verdict === "current") {
+			live += 1;
+			continue;
+		}
+		if (credibility.verdict === "unknown") {
+			unknown += 1;
+			continue;
+		}
+		gone.push(
+			`${watcherId}: ${credibility.reason}${credibility.asOf === undefined ? "" : ` (as of ${credibility.asOf})`}`,
+		);
+	}
+	return { live, gone, unknown };
+}
+
 export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	const threshold = inputs.idleThresholdMs ?? DEFAULT_IDLE_DISAGREEMENT_MS;
 	const out: Anomaly[] = [];
@@ -327,6 +483,16 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 			if (watched.length > 0) {
 				out.push({
 					kind: "inert-subscription",
+					// DEFERRED — pij#179. `watched[0]` follows FILESYSTEM ENUMERATION
+					// ORDER, and the sweep routes each anomaly to that node's effective
+					// parent: if the first watched seat happens to be a prime or a
+					// parentless root, a FLEET-WIDE outage is dropped and then latched,
+					// never to alert again. Harmless while this row only surfaced in a
+					// human-run CLI query — Phase 0 activated it by making the row a
+					// daemon alert, so the nondeterminism is now real. Left unchanged
+					// deliberately: no deterministic fleet-level recipient exists in the
+					// inputs this detector already holds, and inventing one here would
+					// grow this PR into a routing redesign. Tracked as its own issue.
 					nodeId: watched[0]?.nodeId ?? "",
 					detail:
 						`the watchdog is DISABLED FLEET-WIDE, so ${watched.length} live subscription(s) across ${watched.length} seat(s) will not fire —` +
@@ -338,11 +504,83 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 		} else {
 			for (const node of wd.nodes) {
 				if (node.watchers.length === 0) continue;
+				// #154 — the RECIPIENT half of an inert subscription. The block below
+				// interrogates only the TRIGGER (paused / exempt / disabled); nothing
+				// ever asked whether anyone is still on the far end. Measured live:
+				// `pij-continuing-ermine` ran 42h with its sole watcher terminal since
+				// 2026-08-06T01:31:59Z and produced zero rows of any kind — and the
+				// absence of a nudge is indistinguishable from healthy operation,
+				// which is the exact property the watchdog exists to defeat.
+				//
+				// Deliberately OUTSIDE the pause/exempt/parked guards below: those
+				// three all describe the TRIGGER, and a subscription whose recipients
+				// are gone delivers to nobody whatever the trigger is doing.
+				if (inputs.activityCredibility !== undefined) {
+					const composition = classifyWatchers(
+						node.watchers,
+						byNode,
+						inputs.activityCredibility,
+						inputs.resolveRetired,
+					);
+					// PARTIAL DEGRADATION DOES NOT FIRE (deliberate scope decision, not
+					// an oversight): one live watcher still receives every notice, and a
+					// row for "fewer readers than you configured" is a much noisier
+					// signal about subscription INTEGRITY rather than DELIVERY (F-17 — a
+					// detector nobody believes is worse than none).
+					//
+					// `gone > 0` is REQUIRED alongside `live === 0`, and it is not a
+					// tightening of the rule but the rule itself. `live === 0` alone
+					// fires on a subscription whose every watcher is merely UNKNOWN —
+					// an unresolvable id, or a probe that failed — which is precisely
+					// the fatality-from-nothing this detector must never commit, and is
+					// what criteria 4 and 5 pin. #154's claim is "every watcher is a
+					// terminated session": that needs at least one OBSERVED terminal
+					// recipient and no live one.
+					if (composition.live === 0 && composition.gone.length > 0) {
+						out.push({
+							kind: "inert-subscription",
+							nodeId: node.nodeId,
+							detail:
+								`'${node.nodeId}' has ${node.watchers.length} watcher(s) (${node.watchers.join(", ")}) and no LIVE watcher remains:` +
+								` ${composition.gone.length} carry a terminal or retirement observation [${composition.gone.join("; ")}],` +
+								` ${composition.unknown} unresolvable/unknown (never counted against the subscription — an id that does not resolve was never validated at write time, and an unavailable probe is evidence of nothing).` +
+								" The wiring is real and the far end receives nothing, so every notice this seat would raise is delivered to nobody." +
+								" This row reports an OBSERVATION, not a fatality: `terminal` is a latch written by a blind probe, and 2 of 31 sampled seats carried one while their agent was running." +
+								` Re-subscribe a live watcher: pij watchdog watch ${node.nodeId} --for <live-seat>.` +
+								" It is not resolved by resuming a pause (this row is about the RECIPIENT, not the trigger) and not by refreshing a card.",
+							// Evidence must CHANGE as the condition worsens — the sweep
+							// latches on `kind:node:evidence`, so a constant alerts once and
+							// then stays silent forever (the `status-stale` precedent).
+							//
+							// TWO elements, and that is load-bearing: the paused-trigger row
+							// for this same node carries `[watchers.length]`, which is
+							// exactly `gone` whenever every watcher is gone — a one-element
+							// key would COLLIDE with it and silently swallow whichever row
+							// the sweep saw second.
+							evidence: [composition.gone.length, composition.unknown],
+						});
+					}
+				}
 				// (c) EXEMPT is silent while live: an exemption is time-bounded with a
 				// persisted absolute deadline that re-arms itself, so it cannot rot —
 				// that is precisely what distinguishes it from a pause.
 				if (node.exemptUntilMs !== undefined && node.exemptUntilMs > inputs.nowMs) continue;
 				if (node.pausedBy === undefined) continue;
+				// (d) A `compact` pause is SYSTEM-INITIATED and SELF-CLEARING, so it is
+				// not a withdrawal from supervision at all: pij sets it around its own
+				// compaction (`core/watchdog.ts` applyCompactPause) and
+				// `applyWorkingTransition` lifts it on the next working transition
+				// without anyone being asked. The row below says a seat "removed itself
+				// from supervision unilaterally" and prescribes a manual
+				// `pij watchdog resume` — both false here, and the remedy is
+				// "wait", which is not a remedy.
+				//
+				// Latent until Phase 0 turned this row on in the daemon: a 600ms sweep
+				// can see the transient window a human running the CLI never would. A
+				// false positive on a healthy seat is the most expensive possible
+				// output for a detector, because it spends the fleet's willingness to
+				// believe the next TRUE row.
+				if (node.pausedBy === "compact") continue;
 				// (a) PAUSED + a DECLARED parked state is SILENT: the seat said out
 				// loud why it is quiet, and that is healthy. This keeps faith with
 				// parked-states-never-flag rather than carving an exception into it.

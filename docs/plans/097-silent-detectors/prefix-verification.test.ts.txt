@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import { detectAnomalies } from "/Users/jordanknight/pi-hacking/pij-worktrees/s097-silent-detectors/.pi/extensions/pij/core/anomalies.js";
+import type { SessionDescriptor } from "/Users/jordanknight/pi-hacking/pij-worktrees/s097-silent-detectors/.pi/extensions/pij/core/types.js";
+
+const NOW = Date.parse("2026-08-08T04:00:00.000Z");
+const desc = (id: string, over: Partial<SessionDescriptor> = {}): SessionDescriptor =>
+  ({ id, folder: "/tmp", dataDir: "/tmp", pid: 1, startedAt: new Date(NOW - 3_600_000).toISOString(),
+     lifecycle: "bound", ...over }) as SessionDescriptor;
+
+const rows = (descriptors: SessionDescriptor[], watchdog: any) =>
+  detectAnomalies({ descriptors, assignments: [], events: [], nowMs: NOW, watchdog })
+    .filter((a) => a.kind === "inert-subscription");
+
+describe("PRE-FIX verification — do these criteria actually fail today?", () => {
+  it("BEHAVIOURAL 1: all watchers terminal-observed -> should FIRE", () => {
+    const found = rows(
+      [desc("pij-target"), desc("pij-watcher", {
+        terminal: { disposition: "unrequested-by-pij", observedAt: "2026-08-06T01:31:59Z", evidence: "pid-missing" },
+      })],
+      { globallyDisabled: false, nodes: [{ nodeId: "pij-target", watchers: ["pij-watcher"], pausedBy: "self" }] },
+    );
+    expect(found).toHaveLength(1);
+  });
+
+  it("BEHAVIOURAL 7: NON-PAUSED node, all watchers terminal -> should FIRE", () => {
+    const found = rows(
+      [desc("pij-target"), desc("pij-watcher", {
+        terminal: { disposition: "unrequested-by-pij", observedAt: "2026-08-06T01:31:59Z", evidence: "pid-missing" },
+      })],
+      { globallyDisabled: false, nodes: [{ nodeId: "pij-target", watchers: ["pij-watcher"] }] },
+    );
+    expect(found).toHaveLength(1);
+  });
+
+  it("NEGATIVE 2: one live watcher among terminal -> should NOT fire", () => {
+    const found = rows(
+      [desc("pij-target"), desc("pij-live"), desc("pij-dead", {
+        terminal: { disposition: "unrequested-by-pij", observedAt: "2026-08-06T01:31:59Z", evidence: "pid-missing" },
+      })],
+      { globallyDisabled: false, nodes: [{ nodeId: "pij-target", watchers: ["pij-live", "pij-dead"] }] },
+    );
+    expect(found).toHaveLength(0);
+  });
+
+  it("NEGATIVE 8: no activityCredibility injected -> should NOT fire", () => {
+    const found = rows(
+      [desc("pij-target"), desc("pij-watcher", {
+        terminal: { disposition: "unrequested-by-pij", observedAt: "2026-08-06T01:31:59Z", evidence: "pid-missing" },
+      })],
+      { globallyDisabled: false, nodes: [{ nodeId: "pij-target", watchers: ["pij-watcher"] }] },
+    );
+    expect(found).toHaveLength(0);
+  });
+});

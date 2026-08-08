@@ -359,6 +359,40 @@ export class Daemon {
 					now: () => this.ports.now(),
 					// Recipient fallback + honest-drop surface (s057 dogfood).
 					projectStore: new FsProjectStore(this.pijHome),
+					// Watchdog wiring, projected HERE at the I/O edge so the detector
+					// stays pure (s079) — the same shape `pij anomalies` builds in
+					// cli.ts. Until this line, the sweep called detectAnomalies with no
+					// watchdog at all, so `inert-subscription` had NEVER fired in the
+					// daemon: it appeared only when a human already ran the query.
+					// Built inline rather than behind a helper deliberately — an added
+					// import is a second edit to a file two other streams hold regions
+					// in, and this constructor argument is the only granted seam.
+					watchdog: () => {
+						const store = new FsWatchdogStore(this.pijHome);
+						return {
+							globallyDisabled: new FsWatchdogGlobalStore(this.pijHome).disabled(),
+							nodes: this.registry.list().flatMap((d) => {
+								const sidecar = store.read(d.id);
+								if (sidecar === undefined) return [];
+								return [
+									{
+										nodeId: d.id,
+										watchers: (sidecar.watchers ?? []).map((w) => w.watcherId),
+										...(sidecar.pausedBy === undefined ? {} : { pausedBy: sidecar.pausedBy }),
+										...(sidecar.exemptUntilMs === undefined
+											? {}
+											: { exemptUntilMs: sidecar.exemptUntilMs }),
+									},
+								];
+							}),
+						};
+					},
+					// NOTE: `activityCredibility` is NOT wired yet and its absence is
+					// deliberate rather than forgotten — `s095` owns the implementation
+					// and it does not exist on this branch. Absent, the dead-recipient
+					// row provably cannot fire (pinned by anomaly-sweep.test.ts "2b"),
+					// so a half-wired call site is observable rather than a silent
+					// half-detector. One line completes it once state.ts exports it.
 					log: this.log,
 				});
 			} catch (error) {
