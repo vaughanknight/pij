@@ -162,3 +162,79 @@ someone else months earlier. The fork was correctly and knowingly placed in a NE
 contain the thing it guards: still present, still green, no longer load-bearing.**
 Caught by the prime's corrected subprocess census surfacing the file for an unrelated reason.
 Guard extended to cover where the fork actually lives, and mutation-verified.
+
+### F-408 · `mutate.mjs` cannot resolve `vitest/config` when driven from a session directory
+Surfaced only by asking the reviewer, at close-out, whether anything in its buffer existed
+nowhere else — it does not appear in the review report, because a discarded attempt is not a
+finding and nobody writes those down.
+**What happened**: the reviewer's first mutation attempt used a temporary external Vite-transform
+config written into its session directory. It failed **before applying or running any mutant**,
+because `import … from "vitest/config"` resolved relative to that directory and could not find
+the module. Replacing it with a plain exported config worked, and produced the reported
+identity-ladder RED.
+**Cost**: one discarded attempt. **Status**: worked around, unowned.
+**Why it is worth a row**: the failure is *upstream of the gate*, so it produces **no mutant, no
+red, and no green** — it is `NOT-PROBEABLE` wearing the costume of "I have not finished setting
+up". A reviewer under time pressure could reasonably retry once, fail again, and fall back to
+edit-run-restore without ever reporting that the in-memory path was unavailable to them.
+**Fix**: have the tool resolve `vitest/config` from the **target repo** rather than the caller's
+cwd, or fail with a named error saying which directory it searched.
+
+**The negative result is also evidence and is recorded here rather than lost**: across both
+reported mutations the reviewer confirms **no source target drifted** and **no applied mutant
+stayed green**. Those are the two failure modes the tool's exit-3 and exit-1 paths exist to
+catch, and confirming their *absence* is what makes the two REDs mean what they claim.
+
+### F-409 · A clear-by-omission is load-bearing only because of a writer string in another file
+**Found at close-out, on already-merged code, by asking the coder what it discarded.** Verified
+independently at source by the PM before relaying.
+
+`death-reconciler.ts:191` clears a revived seat **by omission** —
+`const { terminal: _terminal, deathNoticeLatchedAt: _latched, ...cleared } = descriptor`. That
+omission only clears anything because `registry-write.ts:131` gives the owner's proposal
+precedence *including an omission* (`if (DESCRIPTOR_FIELD_OWNER[field] === writer) continue`),
+`registry-write.ts:98` assigns `terminal` the owner `"close"`, and `daemon.ts:690` passes exactly
+that string. The same file states the converse at `:121` — *"a non-owner cannot CLEAR a contested
+field either."*
+
+**Change that one string to `"daemon"` and the clear becomes a silent no-op**: `applyWriteLaw`
+restores `terminal` from disk and pij#155's latch returns. `"daemon"` is a valid
+`DescriptorWriter` (`registry-write.ts:66`), so it typechecks and lints clean.
+
+**Measured (coder): zero tests detect it.** Targeted daemon + registry suites 429 passed / 0
+failed; full extension suite 3629 passed with one unrelated `worktree.test.ts` ENOTEMPTY race.
+
+**Why this stream's own suite misses it — the PM's gap, not the coder's**: AC-10c and AC-17d
+assert on `reconcileDeaths()`'s **returned** `descriptorUpdates`. That is a pure function with no
+registry in it, so the omission is *always* visible there — **the assertions are true and
+irrelevant** to whether the field clears on disk.
+
+> **This is AC-18/M3 one level down.** The clear is *present* in the reconciler and only
+> *load-bearing* because of an argument in a different file. A whole-object assertion on the
+> reconciler's output cannot see that, exactly as a whole-file grep could not see the orphaned
+> capture. **Present, and load-bearing, are different claims — at every level, including the
+> level you just fixed.**
+
+**The guard that would catch it** (not written; noted so it is cheap for whoever picks it up):
+round-trip one revived descriptor through the **real registry write path** and assert `terminal`
+is absent **after the write**, not after the reconciler returns. That is the only place the
+coupling is observable.
+
+### F-410 · `npm install` fails in a fresh linked worktree, and it reads as a broken repo
+A fresh linked worktree has no `node_modules`, and `npm install` **aborts**: `.npmrc` sets
+`--min-release-age`, which conflicts with `--before`, so the install fails rather than resolving.
+**Cost**: ~20 minutes for an agent who reads it as repository breakage rather than configuration.
+**Workaround that carried every gate in this stream**: symlink `node_modules` from the main
+checkout — safe because it is gitignored and `package.json`/`package-lock.json` are identical
+across worktrees. (It is also why this stream never dirtied the lockfile.) **In no doc**;
+belongs in the worktree ritual.
+
+### F-411 · The optional-vs-mandatory port method, and 18 failures that are not regressions
+Making the process capture a **mandatory** `DaemonPorts` method produces **18 failures across 5
+files that look exactly like real regressions and are not**: the daemon tests inject a fake
+`DaemonPorts`, so a hardcoded snapshot bypasses the injection seam entirely. The **optional**
+`processSnapshot?()` is the fix — fakes receive `undefined` and fall back — and 17 of the 18
+resolve on that change alone.
+**The optionality rationale is in `loop.ts`; the "18 failures that are not regressions"
+diagnosis is not**, and that diagnosis is the part that costs the hour. Recorded here so the
+dead end is not re-walked.
