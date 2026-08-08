@@ -9,7 +9,7 @@ working spec for a future `pij fleet` verb.
 `ledger/s0NN-<slug>.md` — a single-writer file that cannot collide — and adds **one** pointer
 row to the index below.
 
-| stream | slug | ledger | state |
+| stream | slug | ledger | rows relocated? |
 |---|---|---|---|
 | `s092` | install-blocker | [`ledger/s092-install-blocker.md`](./ledger/s092-install-blocker.md) | **moved** |
 | `s093` | send-path | [`ledger/s093-send-path.md`](./ledger/s093-send-path.md) | **moved** |
@@ -20,6 +20,11 @@ row to the index below.
 | `s098` | daemon-perf | [`ledger/s098-daemon-perf.md`](./ledger/s098-daemon-perf.md) | **moved** |
 | `s099` | send-tool-xor | `ledger/s099-send-tool-xor.md` | *pending* |
 | `s100` | tick-heartbeat | `ledger/s100-tick-heartbeat.md` | *pending* |
+
+> **The last column tracks the LEDGER MIGRATION ONLY — whether this stream's rows have been
+> relocated out of `ledger.md`.** It says nothing about whether the stream's own work is
+> finished. A stream still in flight can and should carry `moved`, because its ledger file and
+> its cell land together.
 
 **This table enumerates EVERY stream in the wave, not only the migrated ones.** That is
 deliberate, and it is the same fix pij#153 shipped for a different surface:
