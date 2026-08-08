@@ -1,12 +1,82 @@
-# Fleet ledger — difficulties, wins, suggestions
+# Fleet ledger
 
-**Living document. Append, do not rewrite.** This is the evidence base for turning fleet
-parallelism into a first-class `pij` feature. Every row should carry its cost or its proof;
-a row without evidence is an opinion and belongs in a conversation, not here.
+Difficulties, wins and suggestions from running parallel fleets. The suggestions section is the
+working spec for a future `pij fleet` verb.
 
-Format: `F-nnn` difficulties · `W-nnn` wins · `S-nnn` suggestions.
+## Per-stream ledgers
 
----
+**Concurrent streams do not share this file.** Each stream writes
+`ledger/s0NN-<slug>.md` — a single-writer file that cannot collide — and adds **one** pointer
+row to the index below.
+
+| stream | slug | ledger | state |
+|---|---|---|---|
+| `s092` | install-blocker | [`ledger/s092-install-blocker.md`](./ledger/s092-install-blocker.md) | **moved** |
+| `s093` | send-path | [`ledger/s093-send-path.md`](./ledger/s093-send-path.md) | **moved** |
+| `s094` | capability-surface | [`ledger/s094-capability-surface.md`](./ledger/s094-capability-surface.md) | **moved** |
+| `s095` | liveness-fields | `ledger/s095-liveness-fields.md` | *pending* |
+| `s096` | watchdog-verdicts | [`ledger/s096-watchdog-verdicts.md`](./ledger/s096-watchdog-verdicts.md) | **moved** |
+| `s097` | silent-detectors | [`ledger/s097-silent-detectors.md`](./ledger/s097-silent-detectors.md) | **moved** |
+| `s098` | daemon-perf | [`ledger/s098-daemon-perf.md`](./ledger/s098-daemon-perf.md) | **moved** |
+| `s099` | send-tool-xor | `ledger/s099-send-tool-xor.md` | *pending* |
+| `s100` | tick-heartbeat | `ledger/s100-tick-heartbeat.md` | *pending* |
+
+**This table enumerates EVERY stream in the wave, not only the migrated ones.** That is
+deliberate, and it is the same fix pij#153 shipped for a different surface:
+
+> **A list of what happened cannot report what has not happened yet. Only an enumeration of the
+> whole space can.**
+
+A list of *what has moved* makes absence ambiguous — *"this stream has not migrated"* and *"there
+is no such stream"* are the same observable — so **partial completion is indistinguishable from
+completion**. That ambiguity bit two audiences at once for one cause: a **reader** inferring the
+convention from precedent, and a **probe** trying to detect that the migration had landed.
+
+With every ordinal present and carrying `moved | pending`, **no belief is formable from an
+absence**: any probe indexes **one key** and gets a definite answer, and *"has the migration
+landed?"* becomes *"are there any pending rows?"* — which is downstream of the **whole** migration
+by construction, rather than by hunting for an artifact with an exclusive producer.
+
+**When you move your block, flip your own row to `moved` and link it.** That edit is one cell, at
+your own ordinal's line.
+
+## How to add to this ledger
+
+1. **Write your rows in `ledger/s0NN-<slug>.md`.** You are its only writer.
+2. **Add one index row above, INSERTED AT YOUR ORDINAL'S NUMERIC POSITION.** Read the table, find
+   where `s0NN` belongs between the existing numbers, and insert there — `s099` before `s100`,
+   always, regardless of who moves first.
+3. **Your ledger file and your index row land together, on `main`, in the same PR.** Never split
+   them across trees: an index row whose target lives on another branch **points at nothing from
+   `main`**.
+4. **Do not move another stream's block, and do not edit this section.** Both are shared surfaces
+   — six seats each encoding the convention collide exactly as six seats appending do. Send the
+   o-prime the text instead.
+
+> **Amend a falsified row in place, keeping the wrong version with its correction attached.** A
+> row that was wrong is more useful than one silently replaced — five rows in this ledger were
+> falsified by their own authors within hours of being written.
+
+### The two silent ways to get the index wrong
+
+- **Appending at EOF.** Every stream lands on the same line range and collides identically. This
+  is the mistake the split exists to prevent, reintroduced one layer down.
+- **"Where my block was".** That position coincides with sorted position **only for the first
+  entry**, because with one entry every order is sorted. The second stream to do it lands after
+  the first, *believes it followed the rule*, and re-creates the collision.
+
+Both are instances of the wave's most repeated finding: **a remedy that removes the symptom at
+N=1 and reintroduces it at N>1 has not been tested at the cardinality it will meet.** Four seats
+made that error in one afternoon, at four different layers, including inside the fix for the
+first three.
+
+The index is seeded with six entries **on purpose**: a single seed entry teaches nothing, because
+at N=1 the artifact cannot distinguish a rule from a coincidence — and a seat reading the file
+infers the convention from precedent, which is the cheaper path and therefore the one taken.
+**Two entries teach the rule; six make it unmistakable.**
+
+The rows below are wave-general — they belong to no single stream.
+
 
 ## Difficulties
 
@@ -73,249 +143,8 @@ Reaping after merge destroyed a PM's only copy of 20 retro observations; a custo
 taken for other reasons was the sole survivor.
 *Rule*: capture before reap, always.
 
-### F-500 · Partition covers the files work TOUCHES, not the files it INVALIDATES
-The partition names each stream's source files. It has no category for **tests, proofs and
-documents that assert the old behaviour** — they are owned by nobody, they live anywhere in
-the repo, and they surface only when a fix makes them fail. s096 hit **six** in one change:
-`docs/plans/055-pij-watchdog/proofs/run-proofs.ts:922`, `watchdog-manager.test.ts:599-616`,
-`watchdog.test.ts:230`, `watchdog.test.ts:247`, plus `docs/how/pij-watchdog.md:221-228` and
-`skills/pij/references/00-routing.md:179`.
-*Evidence*: `run-proofs.ts:922` asserts a first fire is `watchdog responsive:` — the premise
-the fix removes. It is run by **neither** CI (vitest `include` covers `.pi/**`, `harness/**`,
-`skills/**` only) **nor** `harness checks` (`harness/scripts/smoke.ts:313` runs
-`run-proofs.ts --smoke`, which dispatches only `runSmokeComposite` at `:1335`, never the
-`SCENARIOS` list). So the fix would have left the full 055 proof stale with every gate green —
-the hazard already recorded in `.harness/records/retro/2026-07-29/005.md`.
-*Cost*: found by reading, not by a gate; one prime ruling to authorise the cross-boundary edit.
-*Rule (o-prime)*: partition has **three** categories — the files work touches, the files it
-creates (F-013), and the files it invalidates. Only the first was modelled.
-
-### F-501 · The tooling fights the ordinal rule the brief depends on
-Every brief warns six PMs to use their **stream ordinal** so they do not all mint the same
-plan number. `harness plan new <slug>` offers no way to set it — it produced
-`docs/plans/watchdog-verdicts` with no `096`, i.e. precisely the collision the rule exists to
-prevent. Renaming by hand is the only route.
-*Evidence*: `harness plan new watchdog-verdicts --dir docs/plans` → `folder:
-".../docs/plans/watchdog-verdicts"`. *Cost*: one delete + re-create.
-*Also*: the run reported `status: "degraded"` because schema `builder/plan` resolves nowhere
-(`harness dd schema list` → `schemas: []`), so no markdown renders — while every existing pij
-plan is plain markdown anyway. The dd-native path is not adopted here.
-
-### F-502 · `pij spawn --effort` is recorded as intent but not honoured at runtime
-Spawned a coder with `--effort high`; the registry records `effort: high`, and the peer's own
-canary reports `effort: medium`.
-*Evidence*: `pij state pij-immediate-flea` → `effort: high`; peer canary reply →
-`claude-opus-5, effort: medium`. *Cost*: none yet — caught by canary-verify (§ C2), which is
-the argument for canarying rather than trusting a ready-ping. *Status*: open, reported to the
-prime; belongs to the capability-surface stream, not this one.
-
-### F-503 · The ledger's "append-only merges cleanly" assumption is false, and it bit this stream
-The onboarding brief states the ledger is *"append-only, so concurrent appends from six PMs
-merge cleanly at different line ranges."* **They do not.** Appends into a **sectioned**
-document land at the same *anchors* — every difficulty goes immediately before the `---` that
-precedes `## Wins` — so two streams appending different ids collide on identical context lines.
-*Evidence*: PR #190 was `CONFLICTING`/`DIRTY` against `main` on `docs/how/fleet/ledger.md`
-alone, in **two** regions, between `s096`'s F-500 block and `s098`'s F-700 block. Neither
-stream touched the other's rows.
-*Cost*: the conflict itself is trivial (both sides additive — keep both in id order). The real
-cost was diagnostic: **GitHub does not run PR checks on a conflicted PR**, so the symptom was
-*"CI never triggered"*, not *"you have a conflict"*. ~20 min spent confirming Actions were
-enabled, the workflow active, and the event firing for sibling PRs, plus a close/reopen, before
-`mergeStateStatus: CONFLICTING` gave the answer.
-*Rule*: check `gh pr view <n> --json mergeable,mergeStateStatus` **first** when checks are
-missing — an absent check is not a queued check, and an empty result carries no evidence about
-what was searched.
-*Fix*: per-stream ledger fragments merged by a script, or ordering keyed on the id block so
-appends are genuinely disjoint. Category 4 (shared test files) has a sibling nobody declared:
-**a shared append-only document is a shared mutable file.**
-
-### F-504 · `npm ci` is the fix for F-700 *and* for category 7, in one line
-F-700 records that `npm install` fails in a worktree
-(`--min-release-age cannot be provided when using --before`); category 7 records that
-`npm install` **dirties `package-lock.json`** by normalising it, producing a phantom diff two
-streams can then conflict over. **Both are properties of `npm install`; neither is a property
-of `npm ci`** — `npm ci` installs strictly *from* the lockfile and never writes it.
-*Evidence*: this stream ran `npm ci --min-release-age=null` in its worktree. It succeeded where
-`npm install` had failed with exactly F-700's error, and `git status package-lock.json` is
-**clean** afterwards — so this stream is the conditional case category 7 warns about and
-carries none of the hazard.
-*Rule*: make `npm ci --min-release-age=null` the recipe's install step. An encoded default
-beats two things to remember, and category 7's danger is that it happens **before** anyone is
-paying attention.
-
-### F-700 · A linked worktree has no `node_modules`, and `npm install` cannot create one
-`s098-daemon-perf` could not run any TypeScript. `npm install` fails outright:
-`--min-release-age cannot be provided when using --before` (an `npm config` `before` date is
-set globally). Nothing in the onboarding brief mentions that a worktree starts without
-dependencies.
-*Cost*: ~15 min and three dead ends before symlinking the main checkout's `node_modules`.
-*Workaround*: `ln -s /path/to/main/node_modules <worktree>/node_modules` — untracked, and
-`git status` stays clean.
-*Status*: open. **`pij fleet stream new` should do this at creation time**, or the recipe
-should say it in one line.
-
-### F-701 · Monkey-patching `node:fs` reports zero, and zero reads as "no calls"
-To attribute a slow tick I wrapped `fs.fsyncSync` / `childProcess.execFileSync` on the module
-object. Under ESM, `import { fsyncSync } from "node:fs"` binds directly, so the patch observes
-**nothing** — and the profiler printed a clean, confident, entirely empty breakdown of a
-30.9-second tick. A silent detector inside the tool built to find silent detectors.
-*Evidence*: first run of the s098 profiler; `sites` map empty while the tick took 30,889ms.
-*Cost*: ~20 min, and it very nearly became a reported finding of "no I/O in the hot path".
-*Fix that worked*: the in-process V8 profiler (`node:inspector` `Profiler.start/stop`) for
-timing, and **prototype** patching (`FsRegistry.prototype.write`) for counts — prototypes are
-real objects, so patching them does bind.
-*Rule*: an instrumentation run that reports **zero** must be treated as broken until it has
-been shown to report non-zero for a call you know happened.
-
-### F-702 · The daemon's own latency silently invalidates the daemon's own verdicts
-Investigating a slow tick, the tick turned out to be slow enough that supervision verdicts
-derived from it became false. `lastEventAt` is refreshed by the daemon's own observation, so
-"seat has gone quiet" actually means "the observer has not looked recently enough"
-(`daemon.ts:774-777` vs `daemon.ts:552-560`; pij#182). A fleet-wide instrument was reporting
-confident wrong answers about live seats, and the only tell was a second line in the same
-output saying the tick was stale.
-*Cost*: none to this stream (the prime caught it live), but it inverted the severity of the
-brief.
-*Rule*: when an instrument's own latency is an input to its own measurement, latency stops
-being a performance concern and becomes a **correctness** concern. Cite pij#160.
-
----
-
-### F-100 · A partition that covers the source files but not the artifacts the *process* creates
-The 2026-08-08 wave partitioned by source-file ownership and six streams never collided on
-code — but every PM independently ran `/builder 1a explore`, which mints
-`docs/plans/<next-ordinal>-<slug>/`. `docs/plans/` topped out at `084`, so all six were about
-to create `085-*`: six folders, one namespace, chosen by tooling rather than by anyone.
-*Evidence*: `ls docs/plans/ | sort -n | tail -1` → `084-pa-gate-repair`, against six concurrent
-seats each instructed to run the same stage-1a verb.
-*Cost*: caught pre-collision by asking, so ~0 — but only because one seat happened to look at
-the ordinal before minting. Any seat that did not ask would have created the conflict silently.
-*Resolution*: prime's ruling — **derive the plan ordinal from the stream ordinal**
-(`docs/plans/092-install-blocker` for `s092/install-blocker`). The stream ordinal is already
-globally reserved by `pij stream create`, so six PMs converge on six distinct numbers with
-**zero coordination**, and plan folder / worktree / branch carry the same number for free.
-*The general form, which is the actually valuable part*: **a partition must cover what the
-process creates, not only what the work touches.** Plan folders, ledger ids, branch names,
-ordinals, PR titles — every one is a shared namespace, and the ones the *tooling* generates
-are the easy ones to miss precisely because nobody chose them. Note also which fix was chosen:
-a **derived** rule beats an **assigned** one. Hand-allocating `085-090` would have worked for
-this wave and failed the first time a stream was added, retried, or run by someone who never
-saw the broadcast — *a rule that needs a broadcast to stay true is worse than one that cannot
-collide.*
-*Status*: resolved by ruling; **not yet encoded** — see S-100.
-
-### F-101 · A fresh worktree cannot `npm install`: the repo `.npmrc` and npm's git-dep sub-install contradict each other
-A new worktree has no `node_modules`, and `npm install` fails before resolving config:
-`--min-release-age cannot be provided when using --before`. Cause: `.npmrc` sets
-`min-release-age=7`, and npm's *git dependency* preparation (`minih`, `package.json:72`) re-invokes
-npm with an explicit `--before=<timestamp>`; the two are mutually exclusive. The main checkout is
-immune — its `node_modules` predates the conflict — so this is invisible to every seat that never
-cuts a worktree.
-*Evidence*: `npm error command … --before=2026-08-01T03:35:02.012Z` / `npm error cause
---min-release-age cannot be provided when using --before`; `.npmrc:4`; `package.json:72`.
-*Cost*: ~10 min of a PM's time and three failed installs, before any work started. Note the
-shape — it is the same shape as the issue this stream was fixing: **a bootstrap step that only
-fails for someone who does not already have the artefact.**
-*Workaround*: temporarily strip `min-release-age` from `.npmrc`, install, restore the file
-(verify with `git diff --stat .npmrc` — it is tracked). Clumsy and easy to leave dirty.
-*Status*: open. Real fix is upstream in the `.npmrc`/git-dep interaction; the fleet-level fix is
-S-101.
-
-### F-102 · A de-duplication that added the helper and removed none of its duplicates
-`core/agents/paths.ts` was written to replace an inlined `PIJ_HOME ?? ~/.pij`, and its own header
-names the three files it replaces: *"was inlined 3× (cli.ts / index.ts / daemon.ts); this is the one
-place that computes it"*. **All three still inline it.** The canonical resolver landed as an
-addition and propagated to none of its stated targets — seven inlined sites survive against one
-helper that believes it replaced them.
-*Evidence*: `grep -rn 'process\.env\.PIJ_HOME ??' .pi/extensions/pij/ --include=*.ts | grep -v
-'\.test\.' | wc -l` → `7`; header claim at `core/agents/paths.ts:1-6`.
-*Cost*: the divergence is silent and semantic — `resolvePijHome()` treats an empty `PIJ_HOME` as
-unset, the seven inlined `??` sites do not, so the two disagree about where the machine-wide
-registry lives. Filed as pij#169; swept in this stream's PR.
-*The general form*: **a de-duplication is only done when the duplicates are gone.** A helper whose
-docstring asserts it is "the one place" is *evidence of intent*, not evidence of adoption — and it
-reads as the latter, which is why nobody re-checked for six months. Grep for the pattern the helper
-replaced, not for the helper.
-
-### F-103 · A truncated enumeration is indistinguishable from a complete one
-The prime enumerated the sites above with a `head -8`. The output was exactly 8 lines — 6 real sites
-plus 2 lines from `paths.ts` itself — so the list *ended at the limit* with no ellipsis, no count and
-no marker. It looked exhaustive, was read as exhaustive, and was relayed as exhaustive in a message
-whose entire argument was **"all of them or none"**. The missing 7th was `index.ts:48`: the
-extension entry point, and one of the three files the helper names.
-*Evidence*: prime's correction on pij#169; `wc -l` → 7 against a 6-item list.
-*Cost*: ~0, because the receiving PM re-ran the enumeration unbounded instead of accepting it. Had
-it been accepted, a six-of-seven sweep would have left the entry point silently diverging **and been
-declared complete** — the exact partial-fix failure the issue's own thesis warns about.
-*Standing practice*: **never pipe an enumeration through `head`.** Count with `wc -l` first, or
-`tee` the full set. A bounded view of an unbounded question answers a different question than the
-one you asked, and gives no sign that it did.
-*Fleet-specific sting*: in a fleet, one seat's truncated measurement is relayed as a ruling and
-arrives at N seats as fact. Verification cost is paid once by the sender; the cost of *not* paying
-it is multiplied by the fan-out.
-
-### F-105 · A file-ownership partition cannot partition a composition root or an import block
-`daemon.ts` is the **composition root** — the one place every subsystem is constructed. So any
-stream fixing *any* subsystem needs two lines inside a file another stream owns. Three streams
-needed regions in it this wave (s092's bootstrap/lock path, s095's `reconcileDeaths` call site at
-`:639-648`, s097's `AnomalySweep` constructor at `:354`). The **import block** has the same property
-for a different reason: it is one alphabetically-sorted list that Biome enforces, so every stream
-that adds a dependency edits the same region.
-*Evidence*: prime's coordination ruling, 2026-08-08; this stream's own `daemon.ts` hunks are
-`:11-19`, `:12`+`:32`, `:1091`, `:1121-1128` — the first two of which are *import block*, not body.
-*Cost*: zero here, because it was declared before convergence rather than discovered at merge.
-*The distinction that matters more than the category*: the two need **opposite** handling. A
-composition root needs **sequencing** — two streams' wiring can conflict *semantically*. An import
-block needs the merger to **expect** the conflict and just resolve it — it is *mechanical*. This is
-load-bearing because **a boundary violation and a mechanical merge conflict look identical in a
-diff**: a prime seeing two streams on the same import lines can read it as a seat crossing a line,
-and be wrong, and say so to a seat that did nothing wrong.
-*Fleet-wide result*: six partition categories are now recognised — **touches** (the original rule),
-**creates** (F-100), **invalidates**, **shared tests**, **composition root**, **import block** —
-five of the six surfaced by PMs rather than by the partitioner.
-
-### F-106 · "The test must fail without the fix" is itself a claim, and needs the same evidence bar
-The wave's headline bar — *your test must fail without the fix* — is right and **not sufficient**.
-It is a claim *about a test*, and it can be sincerely believed while being false, because the tests
-are written from the same mental model that wrote the fix.
-*Evidence (another stream)*: s095's independent validation measured **two of its own acceptance
-criteria already passing against pre-fix code** (`death-reconciler.test.ts:103-111`). It would have
-shipped a fix "proved" by tests that could never have failed — all green, and the PR would have read
-as rigorous.
-*Evidence (this stream)*: applying the same step here found **AC-08 and AC-09 were behavioural in
-intent but new-API in evidence**. All five Phase-2 tests target the new pure `daemonStartOutcome()`;
-`rg -n --hidden 'ensureDaemonRunning' --glob '*.test.ts' .pi/` returns **nothing**. Delete the poll
-loop, restore the old unconditional success line, and every test stays green — on the phase whose
-entire subject is *not reporting success you have not verified*.
-*Cost*: caught pre-merge, at the cost of one `rg` and one honest look. Remediation is a Phase 4.
-*The mechanical step, and it must run BEFORE implementation*: for each acceptance criterion, **run
-it against pre-fix code and watch it fail** — do not reason about whether it would. Then label every
-criterion **behavioural** (must fail first) / **new-API** (cannot, declare the exception) /
-**preserved-property** (must pass before *and* after; a regression guard, never evidence of the fix).
-A behavioural criterion that cannot fail first is a defect in the plan; a preserved-property
-criterion presented as evidence of the fix is the pij#142 shape — *a check that agrees with reality
-without being able to disagree*.
 
 ## Wins
-
-### W-700 · An APFS clone made a live-system investigation safe and repeatable
-`cp -Rc ~/.pij /tmp/pij-perf-home` clones 1.7G in ~5 min at near-zero disk cost, and rewriting
-the absolute paths inside the 579 copied descriptors severs every link back to the live home.
-That turned "profile the daemon" from an operation that risked a running 40-seat fleet into an
-offline experiment I could run repeatedly — including pruned copies at 40/100/200/350/549
-descriptors to measure the growth law empirically instead of asserting O(n) from the shape of
-a `for` loop.
-*Evidence*: `docs/plans/098-daemon-perf/bench/`, and the growth table in `findings.md` §3.
-*Why it generalises*: any stream investigating live-system behaviour can clone the state
-directory rather than reasoning about it, and a clone is the only way to run the same tick
-twice.
-
-### W-701 · `sample <pid>` profiled the live daemon with no restart and no cooperation
-macOS `sample` needs no sudo, no flags on the target, and no restart — which mattered because
-restarting the daemon would have disrupted six other streams mid-flight. It attributed 46% of
-the daemon's main thread to subprocess spawn and 42% to fsync **before** any code was read.
-*Rule*: profile the running process first. It costs 15 seconds and it tells you which half of
-the code you can stop reading.
 
 ### W-001 · File-ownership partitioning
 Cutting six streams by **file** rather than by issue eliminated the convergence conflicts that
@@ -344,112 +173,6 @@ One sentence of context and one sentence of ask, never batched, kept a six-way f
 human-facing surface to a single serialised queue.
 *Requirement*: the prime marks its own state so the board shows an outstanding ask.
 
-### W-500 · Independent validation refuted the OBVIOUS fix before a line was written
-s096's plan proposed treating a watchdog-attributed `lastEventAt` advance as proof the peer
-answered — the fix any competent seat reaches for, and one the prime had already approved.
-A validation subagent refuted it at source: delivering a watchdog turn makes the target's own
-`lastEventAt` advance with **zero** model involvement (`core/session.ts` `onInbound` →
-`emitReceipt` → `capture("receipt")` → `persist({ lastEventAt })`).
-*Consequence avoided*: a pi peer with a live inbox receiver and a wedged model would have been
-read as "answered" on every nudge, making `stalled` **unreachable** for exactly the frozen peer
-the watchdog exists to catch — a false negative traded for a false positive, which for a
-supervision instrument is strictly worse, and it would have shipped **green**.
-*The general shape*: **the act of supervising writes the field supervision reads.** pij#136
-reasoned about pane text; this is the same contamination one layer down.
-*Convergence*: s097 independently found `lastEventAt` has three writers and none means "did
-work"; pij#172 shows a dead seat's `lastEventAt` advancing via a recycled pane id. Three
-contamination paths, three directions, one day.
-*Cost*: one subagent run. *Replacement*: `statusAt`, which only the peer's own `pij report`
-moves (`core/registry-write.ts:90`) — and which the manager already tracked.
-
-### W-501 · Running the criteria beat reasoning about them, on the author who wrote the rules
-s096 wrote five criteria, reasoned confidently about all five, then ran them against the
-unfixed tree as the prime's gate demands. **Three passed** — none testing what its name claimed.
-*AC-06* never reached the bug: the pane died while a fire was outstanding, so watchdog
-attribution absorbed the delta and the test measured a **neighbour**. *AC-07* fired **zero
-times**: holding `statusAt` at `now` re-anchors the schedule (`isFireDue` takes
-`max(lastFireAt, scheduleAnchor)`), so nothing was due and "never stalled" passed by
-**absence**. *AC-04* cannot fail pre-fix at all and was mislabelled behavioural.
-*Both* known failure modes — satisfied by a neighbour, satisfied by absence — appeared in five
-tests written by the author who had just relayed both rules.
-*Rule*: **pin the precondition the test depends on**, or absence impersonates success. AC-07
-now asserts `h.fires.length` increments each round, so it can never again pass with zero fires.
-*Cost*: one test run. Without it, three green decorations would have shipped as proof.
-
-### W-502 · The wave's through-line: two correct rules whose INTERSECTION has no owner
-Found independently at **four** layers in one wave, by different seats from different
-directions. It is not a recurring coincidence; it is the shape.
-
-| Layer | Instance |
-|---|---|
-| **Code** | pij#148 — the watchdog-attribution disqualification is correct (pij#136), and `ready`-does-not-mute is correct; the seat that is supervised, honest **and** unemployed is destroyed by the pair. pij#145 is the general form. |
-| **Tests** | A criterion satisfied by a **neighbour** (s097: a fixture tripping an adjacent row of the same kind), and one satisfied by **absence** (s096: a bare negative, and an assertion that fired zero times). |
-| **Assertions** | s094 — *permitted* is what an absent gate produces, so the assertion cannot tell an allowed action from an unguarded one. |
-| **Process documents** | The partition doc knows which proofs are at risk; the fail-first doc does not know it needs to ask. Two correct documents, and the fact connecting them lives in neither. |
-
-**None of these is anyone's mistake.** Each rule is right in isolation, each was written
-deliberately, and the defect lives only where two meet — which is precisely the region no
-single owner is accountable for. Diligence within a rule cannot reach it, because the failure
-is not *inside* any rule.
-
-*Corollary that generalises the partition* (s096, accepted by o-prime): **file disjointness
-does not imply proof disjointness.** The partition models **writers**. An executable proof
-that boots a real `Daemon` **reads through** a file six seats have opinions about, so a stream
-can be partition-clean and proof-coupled at the same time — and nothing in the partition
-surfaces that edge, because reading was never in the model.
-*Practical rule*: after any rebase carrying another stream's changes, re-run the full proofs
-and re-establish the both-ways result. **Green proves the assertion still runs, not that it
-can still fail.** *Still-present* and *still-load-bearing* are different claims.
-
----
-
-### W-100 · A PM correcting the prime, twice, and both corrections holding at source
-This stream corrected the prime twice — the plan-folder ordinal collision (F-100) and the
-seven-vs-six site count (F-103) — and both survived independent verification by the prime.
-*Evidence*: prime's rulings of 2026-08-08, both re-derived at source before acceptance; the second
-was corrected publicly on pij#169 rather than quietly in the thread.
-*Why it is a win and not just an anecdote*: the fleet's whole risk profile is that a prime's message
-arrives at N seats as fact, so an unchallenged prime scales its errors by the fan-out (F-103). The
-pattern that made it work is cheap and repeatable — **the receiving seat re-ran the measurement
-instead of accepting the number** — and it cost one command each time.
-*The condition worth preserving*: the prime asked to be corrected and said so explicitly. A seat
-that expects to be overruled does not spend a turn checking.
-
-### F-104 · The repo's own ship gate is non-deterministic under fleet load — and the flaky test belongs to the fleet's own orchestration tool
-`harness checks` (the "are we done?" gate) failed on `test` with
-`ENOTEMPTY … rmSync` in `skills/flow-pair/test/observe.test.ts:306`'s `afterEach`. It is flaky, not
-a regression, and **nothing to do with the changed files** — a different package entirely.
-*Evidence*: (a) isolated re-run passed 17/17 (`npx vitest run skills/flow-pair/test/observe.test.ts`);
-(b) the **full** suite passed on the same tree 8 minutes earlier — 4044 passed / 19 skipped / 211
-files; (c) the failing path is `skills/flow-pair/`, while the change is in `.pi/extensions/pij/`.
-*Cost*: ~15 min across two seats, and it nearly cost more — the coder's first diagnosis was
-*"environment contention from five concurrent agents during a fresh Pi boot"*, a confident mechanism
-claim that it had not run anything to establish. The orchestrator disproved it by running the gate
-itself. That is the fifth confident-but-false mechanism claim this fleet has caught in three days.
-*The sting specific to fleets*: `skills/flow-pair/` is the **orchestration engine the fleet itself
-runs**, and it sits inside the repo's own test suite. So orchestrating the work perturbs the gate
-that judges the work. A fleet does not just add load to the gate — under this layout it adds load
-*from the very tool that decides whether the gate should run*.
-*Status*: open. A flaky test in the ship gate is worse under a fleet than under one seat, because N
-seats each hit it independently and each must independently decide whether it is real — and the
-cheap wrong answer ("contention, ignore it") is also the plausible one.
-
-### W-101 · A worker that measured instead of accepting the orchestrator's number
-The Phase-2 packet specified a verification budget "well under a second", reasoning that the daemon
-writes its lock before it does anything else. The coder measured three cold starts instead of
-accepting it — **584/572/576ms** — and overrode the plan with `2500ms`, flagging the deviation
-rather than hiding it.
-*Evidence*: coder's completion report, `dlg-0002`; `DAEMON_VERIFY_BUDGET_MS` comment carries the
-three measurements in-source.
-*Why it matters*: the orchestrator's **reasoning was correct** — the daemon really does write its
-lock first — and the **constant was still wrong**, because `npx` + the `tsx` transform of the import
-graph run *before* any daemon code. A 500ms budget would have reported every healthy auto-start as
-unverified: **pij#118 defect 2 exactly inverted**, shipped by the fix for it.
-*The general form*: **a correct mechanism can still yield a wrong constant.** Reasoning tells you
-which quantity matters; only measurement tells you its value. A packet that hands a worker a number
-should say how it was derived, so the worker knows whether it is a measurement or a guess — and a
-worker should treat an underived number as a hypothesis.
-*Cost*: three cold-start runs, maybe two minutes. It prevented a self-inverting fix.
 
 ## Suggestions — the future `pij fleet` feature
 
@@ -484,572 +207,3 @@ fleet), which reached it independently from a different direction.
 
 ### S-007 · Capture-before-reap as a lifecycle step
 `stream close` should snapshot the seat's buffer before the worktree goes (F-010).
-
-### S-500 · `pij fleet invalidates <paths...>` — find what a change makes staleGiven the files a stream owns, sweep the repo for **assertions and prose about their current
-behaviour**: test files referencing the symbols, `.ts` proofs outside the test globs, and docs
-quoting the semantics. Report them as a fourth column of the partition (F-500). Must search
-with `--hidden` (pij#144). The sweep is mechanical; only the *judgement* about each hit needs a
-human. Today they are found by a careful reader or not at all.
-
-### S-501 · Ordinal-aware plan scaffolding
-`harness plan new` should accept `--ordinal` (or read the stream allocation) so the fleet's own
-ordinal rule is enforceable rather than aspirational (F-501). A rule the tooling actively
-fights is a rule that gets broken by the diligent.
-
-### S-502 · Make the mutation gate a first-class fleet verb
-s097's `~/.pij/shared/mutate.mjs` (W-602) is the right shape and should not live in a home
-directory. It mutates **in memory**, so restore is inherent, and it exits **2 on TARGET NOT
-FOUND** — closing the failure mode where a drifted `sed` target mutates nothing, the suite runs
-green, and that green is reported as proof. It also needs no write access, so a **reviewer** can
-run an independent gate on someone else's branch — which is what turns the strongest check we
-have from self-reported into verified.
-*Sharpest case*: a PR that **edits** assertions is exactly where a saved mutation target drifts,
-because the author is changing the very strings the mutation aims at.
-
-### S-700 · `pij fleet stream new` should leave a worktree that can actually run the code
-Dependencies linked, and a one-line smoke (`npx tsx -e 'console.log(1)'`) proving it. F-700 was
-15 minutes of a stream's life spent on something no stream should ever discover.
-
-### S-701 · A `pij doctor --perf` that prints the tick budget
-The three numbers that would have made this whole investigation a 30-second command: tick ms,
-working-set size, and ms-per-descriptor. The daemon already logs the first two
-(`daemon.ts:671`); the ratio is the one that tells you whether you are about to cross a
-supervision threshold (pij#182). **A trend line would be better than a number** — the failure
-here was never a bad reading, it was a slope nobody was watching.
-
-### S-702 · Instrumentation harnesses should live with the finding, not in `/tmp`
-Every measurement in s098 is re-runnable from `docs/plans/098-daemon-perf/bench/` against a
-clone. A finding that cannot be re-run is an opinion with a number in it, and the second
-person to care about it always starts from scratch.
-
----
-
-### S-100 · Derive every generated name from the stream ordinal — and *check* it
-Encode the F-100 ruling instead of broadcasting it: `pij stream create` already reserves a
-globally-unique ordinal, so every artifact the process generates should be derived from it —
-plan folder (`docs/plans/<ord>-<stream>/`), branch, worktree, and the ledger id block
-(`F-<ord>` upward, which is where this row's own numbering came from). Then add the *check*:
-a stream that creates a `docs/plans/NNN-*` whose `NNN` is not its own ordinal is a boundary
-violation, detectable at PR time by the same pre-merge check S-002 proposes for source files.
-**The check is the half that matters** — a derivation rule nobody verifies is still a rule that
-needs a broadcast.
-
-### S-101 · `pij stream create` should leave a worktree that can actually build
-A worktree with no `node_modules` is not a working seat, and every PM in this wave paid the same
-install tax independently (F-101). Stream creation should either run the install, or run the
-repo's own bootstrap (`just install`), or — at minimum — **verify** the tree builds and say
-plainly that it does not. The failure mode to design against is the one F-101 exhibits: the
-bootstrap step is invisible to everyone who already has the artefact, so it will never be found
-by the people who maintain it.
----
-
-## Stream s094 — capability surface (`F-300` / `W-300` / `S-300`)
-
-### F-300 · A mitigation guarding the wrong field is indistinguishable from a mitigation
-Three separate times on one stream, the defect was **a check scoped to the wrong thing** rather
-than a missing check. Each looked complete on the page; none could fail.
-
-1. **Wrong field.** Widening a PA's `watchdog unwatch` to any target reaches
-   `reconcileWatchdogExemption` on the **target's** sidecar in the verb's shared preamble
-   (`core/cli.ts:2378-2383`), which on an expired exemption calls `withoutPause`
-   (`watchdog.ts:88-103`) — **un-pausing a seat that is neither the PA nor its parent**. The
-   plan's own mitigation was *"assert the target's other watcher rows are byte-identical"*. The
-   damage lands in the pause/exempt fields; `watchers` is the one field it does **not** touch.
-2. **Wrong branch.** The replacement test used one fixture carrying *both* an expired
-   `exemptUntilMs` and a legacy `pausedAtMs`, believing it covered both reconciliation paths.
-   `reconcileWatchdogExemption` returns inside the `deadline !== undefined` branch
-   (`watchdog.ts:80`), so the legacy path is **unreachable** whenever an explicit deadline is
-   set. One fixture, one path, two paths' worth of apparent coverage.
-3. **Wrong mutation.** A task claimed its `--for` guard assertion would go red under mutations
-   5 and 11. Mutation 5 widens `watch`; 11 permits `orchestration`. Neither touches that guard,
-   so the assertion had **no** mutation proving it.
-
-*Evidence*: all three found by an independent validation subagent over two rounds; all three
-confirmed at source before acceptance. *Cost*: ~25 min of validation, against a critical
-capability defect that would have shipped behind three green checks.
-*Shape*: this is a fourth kind alongside the fleet's other three — **already-true**,
-**satisfied-by-a-neighbour**, **unreliable-in-both-directions**, and now
-**guarding-the-wrong-thing**. The first three ask *"can this test fail?"*; this one asks the
-harder question, **"can this test fail for the reason I think it can?"** — and a test can be
-non-vacuous and still answer no.
-
-### F-301 · A capability gate that reasons about verbs cannot see side effects in shared code paths
-`PA_VERB_CLASSIFICATION` answers exactly one question — *may this role run this verb* — and has
-**zero visibility** into what a verb's handler does in its preamble before reaching its own
-logic. F-300's critical defect arrived entirely through that blind spot: the classification was
-correct, the target rule was correct, and the harm still got through.
-*Implication*: **every widening needs the code path audited, not just the verb classified**, and
-nothing in the gate's structure prompts anyone to do that. *Status*: open — the fix is a
-standing checklist item on the table itself, or a test that asserts what a permitted verb is
-allowed to write. Ruled a property of the mechanism (o-prime, 2026-08-08) and recorded on pij#102.
-
-### F-302 · `harness plan new` scaffolds a plan whose schema resolves nowhere
-`harness plan new <slug>` (CLI 0.13.0) writes `plan.dd.json` plus per-phase task files, then
-reports `status: degraded` — `schema "builder/plan" was not found in any discovery root`.
-`harness dd schema list` returns **zero** schemas across all three roots, and no `dd schema
-install/add` verb exists. The files are written but cannot be rendered or validated.
-*Cost*: ~5 min plus a cleanup; fell back to this repo's existing convention
-(`<slug>-plan.md`, as used by plans 083/084). *Impact on a fleet*: every PM told to run
-`/builder 1b plan` hits it independently. *Status*: open.
-
-### F-303 · The partition covered files the work touches, not files two streams share for unrelated reasons
-`.pi/extensions/pij/cli.inbox.integration.test.ts` holds this stream's `whoami --json` `toEqual`
-pin (`:207`) **and** stream s093's send-delivery test (`:219-250`). Neither stream's *subject*
-overlaps; they share a file because integration tests for one binary live together.
-*Evidence*: found while tracing which tests the payload change would break. *Cost*: one
-sequencing pair added to the merge order, caught before it existed rather than at merge.
-*Shape*: **the fourth category of partition miss** — the wave also found files the process
-*creates* (plan folders, ordinals) and files the work *invalidates* (proofs asserting old
-behaviour). A file-ownership partition derived from "what does this change touch" sees none of
-the three.
-
-### F-304 · A probe's default scope gets reported as a property of the world — again, and not about `rg` this time
-Checked for the `flow-pair` engine in `~/.agents/skills/`, found nothing, and was one sentence
-from reporting `/pij pair` unavailable. It is installed at `~/.copilot/skills/flow-pair` —
-there are **four** skill roots on this machine and the probe read one.
-*Evidence*: `ls ~/.agents/skills` vs `ls ~/.copilot/skills`. *Cost*: near-miss, no time lost.
-*Relation*: identical in shape to pij#144 (`rg` skipping `.pi/`), which AGENTS.md already warns
-about — **and the warning did not generalise off ripgrep.** The doctrine is written about a tool;
-the defect is about **absence never carrying evidence of what was searched**.
-
-### F-305 · A no-op mutation is self-catching for a RED row and silent for a GREEN neighbour
-The mutation gate's drift failure is **asymmetric**, and the asymmetry is what makes it dangerous
-rather than merely annoying.
-
-- On a **"must turn RED"** row, a mutation whose target string no longer matches leaves the test
-  **green** — which *fails* the stated expectation. **Loud, self-catching.**
-- On a **"must stay GREEN" neighbour** row, the same no-op produces **exactly the predicted
-  result** and is recorded as **proof of independence that was never tested**. Green is the
-  expected outcome whether or not the code changed, so the *only* thing separating evidence from
-  nothing is proof that the mutation applied at all.
-
-**This makes the danger look smaller than it is**, because the half that self-catches is the half
-people picture when they think "mutation testing". *Measured on this stream*: 9 of 18 rows are
-neighbour claims. *Measured on s097 by `pij-annual-lemur` after this was relayed*: **6 of 10**,
-including the single assertion standing between its `#156` fix and the outcome its external
-reviewer had explicitly named as the failure mode — a must-stay-green claim that, verified with a
-drifted target, proves nothing.
-
-*Resolution*: `~/.pij/shared/mutate.mjs` (W-602) exits **2** on TARGET NOT FOUND, so a drifted
-mutation throws instead of passing green. *Credit*: tool by `pij-dizzy-giraffe`, generalised and
-verified by `pij-annual-lemur`; asymmetry identified here and logged reciprocally in W-602.
-
-### F-306 · Exit 2 replaced a checklist item with a structural one — the general form
-This stream's first response to mutation drift was to instruct the coder to prove each target
-matched with `git diff --stat`. That is **exactly the manual verification step that gets skipped
-under time pressure**, guarding exactly the hole it was added for. The tool's exit-2 makes it
-unskippable.
-
-> **A tool that refuses is not a reminder to check.**
-
-*Shape*: this is the harness doctrine's *encode, don't document* applied to a proof step rather
-than a workflow, and it is the same move as `S-301` (ship the pre-fix RED gate as a verb, not as a
-paragraph in six briefs). A fleet generates checklist items faster than anyone can honour them;
-only the ones that became refusals survive contact.
-
-*Companion finding, from W-602's author*: the tool would have shipped broken — it resolved vitest
-relative to its own directory rather than the caller's cwd — and was caught only by a ~90-second
-verification the author nearly skipped, because the code had already worked in its original seat.
-**A tool that has "already worked" somewhere else is an untested claim about here.** That is the
-write-side twin of `F-304`: there, a probe's default *scope* was reported as a property of the
-world; here, a tool's prior *context* is. Both are an absence of evidence read as evidence.
-
-
-### F-307 · A pre-fix RED proves only the FIRST assertion that fired
-`expect()` throws, so every assertion after the first failure **never runs**. A five-assertion
-criterion that goes red pre-fix has proven **one** of five — and the whole fleet spent a day
-recording those reds as if they validated the criterion.
-
-*Measured here*: the four tests proving a PA's third-party `unwatch` leaves a stranger's sidecar
-untouched **all went red pre-fix — on `exitCode === 0`**. Pre-fix the command was refused at the
-gate, so execution never reached the preamble those tests exist to exercise. **The red was real
-and still proved the wrong thing**: it covered the *permission* half and said nothing about the
-fixture. A seat holding that output is entitled to believe the criterion validated; that is
-simply what it looks like.
-
-**The division of labour this exposes, which neither gate's doctrine stated:**
-
-> **Mutation reaches past the first assertion. A pre-fix RED cannot.**
-
-They are not stronger and weaker versions of one check — they observe different things, and for a
-*"stop executing path X"* fix they are **disjoint precisely where redundancy is most wanted**
-(F-308). Fixture liveness here was established by the reachable mutant (13), never by the red.
-
-**The remedy is structural, not attentional** — `pij-complex-bat` (s100), whose framing is better
-than the finding: **splitting a criterion makes the gap VISIBLE.** A multi-assertion criterion
-hides the gap inside a green tick and *the reader cannot tell from the output* that four of five
-assertions were never reached. Same file, same run, same green — the difference is entirely
-whether the evidence is **inspectable**. Prefer one claim per criterion so each carries its own
-failure.
-
-*Corroboration from s100 within minutes*: its AC-01/AC-03 would have gone red pre-fix on
-`heartbeat.write is not a function` — a **NEW-API** absence, proving nothing about the write-count
-those criteria exist to establish. It split out a behavioural twin that fires on the **old** code
-path and needs no new API to fail. *Corroboration from s092 (#177, merged)*: its evidence survives
-audit **only because the load-bearing proof was a mutant rather than a red** — and the useful half
-of that mutant's output was not the 11 tests that went red but the **14 pre-existing tests that
-stayed green**, which is what proved *those* vacuous. The same signal, read in the other
-direction.
-
-### F-308 · For a "stop executing path X" fix, both post-fix proofs are unavailable
-A fix whose nature is *stop running this code* removes the thing a mutation would target. So:
-
-- a **cross-file mutation** of the removed path says nothing — the mutant is unreachable **because
-  the fix worked**, and green is the *success* signal, not a vacuity signal;
-- the **pre-fix RED** may have fired on an earlier assertion (F-307), covering something else
-  entirely.
-
-**Both candidate proofs can be absent at once, for exactly the class of fix where a second proof
-is most wanted.** The third proof — the one neither the tool's doctrine nor the fail-first
-doctrine lists — is to **mutate the fix's own ordering** rather than the path it removed: here,
-moving the self-resign branch back *after* the preamble (mutation 13) turned all four cases red,
-which an inert fixture could not have done.
-
-*Danger*: `mutate.mjs`'s `exit 1` language instructs you to weaken exactly the tests that prove
-this class of fix works — converting the proof that the fix works into the thing you delete.
-Corrected by the tool's author (W-602) after this stream and s097 hit it within an hour of each
-other.
-
-### F-309 · `mutate.mjs` reports a PASS for the wrong red on subprocess-driving specs
-The mutation is a vite `transform` (`mutate.mjs:79`), so it reaches only modules loaded **inside**
-the vitest process. A spec that drives the real binary through `execFileSync`
-(`cli.integration.test.ts:12,85`) spawns a child that reads the **unmutated** file from disk.
-
-*Measured*: the bin-seam mutation returned **exit 0 — GATE PASSES** while the targeted test showed
-a **green tick** in the same log. An unrelated `SIGTERM` flake elsewhere in the file supplied the
-red the tool counted. **A gate that reports success for the wrong red, silently** — the exact
-failure mode the tool exists to remove, inside the tool.
-
-*Two fixes, and the second matters independently of subprocesses*: (1) detect subprocess-driving
-specs and refuse with a distinct exit code; (2) **assert the NAMED test is among the failures**
-rather than counting any failure — counting *any* red is unsound even in-process, and this also
-hardens the gate against flakes. *Workaround*: mutate such specs **on disk**, evidencing a
-non-empty `git diff`, an assertion (not build) failure, and a byte-identical restore.
-
-### F-310 · Which bootstrap a seat happens to discover determines its lockfile exposure — and nothing records the choice
-**CORRECTED AFTER FILING.** This row originally read *"`npm ci` fails in this repo"*. That is true only of the **bare** form, which dies on a global npm config conflict (`--min-release-age cannot be provided when using --before`). **`npm ci --min-release-age=null` succeeds** (measured by s096). The original row would have taught the next reader that a working command does not work.
-
-The real hazard is narrower and nastier: **`npm install` normalises `package-lock.json`**, producing a phantom `3 insertions / 2 deletions` diff (`engines: +"npm": ">=11"`, `bin: "./dist/cli.js"` → `"dist/cli.js"`) identical for anyone who runs it. `npm ci` installs **strictly from** the lockfile and never writes it. So the command everyone reaches for is *both* the one that errors bare *and* the one that dirties the tree; the command that works cannot dirty it.
-
-**Four seats in one wave, four different exposures, none of it written down**: this stream and s097 immune by **symlinking** `node_modules` to the canonical checkout (a convention `.gitignore:77` anticipates but no document states); s096 immune by **knowing a flag**; s100 exposed by **doing the obvious thing**.
-
-> **Exposure is determined by which bootstrap a seat happened to discover, and neither choice is recorded anywhere.**
-
-That is folklore, and deleting folklore is what a harness is for. *Remedy*: one bootstrap step in the fleet recipe — **symlink as the default** (immune by construction, faster, no duplicated disk; the "proper" fix is the one that creates the hazard), `npm ci --min-release-age=null` as the real-install path. **One line of remedy collapses three separately-filed difficulties** — this row, s097's F-601 and s098's F-700.
-
-*Filed wrong, and worth keeping as an instance of this ledger's own subject*: I reported a **command's failure** as a **property of the repo**, from one invocation, in the same session where I logged F-304 about a probe's scope being reported as a property of the world. Same error, third currency.
-
-
-Six findings over two rounds on a plan its author believed was ready — one **critical** (F-300),
-two high, three medium. Every one was confirmed at source before acceptance, and every one was
-a thing the author had looked directly at and not seen.
-*Measured*: ~14 min of subagent time across three turns, against a capability-gate defect that
-would have shipped green. *The generalisable part*: the validator was told to **verify the plan's
-own load-bearing claims at source**, not to review the plan — the findings came from re-running
-the author's evidence, not from reading the author's prose.
-
-### W-301 · Re-validating the revision caught a fix that only appeared to close its finding
-The first revision of F-300 was accepted by its author and **reopened** by the second validation
-pass: the new test covered only the *absent*-subscription case, so an implementation could still
-route present subscriptions through the reconciling path. A one-round validation would have
-recorded F-300 as closed.
-*Rule this suggests*: **a fix to a critical finding deserves the same independent read the
-finding did.** The author of a fix is the worst judge of whether it closed the hole.
-
-### S-300 · `pij fleet fence --check` — verify the fence before the work, not at merge
-Every PM is handed a file-ownership fence in prose and is trusted to stay inside it. A verb that
-diffs `git status` against a declared allowed-path set would turn a boundary violation from a
-merge-time surprise into a local, immediate one — and would have named F-303's shared test file
-at partition time rather than at trace time.
-*Shape*: `pij fleet fence --check --stream s094` → exits non-zero listing paths touched outside
-the declared set. The declaration already exists in every brief; nothing reads it.
-
-### S-301 · Ship the pre-fix RED gate as a verb, not as a paragraph in six briefs
-The fleet-wide correction *"run each acceptance criterion against pre-fix code and watch it
-fail"* arrived mid-stream as prose to six PMs, after one stream measured two of its own criteria
-passing pre-fix. Prose that must reach six seats and survive their context windows is exactly
-what the harness doctrine says to **encode** instead.
-*Shape*: a verb that takes the criterion→test mapping a plan already contains, runs the named
-tests at `HEAD` before implementation, and refuses any criterion labelled BEHAVIOURAL that
-passes. The plan already carries the labels; nothing consumes them.
-
-### S-302 · Record a stream's questions and their rulings where the next PM will find them
-Two rulings on this stream (remove-vs-keep the payload fields; the shared-test-file fence)
-changed the deliverable and exist only in the prime's relay and this plan's clarifications
-table. A `pij fleet rulings --stream <s>` view, or an append to the stream record at ruling
-time, would keep them with the work rather than in a conversation.
-
----
-
-## How to add to this ledger
-
-Append a row with: what happened, **the evidence** (file:line, issue number, or a measurement),
-and the cost. If it is a difficulty, say whether it is open, worked around, or fixed. If a
-difficulty gets fixed, keep the row and mark it — the archetype stays useful after the
-instance is gone (see F-007).
-
-### F-703 · A findings document's citations are proofs, and convergence invalidates them silently
-s099's rule ("re-run your fail-first criteria on the rebased tree") has an analogue for
-investigation streams that the rule as stated does not reach. s098 produced no tests and no
-guards — its entire deliverable is `file:line` citations into `daemon.ts`, a file **three
-streams edited this run**. A drifted citation still reads as correct: grep finds the symbol,
-the prose still parses, and no suite goes red. There is no signal at all.
-*Evidence*: re-verifying s098's seven citations against `origin/main@a2a50e2` by printing each
-line found **two wrong** (`daemon.ts:645`→`644`, `345-355`→`342-351`) — wrong at authoring
-time, from transcription, and they would have survived review indefinitely.
-*Cost*: 10 minutes to check, and it was only checked because the s099 notice arrived.
-*Rule*: **if your deliverable is evidence rather than code, verify it the same way — extract
-the file at the ref you are citing and print the line.** A citation nobody re-ran is the
-documentation equivalent of a green suite that proves nothing.
-*Generalisation*: the fleet's proof discipline is scoped to artifacts that can fail. The
-artifacts that **cannot** fail — findings, dossiers, issue bodies, briefs — carry the same
-claims with none of the enforcement, and they are what the next stream reads first.
-
-### F-704 · Two censuses of the same set, same predicate, same count, zero overlap
-The prime published an authoritative list of 14 specs that drive subprocesses, generated with
-`grep -rln '<markers>' --include=*.test.ts .pi/extensions/pij/`. Regenerating it with **`rg`** —
-this repo's default search tool — at repo root with the *identical five markers* returns a
-different 14: the `harness/` and `skills/flow-pair/test/` specs. **The two sets are completely
-disjoint and both have cardinality 14.**
-*Evidence*: `rg -l 'execFileSync|spawnSync|execSync|execPath|child_process' --glob '*.test.ts'`
-returns 14 files, none of them under `.pi/`; adding `--hidden` returns 28; passing an explicit
-`.pi/extensions/pij/` path returns the prime's 14 exactly.
-*Why it is worse than an ordinary miss*: a seat re-running the census "to check" gets 14, sees
-14, and concludes it corroborated the list. **The matching count is the failure** — it converts
-a disjoint answer into apparent agreement.
-*Boundary, stated precisely because pij#144 can be read as "rg never works here"*: `rg` with an
-explicit `.pi/` path is correct; only the **bare repo-root sweep** is blind. The trap is scope,
-not the tool.
-*Rule*: **a census must publish its predicate AND its scope, and a re-run must reproduce both.**
-A command that is copied but re-tooled answers a different question and says so nowhere.
-*Open question raised, not assumed*: the 14 `harness/` and `skills/` specs do trip the tool's
-marker set. Whether they are in scope for the mutation gate is the prime's call.
-
-### F-705 · A precondition promoted to evidence, in measurement rather than test currency
-s099's B.3 ("each criterion must assert the claim, never the setup that makes it reachable")
-applies to measurements too. This stream's headline claim — *the tick is linear in the working
-set* — was measured on a harness with the tmux port **stubbed**, i.e. with the 26-46% of tick
-cost that is subprocess spawn set to **zero**. The result was evidence about the fsync half,
-presented as evidence about the tick.
-*Fix*: re-ran the full series with `capturePane`/`isPaneDead` hitting real tmux and only the
-mutating methods stubbed (`bench/growth-law-realio.ts`). 100→547 descriptors: 2997→18291ms,
-overall exponent **1.06**. The claim survived, and ms/descriptor moved from 20.3 to 33.4 —
-materially closer to the live daemon's ~51.
-*Rule*: **a benchmark that stubs a cost centre is evidence about the remainder.** State what was
-stubbed next to the number, every time; if the stub covers a term of the thing being measured,
-the headline claim is not yet earned.
----
-
-## Stream `send-path` (w1-hardening, 2026-08-08) — block F-200 / W-200 / S-200
-
-Appended as one contiguous block at EOF rather than into the sections above — see S-201 for why.
-PM `pij-historical-skunk`, prime `pij-continuing-ermine`, issues pij#128 / pij#132 / pij#167.
-
-### F-200 · The fleet's own safe-transport workaround is broken, and only for hostile bodies
-Every brief in this wave travelled by `pij send --body-file` because a quoted body executes shell
-substitutions (pij#128, F-005). That channel does not deliver bodies verbatim: it calls
-`body.trimEnd()` and then **re-appends the body as an argv token**, which the lexer parses. A body
-whose first characters are `--` is read as a flag, and because `--wait` is a *valued* flag on
-`send`, `pij send <id> --wait --body-file f` silently consumes the file's contents as `--wait`'s
-value.
-*Evidence*: `.pi/extensions/pij/cli.ts:4253` + `.pi/extensions/pij/core/cli.ts:707-720` + `:1084`.
-*Cost*: unknown-but-nonzero — no seat can audit which of its briefs were altered, because a
-trimmed or mis-lexed body and a clean one look identical in the sender's transcript and return the
-same receipt. *Found by*: an independent plan validation, not by use — five hours of fleet traffic
-went through it first. *Status*: being fixed in this stream.
-*The archetype*: **a mitigation that reproduces the flaw it mitigates, in the layer below.** The
-mitigation is trusted more than the original because it was adopted deliberately, so it is audited
-less.
-
-### F-201 · The one existing safety note is invisible at the surface that documents it
-`pij send --help` filters USAGE to lines containing the literal `pij send`. The shell-expansion
-warning is an **indented continuation line** and does not contain that string, so it is dropped.
-The command a caller runs to read about `send` is the one place the `send` warning cannot appear.
-*Evidence*: `.pi/extensions/pij/cli.ts:4216` vs `:325-327`. *Cost*: pij#128's stated mitigation has
-been documented-but-unreadable since it was written; three seats hit a *different* shell guard this
-week and none of them found this note. *Status*: fixed in this stream.
-
-### F-202 · `harness plan new` is dd-native; this repo has no dd schemas
-The `/builder 1b plan` verb scaffolds `plan.dd.json` + a rendered sibling. `harness plan new`
-returned `status: degraded` with *"schema `builder/plan` was not found in any discovery root"*, and
-`harness dd schema list` returns `schemas: []`. Every existing plan in `docs/plans/` is legacy
-markdown, so the correct move was to delete the scaffold and hand-write the plan in the repo's
-established format — which the skill explicitly forbids for dd plans.
-*Cost*: ~10 min, one scaffold created and removed. *Suggestion*: the verb should detect an empty
-schema root and say "this repo is markdown-native, writing `<slug>-plan.md`" instead of producing
-an unrenderable artifact plus a remediation hint that cannot succeed.
-
-### F-203 · `flow-pair dispatch` renders an EMPTY allowed-scope as if it were a scope
-Omitting `--allowed-paths` produced a packet reading:
-*"## Allowed Scope — You may ONLY create or modify files within:"*, then **nothing**, then *"Stay
-inside this scope."* A worker reading that is told it is fenced and given no fence.
-*Evidence*: `dlg-0002.md:67-73`. *Cost*: caught by inspecting the rendered packet before sending;
-had I trusted the tool's exit code, an unfenced coder would have gone to work on a **co-owned
-5,800-line file**. *Shape*: this is the same absent-vs-empty defect as pij#128/#132/#108/#113 —
-**the failure renders as ordinary output** — appearing in the tool being used to fix it.
-
-### F-204 · `flow-pair dispatch --phase` requires a heading a Simple-mode plan does not have
-Dispatch extracts the plan section by literal heading match and fails with `section not found`.
-A Simple-mode plan (one phase, inline task table) has no `## Phase N:` heading, so the plan had to
-be restructured to satisfy the tool rather than the work.
-*Evidence*: first `dispatch` invocation, this run. *Cost*: one failed dispatch + a plan edit.
-
-### F-205 · An unmatched glob echoes itself, so a probe reported a path that does not exist
-`ls -d ~/.agents/skills/pij/../*flow*` printed `/Users/jordanknight/.agents/skills/pij/../flow-pair`
-— bash echoing the unmatched pattern — and `ls` of that path then failed. I briefly concluded the
-skill root was installed where it is not (it is at `/Users/jordanknight/pi-hacking/pij/skills/`).
-*Cost*: one wrong turn, ~2 min. *Shape*: same family as pij#144 (`rg` skipping `.pi/`) — **a probe's
-own convention rendered as a fact about the world.** Worth stating alongside it in the search trap
-docs, because the failure direction is inverted: `rg` renders presence as absence, an unmatched
-glob renders absence as presence.
-
-### W-200 · The prime's stated done-bar was unattainable, and the PM caught it before implementation
-The charter defined done for pij#128 as *"a body containing backticks and `$( )` is delivered
-verbatim and executes nothing."* No pij-side change can hold that property: expansion completes in
-the caller's shell before pij's process exists, and the send path is already argv-only
-(`adapters/tmux-keys.ts:11-32`, `execFileSync`), so there is nothing left to harden. pij never
-receives the pre-expansion string, so it cannot deliver verbatim what it was never given.
-The PM asked rather than proceeding; the prime **struck its own bar** and replaced it with an
-attainable one (safe path exists, is recommended by docs and `--help`, unsafe path labelled at the
-surface).
-*Cost avoided*: an implementation aimed at an impossible property — or, worse, something weaker
-shipped quietly as though it met the bar, which is exactly the class of failure this wave exists to
-remove.
-**The fleet finding, which is about brief quality**: *a done-bar that states a property of the
-SYSTEM can encode an impossibility that only a reader with the source open can detect; a done-bar
-that states a property of the CHANGE cannot.* The corrected bar is three checkable facts about
-artifacts. The original was one unfalsifiable claim about behaviour. A future `pij fleet` brief
-template should push authors toward the former — and this is the second time in one day a PM has
-corrected a brief rather than working around it, which suggests the ask is reasonable to make of
-PMs and worth making explicit.
-
-### W-201 · Independent plan validation returned NOT READY and was right five times
-A subagent review of plan v1 (with the source, not just the plan) found five blocking issues, all
-re-verified at source before acceptance. v1 would have: placed the guard in pure `parseArgs`, where
-it **cannot fire for the very test that pins the defect** (that test calls `dispatch` directly);
-failed typecheck by adding to an exhaustive error-code map outside its own declared edit fence;
-missed the broadcast path entirely (it returns before the guard); and **deleted a shipped telegram
-capability** by refusing empty bodies globally — a rule the plan's own research dossier had gotten
-right and the plan had drifted from.
-*Cost*: one subagent run. *Evidence*: `assets/plan-validation-v1.md`.
-*The transferable bit*: the most valuable finding was not a bug in the plan but a **drift between
-the plan and its own dossier**. Validation should be given both artifacts and asked to diff them,
-not just to review the plan.
-
-### W-202 · The question protocol worked end-to-end, including the part that usually fails
-One question, declared with `pij report question`, asked in one sentence of context and one of ask,
-answered with reasoning rather than a verdict. The out-of-scope half of the answer was **filed as
-its own issue (pij#167) carrying the prime's four objections as the body**, instead of being
-dropped or quietly smuggled into this PR.
-*Why it is a win worth logging*: the failure mode here is not "the PM did not ask" — it is "the
-good idea that was correctly rejected leaves no trace, and the next agent re-proposes it." Filing
-the rejection *with its reasoning* is what stops that.
-
-### S-200 · `flow-pair dispatch` should refuse an empty allowed-scope, not render one
-Per F-203. An empty `--allowed-paths` should be a non-zero exit, or an explicit
-`Allowed Scope: ENTIRE REPO (no fence declared)`. Silence must not render as a fence.
-
-### S-201 · The ledger's append-only claim does not survive six concurrent appenders
-The onboarding says appends "merge cleanly at different line ranges" because each PM has its own id
-block. Ids are partitioned; **file position is not**. Six PMs each appending to the end of
-`## Difficulties` write the same line range and conflict. This block went to EOF to dodge that,
-which in turn conflicts with any other PM that reasons the same way.
-*Suggestion*: `docs/how/fleet/ledger.d/<stream>.md`, one file per stream, concatenated by a render
-step — or have the wave's setup pre-create an empty per-stream section so every PM has a private
-anchor. Partitioning by **file** is the same rule `partitioning.md` already argues for code.
-
-### S-202 · I wish there were a `pij spawn --cwd`
-Every spawn must be issued from the main checkout (F-001), so every fleet peer starts in the wrong
-directory, and every dispatch has to open with *"cd to your worktree and use absolute paths."* That
-instruction is a load-bearing correctness requirement delivered as **free text in a chat message**:
-if the peer skims it, it edits the main checkout instead of the stream branch, and nothing detects
-that until convergence. A `--cwd` that the daemon applies after boot — or a post-bind `cd` the
-spawn performs itself — moves the guarantee from prose into the tool.
-
-### S-203 · Derive `--allowed-paths` from the plan's own Constraints section
-Both the plan and the packet independently restate the file fence, in different formats, by hand.
-They can disagree, and only the packet is binding. The plan already names the fence; dispatch
-should read it.
-
-### F-206 · A fresh worktree cannot install its own dependencies
-`pij stream create` makes the worktree; nothing populates `node_modules`, and `npm ci` **cannot
-run there**: the repo `.npmrc` sets `min-release-age=7`, and npm refuses to combine that with the
-`--before` it uses internally to resolve the `minih` git dependency —
-*"`--min-release-age` cannot be provided when using `--before`"*. An env-var override did not clear
-it.
-*Evidence*: hit by the coder seat in this stream on first `npm ci`. *Workaround*: copy
-`node_modules` from the main checkout (identical `package.json` + lockfile shasums).
-*Cost*: every seat spawned into a fresh worktree hits this wall before it can run a single test,
-and the error names neither the worktree nor the setting that caused it.
-*Why it belongs in a fleet ledger specifically*: a single-seat workflow never sees it, because the
-main checkout is always already installed. **Fleet parallelism is what turns a dormant repo
-setting into a per-seat blocker** — the same shape as F-001 (worktree spawn) and F-007 (per-PR CI
-runs): the wave multiplies anything that is per-checkout.
-
-### F-207 · The plan's file fence was derived by reading, and it was incomplete
-The plan named `core/cli.ts:665-678` as the one exhaustive map over `PijErrorCode`. There is a
-**second** one — `ORCHESTRATION_EXIT` at `core/orchestration/cli.ts:111`, over
-`OrchestrationErrorCode = BatonErrorCode | PijErrorCode` — which no amount of reading the send path
-would have surfaced. The compiler found it in seconds.
-*Cost*: one out-of-fence file in the diff (four lines, commented), which had to be reviewed
-deliberately rather than trusted.
-*The transferable rule*: **a fence derived by reading is a hypothesis; only the compiler or the
-test run can confirm it.** For a co-owned file this matters more than usual, because the cost of
-being wrong is another stream's merge conflict. A `pij fleet` verb that declares ownership (S-002)
-should verify the declaration by building, not by matching paths.
-
-### S-204 · RED-before-fix is unfalsifiable when it lands in one commit
-This stream required the coder to run every behavioural criterion against pre-fix code and paste
-the **verbatim** failure into the execution log. It did, and the evidence is good. The cross-model
-reviewer still made the sharpest observation of the run:
-
-> *"Its chronology cannot be independently established from a single commit containing the tests,
-> implementation, and log, so I do not treat that historic ordering as independently proven."*
-
-That is correct and it applies to **every** stream in this wave. A pasted RED block proves a failure
-was *observed*; it does not prove it was observed *before* the fix existed, because the artifact
-that records the ordering is written by the same agent, in the same commit, as the thing it
-vouches for.
-*Suggestion*: require **two commits** — failing tests alone, then the implementation. Git then
-carries the ordering as a fact anyone can check with `git show <test-commit> && npx vitest run`,
-and the claim stops depending on the author's honesty. Adopted mid-run here after the review.
-*Cost of not doing it*: the discipline still works, but its evidence is a **self-report**, which is
-the same category of proof this wave keeps filing issues about.
-
-
----
-
----
-
-## Per-stream ledger blocks
-
-**A stream's block lives in its own file under [`ledger/`](./ledger/), not here.** Appending a
-block to this file — at the end of a *section* or the end of the *file* — puts every concurrent
-stream on the same line range, which is a guaranteed three-way conflict and exactly what
-append-only was supposed to avoid. Measured: `s097` hit it on three consecutive rebases, each
-time resolving the same file by hand while its own PR checks were already green (`F-604`,
-`S-602`).
-
-### How to add yours — INSERT, never append
-
-> ⚠ **The index below is a SECOND shared surface.** The split moves the contention out of the
-> ledger *body*; it does not remove it. Six streams each **appending** a pointer at the end of
-> this table land on **the same line range** and collide identically — and it will read as *"the
-> split did not work"* rather than *"the split worked and the index is a second surface"*.
->
-> **The table is maintained in sorted order by stream ordinal, and you INSERT at your own
-> position.** Streams inserting into a sorted list touch **different lines by construction**;
-> appending, they touch the same one. This is the rule the partition doc already states for
-> ordinals — **derivation cannot collide, allocation needs a broadcast** — applied to the file
-> that indexes them.
-
-Both halves land **together, on `main`, in the same PR**: your `ledger/<file>` and your index row.
-Never split those across trees — an index line on `main` pointing at a file that only exists on a
-fleet branch is a dangling citation.
-
-Already-**merged** streams' blocks are moved by the o-prime in one pass, not by the streams
-themselves.
-
-| stream | block |
-|---|---|
-| `s097` silent-detectors | [`ledger/s097-silent-detectors.md`](./ledger/s097-silent-detectors.md) |
