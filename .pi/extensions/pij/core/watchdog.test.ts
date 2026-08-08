@@ -228,6 +228,11 @@ describe("evaluateResponse", () => {
 	});
 
 	it("does not let any watchdog-attributable activity mask a frozen peer", () => {
+		// s096 task 3.5 (a) — the true pij#136 intent, now stated precisely: the
+		// observer's OWN traffic (an injected pane redraw, a delivery receipt
+		// advancing lastEventAt) is not evidence of anything, so a peer that never
+		// answered is still `stalled`. Passes before and after the fix; it is the
+		// guard against over-applying pij#148, NEVER evidence of it.
 		expect(
 			evaluateResponse({
 				cfg: effectiveWatchdog(),
@@ -244,14 +249,65 @@ describe("evaluateResponse", () => {
 		).toBe("stalled");
 	});
 
-	it("excludes exempt peers from unresponsive derivation", () => {
+	it("caps a peer that ANSWERED at suspect instead of stalling it", () => {
+		// s096 task 3.5 (b) — the question the assertion above conflated with its
+		// own. Identical fixture, one difference: the peer moved `statusAt` by its
+		// own hand, which only `pij report` can do. That is LIVENESS, not recovery —
+		// it must not promote the peer to `responsive`, and it must stop the climb
+		// to `stalled`, because `stalled` means SILENT (pij#148).
+		//
+		// Fails pre-fix for the opposite reason: pre-fix this input yields `stalled`.
 		expect(
 			evaluateResponse({
-				cfg: effectiveWatchdog({ pausedBy: "exempt" }),
-				consecutiveSilentFires: 99,
-				eventAdvanced: false,
+				cfg: effectiveWatchdog(),
+				consecutiveSilentFires: 2,
+				eventAdvanced: true,
+				eventAdvanceWasWatchdog: true,
+				answeredSinceLastFire: true,
+				pane: {
+					changed: true,
+					changeWasWatchdog: true,
+					workingTransition: true,
+					workingTransitionWasWatchdog: true,
+				},
 			}),
-		).toBe("responsive");
+		).toBe("suspect");
+	});
+
+	it("keeps answering a seat that answers forever at suspect, never stalled", () => {
+		// AC-07 at the derivation level: the counter may climb arbitrarily high and
+		// the verdict still caps, so the cap is a property of ANSWERING rather than
+		// an artefact of a small counter.
+		for (const consecutiveSilentFires of [1, 2, 7, 99]) {
+			expect(
+				evaluateResponse({
+					cfg: effectiveWatchdog(),
+					consecutiveSilentFires,
+					eventAdvanced: false,
+					answeredSinceLastFire: true,
+				}),
+			).toBe("suspect");
+		}
+	});
+
+	it("excludes exempt peers from unresponsive derivation without certifying health", () => {
+		// s096 task 1.8 — SPLIT, not flipped. `pausedBy` means SUPERVISION IS OFF,
+		// which is a statement about the watchdog and not about the peer. The
+		// surviving intent is that an exempt peer is never CLASSIFIED; what the old
+		// single assertion additionally claimed — that it is healthy — is meaning (2)
+		// of the four this plan separates, and nothing measured it.
+		const verdict = evaluateResponse({
+			cfg: effectiveWatchdog({ pausedBy: "exempt" }),
+			consecutiveSilentFires: 99,
+			eventAdvanced: false,
+		});
+		// (a) never classified — passes before and after.
+		expect(verdict).not.toBe("suspect");
+		expect(verdict).not.toBe("stalled");
+		// (b) and never certified healthy either. Positively identified, so it
+		//     cannot be satisfied by absence. Fails pre-fix, which returns
+		//     "responsive" — the opposite reason.
+		expect(verdict).toBe("unknown");
 	});
 });
 

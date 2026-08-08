@@ -170,7 +170,26 @@ export function isFireDue(
 }
 
 // ─── response derivation ────────────────────────────────────────────────────
-export type WatchdogResponse = "responsive" | "suspect" | "stalled";
+/** What a watchdog fire concluded about a peer.
+ *
+ * `unknown` means **NO EVIDENCE WAS EXAMINED**. It is *never* a health claim and
+ * no consumer may read it as one — it is the absence of a grade, not a passing
+ * grade.
+ *
+ * It exists because this type had three values and FOUR meanings (pij#161):
+ * `responsive` was returned for *measured alive*, for *supervision is off*, and
+ * for *nothing was examined*, and only the first is what a reader takes it to
+ * mean. The most dangerous instance was structural — a fire with no response
+ * outstanding delivered a variable INITIALISER to the watcher verbatim, so the
+ * moment supervision mattered most (a freshly rebuilt RuntimeState after a
+ * daemon restart or a pid flap) was the moment it certified health it had not
+ * measured.
+ *
+ * The token matches this repo's existing vocabulary for *no positive
+ * identification* — `DeathReason.unknown` (`core/types.ts:71`) — rather than
+ * coining a new one.
+ */
+export type WatchdogResponse = "responsive" | "suspect" | "stalled" | "unknown";
 
 /** Pane-derived inputs are absent for paneless peers. Watchdog-only changes are
  * explicit so the observer's own injected turn cannot fabricate recovery. */
@@ -187,20 +206,102 @@ export interface WatchdogResponseInputs {
 	readonly eventAdvanced: boolean;
 	readonly eventAdvanceWasWatchdog?: boolean;
 	readonly pane?: WatchdogPaneObservation;
+	/** Did the PEER ITSELF answer since the last fire?
+	 *
+	 * True only when `statusAt` advanced, which only the peer's own `pij report`
+	 * can do — `registry-write.ts:90` maps `statusAt` to the `"cli"` writer, so
+	 * neither the daemon nor the delivery path can fabricate it. The watchdog turn
+	 * literally instructs the peer to run `pij report now …`, so *"statusAt
+	 * advanced since the fire"* IS the definition of answering.
+	 *
+	 * **Deliberately NOT `lastEventAt`** (plan 096, KF-13): delivering a watchdog
+	 * turn makes the target emit a RECEIPT, and that persists `lastEventAt` with
+	 * zero model involvement (`core/session.ts` `onInbound` → `emitReceipt` →
+	 * `capture("receipt")` → `persist`). The act of supervising writes that field,
+	 * so keying on it would make `stalled` UNREACHABLE for a wedged peer — a
+	 * false-positive traded for a false-negative, which for a supervision
+	 * instrument is strictly worse.
+	 *
+	 * This is **liveness** evidence, never **recovery** evidence. The pij#136
+	 * disqualification below is untouched by it: an answered peer is still never
+	 * called `responsive`, only capped at `suspect`. */
+	readonly answeredSinceLastFire?: boolean;
 }
 
 /** Derive response health from delivered fires and independently observed work. */
 export function evaluateResponse(inputs: WatchdogResponseInputs): WatchdogResponse {
-	if (!inputs.cfg.enabled || inputs.cfg.pausedBy !== undefined) return "responsive";
+	// Supervision is OFF for this peer. That is a statement about the WATCHDOG,
+	// not about the peer, so it must not be reported as health (pij#161).
+	if (!inputs.cfg.enabled || inputs.cfg.pausedBy !== undefined) return "unknown";
 
 	const realEventAdvance = inputs.eventAdvanced && !inputs.eventAdvanceWasWatchdog;
 	const realPaneChange = inputs.pane?.changed === true && !inputs.pane.changeWasWatchdog;
 	const realWorkingTransition =
 		inputs.pane?.workingTransition === true && !inputs.pane.workingTransitionWasWatchdog;
 	if (realEventAdvance || realPaneChange || realWorkingTransition) return "responsive";
+	// A peer that ANSWERED is alive, so `stalled` — which must mean SILENT — is off
+	// the table for it; the climb caps at `suspect` and stays there (pij#148). This
+	// is placed AFTER the recovery block on purpose: answering proves life, not
+	// independent work, so it can never promote a peer to `responsive`.
+	if (inputs.answeredSinceLastFire === true) return "suspect";
 	if (inputs.consecutiveSilentFires >= 2) return "stalled";
 	if (inputs.consecutiveSilentFires === 1) return "suspect";
 	return "responsive";
+}
+
+/** Is this verdict an ANOMALY — a graded finding an anomaly-policy watcher should
+ * capture?
+ *
+ * Written as an explicit POSITIVE test, never as `response !== "responsive"`.
+ * That set-level shape is precisely what made widening the union dangerous: a
+ * negation over a set silently reclassifies every NEW member, so a no-evidence
+ * fire would have counted as an anomaly and triggered watcher captures on every
+ * first fire after a daemon restart — fresh noise created by the fix
+ * (plan 096, KF-05).
+ *
+ * Exhaustive by compiler, in the same style as `mutesWatchdogNudge`: a future
+ * fifth member fails to compile here rather than defaulting into anomaly. */
+export function isAnomalyVerdict(response: WatchdogResponse): boolean {
+	switch (response) {
+		case "suspect":
+		case "stalled":
+			return true;
+		case "responsive":
+		case "unknown":
+			return false;
+		default: {
+			const exhaustive: never = response;
+			return exhaustive;
+		}
+	}
+}
+
+/** Render a verdict as the head of a watcher notice.
+ *
+ * `unknown` carries a second line saying WHY there is no grade, so a watcher can
+ * never read it as a quiet pass. Suppressing the notice entirely was the other
+ * option in pij#161 and was rejected: silence would then mean *nothing happened*
+ * OR *something happened I could not grade*, which is the same
+ * absence-renders-as-something defect one level up, and harder to notice because
+ * there is nothing to look at.
+ *
+ * Exhaustive by compiler for the same reason as `isAnomalyVerdict`. */
+export function verdictNoticeLines(response: WatchdogResponse, id: string): string[] {
+	switch (response) {
+		case "responsive":
+		case "suspect":
+		case "stalled":
+			return [`watchdog ${response}: ${id}`];
+		case "unknown":
+			return [
+				`watchdog unknown: ${id}`,
+				"no response was outstanding — nothing was examined; this is not a health claim",
+			];
+		default: {
+			const exhaustive: never = response;
+			return exhaustive;
+		}
+	}
 }
 
 // ─── parked-state nudge muting (plan 076, DL-002) ───────────────────────────

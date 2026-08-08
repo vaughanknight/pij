@@ -13,10 +13,12 @@ import {
 	type EffectiveWatchdogConfig,
 	effectiveWatchdog,
 	evaluateResponse,
+	isAnomalyVerdict,
 	isFireDue,
 	mutesWatchdogNudge,
 	reconcileWatchdogExemption,
 	shouldCapture,
+	verdictNoticeLines,
 	type WatchdogResponse,
 	watchdogScheduleAnchorMs,
 } from "../watchdog.js";
@@ -31,7 +33,18 @@ export interface WatchdogStorePort {
 
 export interface WatchdogResponseEvent {
 	readonly session: SessionDescriptor;
-	readonly response: WatchdogResponse;
+	/** `unknown` is UNREPRESENTABLE here, and that is the whole point.
+	 *
+	 * `daemon.pushWatchdogResponse` (`daemon.ts:797-819`) branches
+	 * `responsive` → clear the latch, `stalled` → set `failureReason: "stalled"`,
+	 * anything else → silent no-op. Widening `WatchdogResponse` would have made a
+	 * no-evidence verdict a silent no-op in a file this stream does not own — a
+	 * stale consumer TypeScript could not see (plan 096, KF-06).
+	 *
+	 * Narrowing the field instead means the COMPILER, not a comment, proves that
+	 * "I examined nothing" can never reach the failure latch. `daemon.ts` needs no
+	 * change; a deliberate attempt to publish `unknown` fails to build. */
+	readonly response: Exclude<WatchdogResponse, "unknown">;
 	readonly consecutiveSilentFires: number;
 }
 
@@ -62,6 +75,11 @@ interface RuntimeState {
 	lastState: SessionDescriptor["state"];
 	lastPane: string | undefined;
 	awaitingResponse: boolean;
+	/** Did the PEER ITSELF answer since the last delivered fire? Driven from the
+	 *  `session.statusAt !== state.lastStatusAt` comparison this file already
+	 *  makes to re-anchor the schedule — the one signal on this path the observer
+	 *  cannot fabricate (plan 096, KF-14). Reset when a fire is delivered. */
+	answeredSinceLastFire: boolean;
 	eventAttributionPending: boolean;
 	paneAttributionPending: boolean;
 	transitionAttributionPending: boolean;
@@ -75,6 +93,25 @@ interface RuntimeState {
 	 *  freshness reports `responsive` once per anchor rather than every tick. */
 	livenessReportedForAnchorMs: number | null;
 }
+
+/** What a fire could actually READ from the target's pane.
+ *
+ * `unreadable` is the case pij#161 hit live. The real adapter maps a capture
+ * failure to `""` and never throws (`adapters/daemon-tmux.ts:231-236`, proven at
+ * `daemon-real-adapter.test.ts:130-136`), so a pane that no longer exists arrives
+ * here as an empty string. That is the ABSENCE of a reading, and absence of a
+ * reading is not a reading: it must never be graded, never be written as a
+ * capture, and never — the state-corrupting half, KF-02 — be read as pane
+ * activity, because a raw string inequality made `"…text…"` → `""` look like
+ * movement and manufactured a recovery that cleared a real `stalled` latch.
+ *
+ * Residual, stated rather than hidden (KF-04): a genuinely blank LIVE pane is
+ * indistinguishable from a dead one at this seam and is therefore also reported
+ * unavailable. Treating it conservatively as unread is the honest reading. */
+type PaneEvidence =
+	| { readonly kind: "paneless" }
+	| { readonly kind: "unreadable" }
+	| { readonly kind: "content"; readonly text: string };
 
 function timestampMs(value: string | undefined): number | null {
 	if (!value) return null;
@@ -340,6 +377,7 @@ export class WatchdogManager {
 				lastState: session.state,
 				lastPane: undefined,
 				awaitingResponse: false,
+				answeredSinceLastFire: false,
 				eventAttributionPending: false,
 				paneAttributionPending: false,
 				transitionAttributionPending: false,
@@ -371,6 +409,11 @@ export class WatchdogManager {
 		if (session.statusAt !== state.lastStatusAt) {
 			state.scheduleAnchorAtMs = watchdogScheduleAnchorMs(session);
 			state.lastStatusAt = session.statusAt;
+			// The peer ITSELF wrote a status card. `statusAt` moves only through the
+			// CLI writer (`registry-write.ts:90`), so this is the one liveness signal
+			// on this path the observer cannot fabricate — unlike `lastEventAt`,
+			// which the delivery of a watchdog turn advances all by itself (KF-13).
+			state.answeredSinceLastFire = true;
 		}
 
 		const idleTransition = state.lastState === "working" && session.state === "idle";
@@ -439,33 +482,66 @@ export class WatchdogManager {
 		}
 
 		const paneAvailable = session.paneId !== undefined;
-		const pane = paneAvailable ? this.deps.capturePane(session) : undefined;
+		const captured = paneAvailable ? this.deps.capturePane(session) : undefined;
+		const paneEvidence: PaneEvidence =
+			captured === undefined
+				? { kind: "paneless" }
+				: captured === ""
+					? { kind: "unreadable" }
+					: { kind: "content", text: captured };
+		const pane = paneEvidence.kind === "content" ? paneEvidence.text : undefined;
+		// A pane that could not be read has not CHANGED — it has gone quiet as a
+		// source. Comparing `""` against the last content is a raw string
+		// inequality, and it read a DYING pane as pane activity; with no fire
+		// outstanding that reached `reportRealRecovery`, which emits `responsive`,
+		// which clears `failureReason: "stalled"` in the daemon (KF-02). A pane
+		// disappearing must never manufacture a recovery.
 		const paneChanged =
-			pane !== undefined && state.lastPane !== undefined && pane !== state.lastPane;
+			paneEvidence.kind === "content" &&
+			state.lastPane !== undefined &&
+			paneEvidence.text !== state.lastPane;
 		const paneChangeWasWatchdog =
 			paneChanged && state.awaitingResponse && state.paneAttributionPending;
 		if (paneChanged && !paneChangeWasWatchdog) this.reportRealRecovery(session, state);
 
-		let response: WatchdogResponse = "responsive";
-		if (state.awaitingResponse) {
-			const nextSilent = state.consecutiveSilentFires + 1;
-			response = evaluateResponse({
-				cfg,
-				consecutiveSilentFires: nextSilent,
-				eventAdvanced: state.eventAdvanced,
-				eventAdvanceWasWatchdog: state.eventAdvanceWasWatchdog,
-				...(paneAvailable
-					? {
-							pane: {
-								changed: paneChanged,
-								changeWasWatchdog: paneChangeWasWatchdog,
-								workingTransition: state.workingTransition,
-								workingTransitionWasWatchdog: state.workingTransitionWasWatchdog,
-							},
-						}
-					: {}),
-			});
-			state.consecutiveSilentFires = response === "responsive" ? 0 : nextSilent;
+		const answeredSinceLastFire = state.answeredSinceLastFire;
+		const nextSilent = state.consecutiveSilentFires + 1;
+		// NO INITIALISER, deliberately. Until plan 096 this read
+		// `let response: WatchdogResponse = "responsive"`, and on any fire with no
+		// response outstanding the evidence block below never ran — so a variable's
+		// declaration, which examined nothing, was delivered to the watcher as a
+		// health verdict (pij#161). Every verdict now comes from a branch that
+		// either examined something or says plainly that it did not.
+		const response: WatchdogResponse = state.awaitingResponse
+			? evaluateResponse({
+					cfg,
+					consecutiveSilentFires: nextSilent,
+					eventAdvanced: state.eventAdvanced,
+					eventAdvanceWasWatchdog: state.eventAdvanceWasWatchdog,
+					answeredSinceLastFire,
+					...(paneAvailable
+						? {
+								pane: {
+									changed: paneChanged,
+									changeWasWatchdog: paneChangeWasWatchdog,
+									workingTransition: state.workingTransition,
+									workingTransitionWasWatchdog: state.workingTransitionWasWatchdog,
+								},
+							}
+						: {}),
+				})
+			: "unknown";
+		// The narrowing is WRITTEN, not inferred: TypeScript cannot know that
+		// `awaitingResponse` excludes `"unknown"`, and `WatchdogResponseEvent`
+		// forbids it — which is how the compiler rather than a comment proves a
+		// no-evidence verdict can never reach the daemon's stalled latch.
+		if (response !== "unknown") {
+			// An ANSWERED fire is not a SILENT one. Incrementing the silent counter
+			// for it would let one later genuine silence jump straight from a long
+			// answered run to `stalled` (KF-15) — the counter must only ever count
+			// fires the peer said nothing to.
+			if (response === "responsive") state.consecutiveSilentFires = 0;
+			else if (!answeredSinceLastFire) state.consecutiveSilentFires = nextSilent;
 			this.deps.onResponse?.({
 				session,
 				response,
@@ -477,9 +553,9 @@ export class WatchdogManager {
 			state,
 			sidecar?.watchers ?? [],
 			response,
-			pane,
+			paneEvidence,
 			nowMs,
-			response !== "responsive",
+			isAnomalyVerdict(response),
 		);
 
 		const ordinal = state.ordinal + 1;
@@ -504,6 +580,7 @@ export class WatchdogManager {
 		state.lastFireAtMs = nowMs;
 		state.lastPane = pane;
 		state.awaitingResponse = true;
+		state.answeredSinceLastFire = false;
 		state.eventAttributionPending = true;
 		state.paneAttributionPending = paneAvailable;
 		state.transitionAttributionPending = true;
@@ -573,7 +650,7 @@ export class WatchdogManager {
 		state: RuntimeState,
 		watchers: readonly WatchdogWatcher[],
 		response: WatchdogResponse,
-		pane: string | undefined,
+		paneEvidence: PaneEvidence,
 		nowMs: number,
 		anomaly: boolean,
 	): void {
@@ -586,11 +663,16 @@ export class WatchdogManager {
 			if (!noticeAllowed) continue;
 			const captureRequested = shouldCapture(watcher.capture ?? {}, anomaly);
 			if (!anomaly && !captureRequested) continue;
-			const lines = [`watchdog ${response}: ${session.id}`];
-			if (pane === undefined) {
+			const lines = verdictNoticeLines(response, session.id);
+			if (paneEvidence.kind === "paneless") {
 				lines.push("capture unavailable (paneless target)");
+			} else if (paneEvidence.kind === "unreadable") {
+				// A 0-byte read is not content. It is never written as a capture and
+				// never shown to a watcher as corroboration — the live pij#161 instance
+				// was exactly this: an empty capture pointer beside a health verdict.
+				lines.push("capture unavailable (pane could not be read)");
 			} else if (captureRequested && this.deps.store.writeCapture) {
-				const captured = captureSlice(pane, watcher.capture ?? {});
+				const captured = captureSlice(paneEvidence.text, watcher.capture ?? {});
 				const pointer = this.deps.store.writeCapture(
 					watcher.watcherId,
 					session.id,
