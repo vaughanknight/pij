@@ -89,6 +89,39 @@ test run can confirm it.** For a co-owned file this matters more than usual, bec
 being wrong is another stream's merge conflict. A `pij fleet` verb that declares ownership (S-002)
 should verify the declaration by building, not by matching paths.
 
+### F-208 · A grep that matches the verdict line but not the failure lines turns a mutation gate into a coin
+The coder's six-mutant valence loop filtered output with a pattern that matched the `GATE` line and
+not the failure lines, so **named-test evidence existed for two of six** while the run reported
+"six for six". It disclosed this unprompted rather than letting the claim stand.
+**Then I reproduced the same defect twice while auditing it.** My first two re-runs reported
+`RED: NONE` for every mutant — because *my* extraction pattern was wrong, not because the tests were
+silent. I was one commit from filing my own non-vacuous tests as vacuous, in the file documenting
+someone else's grep defect, within the hour of reading about it.
+*Evidence*: all five valued arms re-verified individually on disk, each with its named failing test
+and a byte-identical restore (`assets/peer-harvest.md` § 7).
+*Cost*: three wrong conclusions, every one recoverable only by reading raw output.
+*Encodable fix*: `--expect "<test name>"` makes this **structural rather than attentional** — the
+only kind of fix worth having for a defect you have produced three times in one day while knowing
+its name. **A gate that asks "did anything go red" cannot tell a kill from a flake, or from a
+broken filter.**
+
+### F-209 · I concluded "not a regression" from single runs, and the evidence that actually carried it was one I buried
+Three CI-red investigations, and I reported the weakest instrument first. My PR body led with *"I ran
+the spec on a detached worktree at untouched main and it passed"* — **one run, at one base**, which
+by the fleet's own rates-not-runs rule establishes nothing.
+**The load-bearing evidence was already in hand and I under-weighted it**: my failures had *disjoint
+victim sets* — run 1 failed `cli.integration:914`; run 2 failed `:2858` while `:914` **passed**; run 3
+passed that spec entirely and failed `core/chores/drive.test.ts` instead. Identical bytes, disjoint
+victims, which **logically excludes determinism** at 2× cost rather than 16×. I even wrote *"a real
+regression fails the same test twice"* — and then put the single base pass first.
+*Why*: the weaker evidence was more **legible**. *"I ran it on clean main and it passed"* is a
+sentence anyone can check; *"the victim sets are disjoint"* makes the reader hold three runs in their
+head.
+*Amendment, kept rather than replacing the row*: the conclusion was right; the presentation ranked
+by legibility instead of by evidential weight. **Skepticism follows alarm; presentation follows
+legibility. Neither follows evidential weight**, and both need the same fix — notice which claim is
+actually doing the work, and put that one first.
+
 ## Wins
 
 ### W-200 · The prime's stated done-bar was unattainable, and the PM caught it before implementation
@@ -132,6 +165,23 @@ dropped or quietly smuggled into this PR.
 *Why it is a win worth logging*: the failure mode here is not "the PM did not ask" — it is "the
 good idea that was correctly rejected leaves no trace, and the next agent re-proposes it." Filing
 the rejection *with its reasoning* is what stops that.
+
+### W-203 · A reviewer named its own blind spot instead of defending it as a judgement call
+Asked directly at teardown whether it had *weighed* mutating `targetRendersAttachments` to `false`
+and rejected it, or simply never considered it, the cross-model reviewer answered: never considered
+it — it ran only the permission-*expanding* `=> true` — and called it
+> *"a real hand-chosen-mutant blind spot, not a deliberate rejection."*
+
+*Evidence*: that polarity was this stream's **pre-registered rank 1** and it killed AC-06
+(`assets/peer-harvest.md` § 2).
+*Why it is a win and not a difficulty*: **a reviewer that will say "I did not think of that" is a
+reviewer whose "I checked that" means something.** The honest negative is what makes the positives
+worth anything.
+*The general fact, which is not about this stream*: **hand-chosen mutants attack a guard's
+PERMISSIVENESS and systematically miss its RESTRICTIVENESS.** Everyone attacks the case where a
+guard lets too much through; almost nobody attacks the case where it lets too little — which is
+where a correct-looking gate silently refuses valid work. The bias is **directional, not lazy**,
+so more care does not fix it and **pre-registering targets before results exist** does.
 
 ## Suggestions
 
@@ -178,8 +228,3 @@ carries the ordering as a fact anyone can check with `git show <test-commit> && 
 and the claim stops depending on the author's honesty. Adopted mid-run here after the review.
 *Cost of not doing it*: the discipline still works, but its evidence is a **self-report**, which is
 the same category of proof this wave keeps filing issues about.
-
-
----
-
----
