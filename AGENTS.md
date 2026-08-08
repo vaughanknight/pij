@@ -58,6 +58,33 @@
   intended. Discover available models at runtime rather than hardcoding a
   provider or model id.
 
+## Searching this repo (known trap — silent, and it reads as absence)
+
+**`rg` skips hidden paths by default, and the entire extension source lives under
+`.pi/`.** So a repo-wide ripgrep sweep is structurally blind to the code you are
+almost certainly looking for, and reports it as *not present*:
+
+```
+$ rg --files --glob '**/watchdog-manager.ts'            # nothing
+$ rg --files --hidden --glob '**/watchdog-manager.ts'   # .pi/extensions/pij/core/daemon/watchdog-manager.ts
+```
+
+**Always pass `--hidden` when sweeping this repo.** `grep -r` is unaffected.
+
+Why this one bites harder than an ordinary tool default: **reading a file under
+`.pi/` by explicit path works fine**, because that bypasses the traversal skip. So
+a session can successfully open `.pi/extensions/...` minutes before a sweep returns
+nothing for the same tree, and the absence feels *corroborated* rather than
+suspicious. A tool that answers correctly when pointed and blindly when swept is
+the worst available shape for this error.
+
+Stated generally, because it is not really about ripgrep: **a probe's default scope
+gets reported as a property of the repo.** "No matches anywhere" means *no matches
+inside whatever this tool decided to look at*. Establish the scope before believing
+an absence — an empty result is the one output that carries no evidence of what it
+searched. (Found 2026-08-07 by `pij-massive-meadowlark` after three independent
+citation disputes, all of which resolved as neither party being wrong.)
+
 ## Spawning pi peers in worktrees (known trap)
 
 `pij spawn --harness pi` **dies at boot (~3s, silently) when invoked from a
