@@ -136,7 +136,7 @@ Found 1 error.
 the artifact** (`db63971 fix(chores): format the committed repo roster — my commit was reddening
 main`). The writer is untouched. **The gate is green and the trap is fully armed** — the next
 `chore add --scope repo` re-minifies and reddens main again. This is a
-[[green-that-lies]] instance: the symptom was repaired one layer below where it is generated.
+[`green-that-lies`](../../how/green-that-lies.md) instance: the symptom was repaired one layer below where it is generated.
 
 **Blast radius warning — this is why F-3 is not a one-line tidy-up.** `writeJsonAtomic` is the
 writer for **all** pij durable state (spine, registry, focus, chore state), not just chore

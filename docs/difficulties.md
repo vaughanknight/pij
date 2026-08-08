@@ -182,7 +182,7 @@ and an encoded fix (durable). Severity guides priority.
   failures are timeouts with no assertion failures; if so, re-run the failing
   files in isolation and the suite at reduced parallelism before concluding
   anything. **Lesson:** a gate whose result depends on ambient machine load is
-  not pinning behaviour ([[green-that-lies]] mechanism 5) — and on this box the
+  not pinning behaviour ([`green-that-lies`](./how/green-that-lies.md) mechanism 5 — passes only because of ambient environment) — and on this box the
   ambient load is *our own fleet*, so the gate gets less trustworthy exactly when
   the most work is in flight. Surfaced by pij-able-damselfly during s072 fix
   round 01; routed here by pij-reasonable-dove because `docs/` was outside the
@@ -216,7 +216,7 @@ and an encoded fix (durable). Severity guides priority.
   by extracting the rule into `cardCanMislead()` and writing the truth table —
   the stamped-worker row was the one that disagreed. Encoded as a named
   predicate plus a test that kills exactly that mutation. **Lesson:** this is the
-  [[green-that-lies]] family at the *comment* layer — a comment is an unexecuted
+  [`green-that-lies`](./how/green-that-lies.md) family at the *comment* layer — a comment is an unexecuted
   assertion, so a rule worth commenting is a rule worth extracting and pinning.
   Reading the code beside it will not find the divergence; only executing the
   rule will.
