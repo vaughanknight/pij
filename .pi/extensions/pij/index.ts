@@ -62,24 +62,40 @@ export default function (pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use pij_send to reply to a `[pij from <id>]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
 		],
-		parameters: Type.Object({
-			to: Type.String({
-				description:
-					"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij from <id>]` message, or from `pij list --here`).",
-			}),
-			message: Type.Optional(
-				Type.String({
+		parameters: Type.Object(
+			{
+				to: Type.String({
 					description:
-						"Message text to deliver (appears to the peer as user input). Provide message OR command, not both.",
+						"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij from <id>]` message, or from `pij list --here`).",
 				}),
-			),
-			command: Type.Optional(
-				StringEnum(ALLOWED_COMMANDS, {
-					description:
-						"Run an allow-listed control command on the peer instead of text: compact | new | reload. Provide message OR command, not both.",
-				}),
-			),
-		}),
+				message: Type.Optional(
+					Type.String({
+						description:
+							"Message text to deliver (appears to the peer as user input). Provide message OR command, not both.",
+					}),
+				),
+				command: Type.Optional(
+					StringEnum(ALLOWED_COMMANDS, {
+						description:
+							"Run an allow-listed control command on the peer instead of text: compact | new | reload. Provide message OR command, not both.",
+					}),
+				),
+			},
+			{
+				// s099 / pij#166. The XOR was previously expressed ONLY in execute(),
+				// so `{to}` and `{to, message, command}` were schema-VALID and the
+				// model was permitted to emit them and told afterwards. Encoding it
+				// here makes the invalid state unrepresentable rather than rejected.
+				//
+				// `oneOf` on the object (not a top-level union): the root must stay
+				// `type: "object"` for the tool-calling wire format. See
+				// docs/plans/099-send-tool-xor/assets/union-spike.md.
+				oneOf: [
+					{ required: ["message"], not: { required: ["command"] } },
+					{ required: ["command"], not: { required: ["message"] } },
+				],
+			},
+		),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const message = typeof params.message === "string" ? params.message.trim() : "";
 			const command = typeof params.command === "string" ? params.command : undefined;

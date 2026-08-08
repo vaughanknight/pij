@@ -18,7 +18,7 @@ row to the index below.
 | `s096` | watchdog-verdicts | [`ledger/s096-watchdog-verdicts.md`](./ledger/s096-watchdog-verdicts.md) | **moved** |
 | `s097` | silent-detectors | [`ledger/s097-silent-detectors.md`](./ledger/s097-silent-detectors.md) | **moved** |
 | `s098` | daemon-perf | [`ledger/s098-daemon-perf.md`](./ledger/s098-daemon-perf.md) | **moved** |
-| `s099` | send-tool-xor | `ledger/s099-send-tool-xor.md` | *pending* |
+| `s099` | send-tool-xor | [`ledger/s099-send-tool-xor.md`](./ledger/s099-send-tool-xor.md) | **moved** |
 | `s100` | tick-heartbeat | [`ledger/s100-tick-heartbeat.md`](./ledger/s100-tick-heartbeat.md) | **moved** |
 
 > **The last column tracks the LEDGER MIGRATION ONLY — whether this stream's rows have been
