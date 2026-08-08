@@ -675,6 +675,10 @@ export class Daemon {
 			expectations: this.expectations.list(),
 			nowIso: tickAt,
 			isAlive: (pid) => this.ports.isAlive(pid),
+			// ONE capture per sweep, never one per descriptor (s095 R2): at ~500
+			// descriptors on a ~600ms tick a per-descriptor `ps` is ~500 process-table
+			// spawns per tick, which stalls the tick and therefore message delivery.
+			processSnapshot: this.ports.processSnapshot?.(),
 			paneExists: (paneId) => !this.ports.isPaneDead(paneId),
 			failureReasonFor: (descriptor) =>
 				classifyDeathReason(descriptor.paneId ? this.ports.capturePane(descriptor.paneId) : ""),

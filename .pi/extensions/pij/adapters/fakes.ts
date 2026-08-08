@@ -29,6 +29,7 @@ import {
 	type Assignment,
 	isAssignment,
 	isSpineEvent,
+	type ProcessSnapshot,
 	type Project,
 	type SpineEvent,
 	type SpineEventDraft,
@@ -868,4 +869,46 @@ export class FakePlatformWriteLock implements PlatformWriteLockPort {
 			this.machine.held = false;
 		}
 	}
+}
+
+// ─── process snapshots (plan 095 T-1.6) ────────────────────────────────────
+
+/** One constructible process row. `ppid` defaults to 1 (a root), so a fixture
+ *  only states the parent links it actually cares about. */
+export interface FakeProcessRow {
+	readonly pid: number;
+	readonly ppid?: number;
+	readonly command: string;
+	readonly startedAtMs?: number;
+	readonly truncated?: boolean;
+}
+
+/** Build a deterministic {@link ProcessSnapshot} for the liveness ladder.
+ *
+ *  The whole point of classifying in pure core code is that every case the real
+ *  world produced — an agent at depth 0, an agent at depth 1, a bare `-zsh`, a
+ *  recycled pid holding `IntuneMdmDaemon`, another seat's `--session-id`, a
+ *  truncated command line — is a TABLE ROW here rather than a live-process
+ *  experiment nobody can re-run. */
+export function fakeProcessSnapshot(
+	rows: readonly FakeProcessRow[],
+	capturedAtMs = 0,
+): ProcessSnapshot {
+	return {
+		ok: true,
+		capturedAtMs,
+		processes: rows.map((row) => ({
+			pid: row.pid,
+			ppid: row.ppid ?? 1,
+			command: row.command,
+			...(row.startedAtMs !== undefined ? { startedAtMs: row.startedAtMs } : {}),
+			...(row.truncated !== undefined ? { truncated: row.truncated } : {}),
+		})),
+	};
+}
+
+/** A capture that FAILED — distinct from an empty table, and the only correct
+ *  input for "we could not look". */
+export function fakeProcessSnapshotUnavailable(reason = "ps unavailable"): ProcessSnapshot {
+	return { ok: false, reason };
 }

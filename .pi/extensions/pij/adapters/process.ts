@@ -3,6 +3,12 @@
 // pid + liveness via signal 0 (ESRCH → gone, EPERM → exists but not ours →
 // still alive), wall clock, and process env (PIJ_SESSION_ID lookup). Kept
 // trivial so the deterministic FakeProcess can stand in for it in tests.
+//
+// SUBPROCESS-FREE ON PURPOSE, enforced by `core/liveness-cost.test.ts`: this is
+// the adapter the `pij list` / `pij state` READ PATH leans on, so a `ps` here
+// would be N forks per listing. The once-per-sweep process-table capture the
+// death sweep needs therefore lives in `adapters/process-snapshot.ts`, which
+// nothing on the read path imports.
 
 import type { ProcessPort } from "../core/ports.js";
 

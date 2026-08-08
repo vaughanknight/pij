@@ -1360,7 +1360,19 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 		]);
 	});
 
-	it("contains an unavailable PID probe and persists explicit unavailable truth", () => {
+	// REVERSED BY s095 (AC-6), deliberately — the daemon-level twin of the unit
+	// reversal in `core/daemon/death-reconciler.test.ts`.
+	//
+	// This used to assert that a THROWING liveness probe was persisted as
+	// `disposition: "unavailable"`. Containing the throw is still right, and is
+	// still asserted; what changed is that an observation which never happened is
+	// no longer WRITTEN DOWN as though it had. A durable `terminal` record is read
+	// by anomaly suppression, by `releaseIdentity`'s re-bind refusal and by
+	// `revive` as terminal truth — so stamping one from a failed probe manufactured
+	// exactly the false-absence this stream exists to remove, and then latched it.
+	//
+	// `unknown` now mutates nothing: no terminal, no notice, no write.
+	it("contains an unavailable PID probe and records NOTHING from it", () => {
 		const registry = new FsRegistry(home);
 		registry.write(
 			desc({
@@ -1380,11 +1392,7 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 		});
 
 		expect(() => new Daemon(home, ports, registry, new FsChannel(home)).tick()).not.toThrow();
-		expect(registry.read("pij-unavailable")?.terminal).toMatchObject({
-			disposition: "unavailable",
-			evidence: "observation-unavailable",
-			unavailableReason: "EPERM probing pid",
-		});
+		expect(registry.read("pij-unavailable")?.terminal).toBeUndefined();
 	});
 });
 

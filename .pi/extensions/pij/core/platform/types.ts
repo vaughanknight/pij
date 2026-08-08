@@ -673,3 +673,83 @@ export function resolveSlugCollision(base: string, taken: ReadonlySet<string>): 
 		if (!taken.has(candidate)) return candidate;
 	}
 }
+
+// ─── agent liveness (plan 095, T-1.1/T-1.2) ────────────────────────────────
+//
+// A pid is a LEASE, not an identity. `isAlive(pid)` sends signal 0 to a number —
+// an EXISTENCE test the OS answers about whatever holds that number NOW, not
+// about the agent. And the registry pid is not reliably the agent in the first
+// place: measured across 23 live seats, the agent sits AT
+// the registry pid for 16 of them and one level below it for 7 (the split tracks
+// the spawn path, `--session-id` vs `--resume`, not the harness). So the answer
+// has to come from IDENTITY in a bounded subtree, and it has to be allowed to
+// say it does not know.
+
+/** Three-valued on purpose. `unknown` is a first-class ANSWER — the probe could
+ *  not tell — and is never coerced to `absent`. The whole class of harm this
+ *  vocabulary exists to prevent is a missing observation being read as an
+ *  observation of absence. */
+export type AgentLiveness = "alive" | "absent" | "unknown";
+
+/** Which rung of the identity ladder produced the verdict. Machine-stable so a
+ *  consumer can distinguish "we looked and nothing was there" from "we could not
+ *  look" without string-matching prose. */
+export type AgentLivenessCause =
+	/** No usable process table — capture failed, or the legacy probe threw. */
+	| "probe-unavailable"
+	/** A process in the subtree carries this seat's PARSED session id. Exact. */
+	| "session-id-match"
+	/** A harness process is present and no id comparison was possible. Corroborating. */
+	| "harness-process-present"
+	/** Every harness process in the subtree carries a DIFFERENT seat's id. Exact negative. */
+	| "foreign-session-id"
+	/** A harness process's command line is truncated or unparseable — we cannot tell. */
+	| "identity-indeterminate"
+	/** Nothing harness-like anywhere in the bounded subtree. The common true death. */
+	| "no-harness-process"
+	/** Legacy pid-existence probe said the pid exists. Weak by construction. */
+	| "pid-present"
+	/** Legacy pid-existence probe said the pid is gone. Weak by construction. */
+	| "pid-missing";
+
+export interface AgentLivenessProbe {
+	readonly liveness: AgentLiveness;
+	readonly cause: AgentLivenessCause;
+	/** The process the verdict was drawn from, when one was identified. */
+	readonly agentPid?: number;
+	/** Human-readable. NOT a contract — never parse this. */
+	readonly detail: string;
+}
+
+/** One row of an OS process table. */
+export interface ProcessInfo {
+	readonly pid: number;
+	readonly ppid: number;
+	/** The FULL command line. `ps -ww` is mandatory upstream: a truncated command
+	 *  line is MISSING EVIDENCE, not evidence of absence. */
+	readonly command: string;
+	/** Epoch ms of process start, when the capture could parse one. Corroboration
+	 *  only — see `resolveAgentLiveness`: start time may never demote a match. */
+	readonly startedAtMs?: number;
+	/** The capture could not guarantee this row's full argv (width-limited or
+	 *  unparseable). Forces `unknown` rather than a fabricated `absent`. */
+	readonly truncated?: boolean;
+}
+
+/** An immutable, WHOLE-TABLE capture, taken ONCE PER SWEEP.
+ *
+ *  Whole-table and once-per-sweep are correctness requirements, not
+ *  optimisations: the death sweep runs on the ~600ms daemon tick over ~500
+ *  descriptors, so a per-descriptor `ps` is ~500 process-table spawns per tick,
+ *  which stalls the tick and therefore message delivery. Passing a VALUE rather
+ *  than a callback is what makes the per-descriptor shape unwritable.
+ *
+ *  Tagged union because a FAILED capture and an EMPTY table are different facts
+ *  and must never collapse into each other. */
+export type ProcessSnapshot =
+	| {
+			readonly ok: true;
+			readonly capturedAtMs: number;
+			readonly processes: readonly ProcessInfo[];
+	  }
+	| { readonly ok: false; readonly reason: string };
