@@ -9,7 +9,7 @@
 |---|---|
 | `orchestrationRole: "pa"` | LIVE, pij `fa3bdc1` — vocabulary single-sourced as data; both write parsers accept it |
 | Capability gate | LIVE — one predicate at two seams (`core/cli.ts dispatch`, the bin's argv early-branch), exhaustive verb-classification test |
-| `whoami` projects `role` + `refusedVerbs` | LIVE — a PA can read its own capability instead of discovering it by attempting |
+| `whoami` projects `role` + an exhaustive `verbs` map | LIVE — a PA can read its own capability instead of discovering it by attempting; every classified verb is stated as `allow`/`conditional`/`refuse`, so no belief is formable from an absence |
 | `--for <prime>` card relay | LIVE — PA-only, own-prime-only, card-only (never a semantic state: that is first-person) |
 | `statusWrittenBy` | LIVE — a relayed card records the PA as author, so a PA never borrows its prime's identity |
 | Rail render | LIVE, chainglass `03c09e95d` + `2e5f7e8a1` — sky chip (never the prime's indigo), placed under its prime at PM level, optional-but-rendered card |

@@ -20,10 +20,17 @@ caveat would believe it is ungated and over-restrict itself — the benign direc
 wrong.**
 
 The capability gate **has shipped** (pij `fa3bdc1`): one predicate at two seams, an
-exhaustive verb-classification test, and `whoami` projecting your own `refusedVerbs`.
+exhaustive verb-classification test, and `whoami` projecting your own capability.
 
-**Verify it on YOURSELF before trusting it** — `pij whoami --json`, expect a non-empty
-`refusedVerbs`. This is rule 3 applied to your own boundary: a proof about one layer is
+**Verify it on YOURSELF before trusting it** — `pij whoami --json`, expect
+`capabilitySchema: 2` and a `verbs` map with one entry per verb, each `allow`,
+`conditional` or `refuse`. **UPDATED 2026-08-08 (plan 094, #153): the earlier
+instruction here said to expect a non-empty `refusedVerbs`. That field no longer
+exists** — it was removed rather than kept beside the map, because an *absence*
+from a list of refusals reads as *allowed*, and a probe written against it kept
+parsing and kept returning a confident falsehood after the payload changed. Read
+`verbs.<verb>` directly; do not default a missing field to "nothing is refused".
+This is rule 3 applied to your own boundary: a proof about one layer is
 not a guarantee about the next, which is exactly how a role widening once passed its type
 check while both parsers still refused the value.
 

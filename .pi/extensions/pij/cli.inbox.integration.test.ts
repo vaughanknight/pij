@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
 import type { DeliveredMessage, SessionDescriptor } from "./core/types.js";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -201,19 +202,38 @@ describe("portable pij CLI baseline", () => {
 		// plan 078: whoami now also projects the seat's role and, for a PA, the
 		// verbs it will be refused — a capability boundary whose input the caller
 		// cannot read is the s075 opened.actor defect, so the gate had to come
-		// with a way to ask BEFORE attempting. An unroled seat reads null/[] and
-		// is otherwise unchanged; toEqual is kept deliberately (not toMatchObject)
-		// so a future addition to this surface has to be noticed here.
-		expect(JSON.parse(result.stdout)).toEqual({
+		// with a way to ask BEFORE attempting. An unroled seat reads null and a
+		// map that is uniformly `allow`; toEqual is kept deliberately (not
+		// toMatchObject) so a future addition to this surface has to be noticed
+		// here — that strictness caught plan 084's additive `conditionalVerbs` key
+		// weeks after being written, and downgrading it would silence the only
+		// mechanism in this codebase that detects the exact defect plan 094 exists
+		// to fix.
+		//
+		// PLAN 094 (#153): the two lists are gone, replaced by one exhaustive map.
+		// The map is split out of the toEqual rather than transcribed into it,
+		// because a literal of every key is exhaustive BY TRANSCRIPTION — it pins
+		// today's verbs and silently accepts tomorrow's. Compared against
+		// `PA_VERB_CLASSIFICATION` the pin TRACKS the table, so a verb added
+		// without a classification goes red on its own. Both halves stay strict:
+		// a new scalar field trips the `toEqual`, a new verb trips the key set.
+		const { verbs, ...scalars } = JSON.parse(result.stdout) as Record<string, unknown> & {
+			verbs: Record<string, string>;
+		};
+		expect(scalars).toEqual({
 			id: descriptor.id,
 			folder,
 			dataDir: descriptor.dataDir,
 			state: "idle",
 			pid: process.pid,
 			orchestrationRole: null,
-			refusedVerbs: [],
-			conditionalVerbs: [],
+			capabilitySchema: 2,
 		});
+		expect(Object.keys(verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+		// Stated positively, because an unroled seat's capability used to be
+		// carried by an EMPTY LIST — an absence a reader could not tell from a
+		// build that had no gate at all.
+		expect([...new Set(Object.values(verbs))]).toEqual(["allow"]);
 	});
 
 	it("delivers a raw message through the real CLI into an isolated PIJ_HOME", {

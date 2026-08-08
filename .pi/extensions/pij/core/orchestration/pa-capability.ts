@@ -59,13 +59,27 @@ const GRANT = refuse("it grants or seizes authority");
  *  qualifies (Pattern P5), because three surfaces must say the same thing: the
  *  table, the handler's refusal, and `pij whoami`'s conditional projection.
  *
- *  The two axes are independent and BOTH narrow. Action: only `watch`/`unwatch`
- *  — `pause`/`resume`/`exempt`/`reset`/`interval`/`disable-all`/`enable-all`
- *  change supervision policy and stay refused for every target. Target: only
- *  the PA itself or its own parent (`effectiveParent`) — every other seat stays
- *  refused for every action. */
+ *  SPLIT BY ACTION (plan 094), because the actions are not alike and one
+ *  sentence covering all of them was wrong in both directions:
+ *   - `list` is a genuine pure read over every seat's roster, and it is the only
+ *     way a PA can discover WHICH subscriptions it holds. Refusing it made the
+ *     resignation below a verb with no way to learn its own argument.
+ *   - `unwatch` is self-resignation BY CONSTRUCTION: `--for` is refused for a PA
+ *     before the target is ever resolved, so the effective watcher is always the
+ *     caller and the write can only ever reach the PA's OWN row. The target
+ *     restriction that used to sit on it bought nothing and cost the PA the
+ *     ability to release a subscription it created.
+ *   - `watch` stays lineage-scoped. Binding a PA to a stranger CREATES a
+ *     subscription rather than releasing one, and the ruling widened release and
+ *     visibility only.
+ *   - everything else — `status`, `pause`, `resume`, `exempt`, `reset`,
+ *     `interval`, `disable-all`, `enable-all` — changes supervision policy for a
+ *     seat and stays refused for every target. `status` is in that list
+ *     deliberately: it READS like a read, but at this seam it falls through to
+ *     the shared reconcile-and-write preamble, so permitting it would hand a PA
+ *     a persisted write on a stranger's sidecar. */
 export const PA_WATCHDOG_CONDITION =
-	"a PA may only 'watch' or 'unwatch', and only ITSELF or its own parent — every other watchdog action changes supervision policy for a seat, and every other target belongs to someone else";
+	"a PA may 'list' the watchdog roster for any target, 'unwatch' any target — which removes only its OWN subscription and changes nothing else about that seat — and 'watch' only ITSELF or its own parent; every other watchdog action changes supervision policy for a seat and stays refused";
 
 /** The complete verb surface, both files. Adding a verb without adding it here
  *  fails `pa-capability.test.ts`, which is the whole point: drift becomes loud
@@ -123,18 +137,34 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 	agent: LINEAGE,
 	agents: LINEAGE,
 	// Chore reads/runs plus ack are the PA's deterministic maintenance surface.
-	// Definition mutation stays outside the read-only PA boundary; the bin maps
-	// add/update/remove to the finer keys below before consulting this table.
+	// The definition mutators moved to ALLOW under the harm test (plan 094): the
+	// bin maps add/update/remove to the finer keys below before consulting this
+	// table.
 	chore: ALLOW,
 	// EVERY chore subverb is classified explicitly, because `paCapabilityVerb`
-	// now maps all of them. The reads are the PA's deterministic maintenance
-	// surface; definition mutation stays outside the read-only boundary.
+	// now maps all of them.
 	"chore run": ALLOW,
 	"chore list": ALLOW,
 	"chore ack": ALLOW,
-	"chore add": refuse("it edits the durable duty roster; a PA may run/list/ack chores"),
-	"chore update": refuse("it edits the durable duty roster; a PA may run/list/ack chores"),
-	"chore remove": refuse("it edits the durable duty roster; a PA may run/list/ack chores"),
+	// WIDENED (plan 094, #102). The old gate refused these on an AUTHORITY test:
+	// editing a durable roster is authority, so refuse. The ruling replaced that
+	// with a HARM test — recording vs deciding, reversible vs terminal — and all
+	// three mutators land on the permitted side of both axes. `remove` writes a
+	// `removals` record carrying scope, name, reason and timestamp BEFORE it
+	// deletes (`core/chores/cli-verbs.ts`), so the act is attributed and the
+	// chore is re-addable; `add`/`update` are ordinary roster edits with the
+	// same property. Nothing here concludes, attests or ends anything.
+	//
+	// The seat that DISCOVERS a roster defect was the only one barred from
+	// repairing it, so every finding had to be relayed through a prime who might
+	// not be reading. That routing cost was the whole complaint.
+	//
+	// Widest consequence, recorded so it is a decision rather than a discovery:
+	// chore scopes union, so a `fleet`-scoped add creates a duty for every seat
+	// (plan 094 finding 07).
+	"chore add": ALLOW,
+	"chore update": ALLOW,
+	"chore remove": ALLOW,
 	// `pij agent report` — first-person, and unreachable for a PA anyway because
 	// the `agent` family above is refused. Classified so the table stays total.
 	report: ALLOW,
@@ -164,7 +194,18 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 	"stream-create": LINEAGE,
 	"stream-close": LINEAGE,
 	"fence-set": refuse("it declares a construction fence"),
-	"spine-append": refuse("it writes directly to the spine"),
+	// WIDENED (plan 094, #102). Appending to the spine is RECORDING, which the
+	// harm test permits — not concluding, which it does not. The entry is
+	// attributed and distinguishable at read time: `spine-append` resolves an
+	// actor and stamps `actor` + `actorProvenance` under the platform write lock
+	// (`core/cli.ts`), and the log is append-only, so nothing a PA writes can
+	// overwrite or unsay anything already there.
+	//
+	// The alternative was worse than the risk. A PA is the seat closest to an
+	// observation and was the one seat that could not durably record it, so every
+	// finding depended on a prime being attentive at the moment of relay — a
+	// durable observation traded for an ephemeral one.
+	"spine-append": ALLOW,
 	"dispatch-packet": OBLIGATION,
 	// CONDITIONAL, not refused: the refusal reason WAS the argument for allowing
 	// it. "Acknowledging a brief is the assignee's own act" — and when the PA IS
@@ -176,10 +217,12 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 		"a PA may acknowledge a dispatch addressed to ITSELF, and no other seat's",
 	),
 	// CONDITIONAL, not refused: `watchdog` is one token covering eleven actions
-	// over any target. A PA subscribing to supervise its OWN parent changes
-	// nobody else's policy, and refusing it is what left a PA unable to remove
-	// even a stale subscription it created (#95). Target-scoped, action-scoped,
-	// and enforced in the handler that can see both.
+	// over any target. The condition is split by ACTION (see
+	// `PA_WATCHDOG_CONDITION`) — a read and a resignation are not the same kind
+	// of act as binding a subscription, and refusing them all left a PA unable to
+	// remove even a stale subscription it created (#95, then #102).
+	// Target-scoped where that matters, action-scoped throughout, and enforced in
+	// the handler that can see both.
 	watchdog: conditional(PA_WATCHDOG_CONDITION),
 };
 

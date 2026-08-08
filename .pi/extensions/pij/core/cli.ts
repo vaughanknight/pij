@@ -47,6 +47,7 @@ import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import {
 	PA_VERB_CLASSIFICATION,
+	type PaCapability,
 	paConditionalWhy,
 	paRefusal,
 	paRefusalMessage,
@@ -1888,6 +1889,29 @@ function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
 	return { stdout: "", stderr, exitCode: EXIT[code] };
 }
 
+/** The `pij watchdog <action> <id>` result line, in ONE place.
+ *
+ * Extracted (plan 094) when the PA self-resignation path had to return before
+ * the shared preamble: two exits rendering the same receipt by hand is how the
+ * two start describing the same sidecar differently. `describeWatchdogState`
+ * stays FIRST — watching-vs-paused is the armed/inert discriminator in the
+ * tool's own words, and a prime once got that for free from a pasted receipt. */
+function renderWatchdogResult(
+	id: string,
+	block: ReturnType<typeof watchdogBlock>,
+	rebound: boolean,
+	json: boolean,
+): CliResult {
+	if (json) return okOut(JSON.stringify({ id, watchdog: block, watcherRebound: rebound }));
+	const expiry =
+		block.exemptUntilMs === null
+			? ""
+			: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${humanizeDurationMs(block.exemptRemainingMs ?? 0)} remaining)`;
+	return okOut(
+		`${id}: ${describeWatchdogState(block)} · interval ${humanizeDurationMs(block.intervalMs)}${expiry} · ${renderWatcherRoster(block.watchers)}${rebound ? " · re-bound (original addedAt preserved)" : ""}`,
+	);
+}
+
 function selfId(deps: CliDeps): Result<SessionId> {
 	const envId = deps.process.env("PIJ_SESSION_ID");
 	const pane = deps.process.env("TMUX_PANE");
@@ -2335,34 +2359,54 @@ function paGate(cmd: ParsedCommand, deps: CliDeps): CliResult | null {
  * lookup there was caught by exactly that invariant). The target is knowable
  * only here.
  *
- * TWO INDEPENDENT NARROWINGS, and both are load-bearing:
- *   - **action** — only `watch`/`unwatch`. Everything else changes supervision
- *     policy, and `disable-all`/`enable-all`/`list` are checked here too even
- *     though they branch before any per-seat id is resolved. A check placed
- *     after target resolution would silently permit the machine-wide ones,
- *     which is the widest hole in the set.
- *   - **target** — only the PA itself or its own `effectiveParent`.
+ * NARROWED BY ACTION FIRST, THEN BY TARGET — and the order is load-bearing:
+ *   - **action** — `list` is a permitted read, `unwatch` is permitted against
+ *     any target, `watch` is lineage-scoped, and everything else is refused.
+ *     `list`/`disable-all`/`enable-all` branch BEFORE any per-seat id is
+ *     resolved, so a check placed after target resolution would never reach
+ *     them — it would silently permit the machine-wide pair, the widest hole in
+ *     the set, while never permitting the read.
+ *   - **target** — for `watch` only: the PA itself or its own `effectiveParent`.
+ *
+ * THREE-VALUED, not two (plan 094). `unwatch` is permitted against a stranger,
+ * but the ORDINARY unwatch path is not what a PA may run: reaching it means
+ * running a shared preamble that reconciles and PERSISTS the target's exemption
+ * state, which can un-pause a seat that is neither the PA nor its parent. So the
+ * decision distinguishes *permitted outright* from *permitted as a
+ * self-resignation*, and the handler routes the latter to a path that writes
+ * only the caller's own watcher row.
  *
  * POLARITIES DIFFER ON PURPOSE. Caller identity fails **open** (an unresolvable
  * caller keeps today's behaviour, so unregistered contexts — tests, tooling,
  * first run — are not broken to constrain a seat that is always registered).
  * Target questions fail **closed** (`pa-target.ts`).
  */
+type PaWatchdogDecision =
+	| { readonly kind: "allow" }
+	/** A PA `unwatch`: permitted, but only as the removal of its OWN row. */
+	| { readonly kind: "self-resign" }
+	| { readonly kind: "refuse"; readonly result: CliResult };
+
 function paWatchdogRefusal(
 	cmd: Extract<ParsedCommand, { verb: "watchdog" }>,
 	deps: CliDeps,
-): CliResult | null {
+): PaWatchdogDecision {
+	const allow: PaWatchdogDecision = { kind: "allow" };
 	const condition = paConditionalWhy("watchdog");
 	// Defensive, and deliberately not an assertion: if `watchdog` is ever
 	// reclassified away from `conditional`, the table is once again the
 	// authority and this handler must not invent a second boundary beside it.
-	if (condition === null) return null;
+	if (condition === null) return allow;
 	const self = selfId(deps);
-	if (!self.ok) return null;
+	if (!self.ok) return allow;
 	const descriptor = deps.registry.read(self.value);
-	if (!descriptor) return null;
-	if (projectOrchestrationRole(descriptor) !== "pa") return null;
+	if (!descriptor) return allow;
+	if (projectOrchestrationRole(descriptor) !== "pa") return allow;
 	const verb = `watchdog ${cmd.action}`;
+	const refuse = (why: string): PaWatchdogDecision => ({
+		kind: "refuse",
+		result: fail("E-OWN", paRefusalMessage(verb, why), cmd.json),
+	});
 	// AC-10 — THE ONE PLACE PHASE 3 COULD SILENTLY UNDO PHASE 2. `--for` names
 	// the watcher, so a PA allowed to use it could bind ANY seat to ANY target
 	// and walk straight around the target rule above: the boundary defeated by a
@@ -2370,22 +2414,24 @@ function paWatchdogRefusal(
 	// itself — `--for` exists for acting on ANOTHER seat's behalf, and a PA has
 	// no behalf but its own, which the plain path already serves. Checked before
 	// the target decision so the refusal names the real reason.
+	//
+	// It is also what makes the widened `unwatch` below safe: with `--for` gone,
+	// the effective watcher is always the caller, so self-resignation is enforced
+	// by the data path rather than by trust.
 	if (cmd.forSeat !== undefined) {
-		return fail(
-			"E-OWN",
-			paRefusalMessage(
-				verb,
-				"'--for' binds a subscription on ANOTHER seat's behalf, which is a prime's repair path — a PA acts only for itself, so run it without '--for'",
-			),
-			cmd.json,
+		return refuse(
+			"'--for' binds a subscription on ANOTHER seat's behalf, which is a prime's repair path — a PA acts only for itself, so run it without '--for'",
 		);
 	}
-	if (cmd.action !== "watch" && cmd.action !== "unwatch") {
-		return fail("E-OWN", paRefusalMessage(verb, condition), cmd.json);
-	}
+	// A pure read over every seat's roster, and the ONLY way a PA can discover
+	// which subscriptions it holds. Checked here, ahead of target resolution,
+	// because `list` takes no target at all.
+	if (cmd.action === "list") return allow;
+	if (cmd.action === "unwatch") return { kind: "self-resign" };
+	if (cmd.action !== "watch") return refuse(condition);
 	const decision = paTargetDecision(descriptor, cmd.id);
-	if (decision.kind === "allow") return null;
-	return fail("E-OWN", paRefusalMessage(verb, decision.why), cmd.json);
+	if (decision.kind === "allow") return allow;
+	return refuse(decision.why);
 }
 
 export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
@@ -2398,7 +2444,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// PA may act must not depend on whether a store happens to be wired,
 			// or a missing store would mask the refusal with an E-ARG.
 			const paRefused = paWatchdogRefusal(cmd, deps);
-			if (paRefused !== null) return paRefused;
+			if (paRefused.kind === "refuse") return paRefused.result;
 			const store = deps.watchdogStore;
 			if (!store) return fail("E-ARG", "watchdog sidecar store is unavailable", cmd.json);
 			if (cmd.action === "disable-all" || cmd.action === "enable-all") {
@@ -2435,6 +2481,40 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!id) return fail("E-ARG", `pij watchdog ${cmd.action} needs a session id`, cmd.json);
 			const descriptor = deps.registry.read(id);
 			if (!descriptor) return fail("E-NOID", `no session '${id}' in registry`, cmd.json);
+			// ── A PA's self-resignation, and it RETURNS BEFORE THE PREAMBLE BELOW ──
+			// That ordering is the entire point, not a tidiness preference. The
+			// preamble reads the TARGET's sidecar, reconciles its exemption and
+			// PERSISTS the result — on an expired exemption that resolves through
+			// `withoutPause`, it un-pauses the watchdog of a seat which is neither
+			// the PA nor its parent. A PA is permitted `unwatch <anyone>` because
+			// `--for` is refused for it, so the write can only reach its own row;
+			// letting it fall through here would smuggle a supervision-policy change
+			// for a third party in behind that permission, through code with nothing
+			// to do with watchers. A branch placed AFTER the preamble is
+			// non-reconciling in intent only.
+			//
+			// NO-OP WHEN THERE IS NOTHING TO REMOVE: resigning from a subscription
+			// you do not hold writes nothing at all, so a PA cannot touch a
+			// stranger's file merely by asking a question with an `unwatch` shape.
+			if (paRefused.kind === "self-resign") {
+				const self = selfId(deps);
+				if (!self.ok) return fail(self.code, self.message, cmd.json);
+				const current = store.read(id);
+				const watchers = current?.watchers ?? [];
+				const remaining = watchers.filter((watcher) => watcher.watcherId !== self.value);
+				let resigned: WatchdogSidecar = current ?? {};
+				if (remaining.length !== watchers.length) {
+					resigned = { ...current, watchers: remaining };
+					store.write(id, resigned);
+				}
+				const block = watchdogBlock(
+					descriptor,
+					resigned,
+					deps.watchdogGlobalStore?.disabled() ?? false,
+					now,
+				);
+				return renderWatchdogResult(id, block, false, cmd.json);
+			}
 			const storedSidecar = store.read(id);
 			const reconciled = reconcileWatchdogExemption(storedSidecar, now);
 			if (reconciled.sidecar !== storedSidecar && reconciled.sidecar !== undefined) {
@@ -2518,18 +2598,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				deps.watchdogGlobalStore?.disabled() ?? false,
 				now,
 			);
-			if (cmd.json) return okOut(JSON.stringify({ id, watchdog: block, watcherRebound: rebound }));
-			const expiry =
-				block.exemptUntilMs === null
-					? ""
-					: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${humanizeDurationMs(block.exemptRemainingMs ?? 0)} remaining)`;
-			// `describeWatchdogState` stays FIRST and untouched: watching-vs-paused
-			// is the armed/inert discriminator in the tool's own words, and a prime
-			// got it for free from a pasted receipt. Do not lose that token while
-			// tidying the rest of the line.
-			return okOut(
-				`${id}: ${describeWatchdogState(block)} · interval ${humanizeDurationMs(block.intervalMs)}${expiry} · ${renderWatcherRoster(block.watchers)}${rebound ? " · re-bound (original addedAt preserved)" : ""}`,
-			);
+			return renderWatchdogResult(id, block, rebound, cmd.json);
 		}
 		case "models": {
 			let entries = deps.models ?? [];
@@ -2587,19 +2656,18 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// it may do BEFORE it attempts anything. Internal surface — chainglass
 			// consumes list/tree/node-show and never whoami (o-prime verified).
 			const role = projectOrchestrationRole(d);
-			const refusedVerbs = Object.keys(PA_VERB_CLASSIFICATION)
+			const refusedForText = Object.keys(PA_VERB_CLASSIFICATION)
 				.filter((verb) => paRefusal(role, verb) !== null)
 				.sort();
-			// CONDITIONAL verbs are reported SEPARATELY, never folded into either
-			// list (plan 084, AC-13). Folding them into `refusedVerbs` would be a
-			// lie in the restrictive direction — a PA reads "watchdog: refused",
-			// concludes it cannot supervise its own prime, and escalates to a human
-			// instead of running the command that would have worked, which is the
-			// loop #95 describes. Folding them into "allowed" by simply omitting
-			// them would be a lie in the permissive direction: the PA attempts a
-			// forbidden target and learns the boundary by refusal, which is the
-			// discovery-by-attempting this stream exists to end. The honest answer
-			// is a third list that states the condition.
+			// CONDITIONAL verbs are stated SEPARATELY in the TEXT surface, never
+			// folded into the refused line (plan 084, AC-13). Folding them in would
+			// be a lie in the restrictive direction — a PA reads "watchdog:
+			// refused", concludes it cannot supervise its own prime, and escalates
+			// to a human instead of running the command that would have worked,
+			// which is the loop #95 describes. Omitting them would be a lie in the
+			// permissive direction: the PA attempts a forbidden target and learns
+			// the boundary by refusal, which is the discovery-by-attempting this
+			// stream exists to end. The honest answer states the condition.
 			const conditions =
 				role === "pa"
 					? Object.keys(PA_VERB_CLASSIFICATION)
@@ -2607,7 +2675,29 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 							.filter((entry): entry is { verb: string; why: string } => entry.why !== null)
 							.sort((left, right) => left.verb.localeCompare(right.verb))
 					: [];
-			const conditionalVerbs = conditions.map((entry) => entry.verb);
+			// THE JSON SURFACE IS A TOTAL MAP, NOT TWO LISTS (plan 094, #153).
+			// `refusedVerbs`/`conditionalVerbs` partitioned a space this payload
+			// never enumerated, so ABSENCE FROM `refusedVerbs` READ AS ALLOWED —
+			// and a consumer cannot tell a verb that is permitted from one the
+			// producer had never heard of. #134 demonstrated the cost: it ADDED
+			// `conditionalVerbs` and left `refusedVerbs` present and still correct,
+			// so a probe testing `'watchdog' in refusedVerbs` kept parsing, kept
+			// succeeding, and returned a confident falsehood. An additive schema
+			// change is silent to a stale consumer; only a removal is loud, so both
+			// fields are GONE rather than kept as derived views.
+			//
+			// TOTAL FOR EVERY ROLE. A non-PA gets the same complete map, uniformly
+			// `allow`, because emitting it only for a PA would recreate the same
+			// defect one level up: an absent map would then mean either "not a PA"
+			// or "this build has no gate", and a consumer could not tell.
+			const verbs: Record<string, PaCapability["kind"]> = Object.fromEntries(
+				Object.entries(PA_VERB_CLASSIFICATION)
+					.map(([verb, capability]): [string, PaCapability["kind"]] => [
+						verb,
+						role === "pa" ? capability.kind : "allow",
+					])
+					.sort(([left], [right]) => left.localeCompare(right)),
+			);
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({
@@ -2617,8 +2707,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						state: d.state ?? "idle",
 						pid: d.pid,
 						orchestrationRole: role,
-						refusedVerbs,
-						conditionalVerbs,
+						// The schema marker exists so a consumer detects this reshape
+						// DELIBERATELY rather than inferring it from a missing key. It does
+						// NOT close the residual: a consumer doing `get('refusedVerbs', [])`
+						// still reads `[]` and concludes "nothing is refused" — silent and
+						// permissive. No payload shape can fix that, and this comment does
+						// not pretend otherwise.
+						capabilitySchema: 2,
+						verbs,
 					}),
 				);
 			return okOut(
@@ -2628,7 +2724,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					`data dir:    ${d.dataDir}`,
 					`state:       ${d.state ?? "idle"}`,
 					`role:        ${role ?? "—"}`,
-					...(refusedVerbs.length === 0 ? [] : [`refused:     ${refusedVerbs.join(" ")}`]),
+					...(refusedForText.length === 0 ? [] : [`refused:     ${refusedForText.join(" ")}`]),
 					// The CONDITION, not just the verb: a bare list would tell a PA it
 					// might be allowed and nothing about when.
 					...conditions.map((entry) => `conditional: ${entry.verb} — ${entry.why}`),

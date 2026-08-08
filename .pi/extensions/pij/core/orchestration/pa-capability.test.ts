@@ -12,6 +12,33 @@ import {
 
 const EXT_ROOT = join(import.meta.dirname, "..", "..");
 
+// ── THESE THREE SCRAPES ARE THE ONLY TABLE-TO-REALITY PROOF IN THE REPO ──────
+//
+// DELETING ANY OF THEM SILENTLY REMOVES THE ONLY THING THAT WOULD NOTICE A VERB
+// DISAPPEARING FROM `PA_VERB_CLASSIFICATION`. They compare the table against the
+// REAL verb surface read off `core/cli.ts`, the bin, and `core/chores/cli-verbs.ts`
+// — no other test in this repository does, and nothing else can: every other
+// consumer of the table reads the table.
+//
+// The exhaustiveness pin at `cli.inbox.integration.test.ts` DEPENDS ON THIS and
+// cannot substitute for it. That pin asserts the `whoami --json` payload's key
+// set equals `Object.keys(PA_VERB_CLASSIFICATION)` — but the payload is
+// GENERATED from that same table, so deleting a row moves BOTH SIDES IDENTICALLY
+// and the pin stays green with nothing to perceive. It is blind to table
+// SHRINKAGE by construction. (Proven, not assumed: plan 094 adversarial mutation
+// A5 deleted `whoami: ALLOW` from the table and the pin stayed green — a correct
+// equivalent mutant — while mutation A4, the same deletion, turned
+// "classifies every verb the CORE parser can produce" below RED.)
+//
+// So the chain has two halves living in two files, and only one of them is here:
+//   payload → table   proven by the pin (plan 094 mutations 15, 15b, A1–A3)
+//   table   → reality proven HERE, and nowhere else
+//
+// A future author who removes these scrapes as redundant — reasoning that the
+// pin already checks exhaustiveness — deletes the half that actually watches the
+// world, keeps the half that only watches itself, and leaves a green suite.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /** Every verb the CORE parser can produce, scraped from the Command union. */
 function coreVerbs(): readonly string[] {
 	const src = readFileSync(join(EXT_ROOT, "core", "cli.ts"), "utf8");
@@ -112,17 +139,36 @@ describe("PA capability classification is TOTAL across BOTH seams", () => {
 	});
 });
 
-describe("paRefusal — only a PA is refused, and only for authority verbs", () => {
-	it("refuses the lineage and seat-control verbs the bin owns", () => {
-		for (const verb of ["spawn", "adopt", "close", "revive", "orchestration", "link"]) {
-			expect(paRefusal("pa", verb)).not.toBeNull();
-		}
+describe("paRefusal — only a PA is refused, and only for HARMFUL verbs", () => {
+	// ── plan 094 task 1.2 ────────────────────────────────────────────────────
+	// ONE INDEPENDENT TEST PER VERB, replacing two `for` loops. A loop's FIRST
+	// failure aborts the block, so every later verb in it is unreported — which
+	// means "the neighbours stayed green" is not demonstrable under mutation,
+	// and the mutation table (rows 6–11) names a green neighbour for every red.
+	// A preserved refusal earns its keep only under its own mutation, so it has
+	// to be able to fail alone.
+	it.each([
+		"spawn",
+		"adopt",
+		"close",
+		"revive",
+		"orchestration",
+		"link",
+	])("refuses the lineage/seat-control verb '%s'", (verb) => {
+		expect(paRefusal("pa", verb)).not.toBeNull();
 	});
 
-	it("refuses obligation, testimony and grant verbs", () => {
-		for (const verb of ["task-set", "task-close", "state-verify", "attest", "canary"]) {
-			expect(paRefusal("pa", verb)).not.toBeNull();
-		}
+	it.each([
+		"task-set",
+		"task-close",
+		"state-verify",
+		"attest",
+		"canary",
+	])("refuses the obligation/testimony/grant verb '%s'", (verb) => {
+		// `attest` and `state-verify` are the load-bearing pair under the harm
+		// test: verification is a CONCLUSION, and the widening explicitly did
+		// not move the line between recording and concluding.
+		expect(paRefusal("pa", verb)).not.toBeNull();
 	});
 
 	it("PERMITS the reads and the PA's own first-person card — must not regress", () => {
@@ -141,13 +187,36 @@ describe("paRefusal — only a PA is refused, and only for authority verbs", () 
 		}
 	});
 
-	it("permits chore run/list/ack but refuses roster add/update/remove", () => {
+	// ── plan 094 task 1.1 (AC-01, AC-02) ─────────────────────────────────────
+	// THE HARM TEST, NOT THE AUTHORITY TEST. The old gate refused a verb because
+	// it bore authority; the ruling replaced that with harm on two axes —
+	// recording vs deciding, and reversible vs terminal. `spine-append` records
+	// (attributed, append-only) and the three `chore` mutators are reversible
+	// and leave a durable `removals` record, so under the new test all four are
+	// permitted. One independent `it` each, so mutations 1 and 2 have a green
+	// neighbour that can actually be observed.
+	it.each([
+		"spine-append",
+		"chore add",
+		"chore update",
+		"chore remove",
+	])("PERMITS the widened verb '%s' — it records, and is reversible", (verb) => {
+		expect(paRefusal("pa", verb)).toBeNull();
+	});
+
+	it("still routes each chore mutator to its OWN table key, not the family key", () => {
+		// The widening must land on the per-subverb rows. If the mapping ever
+		// collapsed back to the `chore` family token the four tests above would go
+		// green off `chore: ALLOW` while the rows they name said anything at all.
+		for (const sub of ["add", "update", "remove"]) {
+			expect(paCapabilityVerb("chore", sub)).toBe(`chore ${sub}`);
+		}
+	});
+
+	it("permits chore run/list/ack — the pre-existing maintenance surface", () => {
 		expect(paRefusal("pa", paCapabilityVerb("chore", "run"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "list"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "ack"))).toBeNull();
-		expect(paRefusal("pa", paCapabilityVerb("chore", "add"))).not.toBeNull();
-		expect(paRefusal("pa", paCapabilityVerb("chore", "update"))).not.toBeNull();
-		expect(paRefusal("pa", paCapabilityVerb("chore", "remove"))).not.toBeNull();
 	});
 
 	it("never refuses any other role — no existing seat can regress", () => {
@@ -229,11 +298,21 @@ describe("paRefusal — only a PA is refused, and only for authority verbs", () 
 		// Passing the gate is not the same as being permitted, and a seat that
 		// cannot tell the difference discovers the boundary by attempting — the
 		// failure mode this whole stream exists to remove.
+		//
+		// plan 094 task 1.11 (AC-08): the condition is now split by ACTION, and
+		// the text must say so. A PA reading only "watch or unwatch, self or
+		// parent" would never try `list` (permitted, any target) and would
+		// wrongly believe `unwatch <stranger>` is refused. Each action named here
+		// is one a PA will otherwise learn about by being refused.
 		const watchdogWhy = paConditionalWhy("watchdog");
 		expect(watchdogWhy).not.toBeNull();
+		expect(watchdogWhy).toContain("list");
 		expect(watchdogWhy).toContain("watch");
 		expect(watchdogWhy).toContain("unwatch");
 		expect(watchdogWhy).toContain("parent");
+		// The one thing a reader must not conclude from "unwatch any target" —
+		// that a PA may remove somebody else's subscription.
+		expect(watchdogWhy).toContain("own");
 
 		const ackWhy = paConditionalWhy("ack-dispatch");
 		expect(ackWhy).not.toBeNull();

@@ -25,6 +25,7 @@ import {
 } from "./cli.js";
 import { buildInitInjection } from "./harness/claude.js";
 import { parseBriefAckBody, parseReceiptBody, receiptBody } from "./message.js";
+import { PA_VERB_CLASSIFICATION, PA_WATCHDOG_CONDITION } from "./orchestration/pa-capability.js";
 import { PROJECT_SLUG_MAX_LENGTH, type Project, type SpineEvent } from "./platform/types.js";
 import type { DeliveryPort } from "./ports.js";
 import {
@@ -39,6 +40,7 @@ import {
 	type SessionDescriptor,
 	type WatchdogSidecar,
 } from "./types.js";
+import { DEFAULT_WATCHDOG_EXEMPT_TTL_MS, reconcileWatchdogExemption } from "./watchdog.js";
 
 const T = Date.parse("2026-06-16T12:00:00.000Z");
 const recent = new Date(T - 2000).toISOString();
@@ -8149,21 +8151,31 @@ describe("s078 — the PA capability gate at the dispatch seam", () => {
 	it("whoami makes the boundary OBSERVABLE — role and refused verbs, before attempting", () => {
 		// The binding constraint: a gate whose input is unobservable is the s075
 		// opened.actor defect, and this stream exists to make authority legible.
+		//
+		// INDEXED ON THE MAP (plan 094, task 2.6). Each assertion came out
+		// STRICTLY STRONGER: `toContain("close")` on a list only said "close is
+		// somewhere among the refusals", while `verbs.close === "refuse"` says the
+		// payload's answer for that verb IS refuse — and the former's negation
+		// (`not.toContain("list")`) said only "not refused", which a payload that
+		// had never heard of `list` also satisfies.
 		const card = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as {
 			orchestrationRole: string;
-			refusedVerbs: string[];
+			verbs: Record<string, string>;
 		};
 		expect(card.orchestrationRole).toBe("pa");
-		expect(card.refusedVerbs).toContain("close");
-		expect(card.refusedVerbs).toContain("task-set");
-		expect(card.refusedVerbs).not.toContain("list");
+		expect(card.verbs.close).toBe("refuse");
+		expect(card.verbs["task-set"]).toBe("refuse");
+		expect(card.verbs.list).toBe("allow");
 
 		const pm = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as {
 			orchestrationRole: string;
-			refusedVerbs: string[];
+			verbs: Record<string, string>;
 		};
 		expect(pm.orchestrationRole).toBe("pm");
-		expect(pm.refusedVerbs).toEqual([]);
+		// `refusedVerbs: []` used to carry this claim by absence, which is the
+		// defect. Stated positively: every verb the table classifies is `allow`
+		// for a non-PA.
+		expect(Object.values(pm.verbs).every((value) => value === "allow")).toBe(true);
 	});
 
 	// ── plan 084 Phase 2 (AC-13) ──────────────────────────────────────────────
@@ -8174,32 +8186,129 @@ describe("s078 — the PA capability gate at the dispatch seam", () => {
 		// RESTRICTIVE direction is how a PA concludes it cannot watch its own
 		// prime and escalates to a human — the exact loop #95 describes.
 		const card = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as {
-			refusedVerbs: string[];
-			conditionalVerbs: string[];
+			verbs: Record<string, string>;
 		};
-		expect(card.conditionalVerbs).toContain("watchdog");
-		expect(card.conditionalVerbs).toContain("ack-dispatch");
-		// And it must no longer claim they are flatly refused.
-		expect(card.refusedVerbs).not.toContain("watchdog");
-		expect(card.refusedVerbs).not.toContain("ack-dispatch");
-		// The two lists must never overlap — that would be two answers to one
-		// question.
-		for (const verb of card.conditionalVerbs) expect(card.refusedVerbs).not.toContain(verb);
+		// One value per verb subsumes BOTH halves of the old pair of assertions:
+		// `conditionalVerbs` contains it AND `refusedVerbs` does not. The old
+		// no-overlap loop is gone because the map makes overlap unrepresentable —
+		// two answers to one question was a property of having two lists.
+		expect(card.verbs.watchdog).toBe("conditional");
+		expect(card.verbs["ack-dispatch"]).toBe("conditional");
 	});
 
-	it("whoami leaves a non-PA's conditional list EMPTY — the gate is role-keyed", () => {
+	it("whoami reports a non-PA's conditional verbs as plainly ALLOWED — the gate is role-keyed", () => {
+		// `conditionalVerbs: []` said this by absence: a reader could not tell
+		// "no conditions apply to this role" from "this build has no conditional
+		// arm". The map says it outright.
 		const pm = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as {
-			conditionalVerbs: string[];
+			verbs: Record<string, string>;
 		};
-		expect(pm.conditionalVerbs).toEqual([]);
+		expect(pm.verbs.watchdog).toBe("allow");
+		expect(pm.verbs["ack-dispatch"]).toBe("allow");
 	});
 
 	it("whoami TEXT states the condition, not just the verb name", () => {
 		// A bare list of conditional verbs tells a PA it might be allowed and
 		// nothing about when — which is discovery-by-attempting with extra steps.
+		//
+		// PINNED TO THE CONSTANT (plan 094 task 1.11, AC-08). Asserting loose
+		// substrings let the rendered text and the table's condition drift apart
+		// while staying green: "watchdog" and "parent" both survived a rule that
+		// no longer said what the gate does. Three surfaces must agree — the
+		// table, the handler's refusal, and this render — so this asserts the
+		// render carries the SAME string the table classifies with.
 		const text = run(["whoami"], paSeat()).stdout;
 		expect(text).toContain("watchdog");
-		expect(text).toContain("parent");
+		expect(text).toContain(PA_WATCHDOG_CONDITION);
+		// The per-action rule itself, so a change that keeps the constant but
+		// empties it of content is still caught.
+		expect(PA_WATCHDOG_CONDITION).toContain("list");
+		expect(PA_WATCHDOG_CONDITION).toContain("unwatch");
+		expect(PA_WATCHDOG_CONDITION).toContain("parent");
+	});
+
+	// ── plan 094 Phase 2 (AC-10…AC-13) ────────────────────────────────────────
+	// The two lists partitioned a space the payload never enumerated, so ABSENCE
+	// FROM `refusedVerbs` READ AS ALLOWED. That is not a readability complaint:
+	// a probe written 2026-08-01 tested `'watchdog' in refusedVerbs`, and when a
+	// third bucket was added the field stayed present and still correct while its
+	// COMPLETENESS changed — the probe kept parsing and kept returning a
+	// confident falsehood. An exhaustive map removes the absence a belief could
+	// be formed from.
+
+	it("whoami --json carries a TOTAL three-valued verbs map for a PA (2.1, AC-10)", () => {
+		const parsed = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as Record<
+			string,
+			unknown
+		>;
+		// PRESENCE FIRST, CONTENTS SECOND — deliberate ordering. Pre-fix
+		// `parsed.verbs` is undefined and `Object.keys(undefined)` THROWS; a
+		// TypeError would prove the field is missing, not that the behaviour is
+		// wrong, and the pre-fix RED gate rejects a crash as evidence.
+		expect(parsed).toHaveProperty("verbs");
+		const verbs = parsed.verbs as Record<string, string>;
+		// Compared against the table IMPORTED FROM THE MODULE, never a
+		// hand-written list — a hand-list drifts silently and would re-open the
+		// exact hole this payload closes. Not circular: the table's totality
+		// against the REAL verb surface is proven independently by the scrapes in
+		// `pa-capability.test.ts` (which read `core/cli.ts`, the bin, and
+		// `core/chores/cli-verbs.ts`). Table→reality is proven there; payload→
+		// table is proven here.
+		expect(Object.keys(verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+		for (const [verb, value] of Object.entries(verbs)) {
+			expect(["allow", "conditional", "refuse"], `verbs.${verb} = ${value}`).toContain(value);
+		}
+		// One anchor per arm, so a map that is total but uniformly one value —
+		// which would satisfy every assertion above — is still caught.
+		expect(verbs.close).toBe("refuse");
+		expect(verbs.watchdog).toBe("conditional");
+		expect(verbs.list).toBe("allow");
+	});
+
+	it.each([
+		["pa", () => paSeat()],
+		["pm", () => pmSeat()],
+	])("drops refusedVerbs and conditionalVerbs entirely for a %s seat (2.2, AC-11)", (_role, mk) => {
+		// REMOVAL, not deprecation. Keeping the lists beside the map would ship a
+		// fix for additive-silence BY BEING ADDITIVE: a stale consumer indexing
+		// `refusedVerbs` would keep parsing and keep being wrong. Only a removal
+		// is loud.
+		const parsed = JSON.parse(run(["whoami", "--json"], mk()).stdout) as Record<string, unknown>;
+		expect(parsed).not.toHaveProperty("refusedVerbs");
+		expect(parsed).not.toHaveProperty("conditionalVerbs");
+	});
+
+	it("a non-PA's map is EQUALLY TOTAL and uniformly allow (2.3, AC-13)", () => {
+		// Deliberately a SEPARATE test from 2.1 rather than a second seat inside
+		// it: a mutation that emits the map only for `role === "pa"` must have a
+		// green neighbour to fail against, and a merged test would go red on both
+		// halves and prove nothing about which half broke.
+		const parsed = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(parsed).toHaveProperty("verbs");
+		const verbs = parsed.verbs as Record<string, string>;
+		expect(Object.keys(verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+		// No role may produce a payload in which an absence encodes anything —
+		// a non-PA gets the whole map, stated, rather than an empty list meaning
+		// "nothing refused, probably".
+		expect([...new Set(Object.values(verbs))]).toEqual(["allow"]);
+	});
+
+	it("the payload carries an explicit schema marker (2.4, AC-12)", () => {
+		// The residual this marker exists for is stated plainly and NOT papered
+		// over: removal is loud only for a consumer that INDEXES directly. One
+		// doing `d.get('refusedVerbs', [])` now reads `[]` and concludes "nothing
+		// is refused" — silent AND permissive. No payload shape fixes that; the
+		// marker only gives a careful consumer a deliberate way to detect the
+		// change.
+		const parsed = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(parsed).toHaveProperty("capabilitySchema");
+		expect(parsed.capabilitySchema).toBe(2);
 	});
 });
 
@@ -8390,9 +8499,12 @@ describe("watchdog — a PA may watch/unwatch ITSELF or its own parent, and noth
 		expect(watchdogStore.writes).toEqual([]);
 	});
 
-	it("REFUSES a PA unwatching a stranger too — the allowance is scoped by TARGET", () => {
+	it("REFUSES a PA unwatching a stranger's subscription ON THAT SEAT'S BEHALF", () => {
+		// `--for` is the only way to name a watcher other than yourself, and it is
+		// refused for a PA before the target is even resolved. This is the reason
+		// the plain `unwatch <stranger>` below is safe to permit.
 		const { d } = paDeps();
-		expect(run(["watchdog", "unwatch", STRANGER_ID], d).exitCode).not.toBe(0);
+		expect(run(["watchdog", "unwatch", STRANGER_ID, "--for", PARENT_ID], d).exitCode).not.toBe(0);
 	});
 
 	it("REFUSES an explicit-root PA every target, including its former spawner", () => {
@@ -8401,36 +8513,57 @@ describe("watchdog — a PA may watch/unwatch ITSELF or its own parent, and noth
 		expect(run(["watchdog", "watch", STRANGER_ID], d).exitCode).not.toBe(0);
 	});
 
-	// ── THE NARROWNESS PROOF (AC-05) ──────────────────────────────────────────
-	it("REFUSES every non-watch/unwatch action for a PA, even against its OWN prime", () => {
-		// Target-scoping must not be mistaken for action-scoping. These all target
-		// the seat the PA IS allowed to watch, so only the ACTION can refuse them.
-		const targeted = [
-			["pause", PARENT_ID],
-			["resume", PARENT_ID],
-			["exempt", PARENT_ID],
-			["reset", PARENT_ID],
-			["interval", PARENT_ID, "30m"],
-			["status", PARENT_ID],
-		] as const;
-		for (const argv of targeted) {
-			const { d, watchdogStore } = paDeps();
-			const r = run(["watchdog", ...argv], d);
-			expect(r.exitCode, `watchdog ${argv[0]} must be refused for a PA`).not.toBe(0);
-			expect(r.stderr, `watchdog ${argv[0]} refusal must name the role`).toContain("role 'pa'");
-			expect(watchdogStore.writes, `watchdog ${argv[0]} must not write`).toEqual([]);
-		}
+	// ── THE NARROWNESS PROOF (AC-04c) — plan 094 task 1.4 ────────────────────
+	// ONE INDEPENDENT TEST PER ACTION. As a loop, the first refusal to regress
+	// hid every action after it, so the mutation table could not show a green
+	// neighbour beside a red. Target-scoping must not be mistaken for
+	// action-scoping either: each of these targets the seat the PA IS allowed to
+	// watch, so only the ACTION can be what refuses them.
+	it.each([
+		["pause", [PARENT_ID]],
+		["resume", [PARENT_ID]],
+		["exempt", [PARENT_ID]],
+		["reset", [PARENT_ID]],
+		["interval", [PARENT_ID, "30m"]],
+		// `status` is NOT a read at this seam — it falls through to the shared
+		// reconcile-and-write preamble, so permitting it would hand a PA a write
+		// on a stranger's sidecar. It stays refused deliberately (plan 094 C-4).
+		["status", [PARENT_ID]],
+	] as const)("REFUSES the policy action 'watchdog %s' for a PA, even on its OWN parent", (action, args) => {
+		const { d, watchdogStore } = paDeps();
+		const r = run(["watchdog", action, ...args], d);
+		expect(r.exitCode, `watchdog ${action} must be refused for a PA`).not.toBe(0);
+		expect(r.stderr, `watchdog ${action} refusal must name the role`).toContain("role 'pa'");
+		expect(watchdogStore.writes, `watchdog ${action} must not write`).toEqual([]);
 	});
 
-	it("REFUSES the machine-wide and roster actions, which have no target at all", () => {
-		// These branch BEFORE the per-seat id is resolved, so a check placed after
-		// target resolution would silently permit them — the widest hole of the set.
-		for (const action of ["disable-all", "enable-all", "list"] as const) {
-			const { d } = paDeps();
-			const r = run(["watchdog", action], d);
-			expect(r.exitCode, `watchdog ${action} must be refused for a PA`).not.toBe(0);
-			expect(r.stderr).toContain("role 'pa'");
-		}
+	it.each([
+		"disable-all",
+		"enable-all",
+	] as const)("REFUSES the machine-wide action 'watchdog %s', which has no target at all", (action) => {
+		// These branch BEFORE the per-seat id is resolved, so a check placed
+		// after target resolution would silently permit them — the widest hole
+		// of the set.
+		const { d } = paDeps();
+		const r = run(["watchdog", action], d);
+		expect(r.exitCode, `watchdog ${action} must be refused for a PA`).not.toBe(0);
+		expect(r.stderr).toContain("role 'pa'");
+	});
+
+	// ── plan 094 task 1.3 (AC-03) ────────────────────────────────────────────
+	it("ALLOWS a PA `watchdog list` — the surface it finds its OWN subscriptions on", () => {
+		// A PA that cannot see the roster cannot know which subscriptions it holds,
+		// so the resignation this phase grants it would be a verb with no way to
+		// discover its own argument. `list` branches BEFORE any target id is
+		// resolved (`core/cli.ts`), which is why the widening had to land on the
+		// ACTION axis — a target-side change never reaches this line.
+		const { d, watchdogStore } = paDeps();
+		const r = run(["watchdog", "list", "--json"], d);
+		expect(r.exitCode, `watchdog list must be permitted for a PA: ${r.stderr}`).toBe(0);
+		const rows = JSON.parse(r.stdout) as { id: string }[];
+		expect(rows.map((row) => row.id)).toContain(STRANGER_ID);
+		// A read that writes is not a read.
+		expect(watchdogStore.writes).toEqual([]);
 	});
 
 	it("leaves every OTHER role completely unaffected — no existing seat regresses", () => {
@@ -8457,6 +8590,177 @@ describe("watchdog — a PA may watch/unwatch ITSELF or its own parent, and noth
 		const watchdogStore = memoryWatchdogStore(STRANGER_ID, {});
 		const d = { ...deps({ descs: [desc({ id: STRANGER_ID })] }), watchdogStore };
 		expect(run(["watchdog", "watch", STRANGER_ID], d).exitCode).toBe(0);
+	});
+});
+
+// ── plan 094 Phase 1, tasks 1.5/1.6 (AC-04, AC-04b) ────────────────────────
+// A PA may RESIGN from any subscription it holds, over any target — because
+// `--for` is refused for a PA before the target is resolved, the effective
+// watcher is always the caller, so `unwatch` cannot reach anyone else's row.
+//
+// THE PART THAT IS NOT OBVIOUS, and that a naive widening gets wrong: reaching
+// the unwatch branch used to mean running a SHARED PREAMBLE first, which reads
+// the TARGET's sidecar, reconciles its exemption, and PERSISTS the result. On
+// an expired exemption that resolves through `withoutPause`, that un-pauses the
+// watchdog of a seat which is neither the PA nor its parent — a supervision
+// policy change for a third party, arriving through code that has nothing to do
+// with watchers. The target rule never sees it, because the target rule already
+// said yes.
+//
+// So these tests assert the WHOLE SIDECAR and a WRITE COUNT, never the
+// `watchers` array. `watchers` is the one field the defect does not touch, and a
+// check scoped to it passes while the harm lands.
+describe("watchdog unwatch — a PA resigns, and resignation changes nothing else", () => {
+	const PA_ID = "pij-pa";
+	const PARENT_ID = "pij-parent";
+	const STRANGER_ID = "pij-stranger";
+	const OTHER_WATCHER = "pij-someone-else";
+	const ADDED_AT = "2026-01-02T03:04:05.000Z";
+
+	const watcher = (watcherId: string) => ({
+		watcherId,
+		addedAt: ADDED_AT,
+		capture: { mode: "anomaly" as const },
+	});
+
+	/** An exemption with an EXPLICIT deadline, already past. */
+	function expiredExplicit(watchers: readonly string[]): WatchdogSidecar {
+		return {
+			pausedBy: "exempt",
+			pausedAtMs: T - 3 * DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
+			exemptUntilMs: T - 60_000,
+			intervalMs: 30 * 60 * 1_000,
+			watchers: watchers.map(watcher),
+		};
+	}
+
+	/** A LEGACY exemption: `pausedAtMs` and NO `exemptUntilMs`.
+	 *
+	 * TWO FIXTURES, NOT ONE, and this is the whole reason: `reconcileWatchdog-
+	 * Exemption` RETURNS inside its `deadline !== undefined` branch, so a sidecar
+	 * carrying both an explicit deadline and a legacy stamp never reaches the
+	 * legacy path at all. One combined fixture would exercise one branch while
+	 * looking like it covered both. */
+	function legacy(watchers: readonly string[]): WatchdogSidecar {
+		return {
+			pausedBy: "exempt",
+			pausedAtMs: T - 3 * DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
+			intervalMs: 30 * 60 * 1_000,
+			watchers: watchers.map(watcher),
+		};
+	}
+
+	function paDeps(sidecar: WatchdogSidecar) {
+		const watchdogStore = memoryWatchdogStore(STRANGER_ID, sidecar);
+		const base = deps({
+			self: PA_ID,
+			descs: [
+				desc({ id: PA_ID, orchestrationRole: "pa", parentId: PARENT_ID }),
+				desc({ id: PARENT_ID, orchestrationRole: "pm" }),
+				desc({ id: STRANGER_ID }),
+			],
+		});
+		return { d: { ...base, watchdogStore }, watchdogStore };
+	}
+
+	// NON-VACUITY GUARD, IN TWO LAYERS. Every isolation assertion below is a
+	// claim that a write which WOULD have happened did not — so if the fixtures
+	// were inert (an exemption that reconciles to itself), all four cases would
+	// pass against a broken implementation AND against the pre-fix tree. A test
+	// that cannot fail, guarding the most serious finding in this stream.
+	//
+	// Layer 1 calls `reconcileWatchdogExemption` DIRECTLY at the same injected
+	// `now` the dispatch tests use, and asserts it returns a CHANGED sidecar.
+	//
+	// WHY IT IS HERE, stated precisely, because the obvious reason is wrong:
+	// mutating `reconcileWatchdogExemption` does NOT turn the four cases below
+	// red, and that is CORRECT — the fixed path skips reconciliation by
+	// construction, so the mutant is unreachable from them, not undetected by
+	// them. What proves the fixtures are live is moving the self-resign branch
+	// back AFTER the preamble: all four go red, which they could not do if the
+	// preamble had nothing to rewrite.
+	//
+	// This assertion earns its place on a narrower claim: that proof holds for
+	// today's tree only. Move `T`, change DEFAULT_WATCHDOG_EXEMPT_TTL_MS, or
+	// reshape the fixtures so the exemptions are no longer expired, and the four
+	// cases below become unfalsifiable with nothing in the suite to say so. This
+	// makes the precondition hold by construction rather than by inspection.
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit([OTHER_WATCHER])],
+		["a LEGACY exemption", legacy([OTHER_WATCHER])],
+	])("fixture liveness — %s IS reconciled away at the injected now", (_label, sidecar) => {
+		const reconciled = reconcileWatchdogExemption(sidecar, T);
+		// A new object, not the input handed back: the preamble writes only when
+		// these differ, so an identical return is an inert fixture.
+		expect(reconciled.sidecar).not.toBe(sidecar);
+		expect(reconciled.sidecar).not.toEqual(sidecar);
+		// And the change is the one the isolation tests exist to prevent reaching
+		// a stranger's file: the pause is lifted.
+		expect(sidecar.pausedBy).toBe("exempt");
+		expect(reconciled.sidecar?.pausedBy).toBeUndefined();
+		expect(reconciled.effectivePause).toBeUndefined();
+	});
+
+	// Layer 2 proves the same thing END TO END, through the dispatch path an
+	// ordinary caller takes — so the fixture is live not just to the pure
+	// function but to the code the PA path must avoid.
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit([OTHER_WATCHER])],
+		["a LEGACY exemption", legacy([OTHER_WATCHER])],
+	])("fixture guard — %s IS reconciled away for an ordinary caller", (_label, sidecar) => {
+		const watchdogStore = memoryWatchdogStore(STRANGER_ID, sidecar);
+		const d = {
+			...deps({ self: PARENT_ID, descs: [desc({ id: PARENT_ID }), desc({ id: STRANGER_ID })] }),
+			watchdogStore,
+		};
+		expect(run(["watchdog", "unwatch", STRANGER_ID], d).exitCode).toBe(0);
+		// The pause the PA path must NOT touch is one an ordinary caller loses.
+		expect(watchdogStore.sidecars.get(STRANGER_ID)?.pausedBy).toBeUndefined();
+	});
+
+	// ── task 1.5 (AC-04) — WRITTEN AGAINST A STRANGER DELIBERATELY ───────────
+	// Against self or its own parent this is already true pre-fix, so the
+	// criterion would silently become a preserved property and prove nothing.
+	it("ALLOWS a PA to unwatch a THIRD-PARTY target, removing only its own row", () => {
+		const { d, watchdogStore } = paDeps(expiredExplicit([PA_ID, OTHER_WATCHER]));
+		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
+		expect(r.exitCode, `a PA must be able to resign from a stranger: ${r.stderr}`).toBe(0);
+		expect(watchdogStore.sidecars.get(STRANGER_ID)?.watchers?.map((w) => w.watcherId)).toEqual([
+			OTHER_WATCHER,
+		]);
+	});
+
+	// ── task 1.6 (AC-04b) — four cases: two fixtures × two subscription states ─
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit],
+		["a LEGACY exemption", legacy],
+	])("resigning from a stranger carrying %s writes ONCE and changes ONLY the PA's row", (_label, fixture) => {
+		const before = fixture([PA_ID, OTHER_WATCHER]);
+		const { d, watchdogStore } = paDeps(before);
+		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
+		expect(r.exitCode, `a PA must be able to resign: ${r.stderr}`).toBe(0);
+		// EXACTLY ONE write: the resignation. Not one plus a reconciliation.
+		expect(watchdogStore.writes, "resignation must persist exactly once").toHaveLength(1);
+		// WHOLE SIDECAR, not `watchers`. Everything the PA has no business
+		// touching — pausedBy, pausedAtMs, exemptUntilMs, intervalMs — must
+		// survive its resignation byte for byte.
+		expect(watchdogStore.sidecars.get(STRANGER_ID)).toEqual({
+			...before,
+			watchers: [watcher(OTHER_WATCHER)],
+		});
+	});
+
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit],
+		["a LEGACY exemption", legacy],
+	])("resigning from a stranger it does NOT watch (%s) writes NOTHING at all", (_label, fixture) => {
+		const before = fixture([OTHER_WATCHER]);
+		const snapshot = JSON.stringify(before);
+		const { d, watchdogStore } = paDeps(before);
+		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
+		expect(r.exitCode, `a no-op resignation must still succeed: ${r.stderr}`).toBe(0);
+		expect(watchdogStore.writes, "a no-op resignation must not write").toEqual([]);
+		expect(JSON.stringify(watchdogStore.sidecars.get(STRANGER_ID))).toBe(snapshot);
 	});
 });
 

@@ -35,6 +35,7 @@ import { FsSpineLog } from "./adapters/spine-store.js";
 import { verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
 import { transcriptDir } from "./core/harness/claude.js";
+import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
@@ -3214,13 +3215,52 @@ describe("PA capability gate — enforced identically at BOTH seams (AC-06)", ()
 			expect(card.code).toBe(0);
 			const parsed = JSON.parse(card.out) as {
 				orchestrationRole: string;
-				refusedVerbs: string[];
-				conditionalVerbs: string[];
+				capabilitySchema: number;
+				verbs: Record<string, string>;
 			};
 			expect(parsed.orchestrationRole).toBe("pa");
-			expect(parsed.conditionalVerbs).toContain("watchdog");
-			expect(parsed.refusedVerbs).not.toContain("watchdog");
-			expect(parsed.refusedVerbs).toContain("close");
+			// Plan 094 task 2.6 — the two lists became one exhaustive map, and the
+			// assertions came out stronger. `conditionalVerbs.toContain("watchdog")`
+			// plus `refusedVerbs.not.toContain("watchdog")` were two weaker halves
+			// of the single claim below; and the payload is now asserted TOTAL at
+			// this seam too, so a bin build emitting a partial map is caught here
+			// rather than only in-process.
+			expect(parsed.capabilitySchema).toBe(2);
+			expect(parsed.verbs.watchdog).toBe("conditional");
+			expect(parsed.verbs.close).toBe("refuse");
+			expect(Object.keys(parsed.verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	// ── plan 094 Phase 1, task 1.12 (AC-02 at the BIN seam) ──────────────────
+	// `chore add` is the verb that exercises the raw-argv mapping
+	// `paCapabilityVerb(top, process.argv[3])`. Every other PA test reaching a
+	// `chore` subverb goes through the pure predicate, so a widening that landed
+	// only in the table's family row — or a bin seam that stopped consulting the
+	// table per-subverb at all — would pass all of them and still refuse here.
+	//
+	// WHAT THIS TEST DOES AND DOES NOT PROVE (prime's ruling, 2026-08-08): on its
+	// own, a positive result is also what you would see if the bin seam never
+	// consulted the table. The proof that the MAPPING is live is mutation 2 —
+	// flip `chore add` back to `refuse` and this test must go red beside the unit
+	// test. The `close` control below proves the bin gate fires at all; it cannot
+	// prove the subverb mapping, because `close` has no subverb.
+	it("lets a PA `chore add` THROUGH THE REAL BIN — the raw-argv subverb mapping", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			const added = pij(
+				["chore", "add", "sweep-inbox", "--probe", "true", "--scope", "seat", "--json"],
+				env,
+				folder,
+			);
+			expect(added.code, `bin refused a permitted chore add: ${added.out}`).toBe(0);
+			// The write actually landed — a gate that permits into a no-op proves
+			// nothing about the duty roster this widening exists to let a PA repair.
+			const listed = pij(["chore", "list", "--json"], env, folder);
+			expect(listed.code).toBe(0);
+			expect(listed.out).toContain("sweep-inbox");
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}

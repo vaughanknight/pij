@@ -89,8 +89,14 @@ role and capabilities, or 'pij state <id> --json' to read orchestrationRole and
 parent on any seat.
 ```
 
-`pij whoami --json` lists these as `conditionalVerbs` — permitted *depending on
-the target* — kept separate from `refusedVerbs`, which are refused outright.
+`pij whoami --json` answers this with a single exhaustive `verbs` map — one entry
+per classified verb, valued `allow`, `conditional` or `refuse` — beside a
+`capabilitySchema` marker. `watchdog` reads `conditional`: permitted *depending
+on the action and target*. The older `refusedVerbs`/`conditionalVerbs` pair was
+removed rather than kept, because it partitioned a space the payload never
+enumerated, so a verb's **absence** from `refusedVerbs` read as *allowed* and a
+consumer could not tell a permitted verb from one the producer had never heard
+of.
 
 ### `--for <seat>` — binding on another seat's behalf
 
