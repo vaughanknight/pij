@@ -79,3 +79,21 @@ compute the comparison cleanly.
 Both were mitigated surgically during the scratch build; scratch was later
 retired from the repo, so workshop 003 / 004 backfill should propagate the
 patterns if they repeat.
+
+## 2026-08-08 · wave 1 `w1-hardening` — eight parallel streams
+
+| | |
+|---|---|
+| **Streams** | 8 (s092–s100), one worktree each, autonomous to a green PR |
+| **Merged** | 15 PRs — 8 stream deliverables + 7 docs/seat-record/infrastructure |
+| **Issues filed** | ~25 |
+| **Wall clock** | ~14h, single day, one o-prime |
+| **Convergence** | 3 merge waves on a shared composition root, **zero code conflicts** |
+
+**Compounding observed**: the wave's cost centre was not implementation but **evidence** — one
+stream took twelve review rounds, of which the last four produced findings rather than fixes. The
+recurring tax was *rules whose application silently narrows to the case that produced them*, counted
+seven times.
+
+**Retro**: [`docs/retros/w1-hardening-fleet.md`](retros/w1-hardening-fleet.md) ·
+**Findings**: [`docs/how/fleet/`](how/fleet/)
