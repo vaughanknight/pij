@@ -2275,6 +2275,32 @@ function safeBodyHint(to: SessionId): string {
 	return `put the content in the BODY: pij send ${to} --body-file <path|-> (reads the file/stdin literally)`;
 }
 
+/** Anchor a `--file` reference to the SENDER's cwd, at send time.
+ *
+ *  `attachments[].path` is reference-passing: the bytes never ride the pij wire,
+ *  so whoever finally opens the file does it in ITS own process. The telegram
+ *  forwarder runs under the daemon, whose cwd is unrelated to the caller's — so
+ *  a relative path handed straight through misses there and the send degrades
+ *  to pasting the file's text into the message body. The sender sees
+ *  `receipt → delivered` either way, which is the part that makes it costly:
+ *  seven HTML reports reached a phone as raw markup before a human said so.
+ *
+ *  Resolving HERE is the only place with the right answer — this process is the
+ *  one that was standing in the directory the caller typed the path against.
+ *  Pure on purpose (cli.ts imports no node builtins); the cwd arrives through
+ *  the existing `CliDeps.cwd` seam, so tests stay deterministic.
+ *
+ *  POSIX semantics, matching the rest of the tmux-hosted surface. An already
+ *  absolute path is returned untouched, so every existing caller is unaffected.
+ *  `..` segments are left for the OS to resolve rather than normalised here —
+ *  the result is absolute, which is the property that was missing. */
+export function resolveAttachmentPath(file: string, cwd: string): string {
+	if (file.startsWith("/")) return file;
+	const rel = file.startsWith("./") ? file.slice(2) : file;
+	const base = cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
+	return `${base}/${rel}`;
+}
+
 /** The human-readable half of a receipt. Every branch names its cause; the
  *  `blocked` branch is deliberately the loudest thing `pij send` can print
  *  without failing (plan 071 D3). */
@@ -3242,12 +3268,20 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				// Plan 026 Phase 5: a `--file` attaches one reference-passing entry (path +
 				// optional caption); the attachments field is added ONLY when a file is given,
 				// so a plain text send round-trips byte-for-byte unchanged (no `attachments` key).
-				const attachments =
+				// The path is anchored to the SENDER's cwd here, before it leaves
+				// this process — see `resolveAttachmentPath`. A relative path that
+				// travels verbatim is resolved against the forwarder's directory
+				// instead, misses, and degrades to inlining the file as text.
+				const attachmentPath =
 					cmd.file !== undefined
+						? resolveAttachmentPath(cmd.file, deps.cwd)
+						: undefined;
+				const attachments =
+					attachmentPath !== undefined
 						? [
 								cmd.caption !== undefined
-									? { path: cmd.file, caption: cmd.caption }
-									: { path: cmd.file },
+									? { path: attachmentPath, caption: cmd.caption }
+									: { path: attachmentPath },
 							]
 						: undefined;
 				// ── plan 093: the empty-payload guard (pij#132) ──────────────────
