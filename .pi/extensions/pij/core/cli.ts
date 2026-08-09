@@ -40,6 +40,12 @@ import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
 import type { ContextWindowReaderPort } from "./context/window.js";
 import { isCompacting } from "./daemon/router.js";
+import {
+	parseSchedulerProjection,
+	readSchedulerVerdict,
+	renderSchedulerVerdict,
+	WATCHDOG_SCHEDULER_FILE,
+} from "./daemon/watchdog-scheduler-projection.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { type BriefAckReceipt, briefAckBody } from "./message.js";
@@ -1896,19 +1902,58 @@ function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
  * two start describing the same sidecar differently. `describeWatchdogState`
  * stays FIRST — watching-vs-paused is the armed/inert discriminator in the
  * tool's own words, and a prime once got that for free from a pasted receipt. */
+/** The scheduler verdict line for `pij watchdog status` (s101).
+ *
+ *  Answers "is this seat actually IN the scheduler?", which was previously
+ *  unanswerable from any command: `WatchdogManager.states` is a private in-memory
+ *  Map in the DAEMON process, so establishing it for one seat cost a prime 28
+ *  minutes of deliberately withheld status cards.
+ *
+ *  THREE VERDICTS, NEVER TWO: `scheduled`, `not-scheduled`, and `unknown` (no
+ *  projection yet, stale, or corrupt). Collapsing the last two would report a seat
+ *  as absent from the scheduler whenever the DAEMON had simply not written the
+ *  file — manufacturing exactly the false certainty the experiment was run to
+ *  avoid.
+ *
+ *  RETURNS undefined ONLY when this build has no file reader wired, which is a
+ *  fact about the BUILD and never about the seat. That is a third axis, kept
+ *  separate on purpose rather than folded into `unknown`. */
+function schedulerVerdictLine(id: string, deps: CliDeps, nowMs: number): string | undefined {
+	const read = deps.readTextFile;
+	if (read === undefined) return undefined;
+	let raw: string | undefined;
+	try {
+		raw = read(`${deps.pijHome}/${WATCHDOG_SCHEDULER_FILE}`);
+	} catch {
+		raw = undefined; // missing/unreadable -> parses to undefined -> UNKNOWN
+	}
+	return renderSchedulerVerdict(
+		readSchedulerVerdict(raw === undefined ? undefined : parseSchedulerProjection(raw), id, nowMs),
+	);
+}
+
 function renderWatchdogResult(
 	id: string,
 	block: ReturnType<typeof watchdogBlock>,
 	rebound: boolean,
 	json: boolean,
+	scheduler?: string,
 ): CliResult {
-	if (json) return okOut(JSON.stringify({ id, watchdog: block, watcherRebound: rebound }));
+	if (json)
+		return okOut(
+			JSON.stringify({
+				id,
+				watchdog: block,
+				watcherRebound: rebound,
+				...(scheduler === undefined ? {} : { scheduler }),
+			}),
+		);
 	const expiry =
 		block.exemptUntilMs === null
 			? ""
 			: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${humanizeDurationMs(block.exemptRemainingMs ?? 0)} remaining)`;
 	return okOut(
-		`${id}: ${describeWatchdogState(block)} · interval ${humanizeDurationMs(block.intervalMs)}${expiry} · ${renderWatcherRoster(block.watchers)}${rebound ? " · re-bound (original addedAt preserved)" : ""}`,
+		`${id}: ${describeWatchdogState(block)} · interval ${humanizeDurationMs(block.intervalMs)}${expiry} · ${renderWatcherRoster(block.watchers)}${rebound ? " · re-bound (original addedAt preserved)" : ""}${scheduler === undefined ? "" : ` · ${scheduler}`}`,
 	);
 }
 
@@ -2513,7 +2558,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					deps.watchdogGlobalStore?.disabled() ?? false,
 					now,
 				);
-				return renderWatchdogResult(id, block, false, cmd.json);
+				return renderWatchdogResult(
+					id,
+					block,
+					false,
+					cmd.json,
+					cmd.action === "status" ? schedulerVerdictLine(id, deps, now) : undefined,
+				);
 			}
 			const storedSidecar = store.read(id);
 			const reconciled = reconcileWatchdogExemption(storedSidecar, now);
@@ -2598,7 +2649,13 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				deps.watchdogGlobalStore?.disabled() ?? false,
 				now,
 			);
-			return renderWatchdogResult(id, block, rebound, cmd.json);
+			return renderWatchdogResult(
+				id,
+				block,
+				rebound,
+				cmd.json,
+				cmd.action === "status" ? schedulerVerdictLine(id, deps, now) : undefined,
+			);
 		}
 		case "models": {
 			let entries = deps.models ?? [];

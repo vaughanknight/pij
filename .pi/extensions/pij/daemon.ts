@@ -15,6 +15,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { dirname, join } from "node:path";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
+import { writeJsonAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsChannel } from "./adapters/channel.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
@@ -70,6 +71,10 @@ import { orphanedTapFiles } from "./core/daemon/tap-retention.js";
 import { FsTickHeartbeatStore, type TickHeartbeatPort } from "./core/daemon/tick-heartbeat.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
+import {
+	buildSchedulerProjection,
+	WATCHDOG_SCHEDULER_FILE,
+} from "./core/daemon/watchdog-scheduler-projection.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import { persistReceiptEnvelope, prepareReceiptEnvelopes } from "./core/inbox.js";
 import { receiptBody } from "./core/message.js";
@@ -220,6 +225,8 @@ export class Daemon {
 	private lastArchiveSweepMs: number | undefined;
 	/** Last archive PRUNE (pij#183); hourly, see {@link ARCHIVE_PRUNE_INTERVAL_MS}. */
 	private lastArchivePruneMs: number | undefined;
+	/** Last projected scheduler payload, so an unchanged reconcile writes nothing. */
+	private lastSchedulerFingerprint: string | undefined;
 	/** Last orphaned-tap sweep (pij#183); throttled like the archive sweep. */
 	private lastTapSweepMs: number | undefined;
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
@@ -755,6 +762,7 @@ export class Daemon {
 			);
 		}
 		this.watchdogManager.reconcile(this.registry.list());
+		this.projectWatchdogScheduler(tickAt);
 		this.sweepArchive();
 		this.pruneArchive();
 		// Every tick, unconditionally. Tick duration IS delivery latency for the
@@ -1148,6 +1156,37 @@ export class Daemon {
 		const pane = this.ports.capturePane(paneId);
 		this.tickPaneCaptures.set(paneId, pane);
 		return pane;
+	}
+
+	/** Project which seats the watchdog scheduler is actually tracking (s101).
+	 *
+	 *  `WatchdogManager.states` is private and in-memory, so "is this seat in the
+	 *  scheduler?" was unanswerable from any command — the CLI is a different
+	 *  process. Establishing it for ONE seat previously cost a prime 28 minutes of
+	 *  deliberately withheld status cards, because the cadence we mandate is what
+	 *  suppresses the trigger being measured.
+	 *
+	 *  WRITTEN ONLY WHEN THE CONTENT CHANGES. `nextDueAt` is an absolute stamp, so
+	 *  the payload is stable across most reconciles and the steady-state cost is
+	 *  ZERO. The alternative — stamping it on the per-seat sidecar, which already
+	 *  exists — would be ~94 atomic writes per tick at current seat counts, and at
+	 *  the 18.1ms/write this repo measured in pij#180 that is ~1.7s per tick,
+	 *  against the 3.27s pij#181 and pij#229 removed. One file, one write, and only
+	 *  when it says something new. */
+	private projectWatchdogScheduler(tickAt: string): void {
+		try {
+			const sessions = this.watchdogManager.schedulerProjection();
+			const fingerprint = JSON.stringify(sessions);
+			if (fingerprint === this.lastSchedulerFingerprint) return;
+			this.lastSchedulerFingerprint = fingerprint;
+			writeJsonAtomic(
+				join(this.pijHome, WATCHDOG_SCHEDULER_FILE),
+				buildSchedulerProjection(sessions, tickAt),
+			);
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			this.log(`watchdog projection: error ${detail}`);
+		}
 	}
 
 	/** Reclaim tap sinks no live pane owns (pij#183).

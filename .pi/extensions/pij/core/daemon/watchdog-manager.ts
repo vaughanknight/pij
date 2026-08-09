@@ -249,6 +249,10 @@ export class WatchdogManager {
 	private readonly states = new Map<SessionId, RuntimeState>();
 	private readonly revisions = new Map<SessionId, number | null>();
 	private readonly sidecars = new Map<SessionId, WatchdogSidecar | undefined>();
+	/** Next-due stamp per scheduled seat, for the projection (s101). Derived, never
+	 *  authoritative: PRESENCE in `states` is what "in the scheduler" means, and
+	 *  this map only decorates it. */
+	private readonly nextDueAt = new Map<SessionId, string>();
 
 	private wasGloballyDisabled = false;
 
@@ -288,14 +292,32 @@ export class WatchdogManager {
 		return this.states.size;
 	}
 
+	/** What the daemon projects to disk so `pij watchdog status` can answer "is
+	 *  this seat actually in the scheduler?" (s101).
+	 *
+	 *  Keyed off `states`, which IS the scheduler — `activeCount()` above has
+	 *  reported its size since this class was written, and its only callers were
+	 *  tests, because no other PROCESS could reach it. That is the gap: a fact
+	 *  observable from inside the daemon and nowhere else. */
+	schedulerProjection(): Record<SessionId, { readonly nextDueAt?: string }> {
+		const out: Record<SessionId, { readonly nextDueAt?: string }> = {};
+		for (const id of this.states.keys()) {
+			const due = this.nextDueAt.get(id);
+			out[id] = due === undefined ? {} : { nextDueAt: due };
+		}
+		return out;
+	}
+
 	disposeSession(id: SessionId): void {
 		this.states.delete(id);
+		this.nextDueAt.delete(id);
 		this.revisions.delete(id);
 		this.sidecars.delete(id);
 	}
 
 	disposeAll(): void {
 		this.states.clear();
+		this.nextDueAt.clear();
 		this.revisions.clear();
 		this.sidecars.clear();
 	}
@@ -444,6 +466,14 @@ export class WatchdogManager {
 		state.lastState = session.state;
 
 		const cfg = effectiveWatchdog(sidecar);
+		// Projected for `pij watchdog status` (s101). Cheap: the anchor and interval
+		// are both already in hand here, so this costs an addition and a map set.
+		const anchorMs = state.scheduleAnchorAtMs;
+		if (anchorMs !== null && Number.isFinite(anchorMs)) {
+			this.nextDueAt.set(session.id, new Date(anchorMs + cfg.intervalMs).toISOString());
+		} else {
+			this.nextDueAt.delete(session.id);
+		}
 		const descriptorFire = timestampMs(session.lastWatchdogFireAt);
 		if (
 			descriptorFire !== null &&
