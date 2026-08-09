@@ -680,7 +680,14 @@ export class WatchdogManager {
 					captured,
 				);
 				lines.push(`capture: ${pointer}`);
-				lines.push(...captured.split("\n").slice(0, 5));
+				// TAIL, not head. `captured` is already tail-anchored (last maxLines
+				// lines, then the last maxBytes of those), so slicing from the FRONT
+				// handed the watcher the OLDEST five lines of the window — and made a
+				// bigger window mean a STALER notice. At the default maxLines 40 the
+				// notice showed lines 40..36 from the end while the newest output
+				// reached the capture file only. Every existing test used maxLines <= 5,
+				// where head and tail coincide, so nothing could see it.
+				lines.push(...captured.split("\n").slice(-5));
 			} else {
 				lines.push("capture disabled by watcher policy");
 			}
