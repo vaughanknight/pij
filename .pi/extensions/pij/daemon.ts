@@ -178,6 +178,22 @@ export class Daemon {
 	 *  each tick; captures lazily on the first question, so a tick that asks
 	 *  nothing forks nothing. */
 	private readonly processStates = new TickScopedProcessStates();
+	/** THIS TICK'S RENDERED FRAME per pane (pij#229).
+	 *
+	 *  `refreshPaneSignals` already captured every live pane once per tick and
+	 *  said why: the caret tracker and the content gate must reason about the SAME
+	 *  rendered frame. The activity axis in the drive loop was a THIRD consumer of
+	 *  the same panes in the same tick, taking its own later capture — so `state`
+	 *  and `lastEventAt` could be derived from a different frame than the signal
+	 *  tracker saw, in the same pass, with nothing detecting the disagreement.
+	 *  Shared here so all three agree by construction. */
+	private readonly tickPaneCaptures = new Map<string, string>();
+	/** Panes tmux listed as live THIS TICK, or `undefined` when the signals pass
+	 *  did not run (its ports are optional and a fake may omit them). `undefined`
+	 *  means NOTHING IS KNOWN — the drive loop must then capture directly, because
+	 *  "no live-pane list" and "the pane is not in the list" are opposite facts and
+	 *  must not share a branch. */
+	private tickLivePanes: ReadonlySet<string> | undefined;
 	private platformPassesDisabled = false;
 	private readonly watchManager: PeerWatchManager;
 	private readonly watchdogManager: WatchdogManager;
@@ -261,7 +277,7 @@ export class Daemon {
 				isAlive: (pid) => this.ports.isAlive(pid),
 				globallyDisabled: () => new FsWatchdogGlobalStore(pijHome).disabled(),
 				now: () => this.ports.now(),
-				capturePane: (session) => (session.paneId ? this.ports.capturePane(session.paneId) : ""),
+				capturePane: (session) => (session.paneId ? this.paneFrameThisTick(session.paneId) : ""),
 				hasPendingWatchdog: (id) => {
 					if (typeof channel.listUnread !== "function") return false;
 					const unread = channel.listUnread(id);
@@ -301,6 +317,10 @@ export class Daemon {
 		// first suspension question (pij#181). Dropping it here is what makes the
 		// table THIS tick's table rather than a stale one.
 		this.processStates.invalidate();
+		// Same discipline for pane frames (pij#229): this tick's captures and this
+		// tick's live-pane list, both rebuilt by `refreshPaneSignals` below.
+		this.tickPaneCaptures.clear();
+		this.tickLivePanes = undefined;
 		// ONE persist for the whole owned set, not one publish per seat (pij#180
 		// Fix A). The filter is unchanged — only the persistence SHAPE moved.
 		// `daemonOwnsDelivery` is harness/delivery-mode only, so a long-dead seat
@@ -598,7 +618,7 @@ export class Daemon {
 					// `pij state`/`list` report real liveness instead of `idle · never`
 					// (control-plane peers write no pij events). Writes only on a change.
 					if (current.paneId) {
-						const pane = this.ports.capturePane(current.paneId);
+						const pane = this.paneFrameThisTick(current.paneId);
 						const readiness = classifyReadiness(pane);
 						let updated = observeActivity(current, readiness, this.ports.now());
 						// Pane-content heartbeat: while WORKING, treat any visible change since
@@ -696,7 +716,7 @@ export class Daemon {
 			processSnapshot: this.ports.processSnapshot?.(),
 			paneExists: (paneId) => !this.ports.isPaneDead(paneId),
 			failureReasonFor: (descriptor) =>
-				classifyDeathReason(descriptor.paneId ? this.ports.capturePane(descriptor.paneId) : ""),
+				classifyDeathReason(descriptor.paneId ? this.paneFrameThisTick(descriptor.paneId) : ""),
 			historical: this.deathSweepIsHistorical,
 		});
 		this.deathSweepIsHistorical = false;
@@ -916,7 +936,7 @@ export class Daemon {
 		const staleAge = ageMs === null || ageMs > STALE_AFTER_MS;
 		if (!staleAge) return;
 		if (latch.has("provider-failure")) return;
-		const reason = classifyDeathReason(this.ports.capturePane(d.paneId));
+		const reason = classifyDeathReason(this.paneFrameThisTick(d.paneId));
 		const isFatal = reason === "quota" || reason === "auth" || reason === "model-not-supported";
 		if (!isFatal) return;
 		latch.add("provider-failure");
@@ -1048,6 +1068,37 @@ export class Daemon {
 		if (consumedCount > 0) this.log(`route ${id}: injected ${consumedCount} message(s)`);
 	}
 
+	/** THIS TICK'S frame for one pane, captured at most once (pij#229).
+	 *
+	 *  Three answers, and the distinction between the last two is the whole point:
+	 *
+	 *   1. ALREADY CAPTURED this tick — return that frame, so every consumer in the
+	 *      tick reasons about the same rendered frame. `refreshPaneSignals` already
+	 *      made this argument for the caret tracker and the content gate; the
+	 *      activity axis is simply a third consumer of it.
+	 *   2. tmux LISTED the live panes this tick and this one is NOT among them —
+	 *      the pane is gone. `capturePane` on a gone pane returns `""` (its own
+	 *      catch), so this returns `""` WITHOUT forking. Same output, no
+	 *      subprocess. Measured: 84 of 117 owned panes per tick are in this branch,
+	 *      and a capture of a gone pane costs MORE than a live one (9.05ms vs
+	 *      6.70ms), so the wasted majority is also the expensive majority.
+	 *   3. NOTHING IS KNOWN — the signals pass did not run (its ports are optional),
+	 *      so there is no live-pane list. Capture directly. A missing list must
+	 *      never be read as "the pane is absent": that is the instrument's limit
+	 *      rendered as the world's property, and it would report every pane on the
+	 *      machine as gone in one tick. */
+	private paneFrameThisTick(paneId: string): string {
+		const captured = this.tickPaneCaptures.get(paneId);
+		if (captured !== undefined) return captured;
+		if (this.tickLivePanes !== undefined && !this.tickLivePanes.has(paneId)) {
+			this.tickPaneCaptures.set(paneId, "");
+			return "";
+		}
+		const pane = this.ports.capturePane(paneId);
+		this.tickPaneCaptures.set(paneId, pane);
+		return pane;
+	}
+
 	/** Read-only signal surface for a future UI. Busy is deliberately not a
 	 * delivery gate; callers can inspect it without changing daemon behaviour. */
 	paneSignal(paneId: string): PaneSignalSnapshot | undefined {
@@ -1064,6 +1115,7 @@ export class Daemon {
 			return;
 		}
 		const listings = this.ports.listPanes();
+		this.tickLivePanes = new Set(listings.map((listing) => listing.paneId));
 		const diff = this.paneSignals.reconcile(listings);
 		for (const pane of diff.added) {
 			const safePane = pane.paneId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
@@ -1077,6 +1129,10 @@ export class Daemon {
 			if (bytes.byteLength > 0) this.paneSignals.ingest(paneId, bytes, this.ports.now());
 			const pane = this.ports.capturePane(paneId);
 			captured.set(paneId, pane);
+			// Publish this pane's frame for every other consumer in THIS tick
+			// (pij#229) — the drive loop's activity axis reads it instead of taking
+			// its own later capture of the same pane.
+			this.tickPaneCaptures.set(paneId, pane);
 			this.paneSignals.observeRenderedComposer(paneId, pane, this.ports.now());
 		}
 		this.paneSignals.tick(this.ports.now());
