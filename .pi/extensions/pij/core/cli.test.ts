@@ -22,6 +22,7 @@ import {
 	renderDispatchWaitTimeout,
 	renderWaitReceipt,
 	renderWaitTimeout,
+	resolveAttachmentPath,
 } from "./cli.js";
 import { buildInitInjection } from "./harness/claude.js";
 import { parseBriefAckBody, parseReceiptBody, receiptBody } from "./message.js";
@@ -291,6 +292,33 @@ describe("parseArgs", () => {
 			ok: false,
 			code: "E-ARG",
 		});
+	});
+});
+
+describe("resolveAttachmentPath", () => {
+	it("anchors a relative path to the given cwd, and leaves an absolute one alone", () => {
+		expect(resolveAttachmentPath("docs/a.html", "/Users/me/repo")).toBe(
+			"/Users/me/repo/docs/a.html",
+		);
+		expect(resolveAttachmentPath("./docs/a.html", "/Users/me/repo")).toBe(
+			"/Users/me/repo/docs/a.html",
+		);
+		expect(resolveAttachmentPath("a.html", "/Users/me/repo")).toBe("/Users/me/repo/a.html");
+		// Already absolute — untouched, so existing callers are unaffected.
+		expect(resolveAttachmentPath("/tmp/a.html", "/Users/me/repo")).toBe("/tmp/a.html");
+	});
+
+	it("does not double the separator when cwd has a trailing slash", () => {
+		expect(resolveAttachmentPath("a.html", "/Users/me/repo/")).toBe("/Users/me/repo/a.html");
+		// The filesystem root is the case a naive trim breaks: stripping its only
+		// character would yield the relative `a.html` again.
+		expect(resolveAttachmentPath("a.html", "/")).toBe("/a.html");
+	});
+
+	it("leaves `..` for the OS to resolve — the missing property was absoluteness", () => {
+		expect(resolveAttachmentPath("../sibling/a.html", "/Users/me/repo")).toBe(
+			"/Users/me/repo/../sibling/a.html",
+		);
 	});
 });
 
@@ -780,6 +808,48 @@ describe("dispatch send", () => {
 		// Mutation: always set `attachments` and this toEqual flips RED.
 		dispatch({ verb: "send", to: "w3", text: "just text", wait: false, json: false }, d);
 		expect(d.delivery.outbox[2]?.message).toEqual({ from: "a1", to: "w3", body: "just text" });
+	});
+
+	// issue pij#267. `attachments[].path` is reference-passing, so whoever opens
+	// the file does it in ITS own process — the telegram forwarder runs under the
+	// daemon, whose cwd is unrelated to the caller's. A relative path travelling
+	// verbatim missed there and the send degraded to pasting the file's text into
+	// the message body, while the sender still read `receipt → delivered`. Seven
+	// HTML reports reached a phone as raw markup before a human said so.
+	it("--file anchors a relative path to the SENDER's cwd before it leaves the process", () => {
+		const d = deps({
+			self: "a1",
+			descs: [desc({ id: "a1" }), desc({ id: "w3" })],
+			cwd: "/Users/me/repo",
+		});
+		dispatch(
+			{ verb: "send", to: "w3", file: "docs/report.html", caption: "nightly", wait: false, json: false },
+			d,
+		);
+		expect(d.delivery.outbox[0]?.message).toEqual({
+			from: "a1",
+			to: "w3",
+			body: "",
+			attachments: [{ path: "/Users/me/repo/docs/report.html", caption: "nightly" }],
+		});
+		// A `./` prefix is the same path; it must not produce `/repo/./x`.
+		dispatch({ verb: "send", to: "w3", file: "./a.pdf", wait: false, json: false }, d);
+		expect(d.delivery.outbox[1]?.message).toEqual({
+			from: "a1",
+			to: "w3",
+			body: "",
+			attachments: [{ path: "/Users/me/repo/a.pdf" }],
+		});
+		// Mutation guard: an ALREADY absolute path must pass through untouched, so
+		// every existing caller is unaffected. Prefix cwd unconditionally and this
+		// flips RED.
+		dispatch({ verb: "send", to: "w3", file: "/tmp/chart.png", wait: false, json: false }, d);
+		expect(d.delivery.outbox[2]?.message).toEqual({
+			from: "a1",
+			to: "w3",
+			body: "",
+			attachments: [{ path: "/tmp/chart.png" }],
+		});
 	});
 
 	// ── plan 093: the empty-payload guard (pij#132) ──────────────────────────
