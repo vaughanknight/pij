@@ -58,6 +58,42 @@
   intended. Discover available models at runtime rather than hardcoding a
   provider or model id.
 
+## Is that check a POLICY or a BRAKE? (ask what REMOVING it does)
+
+A check that reads a timestamp, a threshold, or any other input is one of two
+things, and they have opposite consequences for what the change depends on:
+
+- a **policy** — it decides the outcome, so it **inherits whatever its input is
+  wrong about**;
+- a **one-directional safety interlock** — a brake, which can only ever make the
+  operation *more* conservative.
+
+**You tell them apart by asking what REMOVING the check does.** If removing it
+makes the operation do *more* (delete more, send more, kill more), it was a
+**brake**. If removing it makes the operation do something *different*, it was a
+**policy**.
+
+**A one-directional safety interlock is not a policy.**
+
+Worked example (pij#183, s101). The orphaned-tap sweep reads each file's mtime
+for a 5-minute grace, so "does it consult a timestamp?" is honestly **yes** — and
+answering "no" would have been false while answering "yes, therefore it is
+retention" would have blocked it behind an unrelated ruling (pij#204). The
+resolving question was directional:
+
+| input | decides deletion | can only spare |
+|---|---|---|
+| pane absent from `tmux list-panes` | ✅ the whole decision | |
+| file mtime younger than the grace | | ✅ veto only |
+
+**Age was never a reason to delete, only a reason not to** — remove the mtime
+check and the sweep deletes *the same set or more*. So it is a brake, the change
+depended on no ageing anchor, and it shipped independently.
+
+Say which one it is **explicitly**, in those terms, when the change is
+destructive: a reviewer looking at a 205MB deletion will otherwise assume a
+retention rule governs it and go hunting for the policy.
+
 ## Searching this repo (known trap — silent, and it reads as absence)
 
 **`rg` skips hidden paths by default, and the entire extension source lives under
