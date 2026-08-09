@@ -78,7 +78,7 @@ import {
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
 import { agentsDir, resolvePijHome } from "./core/agents/paths.js";
-import { archiveAgeAnchorMs } from "./core/archive.js";
+import { lastActivityAtMs } from "./core/archive.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import { renderCanaryTimeout } from "./core/canary.js";
 import { dispatchChore } from "./core/chores/cli-verbs.js";
@@ -1429,7 +1429,10 @@ function probeAttachment(descriptor: SessionDescriptor): {
 	readonly liveness: AttachmentLiveness;
 	readonly probe: AttachmentProbe;
 } {
-	const anchorMs = archiveAgeAnchorMs(descriptor);
+	// ACTIVITY, not the archival anchor (pij#204): the probe field is literally
+	// named `lastActivityAtMs` and feeds `classifyAttachment`, so anchoring it on
+	// death would tell the classifier a corpse had just been active.
+	const anchorMs = lastActivityAtMs(descriptor);
 	const pane = observePane(descriptor.paneId, descriptor.pid);
 	// Only worth a `ps` when the pane pid matched: `ours` is the sole verdict that
 	// needs corroborating, and in that branch the pane's pid IS `descriptor.pid`

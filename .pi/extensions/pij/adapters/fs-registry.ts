@@ -16,6 +16,7 @@ import {
 	readFileSync,
 	renameSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -23,6 +24,7 @@ import {
 	type ArchiveIndexEntry,
 	buildArchiveIndexEntry,
 	classifyRegistryRecord,
+	isPrunableArchiveRecord,
 	isTerminalRecord,
 	parseArchiveIndexLine,
 } from "../core/archive.js";
@@ -1020,6 +1022,45 @@ export class FsRegistry implements RegistryPort {
 	 *
 	 *  Named `unarchive`, not `revive`: `revive(descriptor)` is s066's relaunch verb.
 	 *  This moves storage tiers and starts no process. */
+	/** Delete the wreckage of archived records older than
+	 *  {@link ARCHIVE_PRUNE_AFTER_MS}, KEEPING their `index.jsonl` tombstone.
+	 *
+	 *  The index is deliberately not rewritten — it is append-only, one line per
+	 *  record, and it is the thing that makes a pruned seat still ANSWERABLE ("did
+	 *  it exist, when did it die, how did it end") for near-zero disk. What goes is
+	 *  the descriptor file and the session directory, which are the gigabyte.
+	 *
+	 *  Reports bytes as well as counts because a count alone cannot distinguish
+	 *  "pruned 2,000 empty stubs" from "pruned the 94 MB seat somebody wanted". */
+	prunePrunableArchive(nowMs: number): { readonly pruned: number; readonly bytes: number } {
+		let names: string[];
+		try {
+			names = readdirSync(this.archiveDir());
+		} catch {
+			return { pruned: 0, bytes: 0 };
+		}
+		let pruned = 0;
+		let bytes = 0;
+		for (const name of names) {
+			if (!name.endsWith(".json")) continue;
+			if (name === "index.jsonl") continue; // the tombstone ledger — never pruned
+			const recordPath = join(this.archiveDir(), name);
+			const descriptor = this.readFile(recordPath);
+			if (!descriptor) continue;
+			if (!isPrunableArchiveRecord(descriptor, nowMs)) continue;
+			const dir = join(this.archiveDir(), descriptor.id);
+			bytes += directoryBytes(dir) + fileBytes(recordPath);
+			try {
+				rmSync(dir, { recursive: true, force: true });
+				rmSync(recordPath, { force: true });
+				pruned += 1;
+			} catch {
+				// A record we cannot remove stays; the next sweep retries it.
+			}
+		}
+		return { pruned, bytes };
+	}
+
 	unarchive(id: SessionId): SessionDescriptor | null {
 		const archived = this.readFile(this.archivePathFor(id));
 		if (!archived) return null;
@@ -1537,4 +1578,35 @@ function descriptorOwner(record: ReservationRecord | DescriptorOwnerRecord): Des
 		ownerPid: record.ownerPid,
 		createdAt: record.createdAt,
 	};
+}
+
+/** Bytes on disk under `dir`, best-effort. Reported so a prune log can say WHAT
+ *  it reclaimed rather than only how many records it touched — 2,000 empty stubs
+ *  and one 94 MB seat are the same count and very different events. */
+function directoryBytes(dir: string): number {
+	let total = 0;
+	let entries: string[];
+	try {
+		entries = readdirSync(dir);
+	} catch {
+		return 0;
+	}
+	for (const entry of entries) {
+		const full = join(dir, entry);
+		try {
+			const stat = statSync(full);
+			total += stat.isDirectory() ? directoryBytes(full) : stat.size;
+		} catch {
+			// Unreadable entry contributes nothing rather than failing the sweep.
+		}
+	}
+	return total;
+}
+
+function fileBytes(path: string): number {
+	try {
+		return statSync(path).size;
+	} catch {
+		return 0;
+	}
 }

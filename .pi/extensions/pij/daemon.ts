@@ -34,6 +34,7 @@ import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-stor
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { resolvePijHome } from "./core/agents/paths.js";
+import { ARCHIVE_PRUNE_AFTER_MS } from "./core/archive.js";
 import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
@@ -93,6 +94,12 @@ const DELIVERY_PASS_MS = 200;
 /** How often the archival janitor runs. The policy window is 48h, so this only
  *  needs to be "much more often than that, much less often than a tick". */
 const ARCHIVE_SWEEP_INTERVAL_MS = 60_000;
+/** Archive-prune cadence (pij#183). Hourly, not per-minute: the bound it enforces
+ *  is 90 DAYS, so the difference between checking every tick and every hour is
+ *  nothing at all — while a recursive size walk over ~2,500 archived directories
+ *  is exactly the kind of work that has no business on a loop whose duration is
+ *  fleet-wide delivery latency (pij#225). */
+const ARCHIVE_PRUNE_INTERVAL_MS = 60 * 60_000;
 /** Orphaned-tap sweep cadence (pij#183). Disk hygiene, not a per-tick duty: the
  *  garbage it reclaims accumulates across daemon RESTARTS, not across ticks, so a
  *  slow cadence loses nothing and keeps a `readdir` + `stat`-per-file off the hot
@@ -211,6 +218,8 @@ export class Daemon {
 	/** Clock anchor for the throttled archival sweep; undefined ⇒ never run, so
 	 *  the first tick after boot sweeps immediately. */
 	private lastArchiveSweepMs: number | undefined;
+	/** Last archive PRUNE (pij#183); hourly, see {@link ARCHIVE_PRUNE_INTERVAL_MS}. */
+	private lastArchivePruneMs: number | undefined;
 	/** Last orphaned-tap sweep (pij#183); throttled like the archive sweep. */
 	private lastTapSweepMs: number | undefined;
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
@@ -747,6 +756,7 @@ export class Daemon {
 		}
 		this.watchdogManager.reconcile(this.registry.list());
 		this.sweepArchive();
+		this.pruneArchive();
 		// Every tick, unconditionally. Tick duration IS delivery latency for the
 		// tick-driven path, and on 2026-07-25 it silently grew to ~19s with nothing
 		// in the log to show it — the fleet felt it before anyone could measure it.
@@ -805,6 +815,38 @@ export class Daemon {
 	 *  policy window is 48 hours, so sub-minute precision buys nothing and the
 	 *  sweep's own readdir would just be more per-tick cost. The daemon is the
 	 *  SINGLE WRITER for archival moves — no CLI path ever calls this. */
+	/** Delete the wreckage of archived records past {@link ARCHIVE_PRUNE_AFTER_MS},
+	 *  keeping their index tombstone (pij#183, Jordan-ruled 90 days).
+	 *
+	 *  Unlike the orphaned-tap sweep, THIS IS A POLICY, not a one-directional
+	 *  interlock: removing the age check would delete a DIFFERENT set, not merely a
+	 *  larger one, so it inherits whatever its anchor is wrong about. That is why it
+	 *  rides on the pij#204 death anchor rather than on a file mtime, and why it
+	 *  says out loud what it removed. */
+	private pruneArchive(): void {
+		const registry = this.registry;
+		if (!(registry instanceof FsRegistry)) return;
+		const nowMs = this.ports.now();
+		if (
+			this.lastArchivePruneMs !== undefined &&
+			nowMs - this.lastArchivePruneMs < ARCHIVE_PRUNE_INTERVAL_MS
+		) {
+			return;
+		}
+		this.lastArchivePruneMs = nowMs;
+		try {
+			const { pruned, bytes } = registry.prunePrunableArchive(nowMs);
+			if (pruned > 0) {
+				this.log(
+					`archive prune: removed ${pruned} record(s) past ${Math.round(ARCHIVE_PRUNE_AFTER_MS / 86_400_000)}d, ${Math.round(bytes / 1_048_576)}MB — index tombstones kept`,
+				);
+			}
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			this.log(`archive prune: error ${detail}`);
+		}
+	}
+
 	private sweepArchive(): void {
 		if (!this.registry.sweepArchivable) return;
 		const nowMs = this.ports.now();
