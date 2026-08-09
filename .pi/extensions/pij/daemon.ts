@@ -25,6 +25,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
+import { TickScopedProcessStates } from "./adapters/process-states.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
@@ -172,6 +173,11 @@ export class Daemon {
 	/** Anomaly parent alerts (plan 054 P2 T010, AC-07): evidence-keyed
 	 *  once-per-transition latch, alert-only — the daemon never remediates. */
 	private anomalySweep: AnomalySweep | undefined;
+	/** ONE `ps` per tick for the whole process table, serving the runtime axis's
+	 *  suspension probe for every descriptor (pij#181). Invalidated at the top of
+	 *  each tick; captures lazily on the first question, so a tick that asks
+	 *  nothing forks nothing. */
+	private readonly processStates = new TickScopedProcessStates();
 	private platformPassesDisabled = false;
 	private readonly watchManager: PeerWatchManager;
 	private readonly watchdogManager: WatchdogManager;
@@ -291,6 +297,10 @@ export class Daemon {
 	tick(): void {
 		const tickStartedAtMs = Date.now();
 		const tickAt = new Date(this.ports.now()).toISOString();
+		// One process-table capture per tick, taken lazily on the runtime axis's
+		// first suspension question (pij#181). Dropping it here is what makes the
+		// table THIS tick's table rather than a stale one.
+		this.processStates.invalidate();
 		// ONE persist for the whole owned set, not one publish per seat (pij#180
 		// Fix A). The filter is unchanged — only the persistence SHAPE moved.
 		// `daemonOwnsDelivery` is harness/delivery-mode only, so a long-dead seat
@@ -349,16 +359,11 @@ export class Daemon {
 					isAlive: (pid) => this.ports.isAlive(pid),
 					// Suspension probe: `ps -o state=` reads 'T' for a SIGSTOP'd
 					// process; an unreadable probe is null — honest missing telemetry.
-					isSuspended: (pid) => {
-						try {
-							const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], {
-								encoding: "utf8",
-							}).trim();
-							return state === "" ? null : state.startsWith("T");
-						} catch {
-							return null;
-						}
-					},
+					// ONE whole-table capture per tick serves every descriptor
+					// (pij#181): this used to fork per descriptor, ~625 `ps` spawns
+					// per tick and 26.2% of tick self-time, each one an UNBOUNDED
+					// blocking call on the shared single-threaded loop (pij#225).
+					isSuspended: (pid) => this.processStates.isSuspended(pid),
 					log: this.log,
 				});
 				this.anomalySweep = new AnomalySweep({
