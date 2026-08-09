@@ -112,6 +112,10 @@ import {
 } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
 import {
+	describeProcessStaleness,
+	type ProcessStalenessFacts,
+} from "./core/daemon/process-staleness.js";
+import {
 	describeSourceStaleness,
 	type SourceCheckoutFacts,
 } from "./core/daemon/source-staleness.js";
@@ -1105,6 +1109,16 @@ function waitCanary(
 const DAEMON_WINDOW_NAME = "pij-daemon";
 const daemonLockPath = join(pijHome, "daemon.lock");
 
+/** The raw lock, for facts `daemonStatus()` does not project (s101: the boot
+ *  head). Returns null when absent or corrupt — readers render UNKNOWN. */
+function readDaemonLock(): ReturnType<typeof parseLockFile> {
+	try {
+		return parseLockFile(readFileSync(daemonLockPath, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
 function readDaemonStatus() {
 	let raw: string | null = null;
 	try {
@@ -1213,6 +1227,42 @@ function runDaemonVerb(argv: readonly string[]): void {
 		}
 	}
 
+	/** Facts for the PROCESS-vs-DISK axis (s101): what the running daemon booted
+	 *  from, versus what its checkout is at now.
+	 *
+	 *  Deliberately separate from `readSourceCheckout` — that answers DISK vs REMOTE.
+	 *  Two axes, two labels, never one field doing both. */
+	function readProcessStaleness(
+		lock: ReturnType<typeof parseLockFile>,
+		daemonPid?: number,
+	): ProcessStalenessFacts {
+		const sourceDir = daemonSourceDir(daemonPid) ?? dirname(fileURLToPath(import.meta.url));
+		const git = (args: readonly string[]): string | undefined => {
+			try {
+				return execFileSync("git", [...args], {
+					cwd: sourceDir,
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+					timeout: 2_000,
+				}).trim();
+			} catch {
+				return undefined;
+			}
+		};
+		const bootHead = lock?.head;
+		const currentHead = git(["rev-parse", "--short", "HEAD"]);
+		if (bootHead === undefined || currentHead === undefined) {
+			return { ...(bootHead ? { bootHead } : {}), ...(currentHead ? { currentHead } : {}) };
+		}
+		const aheadRaw = git(["rev-list", "--count", `${bootHead}..HEAD`]);
+		const ahead = aheadRaw === undefined ? Number.NaN : Number.parseInt(aheadRaw, 10);
+		return {
+			bootHead,
+			currentHead,
+			...(Number.isNaN(ahead) ? {} : { commitsAhead: ahead }),
+		};
+	}
+
 	/** Gather the daemon's SOURCE checkout facts — no network, ever.
 	 *
 	 *  The daemon runs `tsx` off this file's own tree, so the checkout that matters is
@@ -1269,7 +1319,14 @@ function runDaemonVerb(argv: readonly string[]): void {
 		const source = describeSourceStaleness(
 			readSourceCheckout(st.kind === "running" ? st.pid : undefined),
 		);
-		const sourceNote = source === "" ? "" : `; ${source}`;
+		// The SECOND axis (s101): the checkout may be current with its remote and
+		// still not be what the running process loaded. Kept as its own label —
+		// `behind` is disk-vs-remote, this is process-vs-disk, and a single merged
+		// field would be two facts sharing one answer.
+		const proc = describeProcessStaleness(
+			readProcessStaleness(readDaemonLock(), st.kind === "running" ? st.pid : undefined),
+		);
+		const sourceNote = `${source === "" ? "" : `; ${source}`}${proc === "" ? "" : `; ${proc}`}`;
 		if (st.kind === "running") {
 			process.stdout.write(
 				`running (pid ${st.pid}${st.window ? `, window ${st.window}` : ""})${winNote}${sourceNote}\n`,

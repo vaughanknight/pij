@@ -13,6 +13,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeJsonAtomic } from "./adapters/atomic-file.js";
@@ -1373,10 +1374,27 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	// Atomic acquire (review M2): `wx` = O_CREAT|O_EXCL, so two daemons racing
 	// can't both "win" a stale-lock read. On EEXIST, evaluate the holder: a live
 	// one → refuse; a dead one → reclaim (unlink + retry the exclusive create).
+	// The checkout this process is about to execute (s101). ONE `git rev-parse` at
+	// boot — measured at 8ms — against a boot that already writes a lock, acquires
+	// it under `wx`, resolves its tmux window and sweeps stale temp packs. Recorded
+	// because ONLY THE BOOTING PROCESS KNOWS IT: minutes later the tree may have
+	// moved, and then nothing on disk can say what is actually running.
+	let bootHead: string | undefined;
+	try {
+		bootHead = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+			cwd: dirname(fileURLToPath(import.meta.url)),
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+			timeout: 2_000,
+		}).trim();
+	} catch {
+		bootHead = undefined; // not a checkout / no git → readers render UNKNOWN
+	}
 	const lockBody = serializeLockFile({
 		pid: process.pid,
 		startedAt: new Date().toISOString(),
 		...(ownedWindow ? { window: ownedWindow } : {}),
+		...(bootHead ? { head: bootHead } : {}),
 	});
 	// FIRST RUN: on a fresh install nothing has created PIJ_HOME yet, so the lock
 	// write below — the daemon's very first filesystem write — dies with ENOENT
