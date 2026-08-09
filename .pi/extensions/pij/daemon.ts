@@ -11,7 +11,7 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
@@ -53,6 +53,7 @@ import {
 } from "./core/daemon/loop.js";
 import {
 	ComposerHoldTracker,
+	type PaneListing,
 	PaneSignalMonitor,
 	type PaneSignalSnapshot,
 	renderedComposerPayload,
@@ -64,6 +65,7 @@ import {
 	SendBuffer,
 } from "./core/daemon/router.js";
 import { RuntimeAxisTracker } from "./core/daemon/runtime-axis.js";
+import { orphanedTapFiles } from "./core/daemon/tap-retention.js";
 import { FsTickHeartbeatStore, type TickHeartbeatPort } from "./core/daemon/tick-heartbeat.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
@@ -91,6 +93,11 @@ const DELIVERY_PASS_MS = 200;
 /** How often the archival janitor runs. The policy window is 48h, so this only
  *  needs to be "much more often than that, much less often than a tick". */
 const ARCHIVE_SWEEP_INTERVAL_MS = 60_000;
+/** Orphaned-tap sweep cadence (pij#183). Disk hygiene, not a per-tick duty: the
+ *  garbage it reclaims accumulates across daemon RESTARTS, not across ticks, so a
+ *  slow cadence loses nothing and keeps a `readdir` + `stat`-per-file off the hot
+ *  path that pij#181 and pij#229 just finished clearing. */
+const TAP_SWEEP_INTERVAL_MS = 5 * 60_000;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
 
 class DaemonBatonNoticeSink implements BatonNoticeSink {
@@ -204,6 +211,8 @@ export class Daemon {
 	/** Clock anchor for the throttled archival sweep; undefined ⇒ never run, so
 	 *  the first tick after boot sweeps immediately. */
 	private lastArchiveSweepMs: number | undefined;
+	/** Last orphaned-tap sweep (pij#183); throttled like the archive sweep. */
+	private lastTapSweepMs: number | undefined;
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
 	private deliveringNow = false;
 
@@ -1099,6 +1108,63 @@ export class Daemon {
 		return pane;
 	}
 
+	/** Reclaim tap sinks no live pane owns (pij#183).
+	 *
+	 *  `detachPaneTap` already deletes a tap file — but only for a pane THIS daemon
+	 *  process saw retire, because the path it deletes comes from an in-memory map
+	 *  rebuilt empty on every start. So the deletion path is correct and its index
+	 *  is ephemeral, while the garbage is durable: every tap whose pane retired
+	 *  while the daemon was down is unreachable by any code path. Measured
+	 *  2026-08-09: 185 orphans, 205 MB of the 244 MB in `pane-signals/`.
+	 *
+	 *  This reconciles the DIRECTORY against tmux's live pane list — the only
+	 *  pairing where both sides outlive the process. Throttled like the archive
+	 *  sweep: it is a disk-hygiene pass, not a per-tick obligation, and it costs a
+	 *  `readdir` plus one `stat` per file. */
+	private sweepOrphanedTaps(listings: readonly PaneListing[]): void {
+		const nowMs = this.ports.now();
+		if (this.lastTapSweepMs !== undefined && nowMs - this.lastTapSweepMs < TAP_SWEEP_INTERVAL_MS) {
+			return;
+		}
+		this.lastTapSweepMs = nowMs;
+		const dir = join(this.pijHome, "pane-signals");
+		let files: string[];
+		try {
+			files = readdirSync(dir);
+		} catch {
+			return; // no tap directory yet — nothing to reclaim
+		}
+		const orphans = orphanedTapFiles({
+			files,
+			livePaneIds: listings.map((listing) => listing.paneId),
+			modifiedAtMs: (file) => {
+				try {
+					return statSync(join(dir, file)).mtimeMs;
+				} catch {
+					return Number.NaN; // unreadable → fails the grace test → KEPT
+				}
+			},
+			nowMs,
+		});
+		if (orphans.length === 0) return;
+		let reclaimed = 0;
+		let removed = 0;
+		for (const file of orphans) {
+			try {
+				reclaimed += statSync(join(dir, file)).size;
+				rmSync(join(dir, file), { force: true });
+				removed += 1;
+			} catch {
+				// A tap that vanished under us is the outcome we wanted anyway.
+			}
+		}
+		if (removed > 0) {
+			this.log(
+				`tap sweep: reclaimed ${removed} orphaned pane tap(s), ${Math.round(reclaimed / 1024)}KB`,
+			);
+		}
+	}
+
 	/** Read-only signal surface for a future UI. Busy is deliberately not a
 	 * delivery gate; callers can inspect it without changing daemon behaviour. */
 	paneSignal(paneId: string): PaneSignalSnapshot | undefined {
@@ -1117,6 +1183,7 @@ export class Daemon {
 		const listings = this.ports.listPanes();
 		this.tickLivePanes = new Set(listings.map((listing) => listing.paneId));
 		const diff = this.paneSignals.reconcile(listings);
+		this.sweepOrphanedTaps(listings);
 		for (const pane of diff.added) {
 			const safePane = pane.paneId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
 			this.ports.attachPaneTap(pane.paneId, join(this.pijHome, "pane-signals", `${safePane}.raw`));
