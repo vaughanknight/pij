@@ -11,7 +11,7 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
@@ -25,6 +25,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
+import { TickScopedProcessStates } from "./adapters/process-states.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
@@ -52,6 +53,7 @@ import {
 } from "./core/daemon/loop.js";
 import {
 	ComposerHoldTracker,
+	type PaneListing,
 	PaneSignalMonitor,
 	type PaneSignalSnapshot,
 	renderedComposerPayload,
@@ -63,6 +65,7 @@ import {
 	SendBuffer,
 } from "./core/daemon/router.js";
 import { RuntimeAxisTracker } from "./core/daemon/runtime-axis.js";
+import { orphanedTapFiles } from "./core/daemon/tap-retention.js";
 import { FsTickHeartbeatStore, type TickHeartbeatPort } from "./core/daemon/tick-heartbeat.js";
 import { PeerWatchManager } from "./core/daemon/watch.js";
 import { WatchdogManager, type WatchdogResponseEvent } from "./core/daemon/watchdog-manager.js";
@@ -90,6 +93,11 @@ const DELIVERY_PASS_MS = 200;
 /** How often the archival janitor runs. The policy window is 48h, so this only
  *  needs to be "much more often than that, much less often than a tick". */
 const ARCHIVE_SWEEP_INTERVAL_MS = 60_000;
+/** Orphaned-tap sweep cadence (pij#183). Disk hygiene, not a per-tick duty: the
+ *  garbage it reclaims accumulates across daemon RESTARTS, not across ticks, so a
+ *  slow cadence loses nothing and keeps a `readdir` + `stat`-per-file off the hot
+ *  path that pij#181 and pij#229 just finished clearing. */
+const TAP_SWEEP_INTERVAL_MS = 5 * 60_000;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
 
 class DaemonBatonNoticeSink implements BatonNoticeSink {
@@ -172,6 +180,27 @@ export class Daemon {
 	/** Anomaly parent alerts (plan 054 P2 T010, AC-07): evidence-keyed
 	 *  once-per-transition latch, alert-only — the daemon never remediates. */
 	private anomalySweep: AnomalySweep | undefined;
+	/** ONE `ps` per tick for the whole process table, serving the runtime axis's
+	 *  suspension probe for every descriptor (pij#181). Invalidated at the top of
+	 *  each tick; captures lazily on the first question, so a tick that asks
+	 *  nothing forks nothing. */
+	private readonly processStates = new TickScopedProcessStates();
+	/** THIS TICK'S RENDERED FRAME per pane (pij#229).
+	 *
+	 *  `refreshPaneSignals` already captured every live pane once per tick and
+	 *  said why: the caret tracker and the content gate must reason about the SAME
+	 *  rendered frame. The activity axis in the drive loop was a THIRD consumer of
+	 *  the same panes in the same tick, taking its own later capture — so `state`
+	 *  and `lastEventAt` could be derived from a different frame than the signal
+	 *  tracker saw, in the same pass, with nothing detecting the disagreement.
+	 *  Shared here so all three agree by construction. */
+	private readonly tickPaneCaptures = new Map<string, string>();
+	/** Panes tmux listed as live THIS TICK, or `undefined` when the signals pass
+	 *  did not run (its ports are optional and a fake may omit them). `undefined`
+	 *  means NOTHING IS KNOWN — the drive loop must then capture directly, because
+	 *  "no live-pane list" and "the pane is not in the list" are opposite facts and
+	 *  must not share a branch. */
+	private tickLivePanes: ReadonlySet<string> | undefined;
 	private platformPassesDisabled = false;
 	private readonly watchManager: PeerWatchManager;
 	private readonly watchdogManager: WatchdogManager;
@@ -182,6 +211,8 @@ export class Daemon {
 	/** Clock anchor for the throttled archival sweep; undefined ⇒ never run, so
 	 *  the first tick after boot sweeps immediately. */
 	private lastArchiveSweepMs: number | undefined;
+	/** Last orphaned-tap sweep (pij#183); throttled like the archive sweep. */
+	private lastTapSweepMs: number | undefined;
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
 	private deliveringNow = false;
 
@@ -255,7 +286,7 @@ export class Daemon {
 				isAlive: (pid) => this.ports.isAlive(pid),
 				globallyDisabled: () => new FsWatchdogGlobalStore(pijHome).disabled(),
 				now: () => this.ports.now(),
-				capturePane: (session) => (session.paneId ? this.ports.capturePane(session.paneId) : ""),
+				capturePane: (session) => (session.paneId ? this.paneFrameThisTick(session.paneId) : ""),
 				hasPendingWatchdog: (id) => {
 					if (typeof channel.listUnread !== "function") return false;
 					const unread = channel.listUnread(id);
@@ -291,6 +322,14 @@ export class Daemon {
 	tick(): void {
 		const tickStartedAtMs = Date.now();
 		const tickAt = new Date(this.ports.now()).toISOString();
+		// One process-table capture per tick, taken lazily on the runtime axis's
+		// first suspension question (pij#181). Dropping it here is what makes the
+		// table THIS tick's table rather than a stale one.
+		this.processStates.invalidate();
+		// Same discipline for pane frames (pij#229): this tick's captures and this
+		// tick's live-pane list, both rebuilt by `refreshPaneSignals` below.
+		this.tickPaneCaptures.clear();
+		this.tickLivePanes = undefined;
 		// ONE persist for the whole owned set, not one publish per seat (pij#180
 		// Fix A). The filter is unchanged — only the persistence SHAPE moved.
 		// `daemonOwnsDelivery` is harness/delivery-mode only, so a long-dead seat
@@ -349,16 +388,11 @@ export class Daemon {
 					isAlive: (pid) => this.ports.isAlive(pid),
 					// Suspension probe: `ps -o state=` reads 'T' for a SIGSTOP'd
 					// process; an unreadable probe is null — honest missing telemetry.
-					isSuspended: (pid) => {
-						try {
-							const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], {
-								encoding: "utf8",
-							}).trim();
-							return state === "" ? null : state.startsWith("T");
-						} catch {
-							return null;
-						}
-					},
+					// ONE whole-table capture per tick serves every descriptor
+					// (pij#181): this used to fork per descriptor, ~625 `ps` spawns
+					// per tick and 26.2% of tick self-time, each one an UNBOUNDED
+					// blocking call on the shared single-threaded loop (pij#225).
+					isSuspended: (pid) => this.processStates.isSuspended(pid),
 					log: this.log,
 				});
 				this.anomalySweep = new AnomalySweep({
@@ -593,7 +627,7 @@ export class Daemon {
 					// `pij state`/`list` report real liveness instead of `idle · never`
 					// (control-plane peers write no pij events). Writes only on a change.
 					if (current.paneId) {
-						const pane = this.ports.capturePane(current.paneId);
+						const pane = this.paneFrameThisTick(current.paneId);
 						const readiness = classifyReadiness(pane);
 						let updated = observeActivity(current, readiness, this.ports.now());
 						// Pane-content heartbeat: while WORKING, treat any visible change since
@@ -691,7 +725,7 @@ export class Daemon {
 			processSnapshot: this.ports.processSnapshot?.(),
 			paneExists: (paneId) => !this.ports.isPaneDead(paneId),
 			failureReasonFor: (descriptor) =>
-				classifyDeathReason(descriptor.paneId ? this.ports.capturePane(descriptor.paneId) : ""),
+				classifyDeathReason(descriptor.paneId ? this.paneFrameThisTick(descriptor.paneId) : ""),
 			historical: this.deathSweepIsHistorical,
 		});
 		this.deathSweepIsHistorical = false;
@@ -911,7 +945,7 @@ export class Daemon {
 		const staleAge = ageMs === null || ageMs > STALE_AFTER_MS;
 		if (!staleAge) return;
 		if (latch.has("provider-failure")) return;
-		const reason = classifyDeathReason(this.ports.capturePane(d.paneId));
+		const reason = classifyDeathReason(this.paneFrameThisTick(d.paneId));
 		const isFatal = reason === "quota" || reason === "auth" || reason === "model-not-supported";
 		if (!isFatal) return;
 		latch.add("provider-failure");
@@ -1043,6 +1077,94 @@ export class Daemon {
 		if (consumedCount > 0) this.log(`route ${id}: injected ${consumedCount} message(s)`);
 	}
 
+	/** THIS TICK'S frame for one pane, captured at most once (pij#229).
+	 *
+	 *  Three answers, and the distinction between the last two is the whole point:
+	 *
+	 *   1. ALREADY CAPTURED this tick — return that frame, so every consumer in the
+	 *      tick reasons about the same rendered frame. `refreshPaneSignals` already
+	 *      made this argument for the caret tracker and the content gate; the
+	 *      activity axis is simply a third consumer of it.
+	 *   2. tmux LISTED the live panes this tick and this one is NOT among them —
+	 *      the pane is gone. `capturePane` on a gone pane returns `""` (its own
+	 *      catch), so this returns `""` WITHOUT forking. Same output, no
+	 *      subprocess. Measured: 84 of 117 owned panes per tick are in this branch,
+	 *      and a capture of a gone pane costs MORE than a live one (9.05ms vs
+	 *      6.70ms), so the wasted majority is also the expensive majority.
+	 *   3. NOTHING IS KNOWN — the signals pass did not run (its ports are optional),
+	 *      so there is no live-pane list. Capture directly. A missing list must
+	 *      never be read as "the pane is absent": that is the instrument's limit
+	 *      rendered as the world's property, and it would report every pane on the
+	 *      machine as gone in one tick. */
+	private paneFrameThisTick(paneId: string): string {
+		const captured = this.tickPaneCaptures.get(paneId);
+		if (captured !== undefined) return captured;
+		if (this.tickLivePanes !== undefined && !this.tickLivePanes.has(paneId)) {
+			this.tickPaneCaptures.set(paneId, "");
+			return "";
+		}
+		const pane = this.ports.capturePane(paneId);
+		this.tickPaneCaptures.set(paneId, pane);
+		return pane;
+	}
+
+	/** Reclaim tap sinks no live pane owns (pij#183).
+	 *
+	 *  `detachPaneTap` already deletes a tap file — but only for a pane THIS daemon
+	 *  process saw retire, because the path it deletes comes from an in-memory map
+	 *  rebuilt empty on every start. So the deletion path is correct and its index
+	 *  is ephemeral, while the garbage is durable: every tap whose pane retired
+	 *  while the daemon was down is unreachable by any code path. Measured
+	 *  2026-08-09: 185 orphans, 205 MB of the 244 MB in `pane-signals/`.
+	 *
+	 *  This reconciles the DIRECTORY against tmux's live pane list — the only
+	 *  pairing where both sides outlive the process. Throttled like the archive
+	 *  sweep: it is a disk-hygiene pass, not a per-tick obligation, and it costs a
+	 *  `readdir` plus one `stat` per file. */
+	private sweepOrphanedTaps(listings: readonly PaneListing[]): void {
+		const nowMs = this.ports.now();
+		if (this.lastTapSweepMs !== undefined && nowMs - this.lastTapSweepMs < TAP_SWEEP_INTERVAL_MS) {
+			return;
+		}
+		this.lastTapSweepMs = nowMs;
+		const dir = join(this.pijHome, "pane-signals");
+		let files: string[];
+		try {
+			files = readdirSync(dir);
+		} catch {
+			return; // no tap directory yet — nothing to reclaim
+		}
+		const orphans = orphanedTapFiles({
+			files,
+			livePaneIds: listings.map((listing) => listing.paneId),
+			modifiedAtMs: (file) => {
+				try {
+					return statSync(join(dir, file)).mtimeMs;
+				} catch {
+					return Number.NaN; // unreadable → fails the grace test → KEPT
+				}
+			},
+			nowMs,
+		});
+		if (orphans.length === 0) return;
+		let reclaimed = 0;
+		let removed = 0;
+		for (const file of orphans) {
+			try {
+				reclaimed += statSync(join(dir, file)).size;
+				rmSync(join(dir, file), { force: true });
+				removed += 1;
+			} catch {
+				// A tap that vanished under us is the outcome we wanted anyway.
+			}
+		}
+		if (removed > 0) {
+			this.log(
+				`tap sweep: reclaimed ${removed} orphaned pane tap(s), ${Math.round(reclaimed / 1024)}KB`,
+			);
+		}
+	}
+
 	/** Read-only signal surface for a future UI. Busy is deliberately not a
 	 * delivery gate; callers can inspect it without changing daemon behaviour. */
 	paneSignal(paneId: string): PaneSignalSnapshot | undefined {
@@ -1059,7 +1181,9 @@ export class Daemon {
 			return;
 		}
 		const listings = this.ports.listPanes();
+		this.tickLivePanes = new Set(listings.map((listing) => listing.paneId));
 		const diff = this.paneSignals.reconcile(listings);
+		this.sweepOrphanedTaps(listings);
 		for (const pane of diff.added) {
 			const safePane = pane.paneId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
 			this.ports.attachPaneTap(pane.paneId, join(this.pijHome, "pane-signals", `${safePane}.raw`));
@@ -1072,6 +1196,10 @@ export class Daemon {
 			if (bytes.byteLength > 0) this.paneSignals.ingest(paneId, bytes, this.ports.now());
 			const pane = this.ports.capturePane(paneId);
 			captured.set(paneId, pane);
+			// Publish this pane's frame for every other consumer in THIS tick
+			// (pij#229) — the drive loop's activity axis reads it instead of taking
+			// its own later capture of the same pane.
+			this.tickPaneCaptures.set(paneId, pane);
 			this.paneSignals.observeRenderedComposer(paneId, pane, this.ports.now());
 		}
 		this.paneSignals.tick(this.ports.now());

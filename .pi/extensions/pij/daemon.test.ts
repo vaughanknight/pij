@@ -102,18 +102,26 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 	killed: string[];
 	attached: string[];
 	detached: string[];
+	captured: string[];
 } {
 	const sent: Array<{ pane: string; text: string }> = [];
 	const killed: string[] = [];
 	const attached: string[] = [];
 	const detached: string[] = [];
+	/** Every paneId handed to `capturePane`, in order — the instrument for
+	 *  pij#229, which is a claim about WHICH panes are read and how often. */
+	const captured: string[] = [];
 	const paneText = options.paneText;
 	return {
 		sent,
 		killed,
 		attached,
 		detached,
-		capturePane: () => (typeof paneText === "function" ? paneText() : (paneText ?? READY)),
+		captured,
+		capturePane: (pane) => {
+			captured.push(pane);
+			return typeof paneText === "function" ? paneText() : (paneText ?? READY);
+		},
 		isPaneDead: () => false,
 		listPanes: options.paneListings,
 		attachPaneTap: options.paneListings ? (pane) => attached.push(pane) : undefined,
@@ -942,13 +950,26 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		);
 		const channel = new FsChannel(home);
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
-		// Captures 1-4 (signals, flush gate, readiness, OUTER drain check) are all
-		// blank; only capture 5 — the one immediately before sendText — has text.
+		// THE CAPTURE ORDER IN ONE TICK, and it is load-bearing for this test:
+		//   1  the signals pass (`refreshPaneSignals`)
+		//   2  the FLUSH GATE      (`daemon.ts` → refreshRenderedComposerHold)
+		//   3  the OUTER drain check (`drainInbox` → refreshRenderedComposerHold)
+		//   4  the PRE-SEND check  (`drainTmuxInbox`, immediately before `sendText`)
+		//
+		// s101 (pij#229) removed what used to be capture 3 — the readiness capture
+		// in the drive loop — by sharing the tick's already-captured frame. THE
+		// THREE GUARD CAPTURES ABOVE ARE DELIBERATELY NOT SHARED: each is a RACE
+		// DETECTOR whose whole job is to read the pane as late as possible, so a
+		// cached frame would defeat the property this test pins. Sharing the
+		// readiness capture is safe for exactly the opposite reason — it wants the
+		// tick's frame, and reasoning about a LATER frame than the signal tracker
+		// is the defect pij#229 exists to remove.
+		const PRE_SEND_CAPTURE = 4;
 		let captures = 0;
 		const ports = fakePorts({
 			paneText: () => {
 				captures += 1;
-				return captures >= 5 ? CLAUDE_COMPOSER_TEXT : CLAUDE_COMPOSER_EMPTY;
+				return captures >= PRE_SEND_CAPTURE ? CLAUDE_COMPOSER_TEXT : CLAUDE_COMPOSER_EMPTY;
 			},
 			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
 		});
@@ -956,6 +977,11 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		new Daemon(home, ports, registry, channel).tick();
 		expect(ports.sent).toEqual([]);
 		expect(unreadBodies("pij-c")).toEqual(["racing"]);
+		// Pin the coupling this test has on the capture COUNT. Without it, a change
+		// that adds or removes a capture silently shifts which one returns text, and
+		// this test starts passing or failing for a reason unrelated to the guard —
+		// which is exactly how it behaved when pij#229 removed the readiness capture.
+		expect(captures).toBe(PRE_SEND_CAPTURE);
 	});
 
 	// driveSession's init/phone-home lines are pane writes too. They used to
@@ -1973,5 +1999,102 @@ describe("Daemon.tick heartbeat (pij#180 Fix A)", () => {
 				.map((d) => d.id)
 				.sort(),
 		).toEqual(["pij-owned-0", "pij-owned-1", "pij-owned-2", "pij-owned-3", "pij-owned-4"]);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// s101 / pij#229 — ONE RENDERED FRAME PER PANE PER TICK, for the consumers that
+// want the tick's frame; a fresh read for the guards that want the latest one.
+//
+// `refreshPaneSignals` already captured every live pane once per tick and said
+// why: the caret tracker and the content gate must reason about the SAME frame.
+// The drive loop's activity axis — which decides `working`/`idle`, refreshes
+// `lastEventAt`, and feeds the stall watchdog — was a third consumer taking its
+// OWN later capture of the same pane in the same tick. Nothing detected the
+// disagreement.
+//
+// THE DISTINCTION THAT MAKES THIS SAFE, and it is not "fewer forks is better":
+// the flush gate, the outer drain check and the pre-send check are RACE
+// DETECTORS. Their correctness depends on reading as LATE as possible, so they
+// are deliberately left un-shared — see the capture-order note in the typing
+// test above, which pins that.
+describe("pij#229: the tick's pane frame is captured once and shared", () => {
+	it("does not re-capture a pane the signals pass already captured this tick", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-live",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const ports = fakePorts({
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, new FsRegistry(home), new FsChannel(home)).tick();
+
+		// EXACTLY two reads of %4: the signals pass, and the flush gate (a race
+		// detector, deliberately unshared). The activity axis's third read is gone —
+		// it now reads the signals pass's frame, so both reason about one frame.
+		expect(ports.captured).toEqual(["%4", "%4"]);
+	});
+
+	it("NEVER captures a pane tmux did not list — the gone-pane skip", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-gone",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%404",
+				harnessSessionId: "sess",
+			}),
+		);
+		// tmux lists a DIFFERENT pane, so %404 is proven absent in this same tick.
+		const ports = fakePorts({
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, new FsRegistry(home), new FsChannel(home)).tick();
+
+		// EXACTLY ONE read of %404, and the count is the finding.
+		//
+		// The activity axis asked about %404 and got "" WITHOUT a subprocess —
+		// `capturePane` on a gone pane returns "" anyway, so that is the same answer
+		// at no cost. Measured live: 84 of 117 owned panes per tick are gone, and a
+		// capture of a gone pane costs MORE than a live one (9.05ms vs 6.70ms).
+		//
+		// THE REMAINING ONE IS THE FLUSH GATE, and it is NOT a bug here — it is a
+		// race detector, deliberately unshared. It is, however, the next thing worth
+		// removing: a guard against "is a human typing in this pane" is meaningless
+		// for a pane tmux has just reported does not exist. That is a change to a
+		// DELIVERY guard rather than an observation path, so it is named here and
+		// left alone rather than folded into pij#229.
+		expect(ports.captured.filter((pane) => pane === "%404")).toEqual(["%404"]);
+	});
+
+	it("falls back to a direct capture when there is NO live-pane list", () => {
+		// `listPanes`/the tap ports are optional. With the signals pass absent,
+		// NOTHING IS KNOWN about which panes exist — and "no list" must never be
+		// read as "the pane is absent", or an instrument's limit becomes the world's
+		// property and every pane on the machine reads as gone in one tick.
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-nolist",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%7",
+				harnessSessionId: "sess",
+			}),
+		);
+		const ports = fakePorts(); // no paneListings → no signals pass
+
+		new Daemon(home, ports, new FsRegistry(home), new FsChannel(home)).tick();
+
+		expect(ports.captured).toContain("%7");
 	});
 });
