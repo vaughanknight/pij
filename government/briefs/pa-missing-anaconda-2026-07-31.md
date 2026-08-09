@@ -145,24 +145,33 @@ per sweep, not one per finding. If nothing changed since your last sweep, send t
 heartbeat line with its denominator anyway — that is rule 10 and it is the whole reason I
 can trust your silence.
 
-> ### ⚠ CORRECTED 2026-08-09 — THIS CADENCE HAS NO TRIGGER. YOUR PRIME IS YOUR CLOCK.
+> ### ⚠ CORRECTED 2026-08-09 (TWICE — read the second correction, the first was WRONG)
 >
-> The paragraph above reads as if a 20–30 minute cadence is something you can keep.
-> **It is not, and nothing in the platform will keep it for you.**
-> `watchdog-manager.ts` allow-lists roles `pm` and `prime` for nudge eligibility, so role
-> `pa` is refused **before any anchor logic runs**: **5 of 5 PAs fleet-wide, zero fires,
-> ever** (`watchdog-pa-ineligible-2026-08-01.md`). Setting your interval is correct
-> hygiene and is **decorative today**.
+> **An earlier version of this note claimed this cadence has no trigger, because role `pa`
+> was refused watchdog nudge eligibility. THAT WAS FALSE WHEN IT WAS WRITTEN HERE, and it
+> was written by a prime who read it in `pa-standup-recipe.md` step 21 and relayed it
+> without checking the source.**
 >
-> So the cadence above is a *description of the duty cycle*, not a schedule you are on.
-> **Your prime pings you, or you do not sweep.** Said plainly because the alternative is
-> the exact trap rule 1 exists to prevent, with you holding it: an agent waiting on a
-> signal that structurally cannot arrive, reading its own silence as "nothing due".
+> **A PA IS SUPERVISED AND IS NUDGE-ELIGIBLE.** Verified at source:
+> `core/daemon/watchdog-manager.ts` → `roleNeedsSupervision()` → `case "pa": return true;`
+> — with the reasoning written next to it: *"a PA's chore is to notice when its prime goes
+> QUIET, so its only other trigger — the prime messaging it — fires precisely when the
+> condition it exists to detect is ABSENT. Excluded, it is unreachable BY CONSTRUCTION
+> rather than merely delayed."*
 >
-> Reported by `pij-efficient-bug` on its first sweep as an impossible instruction — it
-> read the cadence here, read the refusal in its prime's brief, and flagged the pair
-> rather than choosing one. That is the correct handling of a contradiction and it is why
-> this note exists.
+> Fixed on **2026-08-01** by `1cbf2361` — *"fix(watchdog): a PA was ineligible before any
+> logic ran — make the gate total (#71)"*. Confirmed live: `pij-efficient-bug` shows a real
+> `lastFireAt`.
+>
+> **So the cadence above is real and the watchdog will drive it.** Your prime pinging you is
+> the *second* trigger, not the only one.
+>
+> **Why this correction is left in rather than silently deleted**: the false claim survived
+> in the recipe for eight days after the fix landed, got copied into a fresh PA brief as its
+> most emphatic instruction, and was then *confirmed* by a PA that had been told it as fact —
+> so a leading question produced agreement that read like corroboration. If you find yourself
+> agreeing with something your prime asserted, check whether you have an instrument for it or
+> only their word. Rule 2 applies upward.
 
 ## What I want from the dogfood (say these out loud)
 

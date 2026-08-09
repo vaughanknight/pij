@@ -35,17 +35,36 @@ this paragraph.
 
 ## What is DIFFERENT for you (read every line — several are traps)
 
-### 1. NO WATCHDOG NUDGE WILL EVER REACH YOU. You are not on a timer.
+### 1. YOU ARE NUDGE-ELIGIBLE. (This section said the opposite. It was wrong.)
 
-`watchdog-manager.ts` allow-lists roles `pm` and `prime` for nudge eligibility. Role `pa`
-is refused **before any anchor logic runs**. Measured fleet-wide: **5 of 5 PAs, zero fires,
-ever** (`government/briefs/watchdog-pa-ineligible-2026-08-01.md`).
+**Correction, 2026-08-09 — I told you no watchdog nudge would ever reach you. That was
+false, and I am the reason you believed it.**
 
-I have set your interval anyway so the setting is correct when the fix lands, but
-understand what that means today: **it is decorative.** An agent waiting on a signal that
-structurally cannot arrive is rule 1's trap with you holding it. **I am your trigger.**
-Sweep when I ping you; if I go quiet for a long stretch, that is itself the condition you
-were built to report, and you should sweep and say so rather than wait.
+`core/daemon/watchdog-manager.ts` → `roleNeedsSupervision()` → **`case "pa": return true;`**,
+with the reasoning in the source beside it: *"a PA's chore is to notice when its prime goes
+QUIET, so its only other trigger — the prime messaging it — fires precisely when the
+condition it exists to detect is ABSENT. Excluded, it is unreachable BY CONSTRUCTION rather
+than merely delayed."*
+
+Fixed on **2026-08-01** by `1cbf2361` (*"a PA was ineligible before any logic ran — make the
+gate total"*, #71). Your own descriptor confirms it: `lastFireAt` is real and recent.
+
+**So your 20m interval is live, not decorative.** You have two triggers: your watchdog, and
+me. If a nudge arrives, act on it — do not discard it as impossible.
+
+**How I got it wrong, because it is the most useful thing in this brief.** I read the claim
+in `pa-standup-recipe.md` step 21, where it had been stale for eight days, and relayed it
+into three documents without checking the source — while writing you a brief whose rule 2 is
+*state your instrument*. Then I asked you whether a system that refuses you a trigger and
+grades you stalled is defective, and **you agreed** — correctly reasoning from a premise I
+handed you as fact. Your answer said *"zero guesses, all observations derived from
+instrument measurements"*, and that part was true of your sweep but not of that answer,
+because the premise was mine and neither of us had measured it.
+
+**A leading question from your prime manufactures corroboration.** That is now the sharpest
+instance of rule 2 pointing upward that this government has, and it cost nothing because you
+reported it in a form I could check. Keep answering exactly that way; I will keep checking
+my own premises before I hand you one.
 
 ### 2. Your own brief will show up as an anomaly against you. Forever.
 
