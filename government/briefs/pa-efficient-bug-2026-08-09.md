@@ -191,3 +191,86 @@ Jordan's purpose in standing PAs up early is **experience, not output**. So tell
 
 Friction reports rank equal to the chores. I would rather have an honest
 `not-probeable` than a confident sweep.
+
+---
+
+# THE REPORT CONTRACT — added 2026-08-09 after nine corrections in one day
+
+**These are not style rules. Each one was written after a report was wrong in a way its own
+checks could not see.** They are recorded here because they were learned in a context window
+and would not survive a compaction, a replacement PA, or a new government.
+
+**Every failure below produced a CORRECT-LOOKING report.** None was caught by the reporting
+seat noticing; each was caught by an outside party doing arithmetic on the published numbers.
+
+## The contract, in the order it was learned
+
+1. **State the instrument with every claim.** *"`gh pr view 64 --json statusCheckRollup` at
+   00:14Z reports 3 pass"* is a fact; *"CI is green"* is an inference you are not licensed to
+   make. **Never `gh pr checks`** — it reports superseded runs.
+
+2. **A threshold you chose yourself is an assertion, not a measurement.** If a number in a
+   verdict did not come from the platform or from your prime, say where it came from. The
+   platform's card threshold is **600s**.
+
+3. **Ask what silences a threshold before you adopt it.** A threshold says when to *start*
+   caring and nothing about when to *stop speaking*. **A threshold with no exit condition
+   produces a permanent alarm, and a permanent alarm is filtered by its reader within about
+   three repetitions** — which converts a real finding into noise using nothing but persistence.
+
+4. **Dedup on the CONDITION, never on the value.** *A monotonically increasing measurement
+   defeats value-based deduplication by construction* — the clock always moves, so a duration
+   always looks like a delta. Fire once on crossing; declare escalation tiers in advance
+   (**60m / 4h / 12h**); fire again only on resolution, reporting the total.
+
+5. **Read the semantic axis BEFORE computing staleness.** Parked = **`blocked | question |
+   hold | waiting`** only. **`ready` is NOT parked** — `anomalies.ts:11` names it explicitly as
+   *expecting activity* — so a `ready` seat must still be measured. This one bit in both
+   directions: first the check ran on parked seats, then it skipped the only state that flags.
+
+6. **`ready` also keeps the nudge.** `mutesWatchdogNudge()` (`watchdog.ts:332`) returns **true**
+   for all four parked states. **A nudge-driven seat that parks silences its own trigger.**
+   Parking the anomaly and muting the nudge are ONE predicate today and TWO different questions:
+   *should this idleness alarm anyone?* and *should this seat still be woken?*
+
+7. **Question age is `stateNote.at`, never `statusAt`.** `statusAt` resets on every card, so a
+   monitor built on it measures card freshness while claiming to measure block duration.
+   Quote `stateNote.text` in the finding — *"your question has been open N minutes"* is half a
+   finding; saying **what** the question was is the actionable half.
+
+8. **Bind every arithmetically-related value from ONE read**, and **re-derive the check from the
+   values you PRINTED** by parsing them back. **A self-check that cannot fail is decoration.**
+   *(Learned from a report asserting `07:08:41 - 05:26:34 = 1135s`. It is 6126s. The delta was
+   right; the printed operand was a literal from an earlier turn; the "verification" performed
+   no subtraction.)*
+
+9. **Prove the read is from NOW, against a clock you cannot have cached.** Capture `emit_time`
+   in the emitting turn and print the skew beside `now`. **A self-attested freshness field is
+   only as fresh as the block carrying it** — it attests to its age at *creation*, not at
+   *display*. *(Learned when an entire block was re-emitted verbatim 42 minutes later,
+   including `read age: 0.68s`, inverting a verdict. Both existing guards passed: a cached
+   block is perfectly consistent with itself.)*
+
+## The single root, stated once
+
+**In every instance the tool output was correct.** The defect was in the layer that *relays* it
+— narrating from context instead of copying the execution just performed.
+
+> **That is invisible to any check that examines the CONTENT, because the content is valid.
+> It is simply from a different moment.**
+
+Model strength does not protect against this: it is a relaying failure, not a reasoning one,
+and every seat spends most of its output relaying tool results into prose. The o-prime that
+wrote these rules hand-typed numbers into its own summaries all day while correcting a PA for
+doing the same.
+
+## The prime's half of the contract
+
+Each of the nine has the same root cause on the supervisor's side: **a correct number handed
+over without the rule that makes it usable.** A threshold with no precondition, a clock that
+resets, a threshold with no exit, a binding with no freshness requirement, a self-check with
+no failure mode, one predicate answering two questions.
+
+**When your prime gives you a threshold, a field, or a constant — ask what silences it, what
+resets it, and what it is conditional on.** Those questions are cheap, and in nine cases out
+of nine the prime did not volunteer the answer because the prime had not thought of it either.
