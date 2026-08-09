@@ -630,7 +630,7 @@ describe("WatchdogManager — watcher captures", () => {
 		expect(notice).toContain("nothing was examined");
 	});
 
-	it("writes an anomaly pointer from the pre-injection pane and includes at most five head lines", () => {
+	it("writes an anomaly pointer from the pre-injection pane and includes at most five lines", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcher]));
 		h.store.revisions.set("peer", 1);
@@ -653,6 +653,35 @@ describe("WatchdogManager — watcher captures", () => {
 		expect(notice).toContain(h.store.captures[0]?.path);
 		expect(notice).toContain("two\nthree");
 		expect(notice.split("\n").slice(2)).toHaveLength(2);
+	});
+
+	// Every capture test above uses maxLines <= 5, where the head and the tail of
+	// the window are the SAME five lines — so none of them could tell a
+	// head-anchored notice from a tail-anchored one, and the defect survived. This
+	// one uses a window WIDER than the notice, which is the only shape that can.
+	it("takes the NEWEST five lines of the window, so a wider window is not a staler notice", () => {
+		const h = managerHarness();
+		const wide: WatchdogWatcher = {
+			...watcher,
+			capture: { mode: "always", maxLines: 12, maxBytes: 4096 },
+		};
+		h.store.sidecars.set("peer", intervalSidecar(100, [wide]));
+		h.store.revisions.set("peer", 1);
+		// 20 lines; the capture keeps the last 12 (line09..line20).
+		h.setPane("peer", Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join("\n"));
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		expect(h.store.captures[0]?.content).toBe(
+			Array.from({ length: 12 }, (_, i) => `line${i + 9}`).join("\n"),
+		);
+		const notice =
+			h.delivery.outbox.find((item) => item.message.to === "owner")?.message.body ?? "";
+		// The newest five of that window — NOT line09..line13, which is what a
+		// front slice returned and which is 7 lines staler than the pane's tail.
+		expect(notice).toContain("line16\nline17\nline18\nline19\nline20");
+		expect(notice).not.toContain("line09");
+		expect(notice).not.toContain("line13");
 	});
 
 	it("reports capture-n/a for a paneless pi target", () => {
