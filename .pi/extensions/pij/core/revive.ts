@@ -1,4 +1,4 @@
-import { archiveAgeAnchorMs } from "./archive.js";
+import { lastActivityAtMs } from "./archive.js";
 import type { SpawnCommand, SpawnLayout } from "./spawn.js";
 import { err, ok, type Result, type SessionDescriptor, type SessionId } from "./types.js";
 
@@ -337,8 +337,12 @@ export interface ResolvedSeat {
 	readonly viaPrime: boolean;
 }
 
+/** ACTIVITY, not the archival anchor (pij#204). This string is printed as "last
+ *  activity" on each revive candidate and a human picks a seat off it, so it must
+ *  mean activity. It previously borrowed `archiveAgeAnchorMs` — which now anchors
+ *  on DEATH — and would otherwise report when a seat died as when it last worked. */
 function lastActivityIso(descriptor: SessionDescriptor): string {
-	const anchorMs = archiveAgeAnchorMs(descriptor);
+	const anchorMs = lastActivityAtMs(descriptor);
 	return anchorMs === null ? "unknown" : new Date(anchorMs).toISOString();
 }
 

@@ -1,12 +1,12 @@
 // Daemon-side two-tier janitor + tick-duration log (plan 071 D1, T003).
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
-import { ARCHIVE_AFTER_MS } from "./core/archive.js";
+import { ARCHIVE_AFTER_MS, ARCHIVE_PRUNE_AFTER_MS } from "./core/archive.js";
 import type { DaemonPorts } from "./core/daemon/loop.js";
 import type { SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
@@ -74,7 +74,20 @@ describe("archive sweep", () => {
 	});
 
 	it("moves a long-dead FAILED record too", () => {
-		seed("pij-never-bound", { lifecycle: "failed", failureReason: "bind-timeout" });
+		// `failed` needs an explicit OLD death stamp where `dissolved` does not, and
+		// the asymmetry is real rather than incidental: `list()` excludes `dissolved`,
+		// so the death sweep never re-observes those, while a `failed` record stays
+		// visible and IS re-observed — and under pij#204 the sweep's `observedAt`
+		// stamp is what starts its 48h post-mortem clock.
+		seed("pij-never-bound", {
+			lifecycle: "failed",
+			failureReason: "bind-timeout",
+			terminal: {
+				disposition: "requested",
+				observedAt: new Date(NOW_MS - ARCHIVE_AFTER_MS - 60_000).toISOString(),
+				evidence: "pane-missing",
+			},
+		});
 
 		daemon().tick();
 
@@ -109,7 +122,21 @@ describe("archive sweep", () => {
 	});
 
 	it("keeps the archived record addressable by keyed lookup after the sweep", () => {
-		seed("pij-long-gone", { lifecycle: "failed", spawnedBy: "pij-parent" });
+		// The death stamp is explicit and OLD (pij#204): a terminal record now ages
+		// from `terminal.observedAt`, and the death sweep stamps that on first
+		// observation — so a record discovered dead during THIS tick is 0s into its
+		// post-mortem window and correctly stays hot. Seeding the stamp is what makes
+		// this fixture archivable, and states the precondition instead of relying on
+		// the sweep happening to have run earlier.
+		seed("pij-long-gone", {
+			lifecycle: "failed",
+			spawnedBy: "pij-parent",
+			terminal: {
+				disposition: "requested",
+				observedAt: new Date(NOW_MS - ARCHIVE_AFTER_MS - 60_000).toISOString(),
+				evidence: "pane-missing",
+			},
+		});
 
 		daemon().tick();
 
@@ -163,5 +190,67 @@ describe("tick duration log", () => {
 	it("logs even on a completely empty registry — silence is never the signal", () => {
 		daemon().tick();
 		expect(logs.filter((line) => line.startsWith("tick: "))).toHaveLength(1);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pij#183 — the archive retention bound, on disk. Jordan-ruled 90 days:
+// DELETE THE WRECKAGE, KEEP THE TOMBSTONE.
+describe("archive prune", () => {
+	/** Put a record straight into the archive tier, with an explicit death age. */
+	function seedArchived(id: string, diedMsAgo: number): void {
+		const registry = new FsRegistry(home);
+		seed(id, {
+			lifecycle: "dissolved",
+			terminal: {
+				disposition: "requested",
+				observedAt: new Date(NOW_MS - diedMsAgo).toISOString(),
+				evidence: "pane-missing",
+			},
+		});
+		registry.archive(id, NOW_MS);
+	}
+
+	it("deletes the record and its session dir, and KEEPS the index tombstone", () => {
+		seedArchived("pij-ancient", ARCHIVE_PRUNE_AFTER_MS + 60_000);
+		const indexBefore = readFileSync(join(home, "archive", "index.jsonl"), "utf8");
+		expect(indexBefore).toContain("pij-ancient");
+
+		daemon().tick();
+
+		// The bulk is gone…
+		expect(existsSync(join(home, "archive", "pij-ancient.json"))).toBe(false);
+		expect(existsSync(join(home, "archive", "pij-ancient"))).toBe(false);
+		// …and the one line that answers "did this seat exist, when did it die"
+		// survives, byte-for-byte. That asymmetry IS the ruling.
+		expect(readFileSync(join(home, "archive", "index.jsonl"), "utf8")).toBe(indexBefore);
+	});
+
+	it("leaves a record INSIDE the bound completely alone", () => {
+		seedArchived("pij-recent-corpse", ARCHIVE_PRUNE_AFTER_MS - 60_000);
+
+		daemon().tick();
+
+		expect(existsSync(join(home, "archive", "pij-recent-corpse.json"))).toBe(true);
+		expect(existsSync(join(home, "archive", "pij-recent-corpse"))).toBe(true);
+	});
+
+	it("says what it removed, in records AND bytes", () => {
+		// A count alone cannot distinguish 2,000 empty stubs from the one 94MB seat
+		// somebody wanted, so the log carries both.
+		seedArchived("pij-ancient", ARCHIVE_PRUNE_AFTER_MS + 60_000);
+
+		daemon().tick();
+
+		expect(logs.some((line) => line.startsWith("archive prune: removed 1 record(s)"))).toBe(true);
+		expect(logs.some((line) => line.includes("index tombstones kept"))).toBe(true);
+	});
+
+	it("is silent when it removes nothing — no noise on the 99% of ticks", () => {
+		seedArchived("pij-recent-corpse", ARCHIVE_PRUNE_AFTER_MS - 60_000);
+
+		daemon().tick();
+
+		expect(logs.filter((line) => line.startsWith("archive prune:"))).toEqual([]);
 	});
 });
