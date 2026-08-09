@@ -1880,6 +1880,8 @@ describe("touchDaemonHeartbeat — the tick-loop liveness rider (#40 Defect 2)",
 	it("is best-effort: a missing lock (racing teardown) never throws", () => {
 		const gonePath = join(home, "does-not-exist", "daemon.lock");
 		expect(() => touchDaemonHeartbeat(gonePath, new Date("2026-07-23T09:00:00Z"))).not.toThrow();
+	});
+});
 
 // ── pij#180 Fix A (s100) — the tick heartbeat ────────────────────────
 // The tick used to stamp `lastTickAt` onto EVERY daemon-owned descriptor, i.e.
