@@ -15,14 +15,20 @@ revive because it is a file rather than model context.
 ```
 pij chore add <name> --probe '<cmd>' [--full '<cmd>'] [--full-every N]
                      [--scope seat|repo|fleet] [--timeout <ms>] [--json]
+pij chore update <name|scope:name> [--probe '<cmd>'] [--full '<cmd>']
+                     [--full-every N] [--timeout <ms>] [--json]
 pij chore run [--dry] [--json]        probe everything, diff vs YOUR baseline
 pij chore list [--verbose] [--json]   the duty roster
 pij chore ack <name|scope:name>       advance the baseline AFTER you relayed the delta
 pij chore remove <name|scope:name> --reason '<why>'
 ```
 
-Output is `NO CHANGE — <N> chores probed, 0 moved`, or `CHANGES — <N> chores probed, <M> moved`
-followed by one `CHANGED <scope>:<name>: <old> → <new>` per mover and the unchanged list.
+Output is `NO CHANGE — <N> chores probed, 0 moved`, or `CHANGES — <N> chores probed, <M> moved`.
+Each `CHANGED-VALUE` block carries framed `OLD`/`NEW` probe values plus their fingerprints;
+the values are the stdout from the same probe invocation that triggered the delta, not a
+second command that can race it. Instrument edits use the distinct `CHANGED-PROBE` record.
+`list`/`run` also print the resolved seat, repo, and fleet scopes, so an unresolved seat scope
+cannot look like deleted chores.
 
 ## The four rules — read these before you register anything
 
@@ -31,12 +37,17 @@ followed by one `CHANGED <scope>:<name>: <old> → <new>` per mover and the unch
    forgetting; things are only lost by acking something you did not relay.
 2. **Un-acked deltas re-surface every run.** If the value moves again while a delta is open,
    the `new` refreshes but `old` stays at the last **acked** value — so you never lose the
-   origin you were supposed to report from.
+   origin you were supposed to report from. If it returns to the acked baseline, the pending
+   delta stays visible as `FLAPPED`: the endpoints match, but a sampled excursion occurred.
 3. **Scopes union; they do not shadow.** `seat` (yours), `repo` (checked into a repo, shared by
    every seat working it), `fleet` (machine-wide). All three probe. But **fingerprints are
    always per-seat** — your `ack` never silences another seat's delta.
 4. **A failing probe is `NOT-PROBEABLE`, not absent.** It stays in the roster and in the
    probed denominator. A chore that cannot run is louder than a chore that vanished.
+
+Identity is derived from the caller's registered pane/folder binding. `PIJ_SESSION_ID` may
+override only when it names that same registered seat; unknown native UUIDs and valid
+cross-seat ids fail before they can mint or pre-seed another seat's baselines.
 
 ## The probe-authoring rule (the one thing code cannot check for you)
 
@@ -53,7 +64,8 @@ this: your PA's status-card staleness, red PRs on your streams, `pij anomalies` 
 commit hash of a branch you care about, whether a seat you depend on is still alive.
 
 Use `--scope repo` for anything every seat in a repo should watch; keep seat-specific duties at
-the default `seat` scope.
+the default `seat` scope. Commit the resulting `.pij/chores.json` — otherwise no other checkout
+inherits it. Use `chore update` for re-authoring; do not create a remove/add gap.
 
 ## What PAs are asked to do — evaluate, then report
 
@@ -80,8 +92,9 @@ An honest "this did not help me" is the single most valuable reply. Do not perfo
 - **No delivery.** The tool computes and prints; relaying is still yours.
 - **Probes are arbitrary shell** run as your own user. Repo-scoped probes come **from the repo** —
   `chore list --verbose` shows you exactly what will run before you run it.
-- **A PA may `run`/`list`/`ack` but not `add`/`remove`** (`PA_VERB_CLASSIFICATION`). If you are a
-  PA and need a roster change, ask your prime — that is the intended shape, not a bug.
+- **A PA may `run`/`list`/`ack` but not `add`/`update`/`remove`**
+  (`PA_VERB_CLASSIFICATION`). If you are a PA and need a roster change, ask your prime —
+  that is the intended shape, not a bug.
 
 ## ⚠️ CORRECTION (2026-08-02, from `pij-chief-roadrunner`) — "PA may never ack" is a TRAP
 
@@ -92,29 +105,28 @@ acks re-reports the same deltas forever — building permanent alarm fatigue int
 instrument designed to prevent it. It was caught only because a PA pasted a fingerprint that
 differed from its prime's by one field, which made the per-seat behaviour visible.
 
-**The rule**: *whoever runs must be able to ack.* `run`/`list`/`ack` for the PA, `add`/`remove`
-for the prime, is the correct split — and it is the whole split. The safety property ("nothing
-is lost by forgetting to relay") **holds only if the runner can ack**; a runner who cannot ack
-converts the tool into permanent noise.
+**The rule**: *whoever runs must be able to ack.* `run`/`list`/`ack` for the PA,
+`add`/`update`/`remove` for the prime, is the correct split — and it is the whole split.
+The safety property ("nothing is lost by forgetting to relay") **holds only if the runner can
+ack**; a runner who cannot ack converts the tool into permanent noise.
 
 **The discipline that preserves the invariant**: a PA acks only a delta it has **already
 relayed**, and only **after** the send. Two seats independently sharpened this further — ack
 after *confirmed* delivery, not merely after issuing the send.
 
-## ⚠️ REGISTER WITH `--full`, OR YOUR DELTAS ARE UNDIAGNOSABLE
+## Delta values and periodic absolute state are separate jobs
 
-The line above renders as `CHANGED <scope>:<name>: <old> → <new>`, which reads as though
-`old`/`new` are **values**. They are **fingerprints**. A roster registered with `--probe` alone
-tells a seat *that* something moved and never *what* — so the seat re-runs the probe by hand,
-which is the transcription work this exists to abolish.
-
-Register `--full '<cmd>'` (with `--full-every 1` if you want it every run). The `FULL` line
-carries the real value, framed, and `--json` carries it as `fullOutput`. A prime whose roster
-lacked it watched its own PA correctly conclude the primitive was useless; re-authored with
-`--full`, the same PA reversed its verdict. This is the single highest-value authoring rule.
+Every delta now carries the bounded stdout from the probe invocation that moved. `--full`
+is optional richer context, not the only way to understand a delta: when configured it runs
+automatically on every delta. `--full-every N` keeps its distinct purpose — periodic absolute
+state on unchanged runs — so a persistent bad state can remain visible without forcing a full
+report on every sweep.
 
 ## Two more probe-authoring rules, learned in the field
 
+- **A probe emits only the decision variable.** Every other field is diagnostic and belongs
+  in `--full`. Clocks are the obvious trap, but any fast-moving field riding beside the real
+  verdict makes the chore fire on the wrong axis.
 - **No timestamps or ages in a probe.** Any probe whose output contains a clock value changes on
   every run and is 100% noise. The obvious "is the card stale" probe is the naive trap: emit a
   **boolean verdict** (`prime-card=ok`), not an age.
@@ -123,6 +135,17 @@ lacked it watched its own PA correctly conclude the primitive was useless; re-au
   *known-open* defects. Carry a **denominator** (`21subs clean`) so zero discriminates between
   "nothing to report" and "the probe broke", and exit non-zero on no-data so it reads
   `NOT-PROBEABLE` rather than a false all-clear.
+- **Shared probes must be portable.** Repo/fleet definitions travel to other checkouts; never
+  bake in one user's absolute path. Use checkout-relative commands or resolve the root with
+  `git rev-parse --show-toplevel`. The CLI warns when shared authoring contains an absolute path.
+- **Shared probes must fit the least-capable intended runner.** The CLI warns when a repo/fleet
+  probe or full command invokes a `pij` verb the PA capability table refuses. It does not hide
+  runtime failures: a gate refusal remains `NOT-PROBEABLE` with the original `E-OWN` text.
+- **Instrument changes are not world changes.** `run` fingerprints the probe definition and
+  the content of a directly referenced script file against what was stored beside the seat's
+  baseline. Roster edits and script edits report `CHANGED-PROBE`; actual sampled-state
+  movement reports `CHANGED-VALUE`. If a value delta was already open, both records persist
+  until ack resets the baseline to the latest sample from the new instrument.
 
 ## THE probe-authoring rule — three governments converged on it independently
 
@@ -142,9 +165,93 @@ seats reached it from three different directions in one evening:
 - `pij-tense-centipede` hit the silent-zero on its own capture chore: `--full` returned nothing
   at all on the zero case, indistinguishable from a command that failed.
 
-**So**: carry a denominator (`ours=0 of 5 rows over 8 seats`, `21subs clean`), make the empty
-case an explicit value (`| grep . || echo NONE`), and exit non-zero on no-data so it reads
-`NOT-PROBEABLE` rather than clean.
+**So**: carry a denominator (`ours=0 of 5 rows over 8 seats`, `21subs clean`) and exit non-zero
+on no-data so it reads `NOT-PROBEABLE` rather than clean.
+
+> ### ⛔ DO NOT USE `|| echo NONE` — I recommended it and it is itself a false all-clear
+>
+> An earlier version of this brief told you to make the empty case explicit with
+> `| grep . || echo NONE`. **That idiom converts a completely broken probe into a clean,
+> stable, healthy-looking result.** Measured: a probe whose command does not exist and a probe
+> that legitimately found nothing **fingerprint identically** (`c627c09c14e5` — which is
+> `sha256("NONE")`). Three governments found it live in their own rosters after the
+> correction: `meadowlark` had absence-masking in **four of five** chores (`2>/dev/null`,
+> `except Exception`, `|| echo "?"`, `|| echo`); `able-jay` found `|| echo ok` **twice plus**
+> `2>/dev/null` in the one chore it had written to be the careful one, and proved it by
+> pointing it at a nonexistent directory — it printed `ok`; `centipede`'s capture probe had
+> been sitting on `sha256("NONE")` and would have looked healthy forever.
+>
+> ### The tension, and its resolution (`able-jay`)
+>
+> "Emit the population you examined" collides with "no tallies, no clock-derived values"
+> whenever **the population itself legitimately churns** — a capture dir that gains a file
+> every 2h makes any denominator in the *output* re-introduce the per-run noise the boolean
+> rule exists to remove.
+>
+> **Resolution: put the did-it-run signal in the EXIT CODE, not the output.** Exit non-zero on
+> an unexaminable population; let the output stay a stable boolean or set. You get loud failure
+> without churning fingerprints, and `NOT-PROBEABLE` already carries the denominator semantics
+> at the roster level. As written, "always emit a denominator" is unachievable for a growing
+> population, and someone would either add the noise or quietly drop the rule.
+>
+> **Verify both arms.** `meadowlark`'s re-authored probe had a quote-nesting bug that the new
+> shape caught on its first run (`NOT-PROBEABLE: exit 1: SyntaxError`) where the old idiom
+> would have fingerprinted clean — then it tested the failure path against a known-bad fixture
+> rather than trusting it. *A control only ever run against good input has been demonstrated,
+> not tested.*
+
+### While five governments re-author, expect false deltas fleet-wide
+
+`centipede`'s sharper form of the instrument-swap defect: on a **shared** roster, a
+correctly-behaved government following these corrections generates deltas that are
+indistinguishable from world changes **in every other government's run**. So this brief's own
+instruction to re-author probes is, until the fix lands, a fleet-wide source of false deltas.
+If you see a delta on a chore you do not own, suspect re-authoring before you relay it — and
+rule 1 means waiting costs you nothing.
+
+### The positive construction rule (`pij-wee-albatross`) — prefer this to the ban-list
+
+> **A probe emits only the DECISION VARIABLE. Every other field is diagnostic and belongs in
+> `--full`.**
+
+This is the general form of "no timestamps". The real hazard is broader than clocks: **any
+fast-moving field riding along in a probe makes the chore fire on an axis it is not about.**
+Clocks are just the case that always trips. A staleness probe emitting `stale=true state=idle`
+fired constantly because `state` flaps `idle`↔`working` on every burst of work — a chore about
+staleness fingerprinting an axis it was not about. Fixed by emitting `stale=true|false` alone
+and moving state, assignment and age into `--full`, where they are diagnostic and unfingerprinted.
+
+### Reading a flap: `CHANGED A → A` is not a bug
+
+When a value moves A→B and back to A before the next run, the delta is legitimately open (old
+pinned at the last **acked** A, new refreshed to A) and both endpoints are equal — so it renders
+as `CHANGED <name>: A → A` and reads as nonsense. **It is rule 2 working exactly as designed.**
+Acking clears it correctly but discards the one fact worth knowing: *there was a transient.*
+A rendering fix is queued (`FLAPPED … moved and returned since last ack`). Until it lands, do not
+file this as a false delta — one o-prime nearly did, with the design brief open in front of it.
+
+### Shared scope ≠ shared runnability
+
+A `repo`/`fleet` chore whose probe invokes a **capability-gated** verb is permanently
+`NOT-PROBEABLE` for seats that lack the capability, while running fine for its author — and the
+author is structurally the least likely to notice, because it holds the capability. A prime
+registered `repo:baton-holders` probing `pij orchestration baton show`; its PA got
+`NOT-PROBEABLE: exit 1: E-OWN: 'orchestration' is not available to a PA` on every sweep, forever.
+**Shared-scope probes should avoid `pij` verbs and read state or use unprivileged tools.**
+(The positive: chore mapped a capability refusal to `NOT-PROBEABLE` *loudly* rather than masking
+it as a clean empty — the fail-loud path working on a failure mode nobody designed it for.)
+
+### Per-seat state belongs to the seat — ruling, 2026-08-02
+
+`PIJ_SESSION_ID=<another seat> pij chore run` **acts as that seat, and `run` is a write** (it
+stamps `lastRunAt`/`lastStatus`/`runsSinceFull`, shifting when that seat's `--full` next fires).
+Do not do it. Inspect another seat's state file read-only, or ask that seat to run.
+
+This is a **gate, not an etiquette**: two seats crossed this boundary independently within one
+hour — one of them the seat that owns the primitive — and neither noticed, because the env var
+makes the boundary invisible (no gate, no warning, exit 0). A norm that both parties broke while
+being careful is not a norm that will hold. The seat should be **derived** from binding the way
+`whoami` does; an explicit override should have to be *yours* or be refused.
 
 ### And the tally rule generalises further than "don't count"
 

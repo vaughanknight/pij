@@ -9,11 +9,41 @@
 |---|---|
 | `orchestrationRole: "pa"` | LIVE, pij `fa3bdc1` — vocabulary single-sourced as data; both write parsers accept it |
 | Capability gate | LIVE — one predicate at two seams (`core/cli.ts dispatch`, the bin's argv early-branch), exhaustive verb-classification test |
-| `whoami` projects `role` + `refusedVerbs` | LIVE — a PA can read its own capability instead of discovering it by attempting |
+| `whoami` projects `role` + an exhaustive `verbs` map | LIVE — a PA can read its own capability instead of discovering it by attempting; every classified verb is stated as `allow`/`conditional`/`refuse`, so no belief is formable from an absence |
 | `--for <prime>` card relay | LIVE — PA-only, own-prime-only, card-only (never a semantic state: that is first-person) |
 | `statusWrittenBy` | LIVE — a relayed card records the PA as author, so a PA never borrows its prime's identity |
 | Rail render | LIVE, chainglass `03c09e95d` + `2e5f7e8a1` — sky chip (never the prime's indigo), placed under its prime at PM level, optional-but-rendered card |
 | Unadopted-`pa` guard | pij PR #69 (lineage-at-spawn) — `pa` is the one role whose SUBJECT is its parent |
+
+## ⚠ ADDED 2026-08-09 — THE LINE BOUND IS ALSO BLIND, ON NARROW PANES (issue #221)
+
+Step 3 below withdrew the byte bound because `rule_bytes = 3 × pane_width` makes any byte
+constant go blind on a wide pane. **The move to `maxLines` does not fix the problem, it
+relocates it — and the two axes are ANTI-CORRELATED.**
+
+Measured while standing up `pij-efficient-bug`, following this recipe exactly
+(`--capture always --max-lines 12`, **no `--max-bytes`**), on a pane of **width 40, height 23**:
+the delivered capture was **575 bytes containing ZERO content lines** — two rules, an empty
+prompt, and a status block. The bottom **11 of 12** lines were furniture.
+
+Why: the status block **wraps**, so chrome that is 1 line at width 160 is 4 lines at width 40.
+
+| pane | byte cost of chrome | LINE depth of chrome |
+|---|---|---|
+| wide (200 cols) | high | shallow (~7 lines) |
+| narrow (40 cols) | low | **deep (~11 lines)** |
+
+**So there is no safe constant on EITHER axis, and the real defect is neither unit: capture
+is tail-anchored, and the tail of a pane is fixed furniture by construction.** Any bound
+applied to a tail-anchored window spends itself on chrome first, whatever it is denominated in.
+
+**What to do until #221 lands**: after wiring, **read the first delivered capture and count
+its content lines.** If it is all chrome, your pipe is verified and blind — which passes
+step 17's deliberate-causation test while telling you nothing, so step 17 alone cannot
+catch this. Raise `--max-lines` well past the chrome depth of *your* pane (measure it:
+`tmux capture-pane -p -t <pane> | tail -20`), and state the width you measured it at.
+
+---
 
 ## The steps
 
@@ -61,8 +91,23 @@
    > **Why**: plan 078 classifies the whole `watchdog` verb family as refused for role
    > `pa` (`orchestration/pa-capability.ts:127` — *"it changes supervision policy for a
    > seat"*). `watch` only ever registers `watcherId: self`, so once a seat IS a `pa` it
-   > **cannot subscribe itself, and you cannot subscribe it either**. The deterministic
+   > **cannot subscribe itself**. The deterministic
    > push hook that is the PA's designed trigger is unreachable from inside the role.
+   >
+   > **CORRECTED 2026-08-09 — "and you cannot subscribe it either" IS NO LONGER TRUE.**
+   > `pij watchdog watch <target> --for <seat>` has shipped and is documented in
+   > `pij watchdog --help`: *"a prime or PM can subscribe or unsubscribe for a seat that
+   > is already stamped, unreachable, or dead… the original `addedAt` is preserved on
+   > every re-bind."* A `pa` caller is still refused `--for`, **including when it names
+   > itself** — which is right: a PA acts only for itself, and the plain form already
+   > does that. So a recovery path exists and the wiring is no longer one-shot.
+   >
+   > **Keep doing step 6 first anyway.** The ordering is still strictly better — it needs
+   > no recovery, no extra mutation, and no prime intervention — but a prime who lands
+   > here after mis-ordering should know the seat is recoverable in ONE command rather
+   > than believing the standup is unrecoverable and starting over. Read the old text as
+   > *"expensive"*, not *"impossible"*. Verified against `--help` on 2026-08-09 while
+   > standing up `pij-efficient-bug`.
    >
    > Found by pij-chief-roadrunner's flash-tier PA, 2026-08-01. albatross's PA has the
    > subscription only because it happened to register while still unroled — an accident
@@ -271,16 +316,63 @@
     census. Tell every PA and every prime: reach for `interval` first, and treat `pause` as
     a declaration you owe an explanation for (see step 9 and the `inert-subscription` row).
 
-21. **THE NUDGE HAS NEVER FIRED FOR ANY PA — YOU ARE YOUR PA'S TRIGGER UNTIL IT IS FIXED.**
-    `watchdog-manager.ts:96-97` allow-lists roles `pm` and `prime`, so a PA is refused
+21. **~~THE NUDGE HAS NEVER FIRED FOR ANY PA~~ — FIXED 2026-08-01. THIS STEP IS STALE AND
+    COST A LATER PRIME THREE DOCUMENTS.**
+
+    > **CORRECTED 2026-08-09. Read this before the struck-through text below.**
+    >
+    > **A PA IS SUPERVISED AND NUDGE-ELIGIBLE.** Verified at source, not relayed:
+    > `core/daemon/watchdog-manager.ts` → `roleNeedsSupervision()` → **`case "pa": return
+    > true;`** — and the reasoning sits in the source beside it, stronger than the argument
+    > for watching a `pm`: *"a PA's chore is to notice when its prime goes QUIET, so its
+    > only other trigger — the prime messaging it — fires precisely when the condition it
+    > exists to detect is ABSENT. Excluded, it is unreachable BY CONSTRUCTION rather than
+    > merely delayed."*
+    >
+    > Fixed by **`1cbf2361`, 2026-08-01T15:27+10:00** — *"fix(watchdog): a PA was
+    > ineligible before any logic ran — make the gate total (#71)"*. Confirmed live on
+    > `pij-efficient-bug`, which carries a real `lastFireAt`.
+    >
+    > **The fix landed the SAME DAY this step was written, and this step was never
+    > updated.** It then stayed wrong for eight days in the one file the skill payload
+    > routes every prime to — the file whose header says it is *"maintained against live
+    > defects and changes daily"* and *"the single writer"*.
+    >
+    > **What it cost, recorded so the next reader takes the warning seriously**: a prime
+    > standing up a PA on 2026-08-09 read this step, believed it, and propagated it into
+    > (a) the new PA's brief as its most emphatic instruction, in capitals, (b) a
+    > correction block added to `pa-missing-anaconda-2026-07-31.md`, and (c) a leading
+    > question to the PA — *"is a system that refuses you the trigger and then grades you
+    > stalled defective?"* — which the PA answered in the affirmative, **correctly, from
+    > the false premise it had been handed**. The PA's reply carried the line *"zero
+    > guesses, all observations derived directly from instrument measurements"*, and that
+    > was true of its sweep and false of that answer. **A leading question from a prime
+    > manufactures corroboration, and the agreement it produces is indistinguishable from
+    > confirmation.**
+    >
+    > **THE GENERAL LESSON, WHICH IS WHY THIS IS NOT SILENTLY DELETED**: this file is the
+    > single writer *for the recipe*, but it is **not** the single writer for the platform
+    > it describes. Every claim here about what the CODE does is a **cached read** and can
+    > go stale the moment the code changes — most dangerously right after someone fixes the
+    > defect the step was written to warn about, because **filing a good warning and
+    > shipping the fix are done by different seats on different days.** A step that says
+    > *"until it is fixed"* is a step that will outlive its fix. **If a step asserts a code
+    > behaviour, verify it at source before you act on it — including the steps in this
+    > file, including this one.**
+
+    ~~`watchdog-manager.ts:96-97` allow-lists roles `pm` and `prime`, so a PA is refused
     eligibility before any anchor logic runs: **5 of 5 PAs fleet-wide, zero fires, ever**
     (`watchdog-pa-ineligible-2026-08-01.md`; found by meadowlark, fix routed to butterfly).
     Tell your PA **plainly** that no nudge is coming — *an agent waiting on a signal that
     structurally cannot arrive is the absence-as-health trap with the agent itself holding
-    it*. Drive its sweeps on a cadence or from `pij bg`. And note the mitigation has a hole
-    you cannot close from here: **the supervisory chores are unreachable by construction**,
-    because "tell me when my prime goes quiet" can only be triggered by a prime that is not
-    quiet. Mechanical chores survive a prime-driven trigger; that one does not.
+    it*. Drive its sweeps on a cadence or from `pij bg`.~~
+
+    **What survives the correction**: the *reasoning* in the struck text was sound and is
+    now encoded in the source comment — an agent waiting on a signal that cannot arrive is
+    absence-as-health with the agent holding it. And the observation that
+    **"tell me when my prime goes quiet" can only be triggered by a prime that is not
+    quiet** remains true and is exactly why the fix made PAs eligible. **You are still your
+    PA's second trigger; you are no longer its only one.**
 
 22. **DOES YOUR CAUSE PREDICT THE EFFECT YOU MEASURED, OR MERELY PERMIT IT?** (meadowlark,
     self-caught) The cheapest check on this list: it needs no code, no instrument and no
@@ -685,8 +777,12 @@
     **The fix keeps the alarm and cuts the disclosure** — do not trade reliability for privacy:
 
     ```
-    pij watchdog watch <target> --capture always --max-bytes 1024 --max-lines 12
+    pij watchdog watch <target> --capture always --max-lines 12
     ```
+
+    > **⚠️ SUPERSEDED 2026-08-05 — this command previously carried `--max-bytes 1024`, and that
+    > value is BLIND on most panes measured here. Do not restore it. See the width correction at
+    > the end of this section.**
 
     Those flags exist and **4096 is a DEFAULT, not a requirement** — two seats had wired
     captures without reading them. Prune >7d on the watcher side. Able-jay deliberately did
@@ -707,6 +803,26 @@
       to limit**, so every "inconclusive" reading was structurally guaranteed. *A limit set above
       the quantity you are limiting produces no evidence in either direction.* (A bound **below
       ~580 B** might reach it — UNTESTED, and nobody is forcing fires to find out.)
+    **⚠️ CORRECTION 2026-08-05 — `--max-bytes 1024` IS WITHDRAWN. NO BYTE CONSTANT CAN WORK.**
+    (Found by `pij-chief-roadrunner`; measured across 25 captures.)
+
+    A horizontal rule is box-drawing, and `U+2500` is **3 bytes**, so `rule_bytes = 3 × pane_width`
+    **necessarily** — arithmetic, not a fitted constant. Measured widths on one box ran **49 → 202
+    columns**, a 4.1× spread, so chrome's byte cost varies by the same factor.
+
+    Measured, not derived: **at width 125 a 1023-byte capture held two rules, hint, status, prompt
+    and ZERO content lines.** One prose line at that width needs ~1150 B.
+
+    | bound | goes blind at |
+    |---|---|
+    | `--max-bytes 1024` | width **≥ ~125** — 4 of the 7 panes measured |
+    | default `4096` | width ~445 |
+
+    **The default is safe ~3.5× wider than the floor written to stop people going below it.** A
+    floor legitimising 1024 is worse than no floor, because absent gets you 4096. **Bound the LINE
+    axis only** — it does not scale with width. To set a byte bound anyway, measure your pane
+    first: `rule_bytes / 3` recovers the width from any pure rule line.
+
     - **What the remaining bytes CONTAIN is the actual finding.** Two `idle` captures of
       **identical size** differ in bytes: what varies is the **status bar**, and it carries live
       operational telemetry. Confirmed independently on this box by pattern-match against a held

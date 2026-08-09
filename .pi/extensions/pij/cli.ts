@@ -29,7 +29,6 @@ import { validateInput } from "minih/runner";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeTextAtomic } from "./adapters/atomic-file.js";
-
 import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
@@ -51,7 +50,7 @@ import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
-import { execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
+import { capturePane, execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import {
@@ -77,8 +76,8 @@ import {
 	type VerbDeps,
 } from "./core/agents/cli-verbs.js";
 import { type DiscoverySource, discoverAgents } from "./core/agents/pack.js";
-import { agentsDir } from "./core/agents/paths.js";
-import { archiveAgeAnchorMs } from "./core/archive.js";
+import { agentsDir, resolvePijHome } from "./core/agents/paths.js";
+import { lastActivityAtMs } from "./core/archive.js";
 import { applyBinding, reattachIdentity, resolveAdoptSessionIdForHarness } from "./core/binding.js";
 import { renderCanaryTimeout } from "./core/canary.js";
 import { dispatchChore } from "./core/chores/cli-verbs.js";
@@ -105,8 +104,21 @@ import {
 	resolveAmbientNativeIdentity,
 	resolveRegisteredAmbientSelf,
 } from "./core/current-session.js";
-import { daemonStatus, needsAutoStart, planStop } from "./core/daemon/lifecycle.js";
+import {
+	daemonStatus,
+	needsAutoStart,
+	planStop,
+	reportDaemonStart,
+} from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
+import {
+	describeProcessStaleness,
+	type ProcessStalenessFacts,
+} from "./core/daemon/process-staleness.js";
+import {
+	describeSourceStaleness,
+	type SourceCheckoutFacts,
+} from "./core/daemon/source-staleness.js";
 import {
 	deriveHarnessPijId,
 	filterByFolder,
@@ -232,7 +244,7 @@ import { applyWatchdogExemption } from "./core/watchdog.js";
 import { WorktreeManager } from "./core/worktree.js";
 import { runTelegram } from "./telegram/index.js";
 
-const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+const pijHome = resolvePijHome();
 const FOLLOW_MS = 200;
 const WAIT_TIMEOUT_MS = 15_000;
 
@@ -323,13 +335,18 @@ Messaging:
                                                         repository forest by default; global forest or arbitrary subtree on request
   pij link <child> --parent <parent> | --root [--role pm|worker|pa] [--actor <label>] [--json]  reparent or explicitly root a session without changing close ownership (audited as a node-linked spine event); --role stamps the seat in the same command, which is how a pa is linked to its prime
   pij send <id> "<text>" | <id> --body-file <path|-> | --to <id> --to <id> "<text>" | <id> --command <name> [--wait]
-                                                     (--body-file/- reads the body LITERALLY — use it for text with backticks/$( ; a double-quoted body substitutes in YOUR shell before pij runs)
                                                         deliver one message, broadcast text, or run a control command
+                                                     SAFE (use for RELAYED or UNTRUSTED text — a log line, a peer's report, a source excerpt):
+                                                        pij send <id> --body-file <path>   reads the file as the body, byte-for-byte
+                                                        pij send <id> --body-file - <<'PIJ'   … your text …   PIJ   (quoted heredoc; your shell expands nothing)
+                                                     UNSAFE for text you did not author: the double-quoted form above. Backticks and $( ) substitute in YOUR shell before pij runs — the message still delivers, mangled, and the command has already executed. pij cannot prevent this; use --body-file instead.
+                                                        --file <path> [--caption <text>] is DIFFERENT: it attaches a path by REFERENCE (it never reads the file), and only a pull/telegram peer renders it — use --body-file to send a file's CONTENTS
   pij watch [--debounce n[ms|s]] <glob...>          watch files and inject [file-watch] notices into this non-pi peer
   pij unwatch [<glob...>]                           remove matching watches, or all watches with no args
   pij tail <id> [--since N --type T --lines N --follow]   peek a peer's transcript/log
   pij state <id> [--json]                            liveness + working/idle
   pij watchdog status|pause|resume|exempt|reset|interval|watch|unwatch|list|disable-all|enable-all …   supervise peers
+  pij watchdog watch|unwatch <id> [--for <seat>]     bind/unbind a watcher, or repair one on its behalf
   pij phonehome [--json]                             confirm a pending binding
   pij path <id> [--events|--state|--dir]             resolve on-disk paths`;
 
@@ -340,8 +357,8 @@ USAGE
   pij watchdog pause|resume|exempt <id> [--json]     pause / clear pause / bounded exempt
   pij watchdog reset <id> [--json]                   back to default (on, 20m, un-paused, UN-exempt)
   pij watchdog interval <id> <duration> [--json]     set the timeout (e.g. 30s, 20m, 1h, or ms)
-  pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
-  pij watchdog unwatch <id> [--json]
+  pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N] [--for <seat>]
+  pij watchdog unwatch <id> [--for <seat>] [--json]
   pij watchdog list [--json]
   pij watchdog disable-all | enable-all [--json]     machine-wide kill switch (no id)
 
@@ -349,7 +366,18 @@ JSON
   status/state/list include watchdog: { enabled, globallyDisabled, relay,
   intervalMs, pausedBy, exempt, exemptUntilMs, exemptRemainingMs, lastFireAt,
   watchers }. Watcher captures are
-  pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded head.`;
+  pointer files under ~/.pij/<watcher>/watchdog-captures/ with a bounded TAIL —
+  the NEWEST lines, not the first. A tighter --max-lines/--max-bytes therefore
+  sheds OLDER content and RETAINS the end of the pane.
+
+--for <seat>  BIND ON ANOTHER SEAT'S BEHALF (recovery path)
+  watch/unwatch normally bind YOU as the watcher. --for names a different seat,
+  so a prime or PM can subscribe or unsubscribe for a seat that is already
+  stamped, unreachable, or dead. Re-binding replaces the existing entry rather
+  than adding a second one, and the original addedAt is preserved on every
+  re-bind. Valid only on watch/unwatch — every other action rejects it. A 'pa'
+  caller is refused --for, including when it names itself: a PA acts only for
+  itself, which the plain form already does.`;
 
 const WATCH_USAGE = `pij watch — subscribe this non-pi peer to file changes
 
@@ -536,7 +564,7 @@ function write(res: CliResult): void {
  *  construction. This boundary is for a cooperative internal role. */
 function paBinRefusal(verb: string): string | null {
 	try {
-		const home = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+		const home = resolvePijHome();
 		if (!existsSync(home)) return null;
 		const registry = new FsRegistry(home);
 		const self = resolveAmbientSelf(registry);
@@ -1081,6 +1109,16 @@ function waitCanary(
 const DAEMON_WINDOW_NAME = "pij-daemon";
 const daemonLockPath = join(pijHome, "daemon.lock");
 
+/** The raw lock, for facts `daemonStatus()` does not project (s101: the boot
+ *  head). Returns null when absent or corrupt — readers render UNKNOWN. */
+function readDaemonLock(): ReturnType<typeof parseLockFile> {
+	try {
+		return parseLockFile(readFileSync(daemonLockPath, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
 function readDaemonStatus() {
 	let raw: string | null = null;
 	try {
@@ -1119,7 +1157,11 @@ function daemonWindows(): string[] {
  *  booting — the convention guard against a double-start race before the lock is
  *  written). Otherwise create a tmux window that runs the daemon and return a
  *  note so the calling agent KNOWS one was auto-started. Returns null if a daemon
- *  was already up (nothing to report). */
+ *  was already up (nothing to report).
+ *
+ *  Wiring only: what the note SAYS — and whether a start counts as verified — is
+ *  `reportDaemonStart()` in core/daemon/lifecycle.ts, where it is testable
+ *  without tmux (P8). */
 function ensureDaemonRunning(): string | null {
 	if (!needsAutoStart(readDaemonStatus())) return null; // lock says a live daemon
 	const tmux = new TmuxAdapter();
@@ -1138,7 +1180,16 @@ function ensureDaemonRunning(): string | null {
 		detached: true, // background — never steal the operator's focus
 	});
 	if (!res.ok) return `⚠️ could not auto-start pij daemon: ${res.message}`;
-	return `⚙ no pij daemon was running — started one in tmux window '${DAEMON_WINDOW_NAME}' (pane ${res.value.paneId}); it will drive control-plane sessions to bound.`;
+
+	const paneId = res.value.paneId;
+	return reportDaemonStart(
+		{ windowName: DAEMON_WINDOW_NAME, paneId },
+		{
+			status: readDaemonStatus,
+			sleep: sleepSync,
+			capturePane: () => capturePane(paneId, { scrollback: 30 }, execFileRunner),
+		},
+	);
 }
 
 /** `pij daemon [start|status|stop|kill]` — lifecycle for the machine-wide daemon.
@@ -1157,13 +1208,128 @@ function runDaemonVerb(argv: readonly string[]): void {
 		}
 		process.exit(0);
 	}
+
+	/** The directory of the `daemon.ts` the given pid is executing, from its own
+	 *  command line. Undefined when the pid is absent, unreadable, or does not look
+	 *  like a pij daemon — never a guess. */
+	function daemonSourceDir(pid?: number): string | undefined {
+		if (pid === undefined) return undefined;
+		try {
+			const command = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+				timeout: 2_000,
+			});
+			const match = /(\S*[/\\]\.pi[/\\]extensions[/\\]pij[/\\])daemon\.ts/.exec(command);
+			return match?.[1] === undefined ? undefined : dirname(match[1]);
+		} catch {
+			return undefined;
+		}
+	}
+
+	/** Facts for the PROCESS-vs-DISK axis (s101): what the running daemon booted
+	 *  from, versus what its checkout is at now.
+	 *
+	 *  Deliberately separate from `readSourceCheckout` — that answers DISK vs REMOTE.
+	 *  Two axes, two labels, never one field doing both. */
+	function readProcessStaleness(
+		lock: ReturnType<typeof parseLockFile>,
+		daemonPid?: number,
+	): ProcessStalenessFacts {
+		const sourceDir = daemonSourceDir(daemonPid) ?? dirname(fileURLToPath(import.meta.url));
+		const git = (args: readonly string[]): string | undefined => {
+			try {
+				return execFileSync("git", [...args], {
+					cwd: sourceDir,
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+					timeout: 2_000,
+				}).trim();
+			} catch {
+				return undefined;
+			}
+		};
+		const bootHead = lock?.head;
+		const currentHead = git(["rev-parse", "--short", "HEAD"]);
+		if (bootHead === undefined || currentHead === undefined) {
+			return { ...(bootHead ? { bootHead } : {}), ...(currentHead ? { currentHead } : {}) };
+		}
+		const aheadRaw = git(["rev-list", "--count", `${bootHead}..HEAD`]);
+		const ahead = aheadRaw === undefined ? Number.NaN : Number.parseInt(aheadRaw, 10);
+		return {
+			bootHead,
+			currentHead,
+			...(Number.isNaN(ahead) ? {} : { commitsAhead: ahead }),
+		};
+	}
+
+	/** Gather the daemon's SOURCE checkout facts — no network, ever.
+	 *
+	 *  The daemon runs `tsx` off this file's own tree, so the checkout that matters is
+	 *  the one containing this module. `git rev-parse --show-toplevel` from here finds
+	 *  it whether pij was invoked from the repo, a worktree, or a global link.
+	 *
+	 *  `@{u}` is the tracked upstream AS OF THE LAST FETCH — deliberately not
+	 *  `git fetch` first. See `core/daemon/source-staleness.ts` for why a status
+	 *  command must not hit the network. Every failure yields `unavailable`, never a
+	 *  clean-looking result. */
+	function readSourceCheckout(daemonPid?: number): SourceCheckoutFacts {
+		// THE CHECKOUT THAT MATTERS IS THE DAEMON'S, NOT THIS PROCESS'S — and on this
+		// fleet they are routinely different, because seats work in linked worktrees
+		// while the daemon runs from the main checkout. Reporting the worktree here
+		// would answer a question nobody asked with a number that looks like the one
+		// they did ask for: the exact substitution this sensor exists to end.
+		//
+		// The daemon's own command line names the file it is executing (that is how the
+		// 2026-08-09 incident was diagnosed), so the source dir is read from the RUNNING
+		// PROCESS rather than inferred. Falling back to this module's directory only
+		// when there is no pid to ask about.
+		const sourceDir = daemonSourceDir(daemonPid) ?? dirname(fileURLToPath(import.meta.url));
+		const git = (args: readonly string[]): string | undefined => {
+			try {
+				return execFileSync("git", [...args], {
+					cwd: sourceDir,
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+					timeout: 2_000,
+				}).trim();
+			} catch {
+				return undefined;
+			}
+		};
+		const head = git(["rev-parse", "--short", "HEAD"]);
+		if (head === undefined) return { unavailable: true };
+		const status = git(["status", "--porcelain"]);
+		const behindRaw = git(["rev-list", "--count", "HEAD..@{u}"]);
+		const behind = behindRaw === undefined ? undefined : Number.parseInt(behindRaw, 10);
+		return {
+			head,
+			...(status === undefined ? {} : { dirty: status.length > 0 }),
+			...(behind === undefined || Number.isNaN(behind) ? {} : { behind }),
+		};
+	}
+
 	if (sub === "status") {
 		const st = readDaemonStatus();
 		const wins = daemonWindows();
 		const winNote = wins.length ? `; pij-daemon window(s): ${wins.join(", ")}` : "";
+		// Is it running the code you think you merged? `running` was true and
+		// useless twice in two days (pij#180's stale process, then a correct restart
+		// onto a stale CHECKOUT). Appended only when there is something wrong.
+		const source = describeSourceStaleness(
+			readSourceCheckout(st.kind === "running" ? st.pid : undefined),
+		);
+		// The SECOND axis (s101): the checkout may be current with its remote and
+		// still not be what the running process loaded. Kept as its own label —
+		// `behind` is disk-vs-remote, this is process-vs-disk, and a single merged
+		// field would be two facts sharing one answer.
+		const proc = describeProcessStaleness(
+			readProcessStaleness(readDaemonLock(), st.kind === "running" ? st.pid : undefined),
+		);
+		const sourceNote = `${source === "" ? "" : `; ${source}`}${proc === "" ? "" : `; ${proc}`}`;
 		if (st.kind === "running") {
 			process.stdout.write(
-				`running (pid ${st.pid}${st.window ? `, window ${st.window}` : ""})${winNote}\n`,
+				`running (pid ${st.pid}${st.window ? `, window ${st.window}` : ""})${winNote}${sourceNote}\n`,
 			);
 		} else if (st.kind === "stale") {
 			process.stdout.write(`stale lock (dead pid ${st.pid})${winNote}\n`);
@@ -1395,7 +1561,10 @@ function probeAttachment(descriptor: SessionDescriptor): {
 	readonly liveness: AttachmentLiveness;
 	readonly probe: AttachmentProbe;
 } {
-	const anchorMs = archiveAgeAnchorMs(descriptor);
+	// ACTIVITY, not the archival anchor (pij#204): the probe field is literally
+	// named `lastActivityAtMs` and feeds `classifyAttachment`, so anchoring it on
+	// death would tell the classifier a corpse had just been active.
+	const anchorMs = lastActivityAtMs(descriptor);
 	const pane = observePane(descriptor.paneId, descriptor.pid);
 	// Only worth a `ps` when the pane pid matched: `ours` is the sole verdict that
 	// needs corroborating, and in that branch the pane's pid IS `descriptor.pid`
@@ -3320,6 +3489,8 @@ const CHORE_USAGE = `pij chore — durable named change detectors
 USAGE
   pij chore add <name> --probe '<cmd>' [--full '<cmd>'] [--full-every N]
                        [--scope seat|repo|fleet] [--timeout <ms>] [--json]
+  pij chore update <name|scope:name> [--probe '<cmd>'] [--full '<cmd>']
+                       [--full-every N] [--timeout <ms>] [--json]
   pij chore run [--dry] [--json]
   pij chore list [--verbose] [--json]
   pij chore ack <name|scope:name> [--json]
@@ -3329,7 +3500,10 @@ USAGE
 SEMANTICS
   run computes and re-reports pending deltas; it never advances a baseline.
   ack is the only baseline-advance operation.
-  definitions union across seat, repo, and fleet; fingerprints remain per seat.`;
+  definitions union across seat, repo, and fleet; fingerprints remain per seat.
+  update rewrites one definition atomically without a remove/add gap.
+  list/run print the resolved seat, repo, and fleet scope population.
+  PIJ_SESSION_ID is only a validated override of the seat derived from pane binding.`;
 
 function renderBatonNotice(notice: BatonNotice): string {
 	return renderBatonNoticeBody(notice);
@@ -3959,6 +4133,46 @@ function currentWorktreeRoot(cwd: string): string | undefined {
 	}
 }
 
+function resolveChoreSeatId(
+	registry: FsRegistry,
+	cwd: string,
+): { readonly seatId?: string; readonly error?: string } {
+	const explicit = process.env.PIJ_SESSION_ID?.trim() || undefined;
+	const descriptors = registry.list();
+	const local = filterByFolder(descriptors, cwd);
+	const pane = process.env.TMUX_PANE;
+	const byPane =
+		pane && pane.trim() !== ""
+			? descriptors.filter((descriptor) => descriptor.paneId === pane)
+			: [];
+	const derived =
+		byPane.length === 1 && byPane[0]
+			? { ok: true as const, value: byPane[0].id }
+			: resolveSelf(undefined, local, pane);
+
+	if (explicit) {
+		const descriptor = registry.read(explicit);
+		if (!descriptor || descriptor.lifecycle === "dissolved") {
+			return { error: `E-NOID: PIJ_SESSION_ID '${explicit}' is not a registered seat` };
+		}
+		if (!derived.ok) {
+			return {
+				error: `E-OWN: PIJ_SESSION_ID '${explicit}' cannot be validated as this process's bound seat: ${derived.message}`,
+			};
+		}
+		if (derived.value !== explicit) {
+			return {
+				error: `E-OWN: PIJ_SESSION_ID '${explicit}' does not match this process's bound seat '${derived.value}'`,
+			};
+		}
+		return { seatId: explicit };
+	}
+
+	if (derived.ok) return { seatId: derived.value };
+	if (local.length === 0 && byPane.length === 0) return {};
+	return { error: `${derived.code}: ${derived.message}` };
+}
+
 function runChoreVerb(args: string[]): void {
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
 		process.stdout.write(`${CHORE_USAGE}\n`);
@@ -3966,7 +4180,13 @@ function runChoreVerb(args: string[]): void {
 	}
 	const cwd = process.cwd();
 	const worktreeRoot = currentWorktreeRoot(cwd);
-	const seatId = process.env.PIJ_SESSION_ID?.trim() || undefined;
+	const registry = new FsRegistry(pijHome);
+	const seat = resolveChoreSeatId(registry, cwd);
+	if (seat.error) {
+		process.stderr.write(`${seat.error}\n`);
+		process.exit(1);
+	}
+	const seatId = seat.seatId;
 	const result = dispatchChore(args, {
 		cwd,
 		worktreeRoot: worktreeRoot ?? cwd,
@@ -4150,7 +4370,30 @@ function main(): void {
 	// the documented one.
 	if (process.argv.includes("--help") && process.argv.length > 3) {
 		const verb = process.argv[2] ?? "";
-		const lines = USAGE.split("\n").filter((l) => l.includes(`pij ${verb}`));
+		// plan 093 T010: keep a matched line's INDENTED CONTINUATION lines too.
+		// USAGE wraps a verb's detail onto following indented lines, and a
+		// substring filter dropped every one of them — which silently truncated
+		// `pij send --help` to its signature and hid the only shell-safety note
+		// pij ships. A caller ran the command that exists to explain safety and
+		// was shown the part that does not mention it. Generic on purpose: this
+		// repairs the same truncation for every other verb at once.
+		const lines: string[] = [];
+		let matched = false;
+		for (const line of USAGE.split("\n")) {
+			if (line.includes(`pij ${verb}`)) {
+				lines.push(line);
+				matched = true;
+				continue;
+			}
+			// A continuation is indented and does NOT begin a new `pij <verb>`
+			// entry; a blank line or a section header ends the block.
+			const isContinuation = /^\s/.test(line) && line.trim() !== "" && !/^\s*pij\s/.test(line);
+			if (matched && isContinuation) {
+				lines.push(line);
+				continue;
+			}
+			matched = false;
+		}
 		process.stdout.write(lines.length > 0 ? `${lines.join("\n")}\n` : USAGE);
 		process.exit(0);
 	}
@@ -4158,7 +4401,39 @@ function main(): void {
 	// shell entirely — double-quoted backticks/$( substitute in the SENDER'S
 	// shell before pij ever runs (osk accidentally executed `pij close` from
 	// quoted text). `--body-file <path>` (or `-` for stdin) reads the body raw.
+	//
+	// The one token that stands in for the body during parsing. It is NOT the
+	// body: it is a fixed, flag-free sentinel whose only job is to occupy the
+	// body's positional slot so core's arity checks still run. NUL-delimited so
+	// it cannot collide with anything a caller could type.
+	const BODY_FILE_PLACEHOLDER = "\u0000pij-body-file\u0000";
+	/** Indices of the POSITIONAL tokens in a `send` argv — index 0 is the verb,
+	 *  index 1 the target id, index 2 (if present) an inline body.
+	 *
+	 *  It mirrors core's `lex()` for the send flag set: a valued flag consumes
+	 *  the following token, so `--to a --to b` contributes no positionals. A
+	 *  naive "not preceded by a flag" filter got this wrong for broadcast, and
+	 *  would have refused every `--to … --body-file` send as "inline text". */
+	const sendPositionalIndices = (argv: readonly string[]): number[] => {
+		// `json` is the only send flag that is boolean; the rest (`to`, `command`,
+		// `file`, `caption`, `wait`) take a value when one follows.
+		const booleans = new Set(["json"]);
+		const indices: number[] = [];
+		for (let i = 0; i < argv.length; i++) {
+			const token = argv[i];
+			if (token === undefined) continue;
+			if (token.startsWith("--")) {
+				if (token.includes("=")) continue;
+				const next = argv[i + 1];
+				if (!booleans.has(token.slice(2)) && next !== undefined && !next.startsWith("--")) i++;
+				continue;
+			}
+			indices.push(i);
+		}
+		return indices;
+	};
 	let argvForParse = process.argv.slice(2);
+	let bodyFileBody: string | undefined;
 	const bodyFileIdx = argvForParse.indexOf("--body-file");
 	if (bodyFileIdx !== -1) {
 		if (argvForParse[0] !== "send") {
@@ -4178,18 +4453,40 @@ function main(): void {
 			process.exit(64);
 		}
 		const rest = [...argvForParse.slice(0, bodyFileIdx), ...argvForParse.slice(bodyFileIdx + 2)];
+		// A remote command has no body to read (plan 093 T008). Said explicitly,
+		// naming BOTH flags the caller actually typed — core's generic
+		// "takes a <text> OR --command" names neither, so the caller was told the
+		// wrong thing about their own command line.
+		if (rest.some((token) => token === "--command" || token.startsWith("--command="))) {
+			process.stderr.write(
+				"E-ARG: pij send takes --body-file OR --command <name>, not both (a control command carries no body)\n",
+			);
+			process.exit(64);
+		}
 		// The file IS the body: refuse a competing positional body (send's body
 		// is the sole non-flag positional after the target id).
-		const positionals = rest.filter(
-			(a, i) => i > 0 && !a.startsWith("--") && rest[i - 1]?.startsWith("--") !== true,
-		);
-		if (positionals.length > 1) {
+		const positionals = sendPositionalIndices(rest);
+		if (positionals.length > 2) {
 			process.stderr.write("E-ARG: --body-file replaces the body — drop the inline text\n");
 			process.exit(64);
 		}
-		argvForParse = [...rest, body.trimEnd()];
+		// plan 093 D4 — the body is NEVER a token the lexer sees, and is NEVER
+		// transformed. It used to be re-appended to argv and re-parsed, which is
+		// the same class of defect as #128 one layer down: a body starting `--`
+		// became a FLAG, and `--wait` (valued on send) silently swallowed the
+		// file's entire contents. A `trimEnd()` on the same line destroyed
+		// trailing whitespace and newlines. Both are gone: a fixed placeholder
+		// occupies the body's argv slot, and the literal bytes are attached to
+		// the PARSED command below.
+		//
+		// The placeholder goes immediately after the target id rather than at the
+		// end, so a trailing valued flag (`pij send x --wait --body-file f`)
+		// cannot consume it either.
+		const insertAt = positionals.length >= 2 ? (positionals[1] as number) + 1 : rest.length;
+		argvForParse = [...rest.slice(0, insertAt), BODY_FILE_PLACEHOLDER, ...rest.slice(insertAt)];
+		bodyFileBody = body;
 	}
-	const parsed = parseArgs(argvForParse);
+	let parsed = parseArgs(argvForParse);
 	if (!parsed.ok) {
 		// A top-level unknown verb gets the COMPLETE surface (core only lists the
 		// messaging verbs); per-verb arity/flag errors keep core's precise message.
@@ -4199,6 +4496,11 @@ function main(): void {
 		}
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(64);
+	}
+	// Swap the placeholder for the file's literal bytes, AFTER parsing (D4). The
+	// body never influenced, and was never influenced by, argv lexing.
+	if (bodyFileBody !== undefined && parsed.value.verb === "send") {
+		parsed = { ok: true, value: { ...parsed.value, text: bodyFileBody } };
 	}
 	// `spine render` writes markdown the pure core cannot (bin-owned, plan 054
 	// P4 T002) — intercept BEFORE dispatch, after core's parse gave E-ARG parity.

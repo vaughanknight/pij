@@ -54,6 +54,8 @@ Canonical fence section: `<government/spine.md#fences--stream-id>`.
   until the human confirms the recorded coder/reviewer profile.
 - Report at preamble, every phase checkpoint, and ship using
   `claim · artifacts[] · shas[] · gates[] · observations[] · open[]`.
+- All A2A messages this stream sends (reports, replies, worker packets) follow
+  § C10 — Wire discipline (`<skill>/references/00-routing.md` § Shared conventions).
 - Work confined to this verified worktree/branch is notify-only; a pushed baton
   grant is required only at convergence or shared mutable resources.
 - Fleet packets inherit this fence and name a narrower task allowlist (task

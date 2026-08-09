@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DaemonPorts } from "../core/daemon/loop.js";
 import { composerRegion, type PaneListing } from "../core/daemon/pane-signals.js";
+import type { ProcessSnapshot } from "../core/platform/types.js";
 
 export { composerRegion } from "../core/daemon/pane-signals.js";
 
@@ -30,6 +31,7 @@ import type { SendOutcome } from "../core/ports.js";
 import { BUSY_RE, paneWentBusy } from "../core/readiness.js";
 import type { HarnessKind } from "../core/types.js";
 import { NodeProcess } from "./process.js";
+import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
 	capturePane,
 	execFileRunner,
@@ -219,6 +221,7 @@ export function classifySendFailure(detail: string): "gone" | "failed" {
 
 export class DaemonTmux implements DaemonPorts {
 	private readonly proc = new NodeProcess();
+	private readonly snapshots = new NodeProcessSnapshot();
 	private readonly runner: TmuxRunner;
 	private readonly sleep: (ms: number) => void;
 	private readonly tapFiles = new Map<string, { path: string; offset: number }>();
@@ -503,6 +506,13 @@ export class DaemonTmux implements DaemonPorts {
 
 	isAlive(pid: number): boolean {
 		return this.proc.isAlive(pid);
+	}
+
+	/** ONE whole-table process capture per death sweep (plan 095). Delegated to a
+	 *  dedicated module rather than to `NodeProcess`, which `liveness-cost.test.ts`
+	 *  keeps subprocess-free because the `pij list` read path leans on it. */
+	processSnapshot(): ProcessSnapshot {
+		return this.snapshots.capture();
 	}
 }
 

@@ -23,7 +23,9 @@
    - [ ] orient-local writer/tuner line
    - [ ] anything this repo added (grep `Writer:` under government/)
 4. Announce to the human and to every live stream **citing this pack** —
-   streams do not know your id; say so explicitly per stream.
+   streams do not know your id; say so explicitly per stream. All your A2A
+   sends follow § C10 — Wire discipline (`<skill>/references/00-routing.md`
+   § Shared conventions).
    4b. Govern **store-native** from here (ruled default): self-migrate
    load-bearing facts lazily as you touch them — the rule and verb mapping
    live in [`../rituals/store-native.md`](../rituals/store-native.md).

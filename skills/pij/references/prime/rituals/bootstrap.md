@@ -103,15 +103,69 @@ Only the parts a bootstrapping prime cannot discover are restated here:
 1. **Cheap tier is the design intent** — the fleet runs `gemini-3.6-flash` copilot seats.
    Whether a cheap model holds the rules while doing chores is the **open experiment**, not a
    settled result.
-2. **⚠️ ORDERING TRAP — register the subscription BEFORE stamping the role.** From the PA's own
-   seat run `pij watchdog watch <your-prime-id> --capture always`, *then*
-   `pij link <pa-id> --parent <your-prime-id> --role pa`. The capability gate refuses the whole
-   `watchdog` family to role `pa`, and `watch` only ever registers the **calling** seat — so a
-   PA stamped first can never subscribe itself and **you cannot do it for it**. Recovering costs
-   three mutations and an un-gated window. (Found by meadowlark; re-reported by vrell.)
-3. **Bound the capture**: `--max-bytes 1024 --max-lines 12`. The 4096-byte default is a
-   default, not a requirement, and captures accumulate with no expiry — a watcher subscription
-   is a standing grant to read the watched seat's pane.
+2. **⚠️ ORDERING TRAP — register the subscription, WITH ITS BOUNDS, BEFORE stamping the role.**
+   From the PA's own seat run **one** command:
+
+   ```
+   pij watchdog watch <your-prime-id> --capture always --max-lines 12
+   ```
+
+   **Do not pass `--max-bytes` at all unless you have measured your pane.** The 4096-byte
+   default is safe to roughly 445 columns; any byte value you invent is almost certainly worse.
+   See step 3.
+
+   *then* `pij link <pa-id> --parent <your-prime-id> --role pa`. The capability gate refuses the
+   whole `watchdog` family to role `pa`, and `watch` only ever registers the **calling** seat —
+   so a PA stamped first can never subscribe itself and **you cannot do it for it**. Recovering
+   costs three mutations and an un-gated window. (Found by meadowlark; re-reported by vrell.)
+
+   **The bounds MUST ride on this call.** They cannot be added afterwards: a second
+   `watchdog watch` is refused to the PA by the same gate, and a prime running it would
+   subscribe *itself* instead. This step used to register unbounded and defer bounding to a
+   later step — **which was unperformable by anyone**, and left a permanently unbounded
+   subscription behind. Measured 2026-08-04: five such subscriptions on one box, **three of
+   them created within 100 minutes** by seats still following the old sequence.
+3. **DO NOT SET A BYTE BOUND. There is no safe constant, and the 1024 this recipe carried
+   until 2026-08-05 was itself blind on most panes here.** Captures accumulate with no expiry
+   and a watcher subscription is a standing grant to read the watched seat's pane, so there is
+   real pressure to shrink. Shrinking the BYTE axis is the wrong response to it.
+
+   **Why no constant can work.** Capture is tail-anchored at **BOTH** stages — the last
+   `maxLines` lines, then the last `maxBytes` **of those** — and the bottom of a pane is fixed
+   chrome. So `maxLines` cannot rescue a small `maxBytes`: the byte cut also keeps the tail,
+   and the tail is furniture. **A low byte cap yields chrome no matter how many lines you
+   allow.**
+
+   And the chrome's byte cost is a function of terminal width, because a horizontal rule is
+   box-drawing: `U+2500` is **3 bytes**, so `rule_bytes = 3 × pane_width` **necessarily** — not
+   as a fitted constant, but as arithmetic that holds on every pane nobody has measured.
+   Measured across 25 real captures on one box, widths ran **49 → 202 columns**, a 4.1× spread.
+
+   The consequence, measured rather than derived: **at width 125 a 1023-byte capture contained
+   nothing but chrome — two rules, hint, status, prompt, and zero content lines.** That file
+   exists. Carrying even one prose line at that width needs roughly **1150 bytes**. Scaling
+   chrome at these widths (~8.2 B per column, plus one prose line):
+
+   | bound | goes blind at |
+   |---|---|
+   | `--max-bytes 1024` (the old floor) | width **≥ ~125** — 4 of 7 panes measured |
+   | default `4096` | width ~445 |
+
+   **The default is safe roughly 3.5× wider than the floor that was meant to protect people
+   from lowering it.** A floor that legitimises 1024 is worse than no floor at all, because
+   absent gets you 4096. The old text is the same mistake it was written to prevent, one
+   notch up: *the default was fine; every seat that touched the knob made it worse.*
+
+   **So: leave `maxBytes` unset. Bound the LINE axis only** (`--max-lines 12`), which does not
+   scale with width. If you believe you need a byte bound, measure your own pane first —
+   `rule_bytes / 3` recovers the width from any pure rule line — and expect the answer to be
+   larger than you assumed.
+
+   **A bound below the chrome does not capture less, it captures NOTHING — and a blind capture
+   reports the same silence as a dead seat.** Measured 2026-08-04: **19 of 26 subscriptions
+   were at 256 B and 92% of all capture files on the box contained no content at all**, arrived
+   at over four days by seats independently ratcheting downward. Every one of them was trying
+   to be careful.
 4. **Close the graph, and a PA is not required to do it.** The requirement is *somebody the
    system can tell*: any watchdog-eligible non-`pa` child works, and today an ordinary peer is
    **better at watching** than a PA is, because a PA cannot re-subscribe itself. **De-topple

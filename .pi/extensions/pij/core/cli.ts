@@ -40,6 +40,12 @@ import { ALLOWED_COMMANDS, validateCommand } from "./commands.js";
 import { type ContextReaderPort, contextMaxFor } from "./context/gauge.js";
 import type { ContextWindowReaderPort } from "./context/window.js";
 import { isCompacting } from "./daemon/router.js";
+import {
+	parseSchedulerProjection,
+	readSchedulerVerdict,
+	renderSchedulerVerdict,
+	WATCHDOG_SCHEDULER_FILE,
+} from "./daemon/watchdog-scheduler-projection.js";
 import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { type BriefAckReceipt, briefAckBody } from "./message.js";
@@ -47,9 +53,12 @@ import { closestModel } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import {
 	PA_VERB_CLASSIFICATION,
+	type PaCapability,
+	paConditionalWhy,
 	paRefusal,
 	paRefusalMessage,
 } from "./orchestration/pa-capability.js";
+import { paTargetDecision } from "./orchestration/pa-target.js";
 import {
 	type DesignationAuditPort,
 	DesignationAuditService,
@@ -164,8 +173,10 @@ import {
 	DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
 	describeWatchdogState,
 	effectiveWatchdog,
+	humanizeDurationMs,
 	parseWatchdogInterval,
 	reconcileWatchdogExemption,
+	renderWatcherRoster,
 } from "./watchdog.js";
 
 // ─── deps (injected — fakes in tests, real fs adapters in the bin) ──────────
@@ -365,6 +376,10 @@ export type ParsedCommand =
 			readonly capture?: WatchdogCapturePolicy;
 			readonly intervalMs?: number;
 			readonly exemptDurationMs?: number;
+			/** `--for <seat>`: the seat being bound, when it is not the caller.
+			 *  The RECOVERY path — a prime binds on behalf of a seat that is
+			 *  already stamped, unreachable, or dead. */
+			readonly forSeat?: SessionId;
 			readonly json: boolean;
 	  }
 	| { readonly verb: "phonehome"; readonly json: boolean }
@@ -666,6 +681,10 @@ const EXIT: Record<PijErrorCode, number> = {
 	"E-NOTMUX": 2,
 	"E-FULL": 2,
 	"E-BRANCH": 64,
+	// A refusal about the request's CONTENT, not its shape — so `2` (like
+	// E-SELF), never `64`. A wrapper must be able to tell "you sent nothing"
+	// apart from "you typed the flags wrong" (plan 093 D3).
+	"E-EMPTY": 2,
 	"E-OWN": 2,
 };
 
@@ -871,7 +890,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	"report verify": new Set(["assignment", "json"]),
 	"node show": new Set(["json"]),
 	anomalies: new Set(["json", "here", "project"]),
-	watchdog: new Set(["capture", "max-lines", "max-bytes", "json"]),
+	watchdog: new Set(["capture", "max-lines", "max-bytes", "for", "json"]),
 };
 /** Max positionals per verb (send allows id + text; models allows optional filter). */
 const MAX_POS: Record<string, number> = {
@@ -1011,6 +1030,18 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				if (new Set(broadcastTargets).size !== broadcastTargets.length)
 					return err("E-ARG", "broadcast targets must be unique");
 				if (pos.length !== 1) return err("E-ARG", 'usage: pij send --to <id> --to <id> "<text>"');
+				// plan 093 AC-04: broadcast returns from HERE, before the shared
+				// "nothing to send" check further down, so it needs its own. An
+				// empty broadcast fans a zero-byte message out to every target and
+				// reports success N times.
+				//
+				// `.trim()` because whitespace is not content (F1). The test trims;
+				// the delivered body never does — see the dispatch guard.
+				if ((pos[0] ?? "").trim() === "")
+					return err(
+						"E-EMPTY",
+						"nothing to send: the broadcast body is empty — pass text, or read it literally with `pij send <id> --body-file <path|->` (single-target)",
+					);
 				if (flags.command !== undefined || flags.file !== undefined || flags.caption !== undefined)
 					return err(
 						"E-ARG",
@@ -1259,6 +1290,21 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			}
 			const typedAction = action as WatchdogAction;
 			const id = pos[1];
+			// `--for` IS VALIDATED HERE, BEFORE ANY ACTION-SPECIFIC EARLY RETURN.
+			// It used to sit further down, past the returns for interval/exempt/
+			// list/disable-all/enable-all — so those five SILENTLY IGNORED the flag
+			// and executed anyway. A caller who mistyped `--for` still changed a
+			// timeout, or hit the machine-wide kill switch, believing they had
+			// scoped the call to one seat. That contradicted this parser's own
+			// strict-arity stance and the operator guide, and it stayed green
+			// because the test only covered the actions that fell through to the
+			// bottom. Position is the fix; do not move it back down.
+			if (typedAction !== "watch" && typedAction !== "unwatch" && flags.for !== undefined) {
+				return err("E-ARG", "--for is valid only for 'pij watchdog watch' and 'unwatch'");
+			}
+			if (flags.for === true) return err("E-ARG", "--for needs a session id");
+			const forSeat = typeof flags.for === "string" ? flags.for.trim() : undefined;
+			if (forSeat !== undefined && forSeat === "") return err("E-ARG", "--for needs a session id");
 			// Machine-wide switch (Plan 056): no id, no flags.
 			if (typedAction === "disable-all" || typedAction === "enable-all") {
 				if (id !== undefined) return err("E-ARG", `pij watchdog ${typedAction} takes no id`);
@@ -1312,6 +1358,9 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			) {
 				return err("E-ARG", "capture flags are valid only for 'pij watchdog watch'");
 			}
+			// `--for` names the WATCHER, so it is meaningless on any action that has
+			// no watcher concept. Validated at the TOP of this case, before the
+			// action-specific early returns — see the comment there.
 			if (flags.capture === true) return err("E-ARG", "--capture needs anomaly|always|never");
 			const mode = typeof flags.capture === "string" ? flags.capture : undefined;
 			if (mode !== undefined && mode !== "anomaly" && mode !== "always" && mode !== "never") {
@@ -1329,7 +1378,7 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 							...(maxBytes !== undefined ? { maxBytes } : {}),
 						}
 					: undefined;
-			return ok({ verb: "watchdog", action: typedAction, id, capture, json });
+			return ok({ verb: "watchdog", action: typedAction, id, capture, forSeat, json });
 		}
 		case "phonehome":
 			return ok({ verb: "phonehome", json });
@@ -1846,6 +1895,68 @@ function fail(code: PijErrorCode, message: string, json: boolean): CliResult {
 	return { stdout: "", stderr, exitCode: EXIT[code] };
 }
 
+/** The `pij watchdog <action> <id>` result line, in ONE place.
+ *
+ * Extracted (plan 094) when the PA self-resignation path had to return before
+ * the shared preamble: two exits rendering the same receipt by hand is how the
+ * two start describing the same sidecar differently. `describeWatchdogState`
+ * stays FIRST — watching-vs-paused is the armed/inert discriminator in the
+ * tool's own words, and a prime once got that for free from a pasted receipt. */
+/** The scheduler verdict line for `pij watchdog status` (s101).
+ *
+ *  Answers "is this seat actually IN the scheduler?", which was previously
+ *  unanswerable from any command: `WatchdogManager.states` is a private in-memory
+ *  Map in the DAEMON process, so establishing it for one seat cost a prime 28
+ *  minutes of deliberately withheld status cards.
+ *
+ *  THREE VERDICTS, NEVER TWO: `scheduled`, `not-scheduled`, and `unknown` (no
+ *  projection yet, stale, or corrupt). Collapsing the last two would report a seat
+ *  as absent from the scheduler whenever the DAEMON had simply not written the
+ *  file — manufacturing exactly the false certainty the experiment was run to
+ *  avoid.
+ *
+ *  RETURNS undefined ONLY when this build has no file reader wired, which is a
+ *  fact about the BUILD and never about the seat. That is a third axis, kept
+ *  separate on purpose rather than folded into `unknown`. */
+function schedulerVerdictLine(id: string, deps: CliDeps, nowMs: number): string | undefined {
+	const read = deps.readTextFile;
+	if (read === undefined) return undefined;
+	let raw: string | undefined;
+	try {
+		raw = read(`${deps.pijHome}/${WATCHDOG_SCHEDULER_FILE}`);
+	} catch {
+		raw = undefined; // missing/unreadable -> parses to undefined -> UNKNOWN
+	}
+	return renderSchedulerVerdict(
+		readSchedulerVerdict(raw === undefined ? undefined : parseSchedulerProjection(raw), id, nowMs),
+	);
+}
+
+function renderWatchdogResult(
+	id: string,
+	block: ReturnType<typeof watchdogBlock>,
+	rebound: boolean,
+	json: boolean,
+	scheduler?: string,
+): CliResult {
+	if (json)
+		return okOut(
+			JSON.stringify({
+				id,
+				watchdog: block,
+				watcherRebound: rebound,
+				...(scheduler === undefined ? {} : { scheduler }),
+			}),
+		);
+	const expiry =
+		block.exemptUntilMs === null
+			? ""
+			: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${humanizeDurationMs(block.exemptRemainingMs ?? 0)} remaining)`;
+	return okOut(
+		`${id}: ${describeWatchdogState(block)} · interval ${humanizeDurationMs(block.intervalMs)}${expiry} · ${renderWatcherRoster(block.watchers)}${rebound ? " · re-bound (original addedAt preserved)" : ""}${scheduler === undefined ? "" : ` · ${scheduler}`}`,
+	);
+}
+
 function selfId(deps: CliDeps): Result<SessionId> {
 	const envId = deps.process.env("PIJ_SESSION_ID");
 	const pane = deps.process.env("TMUX_PANE");
@@ -2077,7 +2188,15 @@ function preflightSendTargets(
  *
  *  `delivered` is reserved for the ONE case the sender can actually prove from
  *  here: a peer that owns its own injection and was idle when we looked. Every
- *  other outcome names its cause instead of hiding behind a bare `queued`. */
+ *  other outcome names its cause instead of hiding behind a bare `queued`.
+ *
+ *  It keys on descriptor liveness and daemon authority ONLY — body length is
+ *  deliberately not an input here. Whether there is anything worth a receipt at
+ *  all is decided EARLIER, by the empty-payload guard in the send dispatch
+ *  branch (plan 093 D1, search `E-EMPTY`), which refuses before
+ *  `deps.delivery.deliver` runs. That ordering is the fix for pij#132: no
+ *  receipt can describe a payload that was never delivered, because this
+ *  function is unreachable for a refused send. */
 function classifySendReceipt(
 	descriptor: SessionDescriptor,
 	now: number,
@@ -2118,6 +2237,42 @@ function sendSuccess(
 		liveness: target.liveness,
 		...(tickStatus ?? {}),
 	};
+}
+
+/** A descriptor's EFFECTIVE delivery mode (plan 093 T002).
+ *
+ *  `deliveryMode` is optional on the descriptor; a seat that predates the field
+ *  is `push` iff it owns a pane. The bin already derives it this way for
+ *  `pij inbox`, so this is that same one expression, named once, rather than a
+ *  third copy of it.
+ *
+ *  Return type is spelled `NonNullable<SessionDescriptor["deliveryMode"]>`
+ *  rather than the `DeliveryMode` alias ON PURPOSE: this file is co-owned with
+ *  another stream this wave, and the type-import block is outside this change's
+ *  edit fence. Same type, no import churn, no merge conflict for a seat that has
+ *  no idea this edit exists. */
+export function effectiveDeliveryMode(
+	descriptor: SessionDescriptor,
+): NonNullable<SessionDescriptor["deliveryMode"]> {
+	return descriptor.deliveryMode ?? (descriptor.paneId ? "push" : "pull");
+}
+
+/** Can this target render a reference-passing attachment at all?
+ *
+ *  Only two consumers ever read `attachments`: the `pij inbox` PULL renderer and
+ *  the telegram bridge (which is a pull seat). BOTH push injectors — the daemon
+ *  router and the in-session handler — drop the field and inject `frame(from,
+ *  body)`, so an attachment sent to a pushed peer is not "degraded", it is
+ *  invisible. That asymmetry is the whole of pij#132, and it is a property of
+ *  the TARGET, which is why the guard cannot live in the pure parse. */
+export function targetRendersAttachments(descriptor: SessionDescriptor): boolean {
+	return effectiveDeliveryMode(descriptor) === "pull";
+}
+
+/** The safe literal channel, named in every refusal and warning (AC-13). A
+ *  caller who hits a guard is told what to do, at the surface — not in an issue. */
+function safeBodyHint(to: SessionId): string {
+	return `put the content in the BODY: pij send ${to} --body-file <path|-> (reads the file/stdin literally)`;
 }
 
 /** The human-readable half of a receipt. Every branch names its cause; the
@@ -2224,6 +2379,12 @@ function paGate(cmd: ParsedCommand, deps: CliDeps): CliResult | null {
 	// asking, so allowed verbs now cost nothing at all.
 	const capability = PA_VERB_CLASSIFICATION[cmd.verb];
 	if (capability === undefined || capability.kind === "allow") return null;
+	// CONDITIONAL verbs cost nothing here either, and that is the point: the
+	// table cannot see the target, so there is no decision to make and no reason
+	// to pay for a caller lookup. The handler that CAN see the target does its
+	// own resolution, so the read count for these verbs is unchanged — the gate
+	// simply stops guessing.
+	if (capability.kind === "conditional") return null;
 	const self = selfId(deps);
 	if (!self.ok) return null;
 	const descriptor = deps.registry.read(self.value);
@@ -2233,12 +2394,102 @@ function paGate(cmd: ParsedCommand, deps: CliDeps): CliResult | null {
 	return fail("E-OWN", paRefusalMessage(cmd.verb, why), cmd.json === true);
 }
 
+/** The PA's watchdog boundary, enforced HERE rather than in the gate.
+ *
+ * The gate classifies `watchdog` as CONDITIONAL and passes it through, which
+ * means this function is the only thing between a PA and every seat on the box.
+ * It lives in the handler for one reason: **the gate must not read the
+ * registry** on the hot path (`core/cli.test.ts` pins `reads === 0` for a
+ * 25-node tree projection, and the gate's own comment records that a caller
+ * lookup there was caught by exactly that invariant). The target is knowable
+ * only here.
+ *
+ * NARROWED BY ACTION FIRST, THEN BY TARGET — and the order is load-bearing:
+ *   - **action** — `list` is a permitted read, `unwatch` is permitted against
+ *     any target, `watch` is lineage-scoped, and everything else is refused.
+ *     `list`/`disable-all`/`enable-all` branch BEFORE any per-seat id is
+ *     resolved, so a check placed after target resolution would never reach
+ *     them — it would silently permit the machine-wide pair, the widest hole in
+ *     the set, while never permitting the read.
+ *   - **target** — for `watch` only: the PA itself or its own `effectiveParent`.
+ *
+ * THREE-VALUED, not two (plan 094). `unwatch` is permitted against a stranger,
+ * but the ORDINARY unwatch path is not what a PA may run: reaching it means
+ * running a shared preamble that reconciles and PERSISTS the target's exemption
+ * state, which can un-pause a seat that is neither the PA nor its parent. So the
+ * decision distinguishes *permitted outright* from *permitted as a
+ * self-resignation*, and the handler routes the latter to a path that writes
+ * only the caller's own watcher row.
+ *
+ * POLARITIES DIFFER ON PURPOSE. Caller identity fails **open** (an unresolvable
+ * caller keeps today's behaviour, so unregistered contexts — tests, tooling,
+ * first run — are not broken to constrain a seat that is always registered).
+ * Target questions fail **closed** (`pa-target.ts`).
+ */
+type PaWatchdogDecision =
+	| { readonly kind: "allow" }
+	/** A PA `unwatch`: permitted, but only as the removal of its OWN row. */
+	| { readonly kind: "self-resign" }
+	| { readonly kind: "refuse"; readonly result: CliResult };
+
+function paWatchdogRefusal(
+	cmd: Extract<ParsedCommand, { verb: "watchdog" }>,
+	deps: CliDeps,
+): PaWatchdogDecision {
+	const allow: PaWatchdogDecision = { kind: "allow" };
+	const condition = paConditionalWhy("watchdog");
+	// Defensive, and deliberately not an assertion: if `watchdog` is ever
+	// reclassified away from `conditional`, the table is once again the
+	// authority and this handler must not invent a second boundary beside it.
+	if (condition === null) return allow;
+	const self = selfId(deps);
+	if (!self.ok) return allow;
+	const descriptor = deps.registry.read(self.value);
+	if (!descriptor) return allow;
+	if (projectOrchestrationRole(descriptor) !== "pa") return allow;
+	const verb = `watchdog ${cmd.action}`;
+	const refuse = (why: string): PaWatchdogDecision => ({
+		kind: "refuse",
+		result: fail("E-OWN", paRefusalMessage(verb, why), cmd.json),
+	});
+	// AC-10 — THE ONE PLACE PHASE 3 COULD SILENTLY UNDO PHASE 2. `--for` names
+	// the watcher, so a PA allowed to use it could bind ANY seat to ANY target
+	// and walk straight around the target rule above: the boundary defeated by a
+	// flag rather than by a bug. Refused OUTRIGHT, including when the PA names
+	// itself — `--for` exists for acting on ANOTHER seat's behalf, and a PA has
+	// no behalf but its own, which the plain path already serves. Checked before
+	// the target decision so the refusal names the real reason.
+	//
+	// It is also what makes the widened `unwatch` below safe: with `--for` gone,
+	// the effective watcher is always the caller, so self-resignation is enforced
+	// by the data path rather than by trust.
+	if (cmd.forSeat !== undefined) {
+		return refuse(
+			"'--for' binds a subscription on ANOTHER seat's behalf, which is a prime's repair path — a PA acts only for itself, so run it without '--for'",
+		);
+	}
+	// A pure read over every seat's roster, and the ONLY way a PA can discover
+	// which subscriptions it holds. Checked here, ahead of target resolution,
+	// because `list` takes no target at all.
+	if (cmd.action === "list") return allow;
+	if (cmd.action === "unwatch") return { kind: "self-resign" };
+	if (cmd.action !== "watch") return refuse(condition);
+	const decision = paTargetDecision(descriptor, cmd.id);
+	if (decision.kind === "allow") return allow;
+	return refuse(decision.why);
+}
+
 export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 	const refused = paGate(cmd, deps);
 	if (refused !== null) return refused;
 	const now = deps.process.now();
 	switch (cmd.verb) {
 		case "watchdog": {
+			// FIRST in the case, ahead of the store-availability check: whether a
+			// PA may act must not depend on whether a store happens to be wired,
+			// or a missing store would mask the refusal with an E-ARG.
+			const paRefused = paWatchdogRefusal(cmd, deps);
+			if (paRefused.kind === "refuse") return paRefused.result;
 			const store = deps.watchdogStore;
 			if (!store) return fail("E-ARG", "watchdog sidecar store is unavailable", cmd.json);
 			if (cmd.action === "disable-all" || cmd.action === "enable-all") {
@@ -2266,7 +2517,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						: rows
 								.map(
 									(row) =>
-										`${row.id}: ${describeWatchdogState(row.watchdog)} · watchers ${row.watchdog.watchers.length}`,
+										`${row.id}: ${describeWatchdogState(row.watchdog)} · ${renderWatcherRoster(row.watchdog.watchers)}`,
 								)
 								.join("\n"),
 				);
@@ -2275,12 +2526,57 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!id) return fail("E-ARG", `pij watchdog ${cmd.action} needs a session id`, cmd.json);
 			const descriptor = deps.registry.read(id);
 			if (!descriptor) return fail("E-NOID", `no session '${id}' in registry`, cmd.json);
+			// ── A PA's self-resignation, and it RETURNS BEFORE THE PREAMBLE BELOW ──
+			// That ordering is the entire point, not a tidiness preference. The
+			// preamble reads the TARGET's sidecar, reconciles its exemption and
+			// PERSISTS the result — on an expired exemption that resolves through
+			// `withoutPause`, it un-pauses the watchdog of a seat which is neither
+			// the PA nor its parent. A PA is permitted `unwatch <anyone>` because
+			// `--for` is refused for it, so the write can only reach its own row;
+			// letting it fall through here would smuggle a supervision-policy change
+			// for a third party in behind that permission, through code with nothing
+			// to do with watchers. A branch placed AFTER the preamble is
+			// non-reconciling in intent only.
+			//
+			// NO-OP WHEN THERE IS NOTHING TO REMOVE: resigning from a subscription
+			// you do not hold writes nothing at all, so a PA cannot touch a
+			// stranger's file merely by asking a question with an `unwatch` shape.
+			if (paRefused.kind === "self-resign") {
+				const self = selfId(deps);
+				if (!self.ok) return fail(self.code, self.message, cmd.json);
+				const current = store.read(id);
+				const watchers = current?.watchers ?? [];
+				const remaining = watchers.filter((watcher) => watcher.watcherId !== self.value);
+				let resigned: WatchdogSidecar = current ?? {};
+				if (remaining.length !== watchers.length) {
+					resigned = { ...current, watchers: remaining };
+					store.write(id, resigned);
+				}
+				const block = watchdogBlock(
+					descriptor,
+					resigned,
+					deps.watchdogGlobalStore?.disabled() ?? false,
+					now,
+				);
+				return renderWatchdogResult(
+					id,
+					block,
+					false,
+					cmd.json,
+					cmd.action === "status" ? schedulerVerdictLine(id, deps, now) : undefined,
+				);
+			}
 			const storedSidecar = store.read(id);
 			const reconciled = reconcileWatchdogExemption(storedSidecar, now);
 			if (reconciled.sidecar !== storedSidecar && reconciled.sidecar !== undefined) {
 				store.write(id, reconciled.sidecar);
 			}
 			let sidecar = reconciled.sidecar ?? {};
+			// Key Finding 04: `addedAt` is read by nothing today, so once a re-bind
+			// stops moving it, the ONLY evidence a re-bind happened would be gone.
+			// Surfacing it keeps the trail — the stamp records when the
+			// subscription was created, this records that it was just re-bound.
+			let rebound = false;
 			if (cmd.action === "reset") {
 				// Back to default: on, 20 min, un-paused, UN-EXEMPT. The clean undo —
 				// `resume` deliberately won't clear `exempt`, so this is the only way
@@ -2311,16 +2607,35 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			} else if (cmd.action === "watch" || cmd.action === "unwatch") {
 				const self = selfId(deps);
 				if (!self.ok) return fail(self.code, self.message, cmd.json);
+				// THE EFFECTIVE WATCHER — the seat being bound, which is the `--for`
+				// value when present and otherwise the caller. Key Finding 03: the
+				// filter used to key on the CALLER, which was wrong in BOTH
+				// directions. `watch --for X` left X's own entry unfiltered and
+				// appended a second one (a duplicate nothing could clean up), and
+				// `unwatch --for X` removed the caller's entry instead of X's, so a
+				// --for-created subscription was un-removable by the seat that owned
+				// it. One concept, applied to both actions, fixes both.
+				const watcherId = cmd.forSeat ?? self.value;
+				// CAPTURED BEFORE THE FILTER — this ordering IS the fix. The old code
+				// filtered first and then built a fresh record, so the original
+				// `addedAt` was already gone by the time it could have been reused.
+				const prior = (sidecar.watchers ?? []).find((watcher) => watcher.watcherId === watcherId);
 				const others = (sidecar.watchers ?? []).filter(
-					(watcher) => watcher.watcherId !== self.value,
+					(watcher) => watcher.watcherId !== watcherId,
 				);
+				rebound = cmd.action === "watch" && prior !== undefined;
 				const watchers =
 					cmd.action === "watch"
 						? [
 								...others,
 								{
-									watcherId: self.value,
-									addedAt: new Date(now).toISOString(),
+									watcherId,
+									// R-01, Jordan verbatim: "original". A re-bind PRESERVES the
+									// creation stamp on every path, matching the in-repo
+									// precedent at `core/watch-subscription.ts:75`; only a
+									// genuinely new subscription stamps. Settings still change —
+									// preservation applies to the creation time, not the record.
+									addedAt: prior?.addedAt ?? new Date(now).toISOString(),
 									capture: cmd.capture ?? { mode: "anomaly" as const },
 								},
 							]
@@ -2334,13 +2649,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				deps.watchdogGlobalStore?.disabled() ?? false,
 				now,
 			);
-			if (cmd.json) return okOut(JSON.stringify({ id, watchdog: block }));
-			const expiry =
-				block.exemptUntilMs === null
-					? ""
-					: ` · until ${new Date(block.exemptUntilMs).toISOString()} (${block.exemptRemainingMs}ms remaining)`;
-			return okOut(
-				`${id}: ${describeWatchdogState(block)} · interval ${block.intervalMs}ms${expiry} · watchers ${block.watchers.length}`,
+			return renderWatchdogResult(
+				id,
+				block,
+				rebound,
+				cmd.json,
+				cmd.action === "status" ? schedulerVerdictLine(id, deps, now) : undefined,
 			);
 		}
 		case "models": {
@@ -2399,9 +2713,48 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			// it may do BEFORE it attempts anything. Internal surface — chainglass
 			// consumes list/tree/node-show and never whoami (o-prime verified).
 			const role = projectOrchestrationRole(d);
-			const refusedVerbs = Object.keys(PA_VERB_CLASSIFICATION)
+			const refusedForText = Object.keys(PA_VERB_CLASSIFICATION)
 				.filter((verb) => paRefusal(role, verb) !== null)
 				.sort();
+			// CONDITIONAL verbs are stated SEPARATELY in the TEXT surface, never
+			// folded into the refused line (plan 084, AC-13). Folding them in would
+			// be a lie in the restrictive direction — a PA reads "watchdog:
+			// refused", concludes it cannot supervise its own prime, and escalates
+			// to a human instead of running the command that would have worked,
+			// which is the loop #95 describes. Omitting them would be a lie in the
+			// permissive direction: the PA attempts a forbidden target and learns
+			// the boundary by refusal, which is the discovery-by-attempting this
+			// stream exists to end. The honest answer states the condition.
+			const conditions =
+				role === "pa"
+					? Object.keys(PA_VERB_CLASSIFICATION)
+							.map((verb) => ({ verb, why: paConditionalWhy(verb) }))
+							.filter((entry): entry is { verb: string; why: string } => entry.why !== null)
+							.sort((left, right) => left.verb.localeCompare(right.verb))
+					: [];
+			// THE JSON SURFACE IS A TOTAL MAP, NOT TWO LISTS (plan 094, #153).
+			// `refusedVerbs`/`conditionalVerbs` partitioned a space this payload
+			// never enumerated, so ABSENCE FROM `refusedVerbs` READ AS ALLOWED —
+			// and a consumer cannot tell a verb that is permitted from one the
+			// producer had never heard of. #134 demonstrated the cost: it ADDED
+			// `conditionalVerbs` and left `refusedVerbs` present and still correct,
+			// so a probe testing `'watchdog' in refusedVerbs` kept parsing, kept
+			// succeeding, and returned a confident falsehood. An additive schema
+			// change is silent to a stale consumer; only a removal is loud, so both
+			// fields are GONE rather than kept as derived views.
+			//
+			// TOTAL FOR EVERY ROLE. A non-PA gets the same complete map, uniformly
+			// `allow`, because emitting it only for a PA would recreate the same
+			// defect one level up: an absent map would then mean either "not a PA"
+			// or "this build has no gate", and a consumer could not tell.
+			const verbs: Record<string, PaCapability["kind"]> = Object.fromEntries(
+				Object.entries(PA_VERB_CLASSIFICATION)
+					.map(([verb, capability]): [string, PaCapability["kind"]] => [
+						verb,
+						role === "pa" ? capability.kind : "allow",
+					])
+					.sort(([left], [right]) => left.localeCompare(right)),
+			);
 			if (cmd.json)
 				return okOut(
 					JSON.stringify({
@@ -2411,7 +2764,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						state: d.state ?? "idle",
 						pid: d.pid,
 						orchestrationRole: role,
-						refusedVerbs,
+						// The schema marker exists so a consumer detects this reshape
+						// DELIBERATELY rather than inferring it from a missing key. It does
+						// NOT close the residual: a consumer doing `get('refusedVerbs', [])`
+						// still reads `[]` and concludes "nothing is refused" — silent and
+						// permissive. No payload shape can fix that, and this comment does
+						// not pretend otherwise.
+						capabilitySchema: 2,
+						verbs,
 					}),
 				);
 			return okOut(
@@ -2421,7 +2781,10 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 					`data dir:    ${d.dataDir}`,
 					`state:       ${d.state ?? "idle"}`,
 					`role:        ${role ?? "—"}`,
-					...(refusedVerbs.length === 0 ? [] : [`refused:     ${refusedVerbs.join(" ")}`]),
+					...(refusedForText.length === 0 ? [] : [`refused:     ${refusedForText.join(" ")}`]),
+					// The CONDITION, not just the verb: a bare list would tell a PA it
+					// might be allowed and nothing about when.
+					...conditions.map((entry) => `conditional: ${entry.verb} — ${entry.why}`),
 				].join("\n"),
 			);
 		}
@@ -2791,6 +3154,21 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			if (!preflight.ok) return fail(preflight.code, preflight.message, cmd.json);
 
 			if (cmd.broadcast) {
+				// plan 093 AC-04: refuse BEFORE the loop, so an empty broadcast
+				// cannot deliver to target 1 and then discover it had nothing to
+				// say. Broadcast is text-only (no attachments to make an empty body
+				// meaningful), so the capability question of D2 does not arise.
+				//
+				// F1: `.trim()` catches the whitespace-only body that the parse
+				// guard above cannot see when the body arrived via `--body-file`
+				// (the bytes are attached to the parsed command, so parse only ever
+				// saw a placeholder). The value delivered below is untouched.
+				if ((cmd.text ?? "").trim() === "")
+					return fail(
+						"E-EMPTY",
+						"nothing to send: the broadcast body is empty — pass text, or read it literally with `pij send <id> --body-file <path|->` (single-target)",
+						cmd.json,
+					);
 				const results: Array<SendSuccess | SendFailure> = [];
 				const humanLines: string[] = [];
 				const waitTargets: WaitTarget[] = [];
@@ -2844,6 +3222,9 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const live = firstTarget.liveness;
 			let messageId: string;
 			let kindNote: string;
+			// AC-07: set when the message DID deliver but carried a reference the
+			// target cannot render. The text lands; the drop is never silent.
+			let attachmentWarning: string | undefined;
 			if (cmd.command !== undefined) {
 				const v = validateCommand(cmd.command);
 				if (!v.ok)
@@ -2869,6 +3250,55 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 									: { path: cmd.file },
 							]
 						: undefined;
+				// ── plan 093: the empty-payload guard (pij#132) ──────────────────
+				//
+				// Placed AFTER target preflight and BEFORE `deliver`, which is the
+				// only position that works: the rule needs the target descriptor
+				// (so the pure parse cannot decide it), and it must precede
+				// `classifySendReceipt` (so a refused send can never acquire a
+				// receipt). Every caller inherits it here — the CLI, the `pij_send`
+				// tool, and any direct `dispatch()` caller (AC-03).
+				//
+				// The rule, in one sentence: REFUSE WHEN THE TARGET WOULD RECEIVE NO
+				// CONTENT IT CAN RENDER. Deliberately NOT "refuse empty bodies" —
+				// that global form would delete the shipped Plan-026 capability of
+				// sending an attachment-only message to a pull/telegram seat, which
+				// is a real, tested feature (AC-06). Capability, not flag shape.
+				//
+				// F1 (cross-model review): "no content" is `.trim()`-empty, not
+				// `""`-empty. A body of "\n" — what `pij send peer "$(cat notes)"`
+				// yields against a blank file — is a message the receiver sees as
+				// blank, so a success receipt for it is exactly as dishonest.
+				//
+				// The asymmetry is the whole point and must not be collapsed: the
+				// EMPTINESS TEST trims, the DELIVERED BODY never does. `"  hello  "`
+				// arrives with both pads intact (AC-08 byte-for-byte). Trimming what
+				// we deliver would reintroduce the `trimEnd()` defect this plan
+				// removed one layer up.
+				const body = cmd.text ?? "";
+				const rendersAttachments = targetRendersAttachments(target);
+				if (body.trim() === "" && !(attachments !== undefined && rendersAttachments)) {
+					// `--command` never reaches here (it returns above): a command
+					// message legitimately carries an empty body (AC-05).
+					//
+					// F1: a caller who typed `"$(cat notes)"` DID pass an argument,
+					// so "the message body is empty" reads as a lie and sends them
+					// looking for the wrong bug. Name what actually happened.
+					const blankKind = body === "" ? "empty" : "blank (whitespace only)";
+					const why =
+						attachments !== undefined
+							? `${cmd.to} receives PUSHED messages and cannot render attachments, so it would receive an ${body === "" ? "empty" : "effectively empty"} message`
+							: `the message body is ${blankKind}`;
+					return fail("E-EMPTY", `nothing to send: ${why} — ${safeBodyHint(cmd.to)}`, cmd.json);
+				}
+				if (attachments !== undefined && !rendersAttachments) {
+					// AC-07: text + an unrenderable reference. The text is worth
+					// delivering, but the sender must not read `delivered` and
+					// believe the file went with it.
+					attachmentWarning =
+						`${cmd.to} receives PUSHED messages and cannot render attachments — ` +
+						`'${cmd.file}' was NOT delivered, only the text. ${safeBodyHint(cmd.to)}`;
+				}
 				const del = deps.delivery.deliver(
 					attachments !== undefined
 						? { from: self, to: cmd.to, body: cmd.text ?? "", attachments }
@@ -2878,7 +3308,11 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				messageId = del.value.messageId;
 				kindNote =
 					attachments !== undefined
-						? cmd.text !== undefined && cmd.text !== ""
+						? // F1: same reading as the guard — a whitespace-only body is
+							// not text the receiver can perceive, so a receipt saying
+							// `text+file` would overstate what arrived. The BYTES are
+							// still delivered untouched; only the label trims.
+							(cmd.text ?? "").trim() !== ""
 							? "text+file"
 							: "file"
 						: "text";
@@ -2921,8 +3355,12 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						...(initialReason ? { reason: initialReason } : {}),
 						liveness: live,
 						...(tickStatus ?? {}),
+						// AC-07: machine-readable, and additive — a consumer that has
+						// never heard of it is unaffected, and one that wants to gate
+						// on "my attachment was dropped" no longer has to parse prose.
+						...(attachmentWarning ? { attachmentWarning } : {}),
 					}),
-					stderr: "",
+					stderr: attachmentWarning ? `warning: ${attachmentWarning}` : "",
 					exitCode: 0,
 					follow,
 				};
@@ -2940,7 +3378,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				: `\nreceipt → ${initial}   (also in: pij tail ${self} --type receipt)`;
 			return {
 				stdout: `sent → ${cmd.to}  ${kindNote}${warn}  (${recvHint})${tail}`,
-				stderr: "",
+				stderr: attachmentWarning ? `warning: ${attachmentWarning}` : "",
 				exitCode: 0,
 				follow,
 			};
@@ -3196,6 +3634,29 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 						// machine-readable without scraping the tmux footer (feedback #4).
 						cwd: d.folder,
 						harness: d.harness ?? null,
+						// The capability gate's KEYING FIELD and the seat's lineage,
+						// projected here because a gate whose input no inspection verb
+						// displays cannot be self-diagnosed: `pij state` was the verb a
+						// seat runs on itself first, and it was silent on both (#95).
+						//
+						// ALWAYS PRESENT, `null` when unset — never absent. JSON.stringify
+						// DROPS undefined, so a bare `d.orchestrationRole` would make the
+						// key vanish for every pre-078 descriptor, and a consumer reading
+						// `j.orchestrationRole == null` on a row that never carried the key
+						// gets "ungated" for every seat alive. The fabricated answer is the
+						// permissive one, which is the wrong way for this to fail.
+						//
+						// `projectOrchestrationRole` (not the raw field) because prime-ness
+						// is stored on a SEPARATE flag; the raw field reports a prime as
+						// unstamped. `parent`/`effectiveParent` (not a raw `parentId`) is
+						// the same name and same notion `list` (above) and `node show`
+						// already project — D-041. It also matters beyond agreement: a PA
+						// spawned by its prime and never explicitly linked has NO raw
+						// `parentId`, so a raw projection would report it parentless and
+						// any target predicate reading it would refuse that PA permission
+						// over its real parent — #95 rebuilt inside #95's own fix.
+						orchestrationRole: projectOrchestrationRole(d),
+						parent: effectiveParent(d),
 						// Fail-loud model layer (T013): surface actual bound model + reason
 						boundModel: d.boundModel ?? null,
 						effort: d.effort ?? null,
@@ -3217,6 +3678,14 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			const modelLine = d.boundModel ? `  ·  model: ${d.boundModel}` : "";
 			const effortLine = d.effort ? `  ·  effort: ${d.effort}` : "";
+			// Role and parent are INDEPENDENT facts, rendered independently: a
+			// stamped seat with no parent must still show its role, and suppressing
+			// both on one absence is how a gated seat reads as ungated. Silent when
+			// there is nothing to say, so an unstamped seat's line is unchanged.
+			const stateRole = projectOrchestrationRole(d);
+			const stateParent = effectiveParent(d);
+			const roleLine = stateRole ? `  ·  role: ${stateRole}` : "";
+			const parentLine = stateParent ? `  ·  parent: ${stateParent}` : "";
 			const tickLine = tickStatus
 				? `  ·  daemon tick: ${tickStatus.daemonTickStale ? "stale" : "fresh"} (${humanAge(
 						tickStatus.daemonTickAgeMs,
@@ -3233,7 +3702,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			const degradedBadge = isBindDegraded(bindHealth) ? "DEGRADED · " : "";
 			const degradedLine = bindDetail ? `\n  ⚠️  DEGRADED: ${bindDetail}` : "";
 			return okOut(
-				`${d.id}: ${degradedBadge}${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${modelLine}${effortLine}${tickLine}${failLine}${terminalLine}${degradedLine}`,
+				`${d.id}: ${degradedBadge}${activityOf(d.state, d.lastEventAt != null)} · ${live}   (last event ${humanAge(ageMs)} ago, pid ${d.pid} ${alive ? "alive" : "gone"})\n  cwd: ${d.folder}${d.harness ? `  ·  harness: ${d.harness}` : ""}${roleLine}${parentLine}${modelLine}${effortLine}${tickLine}${failLine}${terminalLine}${degradedLine}`,
 			);
 		}
 		case "phonehome": {
@@ -4856,7 +5325,25 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 					}
 				}
 				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
-				return okOut(`assignment ${record.id} closed: ${cmd.reason} (by ${self.value})`);
+				// THE PRECONDITION TRAVELS WITH THE REMEDY (doctrine,
+				// government/doctrine/preconditions-travel-with-remedies.md). Closing a
+				// GENERAL assignment is not like closing a dispatch: the id is
+				// DETERMINISTIC (`asg-general-<node>`), so it is burned permanently and
+				// can never be recycled, and until the seat has some OTHER open
+				// assignment it cannot declare a semantic state at all.
+				//
+				// That is recoverable — `pij task set` re-arms it in one command — but
+				// it arrives SILENTLY: nothing tells the seat until it next tries to
+				// park, which can be days, while `report now` keeps working and its card
+				// keeps rendering as current. A consequence nobody is told about at the
+				// moment they cause it is a consequence discovered by its victim.
+				const generalNote =
+					record.id === generalAssignmentId(record.nodeId)
+						? ` — NOTE: that was the GENERAL assignment. Its id is deterministic and is now permanently burned; '${record.nodeId}' cannot declare a semantic state until it has another open assignment. Re-arm with: pij task set ${record.nodeId} "<task>"`
+						: "";
+				return okOut(
+					`assignment ${record.id} closed: ${cmd.reason} (by ${self.value})${generalNote}`,
+				);
 			});
 			return locked.ok ? locked.value : fail(locked.code, locked.message, cmd.json);
 		}
@@ -5321,13 +5808,38 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			// repo primes drown in other repos' peers otherwise).
 			const assignments = deps.assignmentStore.list();
 			const allocations = deps.allocationStore?.list() ?? [];
+			const anomalyDescriptors = deps.registry.list();
+			// Watchdog state as a PLAIN PROJECTION built HERE, at the I/O edge, so
+			// the detector stays pure (s079). Absent when the stores are unwired,
+			// which keeps `inert-subscription` silent rather than guessing.
+			const watchdogView =
+				deps.watchdogStore === undefined
+					? undefined
+					: {
+							globallyDisabled: deps.watchdogGlobalStore?.disabled() ?? false,
+							nodes: anomalyDescriptors.flatMap((d) => {
+								const sidecar = deps.watchdogStore?.read(d.id);
+								if (sidecar === undefined) return [];
+								return [
+									{
+										nodeId: d.id,
+										watchers: (sidecar.watchers ?? []).map((w) => w.watcherId),
+										...(sidecar.pausedBy === undefined ? {} : { pausedBy: sidecar.pausedBy }),
+										...(sidecar.exemptUntilMs === undefined
+											? {}
+											: { exemptUntilMs: sidecar.exemptUntilMs }),
+									},
+								];
+							}),
+						};
 			let anomalies = detectAnomalies({
-				descriptors: deps.registry.list(),
+				descriptors: anomalyDescriptors,
 				assignments,
 				events: ports.value.spineLog.read(),
 				dispatches: deps.dispatchStore?.list() ?? [],
 				allocations,
 				nowMs: now,
+				...(watchdogView === undefined ? {} : { watchdog: watchdogView }),
 			});
 			// Kept so an EMPTY scoped result can say what it did not look at. An
 			// empty answer is indistinguishable from "all clear", and that is the

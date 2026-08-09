@@ -1,5 +1,5 @@
 import { choreKey } from "./resolve.js";
-import type { ChoreRunItem, ChoreRunReport } from "./types.js";
+import type { ChoreRunItem, ChoreRunReport, ChoreScopeSummary } from "./types.js";
 
 function runItemKey(item: ChoreRunItem): string {
 	return choreKey(item);
@@ -8,10 +8,13 @@ function runItemKey(item: ChoreRunItem): string {
 const UNTRUSTED_LINE_PREFIX = "  | ";
 
 function frameUntrustedText(value: string): string[] {
-	return value
-		.replace(/\r\n?/g, "\n")
-		.split("\n")
-		.map((line) => `${UNTRUSTED_LINE_PREFIX}${line}`);
+	const lines = value.replace(/\r\n?/g, "\n").split("\n");
+	if (lines.length > 1 && lines.at(-1) === "") lines.pop();
+	return lines.map((line) => `${UNTRUSTED_LINE_PREFIX}${line}`);
+}
+
+function fingerprintLabel(value: string | null): string {
+	return value ?? "none";
 }
 
 export function renderChoreReport(report: ChoreRunReport): string {
@@ -19,8 +22,47 @@ export function renderChoreReport(report: ChoreRunReport): string {
 		`${report.moved > 0 ? "CHANGES" : "NO CHANGE"} — ${report.probed} chores probed, ${report.moved} moved`,
 	];
 
-	for (const item of report.chores.filter((entry) => entry.status === "changed")) {
-		lines.push(`CHANGED ${runItemKey(item)}: ${item.old ?? "none"} → ${item.new ?? "none"}`);
+	for (const item of report.chores.filter((entry) => entry.status === "changed-value")) {
+		lines.push(
+			`CHANGED-VALUE ${runItemKey(item)}:`,
+			`  OLD fingerprint=${fingerprintLabel(item.oldFingerprint)}`,
+			...frameUntrustedText(item.old ?? "<none>"),
+			`  NEW fingerprint=${fingerprintLabel(item.newFingerprint)}`,
+			...frameUntrustedText(item.new ?? "<none>"),
+		);
+		if (!item.fullConfigured) {
+			lines.push(
+				`HINT ${runItemKey(item)}: if this delta needs more context, add --full '<cmd>' --full-every N for periodic absolute state.`,
+			);
+		}
+	}
+	for (const item of report.chores.filter((entry) => entry.status === "changed-probe")) {
+		lines.push(
+			`CHANGED-PROBE ${runItemKey(item)}: ${item.reason ?? "instrument changed; ack resets baseline"}`,
+			`  BASELINE fingerprint=${fingerprintLabel(item.newFingerprint)}`,
+			...frameUntrustedText(item.new ?? "<none>"),
+		);
+		if (item.preservedValueDelta) {
+			lines.push(
+				`CHANGED-VALUE ${runItemKey(item)}: pending before instrument changed`,
+				`  OLD fingerprint=${fingerprintLabel(item.preservedValueDelta.oldFingerprint)}`,
+				...frameUntrustedText(item.preservedValueDelta.old ?? "<none>"),
+				`  NEW fingerprint=${fingerprintLabel(item.preservedValueDelta.newFingerprint)}`,
+				...frameUntrustedText(item.preservedValueDelta.new),
+			);
+		}
+	}
+	for (const item of report.chores.filter((entry) => entry.status === "flapped")) {
+		lines.push(
+			`FLAPPED ${runItemKey(item)}: moved and returned since last ack`,
+			`  CURRENT fingerprint=${fingerprintLabel(item.newFingerprint)}`,
+			...frameUntrustedText(item.new ?? "<none>"),
+		);
+		if (!item.fullConfigured) {
+			lines.push(
+				`HINT ${runItemKey(item)}: if this flap needs more context, add --full '<cmd>' --full-every N for periodic absolute state.`,
+			);
+		}
 	}
 	for (const item of report.chores.filter((entry) => entry.status === "not-probeable")) {
 		lines.push(
@@ -29,7 +71,10 @@ export function renderChoreReport(report: ChoreRunReport): string {
 		);
 	}
 	for (const item of report.chores.filter((entry) => entry.status === "unchanged")) {
-		lines.push(`UNCHANGED ${runItemKey(item)}: ${item.new ?? "none"}`);
+		lines.push(
+			`UNCHANGED ${runItemKey(item)} fingerprint=${fingerprintLabel(item.newFingerprint)}`,
+			...frameUntrustedText(item.new ?? "<none>"),
+		);
 	}
 	for (const item of report.chores) {
 		if (item.fullOutput !== undefined) {
@@ -39,9 +84,10 @@ export function renderChoreReport(report: ChoreRunReport): string {
 	return lines.join("\n");
 }
 
-export function renderChoreJson(report: ChoreRunReport): string {
+export function renderChoreJson(report: ChoreRunReport, scopes?: ChoreScopeSummary): string {
 	return JSON.stringify(
 		{
+			...(scopes !== undefined ? { scopes } : {}),
 			probed: report.probed,
 			moved: report.moved,
 			chores: report.chores.map((item) => ({
@@ -50,7 +96,12 @@ export function renderChoreJson(report: ChoreRunReport): string {
 				status: item.status,
 				old: item.old,
 				new: item.new,
+				oldFingerprint: item.oldFingerprint,
+				newFingerprint: item.newFingerprint,
 				...(item.reason !== undefined ? { reason: item.reason } : {}),
+				...(item.preservedValueDelta !== undefined
+					? { preservedValueDelta: item.preservedValueDelta }
+					: {}),
 				...(item.fullOutput !== undefined ? { fullOutput: item.fullOutput } : {}),
 			})),
 		},

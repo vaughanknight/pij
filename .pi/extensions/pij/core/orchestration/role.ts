@@ -81,7 +81,13 @@ type CardSource = RoleProjectionSource & Pick<SessionDescriptor, "statusAt">;
  * that conflation is exactly what put a card obligation on five primes.
  */
 export function owesStatusCard(descriptor: RoleProjectionSource): boolean {
-	return projectOrchestrationRole(descriptor) === "pm";
+	const role = projectOrchestrationRole(descriptor);
+	// PM and PRIME. Jordan reversed the prime exclusion on 2026-07-31
+	// (government/rulings/2026-07-31-primes-owe-status-cards.md); the reversal
+	// reached the skill payload and the ruling file and NOT this predicate, so
+	// the watchdog went on telling primes the opposite on a timer for a day.
+	// A PA still owes nothing — it is an assistant to a prime, not a reporter.
+	return role === "pm" || role === "prime";
 }
 
 /** Can this seat's card MISLEAD a reader if it goes stale?

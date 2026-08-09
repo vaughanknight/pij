@@ -1,9 +1,15 @@
 // The single home resolver for pij's agent runtime (KF-05).
 //
-// `PIJ_HOME ?? ~/.pij` was inlined 3× (cli.ts / index.ts / daemon.ts); this is
-// the one place that computes it, plus the two derived roots the runtime needs.
-// Pure — no I/O, no side effects — so it is trivially testable with an injected
-// env and composes with a temp-home fixture for isolation.
+// This is the one place that computes `PIJ_HOME ?? ~/.pij`. It was inlined at
+// seven sites (cli.ts ×2 / index.ts / daemon.ts / core/daemon/watch.ts /
+// adapters/focus-store.ts / telegram/index.ts); pij#169 swept all seven onto
+// this function, so no other module re-derives the home. Pure — no I/O, no side
+// effects — so it is trivially testable with an injected env and composes with
+// a temp-home fixture for isolation.
+//
+// The sweep also settled one behavioural disagreement: the inlined `??` form
+// only fell back on null/undefined, so a SET-but-EMPTY `PIJ_HOME` yielded ""
+// and produced cwd-relative paths. Every surface now treats empty as unset.
 
 import { homedir } from "node:os";
 import { join } from "node:path";

@@ -84,7 +84,7 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `inbox` | `pij inbox [check\|register] [--wait [ms]]` | Pull unread messages for the current external session. First use auto-registers it as pull-owned; `--wait` blocks indefinitely and `--wait <ms>` uses one finite timeout. Receipt envelopes become events and never print as user messages. |
 | `whoami` | `pij whoami` | Print this session's id (resolves via `PIJ_SESSION_ID` → lone local session → `E-AMBIG`). |
 | `list` | `pij list [--prime] [--here]` | List known sessions (id, prime marker, state, liveness, folder). `--prime` is current-only: it keeps explicit `prime:true` sessions and composes with `--here`. Self is `★`; current prime is `P`; retired old-prime is `O`. JSON includes `prime:boolean` and `oldPrime:boolean`. |
-| `send` | `pij send <id> "<text>"` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
+| `send` | `pij send <id> "<text>"` · `pij send <id> --body-file <path\|->` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). **For relayed or untrusted text use `--body-file <path\|->`** — a double-quoted body is expanded by your shell before pij runs. A send with nothing the target can render is refused (`E-EMPTY`), never given a receipt. Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `report now` | `pij report now "<did>" "<next>" [--state <word>] [--note "<text>"] [--project <slug>]` | Record this registered seat's now/next as one `status` event; with `--state`, write `state-set` then `status` under one platform lock. `--note` is valid only for `question`/`blocked`. |
@@ -242,6 +242,40 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
 - **Raw body, framed once on receipt.** `pij send w3 "hi"` writes the raw text; the
   *receiver* frames it as `[pij from <senderId>] hi` when it injects — so a reply
   needs no lookup (the sender id is right there).
+- **The safe body channel — use it for anything you did not author.**
+  `pij send <id> "<text>"` is a double-quoted **shell** argument. When the body is
+  *relayed* text — a log line, a peer's report, a source excerpt — any `` ` `` or
+  `$( )` inside it is executed by **your** shell before pij's process even starts.
+  The message still delivers, mangled, with a success receipt. **pij cannot prevent
+  this**: the expansion is finished before pij exists, and nothing in pij's delivery
+  path runs a shell (it is `execFileSync` with an argv array end to end). The remedy
+  is not to remember better, it is to use a channel where the body is never a shell
+  token:
+
+  ```sh
+  pij send <id> --body-file notes.txt          # the file IS the body, byte-for-byte
+  pij send <id> --body-file - <<'PIJ'          # quoted heredoc: your shell expands nothing
+  anything at all: `backticks`, $(substitutions), ${vars}, 'quotes', ; semicolons
+  PIJ
+  ```
+
+  `--body-file` is **literal**: no trimming, no normalisation, trailing whitespace and
+  newlines preserved, and the body is never parsed as argv — a body whose first line
+  starts `--wait` arrives as text, not as a flag. It is mutually exclusive with
+  `--command`.
+- **`--file` is NOT `--body-file`.** They are one letter apart with opposite meanings.
+  `--file <path> [--caption <text>]` passes a path **by reference** — pij never reads
+  the file — and only a **pull-mode** peer (`pij inbox`) or the telegram bridge renders
+  it. A pushed peer (tmux/pi/claude/copilot/codex) would receive nothing at all, so
+  pij **refuses** an attachment-only send to such a target with `E-EMPTY` rather than
+  reporting a receipt for an empty message (pij#132). Text *plus* an unrenderable
+  attachment still delivers the text, and warns that the reference was dropped.
+  To send a file's **contents**, use `--body-file`.
+- **Nothing to send is an error, not a receipt.** A send whose delivered payload would
+  be empty for that target — `pij send <id> ""`, or an attachment-only send to a peer
+  that cannot render attachments — is refused with `E-EMPTY` (exit `2`) before anything
+  is written. No message, no receipt. `--command` sends are exempt: they legitimately
+  carry an empty body.
 - **Ordered broadcast.** `pij send --to w3 --to z9 "hi"` preflights the full target
   set before delivering anything, then writes the identical raw body once to each
   recipient in flag order. Human output prints one recipient row; JSON is
@@ -406,6 +440,7 @@ the runtime boot announce fires:
 If another pi session is running in this repo, you can message and observe it:
 - `pij list --here` — discover peer sessions in this folder (★ = you)
 - `pij send <id> "<text>"` — message a peer (your id is stamped automatically)
+- `pij send <id> --body-file <path|->` — **use this for relayed or untrusted text**; the file/stdin is the body, byte-for-byte, and your shell expands nothing
 - `pij send --to <id> --to <id> "<text>"` — send the same text once to each named peer
 - `pij send <id> --command <compact\|new\|reload>` — run an allow-listed session-control command on a peer
 - `pij tail <id> --since N` — read a peer's new events (cheap incremental review)

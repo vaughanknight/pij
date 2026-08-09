@@ -1,5 +1,4 @@
 import { mkdirSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type {
@@ -18,6 +17,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { resolvePijHome } from "./core/agents/paths.js";
 import { type CliDeps, dispatch } from "./core/cli.js";
 import { ALLOWED_COMMANDS } from "./core/commands.js";
 import { deriveSelfId, isSubagentChild, memorableIdentitySeed } from "./core/discovery.js";
@@ -45,7 +45,7 @@ export default function (pi: ExtensionAPI): void {
 	// and a throwaway child should never register as a peer. Skip ALL wiring.
 	if (isSubagentChild(process.env)) return;
 
-	const pijHome = process.env.PIJ_HOME ?? join(homedir(), ".pij");
+	const pijHome = resolvePijHome();
 	const repositories = new GitRepositoryAdapter();
 
 	// Native send tool (the model-facing comms seam). Agents call this instead of
@@ -62,24 +62,40 @@ export default function (pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use pij_send to reply to a `[pij from <id>]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
 		],
-		parameters: Type.Object({
-			to: Type.String({
-				description:
-					"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij from <id>]` message, or from `pij list --here`).",
-			}),
-			message: Type.Optional(
-				Type.String({
+		parameters: Type.Object(
+			{
+				to: Type.String({
 					description:
-						"Message text to deliver (appears to the peer as user input). Provide message OR command, not both.",
+						"Target peer session id, e.g. pij-1gzyr0p (the <id> from a `[pij from <id>]` message, or from `pij list --here`).",
 				}),
-			),
-			command: Type.Optional(
-				StringEnum(ALLOWED_COMMANDS, {
-					description:
-						"Run an allow-listed control command on the peer instead of text: compact | new | reload. Provide message OR command, not both.",
-				}),
-			),
-		}),
+				message: Type.Optional(
+					Type.String({
+						description:
+							"Message text to deliver (appears to the peer as user input). Provide message OR command, not both.",
+					}),
+				),
+				command: Type.Optional(
+					StringEnum(ALLOWED_COMMANDS, {
+						description:
+							"Run an allow-listed control command on the peer instead of text: compact | new | reload. Provide message OR command, not both.",
+					}),
+				),
+			},
+			{
+				// s099 / pij#166. The XOR was previously expressed ONLY in execute(),
+				// so `{to}` and `{to, message, command}` were schema-VALID and the
+				// model was permitted to emit them and told afterwards. Encoding it
+				// here makes the invalid state unrepresentable rather than rejected.
+				//
+				// `oneOf` on the object (not a top-level union): the root must stay
+				// `type: "object"` for the tool-calling wire format. See
+				// docs/plans/099-send-tool-xor/assets/union-spike.md.
+				oneOf: [
+					{ required: ["message"], not: { required: ["command"] } },
+					{ required: ["command"], not: { required: ["message"] } },
+				],
+			},
+		),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const message = typeof params.message === "string" ? params.message.trim() : "";
 			const command = typeof params.command === "string" ? params.command : undefined;

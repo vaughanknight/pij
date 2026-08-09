@@ -1,0 +1,33 @@
+import { describe, expect, it } from "vitest";
+import { detectAnomalies } from "./anomalies.js";
+import { generalAssignmentId } from "./platform/types.js";
+import type { Assignment } from "./platform/types.js";
+import type { SessionDescriptor } from "./types.js";
+
+const NOW = Date.parse("2026-08-08T04:00:00.000Z");
+const H10 = 10 * 3_600_000;
+
+const node: SessionDescriptor = {
+  id: "pij-standing", folder: "/tmp", dataDir: "/tmp", pid: 1,
+  startedAt: new Date(NOW - 100 * 3_600_000).toISOString(),
+  lifecycle: "bound", systemState: "idle", state: "idle",
+  lastEventAt: new Date(NOW - H10).toISOString(),
+} as SessionDescriptor;
+
+const asg = (id: string): Assignment => ({
+  schema_version: 1, id, nodeId: "pij-standing", task: "standing role",
+  states: [], opened: { actor: "prime", ts: new Date(NOW - 100 * 3_600_000).toISOString() },
+} as Assignment);
+
+const axis = (a: Assignment) =>
+  detectAnomalies({ descriptors: [node], assignments: [a], events: [], nowMs: NOW })
+    .filter((x) => x.kind === "axis-disagreement");
+
+describe("PRE-FIX #156", () => {
+  it("BEHAVIOURAL: a STANDING (general) assignment idle 10h should NOT fire", () => {
+    expect(axis(asg(generalAssignmentId("pij-standing")))).toHaveLength(0);
+  });
+  it("PRESERVED: a BOUNDED assignment idle 10h must STILL fire", () => {
+    expect(axis(asg("asg-bounded-xyz"))).toHaveLength(1);
+  });
+});

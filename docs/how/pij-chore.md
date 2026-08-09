@@ -1,14 +1,16 @@
 # `pij chore`
 
-`pij chore` is a durable roster of named shell probes. `run` fingerprints probe stdout,
-computes changes against the current seat's acknowledged baseline, and keeps every delta
-open until an explicit `ack`.
+`pij chore` is a durable roster of named shell probes. `run` compares probe-output
+fingerprints while reporting the bounded stdout that actually produced each fingerprint.
+Every real delta stays open until an explicit `ack`.
 
 ## Commands
 
 ```text
 pij chore add <name> --probe '<cmd>' [--full '<cmd>'] [--full-every N]
                      [--scope seat|repo|fleet] [--timeout <ms>] [--json]
+pij chore update <name|scope:name> [--probe '<cmd>'] [--full '<cmd>']
+                     [--full-every N] [--timeout <ms>] [--json]
 pij chore run [--dry] [--json]
 pij chore list [--verbose] [--json]
 pij chore ack <name|scope:name> [--json]
@@ -17,21 +19,33 @@ pij chore remove <name|scope:name> --reason '<why>' [--json]
 
 - `add` registers a definition. The default scope is `seat`; an existing
   `<scope>:<name>` returns `E-EXISTS` without overwriting it.
+- `update` rewrites one existing definition atomically. Unspecified fields are preserved,
+  so re-authoring never passes through a missing roster entry.
 - `run` probes the union of all three scopes. `--dry` computes the same report but writes
   no baseline, pending delta, or periodic-run counter.
-- `list --verbose` shows the stored probe, optional full command, cadence, timeout, scope,
-  last run, and pending delta.
+- `list --verbose` shows the creator seat, stored probe, optional full command, cadence,
+  timeout, scope, last run, and pending delta. JSON emits `creatorSeatId` (`null` for
+  definitions created before attribution existed or outside a resolved seat).
 - `ack` advances exactly one current-seat baseline. A bare name works only when unique;
   otherwise use `scope:name`.
 - `remove` records the reason and timestamp before deleting the definition, then purges
   that chore's current-seat baseline, pending delta, and periodic-run counter.
+
+`list` and `run` begin with `SCOPES seat: <id|unresolved> | repo: <path|unavailable> |
+fleet: <path>`, so an unresolved seat roster cannot masquerade as an empty roster. JSON
+returns the same information in `scopes`; `list --json` returns `{ scopes, chores }`.
+
+Seat identity is derived from the registered pane/folder binding. `PIJ_SESSION_ID` is only
+an override: it must name a live registered seat **and** match the seat derived for the
+calling process. Unknown harness UUIDs, typo ids, and valid cross-seat ids fail non-zero
+before any roster or baseline state is read or written.
 
 ## Scopes
 
 | Scope | Definition store | Meaning |
 |---|---|---|
 | `seat` | `~/.pij/<seat>/chores.json` | Duties belonging only to one pij seat |
-| `repo` | `<worktree>/.pij/chores.json` | Duties carried by a repository/worktree |
+| `repo` | `<worktree>/.pij/chores.json` | Portable duties committed with a repository |
 | `fleet` | `~/.pij/pij-chores/chores.json` | Machine-wide duties |
 
 Scopes **union; they do not shadow**. `seat:health`, `repo:health`, and `fleet:health`
@@ -39,16 +53,33 @@ are three distinct chores and are all probed. Their fingerprints and pending del
 always stored in `~/.pij/<seat>/chore-state.json`, so one seat's ack cannot silence
 another seat.
 
+The repo roster is shared source: **commit `.pij/chores.json`**. It is written as formatted
+JSON with a trailing newline so the generated file passes the repository's Biome formatting
+gate without hand-editing. `chore add --scope repo` prints the commit reminder. Ignoring the
+file silently turns a repo duty into a local-only duty.
+
 ## State machine
 
-1. `run` executes the probe with `sh -c` in the caller's cwd and fingerprints trimmed
-   stdout with SHA-256 (displayed as 12 hex characters).
+1. `run` executes repo-scoped probes with `sh -c` at the active worktree root, even when
+   invoked from a subdirectory. Seat- and fleet-scoped probes retain the caller's cwd.
+   It fingerprints trimmed stdout with SHA-256 (displayed as 12 hex characters). The
+   reported value is the same probe invocation's stdout, bounded to 4096 UTF-8 bytes with
+   `…[truncated]` appended.
 2. A fingerprint different from the acknowledged baseline opens or refreshes a pending
-   delta. `old` remains the last acknowledged baseline; `new` follows the latest probe.
+   delta. `old` remains the last acknowledged value; `new` follows the latest probe.
 3. **`run` never advances the baseline.** The same unacknowledged delta is reported on
    every later run.
-4. `ack` sets the baseline to `pending.new` and clears the pending delta.
-5. A non-zero or timed-out probe reports `NOT-PROBEABLE`, remains registered, counts in
+4. If the sampled value returns to the acknowledged baseline before `ack`, the pending
+   delta stays open as `FLAPPED`: the endpoints match, but a sampled excursion occurred
+   and remains relayable until ack.
+5. `ack` sets the baseline to `pending.new` and clears the pending delta.
+6. `run` fingerprints the instrument: the probe definition plus the content of a directly
+   referenced script file. If either differs from what was stored beside the baseline,
+   it reports `CHANGED-PROBE ... instrument changed; ack resets baseline`. Any already-open
+   value delta is preserved and rendered beside it; both re-surface until one ack resets the
+   baseline to the latest sample from the new instrument. World movement uses the distinct
+   `CHANGED-VALUE` record.
+7. A non-zero or timed-out probe reports `NOT-PROBEABLE`, remains registered, counts in
    the probed denominator, and changes no baseline.
 
 The first successful observation is a change from `none`; acknowledge it after relaying
@@ -56,13 +87,16 @@ the result to establish the initial baseline.
 
 ## Periodic full output
 
-`--full '<cmd>' --full-every N` runs the full command on every Nth `chore run` invocation
-for that chore and prints it under `FULL <scope>:<name>`. The counter is per seat and
-durable across CLI processes. `run --dry` does not advance it.
+`--full '<cmd>'` supplies richer absolute-state context. It runs automatically whenever
+that chore reports a delta, even without `--full-every`. `--full-every N` additionally
+runs it periodically while the probe is unchanged, so persistent bad state remains
+visible without turning every run into a full report. The counter is per seat and durable
+across CLI processes. `run --dry` does not advance it.
 
-Probe-controlled stdout and stderr are never emitted as record lines. Human output prefixes
-every untrusted line with `  | ` beneath its trusted `FULL` or `NOT-PROBEABLE` header;
-`--json` carries the same text only in escaped `fullOutput` or `reason` string fields.
+Probe values, full output, and failure text are never emitted as record lines. Human output
+prefixes every untrusted line with `  | ` beneath trusted headers; JSON carries values in
+`old`/`new`, digests in `oldFingerprint`/`newFingerprint`, and optional absolute state in
+`fullOutput`.
 
 ## Probe-authoring rule
 
@@ -70,6 +104,70 @@ The fingerprint probe must be a **superset signal** for the change you care abou
 relevant change must alter its stdout. A probe that prints only a partial or lossy summary
 can stay byte-identical while the watched state moves, producing an honestly computed but
 blind `NO CHANGE`.
+
+**A probe emits only the decision variable.** Every other field is diagnostic and belongs
+in `--full`. A staleness probe should emit only the staleness verdict, not a clock, age,
+idle state, or any other fast-moving axis that would make the chore fire for the wrong
+reason.
+
+Every probe should carry a **denominator** such as `21subs clean`, so empty success can be
+distinguished from a parser or loop that observed nothing. If required input cannot be
+parsed or no data was observed, exit non-zero so the result is `NOT-PROBEABLE`, never a
+false clean.
+
+Repo-scoped probes must be checkout-portable. At `add`/`update`, an absolute reference to
+the active worktree is stored as a `.`-relative reference. Repo scope deliberately accepts
+only this **allow-list grammar**:
+
+```text
+command    := executable (space argument)*
+executable := approved-name | repo-relative executable path
+argument   := one unquoted static token
+token chars: A-Z a-z 0-9 . _ + : / @ % = , -
+```
+
+Approved names are: `basename`, `cat`, `cut`, `df`, `dirname`, `du`, `find`, `gh`, `git`,
+`grep`, `head`, `jq`, `just`, `ls`, `npm`, `pij`, `printf`, `realpath`, `rg`,
+`sha256sum`, `shasum`, `sort`, `stat`, `tail`, `test`, `tr`, `uniq`, `wc`, plus the
+script runners `bash`, `bun`, `dash`, `deno`, `ksh`, `node`, `perl`, `php`, `python`,
+`python3`, `ruby`, `sh`, and `zsh`. A script runner must receive a repo-relative script
+path as its first non-flag argument. Every token before that path is a runner flag and must
+match the runner's exact safe list:
+
+| Runner | Safe flags before the script path |
+|---|---|
+| `node` | `--enable-source-maps`, `--no-warnings`, `--trace-warnings` |
+| `python`, `python3` | `-B`, `-E`, `-I`, `-O`, `-OO`, `-P`, `-S`, `-s`, `-u` |
+| `bash`, `dash`, `ksh`, `sh`, `zsh` | `-e`, `-u`, `-x` |
+| `bun`, `deno`, `perl`, `php`, `ruby` | none |
+
+Safe flags match exactly. Unknown, abbreviated, bundled, or equals-joined forms refuse by
+default; flags after the script path are script arguments and use the ordinary static-token
+grammar.
+
+Unknown executables and malformed commands default to refusal: the CLI says it **could not
+prove the command static**. Characters or command forms outside the grammar (including
+quotes and shell operators) are refused as **not permitted in a shared roster**. Both errors
+direct machine-local, dynamic, or unsupported commands to `--scope seat` or `--scope fleet`,
+which remain unrestricted. Complex repo probes should put their logic in a committed script;
+for example, `python3 ./scripts/probe.py --format summary --limit 10 data/input.json`.
+
+After grammar validation, every path-like token is resolved against the active worktree and
+must remain inside it; this rejects absolute external paths, `../` escapes, double-slash root
+spellings, and symlinks that resolve outside.
+
+The executable and runner-flag allow-lists are intentionally **source-only**. Extending either
+requires a reviewed code change and PR; a shared roster cannot widen its own execution grammar
+at runtime.
+
+Fleet-scoped probes may use machine-local absolute paths because the roster stays on that
+machine; `add`/`update` retain the warning so the author makes that portability trade-off
+explicit. Seat-scoped probes accept them without a shared-roster warning.
+
+Shared chores must also be runnable by every intended seat role. `add`/`update` warn when a
+repo/fleet probe or full command invokes a `pij` verb refused by the PA capability table.
+The warning does not block authoring, and a runtime refusal remains loudly
+`NOT-PROBEABLE` with its original `E-OWN` reason.
 
 Probes are repository/user-authored shell commands and run with the caller's privileges.
 Keep them deterministic, bounded, readable in `list --verbose`, and free of secrets.

@@ -14,6 +14,11 @@ import {
 	FakeRegistry,
 	FakeSpineLog,
 } from "../../adapters/fakes.js";
+import type {
+	ActivityCredibility,
+	ActivityCredibilityInput,
+	WatchdogSubscriptionInputs,
+} from "../anomalies.js";
 import type { Assignment, Project, SpineEvent } from "../platform/types.js";
 import type { SessionDescriptor } from "../types.js";
 import { AnomalySweep } from "./anomaly-sweep.js";
@@ -58,7 +63,11 @@ function rig(
 	descriptors: SessionDescriptor[],
 	assignments: Assignment[],
 	events: SpineEvent[],
-	extras: { projects?: Project[] } = {},
+	extras: {
+		projects?: Project[];
+		watchdog?: WatchdogSubscriptionInputs;
+		activityCredibility?: (input: ActivityCredibilityInput) => ActivityCredibility;
+	} = {},
 ) {
 	const delivery = new FakeDelivery();
 	const logged: string[] = [];
@@ -71,6 +80,10 @@ function rig(
 		...(extras.projects === undefined
 			? {}
 			: { projectStore: new FakeProjectStore(extras.projects) }),
+		...(extras.watchdog === undefined ? {} : { watchdog: () => extras.watchdog }),
+		...(extras.activityCredibility === undefined
+			? {}
+			: { activityCredibility: extras.activityCredibility }),
 		log: (line) => void logged.push(line),
 	});
 	return { delivery, sweep, logged };
@@ -227,5 +240,179 @@ describe("AnomalySweep", () => {
 		expect(sweep2.tick().alerts).toBe(1); // only the seq-9 unverified done exists now
 		const bodies = delivery.outbox.map((e) => e.message.body);
 		expect(bodies.some((b) => b.includes("9"))).toBe(true);
+	});
+});
+
+/** T-3/T-4 — the sweep must actually RUN the recipient check.
+ *
+ *  `AnomalySweepDeps` had no watchdog input and `tick()` called
+ *  `detectAnomalies` without one, so `inert-subscription` has NEVER fired in
+ *  the daemon in any form — it appeared only when a human ran `pij anomalies`.
+ *  A `#154` fix that never reaches the alert path is not a fix (V-3). */
+describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
+	const credibility = (input: ActivityCredibilityInput): ActivityCredibility =>
+		input.lifecycle === "dissolved"
+			? {
+					verdict: "superseded",
+					cause: "dissolved",
+					reason: "lifecycle is dissolved",
+					...(input.terminal === undefined ? {} : { asOf: input.terminal.observedAt }),
+				}
+			: input.terminal === undefined
+				? {
+						verdict: "current",
+						cause: "uncontradicted",
+						reason: "nothing contradicts the recorded activity",
+					}
+				: {
+						verdict: "superseded",
+						cause: "agent-absent",
+						reason: "a terminal observation is on record",
+						asOf: input.terminal.observedAt,
+					};
+
+	const fleet = (): SessionDescriptor[] => [
+		desc({ id: "pij-node", lifecycle: "bound", parentId: "pij-parent" }),
+		desc({
+			id: "pij-watcher",
+			lifecycle: "bound",
+			terminal: {
+				disposition: "unrequested-by-pij",
+				observedAt: new Date(NOW - 42 * 3_600_000).toISOString(),
+				evidence: "pid-missing",
+			},
+		}),
+	];
+
+	const allGone: WatchdogSubscriptionInputs = {
+		globallyDisabled: false,
+		nodes: [{ nodeId: "pij-node", watchers: ["pij-watcher"] }],
+	};
+
+	it("1 · BEHAVIOURAL — with a projection + credibility fn it emits an inert-subscription alert", () => {
+		const { delivery, sweep } = rig(fleet(), [], [], {
+			watchdog: allGone,
+			activityCredibility: credibility,
+		});
+		expect(sweep.tick().alerts).toBe(1);
+		const toParent = delivery.outbox.filter((e) => e.message.to === "pij-parent");
+		expect(toParent).toHaveLength(1);
+		expect(toParent[0]?.message.body).toContain("inert-subscription");
+		expect(toParent[0]?.message.body).toContain("no LIVE watcher remains");
+	});
+
+	it("2 · PRESERVED-PROPERTY — without them the sweep behaves exactly as today", () => {
+		const { delivery, sweep } = rig(fleet(), [], []);
+		const first = sweep.tick();
+		expect(first.alerts).toBe(0);
+		expect(first.anomalies).toBe(0);
+		expect(delivery.outbox).toHaveLength(0);
+	});
+
+	it("2b · a projection WITHOUT the credibility fn cannot fire the recipient row", () => {
+		const { sweep } = rig(fleet(), [], [], { watchdog: allGone });
+		// The unwired-call-site property, end to end: half-wired is the same
+		// observable as unwired, never a silent half-detector.
+		expect(sweep.tick().anomalies).toBe(0);
+	});
+
+	it("3 · STORM GUARD — two consecutive ticks on an unchanged condition alert ONCE", () => {
+		const { delivery, sweep } = rig(fleet(), [], [], {
+			watchdog: allGone,
+			activityCredibility: credibility,
+		});
+		expect(sweep.tick().alerts).toBe(1);
+		// The latch keys on `kind:node:evidence`. A row whose evidence changed
+		// every tick would re-notify the parent every 600ms; one whose evidence
+		// is constant alerts once and then stays silent however much worse it
+		// gets. This pins the no-op tick explicitly.
+		expect(sweep.tick().alerts).toBe(0);
+		expect(sweep.tick().alerts).toBe(0);
+		expect(delivery.outbox).toHaveLength(1);
+	});
+
+	it("F-1 · BEHAVIOURAL — the ORIGINAL 42h incident alerts end to end (dissolved watcher)", () => {
+		// The incident as it actually was: `pij-continuing-ermine` watched only by
+		// `pij-respectable-starfish`, which pij had DISSOLVED. `list()` hides a
+		// dissolved record by design, so the detector never saw the watcher at all
+		// and bucketed it `unknown` → no row → 42 hours of silence that read as
+		// health. `FakeRegistry` reproduces the tier split faithfully (hidden from
+		// `list()`, findable by `read()`), so this is the real path, not a mock of
+		// the conclusion.
+		//
+		// Written as the INCIDENT and not as the fleet's current shape on purpose:
+		// current state is where the fix was developed, so it is the one
+		// configuration guaranteed to agree with it. Ermine's watcher today is
+		// terminal but NOT dissolved — visible to `list()`, and the pre-F-1 code
+		// already fired on it. The passing case and the motivating case differed
+		// by ONE LIFECYCLE VALUE, and that value was the entire defect.
+		const { delivery, sweep } = rig(
+			[
+				desc({ id: "pij-continuing-ermine", lifecycle: "bound", parentId: "pij-parent" }),
+				desc({
+					id: "pij-respectable-starfish",
+					lifecycle: "dissolved",
+					terminal: {
+						disposition: "requested",
+						observedAt: "2026-08-06T01:31:59.006Z",
+						evidence: "pane-missing",
+					},
+				}),
+			],
+			[],
+			[],
+			{
+				watchdog: {
+					globallyDisabled: false,
+					nodes: [{ nodeId: "pij-continuing-ermine", watchers: ["pij-respectable-starfish"] }],
+				},
+				activityCredibility: credibility,
+			},
+		);
+		expect(sweep.tick().alerts).toBe(1);
+		const body = delivery.outbox[0]?.message.body ?? "";
+		expect(body).toContain("no LIVE watcher remains");
+		expect(body).toContain("pij-respectable-starfish");
+		expect(body).toContain("0 unresolvable/unknown");
+	});
+
+	it("F-1 · an id NO tier resolves is still unknown, and the sweep stays silent", () => {
+		const { delivery, sweep } = rig(
+			[desc({ id: "pij-node", lifecycle: "bound", parentId: "pij-parent" })],
+			[],
+			[],
+			{
+				watchdog: {
+					globallyDisabled: false,
+					nodes: [{ nodeId: "pij-node", watchers: ["pij-typo-or-cross-home"] }],
+				},
+				activityCredibility: credibility,
+			},
+		);
+		expect(
+			sweep.tick().anomalies,
+			"the archive lookup widens WHO can be resolved, never WHAT counts as gone",
+		).toBe(0);
+		expect(delivery.outbox).toHaveLength(0);
+	});
+
+	it("the recipient row and the paused-trigger row do NOT collide in the latch", () => {
+		// Both carry `kind: "inert-subscription"` on the SAME node, and the paused
+		// row's evidence is `[watchers.length]` — identical to the recipient row's
+		// gone-count whenever every watcher is gone. A one-element evidence key
+		// would silently swallow whichever row the sweep saw second.
+		const { delivery, sweep } = rig(fleet(), [], [], {
+			watchdog: {
+				globallyDisabled: false,
+				nodes: [{ nodeId: "pij-node", watchers: ["pij-watcher"], pausedBy: "self" }],
+			},
+			activityCredibility: credibility,
+		});
+		const first = sweep.tick();
+		expect(first.anomalies).toBe(2);
+		expect(first.alerts).toBe(2);
+		const bodies = delivery.outbox.map((e) => e.message.body);
+		expect(bodies.some((b) => b.includes("no LIVE watcher remains"))).toBe(true);
+		expect(bodies.some((b) => b.includes("PAUSED by self"))).toBe(true);
 	});
 });

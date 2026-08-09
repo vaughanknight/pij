@@ -35,8 +35,8 @@ pij watchdog resume <id> [--json]
 pij watchdog exempt <id> [duration] [--json]
 pij watchdog reset <id> [--json]   # back to default: on, 20m, un-paused, UN-exempt
 pij watchdog interval <id> <duration> [--json]   # set the timeout: 30s, 20m, 1h, or ms
-pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N]
-pij watchdog unwatch <id> [--json]
+pij watchdog watch <id> [--capture anomaly|always|never] [--max-lines N] [--max-bytes N] [--for <seat>]
+pij watchdog unwatch <id> [--for <seat>] [--json]
 pij watchdog list [--json]
 
 pij watchdog disable-all           # machine-wide OFF — one command, no per-sidecar edits
@@ -53,6 +53,83 @@ next tick for **every** session — including ones spawned while it is off — w
 no per-session sidecar writes. Use it to silence the whole fleet in one command
 rather than exempting peers one at a time. Absent file ⇒ enabled (fail-safe: a
 missing or malformed switch never silently disables supervision).
+
+## Who may subscribe — and on whose behalf
+
+`watch`/`unwatch` bind a **watcher** to a target. Two things decide whether a
+call is allowed: **who is asking**, and **who is being bound**.
+
+**A `pa` (Prime Assistant) may bind only ITSELF or its own parent.** A PA is
+read-only by construction, but supervising the seat it assists is the one
+supervision act it is uniquely placed to perform, so the boundary is scoped by
+**target** rather than by party:
+
+```sh
+pij watchdog watch <my-parent>      # allowed — a PA may watch its own parent
+pij watchdog unwatch <my-parent>    # allowed — and may remove it again
+pij watchdog watch <anyone-else>    # refused
+pij watchdog pause <my-parent>      # refused — pause changes supervision POLICY
+```
+
+"Parent" means the seat `pij state <id> --json` reports as `parent` — the
+explicit `parentId` when set, otherwise the seat that spawned it. **It need not
+be a prime**; a PA's parent is frequently a `pm`. Every other `watchdog` action
+(`pause`, `resume`, `exempt`, `reset`, `interval`, `status`, `list`,
+`disable-all`, `enable-all`) stays refused for a PA against every target.
+
+A refusal names the role, the field it is keyed on, and both permitted ids, so a
+seat can check the decision itself rather than guessing:
+
+```
+E-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa'
+(field: orchestrationRole): 'pij-stranger' is neither you nor your parent — a PA
+may act only on ITSELF ('pij-pa') or its own parent ('pij-boss'), so ask
+'pij-boss' to do it or relay the request. Run 'pij whoami --json' to see your
+role and capabilities, or 'pij state <id> --json' to read orchestrationRole and
+parent on any seat.
+```
+
+`pij whoami --json` answers this with a single exhaustive `verbs` map — one entry
+per classified verb, valued `allow`, `conditional` or `refuse` — beside a
+`capabilitySchema` marker. `watchdog` reads `conditional`: permitted *depending
+on the action and target*. The older `refusedVerbs`/`conditionalVerbs` pair was
+removed rather than kept, because it partitioned a space the payload never
+enumerated, so a verb's **absence** from `refusedVerbs` read as *allowed* and a
+consumer could not tell a permitted verb from one the producer had never heard
+of.
+
+### `--for <seat>` — binding on another seat's behalf
+
+The **recovery path**. When a seat is already stamped, unreachable, or dead, a
+prime or PM can bind or unbind a subscription for it:
+
+```sh
+pij watchdog watch <target> --for <seat>     # <seat> becomes the watcher, not you
+pij watchdog unwatch <target> --for <seat>   # removes <seat>'s subscription
+```
+
+- The **named seat** is registered as the watcher — never the caller.
+- Re-binding an existing subscription **replaces** it; it does not add a second
+  entry, and `unwatch --for` removes the named seat's entry rather than yours.
+- **A `pa` caller is refused `--for`**, including when it names itself. The flag
+  exists for acting on another seat's behalf, and a PA acts only for itself —
+  which the plain form already does. Allowing it would let a PA bind any watcher
+  to any target and bypass the target rule above.
+- `--for` is rejected on actions with no watcher concept (`pause`, `resume`,
+  `reset`, `status`, …) rather than silently ignored.
+
+### `addedAt` is preserved on re-bind
+
+A subscription records when it was **created**. Re-binding — by any path: plain
+`watch`, a PA binding its parent, or `--for` — **preserves the original
+`addedAt`**; only a genuinely new subscription stamps it. Capture settings still
+update, because preservation applies to the creation time, not the record.
+
+This matters because the timestamp is the only evidence of when supervision
+began, and the sanctioned re-bind path used to overwrite it — which is why a
+subscription's history once had to be restored by hand-editing a sidecar. So the
+re-bind stays visible instead: the command reports `re-bound (original addedAt
+preserved)`, and `--json` carries `watcherRebound: true`.
 
 ## Timeouts
 

@@ -170,7 +170,26 @@ export function isFireDue(
 }
 
 // ─── response derivation ────────────────────────────────────────────────────
-export type WatchdogResponse = "responsive" | "suspect" | "stalled";
+/** What a watchdog fire concluded about a peer.
+ *
+ * `unknown` means **NO EVIDENCE WAS EXAMINED**. It is *never* a health claim and
+ * no consumer may read it as one — it is the absence of a grade, not a passing
+ * grade.
+ *
+ * It exists because this type had three values and FOUR meanings (pij#161):
+ * `responsive` was returned for *measured alive*, for *supervision is off*, and
+ * for *nothing was examined*, and only the first is what a reader takes it to
+ * mean. The most dangerous instance was structural — a fire with no response
+ * outstanding delivered a variable INITIALISER to the watcher verbatim, so the
+ * moment supervision mattered most (a freshly rebuilt RuntimeState after a
+ * daemon restart or a pid flap) was the moment it certified health it had not
+ * measured.
+ *
+ * The token matches this repo's existing vocabulary for *no positive
+ * identification* — `DeathReason.unknown` (`core/types.ts:71`) — rather than
+ * coining a new one.
+ */
+export type WatchdogResponse = "responsive" | "suspect" | "stalled" | "unknown";
 
 /** Pane-derived inputs are absent for paneless peers. Watchdog-only changes are
  * explicit so the observer's own injected turn cannot fabricate recovery. */
@@ -187,20 +206,102 @@ export interface WatchdogResponseInputs {
 	readonly eventAdvanced: boolean;
 	readonly eventAdvanceWasWatchdog?: boolean;
 	readonly pane?: WatchdogPaneObservation;
+	/** Did the PEER ITSELF answer since the last fire?
+	 *
+	 * True only when `statusAt` advanced, which only the peer's own `pij report`
+	 * can do — `registry-write.ts:90` maps `statusAt` to the `"cli"` writer, so
+	 * neither the daemon nor the delivery path can fabricate it. The watchdog turn
+	 * literally instructs the peer to run `pij report now …`, so *"statusAt
+	 * advanced since the fire"* IS the definition of answering.
+	 *
+	 * **Deliberately NOT `lastEventAt`** (plan 096, KF-13): delivering a watchdog
+	 * turn makes the target emit a RECEIPT, and that persists `lastEventAt` with
+	 * zero model involvement (`core/session.ts` `onInbound` → `emitReceipt` →
+	 * `capture("receipt")` → `persist`). The act of supervising writes that field,
+	 * so keying on it would make `stalled` UNREACHABLE for a wedged peer — a
+	 * false-positive traded for a false-negative, which for a supervision
+	 * instrument is strictly worse.
+	 *
+	 * This is **liveness** evidence, never **recovery** evidence. The pij#136
+	 * disqualification below is untouched by it: an answered peer is still never
+	 * called `responsive`, only capped at `suspect`. */
+	readonly answeredSinceLastFire?: boolean;
 }
 
 /** Derive response health from delivered fires and independently observed work. */
 export function evaluateResponse(inputs: WatchdogResponseInputs): WatchdogResponse {
-	if (!inputs.cfg.enabled || inputs.cfg.pausedBy !== undefined) return "responsive";
+	// Supervision is OFF for this peer. That is a statement about the WATCHDOG,
+	// not about the peer, so it must not be reported as health (pij#161).
+	if (!inputs.cfg.enabled || inputs.cfg.pausedBy !== undefined) return "unknown";
 
 	const realEventAdvance = inputs.eventAdvanced && !inputs.eventAdvanceWasWatchdog;
 	const realPaneChange = inputs.pane?.changed === true && !inputs.pane.changeWasWatchdog;
 	const realWorkingTransition =
 		inputs.pane?.workingTransition === true && !inputs.pane.workingTransitionWasWatchdog;
 	if (realEventAdvance || realPaneChange || realWorkingTransition) return "responsive";
+	// A peer that ANSWERED is alive, so `stalled` — which must mean SILENT — is off
+	// the table for it; the climb caps at `suspect` and stays there (pij#148). This
+	// is placed AFTER the recovery block on purpose: answering proves life, not
+	// independent work, so it can never promote a peer to `responsive`.
+	if (inputs.answeredSinceLastFire === true) return "suspect";
 	if (inputs.consecutiveSilentFires >= 2) return "stalled";
 	if (inputs.consecutiveSilentFires === 1) return "suspect";
 	return "responsive";
+}
+
+/** Is this verdict an ANOMALY — a graded finding an anomaly-policy watcher should
+ * capture?
+ *
+ * Written as an explicit POSITIVE test, never as `response !== "responsive"`.
+ * That set-level shape is precisely what made widening the union dangerous: a
+ * negation over a set silently reclassifies every NEW member, so a no-evidence
+ * fire would have counted as an anomaly and triggered watcher captures on every
+ * first fire after a daemon restart — fresh noise created by the fix
+ * (plan 096, KF-05).
+ *
+ * Exhaustive by compiler, in the same style as `mutesWatchdogNudge`: a future
+ * fifth member fails to compile here rather than defaulting into anomaly. */
+export function isAnomalyVerdict(response: WatchdogResponse): boolean {
+	switch (response) {
+		case "suspect":
+		case "stalled":
+			return true;
+		case "responsive":
+		case "unknown":
+			return false;
+		default: {
+			const exhaustive: never = response;
+			return exhaustive;
+		}
+	}
+}
+
+/** Render a verdict as the head of a watcher notice.
+ *
+ * `unknown` carries a second line saying WHY there is no grade, so a watcher can
+ * never read it as a quiet pass. Suppressing the notice entirely was the other
+ * option in pij#161 and was rejected: silence would then mean *nothing happened*
+ * OR *something happened I could not grade*, which is the same
+ * absence-renders-as-something defect one level up, and harder to notice because
+ * there is nothing to look at.
+ *
+ * Exhaustive by compiler for the same reason as `isAnomalyVerdict`. */
+export function verdictNoticeLines(response: WatchdogResponse, id: string): string[] {
+	switch (response) {
+		case "responsive":
+		case "suspect":
+		case "stalled":
+			return [`watchdog ${response}: ${id}`];
+		case "unknown":
+			return [
+				`watchdog unknown: ${id}`,
+				"no response was outstanding — nothing was examined; this is not a health claim",
+			];
+		default: {
+			const exhaustive: never = response;
+			return exhaustive;
+		}
+	}
 }
 
 // ─── parked-state nudge muting (plan 076, DL-002) ───────────────────────────
@@ -256,6 +357,11 @@ export interface WatchdogTurnConfig extends EffectiveWatchdogConfig {
 	 *  question and primes remain watched. Defaults to the card-owing copy so an
 	 *  un-wired caller keeps today's behaviour. */
 	readonly owesCard?: boolean;
+	/** True for a PRIME: appends the altitude clause to the card ask, because a
+	 *  prime's card must be its own governance work rather than a restatement of
+	 *  what a stream already reported (Jordan's 2026-07-30 altitude ruling, which
+	 *  SURVIVED the 2026-07-31 reversal of the card obligation itself). */
+	readonly ownAltitude?: boolean;
 }
 
 export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurnConfig): string {
@@ -263,22 +369,51 @@ export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurn
 	// A seat that owes no card still needs the ping — it must not go silent. A
 	// prime is the only seat on the box with NO supervisor: a wedged PM is caught
 	// by its prime, a wedged prime is caught by nobody, so this is its sole
-	// external heartbeat and it lands in the prime's own pane at no cost to the
-	// human. What changes is the ASK: liveness and lifecycle, never a card.
+	// external heartbeat.
 	//
-	// The altitude clause is Jordan's second ruling (2026-07-30): a prime's card,
-	// if it writes one voluntarily, must be about its OWN governance work. A card
-	// restating what a stream already reported double-renders the same fact in the
+	// PRIMES OWE A CARD (Jordan, 2026-07-31 — government/rulings/
+	// 2026-07-31-primes-owe-status-cards.md, REVERSING the 2026-07-30 position).
+	// That reversal reached the skill payload and a ruling file and never reached
+	// this emitter, which went on telling every prime the opposite on a timer —
+	// roughly 3/hour/prime. A STALE DOCUMENT IS PASSIVE: it fails to correct you.
+	// A STALE ENFORCER IS ACTIVE: it propagates the wrong rule to every seat it
+	// touches, on schedule, and looks authoritative doing it.
+	//
+	// The card-less branch now serves the PA only, so it carries no prime
+	// language: a PA owes no card, and a staleness label is watchdog language
+	// that lies where no obligation exists.
+	//
+	// THE ALTITUDE CLAUSE SURVIVES the reversal and rides the card-owing copy for
+	// a prime: its card must be its OWN governance work, never a restatement of
+	// what a stream already reported, which double-renders the same fact in the
 	// rail. Observed live: an o-prime led two consecutive cards with its stream's
 	// merge, a fact that stream had already filed itself.
+	const ask =
+		`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`.` +
+		(cfg.ownAltitude === true
+			? " Make it your OWN governance work, never a restatement of what a stream already reported."
+			: "");
+	// THE CLOSE OFFERED A FALSE DICHOTOMY: keep going, or declare `done`. On a
+	// STANDING assignment — PM a stream, run a government — there is no
+	// completion to declare, so `done` asserts the stream is finished and
+	// silence rots the card. A prompt that offers only wrong answers gets wrong
+	// answers from honest seats, and the ones who answer accurately look
+	// non-compliant. `ready` already exists for exactly this (state.ts:
+	// "awaiting pickup"), so this names an existing state rather than adding
+	// vocabulary, and leads with the CONDITION rather than the verb.
+	//
+	// `waiting` is DELIBERATELY NOT OFFERED here: parking with no blocker
+	// recreates the parked-but-working state, which is a permanent silencer —
+	// offering it to an unblocked seat would manufacture that defect on a timer.
+	// `ready` is the honest answer for idle-but-available; `waiting` stays for an
+	// actual blocker.
+	const close =
+		"If this unit of work is finished, run `pij report state done`; " +
+		"if you are idle but available on a standing assignment, run `pij report state ready`.";
 	const turn =
 		cfg.owesCard === false
-			? `${head} You do NOT owe a status card — a prime reports to its human in-pane, so a card there duplicates a richer channel. ` +
-				"If you post one anyway, make it your OWN governance work, never a restatement of what a stream already reported. " +
-				"If done, run `pij report state done`."
-			: `${head} ` +
-				`Report in one call with \`pij report now "<what I just did>" "<what's next>"\`. ` +
-				"If done, run `pij report state done`.";
+			? `${head} You owe no status card — keep the ping honest by staying responsive. ${close}`
+			: `${head} ${ask} ${close}`;
 	return cfg.paneAvailable === false
 		? `${turn} Pane capture unavailable; watching event activity only.`
 		: turn;
@@ -380,4 +515,46 @@ export function describeWatchdogState(state: {
 	if (state.pausedBy === "exempt") return "exempt";
 	if (state.pausedBy) return `paused (${state.pausedBy})`;
 	return "watching";
+}
+
+/** Render a duration for HUMANS, keeping the exact ms in `--json`.
+ *
+ * The text surface printed `interval 7200000ms`, so every reader hand-divided
+ * — and a hand-conversion is exactly what produced a 1200-second error in
+ * another government the same day. The machine surface is unchanged; this is
+ * only for the line a person reads.
+ *
+ * Deliberately COARSE and exact-only: `2h`, `20m`, `45s`. A duration that is
+ * not a whole unit keeps the larger unit plus the remainder (`2h 30m`) rather
+ * than rounding, because a rounded supervision interval invites the same
+ * arithmetic the raw ms did.
+ */
+export function humanizeDurationMs(ms: number): string {
+	if (!Number.isFinite(ms) || ms < 0) return `${ms}ms`;
+	if (ms === 0) return "0s";
+	if (ms < 1_000) return `${ms}ms`;
+	const parts: string[] = [];
+	const h = Math.floor(ms / 3_600_000);
+	const m = Math.floor((ms % 3_600_000) / 60_000);
+	const s = Math.floor((ms % 60_000) / 1_000);
+	if (h > 0) parts.push(`${h}h`);
+	if (m > 0) parts.push(`${m}m`);
+	if (s > 0) parts.push(`${s}s`);
+	return parts.join(" ");
+}
+
+/** Render the watcher ROSTER, not just its size.
+ *
+ * The text line printed `watchers 2` while `--json` carried the ids. Two primes
+ * hit that within an hour: one read `watchers 2`, inferred "me plus presumably
+ * some earlier registrant", and was WRONG — there was no earlier registrant. At
+ * count >= 2 it is a coin flip whether a government believes an external party
+ * is in its notification path when nobody is.
+ *
+ * A COUNT IS AN ANSWER TO A QUESTION NOBODY ASKED. The names were already in
+ * the projection; only the human surface dropped them.
+ */
+export function renderWatcherRoster(watchers: readonly string[]): string {
+	if (watchers.length === 0) return "watchers none";
+	return `watchers ${watchers.length} (${watchers.join(", ")})`;
 }

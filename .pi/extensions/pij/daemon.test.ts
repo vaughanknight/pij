@@ -20,8 +20,15 @@ import { type DaemonPorts, INIT_HELD_TIMEOUT_MS } from "./core/daemon/loop.js";
 import type { PaneListing } from "./core/daemon/pane-signals.js";
 import { renderedComposerLength, USER_TYPING_IDLE_MS } from "./core/daemon/pane-signals.js";
 import { COMPACT_GRACE_MS, COMPACT_MAX_MS } from "./core/daemon/router.js";
+import {
+	FsTickHeartbeatStore,
+	lastTickFor,
+	TICK_HEARTBEAT_FILE,
+} from "./core/daemon/tick-heartbeat.js";
 import { receiptBody } from "./core/message.js";
+import type { RegistryPort } from "./core/ports.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
+import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
 import { Daemon, touchDaemonHeartbeat } from "./daemon.js";
@@ -103,18 +110,26 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 	killed: string[];
 	attached: string[];
 	detached: string[];
+	captured: string[];
 } {
 	const sent: Array<{ pane: string; text: string }> = [];
 	const killed: string[] = [];
 	const attached: string[] = [];
 	const detached: string[] = [];
+	/** Every paneId handed to `capturePane`, in order — the instrument for
+	 *  pij#229, which is a claim about WHICH panes are read and how often. */
+	const captured: string[] = [];
 	const paneText = options.paneText;
 	return {
 		sent,
 		killed,
 		attached,
 		detached,
-		capturePane: () => (typeof paneText === "function" ? paneText() : (paneText ?? READY)),
+		captured,
+		capturePane: (pane) => {
+			captured.push(pane);
+			return typeof paneText === "function" ? paneText() : (paneText ?? READY);
+		},
 		isPaneDead: () => false,
 		listPanes: options.paneListings,
 		attachPaneTap: options.paneListings ? (pane) => attached.push(pane) : undefined,
@@ -182,7 +197,13 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 		daemon.tick();
 
-		const lastTickAt = registry.read("pij-c")?.lastTickAt;
+		// pij#180 Fix A moved the STAMP, not the claim: it now lives in the
+		// heartbeat side file instead of costing an fsync-barriered publish per
+		// seat per tick. Phase 3 re-attaches it to `read()` via an overlay, at
+		// which point the descriptor-shaped assertion returns; until then this
+		// reads the stamp where it actually is. The wedged-daemon claim below is
+		// untouched and is the load-bearing half.
+		const lastTickAt = lastTickFor(new FsTickHeartbeatStore(home).read(), "pij-c");
 		expect(lastTickAt).toBe(new Date(NOW_MS).toISOString());
 		// Simulate a wedged daemon: wall time advances but no second tick occurs.
 		expect(daemonTickStatus(lastTickAt, NOW_MS + DAEMON_TICK_STALE_AFTER_MS + 1)).toMatchObject({
@@ -970,13 +991,26 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		);
 		const channel = new FsChannel(home);
 		channel.deliver({ from: "pij-boss", to: "pij-c", body: "racing" });
-		// Captures 1-4 (signals, flush gate, readiness, OUTER drain check) are all
-		// blank; only capture 5 — the one immediately before sendText — has text.
+		// THE CAPTURE ORDER IN ONE TICK, and it is load-bearing for this test:
+		//   1  the signals pass (`refreshPaneSignals`)
+		//   2  the FLUSH GATE      (`daemon.ts` → refreshRenderedComposerHold)
+		//   3  the OUTER drain check (`drainInbox` → refreshRenderedComposerHold)
+		//   4  the PRE-SEND check  (`drainTmuxInbox`, immediately before `sendText`)
+		//
+		// s101 (pij#229) removed what used to be capture 3 — the readiness capture
+		// in the drive loop — by sharing the tick's already-captured frame. THE
+		// THREE GUARD CAPTURES ABOVE ARE DELIBERATELY NOT SHARED: each is a RACE
+		// DETECTOR whose whole job is to read the pane as late as possible, so a
+		// cached frame would defeat the property this test pins. Sharing the
+		// readiness capture is safe for exactly the opposite reason — it wants the
+		// tick's frame, and reasoning about a LATER frame than the signal tracker
+		// is the defect pij#229 exists to remove.
+		const PRE_SEND_CAPTURE = 4;
 		let captures = 0;
 		const ports = fakePorts({
 			paneText: () => {
 				captures += 1;
-				return captures >= 5 ? CLAUDE_COMPOSER_TEXT : CLAUDE_COMPOSER_EMPTY;
+				return captures >= PRE_SEND_CAPTURE ? CLAUDE_COMPOSER_TEXT : CLAUDE_COMPOSER_EMPTY;
 			},
 			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
 		});
@@ -984,6 +1018,11 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		new Daemon(home, ports, registry, channel).tick();
 		expect(ports.sent).toEqual([]);
 		expect(unreadBodies("pij-c")).toEqual(["racing"]);
+		// Pin the coupling this test has on the capture COUNT. Without it, a change
+		// that adds or removes a capture silently shifts which one returns text, and
+		// this test starts passing or failing for a reason unrelated to the guard —
+		// which is exactly how it behaved when pij#229 removed the readiness capture.
+		expect(captures).toBe(PRE_SEND_CAPTURE);
 	});
 
 	// driveSession's init/phone-home lines are pane writes too. They used to
@@ -1401,7 +1440,19 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 		]);
 	});
 
-	it("contains an unavailable PID probe and persists explicit unavailable truth", () => {
+	// REVERSED BY s095 (AC-6), deliberately — the daemon-level twin of the unit
+	// reversal in `core/daemon/death-reconciler.test.ts`.
+	//
+	// This used to assert that a THROWING liveness probe was persisted as
+	// `disposition: "unavailable"`. Containing the throw is still right, and is
+	// still asserted; what changed is that an observation which never happened is
+	// no longer WRITTEN DOWN as though it had. A durable `terminal` record is read
+	// by anomaly suppression, by `releaseIdentity`'s re-bind refusal and by
+	// `revive` as terminal truth — so stamping one from a failed probe manufactured
+	// exactly the false-absence this stream exists to remove, and then latched it.
+	//
+	// `unknown` now mutates nothing: no terminal, no notice, no write.
+	it("contains an unavailable PID probe and records NOTHING from it", () => {
 		const registry = new FsRegistry(home);
 		registry.write(
 			desc({
@@ -1421,11 +1472,7 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 		});
 
 		expect(() => new Daemon(home, ports, registry, new FsChannel(home)).tick()).not.toThrow();
-		expect(registry.read("pij-unavailable")?.terminal).toMatchObject({
-			disposition: "unavailable",
-			evidence: "observation-unavailable",
-			unavailableReason: "EPERM probing pid",
-		});
+		expect(registry.read("pij-unavailable")?.terminal).toBeUndefined();
 	});
 });
 
@@ -1833,5 +1880,281 @@ describe("touchDaemonHeartbeat — the tick-loop liveness rider (#40 Defect 2)",
 	it("is best-effort: a missing lock (racing teardown) never throws", () => {
 		const gonePath = join(home, "does-not-exist", "daemon.lock");
 		expect(() => touchDaemonHeartbeat(gonePath, new Date("2026-07-23T09:00:00Z"))).not.toThrow();
+
+// ── pij#180 Fix A (s100) — the tick heartbeat ────────────────────────
+// The tick used to stamp `lastTickAt` onto EVERY daemon-owned descriptor, i.e.
+// one `FsRegistry.publish()` (~5 fsync-barriered atomic writes) per seat per
+// 600ms — 132 writes/tick in production, 52% of tick self-time. These specs pin
+// the replacement: ONE heartbeat persist, ZERO registry writes, independent of
+// the owned-set size.
+
+/** Counts `write` calls on a REAL FsRegistry — the count is the claim, and the
+ *  real registry keeps the on-disk descriptor honest for AC-07. Forwards
+ *  `writer`; a double that drops it silently disarms the write law. */
+class CountingRegistry extends FsRegistry {
+	writes = 0;
+
+	override write(value: SessionDescriptor, writer?: DescriptorWriter): void {
+		this.writes += 1;
+		super.write(value, writer);
+	}
+}
+
+/** Counts persists on the REAL store, so the count and the file content are
+ *  the same object under test — a pure spy could agree with a store that never
+ *  wrote anything. */
+class CountingHeartbeat extends FsTickHeartbeatStore {
+	writes = 0;
+
+	override write(ids: readonly string[], tickAt: string): void {
+		this.writes += 1;
+		super.write(ids, tickAt);
+	}
+}
+
+/** `count` bound claude seats — daemon-owned by `daemonOwnsDelivery` (sendkeys
+ *  transport), which is the exact filter the tick loop applies. */
+function seedOwned(registry: RegistryPort, count: number): void {
+	for (let i = 0; i < count; i += 1) {
+		registry.write(
+			desc({
+				id: `pij-owned-${i}`,
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: `%${100 + i}`,
+				harnessSessionId: `sess-${i}`,
+			}),
+		);
+	}
+}
+
+/** MEASURED, not assumed. Two other per-descriptor writers run inside `tick()`
+ *  and both CONVERGE: `observeActivity` (daemon.ts:586) settles after tick 1,
+ *  and `RuntimeAxisTracker.drive` settles once `systemState` reaches its
+ *  verdict on tick 2. Instrumenting `FsRegistry.prototype.write` with five
+ *  owned seats: tick 1 = 15 writes (5 heartbeat + 5 activity + 5 axis),
+ *  tick 2 = 10 (5 heartbeat + 5 axis), tick 3 = 5 — heartbeat ONLY.
+ *  So the steady-state tick isolates the heartbeat's contribution exactly,
+ *  with no hard-coded baseline to rot: 5 owned → 5, 50 owned → 50. */
+function tickToSteadyState(daemon: Daemon): void {
+	daemon.tick();
+	daemon.tick();
+}
+
+describe("Daemon.tick heartbeat (pij#180 Fix A)", () => {
+	it("AC-02: performs zero registry writes for the tick heartbeat", () => {
+		const registry = new CountingRegistry(home);
+		seedOwned(registry, 5);
+		const daemon = new Daemon(home, fakePorts({ nowMs: NOW_MS }), registry, new FsChannel(home));
+		tickToSteadyState(daemon);
+		registry.writes = 0; // warm-up is setup, not the claim
+
+		daemon.tick();
+
+		expect(registry.writes).toBe(0);
+	});
+
+	it("AC-01: performs exactly one heartbeat persist per tick", () => {
+		const registry = new FsRegistry(home);
+		seedOwned(registry, 5);
+		const heartbeat = new CountingHeartbeat(home);
+		const daemon = new Daemon(
+			home,
+			fakePorts({ nowMs: NOW_MS }),
+			registry,
+			new FsChannel(home),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			heartbeat,
+		);
+
+		daemon.tick();
+
+		expect(heartbeat.writes).toBe(1);
+	});
+
+	it("AC-03: still exactly one persist with 50 owned descriptors", () => {
+		// The claim is INDEPENDENCE from the owned-set size — the old loop scaled
+		// 1:1 with it, which is the entire defect.
+		const registry = new FsRegistry(home);
+		seedOwned(registry, 50);
+		const heartbeat = new CountingHeartbeat(home);
+		const daemon = new Daemon(
+			home,
+			fakePorts({ nowMs: NOW_MS }),
+			registry,
+			new FsChannel(home),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			heartbeat,
+		);
+
+		daemon.tick();
+
+		expect(heartbeat.writes).toBe(1);
+	});
+
+	it("AC-03b: the one persist carries every owned id, and only owned ids", () => {
+		// A single write that dropped seats would satisfy AC-01/AC-03 while
+		// silently losing the telemetry — the count alone is not enough.
+		const registry = new FsRegistry(home);
+		seedOwned(registry, 5);
+		registry.write(desc({ id: "pij-pull", harness: "claude", deliveryMode: "pull" }));
+		registry.write(desc({ id: "pij-pi", harness: "pi" }));
+		const heartbeat = new CountingHeartbeat(home);
+		const daemon = new Daemon(
+			home,
+			fakePorts({ nowMs: NOW_MS }),
+			registry,
+			new FsChannel(home),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			heartbeat,
+		);
+
+		daemon.tick();
+
+		expect(Object.keys(heartbeat.read()).sort()).toEqual([
+			"pij-owned-0",
+			"pij-owned-1",
+			"pij-owned-2",
+			"pij-owned-3",
+			"pij-owned-4",
+		]);
+		expect(heartbeat.read()["pij-owned-0"]).toBe(new Date(NOW_MS).toISOString());
+	});
+
+	it("AC-07: the RAW on-disk descriptor no longer accrues lastTickAt", () => {
+		const registry = new FsRegistry(home);
+		seedOwned(registry, 5);
+		const daemon = new Daemon(home, fakePorts({ nowMs: NOW_MS }), registry, new FsChannel(home));
+
+		daemon.tick();
+
+		// Read the file directly — going through the registry would, from Phase 3
+		// on, be answered by the overlay and could never observe this.
+		const raw: unknown = JSON.parse(readFileSync(join(home, "pij-owned-0.json"), "utf8"));
+		expect((raw as SessionDescriptor).lastTickAt).toBeUndefined();
+	});
+
+	it("AC-07b: the heartbeat file is invisible to registry.list()", () => {
+		// It lives beside the descriptors; `readFile` admits a record only when
+		// `typeof parsed?.id === "string"`, and the wrapper has no top-level id.
+		const registry = new FsRegistry(home);
+		seedOwned(registry, 5);
+		const daemon = new Daemon(home, fakePorts({ nowMs: NOW_MS }), registry, new FsChannel(home));
+
+		daemon.tick();
+
+		expect(existsSync(join(home, TICK_HEARTBEAT_FILE))).toBe(true);
+		expect(
+			registry
+				.list()
+				.map((d) => d.id)
+				.sort(),
+		).toEqual(["pij-owned-0", "pij-owned-1", "pij-owned-2", "pij-owned-3", "pij-owned-4"]);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// s101 / pij#229 — ONE RENDERED FRAME PER PANE PER TICK, for the consumers that
+// want the tick's frame; a fresh read for the guards that want the latest one.
+//
+// `refreshPaneSignals` already captured every live pane once per tick and said
+// why: the caret tracker and the content gate must reason about the SAME frame.
+// The drive loop's activity axis — which decides `working`/`idle`, refreshes
+// `lastEventAt`, and feeds the stall watchdog — was a third consumer taking its
+// OWN later capture of the same pane in the same tick. Nothing detected the
+// disagreement.
+//
+// THE DISTINCTION THAT MAKES THIS SAFE, and it is not "fewer forks is better":
+// the flush gate, the outer drain check and the pre-send check are RACE
+// DETECTORS. Their correctness depends on reading as LATE as possible, so they
+// are deliberately left un-shared — see the capture-order note in the typing
+// test above, which pins that.
+describe("pij#229: the tick's pane frame is captured once and shared", () => {
+	it("does not re-capture a pane the signals pass already captured this tick", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-live",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const ports = fakePorts({
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, new FsRegistry(home), new FsChannel(home)).tick();
+
+		// EXACTLY two reads of %4: the signals pass, and the flush gate (a race
+		// detector, deliberately unshared). The activity axis's third read is gone —
+		// it now reads the signals pass's frame, so both reason about one frame.
+		expect(ports.captured).toEqual(["%4", "%4"]);
+	});
+
+	it("NEVER captures a pane tmux did not list — the gone-pane skip", () => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-gone",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%404",
+				harnessSessionId: "sess",
+			}),
+		);
+		// tmux lists a DIFFERENT pane, so %404 is proven absent in this same tick.
+		const ports = fakePorts({
+			paneListings: () => [{ paneId: "%4", dead: false, cursorX: 2, cursorY: 45 }],
+		});
+
+		new Daemon(home, ports, new FsRegistry(home), new FsChannel(home)).tick();
+
+		// EXACTLY ONE read of %404, and the count is the finding.
+		//
+		// The activity axis asked about %404 and got "" WITHOUT a subprocess —
+		// `capturePane` on a gone pane returns "" anyway, so that is the same answer
+		// at no cost. Measured live: 84 of 117 owned panes per tick are gone, and a
+		// capture of a gone pane costs MORE than a live one (9.05ms vs 6.70ms).
+		//
+		// THE REMAINING ONE IS THE FLUSH GATE, and it is NOT a bug here — it is a
+		// race detector, deliberately unshared. It is, however, the next thing worth
+		// removing: a guard against "is a human typing in this pane" is meaningless
+		// for a pane tmux has just reported does not exist. That is a change to a
+		// DELIVERY guard rather than an observation path, so it is named here and
+		// left alone rather than folded into pij#229.
+		expect(ports.captured.filter((pane) => pane === "%404")).toEqual(["%404"]);
+	});
+
+	it("falls back to a direct capture when there is NO live-pane list", () => {
+		// `listPanes`/the tap ports are optional. With the signals pass absent,
+		// NOTHING IS KNOWN about which panes exist — and "no list" must never be
+		// read as "the pane is absent", or an instrument's limit becomes the world's
+		// property and every pane on the machine reads as gone in one tick.
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-nolist",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%7",
+				harnessSessionId: "sess",
+			}),
+		);
+		const ports = fakePorts(); // no paneListings → no signals pass
+
+		new Daemon(home, ports, new FsRegistry(home), new FsChannel(home)).tick();
+
+		expect(ports.captured).toContain("%7");
 	});
 });

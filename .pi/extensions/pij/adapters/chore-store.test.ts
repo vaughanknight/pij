@@ -71,6 +71,17 @@ describe("FsChoreStore", () => {
 		expect(readFileSync(store.rosterPath("fleet"), "utf8")).toBe(JSON.stringify(roster("fleet")));
 	});
 
+	it("formats only the repo roster for committed review", () => {
+		const store = new FsChoreStore({ pijHome, seatId: "seat-a", repoRoot });
+		store.writeRoster("repo", roster("repo"));
+		store.writeState({ version: 1, entries: {} });
+
+		const repoText = readFileSync(store.rosterPath("repo"), "utf8");
+		expect(repoText).toContain('\n\t"chores": [\n');
+		expect(repoText.endsWith("\n")).toBe(true);
+		expect(readFileSync(store.statePath(), "utf8")).toBe('{"version":1,"entries":{}}');
+	});
+
 	it("degrades malformed roster JSON to undefined while identifying the scope as malformed", () => {
 		const store = new FsChoreStore({ pijHome, seatId: "seat-a", repoRoot });
 		store.writeRoster("repo", roster("repo"));

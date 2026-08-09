@@ -919,7 +919,22 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 			daemon.tick();
 			assertThat(unreadBodies(channel, "anomaly-watcher").length === 0, "anomaly watcher captured healthy fire");
 			const alwaysFirst = unreadBodies(channel, "always-watcher")[0];
-			assertThat(alwaysFirst !== undefined && alwaysFirst.startsWith("watchdog responsive:"), "always mode missed healthy fire");
+			// s096 task 2.5 — SPLIT, not flipped (prime's ruling, plan 096 OQ-1).
+			// (a) The surviving intent: always-mode delivers a notice for every fire.
+			//     Passes before and after the fix.
+			assertThat(
+				alwaysFirst !== undefined && alwaysFirst.startsWith("watchdog "),
+				"always mode missed the fire notice",
+			);
+			// (b) The distinction this proof could not previously make. The FIRST
+			//     daemon tick has no response outstanding, so it examined nothing —
+			//     and it asserted `watchdog responsive:`, i.e. it certified health on
+			//     the exact no-evidence fire pij#161 is about. Fails against the
+			//     pre-fix build for the opposite reason.
+			assertThat(
+				alwaysFirst !== undefined && alwaysFirst.startsWith("watchdog unknown:"),
+				"always mode graded a no-evidence fire as healthy",
+			);
 			const alwaysPath = pointerFromNotice(alwaysFirst);
 			assertThat(
 				alwaysPath.startsWith(join(home, "always-watcher", "watchdog-captures")),

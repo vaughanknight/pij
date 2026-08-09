@@ -74,7 +74,8 @@ the override flags; the plan roster remains the durable configuration truth.
   only for a shared mutable resource or convergence point.
 - Freeze immutable coder and reviewer packets with worktree, branch, parent SHA,
   composition, allowed and forbidden paths, proof commands, baton ownership, and
-  done schema.
+  done schema — plus a one-line § C10 citation so coder and reviewer replies
+  follow wire discipline from their first turn.
 - Aim the cold reviewer at the semantic/runtime surface the deterministic gates
   cannot prove. The reviewer forms findings; the orchestrator supplies constraints,
   not conclusions.

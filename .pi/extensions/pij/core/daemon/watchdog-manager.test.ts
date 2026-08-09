@@ -596,7 +596,13 @@ describe("WatchdogManager — watcher captures", () => {
 		capture: { mode: "anomaly", maxLines: 2, maxBytes: 64 },
 	};
 
-	it("writes an always-mode capture on a healthy first due fire", () => {
+	// s096 / pij#161, task 1.1b — SPLIT, not flipped. This asserted
+	// `watchdog responsive: peer` on a FIRST due fire, i.e. a fire on which
+	// `awaitingResponse` is false and no evidence is examined at all. Its PREMISE
+	// (a first fire is healthy) is precisely the defect; its INTENT (always-mode
+	// delivers a notice AND a capture for every fire) survives intact, so it is
+	// stated separately below and still passes both builds.
+	it("writes an always-mode capture on a first due fire, graded as no-evidence", () => {
 		const h = managerHarness();
 		const alwaysWatcher: WatchdogWatcher = {
 			...watcher,
@@ -608,15 +614,23 @@ describe("WatchdogManager — watcher captures", () => {
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
 
+		// (a) The surviving intent — the capture AND the notice are still delivered
+		//     on every fire. Passes before and after the fix.
 		expect(h.store.captures).toEqual([
 			expect.objectContaining({ watcherId: "owner", targetId: "peer", content: "healthy\nidle" }),
 		]);
-		const notice =
-			h.delivery.outbox.find((item) => item.message.to === "owner")?.message.body ?? "";
-		expect(notice).toContain("watchdog responsive: peer");
+		const notices = h.delivery.outbox.filter((item) => item.message.to === "owner");
+		expect(notices).toHaveLength(1);
+		// (b) The distinction the proof could not previously make: WHICH verdict was
+		//     delivered. A fire that examined nothing must positively identify the
+		//     no-evidence verdict rather than certify health. Fails pre-fix, where
+		//     this line read `watchdog responsive: peer`.
+		const notice = notices[0]?.message.body ?? "";
+		expect(notice).toContain("watchdog unknown: peer");
+		expect(notice).toContain("nothing was examined");
 	});
 
-	it("writes an anomaly pointer from the pre-injection pane and includes at most five head lines", () => {
+	it("writes an anomaly pointer from the pre-injection pane and includes at most five lines", () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcher]));
 		h.store.revisions.set("peer", 1);
@@ -639,6 +653,35 @@ describe("WatchdogManager — watcher captures", () => {
 		expect(notice).toContain(h.store.captures[0]?.path);
 		expect(notice).toContain("two\nthree");
 		expect(notice.split("\n").slice(2)).toHaveLength(2);
+	});
+
+	// Every capture test above uses maxLines <= 5, where the head and the tail of
+	// the window are the SAME five lines — so none of them could tell a
+	// head-anchored notice from a tail-anchored one, and the defect survived. This
+	// one uses a window WIDER than the notice, which is the only shape that can.
+	it("takes the NEWEST five lines of the window, so a wider window is not a staler notice", () => {
+		const h = managerHarness();
+		const wide: WatchdogWatcher = {
+			...watcher,
+			capture: { mode: "always", maxLines: 12, maxBytes: 4096 },
+		};
+		h.store.sidecars.set("peer", intervalSidecar(100, [wide]));
+		h.store.revisions.set("peer", 1);
+		// 20 lines; the capture keeps the last 12 (line09..line20).
+		h.setPane("peer", Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join("\n"));
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		expect(h.store.captures[0]?.content).toBe(
+			Array.from({ length: 12 }, (_, i) => `line${i + 9}`).join("\n"),
+		);
+		const notice =
+			h.delivery.outbox.find((item) => item.message.to === "owner")?.message.body ?? "";
+		// The newest five of that window — NOT line09..line13, which is what a
+		// front slice returned and which is 7 lines staler than the pane's tail.
+		expect(notice).toContain("line16\nline17\nline18\nline19\nline20");
+		expect(notice).not.toContain("line09");
+		expect(notice).not.toContain("line13");
 	});
 
 	it("reports capture-n/a for a paneless pi target", () => {
@@ -1753,5 +1796,381 @@ describe("a watched PA is nudged without being told to write a card", () => {
 		// owesStatusCard are separate questions and only the COPY branches on the
 		// second — so the nudge must never teach a PA to break its own ruling.
 		expect(sent[0]?.message.body).not.toContain("pij report now");
+	});
+});
+
+// ─── s096 / pij#161 + pij#148 — the verdict has three values and four meanings ──
+//
+// PRE-FIX GATE. Every test in this block is a BEHAVIOURAL criterion and every one
+// of them must FAIL against unmodified source. They are written before the fix and
+// their failure output is recorded in the plan's execution log as evidence.
+//
+// Assertion discipline (fleet relay, s097): adding a member to an existing enum
+// makes SET-LEVEL assertions uninformative by construction. So no test here
+// asserts merely "a notice was emitted", and none rests on a bare negative — a
+// bare negative is satisfied by ABSENCE (no notice at all, a delivery failure, an
+// unrelated early return) and would pass for reasons unrelated to the fix. Each
+// case positively identifies the verdict AND separately asserts delivery happened.
+describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires", () => {
+	const watcherOf = (id: string, mode: "always" | "anomaly"): WatchdogWatcher => ({
+		watcherId: id,
+		addedAt: STARTED_AT,
+		capture: { mode, maxLines: 2, maxBytes: 64 },
+	});
+
+	const noticesTo = (h: ReturnType<typeof managerHarness>, to: string): string[] =>
+		h.delivery.outbox
+			.filter((item) => item.message.to === to)
+			.map((item) => item.message.body)
+			.filter((body) => body.startsWith("watchdog "));
+
+	// AC-01 — a fire that examined NOTHING must not emit a health verdict.
+	// `responsive` is the initialiser at watchdog-manager.ts:449; on the first due
+	// fire `awaitingResponse` is false, so the evidence block never runs and the
+	// initialised value is delivered verbatim.
+	it("AC-01 does not certify health on a fire that examined no evidence", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "healthy\nidle");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		const notices = noticesTo(h, "owner");
+		// Delivery happened at all — so the verdict assertion below cannot be
+		// satisfied by absence.
+		expect(notices).toHaveLength(1);
+		// Positive identification of the no-evidence verdict, not "is not responsive".
+		expect(notices[0]).toContain("watchdog unknown: peer");
+	});
+
+	// AC-04 — PRESERVED-PROPERTY, not behavioural. The fix must not CREATE watcher
+	// noise: `anomaly` is derived as `response !== "responsive"` (a set-level
+	// predicate), so adding a member would silently make every no-evidence fire an
+	// anomaly. This CANNOT fail pre-fix — pre-fix the verdict IS `responsive`, so
+	// the property already holds. It is a regression guard on this PR's own change,
+	// never evidence of the fix. The always-watcher on the SAME fire proves the
+	// anomaly watcher's silence is SELECTIVE rather than "nothing was delivered".
+	it("AC-04 keeps a no-evidence fire out of anomaly capture, selectively", () => {
+		const h = managerHarness();
+		h.store.sidecars.set(
+			"peer",
+			intervalSidecar(100, [
+				watcherOf("always-watcher", "always"),
+				watcherOf("anomaly-watcher", "anomaly"),
+			]),
+		);
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "healthy\nidle");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		// The paired positive: the same fire DID reach a watcher.
+		expect(noticesTo(h, "always-watcher")).toHaveLength(1);
+		// The absence is therefore selective, not "nothing was delivered".
+		expect(noticesTo(h, "anomaly-watcher")).toEqual([]);
+		expect(h.store.captures.filter((c) => c.watcherId === "anomaly-watcher")).toEqual([]);
+	});
+
+	// AC-05 — pij#161's live instance: a 0-byte capture from a pane that no longer
+	// exists, presented to the watcher as corroboration of health. The real adapter
+	// returns "" for a missing pane and never throws
+	// (daemon-real-adapter.test.ts:130-136), so "" means "no usable pane evidence".
+	//
+	// SPLIT into two tests (fleet correction, 2026-08-08). `expect()` THROWS, so a
+	// pre-fix red on a multi-assertion test only ever proves THE FIRST ASSERTION
+	// THAT FIRED — everything after it never ran and is unproven. The original
+	// single AC-05 fired on the notice assertion, so its recorded red said nothing
+	// at all about the capture-write claim below, which is a SEPARATE observable
+	// behaviour: "the notice says unavailable" and "no bytes were written as
+	// content" are two different things that happened to share a test.
+	it("AC-05a reports an unreadable pane as unavailable in the notice", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", ""); // paneId is set, but the pane cannot be read
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		const notices = noticesTo(h, "owner");
+		// The delivery pin lives HERE only: it exists so the content assertion that
+		// follows it cannot be satisfied by absence.
+		expect(notices).toHaveLength(1);
+		expect(notices[0]).toContain("capture unavailable");
+	});
+
+	// AC-05b — the second, independent claim. A 0-byte read is not content, so
+	// nothing may be WRITTEN for it. This assertion never ran in the original
+	// pre-fix red (the notice assertion above threw first), so it carries no
+	// recorded red of its own and is proven by MUTATION instead — a revert-style
+	// mutant restoring `""`-as-content must turn this test red.
+	it("AC-05b writes no capture at all for an unreadable pane", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		expect(h.store.captures).toEqual([]);
+	});
+
+	// AC-06 / KF-02 — the state-corrupting half of the family. `paneChanged` is a
+	// raw string inequality, so a pane that DIES ("...text..." -> "") reads as pane
+	// ACTIVITY; with no fire outstanding that calls reportRealRecovery, which emits
+	// `responsive` to onResponse, which clears failureReason:"stalled" in the daemon.
+	//
+	// The path is only reachable with `awaitingResponse === false`, so the peer must
+	// FIRST post a real recovery — otherwise the watchdog's own attribution absorbs
+	// the pane delta and the test passes for the wrong reason (measuring a
+	// neighbour). The legitimate recovery is therefore snapshotted and excluded, so
+	// the assertion is about the pane-death tick ALONE.
+	it("AC-06 does not read a vanishing pane as recovery", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, []));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "alive\nprompt");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]); // fire #1: lastPane recorded
+
+		// Event #1 after the fire is watchdog-attributed and must not recover.
+		h.setNow(150);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(150).toISOString() })]);
+		// Event #2 is independent work — a REAL recovery, clearing awaitingResponse.
+		h.setNow(160);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(160).toISOString() })]);
+
+		const before = h.responses.length;
+		expect(h.responses.at(-1)?.response).toBe("responsive"); // the legitimate one
+
+		h.setPane("peer", ""); // the pane is gone
+		h.setNow(300);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(160).toISOString() })]);
+
+		// A disappearing pane is absence of evidence. This tick alone must not
+		// manufacture a recovery.
+		expect(h.responses.slice(before).map((r) => r.response)).not.toContain("responsive");
+	});
+
+	// AC-07 / pij#148 — a seat that ANSWERS every nudge must never be labelled
+	// stalled. The answer signal is `statusAt`, which only the peer's own
+	// `pij report` can move (registry-write.ts:90 maps it to the "cli" writer);
+	// `lastEventAt` is NOT usable — the delivery plumbing itself advances it
+	// (session.ts capture("receipt") -> persist({lastEventAt})), so the act of
+	// supervising writes the field supervision reads.
+	//
+	// The peer answers AFTER each fire (card + event advance), and the clock then
+	// runs a full interval past that answer so the next fire genuinely becomes due.
+	// Holding statusAt equal to `now` every tick instead would re-anchor the
+	// schedule forever and fire ZERO times — passing by absence, proving nothing.
+	it("AC-07 never stalls a seat whose statusAt advances after every fire", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, []));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "idle pane");
+
+		let now = 1000;
+		let answeredAt = 0;
+		for (let round = 0; round < 4; round += 1) {
+			// The fire becomes due one interval after the peer's last answer.
+			h.setNow(now);
+			h.manager.reconcile([
+				desc({
+					id: "peer",
+					semanticState: "ready",
+					...(answeredAt > 0
+						? {
+								statusAt: new Date(answeredAt).toISOString(),
+								lastEventAt: new Date(answeredAt).toISOString(),
+							}
+						: {}),
+				}),
+			]);
+			expect(h.fires.length).toBe(round + 1); // the fire really happened
+
+			// The peer answers it: files a status card and writes an event.
+			answeredAt = now + 10;
+			h.setNow(answeredAt);
+			h.manager.reconcile([
+				desc({
+					id: "peer",
+					semanticState: "ready",
+					statusAt: new Date(answeredAt).toISOString(),
+					lastEventAt: new Date(answeredAt).toISOString(),
+				}),
+			]);
+			now = answeredAt + 150;
+		}
+
+		// It answered every single fire, by its own hand. `stalled` must mean SILENT.
+		expect(h.responses.map((r) => r.response)).not.toContain("stalled");
+	});
+
+	// ── guards: the properties this PR must NOT change ───────────────────────
+
+	// PRESERVED-PROPERTY (task 1.2) — Phase 1 changes nothing for a fire that DID
+	// examine something. A silent fire still climbs and real work still recovers.
+	// Passes before and after; declared a regression guard, never evidence.
+	it("still climbs on silent fires and still recovers on real work", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, []));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "idle pane");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]); // fire #1 — examined nothing
+
+		h.setNow(250);
+		h.manager.reconcile([desc({ id: "peer" })]); // fire #2 — silent
+		h.setNow(400);
+		h.manager.reconcile([desc({ id: "peer" })]); // fire #3 — silent again
+		expect(h.responses.map((r) => r.response)).toEqual(["suspect", "stalled"]);
+
+		// The first advance after a fire is the watchdog's own receipt; the second is
+		// independent work, and that still recovers the peer.
+		h.setNow(450);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(450).toISOString() })]);
+		h.setNow(460);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(460).toISOString() })]);
+		expect(h.responses.at(-1)?.response).toBe("responsive");
+	});
+
+	// Task 2.4 — three DISTINCT reasons a watcher gets no capture, told apart.
+	// Merging "I have no pane", "I could not read the pane" and "you asked me not
+	// to look" would be the same absence-renders-as-something defect one level
+	// down, in the notice text.
+	it("tells paneless target, unreadable pane and policy-disabled capture apart", () => {
+		const paneless = managerHarness();
+		paneless.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
+		paneless.store.revisions.set("peer", 1);
+		paneless.setNow(100);
+		paneless.manager.reconcile([
+			desc({ id: "peer", harness: "pi", lifecycle: undefined, paneId: undefined }),
+		]);
+		expect(noticesTo(paneless, "owner")[0]).toContain("capture unavailable (paneless target)");
+
+		const unreadable = managerHarness();
+		unreadable.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
+		unreadable.store.revisions.set("peer", 1);
+		unreadable.setPane("peer", "");
+		unreadable.setNow(100);
+		unreadable.manager.reconcile([desc({ id: "peer" })]);
+		expect(noticesTo(unreadable, "owner")[0]).toContain(
+			"capture unavailable (pane could not be read)",
+		);
+
+		// mode:"never" still receives the notice on an anomaly, without a capture.
+		const disabled = managerHarness();
+		disabled.store.sidecars.set(
+			"peer",
+			intervalSidecar(100, [
+				{ watcherId: "owner", addedAt: STARTED_AT, capture: { mode: "never" } },
+			]),
+		);
+		disabled.store.revisions.set("peer", 1);
+		disabled.setPane("peer", "alive");
+		disabled.setNow(100);
+		disabled.manager.reconcile([desc({ id: "peer" })]); // fire #1 — no evidence
+		disabled.setNow(250);
+		disabled.manager.reconcile([desc({ id: "peer" })]); // fire #2 — suspect
+		const disabledNotice = noticesTo(disabled, "owner").at(-1) ?? "";
+		expect(disabledNotice).toContain("watchdog suspect: peer");
+		expect(disabledNotice).toContain("capture disabled by watcher policy");
+	});
+
+	// AC-09 / task 3.1 — PRESERVED-PROPERTY, and the anti-over-application guard
+	// for the whole of Phase 3. An ALIVE peer whose only activity is the observer's
+	// own — an injected pane redraw AND a delivery receipt advancing `lastEventAt`
+	// — but which never writes a status card must still reach `stalled`.
+	//
+	// This is the exact case the first Phase 3 design (keyed on `lastEventAt`)
+	// would have made UNREACHABLE, converting pij#148's false negative into a false
+	// positive. Written as a permanent test so nobody re-derives that design.
+	// Passes before and after the fix; never evidence of it.
+	it("AC-09 still stalls a wedged peer whose only activity is watchdog-caused", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, []));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "redraw-0");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]); // fire #1
+
+		// The nudge lands: the pane redraws and the pij plumbing emits a receipt,
+		// which persists lastEventAt. No model involvement, and no status card.
+		h.setPane("peer", "redraw-1");
+		h.setNow(110);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(110).toISOString() })]);
+		h.setNow(250);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(110).toISOString() })]); // fire #2
+
+		h.setPane("peer", "redraw-2");
+		h.setNow(260);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(260).toISOString() })]);
+		h.setNow(400);
+		h.manager.reconcile([desc({ id: "peer", lastEventAt: new Date(260).toISOString() })]); // fire #3
+
+		// statusAt never moved, so the peer never answered — it is silent, and
+		// silence is what `stalled` means.
+		expect(h.responses.map((r) => r.response)).toEqual(["suspect", "stalled"]);
+	});
+
+	// Task 3.7 / KF-15 — the no-op rows of the transition table are the ones that
+	// bite. An ANSWERED fire must not increment the SILENT counter, or a long
+	// answered run would bank silence and one later genuine silence would jump
+	// straight to `stalled`.
+	it("resumes the climb at suspect after a long answered run, never at stalled", () => {
+		const h = managerHarness();
+		h.store.sidecars.set("peer", intervalSidecar(100, []));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "idle pane");
+
+		let now = 1000;
+		let answeredAt = 0;
+		for (let round = 0; round < 3; round += 1) {
+			h.setNow(now);
+			h.manager.reconcile([
+				desc({
+					id: "peer",
+					...(answeredAt > 0
+						? {
+								statusAt: new Date(answeredAt).toISOString(),
+								lastEventAt: new Date(answeredAt).toISOString(),
+							}
+						: {}),
+				}),
+			]);
+			answeredAt = now + 10;
+			h.setNow(answeredAt);
+			h.manager.reconcile([
+				desc({
+					id: "peer",
+					statusAt: new Date(answeredAt).toISOString(),
+					lastEventAt: new Date(answeredAt).toISOString(),
+				}),
+			]);
+			now = answeredAt + 150;
+		}
+
+		const silent = desc({
+			id: "peer",
+			statusAt: new Date(answeredAt).toISOString(),
+			lastEventAt: new Date(answeredAt).toISOString(),
+		});
+		// One more fire consumes the last answer — still capped.
+		h.setNow(now);
+		h.manager.reconcile([silent]);
+		expect(h.responses.at(-1)?.response).toBe("suspect");
+
+		// Now the peer goes genuinely silent. The answered run banked nothing, so
+		// the climb restarts at `suspect` rather than resuming mid-air at `stalled`.
+		h.setNow(now + 150);
+		h.manager.reconcile([silent]);
+		expect(h.responses.at(-1)?.response).toBe("suspect");
+		expect(h.responses.map((r) => r.response)).not.toContain("stalled");
+
+		// And a SECOND consecutive silence does stall: the cap is a property of
+		// answering, not a blanket suppression of the climb.
+		h.setNow(now + 300);
+		h.manager.reconcile([silent]);
+		expect(h.responses.at(-1)?.response).toBe("stalled");
 	});
 });

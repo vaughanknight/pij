@@ -56,7 +56,13 @@ def pr_board():
             v = json.loads(d)
         except json.JSONDecodeError:
             die(f"unparseable-pr-view {pr}")
-        checks = sorted(c.get("conclusion") or c.get("state")
+        # A check RUN in flight carries conclusion=null and no `state` — its
+        # progress lives in `status`. Falling back only to `state` yielded None
+        # and `sorted()` then compared str against None, so the probe crashed
+        # EXACTLY when a PR had a running check, i.e. exactly when it is worth
+        # probing. Coerce to str so an in-flight PR reports rather than dies.
+        checks = sorted(str(c.get("conclusion") or c.get("state")
+                            or c.get("status") or "pending")
                         for c in (v.get("statusCheckRollup") or []))
         rows.append(f"{v['number']}:{v.get('mergeStateStatus')}:{'/'.join(checks) or 'no-checks'}")
     print(f"{len(rows)}prs " + " ".join(rows))

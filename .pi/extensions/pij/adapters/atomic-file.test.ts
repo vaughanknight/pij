@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fsyncDirBestEffort, writeJsonAtomic } from "./atomic-file.js";
+import { fsyncDirBestEffort, writeFormattedJsonAtomic, writeJsonAtomic } from "./atomic-file.js";
 
 describe("fsyncDirBestEffort", () => {
 	let home: string;
@@ -35,5 +35,11 @@ describe("fsyncDirBestEffort", () => {
 		const path = join(home, "nested", "record.json");
 		writeJsonAtomic(path, { schema_version: 1, slug: "alpha" });
 		expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ schema_version: 1, slug: "alpha" });
+	});
+
+	it("writeFormattedJsonAtomic uses Biome-compatible tabs and a trailing newline", () => {
+		const path = join(home, "nested", "reviewable.json");
+		writeFormattedJsonAtomic(path, { schema_version: 1, slug: "alpha" });
+		expect(readFileSync(path, "utf8")).toBe('{\n\t"schema_version": 1,\n\t"slug": "alpha"\n}\n');
 	});
 });

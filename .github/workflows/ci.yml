@@ -5,6 +5,22 @@ on:
     branches: [main]
   pull_request:
 
+# Supersede in-flight runs for the same ref. Merging a queue of N PRs one by one
+# starts N full runs on main, and only the last tests the tree anyone ships —
+# the other N-1 verify intermediate states that exist for seconds. Measured:
+# five sequential merges burned five runs (3 matrix jobs each) where one was
+# needed.
+#
+# Safe here because every PR is already green on its own head before it merges,
+# so a main run re-verifies the MERGE RESULT rather than the change. The cost is
+# bisect precision: if commit 3 of 5 is what actually broke main, its run is
+# cancelled and only commit 5 reports red. That still says "main is broken",
+# which is the signal this run exists to produce; the culprit is then one
+# `gh run rerun` away.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest

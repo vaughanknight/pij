@@ -58,6 +58,69 @@
   intended. Discover available models at runtime rather than hardcoding a
   provider or model id.
 
+## Is that check a POLICY or a BRAKE? (ask what REMOVING it does)
+
+A check that reads a timestamp, a threshold, or any other input is one of two
+things, and they have opposite consequences for what the change depends on:
+
+- a **policy** — it decides the outcome, so it **inherits whatever its input is
+  wrong about**;
+- a **one-directional safety interlock** — a brake, which can only ever make the
+  operation *more* conservative.
+
+**You tell them apart by asking what REMOVING the check does.** If removing it
+makes the operation do *more* (delete more, send more, kill more), it was a
+**brake**. If removing it makes the operation do something *different*, it was a
+**policy**.
+
+**A one-directional safety interlock is not a policy.**
+
+Worked example (pij#183, s101). The orphaned-tap sweep reads each file's mtime
+for a 5-minute grace, so "does it consult a timestamp?" is honestly **yes** — and
+answering "no" would have been false while answering "yes, therefore it is
+retention" would have blocked it behind an unrelated ruling (pij#204). The
+resolving question was directional:
+
+| input | decides deletion | can only spare |
+|---|---|---|
+| pane absent from `tmux list-panes` | ✅ the whole decision | |
+| file mtime younger than the grace | | ✅ veto only |
+
+**Age was never a reason to delete, only a reason not to** — remove the mtime
+check and the sweep deletes *the same set or more*. So it is a brake, the change
+depended on no ageing anchor, and it shipped independently.
+
+Say which one it is **explicitly**, in those terms, when the change is
+destructive: a reviewer looking at a 205MB deletion will otherwise assume a
+retention rule governs it and go hunting for the policy.
+
+## Searching this repo (known trap — silent, and it reads as absence)
+
+**`rg` skips hidden paths by default, and the entire extension source lives under
+`.pi/`.** So a repo-wide ripgrep sweep is structurally blind to the code you are
+almost certainly looking for, and reports it as *not present*:
+
+```
+$ rg --files --glob '**/watchdog-manager.ts'            # nothing
+$ rg --files --hidden --glob '**/watchdog-manager.ts'   # .pi/extensions/pij/core/daemon/watchdog-manager.ts
+```
+
+**Always pass `--hidden` when sweeping this repo.** `grep -r` is unaffected.
+
+Why this one bites harder than an ordinary tool default: **reading a file under
+`.pi/` by explicit path works fine**, because that bypasses the traversal skip. So
+a session can successfully open `.pi/extensions/...` minutes before a sweep returns
+nothing for the same tree, and the absence feels *corroborated* rather than
+suspicious. A tool that answers correctly when pointed and blindly when swept is
+the worst available shape for this error.
+
+Stated generally, because it is not really about ripgrep: **a probe's default scope
+gets reported as a property of the repo.** "No matches anywhere" means *no matches
+inside whatever this tool decided to look at*. Establish the scope before believing
+an absence — an empty result is the one output that carries no evidence of what it
+searched. (Found 2026-08-07 by `pij-massive-meadowlark` after three independent
+citation disputes, all of which resolved as neither party being wrong.)
+
 ## Spawning pi peers in worktrees (known trap)
 
 `pij spawn --harness pi` **dies at boot (~3s, silently) when invoked from a

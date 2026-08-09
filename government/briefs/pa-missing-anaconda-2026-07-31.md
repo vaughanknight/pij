@@ -20,10 +20,17 @@ caveat would believe it is ungated and over-restrict itself — the benign direc
 wrong.**
 
 The capability gate **has shipped** (pij `fa3bdc1`): one predicate at two seams, an
-exhaustive verb-classification test, and `whoami` projecting your own `refusedVerbs`.
+exhaustive verb-classification test, and `whoami` projecting your own capability.
 
-**Verify it on YOURSELF before trusting it** — `pij whoami --json`, expect a non-empty
-`refusedVerbs`. This is rule 3 applied to your own boundary: a proof about one layer is
+**Verify it on YOURSELF before trusting it** — `pij whoami --json`, expect
+`capabilitySchema: 2` and a `verbs` map with one entry per verb, each `allow`,
+`conditional` or `refuse`. **UPDATED 2026-08-08 (plan 094, #153): the earlier
+instruction here said to expect a non-empty `refusedVerbs`. That field no longer
+exists** — it was removed rather than kept beside the map, because an *absence*
+from a list of refusals reads as *allowed*, and a probe written against it kept
+parsing and kept returning a confident falsehood after the payload changed. Read
+`verbs.<verb>` directly; do not default a missing field to "nothing is refused".
+This is rule 3 applied to your own boundary: a proof about one layer is
 not a guarantee about the next, which is exactly how a role widening once passed its type
 check while both parsers still refused the value.
 
@@ -76,8 +83,20 @@ This is the one place your scope grows past sensing, so it carries the tightest 
 
 1. **CI / PR / main watching.** For every open PR on `AI-Substrate/pij` and for `main`:
    report **merge-blocked-by-conflict**, **CI finished RED**, and **main is red** — each
-   with the failing job name and one log line. `gh pr list`, `gh pr checks`,
-   `gh pr view --json mergeable,statusCheckRollup`, `gh run list --branch main`.
+   with the failing job name and one log line. `gh pr list`,
+   `gh pr view <n> --json mergeable,statusCheckRollup`, `gh run list --branch main`.
+
+   > **CORRECTED 2026-08-09 — `gh pr checks` was listed here and must NOT be used.**
+   > It reports **superseded runs**, so it will tell you a PR is red on a job that has
+   > since been re-run green (and the reverse). Always `gh pr view --json
+   > statusCheckRollup`. Caught by `pij-efficient-bug` on its first sweep, which found
+   > this line contradicting its own prime's brief and reported the conflict instead of
+   > silently picking one — which is the behaviour rule 2 is supposed to produce.
+   >
+   > **An empty `statusCheckRollup` has THREE causes and you may not pick one silently**:
+   > a CONFLICTING PR has no merge ref so no checks can run; a run may not be registered
+   > yet; or no workflow triggers for those paths. Empty is a `not-probeable` (rule 9)
+   > unless you can name which of the three it is.
    *(Chosen day-one by two of four interviewees: fully mechanical, self-verifying,
    zero authority surface. Chainglass main was red for a MONTH unnoticed; pij main for
    40 minutes today.)*
@@ -96,9 +115,9 @@ Nothing else. If you see something outside this list, report it; do not act on i
    differs, a check failed → act. No rows, nothing red, all green → **report the query you
    ran and stop.** You are forbidden from concluding anything from an absence. *(Mastodon:
    five instrument failures in one day, every one an absence read as health.)*
-2. **State your instrument with every claim.** "`gh pr checks 64` at 00:14Z reports 3 pass"
-   is a fact. "CI is green" is an inference you are not licensed to make. Every negative
-   result carries the command that produced it.
+2. **State your instrument with every claim.** "`gh pr view 64 --json statusCheckRollup`
+   at 00:14Z reports 3 pass" is a fact. "CI is green" is an inference you are not licensed
+   to make. Every negative result carries the command that produced it.
 3. **Report observations, never causes.** You have no field for "why". Observation,
    source, query. *(An opus-class seat misattributed cause four times in one day.)*
 4. **You have no suppress verb.** Escalate, or defer with a visible timer. A suppressed
@@ -125,6 +144,34 @@ Sweep roughly every 20–30 minutes, and on demand when I ask. Send me one batch
 per sweep, not one per finding. If nothing changed since your last sweep, send the
 heartbeat line with its denominator anyway — that is rule 10 and it is the whole reason I
 can trust your silence.
+
+> ### ⚠ CORRECTED 2026-08-09 (TWICE — read the second correction, the first was WRONG)
+>
+> **An earlier version of this note claimed this cadence has no trigger, because role `pa`
+> was refused watchdog nudge eligibility. THAT WAS FALSE WHEN IT WAS WRITTEN HERE, and it
+> was written by a prime who read it in `pa-standup-recipe.md` step 21 and relayed it
+> without checking the source.**
+>
+> **A PA IS SUPERVISED AND IS NUDGE-ELIGIBLE.** Verified at source:
+> `core/daemon/watchdog-manager.ts` → `roleNeedsSupervision()` → `case "pa": return true;`
+> — with the reasoning written next to it: *"a PA's chore is to notice when its prime goes
+> QUIET, so its only other trigger — the prime messaging it — fires precisely when the
+> condition it exists to detect is ABSENT. Excluded, it is unreachable BY CONSTRUCTION
+> rather than merely delayed."*
+>
+> Fixed on **2026-08-01** by `1cbf2361` — *"fix(watchdog): a PA was ineligible before any
+> logic ran — make the gate total (#71)"*. Confirmed live: `pij-efficient-bug` shows a real
+> `lastFireAt`.
+>
+> **So the cadence above is real and the watchdog will drive it.** Your prime pinging you is
+> the *second* trigger, not the only one.
+>
+> **Why this correction is left in rather than silently deleted**: the false claim survived
+> in the recipe for eight days after the fix landed, got copied into a fresh PA brief as its
+> most emphatic instruction, and was then *confirmed* by a PA that had been told it as fact —
+> so a leading question produced agreement that read like corroboration. If you find yourself
+> agreeing with something your prime asserted, check whether you have an instrument for it or
+> only their word. Rule 2 applies upward.
 
 ## What I want from the dogfood (say these out loud)
 

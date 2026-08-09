@@ -16,6 +16,7 @@ import {
 	readFileSync,
 	renameSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -23,8 +24,16 @@ import {
 	type ArchiveIndexEntry,
 	buildArchiveIndexEntry,
 	classifyRegistryRecord,
+	isPrunableArchiveRecord,
+	isTerminalRecord,
 	parseArchiveIndexLine,
 } from "../core/archive.js";
+import {
+	FsTickHeartbeatStore,
+	lastTickFor,
+	type TickStampPort,
+	type TickStamps,
+} from "../core/daemon/tick-heartbeat.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
 import type { ArchiveOutcome, RegistryPort } from "../core/ports.js";
 import { applyWriteLaw, type DescriptorWriter } from "../core/registry-write.js";
@@ -128,10 +137,127 @@ function isOwnerRecord(value: unknown): value is OwnerRecord {
 }
 
 export class FsRegistry implements RegistryPort {
-	constructor(private readonly pijHome: string) {}
+	/** `ticks` is a parameter property with a DEFAULT, so every existing
+	 *  `new FsRegistry(pijHome)` call site compiles and behaves unchanged while
+	 *  tests can still inject a stub. (Parameter defaults may reference an
+	 *  earlier parameter, which is what keeps this to one line.)
+	 *
+	 *  READ-ONLY by type: `TickStampPort` has exactly one method. The registry
+	 *  never writes the map and, since fix round 3, never prunes it either. */
+	constructor(
+		private readonly pijHome: string,
+		private readonly ticks: TickStampPort = new FsTickHeartbeatStore(pijHome),
+	) {}
 
 	private pathFor(id: SessionId): string {
 		return join(this.pijHome, `${id}.json`);
+	}
+
+	/** THE OVERLAY (plan 100 Phase 2).
+	 *
+	 *  `lastTickAt` no longer lives on the descriptor — the daemon writes ONE
+	 *  heartbeat file per tick instead of stamping 132 descriptors (pij#180). It
+	 *  is re-attached here so that every existing reader keeps working unchanged.
+	 *
+	 *  ACCESS-PATH DIVERGENCE — READ THIS BEFORE ADDING A CALLER.
+	 *  A descriptor's shape now depends on HOW it was read:
+	 *    · via `read()` / `list()`  → carries `lastTickAt` (this overlay)
+	 *    · via `readFile()`         → does NOT (see the note at `readFile`)
+	 *  That is deliberate and load-bearing, not an oversight: `sweepArchivable`
+	 *  reads through `readFile`, and the ruling for this plan is that archive
+	 *  ageing must NOT be held open by the tick axis. See the mirror note on
+	 *  `readFile` — a divergence documented only where it is created is invisible
+	 *  to everyone who meets it where it matters.
+	 *
+	 *  The value is synthetic and must never round-trip to disk; `scrubTick`
+	 *  below is what guarantees that.
+	 *
+	 *  WHY THE OVERLAY ALONE IS NOT ENOUGH, and where the rest of the answer is
+	 *  (fix rounds 4 and 5). This map is keyed by ID, and an id OUTLIVES an
+	 *  incarnation. Four separate strip-lists exist to stop `lastTickAt` surviving
+	 *  one — `core/revive.ts:667`, `cli.ts:2658` (adopt), `core/session.ts:167`,
+	 *  `core/current-session.ts:189` — and `cli.ts:2646` states the rule they
+	 *  encode: *"fields not named here are durable by default and survive
+	 *  process-incarnation revival."* A map is not a descriptor field, so no
+	 *  strip-list reaches it, and moving the stamp here defeated all four at once.
+	 *
+	 *  That is closed in THREE places rather than here, because the cases are
+	 *  genuinely different:
+	 *    · TERMINAL seats (dissolved, archived) — the lifecycle gate and scrub in
+	 *      `read()` below. They are not alive, so no stamp is legitimate.
+	 *    · REVIVED seats — `revive()` drops the id from the map. They ARE alive, so
+	 *      a gate cannot help; only removing the stale entry can.
+	 *    · REINCARNATED seats — a write in `publish()` that does not land on the
+	 *      SAME LIVE INCARNATION the stamp was taken of. Three ways that happens:
+	 *      nothing was hot (a clean shutdown removed the descriptor and boot
+	 *      restored it from the durable identity snapshot, never going near
+	 *      `revive()`); what was hot was a CORPSE (a public `unarchive()` can leave
+	 *      a `failed` record hot, and adopting it writes a live descriptor through
+	 *      `write()`); or the ATTACHMENT changed (`pij adopt --id` re-binds a hot
+	 *      LEGACY record — non-terminal, so the first two miss it — to a brand-new
+	 *      native session).
+	 *
+	 *  NOTE FOR ANYONE ADDING A NEW WAY TO BRING AN ID BACK TO LIFE: the third case
+	 *  is the structural one and it is why there is no list to keep current. Every
+	 *  durable write goes through `publish()`, and a write that does not land on the
+	 *  same live incarnation is by construction the first write of a new one.
+	 *
+	 *  THREE ARGUMENTS HAVE ALREADY BEEN FALSIFIED HERE BY REVIEWER PROBES, and all
+	 *  three had the same shape — a true statement about SOME cases, used as a
+	 *  statement about ALL of them:
+	 *    · round 5 enumerated METHODS ("everything routes through `revive()`",
+	 *      justified by the tombstone guard). The guard seals TERMINAL, not ABSENT.
+	 *    · round 6 enumerated WRITERS ("every hot write is `publish`/`revive`/
+	 *      `unarchive`, so covering them covers everything"). True, and it does not
+	 *      prove each writer's PRECONDITION means what it thinks: `unarchive()`
+	 *      changed the state a later `publish()` observed. ENUMERATING WRITERS DOES
+	 *      NOT ENUMERATE THE STATES A WRITER CAN OBSERVE.
+	 *    · round 7 equated NON-TERMINAL with PRESENT. `isTerminalRecord` answers
+	 *      false for a lifecycle-ABSENT record, correctly — but a legacy record can
+	 *      be re-attached to a new native session while staying non-terminal.
+	 *  Do not replace the transition test with a fourth enumeration. */
+	private overlayTick(descriptor: SessionDescriptor, stamps: TickStamps): SessionDescriptor {
+		const stamp = lastTickFor(stamps, descriptor.id);
+		return stamp === undefined ? descriptor : { ...descriptor, lastTickAt: stamp };
+	}
+
+	/** THE SCRUB (plan 100 Phase 2) — the counterpart to `overlayTick`, and the
+	 *  single most load-bearing line in this file's half of pij#180.
+	 *
+	 *  `publish()` takes `existing` from `this.read()`, and real callers spread a
+	 *  read result straight into a write — `core/cli.ts`'s `stampSenderActivity`
+	 *  does exactly that on EVERY `pij send`, in a short-lived CLI process. Without
+	 *  this strip, the overlaid stamp is persisted back and the removed fsync cost
+	 *  returns on the most latency-sensitive path in the system: the fix would have
+	 *  RELOCATED the cost rather than removed it.
+	 *
+	 *  Applied at the durable-write boundary, so it covers every caller regardless
+	 *  of what that caller spread, with zero caller changes.
+	 *
+	 *  ALSO APPLIED TO TERMINAL READS (fix round 4, P1e). The lifecycle gate in
+	 *  `read()` skips the OVERLAY, but a pre-migration descriptor carries its own
+	 *  `lastTickAt` in its JSON — 588 of them on the machine this was found on — so
+	 *  skipping the overlay left a real stamp on a dissolved seat and AC-13' was
+	 *  false exactly on the migration data this change deliberately supports. The
+	 *  same strip closes it, because "terminal result" and "durable write" want the
+	 *  identical operation. LIVE legacy descriptors are untouched: `read()` still
+	 *  honours their own stamp until a rewrite, which the spec asserts.
+	 *
+	 *  REJECTED alternative: making the overlaid property non-enumerable so spread
+	 *  and `JSON.stringify` drop it. It defeats persistence and every JSON output
+	 *  surface equally — trading a write defect for a display defect. */
+	private scrubTick(descriptor: SessionDescriptor): SessionDescriptor {
+		if (descriptor.lastTickAt === undefined) return descriptor;
+		const { lastTickAt: _synthetic, ...rest } = descriptor;
+		return rest;
+	}
+
+	/** THE REINCARNATION DROP's seams. Two callers, both in this file, both
+	 *  documented at the call site: `revive()` (terminal -> live) and `publish()`
+	 *  (no LIVE incarnation present -> live). Kept as a named method so a reader
+	 *  grepping `ticks.forget` finds the reasons, not five scattered call sites. */
+	private forgetTick(id: SessionId): void {
+		this.ticks.forget(id);
 	}
 
 	list(): SessionDescriptor[] {
@@ -141,20 +267,62 @@ export class FsRegistry implements RegistryPort {
 		} catch {
 			return [];
 		}
+		// Read the map ONCE per list(), not once per descriptor — the whole point
+		// of this change is that a fleet-sized listing costs one extra file read.
+		const stamps = this.ticks.read();
 		const out: SessionDescriptor[] = [];
 		for (const name of names) {
 			if (!name.endsWith(".json")) continue;
 			const descriptor = this.readFile(join(this.pijHome, name));
-			if (descriptor && descriptor.lifecycle !== "dissolved") out.push(descriptor);
+			if (descriptor && descriptor.lifecycle !== "dissolved")
+				out.push(this.overlayTick(descriptor, stamps));
 		}
 		return out;
 	}
 
 	/** Hot-first, then the archive by DIRECT path (plan 071 D1). The archive is
 	 *  never globbed or listed here: `<pijHome>/archive/<id>.json` is one stat,
-	 *  so a keyed lookup stays O(1) no matter how many corpses are archived. */
+	 *  so a keyed lookup stays O(1) no matter how many corpses are archived.
+	 *
+	 *  THE LIFECYCLE GATE (plan 100 Phase 2, fix round 3) — and it is the whole of
+	 *  what an incremental prune used to attempt.
+	 *
+	 *  A DISSOLVED record gets no overlay, and is SCRUBBED (fix round 4, P1e):
+	 *  skipping the overlay is not enough, because a pre-migration descriptor
+	 *  carries its own persisted `lastTickAt` and would be handed back as live.
+	 *  Before this change `list()` gated and `read()` did not, so a keyed lookup
+	 *  could hand a departed seat a live stamp — and the pre-Phase-1 code never
+	 *  could, because the tick's per-descriptor write went through `publish()`'s
+	 *  tombstone guard below. The gate restores that, and restores it where the
+	 *  descriptor and the decision are read TOGETHER, in one process: no clock, no
+	 *  marker, no cross-process ordering.
+	 *
+	 *  It gates on `dissolved` ONLY, matching `list()` exactly. `failed` is not
+	 *  excluded by `list()` and was stamped by the pre-change tick, so tightening
+	 *  here would be a silent behaviour change riding along with a fix.
+	 *
+	 *  An ARCHIVED record is scrubbed for the same reason, on the fall-through
+	 *  below. Terminal by construction, so a fresh stamp on it would be a lie about
+	 *  a corpse — and a legacy archived descriptor really does carry one.
+	 *
+	 *  THE RESIDUAL (fix rounds 5, 6 and 7). A reincarnated seat gets no inherited
+	 *  stamp at all: `revive()` drops the id for the terminal -> live transition and
+	 *  `publish()` drops it whenever no LIVE incarnation was present, so even a
+	 *  STOPPED daemon leaves nothing behind. What remains is the sanctioned residual recorded on
+	 *  the store's `forget()` — two concurrent drops of different ids can lose one
+	 *  removal, and the store's writes are best-effort so a drop may not persist at
+	 *  all — leaving a stale stamp bounded by the next heartbeat write, and in its
+	 *  absence by the staleness grace. That is AC-13' as restated, not a defect
+	 *  awaiting a fourth mechanism. */
 	read(id: SessionId): SessionDescriptor | null {
-		return this.readFile(this.pathFor(id)) ?? this.readFile(this.archivePathFor(id));
+		const hot = this.readFile(this.pathFor(id));
+		if (hot) {
+			return hot.lifecycle === "dissolved"
+				? this.scrubTick(hot)
+				: this.overlayTick(hot, this.ticks.read());
+		}
+		const archived = this.readFile(this.archivePathFor(id));
+		return archived === null ? null : this.scrubTick(archived);
 	}
 
 	/** Hot tier only — for the paths where falling through to the archive would be
@@ -182,6 +350,32 @@ export class FsRegistry implements RegistryPort {
 		writer: DescriptorWriter | undefined,
 		exact: boolean,
 	): void {
+		// THE REHYDRATION DROP's precondition, and it MUST be sampled here — before
+		// `unarchive()` below, and against the HOT tier only. See the drop itself at
+		// the foot of this method.
+		//
+		//  · before `unarchive()`, because that call MOVES an archived record into
+		//    the hot tier. Sampling after it would see the record it just created and
+		//    conclude a descriptor was already present, so an archive -> live write
+		//    would skip the drop — which is precisely the transition that most needs
+		//    it (`unarchive` handles `failed` records too, and the tombstone guard
+		//    below only refuses `dissolved`).
+		//  · hot-only, because `read()` falls through to the archive. An archived
+		//    record is NOT a present incarnation; treating it as one is the same
+		//    mistake with a different spelling.
+		//  · NON-TERMINAL-only, because a `dissolved`/`failed` record is not a
+		//    present incarnation either — see round 7 at the foot of this method.
+		//
+		// Costs one extra small `readFileSync`. `writeAtomic` below carries two
+		// fsync barriers (file + directory), so this is well under 1% of a publish
+		// and is not worth trading for an `existsSync` — a stat cannot tell an
+		// unparseable descriptor from a present one, and would leave the stale stamp
+		// standing on exactly the corrupt-then-rewritten record nobody would check.
+		//
+		// `isTerminalRecord` is IMPORTED from `core/archive.ts` rather than
+		// re-spelled here: it is the codebase's one definition of "has no future",
+		// and a second copy would drift the first time a lifecycle is added.
+		const priorHot = this.readHot(descriptor.id);
 		// Any write that brings a record back to life pulls it out of the archive
 		// first (review §2.2) — otherwise the id exists in BOTH tiers, the live
 		// descriptor's dataDir points into `archive/`, and `pij list --archived`
@@ -215,11 +409,148 @@ export class FsRegistry implements RegistryPort {
 		const identity = this.claimDescriptorIdentity(descriptor);
 		if (!identity.ok) throw new Error(identity.message);
 		try {
-			this.writeAtomic(this.pathFor(descriptor.id), descriptor);
+			this.writeAtomic(this.pathFor(descriptor.id), this.scrubTick(descriptor));
 		} catch (error) {
 			if (identity.value) this.rollbackIdentity(identity.value.createdPaths);
 			throw error;
 		}
+		// THE REINCARNATION DROP (plan 100 Phase 2, fix rounds 6, 7 and 8).
+		//
+		// ONE PREDICATE: keep the map stamp only when the write lands on the SAME
+		// LIVE INCARNATION that the stamp was taken of. Three conjuncts, each added
+		// by a review round that falsified the previous one's sufficiency:
+		//
+		//   priorHot !== null           — round 6: absent means the stamp predates it
+		//   && !isTerminalRecord(prior) — round 7: a corpse is not a present incarnation
+		//   && same harnessSessionId    — round 8: nor is a different ATTACHMENT
+		//
+		//   prior hot        | incoming              | drop | why
+		//   -----------------|-----------------------|------|-------------------------
+		//   absent           | anything              | yes  | rehydration (round 6)
+		//   terminal         | anything              | yes  | a corpse is not present
+		//   live, sid X      | sid Y                 | yes  | re-attached (round 8)
+		//   live, no sid     | no sid                | NO   | legacy state update
+		//   live, sid X      | sid X                 | NO   | the assignment swap
+		//   live             | terminal, same sid    | NO   | `failed` overlay parity
+		//
+		// WHY IT IS A TRANSITION AND NOT A METHOD. Fix round 5 put the drop in
+		// `revive()` on the claim that `revive()` is the only door from terminal OR
+		// ABSENT back to live, justified by the tombstone guard above. The guard
+		// covers TERMINAL -> live. It cannot cover ABSENT -> live, because there is
+		// no tombstone to guard: a clean shutdown REMOVES the descriptor, the durable
+		// identity snapshot (`resolveIdentitySnapshot`) restores it, and
+		// `PijSession.boot()` sees no hot record, so `wasDissolved` is false and it
+		// takes its else branch to `writeExact()` — never `revive()`. The old map
+		// entry survived and overlaid the NEW incarnation. Putting the drop in
+		// `writeExact()` instead would be an enumeration wearing a different hat, and
+		// a wrong one: `core/cli.ts`'s node-truth denorm update is a `writeExact` on
+		// a LIVE seat, so a method-shaped drop would make a healthy seat read stale
+		// on every state report. This condition cannot fire there — that path has a
+		// live hot descriptor.
+		//
+		// THE METHOD CORRECTION, WHICH IS THE PART WORTH KEEPING. Round 6 argued
+		// completeness from a DESTINATION SEARCH: every hot-descriptor write passes
+		// through `publish()`, `revive()`, or `unarchive()`, therefore the three are
+		// covered, therefore done. A reviewer falsified it with a probe. The missed
+		// case was not a fourth writer — it was `unarchive()` changing the
+		// PRECONDITION of a later `publish()`: `runRevive()` unarchives BEFORE it
+		// validates its plan, so a failed plan leaves a `failed` record hot; `list()`
+		// deliberately includes `failed` so the daemon stamps it; `runAdopt()` treats
+		// only `dissolved` as a revive, so it reattaches through `write()` — and the
+		// round-6 predicate saw a hot descriptor and skipped the drop.
+		//
+		//   ENUMERATING WRITERS DOES NOT ENUMERATE THE STATES A WRITER CAN OBSERVE.
+		//
+		// If you are here to simplify this, you will re-derive the three-writer
+		// argument and reach the same wrong conclusion. The argument is sound and
+		// answers a different question than the one that matters.
+		//
+		// THE PREDICATE IS DELIBERATELY BLIND TO THE INCOMING LIFECYCLE. For the
+		// ABSENT row that is exact rather than merely safe: a stamp can only be in
+		// the map because a tick saw this id in `list()`, which reads HOT
+		// descriptors, so if nothing was hot a moment ago any stamp necessarily
+		// predates this descriptor's presence. For the TERMINAL row it is an
+		// over-drop in one sub-case — terminal -> terminal, a write to a corpse that
+		// stays a corpse, keeps no stamp it was entitled to keep.
+		//
+		// PRICED, NOT REPAIRED. A later heartbeat write ends the inheritance; with no
+		// daemon running there is no such write, and the seat reads `unverified`
+		// until one runs. That is conservative and accepted — `bind-failed` sends are
+		// refused anyway, so nothing depends on that stamp being fresh.
+		//
+		// AN EARLIER VERSION OF THIS COMMENT CLAIMED THE REPAIR, AND REVIEW
+		// FALSIFIED IT. It said the writes reaching this row are all the daemon's own
+		// latched transition writes, so the daemon is running by construction and
+		// `list()` re-stamps within one 600ms tick. The counter-example is
+		// `executeAgentReport()` (`core/agent-peer.ts`), which admits `failed` and
+		// stamps `reportedAt` through `registry.write()` from the PEER's process —
+		// a production failed -> failed write with no daemon involved at all. The
+		// claim is recorded here as DELETED rather than removed silently, because a
+		// justification that vanishes without trace gets re-derived by the next
+		// reader.
+		//
+		// What the row actually rests on is the ASYMMETRY, which needs no mechanism:
+		// over-dropping costs one `unverified` read; under-dropping is a false-fresh
+		// lie about a seat the daemon never ticked, and with a stopped daemon it
+		// stands for the whole staleness grace.
+		//
+		// A first-ever spawn takes this branch too, harmlessly: `forget()` skips its
+		// write entirely when the id is not in the map, so it costs one read.
+		//
+		// THE THIRD CONJUNCT — THE ATTACHMENT (round 8). "Non-terminal" is still not
+		// "the same incarnation". `isTerminalRecord` answers FALSE for a
+		// LIFECYCLE-ABSENT record, by design and correctly — an ordinary legacy state
+		// update is not a new incarnation, and classifying every legacy descriptor as
+		// terminal would false-positive on all of them. But `pij adopt --id` may
+		// re-attach that same hot legacy record to a brand-new native session,
+		// writing a new `harnessSessionId` with `lifecycle: "bound"` through
+		// `write()`, and the round-7 predicate saw non-terminal and kept the stamp.
+		//
+		// `harnessSessionId` IS the incarnation identity for the harnesses this map
+		// holds: `applyBinding` (`core/binding.ts`) defines the binding as
+		// `pij-id ↔ harnessSessionId ↔ pane ↔ cwd`, so when it changes, the thing the
+		// stamp was a receipt FOR is gone. Compared against the POST-MERGE
+		// descriptor, not the caller's proposal — `harnessSessionId` is uncontested
+		// in the write law today, so the two are identical, but a future owner entry
+		// would make the merged value the truthful one and the raw proposal a
+		// spurious drop.
+		//
+		// TWO EARLIER IDENTITY CANDIDATES FAILED HERE AND ARE RECORDED SO THEY ARE
+		// NOT RETRIED: `revivePendingAt` (round 4) exists on the revive path ONLY, so
+		// it would have fixed one boundary of four; `pid` (round 5) is the PANE
+		// SHELL's, identical across a relaunch, so it cannot see a re-attach at all.
+		//
+		// KNOWN OVER-DROP, and it is not the one the reviewer warned about: the
+		// daemon's own spawn-bind (`core/daemon/loop.ts`) sets `harnessSessionId` on
+		// a LIVE `pending` seat that is the same incarnation, so that one-time
+		// pending -> bound write drops a stamp it could have kept. The reviewer's
+		// warned-about false positive is legacy -> legacy (`undefined` ->
+		// `undefined`), which compares EQUAL and is kept; there is a criterion for it.
+		//
+		// PRICED, NOT REPAIRED — the same words as the terminal row above, and for
+		// the same reason. A later heartbeat write ends the inheritance; with no
+		// daemon running there is no such write, and the seat reads `unverified`
+		// until one runs.
+		//
+		// THIS ONE ALSO CLAIMED A REPAIR, AND THE CLAIM WAS FALSIFIED BY REVIEW. It
+		// argued that because the write is performed BY the daemon, a tick is ≤600ms
+		// away by construction. A WRITE HAPPENING INSIDE THE DAEMON DOES NOT MAKE
+		// ANOTHER TICK HAPPEN, and the ordering makes it worse rather than neutral:
+		// `Daemon.tick()` writes the heartbeat at its BEGINNING, before it drives and
+		// binds pending sessions — so the bind below removes the very entry that the
+		// SAME tick just wrote. The next tick is a `setInterval` callback, not a
+		// guarantee; a stop or crash after this one leaves the bound seat unverified
+		// until some daemon runs again.
+		//
+		// It is recorded rather than deleted because it is not a weaker form of the
+		// terminal row's falsified argument — it is THE SAME ARGUMENT, and the next
+		// reader who notices the writer and the repairer are the same process will
+		// reach for it again.
+		const sameLiveIncarnation =
+			priorHot !== null &&
+			!isTerminalRecord(priorHot) &&
+			priorHot.harnessSessionId === descriptor.harnessSessionId;
+		if (!sameLiveIncarnation) this.forgetTick(descriptor.id);
 		// Once the live descriptor is durable, never roll its identity claim back;
 		// a snapshot failure is repairable, an unowned bound descriptor is not.
 		this.syncIdentitySnapshot(descriptor);
@@ -250,8 +581,27 @@ export class FsRegistry implements RegistryPort {
 			// `buildRevivedDescriptor` carries the prior incarnation's dataDir
 			// verbatim, which for an archived seat points into `archive/`.
 			const revived = this.withHotPaths(descriptor);
-			this.writeAtomic(this.pathFor(revived.id), revived);
+			this.writeAtomic(this.pathFor(revived.id), this.scrubTick(revived));
 			this.syncIdentitySnapshot(revived);
+			// THE REINCARNATION DROP (plan 100 Phase 2, fix round 5). A revived seat
+			// is genuinely ALIVE, so the lifecycle gate in `read()` cannot help: it
+			// passes, and the map would hand it the PREVIOUS incarnation's stamp.
+			// `core/revive.ts:667` strips `lastTickAt` from the descriptor for exactly
+			// this reason; without this line the map re-attaches what revive
+			// deliberately removed, and with a stopped daemon there is no next
+			// heartbeat write to end it — a real `send` reported `queued` /
+			// `daemonTickStale: false` for a seat the daemon had never ticked.
+			//
+			// It covers the TERMINAL -> live transition, which reaches here from four
+			// call sites (`cli.ts:1880`, `:1984`, `:3078`, `core/session.ts:248`).
+			// Round 5 also claimed it covered ABSENT -> live, on the strength of
+			// `publish()`'s tombstone guard; that was FALSE — there is no tombstone
+			// when the descriptor is simply gone — and the absent case is now handled
+			// structurally in `publish()`, on the transition rather than the method.
+			//
+			// The accepted cost is recorded on `forget()` in the store, in the terms
+			// it was ruled.
+			this.forgetTick(revived.id);
 			return ok(undefined);
 		} catch (error) {
 			return err("E-NOREG", `cannot revive '${descriptor.id}': ${String(error)}`);
@@ -269,7 +619,7 @@ export class FsRegistry implements RegistryPort {
 		const identity = this.claimDescriptorIdentity(descriptor);
 		if (!identity.ok) return err(identity.code, identity.message);
 		const finalPath = this.pathFor(descriptor.id);
-		const published = this.publishNoReplace(finalPath, descriptor);
+		const published = this.publishNoReplace(finalPath, this.scrubTick(descriptor));
 		if (!published.ok) {
 			if (identity.value) this.rollbackIdentity(identity.value.createdPaths);
 			return published;
@@ -606,7 +956,7 @@ export class FsRegistry implements RegistryPort {
 			eventsPath: join(archivedDir, "events.ndjson"),
 		};
 		try {
-			this.writeAtomic(this.archivePathFor(id), archived);
+			this.writeAtomic(this.archivePathFor(id), this.scrubTick(archived));
 			appendFileSync(
 				this.archiveIndexPath(),
 				`${JSON.stringify(buildArchiveIndexEntry(hot, nowMs))}\n`,
@@ -672,6 +1022,45 @@ export class FsRegistry implements RegistryPort {
 	 *
 	 *  Named `unarchive`, not `revive`: `revive(descriptor)` is s066's relaunch verb.
 	 *  This moves storage tiers and starts no process. */
+	/** Delete the wreckage of archived records older than
+	 *  {@link ARCHIVE_PRUNE_AFTER_MS}, KEEPING their `index.jsonl` tombstone.
+	 *
+	 *  The index is deliberately not rewritten — it is append-only, one line per
+	 *  record, and it is the thing that makes a pruned seat still ANSWERABLE ("did
+	 *  it exist, when did it die, how did it end") for near-zero disk. What goes is
+	 *  the descriptor file and the session directory, which are the gigabyte.
+	 *
+	 *  Reports bytes as well as counts because a count alone cannot distinguish
+	 *  "pruned 2,000 empty stubs" from "pruned the 94 MB seat somebody wanted". */
+	prunePrunableArchive(nowMs: number): { readonly pruned: number; readonly bytes: number } {
+		let names: string[];
+		try {
+			names = readdirSync(this.archiveDir());
+		} catch {
+			return { pruned: 0, bytes: 0 };
+		}
+		let pruned = 0;
+		let bytes = 0;
+		for (const name of names) {
+			if (!name.endsWith(".json")) continue;
+			if (name === "index.jsonl") continue; // the tombstone ledger — never pruned
+			const recordPath = join(this.archiveDir(), name);
+			const descriptor = this.readFile(recordPath);
+			if (!descriptor) continue;
+			if (!isPrunableArchiveRecord(descriptor, nowMs)) continue;
+			const dir = join(this.archiveDir(), descriptor.id);
+			bytes += directoryBytes(dir) + fileBytes(recordPath);
+			try {
+				rmSync(dir, { recursive: true, force: true });
+				rmSync(recordPath, { force: true });
+				pruned += 1;
+			} catch {
+				// A record we cannot remove stays; the next sweep retries it.
+			}
+		}
+		return { pruned, bytes };
+	}
+
 	unarchive(id: SessionId): SessionDescriptor | null {
 		const archived = this.readFile(this.archivePathFor(id));
 		if (!archived) return null;
@@ -695,7 +1084,7 @@ export class FsRegistry implements RegistryPort {
 				return null;
 			}
 		}
-		this.writeAtomic(this.pathFor(id), revived);
+		this.writeAtomic(this.pathFor(id), this.scrubTick(revived));
 		rmSync(this.archivePathFor(id), { force: true });
 		return revived;
 	}
@@ -1044,7 +1433,7 @@ export class FsRegistry implements RegistryPort {
 				`identity ${descriptor.harness}:${descriptor.harnessSessionId} belongs to ${tuple.value.pijId}, not ${descriptor.id}`,
 			);
 		}
-		const record: IdentityRecord = { ...tuple.value, snapshot: descriptor };
+		const record: IdentityRecord = { ...tuple.value, snapshot: this.scrubTick(descriptor) };
 		const owner = this.claimIdentityRecord(this.identityOwnerPath(descriptor.id), record);
 		if (!owner.ok) throw new Error(owner.message);
 		if (!sameIdentity(owner.value.record, record)) {
@@ -1126,6 +1515,23 @@ export class FsRegistry implements RegistryPort {
 		writeJsonAtomic(path, value);
 	}
 
+	/** Raw descriptor read — NO tick overlay. THIS IS THE OTHER END OF THE
+	 *  ACCESS-PATH DIVERGENCE documented on `overlayTick`.
+	 *
+	 *  A descriptor obtained here has `lastTickAt === undefined` even when the
+	 *  heartbeat map holds a fresh stamp for its id. If you are debugging a
+	 *  "the tick stamp vanished" symptom, this is almost certainly why: use
+	 *  `read()`/`list()` when you want the reader-facing shape.
+	 *
+	 *  It is load-bearing that `sweepArchivable` reads through here (plan 100,
+	 *  ruling (a)): archive ageing must anchor on the REAL activity axis, so a
+	 *  control-plane peer's 600ms tick can no longer hold a 60-hour-dead record
+	 *  in the hot tier forever. Moving the overlay into this method would silently
+	 *  reinstate that — and would look like a tidy-up.
+	 *
+	 *  A file is admitted as a descriptor only when it has a string `id`, which is
+	 *  also what keeps `tick-heartbeat.json` (deliberately shaped without one)
+	 *  invisible to `list()`. */
 	private readFile(path: string): SessionDescriptor | null {
 		try {
 			const parsed = JSON.parse(readFileSync(path, "utf8")) as SessionDescriptor;
@@ -1172,4 +1578,35 @@ function descriptorOwner(record: ReservationRecord | DescriptorOwnerRecord): Des
 		ownerPid: record.ownerPid,
 		createdAt: record.createdAt,
 	};
+}
+
+/** Bytes on disk under `dir`, best-effort. Reported so a prune log can say WHAT
+ *  it reclaimed rather than only how many records it touched — 2,000 empty stubs
+ *  and one 94 MB seat are the same count and very different events. */
+function directoryBytes(dir: string): number {
+	let total = 0;
+	let entries: string[];
+	try {
+		entries = readdirSync(dir);
+	} catch {
+		return 0;
+	}
+	for (const entry of entries) {
+		const full = join(dir, entry);
+		try {
+			const stat = statSync(full);
+			total += stat.isDirectory() ? directoryBytes(full) : stat.size;
+		} catch {
+			// Unreadable entry contributes nothing rather than failing the sweep.
+		}
+	}
+	return total;
+}
+
+function fileBytes(path: string): number {
+	try {
+		return statSync(path).size;
+	} catch {
+		return 0;
+	}
 }

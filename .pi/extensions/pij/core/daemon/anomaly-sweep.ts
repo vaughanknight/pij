@@ -9,7 +9,13 @@
 // re-alerts and fresh evidence (a new unverified done after a verify) alerts
 // again. Alert once, act NEVER — remediation is a human/prime decision.
 
-import { type Anomaly, detectAnomalies } from "../anomalies.js";
+import {
+	type ActivityCredibility,
+	type ActivityCredibilityInput,
+	type Anomaly,
+	detectAnomalies,
+	type WatchdogSubscriptionInputs,
+} from "../anomalies.js";
 import type { AssignmentStorePort, ProjectStorePort, SpineLogPort } from "../platform/ports.js";
 import type { DeliveryPort, RegistryPort } from "../ports.js";
 import { effectiveParent } from "../tree.js";
@@ -27,6 +33,24 @@ export interface AnomalySweepDeps {
 	readonly projectStore?: ProjectStorePort;
 	/** Honest-drop surface: one line per recipient-less transition. */
 	readonly log?: (line: string) => void;
+	/** Watchdog wiring as a PLAIN PROJECTION, supplied per tick.
+	 *
+	 *  Without this the sweep called `detectAnomalies` with no `watchdog` at all,
+	 *  so `inert-subscription` had NEVER fired in the daemon in any of its forms
+	 *  — it surfaced only when a human ran `pij anomalies`. A detector that only
+	 *  runs when someone already suspects a problem is not an alarm.
+	 *
+	 *  A SUPPLIER rather than a value because the projection changes every tick,
+	 *  and a projection rather than a store handle so the sweep stays as free of
+	 *  I/O plumbing as it is today (the `cli.ts` precedent builds the same shape
+	 *  at the I/O edge). Optional: absent ⇒ behaviour byte-identical to today. */
+	readonly watchdog?: () => WatchdogSubscriptionInputs | undefined;
+	/** `s095`'s activity-credibility predicate, injected rather than imported —
+	 *  `core/state.ts` is another stream's file. Optional by construction, and
+	 *  absent means the dead-recipient row CANNOT fire: "wiring absent" and "no
+	 *  row" are deliberately the same observable, so a half-wired call site is
+	 *  detectable rather than a silent half-detector. */
+	readonly activityCredibility?: (input: ActivityCredibilityInput) => ActivityCredibility;
 }
 
 export interface AnomalySweepSummary {
@@ -53,12 +77,30 @@ export class AnomalySweep {
 		const d = this.deps;
 		const descriptors = d.registry.list();
 		const assignments = d.assignmentStore.list();
+		const watchdog = d.watchdog?.();
 		const anomalies = detectAnomalies({
 			descriptors,
 			assignments,
 			events: d.spineLog.read(),
 			nowMs: d.now(),
+			// Resolves the watchers `list()` cannot: a `lifecycle: "dissolved"`
+			// seat is deliberately omitted from the hot tier, so #154's own
+			// motivating case — `pij-continuing-ermine` watched only by the
+			// dissolved `pij-respectable-starfish` — bucketed as `unknown` and
+			// produced no row. `read()` is hot-first then ONE direct archive path
+			// (`adapters/fs-registry.ts`), never a glob, and the detector asks only
+			// for the watcher ids it already holds and only on a hot-tier miss.
+			//
+			// Supplied here rather than injected as another optional dep ON PURPOSE:
+			// the sweep already owns this registry, and an optional wire is one more
+			// thing a future call site can forget — which is the exact class of
+			// defect this stream exists to remove.
+			resolveRetired: (id) => d.registry.read(id) ?? undefined,
 			...(d.idleThresholdMs === undefined ? {} : { idleThresholdMs: d.idleThresholdMs }),
+			...(watchdog === undefined ? {} : { watchdog }),
+			...(d.activityCredibility === undefined
+				? {}
+				: { activityCredibility: d.activityCredibility }),
 		});
 		const byId = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
 		const byAssignment = new Map(assignments.map((assignment) => [assignment.id, assignment]));

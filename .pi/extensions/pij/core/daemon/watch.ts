@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import type { Change } from "../../../file-watch-notify/store.js";
@@ -15,6 +14,7 @@ import {
 	nodeWatchDeps,
 	type WatchDeps,
 } from "../../../file-watch-notify/watcher.js";
+import { resolvePijHome } from "../agents/paths.js";
 import type { DeliveryPort } from "../ports.js";
 import type { SessionDescriptor, SessionId, WatchSubscription } from "../types.js";
 import { DEFAULT_PEER_WATCH_DEBOUNCE_MS, renderWatchNotice } from "../watch-subscription.js";
@@ -64,7 +64,7 @@ export class PeerWatchManager {
 
 	constructor(private readonly deps: PeerWatchManagerDeps) {
 		this.git = deps.git ?? nodeGitPort();
-		this.pijHome = deps.pijHome ?? process.env.PIJ_HOME ?? join(homedir(), ".pij");
+		this.pijHome = deps.pijHome ?? resolvePijHome();
 	}
 
 	reconcile(sessions: readonly SessionDescriptor[]): void {

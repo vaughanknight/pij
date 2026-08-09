@@ -23,7 +23,9 @@ import {
 	renderWaitReceipt,
 	renderWaitTimeout,
 } from "./cli.js";
+import { buildInitInjection } from "./harness/claude.js";
 import { parseBriefAckBody, parseReceiptBody, receiptBody } from "./message.js";
+import { PA_VERB_CLASSIFICATION, PA_WATCHDOG_CONDITION } from "./orchestration/pa-capability.js";
 import { PROJECT_SLUG_MAX_LENGTH, type Project, type SpineEvent } from "./platform/types.js";
 import type { DeliveryPort } from "./ports.js";
 import {
@@ -38,6 +40,7 @@ import {
 	type SessionDescriptor,
 	type WatchdogSidecar,
 } from "./types.js";
+import { DEFAULT_WATCHDOG_EXEMPT_TTL_MS, reconcileWatchdogExemption } from "./watchdog.js";
 
 const T = Date.parse("2026-06-16T12:00:00.000Z");
 const recent = new Date(T - 2000).toISOString();
@@ -742,9 +745,19 @@ describe("dispatch send", () => {
 		});
 	});
 
-	it("--file attaches a reference-passing entry; plain text carries NO attachments key", () => {
+	// CONTRACT CHANGE (plan 093 T006, issue pij#132). This test used to pin
+	// "attachment-only always delivers an empty body" as correct for EVERY
+	// target. That is what let `--file` report `queued`/`delivered` while a
+	// pushed peer received the literal string `[pij from <id>] ` and nothing
+	// else. The contract is now CAPABILITY-AWARE, not global (plan 093 D2):
+	// reference-passing still delivers to a target that can render attachments
+	// (pull-inbox / telegram — the shipped Plan-026 capability), and is refused
+	// for a target that cannot. The third assertion — a plain text send carries
+	// no `attachments` key at all — is unchanged and deliberately kept.
+	it("--file attaches a reference-passing entry for an attachment-capable (pull) target", () => {
 		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
-		// attachment-only (empty body) with a caption
+		// attachment-only (empty body) with a caption — `w3` has no paneId and no
+		// deliveryMode, so its effective mode is `pull`: it renders attachments.
 		dispatch(
 			{ verb: "send", to: "w3", file: "/tmp/chart.png", caption: "done", wait: false, json: false },
 			d,
@@ -767,6 +780,381 @@ describe("dispatch send", () => {
 		// Mutation: always set `attachments` and this toEqual flips RED.
 		dispatch({ verb: "send", to: "w3", text: "just text", wait: false, json: false }, d);
 		expect(d.delivery.outbox[2]?.message).toEqual({ from: "a1", to: "w3", body: "just text" });
+	});
+
+	// ── plan 093: the empty-payload guard (pij#132) ──────────────────────────
+	//
+	// Every refusal case asserts `delivery.outbox` length UNCHANGED. That is the
+	// assertion that distinguishes a refusal from a delivery — an exit-code-only
+	// assertion would still pass if the message went out and the process merely
+	// complained afterwards. Against the pre-fix tree each of these is RED
+	// because the outbox grows by one (recorded in
+	// docs/plans/093-send-path/assets/execution.log.md).
+	describe("send: empty-payload guard (plan 093, pij#132)", () => {
+		const pushDescs = () => [
+			desc({ id: "a1" }),
+			desc({ id: "w3", deliveryMode: "push", paneId: "%9" }),
+		];
+
+		it("AC-01: attachment-only to a PUSH target is refused with E-EMPTY and nothing is delivered", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+			const before = d.delivery.outbox.length;
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					file: "/tmp/chart.png",
+					caption: "done",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			// The control assertion, FIRST on purpose: against the pre-fix tree the
+			// outbox grows by one here. An exit-code assertion alone would still
+			// pass for a code that delivered the message and complained afterwards.
+			expect(d.delivery.outbox).toHaveLength(before);
+			expect(r.exitCode).toBe(2);
+			expect(r.stderr).toContain("E-EMPTY");
+			expect(r.stdout).toBe("");
+			// AC-13: the refusal names the safe path.
+			expect(r.stderr).toContain("--body-file");
+		});
+
+		it("AC-02: an explicit empty text body is refused identically (flag shape is irrelevant)", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const r = dispatch({ verb: "send", to: "w3", text: "", wait: false, json: false }, d);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.exitCode).toBe(2);
+			expect(r.stderr).toContain("E-EMPTY");
+		});
+
+		it("AC-02: an empty text body to a PULL target is refused too (no attachment to carry it)", () => {
+			const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+			const r = dispatch({ verb: "send", to: "w3", text: "", wait: false, json: true }, d);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.exitCode).toBe(2);
+			expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-EMPTY" });
+		});
+
+		it("AC-03: the guard lives in dispatch, so a direct caller inherits it (no receipt emitted)", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const r = dispatch({ verb: "send", to: "w3", text: "", wait: false, json: true }, d);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.stdout).toBe("");
+			expect(r.follow).toBeUndefined();
+		});
+
+		it("AC-04: broadcast refuses an empty text body before ANY target is delivered to", () => {
+			const d = deps({
+				self: "a1",
+				descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+			});
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					targets: ["w3", "z9"],
+					broadcast: true,
+					text: "",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			expect(d.delivery.outbox).toHaveLength(0);
+			expect(r.exitCode).toBe(2);
+			expect(r.stderr).toContain("E-EMPTY");
+		});
+
+		it("AC-04: broadcast with an empty text body is also refused at parse", () => {
+			expect(parseArgs(["send", "--to", "w3", "--to", "z9", ""])).toMatchObject({
+				ok: false,
+				code: "E-EMPTY",
+			});
+		});
+
+		it("AC-05: --command sends are exempt — they legitimately carry an empty body", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const r = dispatch(
+				{ verb: "send", to: "w3", command: "compact", wait: false, json: true },
+				d,
+			);
+
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox).toHaveLength(1);
+			expect(d.delivery.outbox[0]?.message).toMatchObject({ body: "", command: "compact" });
+		});
+
+		it("AC-06: attachment-only to a PULL target still delivers (Plan-026 capability preserved)", () => {
+			const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					file: "/tmp/chart.png",
+					caption: "done",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox).toHaveLength(1);
+			expect(d.delivery.outbox[0]?.message).toEqual({
+				from: "a1",
+				to: "w3",
+				body: "",
+				attachments: [{ path: "/tmp/chart.png", caption: "done" }],
+			});
+		});
+
+		it("AC-07: text + an unrenderable attachment delivers the text and SAYS the reference was dropped", () => {
+			const d = deps({ self: "a1", descs: pushDescs() });
+
+			const human = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					text: "see this",
+					file: "/tmp/chart.png",
+					wait: false,
+					json: false,
+				},
+				d,
+			);
+
+			expect(human.exitCode).toBe(0);
+			expect(d.delivery.outbox).toHaveLength(1);
+			expect(d.delivery.outbox[0]?.message).toMatchObject({ body: "see this" });
+			expect(human.stderr).toContain("/tmp/chart.png");
+			expect(human.stderr).toContain("cannot render attachments");
+			// AC-13: the warning names the safe path too.
+			expect(human.stderr).toContain("--body-file");
+
+			const jsonDeps = deps({ self: "a1", descs: pushDescs() });
+			const machine = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					text: "see this",
+					file: "/tmp/chart.png",
+					wait: false,
+					json: true,
+				},
+				jsonDeps,
+			);
+			expect(machine.exitCode).toBe(0);
+			const payload = JSON.parse(machine.stdout) as { attachmentWarning?: string };
+			expect(payload.attachmentWarning).toContain("/tmp/chart.png");
+		});
+
+		// AC-12 lives HERE rather than beside `buildInitInjection` in
+		// core/harness/claude.test.ts because that spec is outside this change's
+		// allowed scope this wave. The subject under test is still the real
+		// function, imported directly.
+		it("AC-12: the boot message every spawned peer receives teaches the SAFE form too", () => {
+			const child = buildInitInjection("pij-child", false, "pij-parent");
+
+			expect(child.body).toContain("--body-file");
+			expect(child.body).toContain("RELAYED");
+			expect(child.body).toContain("expanded by YOUR shell");
+			// The quoted reply form is still taught — it is correct for text the
+			// peer authors itself. This is additive labelling, not a removal.
+			expect(child.body).toContain('pij send pij-parent "<text>"');
+		});
+
+		it("AC-07: an attachment-capable target gets NO warning", () => {
+			const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+			const r = dispatch(
+				{
+					verb: "send",
+					to: "w3",
+					text: "see this",
+					file: "/tmp/chart.png",
+					wait: false,
+					json: true,
+				},
+				d,
+			);
+
+			expect(r.stderr).toBe("");
+			expect(JSON.parse(r.stdout)).not.toHaveProperty("attachmentWarning");
+		});
+
+		// ── F1 (cross-model review of ead905e): whitespace-only bodies ──────────
+		//
+		// The first cut of the guard tested `body === ""`, which is the shape of
+		// the defect rather than the defect itself. `pij send peer "$(cat notes)"`
+		// against a blank or newline-only file produces a body of "\n" — the
+		// pushed peer then receives `[pij from a1] ` behind a success receipt,
+		// which is precisely the dishonest receipt this plan exists to close.
+		//
+		// The asymmetry that makes this safe: the EMPTINESS TEST trims, the
+		// DELIVERED BODY never does. AC-08 (byte-for-byte) still governs, so a
+		// body of "  hello  " must arrive with both pads intact — the two
+		// "preserved" cases below are what stops this fix from becoming the
+		// `trimEnd()` bug it replaced.
+		describe("F1: a whitespace-only body is as empty as an empty one", () => {
+			it("F1: spaces-only text to a PUSH target is refused, and nothing is delivered", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch({ verb: "send", to: "w3", text: "   ", wait: false, json: false }, d);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(r.stderr).toContain("E-EMPTY");
+			});
+
+			it('F1: a newline-only body — the `"$(cat blank-file)"` case — is refused on a PULL target', () => {
+				const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+				const r = dispatch({ verb: "send", to: "w3", text: "\n", wait: false, json: true }, d);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(JSON.parse(r.stderr)).toMatchObject({ error: "E-EMPTY" });
+			});
+
+			it("F1: mixed whitespace (tabs, CR, newlines) is refused too", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch(
+					{ verb: "send", to: "w3", text: " \t\r\n \n", wait: false, json: false },
+					d,
+				);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+			});
+
+			it("F1: a whitespace-only body with an UNRENDERABLE attachment is refused (AC-01 extended)", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch(
+					{
+						verb: "send",
+						to: "w3",
+						text: "  \n",
+						file: "/tmp/chart.png",
+						wait: false,
+						json: false,
+					},
+					d,
+				);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(r.stderr).toContain("E-EMPTY");
+			});
+
+			it("F1: broadcast refuses a whitespace-only body before ANY target is delivered to", () => {
+				const d = deps({
+					self: "a1",
+					descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+				});
+
+				const r = dispatch(
+					{
+						verb: "send",
+						to: "w3",
+						targets: ["w3", "z9"],
+						broadcast: true,
+						text: "  \n  ",
+						wait: false,
+						json: false,
+					},
+					d,
+				);
+
+				expect(d.delivery.outbox).toHaveLength(0);
+				expect(r.exitCode).toBe(2);
+				expect(r.stderr).toContain("E-EMPTY");
+			});
+
+			it("F1: broadcast with a whitespace-only body is also refused at parse", () => {
+				expect(parseArgs(["send", "--to", "w3", "--to", "z9", "   "])).toMatchObject({
+					ok: false,
+					code: "E-EMPTY",
+				});
+			});
+
+			it("F1 preserved: a padded body with real content is delivered BYTE-FOR-BYTE (no trimming)", () => {
+				const d = deps({ self: "a1", descs: pushDescs() });
+
+				const r = dispatch(
+					{ verb: "send", to: "w3", text: "  hello  \n\n", wait: false, json: false },
+					d,
+				);
+
+				expect(r.exitCode).toBe(0);
+				expect(d.delivery.outbox).toHaveLength(1);
+				// The emptiness TEST trims; the delivered VALUE must not. If this
+				// ever goes red the fix has become the `trimEnd()` bug it replaced.
+				expect(d.delivery.outbox[0]?.message.body).toBe("  hello  \n\n");
+			});
+
+			it("F1 preserved: broadcast delivers a padded body byte-for-byte to every target", () => {
+				const d = deps({
+					self: "a1",
+					descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+				});
+
+				const r = dispatch(
+					{
+						verb: "send",
+						to: "w3",
+						targets: ["w3", "z9"],
+						broadcast: true,
+						text: "  hello  \n",
+						wait: false,
+						json: false,
+					},
+					d,
+				);
+
+				expect(r.exitCode).toBe(0);
+				expect(d.delivery.outbox).toHaveLength(2);
+				for (const sent of d.delivery.outbox) expect(sent.message.body).toBe("  hello  \n");
+			});
+
+			it("F1 preserved: AC-06 survives — whitespace body + attachment to a PULL target still delivers", () => {
+				const d = deps({ self: "a1", descs: [desc({ id: "a1" }), desc({ id: "w3" })] });
+
+				const r = dispatch(
+					{ verb: "send", to: "w3", text: "  ", file: "/tmp/chart.png", wait: false, json: false },
+					d,
+				);
+
+				// Capability, not flag shape: the target renders the attachment, so
+				// there IS content to receive. A "refuse blank bodies" rule would
+				// delete this shipped Plan-026 behaviour.
+				expect(r.exitCode).toBe(0);
+				expect(d.delivery.outbox).toHaveLength(1);
+				expect(d.delivery.outbox[0]?.message).toMatchObject({ body: "  " });
+				// …and the receipt calls it `file`, not `text+file`. Same reading of
+				// "blank" as the guard: the bytes go out untouched, but a receipt
+				// claiming text arrived would overstate what the receiver can see.
+				// (Added in the FIX commit, not the RED one — it is a consequence of
+				// F1 found while implementing, not one of the reviewer's findings.)
+				expect(r.stdout).toContain("file");
+				expect(r.stdout).not.toContain("text+file");
+			});
+		});
 	});
 
 	it("queued vs delivered receipt hint follows the pi peer's state", () => {
@@ -1356,6 +1744,122 @@ describe("dispatch tail / state / path", () => {
 		const d = deps({ descs: [] });
 		expect(dispatch({ verb: "tail", id: "ghost", follow: false, json: false }, d).exitCode).toBe(2);
 		expect(dispatch({ verb: "state", id: "ghost", json: false }, d).exitCode).toBe(2);
+	});
+
+	// ── plan 084 Phase 1: the gate's keying field must be VISIBLE ─────────────
+	// A capability gate keyed on `orchestrationRole` was unreadable from any
+	// inspection verb, so "is this seat gated?" could not be answered at the
+	// command line — which is how #95 was nearly closed as a non-problem. These
+	// assert the PRESENCE of the keys, not merely their values: a consumer that
+	// cannot tell "absent" from "null" fabricates the null, and the fabricated
+	// answer ("this seat is ungated") is the dangerous one.
+	//
+	// The parent key is `parent` carrying `effectiveParent(d)` — the SAME name
+	// and the SAME notion `list` and `node show` already project (D-041,
+	// cli.ts:2531). A raw `parentId` here would disagree with both for every
+	// spawned-but-never-linked seat.
+
+	it("state --json projects orchestrationRole + parent for a stamped seat", () => {
+		const d = deps({
+			descs: [desc({ id: "w3", orchestrationRole: "pa", parentId: "pij-boss" })],
+		});
+		const j = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout);
+		expect(j).toHaveProperty("orchestrationRole", "pa");
+		expect(j).toHaveProperty("parent", "pij-boss");
+	});
+
+	it("state --json carries parent as null — PRESENT, not absent — for a rooted seat", () => {
+		const d = deps({ descs: [desc({ id: "w3", orchestrationRole: "pm", parentId: null })] });
+		const j = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout);
+		expect(Object.keys(j)).toContain("parent");
+		expect(j).toHaveProperty("orchestrationRole", "pm");
+		expect(j).toHaveProperty("parent", null);
+	});
+
+	it("state --json carries BOTH keys as null for a legacy descriptor with neither field", () => {
+		// The migration-safety case. `JSON.stringify` DROPS undefined values, so a
+		// bare `d.orchestrationRole` would make the key vanish for every seat
+		// stamped before plan 078 — indistinguishable, to a reader, from a seat
+		// that was checked and found ungated.
+		const d = deps({ descs: [desc({ id: "w3" })] });
+		const j = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout);
+		expect(Object.keys(j)).toContain("orchestrationRole");
+		expect(Object.keys(j)).toContain("parent");
+		expect(j).toHaveProperty("orchestrationRole", null);
+		expect(j).toHaveProperty("parent", null);
+	});
+
+	it("state --json resolves parent through spawnedBy when parentId was never written", () => {
+		// THE REGRESSION GUARD for the trap this plan exists to remove. A PA
+		// spawned by its prime and never explicitly linked has NO raw `parentId`.
+		// Projecting the raw field would report that PA as parentless, and a
+		// Phase-2 target predicate reading it would then refuse the PA permission
+		// to watch its REAL parent — rebuilding #95 inside #95's own fix.
+		const d = deps({
+			descs: [desc({ id: "w3", orchestrationRole: "pa", spawnedBy: "pij-boss" })],
+		});
+		const j = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout);
+		expect(j).toHaveProperty("parent", "pij-boss");
+	});
+
+	it("an explicit parentId OVERRIDES spawnedBy — including an explicit root", () => {
+		// `effectiveParent` is `parentId !== undefined ? parentId : spawnedBy`, so
+		// `pij link --root` (which writes parentId: null) must win over the
+		// spawn record rather than being silently undone by the fallback.
+		const linked = deps({
+			descs: [desc({ id: "w3", spawnedBy: "pij-spawner", parentId: "pij-adopter" })],
+		});
+		expect(
+			JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, linked).stdout),
+		).toHaveProperty("parent", "pij-adopter");
+
+		const rooted = deps({ descs: [desc({ id: "w3", spawnedBy: "pij-spawner", parentId: null })] });
+		expect(
+			JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, rooted).stdout),
+		).toHaveProperty("parent", null);
+	});
+
+	it("state --json projects the TOTAL role — a prime reads as 'prime', not null", () => {
+		// `projectOrchestrationRole` joins the `prime` flag with the stored partial
+		// role; projecting the raw field instead would report a prime as unstamped.
+		const d = deps({ descs: [desc({ id: "w3", prime: true, parentId: null })] });
+		const j = JSON.parse(dispatch({ verb: "state", id: "w3", json: true }, d).stdout);
+		expect(j).toHaveProperty("orchestrationRole", "prime");
+	});
+
+	it("state TEXT shows role and parent when set, and stays silent when unstamped", () => {
+		// AC-02. The text render is the surface an operator actually reads, and
+		// `pij state <id>` without `--json` is what a seat runs on itself first.
+		const stamped = deps({
+			descs: [desc({ id: "w3", orchestrationRole: "pa", parentId: "pij-boss" })],
+		});
+		const shown = dispatch({ verb: "state", id: "w3", json: false }, stamped).stdout;
+		expect(shown).toContain("role: pa");
+		expect(shown).toContain("parent: pij-boss");
+
+		// Unstamped seats keep today's line exactly — the projection is additive
+		// for machines and INVISIBLE for humans who have nothing to see.
+		const bare = deps({ descs: [desc({ id: "w3" })] });
+		const quiet = dispatch({ verb: "state", id: "w3", json: false }, bare).stdout;
+		expect(quiet).not.toContain("role:");
+		expect(quiet).not.toContain("parent:");
+	});
+
+	it("state TEXT names a parent resolved through spawnedBy, and a role with no parent", () => {
+		const spawned = deps({
+			descs: [desc({ id: "w3", orchestrationRole: "pa", spawnedBy: "pij-boss" })],
+		});
+		expect(dispatch({ verb: "state", id: "w3", json: false }, spawned).stdout).toContain(
+			"parent: pij-boss",
+		);
+
+		// A role with no parent must still print the role — the two are
+		// independent facts and suppressing both on one absence is how a stamped
+		// seat reads as unstamped.
+		const rooted = deps({ descs: [desc({ id: "w3", prime: true, parentId: null })] });
+		const out = dispatch({ verb: "state", id: "w3", json: false }, rooted).stdout;
+		expect(out).toContain("role: prime");
+		expect(out).not.toContain("parent:");
 	});
 });
 
@@ -6430,6 +6934,63 @@ describe("state clear (State-Model v2)", () => {
 			expect(d.delivery.outbox).toHaveLength(beforeMessages);
 		});
 
+		// ── plan 084 Phase 2 (AC-11): a PA may ack a brief addressed to it ────
+		// #99. The old refusal reason was "acknowledging a brief is the assignee's
+		// own act" — which, when the PA IS the assignee, is the argument for
+		// allowing it. `ack-dispatch` is now CONDITIONAL and the handler enforces
+		// recipient identity, which it already did for every other role.
+		function paAckDeps() {
+			return platformDeps({
+				self: "pij-parent",
+				descs: [
+					desc({ id: "pij-parent", state: "idle", prime: true }),
+					desc({
+						id: "pij-worker",
+						state: "idle",
+						orchestrationRole: "pa",
+						parentId: "pij-parent",
+						boundModel: "github-copilot/gpt-5.6-sol",
+						effort: "xhigh",
+					}),
+					desc({ id: "pij-other-pa", state: "idle", orchestrationRole: "pa" }),
+				],
+			});
+		}
+
+		it("ALLOWS a PA to acknowledge a dispatch addressed to ITSELF", () => {
+			const d = paAckDeps();
+			expect(run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], d).exitCode).toBe(0);
+			const ackDeps: CliDeps = {
+				...d,
+				process: new FakeProcess(999, T + 1000, { PIJ_SESSION_ID: "pij-worker" }, [100]),
+			};
+			const acknowledged = run(["ack", "dispatch-test-1", "--packet-sha", SHA, "--json"], ackDeps);
+			expect(acknowledged.exitCode).toBe(0);
+			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("acked");
+			expect(JSON.parse(acknowledged.stdout)).toMatchObject({ ack: { seat: "pij-worker" } });
+		});
+
+		it("REFUSES a PA acknowledging a dispatch addressed to SOMEONE ELSE", () => {
+			// The narrowness twin. Conditional means "the handler decides", not
+			// "permitted" — a PA that could ack any dispatch would be able to
+			// discharge another seat's obligation, which is what the original
+			// blanket refusal was protecting.
+			const d = paAckDeps();
+			expect(run(["dispatch", "pij-worker", "--packet", "/repo/packet.md"], d).exitCode).toBe(0);
+			const beforeEvents = d.spineLog.read().length;
+			const ackDeps: CliDeps = {
+				...d,
+				process: new FakeProcess(999, T + 1000, { PIJ_SESSION_ID: "pij-other-pa" }, [100]),
+			};
+			const refused = run(["ack", "dispatch-test-1", "--packet-sha", SHA], ackDeps);
+			expect(refused.exitCode).not.toBe(0);
+			expect(refused.stderr).toContain("E-OWN");
+			expect(refused.stderr).toContain("pij-worker");
+			// Nothing mutated, nothing emitted.
+			expect(d.dispatchStore.read("dispatch-test-1")?.state).toBe("delivered-unacked");
+			expect(d.spineLog.read()).toHaveLength(beforeEvents);
+		});
+
 		it.each([
 			["dispatch missing target", ["dispatch", "--packet", "/repo/packet.md"]],
 			["dispatch missing packet", ["dispatch", "pij-worker"]],
@@ -7202,6 +7763,37 @@ describe("task close — the far end of the lifecycle, end to end", () => {
 		return id as string;
 	}
 
+	/** The precondition travels with the remedy. Closing a GENERAL assignment
+	 *  burns a deterministic id permanently and leaves the seat unable to declare
+	 *  a semantic state until it has another open assignment — recoverable via
+	 *  `task set`, but SILENT: nothing tells the seat until it next tries to
+	 *  park, which can be days. A consequence nobody is told about at the moment
+	 *  they cause it is a consequence discovered by its victim. */
+	it("WARNS at close time when the target is the general, and names the re-arm path", () => {
+		const d = fleet();
+		// Materialize the general: a state declaration with no named assignment
+		// resolves to it and creates it (the 17-seat path).
+		const mat = run(["report", "state", "ready"], asReportingSelf(d, ASSIGNEE));
+		expect(mat.exitCode, mat.stderr).toBe(0);
+		const closed = run(
+			["task", "close", `asg-general-${ASSIGNEE}`, "--reason", "done"],
+			asReportingSelf(d, ASSIGNEE),
+		);
+		expect(closed.exitCode, closed.stderr).toBe(0);
+		expect(closed.stdout).toContain("GENERAL assignment");
+		expect(closed.stdout).toContain("permanently burned");
+		expect(closed.stdout).toContain(`pij task set ${ASSIGNEE}`);
+	});
+
+	it("stays SILENT about the general when an ordinary dispatch is closed", () => {
+		// The warning must not become noise on every close, or it stops being read.
+		const d = fleet();
+		const id = openTask(d);
+		const closed = run(["task", "close", id, "--reason", "done"], asReportingSelf(d, ASSIGNEE));
+		expect(closed.exitCode).toBe(0);
+		expect(closed.stdout).not.toContain("GENERAL assignment");
+	});
+
 	it("opens an obligation, then DISCHARGES it — the row clears through the existing predicate", () => {
 		const d = fleet();
 		const id = openTask(d);
@@ -7559,21 +8151,164 @@ describe("s078 — the PA capability gate at the dispatch seam", () => {
 	it("whoami makes the boundary OBSERVABLE — role and refused verbs, before attempting", () => {
 		// The binding constraint: a gate whose input is unobservable is the s075
 		// opened.actor defect, and this stream exists to make authority legible.
+		//
+		// INDEXED ON THE MAP (plan 094, task 2.6). Each assertion came out
+		// STRICTLY STRONGER: `toContain("close")` on a list only said "close is
+		// somewhere among the refusals", while `verbs.close === "refuse"` says the
+		// payload's answer for that verb IS refuse — and the former's negation
+		// (`not.toContain("list")`) said only "not refused", which a payload that
+		// had never heard of `list` also satisfies.
 		const card = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as {
 			orchestrationRole: string;
-			refusedVerbs: string[];
+			verbs: Record<string, string>;
 		};
 		expect(card.orchestrationRole).toBe("pa");
-		expect(card.refusedVerbs).toContain("close");
-		expect(card.refusedVerbs).toContain("task-set");
-		expect(card.refusedVerbs).not.toContain("list");
+		expect(card.verbs.close).toBe("refuse");
+		expect(card.verbs["task-set"]).toBe("refuse");
+		expect(card.verbs.list).toBe("allow");
 
 		const pm = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as {
 			orchestrationRole: string;
-			refusedVerbs: string[];
+			verbs: Record<string, string>;
 		};
 		expect(pm.orchestrationRole).toBe("pm");
-		expect(pm.refusedVerbs).toEqual([]);
+		// `refusedVerbs: []` used to carry this claim by absence, which is the
+		// defect. Stated positively: every verb the table classifies is `allow`
+		// for a non-PA.
+		expect(Object.values(pm.verbs).every((value) => value === "allow")).toBe(true);
+	});
+
+	// ── plan 084 Phase 2 (AC-13) ──────────────────────────────────────────────
+	it("whoami distinguishes CONDITIONAL verbs from flatly refused ones", () => {
+		// Before this, `watchdog` was listed as flatly refused. That became untrue
+		// the moment the target-scoped allowance landed, and a capability card
+		// that lies in the PERMISSIVE direction would be bad; one that lies in the
+		// RESTRICTIVE direction is how a PA concludes it cannot watch its own
+		// prime and escalates to a human — the exact loop #95 describes.
+		const card = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as {
+			verbs: Record<string, string>;
+		};
+		// One value per verb subsumes BOTH halves of the old pair of assertions:
+		// `conditionalVerbs` contains it AND `refusedVerbs` does not. The old
+		// no-overlap loop is gone because the map makes overlap unrepresentable —
+		// two answers to one question was a property of having two lists.
+		expect(card.verbs.watchdog).toBe("conditional");
+		expect(card.verbs["ack-dispatch"]).toBe("conditional");
+	});
+
+	it("whoami reports a non-PA's conditional verbs as plainly ALLOWED — the gate is role-keyed", () => {
+		// `conditionalVerbs: []` said this by absence: a reader could not tell
+		// "no conditions apply to this role" from "this build has no conditional
+		// arm". The map says it outright.
+		const pm = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as {
+			verbs: Record<string, string>;
+		};
+		expect(pm.verbs.watchdog).toBe("allow");
+		expect(pm.verbs["ack-dispatch"]).toBe("allow");
+	});
+
+	it("whoami TEXT states the condition, not just the verb name", () => {
+		// A bare list of conditional verbs tells a PA it might be allowed and
+		// nothing about when — which is discovery-by-attempting with extra steps.
+		//
+		// PINNED TO THE CONSTANT (plan 094 task 1.11, AC-08). Asserting loose
+		// substrings let the rendered text and the table's condition drift apart
+		// while staying green: "watchdog" and "parent" both survived a rule that
+		// no longer said what the gate does. Three surfaces must agree — the
+		// table, the handler's refusal, and this render — so this asserts the
+		// render carries the SAME string the table classifies with.
+		const text = run(["whoami"], paSeat()).stdout;
+		expect(text).toContain("watchdog");
+		expect(text).toContain(PA_WATCHDOG_CONDITION);
+		// The per-action rule itself, so a change that keeps the constant but
+		// empties it of content is still caught.
+		expect(PA_WATCHDOG_CONDITION).toContain("list");
+		expect(PA_WATCHDOG_CONDITION).toContain("unwatch");
+		expect(PA_WATCHDOG_CONDITION).toContain("parent");
+	});
+
+	// ── plan 094 Phase 2 (AC-10…AC-13) ────────────────────────────────────────
+	// The two lists partitioned a space the payload never enumerated, so ABSENCE
+	// FROM `refusedVerbs` READ AS ALLOWED. That is not a readability complaint:
+	// a probe written 2026-08-01 tested `'watchdog' in refusedVerbs`, and when a
+	// third bucket was added the field stayed present and still correct while its
+	// COMPLETENESS changed — the probe kept parsing and kept returning a
+	// confident falsehood. An exhaustive map removes the absence a belief could
+	// be formed from.
+
+	it("whoami --json carries a TOTAL three-valued verbs map for a PA (2.1, AC-10)", () => {
+		const parsed = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as Record<
+			string,
+			unknown
+		>;
+		// PRESENCE FIRST, CONTENTS SECOND — deliberate ordering. Pre-fix
+		// `parsed.verbs` is undefined and `Object.keys(undefined)` THROWS; a
+		// TypeError would prove the field is missing, not that the behaviour is
+		// wrong, and the pre-fix RED gate rejects a crash as evidence.
+		expect(parsed).toHaveProperty("verbs");
+		const verbs = parsed.verbs as Record<string, string>;
+		// Compared against the table IMPORTED FROM THE MODULE, never a
+		// hand-written list — a hand-list drifts silently and would re-open the
+		// exact hole this payload closes. Not circular: the table's totality
+		// against the REAL verb surface is proven independently by the scrapes in
+		// `pa-capability.test.ts` (which read `core/cli.ts`, the bin, and
+		// `core/chores/cli-verbs.ts`). Table→reality is proven there; payload→
+		// table is proven here.
+		expect(Object.keys(verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+		for (const [verb, value] of Object.entries(verbs)) {
+			expect(["allow", "conditional", "refuse"], `verbs.${verb} = ${value}`).toContain(value);
+		}
+		// One anchor per arm, so a map that is total but uniformly one value —
+		// which would satisfy every assertion above — is still caught.
+		expect(verbs.close).toBe("refuse");
+		expect(verbs.watchdog).toBe("conditional");
+		expect(verbs.list).toBe("allow");
+	});
+
+	it.each([
+		["pa", () => paSeat()],
+		["pm", () => pmSeat()],
+	])("drops refusedVerbs and conditionalVerbs entirely for a %s seat (2.2, AC-11)", (_role, mk) => {
+		// REMOVAL, not deprecation. Keeping the lists beside the map would ship a
+		// fix for additive-silence BY BEING ADDITIVE: a stale consumer indexing
+		// `refusedVerbs` would keep parsing and keep being wrong. Only a removal
+		// is loud.
+		const parsed = JSON.parse(run(["whoami", "--json"], mk()).stdout) as Record<string, unknown>;
+		expect(parsed).not.toHaveProperty("refusedVerbs");
+		expect(parsed).not.toHaveProperty("conditionalVerbs");
+	});
+
+	it("a non-PA's map is EQUALLY TOTAL and uniformly allow (2.3, AC-13)", () => {
+		// Deliberately a SEPARATE test from 2.1 rather than a second seat inside
+		// it: a mutation that emits the map only for `role === "pa"` must have a
+		// green neighbour to fail against, and a merged test would go red on both
+		// halves and prove nothing about which half broke.
+		const parsed = JSON.parse(run(["whoami", "--json"], pmSeat()).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(parsed).toHaveProperty("verbs");
+		const verbs = parsed.verbs as Record<string, string>;
+		expect(Object.keys(verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+		// No role may produce a payload in which an absence encodes anything —
+		// a non-PA gets the whole map, stated, rather than an empty list meaning
+		// "nothing refused, probably".
+		expect([...new Set(Object.values(verbs))]).toEqual(["allow"]);
+	});
+
+	it("the payload carries an explicit schema marker (2.4, AC-12)", () => {
+		// The residual this marker exists for is stated plainly and NOT papered
+		// over: removal is loud only for a consumer that INDEXES directly. One
+		// doing `d.get('refusedVerbs', [])` now reads `[]` and concludes "nothing
+		// is refused" — silent AND permissive. No payload shape fixes that; the
+		// marker only gives a careful consumer a deliberate way to detect the
+		// change.
+		const parsed = JSON.parse(run(["whoami", "--json"], paSeat()).stdout) as Record<
+			string,
+			unknown
+		>;
+		expect(parsed).toHaveProperty("capabilitySchema");
+		expect(parsed.capabilitySchema).toBe(2);
 	});
 });
 
@@ -7656,5 +8391,623 @@ describe("s078 — writtenBy closes identity-borrowing", () => {
 		const r = run(["report", "now", "did", "next", "--for", PRIME, "--state", "blocked"], d);
 		expect(r.exitCode).not.toBe(0);
 		expect(r.stderr).toContain("first-person");
+	});
+});
+
+// ── plan 084 Phase 2: the PA watchdog allowance, and its narrowness ────────
+// The gate now classifies `watchdog` as CONDITIONAL, which means BOTH seams let
+// it through and the HANDLER is the only thing standing between a PA and every
+// seat on the box. Every allowance below is therefore paired with its refusal
+// twin: an allowance without its narrowness proof is a widening.
+describe("watchdog — a PA may watch/unwatch ITSELF or its own parent, and nothing else", () => {
+	const PA_ID = "pij-pa";
+	const PARENT_ID = "pij-parent";
+	const STRANGER_ID = "pij-stranger";
+
+	function paDeps(
+		callerOver: Partial<SessionDescriptor> = { parentId: PARENT_ID },
+		parentOver: Partial<SessionDescriptor> = { orchestrationRole: "pm" },
+	) {
+		const watchdogStore = memoryWatchdogStore(PARENT_ID, {});
+		const base = deps({
+			self: PA_ID,
+			descs: [
+				desc({ id: PA_ID, orchestrationRole: "pa", ...callerOver }),
+				// A `pm` BY DEFAULT, deliberately. Every fixture here used to be a
+				// prime, which meant a regression requiring the target parent to be
+				// a prime would have left the whole suite green — and the live proof
+				// for this very phase ran against a real PA whose parent is a `pm`.
+				// The gate keys on `effectiveParent`; the parent's ROLE is not part
+				// of the rule and must not become part of it by accident.
+				desc({ id: PARENT_ID, ...parentOver }),
+				desc({ id: STRANGER_ID }),
+			],
+		});
+		return { d: { ...base, watchdogStore }, watchdogStore };
+	}
+
+	it("ALLOWS a PA to watch its own parent, and actually registers the subscription", () => {
+		const { d, watchdogStore } = paDeps();
+		const r = run(["watchdog", "watch", PARENT_ID], d);
+		expect(r.exitCode).toBe(0);
+		expect(watchdogStore.sidecars.get(PARENT_ID)?.watchers?.map((w) => w.watcherId)).toEqual([
+			PA_ID,
+		]);
+	});
+
+	it("ALLOWS a PA to unwatch its own parent — the stale-subscription case in #95", () => {
+		const { d, watchdogStore } = paDeps();
+		expect(run(["watchdog", "watch", PARENT_ID], d).exitCode).toBe(0);
+		const r = run(["watchdog", "unwatch", PARENT_ID], d);
+		expect(r.exitCode).toBe(0);
+		expect(watchdogStore.sidecars.get(PARENT_ID)?.watchers).toEqual([]);
+	});
+
+	it("ALLOWS a PA to watch ITSELF", () => {
+		const { d } = paDeps();
+		expect(run(["watchdog", "watch", PA_ID], d).exitCode).toBe(0);
+	});
+
+	// ── review-2 finding 2: the parent's ROLE is not part of the rule ─────────
+	it("ALLOWS watch AND unwatch whatever ROLE the parent holds — pm, prime, worker, unstamped", () => {
+		// THE BEHAVIOURAL TWIN OF KEY FINDING 10. KF-10 was the refusal TEXT
+		// calling a parent "its own prime"; this is the same wrong model in
+		// BEHAVIOUR. Every fixture in this block was previously a prime, so a
+		// regression that required the target parent to be a prime would have left
+		// the entire suite green — while breaking the real configuration this
+		// phase's own live proof ran on, where the PA's parent is a `pm`.
+		//
+		// `paTargetDecision` never receives the TARGET's descriptor, so the string
+		// pin in pa-target.test.ts structurally cannot catch this. Only a runtime
+		// fixture can.
+		for (const parentRole of [
+			{ orchestrationRole: "pm" as const },
+			{ prime: true },
+			{ orchestrationRole: "worker" as const },
+			{},
+		]) {
+			const label = JSON.stringify(parentRole);
+			const { d } = paDeps({ parentId: PARENT_ID }, parentRole);
+			expect(run(["watchdog", "watch", PARENT_ID], d).exitCode, `watch, parent=${label}`).toBe(0);
+			expect(run(["watchdog", "unwatch", PARENT_ID], d).exitCode, `unwatch, parent=${label}`).toBe(
+				0,
+			);
+			// And narrowness is unchanged regardless of the parent's role.
+			expect(
+				run(["watchdog", "watch", STRANGER_ID], d).exitCode,
+				`stranger still refused, parent=${label}`,
+			).not.toBe(0);
+		}
+	});
+
+	it("ALLOWS a PA its parent SPAWNED but never linked — the trap-2 guard at the HANDLER", () => {
+		// The pure predicate has its own guard; this proves the handler feeds it
+		// `effectiveParent` rather than re-deriving lineage from the raw field.
+		const { d } = paDeps({ spawnedBy: PARENT_ID });
+		expect(run(["watchdog", "watch", PARENT_ID], d).exitCode).toBe(0);
+	});
+
+	it("REFUSES a PA watching a stranger, naming role and keying field", () => {
+		const { d, watchdogStore } = paDeps();
+		const r = run(["watchdog", "watch", STRANGER_ID], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("E-OWN");
+		expect(r.stderr).toContain("role 'pa'");
+		expect(r.stderr).toContain("orchestrationRole");
+		// Refused means NOTHING WAS WRITTEN — a refusal that still mutates is not
+		// a refusal.
+		expect(watchdogStore.writes).toEqual([]);
+	});
+
+	it("REFUSES a PA unwatching a stranger's subscription ON THAT SEAT'S BEHALF", () => {
+		// `--for` is the only way to name a watcher other than yourself, and it is
+		// refused for a PA before the target is even resolved. This is the reason
+		// the plain `unwatch <stranger>` below is safe to permit.
+		const { d } = paDeps();
+		expect(run(["watchdog", "unwatch", STRANGER_ID, "--for", PARENT_ID], d).exitCode).not.toBe(0);
+	});
+
+	it("REFUSES an explicit-root PA every target, including its former spawner", () => {
+		const { d } = paDeps({ spawnedBy: PARENT_ID, parentId: null });
+		expect(run(["watchdog", "watch", PARENT_ID], d).exitCode).not.toBe(0);
+		expect(run(["watchdog", "watch", STRANGER_ID], d).exitCode).not.toBe(0);
+	});
+
+	// ── THE NARROWNESS PROOF (AC-04c) — plan 094 task 1.4 ────────────────────
+	// ONE INDEPENDENT TEST PER ACTION. As a loop, the first refusal to regress
+	// hid every action after it, so the mutation table could not show a green
+	// neighbour beside a red. Target-scoping must not be mistaken for
+	// action-scoping either: each of these targets the seat the PA IS allowed to
+	// watch, so only the ACTION can be what refuses them.
+	it.each([
+		["pause", [PARENT_ID]],
+		["resume", [PARENT_ID]],
+		["exempt", [PARENT_ID]],
+		["reset", [PARENT_ID]],
+		["interval", [PARENT_ID, "30m"]],
+		// `status` is NOT a read at this seam — it falls through to the shared
+		// reconcile-and-write preamble, so permitting it would hand a PA a write
+		// on a stranger's sidecar. It stays refused deliberately (plan 094 C-4).
+		["status", [PARENT_ID]],
+	] as const)("REFUSES the policy action 'watchdog %s' for a PA, even on its OWN parent", (action, args) => {
+		const { d, watchdogStore } = paDeps();
+		const r = run(["watchdog", action, ...args], d);
+		expect(r.exitCode, `watchdog ${action} must be refused for a PA`).not.toBe(0);
+		expect(r.stderr, `watchdog ${action} refusal must name the role`).toContain("role 'pa'");
+		expect(watchdogStore.writes, `watchdog ${action} must not write`).toEqual([]);
+	});
+
+	it.each([
+		"disable-all",
+		"enable-all",
+	] as const)("REFUSES the machine-wide action 'watchdog %s', which has no target at all", (action) => {
+		// These branch BEFORE the per-seat id is resolved, so a check placed
+		// after target resolution would silently permit them — the widest hole
+		// of the set.
+		const { d } = paDeps();
+		const r = run(["watchdog", action], d);
+		expect(r.exitCode, `watchdog ${action} must be refused for a PA`).not.toBe(0);
+		expect(r.stderr).toContain("role 'pa'");
+	});
+
+	// ── plan 094 task 1.3 (AC-03) ────────────────────────────────────────────
+	it("ALLOWS a PA `watchdog list` — the surface it finds its OWN subscriptions on", () => {
+		// A PA that cannot see the roster cannot know which subscriptions it holds,
+		// so the resignation this phase grants it would be a verb with no way to
+		// discover its own argument. `list` branches BEFORE any target id is
+		// resolved (`core/cli.ts`), which is why the widening had to land on the
+		// ACTION axis — a target-side change never reaches this line.
+		const { d, watchdogStore } = paDeps();
+		const r = run(["watchdog", "list", "--json"], d);
+		expect(r.exitCode, `watchdog list must be permitted for a PA: ${r.stderr}`).toBe(0);
+		const rows = JSON.parse(r.stdout) as { id: string }[];
+		expect(rows.map((row) => row.id)).toContain(STRANGER_ID);
+		// A read that writes is not a read.
+		expect(watchdogStore.writes).toEqual([]);
+	});
+
+	it("leaves every OTHER role completely unaffected — no existing seat regresses", () => {
+		for (const callerRole of [{ orchestrationRole: "pm" as const }, { prime: true }, {}]) {
+			const watchdogStore = memoryWatchdogStore(STRANGER_ID, {});
+			const d = {
+				...deps({
+					self: PA_ID,
+					descs: [desc({ id: PA_ID, ...callerRole }), desc({ id: STRANGER_ID })],
+				}),
+				watchdogStore,
+			};
+			// A non-PA may still watch an arbitrary seat and pause it.
+			expect(run(["watchdog", "watch", STRANGER_ID], d).exitCode).toBe(0);
+			expect(run(["watchdog", "pause", STRANGER_ID], d).exitCode).toBe(0);
+			expect(run(["watchdog", "list"], d).exitCode).toBe(0);
+		}
+	});
+
+	it("fails OPEN on an unresolvable caller, matching the gate's deliberate posture", () => {
+		// Caller identity fails open (unregistered contexts must keep working);
+		// TARGET questions fail closed. The two polarities are different on
+		// purpose and this pins the distinction.
+		const watchdogStore = memoryWatchdogStore(STRANGER_ID, {});
+		const d = { ...deps({ descs: [desc({ id: STRANGER_ID })] }), watchdogStore };
+		expect(run(["watchdog", "watch", STRANGER_ID], d).exitCode).toBe(0);
+	});
+});
+
+// ── plan 094 Phase 1, tasks 1.5/1.6 (AC-04, AC-04b) ────────────────────────
+// A PA may RESIGN from any subscription it holds, over any target — because
+// `--for` is refused for a PA before the target is resolved, the effective
+// watcher is always the caller, so `unwatch` cannot reach anyone else's row.
+//
+// THE PART THAT IS NOT OBVIOUS, and that a naive widening gets wrong: reaching
+// the unwatch branch used to mean running a SHARED PREAMBLE first, which reads
+// the TARGET's sidecar, reconciles its exemption, and PERSISTS the result. On
+// an expired exemption that resolves through `withoutPause`, that un-pauses the
+// watchdog of a seat which is neither the PA nor its parent — a supervision
+// policy change for a third party, arriving through code that has nothing to do
+// with watchers. The target rule never sees it, because the target rule already
+// said yes.
+//
+// So these tests assert the WHOLE SIDECAR and a WRITE COUNT, never the
+// `watchers` array. `watchers` is the one field the defect does not touch, and a
+// check scoped to it passes while the harm lands.
+describe("watchdog unwatch — a PA resigns, and resignation changes nothing else", () => {
+	const PA_ID = "pij-pa";
+	const PARENT_ID = "pij-parent";
+	const STRANGER_ID = "pij-stranger";
+	const OTHER_WATCHER = "pij-someone-else";
+	const ADDED_AT = "2026-01-02T03:04:05.000Z";
+
+	const watcher = (watcherId: string) => ({
+		watcherId,
+		addedAt: ADDED_AT,
+		capture: { mode: "anomaly" as const },
+	});
+
+	/** An exemption with an EXPLICIT deadline, already past. */
+	function expiredExplicit(watchers: readonly string[]): WatchdogSidecar {
+		return {
+			pausedBy: "exempt",
+			pausedAtMs: T - 3 * DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
+			exemptUntilMs: T - 60_000,
+			intervalMs: 30 * 60 * 1_000,
+			watchers: watchers.map(watcher),
+		};
+	}
+
+	/** A LEGACY exemption: `pausedAtMs` and NO `exemptUntilMs`.
+	 *
+	 * TWO FIXTURES, NOT ONE, and this is the whole reason: `reconcileWatchdog-
+	 * Exemption` RETURNS inside its `deadline !== undefined` branch, so a sidecar
+	 * carrying both an explicit deadline and a legacy stamp never reaches the
+	 * legacy path at all. One combined fixture would exercise one branch while
+	 * looking like it covered both. */
+	function legacy(watchers: readonly string[]): WatchdogSidecar {
+		return {
+			pausedBy: "exempt",
+			pausedAtMs: T - 3 * DEFAULT_WATCHDOG_EXEMPT_TTL_MS,
+			intervalMs: 30 * 60 * 1_000,
+			watchers: watchers.map(watcher),
+		};
+	}
+
+	function paDeps(sidecar: WatchdogSidecar) {
+		const watchdogStore = memoryWatchdogStore(STRANGER_ID, sidecar);
+		const base = deps({
+			self: PA_ID,
+			descs: [
+				desc({ id: PA_ID, orchestrationRole: "pa", parentId: PARENT_ID }),
+				desc({ id: PARENT_ID, orchestrationRole: "pm" }),
+				desc({ id: STRANGER_ID }),
+			],
+		});
+		return { d: { ...base, watchdogStore }, watchdogStore };
+	}
+
+	// NON-VACUITY GUARD, IN TWO LAYERS. Every isolation assertion below is a
+	// claim that a write which WOULD have happened did not — so if the fixtures
+	// were inert (an exemption that reconciles to itself), all four cases would
+	// pass against a broken implementation AND against the pre-fix tree. A test
+	// that cannot fail, guarding the most serious finding in this stream.
+	//
+	// Layer 1 calls `reconcileWatchdogExemption` DIRECTLY at the same injected
+	// `now` the dispatch tests use, and asserts it returns a CHANGED sidecar.
+	//
+	// WHY IT IS HERE, stated precisely, because the obvious reason is wrong:
+	// mutating `reconcileWatchdogExemption` does NOT turn the four cases below
+	// red, and that is CORRECT — the fixed path skips reconciliation by
+	// construction, so the mutant is unreachable from them, not undetected by
+	// them. What proves the fixtures are live is moving the self-resign branch
+	// back AFTER the preamble: all four go red, which they could not do if the
+	// preamble had nothing to rewrite.
+	//
+	// This assertion earns its place on a narrower claim: that proof holds for
+	// today's tree only. Move `T`, change DEFAULT_WATCHDOG_EXEMPT_TTL_MS, or
+	// reshape the fixtures so the exemptions are no longer expired, and the four
+	// cases below become unfalsifiable with nothing in the suite to say so. This
+	// makes the precondition hold by construction rather than by inspection.
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit([OTHER_WATCHER])],
+		["a LEGACY exemption", legacy([OTHER_WATCHER])],
+	])("fixture liveness — %s IS reconciled away at the injected now", (_label, sidecar) => {
+		const reconciled = reconcileWatchdogExemption(sidecar, T);
+		// A new object, not the input handed back: the preamble writes only when
+		// these differ, so an identical return is an inert fixture.
+		expect(reconciled.sidecar).not.toBe(sidecar);
+		expect(reconciled.sidecar).not.toEqual(sidecar);
+		// And the change is the one the isolation tests exist to prevent reaching
+		// a stranger's file: the pause is lifted.
+		expect(sidecar.pausedBy).toBe("exempt");
+		expect(reconciled.sidecar?.pausedBy).toBeUndefined();
+		expect(reconciled.effectivePause).toBeUndefined();
+	});
+
+	// Layer 2 proves the same thing END TO END, through the dispatch path an
+	// ordinary caller takes — so the fixture is live not just to the pure
+	// function but to the code the PA path must avoid.
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit([OTHER_WATCHER])],
+		["a LEGACY exemption", legacy([OTHER_WATCHER])],
+	])("fixture guard — %s IS reconciled away for an ordinary caller", (_label, sidecar) => {
+		const watchdogStore = memoryWatchdogStore(STRANGER_ID, sidecar);
+		const d = {
+			...deps({ self: PARENT_ID, descs: [desc({ id: PARENT_ID }), desc({ id: STRANGER_ID })] }),
+			watchdogStore,
+		};
+		expect(run(["watchdog", "unwatch", STRANGER_ID], d).exitCode).toBe(0);
+		// The pause the PA path must NOT touch is one an ordinary caller loses.
+		expect(watchdogStore.sidecars.get(STRANGER_ID)?.pausedBy).toBeUndefined();
+	});
+
+	// ── task 1.5 (AC-04) — WRITTEN AGAINST A STRANGER DELIBERATELY ───────────
+	// Against self or its own parent this is already true pre-fix, so the
+	// criterion would silently become a preserved property and prove nothing.
+	it("ALLOWS a PA to unwatch a THIRD-PARTY target, removing only its own row", () => {
+		const { d, watchdogStore } = paDeps(expiredExplicit([PA_ID, OTHER_WATCHER]));
+		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
+		expect(r.exitCode, `a PA must be able to resign from a stranger: ${r.stderr}`).toBe(0);
+		expect(watchdogStore.sidecars.get(STRANGER_ID)?.watchers?.map((w) => w.watcherId)).toEqual([
+			OTHER_WATCHER,
+		]);
+	});
+
+	// ── task 1.6 (AC-04b) — four cases: two fixtures × two subscription states ─
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit],
+		["a LEGACY exemption", legacy],
+	])("resigning from a stranger carrying %s writes ONCE and changes ONLY the PA's row", (_label, fixture) => {
+		const before = fixture([PA_ID, OTHER_WATCHER]);
+		const { d, watchdogStore } = paDeps(before);
+		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
+		expect(r.exitCode, `a PA must be able to resign: ${r.stderr}`).toBe(0);
+		// EXACTLY ONE write: the resignation. Not one plus a reconciliation.
+		expect(watchdogStore.writes, "resignation must persist exactly once").toHaveLength(1);
+		// WHOLE SIDECAR, not `watchers`. Everything the PA has no business
+		// touching — pausedBy, pausedAtMs, exemptUntilMs, intervalMs — must
+		// survive its resignation byte for byte.
+		expect(watchdogStore.sidecars.get(STRANGER_ID)).toEqual({
+			...before,
+			watchers: [watcher(OTHER_WATCHER)],
+		});
+	});
+
+	it.each([
+		["an expired EXPLICIT deadline", expiredExplicit],
+		["a LEGACY exemption", legacy],
+	])("resigning from a stranger it does NOT watch (%s) writes NOTHING at all", (_label, fixture) => {
+		const before = fixture([OTHER_WATCHER]);
+		const snapshot = JSON.stringify(before);
+		const { d, watchdogStore } = paDeps(before);
+		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
+		expect(r.exitCode, `a no-op resignation must still succeed: ${r.stderr}`).toBe(0);
+		expect(watchdogStore.writes, "a no-op resignation must not write").toEqual([]);
+		expect(JSON.stringify(watchdogStore.sidecars.get(STRANGER_ID))).toBe(snapshot);
+	});
+});
+
+// ── plan 084 Phase 3: the repair path (--for) and addedAt preservation ──────
+// A prime must be able to bind a subscription on a seat's BEHALF — the recovery
+// path when a seat is already stamped, unreachable, or dead — and the sanctioned
+// path must stop destroying the record of when a subscription was created.
+//
+// FIXTURE DISCIPLINE (review-2's lesson, applied before being asked): the --for
+// watcher is deliberately NEITHER the caller NOR the target, and the re-bind
+// fixtures start from a genuinely pre-existing entry whose timestamp DIFFERS
+// from `now`. Both properties are asserted inline, because a fixture where they
+// coincided would make these tests pass while proving nothing.
+describe("watchdog watch/unwatch — --for <seat> and addedAt preservation", () => {
+	const CALLER = "pij-boss";
+	const TARGET = "pij-target";
+	const OTHER = "pij-other-watcher";
+	const NOW_ISO = new Date(T).toISOString();
+	const ORIGINAL_ISO = "2026-01-02T03:04:05.000Z";
+
+	// NON-VACUITY GUARD for every addedAt assertion below: if the seeded
+	// timestamp ever equalled the one the handler would stamp, "preserved" and
+	// "restamped" would be indistinguishable and every test here would be
+	// meaningless while green.
+	it("fixture guard — the seeded addedAt differs from the stamp under test", () => {
+		expect(ORIGINAL_ISO).not.toBe(NOW_ISO);
+		// And the --for watcher must not be the caller, or --for would be proving
+		// nothing beyond the ordinary self path.
+		expect(OTHER).not.toBe(CALLER);
+		expect(OTHER).not.toBe(TARGET);
+	});
+
+	function repairDeps(sidecar: WatchdogSidecar = {}, callerOver: Partial<SessionDescriptor> = {}) {
+		const watchdogStore = memoryWatchdogStore(TARGET, sidecar);
+		const base = deps({
+			self: CALLER,
+			descs: [
+				desc({ id: CALLER, prime: true, ...callerOver }),
+				desc({ id: TARGET }),
+				desc({ id: OTHER }),
+			],
+		});
+		return { d: { ...base, watchdogStore }, watchdogStore };
+	}
+
+	const watchersOf = (store: { sidecars: Map<string, WatchdogSidecar> }) =>
+		store.sidecars.get(TARGET)?.watchers ?? [];
+
+	// ── 3.1 addedAt ──────────────────────────────────────────────────────────
+	it("STAMPS addedAt on a genuinely new subscription", () => {
+		const { d, watchdogStore } = repairDeps();
+		expect(run(["watchdog", "watch", TARGET], d).exitCode).toBe(0);
+		const watchers = watchersOf(watchdogStore);
+		expect(watchers).toHaveLength(1);
+		expect(watchers[0]?.addedAt).toBe(NOW_ISO);
+	});
+
+	it("PRESERVES the original addedAt when the SAME caller re-binds (R-01, every path)", () => {
+		// The defect that made a human hand-edit a sidecar. The current code
+		// filters the prior entry out BEFORE building the new record, so the old
+		// timestamp is already gone by the time it would be reused.
+		const { d, watchdogStore } = repairDeps({
+			watchers: [{ watcherId: CALLER, addedAt: ORIGINAL_ISO }],
+		});
+		expect(run(["watchdog", "watch", TARGET], d).exitCode).toBe(0);
+		const watchers = watchersOf(watchdogStore);
+		expect(watchers).toHaveLength(1);
+		expect(watchers[0]?.addedAt).toBe(ORIGINAL_ISO);
+		expect(watchers[0]?.addedAt).not.toBe(NOW_ISO);
+	});
+
+	it("PRESERVES addedAt while still applying the new capture policy", () => {
+		// Preservation must not mean "ignore the re-bind" — the settings change,
+		// only the creation stamp is sticky.
+		const { d, watchdogStore } = repairDeps({
+			watchers: [{ watcherId: CALLER, addedAt: ORIGINAL_ISO, capture: { mode: "anomaly" } }],
+		});
+		expect(run(["watchdog", "watch", TARGET, "--capture", "always"], d).exitCode).toBe(0);
+		const watchers = watchersOf(watchdogStore);
+		expect(watchers).toHaveLength(1);
+		expect(watchers[0]?.addedAt).toBe(ORIGINAL_ISO);
+		expect(watchers[0]?.capture?.mode).toBe("always");
+	});
+
+	it("does not let one watcher's re-bind disturb ANOTHER watcher's addedAt", () => {
+		const { d, watchdogStore } = repairDeps({
+			watchers: [
+				{ watcherId: OTHER, addedAt: ORIGINAL_ISO },
+				{ watcherId: CALLER, addedAt: ORIGINAL_ISO },
+			],
+		});
+		expect(run(["watchdog", "watch", TARGET], d).exitCode).toBe(0);
+		const watchers = watchersOf(watchdogStore);
+		expect(watchers).toHaveLength(2);
+		expect(watchers.find((w) => w.watcherId === OTHER)?.addedAt).toBe(ORIGINAL_ISO);
+		expect(watchers.find((w) => w.watcherId === CALLER)?.addedAt).toBe(ORIGINAL_ISO);
+	});
+
+	// ── 3.3 a re-bind stays observable once the timestamp stops moving ───────
+	it("REPORTS a re-bind, so preserving the stamp does not erase the trail", () => {
+		const fresh = repairDeps();
+		const created = run(["watchdog", "watch", TARGET, "--json"], fresh.d);
+		expect(JSON.parse(created.stdout).watcherRebound).toBe(false);
+
+		const { d } = repairDeps({ watchers: [{ watcherId: CALLER, addedAt: ORIGINAL_ISO }] });
+		const rebound = run(["watchdog", "watch", TARGET, "--json"], d);
+		expect(JSON.parse(rebound.stdout).watcherRebound).toBe(true);
+		expect(run(["watchdog", "watch", TARGET], d).stdout).toContain("re-bound");
+	});
+
+	// ── 3.4–3.6 --for ────────────────────────────────────────────────────────
+	it("--for registers the NAMED seat as the watcher, not the caller", () => {
+		const { d, watchdogStore } = repairDeps();
+		expect(run(["watchdog", "watch", TARGET, "--for", OTHER], d).exitCode).toBe(0);
+		const watchers = watchersOf(watchdogStore);
+		expect(watchers.map((w) => w.watcherId)).toEqual([OTHER]);
+		// The caller must NOT have been subscribed as a side effect.
+		expect(watchers.map((w) => w.watcherId)).not.toContain(CALLER);
+	});
+
+	it("--for on an EXISTING subscription re-binds it rather than DUPLICATING it (KF-03)", () => {
+		// The caller-keyed filter looked for the CALLER, so the named seat's own
+		// entry survived the filter and the append produced a second one.
+		const { d, watchdogStore } = repairDeps({
+			watchers: [{ watcherId: OTHER, addedAt: ORIGINAL_ISO }],
+		});
+		expect(run(["watchdog", "watch", TARGET, "--for", OTHER], d).exitCode).toBe(0);
+		const watchers = watchersOf(watchdogStore);
+		expect(watchers.filter((w) => w.watcherId === OTHER)).toHaveLength(1);
+		expect(watchers[0]?.addedAt).toBe(ORIGINAL_ISO);
+	});
+
+	it("unwatch --for removes the NAMED seat's entry and leaves the caller's alone (KF-03)", () => {
+		// The mirror defect: unwatch removed only the caller, so a --for-created
+		// subscription was un-removable by the seat that owned it.
+		const { d, watchdogStore } = repairDeps({
+			watchers: [
+				{ watcherId: OTHER, addedAt: ORIGINAL_ISO },
+				{ watcherId: CALLER, addedAt: ORIGINAL_ISO },
+			],
+		});
+		expect(run(["watchdog", "unwatch", TARGET, "--for", OTHER], d).exitCode).toBe(0);
+		expect(watchersOf(watchdogStore).map((w) => w.watcherId)).toEqual([CALLER]);
+	});
+
+	it("plain unwatch still removes only the CALLER, never a --for-created peer", () => {
+		const { d, watchdogStore } = repairDeps({
+			watchers: [
+				{ watcherId: OTHER, addedAt: ORIGINAL_ISO },
+				{ watcherId: CALLER, addedAt: ORIGINAL_ISO },
+			],
+		});
+		expect(run(["watchdog", "unwatch", TARGET], d).exitCode).toBe(0);
+		expect(watchersOf(watchdogStore).map((w) => w.watcherId)).toEqual([OTHER]);
+	});
+
+	// ── AC-10: the one place Phase 3 could silently undo Phase 2 ─────────────
+	it("REFUSES --for to a PA caller — it would walk around the Phase-2 target rule", () => {
+		// Without this a PA could name any watcher for any target, which is the
+		// target restriction defeated by a flag rather than by a bug.
+		//
+		// THE PA'S PARENT IS THE TARGET ON PURPOSE. Phase 2 would ALLOW this seat
+		// to act on this target, so the Phase-2 target rule cannot be what refuses
+		// it — only the `--for` rule can. Without that the test passes on the
+		// target refusal and proves nothing about AC-10, which is exactly what it
+		// did until mutation 3 exposed it.
+		const { d, watchdogStore } = repairDeps(
+			{},
+			{ prime: false, orchestrationRole: "pa", parentId: TARGET },
+		);
+		// CONTROL: the same caller, same target, WITHOUT --for, is permitted.
+		// This is what proves the refusal below is attributable to the flag.
+		expect(run(["watchdog", "watch", TARGET], d).exitCode).toBe(0);
+
+		for (const action of ["watch", "unwatch"] as const) {
+			const r = run(["watchdog", action, TARGET, "--for", OTHER], d);
+			expect(r.exitCode, `${action} --for must be refused for a PA`).not.toBe(0);
+			expect(r.stderr).toContain("E-OWN");
+			expect(r.stderr).toContain("role 'pa'");
+			expect(r.stderr).toContain("--for");
+		}
+		// Only the permitted control wrote; neither --for attempt did.
+		expect(watchdogStore.writes).toHaveLength(1);
+	});
+
+	it("REFUSES a PA --for EVEN when it NAMES ITSELF as the watcher", () => {
+		// REVIEW-3 FIX. This test was named "names itself" and then passed a THIRD
+		// id ("pij-pa-self") which was NOT the caller — so the names-itself case it
+		// claims was never exercised, and a regression permitting
+		// `forSeat === caller` would have left it green. It committed, three lines
+		// below its own warning about "right verdict, wrong reason", another
+		// instance of exactly that. The value passed is now CALLER.
+		//
+		// Refused outright rather than narrowly: --for exists for acting on
+		// ANOTHER seat's behalf, and a PA has no behalf but its own, which the
+		// plain form already serves.
+		const { d } = repairDeps({}, { prime: false, orchestrationRole: "pa", parentId: TARGET });
+
+		// CONTROL: unflagged, same caller, same target — PERMITTED. Without this
+		// the refusals below could be attributable to any other guard.
+		expect(run(["watchdog", "watch", TARGET], d).exitCode).toBe(0);
+
+		const namesSelf = run(["watchdog", "watch", TARGET, "--for", CALLER], d);
+		expect(namesSelf.exitCode, "--for naming the CALLER must still be refused").not.toBe(0);
+		expect(namesSelf.stderr).toContain("E-OWN");
+		expect(namesSelf.stderr).toContain("role 'pa'");
+		expect(namesSelf.stderr).toContain("--for");
+
+		// The other half: a third-party watcher against its own parent.
+		const namesOther = run(["watchdog", "watch", TARGET, "--for", OTHER], d);
+		expect(namesOther.exitCode).not.toBe(0);
+		expect(namesOther.stderr).toContain("E-OWN");
+	});
+
+	it("rejects a bare --for with no seat", () => {
+		const { d } = repairDeps();
+		const r = run(["watchdog", "watch", TARGET, "--for"], d);
+		expect(r.exitCode).not.toBe(0);
+		expect(r.stderr).toContain("--for needs a session id");
+	});
+
+	it("rejects --for on EVERY action with no watcher concept, and none of them EXECUTE", () => {
+		// REVIEW-3 FIX. The previous version listed four actions and missed
+		// interval/exempt/list/disable-all/enable-all — which were precisely the
+		// ones the parser returned from BEFORE --for was validated. The hole and
+		// the test's blind spot were the same shape, which is why it stayed green.
+		//
+		// The write assertion is the one that matters: a flag that is "rejected"
+		// but still lets the action run is not rejected. `disable-all` carrying an
+		// ignored --for would have tripped the machine-wide kill switch.
+		const withoutWatcherConcept = [
+			["status", [TARGET]],
+			["pause", [TARGET]],
+			["resume", [TARGET]],
+			["reset", [TARGET]],
+			["exempt", [TARGET]],
+			["interval", [TARGET, "30m"]],
+			["list", []],
+			["disable-all", []],
+			["enable-all", []],
+		] as const;
+		for (const [action, args] of withoutWatcherConcept) {
+			const { d, watchdogStore } = repairDeps();
+			const r = run(["watchdog", action, ...args, "--for", OTHER], d);
+			expect(r.exitCode, `watchdog ${action} --for must be rejected`).not.toBe(0);
+			expect(r.stderr, `watchdog ${action} --for must say WHY`).toContain("--for is valid only");
+			expect(watchdogStore.writes, `watchdog ${action} --for must NOT execute`).toEqual([]);
+		}
 	});
 });

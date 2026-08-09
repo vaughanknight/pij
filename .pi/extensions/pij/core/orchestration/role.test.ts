@@ -191,10 +191,17 @@ describe("owesStatusCard vs cardCanMislead — two questions, not one", () => {
 	// Jordan's ruling 2026-07-30: primes do not carry status cards. The predicates
 	// are deliberately ASYMMETRIC because the consumer of a rendered card cannot
 	// tell who was obliged to write it — a rotten card misinforms identically.
-	it("only a PM may be CHASED for a card", () => {
+	// SPEC, not a pin: this asserts the CURRENT ruling and names it, because the
+	// previous version of this test asserted `prime -> false` and was not wrong
+	// about the code — it was WRONG ABOUT THE WORLD, pinning a rule the human had
+	// overturned, so updating it looked like breaking something.
+	it("PM and PRIME owe a card (government/rulings/2026-07-31-primes-owe-status-cards.md)", () => {
 		expect(owesStatusCard(descriptor("pij-pm", { orchestrationRole: "pm" }))).toBe(true);
-		expect(owesStatusCard(descriptor("pij-prime", { prime: true }))).toBe(false);
+		// Reversed 2026-07-31; the 2026-07-30 position was `false`.
+		expect(owesStatusCard(descriptor("pij-prime", { prime: true }))).toBe(true);
 		expect(owesStatusCard(descriptor("pij-worker", { orchestrationRole: "worker" }))).toBe(false);
+		// A PA assists a prime; it does not report, so it owes nothing.
+		expect(owesStatusCard(descriptor("pij-pa", { orchestrationRole: "pa" }))).toBe(false);
 		expect(owesStatusCard(descriptor("pij-plain"))).toBe(false);
 	});
 
@@ -214,14 +221,29 @@ describe("owesStatusCard vs cardCanMislead — two questions, not one", () => {
 		expect(cardCanMislead(descriptor("pij-worker", held))).toBe(false);
 	});
 
-	it("the predicates genuinely disagree — a prime with a card owes nothing yet can mislead", () => {
+	it("the predicates genuinely disagree — a PA holding a card owes nothing yet is not chased", () => {
 		// If this ever passes with both sides equal, the split has been collapsed
 		// back into one role test and the ruling has been silently re-broken.
+		//
+		// THE EXAMPLE MOVED, THE SPLIT DID NOT. This case used to be a PRIME —
+		// owes nothing, can mislead — and Jordan's 2026-07-31 reversal made a
+		// prime agree on both sides, which reads like the split dissolving. It
+		// did not: `pa` is the live disagreeing case now, and there are three of
+		// them carrying a statusAt. A demonstration that depends on one role's
+		// current ruling is a demonstration with an expiry date.
+		const paWithCard = descriptor("pij-aide", {
+			orchestrationRole: "pa",
+			statusAt: "2026-07-29T00:00:00.000Z",
+		});
+		expect(owesStatusCard(paWithCard)).toBe(false);
+		expect(cardCanMislead(paWithCard)).toBe(false);
+		// And the prime now agrees on BOTH sides — recorded so the next reader
+		// does not mistake agreement here for the split having been removed.
 		const primeWithCard = descriptor("pij-prime", {
 			prime: true,
 			statusAt: "2026-07-29T00:00:00.000Z",
 		});
-		expect(owesStatusCard(primeWithCard)).toBe(false);
+		expect(owesStatusCard(primeWithCard)).toBe(true);
 		expect(cardCanMislead(primeWithCard)).toBe(true);
 	});
 });

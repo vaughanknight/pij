@@ -23,6 +23,7 @@ import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js"
 import { buildInitInjection, discoverNewTranscript } from "../harness/claude.js";
 import { type TranscriptListing, transcriptLayout } from "../harness/transcript.js";
 import { classifyInterstitial } from "../interstitial.js";
+import type { ProcessSnapshot } from "../platform/types.js";
 import type { DeliveryPort, RegistryPort, SendOutcome } from "../ports.js";
 import { persistDaemonWrite } from "../registry-write.js";
 
@@ -89,6 +90,20 @@ export interface DaemonPorts {
 	now(): number;
 	/** Liveness probe for a pid. */
 	isAlive(pid: number): boolean;
+	/** ONE whole-table process capture, for ONE death sweep (plan 095).
+	 *
+	 *  OPTIONAL BY DESIGN, in two directions. Structurally: a mandatory method
+	 *  would be source-breaking for every existing implementer of this interface,
+	 *  and the pure loop fakes have no process table to offer. Semantically: an
+	 *  absent capability yields `unknown`, never `absent` — a probe that cannot
+	 *  run has observed nothing, and this whole plan exists because a missing
+	 *  observation was being read as an observation of absence.
+	 *
+	 *  Returns a VALUE, not a per-pid query, on purpose: the death sweep runs on
+	 *  the ~600ms tick over ~500 descriptors, so a per-descriptor `ps` is ~500
+	 *  process-table spawns per tick — enough to stall the tick and therefore
+	 *  message delivery. */
+	processSnapshot?(): ProcessSnapshot;
 }
 
 /** Per-session, in-memory drive state the daemon threads across ticks. */

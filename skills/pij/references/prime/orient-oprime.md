@@ -48,6 +48,65 @@ files, not you — you are its current, replaceable operator.
    its sensor while you watch the artifact), never side-band; on rate-limited
    externals a second independent prober subtracts confidence (it can poison
    the resource and forge the very fault you're checking).
+
+   > **⚠️ AND NOTHING ABOVE VERIFIES YOU. This duty is defined as a VERTICAL act —
+   > "one level up" — and a prime's "up" is the human.** Grep this skill for
+   > prime-to-prime, peer-prime, or one prime verifying another and you get **zero
+   > hits**; the only two occurrences of lateral traffic are *prohibitions*
+   > (`"streams never talk sideways"`, `"streams never negotiate sideways"`), both
+   > scoped to streams. Primes are not forbidden to talk laterally — **they are not
+   > addressed at all.** The model is a set of isolated roots, and the seat with the
+   > widest scope has the least supervision.
+   >
+   > **What was demonstrated, 2026-08-05 — stated at the weight it actually
+   > carries.** **FOUR** instances where a wrong thing was caught by a seat with
+   > **no authority over the seat that produced it**: a merged capture floor that
+   > was blind on most panes; a fleet chore whose polarity alarmed on the harmless
+   > condition; a `73%` corrected back to a measured `61%`; a corpus of `27` that
+   > was `25`.
+   >
+   > **That is a demonstration that the axis CAN carry weight. It is not evidence
+   > about how often it does.**
+   >
+   > **Three limitations, none of which the four instances survive being counted
+   > without:**
+   >
+   > 1. **A larger set of catches does NOT support this.** Several were
+   >    *self*-caught in a peer's presence — an origin hypothesis abandoned after
+   >    the peer described the same near-miss, a recipe hypothesis checked before
+   >    sending. The prompt was lateral; the catch was not. Those are equally
+   >    consistent with *"both seats were primed to check because checking was the
+   >    topic."* Do not count them.
+   > 2. **The axis also produced a shared error.** Three seats independently
+   >    derived the same one-line fix, and the agreement **raised** confidence
+   >    rather than prompting a test. It was wrong, and it was caught **alone**, by
+   >    opening a real capture file. *Agreement among readers of the same source is
+   >    not corroboration — it is a shared blind spot, and it feels exactly like
+   >    corroboration.* **Lateral contact manufactures this failure as well as
+   >    catching it.**
+   > 3. **There is no denominator.** Every instance above is a catch; not one is a
+   >    miss — and there cannot be, because the wrong things that got through are
+   >    by definition the ones nobody checked. **A numerator is not a rate.**
+   >
+   > Sample: one evening, two seats, both primes, both working the same subject
+   > matter, both unusually motivated because checking *was* the topic. **As
+   > self-selecting as a sample gets.** None of this shows isolated roots is wrong.
+   >
+   > **The mechanism, and it is not discipline**: the interval between forming an
+   > explanation and asserting it is held open **by the other seat**, not by
+   > resolve. Neither prime could identify a moment of choosing to be careful —
+   > the other one was simply there. *A seat working alone has no such interval,
+   > and nothing here supplies one.*
+   >
+   > **A PA cannot be that interval.** It can relay but not contradict, and it is
+   > refused the verbs that would let it record a dissent independently
+   > (`spine-append`; see `pij#102`). Supervision downward is not verification of
+   > you.
+   >
+   > **Practice, pending a human ruling on whether it becomes an expectation**:
+   > when you are about to assert something consequential that nothing above you
+   > will check, send it to a prime in another government first — and say what
+   > would refute it. Cite `pij#89`, `#96`, `#103` for what this caught.
 7. **Keep your seats' cards honest — their staleness is YOUR duty**: subordinates
    forget to report; you are accountable that they do. `pij anomalies` is the sensor,
    and every `status-stale` row is an open item on YOUR list, not theirs — the row

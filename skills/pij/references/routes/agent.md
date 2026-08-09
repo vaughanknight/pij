@@ -32,7 +32,7 @@ pij agent spawn --prompt "<text>" [--once]   # inline: no pack — your prompt +
 ```
 
 - Your session id is stamped as `spawnedBy` — you are the **report target** (resolve yourself first: `pij whoami`; unregistered → the report round-trip can't complete).
-- The peer boots, gets its packet injected, works, then `pij agent report`s: the report lands in **your** pane as a `[pij from <id>]` turn, and `reportedAt` is stamped on the peer's descriptor (the durable proof it completed).
+- The peer boots, gets its packet injected, works, then `pij agent report`s: the report lands in **your** pane as a `[pij from <id>]` turn, and `reportedAt` is stamped on the peer's descriptor (the durable proof it completed). Report bodies follow § C10 (wire discipline): result/verdict first, raw data over narrative.
 - `--once`: the daemon auto-closes the peer right after its report. Without it the peer stays **resident** — `pij send <id> "follow-up question"` keeps working, and you close it when done (`pij close <id>`).
 - **Permissions warning** (plan 029 finding 09): a spawned/resident agent peer always runs **fully permissioned** — blanket flags, no human at the pane to approve tool prompts. Pack permission presets bind `run` mode only; `spawn` prints a stderr advisory and proceeds. Don't spawn a pack you'd only trust read-only.
 - Placement/cap and liveness follow § C5 / § C7 (the report is pushed; don't poll).
