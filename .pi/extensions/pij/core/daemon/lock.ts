@@ -15,6 +15,14 @@ export interface LockFile {
 	 *  created that window (auto-start). Lets `pij daemon stop` tear down the
 	 *  window it owns, while never touching a window a human started the daemon in. */
 	readonly window?: string;
+	/** Short sha of the checkout HEAD the daemon BOOTED from (s101).
+	 *
+	 *  Recorded here rather than in a new file because only the booting process
+	 *  knows it — the same reason `window` is resolved at boot — and because
+	 *  `readDaemonStatus()` already parses this file, so the comparison costs
+	 *  nothing at status time. Absent on locks written before this field existed,
+	 *  which readers must render as UNKNOWN and never as "current". */
+	readonly head?: string;
 }
 
 export type LockDecision =
@@ -32,6 +40,7 @@ export function parseLockFile(raw: string | null): LockFile | null {
 				pid: v.pid,
 				startedAt: v.startedAt,
 				...(typeof v.window === "string" ? { window: v.window } : {}),
+				...(typeof v.head === "string" ? { head: v.head } : {}),
 			};
 		}
 		return null;
