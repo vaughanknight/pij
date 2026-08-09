@@ -15,6 +15,36 @@
 | Rail render | LIVE, chainglass `03c09e95d` + `2e5f7e8a1` — sky chip (never the prime's indigo), placed under its prime at PM level, optional-but-rendered card |
 | Unadopted-`pa` guard | pij PR #69 (lineage-at-spawn) — `pa` is the one role whose SUBJECT is its parent |
 
+## ⚠ ADDED 2026-08-09 — THE LINE BOUND IS ALSO BLIND, ON NARROW PANES (issue #221)
+
+Step 3 below withdrew the byte bound because `rule_bytes = 3 × pane_width` makes any byte
+constant go blind on a wide pane. **The move to `maxLines` does not fix the problem, it
+relocates it — and the two axes are ANTI-CORRELATED.**
+
+Measured while standing up `pij-efficient-bug`, following this recipe exactly
+(`--capture always --max-lines 12`, **no `--max-bytes`**), on a pane of **width 40, height 23**:
+the delivered capture was **575 bytes containing ZERO content lines** — two rules, an empty
+prompt, and a status block. The bottom **11 of 12** lines were furniture.
+
+Why: the status block **wraps**, so chrome that is 1 line at width 160 is 4 lines at width 40.
+
+| pane | byte cost of chrome | LINE depth of chrome |
+|---|---|---|
+| wide (200 cols) | high | shallow (~7 lines) |
+| narrow (40 cols) | low | **deep (~11 lines)** |
+
+**So there is no safe constant on EITHER axis, and the real defect is neither unit: capture
+is tail-anchored, and the tail of a pane is fixed furniture by construction.** Any bound
+applied to a tail-anchored window spends itself on chrome first, whatever it is denominated in.
+
+**What to do until #221 lands**: after wiring, **read the first delivered capture and count
+its content lines.** If it is all chrome, your pipe is verified and blind — which passes
+step 17's deliberate-causation test while telling you nothing, so step 17 alone cannot
+catch this. Raise `--max-lines` well past the chrome depth of *your* pane (measure it:
+`tmux capture-pane -p -t <pane> | tail -20`), and state the width you measured it at.
+
+---
+
 ## The steps
 
 1. **Spawn from your repo root**, harness of your choice. Cheap/fast is the design intent
@@ -61,8 +91,23 @@
    > **Why**: plan 078 classifies the whole `watchdog` verb family as refused for role
    > `pa` (`orchestration/pa-capability.ts:127` — *"it changes supervision policy for a
    > seat"*). `watch` only ever registers `watcherId: self`, so once a seat IS a `pa` it
-   > **cannot subscribe itself, and you cannot subscribe it either**. The deterministic
+   > **cannot subscribe itself**. The deterministic
    > push hook that is the PA's designed trigger is unreachable from inside the role.
+   >
+   > **CORRECTED 2026-08-09 — "and you cannot subscribe it either" IS NO LONGER TRUE.**
+   > `pij watchdog watch <target> --for <seat>` has shipped and is documented in
+   > `pij watchdog --help`: *"a prime or PM can subscribe or unsubscribe for a seat that
+   > is already stamped, unreachable, or dead… the original `addedAt` is preserved on
+   > every re-bind."* A `pa` caller is still refused `--for`, **including when it names
+   > itself** — which is right: a PA acts only for itself, and the plain form already
+   > does that. So a recovery path exists and the wiring is no longer one-shot.
+   >
+   > **Keep doing step 6 first anyway.** The ordering is still strictly better — it needs
+   > no recovery, no extra mutation, and no prime intervention — but a prime who lands
+   > here after mis-ordering should know the seat is recoverable in ONE command rather
+   > than believing the standup is unrecoverable and starting over. Read the old text as
+   > *"expensive"*, not *"impossible"*. Verified against `--help` on 2026-08-09 while
+   > standing up `pij-efficient-bug`.
    >
    > Found by pij-chief-roadrunner's flash-tier PA, 2026-08-01. albatross's PA has the
    > subscription only because it happened to register while still unroled — an accident
