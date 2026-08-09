@@ -29,7 +29,6 @@ import { validateInput } from "minih/runner";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeTextAtomic } from "./adapters/atomic-file.js";
-
 import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
@@ -112,6 +111,10 @@ import {
 	reportDaemonStart,
 } from "./core/daemon/lifecycle.js";
 import { parseLockFile } from "./core/daemon/lock.js";
+import {
+	describeSourceStaleness,
+	type SourceCheckoutFacts,
+} from "./core/daemon/source-staleness.js";
 import {
 	deriveHarnessPijId,
 	filterByFolder,
@@ -1191,13 +1194,85 @@ function runDaemonVerb(argv: readonly string[]): void {
 		}
 		process.exit(0);
 	}
+
+	/** The directory of the `daemon.ts` the given pid is executing, from its own
+	 *  command line. Undefined when the pid is absent, unreadable, or does not look
+	 *  like a pij daemon — never a guess. */
+	function daemonSourceDir(pid?: number): string | undefined {
+		if (pid === undefined) return undefined;
+		try {
+			const command = execFileSync("ps", ["-o", "command=", "-p", String(pid)], {
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+				timeout: 2_000,
+			});
+			const match = /(\S*[/\\]\.pi[/\\]extensions[/\\]pij[/\\])daemon\.ts/.exec(command);
+			return match?.[1] === undefined ? undefined : dirname(match[1]);
+		} catch {
+			return undefined;
+		}
+	}
+
+	/** Gather the daemon's SOURCE checkout facts — no network, ever.
+	 *
+	 *  The daemon runs `tsx` off this file's own tree, so the checkout that matters is
+	 *  the one containing this module. `git rev-parse --show-toplevel` from here finds
+	 *  it whether pij was invoked from the repo, a worktree, or a global link.
+	 *
+	 *  `@{u}` is the tracked upstream AS OF THE LAST FETCH — deliberately not
+	 *  `git fetch` first. See `core/daemon/source-staleness.ts` for why a status
+	 *  command must not hit the network. Every failure yields `unavailable`, never a
+	 *  clean-looking result. */
+	function readSourceCheckout(daemonPid?: number): SourceCheckoutFacts {
+		// THE CHECKOUT THAT MATTERS IS THE DAEMON'S, NOT THIS PROCESS'S — and on this
+		// fleet they are routinely different, because seats work in linked worktrees
+		// while the daemon runs from the main checkout. Reporting the worktree here
+		// would answer a question nobody asked with a number that looks like the one
+		// they did ask for: the exact substitution this sensor exists to end.
+		//
+		// The daemon's own command line names the file it is executing (that is how the
+		// 2026-08-09 incident was diagnosed), so the source dir is read from the RUNNING
+		// PROCESS rather than inferred. Falling back to this module's directory only
+		// when there is no pid to ask about.
+		const sourceDir = daemonSourceDir(daemonPid) ?? dirname(fileURLToPath(import.meta.url));
+		const git = (args: readonly string[]): string | undefined => {
+			try {
+				return execFileSync("git", [...args], {
+					cwd: sourceDir,
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "ignore"],
+					timeout: 2_000,
+				}).trim();
+			} catch {
+				return undefined;
+			}
+		};
+		const head = git(["rev-parse", "--short", "HEAD"]);
+		if (head === undefined) return { unavailable: true };
+		const status = git(["status", "--porcelain"]);
+		const behindRaw = git(["rev-list", "--count", "HEAD..@{u}"]);
+		const behind = behindRaw === undefined ? undefined : Number.parseInt(behindRaw, 10);
+		return {
+			head,
+			...(status === undefined ? {} : { dirty: status.length > 0 }),
+			...(behind === undefined || Number.isNaN(behind) ? {} : { behind }),
+		};
+	}
+
 	if (sub === "status") {
 		const st = readDaemonStatus();
 		const wins = daemonWindows();
 		const winNote = wins.length ? `; pij-daemon window(s): ${wins.join(", ")}` : "";
+		// Is it running the code you think you merged? `running` was true and
+		// useless twice in two days (pij#180's stale process, then a correct restart
+		// onto a stale CHECKOUT). Appended only when there is something wrong.
+		const source = describeSourceStaleness(
+			readSourceCheckout(st.kind === "running" ? st.pid : undefined),
+		);
+		const sourceNote = source === "" ? "" : `; ${source}`;
 		if (st.kind === "running") {
 			process.stdout.write(
-				`running (pid ${st.pid}${st.window ? `, window ${st.window}` : ""})${winNote}\n`,
+				`running (pid ${st.pid}${st.window ? `, window ${st.window}` : ""})${winNote}${sourceNote}\n`,
 			);
 		} else if (st.kind === "stale") {
 			process.stdout.write(`stale lock (dead pid ${st.pid})${winNote}\n`);
