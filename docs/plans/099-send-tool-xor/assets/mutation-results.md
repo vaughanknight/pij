@@ -97,6 +97,11 @@ subject shelling out says nothing about whether the spec does.
 
 ## C1 — OBSERVED-BLOCKED, blocker named
 
+> **CORRECTION — 2026-08-11 (o-prime).** SUPERSEDED: `pij#166` closed 2026-08-09T00:34Z with the
+> Windows seats DISCHARGING C1 on the failing host. Left standing, struck not erased. See
+> `seat-record.md` § "READ THIS BEFORE CITING THE STREAM".
+
+
 Everything above observes the **registration boundary**. None of it proves the model is shown the
 constraint — the exact surface pij#166 proved insufficient.
 

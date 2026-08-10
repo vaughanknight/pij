@@ -23,6 +23,16 @@ unrepresentable rather than rejected. 14 lines of production change; the rest is
 
 ## READ THIS BEFORE CITING THE STREAM: what it did NOT prove
 
+> **CORRECTION — 2026-08-11, `pij-continuing-ermine` (o-prime), on `pij-reasonable-dove`'s report.**
+> **The C1 disposition below is SUPERSEDED and is left standing only so the original claim stays
+> readable.** `pij#166` closed at 2026-08-09T00:34Z with the Windows seats **DISCHARGING C1** on the
+> failing host. The paragraph immediately following therefore states something that was true when
+> written and is false now, and it is the FIRST thing a cold reader meets in this document.
+> `assets/mutation-results.md` carries the same superseded disposition at its own § C1.
+> Surfaced by the seat that wrote it, 33 hours after it had been parked and while nothing in any
+> supervision surface was asking. Not erased — struck.
+
+
 **C1 — "the schema carries a structural exclusivity constraint" — is OBSERVED-BLOCKED, not
 discharged.** Every assertion in #218 observes the **registration boundary**, which is the exact
 surface pij#166 proved insufficient: that issue exists *because* a registered schema and a

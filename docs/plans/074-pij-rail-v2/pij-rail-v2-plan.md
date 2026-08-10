@@ -594,7 +594,7 @@ and the naive reading of the ruling produces silence for the exact population it
 | 5.5 | **Named scheduler-behaviour change (its own line, its own test)**: keying on `statusAt` **removes activity re-anchoring for PMs** — a PM working hard and reporting nothing will now be nudged. That is the intent; it is a change to the scheduler, not only to targeting, and the docstring at `core/watchdog.ts:129-133` must be updated to say so | pij-messaging | docstring and test agree | Albatross ruling 2; review § A-2 second-order note |
 | 5.6 | **Explicitly scope out** the suspect path: `evaluateResponse` stays blind to the semantic axis in this plan (F-05). Record it as a named non-goal with the live evidence — a SUSPECT was raised on this PM seat while it was declared `waiting`, twice-refreshed | pij-messaging | non-goal recorded, not silently inherited | A.4; leaving it unstated ships a PM-keyed nudge on a detector that cannot see a declared idle |
 | 5.7 | Nudge text carries the **paste-ready one-call command** — zero syntax recall — in the existing `[pij watchdog #N for <id>]` frame | pij-messaging | AC-09 | Uses whichever verb name OQ-A settles; single-sourced per 3.2 |
-| 5.8 | Quote **behaviour, not setting**, in any interval reporting: intervals overshoot ~1.57× the configured value | pij-messaging | no doc or message claims 20m as observed cadence | Inherited measurement; do not re-derive |
+| 5.8 | Quote **behaviour, not setting**, in any interval reporting: ~~intervals overshoot ~1.57× the configured value~~ **— CONTRADICTED, see note below; treat the overshoot figure as unscoped and do NOT quote it** | pij-messaging | no doc or message claims 20m as observed cadence | ~~Inherited measurement; do not re-derive~~ **— the "do not re-derive" instruction is WITHDRAWN (2026-08-11)** |
 | 5.9 | **Re-arm a self-paused watchdog on new work** (o-prime ruling 2026-07-29): on a NEW dispatch/assignment for a seat, clear `pausedBy` **iff `pausedBy === "self"`**. Operator pauses and `exempt` are **not** touched — an operator silenced a seat on purpose; a seat that silenced itself did so about **finished** work, and that consent does not extend to work it had not yet been given | pij-messaging | a seat that self-paused then received new work is `watching` again; operator pause and `exempt` survive untouched | See **F-16**. Without this, item 5 ships **broken-by-etiquette on day one**: a PM that follows the nudge's own instruction after its first status is unwatched forever and A-2's floor anchor never fires for it — A-2's silent population, reintroduced one layer up through the etiquette rather than the code. Touches no CG-consumed field |
 | 5.10 | `harness checks` | — | **exit 0, ZERO failures** | AC-14 |
 
@@ -819,3 +819,63 @@ never restart the machine-wide daemon from a worktree, commits pathspec-mandator
 **Spawning hazard**: `pij spawn --harness pi` dies silently at boot from a linked worktree
 (global extension links collide with the worktree's project-local extensions). Spawn pi peers from
 the **main checkout** and have them `cd` in with absolute paths. Copilot peers are unaffected.
+
+---
+
+## Correction note — row 5.8, the interval-overshoot measurement (2026-08-11)
+
+**Recorded by** `pij-continuing-ermine` (o-prime) **on the report of** `pij-reasonable-dove` — the
+seat that produced the original figure, and the seat that contradicted it.
+
+| | measurement | result |
+|---|---|---|
+| 2026-07-28 | **three** intervals, a different seat, under conditions no longer reproducible | systematic **~1.57×** overshoot |
+| 2026-08-09 | **four** consecutive intervals on `pij-reasonable-dove` — 120.04, 120.00, 120.00, 120.02 against a 120 min setting | ratio **1.000** |
+
+**Neither supersedes the other.** Three then, four now, opposite results, and the earlier seat's
+conditions are gone. The honest disposition is *"observed on one seat 2026-07-28; did not reproduce
+2026-08-09"* — not a retraction, and not a standing claim.
+
+## The dangerous half was never the number: "do not re-derive"
+
+The row's note read **"Inherited measurement; do not re-derive."** That is a different and worse
+defect than a stale figure, and it deserves its own name.
+
+> **A stale citation fails to invite the check. This one forbids it.** It converts an unverified
+> inherited claim into an **unfalsifiable** one — by *policy* rather than by evidence. The number
+> cannot be wrong, because checking it is out of process.
+
+The pricing is the giveaway. If the measurement is right, re-deriving costs a seat a few minutes. If
+it is wrong, **the note guarantees nobody ever finds out.** Those outcomes are not comparable, and
+the note treats them as though they were.
+
+### The repair is not to delete the note
+
+It exists for a real reason — stopping six seats from re-measuring the same thing is worth
+something, and cheap defence of expensive work is exactly what a fleet should keep. The defect is
+that it was **unconditional**.
+
+> **A claim protected from re-derivation must state the conditions under which it was taken, and what
+> would make re-derivation necessary. Otherwise the note does not economise the check — it abolishes
+> it.**
+
+The original recorded none: one seat, one interval setting, one date. Which is why its own author
+now cannot say whether four contradicting intervals *refute* it or simply **measured a different
+situation**. That ambiguity is the whole cost, and it was avoidable at the moment of writing.
+
+This generalises past this row. Any inherited-and-protected value — a threshold, a timing, a
+capacity — has the same shape.
+
+*Framing by `pij-reasonable-dove`, about its own measurement.*
+
+## Attribution, previously living only in a status card
+
+`pij-reasonable-dove` attributed the **nudge-counter reset** to a **daemon restart, not a tmux server
+restart**: daemon pid `21897` → `17583`, window `@371` → `@455`, counter `#3` → `#1`. **tmux window
+ids are monotonic**, so the server did not restart — the daemon alone did. That corroborates task
+#33's in-memory re-arm from a *live observation* rather than from reading the code path.
+
+Recorded here because it existed **only in spine 58434** and would have died with that seat's
+context. On why nothing caught any of this, in its own words: *"a parked state is an honest
+declaration that doubles as a cloaking device — the sensor asks whether a value changed, never what
+the seat is waiting for or how long is reasonable for that thing."* See `pij#278`.
