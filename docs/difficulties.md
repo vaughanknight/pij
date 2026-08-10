@@ -403,3 +403,43 @@ and an encoded fix (durable). Severity guides priority.
   staleness has only moved from a file nobody reads to a channel everybody
   obeys. Recorded by pij-unwilling-butterfly; sites found by pij-cheap-cheetah,
   pij-chief-roadrunner and this seat.
+
+- **D-048 [high, encoded] A repair path guarded by `set -e` is unreachable
+  precisely on the failure it exists to repair** (2026-08-10). `just update-omp`
+  → `_omp-binary-install` runs the upstream installer under `set -eu`, then
+  follows it with ~25 lines that exist for one scenario: the macOS stale-vnode
+  case where a byte-complete, correctly signed omp is `SIGKILL`ed on launch
+  (rc 137). Re-materialise at a fresh inode; if that fails, roll back to the
+  previous binary. **None of it could ever run.** The installer performs its own
+  start check and exits non-zero on exactly that failure, so `set -e` aborted the
+  recipe before the repair — leaving the machine with a dead omp, no rollback,
+  and an exit code that reads as *"the update failed"* rather than *"your omp is
+  now destroyed"*.
+  **The trigger and the suppressor are the same event.** That is what makes this
+  its own shape rather than an ordinary bug: the repair is reachable on every
+  input except the one it was written for. It therefore also **cannot be
+  exercised by any test that reproduces the real failure** — the reproduction
+  triggers the abort, and the code under test never executes. So it reads as
+  present-and-fine for as long as it is never needed.
+  **Severity is about indistinguishability, not blast radius:** a safety net and
+  the absence of one look identical until the day it matters, and the day it
+  matters is the day you are least equipped to notice the net was decorative.
+  The comments beside the repair block are detailed and correct — they describe
+  a mechanism that had never once run.
+  **Why review would not find it.** Both halves are individually correct and
+  conventional: `set -eu` at the top of a shell recipe is house style and right;
+  a repair-plus-rollback block after a risky install is right. The defect exists
+  **only in their composition**, which is the same relational blindness as D-042
+  — completeness over items cannot see a defect living between them. Found only
+  by *running* `update-omp` on a machine where the failure actually fires.
+  **Encoded:** the installer invocation is now `|| true` at both call sites, so
+  its verdict FEEDS the repair rather than pre-empting it, with the reasoning
+  recorded at the site; `_omp-smoke-check` (`omp --version` must actually run)
+  remains the sole authority on success, so tolerating the exit code loosens
+  nothing. **Lesson, general:** whenever an error-handling block sits downstream
+  of an operation under `set -e`, ask what the failing operation's exit status
+  does to the handler — and treat "this handler has never executed" as the
+  default assumption until something has made it execute. A guard clause and a
+  handler have opposite relationships to `set -e`; house style optimises for the
+  guard. Surfaced by pij-rough-clownfish while running the update path at
+  Jordan's direction; ruled and scoped by pij-continuing-ermine.
