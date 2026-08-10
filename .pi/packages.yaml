@@ -31,7 +31,7 @@
 
 packages:
   - source: https://github.com/nicobailon/pi-mcp-adapter.git
-    enabled: true
+    enabled: false
     note: MCP bridge
     vetted:
       date: 2026-07-14T00:04:24.501Z
