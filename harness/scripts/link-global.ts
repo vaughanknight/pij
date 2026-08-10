@@ -200,8 +200,21 @@ function manageOmpSharedFile(
 	}
 	const current = readlinkSync(target);
 	if (absoluteLinkTarget(target, current) !== resolve(source)) {
-		stderr(`skip ${target}: refusing to replace foreign symlink -> ${current}`);
-		return { changed: 0, skipped: 1 };
+		// A symlink whose target does not exist protects nothing: the common case
+		// here is a link into a deleted worktree, which leaves `just link` — and
+		// therefore `update-pi`/`update-omp` — permanently failing on state that
+		// resolves to nothing. Reclaiming it can only ever replace a dead path;
+		// a link to a file that still exists is still refused.
+		if (existsSync(target)) {
+			stderr(`skip ${target}: refusing to replace foreign symlink -> ${current}`);
+			return { changed: 0, skipped: 1 };
+		}
+		stderr(`= ${target}: reclaiming dangling symlink -> ${current}`);
+		unlinkSync(target);
+		if (removeMode) return { changed: 1, skipped: 0 };
+		symlinkSync(source, target);
+		stdout(`→ omp/${name} -> ${sourceLabel}`);
+		return { changed: 1, skipped: 0 };
 	}
 	if (!removeMode) {
 		stdout(`= omp/${name} (already linked)`);

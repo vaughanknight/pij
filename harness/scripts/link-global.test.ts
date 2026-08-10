@@ -125,6 +125,34 @@ describe("link-global", () => {
 		expect(result.stderr.join("\n")).toContain("real directory");
 	});
 
+	it("reclaims a dangling OMP symlink but still refuses a live foreign one", () => {
+		const root = checkout();
+		const home = tempDir("pij-link-home-");
+		const gone = tempDir("deleted-worktree-");
+		const dead = join(gone, ".omp", "models.yml");
+		mkdirSync(join(home, ".omp", "agent"), { recursive: true });
+		symlinkSync(dead, join(home, ".omp", "agent", "models.yml"));
+		expect(existsSync(join(home, ".omp", "agent", "models.yml"))).toBe(false);
+
+		const reclaimed = run(root, home);
+		expect(reclaimed.stderr.join("\n")).toContain("reclaiming dangling symlink");
+		expect(readlinkSync(join(home, ".omp", "agent", "models.yml"))).toBe(
+			join(root, ".omp", "models.yml"),
+		);
+
+		const live = tempDir("other-checkout-");
+		mkdirSync(join(live, ".omp"), { recursive: true });
+		writeFileSync(join(live, ".omp", "models.yml"), "providers: {}\n");
+		rmSync(join(home, ".omp", "agent", "models.yml"));
+		symlinkSync(join(live, ".omp", "models.yml"), join(home, ".omp", "agent", "models.yml"));
+
+		const refused = run(root, home);
+		expect(refused.stderr.join("\n")).toContain("refusing to replace foreign symlink");
+		expect(readlinkSync(join(home, ".omp", "agent", "models.yml"))).toBe(
+			join(live, ".omp", "models.yml"),
+		);
+	});
+
 	it("worktree invocation exits 1 before either machine home changes", () => {
 		const canonicalRoot = tempDir("pij-link-canonical-");
 		const linkedRoot = tempDir("pij-link-worktree-");

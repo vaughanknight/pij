@@ -267,10 +267,14 @@ _omp-binary-install *REF:
         echo "!! could not download the omp installer from https://omp.sh/install" >&2
         exit 1
     fi
+    # Do NOT let `set -e` abort here. The upstream installer runs its own start
+    # check and exits non-zero on the macOS stale-vnode SIGKILL below — the exact
+    # failure the repair path that follows exists to fix. Aborting on its exit
+    # code leaves the machine with a downloaded, unrunnable omp and no rollback.
     if [ -n "${1:-}" ]; then
-        sh "$tmp" --binary --ref "$1"
+        sh "$tmp" --binary --ref "$1" || true
     else
-        sh "$tmp" --binary
+        sh "$tmp" --binary || true
     fi
     # A failed smoke check means we just replaced a working omp with one that does
     # not run. Put the old one back rather than leaving the machine without omp.
