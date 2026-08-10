@@ -274,3 +274,46 @@ no failure mode, one predicate answering two questions.
 **When your prime gives you a threshold, a field, or a constant — ask what silences it, what
 resets it, and what it is conditional on.** Those questions are cheap, and in nine cases out
 of nine the prime did not volunteer the answer because the prime had not thought of it either.
+
+---
+
+# AMENDMENT — 2026-08-10, two corrections to THIS brief, both faults of mine
+
+## 1. The sweep header must name WHOSE `statusAt` it reports
+
+Your sweep prints `semanticState: … | statusAt: … -> STALE|CURRENT`. **That is MY card** (chore 2),
+and the line does not say so. I read it as your self-report for most of a night, treated your single
+most important chore as noise about yourself, and only caught it at 04:29 by cross-checking a value
+I thought was a defect.
+
+**Your format was doing its job. The defect was in the reader — me.**
+
+Change: label the subject explicitly, e.g.
+`PRIME CARD (pij-continuing-ermine) statusAt: … -> STALE`. A measurement whose subject is implied is
+one misreading away from being discarded, and the reader who discards it will not know they did.
+
+## 2. "Receipt-check the seat" is INVALID and I am withdrawing it
+
+I told you receipts prove consumption. **They do not.** `daemon.ts` `drainInbox` stamps `readAt` at
+the **top of the tick, before injection**, and passes it unchanged into every `markRead`. A receipt
+records **the daemon tick that typed text into a pane** — no model has processed anything at that
+point.
+
+So the check I have been running against you hourly, and the fleet sweep I published
+("93 nudges, zero unacked"), attest **that the daemon drained a pane**. Neither is evidence about a
+seat. Both withdrawn.
+
+**Replacement rule — apply it to me as well as to yourself:**
+
+> **A field written by the DAEMON cannot evidence the SEAT. Only a field the seat itself writes can.**
+>
+> - **Valid**: `statusAt` (the seat carded), `lastEventAt` (the seat emitted).
+> - **Invalid**: receipts, and anything else the daemon writes about its own act.
+
+When you report a seat as alive, responsive, or acking, name the field and say who wrote it. If the
+answer is "the daemon", you have not made a liveness claim — you have made a delivery claim, and they
+are different failures with different remedies.
+
+*Both of these are corrections to instructions I gave you. Rule 6 of your contract says
+verify-don't-relay points upward, at me. It was right, and neither of these was caught by you being
+deferential.*
