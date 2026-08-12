@@ -21,8 +21,8 @@
 Read and accepted:
 
 - `/Users/jordanknight/pi-hacking/pij/.pi/skills/pij/references/prime/orient-global.md`
-- `/Users/jordanknight/pi-hacking/pij/government/orient-local.md` (live main government root)
-- `/Users/jordanknight/pi-hacking/pij/government/briefs/s047-brief.md`
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/orient-local.md` (live main government root)
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s047-brief.md`
 - `/Users/jordanknight/pi-hacking/pij/.pi/skills/pij/references/prime/orchestrator.md`
 - `/Users/jordanknight/pi-hacking/pij/docs/how/pij.md`
 - worktree `AGENTS.md` via inherited project context

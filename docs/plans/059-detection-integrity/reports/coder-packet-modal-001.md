@@ -22,7 +22,7 @@ Everything else is read-only. Do not touch watchdog, daemon, close, spawn, other
 
 ## Forbidden paths
 - `.the-flow-state.json`, any `the-flow.json`, any `the-flow.md`
-- `.flow-pair/**`, `government/**`, `.pi/packages.yaml`, `.pi/settings.json`
+- `.flow-pair/**`, `.harness/government/**`, `.pi/packages.yaml`, `.pi/settings.json`
 - watchdog/death/daemon files
 
 ## Method / proof

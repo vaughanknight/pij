@@ -26,7 +26,7 @@ pij graduates from a heuristic, prose-governed peer fabric into a deterministic 
 - Any ACL/permission enforcement on writes (WS-5/WS-6: attribution, not jail).
 - A daemon HTTP/socket API (WS-4 rejected it).
 - SQLite or any database (H-02).
-- Rewriting/cutover of the prose `government/spine.md` — it stays authoritative until an explicit human cutover ruling (R4); this plan ships the consumer contract + dual-run only.
+- Rewriting/cutover of the prose `.harness/government/spine.md` — it stays authoritative until an explicit human cutover ruling (R4); this plan ships the consumer contract + dual-run only.
 - Auto-reclaim/auto-kill on anomalies (survey: alert, never act).
 - Cross-machine sync; copilot context telemetry beyond honest `unknown`.
 
@@ -70,7 +70,7 @@ pij graduates from a heuristic, prose-governed peer fabric into a deterministic 
 7. **AC-07** `pij anomalies --json` surfaces: axis-disagreement (semantic-active + system idle > threshold), unverified `done`, and hold cleared by a non-issuer — each with evidence refs; daemon pushes an alert to the node's parent once per transition (existing latch pattern), never acts on it.
 8. **AC-08** Spawn records the **invoking session** as `parentId` (never cwd); a parentless non-prime shows `unadopted` in tree/list projections; `pij link` re-parent emits a spine event carrying the previous parent; cycles remain rejected; `spawnedBy` provenance is immutable.
 9. **AC-09** `pij node show <id> --json` returns both state axes, current assignment/task, model, effort, harness, `contextMax` (models.json join), `contextCurrent` (`{value, asOf, provenance}` — real for pi/claude/codex, `unknown` for copilot), and tmux `{paneId, windowId}` sufficient to open a terminal (`tmux select-window -t <windowId>` proof).
-10. **AC-10** `pij spine render` generates markdown from the JSON log (pure module); the prose `government/spine.md` is untouched by all of this; the migration contract doc defines the dual-run posture and the explicit human cutover ruling required to switch (R4).
+10. **AC-10** `pij spine render` generates markdown from the JSON log (pure module); the prose `.harness/government/spine.md` is untouched by all of this; the migration contract doc defines the dual-run posture and the explicit human cutover ruling required to switch (R4).
 11. **AC-11** Every pre-existing descriptor (no new fields) still loads and round-trips; the full existing suite stays green (additive-schema law, `types.ts:106,143,155` comment class "all optional ⇒ migration-safe").
 12. **AC-12** `docs/how/pij-platform.md` documents every on-disk record as a schema-versioned public contract (the UI reads files directly — WS-4); README points at it; the pij skill gains the node/task/state route (deploy ship-gated).
 

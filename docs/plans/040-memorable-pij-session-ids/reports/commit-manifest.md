@@ -38,7 +38,7 @@
 
 ## Explicit exclusions
 
-- `government/**`
+- `.harness/government/**`
 - `.harness/records/**`
 - `docs/PRD/**`
 - sibling plans `041/**`, `042/**`

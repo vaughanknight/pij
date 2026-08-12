@@ -391,7 +391,7 @@ if [ -f "$orchestrator" ]; then
   done <<'EOF'
 role|You are a stream orchestrator
 global orient|orient-global.md
-local orient|government/orient-local.md
+local orient|.harness/government/orient-local.md
 brief|item brief
 thesis|/thesis
 real invocation|host skill mechanism

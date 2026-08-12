@@ -4,7 +4,7 @@
 
 Review the final unstaged s052 diff independently against:
 
-- live owner brief: `/Users/jordanknight/pi-hacking/pij/government/briefs/s052-update-pi-reliability.md`
+- live owner brief: `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s052-update-pi-reliability.md`
 - `docs/plans/052-update-pi-reliability/reports/design-contract.md`
 - `docs/plans/052-update-pi-reliability/tasks/implementation.md`
 - implementation and execution evidence in the adjacent reports/reviews paths

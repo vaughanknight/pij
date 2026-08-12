@@ -349,7 +349,7 @@ describe("buildWatchdogTurn", () => {
 		expect(body).toContain("Keep going if working.");
 		// SPEC, not a pin: this used to assert the prime copy "do NOT owe a status
 		// card". Jordan REVERSED that on 2026-07-31
-		// (government/rulings/2026-07-31-primes-owe-status-cards.md), so the
+		// (.harness/government/rulings/2026-07-31-primes-owe-status-cards.md), so the
 		// card-less branch now serves the PA only and carries no prime language.
 		expect(body).toContain("You owe no status card");
 		expect(body).not.toContain("prime reports to its human in-pane");

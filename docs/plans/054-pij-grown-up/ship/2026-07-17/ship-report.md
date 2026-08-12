@@ -36,7 +36,7 @@ Local gates after the fix: `tsc` clean · full suite **2832 passed / 0 failed** 
 
 - Full suite on the converged tree: **2886 passed / 0 failed** — s054's 2832 + s055's 54, green together. tsc clean · biome clean · `just pij-skill-check` green.
 - CI on the merge commit: run `29564784706`, all three jobs pass; PR went `MERGEABLE`/`CLEAN`.
-- **R4 survived the squash**: `government/prime-flow.json` on main is blob `9b7d5b5` — byte-identical to the pre-merge attestation.
+- **R4 survived the squash**: `.harness/government/prime-flow.json` on main is blob `9b7d5b5` — byte-identical to the pre-merge attestation.
 - s055 built against s054's contract, recorded in-code (`core/types.ts:68`: *"s055 watchdog consumes `systemState` by these names"*). The WS-6 vocabulary is byte-exact on both sides.
 - Independent corroboration worth keeping: s055 diagnosed the pwsh probe flake separately and landed on the **same 60s ceiling**; the merged comment carries both measurements.
 

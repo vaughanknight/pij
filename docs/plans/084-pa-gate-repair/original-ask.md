@@ -3,7 +3,7 @@
 
 > have it run /builder flow on the isses please. builder is much updated now with dynamic documents.
 
-Delivered via the s091 stream brief (`government/briefs/s091-pa-gate-repair.md`),
+Delivered via the s091 stream brief (`.harness/government/briefs/s091-pa-gate-repair.md`),
 dispatch `dispatch-8c91a1e8-3e4d-4ebd-b8e7-63da08681e52`.
 
 ## The issues

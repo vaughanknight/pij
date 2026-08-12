@@ -21,7 +21,7 @@
    - [ ] spine `Writer:` + a rulings entry recording the rotation
    - [ ] baton-book `Writer:`
    - [ ] orient-local writer/tuner line
-   - [ ] anything this repo added (grep `Writer:` under government/)
+   - [ ] anything this repo added (grep `Writer:` under .harness/government/)
 4. Announce to the human and to every live stream **citing this pack** —
    streams do not know your id; say so explicitly per stream. All your A2A
    sends follow § C10 — Wire discipline (`<skill>/references/00-routing.md`

@@ -29,4 +29,4 @@
 
 Read-only product review: do not leave product-code or plan changes behind. The verdict artifact is your only allowed write.
 
-Forbidden: `.the-flow-state.json`, `the-flow.json`, `the-flow.md`, `.flow-pair/**`, `government/**`, and all paths outside the scoped review inputs.
+Forbidden: `.the-flow-state.json`, `the-flow.json`, `the-flow.md`, `.flow-pair/**`, `.harness/government/**`, and all paths outside the scoped review inputs.

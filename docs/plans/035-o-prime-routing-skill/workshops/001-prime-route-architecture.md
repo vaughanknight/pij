@@ -19,7 +19,7 @@
 **Related Documents**:
 - `../requirements-spine.md` (R1.1–R1.5, R3.5, R8.1–R8.6, R10)
 - `../research-dossier.md` (F-01..F-04, F-11; H-01, H-05)
-- Upstream (transitional access only, per the R8.5 ruling): `/Users/jordanknight/games/SecondCrack/docs/plans/018-o-prime/` — map/, government/, briefs/stream-brief-template.md
+- Upstream (transitional access only, per the R8.5 ruling): `/Users/jordanknight/games/SecondCrack/docs/plans/018-o-prime/` — map/, .harness/government/, briefs/stream-brief-template.md
 
 **Domain Context**:
 - **Primary Domain**: pij-skill (`skills/pij/**`)
@@ -147,7 +147,7 @@ docs/plans/035-o-prime-routing-skill/
 | Section | Content | Receipt |
 |---|---|---|
 | Job line | "govern many agents in one repo: one o-prime seat, stream orchestrators below, government as single-writer files" | briefing § one paragraph |
-| Role triage table | Deterministic probes → exactly one pointer: ① no `government/` dir in repo → **bootstrapper** → `rituals/bootstrap.md` · ② `government/spine.md` roster lists MY pij id as the seat (or I'm told to take the seat) → **o-prime** → `orient-oprime.md` · ③ roster lists me as a stream / I hold an adoption brief → **stream** → `orient-global.md` · ④ I'm a fleet worker → redirect to `pair`/`peer`, stop | R1.2 rung 1; detection-signal style of 00-routing.md |
+| Role triage table | Deterministic probes → exactly one pointer: ① no `.harness/government/` dir in repo → **bootstrapper** → `rituals/bootstrap.md` · ② `.harness/government/spine.md` roster lists MY pij id as the seat (or I'm told to take the seat) → **o-prime** → `orient-oprime.md` · ③ roster lists me as a stream / I hold an adoption brief → **stream** → `orient-global.md` · ④ I'm a fleet worker → redirect to `pair`/`peer`, stop | R1.2 rung 1; detection-signal style of 00-routing.md |
 | Ritual index | verb-style table: bootstrap · kickoff/adopt · baton cycle · report/verify · teardown → one rituals/ pointer each | R1.2 rung 3 |
 | Prime invariants | government single-writer (R2.2) · no long blocking subagents in an orchestrator seat + role-addressed sends (R9.8 mitigation) · rulings to disk on landing (R6.3) — cited, one line each | validation M-class receipts |
 | Preconditions | adopt per § C1; daemon per peer route; canary per § C2 (3-leg extension lives in kickoff ritual) | existing conventions |
@@ -161,15 +161,15 @@ docs/plans/035-o-prime-routing-skill/
 | `map/orient-global.md` | `references/prime/orient-global.md` | **Verbatim** (same) |
 | `map/prime-flow.schema.json` | `references/prime/prime-flow.schema.json` | **Verbatim** |
 | `map/bootstrap.md` | `rituals/bootstrap.md` + frozen copy in `vendored/` | **Distill** (keep derivation table + recovery playbook; SecondCrack answers column stays as labeled worked example) |
-| `government/kickoff-runbook.md` | `rituals/kickoff.md` + frozen copy | **Distill** (+ E-16 yield rules, + P-02/P-03 verb updates as they ship) |
+| `.harness/government/kickoff-runbook.md` | `rituals/kickoff.md` + frozen copy | **Distill** (+ E-16 yield rules, + P-02/P-03 verb updates as they ship) |
 | `map/map.md` §§ batons, lifecycle, channel legend | `rituals/batons.md`, `protocol.md` | **Distill** (concept prose → ritual/reference form) |
 | `docs/how/o-prime.md` | `references/prime/protocol.md` | **Rewrite** (R10: one-seat, overseer-optional, new roles rows, keep shapes) |
 | `briefs/stream-brief-template.md` | `templates/stream-brief.md` | **Adapt** (+ mandatory structure-tree field) |
-| `government/spine.md`, `baton-book.md` | `templates/spine.md`, `templates/baton-book.md` | **Shape only** (strip all run-01 rows/rulings) |
-| `government/canary-s017.md` | `exemplars/canary-record.md` | **Excerpt** (labeled history) |
+| `.harness/government/spine.md`, `baton-book.md` | `templates/spine.md`, `templates/baton-book.md` | **Shape only** (strip all run-01 rows/rulings) |
+| `.harness/government/canary-s017.md` | `exemplars/canary-record.md` | **Excerpt** (labeled history) |
 | `baton-book.md` grant log (4 named entries) | `exemplars/grant-log.md` | **Excerpt** (first grant · self-grant 04:43Z · reclaim 01:47Z · breach 04:29Z) |
 | `encode-candidates.md`, briefing, answers r1+r2, spine-validation | `docs/plans/035-…/vendored/` | **Verbatim, frozen** (evidence base; never shipped in skill) |
-| `government/briefs/pij-prime-war-stories.md` *(added post-review — Jordan's testimony ruling; path corrected per plan-validation M2)* | `vendored/` verbatim + `exemplars/` story-excerpts + tone source for all route text | **Verbatim + excerpt** (testimony pairing with encode-candidates' distillate) |
+| `.harness/government/briefs/pij-prime-war-stories.md` *(added post-review — Jordan's testimony ruling; path corrected per plan-validation M2)* | `vendored/` verbatim + `exemplars/` story-excerpts + tone source for all route text | **Verbatim + excerpt** (testimony pairing with encode-candidates' distillate) |
 | `map/orient-local.md` | `vendored/orient-local.secondcrack.md` + informs `templates/orient-local.md` | **Example + template** (content never ports — R8.1) |
 
 ## Gates & Reasons

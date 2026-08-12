@@ -1079,7 +1079,7 @@ describe("status-stale stays scoped to seats whose card is consumed", () => {
 	});
 
 	// ── primes owe a card (Jordan's ruling, 2026-07-31, REVERSING 2026-07-30) ──
-	// government/rulings/2026-07-31-primes-owe-status-cards.md
+	// .harness/government/rulings/2026-07-31-primes-owe-status-cards.md
 	it("DOES flag a prime that has never reported — a prime owes a card", () => {
 		// SPEC, not a pin. This test previously asserted the exact opposite and
 		// was not wrong about the code — it was WRONG ABOUT THE WORLD, pinning the

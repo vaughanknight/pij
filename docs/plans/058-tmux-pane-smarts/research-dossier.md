@@ -1,7 +1,7 @@
 # Research dossier — tmux pane smarts
 
 **Flow**: 058-tmux-pane-smarts · **Started**: 2026-07-19 · running ledger, updated as we probe.
-Seed brief: `government/briefs/tmux-smarts-poc-2026-07-19.md` (o-prime pij-reasonable-dove).
+Seed brief: `.harness/government/briefs/tmux-smarts-poc-2026-07-19.md` (o-prime pij-reasonable-dove).
 
 ## Goal (three signals, per pane)
 1. **Busy** — is the agent actually working?

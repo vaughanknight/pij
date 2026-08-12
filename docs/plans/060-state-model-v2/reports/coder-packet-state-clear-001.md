@@ -42,7 +42,7 @@ Everything else is read-only. Do not touch plan 059 guard files, watchdog/death/
 
 ## Forbidden paths
 - `.the-flow-state.json`, any `the-flow.json`, any `the-flow.md`
-- `.flow-pair/**`, `government/**`, `.pi/packages.yaml`, `.pi/settings.json`
+- `.flow-pair/**`, `.harness/government/**`, `.pi/packages.yaml`, `.pi/settings.json`
 
 ## Method / proof
 1. Read current state-family source/tests and affected docs in full.

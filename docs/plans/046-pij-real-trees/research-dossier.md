@@ -48,7 +48,7 @@
 | Reparent/cycle/orphan behavior | F-04, F-05 | Post-hoc adoption needs relinking, but arbitrary links can create cycles or point to missing nodes. | Specify a pure link validator, explicit unlink/reparent behavior, cycle refusal, and orphan rendering. |
 | Prime takeover representation | F-11, H-02 | A second boolean risks contradictory `prime && oldPrime`; replacing `prime` breaks consumers. | Workshop the additive compatibility shape and exact CLI transition semantics before implementation. |
 | Default visibility | F-09, F-10 | The global registry contains many dead/dissolved sessions; showing all by default can make the command unusable, while hiding history can mislead. | Specify default inclusion plus explicit `--activity`, `--liveness`, and `--lifecycle` filters and JSON behavior. |
-| Hot CLI/skill seams | `government/briefs/s046-brief.md#Fences` | s041 owns top-level CLI/help/skill surfaces during planning. | Name exact future edits in the plan; o-prime sequences grants/composition at validation. |
+| Hot CLI/skill seams | `.harness/government/briefs/s046-brief.md#Fences` | s041 owns top-level CLI/help/skill surfaces during planning. | Name exact future edits in the plan; o-prime sequences grants/composition at validation. |
 
 ## Domain Impact
 

@@ -18,7 +18,7 @@ Implement **exactly Phase 1** ("Platform store") of plan 054 — nothing more. T
 
 ## Fence
 - **Allowed paths**: `.pi/extensions/pij/core/platform/**` (new) · `.pi/extensions/pij/adapters/project-store.ts|assignment-store.ts|spine-store.ts` (+ their `.test.ts`) · `.pi/extensions/pij/adapters/fakes.ts` (append-only additions) · `.pi/extensions/pij/core/cli.ts` (additive verb entries) · `.pi/extensions/pij/cli.ts` (USAGE + `deps()` wiring only) · `docs/plans/054-pij-grown-up/tasks/phase-1-platform-store/**`
-- **Forbidden**: everything else. Explicitly: `.the-flow-state.json`, `the-flow.json`, `the-flow.md`, `government/**`, `skills/**`, `package.json`, `package-lock.json`, `harness/**`, `docs/how/**`, any other stream's worktree, the pij daemon, git push, PR.
+- **Forbidden**: everything else. Explicitly: `.the-flow-state.json`, `the-flow.json`, `the-flow.md`, `.harness/government/**`, `skills/**`, `package.json`, `package-lock.json`, `harness/**`, `docs/how/**`, any other stream's worktree, the pij daemon, git push, PR.
 - **Tests never touch the real `~/.pij`** — temp `PIJ_HOME` via `mkdtempSync` only (pattern: `adapters/fs-registry.test.ts:114`).
 - A newly needed path inside the worktree = tell me (`pij send pij-civilian-takin`) and continue; a path outside the fence = STOP and ask.
 - Commits: allowed on this branch, pathspec-mandatory (`git commit -- <paths>`), conventional message + `Co-Authored-By` trailer for your harness. NO push.

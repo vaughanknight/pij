@@ -261,7 +261,7 @@ mastodon/albatross on the flap inversion). The first finder had the instance; th
 class.
 
 **2 · Rigour follows the claim you want** (mastodon's self-correction, recorded on main as
-`government/doctrine/rigour-follows-the-claim-you-want.md`). Mastodon verified the minification
+`.harness/government/doctrine/rigour-follows-the-claim-you-want.md`). Mastodon verified the minification
 leg rigorously — tracked via `git ls-files`, single line, last byte `0x7d`, no trailing newline —
 and took the absolute-path leg **on the orchestrator's word**, because that leg was an inherited
 premise rather than its own new claim. Its own words:

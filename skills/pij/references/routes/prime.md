@@ -23,15 +23,15 @@ went on to designate itself prime over the top.
 | Probe | Role | Load exactly this next |
 |---|---|---|
 | My current id appears in `pij list --prime --here --json` | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
-| Fallback: `government/spine.md` names my pij id as the o-prime seat, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
+| Fallback: `.harness/government/spine.md` names my pij id as the o-prime seat, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
 | The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orchestrator.md`](../prime/orchestrator.md), then stop |
-| **No prime for this repo after BOTH the scoped and the unscoped probe**, and `pij project list` names no project here, and no `government/` directory exists | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
+| **No prime for this repo after BOTH the scoped and the unscoped probe**, and `pij project list` names no project here, and no `.harness/government/` directory exists | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
 | I am a fleet worker with a bounded packet | worker | Stop here; use `/pij pair` for a fleet or `/pij peer` for one colleague. |
 
-Bootstrapper is LAST and requires the store to be silent first. `government/`
+Bootstrapper is LAST and requires the store to be silent first. `.harness/government/`
 absence alone is **corroboration, not a trigger**: store-native governance is the
 ruled default ([`../prime/rituals/store-native.md`](../prime/rituals/store-native.md)),
-so a fully-governed repo legitimately has no `government/` directory.
+so a fully-governed repo legitimately has no `.harness/government/` directory.
 
 If probes conflict, registry designation is the seat signal; reconcile stale
 government rows with `pij whoami`, `pij state <id>`, and the human ruling.
@@ -41,7 +41,7 @@ government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 | Need | Load exactly this |
 |---|---|
 | Stand up the seat and government | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) |
-| **Stand up your PA** (a bootstrap deliverable, not optional — Jordan, 2026-08-01) | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) § 5 → the maintained recipe in `AI-Substrate/pij`: `government/briefs/pa-standup-recipe.md` |
+| **Stand up your PA** (a bootstrap deliverable, not optional — Jordan, 2026-08-01) | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md) § 5 → the maintained recipe in `AI-Substrate/pij`: `.harness/government/briefs/pa-standup-recipe.md` |
 | Record governance in the platform store (ruled default; lazy self-migration) | [`../prime/rituals/store-native.md`](../prime/rituals/store-native.md) |
 | Spawn, adopt, canary, brief, or tear down a stream | [`../prime/rituals/kickoff.md`](../prime/rituals/kickoff.md) |
 | Request, grant, return, reclaim, or audit a baton | [`../prime/rituals/batons.md`](../prime/rituals/batons.md) |

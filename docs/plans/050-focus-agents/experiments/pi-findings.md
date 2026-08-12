@@ -97,7 +97,7 @@ pi --print --fork <snapshot> --session-dir <iso> <model/tools flags> \
 - MAIN checkout `git status --porcelain` **byte-identical before/after** →
   `MAIN_DIFF_UNCHANGED=PASS`. All writes landed under the worktree fence
   (`.harness/temp/s050/**` + this report). The lone `s050` name-match in the
-  grep (`government/briefs/s050-focus-agents.md`) is a **pre-existing untracked
+  grep (`.harness/government/briefs/s050-focus-agents.md`) is a **pre-existing untracked
   brief**, present in the pre-run baseline and unchanged — not a probe artifact.
 
 ## Surprises / notes for the roll-up

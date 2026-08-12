@@ -7,7 +7,7 @@
 
 Use this only when the store is SILENT for this repo — no current prime in
 unscoped `pij list --prime --json`, no project in `pij project list`. Absence of
-a `government/` directory is corroboration, never the trigger: store-native
+a `.harness/government/` directory is corroboration, never the trigger: store-native
 governance is the ruled default ([`store-native.md`](./store-native.md)), so a
 fully-governed repo legitimately has none. It is the day-zero
 ritual; role operation belongs in the orient files and protocol. Preconditions:
@@ -56,7 +56,7 @@ Inspect the repo; do not copy the worked example's answers.
 
 ## 3. Scaffold the government
 
-Create `government/` in durable, committable repo space:
+Create `.harness/government/` in durable, committable repo space:
 
 - Instantiate [`../templates/spine.md`](../templates/spine.md): thesis, stamp,
   writer id, roster, fence slots, allocation ledger, sequencing watch, rulings.
@@ -68,7 +68,7 @@ Create `government/` in durable, committable repo space:
 ```bash
 harness flow create prime-flow --slug <project>-portfolio \
   --schema <skill-root>/references/prime/prime-flow.schema.json \
-  --path government/prime-flow.json --agent o-prime --bare
+  --path .harness/government/prime-flow.json --agent o-prime --bare
 ```
 
 Record pre-existing workshops as prime-flow inputs at creation. Add successors
@@ -80,7 +80,7 @@ concurrent truth, `nav.now` only the seat's attention.
 - Levers 0/1 stay authoritative in this skill: point at
   [`../orient-oprime.md`](../orient-oprime.md) and
   [`../orient-global.md`](../orient-global.md); never fork them into the repo.
-- Generate `government/orient-local.md` from
+- Generate `.harness/government/orient-local.md` from
   [`../templates/orient-local.md`](../templates/orient-local.md): project
   one-liner, doctrine, harness commands, repo mechanics, mandatory reads,
   current portfolio. The run that omitted the real product pillar produced a
@@ -97,7 +97,7 @@ pattern from live registry rows.
 
 **Do not follow a summary of the recipe — follow the recipe.** It is maintained against live
 defects and changes daily:
-**`government/briefs/pa-standup-recipe.md`** in the `pij` repo (`AI-Substrate/pij`).
+**`.harness/government/briefs/pa-standup-recipe.md`** in the `pij` repo (`AI-Substrate/pij`).
 Only the parts a bootstrapping prime cannot discover are restated here:
 
 1. **Cheap tier is the design intent** — the fleet runs `gemini-3.6-flash` copilot seats.

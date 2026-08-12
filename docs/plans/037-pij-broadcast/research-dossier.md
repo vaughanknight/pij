@@ -41,7 +41,7 @@
 
 | Item | Evidence | Why it matters | Resolution / next evidence |
 |------|----------|----------------|----------------------------|
-| Top-level `cli.ts` is shared with s036. | `government/spine.md:42`; `government/briefs/s037-adoption.md:30-36` | `--wait` fan-out needs that file, so simultaneous edits would violate the fence. | Name `cli.ts` exactly in the Domain Manifest; o-prime serializes SW-3 at plan validation. |
+| Top-level `cli.ts` is shared with s036. | `.harness/government/spine.md:42`; `.harness/government/briefs/s037-adoption.md:30-36` | `--wait` fan-out needs that file, so simultaneous edits would violate the fence. | Name `cli.ts` exactly in the Domain Manifest; o-prime serializes SW-3 at plan validation. |
 | Broadcast output is a new machine contract. | F-01, F-06 | Changing single-target JSON would break scripts. | Keep single-target output byte-compatible; use `{from, results:[...]}` only when multiple `--to` values are supplied. |
 | "At the same time" cannot mean transactional simultaneity over independent inbox files. | F-04 | A batch transaction would require a new protocol with little user value. | Define it as one command that fans out immediately in recipient order, with independent outcomes. |
 

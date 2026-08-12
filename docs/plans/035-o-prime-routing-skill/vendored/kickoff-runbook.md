@@ -3,7 +3,7 @@
 
 ## Preconditions
 
-- The prime holds the government spine + baton book (`government/spine.md`, `baton-book.md`).
+- The prime holds the government spine + baton book (`.harness/government/spine.md`, `baton-book.md`).
 - Jordan has named the work item (the prime NEVER invents features).
 - `docs/how/o-prime.md` § Spawning + § Per-repo config are current.
 
@@ -13,10 +13,10 @@
 2. **Allocate** — scan `docs/plans/` for the next free ordinal (the spine is the reservation ledger, ordinal tools may be stale); reserve ordinal + folder + window name (`s<ord>-<slug>`) in spine § Allocation ledger. _Artifact: spine.md allocation line._
 3. **Derive fences from actions** — enumerate what the plan will actually touch (source dirs, test pins, config, docs), verify the paths exist on disk (`ls`), record as a spine § fences section. Check overlap against every other stream's fences — overlap = a prime sequencing decision made NOW, recorded in the spine, before any spawn. _Artifact: spine § s<ord> fences + overlap note._
 4. **Add the roster row** — stream row in the spine table (status: allocating), bump the Updated stamp. The spine syncs on EVERY event (overseer OL-010: a stale row is worse than no row). _Artifact: spine roster._
-5. **Write the brief BEFORE spawning** — instantiate `briefs/stream-brief-template.md` → `government/briefs/s<ord>-brief.md`: plan folder + current flow state, the ask verbatim, fences (pointer to spine as canonical), baton + fleet + report-contract rules, the human-in-loop section, window + identity line. Fold peer-craft habits in (pointer delivery, canary-before-brief, compact-before-next-packet, mutation gates, verdict-artifact checks). _Artifact: the brief file._
+5. **Write the brief BEFORE spawning** — instantiate `briefs/stream-brief-template.md` → `.harness/government/briefs/s<ord>-brief.md`: plan folder + current flow state, the ask verbatim, fences (pointer to spine as canonical), baton + fleet + report-contract rules, the human-in-loop section, window + identity line. Fold peer-craft habits in (pointer delivery, canary-before-brief, compact-before-next-packet, mutation gates, verdict-artifact checks). _Artifact: the brief file._
 6. **Spawn** — `pij spawn --harness claude --layout window`; note the returned pij-id + pane id. Rename: `tmux rename-window -t <pane> s<ord>-<slug>`. _Artifact: run record._
 7. **Wait for the daemon's ready push** (never poll) — "✅ <id> is ready (bound to claude session <uuid>)" arrives as an injected turn.
-8. **Canary, three legs, recorded to disk** (`government/canary-s<ord>.md` — written at pass time, not later; claim-without-artifact is the failure mode, overseer OL-009):
+8. **Canary, three legs, recorded to disk** (`.harness/government/canary-s<ord>.md` — written at pass time, not later; claim-without-artifact is the failure mode, overseer OL-009):
    a. round-trip: send a nonce challenge; the ack must arrive as an injected turn;
    b. identity, mechanical: `pij sessions` row (harness/lifecycle/parent/session-uuid) — boundModel column is empty for claude peers (known gap), so fallback-probe the tmux pane footer (`tmux capture-pane`) for the model name;
    c. input reliability: a SECOND send must also land — the brief-pointer send doubles as this leg; its ack closes the record.

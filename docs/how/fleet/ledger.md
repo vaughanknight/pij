@@ -166,7 +166,7 @@ A PM given a bounded ruling plus a three-part scope produced a green, mutation-p
 Three governments reconciling **independent instruments** over one day caught more real
 defects than any detector did. Two probes reading different fields disagreed, and the
 disagreement was the finding.
-*Doctrine*: `government/doctrine/a-coupled-instrument-cannot-report-its-subject.md` —
+*Doctrine*: `.harness/government/doctrine/a-coupled-instrument-cannot-report-its-subject.md` —
 independence must be of **path**, not of clock.
 
 ### W-004 · `pij bg` for anything slow

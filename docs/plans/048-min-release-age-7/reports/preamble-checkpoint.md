@@ -2,8 +2,8 @@
 
 - **claim**: Read-only orient is complete; the s048 worktree/base and main-read-only boundary are verified before research/planning.
 - **artifacts[]**:
-  - `/Users/jordanknight/pi-hacking/pij/government/briefs/s048-brief.md`
-  - `/Users/jordanknight/pi-hacking/pij/government/orient-local.md`
+  - `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s048-brief.md`
+  - `/Users/jordanknight/pi-hacking/pij/.harness/government/orient-local.md`
   - `/Users/jordanknight/pi-hacking/pij/.pi/skills/pij/references/prime/orient-global.md`
   - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/original-ask.md`
   - `/Users/jordanknight/pi-hacking/pij-worktrees/s048-min-release-age-7/docs/plans/048-min-release-age-7/reports/preamble-checkpoint.md`

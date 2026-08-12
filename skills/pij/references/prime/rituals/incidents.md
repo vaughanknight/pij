@@ -17,7 +17,7 @@ every one shipped a standing rule the same hour.
 1. **Detect and STOP the bleeding** — the operator move first, the paperwork
    second. Anyone may detect; the causer detecting their own is the norm, not
    the exception.
-2. **Record at detection**: open `government/incidents/INC-NNN.md` (numbered,
+2. **Record at detection**: open `.harness/government/incidents/INC-NNN.md` (numbered,
    never recycled) with: what was observed · when · who/what was affected ·
    current containment state. Write it while it is happening — pass-time
    records, same law as canaries.

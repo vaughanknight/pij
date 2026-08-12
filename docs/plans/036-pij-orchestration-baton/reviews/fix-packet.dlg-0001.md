@@ -1,7 +1,7 @@
 # Fix packet — dlg-0001 (narrowed: review findings ONLY)
 **To**: pij-1vstguw (coder) · **From**: pij-1khprxk · **Basis**: `reviews/review.phase-1.dlg-0001.md` (read it in full — evidence and line refs live there)
 
-Scope is ONLY the five findings below. Same fences, gates, and prohibitions as your original packet (additive-only cli.ts/daemon.ts; no daemon restart; no commits; no government/**).
+Scope is ONLY the five findings below. Same fences, gates, and prohibitions as your original packet (additive-only cli.ts/daemon.ts; no daemon restart; no commits; no .harness/government/**).
 
 ## F1 (HIGH) — pin bypass on unknown HEAD · `core/orchestration/baton.ts` ~:286
 An unreadable/absent HEAD (`currentHead: null`) must NOT silently grant a pinned request. Rule: a pinned request with `currentHead === null` → `E-PIN` ("pin unverifiable — HEAD unavailable; re-run with --repin to acknowledge") unless `--repin`. This stays a firm guide (the `--repin` self-serve override is the sanctioned exit — ruling #7). Add tests for: pinned+null-head refused; pinned+null-head+repin granted (lease records the ack; keep the old pin — there is no new HEAD to re-pin to, record `repinAck: true` or equivalent honest shape).

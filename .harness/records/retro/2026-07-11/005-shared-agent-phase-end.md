@@ -50,7 +50,7 @@ entries:
         status: suggested
         source: agent-self
         first_seen_at: "2026-07-11T11:40:49.730Z"
-        resolved_by: "government/spine.md Seq 25 flow-pair backlog"
+        resolved_by: ".harness/government/spine.md Seq 25 flow-pair backlog"
   - id: DL-003
     kind: difficulty
     description: "flow-pair observe rejects a valid path-bounded delegation when any unrelated dirty file matches its global forbidden-path scan; it cannot capture a scoped diff in a shared-tree government run"
@@ -65,7 +65,7 @@ entries:
         status: suggested
         source: agent-self
         first_seen_at: "2026-07-11T11:48:41.685Z"
-        resolved_by: "government/spine.md Seq 25 flow-pair backlog"
+        resolved_by: ".harness/government/spine.md Seq 25 flow-pair backlog"
   - id: DL-004
     kind: difficulty
     description: "Review packet passed 'just pij-skill-check' to flow-pair-mutate, but the helper expects a just recipe name and attempted 'just just pij-skill-check'."
@@ -79,7 +79,7 @@ entries:
         status: suggested
         source: agent-self
         first_seen_at: "2026-07-11T11:51:19.242Z"
-        resolved_by: "government/spine.md Seq 25 flow-pair backlog"
+        resolved_by: ".harness/government/spine.md Seq 25 flow-pair backlog"
   - id: CONF-001
     kind: confusion
     description: "The review packet used the two-argument just flow-pair-mutate wrapper with a third custom test command, but only the underlying shell script accepts that third argument"

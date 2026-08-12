@@ -32,4 +32,4 @@
 2. Then: `pij send pij-civilian-takin "P1 REVIEW-2 <APPROVE|FINDINGS n> · docs/plans/054-pij-grown-up/reviews/p1-review-002.md · <one-line summary>"`
 
 ## Forbidden
-Everything except reading + your one output file: no code edits, no the-flow files, no `government/**`, no other `docs/plans/**` writes, no git commit/push, no PR, no canonical-repo writes, no daemon/tmux mutation.
+Everything except reading + your one output file: no code edits, no the-flow files, no `.harness/government/**`, no other `docs/plans/**` writes, no git commit/push, no PR, no canonical-repo writes, no daemon/tmux mutation.

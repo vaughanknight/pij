@@ -16,7 +16,7 @@
   So on the documented evidence, 18f2922d = the o-prime — the spine
   literally says "this session is now THE o-prime… same claude session
   18f2922d as pre-restart pij-1bovprr," and it's the sole owner/writer of
-  government/. Its only parent is the overseer pij-vut1pp.
+  .harness/government/. Its only parent is the overseer pij-vut1pp.
 
   Since you're saying 18f2922d is the parent of o-prime, we're naming
   different nodes. The two possibilities:

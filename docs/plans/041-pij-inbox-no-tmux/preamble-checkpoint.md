@@ -11,17 +11,17 @@ receipt behavior. Planning has not started.
 ## artifacts[]
 
 - `docs/plans/041-pij-inbox-no-tmux/original-ask.md`
-- `government/briefs/s041-brief.md`
+- `.harness/government/briefs/s041-brief.md`
 - `skills/pij/references/prime/orient-global.md`
-- `government/orient-local.md`
+- `.harness/government/orient-local.md`
 - `docs/how/pij.md`
 - `AGENTS.md`
 
 ## shas[]
 
 - repository HEAD: `40528df52e9d5168b02f0f69f6fd3891caf21f9c`
-- `government/briefs/s041-brief.md`: `4b4e7506198e9fb786e1e06a48baf3b77b7a1310`
-- `government/orient-local.md`: `693f9e227f66a8a1e14174381b7aa1d65031b21e`
+- `.harness/government/briefs/s041-brief.md`: `4b4e7506198e9fb786e1e06a48baf3b77b7a1310`
+- `.harness/government/orient-local.md`: `693f9e227f66a8a1e14174381b7aa1d65031b21e`
 - `skills/pij/references/prime/orient-global.md`: `5c17886cd758a6d591c6dddce8f4d8806870dc44`
 - `docs/plans/041-pij-inbox-no-tmux/original-ask.md`: `10e0b5096938509eb9c57e1f5f7d09a457a62ede`
 

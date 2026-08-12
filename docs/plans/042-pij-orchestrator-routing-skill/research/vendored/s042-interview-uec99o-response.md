@@ -94,7 +94,7 @@ BONUS CASCADE, pending: s022 is voluntarily relaying the worker questions one le
 
 - This file: `docs/plans/018-o-prime/government/briefs/s042-interview-uec99o-response.md` (SecondCrack repo)
 - Provenance: `docs/plans/018-o-prime/government/briefs/s042-interview-uec99o-provenance.md`
-- Primary sources: `government/spine.md`, `government/baton-book.md`, `government/encode-candidates.md`, `docs/plans/022-liquid-sim/original-ask.md` (all at SecondCrack commit `335dc8f`, pushed to origin/main)
+- Primary sources: `.harness/government/spine.md`, `.harness/government/baton-book.md`, `.harness/government/encode-candidates.md`, `docs/plans/022-liquid-sim/original-ask.md` (all at SecondCrack commit `335dc8f`, pushed to origin/main)
 
 ## shas[]
 

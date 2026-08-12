@@ -52,7 +52,7 @@
 | `.pi/extensions/pij/telegram/media.ts` | Media classification/limits/reference passing remain unchanged |
 | `.pi/extensions/pij/core/**` | No pij messaging wire/type contract change |
 | `package.json` / `package-lock.json` | No dependency or script change |
-| `government/**` | o-prime single writer |
+| `.harness/government/**` | o-prime single writer |
 
 ## Grant Conditions Requested
 
@@ -64,7 +64,7 @@
 - The implementation uses injected closures/maps only; no global mutable state or persistence.
 - Targeted Telegram tests and `harness checks` are green before review/ship.
 - Any optional live phone proof requests and receives `daemon-restart` baton before restarting the shared daemon.
-- Coder/reviewer packets forbid `government/**`, `.flow-pair/**`, and Builder flow-state writes.
+- Coder/reviewer packets forbid `.harness/government/**`, `.flow-pair/**`, and Builder flow-state writes.
 
 ## Shared-Resource Posture
 

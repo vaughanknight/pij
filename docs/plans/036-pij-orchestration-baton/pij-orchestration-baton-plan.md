@@ -30,7 +30,7 @@ Mechanize the baton convention (`skills/pij/references/prime/rituals/batons.md`)
 - No enforcement of who may grant/reclaim (honor system, ruling #7).
 - No `with` wrapper, no mid-hold windows / sub-leases (ruled out of v1).
 - No auto-reclaim, no breach detection, no queue auto-ordering (human judgment — interview §5).
-- Never writes `government/baton-book.md` (single-writer = the keeper seat).
+- Never writes `.harness/government/baton-book.md` (single-writer = the keeper seat).
 - No git introspection beyond `rev-parse HEAD` for pin checks (E-22: make lease state visible, don't re-implement git).
 
 ### Target Domains
@@ -80,7 +80,7 @@ Mechanize the baton convention (`skills/pij/references/prime/rituals/batons.md`)
 4. **AC-04 alert-never-auto-reclaim**: a holder whose session goes dead/stalled produces exactly one pushed alert per transition to the granter; the lease is unchanged until an explicit `reclaim`.
 5. **AC-05 discretionary queue**: `grant` may target ANY queued request by id; queue listing shows purposes, never positions-as-promises.
 6. **AC-06 blocked time**: `show --json` exposes per-lease `requestedAt`/`grantedAt` and the delta; historical deltas recoverable from the log.
-7. **AC-07 machine log, book untouched**: every verb appends one `log.ndjson` line (ISO · baton · actor · verb · lease-id · purpose/evidence); no code path references `government/baton-book.md`.
+7. **AC-07 machine log, book untouched**: every verb appends one `log.ndjson` line (ISO · baton · actor · verb · lease-id · purpose/evidence); no code path references `.harness/government/baton-book.md`.
 8. **AC-08 regression floor**: `npx vitest run .pi/extensions/pij/` green incl. FX001/FX002 + 035 suites; `just pij-skill-check` green; `harness checks` green.
 9. **AC-09 daemon-less honesty**: read verbs (`list`/`show`) and store mutations work without the daemon; push paths degrade to an honest `unverified` receipt, never a fake success.
 

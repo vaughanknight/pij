@@ -64,7 +64,7 @@
 | No-tmux identity bootstrap | F-07–F-09 | `check` is useful only after a descriptor and self id exist; Windows cannot use current adopt/spawn. | Clarify receive-only vs full non-tmux registration scope. |
 | Wait default | F-06 | Indefinite blocking matches "until"; 15s matches existing send wait and avoids hung automation. | Jordan decision; keep explicit millisecond override either way. |
 | Windows verification | F-10 | A source audit without a Windows execution gate can ship false compatibility. | Decide whether Windows CI is required in this plan. |
-| Concurrent s040 ownership | Working tree + `government/briefs/s041-brief.md:28` | `core/cli.ts`, `cli.ts`, integration tests, discovery/binding/spawn, and fs-registry are actively modified. | Manifest the overlap and request serialized apply/commit windows through the o-prime. |
+| Concurrent s040 ownership | Working tree + `.harness/government/briefs/s041-brief.md:28` | `core/cli.ts`, `cli.ts`, integration tests, discovery/binding/spawn, and fs-registry are actively modified. | Manifest the overlap and request serialized apply/commit windows through the o-prime. |
 
 ## Domain Impact
 

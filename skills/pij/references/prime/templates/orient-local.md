@@ -55,7 +55,7 @@ orientation/preamble:
 
 ## Current portfolio context
 
-- Prime-flow: `government/prime-flow.json`
+- Prime-flow: `.harness/government/prime-flow.json`
 - <in-flight item, owner, important seam>
 - <known hazard or sequencing watch>
 

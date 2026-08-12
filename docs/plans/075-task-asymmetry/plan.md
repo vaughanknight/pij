@@ -2,7 +2,7 @@
 
 **Stream**: s075 · **PM**: pij-unwilling-butterfly · **o-prime**: pij-wee-albatross
 **Base**: main @ `fdf1687` · **Branch**: `s075/task-asymmetry`
-**Brief**: `government/briefs/s075-task-asymmetry-brief.md` (sha verified at ack)
+**Brief**: `.harness/government/briefs/s075-task-asymmetry-brief.md` (sha verified at ack)
 
 ---
 

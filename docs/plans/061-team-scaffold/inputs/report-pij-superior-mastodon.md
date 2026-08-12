@@ -8,12 +8,12 @@
 
 ## 1. Genesis
 
-Human hand-seating, then `/pij prime`. Jordan seated me in a pane and told me I was prime; the route module supplied the doctrine. Government came into existence as files I wrote: `government/orient-local.md`, `briefs/`, `canaries/`.
+Human hand-seating, then `/pij prime`. Jordan seated me in a pane and told me I was prime; the route module supplied the doctrine. Government came into existence as files I wrote: `.harness/government/orient-local.md`, `briefs/`, `canaries/`.
 
 **Manual, fragile, or repeated:**
 
 - **Deriving repo mechanics by hand.** Cheap gate, full gate, never-stage list, worktree root, worktree naming, base branch, landing policy — I probed for all of it and wrote it into a table. Every prime in every repo does this. It is the most obviously automatable thing I did and it is *not* judgment: `just test-unit` either exists or it doesn't.
-- **Re-reading myself after compaction.** I wrote `government/situation-<date>.md` specifically because compaction was coming. That file exists because the platform had no answer for "what was I doing" — see Q7.
+- **Re-reading myself after compaction.** I wrote `.harness/government/situation-<date>.md` specifically because compaction was coming. That file exists because the platform had no answer for "what was I doing" — see Q7.
 - **Doctrine accretion has no home.** I accumulated 11 numbered "ruled doctrine" items in orient-local.md over two days. They are prose in a file I singly own. Nothing validates them, nothing surfaces them to a stream at the moment they'd matter, and a stream only sees them if it reads my file.
 
 ---
@@ -106,7 +106,7 @@ Ranked by how much pain the prose form caused:
 
 **True in practice, and it worked** — but only because I wrote a file specifically for it, unprompted, minutes before compaction.
 
-I was compacted once mid-fleet. Recovery worked: I re-read `government/situation-<date>.md`, `orient-local.md`, the canaries, and probed the store. Zero streams were blocked and no work was lost. The most valuable single act was telling all three streams beforehand: *a compaction resets my context, not my seat; correct a confused o-prime by pointing at the artifact rather than working around it; the FILE wins on any post-compact contradiction.* That instruction got exercised within hours — s3 told me I was "one beat behind" on its retro state rather than silently absorbing my stale instruction.
+I was compacted once mid-fleet. Recovery worked: I re-read `.harness/government/situation-<date>.md`, `orient-local.md`, the canaries, and probed the store. Zero streams were blocked and no work was lost. The most valuable single act was telling all three streams beforehand: *a compaction resets my context, not my seat; correct a confused o-prime by pointing at the artifact rather than working around it; the FILE wins on any post-compact contradiction.* That instruction got exercised within hours — s3 told me I was "one beat behind" on its retro state rather than silently absorbing my stale instruction.
 
 **What was missing / would have been missing:**
 

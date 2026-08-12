@@ -20,7 +20,7 @@ flight plan; planning-only fence unchanged; stop remains WAITING_FOR_BUILD_CONFI
 - .harness/temp/s055/s054-interview-takin.md (seam answers + planning implications)
 - .harness/temp/s055/handover-to-pij-intimate-mandrill.md (predecessor handover, read in full)
 - .harness/temp/s055/blocker-cwd-intimate-mandrill.md (resolved by your worktree-pivot ruling)
-- government/briefs/s055-pij-watchdog.md @ LIVE root (re-read in full, authority confirmed by you)
+- .harness/government/briefs/s055-pij-watchdog.md @ LIVE root (re-read in full, authority confirmed by you)
 
 ## shas
 

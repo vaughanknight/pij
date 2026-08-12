@@ -36,4 +36,4 @@ Known baseline flake OUTSIDE review scope: `harness/scripts/release-age-policy.t
 2. Then send: `pij send pij-civilian-takin "P1 REVIEW <APPROVE|FINDINGS n> · docs/plans/054-pij-grown-up/reviews/p1-review-001.md · <one-line summary>"`
 
 ## Forbidden
-Everything except reading + your one output file. Explicitly: no code edits, no `.the-flow-state.json`/`the-flow.json`/`the-flow.md`, no `government/**`, no `docs/plans/**` writes beyond your review file, no git commit/push, no PR, no canonical-repo writes, no daemon/tmux mutation.
+Everything except reading + your one output file. Explicitly: no code edits, no `.the-flow-state.json`/`the-flow.json`/`the-flow.md`, no `.harness/government/**`, no `docs/plans/**` writes beyond your review file, no git commit/push, no PR, no canonical-repo writes, no daemon/tmux mutation.

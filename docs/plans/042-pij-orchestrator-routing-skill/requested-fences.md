@@ -59,7 +59,7 @@
 | `.pi/extensions/pij/**` | No product/control-plane implementation in Plan 042 |
 | `skills/flow-pair/**` | Existing engine is a consumed constraint; reviewer-ingestion repair is follow-up |
 | `.harness/extensions/checks/**` | Existing `harness checks` already composes repo sensors |
-| `government/**` | o-prime single writer |
+| `.harness/government/**` | o-prime single writer |
 | `package.json` / `package-lock.json` | No dependencies or scripts required |
 
 ## Grant conditions requested
@@ -74,7 +74,7 @@
   - no global skill symlink is repointed to the worktree during implementation.
 - New-path existence probes run before creation.
 - `git diff --name-only` must remain inside this granted manifest.
-- Coder and reviewer packets forbid `government/**`, `.flow-pair/**`, and Builder flow-state writes.
+- Coder and reviewer packets forbid `.harness/government/**`, `.flow-pair/**`, and Builder flow-state writes.
 
 ## Shared-resource posture
 

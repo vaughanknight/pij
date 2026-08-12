@@ -20,8 +20,8 @@ the authoritative-writer flip** (that flip is a separate Jordan ruling).
 acceptance, ~15 events that day alone). Survey numbers below are scale
 indicators, never pinned constants: every extractor, ledger, and sensor run keys
 to the **current prose at run time**.
-- `government/spine.md` — **191 timestamped governance events** (`**Event HH:MMZ — TITLE**: body`), current Seq 195. Dense narrative rulings: stream transitions, baton grants, teardowns, priority calls, defect ledgering.
-- `government/prime-flow.json` — **14 nodes** (`kind: prime-flow`, E309-legacy), each node a stream/plan in the portfolio (wi-036…) with label + nav status.
+- `.harness/government/spine.md` — **191 timestamped governance events** (`**Event HH:MMZ — TITLE**: body`), current Seq 195. Dense narrative rulings: stream transitions, baton grants, teardowns, priority calls, defect ledgering.
+- `.harness/government/prime-flow.json` — **14 nodes** (`kind: prime-flow`, E309-legacy), each node a stream/plan in the portfolio (wi-036…) with label + nav status.
 - `~/.pij/*.json` — **1394 live descriptors** (the messaging registry) + the platform store's own `spine/events.ndjson` (already live from s054).
 
 ### Goals
@@ -32,7 +32,7 @@ to the **current prose at run time**.
 
 ### Non-Goals / HARD STOPS
 - ❌ **The authoritative-writer flip.** Prose government stays authoritative; this stream stops at "migrated store + proven equivalence + cutover-ready posture." The flip is a separate Jordan ruling.
-- ❌ **Erasing or striking `government/**`.** Read-only this stream. A tombstone header (prose → JSON pointer) is a *post-cutover* act, out of scope.
+- ❌ **Erasing or striking `.harness/government/**`.** Read-only this stream. A tombstone header (prose → JSON pointer) is a *post-cutover* act, out of scope.
 - ❌ **Mutating `prime-flow.json`** — stays byte-frozen (blob `9b7d5b5`, as through all of s054).
 - ❌ **Writing the live authoritative `~/.pij` store** during build/review — staging home only. **This is not a global aspiration but a mechanical gate (F1, AC-09): the importer/sensor MUST assert `PIJ_HOME` resolves to an explicit staging path `!= ~/.pij` and ABORT otherwise — `resolvePijHome({})` defaults to the LIVE store and an empty env var silently falls back to it, so "staging" that relies on remembering to set a var is a hard-stop leak.** Every phase that runs the importer/sensor re-states this.
 - ❌ Inventing spine-event *kinds* — OR the actor/date/Seq policies (below) — for governance without a human ruling (see P1 workshop).
@@ -75,7 +75,7 @@ to the **current prose at run time**.
 | 4 | Dual-run posture + cutover checklist | Dual-run protocol doc; cutover checklist (listed-not-executed); STOP at cutover-ready | 1–3 |
 
 **P1 opens with a Jordan-driven workshop** ruling FOUR things (all contract territory — no coder dispatch until ruled):
-1. The `government/spine.md` **fact taxonomy** (AC-01).
+1. The `.harness/government/spine.md` **fact taxonomy** (AC-01).
 2. The **spine-event-kind vocabulary** for governance (AC-02).
 3. The **placeholder-actor + provenance policy** — the historical events (191 at survey) predate the attribution envelope, yet `actor` is mandatory on every SpineEvent; the policy names the placeholder form and when `asserted` vs `resolved` provenance applies (feeds AC-05). *(F3)*
 4. The **date-reconstruction algorithm** (prose timestamps are `HH:MMZ` only) + the **governance-Seq storage mapping** (its own field/ref — platform `seq` is append-allocated and can never carry it), pinning AC-06's comparison granularity. *(F4)*

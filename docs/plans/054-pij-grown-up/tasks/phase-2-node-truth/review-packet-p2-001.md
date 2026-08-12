@@ -41,4 +41,4 @@ Range `7f15f9f..47dea9b` — Phase 2 (Node truth), 9 commits: T001/2 `7b04e20` d
 2. Then: `pij send pij-civilian-takin "P2 REVIEW FINDINGS <n>|APPROVE · docs/plans/054-pij-grown-up/reviews/p2-review-001.md · <one-line summary>"`
 
 ## Forbidden
-Everything except reading + your one output file — no code edits, no the-flow files, no `government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.
+Everything except reading + your one output file — no code edits, no the-flow files, no `.harness/government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.

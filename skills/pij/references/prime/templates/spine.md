@@ -2,7 +2,7 @@
 **Thesis**: <human-authored purpose for the current portfolio>
 **Updated**: <ISO from `date -u`> · **Seq**: <integer, +1 on EVERY write — answers "am I reading mid-write?" mechanically; a handover pack records the Seq it was written against>
 **Writer**: <o-prime pij id; single writer>
-**Prime-flow**: <government/prime-flow.json>
+**Prime-flow**: <.harness/government/prime-flow.json>
 
 ## Roster
 

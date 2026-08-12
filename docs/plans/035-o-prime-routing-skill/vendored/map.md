@@ -31,7 +31,7 @@ repo: `bootstrap.md`.
 
 | Layer | Deterministic data (disk) | Boot prompt (fed at spawn) |
 |---|---|---|
-| **o-prime** | owns `government/` (spine · baton book · **slate** · briefs · runbook · canaries · reports); reads the protocol + every plan folder | inception brief: thesis, repo per-config (gates, batons, never-stage), project background + what matters, standing rulings |
+| **o-prime** | owns `.harness/government/` (spine · baton book · **slate** · briefs · runbook · canaries · reports); reads the protocol + every plan folder | inception brief: thesis, repo per-config (gates, batons, never-stage), project background + what matters, standing rulings |
 | **stream** | owns its plan folder (flow state · reports) + granted code fences; reads protocol, spine (its fences + tree), baton book | **three-layer injection**: ① global orient (central, portable, shared across repos — `map/orient-global.md`) → ② local orient (this repo's live tuning surface — `map/orient-local.md`) → ③ item brief (the ask verbatim, fences, structure tree, prior art) |
 | **subagent** | owns nothing durable — writes only inside the packet allowlist; reads the packet file | work packet: whole-phase task, action-derived allowlist, fences, gate commands, done-report format |
 
@@ -70,7 +70,7 @@ concurrent users (build systems with shared lock dirs, single-instance app windo
 pushes to a shared trunk). Where fences partition *files*, batons serialize *time on
 a resource*. First-class means:
 
-- **One book** (`government/baton-book.md`, single-writer: the o-prime) is the whole
+- **One book** (`.harness/government/baton-book.md`, single-writer: the o-prime) is the whole
   truth: holder · since · purpose · queue, plus an append-only grant log. The book
   binds EVERY layer — the o-prime's own resource use goes through its own book.
 - **One lifecycle**: request (with purpose) → o-prime verifies the resource is
@@ -290,7 +290,7 @@ flowchart TD
 
 | Flow | Real instance |
 |---|---|
-| Spawn→canary→brief | s017 `pij-1gx33y5`: nonce S017-4482, pane-footer identity probe, brief-ack closed leg (c) — `government/canary-s017.md` |
+| Spawn→canary→brief | s017 `pij-1gx33y5`: nonce S017-4482, pane-footer identity probe, brief-ack closed leg (c) — `.harness/government/canary-s017.md` |
 | Preamble report | `docs/plans/020-destructible-terrain/reports/s020-0001.md` (s020 `pij-19qw8yy` — produced before the machine restart killed its pane) |
 | Checkpoint report + verify | `docs/plans/017-config-platform/reports/s017-0001.md` — prime verification caught a scratch-space write outside fences → standing `.harness/temp/<stream>/**` grant |
 | Fence escalation (action-derived) | s017 validation F6 → `RandomCaveScenario.cs` + `docs/how/cave-generation.md` granted after independent grep verification |
@@ -308,7 +308,7 @@ restart), and the human taught inside every layer. In **real deployment**:
 - **o-prime** is one agent session; **each stream** is its own agent session; **each
   fleet worker** is its own (cheaper-harness) session. Nobody wears two hats.
 - **The government is files, not a mind** — any o-prime process that dies can be
-  replaced by pointing a fresh session at `government/` + the protocol doc; the spine,
+  replaced by pointing a fresh session at `.harness/government/` + the protocol doc; the spine,
   book, and briefs ARE the state (the machine-restart that prompted this map proved
   it: every pane died, the government lost nothing).
 - **The human is optional per-layer** — run-01's taught apprenticeship is what later

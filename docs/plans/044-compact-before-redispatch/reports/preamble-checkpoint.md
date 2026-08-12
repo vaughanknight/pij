@@ -10,9 +10,9 @@ The prime orient stack and read-only survey are complete, the thesis is persiste
 
 - `docs/plans/044-compact-before-redispatch/original-ask.md`
 - `docs/plans/044-compact-before-redispatch/thesis.md`
-- `/Users/jordanknight/pi-hacking/pij/government/briefs/s044-brief.md`
-- `/Users/jordanknight/pi-hacking/pij/government/orient-local.md`
-- `/Users/jordanknight/pi-hacking/pij/government/spine.md`
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s044-brief.md`
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/orient-local.md`
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/spine.md`
 
 ## shas[]
 
@@ -31,7 +31,7 @@ The prime orient stack and read-only survey are complete, the thesis is persiste
 
 ## observations[]
 
-- `OBS-1 / coordination / agent-harness` — the allocated worktree's government snapshot predates s044 and lacks the repaired pre-spawn bootstrap rule; live single-writer government under `/Users/jordanknight/pi-hacking/pij/government/` was used for the brief, local orient, and spine. Suggested encoding: keep kickoff pointers explicitly rooted at the live government checkout when streams branch from older bases.
+- `OBS-1 / coordination / agent-harness` — the allocated worktree's government snapshot predates s044 and lacks the repaired pre-spawn bootstrap rule; live single-writer government under `/Users/jordanknight/pi-hacking/pij/.harness/government/` was used for the brief, local orient, and spine. Suggested encoding: keep kickoff pointers explicitly rooted at the live government checkout when streams branch from older bases.
 - `DL-001 / difficulty / engineering-harness` — the initial failed `harness boot` envelope omitted the underlying TS2688 diagnostic and showed only wrapper lines. Suggested encoding: retain compiler diagnostics in `boot-typecheck-failed` output.
 
 ## open[]

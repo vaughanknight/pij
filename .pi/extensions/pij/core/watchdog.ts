@@ -371,7 +371,7 @@ export function buildWatchdogTurn(id: string, ordinal: number, cfg: WatchdogTurn
 	// by its prime, a wedged prime is caught by nobody, so this is its sole
 	// external heartbeat.
 	//
-	// PRIMES OWE A CARD (Jordan, 2026-07-31 — government/rulings/
+	// PRIMES OWE A CARD (Jordan, 2026-07-31 — .harness/government/rulings/
 	// 2026-07-31-primes-owe-status-cards.md, REVERSING the 2026-07-30 position).
 	// That reversal reached the skill payload and a ruling file and never reached
 	// this emitter, which went on telling every prime the opposite on a timer —

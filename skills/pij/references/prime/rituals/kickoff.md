@@ -65,7 +65,7 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 Mechanical command details and the manifest example live in
 [`../../../../../docs/how/pij-team-scaffold.md`](../../../../../docs/how/pij-team-scaffold.md).
 
-Write `government/canaries/s<ord>.md` while the evidence is fresh:
+Write `.harness/government/canaries/s<ord>.md` while the evidence is fresh:
 
 | Leg | Mechanical proof |
 |---|---|

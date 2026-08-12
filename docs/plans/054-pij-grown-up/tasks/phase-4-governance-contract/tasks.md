@@ -16,7 +16,7 @@
 
 **Non-Goals / HARD STOPS**
 - ❌ **R3**: NO `just pij-skill-install` (deploy is a ship-checklist step); NO live daemon/global state/real `~/.pij` anywhere in the sweep
-- ❌ **R4**: cutover NOT executed — prose spine (`government/spine.md`) stays authoritative; `prime-flow.json` untouched (freeze/supersede NOTE only)
+- ❌ **R4**: cutover NOT executed — prose spine (`.harness/government/spine.md`) stays authoritative; `prime-flow.json` untouched (freeze/supersede NOTE only)
 - ❌ NO wiring of the codex rollout max unless the T006c ruling explicitly rules it in (default: document no-wire)
 
 ## Prior Phase Context (P1 c6 ✅ · P2 c1 ✅ · P3 c1 ✅ — earlier dossiers carry detail)
@@ -31,7 +31,7 @@
 |---|---|---|---|
 | 4.1 render module | `.pi/extensions/pij/core/platform/render-spine-md.ts` (+test) | CREATE | style: `core/agents/peer-packet.ts:62` (`sections[] → join`, pure, exported interfaces); Finding 09 (plan:160); byte-stable (plan:238) |
 | 4.1 `spine render` verb | `core/cli.ts` + bin `cli.ts` | MODIFY | union :199-214; family map :422 (`"append\|events\|render"`); ALLOWED_FLAGS :457-458; MAX_POS :484-485; parse switch :856/:881; routing :1702-1745; execute sibling :2019-2053; `deps.pijHome` (bin cli.ts:177/:403) → write `join(pijHome,"spine","spine.md")` bin-side |
-| 4.2 migration doc | `docs/how/pij-governance-migration.md` | CREATE | style: `docs/how/pij-prime.md:1-8`; E309 = harness-CLI fail-closed on legacy `government/prime-flow.json` (research-dossier:34,47; workshop 001:43); prime-flow.json is FROZEN — note only |
+| 4.2 migration doc | `docs/how/pij-governance-migration.md` | CREATE | style: `docs/how/pij-prime.md:1-8`; E309 = harness-CLI fail-closed on legacy `.harness/government/prime-flow.json` (research-dossier:34,47; workshop 001:43); prime-flow.json is FROZEN — note only |
 | 4.3 skill route | `skills/pij/references/routes/node.md` | CREATE | convention: `routes/ops.md:1-6` (H1 job line, sibling-blind blockquote, `**Job**:`, bash blocks, diagnosis table) |
 | 4.3 registry rows | `skills/pij/SKILL.md` | MODIFY | routes table :21-32; CLI-verb coverage :37-44 (project/spine/task/state/node/anomalies rows); ≤150-line budget |
 | 4.3 gate script | `harness/scripts/pij-skill-check.sh` | MODIFY (fence extension, notify) | parity loop :18-42 auto-covers new row; ADD `node` to sibling-blindness route list :47 and the HARD 150-line budget loop :69 (NOT the :81 advisory soft_budget loop — that one only warns) |

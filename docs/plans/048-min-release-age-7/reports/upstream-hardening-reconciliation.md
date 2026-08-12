@@ -1,6 +1,6 @@
 # s048 upstream pi-mono hardening reconciliation
 
-**Source of truth**: `government/briefs/s048-pi-mono-hardening-note.md` (Seq 197; correction in Seq 198)
+**Source of truth**: `.harness/government/briefs/s048-pi-mono-hardening-note.md` (Seq 197; correction in Seq 198)
 
 ## Corrected native npm semantics
 

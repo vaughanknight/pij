@@ -5,7 +5,7 @@
 
 ## Verdict: PASS — with one finding, remediated live
 
-Cold seat → governed repo in ~15 min: route triage (no `government/` → bootstrapper) → bootstrap ritual → government scaffold → **adoption-variant kickoff** (runbook step 16) over a pre-existing mid-flight flow-pair orchestrator (pij-19fktls, plan 013 P2, own 2-peer codex fleet). Progressive disclosure held: 5 module reads, no payload dump (R1.3 ✓).
+Cold seat → governed repo in ~15 min: route triage (no `.harness/government/` → bootstrapper) → bootstrap ritual → government scaffold → **adoption-variant kickoff** (runbook step 16) over a pre-existing mid-flight flow-pair orchestrator (pij-19fktls, plan 013 P2, own 2-peer codex fleet). Progressive disclosure held: 5 module reads, no payload dump (R1.3 ✓).
 
 | AC-0 evidence check | Result |
 |---|---|

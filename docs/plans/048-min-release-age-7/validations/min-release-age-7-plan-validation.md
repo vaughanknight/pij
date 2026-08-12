@@ -2,7 +2,7 @@
 
 - **Validated**: 2026-07-13
 - **Target**: `docs/plans/048-min-release-age-7/min-release-age-7-plan.md` · SHA-256 `b8cf34d101a55728e1c84b11e9b1cbab5341e0d7c7a228574367cb3f7837438b`
-- **Contract sources**: `original-ask.md`; `research-dossier.md`; `reports/upstream-hardening-reconciliation.md`; `government/briefs/s048-pi-mono-hardening-note.md`; `government/spine.md` Seq 198; current `harness/scripts/packages.ts`; `justfile`; `.github/workflows/ci.yml`.
+- **Contract sources**: `original-ask.md`; `research-dossier.md`; `reports/upstream-hardening-reconciliation.md`; `.harness/government/briefs/s048-pi-mono-hardening-note.md`; `.harness/government/spine.md` Seq 198; current `harness/scripts/packages.ts`; `justfile`; `.github/workflows/ci.yml`.
 - **Checks**: fresh rebase to `origin/main@b8a8b6e`; `harness boot` (typecheck and test PASS); full corrected-plan read; authoritative npm v11/ pi-mono unit review; fixed-section/AC/task/order parser; prohibited incorrect-unit token scan; plan trailing-whitespace scan; reread of current npm/Pi install seams.
 - **Verdict**: VALIDATED WITH FIXES
 - **Thesis / proof**: The plan now specifies native npm `min-release-age=7` in **days**, carries the inherited Pi-process propagation proof, and classifies upstream hardening controls without expanding the fence; target proof = Implementation, actual proof = source-aligned implementation plan with fresh structural and boot evidence.

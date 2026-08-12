@@ -13,7 +13,7 @@ by whoever holds the ship baton — nothing here is a coder action.
 Build state at hand-off: P1–P4 all review-clean/complete on
 `s054/pij-grown-up`; gates at P4 wrap: tsc clean · FULL vitest 2832/0 failed ·
 `harness checks` all 8 stages green · `just pij-skill-check` green ·
-`government/prime-flow.json` byte-untouched (R4).
+`.harness/government/prime-flow.json` byte-untouched (R4).
 
 ## 1 · PR gate — sequencing (standing ruling R2) — ✅ CLOSED
 
@@ -96,8 +96,8 @@ _Historical (now s051's to run, not s054's):_ re-read landed main and re-run
 - [ ] Regenerate the live spine render once on the real home:
       `pij spine render` (writes the real `~/.pij/spine/spine.md` for the
       first time — its debut OUTSIDE the R3 fence).
-- [ ] Confirm `government/prime-flow.json` untouched in the final diff (R4)
-      and `government/spine.md` untouched by tooling (dual-run posture doc:
+- [ ] Confirm `.harness/government/prime-flow.json` untouched in the final diff (R4)
+      and `.harness/government/spine.md` untouched by tooling (dual-run posture doc:
       `docs/how/pij-governance-migration.md` — cutover remains a human
       ruling, NOT part of this ship).
 

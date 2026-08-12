@@ -12,7 +12,7 @@
 - Product and skill files remain read-only.
 - Cold validation must judge the frozen plan.
 - Implementation, task dispatch, and fleet creation remain unauthorized.
-- Live government authority is `/Users/jordanknight/pi-hacking/pij/government/`.
+- Live government authority is `/Users/jordanknight/pi-hacking/pij/.harness/government/`.
 
 ## R2 — Compact at completion, not just-in-time
 

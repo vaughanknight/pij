@@ -31,8 +31,8 @@ Clusters cleanly into: **system_state** (pij-owned mechanical: working/idle/stal
 | Entity | Candidate home | Rationale |
 |---|---|---|
 | node/runtime (descriptors, system_state, metadata, tmux) | `~/.pij` machine-wide (status quo) | peers span repos/worktrees; F-01 |
-| **project** | repo-versioned `government/projects/<slug>.json` (single writer: prime via CLI) with a machine-wide index `~/.pij/projects/` mirror **or** pointer | projects reference plans (repo artifacts) but must be listable machine-wide for the UI; the bridge is `gitCommonDir` (F-02) |
-| governance spine (events, decisions) | repo-versioned JSON `government/spine.json` (+ rendered .md), CLI-written (H-06: E309 taught hand-cranked JSON rots) | peer-filterable via `refs[]`/`peer` fields on events |
+| **project** | repo-versioned `.harness/government/projects/<slug>.json` (single writer: prime via CLI) with a machine-wide index `~/.pij/projects/` mirror **or** pointer | projects reference plans (repo artifacts) but must be listable machine-wide for the UI; the bridge is `gitCommonDir` (F-02) |
+| governance spine (events, decisions) | repo-versioned JSON `.harness/government/spine.json` (+ rendered .md), CLI-written (H-06: E309 taught hand-cranked JSON rots) | peer-filterable via `refs[]`/`peer` fields on events |
 | node current-task | on the descriptor (additive field) with writer authority | it's runtime state; dies with the node unless projected into project task lists |
 | project task lists | in the project record (prime/orchestrator-updated) | survives nodes; the ask says primes keep it, orchestrators update |
 

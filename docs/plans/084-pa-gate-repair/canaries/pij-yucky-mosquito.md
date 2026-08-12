@@ -17,7 +17,7 @@ The peer **self-reported `effort=n/a`** ("no pane footer effort setting visible"
 process args carry `--effort high`. The self-report was not wrong-but-close; it was **absent**,
 and an orchestrator trusting it would have concluded the effort was unset.
 
-This is exactly the case `government/orient-local.md` § Fleet defaults warns about — *"canary the
+This is exactly the case `.harness/government/orient-local.md` § Fleet defaults warns about — *"canary the
 effort mechanically — self-reports have lied; process args are truth"* — and it is the same
 absence-read-as-value failure class this whole plan (`#95`) exists to fix, showing up in the
 canary ritual rather than in the product. Mechanical verification is what closed it.

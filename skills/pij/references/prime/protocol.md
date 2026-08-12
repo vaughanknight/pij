@@ -37,9 +37,9 @@ owner asks the human directly (§ Human rulings). A human may enter any pane.
 
 The o-prime is the single writer of:
 
-- `government/spine.md` — thesis, roster, fences, watch, allocations, rulings;
-- `government/baton-book.md` — current leases, queue, append-only grant log;
-- `government/prime-flow.json` — portfolio state;
+- `.harness/government/spine.md` — thesis, roster, fences, watch, allocations, rulings;
+- `.harness/government/baton-book.md` — current leases, queue, append-only grant log;
+- `.harness/government/prime-flow.json` — portfolio state;
 - briefs, canary records, local orient, and encode candidates.
 
 Anyone may read. Row state changes before prose and every mutation uses a UTC

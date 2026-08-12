@@ -10,7 +10,7 @@ Orient and read-only survey are complete. Jordan confirmed the assignment and or
 
 - `docs/plans/042-pij-orchestrator-routing-skill/original-ask.md`
 - `docs/plans/042-pij-orchestrator-routing-skill/rulings.md`
-- `government/briefs/s042-brief.md`
+- `.harness/government/briefs/s042-brief.md`
 
 ## shas[]
 
@@ -27,7 +27,7 @@ Orient and read-only survey are complete. Jordan confirmed the assignment and or
 ## observations[]
 
 - `DL-002` — this session initially misclassified the orchestrator seat as a work-packet peer despite the spawn task naming the orchestrator boot path; this is direct field evidence for the requested routing skill.
-- The first direct orient pointer named missing `government/orient-global.md`; the stream brief's `skills/pij/references/prime/orient-global.md` pointer is correct.
+- The first direct orient pointer named missing `.harness/government/orient-global.md`; the stream brief's `skills/pij/references/prime/orient-global.md` pointer is correct.
 
 ## open[]
 
