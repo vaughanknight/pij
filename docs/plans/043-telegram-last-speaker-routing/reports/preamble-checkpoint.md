@@ -9,7 +9,7 @@ Orient and read-only survey are complete. The assignment is coherent with GitHub
 ## artifacts[]
 
 - `docs/plans/043-telegram-last-speaker-routing/original-ask.md`
-- `government/briefs/s043-brief.md`
+- `.harness/government/briefs/s043-brief.md`
 - `https://github.com/AI-Substrate/pij/issues/8`
 
 ## shas[]

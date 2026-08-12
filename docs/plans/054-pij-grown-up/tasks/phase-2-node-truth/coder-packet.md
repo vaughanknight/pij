@@ -22,7 +22,7 @@ Implement Phase 2 (Node truth) — the full dossier is your contract: `docs/plan
 - cli.test.ts legacy block frozen; fakes.ts append-only; biome clean on touched files.
 
 ## Fence (allowed writes)
-`.pi/extensions/pij/core/**` · `.pi/extensions/pij/adapters/**` · `.pi/extensions/pij/daemon.ts` · `.pi/extensions/pij/cli.ts` (bin wiring) · their tests · `docs/plans/054-pij-grown-up/tasks/phase-2-node-truth/**` (execution log + dossier ticks). NEW paths inside these prefixes: checkpoint-notify (`NEW PATH: <path> — why`). Everything else forbidden — explicitly: package/package-lock (s052 owns), `government/**`, `.the-flow-state.json`/`the-flow.json`/`the-flow.md`, `skills/**`, canonical repo, `~/.pij` (real), daemon/tmux mutation of the live fabric.
+`.pi/extensions/pij/core/**` · `.pi/extensions/pij/adapters/**` · `.pi/extensions/pij/daemon.ts` · `.pi/extensions/pij/cli.ts` (bin wiring) · their tests · `docs/plans/054-pij-grown-up/tasks/phase-2-node-truth/**` (execution log + dossier ticks). NEW paths inside these prefixes: checkpoint-notify (`NEW PATH: <path> — why`). Everything else forbidden — explicitly: package/package-lock (s052 owns), `.harness/government/**`, `.the-flow-state.json`/`the-flow.json`/`the-flow.md`, `skills/**`, canonical repo, `~/.pij` (real), daemon/tmux mutation of the live fabric.
 
 ## Gates (before your completion checkpoint)
 `just typecheck` · fenced `npx vitest run .pi/extensions/pij/core .pi/extensions/pij/adapters` · full `npx vitest run` (release-age-policy flake stays out of scope — verify isolated if hit). Live-bin smoke in a temp PIJ_HOME (P1 pattern) for the new verbs.

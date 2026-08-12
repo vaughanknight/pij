@@ -31,7 +31,7 @@ pij fence set api-rework \
   --actor pij-prime
 
 pij dispatch pij-worker \
-  --packet government/briefs/s061.md \
+  --packet .harness/government/briefs/s061.md \
   --json
 ```
 
@@ -78,7 +78,7 @@ The future composition verb consumes this shape. Values such as model, effort, b
       "slug": "api-rework",
       "base": "main",
       "plan": "docs/plans/0NN-api-rework",
-      "brief": "government/briefs/s0NN.md",
+      "brief": ".harness/government/briefs/s0NN.md",
       "fence": {
         "touchSet": ["src/api/**"],
         "shared": []

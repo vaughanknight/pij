@@ -1,5 +1,5 @@
 # cli.integration.test.ts untangle
-**Incident**: `government/incidents/INC-002.md`
+**Incident**: `.harness/government/incidents/INC-002.md`
 **Date**: 2026-07-12
 
 ## Decision

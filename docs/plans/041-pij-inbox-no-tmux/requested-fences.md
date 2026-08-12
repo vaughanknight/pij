@@ -99,7 +99,7 @@ land last.
 
 - No `package-lock.json` change is planned.
 - No dependency addition or version change is planned.
-- No write to `government/**`, `.the-flow-state.json`, or hand-edited
+- No write to `.harness/government/**`, `.the-flow-state.json`, or hand-edited
   `the-flow.json` / `the-flow.md`.
 - No daemon restart without the baton.
 - No public push without o-prime + Jordan gates.

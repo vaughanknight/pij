@@ -158,7 +158,7 @@ BYTE_IDENTICAL
 The captured shared-tree diff also contains unrelated Plan 040, Plan 042,
 government, flight-plan, and coordination changes. They were treated as
 baseline contamination and were not reviewed, edited, staged, or attributed to
-`dlg-0001`. Existing changes under `government/**`, `.flow-pair/**`, and
+`dlg-0001`. Existing changes under `.harness/government/**`, `.flow-pair/**`, and
 `the-flow.{json,md}` remain outside this verdict.
 
 **Review result**: APPROVE

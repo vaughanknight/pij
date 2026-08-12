@@ -15,7 +15,7 @@
 **Verbatim**: "B, we can go C ish later if we feel data is lost"
 
 ### WS-3 · Governance spine — REPLACE, MACHINE-WIDE (decided)
-**Selected**: JSON spine is the single source of truth, living machine-wide under `~/.pij` (with projects); human-readable markdown becomes a *generated render* (prime-flow pattern — nothing governance-bearing is ever hand-written in prose again). Existing repo `government/spine.md` freezes as an archive. Every event carries addressing fields (`peer`, `stream`/`project`, `repo`, `refs[]`) so per-peer filtering is a query, not a read-everything.
+**Selected**: JSON spine is the single source of truth, living machine-wide under `~/.pij` (with projects); human-readable markdown becomes a *generated render* (prime-flow pattern — nothing governance-bearing is ever hand-written in prose again). Existing repo `.harness/government/spine.md` freezes as an archive. Every event carries addressing fields (`peer`, `stream`/`project`, `repo`, `refs[]`) so per-peer filtering is a query, not a read-everything.
 **Storage shape (ruled)**: ONE unified machine-wide store — a single global spine, all governance data kept together under `~/.pij`, events tagged by project/repo/peer (no per-project shard files).
 **Verbatim**: "yeah replace, machine-wide." · "keep it all goether machine wdie"
 

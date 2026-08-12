@@ -155,7 +155,7 @@ fallback) and pay it forward.
 - Never read/tail `events.ndjson` for watchdog assertions (b36edf0).
 - The LIVE daemon is untouchable: no restart, no config write, no
   `pij daemon` against the real home. Temp `PIJ_HOME` only (baton rule).
-- `.pi/packages.yaml`, `government/**`, the-flow files: forbidden as ever.
+- `.pi/packages.yaml`, `.harness/government/**`, the-flow files: forbidden as ever.
 
 **Reusable from prior phases**:
 - watchdog-manager.test.ts fake-port fixtures (P2) — the proof harness can

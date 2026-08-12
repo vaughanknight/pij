@@ -108,7 +108,7 @@ The stream brief's orient stack is updated to put the role landing first:
 
 1. `/pij prime` → `prime/orchestrator.md`;
 2. `orient-global.md`;
-3. consuming repo `government/orient-local.md`;
+3. consuming repo `.harness/government/orient-local.md`;
 4. item brief;
 5. actual `/thesis` invocation;
 6. human preamble.
@@ -198,7 +198,7 @@ harness/scripts/
 5. Required ordered markers occur once and in order:
    - role boundary;
    - `orient-global.md`;
-   - `government/orient-local.md`;
+   - `.harness/government/orient-local.md`;
    - item brief;
    - `/thesis`;
    - `host skill mechanism`;

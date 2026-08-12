@@ -32,7 +32,7 @@ Same P1 fence: `.pi/extensions/pij/core/platform/**`, `.pi/extensions/pij/adapte
 - Commit in your worktree per logical fix (or small coherent groups). NO push, NO PR — orchestrator owns both.
 
 ## Forbidden
-`.the-flow-state.json` / `the-flow.json` / `the-flow.md` · `government/**` · canonical repo writes · push/PR · daemon/tmux mutation · edits outside the fence.
+`.the-flow-state.json` / `the-flow.json` / `the-flow.md` · `.harness/government/**` · canonical repo writes · push/PR · daemon/tmux mutation · edits outside the fence.
 
 ## Checkpoint (on completion)
 `pij send pij-civilian-takin "P1 FIX CYCLE 1 COMPLETE · <n> commits <shas> · F1..F7 status · gates: tsc <r>, vitest <r> · <disproofs/deviations if any>"`

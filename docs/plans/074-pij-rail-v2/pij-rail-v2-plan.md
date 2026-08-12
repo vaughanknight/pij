@@ -27,8 +27,8 @@ workshops, which this repo reviewed before agreeing to any of it.
 | **JC-2** orchestration role | `chainglass/…/workshops/002-jc2-orchestration-role.md` | **authoritative contract** |
 | **JC-3** question text | `chainglass/…/workshops/003-jc3-question-text.md` | **authoritative contract** |
 | This repo's contract review | `docs/plans/074-pij-rail-v2/contract-review-001.md` (SHA `36c6860`) | verdicts, amendments A-1…A-6, nine OQ answers |
-| PM brief | `government/briefs/s074-pij-rail-v2-brief.md` | allocation, gates, hazards |
-| Inherited defect context | `government/handover/2026-07-28-inherited-open-handles.md` §B/B2/B3, A.4 | #35, #68, A.4, interval overshoot |
+| PM brief | `.harness/government/briefs/s074-pij-rail-v2-brief.md` | allocation, gates, hazards |
+| Inherited defect context | `.harness/government/handover/2026-07-28-inherited-open-handles.md` §B/B2/B3, A.4 | #35, #68, A.4, interval overshoot |
 
 **Single-source rule**: the three workshops are the contracts. This plan implements them and
 never restates them. Where this plan and a workshop disagree, **the workshop wins** — and if the
@@ -380,7 +380,7 @@ what someone did?**
 - **Migrate** — skill routes, `docs/how/`, remediation strings, usage text, `AGENTS.md`. A stale
   prescriptive surface is an instruction to run something that errors.
 - **Do NOT touch** — historical briefs, past plans, execution logs, handover files,
-  `government/spine.md`. Rewriting them **falsifies the record**: a plan that said "we ran
+  `.harness/government/spine.md`. Rewriting them **falsifies the record**: a plan that said "we ran
   `pij state set`" in July was *true* in July. This repo already holds the norm explicitly —
   `spine.md` is a frozen historical record that must never be appended to.
 - Where a file does both, migrate only the prescriptive part.
@@ -762,7 +762,7 @@ count-based test would have failed on an artefact of the tester. Any other **sha
 one message.
 
 **Why this is written down rather than remembered**: the inherited handover
-(`government/handover/2026-07-28-inherited-open-handles.md` §B/B2) carries **three live
+(`.harness/government/handover/2026-07-28-inherited-open-handles.md` §B/B2) carries **three live
 workarounds** — leech's symlink and roadrunner's two hardlinks — each waiting on a notification
 when a fix lands, with the standing warning that *if either ships and nobody tells the holders,
 three workarounds silently become permanent infrastructure.* This is a **fourth** notification

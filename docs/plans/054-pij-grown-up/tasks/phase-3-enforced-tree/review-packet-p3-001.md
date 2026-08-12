@@ -28,4 +28,4 @@ Range `e39cbb4..99372bf` — Phase 3 (Enforced tree + adoption), 7 commits: T001
 2. Then: `pij send pij-civilian-takin "P3 REVIEW <APPROVE|FINDINGS n> · docs/plans/054-pij-grown-up/reviews/p3-review-001.md · <one-liner>"`
 
 ## Forbidden
-Everything except reading + your one output file — no code edits, no the-flow files, no `government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.
+Everything except reading + your one output file — no code edits, no the-flow files, no `.harness/government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.

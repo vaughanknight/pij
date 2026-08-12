@@ -56,7 +56,7 @@ Everything else is read-only. In particular do not touch daemon.ts, death/close/
 
 ## Forbidden
 
-`.the-flow-state.json`, any `the-flow.json`/`the-flow.md`, `.flow-pair/**`, `government/**`, package manifests/settings; no commit, restart, daemon command, close/adopt/register, or new peer.
+`.the-flow-state.json`, any `the-flow.json`/`the-flow.md`, `.flow-pair/**`, `.harness/government/**`, package manifests/settings; no commit, restart, daemon command, close/adopt/register, or new peer.
 
 ## Gates
 

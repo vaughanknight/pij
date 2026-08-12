@@ -195,7 +195,7 @@ describe("owesStatusCard vs cardCanMislead — two questions, not one", () => {
 	// previous version of this test asserted `prime -> false` and was not wrong
 	// about the code — it was WRONG ABOUT THE WORLD, pinning a rule the human had
 	// overturned, so updating it looked like breaking something.
-	it("PM and PRIME owe a card (government/rulings/2026-07-31-primes-owe-status-cards.md)", () => {
+	it("PM and PRIME owe a card (.harness/government/rulings/2026-07-31-primes-owe-status-cards.md)", () => {
 		expect(owesStatusCard(descriptor("pij-pm", { orchestrationRole: "pm" }))).toBe(true);
 		// Reversed 2026-07-31; the 2026-07-30 position was `false`.
 		expect(owesStatusCard(descriptor("pij-prime", { prime: true }))).toBe(true);

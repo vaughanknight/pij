@@ -8,7 +8,7 @@ Read the binding contract first:
 
 - `docs/plans/052-update-pi-reliability/reports/design-contract.md`
 - reconciled research at `../research/coder-findings.md`
-- live owner brief at `/Users/jordanknight/pi-hacking/pij/government/briefs/s052-update-pi-reliability.md`
+- live owner brief at `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s052-update-pi-reliability.md`
 
 No stage, commit, amend, push, fetch, rebase, worktree operation, installed-Pi edit, global npm config/cache edit, or real `~/.pi` mutation. `node_modules` is an operational symlink and is excluded from the product inventory.
 

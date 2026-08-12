@@ -12,7 +12,7 @@ I had asserted a `daemon-restart` baton was needed. The o-prime challenged it. D
 | fact | evidence |
 |---|---|
 | the daemon runs from the **main checkout** | `npm exec tsx /Users/jordanknight/pi-hacking/pij/.pi/extensions/pij/daemon.ts` — it never sees worktree source, so restarting it would have proved nothing about this branch |
-| bare `pij` resolves to the **main checkout** | `command -v pij` → `~/.npm-global/bin/pij` → `/Users/jordanknight/pi-hacking/pij/harness/scripts/pij-cli.cjs` (the worktree-binding trap `government/orient-local.md` warns about) |
+| bare `pij` resolves to the **main checkout** | `command -v pij` → `~/.npm-global/bin/pij` → `/Users/jordanknight/pi-hacking/pij/harness/scripts/pij-cli.cjs` (the worktree-binding trap `.harness/government/orient-local.md` warns about) |
 | `just pij` runs the **worktree** CLI | `justfile:116` → `node harness/scripts/pij-cli.cjs "$@"`, resolved against cwd |
 | the refusal/projection is evaluated **in the CLI process, per invocation** | the transcripts below — a worktree edit is live with **no restart** |
 

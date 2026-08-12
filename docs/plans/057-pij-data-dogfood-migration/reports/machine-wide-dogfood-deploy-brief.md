@@ -44,7 +44,7 @@ before we link from the worktree — else we deploy with the committed versions.
 
 Code deploy ≠ data authority. Dogfooding is normal live operation of the shipped
 store. The 057 **importer/equivalence** work stays **staging-home only** (F1
-mechanical gate); `government/**` read-only, prose authoritative; `prime-flow.json`
+mechanical gate); `.harness/government/**` read-only, prose authoritative; `prime-flow.json`
 byte-frozen (`9b7d5b5`); the authoritative-writer flip only on Jordan's separate
 ruling. 057 stream state: plan drafted, critic F1 folded, F2–F5 folds + your plan
 acceptance + Jordan's P1 workshop still ahead — dogfood deploy runs in parallel,

@@ -31,7 +31,7 @@ Completion is `pij report state done`, never a watchdog self-pause.
 Run these steps in order. A later step never retroactively satisfies an earlier one.
 
 1. Read portable [`orient-global.md`](./orient-global.md).
-2. Read the consuming repo's `government/orient-local.md`.
+2. Read the consuming repo's `.harness/government/orient-local.md`.
 3. Read the assigned item brief and verify its role, fences, and structure tree.
 4. Invoke `/thesis` against the ask and nearest authoritative artifacts.
 5. Use the host skill mechanism. A plausible thesis written from memory does not satisfy this step.

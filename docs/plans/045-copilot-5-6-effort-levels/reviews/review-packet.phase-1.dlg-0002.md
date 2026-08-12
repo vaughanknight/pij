@@ -84,4 +84,4 @@ Then send:
 
 - No product/doc fixes.
 - No write outside the one review artifact, except temporary mutation edits that are restored byte-identically.
-- Do not touch `docs/domains/pij-control-plane/domain.md`, `.flow-pair/**`, `the-flow.json`, `the-flow.md`, `.the-flow-state.json`, `government/**`, package files, git staging/commits, or daemon state.
+- Do not touch `docs/domains/pij-control-plane/domain.md`, `.flow-pair/**`, `the-flow.json`, `the-flow.md`, `.the-flow-state.json`, `.harness/government/**`, package files, git staging/commits, or daemon state.

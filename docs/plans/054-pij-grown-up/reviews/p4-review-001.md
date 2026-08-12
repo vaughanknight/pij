@@ -27,8 +27,8 @@ APPROVE closes plan 054's review loop. One **LOW, non-blocking, pre-existing** o
 ## R3 / R4 — INDEPENDENT verification (ran myself; did not trust the packet)
 
 **R4 — governance freeze:**
-- `git hash-object government/prime-flow.json` = `9b7d5b5089f06400bc329109dc3aebc522e6ec9b` == `git rev-parse HEAD:government/prime-flow.json` = same blob → **byte-frozen**.
-- `government/**` **absent** from `git diff --name-only fec9032..5b7e65c`.
+- `git hash-object .harness/government/prime-flow.json` = `9b7d5b5089f06400bc329109dc3aebc522e6ec9b` == `git rev-parse HEAD:.harness/government/prime-flow.json` = same blob → **byte-frozen**.
+- `.harness/government/**` **absent** from `git diff --name-only fec9032..5b7e65c`.
 - `prime-flow.json` not touched by any commit in range.
 
 **R3 — no premature deploy / no live state:**

@@ -22,7 +22,7 @@ Orient, thesis, harness boot, and the read-only source survey are complete. Jord
 
 - `docs/plans/045-copilot-5-6-effort-levels/original-ask.md`
 - `docs/plans/045-copilot-5-6-effort-levels/reports/preamble-checkpoint.md`
-- `/Users/jordanknight/pi-hacking/pij/government/briefs/s045-brief.md`
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s045-brief.md`
 - `.pi/extensions/pij/core/models/registry.ts` (read-only survey)
 - `.pi/extensions/pij/core/models/validate.ts` (read-only survey)
 

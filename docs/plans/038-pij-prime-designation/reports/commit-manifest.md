@@ -64,4 +64,4 @@
 ## Excluded
 
 - Phase 1 implementation files already committed in `6067b07`.
-- `.flow-pair/**`, `government/**`, package manifests/lockfiles, sibling plans, and all unrelated dirty paths.
+- `.flow-pair/**`, `.harness/government/**`, package manifests/lockfiles, sibling plans, and all unrelated dirty paths.

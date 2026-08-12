@@ -108,7 +108,7 @@ human
 
 - The **human** names work, gives binding rulings, and approves merges.
 - The **o-prime governs; it does not implement**. It is the single writer of
-  `government/`, owns the portfolio, roster, fences, batons, and cross-stream
+  `.harness/government/`, owns the portfolio, roster, fences, batons, and cross-stream
   sequencing, and verifies each stream's evidence one hop upward. Durable state
   lives in the spine, prime-flow, baton book, briefs, and canary records.
 - Each **stream orchestrator** owns one work item and its fleet. It plans in its

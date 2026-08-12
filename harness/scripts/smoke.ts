@@ -172,11 +172,11 @@ export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
 	const repo = join(root, "repo");
 	try {
 		mkdirSync(home, { recursive: true });
-		mkdirSync(join(repo, "government", "briefs"), { recursive: true });
+		mkdirSync(join(repo, ".harness", "government", "briefs"), { recursive: true });
 		mkdirSync(join(repo, "src", "api"), { recursive: true });
 		writeFileSync(join(repo, "README.md"), "team scaffold smoke\n");
 		writeFileSync(join(repo, "src", "api", "index.ts"), "export const ready = true;\n");
-		writeFileSync(join(repo, "government", "briefs", "s061.md"), "# Stream brief\n");
+		writeFileSync(join(repo, ".harness", "government", "briefs", "s061.md"), "# Stream brief\n");
 		const fakeBin = join(root, "bin");
 		mkdirSync(fakeBin, { recursive: true });
 		const fakeTmux = join(fakeBin, "tmux");
@@ -189,7 +189,7 @@ export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
 			["init", "--quiet", repo],
 			["-C", repo, "config", "user.email", "pij@example.test"],
 			["-C", repo, "config", "user.name", "pij smoke"],
-			["-C", repo, "add", "README.md", "src/api/index.ts", "government/briefs/s061.md"],
+			["-C", repo, "add", "README.md", "src/api/index.ts", ".harness/government/briefs/s061.md"],
 			["-C", repo, "commit", "--quiet", "-m", "initial"],
 		] as const) {
 			const git = spawnSync("git", args, { encoding: "utf8" });
@@ -263,7 +263,7 @@ export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
 
 		const dispatched = JSON.parse(
 			runPij(
-				["dispatch", "pij-worker", "--packet", "government/briefs/s061.md", "--json"],
+				["dispatch", "pij-worker", "--packet", ".harness/government/briefs/s061.md", "--json"],
 				repo,
 				parentEnv,
 			).stdout,

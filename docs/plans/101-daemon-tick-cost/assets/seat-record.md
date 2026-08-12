@@ -6,7 +6,7 @@
 | **harness / model** | copilot · claude-opus-5 |
 | **worktree** | `pij-worktrees/s101-daemon-tick-cost` |
 | **branch** | `s101/daemon-tick-cost` (+ 5 further branches, one per instrument) |
-| **brief** | `government/briefs/s101-daemon-tick-cost.md` |
+| **brief** | `.harness/government/briefs/s101-daemon-tick-cost.md` |
 | **prime** | `pij-continuing-ermine` (o-prime) |
 | **PRs** | **#232** (#181), **#234** (#229), **#235** (#183 disk), **#236** (doctrine), **#245** (#204 + 90d bound), **#246** (source staleness), **#248** (scheduler projection), **#249** (process staleness) — all merged |
 | **filed** | **#229**, **#237** (git-ai), **#231** (o-prime's, my stream as specimen) |

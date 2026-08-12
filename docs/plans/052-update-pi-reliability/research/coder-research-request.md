@@ -44,7 +44,7 @@ Do not edit product code, tests, manifests, locks, settings, package YAML, globa
 
 Read in full before concluding:
 
-- owner brief at `/Users/jordanknight/pi-hacking/pij/government/briefs/s052-update-pi-reliability.md`
+- owner brief at `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s052-update-pi-reliability.md`
 - `.npmrc`
 - `justfile`
 - `install-windows.ps1`

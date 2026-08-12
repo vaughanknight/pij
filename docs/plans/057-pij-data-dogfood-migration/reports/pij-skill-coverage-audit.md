@@ -70,7 +70,7 @@ established event-kind vocabulary, and its task set row omits --project (drift 9
    (non-reasoning model, no thinkingLevelMap).
 7. `routes/node.md:54-66` — anomalies taught bare-form only; live now takes `--here` / `--project <slug>`.
 8. `routes/prime.md` + `SKILL.md:31` — "government files have one writer" vs node.md:6 "anyone may
-   write, safety is DERIVED"; and "spine" names two objects (government/spine.md vs ~/.pij/spine)
+   write, safety is DERIVED"; and "spine" names two objects (.harness/government/spine.md vs ~/.pij/spine)
    with no disambiguation in the prime landing. store-native.md is the bridge but prime.md never
    points to it.
 9. `prime/rituals/store-native.md:15` — task set shown without `--project`, replaying exhibit F6.

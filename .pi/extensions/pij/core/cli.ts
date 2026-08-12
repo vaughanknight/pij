@@ -5326,7 +5326,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				}
 				if (cmd.json) return okOut(JSON.stringify(assignmentStore.read(record.id) ?? record));
 				// THE PRECONDITION TRAVELS WITH THE REMEDY (doctrine,
-				// government/doctrine/preconditions-travel-with-remedies.md). Closing a
+				// .harness/government/doctrine/preconditions-travel-with-remedies.md). Closing a
 				// GENERAL assignment is not like closing a dispatch: the id is
 				// DETERMINISTIC (`asg-general-<node>`), so it is burned permanently and
 				// can never be recycled, and until the seat has some OTHER open

@@ -26,4 +26,4 @@ Plan §P1 + WS-1..6 · YOUR reviews 001/002/003 · fix-packet-003.md · executio
 2. Then: `pij send pij-civilian-takin "P1 REVIEW-4 <APPROVE|FINDINGS n> · docs/plans/054-pij-grown-up/reviews/p1-review-004.md · <one-liner>"`
 
 ## Forbidden
-Everything except reading + your one output file — no code edits, no the-flow files, no `government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.
+Everything except reading + your one output file — no code edits, no the-flow files, no `.harness/government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.

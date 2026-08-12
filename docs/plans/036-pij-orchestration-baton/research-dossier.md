@@ -12,7 +12,7 @@
 - The **watch verb family (plans 033/034) is the end-to-end template** for adding `pij orchestration baton <verb>`: bin-level verb intercept → pure core module → fs sidecar store adapter → daemon manager component → store-targeted tests with fakes.
 - Namespace is ruled (`pij orchestration baton <verb>`, ruling #2 in `original-ask.md`) — the bin's `main()` gains one `if (top === "orchestration")` intercept, mirroring `agent`/`watch`.
 - Run-01 field evidence (vendored interview) reshapes requirements: the queue is a **dependency DAG with granter discretion, never FIFO**; the one deterministic rule worth shipping first is **stale-SHA re-pin enforcement at grant/apply**; automate bookkeeping/liveness/push/measurement, never reclaim/breach/ordering judgment; scope leases **per-registry (machine) with a repo field**.
-- The book (`government/baton-book.md`) is retained as the human evidence layer: the primitive emits machine lines; the keeper (a seat, never the daemon) owns the book file — single-writer discipline.
+- The book (`.harness/government/baton-book.md`) is retained as the human evidence layer: the primitive emits machine lines; the keeper (a seat, never the daemon) owns the book file — single-writer discipline.
 - Recursion hazard is real and doubles as the dogfood: implementing the primitive requires edits under `.pi/extensions/pij/**`, which require the **daemon-restart baton** (C6) from the o-prime — this run will exercise the convention it mechanizes.
 
 ## Evidence
@@ -27,7 +27,7 @@
 | F-06 | Watch family (plan 033/034) is the newest complete verb-family addition: CLI verbs + `WatchStorePort` + `FsWatchStore` sidecar + `PeerWatchManager` daemon component | `.pi/extensions/pij/cli.ts:1791-1798`, `adapters/watch-store.ts:20-51`, `core/daemon/watch.ts:22-39` | Copy this file/test topology for `core/orchestration/` + `adapters/` + daemon wiring | High |
 | F-07 | Ports are narrow interfaces (`RegistryPort`, `EventLogPort`, `DeliveryPort`, `ProcessPort`…); side effects injected via constructor (P3); tagged-union returns (P4); tests target stores not wiring (P8) | `.pi/extensions/pij/core/ports.ts:17-141`, `AGENTS.md` P1–P10 | A `BatonStorePort` (or similar) keeps core pi-free and testable with `adapters/fakes.ts` | High |
 | F-08 | `SessionDescriptor` changes are additive/migration-safe only; legacy descriptors must always load | `.pi/extensions/pij/core/types.ts:77-124` (comment class) | If a lease references holder sessions, never extend the descriptor non-additively; prefer a separate lease record under `PIJ_HOME` | High |
-| F-09 | Daemon runs `tsx` off source with no hot-reload — every extension edit is invisible until restart, and restart interrupts every live peer machine-wide | `/pij` skill § C6; `government/spine.md` SW-2 | Implementation phases need the daemon-restart baton from the o-prime; batch edits to minimize restarts | High |
+| F-09 | Daemon runs `tsx` off source with no hot-reload — every extension edit is invisible until restart, and restart interrupts every live peer machine-wide | `/pij` skill § C6; `.harness/government/spine.md` SW-2 | Implementation phases need the daemon-restart baton from the o-prime; batch edits to minimize restarts | High |
 
 ## Historical Evidence
 
@@ -44,7 +44,7 @@
 
 | Item | Evidence | Why it matters | Resolution / next evidence |
 |------|----------|----------------|----------------------------|
-| Daemon-restart recursion: shipping the primitive requires the baton it implements | F-09, `government/baton-book.md` | Restart interrupts every live peer incl. this stream and the o-prime | Request daemon-restart baton per phase; batch edits; the book covers us until the primitive lands |
+| Daemon-restart recursion: shipping the primitive requires the baton it implements | F-09, `.harness/government/baton-book.md` | Restart interrupts every live peer incl. this stream and the o-prime | Request daemon-restart baton per phase; batch edits; the book covers us until the primitive lands |
 | v1 verb scope unsettled (minimal request/return/reclaim vs sketch extras: `--pin`, `with` wrapper, windows) | H-01 vs original-ask sketch pointers | Determines phase count and CS | Settle at plan/workshop; H-02/H-03 push DAG-queue semantics + re-pin into v1 candidates |
 | Book ↔ primitive write boundary: primitive must NOT own the book file (single-writer = the keeper seat) | H-04, `research/interview-uec99o-answers.vendored.md#7` | A daemon writing the book breaks the government's single-writer law | Primitive emits machine lines to its own log/registry; keeper folds/annotates the book |
 | Machine-wide `PIJ_HOME` lease root vs per-repo batons (git-index) | interview §8; `~/.pij` layout (daemon.lock at root) | Per-folder-only would miss machine-wide resources (daemon, compositor-class) | v1: per-registry scope + `repo` field on each lease, per interview evidence |

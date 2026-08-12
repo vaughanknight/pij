@@ -2,7 +2,7 @@
 
 - **Validated**: 2026-07-12T22:28:06Z
 - **Target**: `docs/plans/045-copilot-5-6-effort-levels/copilot-5-6-effort-levels-plan.md` · `773d44e9ad88d8eea4698c924e997766bb281d82f7e0c163f86fef5a0ca7e140`
-- **Contract sources**: `government/briefs/s045-brief.md`; `docs/plans/045-copilot-5-6-effort-levels/original-ask.md`; `research-dossier.md`; current model registry/validator/CLI/spawn sources
+- **Contract sources**: `.harness/government/briefs/s045-brief.md`; `docs/plans/045-copilot-5-6-effort-levels/original-ask.md`; `research-dossier.md`; current model registry/validator/CLI/spawn sources
 - **Checks**: unified-plan structure script; G1–G7/AC/task/finding/path resolution; current source and live Pi/Copilot effort probes; applicable Plan 025 + `d03bac3` history; independent cold critic + snapshot-seam recheck; Pi-client scope critic + targeted recheck; `git diff --check`
 - **Verdict**: VALIDATED WITH FIXES
 - **Thesis / proof**: The plan is implementation-ready for the exact Copilot trio correction; source tracing proves the two registry construction seams reach every named discovery/validation consumer while preserving scope.

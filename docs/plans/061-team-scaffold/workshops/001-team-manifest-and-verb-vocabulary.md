@@ -104,7 +104,7 @@ autonomy?: "power-through" | "gated";   // absent => gated
     "slug": "api-rework",
     "base": "main",                          // SHA resolved at create-time
     "plan": "docs/plans/0NN-api-rework",     // pointer only
-    "brief": "government/briefs/s0NN.md",    // judgment content — authored, never generated
+    "brief": ".harness/government/briefs/s0NN.md",    // judgment content — authored, never generated
     "fence": { "touchSet": ["src/api/**"], "shared": [] },
     "seats": [
       { "role": "pm",       "harness": "claude",  "model": "<judgment>", "effort": "high" },

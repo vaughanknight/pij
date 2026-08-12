@@ -20,7 +20,7 @@ The route runs deterministic role triage and points to one next file:
 - [stream orchestrator landing](../../skills/pij/references/prime/orchestrator.md)
 
 Load only the selected rung. The consuming repo's stream path also reads its
-portable orient, generated `government/orient-local.md`, and item brief through
+portable orient, generated `.harness/government/orient-local.md`, and item brief through
 the landing module.
 
 ## Operator index

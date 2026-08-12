@@ -187,7 +187,7 @@ _Refinement opportunities still open — recorded as evidence; the flow surfaces
 | backpressure-coverage.md | y | Certainty **Partial** (14 RUN · 2 EXTEND · 0 BUILD). Its two recommended extensions are folded in as T015/T016 + AC-15/AC-16 |
 | validations/ round 1 | y | NEEDS ATTENTION → all 3 HIGH + 4 MED folded in; ACs grew 16 → 20 (see `### Clarifications` § validation round 1) |
 | workshops/*.md | n | — |
-| government/briefs/chore-primitive-2026-08-02.md | y | Authoritative requirement source for baseline/ack semantics and the gate-vs-sensor boundary |
+| .harness/government/briefs/chore-primitive-2026-08-02.md | y | Authoritative requirement source for baseline/ack semantics and the gate-vs-sensor boundary |
 
 ## Implementation Plan
 

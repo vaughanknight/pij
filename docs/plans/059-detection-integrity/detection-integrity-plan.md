@@ -9,7 +9,7 @@
 
 ### Research Context
 
-Source mapping is recorded in `reports/preamble-checkpoint.md` and derives from the live feature-round mandate, `government/briefs/feature-round-2026-07-19.md`, `government/briefs/prime-feedback-triage-2026-07-18.md`, current code at `fb1bfbd`, and Pi's `tool_call` interception contract.
+Source mapping is recorded in `reports/preamble-checkpoint.md` and derives from the live feature-round mandate, `.harness/government/briefs/feature-round-2026-07-19.md`, `.harness/government/briefs/prime-feedback-triage-2026-07-18.md`, current code at `fb1bfbd`, and Pi's `tool_call` interception contract.
 
 Three mandate items are already present at the pinned base and are regression obligations, not implementation work:
 

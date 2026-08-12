@@ -41,7 +41,7 @@
 - `the-flow.json`
 - `the-flow.md`
 - `.flow-pair/**` except the delivered packet
-- `government/**`
+- `.harness/government/**`
 - package manifests and lockfiles
 - git staging/commits
 - daemon restart

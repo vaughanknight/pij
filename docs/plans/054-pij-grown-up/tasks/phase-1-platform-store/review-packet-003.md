@@ -26,4 +26,4 @@ Range `b3fd6ec..911be52` — G1 `8000db3` (steal-removal), G2+G3 `584bfe8` (phas
 2. Then: `pij send pij-civilian-takin "P1 REVIEW-3 <APPROVE|FINDINGS n> · docs/plans/054-pij-grown-up/reviews/p1-review-003.md · <one-liner>"`
 
 ## Forbidden
-Everything except reading + your one output file — no code edits, no the-flow files, no `government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.
+Everything except reading + your one output file — no code edits, no the-flow files, no `.harness/government/**`, no other docs writes, no commit/push/PR, no canonical-repo writes, no daemon/tmux mutation.

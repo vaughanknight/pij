@@ -25,7 +25,7 @@
 
 - `docs/how/pij-governance-migration.md` (docs/how header style): dual-run table (prose spine AUTHORITATIVE for governance meaning; JSON spine = platform truth/telemetry, both true at once in different registers); spine.md pinned as a render never a second log; no automatic cross-copying — manual echoes are attributed writes like any other.
 - Cutover section: explicit human ruling artifact ONLY (usage/size/time may never imply one — R4 verbatim); ruling template stub included (authority split, prose disposition, backfill, writer contract, rollback condition); "until the artifact exists the answer is no, categorically."
-- prime-flow.json: frozen as-is (E309 fail-closed history, H-06 "hand-cranked JSON rots"), nothing may resume writing it, successor decided AT cutover by the ruling (WS-3 replace posture — pij platform, or a fresh CLI-written harness-flow overlay). **R4 byte-proof at commit: `git hash-object government/prime-flow.json` = `9b7d5b5…` = HEAD blob (identical).**
+- prime-flow.json: frozen as-is (E309 fail-closed history, H-06 "hand-cranked JSON rots"), nothing may resume writing it, successor decided AT cutover by the ruling (WS-3 replace posture — pij platform, or a fresh CLI-written harness-flow overlay). **R4 byte-proof at commit: `git hash-object .harness/government/prime-flow.json` = `9b7d5b5…` = HEAD blob (identical).**
 
 ### [coder] T004 — pij skill `node` route + mechanical gate (commit 713c123)
 
@@ -57,7 +57,7 @@
 **Commits (7)**: 0ef6839 T001 · 8acd2c6 T002 · 8a7c593 T003 · 713c123 T004 · 4e0efb2 T005+T006 · 42f4c0f T007 · (this wrap) T008+progress. T001–T008 ALL [x].
 **Gates**: tsc clean · fenced core+adapters 1954/7sk/0f · **FULL vitest 2832 passed / 11 skipped / 0 failed** · `just pij-skill-check` green · biome clean · sweep 12/12 · **`harness checks` ALL 8 STAGES PASS** (first-run smoke fail was environmental cold-clone; isolated 9/9 then full re-run green — recorded verbatim above).
 **R3 attestation**: `just pij-skill-install` NEVER run; no live daemon started (tracker/sweep single-step tick only; the one subprocess was `spine render` against the temp home); no real `~/.pij` touched (every store under mkdtemp homes).
-**R4 attestation**: no cutover; `government/**` untouched; `government/prime-flow.json` byte-identical (`git hash-object` = HEAD blob `9b7d5b5…`).
+**R4 attestation**: no cutover; `.harness/government/**` untouched; `.harness/government/prime-flow.json` byte-identical (`git hash-object` = HEAD blob `9b7d5b5…`).
 **SW-6/SW-7**: `git diff --name-only 50a3568..HEAD | grep -cE "core/discovery|core/current-session|core/close|daemon\.ts"` = **0**; all tests outcome-contracts.
 **Deferred/Noteworthy digest**: 3 Noteworthy rows (gate-script :89 extension beyond ruled anchors · T006c ruling upheld-default · environmental smoke first-run fail), 0 Deferred, no TODO/FIXME/HACK introduced.
 **Post-wrap hygiene**: `harness checks` (pkg-audit) side-effect re-stamped vetting `date:` fields in `.pi/packages.yaml` (timestamps only, scores/rubrics unchanged) — OUT of fence, reverted via `git checkout --`; worktree confirmed CLEAN.

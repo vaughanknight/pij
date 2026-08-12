@@ -66,7 +66,7 @@ docs/plans/084-pa-gate-repair/execution.log.md        (create; your log)
 ```
 the-flow.json · the-flow.md · .the-flow-state.json    (guided mode is their SOLE writer)
 docs/plans/084-pa-gate-repair/*.md except execution.log.md
-government/**                                          (the o-prime's, single-writer)
+.harness/government/**                                          (the o-prime's, single-writer)
 .fs2/ · .flow-pair/** · scratch/**                      (never stage)
 .pi/packages.yaml · .pi/settings.json                   (generated / vetter-owned)
 node_modules (a symlink — never touch)

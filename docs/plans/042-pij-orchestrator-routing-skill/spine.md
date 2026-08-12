@@ -8,7 +8,7 @@
 
 - `original-ask.md` — Jordan's wishlist §2, verbatim.
 - `rulings.md` — in-pane sequencing and `/thesis` rulings.
-- `government/briefs/s042-brief.md` — stream scope, fences, report contract, and interview waiver.
+- `.harness/government/briefs/s042-brief.md` — stream scope, fences, report contract, and interview waiver.
 - `skills/pij/references/prime/orient-global.md` — portable stream-orchestrator contract.
 - `skills/pij/references/routes/prime.md` and `skills/pij/references/routes/pair.md` — current route boundaries.
 - `research/vendored/s042-interview-uec99o-response.md` — o-prime, four stream orchestrators, and one fleet's orchestrator/reviewer/coder vertical slice, vendored verbatim.

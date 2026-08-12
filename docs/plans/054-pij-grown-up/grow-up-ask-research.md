@@ -12,7 +12,7 @@ This is PD-002 in the spine ("overhaul entire system to be more deterministic", 
 
 ### R1 — Governance spine must be JSON
 - Machine-readable, filterable **per pij peer** (e.g. "events relevant to node X / stream Y").
-- Today: `government/spine.md` is a **336KB markdown event log** (873 lines, huge prose events + a pending-decisions table PD-001…PD-008) parsed by agents, not machines. `baton-book.md`, `orient-local.md`, briefs — all prose. Only `prime-flow.json` (schema_version'd nodes/events, rendered to md by `harness flow render`) already demonstrates the target pattern: **JSON is source of truth, markdown is a render**.
+- Today: `.harness/government/spine.md` is a **336KB markdown event log** (873 lines, huge prose events + a pending-decisions table PD-001…PD-008) parsed by agents, not machines. `baton-book.md`, `orient-local.md`, briefs — all prose. Only `prime-flow.json` (schema_version'd nodes/events, rendered to md by `harness flow render`) already demonstrates the target pattern: **JSON is source of truth, markdown is a render**.
 
 ### R2 — Projects as a first-class pij entity
 - Project = short description + plan link + task list(s) + assigned **prime**.
@@ -60,7 +60,7 @@ This is PD-002 in the spine ("overhaul entire system to be more deterministic", 
 ## Open questions (for Jordan / the prime — not blocking research)
 
 1. **DAG vs tree** — "proper DAG" was said; does any node ever have two parents (e.g. adopted by prime while spawned by an orchestrator)? If strictly one parent, it's a forest of trees rooted at primes; if reassignment/adoption keeps history, that's edges-over-time, not multi-parent.
-2. **Where does project/spine JSON live** — machine-wide `~/.pij` (registry-style) vs repo `government/` (versioned, single-writer)? Projects likely span worktrees but belong to a repo; spine is repo-governance. Suggest: repo-versioned JSON, single-writer, with the daemon/CLI as reader.
+2. **Where does project/spine JSON live** — machine-wide `~/.pij` (registry-style) vs repo `.harness/government/` (versioned, single-writer)? Projects likely span worktrees but belong to a repo; spine is repo-governance. Suggest: repo-versioned JSON, single-writer, with the daemon/CLI as reader.
 3. **Writer authority** — who may write which fields: pij daemon (system_state, metadata), orchestrators (task, semantic state), prime (project, spine events). Needs the s051-style authority rules extended.
 4. **Projects vs flows** — `prime-flow.json` already models a portfolio of work items linked to plans. Is a Project a new peer of the flow, or does the flow become a view over Projects?
 5. **Context telemetry feasibility per harness** — pi can self-report; claude/copilot/codex may only expose context via transcript/pane heuristics — decide honest `unknown` over scraped guesses?

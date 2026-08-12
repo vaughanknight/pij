@@ -8,7 +8,7 @@ it manufactures merge conflicts and then serialises anyway, at the worst possibl
 > **Each stream owns a set of files exclusively. No two streams may write the same file.**
 > Group issues *to* that ownership; never let an issue's boundary decide a stream's boundary.
 
-This is the same single-writer discipline the government already applies to `government/`
+This is the same single-writer discipline the government already applies to `.harness/government/`
 (o-prime only) and to resources under a baton. A worktree removes edit-time contention; it
 does **nothing** for two branches that both rewrite the same function.
 
@@ -68,6 +68,6 @@ initialisation value) read as different bugs by different reporters. Both rewrit
 path in `watchdog-manager.ts`. **Conceptual independence is not physical independence**, and
 only the second one matters at merge time.
 
-This is a specific instance of `government/doctrine/ask-what-else-satisfies-the-shape.md` — the
+This is a specific instance of `.harness/government/doctrine/ask-what-else-satisfies-the-shape.md` — the
 question *"what else touches this file?"* is exactly the *"what else satisfies this shape?"*
 question, asked about a partition instead of a predicate.

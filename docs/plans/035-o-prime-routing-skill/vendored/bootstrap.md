@@ -5,7 +5,7 @@ here was done at least once in SecondCrack (run 01) — deviations and gotchas a
 inlined where they bit. Companion files: `orient-oprime.md` (lever 0),
 `orient-global.md` (lever 1), `orient-local.md` (lever 2 — the only repo-specific
 one), `prime-flow.schema.json`, `map.md`, and the per-stream
-`government/kickoff-runbook.md`.
+`.harness/government/kickoff-runbook.md`.
 
 ## Preconditions
 
@@ -43,7 +43,7 @@ doc's per-repo block (or the local orient until a protocol doc exists):
 
 ## Step 3 — Scaffold the government (all single-writer, o-prime-owned)
 
-Create `<home>/government/` (in SecondCrack: `docs/plans/018-o-prime/government/`;
+Create `<home>/.harness/government/` (in SecondCrack: `docs/plans/018-o-prime/government/`;
 in production: wherever the deployment homes governance — must be in-repo):
 
 - `spine.md` — header (thesis from the human + Updated stamp from `date -u`, never
@@ -81,7 +81,7 @@ in production: wherever the deployment homes governance — must be in-repo):
    ask recorded verbatim.
 2. For each item that graduates to `preparing`: allocate (ordinal + folder + window
    + fences-from-actions, verified on disk; overlap = sequencing decision recorded);
-   then spawn or adopt its orchestrator per `government/kickoff-runbook.md`
+   then spawn or adopt its orchestrator per `.harness/government/kickoff-runbook.md`
    (canary → orient stack by pointer → roster → tree-push to all live streams).
 3. Hold every assignment provisional until the human preamble (lifecycle:
    adopt → orient → preamble → work). Flip the prime-flow node to `in_flight` when

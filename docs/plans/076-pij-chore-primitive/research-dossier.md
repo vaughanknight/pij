@@ -19,7 +19,7 @@ dossier establishes what the existing pij surface already provides, which preced
 copy, and which precedent would be actively wrong to copy.
 
 The design rationale (why first-class, gate-vs-sensor boundary, survey evidence) is
-already settled in `government/briefs/chore-primitive-2026-08-02.md` and is not re-derived
+already settled in `.harness/government/briefs/chore-primitive-2026-08-02.md` and is not re-derived
 here.
 
 ## Answer
@@ -68,9 +68,9 @@ here.
 
 | ID | Prior friction / decision | Source | Applicability now | Implication |
 |----|---------------------------|--------|-------------------|-------------|
-| H-01 | The primitive's design is already argued and its gate-vs-sensor boundary pinned: `ack` advances a baseline and completes nothing; `run` must not auto-commit a fingerprint or an unrelayed delta is lost forever | `government/briefs/chore-primitive-2026-08-02.md#design-points-to-settle`, `#relation-to-builder-chores` | Direct | These are requirements, not open questions — the plan implements them rather than re-deciding |
-| H-02 | A truthful `0 deltas` was reported for ~10h across 3 red PRs because reds present at briefing became silent baseline (seahorse) | `government/briefs/chore-primitive-2026-08-02.md` §3 | Direct | The fingerprint store must be readable, and `--full-every N` gives a periodic absolute-state report |
-| H-03 | The watchdog verb family did not grant its own subject the verbs it needed — named in the brief as the gap not to repeat | `government/briefs/chore-primitive-2026-08-02.md` §Design points | Partial | Given F-07 (no gating at all), this manifests as an ownership question, not a permission grant |
+| H-01 | The primitive's design is already argued and its gate-vs-sensor boundary pinned: `ack` advances a baseline and completes nothing; `run` must not auto-commit a fingerprint or an unrelayed delta is lost forever | `.harness/government/briefs/chore-primitive-2026-08-02.md#design-points-to-settle`, `#relation-to-builder-chores` | Direct | These are requirements, not open questions — the plan implements them rather than re-deciding |
+| H-02 | A truthful `0 deltas` was reported for ~10h across 3 red PRs because reds present at briefing became silent baseline (seahorse) | `.harness/government/briefs/chore-primitive-2026-08-02.md` §3 | Direct | The fingerprint store must be readable, and `--full-every N` gives a periodic absolute-state report |
+| H-03 | The watchdog verb family did not grant its own subject the verbs it needed — named in the brief as the gap not to repeat | `.harness/government/briefs/chore-primitive-2026-08-02.md` §Design points | Partial | Given F-07 (no gating at all), this manifests as an ownership question, not a permission grant |
 
 ## Risks and Unknowns
 

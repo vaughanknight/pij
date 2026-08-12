@@ -17,7 +17,7 @@ Never stage:
 
 - `.flow-pair/**`
 - `.harness/temp/**`
-- `government/**`
+- `.harness/government/**`
 - any s036 path outside the already-committed shared-file base
 - unrelated worktree changes
 

@@ -397,7 +397,7 @@ heard of the verb you asked about."
 | 2.6 | `core/cli.test.ts` | Three existing tests re-pointed at the map. Every assertion came out **stronger or equivalent**: `refusedVerbs.toContain("close")` → `verbs.close === "refuse"`; `refusedVerbs.not.toContain("list")` → `verbs.list === "allow"` (the negation was satisfiable by a payload that had never heard of `list`); the `conditionalVerbs.toContain(x)` + `refusedVerbs.not.toContain(x)` pair → the single `verbs[x] === "conditional"`. The old no-overlap loop was **deleted, not weakened**: overlap is unrepresentable in a map, and it existed only because there were two lists. |
 | 2.6 | `cli.integration.test.ts` | Bin-seam whoami test re-pointed, and **strengthened**: it now also asserts `capabilitySchema` and full key-set totality, so a bin build emitting a partial map is caught at the subprocess seam rather than only in-process. |
 | 2.7 | `cli.inbox.integration.test.ts` | Pin kept as `toEqual`, **not** downgraded. The map is destructured out; scalars keep the strict `toEqual` (now including `capabilitySchema: 2`), and the map is asserted by key-set equality against the imported `PA_VERB_CLASSIFICATION` plus a positive value assertion. Two hunks only — one import, one expectation object. Nothing at or after `:219`. |
-| 2.8 | `docs/how/pij-watchdog.md`, `government/briefs/pa-standup-recipe.md`, `government/briefs/pa-missing-anaconda-2026-07-31.md` | The two-bucket story corrected. The briefs are **standing instructions to live PA seats**: the anaconda brief told a PA to "expect a non-empty `refusedVerbs`", which would now read as a broken gate. Both now instruct reading `verbs.<verb>` directly and explicitly warn against defaulting a missing field. |
+| 2.8 | `docs/how/pij-watchdog.md`, `.harness/government/briefs/pa-standup-recipe.md`, `.harness/government/briefs/pa-missing-anaconda-2026-07-31.md` | The two-bucket story corrected. The briefs are **standing instructions to live PA seats**: the anaconda brief told a PA to "expect a non-empty `refusedVerbs`", which would now read as a broken gate. Both now instruct reading `verbs.<verb>` directly and explicitly warn against defaulting a missing field. |
 
 **Why removal rather than a derived view.** An additive schema change is silent to a
 stale consumer; only a removal is loud. #134 *added* `conditionalVerbs` and left
@@ -496,7 +496,7 @@ the removed fields.**
 | Location | Kind | Verdict |
 |---|---|---|
 | `core/cli.ts` ×5, `core/cli.test.ts` ×8, `cli.integration.test.ts` ×2, `cli.inbox.integration.test.ts` ×1 | **comments only** — every hit names the removed fields to explain *why* they are gone | Keep. Zero code references remain. |
-| `docs/how/pij-watchdog.md` ×2, `government/briefs/pa-missing-anaconda-2026-07-31.md` ×1 | corrected text that names the old fields to say they are **gone** | Keep — that is the correction. |
+| `docs/how/pij-watchdog.md` ×2, `.harness/government/briefs/pa-missing-anaconda-2026-07-31.md` ×1 | corrected text that names the old fields to say they are **gone** | Keep — that is the correction. |
 | `docs/plans/084-pa-gate-repair/**` (the-flow.json, the-flow.md, evidence, execution.log) | historical record of the flight that ADDED `conditionalVerbs` | Keep as written. |
 | `docs/plans/094-capability-surface/**` (plan, dossier, this log) | the plan and its evidence | Keep as written. |
 

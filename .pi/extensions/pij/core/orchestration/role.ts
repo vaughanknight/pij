@@ -83,7 +83,7 @@ type CardSource = RoleProjectionSource & Pick<SessionDescriptor, "statusAt">;
 export function owesStatusCard(descriptor: RoleProjectionSource): boolean {
 	const role = projectOrchestrationRole(descriptor);
 	// PM and PRIME. Jordan reversed the prime exclusion on 2026-07-31
-	// (government/rulings/2026-07-31-primes-owe-status-cards.md); the reversal
+	// (.harness/government/rulings/2026-07-31-primes-owe-status-cards.md); the reversal
 	// reached the skill payload and the ruling file and NOT this predicate, so
 	// the watchdog went on telling primes the opposite on a timer for a day.
 	// A PA still owes nothing — it is an assistant to a prime, not a reporter.

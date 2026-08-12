@@ -18,14 +18,14 @@
 
 ## claim
 
-Preamble orientation is complete and no planning or product mutation has begun. The adopted descriptor cwd mismatch is acknowledged; all repository commands began from `/Users/jordanknight/pi-hacking/pij-worktrees/s046-pij-real-trees`, and all owned mutable paths target that worktree. The only reads outside the worktree were the portable `/pij` skill and the live government sources explicitly designated authoritative by `government/orient-local.md`.
+Preamble orientation is complete and no planning or product mutation has begun. The adopted descriptor cwd mismatch is acknowledged; all repository commands began from `/Users/jordanknight/pi-hacking/pij-worktrees/s046-pij-real-trees`, and all owned mutable paths target that worktree. The only reads outside the worktree were the portable `/pij` skill and the live government sources explicitly designated authoritative by `.harness/government/orient-local.md`.
 
 ## artifacts[]
 
 - `docs/plans/046-pij-real-trees/original-ask.md`
 - `docs/plans/046-pij-real-trees/reports/preamble-checkpoint.md`
-- `/Users/jordanknight/pi-hacking/pij/government/orient-local.md` (authoritative read-only government source)
-- `/Users/jordanknight/pi-hacking/pij/government/briefs/s046-brief.md` (authoritative read-only government source)
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/orient-local.md` (authoritative read-only government source)
+- `/Users/jordanknight/pi-hacking/pij/.harness/government/briefs/s046-brief.md` (authoritative read-only government source)
 - `/Users/jordanknight/.agents/skills/pij/references/prime/orient-global.md` (portable read-only orient)
 - `AGENTS.md`
 - `docs/how/pij.md`

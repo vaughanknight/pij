@@ -143,6 +143,6 @@ Do not fix findings. Send the verdict path to `pij-118mbuv`.
 
 - `.the-flow-state.json`, any `the-flow.json`, any `the-flow.md`
 - `.flow-pair/**`
-- `government/**`, package manifests, lockfiles
+- `.harness/government/**`, package manifests, lockfiles
 - daemon restart, staging, commits, push, production designation, or baton operations
 - all edits except the single verdict output file
