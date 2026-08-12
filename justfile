@@ -353,71 +353,96 @@ _omp-latest-release:
         | head -1 \
         | sed -e 's/.*"\(.*\)"/\1/' -e 's/^v//'
 
-# Install the official standalone OMP binary when absent, then restore pij's
-# managed OMP policy: only the pij extension plus Pi's shared MCP config.
+# Install OMP from the SAME governed npm proxy as everything else, so the
+# supply-chain policy in .npmrc actually applies to it: the configured registry,
+# `replace-registry-host`, the `before` cutoff and the 7-day `min-release-age`
+# quarantine. `_npm-resolution` supplies that environment; nothing here bakes in
+# a registry URL or relaxes policy.
+#
+# `@latest` here means "newest the PROXY offers that also satisfies the age
+# quarantine" — deliberately BEHIND upstream. That lag is the control working,
+# not a failure to update.
+#
+# The npm package is bun-shebanged (`#!/usr/bin/env bun`), so bun is a hard
+# runtime dependency. It is installed from the proxy too: the platform binary
+# ships as the `@oven/bun-*` optional dependency, i.e. registry payload rather
+# than a postinstall download, so the chain stays governed end to end. bun is
+# the one install here that must run scripts — its postinstall materialises the
+# bin from that optional dependency.
+_omp-npm-install:
+    #!/bin/sh
+    set -eu
+    if ! command -v bun >/dev/null 2>&1; then
+        echo "= installing bun (omp's runtime) from the governed proxy"
+        just _npm-resolution npm install -g bun
+    fi
+    just _npm-resolution npm install -g --ignore-scripts @oh-my-pi/pi-coding-agent@latest
+    just _omp-smoke-check
+
+# Warn when a second omp exists outside the governed install. The GitHub-releases
+# installer writes to ~/.local/bin; npm writes to `npm prefix -g`/bin. Whichever
+# PATH reaches first wins, so an un-governed copy can silently shadow the vetted
+# one — and it reports a HIGHER version, which reads as more up to date rather
+# than as policy-evading.
+_omp-shadow-check:
+    #!/bin/sh
+    set -eu
+    governed="$(npm prefix -g)/bin/omp"
+    active="$(command -v omp 2>/dev/null || true)"
+    [ -n "$active" ] || exit 0
+    if [ "$active" != "$governed" ] && [ -x "$governed" ]; then
+        echo "!! the active omp is NOT the governed install:" >&2
+        echo "   active:   $active ($("$active" --version 2>/dev/null | head -1))" >&2
+        echo "   governed: $governed ($("$governed" --version 2>/dev/null | head -1))" >&2
+        echo "   The active copy bypassed the npm proxy and its quarantine." >&2
+        echo "   Remove it, or put $(dirname "$governed") earlier on PATH." >&2
+        exit 1
+    fi
+
+# Install OMP from the governed proxy when absent, then restore pij's managed
+# OMP policy: only the pij extension plus Pi's shared MCP config.
 omp-install:
     #!/bin/sh
     set -eu
     if command -v omp >/dev/null 2>&1; then
         echo "= omp already installed: $(omp --version | head -1)"
     else
-        just _omp-binary-install
+        just _omp-npm-install
     fi
     just link
     just omp-doctor
 
-# Update OMP, then re-apply managed links because updates may replace home state.
+# Update OMP from the governed proxy, then re-apply managed links because
+# updates may replace home state.
 #
-# `omp update` is tried first — it is the upstream path and works wherever npmjs is
-# reachable. But it exits 0 even when its update check fails, so its exit code
-# cannot be trusted: we detect failure from its output plus the version delta, then
-# fall back to the GitHub-releases installer (a different host, reachable on
-# npmjs-blocked machines). If neither path moves the version, this exits non-zero
-# and says which of the three cases it was. Nothing here reads or relaxes npm
-# policy — no registry URL is baked in, and .npmrc is untouched.
+# `omp update` is NOT used, deliberately. Its update source
+# (registry.npmjs.org/@oh-my-pi/pi-coding-agent) is compiled into the binary, so
+# it honours neither .npmrc nor NPM_CONFIG_REGISTRY: on this machine it cannot
+# reach that host at all, and where it could it would fetch a version the
+# quarantine has not cleared. Same reason the GitHub-releases installer is no
+# longer a fallback here — it is a different host, so reaching it proves the
+# network works while proving nothing about the supply chain. That path survives
+# as `just _omp-binary-install [REF]` for deliberate, explicitly-chosen recovery
+# only; it is never reached automatically.
 update-omp:
     #!/bin/sh
     set -eu
-    if ! command -v omp >/dev/null 2>&1; then
-        echo "= omp not installed — installing"
-        just _omp-binary-install
+    before=$(omp --version 2>/dev/null | head -1 || true)
+    if [ -z "$before" ]; then
+        echo "= omp not installed — installing from the governed proxy"
     else
-        before=$(omp --version 2>/dev/null | head -1)
         echo "= current: $before"
-        out=$(omp update 2>&1) || true
-        printf '%s\n' "$out"
-        after=$(omp --version 2>/dev/null | head -1)
-        if [ "$before" != "$after" ]; then
-            echo "✓ omp updated in place: $before → $after"
-        elif printf '%s' "$out" | grep -qiE 'failed to check|error|socket'; then
-            echo "! 'omp update' could not check for updates (it exits 0 regardless, so"
-            echo "  the failure is invisible to the exit code — this is why we re-check)."
-            just _omp-update-diagnose
-            # Ask the fallback's own source what the latest release is, so
-            # "already on the latest" is never mistaken for "the install failed".
-            latest=$(just _omp-latest-release || true)
-            if [ -z "$latest" ]; then
-                echo "!! could not reach the GitHub releases API either — both update sources" >&2
-                echo "   are unavailable, so this is a network/egress problem, not just npmjs." >&2
-                exit 1
-            fi
-            echo "= latest release on GitHub: $latest (installed: $before)"
-            if [ "omp/$latest" = "$before" ] || [ "$latest" = "$before" ]; then
-                echo "= already on the latest release — nothing to install"
-            else
-                echo "= falling back to the GitHub-releases installer"
-                just _omp-binary-install
-                final=$(omp --version 2>/dev/null | head -1)
-                if [ -z "$final" ] || [ "$final" = "$before" ]; then
-                    echo "!! still at '$before' after installing $latest — the fallback did not take." >&2
-                    exit 1
-                fi
-                echo "✓ omp updated via GitHub releases: $before → $final"
-            fi
-        else
-            echo "= omp reports no update available: $after"
-        fi
     fi
+    just _omp-npm-install
+    after=$(omp --version 2>/dev/null | head -1)
+    if [ -z "$before" ]; then
+        echo "✓ omp installed: $after"
+    elif [ "$before" != "$after" ]; then
+        echo "✓ omp updated from the proxy: $before → $after"
+    else
+        echo "= already on the newest proxy release the quarantine allows: $after"
+    fi
+    just _omp-shadow-check
     just link
     just omp-doctor
 
