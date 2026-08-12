@@ -63,25 +63,27 @@ function hostsIn(body: string): string[] {
 }
 
 describe("OMP management recipes", () => {
-	it("installs the official prebuilt binary when omp is absent", () => {
+	it("installs from the governed npm proxy when omp is absent", () => {
 		const body = recipeBody("omp-install");
 		const resolved = resolvedRecipeBody("omp-install");
 		expect(body).toContain("command -v omp");
 		// The install itself is delegated; the guard follows it through.
-		expect(body).toContain("just _omp-binary-install");
-		expect(resolved).toContain("https://omp.sh/install");
-		expect(resolved).toContain("--binary");
+		expect(body).toContain("just _omp-npm-install");
+		// `_npm-resolution` is what supplies the governed environment (configured
+		// registry, replace-registry-host, `before`, min-release-age). Installing
+		// with a bare `npm` here would silently escape all four.
+		expect(resolved).toContain("just _npm-resolution");
+		expect(resolved).toContain("@oh-my-pi/pi-coding-agent@latest");
 		expect(body).toContain("just link");
 		expect(body).toContain("just omp-doctor");
 	});
 
-	it("only ever fetches the installer from the official host", () => {
-		// The teeth of this guard: repointing the installer at any other host —
-		// in `omp-install` or in any helper it delegates to — fails here.
-		expect(hostsIn(resolvedRecipeBody("omp-install"))).toEqual(["omp.sh"]);
-
+	it("keeps the GitHub-releases escape hatch pinned to the official host", () => {
+		// `_omp-binary-install` is no longer reached automatically, but it survives
+		// for deliberate recovery — so repointing it at another host still fails here.
 		const helper = recipeBody("_omp-binary-install");
 		expect(helper).toContain("https://omp.sh/install");
+		expect(hostsIn(helper)).toEqual(["omp.sh"]);
 
 		// Every invocation of the downloaded installer must ask for the official
 		// prebuilt binary. Asserting the flag merely appears somewhere would still
@@ -93,23 +95,35 @@ describe("OMP management recipes", () => {
 		}
 	});
 
-	it("updates through omp's built-in updater and restores managed links", () => {
+	it("updates through the governed proxy, not omp's built-in updater", () => {
 		const body = recipeBody("update-omp");
-		expect(body).toContain("omp update");
+		const resolved = resolvedRecipeBody("update-omp");
+
+		// omp's updater compiles registry.npmjs.org in, so it honours neither
+		// .npmrc nor NPM_CONFIG_REGISTRY: it would fetch a version the quarantine
+		// has not cleared, on a machine that cannot even reach that host.
+		expect(body).not.toMatch(/\bomp update\b/);
+		// The GitHub-releases installer is a different HOST, not a different
+		// registry — reaching it proves the network works and proves nothing about
+		// the supply chain. It must never be an automatic fallback again.
+		expect(body).not.toContain("just _omp-binary-install");
+
+		expect(resolved).toContain("just _npm-resolution");
+		expect(resolved).toContain("@oh-my-pi/pi-coding-agent@latest");
 		expect(body).toContain("just link");
 		expect(body).toContain("just omp-doctor");
 	});
 
-	it("keeps the update path on the official installer and read-only probes", () => {
-		// `update-omp` reaches two more hosts than the install path: the GitHub
-		// releases feed the installer already uses, and registry.npmjs.org, which is
-		// probed to diagnose a blocked registry and never installed from. Any host
-		// beyond these three is a new supply-chain surface and must be reviewed.
-		expect(hostsIn(resolvedRecipeBody("update-omp"))).toEqual([
-			"api.github.com",
-			"omp.sh",
-			"registry.npmjs.org",
-		]);
+	it("hardcodes no host in the update path — the registry comes from .npmrc", () => {
+		// The teeth: the governed update must name no host at all. A URL appearing
+		// in this recipe is a registry decision moved out of .npmrc and into the
+		// justfile, where the proxy, `before` and min-release-age do not reach it.
+		expect(hostsIn(recipeBody("update-omp"))).toEqual([]);
+
+		// Resolved, the only host reachable is omp.sh, and only from the smoke
+		// check's recovery HINT text (`just _omp-binary-install v17.1.2`), which
+		// the delegation walker follows into. No install action fetches it.
+		expect(hostsIn(resolvedRecipeBody("update-omp"))).toEqual(["omp.sh"]);
 	});
 
 	it("proves an installed omp actually runs before reporting success", () => {
@@ -123,9 +137,19 @@ describe("OMP management recipes", () => {
 
 	it("does not relax npm supply-chain policy to complete an update", () => {
 		const resolved = resolvedRecipeBody("update-omp");
+		// Each of these would WIDEN what the install accepts: clearing the age
+		// quarantine, repointing the registry, or silencing the audit.
 		expect(resolved).not.toMatch(/min-release-age/);
-		expect(resolved).not.toMatch(/--ignore-scripts/);
+		expect(resolved).not.toMatch(/npm_config_registry/i);
 		expect(resolved).not.toMatch(/\baudit\s*=\s*false\b/);
+	});
+
+	it("installs omp with scripts disabled", () => {
+		// `--ignore-scripts` is a BRAKE, not a relaxation: removing it lets an
+		// install-time script run arbitrary code, so its absence is the risk and
+		// its presence is the control. An earlier revision of this file asserted
+		// the opposite by lumping it in with genuine policy relaxations above.
+		expect(resolvedRecipeBody("update-omp")).toContain("--ignore-scripts");
 	});
 
 	it("doctor checks version, pij-only extension inventory, and shared MCP config", () => {
