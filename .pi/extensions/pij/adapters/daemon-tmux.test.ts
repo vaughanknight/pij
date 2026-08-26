@@ -28,6 +28,12 @@ const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)"
 const NON_BMP_SENT = "[pij from pij-x] hi 😀";
 const PANE_ID = "%42";
 const tempDirs: string[] = [];
+const CLAUDE_STEER_BODY = [
+	"[pij from pij-omp] HEAD-SENTINEL α 😀",
+	"line two preserves a real newline",
+	"0123456789abcdef".repeat(640),
+	"TAIL-SENTINEL",
+].join("\n");
 
 afterEach(() => {
 	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -161,6 +167,33 @@ describe("enterSettleMs — per-harness Enter settle", () => {
 
 	it("an absent/unknown harness falls back to the claude default (350)", () => {
 		expect(enterSettleMs(undefined)).toBe(350);
+	});
+});
+
+describe("DaemonTmux.sendText — Claude payload integrity", () => {
+	it.each([
+		"idle",
+		"busy",
+	])("uses one bracketed paste carrying the exact long body for a %s Claude delivery", () => {
+		const calls: string[][] = [];
+		const adapter = new DaemonTmux({
+			runner: (args) => {
+				calls.push(args);
+				return "";
+			},
+			sleep: () => undefined,
+		});
+
+		expect(adapter.sendText(PANE_ID, CLAUDE_STEER_BODY, "claude")).toBe("confirmed");
+		const setBuffer = calls.find((call) => call[0] === "set-buffer");
+		expect(setBuffer).toEqual([
+			"set-buffer",
+			"-b",
+			expect.stringMatching(/^pij-\d+-\d+$/),
+			CLAUDE_STEER_BODY,
+		]);
+		expect(calls).toContainEqual(["paste-buffer", "-p", "-d", "-b", setBuffer?.[2], "-t", PANE_ID]);
+		expect(calls).not.toContainEqual(["send-keys", "-t", PANE_ID, "-l", CLAUDE_STEER_BODY]);
 	});
 });
 

@@ -1,8 +1,8 @@
 // pij-control-plane — real DaemonPorts adapter (impure seam, Plan 019, T016).
 //
 // Wires the daemon loop's injected ports to the live machine: tmux capture /
-// send-keys (via the shared argv-only `tmux-keys` lib), pane-death probe, the
-// Claude transcript directory listing, the clock, and the pid liveness probe.
+// send-keys / bracketed paste (via the shared argv-only `tmux-keys` lib),
+// pane-death probe, the Claude transcript directory listing, the clock, and the pid liveness probe.
 // Every tmux call is argv-only (no shell) and every read is best-effort (a gone
 // pane / missing dir degrades to "" / [] rather than throwing — Pattern P4).
 
@@ -35,6 +35,7 @@ import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
 	capturePane,
 	execFileRunner,
+	pasteBuffer,
 	pressKey,
 	sendFocusIn,
 	type TmuxRunner,
@@ -376,7 +377,16 @@ export class DaemonTmux implements DaemonPorts {
 		// `focus-events on`, a pane you've switched away from is in focus-OUT state and
 		// copilot then swallows Enter-as-submit, stranding the message in the composer.
 		if (wake) wakeCopilotInput(paneId, this.runner, pid);
-		typeLiteral(paneId, text, this.runner);
+		// Claude's mid-turn steering editor can drain an arbitrary prefix from a
+		// long `send-keys -l` burst before it snapshots the queued turn. A bracketed
+		// tmux paste presents the complete body as one editor operation. Keep the
+		// Copilot/Codex paths unchanged: Copilot's focus/retype recovery below is
+		// tuned to literal key injection, and this defect is Claude-specific.
+		if (harness === "claude") {
+			pasteBuffer(paneId, text, { bracketed: true }, this.runner);
+		} else {
+			typeLiteral(paneId, text, this.runner);
+		}
 		if (wake) {
 			// Retyping is safe only BEFORE the first Enter: no submission can have happened.
 			for (let typedAttempt = 0; typedAttempt < TYPE_CONFIRM_ATTEMPTS; typedAttempt++) {
@@ -395,8 +405,8 @@ export class DaemonTmux implements DaemonPorts {
 				typeLiteral(paneId, text, this.runner);
 			}
 		}
-		// Settle before Enter (T020/R-02): a literal burst can trip the harness's paste
-		// detection + a short idle-debounce; an Enter fired mid-debounce is swallowed.
+		// Settle before Enter (T020/R-02): an input burst can trip the harness's
+		// paste detection + a short idle-debounce; Enter during it is swallowed.
 		this.sleep(enterSettleMs(harness));
 		const preSubmit = this.capturePane(paneId);
 		let lastPane = preSubmit;
