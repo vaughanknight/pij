@@ -171,10 +171,7 @@ describe("enterSettleMs — per-harness Enter settle", () => {
 });
 
 describe("DaemonTmux.sendText — Claude payload integrity", () => {
-	it.each([
-		"idle",
-		"busy",
-	])("uses one bracketed paste carrying the exact long body for a %s Claude delivery", () => {
+	it("uses one bracketed paste carrying the exact long body for Claude delivery", () => {
 		const calls: string[][] = [];
 		const adapter = new DaemonTmux({
 			runner: (args) => {

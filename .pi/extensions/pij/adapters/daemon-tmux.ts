@@ -377,11 +377,11 @@ export class DaemonTmux implements DaemonPorts {
 		// `focus-events on`, a pane you've switched away from is in focus-OUT state and
 		// copilot then swallows Enter-as-submit, stranding the message in the composer.
 		if (wake) wakeCopilotInput(paneId, this.runner, pid);
-		// Claude's mid-turn steering editor can drain an arbitrary prefix from a
-		// long `send-keys -l` burst before it snapshots the queued turn. A bracketed
-		// tmux paste presents the complete body as one editor operation. Keep the
-		// Copilot/Codex paths unchanged: Copilot's focus/retype recovery below is
-		// tuned to literal key injection, and this defect is Claude-specific.
+		// In observed busy-Claude deliveries, Claude's native queue-operation recorded
+		// only a variably head-clipped suffix after pij's `send-keys -l` path; Claude's
+		// internal editor mechanism remains unknown. Bracketed paste removes that
+		// implicated boundary. Keep the Copilot/Codex paths unchanged: Copilot's
+		// focus/retype recovery below is tuned to literal key injection.
 		if (harness === "claude") {
 			pasteBuffer(paneId, text, { bracketed: true }, this.runner);
 		} else {
