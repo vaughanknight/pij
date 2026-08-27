@@ -147,23 +147,32 @@ Design notes that are *not* obvious from the DDL:
 ## 4. The delivery state machine
 
 ```
-                       claim(to,{leaseMs,token})              settle(seq,"injected",{leaseMs})
-   ┌──────────┐  ────────────────────────────▶ ┌─────────┐ ───────────────────────────────▶ ┌──────────┐
-   │  queued  │                                │ claimed │                                  │ injected │
-   └──────────┘ ◀──────────────────────────────└─────────┘ ◀──────────────────────────────  └──────────┘
-        ▲   ▲      settle(seq,"queued")  [released]   │            recoverStaleClaims(): lease_until < now   │
-        │   │      resetClaimsOnStart()  [redelivered]│                 → queued [redelivered]  (attempt < 6)   │
-        │   │      recoverStaleClaims()  [redelivered]│                 → parked [parked]      (attempt ≥ 6)   │
-        │   │                                         │                                                       │
-        │   │                        claimUnread()/markRead()  [acked]  ──────────────────────────────────────┤
-        │   │                                         ▼                                                       ▼
-        │   │                                    ┌─────────┐                                            ┌─────────┐
-        │   │                                    │  acked  │  (terminal)                                 │ parked  │ (open, stuck)
-        │   │                                    └─────────┘                                            └─────────┘
-        │   │                                                                                                 │
-        │   └────── unretire(to, reason)  [requeued]  ◀──────  ┌─────────┐  ◀── retire(filter, reason) [retired] ┘
-        │                                                       │ retired │  (terminal)     (from any open state)
-        └───────────────────────────────────────────────────────└─────────┘
+ CONSUMER PATH — pi receiver / Telegram bridge via startQueueConsumer (§8)
+ ─────────────────────────────────────────────────────────────────────────
+              claim(to,{leaseMs,token})  [claimed, attempt+1]        handler ok → claimUnread()  [acked]
+   queued ─────────────────────────────────▶ claimed ──────────────────────────────────────────▶ acked (terminal)
+     ▲                                          │
+     │  lease_until < now, attempt < 6          │  handler throws / ack fails → row STAYS claimed
+     │  [redelivered]  (recoverStaleClaims)     │  until the daemon's lease sweep
+     │  resetClaimsOnStart()  [redelivered]     │
+     └──────────────────────────────────────────┘
+                                                └── lease_until < now, attempt ≥ 6 ──▶ parked (open, stuck)  [parked]
+
+ DAEMON PATH — tmux-bound seats via drainTmuxInbox (§6); the daemon NEVER calls claim(), attempt stays 0
+ ────────────────────────────────────────────────────────────────────────────────────────────────────
+   queued ──── socket / RPC confirmed → markRead()  [acked] ─────────────────────────────────────▶ acked (terminal)
+     │
+     │  pointer line typed → settle(seq,"injected",{leaseMs: 90_000})  [injected]
+     ▼
+   injected ──── recipient runs `pij inbox` → claimUnread()  [acked] ───────────────────────────▶ acked (terminal)
+     │
+     │  lease_until < now, attempt still 0 → queued  [redelivered]   (re-pointed next tick; never parks — G25)
+     └──────────────────────────────────────────────────────────────▶ queued
+
+ EITHER PATH
+   claimed ── settle(seq,"queued")  [released] ──▶ queued            (release: held / failed, nothing landed)
+   queued | claimed | injected | parked ── retire(filter, reason)  [retired] ──▶ retired (terminal)
+   retired ── unretire(to, reason)  [requeued] ──▶ queued            (only rows whose latest retire reason matches)
 ```
 
 **Two entry paths, one counter.** Consumer-driven recipients (§8) enter `claimed` through `claim()`, which is the **only** writer of `attempt`. The daemon (§6) never claims: it reads `queued` rows, delivers, and either acks directly (socket/RPC success) or `settle`s the row to `injected` under a lease (pointer). A daemon row therefore carries `attempt = 0` for its whole life, and the `attempt ≥ 6 → parked` branch of the sweep is reachable **only for consumer rows** (G25).
