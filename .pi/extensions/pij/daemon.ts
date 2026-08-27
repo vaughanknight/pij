@@ -825,23 +825,16 @@ export class Daemon {
 
 	private retireForClosedRecipients(): void {
 		const closedRecipients = new Set<string>();
-		try {
-			for (const name of readdirSync(this.pijHome)) {
-				if (!name.endsWith(".json")) continue;
-				const descriptor = this.registry.read(name.slice(0, -".json".length));
-				if (descriptor === null) continue;
-				if (
-					descriptor.lifecycle !== "dissolved" ||
-					descriptor.revivePendingAt !== undefined ||
-					descriptor.closeIntent === undefined ||
-					descriptor.terminal?.disposition !== "requested"
-				) {
-					continue;
-				}
-				closedRecipients.add(descriptor.id);
+		for (const descriptor of this.registry.listTerminal()) {
+			if (
+				descriptor.lifecycle !== "dissolved" ||
+				descriptor.revivePendingAt !== undefined ||
+				descriptor.closeIntent === undefined ||
+				descriptor.terminal?.disposition !== "requested"
+			) {
+				continue;
 			}
-		} catch {
-			return;
+			closedRecipients.add(descriptor.id);
 		}
 		if (closedRecipients.size === 0) return;
 

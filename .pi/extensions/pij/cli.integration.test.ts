@@ -1855,6 +1855,75 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(expectation).not.toHaveProperty("sessionId");
 	});
 
+	it.each([
+		["pi", ".pi"],
+		["omp", ".omp"],
+	] as const)("requeues close-retired mail when attaching a revived %s session", (runtime, store) => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = `pij-${runtime}-attach-revival`;
+		const nativeId =
+			runtime === "pi"
+				? "61111111-2222-4333-8444-555555555551"
+				: "61111111-2222-4333-8444-555555555552";
+		const sessions = join(HOME, store, "agent", "sessions", "repo");
+		mkdirSync(sessions, { recursive: true });
+		writeFileSync(join(sessions, `2026-07-25T00-00-00_${nativeId}.jsonl`), "{}\n");
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: 203,
+			startedAt: "2026-07-24T00:00:00.000Z",
+			harness: "pi",
+			harnessSessionId: nativeId,
+			runtimeBin: runtime,
+			lifecycle: "dissolved",
+			closeIntent: {
+				actor: "pij-A",
+				kind: "cli-close",
+				requestedAt: "2026-07-24T00:59:59.000Z",
+			},
+			terminal: {
+				disposition: "requested",
+				observedAt: "2026-07-24T01:00:00.000Z",
+				evidence: "pane-missing",
+			},
+		});
+		const queue = new SqliteQueue(HOME);
+		const queued = queue.deliver({ from: "pij-A", to: id, body: "survive attach" });
+		if (!queued.ok) throw new Error(queued.message);
+		queue.retire({ to: id }, "recipient-closed");
+		queue.close();
+
+		const result = pij(["revive", id, "--attach", "%42", "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			PIJ_QUEUE_BACKEND: "sqlite",
+			FAKE_TMUX_LIVE_PANE: "%42",
+			HOME,
+		});
+
+		expect(result.code, result.out).toBe(0);
+		expect(JSON.parse(result.out.trim())).toMatchObject({
+			id,
+			paneId: "%42",
+			attached: true,
+			requeued: 1,
+		});
+		const reopened = new SqliteQueue(HOME);
+		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
+		expect(reopened.receipts(queued.value.messageId).at(-1)).toMatchObject({
+			state: "requeued",
+			detail: expect.stringContaining("pane %42"),
+		});
+		reopened.close();
+		expect(new FsRegistry(HOME).read(id)).toMatchObject({
+			lifecycle: "dissolved",
+			revivePendingAt: expect.any(String),
+		});
+	});
+
 	it("reports the interim Copilot session-in-use action instead of waiting silently", () => {
 		clearSpawnExpectations();
 		writeFileSync(TMUX_LOG, "");

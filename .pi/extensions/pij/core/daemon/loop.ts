@@ -394,15 +394,11 @@ export function driveSession(
 		const identity =
 			processSnapshot === undefined ? undefined : resolveAgentLiveness(descriptor, processSnapshot);
 		const malformedCopilotId = harness === "copilot" && !isCopilotSessionId(planned);
-		const reportableIdentityCause =
-			identity?.cause === "foreign-session-id" ||
-			identity?.cause === "no-harness-process" ||
-			identity?.cause === "harness-process-present"
-				? identity.cause
-				: undefined;
 		const refusalCause = malformedCopilotId
 			? "malformed-planned-copilot-id"
-			: reportableIdentityCause;
+			: identity?.cause === "foreign-session-id"
+				? identity.cause
+				: undefined;
 		if (refusalCause !== undefined) {
 			reportBindRefusal(
 				descriptor,
@@ -542,7 +538,6 @@ function reportBindRefusal(
 	drive.bindRefusalCauses = surfaced;
 	if (surfaced.has(cause)) return;
 	surfaced.add(cause);
-	drive.settled = false;
 	notify(
 		delivery,
 		descriptor.id,

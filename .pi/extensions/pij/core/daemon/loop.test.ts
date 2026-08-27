@@ -459,49 +459,6 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(delivery.outbox).toEqual([]);
 	});
 
-	it.each([
-		{
-			cause: "no-harness-process",
-			snapshot: {
-				ok: true,
-				capturedAtMs: 1000,
-				processes: [{ pid: 100, ppid: 1, command: "-zsh" }],
-			} satisfies ProcessSnapshot,
-		},
-		{
-			cause: "harness-process-present",
-			snapshot: {
-				ok: true,
-				capturedAtMs: 1000,
-				processes: [
-					{ pid: 100, ppid: 1, command: "-zsh" },
-					{ pid: 101, ppid: 100, command: "copilot" },
-				],
-			} satisfies ProcessSnapshot,
-		},
-	])("reports a stuck $cause planned bind once", ({ cause, snapshot }) => {
-		const planned = "11111111-1111-4111-8111-111111111111";
-		const w = world({ pane: COPILOT_READY });
-		w.ports.processSnapshot = () => snapshot;
-		const delivery = new FakeDelivery();
-		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
-		const descriptor = desc({
-			harness: "copilot",
-			initInjectedAt: "2026-06-27T00:00:05.000Z",
-			plannedHarnessSessionId: planned,
-		});
-
-		expect(driveSession(descriptor, drive, w.ports, new FakeRegistry(), delivery).kind).toBe(
-			"waiting",
-		);
-		expect(driveSession(descriptor, drive, w.ports, new FakeRegistry(), delivery).kind).toBe(
-			"waiting",
-		);
-		const notices = delivery.outbox.filter((event) => event.message.body.includes(cause));
-		expect(notices).toHaveLength(1);
-		expect(notices[0]?.message.to).toBe("pij-boss");
-	});
-
 	it("copilot refuses a malformed planned id even when the process argv repeats it", () => {
 		const planned = "not-a-uuid";
 		const w = world({ pane: COPILOT_READY });
@@ -527,7 +484,7 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
-	it("re-announces bound after refuse → bind → refuse → re-bind (ADV-A/A2)", () => {
+	it("clears bindRefusalCauses on a successful bind so a later refusal reports again (ADV-A)", () => {
 		const expected = "11111111-1111-4111-8111-111111111111";
 		const foreign = "22222222-2222-4222-8222-222222222222";
 		const w = world({ pane: COPILOT_READY });
@@ -550,16 +507,6 @@ This session was last active just now and appears to be in use by another CLI or
 		const bound = driveSession(descriptor, drive, w.ports, reg, delivery);
 		expect(bound.kind).toBe("bound");
 		expect(drive.bindRefusalCauses).toBeUndefined();
-		// ticks 3–4: the same incident recurs and resolves. The fresh refusal must
-		// clear the settled notice latch so the spawner hears the second recovery.
-		session = foreign;
-		expect(driveSession(descriptor, drive, w.ports, reg, delivery).kind).toBe("waiting");
-		session = expected;
-		expect(driveSession(descriptor, drive, w.ports, reg, delivery).kind).toBe("bound");
-		expect(
-			delivery.outbox.filter((event) => event.message.body.includes("foreign-session-id")),
-		).toHaveLength(2);
-		expect(delivery.outbox.filter((event) => event.message.body.includes("ready"))).toHaveLength(2);
 	});
 
 	it("a stale pending snapshot cannot bind over a durable dissolved descriptor", () => {
