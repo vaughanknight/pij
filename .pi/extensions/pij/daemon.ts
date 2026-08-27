@@ -132,7 +132,7 @@ const TAP_SWEEP_INTERVAL_MS = 5 * 60_000;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
 
 export interface BridgeRestartWatcherNoticeDeps {
-	readonly store: Pick<FsWatchdogStore, "read" | "writeCapture">;
+	readonly store: Pick<FsWatchdogStore, "pathFor" | "read" | "writeCapture">;
 	readonly channel: DeliveryPort;
 	readonly nowMs: number;
 	readonly captureText: string;
@@ -148,11 +148,28 @@ export function notifyBridgeRestartWatchers(
 	message: string,
 	deps: BridgeRestartWatcherNoticeDeps,
 ): number {
-	const watcherIds = [
-		...new Set(
-			(deps.store.read(TELEGRAM_PEER_ID)?.watchers ?? []).map((watcher) => watcher.watcherId),
-		),
-	];
+	const sidecar = deps.store.read(TELEGRAM_PEER_ID);
+	if (sidecar === undefined) {
+		try {
+			const raw = JSON.parse(readFileSync(deps.store.pathFor(TELEGRAM_PEER_ID), "utf8")) as {
+				watchers?: unknown;
+			};
+			const rejected = Array.isArray(raw.watchers) ? raw.watchers.length : 0;
+			deps.log(
+				`telegram: restart owner notice skipped — watchers file unreadable/malformed (${rejected} entries rejected)`,
+			);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+				deps.log(`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers`);
+			} else {
+				deps.log(
+					"telegram: restart owner notice skipped — watchers file unreadable/malformed (0 entries rejected)",
+				);
+			}
+		}
+		return 0;
+	}
+	const watcherIds = [...new Set((sidecar.watchers ?? []).map((watcher) => watcher.watcherId))];
 	if (watcherIds.length === 0) {
 		deps.log(`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers`);
 		return 0;
@@ -183,6 +200,45 @@ export function notifyBridgeRestartWatchers(
 		}
 	}
 	return notified;
+}
+
+export interface BridgeRestartNotifierDeps {
+	readonly pijHome: string;
+	/** Supplied by the real closure so tests can prove plural primes are ignored. */
+	readonly registry: Pick<RegistryPort, "list">;
+	readonly store: Pick<FsWatchdogStore, "pathFor" | "read" | "writeCapture">;
+	readonly channel: DeliveryPort;
+	readonly now: () => number;
+	readonly log: (message: string) => void;
+}
+
+/** Build the exact `notifyOwner` closure passed to bridge supervision. */
+export function createBridgeRestartNotifier(
+	deps: BridgeRestartNotifierDeps,
+): (message: string) => number {
+	return (message) => {
+		const primeCount = deps.registry
+			.list()
+			.filter(
+				(descriptor) =>
+					descriptor.prime === true &&
+					descriptor.lifecycle !== "dissolved" &&
+					descriptor.lifecycle !== "failed",
+			).length;
+		let captureText = `${message}\n\nregistered primes at restart: ${primeCount}`;
+		try {
+			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
+		} catch (error) {
+			deps.log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
+		}
+		return notifyBridgeRestartWatchers(message, {
+			store: deps.store,
+			channel: deps.channel,
+			nowMs: deps.now(),
+			captureText,
+			log: deps.log,
+		});
+	};
 }
 
 class DaemonBatonNoticeSink implements BatonNoticeSink {
@@ -1696,6 +1752,14 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	const registry = new FsRegistry(pijHome);
 	const bridgeSpine = new FsSpineLog(pijHome);
 	const bridgeCaptures = new FsWatchdogStore(pijHome);
+	const notifyBridgeOwner = createBridgeRestartNotifier({
+		pijHome,
+		registry,
+		store: bridgeCaptures,
+		channel,
+		now: () => Date.now(),
+		log,
+	});
 	const bridgeSupervisor = bridgeSupervisorForDaemon(pijHome, {
 		now: () => Date.now(),
 		log,
@@ -1715,21 +1779,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 			const appended = bridgeSpine.append(built.value);
 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
 		},
-		notifyOwner: (message) => {
-			let captureText = message;
-			try {
-				captureText += `\n\n${readFileSync(join(pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
-			} catch (error) {
-				log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
-			}
-			notifyBridgeRestartWatchers(message, {
-				store: bridgeCaptures,
-				channel,
-				nowMs: Date.now(),
-				captureText,
-				log,
-			});
-		},
+		notifyOwner: notifyBridgeOwner,
 	});
 	const daemon = new Daemon(
 		pijHome,

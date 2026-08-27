@@ -1,5 +1,6 @@
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -33,7 +34,12 @@ import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js
 import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
-import { Daemon, notifyBridgeRestartWatchers, touchDaemonHeartbeat } from "./daemon.js";
+import {
+	createBridgeRestartNotifier,
+	Daemon,
+	notifyBridgeRestartWatchers,
+	touchDaemonHeartbeat,
+} from "./daemon.js";
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
 const CLAUDE_COMPOSER_EMPTY = [
@@ -207,18 +213,19 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		store.write("pij-telegram", {
 			watchers: [{ watcherId: "watcher", addedAt: "2026-08-28T00:00:00.000Z" }],
 		});
+		writeFileSync(join(home, "telegram-bridge.log"), "bridge tail");
 		const channel = new FsChannel(home);
 		const logs: string[] = [];
 
-		expect(
-			notifyBridgeRestartWatchers("telegram bridge restarted", {
-				store,
-				channel,
-				nowMs: 123,
-				captureText: "restart evidence",
-				log: (message) => logs.push(message),
-			}),
-		).toBe(1);
+		const notifyOwner = createBridgeRestartNotifier({
+			pijHome: home,
+			registry,
+			store,
+			channel,
+			now: () => 123,
+			log: (message) => logs.push(message),
+		});
+		expect(notifyOwner("telegram bridge restarted")).toBe(1);
 		expect(messageBodies("watcher")).toHaveLength(1);
 		expect(messageBodies("watcher")[0]).toContain("telegram bridge restarted");
 		for (const id of ["prime-a", "prime-b", "prime-c"]) expect(messageBodies(id)).toEqual([]);
@@ -239,9 +246,38 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(logs.join("\n")).toContain("no watchers");
 	});
 
+	it("reports a malformed watchers file instead of claiming there are no watchers", () => {
+		const store = new FsWatchdogStore(home);
+		const path = store.pathFor("pij-telegram");
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(
+			path,
+			JSON.stringify({
+				watchers: [
+					{ watcherId: "watcher", addedAt: "2026-08-28T00:00:00.000Z" },
+					{ watcherId: 42, addedAt: "invalid" },
+				],
+			}),
+		);
+		expect(store.read("pij-telegram")).toBeUndefined();
+		const logs: string[] = [];
+
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs.join("\n")).toContain("watchers file unreadable/malformed (2 entries rejected)");
+		expect(logs.join("\n")).not.toContain("has no watchers");
+	});
+
 	it("wires production restart notices through watchers, never single-prime inference", () => {
 		const source = readFileSync(join(import.meta.dirname, "daemon.ts"), "utf8");
-		expect(source).toContain("notifyBridgeRestartWatchers(message, {");
+		expect(source).toContain("createBridgeRestartNotifier({");
 		expect(source).not.toContain("expected one live prime");
 	});
 
