@@ -27,3 +27,10 @@ FIX: reword the C9 sentence so it does NOT tell an idle-no-work seat to park `ho
 **Folded**: C9 now ties every muting state to its genuine condition and explicitly forbids
 self-declaring `hold`/`waiting` merely for idleness. `orient-oprime.md` did not repeat the
 false no-work instruction, so no ADV-4 mirror edit was needed.
+
+
+## From ADV-4 re-confirm (CONFIRMED, land 7b7cb29) — fold into ITEM 18 (same watchdog-parked-state family)
+- ADV-5 (low): orient-oprime duty 7 tells an o-prime to relay a parked state 'waiting|hold|blocked|question' to a status-stale seat — same ADV-4 error one layer up (issuer relaying waiting/blocked/question to a seat with NO dependency manufactures the permanent silencer; only hold is legitimate issuer-side). Fix in item 18.
+- INFO-7 (my citation error): the C9 phrase 'blocked/waiting per node doctrine' — node.md does NOT split waiting from blocked (state.ts:145 holds waiting's external sense; node.md:44-45 only gives question/blocked conditions). Substance right, pointer wrong. Fix the citation in item 18 (or drop 'per node doctrine').
+- INFO-8: node.md:64 'a seat that has PARKED ITSELF in waiting|hold|blocked|question' still reads permissively (same seam). Item 18.
+- INFO-9: 'Only genuine conditions mute' is NORMATIVE where deleted text was MECHANICAL (the daemon can't assess genuineness) — future-drift bait, acceptable in context. Note only.
