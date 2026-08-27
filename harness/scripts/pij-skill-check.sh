@@ -376,10 +376,13 @@ require_marker() {
 }
 
 if [ -f "$orchestrator" ]; then
+  require_marker "$orchestrator" "You are a stream orchestrator" \
+    "orchestrator order: role"
+  ordered_entry=$(section "$orchestrator" "## Ordered entry")
   previous=0
   while IFS='|' read -r label marker; do
     [ -z "$marker" ] && continue
-    line=$(grep -nF "$marker" "$orchestrator" | head -1 | cut -d: -f1 || true)
+    line=$(printf '%s\n' "$ordered_entry" | grep -nF "$marker" | head -1 | cut -d: -f1 || true)
     if [ -z "$line" ]; then
       err "orchestrator order: missing $label marker '$marker'"
     elif [ "$line" -lt "$previous" ]; then
@@ -389,7 +392,6 @@ if [ -f "$orchestrator" ]; then
       previous=$line
     fi
   done <<'EOF'
-role|You are a stream orchestrator
 global orient|orient-global.md
 local orient|government/orient-local.md
 brief|item brief
@@ -403,6 +405,27 @@ construction|worktree
 delegation|/pij pair
 landing|/builder 8 ship
 EOF
+
+  marker_position() {
+    marker=$1
+    awk -v marker="$marker" '
+      index($0, marker) {
+        print (NR * 100000) + index($0, marker)
+        exit
+      }
+    '
+  }
+  readback_pos=$(printf '%s\n' "$ordered_entry" | marker_position "back verbatim")
+  confirm_inline_pos=$(printf '%s\n' "$ordered_entry" | marker_position "confirm inline")
+  fleet_confirm_pos=$(printf '%s\n' "$ordered_entry" | marker_position "After the human confirms the fleet")
+  if [ -z "$readback_pos" ] || [ -z "$confirm_inline_pos" ] || [ -z "$fleet_confirm_pos" ]; then
+    err "orchestrator order: read-back precondition marker is missing"
+  elif [ "$readback_pos" -lt "$fleet_confirm_pos" ] \
+    && [ "$confirm_inline_pos" -lt "$fleet_confirm_pos" ]; then
+    ok "orchestrator order: read-back precondition"
+  else
+    err "orchestrator order: read-back precondition is out of order"
+  fi
 
   require_marker "$orchestrator" "A plausible thesis written from memory does not satisfy this step." \
     "orchestrator contract: thesis anti-fake wording"

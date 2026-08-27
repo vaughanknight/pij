@@ -7,7 +7,7 @@ landing; never implement the plan or pre-empt the reviewer's judgment.
 
 Everything under `report` is first-person; global invariant 12 owns cadence.
 
-1. **Start-of-work** — after the preamble checkpoint, before mutation:
+1. **Start-of-work** — after the human preamble checkpoint, before mutation:
 
    ```bash
    pij report now 'Starting **<plan>**' 'Run the next Builder or pair step'

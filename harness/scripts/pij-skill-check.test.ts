@@ -1,0 +1,84 @@
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+const ROOT = resolve(import.meta.dirname, "..", "..");
+const SCRIPT = join(ROOT, "harness", "scripts", "pij-skill-check.sh");
+const SOURCE_SKILL = join(ROOT, "skills", "pij");
+
+let fixtureRoot: string;
+let fixtureSkill: string;
+let orchestratorPath: string;
+
+beforeEach(() => {
+	fixtureRoot = mkdtempSync(join(tmpdir(), "pij-skill-check-"));
+	fixtureSkill = join(fixtureRoot, "nested", "skills", "pij");
+	cpSync(SOURCE_SKILL, fixtureSkill, { recursive: true });
+	const linkedGuide = join(fixtureRoot, "nested", "docs", "how", "pij-team-scaffold.md");
+	mkdirSync(resolve(linkedGuide, ".."), { recursive: true });
+	cpSync(join(ROOT, "docs", "how", "pij-team-scaffold.md"), linkedGuide);
+	orchestratorPath = join(fixtureSkill, "references", "prime", "orchestrator.md");
+});
+
+afterEach(() => {
+	rmSync(fixtureRoot, { recursive: true, force: true });
+});
+
+function editOrchestrator(from: string, to: string): void {
+	const source = readFileSync(orchestratorPath, "utf8");
+	if (!source.includes(from)) throw new Error(`fixture source missing: ${from}`);
+	writeFileSync(orchestratorPath, source.replace(from, to));
+}
+
+function runCheck(): { status: number | null; output: string } {
+	const result = spawnSync("bash", [SCRIPT], {
+		cwd: ROOT,
+		env: { ...process.env, PIJ_SKILL_ROOT: fixtureSkill },
+		encoding: "utf8",
+	});
+	return {
+		status: result.status,
+		output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+	};
+}
+
+describe("pij-skill-check order assertions", () => {
+	it("passes correct canonical order despite a backward human-preamble cross-reference", () => {
+		expect(readFileSync(orchestratorPath, "utf8")).toContain(
+			"after the human preamble checkpoint, before mutation",
+		);
+
+		const result = runCheck();
+
+		expect(result.status, result.output).toBe(0);
+		expect(result.output).toContain("orchestrator order: preamble");
+	});
+
+	it("fails when read-back remains present but moves after fleet confirmation", () => {
+		editOrchestrator(
+			"11. Read the selected profile back verbatim and confirm inline. After the human confirms the fleet, persist it in the plan roster.",
+			"11. After the human confirms the fleet, persist it in the plan roster, then read it back verbatim and confirm inline before fleet creation.",
+		);
+
+		const result = runCheck();
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain("read-back precondition");
+		expect(result.output).toContain("out of order");
+	});
+
+	it("still fails a genuinely out-of-order canonical journey", () => {
+		editOrchestrator(
+			"4. Invoke `/thesis` against the ask and nearest authoritative artifacts.\n5. Use the host skill mechanism.",
+			"4. Use the host skill mechanism.\n5. Invoke `/thesis` against the ask and nearest authoritative artifacts.",
+		);
+
+		const result = runCheck();
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain("orchestrator order: real invocation");
+		expect(result.output).toContain("out of order");
+	});
+});
