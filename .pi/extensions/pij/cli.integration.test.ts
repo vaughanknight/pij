@@ -1080,8 +1080,20 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 				.trim()
 				.split("\n")
 				.findLast((line) => line.startsWith("{")) ?? "{}",
-		) as { id: string; state: string; paneId: string; requeued?: number };
-		expect(output).toMatchObject({ id, state: "pending-canary", paneId: "%91", requeued: 1 });
+		) as {
+			id: string;
+			state: string;
+			paneId: string;
+			requeued?: number;
+			requeuedDispatches?: number;
+		};
+		expect(output).toMatchObject({
+			id,
+			state: "pending-canary",
+			paneId: "%91",
+			requeued: 1,
+			requeuedDispatches: 1,
+		});
 		const reopened = new SqliteQueue(HOME);
 		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
 		expect(reopened.receipts(queued.value.messageId).at(-1)).toMatchObject({
@@ -1479,6 +1491,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			attached: true,
 			state: "pending-canary",
 			requeued: 1,
+			requeuedDispatches: 1,
 		});
 		const reopened = new SqliteQueue(HOME);
 		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
@@ -1505,6 +1518,33 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(log).not.toContain("split-window");
 		expect(log).not.toContain("claude --dangerously-skip-permissions");
 		expect(log).toContain("display-message -p -t %42 #{pane_dead}");
+	});
+
+	it("human revive reports restored dispatches separately from mail", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-rebooted-dispatch-count";
+		const nativeId = "89888888-2222-4333-8444-555555555555";
+		seedRebootedClaudeSeat(id, nativeId, false);
+		const dispatchStore = new FsDispatchStore(HOME);
+		expect(
+			dispatchStore.write(retiredDispatch("dispatch-revive-human", id, "recipient-closed")).ok,
+		).toBe(true);
+
+		const result = pij(
+			["revive", id, "--attach", "%43"],
+			{
+				PIJ_SESSION_ID: "pij-A",
+				PIJ_QUEUE_BACKEND: "sqlite",
+				HOME,
+				FAKE_TMUX_LIVE_PANE: "%43",
+			},
+			S072_FOLDER,
+		);
+
+		expect(result.code, result.out).toBe(0);
+		expect(result.out).toContain("requeued 1 dispatch record(s) retired at close");
+		expect(result.out).not.toContain("requeued 1 message(s)");
 	});
 
 	it("resolves an ARCHIVED seat and --print leaves it archived", () => {

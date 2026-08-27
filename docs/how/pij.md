@@ -154,8 +154,9 @@ retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 ### Dispatch-record retirement
 
 Dispatch records have a separate lifecycle from message deliveries:
-`undelivered → delivered-unacked → acked`. Operators can terminally retire an
-open dispatch by id or every open dispatch addressed to one seat:
+`undelivered → delivered-unacked → acked`, with either open state able to move
+to terminal `retired`. Operators can retire an open dispatch by id or every open
+dispatch addressed to one seat:
 
 ```sh
 pij dispatch-retire <dispatch-id> --reason <text> [--dry-run] [--json]
@@ -169,10 +170,12 @@ verb: it may report stale dispatches but cannot terminally decide them.
 
 The daemon applies the same complete deliberate-close predicate used for queue
 mail to dispatch records. A later revive restores only records retired for
-`recipient-closed`, returning each to its recorded prior state; operator-retired
-records remain terminal. Retired dispatches are excluded from
-`delivered-unacked-stale`, so the anomaly board shows actionable engagement gaps
-rather than deliberately closed work.
+`recipient-closed`, returning each to its recorded prior state and restoring any
+canary evidence; operator-retired records remain terminal. The anomaly detector
+considers only the shared open-state predicate and then only
+`delivered-unacked`, so retired records cannot appear as
+`delivered-unacked-stale`. Revive output reports restored mail and dispatch
+counts separately.
 
 ---
 

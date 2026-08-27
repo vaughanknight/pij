@@ -128,6 +128,7 @@ export interface DispatchRetirement {
 	readonly actor: string;
 	readonly ts: string;
 	readonly priorState: "undelivered" | "delivered-unacked";
+	readonly canary?: CanaryRecord;
 }
 
 export const CANARY_MODEL_CHECKS = ["matched", "unpinned-default"] as const;
@@ -422,7 +423,8 @@ function isDispatchRetirement(value: unknown): value is DispatchRetirement {
 			value,
 			"priorState",
 			(state) => state === "undelivered" || state === "delivered-unacked",
-		)
+		) &&
+		ownOptional(value, "canary", (v) => v === undefined || isCanaryRecord(v))
 	);
 }
 
@@ -584,8 +586,16 @@ export function isDispatch(value: unknown): value is Dispatch {
 			if (!isDispatchRetirement(retirement) || ack !== undefined || canary !== undefined) {
 				return false;
 			}
+			if (
+				retirement.canary !== undefined &&
+				(retirement.canary.dispatchId !== value.id || retirement.canary.target !== value.to)
+			) {
+				return false;
+			}
 			if (retirement.priorState === "undelivered") {
-				return messageId === undefined && deliveryState === undefined;
+				return (
+					messageId === undefined && deliveryState === undefined && retirement.canary === undefined
+				);
 			}
 			return (
 				typeof messageId === "string" &&
@@ -609,7 +619,13 @@ export function isDispatch(value: unknown): value is Dispatch {
 		) {
 			return false;
 		}
-		if (state === "delivered-unacked") return ack === undefined && canary === undefined;
+		if (state === "delivered-unacked") {
+			return (
+				ack === undefined &&
+				(canary === undefined ||
+					(isCanaryRecord(canary) && canary.dispatchId === value.id && canary.target === value.to))
+			);
+		}
 		if (!isDispatchAck(ack)) return false;
 		if (
 			!(

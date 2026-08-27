@@ -77,3 +77,56 @@
   retains its one-directional safety interlocks.
 - Live anomaly-board acceptance is intentionally deferred to the o-prime after
   merge, when the five named machine records can be retired safely.
+
+## FX-01 - Cold-review fixes
+
+### RED
+
+- The shared open-state predicate import was absent, a canary-bearing
+  delivered-unacked record failed validation, the idle daemon tick called
+  `FsDispatchStore.list()` once, and both real revive JSON results omitted
+  `requeuedDispatches`.
+- Initial focused RED: five failures, one parser-guard control passed, and 589
+  unrelated tests were skipped.
+
+### Major-finding proof
+
+- **F-1 / AC-14**: mutated `isOpenDispatch` to also admit `retired`; the stale
+  anomaly test turned RED with two findings instead of one. Restored the
+  predicate to `undelivered | delivered-unacked`.
+- **F-2 / idle scan**: before implementation, a daemon tick with no complete
+  closed recipient called `FsDispatchStore.list()` once. The final test asserts
+  zero calls.
+
+### GREEN
+
+- Added one exported `isOpenDispatch` predicate and reused it in the anomaly
+  detector, dispatch-retire recipient selection, and daemon sweep.
+- The detector now admits only open records through that predicate, then skips
+  `undelivered`; admitting `retired` under mutation therefore makes AC-14 fail.
+- The daemon derives complete closed recipients from hot registry descriptors
+  first and returns before opening/listing the dispatch store when none exist.
+- Retirement metadata now preserves optional canary evidence; un-retire restores
+  it, retaining the existing canary conflict guard.
+- Core parser tests pin neither/both target rejection, required reason, and the
+  `--to` happy path.
+- Revive JSON includes `requeuedDispatches`; human output reports dispatch
+  records separately from mail. Spawn, attach, and human integration paths are
+  covered.
+- Documentation now includes terminal `retired`, describes the detector
+  honestly through the shared predicate, and names base `9912bf8`.
+- `core/cli.ts` inclusion was explicitly approved after the fix table omitted
+  it while requiring the verb to reuse the predicate.
+
+### Gates
+
+| Gate | Result |
+|------|--------|
+| Focused FX-01 tests | Passed: 8 tests; 670 unrelated tests skipped. |
+| Complete dispatch/platform/CLI/daemon files | Passed: 571 tests. |
+| AC-14 mutation | Expected RED: stale anomaly findings increased from 1 to 2. |
+| Idle dispatch-store test | Passed: zero `list()` calls without a complete closed recipient. |
+| `npx tsc --noEmit -p .` | Passed. |
+| Scoped Biome check on the ten touched TypeScript files | Passed. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,975 tests passed, 15 skipped. Log: `.harness/temp/s391/vitest-phase2b-fx01.log`. |
+| `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. The unchanged repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |

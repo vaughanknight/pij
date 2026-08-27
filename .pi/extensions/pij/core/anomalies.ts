@@ -19,6 +19,7 @@
 //    different actor than the hold's issuer (WS-6: hold carries an issuer).
 
 import { cardCanMislead, hasRoleConflict, owesStatusCard } from "./orchestration/role.js";
+import { isOpenDispatch } from "./platform/dispatch.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import {
 	generalAssignmentId,
@@ -693,8 +694,8 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	}
 
 	for (const dispatch of inputs.dispatches ?? []) {
-		if (dispatch.state === "retired") continue;
-		if (dispatch.state !== "delivered-unacked") continue;
+		if (!isOpenDispatch(dispatch)) continue;
+		if (dispatch.state === "undelivered") continue;
 		const updatedMs = validTimestampMs(dispatch.updated.ts);
 		if (updatedMs === undefined) continue;
 		const ageMs = inputs.nowMs - updatedMs;

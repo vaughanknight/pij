@@ -2442,13 +2442,18 @@ function runRevive(argv: readonly string[]): void {
 		// same in-flight marker the spawn path uses and nothing more — writing a
 		// descriptor for them here would race their own boot write.
 		let requeued = 0;
+		let requeuedDispatches = 0;
 		if (plan.value.runtime === "pi" || plan.value.runtime === "omp") {
 			const current = registry.read(plan.value.descriptor.id);
 			if (current) {
 				const revivePendingAt = new Date().toISOString();
 				registry.writeExact({ ...current, revivePendingAt });
 				requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, revivePendingAt);
-				requeueClosedRecipientDispatches(plan.value.id, reviverId, revivePendingAt);
+				requeuedDispatches = requeueClosedRecipientDispatches(
+					plan.value.id,
+					reviverId,
+					revivePendingAt,
+				);
 			}
 		} else {
 			const attachWindowId = tmuxWindowIdForPane(pane);
@@ -2470,7 +2475,7 @@ function runRevive(argv: readonly string[]): void {
 			}
 			const requeueAt = new Date().toISOString();
 			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, requeueAt);
-			requeueClosedRecipientDispatches(plan.value.id, reviverId, requeueAt);
+			requeuedDispatches = requeueClosedRecipientDispatches(plan.value.id, reviverId, requeueAt);
 		}
 		const attachOutput = {
 			id: plan.value.id,
@@ -2480,8 +2485,13 @@ function runRevive(argv: readonly string[]): void {
 			state: "pending-canary" as const,
 			attached: true,
 			...(requeued > 0 ? { requeued } : {}),
+			...(requeuedDispatches > 0 ? { requeuedDispatches } : {}),
 		};
-		const requeuedLine = requeued > 0 ? `requeued ${requeued} message(s) retired at close\n` : "";
+		const requeuedLine =
+			(requeued > 0 ? `requeued ${requeued} message(s) retired at close\n` : "") +
+			(requeuedDispatches > 0
+				? `requeued ${requeuedDispatches} dispatch record(s) retired at close\n`
+				: "");
 		process.stdout.write(
 			parsed.value.json
 				? `${JSON.stringify(attachOutput)}\n`
@@ -2557,13 +2567,18 @@ function runRevive(argv: readonly string[]): void {
 	// under the booting process. Stamp the in-flight marker on the EXISTING record
 	// so the tier policy can see the revive; the seat's own boot write replaces it.
 	let requeued = 0;
+	let requeuedDispatches = 0;
 	if (plan.value.runtime === "pi" || plan.value.runtime === "omp") {
 		const current = registry.read(plan.value.descriptor.id);
 		if (current) {
 			const revivePendingAt = new Date().toISOString();
 			registry.writeExact({ ...current, revivePendingAt });
 			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, revivePendingAt);
-			requeueClosedRecipientDispatches(plan.value.id, reviverId, revivePendingAt);
+			requeuedDispatches = requeueClosedRecipientDispatches(
+				plan.value.id,
+				reviverId,
+				revivePendingAt,
+			);
 		}
 	}
 	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
@@ -2586,7 +2601,7 @@ function runRevive(argv: readonly string[]): void {
 		}
 		const requeueAt = new Date().toISOString();
 		requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, requeueAt);
-		requeueClosedRecipientDispatches(plan.value.id, reviverId, requeueAt);
+		requeuedDispatches = requeueClosedRecipientDispatches(plan.value.id, reviverId, requeueAt);
 	}
 	const operatorAction =
 		plan.value.runtime === "copilot"
@@ -2599,9 +2614,14 @@ function runRevive(argv: readonly string[]): void {
 		runtime: plan.value.runtime,
 		state: "pending-canary" as const,
 		...(requeued > 0 ? { requeued } : {}),
+		...(requeuedDispatches > 0 ? { requeuedDispatches } : {}),
 		...(operatorAction ? { operatorAction } : {}),
 	};
-	const requeuedLine = requeued > 0 ? `requeued ${requeued} message(s) retired at close\n` : "";
+	const requeuedLine =
+		(requeued > 0 ? `requeued ${requeued} message(s) retired at close\n` : "") +
+		(requeuedDispatches > 0
+			? `requeued ${requeuedDispatches} dispatch record(s) retired at close\n`
+			: "");
 	process.stdout.write(
 		parsed.value.json
 			? `${JSON.stringify(output)}\n`

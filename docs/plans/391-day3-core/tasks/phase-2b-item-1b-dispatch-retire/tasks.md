@@ -1,6 +1,6 @@
 # Phase 2b: Item 1b — dispatch-record retire — tasks dossier
 
-**Plan**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/docs/plans/391-day3-core/391-day3-core-plan.md` (v1.8.0 § Phase 2b, AC-11..14) · **Phase**: 2b · **Branch/PR**: `s391/item1b-dispatch-retire` off `main@c8dc3778` (item 1 merged), one PR · **Domains**: pij-orchestration (platform records) · pij-control-plane (verb, sweep, revive) · **CS**: 2
+**Plan**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/docs/plans/391-day3-core/391-day3-core-plan.md` (v1.8.0 § Phase 2b, AC-11..14) · **Phase**: 2b · **Branch/PR**: `s391/item1b-dispatch-retire` off `main@9912bf8`, one PR · **Domains**: pij-orchestration (platform records) · pij-control-plane (verb, sweep, revive) · **CS**: 2
 **Rulings** (`rulings.md`): re-scope (i) 09:40Z; PA class REFUSE 09:48Z (supersedes the ALLOW note); revive un-retires under the R-5 guard. **O-prime live acceptance**: the five board rows (determinist, federal-gorilla, persistent-capybara, curious-mawhrin, ancient-xoxarle) disappear after a retire.
 
 ### Executive Briefing

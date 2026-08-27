@@ -3,11 +3,12 @@ import type { BriefAckReceipt } from "../message.js";
 import {
 	acknowledgeDispatch,
 	canonicalDispatchJson,
+	isOpenDispatch,
 	markDispatchDelivered,
 	retireDispatch,
 	unretireDispatch,
 } from "./dispatch.js";
-import { type Dispatch, isDispatch } from "./types.js";
+import { type CanaryRecord, type Dispatch, isDispatch } from "./types.js";
 
 const TS = "2026-07-20T12:00:00.000Z";
 const TS2 = "2026-07-20T12:01:00.000Z";
@@ -38,6 +39,22 @@ const ACK: BriefAckReceipt = {
 	},
 	seat: "pij-worker",
 	ts: TS2,
+};
+
+const CANARY: CanaryRecord = {
+	schema_version: 1,
+	kind: "canary",
+	dispatchId: BASE.id,
+	nonce: "nonce-42",
+	target: BASE.to,
+	declaredRuntime: ACK.declaredRuntime,
+	modelCheck: "matched",
+	identity: {
+		paneId: "%42",
+		pid: 4242,
+		harnessSessionId: "native-worker",
+	},
+	passed: { actor: "pij-parent", ts: TS2 },
 };
 
 describe("Dispatch record — AC-05", () => {
@@ -97,6 +114,26 @@ describe("Dispatch record — AC-05", () => {
 });
 
 describe("Dispatch record retirement — AC-11", () => {
+	it("names the two open states and excludes both terminal states", () => {
+		const delivered = markDispatchDelivered(BASE, {
+			messageId: "msg-42",
+			deliveryState: "delivered",
+			updated: { actor: "pij-parent", ts: TS2 },
+		});
+		const acked = acknowledgeDispatch(delivered, ACK);
+		if (!acked.ok) throw new Error(acked.message);
+		const retired = retireDispatch(delivered, {
+			reason: "stale",
+			actor: "pij-parent",
+			ts: TS2,
+		});
+		if (!retired.ok) throw new Error(retired.message);
+		expect(isOpenDispatch(BASE)).toBe(true);
+		expect(isOpenDispatch(delivered)).toBe(true);
+		expect(isOpenDispatch(acked.value)).toBe(false);
+		expect(isOpenDispatch(retired.value)).toBe(false);
+	});
+
 	it("retires open records with prior state and canonical retirement metadata", () => {
 		const delivered = markDispatchDelivered(BASE, {
 			messageId: "msg-42",
@@ -201,5 +238,33 @@ describe("Dispatch record retirement — AC-11", () => {
 		const legacy = JSON.parse(legacyJson);
 		expect(isDispatch(legacy)).toBe(true);
 		expect(canonicalDispatchJson(legacy as Dispatch)).toBe(legacyJson);
+	});
+
+	it("preserves canary evidence inside retirement and restores it on unretire", () => {
+		const delivered = markDispatchDelivered(BASE, {
+			messageId: "msg-42",
+			deliveryState: "delivered",
+			updated: { actor: "pij-parent", ts: TS2 },
+		});
+		const withCanary: Dispatch = { ...delivered, canary: CANARY };
+		expect(isDispatch(withCanary)).toBe(true);
+		const retired = retireDispatch(withCanary, {
+			reason: "recipient-closed",
+			actor: "daemon",
+			ts: TS2,
+		});
+		if (!retired.ok) throw new Error(retired.message);
+		expect(retired.value.canary).toBeUndefined();
+		expect(retired.value.retirement?.canary).toEqual(CANARY);
+		expect(isDispatch(retired.value)).toBe(true);
+
+		const restored = unretireDispatch(retired.value, {
+			actor: "pij-parent",
+			ts: "2026-07-20T12:03:00.000Z",
+		});
+		if (!restored.ok) throw new Error(restored.message);
+		expect(restored.value.canary).toEqual(CANARY);
+		expect(restored.value.retirement).toBeUndefined();
+		expect(isDispatch(restored.value)).toBe(true);
 	});
 });

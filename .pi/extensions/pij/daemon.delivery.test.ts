@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { DualWriteChannel } from "./adapters/channel-factory.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
@@ -560,6 +560,16 @@ describe("dual-backend pointer delivery", () => {
 });
 
 describe("closed-recipient dispatch retirement", () => {
+	it("does not list the dispatch store when no complete closed recipient exists", async () => {
+		const list = vi.spyOn(FsDispatchStore.prototype, "list");
+		try {
+			await new Daemon(home, ports(), new FsRegistry(home), new FsChannel(home)).tick();
+			expect(list).not.toHaveBeenCalled();
+		} finally {
+			list.mockRestore();
+		}
+	});
+
 	it("retires open dispatches on close and restores only recipient-closed records on revive", async () => {
 		const registry = new FsRegistry(home);
 		const store = new FsDispatchStore(home);

@@ -34,7 +34,7 @@ const ACK_FIELD_ORDER = [
 
 const RUNTIME_FIELD_ORDER = ["model", "effort", "source"] as const;
 const STAMP_FIELD_ORDER = ["actor", "ts"] as const;
-const RETIREMENT_FIELD_ORDER = ["reason", "actor", "ts", "priorState"] as const;
+const RETIREMENT_FIELD_ORDER = ["reason", "actor", "ts", "priorState", "canary"] as const;
 
 /** Canonical single-line JSON for the complete own dispatch record. */
 export function canonicalDispatchJson(dispatch: Dispatch): string {
@@ -132,6 +132,12 @@ export interface RetireDispatchInput {
 	readonly ts: string;
 }
 
+export function isOpenDispatch(
+	dispatch: Dispatch,
+): dispatch is Dispatch & { readonly state: "undelivered" | "delivered-unacked" } {
+	return dispatch.state === "undelivered" || dispatch.state === "delivered-unacked";
+}
+
 export function retireDispatch(dispatch: Dispatch, input: RetireDispatchInput): Result<Dispatch> {
 	if (dispatch.state === "acked" || dispatch.state === "retired") return ok(dispatch);
 	return ok({
@@ -144,6 +150,7 @@ export function retireDispatch(dispatch: Dispatch, input: RetireDispatchInput): 
 			actor: input.actor,
 			ts: input.ts,
 			priorState: dispatch.state,
+			...(dispatch.canary === undefined ? {} : { canary: dispatch.canary }),
 		},
 		updated: { actor: input.actor, ts: input.ts },
 	});
@@ -160,6 +167,7 @@ export function unretireDispatch(
 		...dispatch,
 		state: dispatch.retirement.priorState,
 		retirement: undefined,
+		canary: dispatch.retirement.canary,
 		updated: { actor: input.actor, ts: input.ts },
 	});
 }

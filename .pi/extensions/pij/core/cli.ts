@@ -89,6 +89,7 @@ import {
 import {
 	acknowledgeDispatch,
 	canonicalDispatchJson,
+	isOpenDispatch,
 	markDispatchDelivered,
 	retireDispatch,
 } from "./platform/dispatch.js";
@@ -4675,9 +4676,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 			if (records === null) {
 				return fail("E-NOREG", `no dispatch '${cmd.dispatchId}'`, cmd.json);
 			}
-			const candidates = records.filter(
-				(record) => record.state === "undelivered" || record.state === "delivered-unacked",
-			);
+			const candidates = records.filter(isOpenDispatch);
 			let retired = 0;
 			if (!cmd.dryRun) {
 				for (const previous of candidates) {

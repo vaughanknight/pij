@@ -99,7 +99,7 @@ import {
 	type BatonNoticeSink,
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
-import { retireDispatch } from "./core/platform/dispatch.js";
+import { isOpenDispatch, retireDispatch } from "./core/platform/dispatch.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
@@ -824,29 +824,31 @@ export class Daemon {
 	}
 
 	private retireForClosedRecipients(): void {
+		const closedRecipients = new Set<string>();
+		try {
+			for (const name of readdirSync(this.pijHome)) {
+				if (!name.endsWith(".json")) continue;
+				const descriptor = this.registry.read(name.slice(0, -".json".length));
+				if (descriptor === null) continue;
+				if (
+					descriptor.lifecycle !== "dissolved" ||
+					descriptor.revivePendingAt !== undefined ||
+					descriptor.closeIntent === undefined ||
+					descriptor.terminal?.disposition !== "requested"
+				) {
+					continue;
+				}
+				closedRecipients.add(descriptor.id);
+			}
+		} catch {
+			return;
+		}
+		if (closedRecipients.size === 0) return;
+
 		const queue = sqliteOf(this.channel);
 		const dispatchStore = new FsDispatchStore(this.pijHome);
 		const dispatches = dispatchStore.list();
-		const recipients = new Set(queue?.openRecipients() ?? []);
-		for (const dispatch of dispatches) {
-			if (dispatch.state === "undelivered" || dispatch.state === "delivered-unacked") {
-				recipients.add(dispatch.to);
-			}
-		}
-		for (const to of recipients) {
-			const descriptor = this.registry.read(to);
-			if (descriptor === null) continue;
-			// Not retention policy: the complete deliberate-close predicate decides
-			// retirement. Its intent/terminal checks are one-directional safety
-			// interlocks — removing either can only retire more, including revivable mail.
-			if (
-				descriptor.lifecycle !== "dissolved" ||
-				descriptor.revivePendingAt !== undefined ||
-				descriptor.closeIntent === undefined ||
-				descriptor.terminal?.disposition !== "requested"
-			) {
-				continue;
-			}
+		for (const to of closedRecipients) {
 			if (queue !== undefined) {
 				const result = queue.retire({ to }, "recipient-closed");
 				if (result.retired > 0) {
@@ -855,12 +857,7 @@ export class Daemon {
 			}
 			let retiredDispatches = 0;
 			for (const previous of dispatches) {
-				if (
-					previous.to !== to ||
-					(previous.state !== "undelivered" && previous.state !== "delivered-unacked")
-				) {
-					continue;
-				}
+				if (previous.to !== to || !isOpenDispatch(previous)) continue;
 				const next = retireDispatch(previous, {
 					reason: "recipient-closed",
 					actor: "daemon",
