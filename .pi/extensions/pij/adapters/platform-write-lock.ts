@@ -9,12 +9,11 @@
 // abandoned intent cannot strip a live writer of its crash protection.
 //
 // Acquisition is exclusive-create (openSync "wx") with an ownership token and
-// a retry budget — NEVER stolen (review 002 G1 policy: mtime staleness cannot
-// distinguish a crashed holder from a slow live one). A crashed holder wedges
-// platform writes until a human removes the file, exactly as the E-NOREG
-// diagnostic instructs: fail loudly, never steal. Throws from the held
-// operation PROPAGATE after the lock is released — the CLI dispatch
-// containment gate owns them and names the verb.
+// a retry budget. A shared pid/start-time decision reclaims a dead holder or a
+// pid reused by a process born after the lock; a live original holder is NEVER
+// stolen, regardless of mtime. Throws from the held operation PROPAGATE after
+// the lock is released — the CLI dispatch containment gate owns them and names
+// the verb.
 
 import { randomUUID } from "node:crypto";
 import { closeSync, mkdirSync, openSync, rmSync, writeFileSync } from "node:fs";
@@ -77,7 +76,8 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 		releaseOwnedLock(this.lockFile, token);
 	}
 
-	/** Exclusive-create acquisition with retry; NEVER steals (G1 policy). */
+	/** Exclusive-create acquisition with retry. Dead/reused owners are reclaimed;
+	 *  live original owners are never stolen. */
 	private acquireLock(): Result<string> {
 		try {
 			mkdirSync(this.dir, { recursive: true });

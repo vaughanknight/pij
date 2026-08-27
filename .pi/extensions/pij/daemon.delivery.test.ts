@@ -9,6 +9,7 @@ import { DualWriteChannel } from "./adapters/channel-factory.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FakeRegistry } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { type DaemonPorts, pointerLine } from "./core/daemon/loop.js";
 import { retireDispatch, unretireDispatch } from "./core/platform/dispatch.js";
@@ -633,6 +634,21 @@ describe("closed-recipient dispatch retirement", () => {
 			expect(store.read(id)).toMatchObject({
 				state: "retired",
 				retirement: { reason: "recipient-closed" },
+			});
+			expect(
+				new FsSpineLog(home).read().find((event) => event.refs.includes(`dispatch:${id}`)),
+			).toMatchObject({
+				kind: "dispatch-retired",
+				actor: "daemon",
+				peer: "pij-closed",
+				prev: expect.stringContaining(
+					`"state":"${id === "dispatch-undelivered" ? "undelivered" : "delivered-unacked"}"`,
+				),
+				next: expect.stringContaining('"state":"retired"'),
+				refs: expect.arrayContaining([
+					"reason:recipient-closed",
+					`prior-state:${id === "dispatch-undelivered" ? "undelivered" : "delivered-unacked"}`,
+				]),
 			});
 		}
 		expect(store.read("dispatch-operator")).toMatchObject({

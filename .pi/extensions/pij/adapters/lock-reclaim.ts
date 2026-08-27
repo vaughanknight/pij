@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, statSync } from "node:fs";
+import { NodeProcessSnapshot } from "./process-snapshot.js";
 
 export type LockLayer = "write.lock" | "events.lock" | "descriptor.lock";
 export type LockReclaimReason = "dead-pid" | "pid-reused";
@@ -18,6 +18,13 @@ export interface LockReclaimOptions {
 }
 
 const heldLocks = new Map<string, string>();
+const PROCESS_SNAPSHOT_CACHE_MS = 5_000;
+let processSnapshotCache:
+	| {
+			readonly capturedAtMs: number;
+			readonly startedAtByPid: ReadonlyMap<number, number>;
+	  }
+	| undefined;
 
 function lockPid(raw: string): number | undefined {
 	try {
@@ -44,17 +51,24 @@ function processIsAlive(pid: number): boolean {
 }
 
 function processStartedAtMs(pid: number): number | undefined {
-	let raw: string;
-	try {
-		raw = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-		});
-	} catch {
-		return undefined;
+	const now = Date.now();
+	if (
+		processSnapshotCache === undefined ||
+		now - processSnapshotCache.capturedAtMs >= PROCESS_SNAPSHOT_CACHE_MS
+	) {
+		const snapshot = new NodeProcessSnapshot().capture();
+		processSnapshotCache = {
+			capturedAtMs: now,
+			startedAtByPid: snapshot.ok
+				? new Map(
+						snapshot.processes.flatMap((process) =>
+							process.startedAtMs === undefined ? [] : [[process.pid, process.startedAtMs]],
+						),
+					)
+				: new Map(),
+		};
 	}
-	const parsed = Date.parse(raw.trim());
-	return Number.isFinite(parsed) ? parsed : undefined;
+	return processSnapshotCache.startedAtByPid.get(pid);
 }
 
 /** Reclaim only when the recorded process is dead, or when an alive process

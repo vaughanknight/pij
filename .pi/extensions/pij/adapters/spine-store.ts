@@ -251,15 +251,12 @@ export class FsSpineLog implements SpineLogPort {
 		releaseOwnedLock(this.lockFile, token);
 	}
 
-	/** Acquire `events.lock` via exclusive create (openSync "wx"). EEXIST
-	 *  means SOME writer holds it: sleep ~LOCK_RETRY_MS and retry until the
-	 *  budget, then give up with E-NOREG routing humans to manual removal.
-	 *  NEVER steal (review 002 G1): mtime-only staleness plus a non-atomic
-	 *  steal could evict a LIVE holder (three-writer handoff) and made any
-	 *  critical section beyond the horizon stealable — duplicate seqs, the
-	 *  exact F1 loss. A crashed writer's lock therefore wedges writers until
-	 *  a human removes it: fail loudly, never steal. Returns the ownership
-	 *  token release checks for. */
+	/** Acquire `events.lock` via exclusive create (openSync "wx"). EEXIST first
+	 *  runs the shared pid/start-time decision: a dead holder or a pid reused by
+	 *  a newer process is reclaimed; a live original holder is never stolen.
+	 *  Unresolved holders retry until the budget, then fail with E-NOREG. Returns
+	 *  the ownership token release checks plus any reclaim notes to append under
+	 *  the newly acquired lock. */
 	private acquireLock(): Result<{
 		readonly token: string;
 		readonly reclaims: readonly LockReclaimNote[];

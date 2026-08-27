@@ -2077,14 +2077,11 @@ describe("daemon signal shutdown", () => {
 	it("releases held write locks before SIGTERM exits", () => {
 		const handlers = new Map<string, () => void>();
 		const calls: string[] = [];
-		installDaemonShutdownHandlers(
-			() => calls.push("stop"),
-			{
-				onSignal: (signal, handler) => handlers.set(signal, handler),
-				releaseHeldLocks: () => calls.push("release-locks"),
-				exit: (code) => calls.push(`exit:${code}`),
-			},
-		);
+		installDaemonShutdownHandlers(() => calls.push("stop"), {
+			onSignal: (signal, handler) => handlers.set(signal, handler),
+			releaseHeldLocks: () => calls.push("release-locks"),
+			exit: (code) => calls.push(`exit:${code}`),
+		});
 
 		const sigterm = handlers.get("SIGTERM");
 		if (!sigterm) throw new Error("SIGTERM handler was not installed");

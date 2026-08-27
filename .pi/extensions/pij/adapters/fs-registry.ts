@@ -51,6 +51,12 @@ import {
 	type SessionId,
 } from "../core/types.js";
 import { maybeFsyncSync, writeJsonAtomic } from "./atomic-file.js";
+import {
+	type LockReclaimNote,
+	reclaimIfDead,
+	releaseOwnedLock,
+	trackHeldLock,
+} from "./lock-reclaim.js";
 
 interface IdentityRecord {
 	readonly kind?: "identity";
@@ -94,6 +100,9 @@ interface FsRegistryOptions {
 	readonly afterLockRead?: () => void;
 	readonly lockBudgetMs?: number;
 	readonly lockRetryMs?: number;
+	readonly isAlive?: (pid: number) => boolean;
+	readonly processStartedAtMs?: (pid: number) => number | undefined;
+	readonly onReclaim?: (note: LockReclaimNote) => void;
 }
 
 type DescriptorField = keyof SessionDescriptor;
@@ -109,15 +118,6 @@ const CLI_OWNED_DESCRIPTOR_FIELDS: ReadonlySet<DescriptorField> = new Set(
 
 function sleepDescriptorLockRetry(retryMs: number): void {
 	Atomics.wait(DESCRIPTOR_LOCK_SLEEP, 0, 0, retryMs);
-}
-
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "EPERM";
-	}
 }
 
 function descriptorFields(descriptor: SessionDescriptor | null): DescriptorField[] {
@@ -243,21 +243,9 @@ export class FsRegistry implements RegistryPort {
 			const claim = this.publishNoReplace(lockPath, lock);
 			if (!claim.ok) throw new Error(claim.message);
 			if (claim.value === "exists") {
-				let heldRaw: string | null = null;
-				let heldPid: number | null = null;
-				try {
-					heldRaw = readFileSync(lockPath, "utf8");
-					const parsed = JSON.parse(heldRaw) as { pid?: unknown };
-					if (typeof parsed.pid === "number") heldPid = parsed.pid;
-				} catch {
-					// A holder may still be publishing its token; wait rather than steal.
-				}
-				if (heldRaw !== null && heldPid !== null && !isProcessAlive(heldPid)) {
-					try {
-						if (readFileSync(lockPath, "utf8") === heldRaw) rmSync(lockPath, { force: true });
-					} catch {
-						// Another contender already changed the lock; retry exclusive create.
-					}
+				const reclaimed = reclaimIfDead(lockPath, "descriptor.lock", this.options);
+				if (reclaimed !== null) {
+					this.options.onReclaim?.(reclaimed);
 					continue;
 				}
 				if (Date.now() >= deadline) {
@@ -270,14 +258,11 @@ export class FsRegistry implements RegistryPort {
 				sleepDescriptorLockRetry(lockRetryMs);
 				continue;
 			}
+			trackHeldLock(lockPath, body);
 			try {
 				return operation();
 			} finally {
-				try {
-					if (readFileSync(lockPath, "utf8") === body) rmSync(lockPath, { force: true });
-				} catch {
-					// Already gone or no longer ours.
-				}
+				releaseOwnedLock(lockPath, body);
 			}
 		}
 	}

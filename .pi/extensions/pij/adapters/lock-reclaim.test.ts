@@ -1,19 +1,8 @@
-import {
-	existsSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	utimesSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	reclaimIfDead,
-	releaseHeldLocks,
-	trackHeldLock,
-} from "./lock-reclaim.js";
+import { reclaimIfDead, releaseHeldLocks, trackHeldLock } from "./lock-reclaim.js";
 
 describe("lock reclaim", () => {
 	let home: string;

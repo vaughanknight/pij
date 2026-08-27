@@ -65,9 +65,7 @@ describe("FsPlatformWriteLock", () => {
 			ok: true,
 			value: "recovered",
 		});
-		expect(notes).toEqual([
-			{ layer: "write.lock", pid: deadPid, reason: "dead-pid" },
-		]);
+		expect(notes).toMatchObject([{ layer: "write.lock", pid: deadPid, reason: "dead-pid" }]);
 		expect(existsSync(lockFile())).toBe(false);
 	});
 
@@ -89,9 +87,7 @@ describe("FsPlatformWriteLock", () => {
 			ok: true,
 			value: "reused",
 		});
-		expect(notes).toEqual([
-			{ layer: "write.lock", pid: reusedPid, reason: "pid-reused" },
-		]);
+		expect(notes).toMatchObject([{ layer: "write.lock", pid: reusedPid, reason: "pid-reused" }]);
 	});
 
 	it("a held lock times out E-NOREG with the manual-removal diagnostic; the operation NEVER runs", () => {
@@ -111,15 +107,19 @@ describe("FsPlatformWriteLock", () => {
 	});
 
 	it("an AGED lock is never stolen: timeout E-NOREG and the holder's lock survives byte-identical (G1 policy)", () => {
-		const lock = new FsPlatformWriteLock(home, { lockBudgetMs: 60 });
-		// Force the spine dir into existence, then plant an old lock.
-		expect(lock.withPlatformWriteLock(() => 0)).toMatchObject({ ok: true, value: 0 });
-		writeFileSync(lockFile(), "live-holder-token\n");
-		const agedSec = (Date.now() - 60_000) / 1000;
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${process.pid}:live-holder-token\n`);
+		const agedAtMs = Date.now() - 60_000;
+		const agedSec = agedAtMs / 1000;
 		utimesSync(lockFile(), agedSec, agedSec);
+		const lock = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => agedAtMs - 5_000,
+		});
 		const result = lock.withPlatformWriteLock(() => "never");
 		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
-		expect(readFileSync(lockFile(), "utf8")).toBe("live-holder-token\n");
+		expect(readFileSync(lockFile(), "utf8")).toBe(`${process.pid}:live-holder-token\n`);
 		expect(readdirSync(join(home, "spine")).filter((n) => n.includes(".steal."))).toEqual([]);
 	});
 

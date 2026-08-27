@@ -191,7 +191,7 @@ import {
 } from "./core/orchestration/pa-capability.js";
 import { PrimeService } from "./core/orchestration/prime.js";
 import { projectOrchestrationRole, RoleService } from "./core/orchestration/role.js";
-import { unretireDispatch } from "./core/platform/dispatch.js";
+import { canonicalDispatchJson, unretireDispatch } from "./core/platform/dispatch.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
 import {
@@ -2216,6 +2216,7 @@ function requeueClosedRecipientDispatches(
 	nowIso: string,
 ): number {
 	const store = new FsDispatchStore(pijHome);
+	const spineLog = new FsSpineLog(pijHome);
 	let requeued = 0;
 	for (const previous of store.list()) {
 		if (previous.to !== id) continue;
@@ -2227,6 +2228,19 @@ function requeueClosedRecipientDispatches(
 		if (next.value === previous) continue;
 		const written = store.write(next.value);
 		if (!written.ok) throw new Error(`${written.code}: ${written.message}`);
+		const reason = previous.retirement?.reason ?? "unknown";
+		const priorState = previous.retirement?.priorState ?? next.value.state;
+		const noted = spineLog.append({
+			schema_version: 1,
+			ts: nowIso,
+			actor: reviverId ?? "unknown",
+			kind: "dispatch-requeued",
+			refs: [`dispatch:${previous.id}`, `reason:${reason}`, `prior-state:${priorState}`],
+			peer: previous.to,
+			prev: canonicalDispatchJson(previous),
+			next: canonicalDispatchJson(next.value),
+		});
+		if (!noted.ok) throw new Error(`${noted.code}: ${noted.message}`);
 		requeued += 1;
 	}
 	return requeued;
@@ -2449,7 +2463,7 @@ function runRevive(argv: readonly string[]): void {
 			const current = registry.read(plan.value.descriptor.id);
 			if (current) {
 				const revivePendingAt = new Date().toISOString();
-				registry.writeExact({ ...current, revivePendingAt });
+				registry.writeExact({ ...current, revivePendingAt }, { baseline: current });
 				requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, revivePendingAt);
 				requeuedDispatches = requeueClosedRecipientDispatches(
 					plan.value.id,
@@ -2574,7 +2588,7 @@ function runRevive(argv: readonly string[]): void {
 		const current = registry.read(plan.value.descriptor.id);
 		if (current) {
 			const revivePendingAt = new Date().toISOString();
-			registry.writeExact({ ...current, revivePendingAt });
+			registry.writeExact({ ...current, revivePendingAt }, { baseline: current });
 			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, revivePendingAt);
 			requeuedDispatches = requeueClosedRecipientDispatches(
 				plan.value.id,

@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -372,11 +380,33 @@ describe("FsRegistry", () => {
 		const startedAt = Date.now();
 
 		new FsRegistry(home, undefined, { lockBudgetMs: 1_000, lockRetryMs: 5 }).write(descriptor(id));
+		const elapsedMs = Date.now() - startedAt;
 		await released;
 
-		expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20);
+		expect(elapsedMs).toBeGreaterThanOrEqual(20);
 		expect(new FsRegistry(home).read(id)?.id).toBe(id);
 		expect(existsSync(lockPath)).toBe(false);
+	});
+
+	it("reclaims a descriptor lock when a live process started after its mtime", () => {
+		const id = "reused-descriptor-lock";
+		const lockPath = join(home, `${id}.json.lock`);
+		const reusedPid = 424_242;
+		writeFileSync(lockPath, JSON.stringify({ pid: reusedPid, token: "old-process" }));
+		const lockedAtMs = Date.now() - 10_000;
+		utimesSync(lockPath, lockedAtMs / 1000, lockedAtMs / 1000);
+		const notes: Array<{ layer: string; pid: number; reason: string }> = [];
+
+		new FsRegistry(home, undefined, {
+			isAlive: () => true,
+			processStartedAtMs: () => lockedAtMs + 5_000,
+			onReclaim: (note) => notes.push(note),
+		}).write(descriptor(id));
+
+		expect(new FsRegistry(home).read(id)?.id).toBe(id);
+		expect(notes).toMatchObject([
+			{ layer: "descriptor.lock", pid: reusedPid, reason: "pid-reused" },
+		]);
 	});
 
 	it("holds the descriptor lock across the authoritative read and atomic publish", () => {

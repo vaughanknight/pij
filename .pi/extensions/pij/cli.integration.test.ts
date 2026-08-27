@@ -1125,6 +1125,18 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			state: "retired",
 			retirement: { reason: "stale" },
 		});
+		expect(
+			new FsSpineLog(HOME)
+				.read()
+				.find((event) => event.refs.includes("dispatch:dispatch-revive-close")),
+		).toMatchObject({
+			kind: "dispatch-requeued",
+			actor: "pij-A",
+			peer: id,
+			prev: expect.stringContaining('"state":"retired"'),
+			next: expect.stringContaining('"state":"undelivered"'),
+			refs: expect.arrayContaining(["reason:recipient-closed", "prior-state:undelivered"]),
+		});
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			id,
 			lifecycle: "pending",
@@ -1922,6 +1934,15 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			lifecycle: "dissolved",
 			revivePendingAt: expect.any(String),
 		});
+	});
+
+	it("passes each pi/omp revive marker read as the exact-write baseline", () => {
+		const source = readFileSync(new URL("./cli.ts", import.meta.url), "utf8");
+		expect(
+			source.match(
+				/registry\.writeExact\(\{ \.\.\.current, revivePendingAt \}, \{ baseline: current \}\);/g,
+			),
+		).toHaveLength(2);
 	});
 
 	it("reports the interim Copilot session-in-use action instead of waiting silently", () => {
@@ -3724,6 +3745,24 @@ describe("pij dispatch-retire", () => {
 			expect(byId.code).toBe(0);
 			expect(byId.out).toContain("retired 1/1");
 			expect(store.read("dispatch-one")).toMatchObject({ state: "retired" });
+			expect(
+				new FsSpineLog(home).read().find((event) => event.refs.includes("dispatch:dispatch-one")),
+			).toMatchObject({
+				kind: "dispatch-retired",
+				actor: "pij-operator",
+				peer: "pij-x",
+				prev: expect.stringContaining('"state":"undelivered"'),
+				next: expect.stringContaining('"state":"retired"'),
+				refs: expect.arrayContaining(["reason:stale", "prior-state:undelivered"]),
+			});
+
+			const alreadyRetired = pij(
+				["dispatch-retire", "dispatch-one", "--reason", "stale"],
+				env,
+				folder,
+			);
+			expect(alreadyRetired.code).toBe(0);
+			expect(alreadyRetired.out).toContain("0 open (1 already retired)");
 
 			const byRecipient = pij(
 				["dispatch-retire", "--to", "pij-x", "--reason", "recipient-closed"],

@@ -100,7 +100,7 @@ import {
 	type BatonNoticeSink,
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
-import { isOpenDispatch, retireDispatch } from "./core/platform/dispatch.js";
+import { canonicalDispatchJson, isOpenDispatch, retireDispatch } from "./core/platform/dispatch.js";
 import { buildSpineEvent } from "./core/platform/spine.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
@@ -862,14 +862,30 @@ export class Daemon {
 			let retiredDispatches = 0;
 			for (const previous of dispatches) {
 				if (previous.to !== to || !isOpenDispatch(previous)) continue;
+				const transitionAt = new Date(this.ports.now()).toISOString();
 				const next = retireDispatch(previous, {
 					reason: "recipient-closed",
 					actor: "daemon",
-					ts: new Date(this.ports.now()).toISOString(),
+					ts: transitionAt,
 				});
 				if (!next.ok) throw new Error(`${next.code}: ${next.message}`);
 				const written = dispatchStore.write(next.value);
 				if (!written.ok) throw new Error(`${written.code}: ${written.message}`);
+				const noted = new FsSpineLog(this.pijHome).append({
+					schema_version: 1,
+					ts: transitionAt,
+					actor: "daemon",
+					kind: "dispatch-retired",
+					refs: [
+						`dispatch:${previous.id}`,
+						"reason:recipient-closed",
+						`prior-state:${previous.state}`,
+					],
+					peer: previous.to,
+					prev: canonicalDispatchJson(previous),
+					next: canonicalDispatchJson(next.value),
+				});
+				if (!noted.ok) throw new Error(`${noted.code}: ${noted.message}`);
 				retiredDispatches += 1;
 			}
 			if (retiredDispatches > 0) {
