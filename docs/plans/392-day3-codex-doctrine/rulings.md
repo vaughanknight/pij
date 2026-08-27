@@ -143,3 +143,9 @@ Item 17 cold review APPROVE (pij-wilful-morton), all 5 Dim-0 mutations sha-verif
 - ADV-A (low): `drive.bindRefusalCauses` never cleared on successful bind → un-anticipated dir (ii): a lingering pane-subtree agent trips a liveness rung while the new agent starts, spawner gets a refusal notice for a seat that binds next tick, never retracted. One-line fold: clear the cause in the successful-bind branch beside `drive.settled = true`.
 - ADV-B (low): notify covers 1 of 3 permanently-non-binding causes; `no-harness-process` + `harness-process-present` still refuse forever silently, and the planned path has NO timeout (never reaches bind-timeout fail :503-518). "Never silent" ~1/3 delivered.
 - ADV-C (low): sweep still line-scoped — multi-line arrows, aliased destructures (`const {paneId: pid}=d`), line-scoped `undefined` exclusion bypass. Narrowed, not closed.
+
+## 2026-08-28 — o-prime rulings (item 17 close-out)
+- ADV-A: **FOLDED into PR #19** (one-line clear on successful bind), coder-FX-equivalent done by orchestrator (coder busy on 18), reviewer re-confirm of the hunk only → then o-prime merges #19. Rebased onto current main.
+- **Item 21 = ADV-B/C ONLY** (advisory tail), scheduled AFTER item 20. (ADV-A no longer part of 21.)
+- Teardown of s393-jordan-spec: **CONFIRMED INTENDED** — o-prime ran `pij stream close alloc-s393-jordan-spec` after jordan-spec COMPLETED (issue #311 filed on ai-substrate, seat verified+closed). WIP preserved, nothing force-removed. Reviewer's flag was correct diligence.
+- Order 17→18→20 holds; item 21 (ADV-B/C) after 20.

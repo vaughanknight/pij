@@ -114,11 +114,13 @@ files, not you — you are its current, replaceable operator.
    `status-stale` is node-keyed with no assignment or allocation ref, so `--project`
    drops it outright and `--here` drops it for every stream living in a worktree
    (i.e. your default topology, duty 10). Chase the row, do not merely note it: send
-   the seat its `pij report now "<did>" "<next>"` (or a parked state:
-   `waiting|hold|blocked|question`) and confirm the card moved. `done` is a verifier
-   claim, not a mute; `ready` stays watched. A stale card is worse than no card — every
-   consumer, you included, renders it as CURRENT, so a PM that shipped an hour ago
-   still reads as waiting. This is duty 1 one layer down: same hazard ("a stale
+   the seat its `pij report now "<did>" "<next>"` (or `ready` if idle-available, or
+   issuer-set `hold` when you are parking it) and confirm the card moved. `waiting`,
+   `blocked`, and `question` are the seat's own first-person dependency claims;
+   relaying them manufactures a permanent silencer. `done` is a verifier claim, not
+   a mute; `ready` stays watched. A stale card is worse than no card — every consumer,
+   you included, renders it as CURRENT, so a PM that shipped an hour ago still reads
+   as waiting. This is duty 1 one layer down: same hazard ("a stale
    roster row misleads every reader"), different writer.
 
    **You DO write your own card, and it is NON-OPTIONAL** (Jordan's ruling,
