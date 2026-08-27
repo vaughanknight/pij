@@ -125,6 +125,10 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 	phonehome: ALLOW,
 	focus: ALLOW,
 	// ── bin early-branch verbs the exhaustive test caught on its first run ────
+	// `pij queue` (PoC comms) is a read-only view of the SQLite delivery queue;
+	// `queue migrate` imports fs inboxes into it (idempotent, non-destructive —
+	// it never deletes the fs files). Both are PA-safe maintenance/inspection.
+	queue: ALLOW,
 	// It found these before a human did, which is the test earning its keep.
 	inbox: ALLOW,
 	// COARSE ON PURPOSE, and the coarseness is recorded rather than hidden: the
