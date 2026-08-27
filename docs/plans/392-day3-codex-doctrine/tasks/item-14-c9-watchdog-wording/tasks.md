@@ -1,5 +1,7 @@
 # Item 14: C9 watchdog-mute wording — `done` does not silence the watchdog
 
+**Status**: implementation complete; repository pre-commit blocked outside this item fence.
+
 **Fence**: `skills/pij/references/00-routing.md` (C9) + `skills/pij/references/prime/orient-oprime.md` (duty 7, if budget). **Gate** (skill-text PR): `just pij-skill-check` 0 ✗ + `npx vitest run .pi/extensions/pij/cli.integration.test.ts .pi/extensions/pij/acceptance-sweep.test.ts` green + cold semantic review. BUDGET-FLAT (00-routing.md ≤250 lines — tighten, don't add net lines).
 
 ## Problem (verified)
@@ -12,5 +14,5 @@ Mirror ONE line in `orient-oprime.md` duty 7 IF budget allows (state the call in
 ## Tasks
 | Status | ID | Task | Done When |
 |--------|-----|------|-----------|
-| [ ] | 1 | Amend C9 in 00-routing.md (budget-flat); verify `core/watchdog.ts mutesWatchdogNudge` really excludes done/ready before wording it; mirror orient-oprime duty 7 if budget | 00-routing.md ≤250; the mute distinction is stated |
-| [ ] | 2 | Gates (`just pij-skill-check` 0 ✗; cli.integration + acceptance-sweep green) + pathspec commit + `reports/item-14-report.md` | gates recorded; net line delta stated |
+| [x] | 1 | Amend C9 in 00-routing.md (budget-flat); verify `core/watchdog.ts mutesWatchdogNudge` really excludes done/ready before wording it; mirror orient-oprime duty 7 if budget | 00-routing.md ≤250; the mute distinction is stated |
+| [ ] | 2 | Gates (`just pij-skill-check` 0 ✗; cli.integration + acceptance-sweep green) + pathspec commit + `reports/item-14-report.md` | item gates are green; repository `harness checks` remains red outside this fence |
