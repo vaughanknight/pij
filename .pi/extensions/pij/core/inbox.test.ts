@@ -29,11 +29,11 @@ describe("parseInboxArgs", () => {
 	it("aliases bare inbox to check and parses explicit check/register", () => {
 		expect(parseInboxArgs([])).toEqual({
 			ok: true,
-			value: { verb: "check", wait: false, json: false },
+			value: { verb: "check", wait: false, json: false, inject: false },
 		});
 		expect(parseInboxArgs(["check", "--json"])).toEqual({
 			ok: true,
-			value: { verb: "check", wait: false, json: true },
+			value: { verb: "check", wait: false, json: true, inject: false },
 		});
 		expect(parseInboxArgs(["register", "--json"])).toEqual({
 			ok: true,
@@ -41,18 +41,32 @@ describe("parseInboxArgs", () => {
 		});
 	});
 
+	it("parses --inject and rejects it with --wait or on register (day-2 item 5)", () => {
+		expect(parseInboxArgs(["--inject"])).toEqual({
+			ok: true,
+			value: { verb: "check", wait: false, json: false, inject: true },
+		});
+		expect(parseInboxArgs(["--inject", "--json"])).toEqual({
+			ok: true,
+			value: { verb: "check", wait: false, json: true, inject: true },
+		});
+		expect(parseInboxArgs(["--inject", "--inject"]).ok).toBe(false);
+		expect(parseInboxArgs(["--inject", "--wait"]).ok).toBe(false);
+		expect(parseInboxArgs(["register", "--inject"]).ok).toBe(false);
+	});
+
 	it("parses indefinite and finite wait forms", () => {
 		expect(parseInboxArgs(["--wait"])).toEqual({
 			ok: true,
-			value: { verb: "check", wait: true, json: false },
+			value: { verb: "check", wait: true, json: false, inject: false },
 		});
 		expect(parseInboxArgs(["check", "--wait", "5000", "--json"])).toEqual({
 			ok: true,
-			value: { verb: "check", wait: true, waitMs: 5000, json: true },
+			value: { verb: "check", wait: true, waitMs: 5000, json: true, inject: false },
 		});
 		expect(parseInboxArgs(["--wait=25"])).toEqual({
 			ok: true,
-			value: { verb: "check", wait: true, waitMs: 25, json: false },
+			value: { verb: "check", wait: true, waitMs: 25, json: false, inject: false },
 		});
 	});
 

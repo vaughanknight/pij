@@ -1040,6 +1040,31 @@ function runInbox(argv: readonly string[]): void {
 	}
 	const channel = openChannel(pijHome);
 	const consumed = consumeCurrentInbox(registration.value.descriptor.id, channel);
+	// --inject (PoC day-2 item 5): the shape a SessionStart/UserPromptSubmit hook
+	// runs. Prints pending bodies as an injectable block and acks them; SILENT and
+	// exit 0 when nothing is pending, so a per-prompt hook adds no noise. This is
+	// what lets a keystroke (or the daemon's pointer line) drain the inbox into the
+	// model's context without the model having to run `pij inbox` itself.
+	if (parsed.value.inject) {
+		if (consumed.messages.length > 0) {
+			if (parsed.value.json) {
+				process.stdout.write(`${renderInboxResult(consumed, true)}\n`);
+			} else {
+				const bodies = consumed.messages
+					.map((m) => {
+						const cmd = m.command ? ` (command: /${m.command})` : "";
+						return `[pij from ${m.from}] ${m.body}${cmd}`;
+					})
+					.join("\n");
+				process.stdout.write(
+					`You have ${consumed.messages.length} new pij message(s):\n${bodies}\n`,
+				);
+			}
+		}
+		executeInboxActions(consumed.self, consumed.actions, channel);
+		if (consumed.failure) failInbox(consumed.failure.code, consumed.failure.message);
+		process.exit(0);
+	}
 	if (consumed.messages.length > 0) {
 		settleInboxResult(consumed, parsed.value.json, channel, false);
 		process.exit(0);

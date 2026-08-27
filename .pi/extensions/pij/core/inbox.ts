@@ -19,6 +19,7 @@ export type InboxCommand =
 			readonly wait: boolean;
 			readonly waitMs?: number;
 			readonly json: boolean;
+			readonly inject: boolean;
 	  }
 	| { readonly verb: "register"; readonly json: boolean };
 
@@ -114,6 +115,7 @@ export function parseInboxArgs(argv: readonly string[]): Result<InboxCommand> {
 
 	let json = false;
 	let wait = false;
+	let inject = false;
 	let waitMs: number | undefined;
 	for (let i = offset; i < argv.length; i++) {
 		const token = argv[i];
@@ -123,6 +125,12 @@ export function parseInboxArgs(argv: readonly string[]): Result<InboxCommand> {
 			continue;
 		}
 		if (token?.startsWith("--json=")) return err("E-ARG", "--json does not take a value");
+		if (token === "--inject") {
+			if (inject) return err("E-ARG", "duplicate flag --inject");
+			inject = true;
+			continue;
+		}
+		if (token?.startsWith("--inject=")) return err("E-ARG", "--inject does not take a value");
 		if (token === "--wait") {
 			if (wait) return err("E-ARG", "duplicate flag --wait");
 			wait = true;
@@ -148,13 +156,17 @@ export function parseInboxArgs(argv: readonly string[]): Result<InboxCommand> {
 	}
 
 	if (verb === "register") {
-		return wait ? err("E-ARG", "pij inbox register does not accept --wait") : ok({ verb, json });
+		if (wait) return err("E-ARG", "pij inbox register does not accept --wait");
+		if (inject) return err("E-ARG", "pij inbox register does not accept --inject");
+		return ok({ verb, json });
 	}
+	if (inject && wait) return err("E-ARG", "pij inbox --inject does not accept --wait");
 	return ok({
 		verb,
 		wait,
 		...(waitMs !== undefined ? { waitMs } : {}),
 		json,
+		inject,
 	});
 }
 
