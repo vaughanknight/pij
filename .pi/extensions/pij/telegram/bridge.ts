@@ -597,7 +597,11 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 				);
 			}
 		}
-		const sentPartIndices = new Set(positionalPartsValid ? persistedParts : []);
+		const sentPartIndices = new Set(
+			positionalPartsValid
+				? [...persistedParts].filter((index) => index < currentPartition.partCount)
+				: [],
+		);
 		let nextTextPartIndex = 0;
 		let spoke = false;
 		let undeliveredText = 0;
