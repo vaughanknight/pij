@@ -119,3 +119,6 @@ Recorded the moment they landed (orient-global iron rule: rulings land on disk i
 - Daemon restarts (first since sqlite cutover; live f4ba6ec0, full suite green). Do NOT pij spawn/revive/agent spawn until "FREEZE LIFTED". Sends are safe (queue in SQLite, drain after restart — the durability my item 3b established). No new spawn needed here (coder+reviewer live; 10b reuses the coder). The coder's item-12 report may be briefly delayed by the restart — do NOT misread a queued/delayed delivery as a stall; it drains post-restart.
 
 ## 2026-08-27T12:xxZ — o-prime RULING ADV-2: FOLD the R3 section-scope fix into item 12 before merge (the item closes the decoy-bypass class; a whole-file require_marker IS that class). Coder FX + re-confirm (gate + 9/9 + decoy RED-on-old) → PR. NOTE: item numbers are GLOBAL across both streams — 15 (spine locks) + 16 (notice routing) are s391's; ask the o-prime for any new number.
+
+## 2026-08-27T13:xxZ — o-prime: MERGED PR #12 (item 12) → main be31e66c. 10a+10b is the last code item before 14. Spawn safe (freeze lifted).
+- 10b in flight (dlg-0015) on base 10483d8+item-10a; item 12's files (harness/scripts) are disjoint from 10b's (core daemon), so 10b is unaffected. Rebase onto be31e66c at 10b PR time (not under the active coder). Day-3 SHIPPED: 3b/3c/7/FX001/9/11/9-FX/12 + doctrine.
