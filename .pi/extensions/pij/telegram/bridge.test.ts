@@ -6,7 +6,6 @@
 //     transformer capturing outbound replies (no network), and a spy delivery (no
 //     disk). This is where allowlist-FIRST ordering (AC-07) is actually exercised.
 
-import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.setConfig({ testTimeout: 60_000 });
 
 import { FsChannel } from "../adapters/channel.js";
-import { SqliteQueue, type TelegramPartitionIdentity } from "../adapters/sqlite-queue.js";
+import { SqliteQueue } from "../adapters/sqlite-queue.js";
 import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";
 import {
 	createBot,
@@ -78,49 +77,8 @@ const TELEGRAM_CAPTION_LIMIT = 1024;
 const BUDGET_CONTEXT = `repo/${"b".repeat(76)}`;
 const BUDGET_PREFIX = `[pij-osn81b] [${BUDGET_CONTEXT}]`;
 
-function prefixHash(prefix: string): string {
-	return createHash("sha256").update(prefix).digest("hex");
-}
-
 function reassemblePrefixedText(parts: readonly string[], prefix: string): string {
 	return parts.map((part) => part.replace(`${prefix} `, "").replace(/^\(\d+\/\d+\) /, "")).join("");
-}
-
-async function expectPartitionComponentMismatchSends(
-	overrides: Partial<TelegramPartitionIdentity>,
-): Promise<void> {
-	const home = tmpHome();
-	const queue = new SqliteQueue(home);
-	let dispose: (() => void) | undefined;
-	try {
-		const delivered = queue.deliver({
-			from: "pij-osn81b",
-			to: TELEGRAM_PEER_ID,
-			body: "identity sensor",
-		});
-		if (!delivered.ok) throw new Error(delivered.message);
-		const prefix = "[pij-osn81b]";
-		queue.recordTelegramPartitionIdentity(delivered.value.messageId, {
-			partCount: 1,
-			prefixLength: prefix.length,
-			prefixHash: prefixHash(prefix),
-			...overrides,
-		});
-		queue.markTelegramPartSent(delivered.value.messageId, 0);
-		const sent: string[] = [];
-		dispose = startForwarder(queue, {
-			send: async (text) => {
-				sent.push(text);
-			},
-		});
-
-		await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
-		expect(sent).toEqual(["[pij-osn81b] identity sensor"]);
-	} finally {
-		dispose?.();
-		queue.close();
-		rmSync(home, { recursive: true, force: true });
-	}
 }
 
 // ─── pure routing ────────────────────────────────────────────────────────────
@@ -1254,19 +1212,154 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 		}
 	});
 
-	it("part-count drift sends all even when prefix length and hash match", async () => {
-		await expectPartitionComponentMismatchSends({ partCount: 2 });
+	it("same-count distribution drift sends the whole current bubble plan", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const firstPath = "/tmp/first.png";
+			const secondPath = "/tmp/second.png";
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: firstPath }, { path: secondPath }],
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let pass = 1;
+			const firstText: string[] = [];
+			const redeliveryText: string[] = [];
+			const firstMedia: string[] = [];
+			const redeliveryMedia: string[] = [];
+			dispose = startForwarder(queue, {
+				sizeOf: (path) => {
+					if (pass === 1) return path === firstPath ? 11 * 1024 * 1024 : 1;
+					return path === secondPath ? 11 * 1024 * 1024 : 1;
+				},
+				send: async (text) => {
+					(pass === 1 ? firstText : redeliveryText).push(text);
+				},
+				sendMedia: async (_kind, path) => {
+					if (pass === 1) {
+						firstMedia.push(path);
+						throw new Error("Call to 'sendPhoto' failed! (400: Bad Request)");
+					}
+					redeliveryMedia.push(path);
+				},
+			});
+
+			await waitFor(() => firstText.length === 1 && firstMedia.length === 1);
+			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
+			expect([...queue.telegramSentParts(delivered.value.messageId)]).toEqual([0]);
+
+			pass = 2;
+			now += 60_001;
+			expect(queue.recoverStaleClaims()).toBe(1);
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(redeliveryMedia).toEqual([firstPath]);
+			expect(redeliveryText).toHaveLength(1);
+			expect(redeliveryText[0]).toContain(secondPath);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 
-	it("prefix-length drift sends all even when part count and hash match", async () => {
-		await expectPartitionComponentMismatchSends({ prefixLength: "[pij-osn81b]".length + 1 });
+	it("same-hash redelivery skips acknowledged media and sends only unmarked media", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const firstPath = "/tmp/first.png";
+			const secondPath = "/tmp/second.png";
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: firstPath }, { path: secondPath }],
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let failSecond = true;
+			const attempts: string[] = [];
+			const sent: string[] = [];
+			dispose = startForwarder(queue, {
+				sizeOf: () => 1,
+				send: async () => {},
+				sendMedia: async (_kind, path) => {
+					attempts.push(path);
+					if (failSecond && path === secondPath) {
+						throw new Error("Call to 'sendPhoto' failed! (400: Bad Request)");
+					}
+					sent.push(path);
+				},
+			});
+
+			await waitFor(() => sent.length === 1 && attempts.includes(secondPath));
+			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
+
+			failSecond = false;
+			now += 60_001;
+			expect(queue.recoverStaleClaims()).toBe(1);
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(sent).toEqual([firstPath, secondPath]);
+			expect(attempts.filter((path) => path === firstPath)).toHaveLength(1);
+			expect(attempts.filter((path) => path === secondPath)).toHaveLength(2);
+			expect([...queue.telegramSentParts(delivered.value.messageId)]).toEqual([0, 1]);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 
-	it("prefix-hash drift sends all even when part count and prefix length match", async () => {
-		await expectPartitionComponentMismatchSends({ prefixHash: "f".repeat(64) });
+	it("marks a failed bubble only after a later positive Telegram acknowledgment", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "ack before mark",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let fail = true;
+			let attempts = 0;
+			const sent: string[] = [];
+			dispose = startForwarder(queue, {
+				send: async (text) => {
+					attempts += 1;
+					if (fail) throw new Error("Call to 'sendMessage' failed! (400: Bad Request)");
+					sent.push(text);
+				},
+			});
+
+			await waitFor(() => attempts === 1);
+			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
+			expect([...queue.telegramSentParts(delivered.value.messageId)]).toEqual([]);
+
+			fail = false;
+			now += 60_001;
+			expect(queue.recoverStaleClaims()).toBe(1);
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(attempts).toBe(2);
+			expect(sent).toEqual(["[pij-osn81b] ack before mark"]);
+			expect([...queue.telegramSentParts(delivered.value.messageId)]).toEqual([0]);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 
-	it("partition drift sends every recomputed part and preserves the full tail", async () => {
+	it("bubble-plan drift sends every recomputed part and preserves the full tail", async () => {
 		const home = tmpHome();
 		let now = 1_000;
 		const queue = new SqliteQueue(home, { now: () => now });
@@ -1294,11 +1387,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 
 			await waitFor(() => firstSent.length === 2);
 			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
-			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toEqual({
-				partCount: 3,
-				prefixLength: BUDGET_PREFIX.length,
-				prefixHash: prefixHash(BUDGET_PREFIX),
-			});
+			expect(queue.telegramBubblesHash(delivered.value.messageId)).toMatch(/^[0-9a-f]{64}$/);
 
 			context = undefined;
 			failMiddle = false;
@@ -1316,7 +1405,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 		}
 	});
 
-	it("legacy sent-part rows without partition identity degrade to send-all", async () => {
+	it("legacy sent-part rows without a bubbles hash degrade to send-all", async () => {
 		const home = tmpHome();
 		const queue = new SqliteQueue(home);
 		let dispose: (() => void) | undefined;
@@ -1328,7 +1417,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 			});
 			if (!delivered.ok) throw new Error(delivered.message);
 			queue.markTelegramPartSent(delivered.value.messageId, 0);
-			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toBeUndefined();
+			expect(queue.telegramBubblesHash(delivered.value.messageId)).toBeUndefined();
 			const sent: string[] = [];
 			dispose = startForwarder(queue, {
 				send: async (text) => {
@@ -1376,11 +1465,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 			});
 
 			await waitFor(() => firstSent.length === 1 && failedSecondAttempts === 2);
-			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toEqual({
-				partCount: 2,
-				prefixLength: BUDGET_PREFIX.length,
-				prefixHash: prefixHash(BUDGET_PREFIX),
-			});
+			expect(queue.telegramBubblesHash(delivered.value.messageId)).toMatch(/^[0-9a-f]{64}$/);
 			context = undefined;
 			failSecond = false;
 			redelivering = true;
@@ -1433,11 +1518,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 			const prefixA = `[pij-osn81b] [${contextA}]`;
 			const prefixB = `[pij-osn81b] [${contextB}]`;
 			expect(prefixA).toHaveLength(prefixB.length);
-			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toEqual({
-				partCount: 2,
-				prefixLength: prefixA.length,
-				prefixHash: prefixHash(prefixA),
-			});
+			expect(queue.telegramBubblesHash(delivered.value.messageId)).toMatch(/^[0-9a-f]{64}$/);
 
 			context = contextB;
 			failSecond = false;
@@ -1491,11 +1572,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 
 			await waitFor(() => pass1Attempts === 4);
 			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
-			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toEqual({
-				partCount: 2,
-				prefixLength: "[pij-osn81b]".length,
-				prefixHash: prefixHash("[pij-osn81b]"),
-			});
+			expect(queue.telegramBubblesHash(delivered.value.messageId)).toMatch(/^[0-9a-f]{64}$/);
 			pass = 2;
 			context = BUDGET_CONTEXT;
 			now += 60_001;
@@ -1549,11 +1626,7 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 
 			await waitFor(() => sent.length === 2 && failedSecondAttempts === 2);
 			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
-			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toEqual({
-				partCount: 3,
-				prefixLength: "[pij-osn81b]".length,
-				prefixHash: prefixHash("[pij-osn81b]"),
-			});
+			expect(queue.telegramBubblesHash(delivered.value.messageId)).toMatch(/^[0-9a-f]{64}$/);
 
 			failSecond = false;
 			now += 60_001;
@@ -1704,17 +1777,18 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 		}
 	});
 
-	it("acks a handled media-only failure after echoing it to the sender", async () => {
+	it("leaves a handled media-only failure claimed after echoing it to the sender", async () => {
 		const home = tmpHome();
 		const queue = new SqliteQueue(home);
 		let dispose: (() => void) | undefined;
 		try {
-			queue.deliver({
+			const delivered = queue.deliver({
 				from: "pij-osn81b",
 				to: TELEGRAM_PEER_ID,
 				body: "",
 				attachments: [{ path: "/tmp/missing.png" }],
 			});
+			if (!delivered.ok) throw new Error(delivered.message);
 			const send = vi.fn(async () => {});
 			const echoes: string[] = [];
 			dispose = startForwarder(queue, {
@@ -1728,11 +1802,14 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 				},
 			});
 
-			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "claimed");
 
 			expect(send).not.toHaveBeenCalled();
 			expect(echoes).toHaveLength(1);
 			expect(echoes[0]).toContain("media forward FAILED");
+			expect(
+				queue.receipts(delivered.value.messageId).some((receipt) => receipt.state === "acked"),
+			).toBe(false);
 		} finally {
 			dispose?.();
 			queue.close();
