@@ -127,3 +127,5 @@ Recorded the moment they landed (orient-global iron rule: rulings land on disk i
 
 ## 2026-08-28 — o-prime: MERGED PR #13 (10a+10b, incident half 2) → main 42b7268f. Incident FULLY FIXED on main (both halves). Live daemon ff BATCHED with s391 1b → ONE restart (kingfisher window) makes both daemon halves live. s392: item 14 (rebase onto 42b7268f) → 17.
 - Day-3 code SHIPPED: 3b/3c/7/FX001/9/11/9-FX/12/10a/10b + doctrine. Only item 14 (doc) + item 17 (advisories) remain before the Jordan-spec handover.
+
+## 2026-08-28 — o-prime RULING item 14: FOLD ADV-4 before the PR (a wording item must not land with a known wording error). ITEM 18 = ADV-1/2 (ratchet: pin routing text vs buildWatchdogTurn OUTPUT minus header prefix — stale doc RED, clean GREEN; this is the E6 class = a green gate certifying wrong text) + ADV-3 (docs/how/pij-watchdog.md same stale quote + missing mute set). Order: 14 PR (with ADV-4) → 17 → 18. [ADV-4 = my dossier error; o-prime also fixing its upstream WorkIQ 'park with hold' instruction.]
