@@ -73,3 +73,49 @@ Recorded the moment they landed (orient-global iron rule: rulings land on disk i
 
 ## 2026-08-27T11:xxZ — o-prime: PR #3 (s391 item 1a) MERGED → origin/main 048a3e12 (cli.ts touched); rebase before my next PR
 - DEFERRED: reviewer pij-pale-araminta is running flow-pair-mutate in this tree (Phase 2 + Phase 4 re-reviews). No rebase under an active mutator (clobber hazard, incident rule). Rebase onto 048a3e12 AFTER both re-reviews report and the reviewer is idle, THEN open the PRs.
+
+## 2026-08-27T10:3xZ — o-prime: MERGED #4 #5 #6 → origin/main ee560fe8 (order 3c → 7 → FX001). #5 gate diff verified empty. Item 10 may start (rebase first). o-prime folds the government doctrine half + orient-global iron-rule-2 as its own gated commit.
+- Day-3 assigned list COMPLETE: 3b (PR#1), 3c (#4), 7 (#5), FX001 (#6) all merged; item 2 (codex) deferred by Vaughan.
+- Hazard ledgered (COORD-002): I built PR branches by switching branches in the live shared worktree while the reviewer ran mutations — near-false-GREEN. Fix: separate worktree for PR assembly, or all-peers-idle gate.
+
+## 2026-08-27T11:xxZ — Vaughan (in-pane + Telegram): Jordan handoff-spec deliverable
+- After item 10b: merge everything + push. Then, when claude+copilot on sqlite+sockets is judged READY: create a Fable seat, write a detailed STANDALONE spec (no other project info; lots of detail + gotchas + outstanding) for Jordan (another Claude), and create an ISSUE on the ai-substrate pij repo (confirm exact org/repo) for Jordan to pick up. Full requirements + draft outline: `jordan-spec-deliverable.md`.
+
+## 2026-08-27T11:xxZ — o-prime ACK fold + 10b requirements + jordan-spec governance
+- 10a stays on-branch with F2/F3/F4 FX, lands WITH 10b after s391 item 5 (Vaughan's ruling, spine).
+- 10b req 1: six ad-hoc resolvers = a CLASS → ONE shared lifecycle-filtered resolver + a grep-sweep test guarding against a 7th unfiltered site.
+- 10b req 2: incident replay must reproduce the ACTUAL route (pane-less dissolved seat + fresh unregistered same-harness pane → zero deliveries, zero binds).
+- **jordan-spec** = its own project under the o-prime, queued AFTER the day-3 list; do NOT start before 9/10 land. I tell the o-prime when I'd spawn the Fable seat; the o-prime briefs it (not an ad-hoc spawn by me).
+
+## 2026-08-27T11:xxZ — o-prime: item 9 FX proceed + NEW ITEM 11 + semantic-review doctrine
+- **Semantic review is MANDATORY for every skill-text PR** (item 9 is the proof of why — a green gate certified 3 real losses). Now doctrine.
+- **NEW ITEM 11 (mine)**: fix the `pij-skill-check` order-check false-positive (head -1 match). Fence widened to `harness/scripts/` (the skill-check script + its test). Lands AFTER item 9, BEFORE 10b.
+  - Req 1: the check matches the FIRST occurrence IN DOCUMENT ORDER of each required marker, not the first line matching any of them.
+  - Req 2: pin with a fixture reproducing the reorder it forced today.
+  - Req 3: the doc reorder it forced (item-9 F5 edit in orchestrator.md) must be REVERTED in the same PR IF the reorder harmed reading order — my call, state it.
+- Item order now: 9 → **11** → (s391 item5) → 10b → merge-all+push → jordan-spec.
+
+## 2026-08-27T11:xxZ — o-prime: PR #7 (item 9) MERGED → origin/main bc71a4b8. Rebase item-11/10b onto it.
+- DEFERRED: coder is mid item-11 in THIS worktree; no rebase under an active peer (COORD-002). After item 11 reports: rebase integration onto bc71a4b8 (item-9 commits bfbb08d/346c19f/0aabb1c drop as already-applied), then build item 11's PR in a SEPARATE worktree.
+- Item 9 SHIPPED (PR #7). Day-3 shipped now: 3b/3c/7/FX001/9 + doctrine.
+
+## 2026-08-27T11:xxZ — o-prime: PR #8 (item 11) MERGED → main 91337335 (o-prime reproduced RED-on-old/GREEN-on-new itself). 10b next (after s391 item 5), item 12 after.
+- Day-3 SHIPPED: 3b/3c/7/FX001/9/11 + doctrine. Only 10a(folded)+10b + item 12 remain, all gated on s391 item 5.
+
+## 2026-08-27T12:xxZ — o-prime URGENT: main RED from item 9 (cross-file string pins)
+- My item-9 trims moved strings that EXTERNAL tests pin as requirements (plans 041/074): `cli.integration.test.ts` "pull vs push" (peer.md must contain the external-pull-ban clauses + tmux-adopt + E-NOID + External-pull-identity section) and `acceptance-sweep.test.ts` "074 P9" (orchestrator.md must contain "Start-of-work report"/"Stop-of-work report" + the two exact `pij report now '...'` commands; kickoff.md the `--role pm` link). Neither pij-skill-check nor the semantic review covers these cross-file pins.
+- FIX = item 9-FX, FIRST (before item 12): restore the pinned text in the ROUTE within budget (the tests encode requirements — the route a reader loads must SAY it), not repoint the tests, unless a test pins genuinely-wrong wording (then say so).
+- **NEW GATE for every skill-text PR** (ruling, spine): `just pij-skill-check` + `npx vitest run .pi/extensions/pij/cli.integration.test.ts .pi/extensions/pij/acceptance-sweep.test.ts` + cold semantic review.
+
+## 2026-08-27T12:xxZ — o-prime: NEW ITEM 14 (skill text, after 12; new gate = pij-skill-check + string-pinning vitest + semantic review)
+- C9 in `00-routing.md` implies `pij report state done` silences the watchdog; code (`core/watchdog.ts:332 mutesWatchdogNudge`) mutes ONLY blocked|question|hold|waiting — done/ready never mute. Amend C9 (budget-flat): "done is a claim for a verifier and does not mute; a seat standing by with no open work parks with hold/waiting; reach for interval, never pause." Mirror one line in orient-oprime duty 7 if budget allows.
+
+## 2026-08-27T12:xxZ — o-prime: MERGED PR #10 (9-FX + R5) → main 9912bf86 (main un-RED). item 12 (R2/R3/R4 + R6 + NIT-1) review+PR next; 10b after s391 item 5.
+
+## 2026-08-27T12:xxZ — o-prime: PR #11 (s391 item 5 + finding C) MERGED → main f4ba6ec0. 10b UNBLOCKED (rebase onto f4ba6ec0, loop.ts moved; 10a lands with it). SPAWN FREEZE coming for a coordinated daemon restart (first since cutover) — do NOT spawn during the broadcast freeze window.
+- finding C (daemon instanceof→sqliteOf under dual) landed with PR #11 — re-verify whether 10b's shared-resolver scope still needs the 6 ad-hoc sites or if finding C touched any.
+
+## 2026-08-27T12:xxZ — SPAWN FREEZE (LIFTED, daemon pid 57236, f4ba6ec0, sqlite, verified) (machine-wide, o-prime)
+- Daemon restarts (first since sqlite cutover; live f4ba6ec0, full suite green). Do NOT pij spawn/revive/agent spawn until "FREEZE LIFTED". Sends are safe (queue in SQLite, drain after restart — the durability my item 3b established). No new spawn needed here (coder+reviewer live; 10b reuses the coder). The coder's item-12 report may be briefly delayed by the restart — do NOT misread a queued/delayed delivery as a stall; it drains post-restart.
+
+## 2026-08-27T12:xxZ — o-prime RULING ADV-2: FOLD the R3 section-scope fix into item 12 before merge (the item closes the decoy-bypass class; a whole-file require_marker IS that class). Coder FX + re-confirm (gate + 9/9 + decoy RED-on-old) → PR. NOTE: item numbers are GLOBAL across both streams — 15 (spine locks) + 16 (notice routing) are s391's; ask the o-prime for any new number.

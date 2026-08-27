@@ -268,3 +268,20 @@ The merge made delivery durable (SQLite) and byte-exact (sockets), but two consu
 | FX003 | 2026-08-27 | Phase 4 SKILL.md invariant-2 clause true under fs/dual (pointer path is sqlite-only) | pij-skill (live) | FIXED 4dca931 (PD-02 diff empty, 85 lines) — Phase 4 re-review queued | `reviews/phase-4-review.md` finding B |
 | FX002 | 2026-08-27 | Phase 2 missing Dim-0 witnesses (rejecting-inject→claimed; reload-dispose) — test-only, no source change | pij-messaging (test) | APPROVED — Phase 2 re-review (phase-2-rereview.md): M2b+M8 RED, coder strengthened happy-path beyond brief; F1/F2 closed | `reviews/phase-2-review.md` FIX_REQUIRED (F1/F2) |
 | FX001 | 2026-08-27 | Restore the pane-less tick witness for `daemonReceiptAuthoritative` (one negative test; mutation 6 must go RED) | pij-messaging (test-only) | APPROVED — cold re-review (fx001-review.md): mutation 6 RED, coder log accurate; finding 7 discharged | `reviews/phase-1-review.md` mutation 6 (post-merge FIX_REQUIRED); `fixes/FX001-pane-less-tick-witness.md` |
+
+## Item 10a: pane-resolution guard
+
+**Added post-plan by o-prime ruling (2026-08-27, `rulings.md`)** — not in the original brief. Half 2 of the cross-government pane-misbind incident (`government/incidents/2026-08-27-cross-government-pane-misbind.md`); half 1 (retire-on-close) is s391.
+
+**Objective**: `IndexState.rebuild` must not index `byPane` for a dissolved/terminal descriptor, so `resolvePane` never returns a dead seat for its (possibly reused) pane. Fence: `core/daemon/index-state.ts` (+test). The `loop.ts` bind-guard (require copilot `--session-id` evidence; refuse to bind a dissolved seat) is item 10b, landing after s391 item 5 (shared `loop.ts`). Full task table: `tasks/item-10a-index-state-guard/tasks.md`.
+
+## Item 9: pay the pij-skill-check debt
+
+**Added post-plan by o-prime ruling** (item 9; fence `skills/pij/**`; own PR, cold-reviewed). Clear the 10 `just pij-skill-check` ✗ (3 budget overages + 7 marker/order strings) by consolidating redundant prose and adding required verbatim strings, WITHOUT dropping any load-bearing instruction from a live skill. Full task table: `tasks/item-9-skill-check-debt/tasks.md`.
+
+## Item 11: fix the pij-skill-check order-check false-positive
+
+**Added post-plan by o-prime ruling** (promoted from item-9 finding F5 + re-review R1; fence `harness/scripts/**`; after item 9, before 10b). Fix the `head -1` marker resolution so an incidental backward cross-reference doesn't cause a false "out of order" (Req 1), ADD an ordering assertion that the read-back precondition precedes fleet-confirmation with the reviewer's mutant as the RED fixture (R1), add a script test, and revert the forced doc reorder if it harmed reading. Full table: `tasks/item-11-skillcheck-order-fix/tasks.md`.
+
+## Item 12: harden pij-skill-check (R2/R3/R4)
+**Follow-up to item 11** (o-prime-approved, own PR, harness/scripts only, no s391 dep). Close the three residual coverage limits the item-11 cold review found by attacking its own approval: R2 (in-section decoy bypasses R1 — reviewer-verified 4-line anchor fix), R3 (Build-config read-back site needs a literal clause pin), R4 (second order loop :479-495 still whole-file). Table: `tasks/item-12-skillcheck-hardening/tasks.md`.

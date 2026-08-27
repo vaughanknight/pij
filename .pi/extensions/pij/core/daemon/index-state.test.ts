@@ -101,4 +101,30 @@ describe("IndexState", () => {
 		expect(ix.resolvePane("%2")).toBeUndefined();
 		expect(ix.resolveHarnessSession("sess-b")).toBeUndefined();
 	});
+
+	it("resolves bound and pending panes but never dissolved or failed panes", () => {
+		const ix = IndexState.from([
+			desc({ id: "bound", paneId: "%1", lifecycle: "bound" }),
+			desc({ id: "dissolved", paneId: "%2", lifecycle: "dissolved" }),
+			desc({ id: "failed", paneId: "%3", lifecycle: "failed" }),
+			desc({ id: "pending", paneId: "%4", lifecycle: "pending" }),
+		]);
+
+		expect(ix.resolvePane("%1")).toBe("bound");
+		expect(ix.resolvePane("%2")).toBeUndefined();
+		expect(ix.resolvePane("%3")).toBeUndefined();
+		expect(ix.resolvePane("%4")).toBe("pending");
+		expect(ix.get("dissolved")?.lifecycle).toBe("dissolved");
+		expect(ix.get("failed")?.lifecycle).toBe("failed");
+	});
+
+	it("a terminal descriptor cannot overwrite the fresh seat that reused its pane", () => {
+		const ix = IndexState.from([
+			desc({ id: "fresh-bound", paneId: "%1", lifecycle: "bound" }),
+			desc({ id: "closed-old", paneId: "%1", lifecycle: "dissolved" }),
+		]);
+
+		expect(ix.resolvePane("%1")).toBe("fresh-bound");
+		expect(ix.get("closed-old")?.lifecycle).toBe("dissolved");
+	});
 });

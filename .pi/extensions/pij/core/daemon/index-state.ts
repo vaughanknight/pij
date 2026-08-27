@@ -53,7 +53,10 @@ export class IndexState {
 				if (d.harness)
 					appendIndex(this.byHarnessIdentity, identityKey(d.harness, d.harnessSessionId), d.id);
 			}
-			if (d.paneId) this.byPane.set(d.paneId, d.id);
+			// Pane-misbind incident: terminal seats can no longer own a reusable pane address.
+			if (d.paneId && d.lifecycle !== "dissolved" && d.lifecycle !== "failed") {
+				this.byPane.set(d.paneId, d.id);
+			}
 		}
 	}
 
