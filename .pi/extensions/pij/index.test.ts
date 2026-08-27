@@ -19,6 +19,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { deriveSelfId, memorableIdentitySeed } from "./core/discovery.js";
 import { receiptBody } from "./core/message.js";
 import pijExtension from "./index.js";
@@ -29,15 +30,29 @@ import pijExtension from "./index.js";
 
 /** Minimal fake ExtensionAPI — captures only what index.ts needs at wiring
  *  time + what session_start triggers (sendUserMessage for the boot announce). */
+interface CapturedTool {
+	readonly name: string;
+	readonly execute: (
+		toolCallId: string,
+		params: Record<string, unknown>,
+		signal: AbortSignal | undefined,
+		onUpdate: unknown,
+		ctx: { readonly cwd: string },
+	) => Promise<unknown>;
+}
+
 function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 	const handlers = new Map<string, (...args: unknown[]) => unknown>();
+	const tools = new Map<string, CapturedTool>();
 	const sentUserMessages: string[] = [];
 	const sessionNames: string[] = [];
 	const pi = {
 		on: (event: string, handler: (...args: unknown[]) => unknown) => {
 			handlers.set(event, handler);
 		},
-		registerTool: () => {},
+		registerTool: (tool: CapturedTool) => {
+			tools.set(tool.name, tool);
+		},
 		registerCommand: () => {},
 		events: { on: () => {}, emit: () => {} },
 		sendUserMessage: (message: string) => {
@@ -48,7 +63,7 @@ function makeFakePi(onSendUserMessage: (message: string) => void = () => {}) {
 			sessionNames.push(name);
 		},
 	} as unknown as ExtensionAPI;
-	return { pi, handlers, sentUserMessages, sessionNames };
+	return { pi, handlers, tools, sentUserMessages, sessionNames };
 }
 
 /** Minimal fake ExtensionContext — captures setStatus calls. */
@@ -82,6 +97,14 @@ function inboxPath(pijHome: string, id: string, name: string): string {
 	return join(pijHome, id, "inbox", name);
 }
 
+async function waitFor(pred: () => boolean, timeoutMs = 2_000): Promise<void> {
+	const start = Date.now();
+	while (!pred()) {
+		if (Date.now() - start > timeoutMs) throw new Error("waitFor: condition never held");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -94,6 +117,7 @@ describe("pij index — footer status bar", () => {
 	let origPlanId: string | undefined;
 	let origOmpCode: string | undefined;
 	let origAnnounceTo: string | undefined;
+	let origQueueBackend: string | undefined;
 
 	beforeEach(() => {
 		origPijHome = process.env.PIJ_HOME;
@@ -102,12 +126,14 @@ describe("pij index — footer status bar", () => {
 		origPlanId = process.env.PIJ_PLAN_ID;
 		origOmpCode = process.env.OMPCODE;
 		origAnnounceTo = process.env.PIJ_ANNOUNCE_TO;
+		origQueueBackend = process.env.PIJ_QUEUE_BACKEND;
 		pijHome = mkdtempSync(join(tmpdir(), "pij-status-test-"));
 		process.env.PIJ_HOME = pijHome;
 		delete process.env.PIJ_PARENT_ID;
 		delete process.env.PIJ_PLAN_ID;
 		delete process.env.OMPCODE;
 		delete process.env.PIJ_ANNOUNCE_TO;
+		delete process.env.PIJ_QUEUE_BACKEND;
 	});
 
 	afterEach(() => {
@@ -125,6 +151,8 @@ describe("pij index — footer status bar", () => {
 		else process.env.OMPCODE = origOmpCode;
 		if (origAnnounceTo === undefined) delete process.env.PIJ_ANNOUNCE_TO;
 		else process.env.PIJ_ANNOUNCE_TO = origAnnounceTo;
+		if (origQueueBackend === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+		else process.env.PIJ_QUEUE_BACKEND = origQueueBackend;
 	});
 
 	it("publishes the pij id to the status bar on session_start", async () => {
@@ -311,6 +339,7 @@ describe("pij index — footer status bar", () => {
 	});
 
 	it("marks a retained unread message only after onInbound injects it, then reload skips it", async () => {
+		process.env.PIJ_QUEUE_BACKEND = "fs";
 		const nativeSessionId = "native-post-inbound";
 		const id = allocatePiIdentity(pijHome, nativeSessionId);
 		const channel = new FsChannel(pijHome);
@@ -345,6 +374,7 @@ describe("pij index — footer status bar", () => {
 	});
 
 	it("records and marks receipt history without injecting or replaying it", async () => {
+		process.env.PIJ_QUEUE_BACKEND = "fs";
 		const nativeSessionId = "native-receipt-history";
 		const id = allocatePiIdentity(pijHome, nativeSessionId);
 		const channel = new FsChannel(pijHome);
@@ -373,5 +403,121 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
 		expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHaveLength(1);
 		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("consumes sqlite messages once, acks after injection, stamps scans, and reload does not replay", async () => {
+		process.env.PIJ_QUEUE_BACKEND = "sqlite";
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-08-27T09:30:00.000Z"));
+		const nativeSessionId = "native-sqlite-inbound";
+		const id = allocatePiIdentity(pijHome, nativeSessionId);
+		const queue = new SqliteQueue(pijHome);
+		const delivered = queue.deliver({ from: "pij-x", to: id, body: "hello from sqlite" });
+		if (!delivered.ok) throw new Error(delivered.message);
+		const { pi, handlers, sentUserMessages } = makeFakePi();
+		const { ctx } = makeFakeCtx(nativeSessionId);
+		pijExtension(pi);
+
+		try {
+			await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(
+				sentUserMessages.filter((message) => message.includes("hello from sqlite")),
+			).toHaveLength(1);
+			expect(queue.summary({ to: id })[0]?.state).toBe("acked");
+			expect(queue.receipts(delivered.value.messageId).at(-1)?.detail).toBe(`reader=${id}`);
+
+			const firstScan = new FsRegistry(pijHome).read(id)?.lastInboxScanAt;
+			expect(firstScan).toBe(new Date().toISOString());
+			await vi.advanceTimersByTimeAsync(3_000);
+			const secondScan = new FsRegistry(pijHome).read(id)?.lastInboxScanAt;
+			expect(Date.parse(secondScan ?? "")).toBeGreaterThan(Date.parse(firstScan ?? ""));
+			expect(
+				sentUserMessages.filter((message) => message.includes("hello from sqlite")),
+			).toHaveLength(1);
+
+			await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(
+				sentUserMessages.filter((message) => message.includes("hello from sqlite")),
+			).toHaveLength(1);
+		} finally {
+			await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
+			queue.close();
+			vi.useRealTimers();
+		}
+	});
+
+	it("records and acks a sqlite receipt without injecting or replaying it", async () => {
+		process.env.PIJ_QUEUE_BACKEND = "sqlite";
+		const nativeSessionId = "native-sqlite-receipt";
+		const id = allocatePiIdentity(pijHome, nativeSessionId);
+		const queue = new SqliteQueue(pijHome);
+		const body = receiptBody("sqlite-original", "delivered");
+		const delivered = queue.deliver({
+			from: "pij-x",
+			to: id,
+			body,
+			kind: "receipt",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const { pi, handlers, sentUserMessages } = makeFakePi();
+		const { ctx } = makeFakeCtx(nativeSessionId);
+		pijExtension(pi);
+
+		try {
+			await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+			await waitFor(() => queue.summary({ to: id })[0]?.state === "acked");
+
+			expect(sentUserMessages.some((message) => message.includes(body))).toBe(false);
+			expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHaveLength(1);
+
+			await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			expect(new FsEventLog(pijHome, id).read({ type: "receipt" })).toHaveLength(1);
+		} finally {
+			await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
+			queue.close();
+		}
+	});
+
+	it("routes pij_send through the selected sqlite channel", async () => {
+		process.env.PIJ_QUEUE_BACKEND = "sqlite";
+		const nativeSessionId = "native-sqlite-send-tool";
+		const target = "pij-sqlite-target";
+		new FsRegistry(pijHome).write({
+			id: target,
+			folder: "/repo",
+			dataDir: join(pijHome, target),
+			eventsPath: join(pijHome, target, "events.ndjson"),
+			pid: process.pid,
+			startedAt: new Date().toISOString(),
+			harness: "pi",
+			lifecycle: "bound",
+		});
+		const { pi, handlers, tools } = makeFakePi();
+		const { ctx } = makeFakeCtx(nativeSessionId);
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+
+		const send = tools.get("pij_send");
+		if (send === undefined) throw new Error("pij_send was not registered");
+		await send.execute(
+			"sqlite-send",
+			{ to: target, message: "through sqlite" },
+			undefined,
+			undefined,
+			{ cwd: "/repo" },
+		);
+
+		const queue = new SqliteQueue(pijHome);
+		try {
+			const unread = queue.listUnread(target);
+			expect(unread.ok && unread.value.map((message) => message.body)).toEqual(["through sqlite"]);
+		} finally {
+			queue.close();
+			await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
+		}
 	});
 });

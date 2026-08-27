@@ -8,12 +8,14 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { FsChannel, pollPrimaryWatchOpts } from "./adapters/channel.js";
+import { openChannel, sqliteOf } from "./adapters/channel-factory.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
+import { startQueueConsumer } from "./adapters/queue-consumer.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
@@ -102,29 +104,34 @@ export default function (pi: ExtensionAPI): void {
 			if (message.length > 0 === (command !== undefined)) {
 				throw new Error("pij_send needs exactly one of `message` or `command`.");
 			}
-			const deps: CliDeps = {
-				registry: new FsRegistry(pijHome),
-				eventLogFor: (id) => new FsEventLog(pijHome, id),
-				delivery: new FsChannel(pijHome),
-				process: new NodeProcess(),
-				cwd: ctx.cwd,
-				pijHome,
-			};
-			const res = dispatch(
-				{
-					verb: "send",
-					to: params.to,
-					text: command === undefined ? message : undefined,
-					command,
-					wait: false,
-					json: false,
-				},
-				deps,
-			);
-			if (res.exitCode !== 0) {
-				throw new Error(res.stderr || `pij_send failed (exit ${res.exitCode})`);
+			const delivery = openChannel(pijHome);
+			try {
+				const deps: CliDeps = {
+					registry: new FsRegistry(pijHome),
+					eventLogFor: (id) => new FsEventLog(pijHome, id),
+					delivery,
+					process: new NodeProcess(),
+					cwd: ctx.cwd,
+					pijHome,
+				};
+				const res = dispatch(
+					{
+						verb: "send",
+						to: params.to,
+						text: command === undefined ? message : undefined,
+						command,
+						wait: false,
+						json: false,
+					},
+					deps,
+				);
+				if (res.exitCode !== 0) {
+					throw new Error(res.stderr || `pij_send failed (exit ${res.exitCode})`);
+				}
+				return { content: [{ type: "text", text: res.stdout }], details: {} };
+			} finally {
+				sqliteOf(delivery)?.close();
 			}
-			return { content: [{ type: "text", text: res.stdout }], details: {} };
 		},
 	});
 
@@ -308,10 +315,11 @@ export default function (pi: ExtensionAPI): void {
 			registry.remove(previousSelf);
 		}
 		eventLog = new FsEventLog(pijHome, self);
-		// Poll-primary delivery: this live self-inbox watcher drops fs.watch (no-op
-		// watchFactory) and drains via the 500ms poll — no silent FSEvents drop
-		// under load, and prod == what the boot tests exercise (plan 057 thread-1).
-		const channel = new FsChannel(pijHome, pollPrimaryWatchOpts());
+		// SQLite is the default; the fs opt-out keeps the existing poll-primary
+		// watcher options and silent-drop immunity (plan 057 thread-1).
+		const channel = openChannel(pijHome, process.env, {
+			fsWatchOpts: pollPrimaryWatchOpts(),
+		});
 		session = new PijSession({
 			registry,
 			eventLog,
@@ -352,6 +360,30 @@ export default function (pi: ExtensionAPI): void {
 		// proven by the Phase-5 smoke, not the fakes.
 		process.env.PIJ_SESSION_ID = boot.id;
 		if (boot.role) process.env.PIJ_ROLE = boot.role;
+
+		const sqlite = sqliteOf(channel);
+		if (sqlite !== undefined) {
+			disposeWatch?.(); // reload: drop the prior consumer before opening a new one
+			// The sqlite consumer is the same sole in-process owner of this pi inbox.
+			const receiver = session;
+			const disposeConsumer = startQueueConsumer({
+				queue: sqlite,
+				self,
+				onMessage: async (dm) => {
+					receiver.onInbound(dm, dm.messageId);
+				},
+				onScan: (atMs) => receiver.noteInboxScan(atMs),
+				log: (message) => ctx.ui.notify(`pij: ${message}`, "error"),
+			});
+			disposeWatch = () => {
+				disposeConsumer();
+				sqlite.close();
+			};
+			return;
+		}
+		if (!(channel instanceof FsChannel)) {
+			throw new Error("pij inbox initialization error: unsupported message channel");
+		}
 
 		// Receive loop. Durable read markers own cross-start/reload history; the
 		// process-local `seen` set remains only the fs.watch/poll watermark.
