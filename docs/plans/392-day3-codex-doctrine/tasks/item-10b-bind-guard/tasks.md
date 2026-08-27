@@ -40,3 +40,11 @@ The sweep found more than the six re-verified sites: the later chore-seat resolv
 partially filtered current-registration resolver, and daemon gone-pane ownership lookup
 were also pane-to-seat resolution. All now use `resolveLivePane`; the sqlite finding-C
 gate remains untouched.
+
+
+## Item 10b cold review = APPROVE (c49806e) — 4 non-blocking advisories (fold-vs-followup: o-prime)
+- Dim-0 all 6 guards load-bearing (resolver 4 RED, bind guard/durable early-returns/discovery liveness). Trial-merge clean+green. My incident-replay hypothesis was WRONG: it reaches the guards, is a CONJUNCTION test (RED only under M2+M3b), and its 'never delivers' clause is pre-guarded by drainInboxLocked (daemon.ts:1102) — not the 10b guards.
+- **ADV-1**: `isCopilotSessionId(planned)` clause has ZERO coverage — deleting it passes all 3989 tests. Add a test.
+- **ADV-2** (notable): the bind guard refuses SILENTLY + indefinitely; probe-unavailable/indeterminate treated like foreign → a legit seat with a transient probe failure never binds, silently (neighbouring code says 'Never silent'). Log the refuse + distinguish indeterminate from foreign (retry vs refuse).
+- **ADV-3**: sweep bypassable by reversed operands / destructuring / a resolver planted inside discovery.ts's ±4-line allowlist window; comments false-positive. Tighten.
+- **ADV-4**: `endsWith('/core/discovery.ts')` vs `join()` → allowlist DISARMED on win32 (sweep fails there). Use path-normalized compare.
