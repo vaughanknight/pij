@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS deliveries (
   last_error  TEXT
 );
 CREATE INDEX IF NOT EXISTS deliveries_ready ON deliveries(to_id, state, seq);
+CREATE TABLE IF NOT EXISTS telegram_sent_parts (
+  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  part_index INTEGER NOT NULL CHECK(part_index >= 0),
+  sent_at    INTEGER NOT NULL,
+  PRIMARY KEY(message_id, part_index)
+);
 CREATE TABLE IF NOT EXISTS receipts (
   id      INTEGER PRIMARY KEY,
   seq     INTEGER NOT NULL REFERENCES messages(seq),
@@ -297,6 +303,29 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			| { seq: number }
 			| undefined;
 		return row?.seq;
+	}
+
+	/** Text chunks already accepted by Telegram for one queued bridge message.
+	 *  Legacy rows have no entries and therefore retain the old send-all behavior. */
+	telegramSentParts(messageId: string): ReadonlySet<number> {
+		const rows = this.db
+			.prepare(
+				"SELECT part_index FROM telegram_sent_parts WHERE message_id = ? ORDER BY part_index",
+			)
+			.all(messageId) as unknown as Array<{ part_index: number }>;
+		return new Set(rows.map((row) => row.part_index));
+	}
+
+	/** Persist one successful Telegram text part immediately and idempotently. */
+	markTelegramPartSent(messageId: string, partIndex: number): void {
+		if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
+			throw new Error("Telegram part index must be a non-negative integer");
+		}
+		this.db
+			.prepare(
+				"INSERT OR IGNORE INTO telegram_sent_parts(message_id, part_index, sent_at) VALUES (?, ?, ?)",
+			)
+			.run(messageId, partIndex, this.now());
 	}
 
 	/** Ack: the recipient has read the body. Exactly-once by row state. */
