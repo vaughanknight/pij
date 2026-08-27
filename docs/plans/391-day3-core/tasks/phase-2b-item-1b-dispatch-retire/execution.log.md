@@ -130,3 +130,30 @@
 | Scoped Biome check on the ten touched TypeScript files | Passed. |
 | `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,975 tests passed, 15 skipped. Log: `.harness/temp/s391/vitest-phase2b-fx01.log`. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. The unchanged repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |
+
+## FX-02 - Re-review G-1 precise revert
+
+- Re-review proved the original canary-loss finding unreachable: the sole
+  canary writer requires `state === "acked"`, while `retireDispatch` returns an
+  acknowledged record unchanged.
+- Reverted only FX-01.4: removed canary from retirement metadata, restored the
+  original `isDispatch` rejection of canary-bearing delivered-unacked records,
+  removed carry/restore logic and its synthetic test, and removed the
+  unreachable documentation promise.
+- Kept every other FX-01 fix, including the shared open-state predicate, lazy
+  dispatch-store scan, parser guards, surfaced revive counts, and docs/base
+  corrections.
+- Validator proof: `git diff ad265b1..HEAD -- .pi/extensions/pij/core/platform/types.ts`
+  is empty after the FX-02 commit, so the original tripwire is restored exactly.
+- Re-review findings G-2, G-3, G-4, and G-5 are carried to Phase 5 item 13, which
+  owns the same revive seam.
+
+### FX-02 gates
+
+| Gate | Result |
+|------|--------|
+| Dispatch + platform type tests | Passed: 159 tests before the full gate. |
+| `npx tsc --noEmit -p .` | Passed. |
+| Scoped Biome check on the three touched TypeScript files | Passed. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,974 tests passed, 15 skipped. Log: `.harness/temp/s391/vitest-phase2b-fx02.log`. |
+| `harness checks --quick` | The unchanged repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |

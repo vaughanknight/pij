@@ -170,9 +170,8 @@ verb: it may report stale dispatches but cannot terminally decide them.
 
 The daemon applies the same complete deliberate-close predicate used for queue
 mail to dispatch records. A later revive restores only records retired for
-`recipient-closed`, returning each to its recorded prior state and restoring any
-canary evidence; operator-retired records remain terminal. The anomaly detector
-considers only the shared open-state predicate and then only
+`recipient-closed`, returning each to its recorded prior state; operator-retired
+records remain terminal. The anomaly detector considers only the shared open-state predicate and then only
 `delivered-unacked`, so retired records cannot appear as
 `delivered-unacked-stale`. Revive output reports restored mail and dispatch
 counts separately.
