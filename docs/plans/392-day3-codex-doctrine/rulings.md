@@ -215,3 +215,9 @@ Fix shape (o-prime):
 - (b) the daemon SUPERVISES the bridge — on tick, if the recorded bridge pid is gone, AUTO-RESTART it (it already knows how; today it only logs "telegram: a bridge already runs … not auto-starting"), append a spine note, and push a capture to the bridge's owner REGARDLESS of exemption.
 - (c) test: a fake that kills the bridge child → restarted within one tick + note.
 Interim (o-prime): `remain-on-exit on` on the telegram window so the next death leaves its screen. Evidence: ~/.pij/telegram-bridge.log, spine 27911/28188.
+
+## 2026-08-28 — Item 21 APPROVE → PR #25; new ITEM 21b (reviewer advisories, non-blocking)
+Cold review APPROVE (1858441), 3/3 Dim-0 sha-verified, composition w/ item-17 ADV-A confirmed at 6x, no collateral. PR #25 OPEN (cherry-pick fresh from main, byte-faithful patch-id). Non-blocking → **ITEM 21b** (tail):
+- **ADV-2**: ADV-A2's `settled=false` reset also RE-ARMS the `fail()` notice (loop.ts:594) — main was SILENTLY SUPPRESSING a real post-rebind bind-failure (0 vs 1). Benign (arguably a 2nd bugfix), reviewer says KEEP but it's undocumented+unsensored. Fix: pin it with a test (bind→refuse→badmodel→fail emits the notice) + update the loop.ts:148 latch doc comment (the latch is now PER-INCIDENT, not per-seat-lifetime).
+- **ADV-C**: the sweep is a TRADE not a tightening — it GAINED aliased-destructure shapes but LOST literal-RHS comparisons (`descriptor.paneId === "%42"`, backtick-%n) and has a latent object-literal FP (paneIdAliases matches object literals, scope-blind). LOW severity (sweep skips .test.ts, 0 real occurrences). Fix: DISCLOSE the traded-away shapes + latent FP in the sweep comment — a safety-brake narrowing must be stated, not silent.
+- (MUT-C line 270 was the it.each decl; real RED 275 — imprecise, noted.)
