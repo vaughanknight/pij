@@ -196,3 +196,41 @@ describe("SqliteQueue — daemon view", () => {
 		expect(q.listQueued("pij-b").map((m) => m.seq)).toEqual([1, 2]);
 	});
 });
+
+describe("SqliteQueue — summary (pij queue view, day-2 item 2)", () => {
+	it("reports each message's live state and receipt trail, filtered by recipient", () => {
+		const s1 = q.deliver({ from: "pij-a", to: "pij-b", body: "one" });
+		q.deliver({ from: "pij-a", to: "pij-c", body: "other recipient" });
+		const s3 = q.deliver({ from: "pij-a", to: "pij-b", body: "two" });
+		if (!s1.ok || !s3.ok) throw new Error("deliver failed");
+		// advance one through the machine
+		const c = q.claim("pij-b", { leaseMs: 90_000, token: "t" });
+		if (!c) throw new Error("no claim");
+		q.settle(c.seq, "injected", { leaseMs: 90_000 });
+		q.claimUnread("pij-b", s3.value.messageId); // ack the other
+		const rows = q.summary({ to: "pij-b" });
+		expect(rows.map((r) => [r.seq, r.state, r.attempt])).toEqual([
+			[1, "injected", 1],
+			[3, "acked", 0],
+		]);
+		expect(rows[0]?.trail.map((t) => t.state)).toEqual(["queued", "claimed", "injected"]);
+		expect(rows[1]?.trail.map((t) => t.state)).toEqual(["queued", "acked"]);
+		expect(rows.every((r) => r.to === "pij-b")).toBe(true);
+		expect(rows[0]?.bytes).toBe(3);
+	});
+
+	it("honours sinceSeq and limit", () => {
+		for (let i = 0; i < 5; i++) q.deliver({ from: "pij-a", to: "pij-b", body: `m${i}` });
+		expect(q.summary({ to: "pij-b", sinceSeq: 3 }).map((r) => r.seq)).toEqual([4, 5]);
+		expect(q.summary({ to: "pij-b", limit: 2 }).map((r) => r.seq)).toEqual([4, 5]);
+	});
+
+	it("labels a command message and shows an active lease countdown input", () => {
+		q.deliver({ from: "pij-a", to: "pij-b", body: "", command: "compact" });
+		const c = q.claim("pij-b", { leaseMs: 60_000, token: "t" });
+		if (c) q.settle(c.seq, "injected", { leaseMs: 60_000 });
+		const row = q.summary({ to: "pij-b" })[0];
+		expect(row?.kind).toBe("cmd:compact");
+		expect(row?.leaseUntil).toBe(now + 60_000);
+	});
+});

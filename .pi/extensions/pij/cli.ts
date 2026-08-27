@@ -49,6 +49,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { capturePane, execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
@@ -516,6 +517,61 @@ function consumeCurrentInbox(self: SessionId, channel: MessageChannel) {
 	});
 	if (!consumed.ok) failInbox(consumed.code, consumed.message);
 	return consumed.value;
+}
+
+/** `pij queue [<id>] [--to <id>] [--since <seq>] [--last N] [--json]` — read-only
+ *  view of the SQLite delivery queue (PoC day-2 item 2). Renders one line per
+ *  message with its live state (queued/claimed/injected/acked/parked) and the
+ *  receipt trail, so an operator can see what the review said `pij tail` could
+ *  not. Only meaningful on the SQLite backend; the fs backend has no such table
+ *  and says so. Never mutates. */
+function runQueue(argv: readonly string[]): void {
+	const pad = (v: string, n: number): string => (v.length >= n ? v : v + " ".repeat(n - v.length));
+	const json = argv.includes("--json");
+	const positional = argv.find((a) => !a.startsWith("--"));
+	const flag = (name: string): string | undefined => {
+		const i = argv.indexOf(name);
+		return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+	};
+	const to = flag("--to") ?? positional;
+	const sinceRaw = flag("--since");
+	const lastRaw = flag("--last");
+	const channel = openChannel(pijHome);
+	if (!(channel instanceof SqliteQueue)) {
+		const msg =
+			"pij queue needs the SQLite backend (PIJ_QUEUE_BACKEND=sqlite). The fs backend keeps per-message JSON inbox files — use `pij tail <id> --type receipt` and `ls ~/.pij/<id>/inbox`.";
+		if (json) process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+		else process.stdout.write(`${msg}\n`);
+		process.exit(json ? 0 : 1);
+	}
+	const rows = channel.summary({
+		...(to ? { to } : {}),
+		...(sinceRaw !== undefined ? { sinceSeq: Number(sinceRaw) } : {}),
+		...(lastRaw !== undefined ? { limit: Number(lastRaw) } : {}),
+	});
+	channel.close();
+	if (json) {
+		process.stdout.write(`${JSON.stringify(rows)}\n`);
+		process.exit(0);
+	}
+	if (rows.length === 0) {
+		process.stdout.write(`(queue empty${to ? ` for ${to}` : ""})\n`);
+		process.exit(0);
+	}
+	const now = Date.now();
+	const head = `${pad("seq", 5)} ${pad("state", 9)} ${pad("att", 3)} ${pad("from→to", 34)} ${pad("bytes", 6)} kind · trail`;
+	const lines = rows.map((r) => {
+		const lease =
+			r.leaseUntil && r.state !== "acked"
+				? r.leaseUntil > now
+					? ` lease ${Math.round((r.leaseUntil - now) / 1000)}s`
+					: " lease EXPIRED"
+				: "";
+		const trail = r.trail.map((t) => t.state).join("→");
+		return `${pad(String(r.seq), 5)} ${pad(r.state, 9)} ${pad(String(r.attempt), 3)} ${pad(`${r.from}→${r.to}`, 34)} ${pad(String(r.bytes), 6)} ${r.kind} · ${trail}${lease}`;
+	});
+	process.stdout.write(`${head}\n${lines.join("\n")}\n`);
+	process.exit(0);
 }
 
 function waitForInbox(
@@ -4282,6 +4338,10 @@ function main(): void {
 	// so it must run before the ordinary E-NOREG guard.
 	if (top === "inbox") {
 		runInbox(process.argv.slice(3));
+		return;
+	}
+	if (top === "queue") {
+		runQueue(process.argv.slice(3));
 		return;
 	}
 	if (top === "adopt" && process.argv[3] === "--current") {

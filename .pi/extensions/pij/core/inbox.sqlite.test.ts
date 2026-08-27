@@ -54,3 +54,28 @@ describe("pij inbox over SqliteQueue", () => {
 		expect(q.stats("pij-me")).toMatchObject({ acked: 1, injected: 0 });
 	});
 });
+
+describe("pij send --wait over SqliteQueue (day-2 item 2)", () => {
+	it("the delivered-receipt the recipient's inbox emits is readable by the sender's wait loop", () => {
+		// deliver A→B, B reads (which queues a delivered receipt back to A), A sees it.
+		const sent = q.deliver({ from: "pij-a", to: "pij-b", body: "hi" });
+		if (!sent.ok) throw new Error(sent.message);
+		const read = consumeInbox({ inbox: q, self: "pij-b", readAt: "2026-08-27T00:00:00Z" });
+		if (!read.ok) throw new Error(read.message);
+		// consumeInbox returns a send-delivered-receipt action; executing it delivers
+		// a kind:"receipt" message to the sender — the exact envelope waitReceipts reads.
+		const receiptAction = read.value.actions.find((a) => a.kind === "send-delivered-receipt");
+		expect(receiptAction).toBeDefined();
+		if (receiptAction?.kind === "send-delivered-receipt") {
+			q.deliver({
+				from: "pij-b",
+				to: receiptAction.to,
+				body: `receipt:${receiptAction.messageId}:delivered`,
+				kind: "receipt",
+			});
+		}
+		const senderInbox = q.listUnread("pij-a");
+		expect(senderInbox.ok && senderInbox.value[0]?.kind).toBe("receipt");
+		expect(senderInbox.ok && senderInbox.value[0]?.body).toContain("delivered");
+	});
+});

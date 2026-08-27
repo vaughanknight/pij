@@ -42,6 +42,25 @@ export interface ClaimedMessage extends DeliveredMessage {
 	readonly attempt: number;
 }
 
+export interface QueueSummaryRow {
+	readonly seq: number;
+	readonly id: string;
+	readonly from: string;
+	readonly to: string;
+	readonly kind: string;
+	readonly bytes: number;
+	readonly createdAt: number;
+	readonly state: DeliveryState;
+	readonly attempt: number;
+	readonly leaseUntil: number | null;
+	readonly trail: ReadonlyArray<{
+		state: string;
+		attempt: number;
+		at: number;
+		detail: string | null;
+	}>;
+}
+
 export interface QueueReceipt {
 	readonly seq: number;
 	readonly state: string;
@@ -436,6 +455,66 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 				"INSERT INTO cursors(to_id, notified_seq, updated_at) VALUES (?, ?, ?) ON CONFLICT(to_id) DO UPDATE SET notified_seq=excluded.notified_seq, updated_at=excluded.updated_at",
 			)
 			.run(to, seq, this.now());
+	}
+
+	/** Read-only snapshot for `pij queue`: one entry per message with its current
+	 *  delivery state and the receipt trail, newest last. Optional recipient
+	 *  filter and a `sinceSeq` low-water mark. */
+	summary(
+		opts: { readonly to?: SessionId; readonly sinceSeq?: number; readonly limit?: number } = {},
+	): QueueSummaryRow[] {
+		const where: string[] = [];
+		const params: (string | number)[] = [];
+		if (opts.to !== undefined) {
+			where.push("m.to_id = ?");
+			params.push(opts.to);
+		}
+		if (opts.sinceSeq !== undefined) {
+			where.push("m.seq > ?");
+			params.push(opts.sinceSeq);
+		}
+		const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+		const rows = this.db
+			.prepare(
+				`SELECT m.seq, m.id, m.from_id, m.to_id, m.kind, m.command, length(m.body) AS bytes,
+				        m.created_at, d.state, d.attempt, d.lease_until
+				 FROM messages m JOIN deliveries d ON d.seq = m.seq ${clause}
+				 ORDER BY m.seq${opts.limit ? " DESC LIMIT ?" : ""}`,
+			)
+			.all(...params, ...(opts.limit ? [opts.limit] : [])) as unknown as Array<{
+			seq: number;
+			id: string;
+			from_id: string;
+			to_id: string;
+			kind: string | null;
+			command: string | null;
+			bytes: number;
+			created_at: number;
+			state: string;
+			attempt: number;
+			lease_until: number | null;
+		}>;
+		if (opts.limit) rows.reverse();
+		return rows.map((r) => ({
+			seq: r.seq,
+			id: r.id,
+			from: r.from_id,
+			to: r.to_id,
+			kind: r.command ? `cmd:${r.command}` : (r.kind ?? "text"),
+			bytes: r.bytes,
+			createdAt: r.created_at,
+			state: r.state as DeliveryState,
+			attempt: r.attempt,
+			leaseUntil: r.lease_until,
+			trail: this.db
+				.prepare("SELECT state, attempt, at, detail FROM receipts WHERE seq = ? ORDER BY id")
+				.all(r.seq) as unknown as Array<{
+				state: string;
+				attempt: number;
+				at: number;
+				detail: string | null;
+			}>,
+		}));
 	}
 
 	maxSeq(to: SessionId): number {
