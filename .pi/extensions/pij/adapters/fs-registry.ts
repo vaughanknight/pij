@@ -20,6 +20,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
 	type ArchiveIndexEntry,
 	buildArchiveIndexEntry,
@@ -35,8 +36,12 @@ import {
 	type TickStamps,
 } from "../core/daemon/tick-heartbeat.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
-import type { ArchiveOutcome, RegistryPort } from "../core/ports.js";
-import { applyWriteLaw, type DescriptorWriter } from "../core/registry-write.js";
+import type { ArchiveOutcome, RegistryPort, RegistryWriteExactOptions } from "../core/ports.js";
+import {
+	applyWriteLaw,
+	DESCRIPTOR_FIELD_OWNER,
+	type DescriptorWriter,
+} from "../core/registry-write.js";
 import {
 	err,
 	type HarnessKind,
@@ -78,6 +83,74 @@ interface DetailedIdentityClaim {
 	readonly kind: "claimed" | "exists";
 	readonly id: SessionId;
 	readonly createdPaths: readonly string[];
+}
+
+interface FsRegistryOptions {
+	/** Test-only seam for deterministically interleaving another registry writer
+	 * after this publish has sampled disk but before it writes. */
+	readonly beforeWrite?: () => void;
+	/** Test-only observation point inside the descriptor write lock, after the
+	 * authoritative fresh read and before the atomic file replacement. */
+	readonly afterLockRead?: () => void;
+	readonly lockBudgetMs?: number;
+	readonly lockRetryMs?: number;
+}
+
+type DescriptorField = keyof SessionDescriptor;
+
+const DESCRIPTOR_LOCK_RETRY_MS = 5;
+const DESCRIPTOR_LOCK_BUDGET_MS = 5_000;
+const DESCRIPTOR_LOCK_SLEEP = new Int32Array(new SharedArrayBuffer(4));
+const CLI_OWNED_DESCRIPTOR_FIELDS: ReadonlySet<DescriptorField> = new Set(
+	(Object.keys(DESCRIPTOR_FIELD_OWNER) as DescriptorField[]).filter(
+		(field) => DESCRIPTOR_FIELD_OWNER[field as keyof typeof DESCRIPTOR_FIELD_OWNER] === "cli",
+	),
+);
+
+function sleepDescriptorLockRetry(retryMs: number): void {
+	Atomics.wait(DESCRIPTOR_LOCK_SLEEP, 0, 0, retryMs);
+}
+
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
+function descriptorFields(descriptor: SessionDescriptor | null): DescriptorField[] {
+	return descriptor === null ? [] : (Object.keys(descriptor) as DescriptorField[]);
+}
+
+/** Three-way merge for writeExact: fresh disk is the base; fields the caller
+ * changed since its sampled read are replayed, including deletions. CLI-owned
+ * denorm fields remain exact by contract even when their value is unchanged. */
+function mergeExactDescriptor(
+	proposed: SessionDescriptor,
+	sampled: SessionDescriptor | null,
+	latest: SessionDescriptor | null,
+): SessionDescriptor {
+	if (latest === null) return proposed;
+	const merged = { ...latest };
+	const fields = new Set<DescriptorField>([
+		...descriptorFields(sampled),
+		...descriptorFields(proposed),
+		...CLI_OWNED_DESCRIPTOR_FIELDS,
+	]);
+	for (const field of fields) {
+		const sampledHas = sampled !== null && Object.hasOwn(sampled, field);
+		const proposedHas = Object.hasOwn(proposed, field);
+		const callerChanged =
+			sampled === null ||
+			sampledHas !== proposedHas ||
+			(sampledHas && proposedHas && !isDeepStrictEqual(sampled[field], proposed[field]));
+		if (!callerChanged && !CLI_OWNED_DESCRIPTOR_FIELDS.has(field)) continue;
+		if (proposedHas) Reflect.set(merged, field, proposed[field]);
+		else Reflect.deleteProperty(merged, field);
+	}
+	return merged;
 }
 
 type CandidateAllocation =
@@ -147,10 +220,66 @@ export class FsRegistry implements RegistryPort {
 	constructor(
 		private readonly pijHome: string,
 		private readonly ticks: TickStampPort = new FsTickHeartbeatStore(pijHome),
+		private readonly options: FsRegistryOptions = {},
 	) {}
 
 	private pathFor(id: SessionId): string {
 		return join(this.pijHome, `${id}.json`);
+	}
+
+	private descriptorLockPath(id: SessionId): string {
+		return `${this.pathFor(id)}.lock`;
+	}
+
+	private withDescriptorWriteLock<T>(id: SessionId, operation: () => T): T {
+		mkdirSync(this.pijHome, { recursive: true });
+		const lockPath = this.descriptorLockPath(id);
+		const lockBudgetMs = this.options.lockBudgetMs ?? DESCRIPTOR_LOCK_BUDGET_MS;
+		const lockRetryMs = this.options.lockRetryMs ?? DESCRIPTOR_LOCK_RETRY_MS;
+		const deadline = Date.now() + lockBudgetMs;
+		for (;;) {
+			const lock = { pid: process.pid, token: randomUUID() };
+			const body = JSON.stringify(lock);
+			const claim = this.publishNoReplace(lockPath, lock);
+			if (!claim.ok) throw new Error(claim.message);
+			if (claim.value === "exists") {
+				let heldRaw: string | null = null;
+				let heldPid: number | null = null;
+				try {
+					heldRaw = readFileSync(lockPath, "utf8");
+					const parsed = JSON.parse(heldRaw) as { pid?: unknown };
+					if (typeof parsed.pid === "number") heldPid = parsed.pid;
+				} catch {
+					// A holder may still be publishing its token; wait rather than steal.
+				}
+				if (heldRaw !== null && heldPid !== null && !isProcessAlive(heldPid)) {
+					try {
+						if (readFileSync(lockPath, "utf8") === heldRaw) rmSync(lockPath, { force: true });
+					} catch {
+						// Another contender already changed the lock; retry exclusive create.
+					}
+					continue;
+				}
+				if (Date.now() >= deadline) {
+					throw new Error(
+						`descriptor write lock ${lockPath} held for over ${lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually: ${lockPath}`,
+					);
+				}
+				// The retry budget is a brake: it can only stop this writer from
+				// waiting longer. Lock age is deliberately not a reclaim policy.
+				sleepDescriptorLockRetry(lockRetryMs);
+				continue;
+			}
+			try {
+				return operation();
+			} finally {
+				try {
+					if (readFileSync(lockPath, "utf8") === body) rmSync(lockPath, { force: true });
+				} catch {
+					// Already gone or no longer ours.
+				}
+			}
+		}
 	}
 
 	/** THE OVERLAY (plan 100 Phase 2).
@@ -280,6 +409,38 @@ export class FsRegistry implements RegistryPort {
 		return out;
 	}
 
+	listTerminal(): SessionDescriptor[] {
+		const byId = new Map<SessionId, SessionDescriptor>();
+		let hotNames: string[] = [];
+		try {
+			hotNames = readdirSync(this.pijHome);
+		} catch {
+			// Missing hot tier is an empty tier, not a failed registry.
+		}
+		for (const name of hotNames) {
+			if (!name.endsWith(".json")) continue;
+			const descriptor = this.readFile(join(this.pijHome, name));
+			if (descriptor && isTerminalRecord(descriptor)) {
+				byId.set(descriptor.id, this.scrubTick(descriptor));
+			}
+		}
+
+		let archivedNames: string[] = [];
+		try {
+			archivedNames = readdirSync(this.archiveDir());
+		} catch {
+			// Missing archive tier is an empty tier.
+		}
+		for (const name of archivedNames) {
+			if (!name.endsWith(".json")) continue;
+			const descriptor = this.readFile(join(this.archiveDir(), name));
+			if (descriptor && isTerminalRecord(descriptor) && !byId.has(descriptor.id)) {
+				byId.set(descriptor.id, this.scrubTick(descriptor));
+			}
+		}
+		return [...byId.values()];
+	}
+
 	/** Hot-first, then the archive by DIRECT path (plan 071 D1). The archive is
 	 *  never globbed or listed here: `<pijHome>/archive/<id>.json` is one stat,
 	 *  so a keyed lookup stays O(1) no matter how many corpses are archived.
@@ -336,19 +497,21 @@ export class FsRegistry implements RegistryPort {
 	 *  already re-reads the latest record. Five lost-updates say the merge has to
 	 *  be the default rather than something each writer must remember. */
 	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void {
-		this.publish(descriptor, writer, false);
+		this.publish(descriptor, writer, false, undefined);
 	}
 
-	/** Exact last-write-wins, NO merge — see `RegistryPort.writeExact`. The only
-	 *  correct use is deliberately CLEARING a contested field. */
-	writeExact(descriptor: SessionDescriptor): void {
-		this.publish(descriptor, undefined, true);
+	/** Exact for caller changes and CLI-owned denorm fields, rebased onto fresh
+	 *  disk under the descriptor lock. A supplied baseline also covers the
+	 *  caller's pre-publish object-construction window. */
+	writeExact(descriptor: SessionDescriptor, options?: RegistryWriteExactOptions): void {
+		this.publish(descriptor, undefined, true, options?.baseline);
 	}
 
 	private publish(
 		descriptor: SessionDescriptor,
 		writer: DescriptorWriter | undefined,
 		exact: boolean,
+		callerBaseline: SessionDescriptor | undefined,
 	): void {
 		// THE REHYDRATION DROP's precondition, and it MUST be sampled here — before
 		// `unarchive()` below, and against the HOT tier only. See the drop itself at
@@ -395,25 +558,40 @@ export class FsRegistry implements RegistryPort {
 		//
 		// No caller gets to state which tier it is in.
 		descriptor = this.withHotPaths(descriptor);
-		const existing = this.read(descriptor.id);
+		const sampled = this.read(descriptor.id);
 		if (
-			existing?.lifecycle === "dissolved" &&
+			sampled?.lifecycle === "dissolved" &&
 			descriptor.lifecycle !== undefined &&
 			descriptor.lifecycle !== "dissolved"
 		) {
 			return;
 		}
-		// Reuses the `existing` the tombstone guard just read — the merge is free.
-		const proposed = exact ? descriptor : applyWriteLaw(descriptor, existing, writer);
-		descriptor = proposed;
-		const identity = this.claimDescriptorIdentity(descriptor);
-		if (!identity.ok) throw new Error(identity.message);
-		try {
-			this.writeAtomic(this.pathFor(descriptor.id), this.scrubTick(descriptor));
-		} catch (error) {
-			if (identity.value) this.rollbackIdentity(identity.value.createdPaths);
-			throw error;
-		}
+		this.options.beforeWrite?.();
+		const published = this.withDescriptorWriteLock(descriptor.id, () => {
+			const latest = this.read(descriptor.id);
+			this.options.afterLockRead?.();
+			if (
+				latest?.lifecycle === "dissolved" &&
+				descriptor.lifecycle !== undefined &&
+				descriptor.lifecycle !== "dissolved"
+			) {
+				return null;
+			}
+			const proposed = exact
+				? mergeExactDescriptor(descriptor, callerBaseline ?? sampled, latest)
+				: applyWriteLaw(descriptor, latest, writer);
+			const identity = this.claimDescriptorIdentity(proposed);
+			if (!identity.ok) throw new Error(identity.message);
+			try {
+				this.writeAtomic(this.pathFor(proposed.id), this.scrubTick(proposed));
+			} catch (error) {
+				if (identity.value) this.rollbackIdentity(identity.value.createdPaths);
+				throw error;
+			}
+			return proposed;
+		});
+		if (published === null) return;
+		descriptor = published;
 		// THE REINCARNATION DROP (plan 100 Phase 2, fix rounds 6, 7 and 8).
 		//
 		// ONE PREDICATE: keep the map stamp only when the write lands on the SAME

@@ -53,6 +53,13 @@ export type SendOutcome = "confirmed" | "sent" | "unverified" | "held" | "failed
  *  declined for safety (a conflicting half-archive) — never silent data loss. */
 export type ArchiveOutcome = "archived" | "already-archived" | "skipped";
 
+export interface RegistryWriteExactOptions {
+	/** Descriptor snapshot the caller used to construct its proposal. When
+	 *  supplied, fields unchanged from this baseline come from fresh disk and
+	 *  the caller's object-construction window is race-free. */
+	readonly baseline?: SessionDescriptor;
+}
+
 /** Reads/writes the ~/.pij/ peer registry (one descriptor per session).
  *
  *  Two-tier since plan 071 D1: `list()` scans ONLY the hot tier (live seats plus
@@ -62,6 +69,10 @@ export interface RegistryPort {
 	/** All known session descriptors in the HOT tier. Never reads the archive —
 	 *  that is the whole point of the tier split. */
 	list(): SessionDescriptor[];
+	/** Every terminal descriptor across BOTH storage tiers. Includes hot
+	 *  dissolved/failed records hidden or filtered by `list()`, plus archived
+	 *  descriptors. Storage layout remains an adapter concern. */
+	listTerminal(): SessionDescriptor[];
 	/** One descriptor by id, or null if absent. Falls back to the archive by
 	 *  direct path (filename = id, no glob) so an archived seat stays addressable. */
 	read(id: SessionId): SessionDescriptor | null;
@@ -74,11 +85,13 @@ export interface RegistryPort {
 	 *  `writer` declares which side you are, so the fields you OWN keep the values
 	 *  you just computed. Omitting it is safe — you simply own nothing. */
 	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void;
-	/** Exact last-write-wins, NO merge. The only correct use is deliberately
-	 *  CLEARING a contested field (e.g. stripping a prior incarnation's `terminal`
-	 *  when a seat is re-adopted). Every call site must say why in a comment; the
-	 *  write-law test enumerates them so a new one has to justify itself. */
-	writeExact(descriptor: SessionDescriptor): void;
+	/** Exact for caller changes and CLI-owned denorm fields, rebased onto the
+	 *  latest descriptor under the same lock as `write`. Supplying `baseline`
+	 *  closes the caller-read race; omitting it falls back to the adapter's sample
+	 *  and narrows protection to the publish call's own read/write window. This
+	 *  remains the escape hatch for deliberately CLEARING a contested field.
+	 *  Every call site must say why in a comment. */
+	writeExact(descriptor: SessionDescriptor, options?: RegistryWriteExactOptions): void;
 	/** Replace a dissolved tombstone with a new runtime incarnation. */
 	revive(descriptor: SessionDescriptor): Result<void>;
 	/** Remove a session's descriptor (on shutdown). */
