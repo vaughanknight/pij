@@ -130,6 +130,7 @@ import {
 	deriveHarnessPijId,
 	filterByFolder,
 	memorableIdentitySeed,
+	resolveLivePane,
 	resolveSelf,
 } from "./core/discovery.js";
 import { formatFocusList, launchFocus, listFocuses, saveFocus } from "./core/focus.js";
@@ -1150,18 +1151,10 @@ function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistra
 			: undefined;
 	if (!identity.value) {
 		if (currentPane) {
-			const byPane = registry
-				.list()
-				.filter(
-					(descriptor) =>
-						descriptor.paneId === currentPane &&
-						isPushedSeat(descriptor) &&
-						Boolean(descriptor.harnessSessionId) &&
-						descriptor.lifecycle !== "dissolved",
-				);
-			const snapshot = byPane.length === 1 ? byPane[0] : undefined;
-			const descriptor = snapshot ? registry.read(snapshot.id) : undefined;
-			if (descriptor?.harness && descriptor.harnessSessionId) {
+			const paneOwner = resolveLivePane(currentPane, registry.list());
+			if (!paneOwner.ok) return paneOwner;
+			const descriptor = paneOwner.value ? registry.read(paneOwner.value) : undefined;
+			if (descriptor?.harness && descriptor.harnessSessionId && isPushedSeat(descriptor)) {
 				return ok({
 					descriptor,
 					identity: {
@@ -2030,27 +2023,18 @@ function waitForFocusPiRegistration(
 ): Result<SessionDescriptor> {
 	const deadline = Date.now() + WAIT_TIMEOUT_MS;
 	while (Date.now() <= deadline) {
-		let matches: SessionDescriptor[];
+		let registered: SessionDescriptor | undefined;
 		try {
-			matches = registry
-				.list()
-				.filter(
-					(descriptor) => descriptor.paneId === paneId && (descriptor.harness ?? "pi") === "pi",
-				);
+			const paneOwner = resolveLivePane(paneId, registry.list());
+			if (!paneOwner.ok) return paneOwner;
+			registered = paneOwner.value ? (registry.read(paneOwner.value) ?? undefined) : undefined;
 		} catch (error) {
 			return err(
 				"E-NOREG",
 				`cannot inspect pi self-registration for focus spawn '${spawnId}': ${String(error)}`,
 			);
 		}
-		const registered = matches[0];
-		if (matches.length === 1 && registered) return ok(registered);
-		if (matches.length > 1) {
-			return err(
-				"E-AMBIG",
-				`multiple pi sessions self-registered in focus pane ${paneId} for spawn '${spawnId}'`,
-			);
-		}
+		if (registered && (registered.harness ?? "pi") === "pi") return ok(registered);
 		sleepSync(FOLLOW_MS);
 	}
 	return err(
@@ -4028,9 +4012,9 @@ function orchestrationSelf(registry: FsRegistry) {
 	const envId = process.env.PIJ_SESSION_ID;
 	const pane = process.env.TMUX_PANE;
 	if ((!envId || envId.trim() === "") && pane && pane.trim() !== "") {
-		const byPane = registry.list().filter((descriptor) => descriptor.paneId === pane);
-		const only = byPane[0];
-		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
+		const paneOwner = resolveLivePane(pane, registry.list());
+		if (!paneOwner.ok) return paneOwner;
+		if (paneOwner.value) return resolveSelf(paneOwner.value, [], pane);
 	}
 	return resolveSelf(envId, filterByFolder(registry.list(), process.cwd()), pane);
 }
@@ -4372,11 +4356,14 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	// --once peer never auto-closed.
 	const reg = new FsRegistry(pijHome);
 	const ownPaneEnv = process.env.TMUX_PANE;
-	const byPane = ownPaneEnv ? reg.list().filter((d) => d.paneId === ownPaneEnv) : [];
-	const callerRes =
-		!process.env.PIJ_SESSION_ID && byPane.length === 1 && byPane[0]
-			? { ok: true as const, value: byPane[0].id }
-			: resolveSelf(process.env.PIJ_SESSION_ID, filterByFolder(reg.list(), cwd), ownPaneEnv);
+	const paneOwner = ownPaneEnv ? resolveLivePane(ownPaneEnv, reg.list()) : ok(undefined);
+	const callerRes = (() => {
+		if (!process.env.PIJ_SESSION_ID) {
+			if (!paneOwner.ok) return paneOwner;
+			if (paneOwner.value) return ok(paneOwner.value);
+		}
+		return resolveSelf(process.env.PIJ_SESSION_ID, filterByFolder(reg.list(), cwd), ownPaneEnv);
+	})();
 	const spawnedBy = callerRes.ok ? callerRes.value : undefined;
 	// Fail-fast advisory (FX001-1): without a resolved caller there is NO report
 	// target — `pij agent report` will die E-NOREPORTTARGET and a --once peer can
@@ -4611,13 +4598,11 @@ function resolveChoreSeatId(
 	const descriptors = registry.list();
 	const local = filterByFolder(descriptors, cwd);
 	const pane = process.env.TMUX_PANE;
-	const byPane =
-		pane && pane.trim() !== ""
-			? descriptors.filter((descriptor) => descriptor.paneId === pane)
-			: [];
-	const derived =
-		byPane.length === 1 && byPane[0]
-			? { ok: true as const, value: byPane[0].id }
+	const paneOwner = pane && pane.trim() !== "" ? resolveLivePane(pane, descriptors) : ok(undefined);
+	const derived = !paneOwner.ok
+		? paneOwner
+		: paneOwner.value
+			? ok(paneOwner.value)
 			: resolveSelf(undefined, local, pane);
 
 	if (explicit) {
@@ -4639,7 +4624,7 @@ function resolveChoreSeatId(
 	}
 
 	if (derived.ok) return { seatId: derived.value };
-	if (local.length === 0 && byPane.length === 0) return {};
+	if (local.length === 0 && paneOwner.ok && paneOwner.value === undefined) return {};
 	return { error: `${derived.code}: ${derived.message}` };
 }
 

@@ -115,6 +115,27 @@ export function excludeSelf(
 	return descriptors.filter((d) => d.id !== selfId);
 }
 
+export function isPaneDeliveryTarget(descriptor: SessionDescriptor): boolean {
+	return descriptor.lifecycle !== "dissolved" && descriptor.lifecycle !== "failed";
+}
+
+/** Resolve one reusable tmux pane address to its sole live delivery target. */
+export function resolveLivePane(
+	paneId: string,
+	descriptors: readonly SessionDescriptor[],
+): Result<SessionId | undefined> {
+	const matches = descriptors.filter(
+		(descriptor) => descriptor.paneId === paneId && isPaneDeliveryTarget(descriptor),
+	);
+	if (matches.length > 1) {
+		return err(
+			"E-AMBIG",
+			`pane ${paneId} maps to multiple live pij ids: ${matches.map((descriptor) => descriptor.id).join(", ")}`,
+		);
+	}
+	return ok(matches[0]?.id);
+}
+
 /** Resolve "which session am I" when parent + worker share a cwd (finding 07).
  *  Precedence:
  *    1. PIJ_SESSION_ID env value wins (exported by the extension at boot);
@@ -138,9 +159,9 @@ export function resolveSelf(
 		if (only) return ok(only.id);
 	}
 	if (paneId && paneId.trim() !== "") {
-		const byPane = localDescriptors.filter((d) => d.paneId === paneId);
-		const first = byPane[0];
-		if (byPane.length === 1 && first) return ok(first.id);
+		const resolved = resolveLivePane(paneId, localDescriptors);
+		if (!resolved.ok) return resolved;
+		if (resolved.value) return ok(resolved.value);
 	}
 	if (localDescriptors.length === 0) {
 		return err("E-AMBIG", "cannot resolve self: no local session and PIJ_SESSION_ID unset");

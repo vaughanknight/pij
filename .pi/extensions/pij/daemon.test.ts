@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
@@ -27,6 +27,7 @@ import {
 	TICK_HEARTBEAT_FILE,
 } from "./core/daemon/tick-heartbeat.js";
 import { receiptBody } from "./core/message.js";
+import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { RegistryPort } from "./core/ports.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
 import type { DescriptorWriter } from "./core/registry-write.js";
@@ -104,6 +105,7 @@ interface FakePortsOptions {
 	readonly paneListings?: () => readonly PaneListing[];
 	readonly tapChunks?: Uint8Array[];
 	readonly now?: () => number;
+	readonly processSnapshot?: () => ProcessSnapshot;
 }
 
 function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
@@ -161,6 +163,7 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 		home: () => home,
 		now: () => options.now?.() ?? options.nowMs ?? 1000,
 		isAlive: (pid) => options.isAlive?.(pid) ?? options.alive ?? true,
+		...(options.processSnapshot ? { processSnapshot: options.processSnapshot } : {}),
 	};
 }
 
@@ -194,6 +197,68 @@ function markerPath(to: string, messageId: string): string {
 }
 
 describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
+	it("incident replay: a pane-less dissolved seat never delivers to or binds a fresh unregistered Copilot pane", async () => {
+		const id = "pij-nasty-tick";
+		const planned = "11111111-1111-4111-8111-111111111111";
+		const foreign = "22222222-2222-4222-8222-222222222222";
+		const registry = new FsRegistry(home);
+		const stale = desc({
+			id,
+			pid: 58644,
+			harness: "copilot",
+			lifecycle: "pending",
+			paneId: "%108",
+			windowId: "@9",
+			plannedHarnessSessionId: planned,
+			initInjectedAt: "2026-08-27T09:34:40.000Z",
+			spawnedBy: "pij-static-giraffe",
+		});
+		registry.write({ ...stale, lifecycle: "dissolved", paneId: undefined });
+		expect(registry.read(id)?.paneId).toBeUndefined();
+		let staleVisible = true;
+		vi.spyOn(registry, "list").mockImplementation(() => (staleVisible ? [stale] : []));
+
+		let pane = "◎ Working esc interrupt";
+		const ports = fakePorts({
+			paneText: () => pane,
+			paneListings: () => [{ paneId: "%108", dead: false }],
+			processSnapshot: () => {
+				staleVisible = false;
+				return {
+					ok: true,
+					capturedAtMs: NOW_MS,
+					processes: [
+						{
+							pid: 58644,
+							command: `node /opt/copilot/bin/copilot --yolo --session-id ${foreign}`,
+						},
+					],
+				};
+			},
+		});
+		const channel = new FsChannel(home);
+		const queued = channel.deliver({
+			from: "pij-static-giraffe",
+			to: id,
+			body: "contaminating preamble",
+		});
+		expect(queued.ok).toBe(true);
+		const logs: string[] = [];
+		const daemon = new Daemon(home, ports, registry, channel, (line) => logs.push(line));
+
+		await daemon.tick();
+		expect(registry.read(id)?.paneId).toBeUndefined();
+		pane = "/ commands · ? help · tab next tab                  GPT-5.5";
+		await daemon.tick();
+
+		expect(ports.sent).toEqual([]);
+		expect(registry.read(id)).toMatchObject({ lifecycle: "dissolved" });
+		expect(registry.read(id)?.paneId).toBeUndefined();
+		expect(registry.read(id)?.harnessSessionId).toBeUndefined();
+		expect(logs.some((line) => line.includes(`spawn ${id}: bound`))).toBe(false);
+		expect(messageBodies("pij-static-giraffe").some((body) => body.includes("ready"))).toBe(false);
+	});
+
 	it("persists lastTickAt so an unticked/wedged daemon becomes mechanically stale", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(

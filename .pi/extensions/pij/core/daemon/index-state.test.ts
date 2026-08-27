@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { SessionDescriptor } from "../types.js";
@@ -32,8 +34,8 @@ describe("IndexState", () => {
 		const ix = IndexState.from(SNAPSHOT);
 		expect(ix.get("claude-b")?.harnessSessionId).toBe("sess-b");
 		expect(ix.resolveHarnessSession("sess-b")).toBe("claude-b");
-		expect(ix.resolvePane("%2")).toBe("claude-b");
-		expect(ix.resolvePane("%3")).toBe("claude-c");
+		expect(ix.resolvePane("%2")).toEqual({ ok: true, value: "claude-b" });
+		expect(ix.resolvePane("%3")).toEqual({ ok: true, value: "claude-c" });
 		expect(ix.all()).toHaveLength(3);
 	});
 
@@ -98,7 +100,79 @@ describe("IndexState", () => {
 	it("stale pane mapping is dropped on rebuild (a closed pane no longer resolves)", () => {
 		const ix = IndexState.from(SNAPSHOT);
 		ix.rebuild([desc({ id: "pi-a", harness: "pi" })]);
-		expect(ix.resolvePane("%2")).toBeUndefined();
+		expect(ix.resolvePane("%2")).toEqual({ ok: true, value: undefined });
 		expect(ix.resolveHarnessSession("sess-b")).toBeUndefined();
+	});
+
+	it("resolves bound and pending panes but never dissolved or failed panes", () => {
+		const ix = IndexState.from([
+			desc({ id: "bound", paneId: "%1", lifecycle: "bound" }),
+			desc({ id: "dissolved", paneId: "%2", lifecycle: "dissolved" }),
+			desc({ id: "failed", paneId: "%3", lifecycle: "failed" }),
+			desc({ id: "pending", paneId: "%4", lifecycle: "pending" }),
+		]);
+
+		expect(ix.resolvePane("%1")).toEqual({ ok: true, value: "bound" });
+		expect(ix.resolvePane("%2")).toEqual({ ok: true, value: undefined });
+		expect(ix.resolvePane("%3")).toEqual({ ok: true, value: undefined });
+		expect(ix.resolvePane("%4")).toEqual({ ok: true, value: "pending" });
+		expect(ix.get("dissolved")?.lifecycle).toBe("dissolved");
+		expect(ix.get("failed")?.lifecycle).toBe("failed");
+	});
+
+	it("a terminal descriptor cannot overwrite the fresh seat that reused its pane", () => {
+		const ix = IndexState.from([
+			desc({ id: "fresh-bound", paneId: "%1", lifecycle: "bound" }),
+			desc({ id: "closed-old", paneId: "%1", lifecycle: "dissolved" }),
+		]);
+
+		expect(ix.resolvePane("%1")).toEqual({ ok: true, value: "fresh-bound" });
+		expect(ix.get("closed-old")?.lifecycle).toBe("dissolved");
+	});
+
+	it("reports E-AMBIG when multiple live delivery targets claim one pane", () => {
+		const ix = IndexState.from([
+			desc({ id: "live-a", paneId: "%1", lifecycle: "bound" }),
+			desc({ id: "live-b", paneId: "%1", lifecycle: "pending" }),
+		]);
+
+		expect(ix.resolvePane("%1")).toMatchObject({ ok: false, code: "E-AMBIG" });
+	});
+
+	it("keeps runtime pane resolution behind the shared lifecycle-filtered resolver", () => {
+		const root = resolve(import.meta.dirname, "..", "..");
+		const files: string[] = [];
+		const walk = (dir: string): void => {
+			for (const entry of readdirSync(dir, { withFileTypes: true })) {
+				const path = join(dir, entry.name);
+				if (entry.isDirectory()) walk(path);
+				else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) files.push(path);
+			}
+		};
+		walk(root);
+
+		const violations: string[] = [];
+		for (const file of files) {
+			const lines = readFileSync(file, "utf8").split("\n");
+			for (let index = 0; index < lines.length; index++) {
+				const line = lines[index] ?? "";
+				if (!line.includes(".paneId ===") || line.includes("=== undefined")) continue;
+				const context = lines
+					.slice(Math.max(0, index - 4), Math.min(lines.length, index + 5))
+					.join("\n");
+				const sharedResolver =
+					file.endsWith("/core/discovery.ts") &&
+					context.includes("isPaneDeliveryTarget(descriptor)");
+				const pendingOccupant =
+					file.endsWith("/core/current-session.ts") &&
+					context.includes('descriptor.lifecycle === "pending"') &&
+					context.includes('descriptor.lifecycle === "ready"');
+				if (!sharedResolver && !pendingOccupant) {
+					violations.push(`${relative(root, file)}:${index + 1}: ${line.trim()}`);
+				}
+			}
+		}
+
+		expect(violations).toEqual([]);
 	});
 });

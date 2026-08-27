@@ -89,6 +89,7 @@ import {
 	buildSchedulerProjection,
 	WATCHDOG_SCHEDULER_FILE,
 } from "./core/daemon/watchdog-scheduler-projection.js";
+import { resolveLivePane } from "./core/discovery.js";
 import { daemonOwnsDelivery } from "./core/harness/pi.js";
 import { persistReceiptEnvelope, prepareReceiptEnvelopes } from "./core/inbox.js";
 import { receiptBody } from "./core/message.js";
@@ -98,6 +99,7 @@ import {
 	type BatonNoticeSink,
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
+import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { persistDaemonWrite } from "./core/registry-write.js";
@@ -161,9 +163,12 @@ export class Daemon {
 	 *  Idempotent by lookup: a pane with no live descriptor is a no-op, so repeated
 	 *  gone sends in one batch retire the seat once. */
 	private readonly unbindGonePane = (paneId: string): void => {
-		const owner = this.registry
-			.list()
-			.find((d) => d.paneId === paneId && d.lifecycle !== "dissolved");
+		const resolved = resolveLivePane(paneId, this.registry.list());
+		if (!resolved.ok) {
+			this.log(`unbind pane ${paneId}: ${resolved.code} ${resolved.message}`);
+			return;
+		}
+		const owner = resolved.value ? this.registry.read(resolved.value) : null;
 		if (!owner) return;
 		this.registry.dissolve(owner.id);
 		this.drives.delete(owner.id);
@@ -211,6 +216,7 @@ export class Daemon {
 	 *  each tick; captures lazily on the first question, so a tick that asks
 	 *  nothing forks nothing. */
 	private readonly processStates = new TickScopedProcessStates();
+	private tickProcessSnapshot: ProcessSnapshot | undefined;
 	/** THIS TICK'S RENDERED FRAME per pane (pij#229).
 	 *
 	 *  `refreshPaneSignals` already captured every live pane once per tick and
@@ -252,6 +258,11 @@ export class Daemon {
 	/** Ports with the composer gate WELDED ON — see the constructor. */
 	private readonly ports: DaemonPorts;
 
+	private processSnapshotThisTick(capture: () => ProcessSnapshot): ProcessSnapshot {
+		this.tickProcessSnapshot ??= capture();
+		return this.tickProcessSnapshot;
+	}
+
 	constructor(
 		private readonly pijHome: string,
 		rawPorts: DaemonPorts,
@@ -277,6 +288,7 @@ export class Daemon {
 		// `this.ports.now is not a function` (2026-07-25 fleet outage). Delegate
 		// through the prototype chain so class adapters and plain-object fakes
 		// both keep their full surface.
+		const captureProcessSnapshot = rawPorts.processSnapshot?.bind(rawPorts);
 		this.ports = Object.assign(Object.create(Object.getPrototypeOf(rawPorts)), rawPorts, {
 			sendText: (
 				paneId: string,
@@ -307,6 +319,9 @@ export class Daemon {
 				this.markSelfInjection(paneId, text, this.ports.now());
 				return outcome;
 			},
+			...(captureProcessSnapshot
+				? { processSnapshot: () => this.processSnapshotThisTick(captureProcessSnapshot) }
+				: {}),
 		});
 		this.expectations = new FsSpawnExpectationStore(pijHome);
 		this.watchManager =
@@ -375,6 +390,7 @@ export class Daemon {
 		// first suspension question (pij#181). Dropping it here is what makes the
 		// table THIS tick's table rather than a stale one.
 		this.processStates.invalidate();
+		this.tickProcessSnapshot = undefined;
 		// Same discipline for pane frames (pij#229): this tick's captures and this
 		// tick's live-pane list, both rebuilt by `refreshPaneSignals` below.
 		this.tickPaneCaptures.clear();
@@ -523,6 +539,7 @@ export class Daemon {
 			this.log(`baton sweep: pushed ${batonSweep.value.alerts} holder alert(s)`);
 		}
 
+		const processSnapshot = this.ports.processSnapshot?.();
 		for (const d of this.index.pending()) {
 			if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) continue; // pi/pull self-drive
 			try {
@@ -772,7 +789,7 @@ export class Daemon {
 			// ONE capture per sweep, never one per descriptor (s095 R2): at ~500
 			// descriptors on a ~600ms tick a per-descriptor `ps` is ~500 process-table
 			// spawns per tick, which stalls the tick and therefore message delivery.
-			processSnapshot: this.ports.processSnapshot?.(),
+			processSnapshot: processSnapshot,
 			paneExists: (paneId) => !this.ports.isPaneDead(paneId),
 			failureReasonFor: (descriptor) =>
 				classifyDeathReason(descriptor.paneId ? this.paneFrameThisTick(descriptor.paneId) : ""),

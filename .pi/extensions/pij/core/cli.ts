@@ -46,7 +46,13 @@ import {
 	renderSchedulerVerdict,
 	WATCHDOG_SCHEDULER_FILE,
 } from "./daemon/watchdog-scheduler-projection.js";
-import { filterByFolder, filterPrime, resolveSelf, selectByRepository } from "./discovery.js";
+import {
+	filterByFolder,
+	filterPrime,
+	resolveLivePane,
+	resolveSelf,
+	selectByRepository,
+} from "./discovery.js";
 import type { PersistReceiptEnvelopeAction } from "./inbox.js";
 import { type BriefAckReceipt, briefAckBody } from "./message.js";
 import { closestModel } from "./models/match.js";
@@ -1996,9 +2002,9 @@ function selfId(deps: CliDeps): Result<SessionId> {
 	// The folder filter below starved resolveSelf's pane branch on cross-repo
 	// calls, silently losing spawnedBy (reports then died E-NOREPORTTARGET).
 	if (pane && pane.trim() !== "") {
-		const byPane = deps.registry.list().filter((d) => d.paneId === pane);
-		const only = byPane[0];
-		if (byPane.length === 1 && only) return resolveSelf(only.id, [], pane);
+		const resolved = resolveLivePane(pane, deps.registry.list());
+		if (!resolved.ok) return resolved;
+		if (resolved.value) return resolveSelf(resolved.value, [], pane);
 	}
 	return resolveSelf(undefined, filterByFolder(deps.registry.list(), deps.cwd), pane);
 }

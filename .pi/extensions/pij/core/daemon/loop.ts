@@ -21,6 +21,7 @@ import {
 } from "../binding.js";
 import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js";
 import { buildInitInjection, discoverNewTranscript } from "../harness/claude.js";
+import { isCopilotSessionId } from "../harness/copilot.js";
 import { type TranscriptListing, transcriptLayout } from "../harness/transcript.js";
 import { classifyInterstitial } from "../interstitial.js";
 import type { ProcessSnapshot } from "../platform/types.js";
@@ -30,7 +31,7 @@ import { persistDaemonWrite } from "../registry-write.js";
 export { persistDaemonWrite } from "../registry-write.js";
 
 import { classifyReadiness, type ReadinessState } from "../readiness.js";
-import { classifyDeathReason } from "../state.js";
+import { classifyDeathReason, resolveAgentLiveness } from "../state.js";
 import type {
 	DeathReason,
 	DeliveredMessage,
@@ -239,6 +240,15 @@ export function driveSession(
 ): DriveOutcome {
 	const paneId = descriptor.paneId;
 	if (!paneId) return { kind: "waiting" }; // no pane yet (pre-split)
+	const durable = registry.read(descriptor.id);
+	if (
+		descriptor.lifecycle === "dissolved" ||
+		descriptor.lifecycle === "failed" ||
+		durable?.lifecycle === "dissolved" ||
+		durable?.lifecycle === "failed"
+	) {
+		return { kind: "waiting" };
+	}
 
 	// Dead pane → terminal failure (authoritative death signal).
 	if (ports.isPaneDead(paneId)) {
@@ -361,6 +371,7 @@ export function driveSession(
 	// binding. Good models bind immediately — the gate never delays a valid spawn.
 	if (descriptor.plannedHarnessSessionId) {
 		const harness = descriptor.harness ?? "claude";
+		const planned = descriptor.plannedHarnessSessionId;
 		// Bad-model check runs BEFORE the first-inference gate so a 400 error visible
 		// on the very first ready tick is caught immediately (the error signal does not
 		// require a busy→ready round-trip — the harness rejects the model synchronously).
@@ -375,6 +386,15 @@ export function driveSession(
 				badModel.reason ?? "model-not-supported",
 			);
 		}
+		const processSnapshot = ports.processSnapshot?.();
+		const identity =
+			processSnapshot === undefined ? undefined : resolveAgentLiveness(descriptor, processSnapshot);
+		if (
+			(harness === "copilot" && !isCopilotSessionId(planned)) ||
+			identity?.cause !== "session-id-match"
+		) {
+			return { kind: "waiting" };
+		}
 		// First-inference gate (FIX-1): do NOT bind until the init-inject turn has
 		// completed a round-trip (pane went busy at least once after init injection).
 		// A good model still binds on the next ready tick — exactly one extra tick.
@@ -383,7 +403,7 @@ export function driveSession(
 		if (!drive.firstInferenceSeen) return { kind: "waiting" };
 		const model = extractBoundModel(harness, pane);
 		const bound = {
-			...applyBinding(descriptor, descriptor.plannedHarnessSessionId),
+			...applyBinding(descriptor, planned),
 			...(model ? { boundModel: model } : {}),
 		};
 		persistDaemonWrite(registry, bound);
@@ -392,7 +412,7 @@ export function driveSession(
 			const note = buildBoundNotice(bound);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
 		}
-		return { kind: "bound", harnessSessionId: descriptor.plannedHarnessSessionId };
+		return { kind: "bound", harnessSessionId: planned };
 	}
 
 	// Claude/codex: the session id is auto-generated, so discover it by NEW path
@@ -414,7 +434,15 @@ export function driveSession(
 		// The bind id is layout-derived: codex's trailing UUID, NOT discovery's
 		// claude-stem default (Finding 06). Codex also persists the absolute rollout
 		// path — its date-nested path can't be rebuilt from the bare UUID for tail.
+		// The fresh native transcript/rollout is the session evidence for auto-id
+		// Claude/Codex; unlike the planned path above, no launch argv can name it.
 		const harnessSessionId = layout.sessionIdOf(discovery.path);
+		const processSnapshot = ports.processSnapshot?.();
+		const identity =
+			processSnapshot === undefined
+				? undefined
+				: resolveAgentLiveness({ ...descriptor, harnessSessionId }, processSnapshot);
+		if (identity?.liveness !== "alive") return { kind: "waiting" };
 		const bound = {
 			...applyBinding(descriptor, harnessSessionId),
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
