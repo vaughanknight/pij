@@ -287,3 +287,9 @@ Both mandated mutations RED (MUT-OWNER-BEHAV @daemon.test.ts:228, MUT-HONESTLOG 
 - ADV-5 (carried, out of scope, E29): the loss is REPORTED not FIXED — one malformed entry costs every VALID watcher their notice (parseSidecar reject-all). Follow-up item.
 - MERGE-READINESS: candidate does NOT cherry-pick cleanly onto current main 6aa12c34 — conflicts TWICE in the daemon.test.ts import block (items 10a/10b/13/15/29 drift landed IN-FENCE). Resolve by union at PR time.
 ## 2026-08-28 — o-prime RULING: two green full runs count ONLY on the fresh-from-main PR worktree (cherry-pick); the stream worktree's full run is DIAGNOSTIC, never a gate (applies to item-24, 29b-T001, 30). o-prime verifies at the merge product. [Resolves the COORD-006 frankenstein: stream worktree accumulates old-base + piecemeal-reconcile drift → unreliable full-suite; item fence tests stay valid.]
+
+## 2026-08-28 — CANDIDATE CHAINS (for PRs; cherry-pick onto fresh main). 29b-T001 wiring fold COMPLETE (ad32ecb).
+- **item-24 PR** = cherry-pick a27ab58 (idempotency) → 6641943 (ADV-1 fold) → 588dd0e (hardening) onto fresh main; carries §14 provenance for #311.
+- **29b-T001 PR** = cherry-pick 816a726 (owner-via-watchers) → 87a0c13 (fold) → ad32ecb (wiring fold) onto fresh main; union-resolve the daemon.test.ts import conflict.
+- 29b-T001 wiring fold COMPLETE: extracted `wireBridgeRestartNotifier`; MUT-WIRING reds the behavioural test @daemon.test.ts:228 WITHOUT the grep (E28 wiring-vacuity closed); T001d honest count "N dropped (M malformed)" (revert reds @:274); grep kept as 2nd sensor; daemon.test.ts 71/2skip, gatesClean true (frankenstein full-suite correctly NOT run).
+- Reconciling the stream worktree to current main now (COORD-006 fix) — candidates live only as the commits above.
