@@ -3,33 +3,33 @@
   "command": "observe",
   "harness": "claude-code",
   "harness_session_id": "25d614db-43dc-4f9e-aac1-8d23bd4a29cc",
-  "timecode": "2026-08-27T12:41:25.772Z",
+  "timecode": "2026-08-27T14:20:18.340Z",
   "window": {
     "since": "last-command",
-    "from": 999,
-    "to": 1904
+    "from": 1904,
+    "to": 2216
   },
   "branch": "s391/item1b-dispatch-retire",
   "branch_changed": false,
   "tokens": {
-    "input": 7869,
-    "output": 120850,
-    "cache_create": 178244,
-    "cache_read": 48881722,
-    "total": 49188685,
+    "input": 1498,
+    "output": 29054,
+    "cache_create": 46161,
+    "cache_read": 21531288,
+    "total": 21608001,
     "subagent_tokens": 0,
-    "grand_total": 49188685
+    "grand_total": 21608001
   },
   "models": {
     "claude-fable-5": {
-      "turns": 102,
-      "output_tokens": 120850
+      "turns": 37,
+      "output_tokens": 29054
     }
   },
   "effort": "high",
   "skills": {},
   "tools": {
-    "Bash": 94
+    "Bash": 30
   },
   "subagents": [],
   "files": {
@@ -43,6 +43,6 @@
     "local_commands": 0
   },
   "thinking": {
-    "blocks": 122
+    "blocks": 35
   }
 }
