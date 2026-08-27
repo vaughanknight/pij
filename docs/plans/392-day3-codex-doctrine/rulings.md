@@ -124,3 +124,6 @@ Recorded the moment they landed (orient-global iron rule: rulings land on disk i
 - 10b in flight (dlg-0015) on base 10483d8+item-10a; item 12's files (harness/scripts) are disjoint from 10b's (core daemon), so 10b is unaffected. Rebase onto be31e66c at 10b PR time (not under the active coder). Day-3 SHIPPED: 3b/3c/7/FX001/9/11/9-FX/12 + doctrine.
 
 ## 2026-08-28 — o-prime RULING: LAND 10b now (incident fixed, ADV-2 fails safe). ITEM 17 = the 4 advisories as ONE follow-up PR after 14, order: ADV-2 (bind refusal must LOG + distinguish indeterminate-probe [retry w/ backoff] from foreign [refuse] — "never silent") → ADV-4 (win32 allowlist endsWith→join) → ADV-3 (sweep bypass shapes) → ADV-1 (isCopilotSessionId coverage). Order: 10a+10b PR → 14 → 17 → merge+push → jordan-spec handover ping.
+
+## 2026-08-28 — o-prime: MERGED PR #13 (10a+10b, incident half 2) → main 42b7268f. Incident FULLY FIXED on main (both halves). Live daemon ff BATCHED with s391 1b → ONE restart (kingfisher window) makes both daemon halves live. s392: item 14 (rebase onto 42b7268f) → 17.
+- Day-3 code SHIPPED: 3b/3c/7/FX001/9/11/9-FX/12/10a/10b + doctrine. Only item 14 (doc) + item 17 (advisories) remain before the Jordan-spec handover.
