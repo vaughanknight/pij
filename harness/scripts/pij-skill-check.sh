@@ -330,11 +330,20 @@ check_links() {
   file=$1
   dir=$(dirname "$file")
   while IFS= read -r target; do
+    case "$target" in
+      '<'*'>')
+        pointy_target=${target#<}
+        pointy_target=${pointy_target%>}
+        case "$pointy_target" in
+          */*|*.*) target=$pointy_target ;;
+          *) continue ;; # R5/R6: skip only a simple <placeholder>, not a bracketed path
+        esac
+        ;;
+    esac
     target=${target%%#*}
     [ -z "$target" ] && continue
     case "$target" in
       /*|http://*|https://*|mailto:*) continue ;;
-      '<'*'>') continue ;; # R5: an angle-bracket <placeholder> in a command example is not a link
     esac
     [ -e "$dir/$target" ] || err "prime pointer: $file → $target is missing"
   done < <(grep -Eo '\]\([^)]*\)' "$file" 2>/dev/null | sed 's/^](//; s/)$//' || true)
@@ -416,9 +425,10 @@ EOF
       }
     '
   }
-  readback_pos=$(printf '%s\n' "$ordered_entry" | marker_position "back verbatim")
-  confirm_inline_pos=$(printf '%s\n' "$ordered_entry" | marker_position "confirm inline")
-  fleet_confirm_pos=$(printf '%s\n' "$ordered_entry" | marker_position "After the human confirms the fleet")
+  profile_step=$(printf '%s\n' "$ordered_entry" | grep -E '^11\. ' || true)
+  readback_pos=$(printf '%s\n' "$profile_step" | marker_position "back verbatim")
+  confirm_inline_pos=$(printf '%s\n' "$profile_step" | marker_position "confirm inline")
+  fleet_confirm_pos=$(printf '%s\n' "$profile_step" | marker_position "After the human confirms the fleet")
   if [ -z "$readback_pos" ] || [ -z "$confirm_inline_pos" ] || [ -z "$fleet_confirm_pos" ]; then
     err "orchestrator order: read-back precondition marker is missing"
   elif [ "$readback_pos" -lt "$fleet_confirm_pos" ] \
@@ -436,6 +446,12 @@ EOF
     "orchestrator contract: exact default reviewer profile"
   require_marker "$orchestrator" "read it back verbatim" \
     "orchestrator contract: verbatim profile read-back"
+  build_config=$(section "$orchestrator" "## Build configuration")
+  if printf '%s\n' "$build_config" | grep -Fq "read it back verbatim and confirm inline before fleet creation"; then
+    ok "orchestrator pair config: read-back before fleet creation"
+  else
+    err "orchestrator pair config: read-back before fleet creation — missing in ## Build configuration"
+  fi
   require_marker "$orchestrator" "never the o-prime's window" \
     "orchestrator contract: anti-prime-window topology"
   require_marker "$orchestrator" "source-verify every claimed seam" \
@@ -479,7 +495,7 @@ EOF
 
   previous=0
   while IFS='|' read -r label marker; do
-    line=$(grep -nF -- "$marker" "$orchestrator" | head -1 | cut -d: -f1 || true)
+    line=$(printf '%s\n' "$ordered_entry" | grep -nF -- "$marker" | head -1 | cut -d: -f1 || true)
     if [ -z "$line" ]; then
       err "orchestrator pair order: missing $label marker '$marker'"
     elif [ "$line" -lt "$previous" ]; then
