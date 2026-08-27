@@ -6,6 +6,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	annotateLongContext,
+	COPILOT_NO_LONG_CONTEXT,
 	claudeAliases,
 	codexConfigModels,
 	codexSnapshot,
@@ -253,6 +255,47 @@ describe("copilotSnapshot", () => {
 			expect(e.reasoning).toBe(true);
 			expect(e.levels).toEqual(GPT56_LEVELS);
 		}
+	});
+});
+
+describe("Copilot long-context capability", () => {
+	it("curates gemini-3.6-flash as rejecting long_context", () => {
+		expect(COPILOT_NO_LONG_CONTEXT.has("gemini-3.6-flash")).toBe(true);
+	});
+
+	it("annotates every denied Copilot entry after the raw-first registry merge", () => {
+		const raw = {
+			providers: {
+				"github-copilot": {
+					models: [{ id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" }],
+				},
+			},
+		};
+		const merged = annotateLongContext([
+			...parseModelsJson(raw),
+			...copilotSeedFromPi(raw),
+			...copilotSnapshot(),
+		]);
+		const denied = merged.filter(
+			(entry) =>
+				(entry.provider === "github-copilot" || entry.provider === "copilot") &&
+				entry.id === "gemini-3.6-flash",
+		);
+
+		expect(denied).toHaveLength(2);
+		for (const entry of denied) expect(entry.longContext).toBe(false);
+	});
+
+	it("preserves an explicit capability value", () => {
+		const explicit: ModelEntry = {
+			id: "gemini-3.6-flash",
+			name: "Gemini 3.6 Flash",
+			provider: "copilot",
+			verified: true,
+			longContext: true,
+		};
+
+		expect(annotateLongContext([explicit])).toEqual([explicit]);
 	});
 });
 

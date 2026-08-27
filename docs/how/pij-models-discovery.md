@@ -96,9 +96,10 @@ returns `E-CANARY-CONTEXT` when the footer reports the wrong tier (for example,
 `400K` for a 1M catalog model) or exposes no effective-window evidence. It never
 substitutes catalog metadata for an unobservable runtime value.
 
-Copilot spawns with a pinned model always include `--context long_context`; the
-canary then independently proves that the launched seat actually received that
-tier.
+Copilot spawns with a pinned model include `--context long_context` unless the
+registry marks the model `longContext:false` through the curated deny-set (for
+example, `gemini-3.6-flash`, which rejects the flag with HTTP 400). The canary
+context join may then report the model's smaller tier; that is expected.
 
 ## To make a new model *appear* in `pij models`
 

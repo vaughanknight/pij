@@ -164,6 +164,7 @@ import { parseReceiptBody, receiptBody } from "./core/message.js";
 import { normalizeModelQuery } from "./core/models/match.js";
 import type { ModelEntry } from "./core/models/registry.js";
 import { loadModels } from "./core/models/registry.js";
+import { resolveLongContext } from "./core/models/validate.js";
 import {
 	type BatonNotice,
 	type BatonNoticeReceipt,
@@ -2352,6 +2353,8 @@ function runSpawn(argv: readonly string[]): void {
 	// T006 / #3: warn (never block) on an unknown model OR an effort the chosen model
 	// doesn't support, so the caller knows before the pane opens. Both continue.
 	const known = loadModels();
+	const longContext =
+		req.value.model !== undefined ? resolveLongContext(known, req.value.model) : undefined;
 	const spawnWarn = buildSpawnWarning(req.value.model, known);
 	if (spawnWarn) process.stderr.write(`${spawnWarn}\n`);
 	const effortWarn = buildEffortWarning(req.value.effort, req.value.model, known);
@@ -2606,6 +2609,7 @@ function runSpawn(argv: readonly string[]): void {
 	const spawnCmd = buildControlSpawnCommand({
 		passthroughEnv: isolationPassthroughEnv(process.env),
 		...(rpcPort !== undefined ? { rpcPort } : {}),
+		...(longContext === false ? { longContext: false } : {}),
 		harness: req.value.harness,
 		pijId,
 		cwd,
@@ -3942,6 +3946,7 @@ function spawnAgentPane(
 		harness: HarnessKind;
 		model?: string;
 		effort?: string;
+		longContext?: boolean;
 		spawnedBy?: string;
 		layout?: SpawnLayout;
 	},
@@ -3999,6 +4004,7 @@ function spawnAgentPane(
 		cwd,
 		...(plan.model ? { model: plan.model } : {}),
 		...(plan.effort ? { effort: plan.effort } : {}),
+		...(plan.longContext === false ? { longContext: false } : {}),
 		...(plan.spawnedBy ? { parentId: plan.spawnedBy } : {}),
 		...(copilotSessionId ? { copilotSessionId } : {}),
 		...(claudeSessionId ? { forkSessionId: claudeSessionId } : {}),
@@ -4135,6 +4141,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 		process.exit(exitCodeFor(prep.error.code));
 	}
 	const plan = prep.plan;
+	const longContext = plan.model !== undefined ? resolveLongContext(models, plan.model) : undefined;
 	const requestedAt = new Date().toISOString();
 	const expectations = new FsSpawnExpectationStore(pijHome);
 	const expectation = createSpawnExpectation({
@@ -4165,6 +4172,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 			harness: plan.harness,
 			...(plan.model ? { model: plan.model } : {}),
 			...(plan.effort ? { effort: plan.effort } : {}),
+			...(longContext === false ? { longContext: false } : {}),
 			...(spawnedBy ? { spawnedBy } : {}),
 			...(cmd.layout ? { layout: cmd.layout } : {}),
 		},

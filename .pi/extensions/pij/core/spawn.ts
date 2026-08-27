@@ -346,6 +346,9 @@ export interface ControlSpawnInput {
 	/** PoC: copilot only — spawn with `--ui-server --port <rpcPort>` so the daemon
 	 *  can deliver over JSON-RPC instead of typing. */
 	readonly rpcPort?: number;
+	/** Copilot only: false suppresses `--context long_context` for a model known
+	 *  to reject it. Absent preserves the existing emit-by-default behavior. */
+	readonly longContext?: boolean;
 }
 
 /** Input to {@link buildPendingDescriptor}. */
@@ -406,8 +409,9 @@ export function spawnIdentitySeed(spawnToken: string, pid: number): string {
  * the harness kind rides PIJ_HARNESS. argv stays an array (AC-09: no shell).
  *
  * - `copilot`: `copilot --yolo --session-id <uuid> [--model <model>]`
- *   and, when a model is pinned, `--context long_context` so the requested
- *   catalog window is selected rather than Copilot's smaller default tier.
+ *   and, when a model is pinned and not explicitly denied, `--context
+ *   long_context` so the requested catalog window is selected rather than
+ *   Copilot's smaller default tier.
  *
  * The blanket-permission flag (`--dangerously-skip-permissions` for claude,
  * `--yolo` for copilot — the latter = --allow-all-tools/paths/urls,
@@ -460,7 +464,7 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 	if (input.model !== undefined) {
 		args.push("--model", input.model);
 	}
-	if (input.harness === "copilot" && input.model !== undefined) {
+	if (input.harness === "copilot" && input.model !== undefined && input.longContext !== false) {
 		args.push("--context", "long_context");
 	}
 	// Effort translation (#3) — pinned per harness (flag drift is the key risk):

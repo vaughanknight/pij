@@ -1815,6 +1815,70 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		});
 	});
 
+	it.each([
+		{
+			name: "peer denied",
+			args: ["spawn", "--harness", "copilot", "--model", "gemini-3.6-flash", "--json"],
+			model: "gemini-3.6-flash",
+			longContext: false,
+		},
+		{
+			name: "peer allowed",
+			args: ["spawn", "--harness", "copilot", "--model", "gpt-5.6-sol", "--json"],
+			model: "gpt-5.6-sol",
+			longContext: true,
+		},
+		{
+			name: "agent denied",
+			args: [
+				"agent",
+				"spawn",
+				"--prompt",
+				"Inspect the current diff.",
+				"--harness",
+				"copilot",
+				"--model",
+				"gemini-3.6-flash",
+				"--json",
+			],
+			model: "gemini-3.6-flash",
+			longContext: false,
+		},
+		{
+			name: "agent allowed",
+			args: [
+				"agent",
+				"spawn",
+				"--prompt",
+				"Inspect the current diff.",
+				"--harness",
+				"copilot",
+				"--model",
+				"gpt-5.6-sol",
+				"--json",
+			],
+			model: "gpt-5.6-sol",
+			longContext: true,
+		},
+	])("$name Copilot spawn composes the model-specific long-context argv", ({
+		args,
+		model,
+		longContext,
+	}) => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const result = pij(args, { PIJ_SESSION_ID: "pij-A", HOME });
+
+		expect(result.code).toBe(0);
+		const log = readFileSync(TMUX_LOG, "utf8");
+		expect(log).toContain(model);
+		if (longContext) {
+			expect(log).toContain("long_context");
+		} else {
+			expect(log).not.toContain("long_context");
+		}
+	});
+
 	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
 	it.skip("known pane-launch failure releases only its reservation and expectation", () => {
 		clearSpawnExpectations();

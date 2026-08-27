@@ -4,7 +4,7 @@
 // Never blocks — callers warn and continue; the spawn id is always returned.
 
 import { closestModel, normalizeModelQuery } from "./match.js";
-import type { ModelEntry } from "./registry.js";
+import { COPILOT_NO_LONG_CONTEXT, type ModelEntry } from "./registry.js";
 
 export type ValidationResult =
 	| { readonly ok: true }
@@ -33,6 +33,23 @@ export function validateModel(model: string, known: readonly ModelEntry[]): Vali
 	if (exactMatch) return { ok: true };
 	const closest = closestModel(model, known);
 	return { ok: false, unknown: true, suggestion: closest?.id ?? null };
+}
+
+/**
+ * Resolve whether Copilot should request its long-context tier. Explicit
+ * registry capability wins; the curated deny-set remains authoritative when
+ * the live registry is absent or a raw duplicate precedes its projection.
+ * Unknown capability stays undefined so existing spawn behavior is preserved.
+ */
+export function resolveLongContext(
+	known: readonly ModelEntry[],
+	model: string,
+): boolean | undefined {
+	const entry = findKnownModel(model, known);
+	if (entry?.longContext !== undefined) return entry.longContext;
+	const normalized = normalizeModelQuery(model);
+	const bareId = normalized.slice(normalized.lastIndexOf("/") + 1);
+	return COPILOT_NO_LONG_CONTEXT.has(bareId) ? false : undefined;
 }
 
 export type EffortValidation =

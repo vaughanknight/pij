@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { normalizeModelQuery } from "./match.js";
 
 export interface ModelEntry {
 	readonly id: string;
@@ -33,6 +34,9 @@ export interface ModelEntry {
 	 *  pi's per-model `contextWindow`. Absent when the source has none: the
 	 *  contextMax join reports honest absence, never a guess. */
 	readonly contextWindow?: number;
+	/** false = known to reject `--context long_context`; absent = unknown, so
+	 *  Copilot preserves the existing behavior and emits the flag. */
+	readonly longContext?: boolean;
 }
 
 interface PiModel {
@@ -74,6 +78,24 @@ function levelsFromThinkingMap(map: unknown): string[] {
 
 const COPILOT_GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
 const COPILOT_GPT56_IDS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+
+/** Normalized bare Copilot ids known to reject `--context long_context`. */
+export const COPILOT_NO_LONG_CONTEXT: ReadonlySet<string> = new Set(["gemini-3.6-flash"]);
+
+/** Apply curated Copilot capability data after all registry sources are merged. */
+export function annotateLongContext(entries: readonly ModelEntry[]): ModelEntry[] {
+	return entries.map((entry) => {
+		const isCopilot = entry.provider === "github-copilot" || entry.provider === "copilot";
+		if (
+			isCopilot &&
+			entry.longContext === undefined &&
+			COPILOT_NO_LONG_CONTEXT.has(normalizeModelQuery(entry.id))
+		) {
+			return { ...entry, longContext: false };
+		}
+		return entry;
+	});
+}
 
 function isCopilotGpt56(id: string): boolean {
 	return COPILOT_GPT56_IDS.has(id);
@@ -320,5 +342,5 @@ export function loadModels(): ModelEntry[] {
 	// over the thin snapshot fallback. (claude aliases stay seenIds-deduped above.)
 	const codexFallback = codexSnapshot().filter((m) => !codexCfgIds.has(m.id));
 	const codex = [...codexConfig, ...codexFallback];
-	return [...piModels, ...copilotModels, ...claude, ...codex];
+	return annotateLongContext([...piModels, ...copilotModels, ...claude, ...codex]);
 }
