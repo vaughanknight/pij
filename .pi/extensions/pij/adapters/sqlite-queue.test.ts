@@ -104,6 +104,51 @@ describe("SqliteQueue — DeliveryPort/InboxPort contract", () => {
 		const unread = q.listUnread("pij-b");
 		expect(unread.ok && unread.value.length).toBe(1);
 	});
+
+	it("persists Telegram sent-part indices idempotently across queue reopen", () => {
+		const sent = q.deliver(
+			{ from: "pij-a", to: "pij-telegram", body: "chunked" },
+			{ messageId: "m-parts" },
+		);
+		if (!sent.ok) throw new Error(sent.message);
+		expect([...q.telegramSentParts(sent.value.messageId)]).toEqual([]);
+		q.markTelegramPartSent(sent.value.messageId, 0);
+		q.markTelegramPartSent(sent.value.messageId, 2);
+		q.markTelegramPartSent(sent.value.messageId, 0);
+		expect([...q.telegramSentParts(sent.value.messageId)]).toEqual([0, 2]);
+
+		q.close();
+		q = new SqliteQueue(home, { now: () => now });
+		expect([...q.telegramSentParts(sent.value.messageId)]).toEqual([0, 2]);
+	});
+
+	it("persists the first Telegram partition identity without overwriting it", () => {
+		const sent = q.deliver(
+			{ from: "pij-a", to: "pij-telegram", body: "chunked" },
+			{ messageId: "m-partition" },
+		);
+		if (!sent.ok) throw new Error(sent.message);
+		expect(q.telegramPartitionIdentity(sent.value.messageId)).toBeUndefined();
+		q.recordTelegramPartitionIdentity(sent.value.messageId, {
+			partCount: 3,
+			prefixLength: 96,
+		});
+		q.recordTelegramPartitionIdentity(sent.value.messageId, {
+			partCount: 2,
+			prefixLength: 13,
+		});
+		expect(q.telegramPartitionIdentity(sent.value.messageId)).toEqual({
+			partCount: 3,
+			prefixLength: 96,
+		});
+
+		q.close();
+		q = new SqliteQueue(home, { now: () => now });
+		expect(q.telegramPartitionIdentity(sent.value.messageId)).toEqual({
+			partCount: 3,
+			prefixLength: 96,
+		});
+	});
 });
 
 describe("SqliteQueue — claim / lease / redelivery", () => {

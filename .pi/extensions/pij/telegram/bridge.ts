@@ -558,6 +558,7 @@ function normalizeSenderContent(from: SessionId, prefix: string, text: string): 
 export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): () => void {
 	const log = deps.log ?? (() => {});
 	const sizeOf = deps.sizeOf ?? ((path: string) => statSync(path).size);
+	const sqlite = sqliteOf(channel);
 
 	const forwardOne = async (dm: DeliveredMessage): Promise<{ undeliveredText: number }> => {
 		if (dm.kind === "receipt") {
@@ -566,6 +567,42 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		}
 		const attachments = dm.attachments ?? [];
 		const prefix = boundedSenderPrefix(dm.from, deps.senderContext?.(dm.from));
+		const initialText =
+			attachments.length > 0 && dm.body.trim() === ""
+				? undefined
+				: normalizeSenderContent(dm.from, prefix, dm.body);
+		const currentPartition = {
+			partCount: initialText === undefined ? 0 : prefixedTextParts(prefix, initialText).length,
+			prefixLength: prefix.length,
+		};
+		const persistedParts = sqlite?.telegramSentParts(dm.messageId) ?? new Set<number>();
+		const persistedPartition = sqlite?.telegramPartitionIdentity(dm.messageId);
+		let positionalPartsValid = false;
+		if (sqlite !== undefined) {
+			if (persistedPartition === undefined) {
+				// A pre-identity row with sent parts is legacy: its positions cannot
+				// be trusted against today's partition, so send all.
+				if (persistedParts.size === 0) {
+					sqlite.recordTelegramPartitionIdentity(dm.messageId, currentPartition);
+					positionalPartsValid = true;
+				}
+			} else if (
+				persistedPartition.partCount === currentPartition.partCount &&
+				persistedPartition.prefixLength === currentPartition.prefixLength
+			) {
+				positionalPartsValid = true;
+			} else {
+				log(
+					`partition drift ${dm.messageId}: stored ${persistedPartition.partCount}/${persistedPartition.prefixLength}, current ${currentPartition.partCount}/${currentPartition.prefixLength}; sending all`,
+				);
+			}
+		}
+		const sentPartIndices = new Set(
+			positionalPartsValid
+				? [...persistedParts].filter((index) => index < currentPartition.partCount)
+				: [],
+		);
+		let nextTextPartIndex = 0;
 		let spoke = false;
 		let undeliveredText = 0;
 		const noteSpoke = (): void => {
@@ -578,9 +615,29 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		let replyTo = deps.takeReplyTo?.(dm.from);
 		const sendText = async (text: string, errorLabel: string): Promise<number> => {
 			const bubbles = prefixedTextParts(prefix, text);
-			for (const bubble of bubbles) {
+			for (const [index, bubble] of bubbles.entries()) {
+				const persistedIndex = nextTextPartIndex;
+				nextTextPartIndex += 1;
+				if (sentPartIndices.has(persistedIndex)) {
+					log(`skip sent ${dm.messageId} part ${index + 1}/${bubbles.length}`);
+					noteSpoke();
+					replyTo = undefined;
+					continue;
+				}
 				try {
-					await deps.send(bubble, replyTo);
+					try {
+						await deps.send(bubble, replyTo);
+					} catch (error) {
+						const first = (error as Error).message;
+						if (!isTransientSendError(first)) throw error;
+						log(`text send retry after transient failure (${dm.messageId}): ${first}`);
+						await deps.send(bubble, replyTo);
+					}
+					if (positionalPartsValid) {
+						sqlite?.markTelegramPartSent(dm.messageId, persistedIndex);
+						sentPartIndices.add(persistedIndex);
+					}
+					log(`forwarded ${dm.messageId} part ${index + 1}/${bubbles.length}`);
 					noteSpoke();
 					replyTo = undefined;
 				} catch (e) {
@@ -594,9 +651,7 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		// Skip a blank text send for an attachment-only message. Text-only blank
 		// messages keep the existing one-bubble behavior.
 		const textPartCount =
-			attachments.length > 0 && dm.body.trim() === ""
-				? 0
-				: await sendText(normalizeSenderContent(dm.from, prefix, dm.body), "forward error");
+			initialText === undefined ? 0 : await sendText(initialText, "forward error");
 
 		// Outbound media: classify each file, enforce the per-kind upload cap, and
 		// keep every fallback/caption within Telegram's text/caption limits.
@@ -649,13 +704,12 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 			}
 		}
 		log(
-			`forwarded ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
+			`forward complete ${dm.messageId} ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
 				`${attachments.length > 0 ? `, ${attachments.length} media` : ""})`,
 		);
 		return { undeliveredText };
 	};
 
-	const sqlite = sqliteOf(channel);
 	if (sqlite !== undefined) {
 		return startQueueConsumer({
 			queue: sqlite,
