@@ -3,34 +3,19 @@
   "command": "observe",
   "harness": "claude-code",
   "harness_session_id": "293971b9-ce99-4547-9501-024cc2f2bbaf",
-  "timecode": "2026-08-27T16:45:43.727Z",
+  "timecode": "2026-08-27T17:32:49.943Z",
   "window": {
     "since": "last-command",
-    "from": 3998,
-    "to": 4056
+    "from": 4180,
+    "to": 4180
   },
   "branch": "s392/day3-codex-doctrine",
   "branch_changed": false,
-  "tokens": {
-    "input": 16,
-    "output": 12870,
-    "cache_create": 14710,
-    "cache_read": 1980201,
-    "total": 2007797,
-    "subagent_tokens": 0,
-    "grand_total": 2007797
-  },
-  "models": {
-    "claude-opus-4-8": {
-      "turns": 8,
-      "output_tokens": 12870
-    }
-  },
-  "effort": "high",
+  "tokens": null,
+  "models": {},
+  "effort": null,
   "skills": {},
-  "tools": {
-    "Bash": 5
-  },
+  "tools": {},
   "subagents": [],
   "files": {
     "written": [],
@@ -42,7 +27,5 @@
     "api_errors": 0,
     "local_commands": 0
   },
-  "thinking": {
-    "blocks": 5
-  }
+  "thinking": null
 }
