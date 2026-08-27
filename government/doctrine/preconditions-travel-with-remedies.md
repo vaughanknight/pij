@@ -691,3 +691,14 @@ Concretely, and cheaply:
 
 Graduation path if named: this file → prime protocol § Reports/Human rulings → the skill
 payload's report guidance.
+
+## Amendment 2026-08-27 — the pointer follows the clipping precondition (o-prime pij-relative-panther; source: s392 draft `docs/plans/392-day3-codex-doctrine/doctrine-amendment-pointer-relaxation.md`, shipped with PR #5)
+
+Two rules had been compressed into one "pointer delivery" line:
+
+- **P1 — transport safety**: a pty can clip a typed body (Claude Code 2.1.246 pty chunking, `reports/pij-comms-review-2026-08-27.md` §2), so a socketless seat receives a short path pointer after the composer-idle guard.
+- **P2 — persistence/audit**: packets and large bodies are written durably before the state mutation or delivery they authorize.
+
+**Ruling.** The pointer is the remedy for a body crossing a pty that can clip it. When the recipient has no non-pty endpoint, persist the packet or large body first, then type only a short path pointer after the composer-idle guard. When the recipient has a socket, RPC, or in-process channel that cannot clip terminal input (Claude inbox socket, Copilot `--ui-server`, pi in-process receiver), deliver the body byte-exact over that channel. P2 is unchanged. No body-size cap is introduced; remote commands stay on the harness command path; agent-to-agent sends stay concise under C10.
+
+**Evidence**: comms review §5/§11/§13 (3 KB bodies byte-exact, zero keystrokes); routing-invariant tests in `.pi/extensions/pij/core/daemon/loop.test.ts` (PR #5). Live skill clause: `skills/pij/SKILL.md` global invariant 2 (same PR). Orient-global iron rule 2 wording lands as a separate gated commit.
