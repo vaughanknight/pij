@@ -3,11 +3,11 @@
   "command": "checks",
   "harness": "copilot-cli",
   "harness_session_id": "75243a2a-fdee-49ee-94af-d2a143482ede",
-  "timecode": "2026-08-27T13:43:15.653Z",
+  "timecode": "2026-08-27T14:14:40.230Z",
   "window": {
     "since": "last-command",
-    "from": 2603,
-    "to": 2870
+    "from": 2870,
+    "to": 3021
   },
   "branch": "s391/item1b-dispatch-retire",
   "branch_changed": false,
