@@ -29,7 +29,13 @@ export { composerRegion } from "../core/daemon/pane-signals.js";
 import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
 import type { SendOutcome } from "../core/ports.js";
 import { BUSY_RE, paneWentBusy } from "../core/readiness.js";
-import type { HarnessKind } from "../core/types.js";
+import type { DeliveredMessage, HarnessKind, SessionDescriptor } from "../core/types.js";
+import {
+	buildPeerFrame,
+	claudeSessionsDir,
+	resolveClaudeSocket,
+	sendClaudeFrameSync,
+} from "./claude-socket.js";
 import { NodeProcess } from "./process.js";
 import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
@@ -187,6 +193,10 @@ function clearTypedText(paneId: string, text: string, runner: TmuxRunner): void 
 export interface DaemonTmuxOptions {
 	runner?: TmuxRunner;
 	sleep?: (ms: number) => void;
+	/** PoC: where Claude Code registers sessions (default ~/.claude/sessions). */
+	readonly claudeSessionsDir?: string;
+	/** PoC: ms to wait for a `peer_message_status` drop report after writing. */
+	readonly socketAckWaitMs?: number;
 }
 
 /** Decide what a THROWN tmux send means: a permanently dead target (`gone`) or a
@@ -225,10 +235,43 @@ export class DaemonTmux implements DaemonPorts {
 	private readonly runner: TmuxRunner;
 	private readonly sleep: (ms: number) => void;
 	private readonly tapFiles = new Map<string, { path: string; offset: number }>();
+	private readonly claudeSessionsDir: string;
+	private readonly socketAckWaitMs: number;
 
 	constructor(options: DaemonTmuxOptions = {}) {
 		this.runner = options.runner ?? execFileRunner;
 		this.sleep = options.sleep ?? sleepSync;
+		this.claudeSessionsDir = options.claudeSessionsDir ?? claudeSessionsDir(homedir());
+		this.socketAckWaitMs = options.socketAckWaitMs ?? 150;
+	}
+
+	/** PoC (poc/comms-sqlite-socket): Claude inbox-socket delivery. See
+	 *  adapters/claude-socket.ts. `no-socket` lets the loop fall back to typing. */
+	sendSocket(target: SessionDescriptor, message: DeliveredMessage): SendOutcome | "no-socket" {
+		if (target.harness !== "claude") return "no-socket";
+		const resolved = resolveClaudeSocket({
+			pid: target.pid,
+			paneId: target.paneId,
+			sessionsDir: this.claudeSessionsDir,
+		});
+		if (!resolved) return "no-socket";
+		const line = buildPeerFrame({
+			from: message.from,
+			body: message.body,
+			msgId: message.messageId,
+		});
+		const result = sendClaudeFrameSync(resolved.socketPath, line, {
+			ackWaitMs: this.socketAckWaitMs,
+		});
+		if (result.outcome === "confirmed") return "confirmed";
+		try {
+			process.stderr.write(
+				`⚠️  claude SOCKET FAILED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "unknown"}; message stays queued\n`,
+			);
+		} catch {
+			// diagnostic only
+		}
+		return "failed";
 	}
 
 	capturePane(paneId: string): string {

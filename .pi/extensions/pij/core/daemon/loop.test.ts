@@ -1054,3 +1054,113 @@ describe("backfillWindowId — legacy live nodes gain addressability once (plan 
 		expect(written.windowId).toBe("@5");
 	});
 });
+
+describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-socket)", () => {
+	it("delivers over the socket, never types, and consumes with via=socket", () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		const socketed: string[] = [];
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = (_target, message) => {
+			socketed.push(message.body);
+			return "confirmed";
+		};
+		const body = `HEAD sha 0001\n${"k".repeat(3000)}\nTAIL`;
+		const consumed = drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(0);
+		expect(socketed).toEqual([body]);
+		expect(consumed).toEqual([
+			{ messageId: "m1", from: "pij-boss", outcome: "confirmed", via: "socket" },
+		]);
+	});
+
+	it("falls back to the pane when the seat has no socket", () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => "no-socket";
+		const consumed = drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "short" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(1);
+		expect(consumed).toEqual([{ messageId: "m1", from: "pij-boss", outcome: "confirmed" }]);
+	});
+
+	it("leaves the message unread (buffered, not consumed) when the socket send fails", () => {
+		const w = world({ pane: READY });
+		w.ports.sendText = () => {
+			throw new Error("must not type after a failed socket send");
+		};
+		w.ports.sendSocket = () => "failed";
+		const buffer = new SendBuffer();
+		const consumed = drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "retry me" }],
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(consumed).toEqual([]);
+	});
+
+	it("still TYPES a remote command (/compact) even on a socket-capable claude seat", () => {
+		const w = world({ pane: READY });
+		let typedText = "";
+		w.ports.sendText = (_pane, text) => {
+			typedText = text;
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => {
+			throw new Error("commands must not go over the socket");
+		};
+		drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "", command: "compact" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typedText).toBe("/compact");
+	});
+
+	it("never uses the socket for a copilot seat", () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => {
+			throw new Error("copilot has no socket");
+		};
+		drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "hi" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(1);
+	});
+});

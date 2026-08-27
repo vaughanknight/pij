@@ -32,7 +32,7 @@ import { writeTextAtomic } from "./adapters/atomic-file.js";
 import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
-import { FsChannel } from "./adapters/channel.js";
+import { type MessageChannel, openChannel } from "./adapters/channel-factory.js";
 import { ShellChoreProbe } from "./adapters/chore-probe.js";
 import { FsChoreStore } from "./adapters/chore-store.js";
 import { FsContextReader } from "./adapters/context-reader.js";
@@ -506,7 +506,7 @@ function pijVersion(): string {
 	}
 }
 
-function consumeCurrentInbox(self: SessionId, channel: FsChannel) {
+function consumeCurrentInbox(self: SessionId, channel: MessageChannel) {
 	const consumed = consumeInbox({
 		inbox: channel,
 		self,
@@ -518,7 +518,7 @@ function consumeCurrentInbox(self: SessionId, channel: FsChannel) {
 
 function waitForInbox(
 	self: SessionId,
-	channel: FsChannel,
+	channel: MessageChannel,
 	waitMs: number | undefined,
 	json: boolean,
 ): void {
@@ -596,7 +596,7 @@ function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
 
 function deps(): CliDeps {
 	const registry = new FsRegistry(pijHome);
-	const channel = new FsChannel(pijHome);
+	const channel = openChannel(pijHome);
 	const cwd = process.cwd();
 	const repository = new GitRepositoryAdapter();
 	const commonDir = repository.gitCommonDir(cwd);
@@ -870,7 +870,7 @@ function failInbox(code: string, message: string): never {
 function executeInboxActions(
 	self: SessionId,
 	actions: readonly InboxAction[],
-	channel: FsChannel,
+	channel: MessageChannel,
 ): void {
 	const log = new FsEventLog(pijHome, self);
 	for (const action of actions) {
@@ -901,7 +901,7 @@ function executeInboxActions(
 function settleInboxResult(
 	result: InboxResult,
 	json: boolean,
-	channel: FsChannel,
+	channel: MessageChannel,
 	renderEmpty: boolean,
 ): boolean {
 	const hasMessages = result.messages.length > 0;
@@ -947,7 +947,7 @@ function runInbox(argv: readonly string[]): void {
 			`this seat is a pushed-delivery peer (${registration.value.descriptor.harness ?? "pi"}, pane ${registration.value.descriptor.paneId ?? "unknown"}); it receives turns pushed by the daemon and must not block on 'pij inbox --wait'. End your turn instead.`,
 		);
 	}
-	const channel = new FsChannel(pijHome);
+	const channel = openChannel(pijHome);
 	const consumed = consumeCurrentInbox(registration.value.descriptor.id, channel);
 	if (consumed.messages.length > 0) {
 		settleInboxResult(consumed, parsed.value.json, channel, false);
@@ -2536,7 +2536,7 @@ function runSpawn(argv: readonly string[]): void {
 	// instead — the daemon injects it as the first turn after bind, exactly like
 	// an agent packet pointer (daemon.ts drainInbox). Env stays for the pi path.
 	if (req.value.task !== undefined) {
-		new FsChannel(pijHome).deliver({
+		openChannel(pijHome).deliver({
 			from: parentId && parentId.trim() !== "" ? parentId : pijId,
 			to: pijId,
 			body: req.value.task,
@@ -3512,7 +3512,7 @@ function renderBatonNotice(notice: BatonNotice): string {
 class CliBatonNoticeSink implements BatonNoticeSink {
 	constructor(
 		private readonly registry: FsRegistry,
-		private readonly channel: FsChannel,
+		private readonly channel: MessageChannel,
 		private readonly proc: NodeProcess,
 	) {}
 
@@ -3595,7 +3595,7 @@ function runOrchestrationVerb(args: string[]): void {
 	}
 	const store = new FsBatonStore(pijHome);
 	const registry = new FsRegistry(pijHome);
-	const channel = new FsChannel(pijHome);
+	const channel = openChannel(pijHome);
 	const proc = new NodeProcess();
 	const actor = orchestrationActor(registry);
 	const designationAudit = createOrchestrationDesignationAudit({ ...deps(), registry }, actor);
@@ -3986,7 +3986,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	const { packetPath } = finalizeAgentSpawn(plan, paneRes.pane, {
 		pijHome,
 		registry: reg,
-		channel: new FsChannel(pijHome),
+		channel: openChannel(pijHome),
 		cwd,
 	});
 	const spawnedDescriptor = reg.read(id);
@@ -4071,7 +4071,7 @@ function runAgentReport(cmd: ParsedAgentCommand): void {
 	const res = executeAgentReport(selfRes.value, payload, {
 		pijHome,
 		registry: reg,
-		channel: new FsChannel(pijHome),
+		channel: openChannel(pijHome),
 		now: () => Date.now(),
 	});
 	if (!res.ok) {

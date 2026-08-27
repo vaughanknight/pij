@@ -33,6 +33,7 @@ import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import { classifyDeathReason } from "../state.js";
 import type {
 	DeathReason,
+	DeliveredMessage,
 	HarnessKind,
 	PijMessage,
 	SessionDescriptor,
@@ -68,6 +69,12 @@ export interface DaemonPorts {
 	 *  of stranding the message in the composer. Both optional — absent falls back to
 	 *  the Claude default settle and no wake. */
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome;
+	/** PoC (poc/comms-sqlite-socket): deliver a message to a Claude Code seat over
+	 *  its inbox socket instead of typing into its pane. `no-socket` = the seat has
+	 *  no resolvable socket (older claude, bind failure, non-claude harness) — the
+	 *  caller falls back to `sendText`. `failed` = nothing landed (retry later).
+	 *  Optional: pure fakes and non-claude daemons need not implement it. */
+	sendSocket?(target: SessionDescriptor, message: DeliveredMessage): SendOutcome | "no-socket";
 	/** Press a bare key (e.g. Escape to dismiss an interstitial, or a digit +
 	 *  Enter to answer one — the copilot folder-trust auto-answer, DL-001). */
 	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void;
@@ -517,6 +524,8 @@ export interface DrainedTmuxMessage {
 	readonly messageId: string;
 	readonly from: SessionId;
 	readonly outcome?: SendOutcome;
+	/** PoC: which transport carried it. Absent = pane (send-keys). */
+	readonly via?: "socket";
 }
 
 /** Decide the hold from the composer's CONTENT, captured immediately before this
@@ -587,6 +596,27 @@ export function drainTmuxInbox(
 		// and the receiving agent knows who messaged it (parity with the pi receiver).
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
+		// Socket-first for Claude seats (review §5/§7): the body never touches the
+		// pty, so the 1022-byte chunk clip cannot happen and a busy recipient reads
+		// it between tool calls. Commands (`/compact`) must still be TYPED — Claude
+		// Code renders a socket-delivered slash command as plain text.
+		if (
+			decision.kind === "inject" &&
+			target.harness === "claude" &&
+			!m.command &&
+			ports.sendSocket
+		) {
+			const outcome = ports.sendSocket(target, { ...msg, messageId: m.messageId });
+			if (outcome === "confirmed") {
+				consumed.push({ messageId: m.messageId, from: m.from, outcome, via: "socket" });
+				continue;
+			}
+			if (outcome === "failed") {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
+			// `no-socket` (or any other outcome) → fall through to the pane path.
+		}
 		if (decision.kind === "inject") {
 			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {
 				buffer.enqueue(m.messageId, msg);

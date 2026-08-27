@@ -11,14 +11,22 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeJsonAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
-import { FsChannel } from "./adapters/channel.js";
+import { openChannel } from "./adapters/channel-factory.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
@@ -31,6 +39,7 @@ import { TickScopedProcessStates } from "./adapters/process-states.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
@@ -1451,13 +1460,18 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		}
 	}
 
-	const daemon = new Daemon(
-		pijHome,
-		new DaemonTmux(),
-		new FsRegistry(pijHome),
-		new FsChannel(pijHome),
-		log,
-	);
+	const channel = openChannel(pijHome);
+	if (channel instanceof SqliteQueue) {
+		// A claim without a live daemon is meaningless: put every in-flight row
+		// back to `queued` so a crash between claim and inject redelivers.
+		const reset = channel.resetClaimsOnStart();
+		log(
+			`queue backend: sqlite (${channel.dbPath})${reset > 0 ? ` — re-queued ${reset} in-flight message(s)` : ""}`,
+		);
+	} else {
+		log("queue backend: fs (per-message JSON inbox files)");
+	}
+	const daemon = new Daemon(pijHome, new DaemonTmux(), new FsRegistry(pijHome), channel, log);
 	log(
 		`pij daemon up (pid ${process.pid}, home ${pijHome}) — watching for pending spawns + tmux inboxes`,
 	);
