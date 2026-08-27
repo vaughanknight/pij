@@ -10,6 +10,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DeliveredMessage, SessionDescriptor } from "../core/types.js";
 import {
 	classifySendFailure,
 	composerHasTextTail,
@@ -28,6 +29,26 @@ const SENT = "[pij from pij-5lztp8] (pij delivery diagnostic — please ignore)"
 const NON_BMP_SENT = "[pij from pij-x] hi 😀";
 const PANE_ID = "%42";
 const tempDirs: string[] = [];
+const SOCKET_MESSAGE: DeliveredMessage = {
+	messageId: "m-socket",
+	from: "pij-sender",
+	to: "pij-target",
+	body: "hello",
+};
+
+function socketTarget(over: Partial<SessionDescriptor>): SessionDescriptor {
+	return {
+		id: "pij-target",
+		folder: "/repo",
+		dataDir: "/home/.pij/pij-target",
+		eventsPath: "/home/.pij/pij-target/events.ndjson",
+		pid: 100,
+		startedAt: "2026-08-28T00:00:00.000Z",
+		lifecycle: "bound",
+		paneId: PANE_ID,
+		...over,
+	};
+}
 
 afterEach(() => {
 	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -177,6 +198,43 @@ describe("needsInputWake — per-harness focus-IN input-wake before send (the we
 
 	it("an absent harness does not wake", () => {
 		expect(needsInputWake(undefined)).toBe(false);
+	});
+});
+
+describe("DaemonTmux.sendSocket — transport outcome passthrough", () => {
+	it("passes Claude unverified through without collapsing it to failed", async () => {
+		const sessionsDir = mkdtempSync(join(tmpdir(), "pij-claude-sessions-"));
+		tempDirs.push(sessionsDir);
+		writeFileSync(
+			join(sessionsDir, "100.json"),
+			JSON.stringify({ pid: 100, messagingSocketPath: "/tmp/fake-claude.sock" }),
+		);
+		const adapter = new DaemonTmux({
+			claudeSessionsDir: sessionsDir,
+			sendClaudeFrame: async () => ({ outcome: "unverified" }),
+		});
+
+		expect(await adapter.sendSocket(socketTarget({ harness: "claude" }), SOCKET_MESSAGE)).toBe(
+			"unverified",
+		);
+	});
+
+	it("passes Copilot unverified through without collapsing it to failed", async () => {
+		const adapter = new DaemonTmux({
+			probeCopilotReady: async () => ({ ready: true }),
+			sendCopilotRpc: async () => ({ outcome: "unverified" }),
+		});
+
+		expect(
+			await adapter.sendSocket(
+				socketTarget({
+					harness: "copilot",
+					harnessSessionId: "11111111-1111-4111-8111-111111111111",
+					rpcPort: 47_391,
+				}),
+				SOCKET_MESSAGE,
+			),
+		).toBe("unverified");
 	});
 });
 

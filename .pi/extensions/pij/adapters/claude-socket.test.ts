@@ -31,10 +31,10 @@ afterEach(() => {
 
 // The sender is synchronous (spawnSync blocks this event loop), so the fake
 // receiver must live OUT of process: a tiny node listener that appends each
-// received line to a log and, when told to, answers with a drop status.
+// received line to a log and then confirms, drops, closes, or stays silent.
 const LISTENER = `
 const net = require("node:net"), fs = require("node:fs");
-const [sock, log, dropReason] = process.argv.slice(1);
+const [sock, log, mode] = process.argv.slice(1);
 net.createServer((c) => {
   let buf = "";
   c.on("data", (d) => {
@@ -43,18 +43,18 @@ net.createServer((c) => {
     while ((nl = buf.indexOf("\\n")) >= 0) {
       const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
       fs.appendFileSync(log, line + "\\n");
-      if (dropReason) {
-        const f = JSON.parse(line);
-        c.write(JSON.stringify({ type: "peer_message_status", orig_msg_id: f.msg_id, dropped_msg_ids: [f.msg_id], drop_reason: dropReason }) + "\\n");
-      }
+      const f = JSON.parse(line);
+      if (mode === "drop") c.write(JSON.stringify({ type: "peer_message_status", orig_msg_id: f.msg_id, dropped_msg_ids: [f.msg_id], drop_reason: "rate_limited" }) + "\\n");
+      else if (mode === "confirm") c.write(JSON.stringify({ type: "peer_message_status", orig_msg_id: f.msg_id, dropped_msg_ids: [] }) + "\\n");
+      else if (mode === "close") setTimeout(() => c.destroy(), 10);
     }
   });
 }).listen(sock);
 `;
 
-async function listen(sockPath: string, dropReason = ""): Promise<string> {
+async function listen(sockPath: string, mode = "confirm"): Promise<string> {
 	const log = `${sockPath}.log`;
-	listener = spawn(process.execPath, ["-e", LISTENER, sockPath, log, dropReason], {
+	listener = spawn(process.execPath, ["-e", LISTENER, sockPath, log, mode], {
 		stdio: "ignore",
 	});
 	for (let i = 0; i < 100 && !existsSync(sockPath); i++)
@@ -95,6 +95,22 @@ describe("sendClaudeFrame", () => {
 		expect(frame.message.content).toContain(`[pij from pij-a] ${BIG_BODY}`);
 	});
 
+	it.each([
+		{ label: "the socket closes", mode: "close" },
+		{ label: "the acknowledgement window elapses", mode: "silent" },
+	])("reports unverified after bytes flush but $label", async ({ mode }) => {
+		const sock = join(dir, `${mode}.sock`);
+		const log = await listen(sock, mode);
+		const out = await sendClaudeFrame(
+			sock,
+			buildPeerFrame({ from: "a", body: "b", msgId: `m-${mode}` }),
+			{ ackWaitMs: 60 },
+		);
+
+		expect(receivedLines(log)).toHaveLength(1);
+		expect(out.outcome).toBe("unverified");
+	});
+
 	it("reports failed (retryable) when the socket is absent", async () => {
 		const out = await sendClaudeFrame(
 			join(dir, "missing.sock"),
@@ -109,7 +125,7 @@ describe("sendClaudeFrame", () => {
 
 	it("reports failed when the receiver reports our msg_id dropped", async () => {
 		const sock = join(dir, "2.sock");
-		await listen(sock, "rate_limited");
+		await listen(sock, "drop");
 		const out = await sendClaudeFrame(
 			sock,
 			buildPeerFrame({ from: "a", body: "b", msgId: "m-drop" }),
