@@ -5,11 +5,7 @@
 
 **Job**: talk to colleagues — stand up a NEW live session (claude / copilot / codex / pi) in a tmux pane, **or converse with peers that already exist**: identity/list/send/tail/state need no spawn. Nothing here delegates work products — this is the raw colleague seam.
 
-**Preconditions**: detect the delivery owner first (§ C1); spawning requires tmux. Tmux
-control-plane mode self-adopts only the current process's exact non-empty `$TMUX_PANE`:
-`pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`.
-Without it, use external pull; never run `tmux list-panes`, `tmux display-message`, or pane discovery.
-Never infer, guess, select, or adopt a pane; use `pij inbox register`/first wait for `/pij adopt`.
+**Preconditions**: detect the delivery owner first (§ C1); spawning requires tmux. Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers). (control-plane self-adopt full flags: `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`.)
 
 ## Verbs
 

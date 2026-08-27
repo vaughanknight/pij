@@ -7,16 +7,16 @@ landing; never implement the plan or pre-empt the reviewer's judgment.
 
 Everything under `report` is first-person; global invariant 12 owns cadence.
 
-1. **Start-of-work** — after the human preamble checkpoint, before mutation:
+1. **Start-of-work report** — after the human preamble checkpoint, before mutation:
 
    ```bash
    pij report now 'Starting **<plan>**' 'Run the next Builder or pair step'
    ```
 
-2. **Stop-of-work** — after each approval and at ship, before reporting upward:
+2. **Stop-of-work report** — after each approval and at ship, before reporting upward:
 
    ```bash
-   pij report now 'Completed **<phase>** after `harness checks`' 'Send the phase report → <path> and begin the next approved step'
+   pij report now 'Completed **<phase>** after `harness checks`' 'Send the [phase report](<path>) and begin the next approved step'
    ```
 
 Use `report question` for human decisions, `report blocked` for external dependencies,

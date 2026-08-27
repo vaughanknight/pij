@@ -82,3 +82,25 @@ describe("pij-skill-check order assertions", () => {
 		expect(result.output).toContain("out of order");
 	});
 });
+
+describe("pij-skill-check prime-pointer placeholder handling (R5)", () => {
+	it("accepts a bracketed link whose target is an angle-bracket <placeholder>", () => {
+		editOrchestrator(
+			"## Required status steps",
+			"## Required status steps\n\nSee the [phase report](<path>) placeholder link.",
+		);
+		const result = runCheck();
+		expect(result.status).toBe(0);
+		expect(result.output).not.toContain("prime pointer:");
+	});
+
+	it("still fails a bracketed link whose target is a real missing path", () => {
+		editOrchestrator(
+			"## Required status steps",
+			"## Required status steps\n\nSee the [gone](./does-not-exist.md) real broken link.",
+		);
+		const result = runCheck();
+		expect(result.status).not.toBe(0);
+		expect(result.output).toContain("does-not-exist.md");
+	});
+});
