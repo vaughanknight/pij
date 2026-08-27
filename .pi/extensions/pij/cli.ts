@@ -525,6 +525,20 @@ function consumeCurrentInbox(self: SessionId, channel: MessageChannel) {
  *  receipt trail, so an operator can see what the review said `pij tail` could
  *  not. Only meaningful on the SQLite backend; the fs backend has no such table
  *  and says so. Never mutates. */
+/** `--as <id>` anywhere in argv → process.env.PIJ_SENDER for this invocation,
+ *  then remove the flag+value from process.argv so downstream parse is clean.
+ *  A no-op when absent. (PoC day-2 item 3.) */
+function applyAsOverride(): void {
+	const i = process.argv.indexOf("--as");
+	if (i >= 0 && i + 1 < process.argv.length) {
+		const id = process.argv[i + 1];
+		if (id && !id.startsWith("--")) {
+			process.env.PIJ_SENDER = id;
+			process.argv.splice(i, 2);
+		}
+	}
+}
+
 function runQueue(argv: readonly string[]): void {
 	const pad = (v: string, n: number): string => (v.length >= n ? v : v + " ".repeat(n - v.length));
 	const json = argv.includes("--json");
@@ -821,6 +835,25 @@ function isPushedSeat(descriptor: SessionDescriptor): boolean {
 }
 
 function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistration> {
+	// PIJ_SENDER escape hatch (PoC day-2 item 3): read this seat's inbox AS the
+	// declared id, skipping ambient harness detection. Must name a registered
+	// pull peer (a push seat is driven by the daemon and must not self-inbox).
+	const senderOverride = process.env.PIJ_SENDER?.trim();
+	if (senderOverride) {
+		const descriptor = registry.read(senderOverride);
+		if (!descriptor) {
+			return err("E-NOID", `PIJ_SENDER=${senderOverride} is not a registered session`);
+		}
+		return ok({
+			descriptor,
+			identity: {
+				harness: descriptor.harness ?? "pi",
+				harnessSessionId: descriptor.harnessSessionId ?? senderOverride,
+				...(descriptor.transcriptPath ? { transcriptPath: descriptor.transcriptPath } : {}),
+			},
+			existing: true,
+		});
+	}
 	const identity = resolveAmbientIdentity();
 	if (!identity.ok) return identity;
 	const currentPane =
@@ -4336,6 +4369,9 @@ function main(): void {
 	}
 	// Inbox registration is the one messaging surface allowed to create PIJ_HOME,
 	// so it must run before the ordinary E-NOREG guard.
+	// `--as <id>` on inbox/send is a one-call PIJ_SENDER (PoC day-2 item 3): strip
+	// it here and export, so the pure resolvers below see a declared sender.
+	applyAsOverride();
 	if (top === "inbox") {
 		runInbox(process.argv.slice(3));
 		return;

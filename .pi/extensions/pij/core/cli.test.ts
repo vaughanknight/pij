@@ -697,6 +697,37 @@ describe("dispatch whoami / list", () => {
 });
 
 describe("dispatch send", () => {
+	describe("PIJ_SENDER escape hatch (poc/comms-sqlite-socket day-2 item 3)", () => {
+		it("overrides ambient identity so a script sends as a declared pull peer", () => {
+			const d = deps({
+				env: { PIJ_SENDER: "pij-script" },
+				descs: [desc({ id: "pij-script", deliveryMode: "pull" }), desc({ id: "w3" })],
+				resolveAmbientSelf: () => ok("pij-someclaude"),
+			});
+			const r = dispatch({ verb: "send", to: "w3", text: "hi", wait: false, json: false }, d);
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox.at(-1)?.message.from).toBe("pij-script");
+		});
+
+		it("beats PIJ_SESSION_ID and ambient both", () => {
+			const d = deps({
+				self: "pij-env",
+				env: { PIJ_SENDER: "pij-script" },
+				descs: [desc({ id: "pij-script" }), desc({ id: "pij-env" }), desc({ id: "w3" })],
+			});
+			const r = dispatch({ verb: "send", to: "w3", text: "hi", wait: false, json: false }, d);
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox.at(-1)?.message.from).toBe("pij-script");
+		});
+
+		it("refuses an unregistered PIJ_SENDER with E-NOID", () => {
+			const d = deps({ env: { PIJ_SENDER: "pij-ghost" }, descs: [desc({ id: "w3" })] });
+			const r = dispatch({ verb: "send", to: "w3", text: "hi", wait: false, json: false }, d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("PIJ_SENDER=pij-ghost");
+		});
+	});
+
 	it("freezes send --wait terminal handling before dispatch ack semantics are added", () => {
 		const states: readonly ReceiptState[] = ["queued", "delivered", "unverified"];
 		const targets = [{ to: "w3", messageId: "msg-freeze" }];

@@ -1958,6 +1958,22 @@ function renderWatchdogResult(
 }
 
 function selfId(deps: CliDeps): Result<SessionId> {
+	// PIJ_SENDER escape hatch (PoC day-2 item 3): a hard sender override that
+	// SKIPS ambient harness detection, so a script, the daemon, or a test can
+	// declare which pij id it is sending as even from inside a Claude/Copilot/Codex
+	// tool shell (where CLAUDE_CODE_SESSION_ID would otherwise win). The id must be
+	// a registered seat; a pull descriptor is the intended shape for a non-harness
+	// sender. `pij send --as <id>` sets this for one call (see the bin).
+	const sender = deps.process.env("PIJ_SENDER")?.trim();
+	if (sender) {
+		if (!deps.registry.read(sender)) {
+			return err(
+				"E-NOID",
+				`PIJ_SENDER=${sender} is not a registered session; register a pull peer first or drop --as/PIJ_SENDER`,
+			);
+		}
+		return ok(sender);
+	}
 	const envId = deps.process.env("PIJ_SESSION_ID");
 	const pane = deps.process.env("TMUX_PANE");
 	const explicitId = envId?.trim() || undefined;
