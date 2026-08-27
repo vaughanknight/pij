@@ -428,10 +428,10 @@ export function driveSession(
 			...applyBinding(descriptor, planned),
 			...(model ? { boundModel: model } : {}),
 		};
-		persistDaemonWrite(registry, bound);
-		if (!drive.settled && noticeRecipient(descriptor)) {
+		const persisted = persistDaemonWrite(registry, bound);
+		if (!drive.settled && noticeRecipient(persisted)) {
 			drive.settled = true;
-			const note = buildBoundNotice(bound);
+			const note = buildBoundNotice(persisted);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
 		}
 		// ADV-A: a refusal that has now resolved into a real bind must not leave a
@@ -473,10 +473,10 @@ export function driveSession(
 			...applyBinding(descriptor, harnessSessionId),
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
 		};
-		persistDaemonWrite(registry, bound);
-		if (!drive.settled && noticeRecipient(descriptor)) {
+		const persisted = persistDaemonWrite(registry, bound);
+		if (!drive.settled && noticeRecipient(persisted)) {
 			drive.settled = true;
-			const note = buildBoundNotice(bound);
+			const note = buildBoundNotice(persisted);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
 		}
 		return { kind: "bound", harnessSessionId };
@@ -591,10 +591,10 @@ function fail(
 		...markFailed(descriptor),
 		...(deathReason ? { failureReason: deathReason } : {}),
 	};
-	persistDaemonWrite(registry, failed);
-	if (!drive.settled && noticeRecipient(descriptor)) {
+	const persisted = persistDaemonWrite(registry, failed);
+	if (!drive.settled && noticeRecipient(persisted)) {
 		drive.settled = true;
-		const note = buildFailedNotice(failed, reason);
+		const note = buildFailedNotice(persisted, reason);
 		if (note) notify(delivery, descriptor.id, note.to, note.text);
 	}
 	return { kind: "failed", reason };

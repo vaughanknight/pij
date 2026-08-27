@@ -1641,6 +1641,46 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 		]);
 	});
 
+	it("routes terminal death to a parent re-linked during the close write", async () => {
+		const registry = new (class extends FsRegistry {
+			private relinked = false;
+
+			override write(
+				descriptor: SessionDescriptor,
+				writer?: Parameters<FsRegistry["write"]>[1],
+			): void {
+				if (!this.relinked && writer === "close") {
+					this.relinked = true;
+					const latest = this.read(descriptor.id);
+					if (!latest) throw new Error("missing descriptor during re-link interleave");
+					super.write({ ...latest, parentId: "pij-new-parent" }, "cli");
+				}
+				super.write(descriptor, writer);
+			}
+		})(home);
+		registry.write(
+			desc({
+				id: "pij-relinked-death",
+				harness: "pi",
+				lifecycle: "bound",
+				parentId: "pij-old-parent",
+				spawnedBy: "pij-spawner",
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({ alive: false, nowMs: NOW_MS }),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(registry.read("pij-relinked-death")?.parentId).toBe("pij-new-parent");
+		expect(messageBodies("pij-new-parent").join("\n")).toContain("has exited");
+		expect(messageBodies("pij-old-parent")).toEqual([]);
+		expect(messageBodies("pij-spawner")).toEqual([]);
+	});
+
 	// REVERSED BY s095 (AC-6), deliberately — the daemon-level twin of the unit
 	// reversal in `core/daemon/death-reconciler.test.ts`.
 	//

@@ -54,6 +54,21 @@ function desc(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
 	};
 }
 
+function registryThatRelinksOnDaemonWrite(descriptor: SessionDescriptor): FakeRegistry {
+	let relinked = false;
+	return new (class extends FakeRegistry {
+		override write(next: SessionDescriptor, writer?: Parameters<FakeRegistry["write"]>[1]): void {
+			if (!relinked && writer === "daemon") {
+				relinked = true;
+				const latest = this.read(next.id);
+				if (!latest) throw new Error(`missing ${next.id} during re-link interleave`);
+				super.write({ ...latest, parentId: "pij-new-parent" }, "cli");
+			}
+			super.write(next, writer);
+		}
+	})([descriptor]);
+}
+
 interface FakeWorld {
 	ports: DaemonPorts;
 	sentText: Array<{
@@ -349,6 +364,29 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
 	});
 
+	it("discovery bind follows a parent re-link preserved by the daemon write", () => {
+		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
+		const descriptor = desc({
+			initInjectedAt: "2026-06-27T00:00:05.000Z",
+			parentId: "pij-old-parent",
+			spawnedBy: "pij-spawner",
+		});
+		const reg = registryThatRelinksOnDaemonWrite(descriptor);
+		const del = new FakeDelivery();
+		w.setTranscripts([`${DIR}/preexisting.jsonl`, `${DIR}/claude-new.jsonl`]);
+
+		driveSession(
+			descriptor,
+			{ before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 },
+			w.ports,
+			reg,
+			del,
+		);
+
+		expect(reg.read(descriptor.id)?.parentId).toBe("pij-new-parent");
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-new-parent"]);
+	});
+
 	it("a discovered Claude transcript cannot bind when the pane process names a foreign session", () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/claude-new.jsonl`] });
 		w.ports.processSnapshot = () => processSnapshot("claude", "foreign-session");
@@ -415,6 +453,26 @@ This session was last active just now and appears to be in use by another CLI or
 
 		expect(out).toEqual({ kind: "bound", harnessSessionId: planned });
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
+	});
+
+	it("planned-id bind follows a parent re-link preserved by the daemon write", () => {
+		const planned = "9a8f8be6-0000-4000-8000-000000000002";
+		const w = world({ pane: COPILOT_READY, transcripts: [] });
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
+		const descriptor = desc({
+			harness: "copilot",
+			initInjectedAt: "2026-06-27T00:00:05.000Z",
+			plannedHarnessSessionId: planned,
+			parentId: "pij-old-parent",
+			spawnedBy: "pij-spawner",
+		});
+		const reg = registryThatRelinksOnDaemonWrite(descriptor);
+		const del = new FakeDelivery();
+
+		driveSession(descriptor, { readyAtMs: 1000, firstInferenceSeen: true }, w.ports, reg, del);
+
+		expect(reg.read(descriptor.id)?.parentId).toBe("pij-new-parent");
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-new-parent"]);
 	});
 
 	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", async () => {
@@ -758,6 +816,33 @@ This session was last active just now and appears to be in use by another CLI or
 
 		expect(out.kind).toBe("failed");
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
+	});
+
+	it("watchdog failure follows a parent re-link preserved by the daemon write", () => {
+		const w = world({ pane: READY, transcripts: [] });
+		const descriptor = desc({
+			initInjectedAt: "x",
+			parentId: "pij-old-parent",
+			spawnedBy: "pij-spawner",
+		});
+		const reg = registryThatRelinksOnDaemonWrite(descriptor);
+		const del = new FakeDelivery();
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS * 2);
+
+		driveSession(
+			descriptor,
+			{
+				before: [],
+				readyAtMs: 1000,
+				resentAtMs: 1000 + WATCHDOG_TIMEOUT_MS,
+			},
+			w.ports,
+			reg,
+			del,
+		);
+
+		expect(reg.read(descriptor.id)?.parentId).toBe("pij-new-parent");
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-new-parent"]);
 	});
 
 	it("review H1: seeds `before` from descriptor.transcriptsAtSpawn (not a live snapshot)", async () => {

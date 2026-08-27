@@ -8,7 +8,7 @@ import { detectAnomalies } from "../anomalies.js";
 import { planRevive } from "../revive.js";
 import { createSpawnExpectation } from "../spawn-expectation.js";
 import type { SessionDescriptor } from "../types.js";
-import { reconcileDeaths } from "./death-reconciler.js";
+import { reconcileDeaths, resolveDeathNotices } from "./death-reconciler.js";
 
 const descriptor = (over: Partial<SessionDescriptor> = {}): SessionDescriptor => ({
 	id: "pij-child",
@@ -132,6 +132,53 @@ describe("death reconciler", () => {
 		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
 			{ from: "pij-child", to: "pij-current-parent" },
 		]);
+	});
+
+	it("resolves recipient and dead-parent suppression from post-write descriptor truth", () => {
+		const sweep = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: "pij-old-parent",
+					spawnedBy: "pij-original-spawner",
+				}),
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: () => false,
+		});
+		const writtenChild = sweep.descriptorUpdates[0];
+		if (!writtenChild) throw new Error("missing terminal descriptor update");
+		const newParent = descriptor({
+			id: "pij-new-parent",
+			parentId: undefined,
+			pid: 99,
+			spawnedBy: undefined,
+		});
+
+		expect(
+			resolveDeathNotices(
+				sweep.noticeCandidates,
+				[{ ...writtenChild, parentId: newParent.id }, newParent],
+				sweep.deadIds,
+			).notices.map(({ to }) => to),
+		).toEqual(["pij-new-parent"]);
+		expect(
+			resolveDeathNotices(
+				sweep.noticeCandidates,
+				[
+					{ ...writtenChild, parentId: newParent.id },
+					{
+						...newParent,
+						terminal: {
+							disposition: "unrequested-by-pij",
+							evidence: "pid-missing",
+							observedAt: "2026-07-20T00:00:02.000Z",
+						},
+					},
+				],
+				sweep.deadIds,
+			),
+		).toMatchObject({ notices: [], noticesSuppressed: 1 });
 	});
 
 	it("does not treat a live provider-stuck PID as terminal", () => {

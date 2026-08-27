@@ -52,7 +52,7 @@ import { ARCHIVE_PRUNE_AFTER_MS } from "./core/archive.js";
 import { buildDeadNotice, buildStalledNotice, noticeRecipient } from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
-import { reconcileDeaths } from "./core/daemon/death-reconciler.js";
+import { reconcileDeaths, resolveDeathNotices } from "./core/daemon/death-reconciler.js";
 import { IndexState } from "./core/daemon/index-state.js";
 import { evaluateLock, parseLockFile, serializeLockFile } from "./core/daemon/lock.js";
 import {
@@ -824,16 +824,21 @@ export class Daemon {
 		// IS terminal truth, the same authority `pij close` exercises.
 		for (const update of deathSweep.descriptorUpdates) this.registry.write(update, "close");
 		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
-		for (const notice of deathSweep.notices) {
+		const deathDelivery = resolveDeathNotices(
+			deathSweep.noticeCandidates,
+			this.registry.list(),
+			deathSweep.deadIds,
+		);
+		for (const notice of deathDelivery.notices) {
 			this.channel.deliver({ from: notice.from, to: notice.to, body: notice.text });
 		}
 		// One line instead of N undeliverable pushes. A host reboot kills every seat
 		// in the same event, so the obituaries are all addressed to seats that died
 		// alongside their subject — the operator wants the COUNT, not 200 messages
 		// nobody can read (task #34).
-		if (deathSweep.noticesSuppressed > 0) {
+		if (deathDelivery.noticesSuppressed > 0) {
 			this.log(
-				`death sweep: ${deathSweep.noticesSuppressed} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
+				`death sweep: ${deathDelivery.noticesSuppressed} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
 			);
 		}
 		this.watchdogManager.reconcile(this.registry.list());

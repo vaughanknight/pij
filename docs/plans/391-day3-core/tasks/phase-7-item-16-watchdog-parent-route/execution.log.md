@@ -55,3 +55,49 @@
     on this machine (`ENOENT`); the file is unchanged from `HEAD`.
 - `just lint` independently reproduced only diagnostics outside the Item 16
   file set.
+
+### FX — persisted-recipient routing
+
+Validation of `528a0f1` found two concurrent re-link races:
+
+1. Planned/discovered bind and bind-failure paths persisted the merged
+   descriptor but built their notice from the stale tick snapshot.
+2. Terminal-death notices were resolved before the close-authority write could
+   preserve a newer CLI-owned `parentId`.
+
+RED evidence:
+
+- A `FakeRegistry` that writes `parentId:"pij-new-parent"` as CLI truth
+  immediately before each daemon publish made all three loop cases persist the
+  new parent while notifying `pij-old-parent`.
+- A real `FsRegistry` subclass that re-links on the close write made the
+  terminal descriptor persist `pij-new-parent` while the notice still went to
+  the old parent.
+
+GREEN:
+
+- Both bind-success paths and bind failure now gate and build from the
+  descriptor returned by `persistDaemonWrite`.
+- Death reconciliation retains unresolved descriptor/fixed notice candidates.
+  After close writes, the daemon resolves descriptor candidates against current
+  registry truth and applies dead-recipient suppression to that same truth.
+- Focused suite: 252 passed, 2 skipped.
+- Typecheck and scoped Biome: passed.
+
+Mutation evidence:
+
+- Reverting the three loop sites to the tick snapshot made all three concurrent
+  re-link tests fail with `pij-old-parent`.
+- Delivering the death sweep's pre-write notices instead of post-write
+  resolution made the close-write re-link test fail.
+- Pure resolver coverage pins both directions of post-write suppression:
+  a live new parent receives the notice, while a terminal new parent suppresses
+  it and increments the suppression count.
+
+Full FX extension suite `bg-mtc3e9sh-00crfg`: 4,064 passed, 15 skipped, 0
+failed; log `.harness/temp/s391/vitest-phase7-fx.log`.
+
+Final `harness checks --quick` reproduced the same out-of-fence baselines:
+`local-paths`, `typecheck`, `pkg-audit`, and `snapshots` passed; lint and
+windows-compat reported existing OSC-7337 diagnostics, the test stage lacked
+`pwsh`, and smoke was skipped by `--quick`.
