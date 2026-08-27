@@ -16,3 +16,9 @@
 - **MUT-OWNER**: revert T001 to the single-prime resolution ⇒ the 3-primes-1-watcher test RED.
 - **MUT-TAIL**: drop the mtime stamp ⇒ the stale-tail test RED.
 - **MUT-CAPPED**: remove the capped notice ⇒ the crash-loop-silence test RED.
+
+## T001 FOLD (o-prime ruling — PRE-MERGE, after item-24 fold, same coder)
+| # | Task | Path(s) | Done When | Notes |
+|---|------|---------|-----------|-------|
+| [ ] | T001a (ADV-1 behavioural test) | ONE test that drives the REAL `notifyOwner` closure (extract a small factory if needed) with a REGISTRY holding 3 primes + a watcher list → asserts EXACTLY the watcher is notified, primes are NOT. It must go RED against a notify-nobody impl EVEN WITH the source-pin grep deleted. MUT-OWNER must RED on THIS behavioural test (keep the grep as a 2nd sensor if you like). | `daemon.ts` (extract factory if needed), `daemon.test.ts` | RED→GREEN; MUT-OWNER reds the behavioural test | today the ONLY guard is a substring grep (E28 false-green) |
+| [ ] | T001b (ADV-2 honest log — E29 silent-loss) | when `store.read(TELEGRAM_PEER_ID)` returns undefined (unreadable/malformed sidecar — parseSidecar rejects the WHOLE sidecar on one bad entry), log "watchers file unreadable/malformed (N entries rejected)" NOT "has no watchers" — so a real watcher silently dropped isn't reported as "none". The underlying every-rejects-all drop is pre-existing store code → 29b-rest. | `daemon.ts` (+test) | RED→GREEN: a malformed-sidecar case logs the honest reason | MUT: revert to the "no watchers" line → the honest-log test RED |
