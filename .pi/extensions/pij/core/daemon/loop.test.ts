@@ -20,6 +20,14 @@ import { SendBuffer } from "./router.js";
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
 const READY = "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+// A Claude composer with a human's half-typed line in it — the pre-send guard
+// must treat this pane as HELD and never type a pointer (or a body) over it.
+const HUMAN_COMPOSER = [
+	"────────────────────────────────────────────────────────────────",
+	"❯ wait, let me check the migration first",
+	"────────────────────────────────────────────────────────────────",
+	"⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+].join("\n");
 const COPILOT_READY = "/ commands · ? help · tab next tab                  GPT-5.5";
 const BOOTING = "▝▜█████▛▘ Loading…";
 const CHROME = "Claude in Chrome extension detected\n Esc to keep browser tools off";
@@ -1247,6 +1255,27 @@ describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-
 			{ pointer: true },
 		);
 		expect(typedText).toBe("/compact");
+	});
+
+	it("respects the composer-idle guard: NEVER types a pointer over live human input (Amendment 4 proof)", async () => {
+		// The pointer path is the only path that still types into a pane; it must
+		// keep the pre-existing composer-idle / non-empty-composer guard
+		// (refreshRenderedComposerHold, loop.ts) BEFORE send-keys.
+		const w = world({ pane: HUMAN_COMPOSER });
+		const buffer = new SendBuffer();
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "please read this" }],
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		// nothing typed, message left durable-unread (buffered) for a later tick
+		expect(w.sentText).toEqual([]);
+		expect(consumed).toEqual([]);
+		expect(buffer.pending("pij-w")).toBe(1); // durably buffered for retry, not lost
 	});
 
 	it("leaves the row for retry when the pointer cannot be typed (held/failed)", async () => {
