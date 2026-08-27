@@ -1267,6 +1267,39 @@ describe("dispatch send", () => {
 		).toMatchObject({ receipt: "queued", reason: "tick-pending" });
 	});
 
+	it("omits daemon tick metadata for a pane-less bound claude pull seat", () => {
+		const paneless = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "claude-pull",
+					harness: "claude",
+					lifecycle: "bound",
+					paneId: undefined,
+					deliveryMode: undefined,
+					lastTickAt: new Date(T - 1_000).toISOString(),
+				}),
+			],
+		});
+
+		const machine = JSON.parse(
+			dispatch({ verb: "send", to: "claude-pull", text: "x", wait: false, json: true }, paneless)
+				.stdout,
+		) as Record<string, unknown>;
+		expect(machine).toMatchObject({ receipt: "queued", reason: "pull-inbox" });
+		expect(machine).not.toHaveProperty("daemonLastTickAt");
+		expect(machine).not.toHaveProperty("daemonTickAgeMs");
+		expect(machine).not.toHaveProperty("daemonTickStale");
+
+		const human = dispatch(
+			{ verb: "send", to: "claude-pull", text: "x", wait: false, json: false },
+			paneless,
+		);
+		expect(human.stdout).toContain("queued (pull-inbox)");
+		expect(human.stdout.toLowerCase()).not.toContain("tick");
+	});
+
 	it("busy control-plane peers with a fresh tick wait for the daemon's authoritative receipt", () => {
 		const busy = deps({
 			self: "a1",
