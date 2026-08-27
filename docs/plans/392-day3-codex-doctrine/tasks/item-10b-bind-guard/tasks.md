@@ -1,6 +1,9 @@
 # Item 10b: pane-misbind BIND guard + shared lifecycle-filtered resolver (the real incident fix)
 
-**BLOCKED until s391 item 5 lands** (shared `loop.ts`). On unblock: rebase onto current main, then **RE-VERIFY every anchor below** (s391 will move `loop.ts` line numbers — DL-007). Builds on item 10a (`index-state.ts` guard, committed 751a42b). Incident: `government/incidents/2026-08-27-cross-government-pane-misbind.md`.
+**Status**: implementation complete on current main + item 10a; repository pre-commit blocked outside this item fence.
+
+Builds on item 10a (`index-state.ts` guard, re-applied as `03d7bac`). Incident:
+`government/incidents/2026-08-27-cross-government-pane-misbind.md`.
 
 ## Scope (o-prime requirements + cold-review F5)
 1. **Shared lifecycle-filtered resolver (the CLASS fix)**: the six ad-hoc `paneId ===`/byPane filters resolve a pane→id with NO lifecycle filter, so a terminal seat on a reused pane still resolves to the dead seat. Sites (fa6378a — re-verify after s391): `core/discovery.ts:141`, `core/spawn.ts:797`, `core/cli.ts:1999`, `cli.ts:927`, `cli.ts:3764`, `cli.ts:4108`. Route ALL through ONE shared resolver (reuse/extend `IndexState.resolvePane`'s now-guarded contract, or a shared helper that excludes dissolved/failed). Update `resolvePane`'s doc comment (F2) to "delivery-target index".
@@ -20,3 +23,20 @@
 - The 6 ad-hoc resolvers STILL unguarded (finding C did not touch them): `core/discovery.ts:141`, `core/spawn.ts:797`, `core/cli.ts:1999`, `cli.ts:2038` (pi-only), `cli.ts:4031`, `cli.ts:4375`. Shared-resolver scope stands.
 - **finding C LANDED**: `daemon.ts:1126` now `sqliteOf(this.channel)` (was `instanceof SqliteQueue`) — the dual pointer-path + recoverStaleClaims gate is fixed. (Lines 1582-1583 keep `instanceof` only for a backend-name display — benign.) So 10b does NOT need to touch daemon.ts's sq gate.
 - Rebase onto f4ba6ec0 before dispatch (after item 12's PR; coder currently busy on item 12).
+
+## Implementation tasks
+
+| Status | ID | Task | Done when |
+|---|---|---|---|
+| [x] | 1 | Add one tagged-union `resolveLivePane` and route every runtime pane-to-seat resolver through it | dissolved/failed ignored; duplicate live owners return `E-AMBIG` |
+| [x] | 2 | Add the runtime grep-sweep | only the shared resolver and specialized pending/ready occupant check may compare pane ids |
+| [x] | 3 | Guard both daemon bind lanes | durable terminal state cannot bind; planned ids require exact process evidence; discovered ids require native artifact plus matching harness process |
+| [x] | 4 | Replay the cross-government incident through `Daemon.tick` | queued preamble produces zero pane sends, zero binds, and no ready notice |
+| [ ] | 5 | Full gates, pathspec commit, execution log, and report | item suite is green; repository `harness checks` remains red outside this fence |
+
+## Scope note
+
+The sweep found more than the six re-verified sites: the later chore-seat resolver, the
+partially filtered current-registration resolver, and daemon gone-pane ownership lookup
+were also pane-to-seat resolution. All now use `resolveLivePane`; the sqlite finding-C
+gate remains untouched.

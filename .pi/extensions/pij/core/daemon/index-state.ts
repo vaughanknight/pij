@@ -8,6 +8,7 @@
 // so killing + restarting the daemon loses no binding and duplicates no init.
 
 import { shouldInjectInit } from "../binding.js";
+import { isPaneDeliveryTarget, resolveLivePane } from "../discovery.js";
 import {
 	err,
 	type HarnessKind,
@@ -27,11 +28,21 @@ function appendIndex(index: Map<string, SessionId[]>, key: string, id: SessionId
 	index.set(key, ids);
 }
 
+function appendDescriptorIndex(
+	index: Map<string, SessionDescriptor[]>,
+	key: string,
+	descriptor: SessionDescriptor,
+): void {
+	const descriptors = index.get(key) ?? [];
+	descriptors.push(descriptor);
+	index.set(key, descriptors);
+}
+
 export class IndexState {
 	private readonly byId = new Map<SessionId, SessionDescriptor>();
 	private readonly byHarnessSession = new Map<string, SessionId[]>();
 	private readonly byHarnessIdentity = new Map<string, SessionId[]>();
-	private readonly byPane = new Map<string, SessionId>();
+	private readonly byPane = new Map<string, SessionDescriptor[]>();
 
 	/** Build a fresh index from a descriptor snapshot (e.g. `registry.list()`). */
 	static from(descriptors: readonly SessionDescriptor[]): IndexState {
@@ -54,8 +65,8 @@ export class IndexState {
 					appendIndex(this.byHarnessIdentity, identityKey(d.harness, d.harnessSessionId), d.id);
 			}
 			// Pane-misbind incident: terminal seats can no longer own a reusable pane address.
-			if (d.paneId && d.lifecycle !== "dissolved" && d.lifecycle !== "failed") {
-				this.byPane.set(d.paneId, d.id);
+			if (d.paneId && isPaneDeliveryTarget(d)) {
+				appendDescriptorIndex(this.byPane, d.paneId, d);
 			}
 		}
 	}
@@ -93,9 +104,9 @@ export class IndexState {
 		return ok(ids[0]);
 	}
 
-	/** Reverse-resolve a tmux pane id back to its pij-id. */
-	resolvePane(paneId: string): SessionId | undefined {
-		return this.byPane.get(paneId);
+	/** Reverse-resolve a tmux pane id through the lifecycle-filtered delivery-target index. */
+	resolvePane(paneId: string): Result<SessionId | undefined> {
+		return resolveLivePane(paneId, this.byPane.get(paneId) ?? []);
 	}
 
 	/** Sessions the daemon must still drive to readiness (lifecycle `pending`). */

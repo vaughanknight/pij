@@ -1549,6 +1549,14 @@ describe("deriveCallerParent (AC-08 — parent is the invoking session, never cw
 		expect(deriveCallerParent(undefined, all, "%7")).toBeUndefined();
 	});
 
+	it("terminal pane history cannot hide the live caller that reused the pane", () => {
+		const all = [
+			at("pij-closed", { paneId: "%7", lifecycle: "dissolved" }),
+			at("pij-live", { paneId: "%7", lifecycle: "bound" }),
+		];
+		expect(deriveCallerParent(undefined, all, "%7")).toBe("pij-live");
+	});
+
 	it("nothing to go on — empty registry, no env, no pane — yields no parent", () => {
 		expect(deriveCallerParent(undefined, [], undefined)).toBeUndefined();
 		expect(deriveCallerParent(undefined, [], "%7")).toBeUndefined();

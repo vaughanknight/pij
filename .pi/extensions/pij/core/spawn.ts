@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 //     spawner-only state. See PIJ_PANE_ID advisory in phase-1 dossier.
 
 import { resolve } from "node:path";
+import { resolveLivePane } from "./discovery.js";
 import { normalizeModelQuery } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
 import { validateEffort, validateModel } from "./models/validate.js";
@@ -794,9 +795,8 @@ export function deriveCallerParent(
 ): SessionId | undefined {
 	if (envId !== undefined && envId.trim() !== "") return envId;
 	if (paneId !== undefined && paneId.trim() !== "") {
-		const byPane = descriptors.filter((d) => d.paneId === paneId);
-		const only = byPane[0];
-		if (byPane.length === 1 && only) return only.id;
+		const resolved = resolveLivePane(paneId, descriptors);
+		if (resolved.ok) return resolved.value;
 	}
 	return undefined;
 }
