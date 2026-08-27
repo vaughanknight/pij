@@ -174,3 +174,25 @@ describe("SqliteQueue — claim / lease / redelivery", () => {
 		expect(q.stats("pij-b")).toMatchObject({ parked: 1, queued: 0 });
 	});
 });
+
+describe("SqliteQueue — daemon view", () => {
+	it("listQueued returns only queued rows with seq; injected rows wait for their lease", () => {
+		q.deliver({ from: "pij-a", to: "pij-b", body: "one" });
+		q.deliver({ from: "pij-a", to: "pij-b", body: "two" });
+		const queued = q.listQueued("pij-b");
+		expect(queued.map((m) => [m.seq, m.body])).toEqual([
+			[1, "one"],
+			[2, "two"],
+		]);
+		expect(q.seqOf(queued[0]?.messageId ?? "")).toBe(1);
+		q.settle(1, "injected", { leaseMs: 1_000 });
+		expect(q.listQueued("pij-b").map((m) => m.seq)).toEqual([2]);
+		// the recipient still sees both
+		const unread = q.listUnread("pij-b");
+		expect(unread.ok && unread.value.length).toBe(2);
+		// lease expiry re-queues seq 1 (attempt unchanged: settle does not count)
+		now += 5_000;
+		expect(q.recoverStaleClaims()).toBe(1);
+		expect(q.listQueued("pij-b").map((m) => m.seq)).toEqual([1, 2]);
+	});
+});

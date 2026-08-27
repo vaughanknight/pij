@@ -12,6 +12,7 @@ import {
 	driveSession,
 	observeActivity,
 	persistDaemonWrite,
+	pointerLine,
 	WATCHDOG_TIMEOUT_MS,
 } from "./loop.js";
 import { ComposerHoldTracker } from "./pane-signals.js";
@@ -1189,5 +1190,75 @@ describe("drainTmuxInbox — copilot --ui-server seats use the RPC port", () => 
 		expect(typed).toBe(0);
 		expect(seen).toEqual([47391]);
 		expect(consumed[0]?.via).toBe("socket");
+	});
+});
+
+describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-sqlite-socket)", () => {
+	it("pointerLine is one short ASCII line with no newline", () => {
+		for (const n of [1, 3]) {
+			const line = pointerLine("pij-vocal-kingfisher", n);
+			expect(line).not.toContain("\n");
+			expect(Buffer.byteLength(line)).toBeLessThan(200);
+			expect(line.startsWith("[pij from pij-vocal-kingfisher] ")).toBe(true);
+			expect(line).toContain("pij inbox");
+		}
+	});
+
+	it("types the pointer, never the body, and reports via=pointer", () => {
+		const w = world({ pane: READY });
+		const typed: string[] = [];
+		w.ports.sendText = (_pane, text) => {
+			typed.push(text);
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => "no-socket";
+		const body = `SECRET-HEAD\n${"k".repeat(3000)}\nSECRET-TAIL`;
+		const consumed = drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		expect(typed).toEqual([pointerLine("pij-boss", 1)]);
+		expect(consumed).toEqual([
+			{ messageId: "m1", from: "pij-boss", outcome: "confirmed", via: "pointer" },
+		]);
+	});
+
+	it("still types a raw /compact command even in pointer mode", () => {
+		const w = world({ pane: READY });
+		let typedText = "";
+		w.ports.sendText = (_pane, text) => {
+			typedText = text;
+			return "confirmed";
+		};
+		drainTmuxInbox(
+			desc({ harness: "codex", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "", command: "compact" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		expect(typedText).toBe("/compact");
+	});
+
+	it("leaves the row for retry when the pointer cannot be typed (held/failed)", () => {
+		const w = world({ pane: READY });
+		w.ports.sendText = () => "failed";
+		const consumed = drainTmuxInbox(
+			desc({ harness: "codex", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "x" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		expect(consumed).toEqual([]);
 	});
 });

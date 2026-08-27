@@ -40,6 +40,12 @@ import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
+
+/** PoC: how long a typed pointer line is trusted before the daemon re-announces
+ *  an unread body (review §7 — long enough for a mid-turn seat to finish its
+ *  tool calls and run `pij inbox`). */
+const POINTER_LEASE_MS = 90_000;
+
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
@@ -98,7 +104,7 @@ import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/
 import { classifyReadiness } from "./core/readiness.js";
 import { persistDaemonWrite } from "./core/registry-write.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { HarnessKind, SessionDescriptor, SessionId } from "./core/types.js";
+import { type HarnessKind, ok, type SessionDescriptor, type SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -1049,7 +1055,12 @@ export class Daemon {
 			}
 		}
 
-		const listed = this.channel.listUnread(id);
+		// PoC: on the SQLite backend the daemon only acts on `queued` rows (a row
+		// with a pointer out, or a socket send in flight, is `injected`/`claimed`
+		// until acked or its lease expires); the fs backend keeps its unread scan.
+		const sq = this.channel instanceof SqliteQueue ? this.channel : undefined;
+		if (sq) sq.recoverStaleClaims();
+		const listed = sq ? ok(sq.listQueued(id)) : this.channel.listUnread(id);
 		if (!listed.ok) throw new Error(`${listed.code}: ${listed.message}`);
 		const messages: Array<{
 			messageId: string;
@@ -1096,6 +1107,7 @@ export class Daemon {
 				this.buffer,
 				undefined, // self-injection is marked by the port wrapper, post-send
 				this.composerHolds,
+				{ pointer: sq !== undefined },
 			);
 			// A remote `/compact` just went into the pane: mark the compact window
 			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
@@ -1113,6 +1125,15 @@ export class Daemon {
 				}
 			}
 			for (const item of consumed) {
+				if (item.via === "pointer" && sq) {
+					// Told, not read: the body waits in the store for `pij inbox`. The
+					// lease re-announces if the seat never pulls (review §7 AckWait).
+					const seq = sq.seqOf(item.messageId);
+					if (seq !== undefined) sq.settle(seq, "injected", { leaseMs: POINTER_LEASE_MS });
+					this.buffer.forget(item.messageId);
+					consumedCount += 1;
+					continue;
+				}
 				const marked = this.channel.markRead(id, item.messageId, {
 					messageId: item.messageId,
 					readAt,

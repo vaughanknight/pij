@@ -525,7 +525,7 @@ export interface DrainedTmuxMessage {
 	readonly from: SessionId;
 	readonly outcome?: SendOutcome;
 	/** PoC: which transport carried it. Absent = pane (send-keys). */
-	readonly via?: "socket";
+	readonly via?: "socket" | "pointer";
 }
 
 /** Decide the hold from the composer's CONTENT, captured immediately before this
@@ -573,6 +573,15 @@ export function refreshRenderedComposerHold(
 	return buffer.isPaneHeld(paneId, nowMs);
 }
 
+/** The ONE line typed into a pane instead of a body (review §7): ASCII, no
+ *  newline, far under one pty chunk, framed so the model knows it is pij. The
+ *  recipient reads the bodies with `pij inbox`; the rows stay unread until then. */
+export function pointerLine(from: SessionId, count: number): string {
+	return count === 1
+		? `[pij from ${from}] 1 new message — run: pij inbox`
+		: `[pij from ${from}] ${count} new messages — run: pij inbox`;
+}
+
 /** Route one bound tmux target's unread messages and return each completed
  *  injection outcome. The impure caller owns the post-outcome read marker.
  *  Delivery ownership (AC-08): pi targets route to `observe` and remain for the
@@ -589,6 +598,7 @@ export function drainTmuxInbox(
 	buffer: SendBuffer,
 	beforeSelfInjection: ((paneId: string, payload: string, nowMs: number) => void) | undefined,
 	holds: ComposerHoldTracker,
+	opts: { readonly pointer?: boolean } = {},
 ): DrainedTmuxMessage[] {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
@@ -618,6 +628,27 @@ export function drainTmuxInbox(
 				continue;
 			}
 			// `no-socket` (or any other outcome) → fall through to the pane path.
+		}
+		// Pointer path (review §7, pij-comms PoC): when the store can hold the row
+		// for a later `pij inbox` (opts.pointer), a seat with no endpoint gets ONE
+		// short line instead of its body — the body never crosses the pty, so it
+		// cannot be clipped. The caller marks the row `injected` (not read).
+		// Commands still type raw.
+		if (decision.kind === "inject" && opts.pointer && !m.command) {
+			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
+			const line = pointerLine(m.from, 1);
+			beforeSelfInjection?.(decision.paneId, line, ports.now());
+			const outcome = ports.sendText(decision.paneId, line, target.harness, target.pid);
+			if (outcome === "gone") continue;
+			if (outcome === "held" || outcome === "failed") {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
+			consumed.push({ messageId: m.messageId, from: m.from, outcome, via: "pointer" });
+			continue;
 		}
 		if (decision.kind === "inject") {
 			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {

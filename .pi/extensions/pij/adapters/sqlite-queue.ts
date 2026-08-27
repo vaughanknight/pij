@@ -238,6 +238,28 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 		}
 	}
 
+	/** Daemon-side view: rows the daemon may act on (`queued`), with their seq,
+	 *  oldest first. Rows already `claimed`/`injected` (a pointer is out, or a
+	 *  socket send is in flight) are NOT returned, so a tick never re-announces
+	 *  a message until its lease expires (`recoverStaleClaims`). */
+	listQueued(id: SessionId): ReadonlyArray<DeliveredMessage & { readonly seq: number }> {
+		const rows = this.db
+			.prepare(
+				`SELECT m.*, d.state, d.attempt FROM messages m JOIN deliveries d ON d.seq = m.seq
+				 WHERE m.to_id = ? AND d.state = 'queued' ORDER BY m.seq`,
+			)
+			.all(id) as unknown as MessageRow[];
+		return rows.map((r) => ({ ...rowToMessage(r), seq: r.seq }));
+	}
+
+	/** Seq of a message id (undefined if unknown). */
+	seqOf(messageId: string): number | undefined {
+		const row = this.db.prepare("SELECT seq FROM messages WHERE id = ?").get(messageId) as
+			| { seq: number }
+			| undefined;
+		return row?.seq;
+	}
+
 	/** Ack: the recipient has read the body. Exactly-once by row state. */
 	claimUnread(
 		id: SessionId,
