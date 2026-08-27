@@ -1369,18 +1369,54 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		});
 	});
 
-	it("attaches newly listed panes and detaches pane_dead entries", async () => {
+	it("attaches a pane it OWNS and detaches pane_dead entries (day-2 item 7)", async () => {
 		let dead = false;
 		const ports = fakePorts({
 			paneListings: () => [{ paneId: "%4", dead, cursorX: 2, cursorY: 23 }],
 		});
-		const daemon = new Daemon(home, ports, new FsRegistry(home), new FsChannel(home));
+		const registry = new FsRegistry(home);
+		// The daemon only taps panes belonging to a registered seat; an unowned
+		// pane on the same tmux server is left alone (isolation, review §11).
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "s",
+			}),
+		);
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
 		await daemon.tick();
 		expect(ports.attached).toEqual(["%4"]);
 		dead = true;
 		await daemon.tick();
 		expect(ports.detached).toEqual(["%4"]);
 		expect(daemon.paneSignal("%4")).toBeUndefined();
+	});
+
+	it("never taps a pane no registered seat owns (day-2 item 7 isolation)", async () => {
+		const ports = fakePorts({
+			paneListings: () => [
+				{ paneId: "%4", dead: false, cursorX: 2, cursorY: 23 },
+				{ paneId: "%99", dead: false, cursorX: 2, cursorY: 23 },
+			],
+		});
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "s",
+			}),
+		);
+		const daemon = new Daemon(home, ports, registry, new FsChannel(home));
+		await daemon.tick();
+		// %99 belongs to some other program (or another daemon's fleet) — untouched.
+		expect(ports.attached).toEqual(["%4"]);
+		expect(ports.attached).not.toContain("%99");
 	});
 });
 

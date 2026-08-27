@@ -1319,8 +1319,20 @@ export class Daemon {
 		) {
 			return;
 		}
-		const listings = this.ports.listPanes();
-		this.tickLivePanes = new Set(listings.map((listing) => listing.paneId));
+		const allListings = this.ports.listPanes();
+		// tickLivePanes stays the FULL server set — death detection asks "is this
+		// pane still alive", which is a fact about the server, not about ownership.
+		this.tickLivePanes = new Set(allListings.map((listing) => listing.paneId));
+		// PoC day-2 item 7: only ever `pipe-pane`/tap panes THIS daemon owns (a
+		// registered, non-dissolved seat). The old code tapped EVERY pane in the
+		// tmux server, so a second daemon on a shared server stole the first's
+		// taps — the isolation hazard the review flagged (§11). Filtering here
+		// (rather than in the adapter) keeps the tap surface exactly the fleet.
+		const ownedPaneIds = new Set<string>();
+		for (const d of this.index.all()) {
+			if (d.paneId && d.lifecycle !== "dissolved") ownedPaneIds.add(d.paneId);
+		}
+		const listings = allListings.filter((listing) => ownedPaneIds.has(listing.paneId));
 		const diff = this.paneSignals.reconcile(listings);
 		this.sweepOrphanedTaps(listings);
 		for (const pane of diff.added) {
