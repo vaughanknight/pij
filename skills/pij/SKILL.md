@@ -56,7 +56,7 @@ primitive. `baton` is the other orchestration subcommand.
 ## Global invariants (every route)
 
 1. **Never write** `.the-flow-state.json`, `the-flow.json`, `the-flow.md` — the-flow guided mode is their sole writer.
-2. **Pointer delivery**: persist packets/large bodies to disk first; `pij send` carries a short path pointer, never a full body.
+2. **Pointer delivery**: persist packets/large bodies to disk first (audit + durability); on the wire, a socket/RPC seat (claude with inbox socket, copilot with `--ui-server`) receives the body inline byte-exact; under the sqlite default, a socketless seat receives a path pointer instead of a typed body. Keep sends short under every backend (C10).
 3. **Forbidden paths in every packet**: enumerate at minimum the three files above, plus any ledger dirs the route names.
 4. **Persist before mutate**: roster/ledger records are written before the state they describe changes.
 5. **Delivery-owned waiting**: tmux/pi peers receive pushed turns; non-tmux external peers block on `pij inbox --wait`. Never sit in a `pij state` wait loop.

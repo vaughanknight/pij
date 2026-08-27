@@ -73,6 +73,34 @@ The daemon never drains, buffers, heartbeats, or injects a pull-owned inbox.
 For an explicit setup step before sending, run `pij inbox register`; subsequent
 `pij inbox`, `pij inbox check`, and `pij inbox --wait` reuse that identity.
 
+### Delivery routing — body or pointer
+
+The pointer is the remedy for the pty clip, not a global ban on body delivery. The
+Claude Code 2.1.246 chunk regression showed that a long body typed through a terminal can
+lose bytes; a channel that cannot clip receives the byte-exact body instead.
+
+| Recipient | Transport | What crosses the live channel |
+|---|---|---|
+| Claude with an inbox socket | Socket | Full body; zero pane keystrokes |
+| Copilot with `--ui-server` / `rpcPort` | JSON-RPC | Full body; zero pane keystrokes |
+| Codex today | Socketless pointer path* | *Sqlite default:* one `pij inbox` pointer line; body stays durable |
+| Legacy or otherwise socketless tmux seat | Pointer path* | *Sqlite default:* one `pij inbox` pointer line; body stays durable |
+| Pi | In-process receiver | Full body |
+
+*\* The pointer path runs under the `sqlite` default backend only (`daemon.ts` gates it on the sqlite queue). Under `PIJ_QUEUE_BACKEND=fs` or `dual` the pointer path is off and the body is typed into the pane — the pre-pointer behavior; the socket/RPC rows above are unaffected (they never depend on the backend).*
+
+Three safeguards do not change:
+
+- Packets and large bodies are still persisted before send for audit and durability.
+- The pointer path still consults the composer-idle guard before typing into a pane.
+- Remote commands such as `/compact` are still typed through the harness command path.
+
+The executable contract is
+`.pi/extensions/pij/core/daemon/loop.test.ts` describe
+`routing invariant — body on socket/RPC, pointer only where a pty can clip (plan 392 Phase 4)`.
+Its harness-named cases pin Claude socket, Copilot RPC, Codex pointer-today, and socketless
+composer-guard behavior.
+
 ---
 
 ## CLI reference
@@ -234,11 +262,12 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
 
 ## The message + receipt protocol
 
-- **Immutable inbox history.** Every send publishes `msg-<messageId>.json`.
-  Consumption never rewrites or deletes it; `read-<messageId>.json` is the
-  authoritative read state. Tmux and pi push consumers publish that marker only
-  after their injection/`onInbound` outcome. Pull consumers claim the same marker
-  contract, so all delivery modes skip marked history after restart or reload.
+- **Immutable queue history.** Under the default `sqlite` backend, every send inserts an
+  immutable message row in `~/.pij/queue/pij.sqlite`; `deliveries.state` and append-only
+  receipts record progress. Inspect a recipient with `pij queue --to <id>`. Under the
+  `PIJ_QUEUE_BACKEND=fs` opt-out, the equivalent history is `msg-<messageId>.json` plus
+  authoritative `read-<messageId>.json` markers. Both backends ack only after the
+  consumer's injection/`onInbound` outcome, so restart/reload skips acknowledged history.
 - **Raw body, framed once on receipt.** `pij send w3 "hi"` writes the raw text; the
   *receiver* frames it as `[pij from <senderId>] hi` when it injects — so a reply
   needs no lookup (the sender id is right there).
