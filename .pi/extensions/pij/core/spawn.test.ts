@@ -16,6 +16,7 @@ import {
 	buildSpawnCommand,
 	buildSpawnOutput,
 	deriveCallerParent,
+	isolationPassthroughEnv,
 	livePeerPanes,
 	markCompactingSelf,
 	parseAdoptArgs,
@@ -1541,5 +1542,28 @@ describe("markCompactingSelf (DL-004 — compact-self window mark)", () => {
 		expect(markCompactingSelf(reg, undefined, NOW_ISO)).toBeNull();
 		expect(markCompactingSelf(reg, "pij-ghost", NOW_ISO)).toBeNull();
 		expect(reg.read("pij-me")?.compactingAt).toBeUndefined();
+	});
+});
+
+describe("isolation passthrough (poc/comms-sqlite-socket)", () => {
+	it("is empty unless PIJ_HOME is set, and then carries home/backend/PATH", () => {
+		expect(isolationPassthroughEnv({})).toEqual({});
+		expect(
+			isolationPassthroughEnv({
+				PIJ_HOME: "/tmp/h",
+				PIJ_QUEUE_BACKEND: "sqlite",
+				PATH: "/x/bin:/usr/bin",
+			}),
+		).toEqual({ PIJ_HOME: "/tmp/h", PIJ_QUEUE_BACKEND: "sqlite", PATH: "/x/bin:/usr/bin" });
+	});
+
+	it("buildControlSpawnCommand merges passthroughEnv without overriding pij identity keys", () => {
+		const out = buildControlSpawnCommand({
+			harness: "claude",
+			pijId: "pij-x",
+			passthroughEnv: { PIJ_HOME: "/tmp/h", PIJ_SESSION_ID: "evil" },
+		} as Parameters<typeof buildControlSpawnCommand>[0]);
+		expect(out.env.PIJ_HOME).toBe("/tmp/h");
+		expect(out.env.PIJ_SESSION_ID).toBe("pij-x");
 	});
 });

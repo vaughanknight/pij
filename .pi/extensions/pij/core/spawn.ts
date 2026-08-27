@@ -338,6 +338,10 @@ export interface ControlSpawnInput {
 	 *  emits `--session-id <forkSessionId>` so the daemon binds deterministically
 	 *  (the planned-id path, no transcript discovery). Set with `branchFrom`. */
 	readonly forkSessionId?: string;
+	/** PoC isolation: extra env for the pane (e.g. PIJ_HOME / PIJ_QUEUE_BACKEND /
+	 *  PATH so a seat spawned from an isolated pij home talks to THAT home and
+	 *  THAT CLI). Merged last; never overrides the pij identity keys. */
+	readonly passthroughEnv?: Readonly<Record<string, string>>;
 }
 
 /** Input to {@link buildPendingDescriptor}. */
@@ -482,8 +486,22 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 		env.HARNESS_PLAN_ID = input.planId;
 		env.PIJ_PLAN_ID = input.planId;
 	}
+	for (const [k, v] of Object.entries(input.passthroughEnv ?? {})) {
+		if (!(k in env)) env[k] = v;
+	}
 	const cmd = input.harness === "claude" ? "claude" : input.harness;
 	return { cmd, args, env };
+}
+
+/** The env keys an ISOLATED pij home (PIJ_HOME set) must hand to the seats it
+ *  spawns, so their `pij …` calls land in the same home, the same queue backend
+ *  and the same CLI build. Empty when not isolated — the fleet path is unchanged. */
+export function isolationPassthroughEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+	if (!env.PIJ_HOME) return {};
+	const out: Record<string, string> = { PIJ_HOME: env.PIJ_HOME };
+	if (env.PIJ_QUEUE_BACKEND) out.PIJ_QUEUE_BACKEND = env.PIJ_QUEUE_BACKEND;
+	if (env.PATH) out.PATH = env.PATH;
+	return out;
 }
 
 /**

@@ -209,6 +209,7 @@ import {
 	buildSpawnOutput,
 	buildSpawnWarning,
 	deriveCallerParent,
+	isolationPassthroughEnv,
 	livePeerPanes,
 	markCompactingSelf,
 	parseAdoptArgs,
@@ -2413,6 +2414,7 @@ function runSpawn(argv: readonly string[]): void {
 	}
 	const pijId = reserved.value.id;
 	const spawnCmd = buildControlSpawnCommand({
+		passthroughEnv: isolationPassthroughEnv(process.env),
 		harness: req.value.harness,
 		pijId,
 		cwd,
@@ -3799,6 +3801,7 @@ function spawnAgentPane(
 		}
 	}
 	const base = buildControlSpawnCommand({
+		passthroughEnv: isolationPassthroughEnv(process.env),
 		harness: plan.harness,
 		pijId: plan.id,
 		cwd,
