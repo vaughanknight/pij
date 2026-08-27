@@ -14,6 +14,16 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { normalizeModelQuery } from "./match.js";
 
+export interface CopilotInstability {
+	readonly cli: string;
+	/** UTC observation from the instrumented isolation matrix. */
+	readonly observedFailAt: string;
+	/** UTC observation relayed by the o-prime, not instrumented in this run. */
+	readonly observedPassAt: string;
+	/** Evidence provenance needed to interpret the two observations honestly. */
+	readonly note: string;
+}
+
 export interface ModelEntry {
 	readonly id: string;
 	readonly name: string;
@@ -37,6 +47,10 @@ export interface ModelEntry {
 	/** false = known to reject `--context long_context`; absent = unknown, so
 	 *  Copilot preserves the existing behavior and emits the flag. */
 	readonly longContext?: boolean;
+	/** A measured upstream Copilot instability for this model. This is not an
+	 *  interactive-only capability: the record preserves both passing and
+	 *  failing observations across request paths. */
+	readonly copilotInstability?: CopilotInstability;
 }
 
 interface PiModel {
@@ -82,6 +96,19 @@ const COPILOT_GPT56_IDS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna
 /** Normalized bare Copilot ids known to reject `--context long_context`. */
 export const COPILOT_NO_LONG_CONTEXT: ReadonlySet<string> = new Set(["gemini-3.6-flash"]);
 
+/** Normalized bare Copilot ids with time-varying upstream request failures. */
+export const COPILOT_UNSTABLE_MODELS: ReadonlyMap<string, CopilotInstability> = new Map([
+	[
+		"gemini-3.6-flash",
+		{
+			cli: "1.0.81-14",
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
+			note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
+		},
+	],
+]);
+
 /** Apply curated Copilot capability data after all registry sources are merged. */
 export function annotateLongContext(entries: readonly ModelEntry[]): ModelEntry[] {
 	return entries.map((entry) => {
@@ -92,6 +119,18 @@ export function annotateLongContext(entries: readonly ModelEntry[]): ModelEntry[
 			COPILOT_NO_LONG_CONTEXT.has(normalizeModelQuery(entry.id))
 		) {
 			return { ...entry, longContext: false };
+		}
+		return entry;
+	});
+}
+
+/** Attach measured upstream instability records to every Copilot projection. */
+export function annotateCopilotInstability(entries: readonly ModelEntry[]): ModelEntry[] {
+	return entries.map((entry) => {
+		const isCopilot = entry.provider === "github-copilot" || entry.provider === "copilot";
+		const instability = COPILOT_UNSTABLE_MODELS.get(normalizeModelQuery(entry.id));
+		if (isCopilot && entry.copilotInstability === undefined && instability !== undefined) {
+			return { ...entry, copilotInstability: instability };
 		}
 		return entry;
 	});
@@ -342,5 +381,7 @@ export function loadModels(): ModelEntry[] {
 	// over the thin snapshot fallback. (claude aliases stay seenIds-deduped above.)
 	const codexFallback = codexSnapshot().filter((m) => !codexCfgIds.has(m.id));
 	const codex = [...codexConfig, ...codexFallback];
-	return annotateLongContext([...piModels, ...copilotModels, ...claude, ...codex]);
+	return annotateCopilotInstability(
+		annotateLongContext([...piModels, ...copilotModels, ...claude, ...codex]),
+	);
 }

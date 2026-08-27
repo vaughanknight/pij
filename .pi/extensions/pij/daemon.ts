@@ -105,13 +105,7 @@ import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/
 import { classifyReadiness } from "./core/readiness.js";
 import { persistDaemonWrite } from "./core/registry-write.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import {
-	type HarnessKind,
-	type InboxMark,
-	ok,
-	type SessionDescriptor,
-	type SessionId,
-} from "./core/types.js";
+import { type HarnessKind, ok, type SessionDescriptor, type SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -694,13 +688,7 @@ export class Daemon {
 								reader: current.id,
 							});
 							if (!marked.ok) throw new Error(`${marked.code}: ${marked.message}`);
-							this.emitSendReceipt(
-								current.id,
-								message.message.from,
-								message.messageId,
-								outcome,
-								marked.value,
-							);
+							this.emitSendReceipt(current.id, message.message.from, message.messageId, outcome);
 						}
 					}
 					// Persist footer activity → working|idle (+ fresh last-activity ts) so
@@ -1270,7 +1258,7 @@ export class Daemon {
 				// stay durably unread, so the drain can legitimately reach one first.
 				this.buffer.forget(item.messageId);
 				if (target.lifecycle === "bound" && item.outcome !== undefined) {
-					this.emitSendReceipt(target.id, item.from, item.messageId, item.outcome, marked.value);
+					this.emitSendReceipt(target.id, item.from, item.messageId, item.outcome);
 				}
 				consumedCount += 1;
 			}
@@ -1484,18 +1472,17 @@ export class Daemon {
 		sender: string,
 		messageId: string,
 		outcome: SendOutcome,
-		marked: InboxMark,
 	): void {
 		if (!this.registry.read(sender)) return;
-		// The durable reader marker outranks transport confidence: once the target
-		// has acknowledged the queue row, the sender receipt is delivered regardless
-		// of whether the socket supplied its own positive ack.
+		// Honest mapping: ONLY a positively observed submission earns `delivered`.
+		// Text that was typed but never confirmed submitted (the swallowed-Enter
+		// wedge, plan 127) reports `unverified` — never `delivered`.
 		//
-		// A non-acked caller would still fall back to transport honesty: confirmed
-		// is delivered; sent/unverified remain unverified on the existing receipt
-		// wire. held/failed/gone never reach this function.
-		const durablyAcked = marked.kind === "marked" || marked.kind === "already-read";
-		const state = durablyAcked || outcome === "confirmed" ? "delivered" : "unverified";
+		// Precondition, and the reason two receipt words are enough: the callers only
+		// reach here for `confirmed`/`unverified`. `gone` returns early and `held`/
+		// `failed` requeue the message UNCONSUMED (plan 071 D7), so the outcomes where
+		// nothing landed never produce a receipt at all.
+		const state = outcome === "confirmed" ? "delivered" : "unverified";
 		this.channel.deliver({
 			from: peer,
 			to: sender,

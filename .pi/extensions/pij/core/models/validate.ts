@@ -4,7 +4,7 @@
 // Never blocks — callers warn and continue; the spawn id is always returned.
 
 import { closestModel, normalizeModelQuery } from "./match.js";
-import { COPILOT_NO_LONG_CONTEXT, type ModelEntry } from "./registry.js";
+import { COPILOT_NO_LONG_CONTEXT, type CopilotInstability, type ModelEntry } from "./registry.js";
 
 export type ValidationResult =
 	| { readonly ok: true }
@@ -50,6 +50,16 @@ export function resolveLongContext(
 	const normalized = normalizeModelQuery(model);
 	const bareId = normalized.slice(normalized.lastIndexOf("/") + 1);
 	return COPILOT_NO_LONG_CONTEXT.has(bareId) ? false : undefined;
+}
+
+/** Resolve a measured upstream Copilot instability from the annotated catalog
+ * entry only. Provider filtering belongs to the annotation pipeline, so a
+ * non-Copilot model can never inherit this Copilot observation. */
+export function resolveCopilotInstability(
+	known: readonly ModelEntry[],
+	model: string,
+): CopilotInstability | undefined {
+	return findKnownModel(model, known)?.copilotInstability;
 }
 
 export type EffortValidation =
