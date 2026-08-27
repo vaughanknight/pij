@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { FakeDelivery, FakeRegistry } from "../../adapters/fakes.js";
 import { transcriptDir } from "../harness/claude.js";
+import type { ProcessSnapshot } from "../platform/types.js";
 import type { SessionDescriptor } from "../types.js";
 import { reconcileDeaths } from "./death-reconciler.js";
 import {
@@ -93,6 +94,15 @@ function world(opts: { pane?: string; transcripts?: string[]; dead?: boolean } =
 		home: () => HOME,
 		now: () => nowMs,
 		isAlive: () => true,
+		processSnapshot: () => ({
+			ok: true,
+			capturedAtMs: 1000,
+			processes: [
+				{ pid: 100, command: "-zsh" },
+				{ pid: 101, ppid: 100, command: "claude --dangerously-skip-permissions" },
+				{ pid: 102, ppid: 100, command: "codex" },
+			],
+		}),
 	};
 	return {
 		ports,
@@ -107,6 +117,21 @@ function world(opts: { pane?: string; transcripts?: string[]; dead?: boolean } =
 		setNow: (ms) => {
 			nowMs = ms;
 		},
+	};
+}
+
+function processSnapshot(harness: "claude" | "copilot", sessionId: string): ProcessSnapshot {
+	return {
+		ok: true,
+		capturedAtMs: 1000,
+		processes: [
+			{ pid: 100, command: "-zsh" },
+			{
+				pid: 101,
+				ppid: 100,
+				command: `${harness} --session-id ${sessionId}`,
+			},
+		],
 	};
 }
 
@@ -301,6 +326,22 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
+	it("a discovered Claude transcript cannot bind when the pane process names a foreign session", () => {
+		const w = world({ pane: READY, transcripts: [`${DIR}/claude-new.jsonl`] });
+		w.ports.processSnapshot = () => processSnapshot("claude", "foreign-session");
+		const reg = new FakeRegistry();
+		const out = driveSession(
+			desc({ initInjectedAt: "2026-06-27T00:00:05.000Z" }),
+			{ before: [], readyAtMs: 1000 },
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+
+		expect(out.kind).toBe("waiting");
+		expect(reg.read("pij-w")?.lifecycle).not.toBe("bound");
+	});
+
 	it("copilot: ready + plannedHarnessSessionId → binds deterministically (no discovery)", async () => {
 		// Copilot chose its session id at spawn (`--session-id`), so the daemon binds
 		// to the planned id after the first-inference round-trip — no transcript needed.
@@ -308,19 +349,21 @@ This session was last active just now and appears to be in use by another CLI or
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const planned = "9a8f8be6-0000-4000-8000-000000000001";
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
 		const out = driveSession(
 			desc({
 				harness: "copilot",
 				initInjectedAt: "2026-06-27T00:00:05.000Z",
-				plannedHarnessSessionId: "9a8f8be6-uuid",
+				plannedHarnessSessionId: planned,
 			}),
 			drive,
 			w.ports,
 			reg,
 			del,
 		);
-		expect(out).toEqual({ kind: "bound", harnessSessionId: "9a8f8be6-uuid" });
-		expect(reg.read("pij-w")?.harnessSessionId).toBe("9a8f8be6-uuid");
+		expect(out).toEqual({ kind: "bound", harnessSessionId: planned });
+		expect(reg.read("pij-w")?.harnessSessionId).toBe(planned);
 		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
 		expect(
 			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
@@ -335,6 +378,7 @@ This session was last active just now and appears to be in use by another CLI or
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		w.ports.processSnapshot = () => processSnapshot("claude", "fork-uuid");
 		const out = driveSession(
 			desc({
 				harness: "claude",
@@ -350,6 +394,52 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(out).toEqual({ kind: "bound", harnessSessionId: "fork-uuid" });
 		expect(reg.read("pij-w")?.harnessSessionId).toBe("fork-uuid");
 		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
+	});
+
+	it("planned binding refuses a pane whose harness process names another session", () => {
+		const expected = "11111111-1111-4111-8111-111111111111";
+		const foreign = "22222222-2222-4222-8222-222222222222";
+		const w = world({ pane: COPILOT_READY });
+		w.ports.processSnapshot = () => processSnapshot("copilot", foreign);
+		const reg = new FakeRegistry();
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: expected,
+			}),
+			{ readyAtMs: 1000, firstInferenceSeen: true },
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+
+		expect(out.kind).toBe("waiting");
+		expect(reg.read("pij-w")?.lifecycle).not.toBe("bound");
+	});
+
+	it("a stale pending snapshot cannot bind over a durable dissolved descriptor", () => {
+		const planned = "11111111-1111-4111-8111-111111111111";
+		const w = world({ pane: COPILOT_READY });
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
+		const reg = new FakeRegistry([
+			desc({ lifecycle: "dissolved", paneId: undefined, plannedHarnessSessionId: planned }),
+		]);
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: planned,
+			}),
+			{ readyAtMs: 1000, firstInferenceSeen: true },
+			w.ports,
+			reg,
+			new FakeDelivery(),
+		);
+
+		expect(out.kind).toBe("waiting");
+		expect(w.sentText).toEqual([]);
+		expect(reg.read("pij-w")).toMatchObject({ lifecycle: "dissolved", paneId: undefined });
 	});
 
 	// ─── codex discovery bind (Plan 022, AC-02, Finding 06) ─────────────────────
@@ -698,11 +788,13 @@ describe("first-inference gate (T009)", () => {
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const planned = "33333333-3333-4333-8333-333333333333";
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
 		const out = driveSession(
 			desc({
 				harness: "copilot",
 				initInjectedAt: "2026-06-27T00:00:05.000Z",
-				plannedHarnessSessionId: "uuid-good",
+				plannedHarnessSessionId: planned,
 			}),
 			drive,
 			w.ports,
@@ -773,11 +865,13 @@ describe("first-inference gate (T009)", () => {
 		const w = world({ pane: PANE_WITH_MODEL });
 		const reg = new FakeRegistry();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const planned = "44444444-4444-4444-8444-444444444444";
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
 		const out = driveSession(
 			desc({
 				harness: "copilot",
 				initInjectedAt: "2026-06-27T00:00:05.000Z",
-				plannedHarnessSessionId: "uuid-model-capture",
+				plannedHarnessSessionId: planned,
 			}),
 			drive,
 			w.ports,

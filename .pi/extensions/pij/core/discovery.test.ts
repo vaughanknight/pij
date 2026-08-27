@@ -139,6 +139,12 @@ describe("resolveSelf", () => {
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.value).toBe("b");
 	});
+	it("ignores a terminal seat when a live seat has reused its pane", () => {
+		const old = { ...a, paneId: "%2", lifecycle: "dissolved" as const };
+		const live = { ...b, paneId: "%2", lifecycle: "bound" as const };
+		const r = resolveSelf(undefined, [old, live], "%2");
+		expect(r).toEqual({ ok: true, value: "b" });
+	});
 	it("pane hint that matches nothing stays E-AMBIG", () => {
 		const ap = { ...a, paneId: "%1" };
 		const bp = { ...b, paneId: "%2" };
