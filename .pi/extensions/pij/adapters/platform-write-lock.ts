@@ -17,10 +17,16 @@
 // containment gate owns them and names the verb.
 
 import { randomUUID } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PlatformWriteLockPort } from "../core/platform/ports.js";
 import { err, ok, type Result } from "../core/types.js";
+import {
+	type LockReclaimNote,
+	reclaimIfDead,
+	releaseOwnedLock,
+	trackHeldLock,
+} from "./lock-reclaim.js";
 
 /** Total lock-acquisition budget before a write gives up with E-NOREG. Wider
  *  than the spine events.lock budget: this lock nests OUTSIDE it and a held
@@ -34,15 +40,24 @@ function sleepMs(ms: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+interface PlatformWriteLockOptions {
+	readonly lockBudgetMs?: number;
+	readonly isAlive?: (pid: number) => boolean;
+	readonly processStartedAtMs?: (pid: number) => number | undefined;
+	readonly onReclaim?: (note: LockReclaimNote) => void;
+}
+
 export class FsPlatformWriteLock implements PlatformWriteLockPort {
 	private readonly dir: string;
 	private readonly lockFile: string;
 	private readonly lockBudgetMs: number;
+	private readonly options: PlatformWriteLockOptions;
 
-	constructor(pijHome: string, options: { readonly lockBudgetMs?: number } = {}) {
+	constructor(pijHome: string, options: PlatformWriteLockOptions = {}) {
 		this.dir = join(pijHome, "spine");
 		this.lockFile = join(this.dir, "write.lock");
 		this.lockBudgetMs = options.lockBudgetMs ?? LOCK_BUDGET_MS;
+		this.options = options;
 	}
 
 	withPlatformWriteLock<T>(operation: () => T): Result<T> {
@@ -59,13 +74,7 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 	 *  manual unwedge a successor's LIVE lock may sit at this path, and
 	 *  deleting it would cascade another writer into the critical section. */
 	private releaseLock(token: string): void {
-		try {
-			if (readFileSync(this.lockFile, "utf8") === token) {
-				rmSync(this.lockFile, { force: true });
-			}
-		} catch {
-			// Lock already gone or unreadable — nothing that is safely ours.
-		}
+		releaseOwnedLock(this.lockFile, token);
 	}
 
 	/** Exclusive-create acquisition with retry; NEVER steals (G1 policy). */
@@ -86,6 +95,11 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 						"E-NOREG",
 						`cannot create platform write lock ${this.lockFile}: ${String(error)}`,
 					);
+				}
+				const reclaimed = reclaimIfDead(this.lockFile, "write.lock", this.options);
+				if (reclaimed !== null) {
+					this.options.onReclaim?.(reclaimed);
+					continue;
 				}
 			}
 			if (fd !== undefined) {
@@ -115,6 +129,7 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 				} catch {
 					// fd is abandoned either way
 				}
+				trackHeldLock(this.lockFile, token);
 				return ok(token);
 			}
 			if (Date.now() >= deadline) {

@@ -33,6 +33,7 @@ import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { releaseHeldLocks } from "./adapters/lock-reclaim.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
@@ -458,7 +459,9 @@ export class Daemon {
 					allocationStore: new FsAllocationStore(this.pijHome),
 					fenceStore: new FsFenceStore(this.pijHome),
 					dispatchStore: new FsDispatchStore(this.pijHome),
-					platformWriteLock: new FsPlatformWriteLock(this.pijHome),
+					platformWriteLock: new FsPlatformWriteLock(this.pijHome, {
+						onReclaim: (note) => this.log(note.message),
+					}),
 					now: () => this.ports.now(),
 					isAlive: (pid) => this.ports.isAlive(pid),
 					// Suspension probe: `ps -o state=` reads 'T' for a SIGSTOP'd
@@ -1759,6 +1762,33 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	};
 }
 
+type DaemonShutdownSignal = "SIGINT" | "SIGTERM";
+
+interface DaemonShutdownOptions {
+	readonly onSignal?: (signal: DaemonShutdownSignal, handler: () => void) => void;
+	readonly releaseHeldLocks?: () => void;
+	readonly exit?: (code: number) => void;
+}
+
+export function installDaemonShutdownHandlers(
+	stop: (() => void) | undefined,
+	options: DaemonShutdownOptions = {},
+): void {
+	const onSignal =
+		options.onSignal ??
+		((signal: DaemonShutdownSignal, handler: () => void) => {
+			process.on(signal, handler);
+		});
+	const exit = options.exit ?? ((code: number) => process.exit(code));
+	const shutdown = () => {
+		stop?.();
+		(options.releaseHeldLocks ?? releaseHeldLocks)();
+		exit(0);
+	};
+	onSignal("SIGINT", shutdown);
+	onSignal("SIGTERM", shutdown);
+}
+
 // Run-if-main (tsx/ESM): start the loop and keep the process alive until SIGINT.
 if (import.meta.url === `file://${process.argv[1]}`) {
 	let stop: (() => void) | undefined;
@@ -1768,10 +1798,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		process.stderr.write(`${(e as Error).message}\n`);
 		process.exit(1);
 	}
-	const shutdown = () => {
-		stop?.();
-		process.exit(0);
-	};
-	process.on("SIGINT", shutdown);
-	process.on("SIGTERM", shutdown);
+	installDaemonShutdownHandlers(stop);
 }

@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import {
 	appendFileSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -148,6 +149,50 @@ describe("FsSpineLog", () => {
 		expect(JSON.parse(lines[1] ?? "")).toEqual(second);
 		// The write lock never outlives the operation.
 		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a dead events.lock and appends a spine note naming the pid and layer", () => {
+		const deadPid = 999_999_999;
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${deadPid}:dead-token\n`);
+		const log = new FsSpineLog(home, {
+			lockBudgetMs: 60,
+			isAlive: () => false,
+			processStartedAtMs: () => undefined,
+		});
+
+		expect(expectOk(log.append(draft(1))).seq).toBe(2);
+		const reclaim = log
+			.read()
+			.find((event) => event.refs.includes("lock:events.lock"));
+		expect(reclaim).toMatchObject({
+			kind: "note",
+			refs: expect.arrayContaining(["lock:events.lock", `pid:${deadPid}`]),
+			prev: "dead-pid",
+		});
+		expect(reclaim?.next).toContain(`reclaimed stale events.lock from dead pid ${deadPid}`);
+		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a live reused pid only when its process started after events.lock", () => {
+		const reusedPid = 424_242;
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${reusedPid}:old-process\n`);
+		const lockedAtMs = Date.now() - 10_000;
+		utimesSync(lockFile(), lockedAtMs / 1000, lockedAtMs / 1000);
+		const log = new FsSpineLog(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => lockedAtMs + 5_000,
+		});
+
+		expect(expectOk(log.append(draft(1))).seq).toBe(2);
+		expect(
+			log.read().find((event) => event.refs.includes("lock:events.lock")),
+		).toMatchObject({
+			refs: expect.arrayContaining(["lock:events.lock", `pid:${reusedPid}`]),
+			prev: "pid-reused",
+		});
 	});
 
 	it("lastSeq is 0 when empty and allocation resumes above any planted on-disk seq", () => {

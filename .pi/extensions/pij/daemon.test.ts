@@ -33,7 +33,7 @@ import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js
 import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
-import { Daemon, touchDaemonHeartbeat } from "./daemon.js";
+import { Daemon, installDaemonShutdownHandlers, touchDaemonHeartbeat } from "./daemon.js";
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
 const CLAUDE_COMPOSER_EMPTY = [
@@ -2070,6 +2070,27 @@ describe("touchDaemonHeartbeat — the tick-loop liveness rider (#40 Defect 2)",
 	it("is best-effort: a missing lock (racing teardown) never throws", async () => {
 		const gonePath = join(home, "does-not-exist", "daemon.lock");
 		expect(() => touchDaemonHeartbeat(gonePath, new Date("2026-07-23T09:00:00Z"))).not.toThrow();
+	});
+});
+
+describe("daemon signal shutdown", () => {
+	it("releases held write locks before SIGTERM exits", () => {
+		const handlers = new Map<string, () => void>();
+		const calls: string[] = [];
+		installDaemonShutdownHandlers(
+			() => calls.push("stop"),
+			{
+				onSignal: (signal, handler) => handlers.set(signal, handler),
+				releaseHeldLocks: () => calls.push("release-locks"),
+				exit: (code) => calls.push(`exit:${code}`),
+			},
+		);
+
+		const sigterm = handlers.get("SIGTERM");
+		if (!sigterm) throw new Error("SIGTERM handler was not installed");
+		sigterm();
+
+		expect(calls).toEqual(["stop", "release-locks", "exit:0"]);
 	});
 });
 

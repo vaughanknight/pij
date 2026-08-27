@@ -7,6 +7,7 @@
 
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -46,6 +47,51 @@ describe("FsPlatformWriteLock", () => {
 		expect(runs).toBe(1);
 		// …and gone afterwards.
 		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a dead write.lock and emits a receipt naming the pid and layer", () => {
+		const deadPid = 999_999_999;
+		const notes: Array<{ layer: string; pid: number; reason: string }> = [];
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${deadPid}:dead-token\n`);
+		const lock = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 60,
+			isAlive: () => false,
+			processStartedAtMs: () => undefined,
+			onReclaim: (note) => notes.push(note),
+		});
+
+		expect(lock.withPlatformWriteLock(() => "recovered")).toMatchObject({
+			ok: true,
+			value: "recovered",
+		});
+		expect(notes).toEqual([
+			{ layer: "write.lock", pid: deadPid, reason: "dead-pid" },
+		]);
+		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a live reused pid only when its process started after write.lock", () => {
+		const reusedPid = 424_242;
+		const notes: Array<{ layer: string; pid: number; reason: string }> = [];
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${reusedPid}:old-process\n`);
+		const lockedAtMs = Date.now() - 10_000;
+		utimesSync(lockFile(), lockedAtMs / 1000, lockedAtMs / 1000);
+		const lock = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => lockedAtMs + 5_000,
+			onReclaim: (note) => notes.push(note),
+		});
+
+		expect(lock.withPlatformWriteLock(() => "reused")).toMatchObject({
+			ok: true,
+			value: "reused",
+		});
+		expect(notes).toEqual([
+			{ layer: "write.lock", pid: reusedPid, reason: "pid-reused" },
+		]);
 	});
 
 	it("a held lock times out E-NOREG with the manual-removal diagnostic; the operation NEVER runs", () => {

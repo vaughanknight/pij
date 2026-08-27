@@ -1036,7 +1036,9 @@ function deps(): CliDeps {
 				}),
 		spineLog: new FsSpineLog(pijHome),
 		opJournal: new FsOpJournal(pijHome),
-		platformWriteLock: new FsPlatformWriteLock(pijHome),
+		platformWriteLock: new FsPlatformWriteLock(pijHome, {
+			onReclaim: (note) => process.stderr.write(`warning: ${note.message}\n`),
+		}),
 		contextReader: new FsContextReader(homedir()),
 		contextWindowReader: new TmuxContextWindowReader(),
 		watchdogStore: new FsWatchdogStore(pijHome),
