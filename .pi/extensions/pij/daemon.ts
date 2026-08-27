@@ -99,6 +99,7 @@ import {
 	type BatonNoticeSink,
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
+import { isOpenDispatch, retireDispatch } from "./core/platform/dispatch.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
@@ -823,24 +824,52 @@ export class Daemon {
 	}
 
 	private retireForClosedRecipients(): void {
-		const queue = sqliteOf(this.channel);
-		if (queue === undefined) return;
-		for (const to of queue.openRecipients()) {
-			const descriptor = this.registry.read(to);
-			// Not retention policy: the complete deliberate-close predicate decides
-			// retirement. Its intent/terminal checks are one-directional safety
-			// interlocks — removing either can only retire more, including revivable mail.
-			if (
-				descriptor?.lifecycle !== "dissolved" ||
-				descriptor.revivePendingAt !== undefined ||
-				descriptor.closeIntent === undefined ||
-				descriptor.terminal?.disposition !== "requested"
-			) {
-				continue;
+		const closedRecipients = new Set<string>();
+		try {
+			for (const name of readdirSync(this.pijHome)) {
+				if (!name.endsWith(".json")) continue;
+				const descriptor = this.registry.read(name.slice(0, -".json".length));
+				if (descriptor === null) continue;
+				if (
+					descriptor.lifecycle !== "dissolved" ||
+					descriptor.revivePendingAt !== undefined ||
+					descriptor.closeIntent === undefined ||
+					descriptor.terminal?.disposition !== "requested"
+				) {
+					continue;
+				}
+				closedRecipients.add(descriptor.id);
 			}
-			const result = queue.retire({ to }, "recipient-closed");
-			if (result.retired > 0) {
-				this.log(`retire ${to}: ${result.retired} open deliveries retired (recipient closed)`);
+		} catch {
+			return;
+		}
+		if (closedRecipients.size === 0) return;
+
+		const queue = sqliteOf(this.channel);
+		const dispatchStore = new FsDispatchStore(this.pijHome);
+		const dispatches = dispatchStore.list();
+		for (const to of closedRecipients) {
+			if (queue !== undefined) {
+				const result = queue.retire({ to }, "recipient-closed");
+				if (result.retired > 0) {
+					this.log(`retire ${to}: ${result.retired} open deliveries retired (recipient closed)`);
+				}
+			}
+			let retiredDispatches = 0;
+			for (const previous of dispatches) {
+				if (previous.to !== to || !isOpenDispatch(previous)) continue;
+				const next = retireDispatch(previous, {
+					reason: "recipient-closed",
+					actor: "daemon",
+					ts: new Date(this.ports.now()).toISOString(),
+				});
+				if (!next.ok) throw new Error(`${next.code}: ${next.message}`);
+				const written = dispatchStore.write(next.value);
+				if (!written.ok) throw new Error(`${written.code}: ${written.message}`);
+				retiredDispatches += 1;
+			}
+			if (retiredDispatches > 0) {
+				this.log(`retire ${to}: ${retiredDispatches} open dispatches retired (recipient closed)`);
 			}
 		}
 	}

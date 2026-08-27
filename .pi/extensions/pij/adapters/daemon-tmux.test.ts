@@ -547,10 +547,32 @@ describe("composerPending — submit verification (the cause-independent retry g
 				const output = stderr.join("");
 				expect(output).not.toContain("UNVERIFIED");
 				expect(output).not.toContain("⚠️");
+				expect(output).toContain("ℹ️");
 				expect(output).toContain("pointer");
+				expect(output).toContain("after 3 Enter attempt(s)");
 				expect(output).toContain("90s lease");
 				expect(output).toContain("re-announced");
 				expect(output).toContain("pid 4242");
+			} finally {
+				write.mockRestore();
+			}
+		});
+
+		it("pointer early break reports the honest single Enter attempt", () => {
+			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, ...repeatedCapture(CLAUDE_GHOST_PANE, 30)]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+			const stderr: string[] = [];
+			const write = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+				stderr.push(String(chunk));
+				return true;
+			});
+
+			try {
+				expect(adapter.sendText(PANE_ID, SENT, "claude", 4242, { kind: "pointer" })).toBe(
+					"unverified",
+				);
+				expect(stderr.join("")).toContain("after 1 Enter attempt(s)");
+				expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1);
 			} finally {
 				write.mockRestore();
 			}
