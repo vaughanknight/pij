@@ -1293,3 +1293,109 @@ describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-
 		expect(consumed).toEqual([]);
 	});
 });
+
+describe("routing invariant — body on socket/RPC, pointer only where a pty can clip (plan 392 Phase 4)", () => {
+	it("claude with an inbox socket receives the byte-exact body with zero pane keystrokes", async () => {
+		const w = world({ pane: READY });
+		const socketBodies: string[] = [];
+		w.ports.sendSocket = (_target, message) => {
+			socketBodies.push(message.body);
+			return "confirmed";
+		};
+		const body = `HEAD\n${"k".repeat(3_000)}\nTAIL`;
+
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m-claude", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+
+		expect(socketBodies).toEqual([body]);
+		expect(w.sentText).toEqual([]);
+		expect(consumed).toEqual([
+			{ messageId: "m-claude", from: "pij-boss", outcome: "confirmed", via: "socket" },
+		]);
+	});
+
+	it("copilot with rpcPort receives the byte-exact body with zero pane keystrokes", async () => {
+		const w = world({ pane: COPILOT_READY });
+		const socketBodies: string[] = [];
+		w.ports.sendSocket = (target, message) => {
+			expect(target.rpcPort).toBe(47_391);
+			socketBodies.push(message.body);
+			return "confirmed";
+		};
+		const body = "copilot rpc body";
+
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound", rpcPort: 47_391 }),
+			[{ messageId: "m-copilot", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+
+		expect(socketBodies).toEqual([body]);
+		expect(w.sentText).toEqual([]);
+		expect(consumed).toEqual([
+			{ messageId: "m-copilot", from: "pij-boss", outcome: "confirmed", via: "socket" },
+		]);
+	});
+
+	it("codex without an endpoint receives one pointer line and never the body", async () => {
+		const w = world({ pane: READY });
+		w.ports.sendSocket = () => {
+			throw new Error("codex has no socket endpoint in this phase");
+		};
+		const body = "codex body must stay out of the pty";
+
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "codex", lifecycle: "bound" }),
+			[{ messageId: "m-codex", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+
+		expect(w.sentText).toEqual([{ pane: "%1", text: pointerLine("pij-boss", 1) }]);
+		expect(w.sentText[0]?.text).not.toContain(body);
+		expect(consumed).toEqual([
+			{ messageId: "m-codex", from: "pij-boss", outcome: "confirmed", via: "pointer" },
+		]);
+	});
+
+	it("socketless claude consults the composer-idle guard before typing its pointer", async () => {
+		const w = world({ pane: READY });
+		w.ports.sendSocket = () => "no-socket";
+		const capturePane = w.ports.capturePane;
+		let composerGuardReads = 0;
+		w.ports.capturePane = (paneId) => {
+			composerGuardReads += 1;
+			return capturePane(paneId);
+		};
+		const body = "socketless body must stay durable";
+
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m-socketless", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+
+		expect(composerGuardReads).toBeGreaterThan(0);
+		expect(w.sentText).toEqual([{ pane: "%1", text: pointerLine("pij-boss", 1) }]);
+		expect(w.sentText[0]?.text).not.toContain(body);
+		expect(consumed).toEqual([
+			{ messageId: "m-socketless", from: "pij-boss", outcome: "confirmed", via: "pointer" },
+		]);
+	});
+});
