@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "command": "checks",
+  "command": "boot",
   "harness": "copilot-cli",
   "harness_session_id": "069ba022-996f-4990-b67d-7bc064c7eb08",
-  "timecode": "2026-08-27T21:51:27.966Z",
+  "timecode": "2026-08-27T22:04:23.895Z",
   "window": {
     "since": "last-command",
-    "from": 4573,
-    "to": 4703
+    "from": 4703,
+    "to": 4797
   },
   "branch": "s392/day3-codex-doctrine",
   "branch_changed": false,
