@@ -1,0 +1,16 @@
+{
+  "delegationId": "dlg-0024",
+  "outcome": "PARTIAL",
+  "summary": "Candidate a27ab584b7ae15f351e3c5099cb1b4014c598971 makes Telegram text-part forwarding idempotent across SQLite lease redelivery. Successful chunks are persisted immediately, transient text failures receive one bounded retry, and every forwarded log line carries the durable message ID plus part index/total.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts",
+    ".pi/extensions/pij/adapters/sqlite-queue.ts",
+    ".pi/extensions/pij/adapters/sqlite-queue.test.ts",
+    "docs/specs/claude-copilot-sqlite-sockets-comms.md"
+  ],
+  "testsRun": 4057,
+  "testsPassed": 4042,
+  "gatesClean": false,
+  "notes": "Persistence uses an additive telegram_sent_parts side table keyed by message_id + zero-based part_index. Legacy rows have no records and behave as before; the fs backend is unchanged. On redelivery the forwarder skips successful parts, restores reply/speaker state, and sends only unsent chunks. A fails-once transient one-part send now makes two attempts, produces one Telegram bubble, and leaves the queue row acked without lease redelivery. The remaining unavoidable window is a process crash after Telegram accepts a part but before markTelegramPartSent commits; that part can still repeat. Spec §14 now records the measured Claude ack ceiling, transport taxonomy, durable-reader rule, and daemon-origin marker caveat. Full pij suite: 4042 passed, 15 skipped; targeted bridge/queue surface: 102 passed, 1 skipped; typecheck and changed-file Biome clean. Mutations: MUT-LOGID RED at bridge.test.ts:1124; MUT-RETRY RED at :1159; MUT-IDEMPOTENT RED at :1204. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention item-24 paths."
+}
