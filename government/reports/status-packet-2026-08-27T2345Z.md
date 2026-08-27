@@ -73,3 +73,6 @@ Author: pij-relative-panther (pij o-prime). Facts verified at 23:4xZ from `gh pr
 4. Codex stays deferred for the tag? (default: yes; pointer-line path documented)
 5. Should GitHub Actions be made to actually run before tagging (0 runs ever), or does the tag state "local gates only"? (default: state it)
 6. Still open from earlier: did the 17:46Z "restart #3 proof" line arrive **twice** on his phone (the item-24 oracle)? and whether encode candidates E3/E5/E7 become items 32–34.
+
+## Amendment 23:5xZ — §6 ETA
+Item 24's set-review found the dedup invariant itself wrong (count-based identity aliases same-total bubble distributions → an oversize-failure notice silently suppressed; media bubbles never marked → a file delivered twice). Ruled a final pass (spine 29925): identity = sha256 of the ordered planned bubble set; every bubble, media included, indexed and marked on positive ack. Adds ~1–2 h: item-24 PR ≈ 3–4 h from 23:50Z; stable candidate ≈ 2026-08-28 06:00–09:00Z (16:00–19:00 AEST); RC after restart #6 ≈ 5 h. Sent to kingfisher 23:5xZ.
