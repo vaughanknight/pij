@@ -85,9 +85,10 @@ export interface DaemonPorts {
 	/** PoC (poc/comms-sqlite-socket): deliver a message to a Claude Code seat over
 	 *  its inbox socket instead of typing into its pane. `no-socket` = the seat has
 	 *  no resolvable socket (older claude, bind failure, non-claude harness) — the
-	 *  caller falls back to `sendText`. `unverified` = bytes flushed but no ack
-	 *  (consume to avoid a duplicate); `failed` = nothing landed (retry later).
-	 *  Optional: pure fakes and non-claude daemons need not implement it. */
+	 *  caller falls back to `sendText`. `sent` = bytes flushed but no positive ack;
+	 *  `unverified` = genuine submission uncertainty; both consume to avoid a
+	 *  duplicate. `failed` = nothing landed (retry later). Optional: pure fakes
+	 *  and non-claude daemons need not implement it. */
 	sendSocket?(
 		target: SessionDescriptor,
 		message: DeliveredMessage,
@@ -702,7 +703,7 @@ export async function drainTmuxInbox(
 			ports.sendSocket
 		) {
 			const outcome = await ports.sendSocket(target, { ...msg, messageId: m.messageId });
-			if (outcome === "confirmed" || outcome === "unverified") {
+			if (outcome === "confirmed" || outcome === "sent" || outcome === "unverified") {
 				consumed.push({ messageId: m.messageId, from: m.from, outcome, via: "socket" });
 				continue;
 			}

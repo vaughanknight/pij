@@ -24,6 +24,9 @@ import type {
 /** Outcome of a daemon-owned tmux text injection.
  *
  *  - `confirmed`  — the payload was typed AND submission was positively observed.
+ *  - `sent`        — a socket/RPC request flushed, but no positive application ack
+ *    arrived. The recipient may already have accepted it, so replay is unsafe;
+ *    consume it and defer delivery truth to the durable reader acknowledgement.
  *  - `unverified` — the payload WAS typed, but submission could not be confirmed.
  *    Replaying could duplicate an already-accepted turn, so the caller consumes.
  *    Reachable for EVERY harness since plan 127 (merged here as s179): claude and
@@ -44,7 +47,7 @@ import type {
  *    from `%0` in every new server, so a queued message for a dead `%315` becomes
  *    deliverable again — into whatever LIVE pane inherits that id. The caller must
  *    stop targeting the binding; the durable copy stays unconsumed in the mailbox. */
-export type SendOutcome = "confirmed" | "unverified" | "held" | "failed" | "gone";
+export type SendOutcome = "confirmed" | "sent" | "unverified" | "held" | "failed" | "gone";
 
 /** Outcome of one archival attempt (plan 071 D1). `skipped` means the move was
  *  declined for safety (a conflicting half-archive) — never silent data loss. */

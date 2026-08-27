@@ -308,9 +308,9 @@ export class DaemonTmux implements DaemonPorts {
 				mode: "enqueue",
 			});
 			if (r.outcome !== "failed") {
-				if (r.outcome === "unverified") {
+				if (r.outcome === "sent") {
 					this.warn(
-						`⚠️  copilot RPC UNVERIFIED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "response lost after write"}; message will not be blindly retried`,
+						`⚠️  copilot RPC SENT: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "response lost after write"}; awaiting durable reader acknowledgement`,
 					);
 				}
 				return r.outcome;
@@ -336,9 +336,9 @@ export class DaemonTmux implements DaemonPorts {
 			ackWaitMs: this.socketAckWaitMs,
 		});
 		if (result.outcome !== "failed") {
-			if (result.outcome === "unverified") {
+			if (result.outcome === "sent") {
 				this.warn(
-					`⚠️  claude SOCKET UNVERIFIED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "status lost after write"}; message will not be blindly retried`,
+					`⚠️  claude SOCKET SENT: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "status lost after write"}; awaiting durable reader acknowledgement`,
 				);
 			}
 			return result.outcome;
