@@ -101,3 +101,12 @@ Final `harness checks --quick` reproduced the same out-of-fence baselines:
 `local-paths`, `typecheck`, `pkg-audit`, and `snapshots` passed; lint and
 windows-compat reported existing OSC-7337 diagnostics, the test stage lacked
 `pwsh`, and smoke was skipped by `--quick`.
+
+Validation re-check of `9b5e42d..0f10d7c`:
+
+- The original parent-first routing promise is satisfied across every named
+  consumer.
+- Both prior concurrent re-link findings are closed by persisted/post-write
+  recipient resolution.
+- Independent read-only critic: `no_material_findings`.
+- Verdict: `VALIDATED`.
