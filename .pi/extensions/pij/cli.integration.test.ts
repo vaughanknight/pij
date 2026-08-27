@@ -42,7 +42,7 @@ import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
 import { DEFAULT_SPAWN_EXPECTATION_TTL_MS } from "./core/spawn-expectation.js";
-import { SEMANTIC_STATES, type PijMessage, type SessionDescriptor } from "./core/types.js";
+import { type PijMessage, SEMANTIC_STATES, type SessionDescriptor } from "./core/types.js";
 import { buildWatchdogTurn, mutesWatchdogNudge } from "./core/watchdog.js";
 
 const CLI = join(import.meta.dirname, "cli.ts");
