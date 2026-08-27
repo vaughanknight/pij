@@ -64,6 +64,10 @@ import {
 	type SpineEventDraft,
 } from "./types.js";
 
+function isDispatchJournalKind(kind: string): boolean {
+	return kind === SPINE_KIND_DISPATCH || kind === "dispatch-retired";
+}
+
 // Assignment coupled-write kinds (plan 054 P2 T005). Their state side is the
 // assignment RECORD; prev/next carry canonicalAssignmentJson (states[]
 // excluded — a log-derived index). The two STATE kinds additionally join the
@@ -197,7 +201,7 @@ function resolveOp(
 		const id = structuredRefOf(op.draft, "fence:");
 		return resolveRecordIntent(op, spineLog, fenceStore, id, canonicalFenceJson, "fence");
 	}
-	if (kind === SPINE_KIND_DISPATCH) {
+	if (isDispatchJournalKind(kind)) {
 		const id = structuredRefOf(op.draft, "dispatch:");
 		return resolveRecordIntent(op, spineLog, dispatchStore, id, canonicalDispatchJson, "dispatch");
 	}
@@ -367,7 +371,7 @@ function resolveCommitted(
 			"fence",
 		);
 	}
-	if (kind === SPINE_KIND_DISPATCH) {
+	if (isDispatchJournalKind(kind)) {
 		return resolveCommittedRecord(
 			op,
 			spineLog,

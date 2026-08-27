@@ -9,11 +9,12 @@ import { DualWriteChannel } from "./adapters/channel-factory.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FakeRegistry } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { type DaemonPorts, pointerLine } from "./core/daemon/loop.js";
 import { retireDispatch, unretireDispatch } from "./core/platform/dispatch.js";
-import type { Dispatch } from "./core/platform/types.js";
-import type { SessionDescriptor } from "./core/types.js";
+import type { Dispatch, SpineEvent } from "./core/platform/types.js";
+import { err, type SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
@@ -634,6 +635,21 @@ describe("closed-recipient dispatch retirement", () => {
 				state: "retired",
 				retirement: { reason: "recipient-closed" },
 			});
+			expect(
+				new FsSpineLog(home).read().find((event) => event.refs.includes(`dispatch:${id}`)),
+			).toMatchObject({
+				kind: "dispatch-retired",
+				actor: "daemon",
+				peer: "pij-closed",
+				prev: expect.stringContaining(
+					`"state":"${id === "dispatch-undelivered" ? "undelivered" : "delivered-unacked"}"`,
+				),
+				next: expect.stringContaining('"state":"retired"'),
+				refs: expect.arrayContaining([
+					"reason:recipient-closed",
+					`prior-state:${id === "dispatch-undelivered" ? "undelivered" : "delivered-unacked"}`,
+				]),
+			});
 		}
 		expect(store.read("dispatch-operator")).toMatchObject({
 			state: "retired",
@@ -662,6 +678,45 @@ describe("closed-recipient dispatch retirement", () => {
 			state: "retired",
 			retirement: { reason: "stale" },
 		});
+	});
+
+	it("continues retiring dispatches when a best-effort sweep spine note fails", async () => {
+		const registry = new FsRegistry(home);
+		const store = new FsDispatchStore(home);
+		for (const id of ["dispatch-note-fail-a", "dispatch-note-fail-b"]) {
+			expect(store.write(dispatchRecord(id, "pij-closed")).ok).toBe(true);
+		}
+		completeClose(registry, "pij-closed");
+		const spineLog = new FsSpineLog(home);
+		vi.spyOn(spineLog, "append").mockReturnValue(
+			err<SpineEvent>("E-NOREG", "injected note failure"),
+		);
+		const d = new Daemon(
+			home,
+			ports(),
+			registry,
+			new FsChannel(home),
+			(line) => logs.push(line),
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			spineLog,
+		);
+
+		await expect(d.tick()).resolves.toBeUndefined();
+
+		for (const id of ["dispatch-note-fail-a", "dispatch-note-fail-b"]) {
+			expect(store.read(id)).toMatchObject({ state: "retired" });
+			expect(
+				logs.some(
+					(line) =>
+						line.includes(`retire ${id}: dispatch retired but spine note failed`) &&
+						line.includes("injected note failure"),
+				),
+			).toBe(true);
+		}
 	});
 
 	it("leaves dispatches untouched unless the recipient is fully and deliberately closed", async () => {

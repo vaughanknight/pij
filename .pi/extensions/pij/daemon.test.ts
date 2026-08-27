@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import {
 	existsSync,
 	mkdtempSync,
@@ -7,6 +8,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +35,16 @@ import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js
 import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
-import { Daemon, touchDaemonHeartbeat } from "./daemon.js";
+import {
+	createDaemonRegistry,
+	Daemon,
+	installDaemonShutdownHandlers,
+	touchDaemonHeartbeat,
+} from "./daemon.js";
+
+const nodeRequire = createRequire(import.meta.url);
+const TSX_CLI = nodeRequire.resolve("tsx/cli");
+const DAEMON_BIN = fileURLToPath(new URL("./daemon.ts", import.meta.url));
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
 const CLAUDE_COMPOSER_EMPTY = [
@@ -2070,6 +2081,86 @@ describe("touchDaemonHeartbeat — the tick-loop liveness rider (#40 Defect 2)",
 	it("is best-effort: a missing lock (racing teardown) never throws", async () => {
 		const gonePath = join(home, "does-not-exist", "daemon.lock");
 		expect(() => touchDaemonHeartbeat(gonePath, new Date("2026-07-23T09:00:00Z"))).not.toThrow();
+	});
+});
+
+describe("daemon signal shutdown", () => {
+	it("logs a descriptor-lock reclaim through the production daemon registry factory", () => {
+		const id = "pij-daemon-reclaim";
+		const lockPath = join(home, `${id}.json.lock`);
+		writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "dead-holder" }));
+		const logs: string[] = [];
+
+		createDaemonRegistry(home, (line) => logs.push(line)).write(desc({ id }));
+
+		expect(logs).toContain("warning: reclaimed stale descriptor.lock from dead pid 999999999");
+	});
+
+	it("releases held write locks before SIGTERM exits", () => {
+		const handlers = new Map<string, () => void>();
+		const calls: string[] = [];
+		installDaemonShutdownHandlers(() => calls.push("stop"), {
+			onSignal: (signal, handler) => handlers.set(signal, handler),
+			releaseHeldLocks: () => calls.push("release-locks"),
+			exit: (code) => calls.push(`exit:${code}`),
+		});
+
+		const sigterm = handlers.get("SIGTERM");
+		if (!sigterm) throw new Error("SIGTERM handler was not installed");
+		sigterm();
+
+		expect(calls).toEqual(["stop", "release-locks", "exit:0"]);
+	});
+
+	it("the real daemon SIGTERM path releases write.lock and events.lock in a temp home", {
+		timeout: 10_000,
+	}, async () => {
+		const childHome = mkdtempSync(join(tmpdir(), "pij-daemon-signal-"));
+		const child = spawn(process.execPath, [TSX_CLI, DAEMON_BIN], {
+			env: {
+				...process.env,
+				PIJ_HOME: childHome,
+				PIJ_TEST_HOLD_LOCKS_ON_START: "1",
+				TMUX: "",
+				TMUX_PANE: "",
+			},
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const timer = setTimeout(() => reject(new Error("daemon lock marker timed out")), 5_000);
+				child.stdout.setEncoding("utf8");
+				child.stdout.on("data", (chunk: string) => {
+					if (!chunk.includes("PIJ_TEST_LOCKS_HELD")) return;
+					clearTimeout(timer);
+					resolve();
+				});
+				child.once("error", reject);
+				child.once("exit", (code, signal) => {
+					clearTimeout(timer);
+					reject(new Error(`daemon exited before marker: code=${code} signal=${signal}`));
+				});
+			});
+			const writeLock = join(childHome, "spine", "write.lock");
+			const eventsLock = join(childHome, "spine", "events.lock");
+			expect(existsSync(writeLock)).toBe(true);
+			expect(existsSync(eventsLock)).toBe(true);
+
+			child.kill("SIGTERM");
+			const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+				(resolve, reject) => {
+					child.once("error", reject);
+					child.once("exit", (code, signal) => resolve({ code, signal }));
+				},
+			);
+
+			expect(exit).toEqual({ code: 0, signal: null });
+			expect(existsSync(writeLock)).toBe(false);
+			expect(existsSync(eventsLock)).toBe(false);
+		} finally {
+			if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+			rmSync(childHome, { recursive: true, force: true });
+		}
 	});
 });
 

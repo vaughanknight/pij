@@ -2,7 +2,7 @@
 // port-side seq allocation). ONE unified log at <pijHome>/spine/events.ndjson.
 // Pins: ndjson format (one JSON line per append, stamped in canonical field
 // order), seq allocation INSIDE the port under the cross-process events.lock
-// (held → E-NOREG after the budget; NEVER stolen, review 002 G1), the
+// (dead/reused pid → reclaimed; live original pid → E-NOREG after the budget), the
 // review-001 race regression (two instances, exclusive cursor, no lost event),
 // lastSeq recovery over torn tails, DURABLE appendOnce key-dedupe returning
 // the ORIGINALLY stamped event (AC-03), append-only immutability, exact read
@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import {
 	appendFileSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -148,6 +149,58 @@ describe("FsSpineLog", () => {
 		expect(JSON.parse(lines[1] ?? "")).toEqual(second);
 		// The write lock never outlives the operation.
 		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a dead events.lock during appendOnce replay and appends a spine note", () => {
+		const deadPid = 999_999_999;
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${deadPid}:dead-token\n`);
+		const log = new FsSpineLog(home, {
+			lockBudgetMs: 60,
+			isAlive: () => false,
+			processStartedAtMs: () => undefined,
+		});
+
+		expect(expectOk(log.appendOnce("journal-replay", draft(1))).event.seq).toBe(2);
+		const reclaim = log.read().find((event) => event.refs.includes("lock:events.lock"));
+		expect(reclaim).toMatchObject({
+			kind: "note",
+			refs: expect.arrayContaining(["lock:events.lock", `pid:${deadPid}`]),
+			prev: "dead-pid",
+		});
+		expect(reclaim?.next).toContain(`reclaimed stale events.lock from dead pid ${deadPid}`);
+		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a live reused pid only when its process started after events.lock", () => {
+		const reusedPid = 424_242;
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${reusedPid}:old-process\n`);
+		const lockedAtMs = Date.now() - 10_000;
+		utimesSync(lockFile(), lockedAtMs / 1000, lockedAtMs / 1000);
+		const log = new FsSpineLog(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => lockedAtMs + 5_000,
+		});
+
+		expect(expectOk(log.append(draft(1))).seq).toBe(2);
+		expect(log.read().find((event) => event.refs.includes("lock:events.lock"))).toMatchObject({
+			refs: expect.arrayContaining(["lock:events.lock", `pid:${reusedPid}`]),
+			prev: "pid-reused",
+		});
+	});
+
+	it("does not let a successful reclaim bypass an exhausted events.lock deadline", () => {
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), "999999999:dead-token\n");
+		const result = new FsSpineLog(home, {
+			lockBudgetMs: 0,
+			isAlive: () => false,
+		}).append(draft(1));
+
+		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
+		expect(new FsSpineLog(home).read()).toEqual([]);
 	});
 
 	it("lastSeq is 0 when empty and allocation resumes above any planted on-disk seq", () => {
@@ -296,9 +349,9 @@ process.stdout.write(JSON.stringify({ ok: true, seqs }));
 		expect(log.read()).toEqual([]);
 	});
 
-	it("a manually removed wedged lock unblocks the next writer (the ONLY recovery path — review 002 G1)", () => {
+	it("a manually removed unattributable lock unblocks the next writer", () => {
 		const log = new FsSpineLog(home, { lockBudgetMs: 60 });
-		// A crashed writer's leftover lock wedges appends…
+		// No parseable pid means no safe automatic reclaim evidence.
 		writeFileSync(lockFile(), "crashed-writer\n");
 		expect(log.append(draft(1))).toMatchObject({ ok: false, code: "E-NOREG" });
 		// …until a HUMAN removes it, exactly as the diagnostic instructs.
@@ -451,11 +504,17 @@ process.stdout.write(JSON.stringify({ ok: true, seqs }));
 	// lock times out with the manual-removal diagnostic, fail loudly.
 
 	it("an AGED lock is never stolen: append times out E-NOREG and the holder's lock survives byte-identical (review 002 G1)", () => {
-		const log = new FsSpineLog(home, { lockBudgetMs: 60 });
 		// A LIVE holder inside a long critical section: old mtime, real pid.
+		mkdirSync(join(home, "spine"), { recursive: true });
 		writeFileSync(lockFile(), `${process.pid}:live-holder-token\n`);
-		const agedSec = (Date.now() - 60_000) / 1000;
+		const agedAtMs = Date.now() - 60_000;
+		const agedSec = agedAtMs / 1000;
 		utimesSync(lockFile(), agedSec, agedSec);
+		const log = new FsSpineLog(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => agedAtMs - 5_000,
+		});
 		const before = readFileSync(lockFile(), "utf8");
 		const result = log.append(draft(1));
 		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });

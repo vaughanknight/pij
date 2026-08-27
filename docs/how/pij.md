@@ -171,6 +171,13 @@ Retirement stores the reason, actor, timestamp, and prior open state. It is
 idempotent, leaves acknowledged dispatches unchanged, and prevents a later
 brief acknowledgement from rewriting the terminal record. A PA is refused this
 verb: it may report stale dispatches but cannot terminally decide them.
+Every successful retire appends a `dispatch-retired` spine note naming the
+dispatch, reason, actor, recipient, and prior state. The operator verb journals
+the record and note as one recoverable coupled write. The daemon close sweep
+writes the record first and appends a best-effort note; a note failure is logged
+without aborting later retirements. Repeating a selector whose matches are
+already terminal reports `0 open (N already retired)` instead of an ambiguous
+`0/0`.
 
 The daemon applies the same complete deliberate-close predicate used for queue
 mail to dispatch records. A later revive restores only records retired for
@@ -178,7 +185,12 @@ mail to dispatch records. A later revive restores only records retired for
 records remain terminal. The anomaly detector considers only the shared open-state predicate and then only
 `delivered-unacked`, so retired records cannot appear as
 `delivered-unacked-stale`. Revive output reports restored mail and dispatch
-counts separately.
+counts separately, and each restored dispatch appends a best-effort
+`dispatch-requeued` spine note with the same attribution fields. A note failure
+warns but does not undo the restored record. `prior-state:` on a retire note is
+the transition's source open state; on a requeue note it is the saved
+pre-retirement state being restored, because the immediate source is always the
+uninformative `retired`.
 
 ---
 
@@ -280,6 +292,18 @@ which closes this incident class in both directions. Callers that omit a
 baseline fall back to the adapter's sample; their protection is narrowed to the
 publish call's read/write window rather than the earlier object-construction
 window.
+
+The descriptor lock, platform `spine/write.lock`, and event
+`spine/events.lock` share one reclaim decision. A lock whose recorded PID is no
+longer alive is reclaimed. A live PID is reclaimed only when its absolute
+process start time is newer than the lock mtime, proving PID reuse; unavailable
+start-time evidence preserves the lock. Age alone never permits a steal.
+Reclaims name the layer and PID in a platform receipt/log or an `events.lock`
+spine note; descriptor reclaims warn on the CLI and log in the daemon through
+their shared registry factories. SIGINT/SIGTERM shutdown token-check releases
+every lock still owned by the daemon process before exit. The whole-process
+snapshot is cached for five seconds, so recognition of a newly reused PID can
+lag by at most that interval; the conservative refusal self-heals after expiry.
 
 ### Tree selectors and filters
 

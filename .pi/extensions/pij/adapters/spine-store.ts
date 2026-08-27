@@ -39,6 +39,12 @@ import { filterSpineEvents, type SpineEventQuery } from "../core/platform/spine.
 import { isSpineEvent, type SpineEvent, type SpineEventDraft } from "../core/platform/types.js";
 import { err, ok, type Result } from "../core/types.js";
 import { fsyncDirBestEffort, maybeFsyncSync } from "./atomic-file.js";
+import {
+	type LockReclaimNote,
+	reclaimIfDead,
+	releaseOwnedLock,
+	trackHeldLock,
+} from "./lock-reclaim.js";
 
 const NEWLINE_BYTE = 0x0a;
 /** Total lock-acquisition budget before a write gives up with E-NOREG. */
@@ -49,6 +55,13 @@ const LOCK_RETRY_MS = 5;
 /** Synchronous sleep with no busy loop: Atomics.wait on a throwaway buffer. */
 function sleepMs(ms: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+interface SpineLogOptions {
+	readonly lockBudgetMs?: number;
+	readonly isAlive?: (pid: number) => boolean;
+	readonly processStartedAtMs?: (pid: number) => number | undefined;
+	readonly onReclaim?: (note: LockReclaimNote) => void;
 }
 
 /** Stamp `seq` into a draft, materializing the canonical SpineEvent field
@@ -71,12 +84,14 @@ export class FsSpineLog implements SpineLogPort {
 	private readonly lockFile: string;
 
 	private readonly lockBudgetMs: number;
+	private readonly options: SpineLogOptions;
 
-	constructor(pijHome: string, options: { readonly lockBudgetMs?: number } = {}) {
+	constructor(pijHome: string, options: SpineLogOptions = {}) {
 		this.dir = join(pijHome, "spine");
 		this.file = join(this.dir, "events.ndjson");
 		this.lockFile = join(this.dir, "events.lock");
 		this.lockBudgetMs = options.lockBudgetMs ?? LOCK_BUDGET_MS;
+		this.options = options;
 		mkdirSync(this.dir, { recursive: true });
 	}
 
@@ -194,11 +209,37 @@ export class FsSpineLog implements SpineLogPort {
 		const acquired = this.acquireLock();
 		if (!acquired.ok) return acquired;
 		try {
+			for (const note of acquired.value.reclaims) {
+				this.appendReclaimNote(note);
+			}
 			return operation();
 		} catch (error) {
 			return err("E-NOREG", `spine write under ${this.dir} failed: ${String(error)}`);
 		} finally {
-			this.releaseLock(acquired.value);
+			this.releaseLock(acquired.value.token);
+		}
+	}
+
+	private appendReclaimNote(note: LockReclaimNote): void {
+		const stamped = stampSpineEvent(
+			{
+				schema_version: 1,
+				ts: new Date().toISOString(),
+				actor: "pij",
+				kind: "note",
+				refs: [`lock:${note.layer}`, `pid:${note.pid}`],
+				prev: note.reason,
+				next: note.message,
+			},
+			this.lastSeq() + 1,
+		);
+		const guard = this.tailNeedsNewline() ? "\n" : "";
+		const fd = openSync(this.file, "a");
+		try {
+			writeFileSync(fd, `${guard}${JSON.stringify(stamped)}\n`);
+			maybeFsyncSync(fd);
+		} finally {
+			closeSync(fd);
 		}
 	}
 
@@ -206,26 +247,21 @@ export class FsSpineLog implements SpineLogPort {
 	 *  release means the path no longer holds our lock (e.g. a human removed a
 	 *  wedged lock and a new writer acquired) — nothing here is safely ours. */
 	private releaseLock(token: string): void {
-		try {
-			if (readFileSync(this.lockFile, "utf8") === token) {
-				rmSync(this.lockFile, { force: true });
-			}
-		} catch {
-			// Lock already gone or unreadable — nothing that is safely ours.
-		}
+		releaseOwnedLock(this.lockFile, token);
 	}
 
-	/** Acquire `events.lock` via exclusive create (openSync "wx"). EEXIST
-	 *  means SOME writer holds it: sleep ~LOCK_RETRY_MS and retry until the
-	 *  budget, then give up with E-NOREG routing humans to manual removal.
-	 *  NEVER steal (review 002 G1): mtime-only staleness plus a non-atomic
-	 *  steal could evict a LIVE holder (three-writer handoff) and made any
-	 *  critical section beyond the horizon stealable — duplicate seqs, the
-	 *  exact F1 loss. A crashed writer's lock therefore wedges writers until
-	 *  a human removes it: fail loudly, never steal. Returns the ownership
-	 *  token release checks for. */
-	private acquireLock(): Result<string> {
+	/** Acquire `events.lock` via exclusive create (openSync "wx"). EEXIST first
+	 *  runs the shared pid/start-time decision: a dead holder or a pid reused by
+	 *  a newer process is reclaimed; a live original holder is never stolen.
+	 *  Unresolved holders retry until the budget, then fail with E-NOREG. Returns
+	 *  the ownership token release checks plus any reclaim notes to append under
+	 *  the newly acquired lock. */
+	private acquireLock(): Result<{
+		readonly token: string;
+		readonly reclaims: readonly LockReclaimNote[];
+	}> {
 		const deadline = Date.now() + this.lockBudgetMs;
+		const reclaims: LockReclaimNote[] = [];
 		for (;;) {
 			let fd: number | undefined;
 			try {
@@ -233,6 +269,18 @@ export class FsSpineLog implements SpineLogPort {
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
 					return err("E-NOREG", `cannot create spine lock ${this.lockFile}: ${String(error)}`);
+				}
+				const reclaimed = reclaimIfDead(this.lockFile, "events.lock", this.options);
+				if (reclaimed !== null) {
+					reclaims.push(reclaimed);
+					this.options.onReclaim?.(reclaimed);
+					if (Date.now() >= deadline) {
+						return err(
+							"E-NOREG",
+							`spine lock ${this.lockFile} held for over ${this.lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually`,
+						);
+					}
+					continue;
 				}
 			}
 			if (fd !== undefined) {
@@ -262,7 +310,8 @@ export class FsSpineLog implements SpineLogPort {
 				} catch {
 					// fd is abandoned either way
 				}
-				return ok(token);
+				trackHeldLock(this.lockFile, token);
+				return ok({ token, reclaims });
 			}
 			if (Date.now() >= deadline) {
 				return err(

@@ -4684,6 +4684,7 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				return fail("E-NOREG", `no dispatch '${cmd.dispatchId}'`, cmd.json);
 			}
 			const candidates = records.filter(isOpenDispatch);
+			const alreadyRetired = records.filter((record) => record.state === "retired").length;
 			let retired = 0;
 			if (!cmd.dryRun) {
 				for (const previous of candidates) {
@@ -4693,22 +4694,62 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 						ts: ts.value,
 					});
 					if (!next.ok) return fail(next.code, next.message, cmd.json);
-					const written = ports.value.dispatchStore.write(next.value);
-					if (!written.ok) return fail(written.code, written.message, cmd.json);
+					const draft = buildSpineEvent({
+						nowMs: now,
+						actor: attribution.value.actor,
+						kind: "dispatch-retired",
+						refs: [
+							`dispatch:${previous.id}`,
+							`reason:${cmd.reason}`,
+							`prior-state:${previous.state}`,
+						],
+						peer: previous.to,
+						prev: canonicalDispatchJson(previous),
+						next: canonicalDispatchJson(next.value),
+						actorProvenance: attribution.value.provenance,
+					});
+					if (!draft.ok) return fail(draft.code, draft.message, cmd.json);
+					const committed = coupledRecordCommit(
+						ports.value,
+						draft.value,
+						`dispatch '${previous.id}' retirement`,
+						() => {
+							const current = ports.value.dispatchStore.read(previous.id);
+							if (
+								current === null ||
+								canonicalDispatchJson(current) !== canonicalDispatchJson(previous)
+							) {
+								return err(
+									"E-NOREG",
+									`dispatch '${previous.id}' changed during retirement — retry`,
+								);
+							}
+							return ports.value.dispatchStore.write(next.value);
+						},
+					);
+					if (!committed.ok) {
+						return fail(committed.code, committed.message, cmd.json);
+					}
 					retired += 1;
 				}
 			}
 			const matched = candidates.length;
 			const count = cmd.dryRun ? matched : retired;
+			const action = cmd.dryRun ? "would retire" : "retired";
+			const summary =
+				matched === 0 && alreadyRetired > 0
+					? `${action} 0 open (${alreadyRetired} already retired) dispatch(es)`
+					: `${action} ${count}/${matched} dispatch(es)`;
 			return okOut(
 				cmd.json
 					? JSON.stringify({
 							retired,
 							matched,
+							alreadyRetired,
 							reason: cmd.reason,
 							...(cmd.dryRun ? { dryRun: true } : {}),
 						})
-					: `${cmd.dryRun ? "would retire" : "retired"} ${count}/${matched} dispatch(es) — reason: ${cmd.reason}`,
+					: `${summary} — reason: ${cmd.reason}`,
 			);
 		}
 		case "ack-dispatch": {

@@ -102,6 +102,37 @@ function pij(
 	}
 }
 
+function pijStreams(
+	args: string[],
+	extraEnv: Record<string, string> = {},
+	cwd = FOLDER,
+): { stdout: string; stderr: string; code: number } {
+	const result = spawnSync(TSX, [CLI, ...args], {
+		cwd,
+		env: {
+			...process.env,
+			PIJ_HOME: HOME,
+			PIJ_QUEUE_BACKEND: "fs",
+			PATH: `${BIN}:${process.env.PATH ?? ""}`,
+			TMUX_PANE: "%1",
+			CLAUDE_CODE_SESSION_ID: "",
+			COPILOT_AGENT_SESSION_ID: "",
+			CODEX_THREAD_ID: "",
+			FAKE_TMUX_CWD: cwd,
+			FAKE_TMUX_PID: String(process.pid),
+			FAKE_TMUX_LOG: TMUX_LOG,
+			...extraEnv,
+		},
+		encoding: "utf8",
+		timeout: 10_000,
+	});
+	return {
+		stdout: result.stdout ?? "",
+		stderr: result.stderr ?? "",
+		code: result.status ?? 1,
+	};
+}
+
 /** Boot a real PijSession over the sandbox home (real adapters, faked pi runtime). */
 function boot(id: string, role: "parent" | "worker", idle = true): PijSession {
 	const dataDir = join(HOME, id);
@@ -1125,6 +1156,18 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			state: "retired",
 			retirement: { reason: "stale" },
 		});
+		expect(
+			new FsSpineLog(HOME)
+				.read()
+				.find((event) => event.refs.includes("dispatch:dispatch-revive-close")),
+		).toMatchObject({
+			kind: "dispatch-requeued",
+			actor: "pij-A",
+			peer: id,
+			prev: expect.stringContaining('"state":"retired"'),
+			next: expect.stringContaining('"state":"undelivered"'),
+			refs: expect.arrayContaining(["reason:recipient-closed", "prior-state:undelivered"]),
+		});
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			id,
 			lifecycle: "pending",
@@ -1816,6 +1859,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			harnessSessionId: nativeId,
 			runtimeBin: runtime,
 			lifecycle: "dissolved",
+			systemState: "idle",
 			closeIntent: {
 				actor: "pij-A",
 				kind: "cli-close",
@@ -1835,6 +1879,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const result = pij(["revive", id, "--json"], {
 			PIJ_SESSION_ID: "pij-A",
 			PIJ_QUEUE_BACKEND: "sqlite",
+			PIJ_TEST_REVIVE_FOREIGN_WRITE: id,
 			HOME,
 		});
 		expect(result.code, result.out).toBe(0);
@@ -1853,6 +1898,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const expectation = new FsSpawnExpectationStore(HOME).list()[0];
 		expect(expectation).toMatchObject({ paneId: "%91" });
 		expect(expectation).not.toHaveProperty("sessionId");
+		expect(new FsRegistry(HOME).read(id)?.systemState).toBe("working");
 	});
 
 	it.each([
@@ -1880,6 +1926,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			harnessSessionId: nativeId,
 			runtimeBin: runtime,
 			lifecycle: "dissolved",
+			systemState: "idle",
 			closeIntent: {
 				actor: "pij-A",
 				kind: "cli-close",
@@ -1901,6 +1948,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			PIJ_SESSION_ID: "pij-A",
 			PIJ_QUEUE_BACKEND: "sqlite",
 			FAKE_TMUX_LIVE_PANE: "%42",
+			PIJ_TEST_REVIVE_FOREIGN_WRITE: id,
 			HOME,
 		});
 
@@ -1921,7 +1969,36 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			lifecycle: "dissolved",
 			revivePendingAt: expect.any(String),
+			systemState: "working",
 		});
+	});
+
+	it("warns when the CLI registry factory reclaims a dead descriptor lock", () => {
+		const id = "pij-cli-descriptor-reclaim";
+		new FsRegistry(HOME).write({
+			id,
+			folder: FOLDER,
+			dataDir: join(HOME, id),
+			eventsPath: join(HOME, id, "events.ndjson"),
+			pid: process.pid,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			harness: "claude",
+			harnessSessionId: "native-cli-descriptor-reclaim",
+			lifecycle: "bound",
+		});
+		writeFileSync(
+			join(HOME, `${id}.json.lock`),
+			JSON.stringify({ pid: 999_999_999, token: "dead-holder" }),
+		);
+
+		const result = pijStreams(["report", "now", "did", "next"], {
+			PIJ_SESSION_ID: id,
+		});
+
+		expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0);
+		expect(result.stderr).toContain(
+			"warning: reclaimed stale descriptor.lock from dead pid 999999999",
+		);
 	});
 
 	it("reports the interim Copilot session-in-use action instead of waiting silently", () => {
@@ -3724,6 +3801,24 @@ describe("pij dispatch-retire", () => {
 			expect(byId.code).toBe(0);
 			expect(byId.out).toContain("retired 1/1");
 			expect(store.read("dispatch-one")).toMatchObject({ state: "retired" });
+			expect(
+				new FsSpineLog(home).read().find((event) => event.refs.includes("dispatch:dispatch-one")),
+			).toMatchObject({
+				kind: "dispatch-retired",
+				actor: "pij-operator",
+				peer: "pij-x",
+				prev: expect.stringContaining('"state":"undelivered"'),
+				next: expect.stringContaining('"state":"retired"'),
+				refs: expect.arrayContaining(["reason:stale", "prior-state:undelivered"]),
+			});
+
+			const alreadyRetired = pij(
+				["dispatch-retire", "dispatch-one", "--reason", "stale"],
+				env,
+				folder,
+			);
+			expect(alreadyRetired.code).toBe(0);
+			expect(alreadyRetired.out).toContain("0 open (1 already retired)");
 
 			const byRecipient = pij(
 				["dispatch-retire", "--to", "pij-x", "--reason", "recipient-closed"],
