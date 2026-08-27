@@ -4446,6 +4446,15 @@ function runSpineRender(json: boolean, project?: string): void {
 }
 
 function main(): void {
+	// On 2026-08-27, a queue dump delivered only 709 of 812 rows because
+	// a hard exit dropped the tail of piped output at the 64 KiB boundary.
+	// Put both stdio pipe handles into blocking mode at the shared bin seam so
+	// every verb flushes fully without changing its individual exit call sites.
+	for (const stream of [process.stdout, process.stderr]) {
+		const handle = (stream as { _handle?: { setBlocking?: (blocking: boolean) => void } })._handle;
+		if (handle?.setBlocking) handle.setBlocking(true);
+	}
+
 	// Full-surface usage on no args / --help (the core parser only knows the
 	// messaging verbs; the control-plane verbs live here in the bin).
 	const top = process.argv[2];
