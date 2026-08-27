@@ -1,0 +1,15 @@
+{
+  "delegationId": "dlg-0026",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 664194366ea0086f404c200dc2489583015645f2 persists a write-once Telegram partition identity beside sent-part indices and uses positional skips only when both part count and prefix length still match. Missing legacy identity or any partition drift now sends every recomputed part, preferring noisy duplication over silent loss.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts",
+    ".pi/extensions/pij/adapters/sqlite-queue.ts",
+    ".pi/extensions/pij/adapters/sqlite-queue.test.ts"
+  ],
+  "testsRun": 8140,
+  "testsPassed": 8110,
+  "gatesClean": false,
+  "notes": "The additive telegram_partitions side table records the first {partCount,prefixLength} for each message and never overwrites it. Same-partition redelivery retains item-24 idempotent skipping; mismatched or legacy identity ignores the sent-part set, sends all, and avoids writing new positional marks under the wrong partition. The prefix-A (3 parts, length 96) to prefix-B (2 parts, length 13) acceptance test reassembles all 8100 body characters and acks the row. MUT-DRIFT marked a mismatched partition valid and went RED at bridge.test.ts:1255 with only one of two recomputed parts sent. Existing MUT-IDEMPOTENT, MUT-RETRY, and MUT-LOGID regression tests remain green. Two complete pij runs each passed 4055 with 15 skipped; targeted fold surface passed 105 with 1 skipped; typecheck and changed-file Biome clean. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention fold paths."
+}
