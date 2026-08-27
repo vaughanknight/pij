@@ -73,6 +73,15 @@ function choreSubverbs(): readonly string[] {
 	return [...body.matchAll(/case "([a-z-]+)":/g)].map((m) => m[1] as string);
 }
 
+/** Every `queue` subverb the bin dispatches from its real switch. */
+function queueSubverbs(): readonly string[] {
+	const src = readFileSync(join(EXT_ROOT, "cli.ts"), "utf8");
+	const start = src.indexOf('if (top === "queue")');
+	const nextBranch = src.indexOf('\n\tif (top === "', start + 1);
+	const body = src.slice(start, nextBranch);
+	return [...body.matchAll(/case "([a-z-]+)":/g)].map((m) => m[1] as string);
+}
+
 describe("PA capability classification is TOTAL across BOTH seams", () => {
 	// The o-prime made this mandatory rather than mitigation, and the reason is
 	// the point: everything else shipped this week depends on a careful seat.
@@ -120,6 +129,15 @@ describe("PA capability classification is TOTAL across BOTH seams", () => {
 		expect(unclassified).toEqual([]);
 	});
 
+	it("classifies every QUEUE SUBVERB, including the state-changing retire verb", () => {
+		const subverbs = queueSubverbs();
+		expect(subverbs.length).toBeGreaterThanOrEqual(2);
+		const unclassified = subverbs.filter(
+			(sub) => PA_VERB_CLASSIFICATION[paCapabilityVerb("queue", sub)] === undefined,
+		);
+		expect(unclassified).toEqual([]);
+	});
+
 	it("routes each chore subverb to its OWN key, and leaves flags on the family key", () => {
 		for (const sub of choreSubverbs()) expect(paCapabilityVerb("chore", sub)).toBe(`chore ${sub}`);
 		// `pij chore --json` is the family verb, not a subverb named "--json".
@@ -127,6 +145,13 @@ describe("PA capability classification is TOTAL across BOTH seams", () => {
 		expect(paCapabilityVerb("chore", undefined)).toBe("chore");
 		// Non-chore families are untouched by the mapping.
 		expect(paCapabilityVerb("watchdog", "watch")).toBe("watchdog");
+	});
+
+	it("routes queue subverbs to their own keys and leaves flags on the read family", () => {
+		expect(paCapabilityVerb("queue", "migrate")).toBe("queue migrate");
+		expect(paCapabilityVerb("queue", "retire")).toBe("queue retire");
+		expect(paCapabilityVerb("queue", "--json")).toBe("queue");
+		expect(paCapabilityVerb("queue", undefined)).toBe("queue");
 	});
 
 	it("actually scrapes something from each source — guards a vacuous pass", () => {
@@ -217,6 +242,13 @@ describe("paRefusal — only a PA is refused, and only for HARMFUL verbs", () =>
 		expect(paRefusal("pa", paCapabilityVerb("chore", "run"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "list"))).toBeNull();
 		expect(paRefusal("pa", paCapabilityVerb("chore", "ack"))).toBeNull();
+	});
+
+	it("permits queue inspection/migration but refuses retiring another seat's mail", () => {
+		expect(PA_VERB_CLASSIFICATION["queue migrate"]?.kind).toBe("allow");
+		expect(PA_VERB_CLASSIFICATION["queue retire"]?.kind).toBe("refuse");
+		expect(paRefusal("pa", paCapabilityVerb("queue", "migrate"))).toBeNull();
+		expect(paRefusal("pa", paCapabilityVerb("queue", "retire"))).not.toBeNull();
 	});
 
 	it("never refuses any other role — no existing seat can regress", () => {

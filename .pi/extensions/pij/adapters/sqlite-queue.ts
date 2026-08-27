@@ -7,8 +7,9 @@
 // machine the review recommended (reports/pij-comms-review-2026-08-27.md §7):
 //
 //   queued ─claim→ claimed ─settle(injected)→ injected ─ack (claimUnread/markRead)→ acked
-//      ▲                │ settle(queued) / lease expiry / restart            │
+//      ▲                │ settle(queued) / lease expiry / restart
 //      └────────────────┴──────────── redelivered (attempt+1) ──→ parked (attempt ≥ maxAttempts)
+//   queued | claimed | injected | parked ─retire(reason)→ retired ─unretire(reason)→ queued
 //
 // `messages` is immutable after insert; `deliveries` carries the mutable state;
 // `receipts` is append-only (what `pij tail` will render); `cursors` holds the
@@ -35,7 +36,22 @@ import {
 	type SessionId,
 } from "../core/types.js";
 
-export type DeliveryState = "queued" | "claimed" | "injected" | "acked" | "parked";
+export type DeliveryState = "queued" | "claimed" | "injected" | "acked" | "parked" | "retired";
+
+const OPEN_STATES = ["queued", "claimed", "injected", "parked"] as const;
+const TERMINAL: ReadonlySet<DeliveryState> = new Set(["acked", "retired"]);
+
+export interface RetireFilter {
+	readonly to?: SessionId;
+	readonly from?: SessionId;
+	readonly olderThanMs?: number;
+	readonly state?: readonly DeliveryState[];
+}
+
+export interface QueueListFilter {
+	readonly to?: SessionId;
+	readonly sinceSeq?: number;
+}
 
 export interface ClaimedMessage extends DeliveredMessage {
 	readonly seq: number;
@@ -125,6 +141,10 @@ interface MessageRow {
 	attachments: string | null;
 	state?: string;
 	attempt?: number;
+}
+
+function isTerminalState(state: string | undefined): boolean {
+	return state !== undefined && TERMINAL.has(state as DeliveryState);
 }
 
 function rowToMessage(row: MessageRow): DeliveredMessage {
@@ -294,8 +314,15 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 					)
 					.get(id, messageId) as unknown as MessageRow | undefined;
 				if (!row) return err("E-NOREG", `no message ${messageId} for ${id}`);
-				if (row.state === "acked") return ok({ kind: "already-read", messageId } as InboxClaim);
-				this.ack(row.seq, row.attempt ?? 0, marker);
+				// Retired is terminal like acked. InboxClaim has no "retired" arm,
+				// so the compatible no-op is already-read: nothing is returned and
+				// no ack receipt can overwrite the retirement verdict.
+				if (isTerminalState(row.state)) {
+					return ok({ kind: "already-read", messageId } as InboxClaim);
+				}
+				if (!this.ack(row.seq, row.attempt ?? 0, marker)) {
+					return ok({ kind: "already-read", messageId } as InboxClaim);
+				}
 				return ok({ kind: "claimed", message: rowToMessage(row) } as InboxClaim);
 			});
 		} catch (error) {
@@ -314,13 +341,15 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 		return ok({ kind: "marked", marker });
 	}
 
-	private ack(seq: number, attempt: number, marker: InboxReadMarker): void {
-		this.db
+	private ack(seq: number, attempt: number, marker: InboxReadMarker): boolean {
+		const updated = this.db
 			.prepare(
-				"UPDATE deliveries SET state='acked', claim_token=NULL, lease_until=NULL, updated_at=? WHERE seq=?",
+				"UPDATE deliveries SET state='acked', claim_token=NULL, lease_until=NULL, updated_at=? WHERE seq=? AND state NOT IN ('acked','retired')",
 			)
 			.run(this.now(), seq);
+		if (Number(updated.changes) === 0) return false;
 		this.receipt(seq, "acked", attempt, marker.reader ? `reader=${marker.reader}` : undefined);
+		return true;
 	}
 
 	// ─── daemon-side state machine ────────────────────────────────────────────
@@ -362,14 +391,15 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			const row = this.db.prepare("SELECT attempt, state FROM deliveries WHERE seq = ?").get(seq) as
 				| { attempt: number; state: string }
 				| undefined;
-			if (!row || row.state === "acked") return;
+			if (!row || isTerminalState(row.state)) return;
 			const at = this.now();
 			const lease = state === "injected" && opts.leaseMs ? at + opts.leaseMs : null;
-			this.db
+			const updated = this.db
 				.prepare(
-					"UPDATE deliveries SET state=?, lease_until=?, claim_token=CASE WHEN ?='queued' THEN NULL ELSE claim_token END, updated_at=?, last_error=? WHERE seq=?",
+					"UPDATE deliveries SET state=?, lease_until=?, claim_token=CASE WHEN ?='queued' THEN NULL ELSE claim_token END, updated_at=?, last_error=? WHERE seq=? AND state NOT IN ('acked','retired')",
 				)
 				.run(state, lease, state, at, opts.detail ?? null, seq);
+			if (Number(updated.changes) === 0) return;
 			this.receipt(seq, state === "queued" ? "released" : "injected", row.attempt, opts.detail);
 		});
 	}
@@ -383,7 +413,7 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			for (const r of rows) {
 				this.db
 					.prepare(
-						"UPDATE deliveries SET state='queued', claim_token=NULL, lease_until=NULL, updated_at=? WHERE seq=?",
+						"UPDATE deliveries SET state='queued', claim_token=NULL, lease_until=NULL, updated_at=? WHERE seq=? AND state='claimed'",
 					)
 					.run(this.now(), r.seq);
 				this.receipt(r.seq, "redelivered", r.attempt, "daemon-restart");
@@ -407,7 +437,7 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 				const parked = r.attempt >= max;
 				this.db
 					.prepare(
-						"UPDATE deliveries SET state=?, claim_token=NULL, lease_until=NULL, updated_at=? WHERE seq=?",
+						"UPDATE deliveries SET state=?, claim_token=NULL, lease_until=NULL, updated_at=? WHERE seq=? AND state IN ('claimed','injected')",
 					)
 					.run(parked ? "parked" : "queued", at, r.seq);
 				this.receipt(r.seq, parked ? "parked" : "redelivered", r.attempt, "lease-expired");
@@ -432,12 +462,112 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			injected: 0,
 			acked: 0,
 			parked: 0,
+			retired: 0,
 		};
 		const rows = this.db
 			.prepare("SELECT state, COUNT(*) AS n FROM deliveries WHERE to_id = ? GROUP BY state")
 			.all(to) as unknown as { state: DeliveryState; n: number }[];
 		for (const r of rows) out[r.state] = r.n;
 		return out;
+	}
+
+	/** Retire matching open deliveries with one reason receipt per row.
+	 *  Retired/acked rows are never candidates, even if a caller includes them in
+	 *  an explicit state filter. `olderThanMs` is an age measured against the
+	 *  immutable message creation timestamp. */
+	retire(
+		filter: RetireFilter,
+		reason: string,
+		opts: { readonly dryRun?: boolean } = {},
+	): { matched: number; retired: number } {
+		if (reason.trim() === "") throw new Error("retire reason must not be empty");
+		if (
+			filter.olderThanMs !== undefined &&
+			(!Number.isSafeInteger(filter.olderThanMs) || filter.olderThanMs <= 0)
+		) {
+			throw new Error("olderThanMs must be a positive integer");
+		}
+		return this.tx(() => {
+			const requested = filter.state ?? OPEN_STATES;
+			const states = requested.filter((state) => !TERMINAL.has(state));
+			if (states.length === 0) return { matched: 0, retired: 0 };
+			const where = [`d.state IN (${states.map(() => "?").join(",")})`];
+			const params: Array<string | number> = [...states];
+			if (filter.to !== undefined) {
+				where.push("m.to_id = ?");
+				params.push(filter.to);
+			}
+			if (filter.from !== undefined) {
+				where.push("m.from_id = ?");
+				params.push(filter.from);
+			}
+			if (filter.olderThanMs !== undefined) {
+				where.push("m.created_at <= ?");
+				params.push(this.now() - filter.olderThanMs);
+			}
+			const rows = this.db
+				.prepare(
+					`SELECT m.seq, d.attempt FROM messages m JOIN deliveries d ON d.seq = m.seq
+					 WHERE ${where.join(" AND ")} ORDER BY m.seq`,
+				)
+				.all(...params) as unknown as Array<{ seq: number; attempt: number }>;
+			if (opts.dryRun) return { matched: rows.length, retired: 0 };
+			let retired = 0;
+			for (const row of rows) {
+				const updated = this.db
+					.prepare(
+						"UPDATE deliveries SET state='retired', claim_token=NULL, lease_until=NULL, updated_at=?, last_error=NULL WHERE seq=? AND state NOT IN ('acked','retired')",
+					)
+					.run(this.now(), row.seq);
+				if (Number(updated.changes) === 0) continue;
+				this.receipt(row.seq, "retired", row.attempt, reason);
+				retired += 1;
+			}
+			return { matched: rows.length, retired };
+		});
+	}
+
+	/** Requeue only rows retired for the supplied reason. The latest retirement
+	 *  receipt is authoritative, so an operator-retired row cannot be revived by
+	 *  the automatic recipient-close recovery path. */
+	unretire(
+		filter: { readonly to: SessionId; readonly reason: string },
+		opts: { readonly detail: string },
+	): { requeued: number } {
+		return this.tx(() => {
+			const rows = this.db
+				.prepare(
+					`SELECT m.seq, d.attempt FROM messages m JOIN deliveries d ON d.seq = m.seq
+					 WHERE m.to_id = ? AND d.state = 'retired'
+					   AND (SELECT r.detail FROM receipts r
+					        WHERE r.seq = m.seq AND r.state = 'retired'
+					        ORDER BY r.id DESC LIMIT 1) = ?
+					 ORDER BY m.seq`,
+				)
+				.all(filter.to, filter.reason) as unknown as Array<{ seq: number; attempt: number }>;
+			let requeued = 0;
+			for (const row of rows) {
+				const updated = this.db
+					.prepare(
+						"UPDATE deliveries SET state='queued', attempt=0, claim_token=NULL, lease_until=NULL, updated_at=?, last_error=NULL WHERE seq=? AND state='retired'",
+					)
+					.run(this.now(), row.seq);
+				if (Number(updated.changes) === 0) continue;
+				this.receipt(row.seq, "requeued", row.attempt, opts.detail);
+				requeued += 1;
+			}
+			return { requeued };
+		});
+	}
+
+	openRecipients(): SessionId[] {
+		return (
+			this.db
+				.prepare(
+					"SELECT DISTINCT to_id FROM deliveries WHERE state IN ('queued','claimed','injected','parked') ORDER BY to_id",
+				)
+				.all() as unknown as Array<{ to_id: SessionId }>
+		).map((row) => row.to_id);
 	}
 
 	/** Pointer watermark for the notify-line path: seqs above this have not been
@@ -487,9 +617,7 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 	/** Read-only snapshot for `pij queue`	/** Read-only snapshot for `pij queue`: one entry per message with its current
 	 *  delivery state and the receipt trail, newest last. Optional recipient
 	 *  filter and a `sinceSeq` low-water mark. */
-	summary(
-		opts: { readonly to?: SessionId; readonly sinceSeq?: number; readonly limit?: number } = {},
-	): QueueSummaryRow[] {
+	summary(opts: QueueListFilter & { readonly limit?: number } = {}): QueueSummaryRow[] {
 		const where: string[] = [];
 		const params: (string | number)[] = [];
 		if (opts.to !== undefined) {
@@ -542,6 +670,24 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 				detail: string | null;
 			}>,
 		}));
+	}
+
+	count(opts: QueueListFilter = {}): number {
+		const where: string[] = [];
+		const params: Array<string | number> = [];
+		if (opts.to !== undefined) {
+			where.push("to_id = ?");
+			params.push(opts.to);
+		}
+		if (opts.sinceSeq !== undefined) {
+			where.push("seq > ?");
+			params.push(opts.sinceSeq);
+		}
+		const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+		const row = this.db.prepare(`SELECT COUNT(*) AS n FROM messages ${clause}`).get(...params) as {
+			n: number;
+		};
+		return row.n;
 	}
 
 	maxSeq(to: SessionId): number {

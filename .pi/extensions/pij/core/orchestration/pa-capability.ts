@@ -125,10 +125,14 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 	phonehome: ALLOW,
 	focus: ALLOW,
 	// ── bin early-branch verbs the exhaustive test caught on its first run ────
-	// `pij queue` (PoC comms) is a read-only view of the SQLite delivery queue;
-	// `queue migrate` imports fs inboxes into it (idempotent, non-destructive —
-	// it never deletes the fs files). Both are PA-safe maintenance/inspection.
+	// `pij queue` is a read view. Its subverbs are classified separately because
+	// migrate is non-destructive maintenance while retire is a terminal state
+	// change over another seat's mail.
 	queue: ALLOW,
+	"queue migrate": ALLOW,
+	"queue retire": refuse(
+		"it retires another seat's mail — a state change a zero-actuator PA reports, never performs (ruled 2026-08-27)",
+	),
 	// It found these before a human did, which is the test earning its keep.
 	inbox: ALLOW,
 	// COARSE ON PURPOSE, and the coarseness is recorded rather than hidden: the
@@ -283,7 +287,7 @@ export function paConditionalWhy(verb: string): string | null {
 
 /** Map a raw `<top> <subverb>` pair to the key this table classifies.
  *
- * EVERY `chore` subverb gets its own key, not just the three mutators. The
+ * EVERY `chore` and `queue` subverb gets its own key. The
  * hand-written mutator list this replaced made `PA_VERB_CLASSIFICATION`'s
  * totality claim **overstated**: the scrape sees only the top-level `chore`
  * token, so a NEW mutating subverb would silently inherit `chore: ALLOW` and
@@ -292,11 +296,14 @@ export function paConditionalWhy(verb: string): string | null {
  * `pa-capability.test.ts` can check against the real vocabulary in
  * `core/chores/cli-verbs.ts`.
  *
- * Flags are NOT subverbs: `pij chore --json` must keep resolving to `chore`.
+ * Flags are NOT subverbs: `pij chore --json` and `pij queue --json` keep
+ * resolving to their family keys.
  */
 export function paCapabilityVerb(top: string, subverb: string | undefined): string {
-	if (top !== "chore" || subverb === undefined || subverb.startsWith("-")) return top;
-	return `chore ${subverb}`;
+	if ((top !== "chore" && top !== "queue") || subverb === undefined || subverb.startsWith("-")) {
+		return top;
+	}
+	return `${top} ${subverb}`;
 }
 
 /** The descriptor field this gate is KEYED ON, named once so the refusal can

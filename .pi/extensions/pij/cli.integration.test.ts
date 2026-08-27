@@ -26,6 +26,7 @@ import { tmpdir, uptime } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
+import { DualWriteChannel } from "./adapters/channel-factory.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FakePiRuntime } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
@@ -1024,8 +1025,17 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 				evidence: "pane-missing",
 			},
 		});
+		const queue = new SqliteQueue(HOME);
+		const queued = queue.deliver({ from: "pij-A", to: id, body: "survive close" });
+		if (!queued.ok) throw new Error(queued.message);
+		queue.retire({ to: id }, "recipient-closed");
+		queue.close();
 
-		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		const result = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			PIJ_QUEUE_BACKEND: "sqlite",
+			HOME,
+		});
 
 		expect(result.code, result.out).toBe(0);
 		const output = JSON.parse(
@@ -1033,8 +1043,15 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 				.trim()
 				.split("\n")
 				.findLast((line) => line.startsWith("{")) ?? "{}",
-		) as { id: string; state: string; paneId: string };
-		expect(output).toMatchObject({ id, state: "pending-canary", paneId: "%91" });
+		) as { id: string; state: string; paneId: string; requeued?: number };
+		expect(output).toMatchObject({ id, state: "pending-canary", paneId: "%91", requeued: 1 });
+		const reopened = new SqliteQueue(HOME);
+		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
+		expect(reopened.receipts(queued.value.messageId).at(-1)).toMatchObject({
+			state: "requeued",
+			detail: expect.stringContaining("pane %91"),
+		});
+		reopened.close();
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			id,
 			lifecycle: "pending",
@@ -1380,10 +1397,20 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const id = "pij-rebooted-attach";
 		const nativeId = "88888888-2222-4333-8444-555555555555";
 		seedRebootedClaudeSeat(id, nativeId, false);
+		const queue = new SqliteQueue(HOME);
+		const queued = queue.deliver({ from: "pij-A", to: id, body: "survive attach" });
+		if (!queued.ok) throw new Error(queued.message);
+		queue.retire({ to: id }, "recipient-closed");
+		queue.close();
 
 		const result = pij(
 			["revive", id, "--attach", "%42", "--json"],
-			{ PIJ_SESSION_ID: "pij-A", HOME, FAKE_TMUX_LIVE_PANE: "%42" },
+			{
+				PIJ_SESSION_ID: "pij-A",
+				PIJ_QUEUE_BACKEND: "sqlite",
+				HOME,
+				FAKE_TMUX_LIVE_PANE: "%42",
+			},
 			S072_FOLDER,
 		);
 
@@ -1395,7 +1422,20 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 					.split("\n")
 					.findLast((line) => line.startsWith("{")) ?? "{}",
 			),
-		).toMatchObject({ id, paneId: "%42", attached: true, state: "pending-canary" });
+		).toMatchObject({
+			id,
+			paneId: "%42",
+			attached: true,
+			state: "pending-canary",
+			requeued: 1,
+		});
+		const reopened = new SqliteQueue(HOME);
+		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
+		expect(reopened.receipts(queued.value.messageId).at(-1)).toMatchObject({
+			state: "requeued",
+			detail: expect.stringContaining("pane %42"),
+		});
+		reopened.close();
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			id,
 			paneId: "%42",
@@ -1665,14 +1705,36 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			harnessSessionId: nativeId,
 			runtimeBin: runtime,
 			lifecycle: "dissolved",
+			closeIntent: {
+				actor: "pij-A",
+				kind: "cli-close",
+				requestedAt: "2026-07-24T00:59:59.000Z",
+			},
 			terminal: {
-				disposition: "unrequested-by-pij",
+				disposition: "requested",
 				observedAt: "2026-07-24T01:00:00.000Z",
-				evidence: "pid-missing",
+				evidence: "pane-missing",
 			},
 		});
-		const result = pij(["revive", id, "--json"], { PIJ_SESSION_ID: "pij-A", HOME });
+		const queue = new SqliteQueue(HOME);
+		const queued = queue.deliver({ from: "pij-A", to: id, body: "survive self-adopt" });
+		if (!queued.ok) throw new Error(queued.message);
+		queue.retire({ to: id }, "recipient-closed");
+		queue.close();
+		const result = pij(["revive", id, "--json"], {
+			PIJ_SESSION_ID: "pij-A",
+			PIJ_QUEUE_BACKEND: "sqlite",
+			HOME,
+		});
 		expect(result.code, result.out).toBe(0);
+		expect(JSON.parse(result.out.trim())).toMatchObject({ id, requeued: 1 });
+		const reopened = new SqliteQueue(HOME);
+		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
+		expect(reopened.receipts(queued.value.messageId).at(-1)).toMatchObject({
+			state: "requeued",
+			detail: expect.stringContaining("pane %91"),
+		});
+		reopened.close();
 		const log = readFileSync(TMUX_LOG, "utf8");
 		expect(log).toContain(command);
 		expect(log).toContain("PIJ_SPAWN_TASK=You are a REVIVED session");
@@ -3151,6 +3213,7 @@ describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", (
 });
 
 describe("bin-owned output survives the 64 KiB pipe boundary (AC-16)", () => {
+	// Non-vacuous only because runQueue writes once and exits in the same tick; a drain-safe verb would hide AC-16.
 	it("pij queue emits all 812 rows through a piped stdout", () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-queue-bigout-"));
 		try {
@@ -3169,19 +3232,198 @@ describe("bin-owned output survives the 64 KiB pipe boundary (AC-16)", () => {
 				queue.close();
 			}
 
-			const result = spawnSync(TSX, [CLI, "queue"], {
-				env: { ...process.env, PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite", TMUX_PANE: "" },
-				encoding: "utf8",
-				maxBuffer: 16 * 1024 * 1024,
-				timeout: 30_000,
-			});
-			expect(result.error).toBeUndefined();
-			expect(result.status).toBe(0);
-			expect(Buffer.byteLength(result.stdout, "utf8")).toBeGreaterThan(65_536);
-			expect(result.stdout.trimEnd().split("\n").at(-1)).toContain("pij-stdout-target-0811");
+			const run = (args: string[]) =>
+				spawnSync(TSX, [CLI, ...args], {
+					env: { ...process.env, PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite", TMUX_PANE: "" },
+					encoding: "utf8",
+					maxBuffer: 16 * 1024 * 1024,
+					timeout: 30_000,
+				});
+			const all = run(["queue", "--all"]);
+			expect(all.error).toBeUndefined();
+			expect(all.status).toBe(0);
+			expect(Buffer.byteLength(all.stdout, "utf8")).toBeGreaterThan(65_536);
+			expect(all.stdout.trimEnd().split("\n").at(-1)).toContain("pij-stdout-target-0811");
+			expect((all.stdout.match(/pij-stdout-target-/g) ?? []).length).toBe(812);
+
+			const latest = run(["queue"]);
+			expect((latest.stdout.match(/pij-stdout-target-/g) ?? []).length).toBe(200);
+			expect(latest.stdout).toContain("pij-stdout-target-0811");
+			expect(latest.stdout).not.toContain("pij-stdout-target-0611");
+			expect(latest.stdout).toContain(
+				"showing 200 of 812 (latest) — --all for everything, --since <seq>, --tail N",
+			);
+
+			const since = run(["queue", "--since", "800", "--all"]);
+			expect((since.stdout.match(/pij-stdout-target-/g) ?? []).length).toBe(12);
+			const tail = run(["queue", "--tail", "3"]);
+			expect((tail.stdout.match(/pij-stdout-target-/g) ?? []).length).toBe(3);
+			expect(tail.stdout).toContain("pij-stdout-target-0811");
+
+			const json = run(["queue", "--json"]);
+			const parsed = JSON.parse(json.stdout) as {
+				rows: Array<{ seq: number }>;
+				total: number;
+				shown: number;
+			};
+			expect(parsed.rows).toHaveLength(200);
+			expect(parsed.rows.at(-1)?.seq).toBe(812);
+			expect(parsed).toMatchObject({ total: 812, shown: 200 });
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("pij queue retire", () => {
+	it("retires matching sqlite rows in human and JSON modes", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-retire-cli-"));
+		try {
+			const queue = new SqliteQueue(home);
+			queue.deliver({ from: "pij-a", to: "pij-x", body: "one" });
+			queue.deliver({ from: "pij-b", to: "pij-x", body: "two" });
+			queue.deliver({ from: "pij-a", to: "pij-y", body: "other" });
+			queue.close();
+
+			const human = pij(["queue", "retire", "--to", "pij-x", "--reason", "stale"], {
+				PIJ_HOME: home,
+				PIJ_QUEUE_BACKEND: "sqlite",
+			});
+			expect(human).toMatchObject({ code: 0 });
+			expect(human.out).toContain("retired 2/2");
+			expect(human.out).toContain("stale");
+
+			const jsonHome = mkdtempSync(join(tmpdir(), "pij-retire-json-"));
+			try {
+				const jsonQueue = new SqliteQueue(jsonHome);
+				jsonQueue.deliver({ from: "pij-a", to: "pij-x", body: "one" });
+				jsonQueue.deliver({ from: "pij-b", to: "pij-x", body: "two" });
+				jsonQueue.close();
+				const json = pij(
+					["queue", "retire", "--to", "pij-x", "--from", "pij-a", "--reason", "operator", "--json"],
+					{
+						PIJ_HOME: jsonHome,
+						PIJ_QUEUE_BACKEND: "sqlite",
+					},
+				);
+				expect(json.code).toBe(0);
+				expect(JSON.parse(json.out)).toMatchObject({
+					retired: 1,
+					matched: 1,
+					reason: "operator",
+				});
+				const jsonReopened = new SqliteQueue(jsonHome);
+				expect(jsonReopened.summary({ to: "pij-x" }).map((row) => row.state)).toEqual([
+					"retired",
+					"queued",
+				]);
+				jsonReopened.close();
+			} finally {
+				rmSync(jsonHome, { recursive: true, force: true });
+			}
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("requires a reason, validates age syntax, and keeps dry-run read-only", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-retire-args-"));
+		try {
+			const queue = new SqliteQueue(home, { now: () => Date.now() - 3 * 60 * 60_000 });
+			queue.deliver({ from: "pij-a", to: "pij-x", body: "old" });
+			queue.close();
+
+			const missing = pij(["queue", "retire", "--to", "pij-x"], {
+				PIJ_HOME: home,
+				PIJ_QUEUE_BACKEND: "sqlite",
+			});
+			expect(missing.code).toBe(2);
+			expect(missing.out).toContain("E-ARG");
+			expect(missing.out).toContain("--reason");
+
+			for (const age of ["30m", "2h", "1d"]) {
+				const dryRun = pij(
+					[
+						"queue",
+						"retire",
+						"--to",
+						"pij-x",
+						"--reason",
+						"aged",
+						"--older-than",
+						age,
+						"--dry-run",
+					],
+					{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
+				);
+				expect(dryRun.code).toBe(0);
+				expect(dryRun.out).toContain("would retire");
+			}
+			const stateFiltered = pij(
+				[
+					"queue",
+					"retire",
+					"--to",
+					"pij-x",
+					"--reason",
+					"queued-only",
+					"--state",
+					"queued",
+					"--dry-run",
+				],
+				{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
+			);
+			expect(stateFiltered.code).toBe(0);
+			expect(stateFiltered.out).toContain("would retire 1/1");
+			const invalid = pij(
+				["queue", "retire", "--to", "pij-x", "--reason", "aged", "--older-than", "tomorrow"],
+				{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
+			);
+			expect(invalid.code).toBe(2);
+			expect(invalid.out).toContain("E-ARG");
+			const invalidState = pij(["queue", "retire", "--reason", "bad", "--state", "forgotten"], {
+				PIJ_HOME: home,
+				PIJ_QUEUE_BACKEND: "sqlite",
+			});
+			expect(invalidState.code).toBe(2);
+			expect(invalidState.out).toContain("unknown delivery state");
+
+			const reopened = new SqliteQueue(home);
+			expect(reopened.summary({ to: "pij-x" }).map((row) => row.state)).toEqual(["queued"]);
+			reopened.close();
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("mirrors dual retirement into fs read markers", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-retire-dual-"));
+		try {
+			const sqlite = new SqliteQueue(home);
+			const dual = new DualWriteChannel(sqlite, new FsChannel(home));
+			const delivered = dual.deliver({ from: "pij-a", to: "pij-x", body: "dual" });
+			if (!delivered.ok) throw new Error(delivered.message);
+			sqlite.close();
+
+			const result = pij(["queue", "retire", "--to", "pij-x", "--reason", "stale"], {
+				PIJ_HOME: home,
+				PIJ_QUEUE_BACKEND: "dual",
+			});
+			expect(result.code).toBe(0);
+			expect(
+				existsSync(join(home, "pij-x", "inbox", `read-${delivered.value.messageId}.json`)),
+			).toBe(true);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("points fs-only operators at the legacy inbox files", () => {
+		const result = pij(["queue", "retire", "--to", "pij-x", "--reason", "stale"], {
+			PIJ_QUEUE_BACKEND: "fs",
+		});
+		expect(result.code).toBe(1);
+		expect(result.out).toContain("rm ~/.pij/<id>/inbox/msg-*.json");
 	});
 });
 
@@ -3290,6 +3532,24 @@ describe("PA capability gate — enforced identically at BOTH seams (AC-06)", ()
 			const refused = pij(["watchdog", "pause", "pij-parent"], env, folder);
 			expect(refused.code).not.toBe(0);
 			expect(refused.out).toContain("role 'pa'");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses queue retire at the raw-argv bin seam", () => {
+		const { home, folder, env } = sandbox();
+		try {
+			for (const args of [
+				["queue", "retire", "--to", "pij-parent", "--reason", "stale"],
+				["queue", "--as", "pij-parent", "retire", "--to", "pij-parent", "--reason", "stale"],
+			]) {
+				const refused = pij(args, env, folder);
+				expect(refused.code).toBe(2);
+				expect(refused.out).toContain("E-OWN");
+				expect(refused.out).toContain("'queue retire'");
+				expect(refused.out).toContain("role 'pa'");
+			}
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}

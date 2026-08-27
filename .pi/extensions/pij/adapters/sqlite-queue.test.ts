@@ -6,6 +6,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SqliteQueue } from "./sqlite-queue.js";
 
@@ -194,6 +195,130 @@ describe("SqliteQueue — daemon view", () => {
 		now += 5_000;
 		expect(q.recoverStaleClaims()).toBe(1);
 		expect(q.listQueued("pij-b").map((m) => m.seq)).toEqual([1, 2]);
+	});
+});
+
+describe("SqliteQueue — retired terminal state", () => {
+	it("retires matching open rows once and every mutator preserves terminality", () => {
+		const injected = q.deliver({ from: "pij-a", to: "pij-x", body: "injected" });
+		const queued = q.deliver({ from: "pij-b", to: "pij-x", body: "queued" });
+		q.deliver({ from: "pij-a", to: "pij-y", body: "other recipient" });
+		if (!injected.ok || !queued.ok) throw new Error("deliver failed");
+		const claimed = q.claim("pij-x", { leaseMs: 60_000, token: "claim-x" });
+		if (!claimed) throw new Error("claim failed");
+		q.settle(claimed.seq, "injected", { leaseMs: 60_000 });
+
+		expect(q.retire({ to: "pij-x" }, "stale")).toEqual({ matched: 2, retired: 2 });
+		expect(q.retire({ to: "pij-x" }, "stale")).toEqual({ matched: 0, retired: 0 });
+		expect(q.summary({ to: "pij-x" }).map((row) => [row.state, row.leaseUntil])).toEqual([
+			["retired", null],
+			["retired", null],
+		]);
+		expect(q.listQueued("pij-x")).toEqual([]);
+		const unread = q.listUnread("pij-x");
+		expect(unread.ok && unread.value).toEqual([]);
+		expect(q.summary({ to: "pij-y" }).map((row) => row.state)).toEqual(["queued"]);
+		expect(q.stats("pij-x")).toMatchObject({ retired: 2, queued: 0, injected: 0 });
+
+		const db = new DatabaseSync(q.dbPath, { readOnly: true });
+		try {
+			expect(
+				db
+					.prepare(
+						"SELECT state, claim_token, lease_until FROM deliveries WHERE to_id = ? ORDER BY seq",
+					)
+					.all("pij-x"),
+			).toEqual([
+				{ state: "retired", claim_token: null, lease_until: null },
+				{ state: "retired", claim_token: null, lease_until: null },
+			]);
+		} finally {
+			db.close();
+		}
+
+		const receiptCounts = [injected.value.messageId, queued.value.messageId].map(
+			(id) => q.receipts(id).length,
+		);
+		const retiredClaim = q.claimUnread("pij-x", injected.value.messageId);
+		expect(retiredClaim.ok && retiredClaim.value.kind).toBe("already-read");
+		const marked = q.markRead("pij-x", queued.value.messageId);
+		expect(marked.ok && marked.value.kind).toBe("already-read");
+		q.settle(claimed.seq, "queued", { detail: "must not revive" });
+		q.settle(claimed.seq, "injected", { leaseMs: 1, detail: "must not revive" });
+		expect(q.claim("pij-x", { leaseMs: 1, token: "must-not-claim" })).toBeUndefined();
+		now += 100_000;
+		expect(q.recoverStaleClaims()).toBe(0);
+		expect(q.resetClaimsOnStart()).toBe(0);
+		expect(q.summary({ to: "pij-x" }).map((row) => row.state)).toEqual(["retired", "retired"]);
+		expect(
+			[injected.value.messageId, queued.value.messageId].map((id) => q.receipts(id).length),
+		).toEqual(receiptCounts);
+	});
+
+	it("retires parked rows and honours explicit state and message-age filters", () => {
+		const parked = q.deliver({ from: "pij-a", to: "pij-x", body: "park me" });
+		if (!parked.ok) throw new Error(parked.message);
+		const claimed = q.claim("pij-x", { leaseMs: 10, token: "park", maxAttempts: 1 });
+		if (!claimed) throw new Error("claim failed");
+		now += 100;
+		expect(q.recoverStaleClaims({ maxAttempts: 1 })).toBe(1);
+		q.deliver({ from: "pij-a", to: "pij-x", body: "leave queued" });
+
+		expect(q.retire({ to: "pij-x", state: ["parked"] }, "parked-cleanup")).toEqual({
+			matched: 1,
+			retired: 1,
+		});
+		expect(q.summary({ to: "pij-x" }).map((row) => row.state)).toEqual(["retired", "queued"]);
+
+		q.deliver({ from: "pij-a", to: "pij-age", body: "old" });
+		now += 1_000;
+		q.deliver({ from: "pij-a", to: "pij-age", body: "young" });
+		expect(q.retire({ to: "pij-age", olderThanMs: 500 }, "aged")).toEqual({
+			matched: 1,
+			retired: 1,
+		});
+		expect(q.summary({ to: "pij-age" }).map((row) => row.state)).toEqual(["retired", "queued"]);
+	});
+
+	it("unretires only recipient-closed rows and records revive evidence", () => {
+		const closedOne = q.deliver({ from: "pij-close", to: "pij-x", body: "one" });
+		const closedTwo = q.deliver({ from: "pij-close", to: "pij-x", body: "two" });
+		const operator = q.deliver({ from: "pij-operator", to: "pij-x", body: "stay retired" });
+		if (!closedOne.ok || !closedTwo.ok || !operator.ok) throw new Error("deliver failed");
+		const parked = q.claim("pij-x", { leaseMs: 10, token: "before-close", maxAttempts: 1 });
+		if (!parked) throw new Error("claim failed");
+		now += 100;
+		q.recoverStaleClaims({ maxAttempts: 1 });
+		expect(q.retire({ to: "pij-x", from: "pij-close" }, "recipient-closed").retired).toBe(2);
+		expect(q.retire({ to: "pij-x", from: "pij-operator" }, "stale").retired).toBe(1);
+
+		expect(
+			q.unretire(
+				{ to: "pij-x", reason: "recipient-closed" },
+				{ detail: "revived by pij-boss → pane %9" },
+			),
+		).toEqual({ requeued: 2 });
+		expect(q.summary({ to: "pij-x" }).map((row) => row.state)).toEqual([
+			"queued",
+			"queued",
+			"retired",
+		]);
+		expect(
+			q
+				.summary({ to: "pij-x" })
+				.slice(0, 2)
+				.map((row) => row.attempt),
+		).toEqual([0, 0]);
+		for (const id of [closedOne.value.messageId, closedTwo.value.messageId]) {
+			expect(q.receipts(id).at(-1)).toMatchObject({
+				state: "requeued",
+				detail: "revived by pij-boss → pane %9",
+			});
+		}
+		expect(q.receipts(operator.value.messageId).at(-1)).toMatchObject({
+			state: "retired",
+			detail: "stale",
+		});
 	});
 });
 
