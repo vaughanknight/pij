@@ -24,6 +24,7 @@
 // All I/O is injected via `deps` so tests drive the bot with fake updates + a spy
 // delivery and exercise the forwarder over a temp inbox — no live long-poll, no network.
 
+import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { Bot, type Context } from "grammy";
@@ -493,6 +494,30 @@ export interface ForwarderDeps {
 	log?: (message: string) => void;
 }
 
+type ForwardAttachment = NonNullable<DeliveredMessage["attachments"]>[number];
+type MediaSender = NonNullable<ForwarderDeps["sendMedia"]>;
+type AttachmentPlan =
+	| {
+			readonly kind: "text";
+			readonly attachment: ForwardAttachment;
+			readonly mediaKind: MediaKind;
+			readonly textParts: readonly string[];
+	  }
+	| {
+			readonly kind: "media";
+			readonly attachment: ForwardAttachment;
+			readonly mediaKind: MediaKind;
+			readonly caption: string;
+			readonly precedingTextParts?: readonly string[];
+			readonly sendMedia: MediaSender;
+	  }
+	| {
+			readonly kind: "error";
+			readonly attachment: ForwardAttachment;
+			readonly mediaKind: MediaKind;
+			readonly error: unknown;
+	  };
+
 /** Text fallback when an outbound file exceeds Telegram's upload cap for its kind. The
  *  file is left on disk; we never throw (AC-11), just tell the operator it was too big. */
 function oversizeNotice(path: string, bytes: number, kind: MediaKind): string {
@@ -571,9 +596,67 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 			attachments.length > 0 && dm.body.trim() === ""
 				? undefined
 				: normalizeSenderContent(dm.from, prefix, dm.body);
+		const initialTextParts =
+			initialText === undefined ? undefined : prefixedTextParts(prefix, initialText);
+		const attachmentPlans: AttachmentPlan[] = attachments.map((attachment) => {
+			const mediaKind = classifyMedia(attachment.path);
+			try {
+				const bytes = sizeOf(attachment.path);
+				if (!withinUploadLimit(bytes, mediaKind)) {
+					return {
+						kind: "text",
+						attachment,
+						mediaKind,
+						textParts: prefixedTextParts(prefix, oversizeNotice(attachment.path, bytes, mediaKind)),
+					};
+				}
+				if (deps.sendMedia === undefined) {
+					return {
+						kind: "text",
+						attachment,
+						mediaKind,
+						textParts: prefixedTextParts(
+							prefix,
+							`[attachment ${attachment.path}] (no media sender configured)`,
+						),
+					};
+				}
+				let caption = prefix;
+				let precedingTextParts: readonly string[] | undefined;
+				if (attachment.caption !== undefined && attachment.caption !== "") {
+					const normalizedCaption = normalizeSenderContent(dm.from, prefix, attachment.caption);
+					const prefixedCaption = taggedText(prefix, normalizedCaption);
+					if (prefixedCaption.length <= TELEGRAM_CAPTION_LIMIT) {
+						caption = prefixedCaption;
+					} else {
+						precedingTextParts = prefixedTextParts(prefix, normalizedCaption);
+					}
+				}
+				return {
+					kind: "media",
+					attachment,
+					mediaKind,
+					caption,
+					...(precedingTextParts === undefined ? {} : { precedingTextParts }),
+					sendMedia: deps.sendMedia,
+				};
+			} catch (error) {
+				return { kind: "error", attachment, mediaKind, error };
+			}
+		});
 		const currentPartition = {
-			partCount: initialText === undefined ? 0 : prefixedTextParts(prefix, initialText).length,
+			partCount: attachmentPlans.reduce(
+				(total, plan) =>
+					total +
+					(plan.kind === "text"
+						? plan.textParts.length
+						: plan.kind === "media"
+							? (plan.precedingTextParts?.length ?? 0)
+							: 0),
+				initialTextParts?.length ?? 0,
+			),
 			prefixLength: prefix.length,
+			prefixHash: createHash("sha256").update(prefix).digest("hex"),
 		};
 		const persistedParts = sqlite?.telegramSentParts(dm.messageId) ?? new Set<number>();
 		const persistedPartition = sqlite?.telegramPartitionIdentity(dm.messageId);
@@ -588,20 +671,17 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 				}
 			} else if (
 				persistedPartition.partCount === currentPartition.partCount &&
-				persistedPartition.prefixLength === currentPartition.prefixLength
+				persistedPartition.prefixLength === currentPartition.prefixLength &&
+				persistedPartition.prefixHash === currentPartition.prefixHash
 			) {
 				positionalPartsValid = true;
 			} else {
 				log(
-					`partition drift ${dm.messageId}: stored ${persistedPartition.partCount}/${persistedPartition.prefixLength}, current ${currentPartition.partCount}/${currentPartition.prefixLength}; sending all`,
+					`partition drift ${dm.messageId}: stored ${persistedPartition.partCount}/${persistedPartition.prefixLength}/${persistedPartition.prefixHash}, current ${currentPartition.partCount}/${currentPartition.prefixLength}/${currentPartition.prefixHash}; sending all`,
 				);
 			}
 		}
-		const sentPartIndices = new Set(
-			positionalPartsValid
-				? [...persistedParts].filter((index) => index < currentPartition.partCount)
-				: [],
-		);
+		const sentPartIndices = new Set(positionalPartsValid ? persistedParts : []);
 		let nextTextPartIndex = 0;
 		let spoke = false;
 		let undeliveredText = 0;
@@ -613,8 +693,7 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		// Quote the operator message this reply presumably answers — taken ONCE, so
 		// only the first bubble of this pij message threads; the rest follow it.
 		let replyTo = deps.takeReplyTo?.(dm.from);
-		const sendText = async (text: string, errorLabel: string): Promise<number> => {
-			const bubbles = prefixedTextParts(prefix, text);
+		const sendText = async (bubbles: readonly string[], errorLabel: string): Promise<number> => {
 			for (const [index, bubble] of bubbles.entries()) {
 				const persistedIndex = nextTextPartIndex;
 				nextTextPartIndex += 1;
@@ -651,47 +730,34 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		// Skip a blank text send for an attachment-only message. Text-only blank
 		// messages keep the existing one-bubble behavior.
 		const textPartCount =
-			initialText === undefined ? 0 : await sendText(initialText, "forward error");
+			initialTextParts === undefined ? 0 : await sendText(initialTextParts, "forward error");
 
 		// Outbound media: classify each file, enforce the per-kind upload cap, and
 		// keep every fallback/caption within Telegram's text/caption limits.
-		for (const att of attachments) {
-			const kind = classifyMedia(att.path);
+		for (const plan of attachmentPlans) {
+			const att = plan.attachment;
+			const kind = plan.mediaKind;
 			try {
-				const bytes = sizeOf(att.path);
-				if (!withinUploadLimit(bytes, kind)) {
-					await sendText(oversizeNotice(att.path, bytes, kind), "media forward error");
+				if (plan.kind === "error") throw plan.error;
+				if (plan.kind === "text") {
+					await sendText(plan.textParts, "media forward error");
 					continue;
 				}
-				if (deps.sendMedia !== undefined) {
-					let caption = prefix;
-					if (att.caption !== undefined && att.caption !== "") {
-						const normalizedCaption = normalizeSenderContent(dm.from, prefix, att.caption);
-						const prefixedCaption = taggedText(prefix, normalizedCaption);
-						if (prefixedCaption.length <= TELEGRAM_CAPTION_LIMIT) {
-							caption = prefixedCaption;
-						} else {
-							await sendText(normalizedCaption, "media forward error");
-						}
-					}
-					// One bounded retry on a transient (network-shaped) failure (s113 W5).
-					// A deterministic rejection (bad request, missing file) is NOT retried.
-					try {
-						await deps.sendMedia(kind, att.path, caption, replyTo);
-					} catch (e) {
-						const first = (e as Error).message;
-						if (!isTransientSendError(first)) throw e;
-						log(`media send retry after transient failure (${dm.messageId}): ${first}`);
-						await deps.sendMedia(kind, att.path, caption, replyTo);
-					}
-					noteSpoke();
-					replyTo = undefined;
-				} else {
-					await sendText(
-						`[attachment ${att.path}] (no media sender configured)`,
-						"media forward error",
-					);
+				if (plan.precedingTextParts !== undefined) {
+					await sendText(plan.precedingTextParts, "media forward error");
 				}
+				// One bounded retry on a transient (network-shaped) failure (s113 W5).
+				// A deterministic rejection (bad request, missing file) is NOT retried.
+				try {
+					await plan.sendMedia(kind, att.path, plan.caption, replyTo);
+				} catch (e) {
+					const first = (e as Error).message;
+					if (!isTransientSendError(first)) throw e;
+					log(`media send retry after transient failure (${dm.messageId}): ${first}`);
+					await plan.sendMedia(kind, att.path, plan.caption, replyTo);
+				}
+				noteSpoke();
+				replyTo = undefined;
 			} catch (e) {
 				// Final failure — log AND echo honestly to the sender (s113 W5): its send
 				// receipt covered only the bridge hop, so without this echo the failure
