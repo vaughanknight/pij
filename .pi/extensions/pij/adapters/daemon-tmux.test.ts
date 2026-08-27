@@ -454,11 +454,48 @@ describe("composerPending — submit verification (the cause-independent retry g
 		it("exhausted — payload stays stranded → unverified, 3 Enters, never delivered", () => {
 			const tmux = scriptedTmux(repeatedCapture(CLAUDE_PENDING_PANE, 30));
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+			const stderr: string[] = [];
+			const write = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+				stderr.push(String(chunk));
+				return true;
+			});
 
-			expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
-			expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
-			expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
-			expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
+			try {
+				expect(adapter.sendText(PANE_ID, SENT, "claude")).toBe("unverified");
+				expect(stderr.join("")).toBe(
+					"⚠️  claude UNVERIFIED: send to pane %42 (pid ?) typed the payload but never confirmed submission across 3 Enter attempts — text tail «…lztp8] (pij delivery diagnostic — please ignore)».\n",
+				);
+				expect(indexesOf(tmux.calls, typeArgv())).toHaveLength(1);
+				expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(3);
+				expect(indexesOf(tmux.calls, clearArgv())).toHaveLength(0);
+			} finally {
+				write.mockRestore();
+			}
+		});
+
+		it("exhausted pointer stays unverified but logs safe queue re-announcement", () => {
+			const tmux = scriptedTmux(repeatedCapture(CLAUDE_PENDING_PANE, 30));
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+			const stderr: string[] = [];
+			const write = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+				stderr.push(String(chunk));
+				return true;
+			});
+
+			try {
+				expect(adapter.sendText(PANE_ID, SENT, "claude", 4242, { kind: "pointer" })).toBe(
+					"unverified",
+				);
+				const output = stderr.join("");
+				expect(output).not.toContain("UNVERIFIED");
+				expect(output).not.toContain("⚠️");
+				expect(output).toContain("pointer");
+				expect(output).toContain("90s lease");
+				expect(output).toContain("re-announced");
+				expect(output).toContain("pid 4242");
+			} finally {
+				write.mockRestore();
+			}
 		});
 
 		it("ghost placeholder is read as payload-gone — stops after one Enter (no hammering)", () => {

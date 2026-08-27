@@ -87,13 +87,23 @@ lose bytes; a channel that cannot clip receives the byte-exact body instead.
 | Legacy or otherwise socketless tmux seat | Pointer path* | *Sqlite default:* one `pij inbox` pointer line; body stays durable |
 | Pi | In-process receiver | Full body |
 
-*\* The pointer path runs under the `sqlite` default backend only (`daemon.ts` gates it on the sqlite queue). Under `PIJ_QUEUE_BACKEND=fs` or `dual` the pointer path is off and the body is typed into the pane — the pre-pointer behavior; the socket/RPC rows above are unaffected (they never depend on the backend).*
+*\* The pointer path runs whenever the selected backend has a SQLite source of
+truth: both the `sqlite` default and `dual` use it. `PIJ_QUEUE_BACKEND=fs` keeps
+the pre-pointer behavior and types the body into the pane; socket/RPC delivery
+never depends on the backend.*
 
 Three safeguards do not change:
 
 - Packets and large bodies are still persisted before send for audit and durability.
 - The pointer path still consults the composer-idle guard before typing into a pane.
 - Remote commands such as `/compact` are still typed through the harness command path.
+
+An unconfirmed body send keeps the existing warning:
+`⚠️ … UNVERIFIED … never confirmed submission`. An unconfirmed pointer is
+different: the daemon logs an `ℹ️` pointer line saying the body is safe in the
+queue, the row remains injected under its 90-second lease, and it will be
+re-announced on expiry. Both adapter calls still return `unverified`; the pointer
+path still emits no delivery receipt.
 
 The executable contract is
 `.pi/extensions/pij/core/daemon/loop.test.ts` describe

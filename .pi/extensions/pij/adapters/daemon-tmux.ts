@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { DaemonPorts } from "../core/daemon/loop.js";
+import { type DaemonPorts, POINTER_LEASE_MS, type SendTextOptions } from "../core/daemon/loop.js";
 import { composerRegion, type PaneListing } from "../core/daemon/pane-signals.js";
 import type { ProcessSnapshot } from "../core/platform/types.js";
 
@@ -442,9 +442,15 @@ export class DaemonTmux implements DaemonPorts {
 		if (tap) rmSync(tap.path, { force: true });
 	}
 
-	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome {
+	sendText(
+		paneId: string,
+		text: string,
+		harness?: HarnessKind,
+		pid?: number,
+		opts?: SendTextOptions,
+	): SendOutcome {
 		try {
-			return this.sendTextUnchecked(paneId, text, harness, pid);
+			return this.sendTextUnchecked(paneId, text, harness, pid, opts);
 		} catch (error) {
 			const detail = error instanceof Error ? error.message : String(error);
 			const gone = classifySendFailure(detail) === "gone";
@@ -473,6 +479,7 @@ export class DaemonTmux implements DaemonPorts {
 		text: string,
 		harness?: HarnessKind,
 		pid?: number,
+		opts?: SendTextOptions,
 	): SendOutcome {
 		const wake = needsInputWake(harness);
 		// Wake a BACKGROUNDED copilot BEFORE typing (the real wedge fix): with tmux
@@ -503,6 +510,7 @@ export class DaemonTmux implements DaemonPorts {
 		this.sleep(enterSettleMs(harness));
 		const preSubmit = this.capturePane(paneId);
 		let lastPane = preSubmit;
+		let enterAttempts = 0;
 		// Submission verification runs for EVERY harness (#40 Defect 5): claude/codex
 		// used to fire one Enter and blindly return `confirmed`, so a swallowed Enter
 		// (busy composer / render race) stranded the text yet still reported delivered.
@@ -520,6 +528,7 @@ export class DaemonTmux implements DaemonPorts {
 			}
 			if (wake) sendFocusIn(paneId, this.runner);
 			pressKey(paneId, "Enter", 1, this.runner);
+			enterAttempts += 1;
 			for (let poll = 0; poll < SUBMIT_VERIFY_POLLS; poll++) {
 				this.sleep(SUBMIT_VERIFY_MS);
 				lastPane = this.capturePane(paneId);
@@ -545,7 +554,9 @@ export class DaemonTmux implements DaemonPorts {
 		try {
 			const tail = text.replace(/\s+/g, " ").slice(-48);
 			process.stderr.write(
-				`⚠️  ${harness ?? "harness"} UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) typed the payload but never confirmed submission across ${SUBMIT_ATTEMPTS} Enter attempts — text tail «…${tail}».\n`,
+				opts?.kind === "pointer"
+					? `ℹ️  ${harness ?? "harness"} pointer typed into pane ${paneId} (pid ${pid ?? "?"}) but submission unconfirmed after ${enterAttempts} Enter attempt(s) — body is safe in the queue; row stays injected under a ${POINTER_LEASE_MS / 1000}s lease and is re-announced on expiry — text tail «…${tail}».\n`
+					: `⚠️  ${harness ?? "harness"} UNVERIFIED: send to pane ${paneId} (pid ${pid ?? "?"}) typed the payload but never confirmed submission across ${SUBMIT_ATTEMPTS} Enter attempts — text tail «…${tail}».\n`,
 			);
 		} catch {
 			// logging is diagnostic-only — a write failure must not break delivery.

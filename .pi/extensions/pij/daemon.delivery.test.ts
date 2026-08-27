@@ -8,7 +8,7 @@ import { FsChannel } from "./adapters/channel.js";
 import { DualWriteChannel } from "./adapters/channel-factory.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
-import type { DaemonPorts } from "./core/daemon/loop.js";
+import { type DaemonPorts, pointerLine } from "./core/daemon/loop.js";
 import type { SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
 
@@ -481,6 +481,56 @@ describe("closed-recipient queue retirement", () => {
 			).toBe(true);
 		} finally {
 			queue.close();
+		}
+	});
+});
+
+describe("dual-backend pointer delivery", () => {
+	it("types a pointer, leaves the row injected, and re-announces after lease expiry", async () => {
+		const registry = new FsRegistry(home);
+		registry.write(seat({ id: "pij-worker", harness: "codex" }));
+		const sqlite = new SqliteQueue(home, { now: () => nowMs });
+		const channel = new DualWriteChannel(sqlite, new FsChannel(home));
+		const d = new Daemon(home, ports(), registry, channel, (line) => logs.push(line));
+		try {
+			await d.tick();
+			sent.length = 0;
+			const delivered = channel.deliver({
+				from: "pij-boss",
+				to: "pij-worker",
+				body: "body remains durable",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+
+			await d.deliverPass();
+
+			expect(sent).toEqual([{ pane: "%1", text: pointerLine("pij-boss", 1) }]);
+			expect(sqlite.summary({ to: "pij-worker" })[0]).toMatchObject({
+				state: "injected",
+				leaseUntil: NOW_MS + 90_000,
+			});
+			expect(sqlite.receipts(delivered.value.messageId).map((receipt) => receipt.state)).toEqual([
+				"queued",
+				"injected",
+			]);
+			const fsUnread = new FsChannel(home).listUnread("pij-worker");
+			expect(fsUnread.ok && fsUnread.value.map((message) => message.body)).toEqual([
+				"body remains durable",
+			]);
+
+			sent.length = 0;
+			nowMs += 90_001;
+			await d.deliverPass();
+
+			expect(sent).toEqual([{ pane: "%1", text: pointerLine("pij-boss", 1) }]);
+			expect(sqlite.receipts(delivered.value.messageId).map((receipt) => receipt.state)).toEqual([
+				"queued",
+				"injected",
+				"redelivered",
+				"injected",
+			]);
+		} finally {
+			sqlite.close();
 		}
 	});
 });

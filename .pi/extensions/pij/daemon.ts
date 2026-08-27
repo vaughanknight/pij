@@ -42,11 +42,6 @@ import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 
-/** PoC: how long a typed pointer line is trusted before the daemon re-announces
- *  an unread body (review §7 — long enough for a mid-turn seat to finish its
- *  tool calls and run `pij inbox`). */
-const POINTER_LEASE_MS = 90_000;
-
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
@@ -68,7 +63,9 @@ import {
 	flushedText,
 	INIT_HELD_TIMEOUT_MS,
 	observeActivity,
+	POINTER_LEASE_MS,
 	refreshRenderedComposerHold,
+	type SendTextOptions,
 } from "./core/daemon/loop.js";
 import {
 	ComposerHoldTracker,
@@ -281,14 +278,20 @@ export class Daemon {
 		// through the prototype chain so class adapters and plain-object fakes
 		// both keep their full surface.
 		this.ports = Object.assign(Object.create(Object.getPrototypeOf(rawPorts)), rawPorts, {
-			sendText: (paneId: string, text: string, harness?: HarnessKind, pid?: number) => {
+			sendText: (
+				paneId: string,
+				text: string,
+				harness?: HarnessKind,
+				pid?: number,
+				opts?: SendTextOptions,
+			) => {
 				// EMERGENCY BYPASS 2026-07-25: content gate disabled — fleet-wide
 				// delivery failure attributed to over-hold. Step-on protection is
 				// OFF until the hold algorithm is re-reviewed (s069 follow-up).
 				// if (refreshRenderedComposerHold(paneId, this.ports, this.buffer, this.composerHolds)) {
 				// 	return "held";
 				// }
-				const outcome = rawPorts.sendText(paneId, text, harness, pid);
+				const outcome = rawPorts.sendText(paneId, text, harness, pid, opts);
 				// A GONE pane is a stale BINDING, not a failed send. Handled here rather
 				// than per-call-site for the same reason the content gate is: every pane
 				// write in the daemon comes through this function, so a seat whose

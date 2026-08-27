@@ -55,7 +55,11 @@ function desc(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
 
 interface FakeWorld {
 	ports: DaemonPorts;
-	sentText: Array<{ pane: string; text: string }>;
+	sentText: Array<{
+		pane: string;
+		text: string;
+		opts?: { readonly kind?: "pointer" | "body" };
+	}>;
 	sentKeys: Array<{ pane: string; key: string }>;
 	setPane(text: string): void;
 	setTranscripts(paths: string[]): void;
@@ -72,8 +76,12 @@ function world(opts: { pane?: string; transcripts?: string[]; dead?: boolean } =
 	const ports: DaemonPorts = {
 		capturePane: () => pane,
 		isPaneDead: () => dead,
-		sendText: (p, t) => {
-			sentText.push({ pane: p, text: t });
+		sendText: (p, t, _harness, _pid, sendOpts) => {
+			sentText.push({
+				pane: p,
+				text: t,
+				...(sendOpts === undefined ? {} : { opts: sendOpts }),
+			});
 			return "confirmed";
 		},
 		sendKey: (p, k) => sentKeys.push({ pane: p, key: k }),
@@ -1216,9 +1224,12 @@ describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-
 
 	it("types the pointer, never the body, and reports via=pointer", async () => {
 		const w = world({ pane: READY });
-		const typed: string[] = [];
-		w.ports.sendText = (_pane, text) => {
-			typed.push(text);
+		const typed: Array<{
+			text: string;
+			opts?: { readonly kind?: "pointer" | "body" };
+		}> = [];
+		w.ports.sendText = (_pane, text, _harness, _pid, sendOpts) => {
+			typed.push({ text, ...(sendOpts === undefined ? {} : { opts: sendOpts }) });
 			return "confirmed";
 		};
 		w.ports.sendSocket = () => "no-socket";
@@ -1232,7 +1243,7 @@ describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-
 			new ComposerHoldTracker(),
 			{ pointer: true },
 		);
-		expect(typed).toEqual([pointerLine("pij-boss", 1)]);
+		expect(typed).toEqual([{ text: pointerLine("pij-boss", 1), opts: { kind: "pointer" } }]);
 		expect(consumed).toEqual([
 			{ messageId: "m1", from: "pij-boss", outcome: "confirmed", via: "pointer" },
 		]);
@@ -1241,8 +1252,10 @@ describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-
 	it("still types a raw /compact command even in pointer mode", async () => {
 		const w = world({ pane: READY });
 		let typedText = "";
-		w.ports.sendText = (_pane, text) => {
+		let typedOpts: { readonly kind?: "pointer" | "body" } | undefined;
+		w.ports.sendText = (_pane, text, _harness, _pid, sendOpts) => {
 			typedText = text;
+			typedOpts = sendOpts;
 			return "confirmed";
 		};
 		await drainTmuxInbox(
@@ -1255,6 +1268,7 @@ describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-
 			{ pointer: true },
 		);
 		expect(typedText).toBe("/compact");
+		expect(typedOpts).toBeUndefined();
 	});
 
 	it("respects the composer-idle guard: NEVER types a pointer over live human input (Amendment 4 proof)", async () => {
@@ -1363,7 +1377,9 @@ describe("routing invariant — body on socket/RPC, pointer only where a pty can
 			{ pointer: true },
 		);
 
-		expect(w.sentText).toEqual([{ pane: "%1", text: pointerLine("pij-boss", 1) }]);
+		expect(w.sentText).toEqual([
+			{ pane: "%1", text: pointerLine("pij-boss", 1), opts: { kind: "pointer" } },
+		]);
 		expect(w.sentText[0]?.text).not.toContain(body);
 		expect(consumed).toEqual([
 			{ messageId: "m-codex", from: "pij-boss", outcome: "confirmed", via: "pointer" },
@@ -1392,7 +1408,9 @@ describe("routing invariant — body on socket/RPC, pointer only where a pty can
 		);
 
 		expect(composerGuardReads).toBeGreaterThan(0);
-		expect(w.sentText).toEqual([{ pane: "%1", text: pointerLine("pij-boss", 1) }]);
+		expect(w.sentText).toEqual([
+			{ pane: "%1", text: pointerLine("pij-boss", 1), opts: { kind: "pointer" } },
+		]);
 		expect(w.sentText[0]?.text).not.toContain(body);
 		expect(consumed).toEqual([
 			{ messageId: "m-socketless", from: "pij-boss", outcome: "confirmed", via: "pointer" },
