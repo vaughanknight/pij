@@ -1212,6 +1212,84 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 		}
 	});
 
+	it("partition drift sends every recomputed part and preserves the full tail", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const body = "z".repeat(8100);
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body,
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let context: string | undefined = BUDGET_CONTEXT;
+			let failMiddle = true;
+			let redelivering = false;
+			const firstSent: string[] = [];
+			const redeliverySent: string[] = [];
+			dispose = startForwarder(queue, {
+				senderContext: () => context,
+				send: async (text) => {
+					if (failMiddle && text.includes("(2/3)")) throw new Error("ETIMEDOUT");
+					(redelivering ? redeliverySent : firstSent).push(text);
+				},
+			});
+
+			await waitFor(() => firstSent.length === 2);
+			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state).toBe("claimed");
+			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toEqual({
+				partCount: 3,
+				prefixLength: BUDGET_PREFIX.length,
+			});
+
+			context = undefined;
+			failMiddle = false;
+			redelivering = true;
+			now += 60_001;
+			expect(queue.recoverStaleClaims()).toBe(1);
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(redeliverySent).toHaveLength(2);
+			expect(reassemblePrefixedText(redeliverySent, "[pij-osn81b]")).toBe(body);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("legacy sent-part rows without partition identity degrade to send-all", async () => {
+		const home = tmpHome();
+		const queue = new SqliteQueue(home);
+		let dispose: (() => void) | undefined;
+		try {
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "legacy row",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			queue.markTelegramPartSent(delivered.value.messageId, 0);
+			expect(queue.telegramPartitionIdentity(delivered.value.messageId)).toBeUndefined();
+			const sent: string[] = [];
+			dispose = startForwarder(queue, {
+				send: async (text) => {
+					sent.push(text);
+				},
+			});
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+			expect(sent).toEqual(["[pij-osn81b] legacy row"]);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
 	it("acks receipt rows without sending them to Telegram", async () => {
 		const home = tmpHome();
 		const queue = new SqliteQueue(home);
