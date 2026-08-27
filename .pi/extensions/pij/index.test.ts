@@ -414,7 +414,12 @@ describe("pij index — footer status bar", () => {
 		const queue = new SqliteQueue(pijHome);
 		const delivered = queue.deliver({ from: "pij-x", to: id, body: "hello from sqlite" });
 		if (!delivered.ok) throw new Error(delivered.message);
-		const { pi, handlers, sentUserMessages } = makeFakePi();
+		const statesDuringInbound: string[] = [];
+		const { pi, handlers, sentUserMessages } = makeFakePi((message) => {
+			if (message.includes("hello from sqlite")) {
+				statesDuringInbound.push(queue.summary({ to: id })[0]?.state ?? "missing");
+			}
+		});
 		const { ctx } = makeFakeCtx(nativeSessionId);
 		pijExtension(pi);
 
@@ -425,6 +430,7 @@ describe("pij index — footer status bar", () => {
 			expect(
 				sentUserMessages.filter((message) => message.includes("hello from sqlite")),
 			).toHaveLength(1);
+			expect(statesDuringInbound).toEqual(["claimed"]);
 			expect(queue.summary({ to: id })[0]?.state).toBe("acked");
 			expect(queue.receipts(delivered.value.messageId).at(-1)?.detail).toBe(`reader=${id}`);
 
@@ -437,11 +443,47 @@ describe("pij index — footer status bar", () => {
 				sentUserMessages.filter((message) => message.includes("hello from sqlite")),
 			).toHaveLength(1);
 
+			const timersBeforeReload = vi.getTimerCount();
 			await handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
 			await vi.advanceTimersByTimeAsync(0);
+			expect(vi.getTimerCount()).toBe(timersBeforeReload);
 			expect(
 				sentUserMessages.filter((message) => message.includes("hello from sqlite")),
 			).toHaveLength(1);
+		} finally {
+			await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
+			queue.close();
+			vi.useRealTimers();
+		}
+	});
+
+	it("leaves the sqlite row claimed when injection throws", async () => {
+		process.env.PIJ_QUEUE_BACKEND = "sqlite";
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-08-27T09:31:00.000Z"));
+		const nativeSessionId = "native-sqlite-rejected-inject";
+		const id = allocatePiIdentity(pijHome, nativeSessionId);
+		const queue = new SqliteQueue(pijHome);
+		const delivered = queue.deliver({
+			from: "pij-x",
+			to: id,
+			body: "reject this injection",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const { pi, handlers } = makeFakePi((message) => {
+			if (message.includes("reject this injection")) throw new Error("pi refused injection");
+		});
+		const { ctx } = makeFakeCtx(nativeSessionId);
+		pijExtension(pi);
+
+		try {
+			await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(queue.summary({ to: id })[0]?.state).toBe("claimed");
+			expect(
+				queue.receipts(delivered.value.messageId).some((receipt) => receipt.state === "acked"),
+			).toBe(false);
 		} finally {
 			await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
 			queue.close();
