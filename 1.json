@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "command": "boot",
+  "harness": "copilot-cli",
+  "harness_session_id": "f2a2d674-d786-4b42-a69e-b78401952bd7",
+  "timecode": "2026-08-27T08:22:34.700Z",
+  "window": {
+    "since": "session-start",
+    "from": 0,
+    "to": 73
+  },
+  "branch": "s391/day3-core",
+  "branch_changed": false,
+  "tokens": null,
+  "models": {},
+  "effort": "xhigh",
+  "skills": {},
+  "tools": {},
+  "subagents": [],
+  "files": {
+    "written": [],
+    "edited": []
+  },
+  "plans_touched": [],
+  "events": {
+    "compactions": [],
+    "api_errors": 0,
+    "local_commands": 0
+  },
+  "thinking": null
+}
