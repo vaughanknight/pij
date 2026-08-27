@@ -285,3 +285,6 @@ The merge made delivery durable (SQLite) and byte-exact (sockets), but two consu
 
 ## Item 12: harden pij-skill-check (R2/R3/R4)
 **Follow-up to item 11** (o-prime-approved, own PR, harness/scripts only, no s391 dep). Close the three residual coverage limits the item-11 cold review found by attacking its own approval: R2 (in-section decoy bypasses R1 — reviewer-verified 4-line anchor fix), R3 (Build-config read-back site needs a literal clause pin), R4 (second order loop :479-495 still whole-file). Table: `tasks/item-12-skillcheck-hardening/tasks.md`.
+
+## Item 10b: pane-misbind BIND guard + shared resolver (the real incident fix)
+The resolution/bind half of the cross-government pane-misbind incident. Shared lifecycle-filtered resolver for the 6 unguarded pane→id sites + a grep-sweep test (no 7th unfiltered site) + the loop.ts bind guard (refuse dissolved; require the seat's own session-id evidence) + the actual-route daemon replay (pane-less dissolved seat + fresh unregistered same-harness pane → zero deliveries, zero binds). 10a (index guard) lands with it. Full table + re-verified anchors: `tasks/item-10b-bind-guard/tasks.md`.
