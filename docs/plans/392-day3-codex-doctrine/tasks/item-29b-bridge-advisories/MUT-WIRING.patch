@@ -1,0 +1,14 @@
+--- a/.pi/extensions/pij/daemon.ts
++++ b/.pi/extensions/pij/daemon.ts
+@@ REINTRODUCE THE CALL-SITE SINGLE-PRIME BUG (reviewer's exact re-intro) @@
+ The call site (daemon.ts ~:1800, inside runDaemon, `registry` in scope) currently reads:
+     notifyOwner: notifyBridgeOwner,
+ Replace it with the single-prime gate that returns 0 on a multi-government machine:
+     notifyOwner: (message) =>
+         registry.list().filter((d) => d.prime === true).length === 1 ? notifyBridgeOwner(message) : 0,
+ EXPECTATION (with EVERY source-pin grep deleted): the new WIRING test goes RED
+ (the notice reaches nobody on a 3-prime + 1-watcher fixture); `-R` → GREEN.
+ NOTE: if the re-fold changes the call-site form (e.g. the extraction fallback makes
+ it `notifyOwner: wireBridgeRestartNotifier(registry, watcherStore, send),`), RE-TARGET
+ this patch to the new call-site line and COMMIT the finalized MUT-WIRING.patch in this
+ packet — the SEMANTIC (single-prime gate wrapping the wired value) is what must RED.
