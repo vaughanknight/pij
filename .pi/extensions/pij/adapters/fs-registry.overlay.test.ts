@@ -163,7 +163,8 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	it("AC-05: the send receipt for a freshly-ticked claude target is queued and NOT stale", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
-		registry.write(descriptor({ id: "pij-target", harness: "claude" }));
+		// plan 392 finding 02: daemon-owned seats have a pane; effectiveDeliveryMode
+		registry.write(descriptor({ id: "pij-target", harness: "claude", paneId: "%1" }));
 		heartbeat().write(["pij-sender", "pij-target"], FRESH_TICK);
 
 		expect(sendReceipt("pij-sender", "pij-target")).toMatchObject({
@@ -177,7 +178,8 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	it("AC-05b: a copilot target is covered by the same receipt path", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
-		registry.write(descriptor({ id: "pij-target", harness: "copilot" }));
+		// plan 392 finding 02: daemon-owned seats have a pane; effectiveDeliveryMode
+		registry.write(descriptor({ id: "pij-target", harness: "copilot", paneId: "%1" }));
 		heartbeat().write(["pij-target"], FRESH_TICK);
 
 		expect(sendReceipt("pij-sender", "pij-target")).toMatchObject({
@@ -192,7 +194,8 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	it("AC-09: an overlay stamp older than the staleness threshold still reads stale", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
-		registry.write(descriptor({ id: "pij-target", harness: "claude" }));
+		// plan 392 finding 02: daemon-owned seats have a pane; effectiveDeliveryMode
+		registry.write(descriptor({ id: "pij-target", harness: "claude", paneId: "%1" }));
 		const stopped = new Date(NOW_MS - DAEMON_TICK_STALE_AFTER_MS - 60_000).toISOString();
 		heartbeat().write(["pij-target"], stopped);
 
@@ -544,8 +547,15 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		registry.write(descriptor({ id: "pij-target", harness: "claude" }));
 		heartbeat().write(["pij-target"], FRESH_TICK);
 		registry.dissolve("pij-target");
+		// plan 392 finding 02: daemon-owned seats have a pane; effectiveDeliveryMode
 		const revived = registry.revive(
-			descriptor({ id: "pij-target", harness: "claude", pid: process.pid, lifecycle: "bound" }),
+			descriptor({
+				id: "pij-target",
+				harness: "claude",
+				pid: process.pid,
+				lifecycle: "bound",
+				paneId: "%1",
+			}),
 		);
 		if (!revived.ok) throw new Error(`fixture: revive failed (${revived.message})`);
 

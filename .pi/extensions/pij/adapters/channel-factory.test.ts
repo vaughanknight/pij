@@ -42,6 +42,28 @@ describe("queueBackend", () => {
 		const d = openChannel(home, { PIJ_QUEUE_BACKEND: "dual" });
 		expect(d).toBeInstanceOf(DualWriteChannel);
 	});
+
+	it("passes additive fs watch options through the factory", () => {
+		let watchFactoryCalls = 0;
+		const channel = openChannel(
+			home,
+			{ PIJ_QUEUE_BACKEND: "fs" },
+			{
+				fsWatchOpts: {
+					pollMs: 10,
+					watchFactory: () => {
+						watchFactoryCalls += 1;
+						return { close() {} };
+					},
+				},
+			},
+		);
+		expect(channel).toBeInstanceOf(FsChannel);
+		if (!(channel instanceof FsChannel)) throw new Error("expected fs channel");
+		const dispose = channel.watch("pij-b", () => {});
+		dispose();
+		expect(watchFactoryCalls).toBe(1);
+	});
 });
 
 describe("migrateFsInboxes + sqliteOf", () => {

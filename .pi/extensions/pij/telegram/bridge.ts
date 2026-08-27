@@ -13,9 +13,10 @@
 // registered before the relay so commands aren't relayed.
 //
 // OUTBOUND (Phase 3): `startForwarder(channel, deps)` drains the bridge's OWN inbox
-// (`pij-telegram`) via `FsChannel.watch` — exactly like the in-process pi receiver —
-// and forwards each delivered reply to the operator chat, CHUNKED (Finding 07/AC-05).
-// Receipts are recorded-not-forwarded (Finding 08 parity: an ack is not agent output).
+// (`pij-telegram`). SQLite uses claim → send → ack-only-on-success (at-least-once);
+// the legacy fs backend keeps its existing `FsChannel.watch` log-and-continue path.
+// Each reply is CHUNKED (Finding 07/AC-05), while receipts are acked/recorded but
+// never forwarded (Finding 08 parity: an ack is not agent output).
 // REPLY THREADING: each inbound delivery records the operator's message id per target
 // (`onDelivered`); the forwarder consumes it (`takeReplyTo`) so a session's next
 // outbound bubble arrives as a Telegram reply QUOTING the message it answers.
@@ -26,8 +27,16 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
 import { Bot, type Context } from "grammy";
-import type { DeliveredMessage, FsChannel } from "../adapters/channel.js";
-import type { PijEvent, PijMessage, SessionDescriptor, SessionId } from "../core/types.js";
+import { FsChannel } from "../adapters/channel.js";
+import { type MessageChannel, sqliteOf } from "../adapters/channel-factory.js";
+import { startQueueConsumer } from "../adapters/queue-consumer.js";
+import type {
+	DeliveredMessage,
+	PijEvent,
+	PijMessage,
+	SessionDescriptor,
+	SessionId,
+} from "../core/types.js";
 import { chunk } from "./chunk.js";
 import { registerListCommand, registerTailCommand } from "./commands.js";
 import type { TelegramConfig } from "./config.js";
@@ -493,17 +502,18 @@ function oversizeNotice(path: string, bytes: number, kind: MediaKind): string {
 
 /**
  * Drain the bridge's OWN inbox (`pij-telegram`) and forward each delivered reply to
- * the operator chat, chunked (Finding 07 / AC-05). Mirrors the in-process pi receiver:
- * `FsChannel.watch` is the SOLE consumer of this peer's inbox, and the `harness:"pi"`
- * descriptor keeps the daemon from also draining it (AC-08) — so there is no double-send.
+ * the operator chat, chunked (Finding 07 / AC-05). SQLite rows are claimed and acked
+ * only after every required text bubble sends; a rejected text bubble leaves the row
+ * claimed for lease recovery, giving at-least-once delivery. The fs backend preserves
+ * its existing `FsChannel.watch` log-and-continue behavior.
  *
  * Receipts are recorded-not-forwarded (Finding 08 parity: a delivery ack is not agent
- * output, and forwarding it would be operator noise). Sends are serialized through a
- * promise chain so a single reply's chunks — and successive replies — arrive in order.
+ * output, and forwarding it would be operator noise). Fs sends are serialized through
+ * a promise chain; the sqlite consumer itself serializes claims and handlers.
  *
- * @param channel the fs delivery channel (its `pijHome` decides the watched inbox)
+ * @param channel the selected fs/sqlite delivery channel
  * @param deps    the chat sender (+ optional boot watermark + debug log)
- * @returns the watch disposer — call it to stop forwarding (Phase-3 shutdown)
+ * @returns the consumer/watch disposer — call it to stop forwarding
  */
 /** Tag every forwarded Telegram message with the SENDER's pij id, so the operator always
  *  knows which session is talking — and how to address it back — even after their chat
@@ -545,106 +555,130 @@ function normalizeSenderContent(from: SessionId, prefix: string, text: string): 
 	);
 }
 
-export function startForwarder(channel: FsChannel, deps: ForwarderDeps): () => void {
+export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): () => void {
 	const log = deps.log ?? (() => {});
 	const sizeOf = deps.sizeOf ?? ((path: string) => statSync(path).size);
-	// Serialize sends so chunk parts (and successive messages) keep arrival order.
-	let queue: Promise<void> = Promise.resolve();
 
-	const onMessage = (dm: DeliveredMessage): void => {
+	const forwardOne = async (dm: DeliveredMessage): Promise<{ undeliveredText: number }> => {
 		if (dm.kind === "receipt") {
 			log(`skip receipt ${dm.messageId}`);
-			return;
+			return { undeliveredText: 0 };
 		}
 		const attachments = dm.attachments ?? [];
-		queue = queue.then(async () => {
-			const prefix = boundedSenderPrefix(dm.from, deps.senderContext?.(dm.from));
-			let spoke = false;
-			const noteSpoke = (): void => {
-				if (spoke) return;
-				spoke = true;
-				deps.onSpoke?.(dm.from);
-			};
-			// Quote the operator message this reply presumably answers — taken ONCE, so
-			// only the first bubble of this pij message threads; the rest follow it.
-			let replyTo = deps.takeReplyTo?.(dm.from);
-			const sendText = async (text: string, errorLabel: string): Promise<number> => {
-				const bubbles = prefixedTextParts(prefix, text);
-				for (const bubble of bubbles) {
-					try {
-						await deps.send(bubble, replyTo);
-						noteSpoke();
-						replyTo = undefined;
-					} catch (e) {
-						log(`${errorLabel} (${dm.messageId}): ${(e as Error).message}`);
-					}
-				}
-				return bubbles.length;
-			};
-
-			// Skip a blank text send for an attachment-only message. Text-only blank
-			// messages keep the existing one-bubble behavior.
-			const textPartCount =
-				attachments.length > 0 && dm.body.trim() === ""
-					? 0
-					: await sendText(normalizeSenderContent(dm.from, prefix, dm.body), "forward error");
-
-			// Outbound media: classify each file, enforce the per-kind upload cap, and
-			// keep every fallback/caption within Telegram's text/caption limits.
-			for (const att of attachments) {
-				const kind = classifyMedia(att.path);
+		const prefix = boundedSenderPrefix(dm.from, deps.senderContext?.(dm.from));
+		let spoke = false;
+		let undeliveredText = 0;
+		const noteSpoke = (): void => {
+			if (spoke) return;
+			spoke = true;
+			deps.onSpoke?.(dm.from);
+		};
+		// Quote the operator message this reply presumably answers — taken ONCE, so
+		// only the first bubble of this pij message threads; the rest follow it.
+		let replyTo = deps.takeReplyTo?.(dm.from);
+		const sendText = async (text: string, errorLabel: string): Promise<number> => {
+			const bubbles = prefixedTextParts(prefix, text);
+			for (const bubble of bubbles) {
 				try {
-					const bytes = sizeOf(att.path);
-					if (!withinUploadLimit(bytes, kind)) {
-						await sendText(oversizeNotice(att.path, bytes, kind), "media forward error");
-						continue;
-					}
-					if (deps.sendMedia !== undefined) {
-						let caption = prefix;
-						if (att.caption !== undefined && att.caption !== "") {
-							const normalizedCaption = normalizeSenderContent(dm.from, prefix, att.caption);
-							const prefixedCaption = taggedText(prefix, normalizedCaption);
-							if (prefixedCaption.length <= TELEGRAM_CAPTION_LIMIT) {
-								caption = prefixedCaption;
-							} else {
-								await sendText(normalizedCaption, "media forward error");
-							}
-						}
-						// One bounded retry on a transient (network-shaped) failure (s113 W5).
-						// A deterministic rejection (bad request, missing file) is NOT retried.
-						try {
-							await deps.sendMedia(kind, att.path, caption, replyTo);
-						} catch (e) {
-							const first = (e as Error).message;
-							if (!isTransientSendError(first)) throw e;
-							log(`media send retry after transient failure (${dm.messageId}): ${first}`);
-							await deps.sendMedia(kind, att.path, caption, replyTo);
-						}
-						noteSpoke();
-						replyTo = undefined;
-					} else {
-						await sendText(
-							`[attachment ${att.path}] (no media sender configured)`,
-							"media forward error",
-						);
-					}
+					await deps.send(bubble, replyTo);
+					noteSpoke();
+					replyTo = undefined;
 				} catch (e) {
-					// Final failure — log AND echo honestly to the sender (s113 W5): its send
-					// receipt covered only the bridge hop, so without this echo the failure
-					// is invisible to the session that attached the file.
-					const message = (e as Error).message;
-					log(`media forward error (${dm.messageId}): ${message}`);
-					if (dm.from !== TELEGRAM_PEER_ID) {
-						deps.echoFailure?.(dm.from, mediaFailureNotice(kind, att.path, message));
-					}
+					undeliveredText += 1;
+					log(`${errorLabel} (${dm.messageId}): ${(e as Error).message}`);
 				}
 			}
-			log(
-				`forwarded ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
-					`${attachments.length > 0 ? `, ${attachments.length} media` : ""})`,
-			);
-		});
+			return bubbles.length;
+		};
+
+		// Skip a blank text send for an attachment-only message. Text-only blank
+		// messages keep the existing one-bubble behavior.
+		const textPartCount =
+			attachments.length > 0 && dm.body.trim() === ""
+				? 0
+				: await sendText(normalizeSenderContent(dm.from, prefix, dm.body), "forward error");
+
+		// Outbound media: classify each file, enforce the per-kind upload cap, and
+		// keep every fallback/caption within Telegram's text/caption limits.
+		for (const att of attachments) {
+			const kind = classifyMedia(att.path);
+			try {
+				const bytes = sizeOf(att.path);
+				if (!withinUploadLimit(bytes, kind)) {
+					await sendText(oversizeNotice(att.path, bytes, kind), "media forward error");
+					continue;
+				}
+				if (deps.sendMedia !== undefined) {
+					let caption = prefix;
+					if (att.caption !== undefined && att.caption !== "") {
+						const normalizedCaption = normalizeSenderContent(dm.from, prefix, att.caption);
+						const prefixedCaption = taggedText(prefix, normalizedCaption);
+						if (prefixedCaption.length <= TELEGRAM_CAPTION_LIMIT) {
+							caption = prefixedCaption;
+						} else {
+							await sendText(normalizedCaption, "media forward error");
+						}
+					}
+					// One bounded retry on a transient (network-shaped) failure (s113 W5).
+					// A deterministic rejection (bad request, missing file) is NOT retried.
+					try {
+						await deps.sendMedia(kind, att.path, caption, replyTo);
+					} catch (e) {
+						const first = (e as Error).message;
+						if (!isTransientSendError(first)) throw e;
+						log(`media send retry after transient failure (${dm.messageId}): ${first}`);
+						await deps.sendMedia(kind, att.path, caption, replyTo);
+					}
+					noteSpoke();
+					replyTo = undefined;
+				} else {
+					await sendText(
+						`[attachment ${att.path}] (no media sender configured)`,
+						"media forward error",
+					);
+				}
+			} catch (e) {
+				// Final failure — log AND echo honestly to the sender (s113 W5): its send
+				// receipt covered only the bridge hop, so without this echo the failure
+				// is invisible to the session that attached the file.
+				const message = (e as Error).message;
+				log(`media forward error (${dm.messageId}): ${message}`);
+				if (dm.from !== TELEGRAM_PEER_ID) {
+					deps.echoFailure?.(dm.from, mediaFailureNotice(kind, att.path, message));
+				}
+			}
+		}
+		log(
+			`forwarded ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
+				`${attachments.length > 0 ? `, ${attachments.length} media` : ""})`,
+		);
+		return { undeliveredText };
 	};
 
+	const sqlite = sqliteOf(channel);
+	if (sqlite !== undefined) {
+		return startQueueConsumer({
+			queue: sqlite,
+			self: TELEGRAM_PEER_ID,
+			log,
+			onMessage: async (message) => {
+				const result = await forwardOne(message);
+				if (result.undeliveredText > 0) {
+					throw new Error(`ForwardIncomplete: ${result.undeliveredText} text part(s) undelivered`);
+				}
+			},
+		});
+	}
+
+	if (!(channel instanceof FsChannel)) {
+		throw new Error("startForwarder: channel has neither sqlite queue nor fs watcher");
+	}
+	// Serialize fs sends so chunk parts (and successive messages) keep arrival order.
+	let chain: Promise<void> = Promise.resolve();
+	const onMessage = (message: DeliveredMessage): void => {
+		chain = chain.then(async () => {
+			await forwardOne(message);
+		});
+	};
 	return channel.watch(TELEGRAM_PEER_ID, onMessage, deps.seen);
 }

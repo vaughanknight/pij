@@ -9,6 +9,7 @@
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { Bot, InputFile, type Update } from "grammy";
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,6 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.setConfig({ testTimeout: 60_000 });
 
 import { FsChannel } from "../adapters/channel.js";
+import { SqliteQueue } from "../adapters/sqlite-queue.js";
 import type { PijEvent, SessionDescriptor, SessionId } from "../core/types.js";
 import {
 	createBot,
@@ -43,6 +45,17 @@ async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
 /** A throwaway PIJ_HOME for fs-backed forwarder tests. */
 function tmpHome(): string {
 	return mkdtempSync(join(tmpdir(), "pij-tg-bridge-"));
+}
+
+function setSqliteDeliveryState(queue: SqliteQueue, seq: number, state: "failed"): void {
+	const db = new DatabaseSync(queue.dbPath);
+	try {
+		db.prepare(
+			"UPDATE deliveries SET state = ?, claim_token = NULL, lease_until = NULL WHERE seq = ?",
+		).run(state, seq);
+	} finally {
+		db.close();
+	}
 }
 
 /** Minimal session descriptor fixture; override only what a case cares about. */
@@ -1070,6 +1083,242 @@ describe("startForwarder (inbox → chat)", () => {
 			dispose();
 			expect(sent).toEqual(["[pij-osn81b] new reply"]); // the pre-boot message is NOT replayed
 		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("startForwarder over SqliteQueue (sqlite default)", () => {
+	it("forwards once and acks only after the Telegram send resolves", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "sqlite reply",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let sendResolvedAt = 0;
+			const sent: string[] = [];
+			dispose = startForwarder(queue, {
+				send: async (text) => {
+					sent.push(text);
+					now = 2_000;
+					sendResolvedAt = now;
+				},
+			});
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(sent).toEqual(["[pij-osn81b] sqlite reply"]);
+			const ack = queue
+				.receipts(delivered.value.messageId)
+				.find((receipt) => receipt.state === "acked");
+			expect(ack?.at).toBeGreaterThanOrEqual(sendResolvedAt);
+			expect(ack?.detail).toBe(`reader=${TELEGRAM_PEER_ID}`);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("acks receipt rows without sending them to Telegram", async () => {
+		const home = tmpHome();
+		const queue = new SqliteQueue(home);
+		let dispose: (() => void) | undefined;
+		try {
+			queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "ack",
+				kind: "receipt",
+			});
+			const send = vi.fn(async () => {});
+			dispose = startForwarder(queue, { send });
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(send).not.toHaveBeenCalled();
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("drains queued backlog, skips failed and acked rows, and sends nothing after restart", async () => {
+		const home = tmpHome();
+		const queue = new SqliteQueue(home);
+		let firstDispose: (() => void) | undefined;
+		let secondDispose: (() => void) | undefined;
+		try {
+			queue.deliver({ from: "pij-a", to: TELEGRAM_PEER_ID, body: "queued one" });
+			queue.deliver({ from: "pij-b", to: TELEGRAM_PEER_ID, body: "queued two" });
+			queue.deliver({ from: "pij-c", to: TELEGRAM_PEER_ID, body: "failed" });
+			setSqliteDeliveryState(queue, 3, "failed");
+			const acked = queue.deliver({
+				from: "pij-d",
+				to: TELEGRAM_PEER_ID,
+				body: "already acked",
+			});
+			if (!acked.ok) throw new Error(acked.message);
+			queue.claimUnread(TELEGRAM_PEER_ID, acked.value.messageId);
+
+			const sent: string[] = [];
+			firstDispose = startForwarder(queue, {
+				send: async (text) => {
+					sent.push(text);
+				},
+			});
+			await waitFor(() => sent.length === 2);
+			await waitFor(() =>
+				queue
+					.summary({ to: TELEGRAM_PEER_ID })
+					.filter((row) => row.seq <= 2)
+					.every((row) => row.state === "acked"),
+			);
+			firstDispose();
+
+			secondDispose = startForwarder(queue, {
+				send: async (text) => {
+					sent.push(text);
+				},
+			});
+			await new Promise((resolve) => setTimeout(resolve, 600));
+
+			expect(sent).toEqual(["[pij-a] queued one", "[pij-b] queued two"]);
+			expect(queue.summary({ to: TELEGRAM_PEER_ID }).map((row) => row.state)).toEqual([
+				"acked",
+				"acked",
+				"failed",
+				"acked",
+			]);
+		} finally {
+			firstDispose?.();
+			secondDispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("leaves failed text claimed and redelivers it after lease recovery", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "retry this",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let fail = true;
+			let attempts = 0;
+			dispose = startForwarder(queue, {
+				send: async () => {
+					attempts += 1;
+					if (fail) throw new Error("telegram unavailable");
+				},
+			});
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "claimed");
+			expect(queue.receipts(delivered.value.messageId).map((receipt) => receipt.state)).toEqual([
+				"queued",
+				"claimed",
+			]);
+
+			fail = false;
+			now += 60_001;
+			expect(queue.recoverStaleClaims()).toBe(1);
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(attempts).toBe(2);
+			expect(queue.receipts(delivered.value.messageId).map((receipt) => receipt.state)).toEqual([
+				"queued",
+				"claimed",
+				"redelivered",
+				"claimed",
+				"acked",
+			]);
+			expect(
+				queue.receipts(delivered.value.messageId).some((receipt) => receipt.state === "released"),
+			).toBe(false);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("acks a handled media-only failure after echoing it to the sender", async () => {
+		const home = tmpHome();
+		const queue = new SqliteQueue(home);
+		let dispose: (() => void) | undefined;
+		try {
+			queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "",
+				attachments: [{ path: "/tmp/missing.png" }],
+			});
+			const send = vi.fn(async () => {});
+			const echoes: string[] = [];
+			dispose = startForwarder(queue, {
+				send,
+				sizeOf: () => 1,
+				sendMedia: async () => {
+					throw new Error("Call to 'sendPhoto' failed! (400: Bad Request)");
+				},
+				echoFailure: (_to, body) => {
+					echoes.push(body);
+				},
+			});
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(send).not.toHaveBeenCalled();
+			expect(echoes).toHaveLength(1);
+			expect(echoes[0]).toContain("media forward FAILED");
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("does not ack when a later text bubble is undelivered", async () => {
+		const home = tmpHome();
+		const queue = new SqliteQueue(home);
+		let dispose: (() => void) | undefined;
+		try {
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "x".repeat(5_000),
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			let attempts = 0;
+			dispose = startForwarder(queue, {
+				send: async () => {
+					attempts += 1;
+					if (attempts === 2) throw new Error("second bubble failed");
+				},
+			});
+
+			await waitFor(() => attempts === 2);
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "claimed");
+
+			expect(
+				queue.receipts(delivered.value.messageId).some((receipt) => receipt.state === "acked"),
+			).toBe(false);
+		} finally {
+			dispose?.();
+			queue.close();
 			rmSync(home, { recursive: true, force: true });
 		}
 	});

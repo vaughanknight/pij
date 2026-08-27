@@ -1,8 +1,8 @@
 // pij-messaging — pick the durable message store (PoC, poc/comms-sqlite-socket).
 //
 // Backends (`PIJ_QUEUE_BACKEND`):
-//   fs      (default)  → per-message JSON inbox files of `FsChannel`.
-//   sqlite             → one SQLite WAL database (`<pijHome>/queue/pij.sqlite`).
+//   fs                 → legacy per-message JSON inbox files of `FsChannel`.
+//   sqlite  (default)  → one SQLite WAL database (`<pijHome>/queue/pij.sqlite`).
 //   dual               → SQLite is the source of truth AND every deliver also
 //                        drops the `msg-<id>.json` file, so a peer still running
 //                        the OLD fs-only CLI can read its inbox during a rollout.
@@ -11,9 +11,8 @@
 // daemon drain switch backends by construction — every consumer goes through
 // `openChannel`, never `new FsChannel` directly.
 //
-// The DEFAULT is one edit away from flipping to sqlite: change
-// `DEFAULT_BACKEND` below. It stays `fs` until a fleet has migrated (see
-// `pij queue migrate`, which imports the fs inboxes into SQLite).
+// `pij queue migrate` imports legacy fs inboxes into SQLite for rollback-safe
+// cutover; `PIJ_QUEUE_BACKEND=fs` remains the explicit compatibility escape hatch.
 
 import type { DeliveryPort, InboxPort } from "../core/ports.js";
 import type {
@@ -31,6 +30,10 @@ import { SqliteQueue } from "./sqlite-queue.js";
 export type MessageChannel = DeliveryPort & InboxPort;
 
 export type QueueBackend = "fs" | "sqlite" | "dual";
+
+export interface OpenChannelOptions {
+	readonly fsWatchOpts?: ConstructorParameters<typeof FsChannel>[1];
+}
 
 /** The backend used when `PIJ_QUEUE_BACKEND` is unset. Now `sqlite` (Amendment
  *  4): the durable WAL queue is the default; set `PIJ_QUEUE_BACKEND=fs` to select
@@ -128,10 +131,17 @@ export function migrateFsInboxes(
 	return { imported, seats };
 }
 
-export function openChannel(pijHome: string, env: NodeJS.ProcessEnv = process.env): MessageChannel {
+export function openChannel(
+	pijHome: string,
+	env: NodeJS.ProcessEnv = process.env,
+	options: OpenChannelOptions = {},
+): MessageChannel {
 	const backend = queueBackend(env);
 	if (backend === "sqlite") return new SqliteQueue(pijHome);
 	if (backend === "dual")
-		return new DualWriteChannel(new SqliteQueue(pijHome), new FsChannel(pijHome));
-	return new FsChannel(pijHome);
+		return new DualWriteChannel(
+			new SqliteQueue(pijHome),
+			new FsChannel(pijHome, options.fsWatchOpts),
+		);
+	return new FsChannel(pijHome, options.fsWatchOpts);
 }
