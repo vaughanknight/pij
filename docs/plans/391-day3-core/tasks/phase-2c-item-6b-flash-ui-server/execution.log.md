@@ -13,7 +13,7 @@
 
 ### Ruling deviation
 
-The packet's `copilot -p` remedy was based on the o-prime's earlier same-version success at about 07:33Z. The isolated matrix later observed `-p` and every interactive variant fail at about 16:0xZ. The o-prime ruled that both observations are real and identify upstream instability, not an interactive request-path property.
+The packet's `copilot -p` remedy was based on the o-prime's relayed same-version success at about 2026-08-27 07:33Z; it was not instrumented in this run. The isolated matrix instrumented `-p` and every interactive variant failing at about 2026-08-27 16:0xZ. The o-prime ruled that both observations are real and identify upstream instability, not an interactive request-path property.
 
 The implementation therefore does not recommend `-p`, does not add an interactive-only field, and does not alter item 6's argv gate. It records both observations as `copilotInstability`, warns without blocking spawn, and recommends `gpt-5.6-terra` or `gpt-5.6-sol` until a fresh Flash probe passes.
 
@@ -39,3 +39,22 @@ The implementation therefore does not recommend `-p`, does not add an interactiv
 - `just lint` remains red only in unrelated pre-existing files, including OSC producer/control-character and assignment-expression diagnostics; no changed file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces the same unrelated lint failure, the existing `spawnSync pwsh ENOENT` test baseline, and the derived Windows compatibility failure; smoke is intentionally skipped in quick mode.
 - Completion is reported as `PARTIAL` with `gatesClean:false` solely because those repository-wide baselines remain outside this delegation's file fence.
+
+## 2026-08-28 — dlg-0012 FX-01
+
+- Corrected the failure stamp from the future-dated local-date/UTC-time hybrid to `2026-08-27 ~16:0xZ`, matching the request-ID epochs.
+- Dated the relayed pass `2026-08-27 ~07:33Z` and recorded that it came from the o-prime rather than this run's instrumentation.
+- Replaced the object catalog with a `Map`, so Object.prototype keys such as `constructor` reach normal unknown-model validation.
+- Made `resolveCopilotInstability` consume only the annotated catalog entry. The annotation provider guard and `loadModels()` wiring are now load-bearing.
+- Added literal warning/record assertions, a composed-catalog warning case, an OpenRouter exclusion, and an explicit ban on a `copilot -p` remedy.
+- Corrected scope record: `core/spawn.ts` and `core/models/validate.test.ts` were authorized for the mark-path implementation even though the original task table omitted them.
+- Focused result: 102 tests passed across the three model test files.
+- M2 proof: removing the annotation provider guard failed `registry.test.ts:343` (`does not annotate a non-Copilot provider with the same bare model id`).
+- M4 proof: removing `annotateCopilotInstability` from `loadModels()` failed `spawn-validation.test.ts:109` (`reads the Flash mark through the composed catalog without injecting metadata`).
+- M6b proof: appending a `copilot -p` remedy failed the literal warning at `spawn-validation.test.ts:94` and the explicit negative at `spawn-validation.test.ts:110`.
+- Typecheck and scoped Biome passed.
+- Authoritative extension suite: 171 files passed, 2 skipped; 3,999 tests passed, 15 skipped; 0 failed.
+- Authoritative log: `.harness/temp/s391/vitest-phase2c-fx01.log`.
+- `just lint` remains red only in unrelated pre-existing files; no FX-01 file is listed.
+- `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and the derived Windows compatibility failure; smoke is skipped in quick mode.
+- FX-01 is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.

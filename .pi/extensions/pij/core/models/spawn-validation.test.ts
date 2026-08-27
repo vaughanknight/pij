@@ -3,9 +3,28 @@
 // Validates that buildSpawnWarning produces a warning message for an unknown
 // model but does NOT block spawn (the id is still returned immediately).
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildSpawnWarning } from "../../core/spawn.js";
-import type { ModelEntry } from "./registry.js";
+import { loadModels, type ModelEntry } from "./registry.js";
+
+const { readFileSync } = vi.hoisted(() => ({
+	readFileSync: vi.fn((path: string) => {
+		if (path.endsWith("/.pi/agent/models.json")) {
+			return JSON.stringify({
+				providers: {
+					"github-copilot": {
+						models: [{ id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" }],
+					},
+				},
+			});
+		}
+		if (path.endsWith("/.codex/config.toml")) return "";
+		throw new Error(`unexpected catalog path: ${path}`);
+	}),
+}));
+
+vi.mock("node:fs", () => ({ readFileSync }));
+vi.mock("node:os", () => ({ homedir: () => "/fixture-home" }));
 
 const KNOWN: ModelEntry[] = [
 	{ id: "fugu-ultra", name: "Sakana Fugu Ultra", provider: "sakana", verified: true },
@@ -43,6 +62,16 @@ describe("buildSpawnWarning", () => {
 			expect(w.toLowerCase()).not.toMatch(/block|abort|fail|error/);
 		}
 	});
+
+	it("treats Object.prototype keys as ordinary unknown model ids", () => {
+		const warning = buildSpawnWarning("constructor", KNOWN);
+
+		expect(warning).toBe(
+			"warning: unknown model 'constructor' — spawn continues; confirm the id is correct",
+		);
+		expect(warning).not.toContain("unstable upstream");
+		expect(warning).not.toContain("undefined");
+	});
 });
 
 describe("Flash upstream-instability warning", () => {
@@ -53,32 +82,43 @@ describe("Flash upstream-instability warning", () => {
 		verified: true,
 		copilotInstability: {
 			cli: "1.0.81-14",
-			observedFailAt: "2026-08-28 ~16:0xZ",
-			observedPassAt: "~07:33Z",
-			note: "HTTP 400 'invalid request body' on every request path (-p and interactive)",
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
+			note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
 		},
 	};
 
 	it("warns with both observed outcomes and safer alternatives", () => {
 		const warning = buildSpawnWarning("gemini-3.6-flash", [FLASH]);
 
-		expect(warning).toContain(
-			"gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream",
+		expect(warning).toBe(
+			"warning: gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400 'invalid request body' on every request path (-p and interactive) observed 2026-08-27 ~16:0xZ, while a -p one-shot succeeded 2026-08-27 ~07:33Z — treat as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol. This is a warning only; spawn continues.",
 		);
-		expect(warning).toContain(
-			"HTTP 400 'invalid request body' on every request path (-p and interactive) observed 2026-08-28 ~16:0xZ",
-		);
-		expect(warning).toContain("while a -p one-shot succeeded ~07:33Z");
-		expect(warning).toContain(
-			"treat as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol.",
-		);
-		expect(warning).toContain("spawn continues");
+		expect(warning).not.toMatch(/\bcopilot -p\b/);
 	});
 
 	it("also warns for the provider-qualified model id", () => {
 		expect(buildSpawnWarning("copilot/gemini-3.6-flash", [FLASH])).toContain(
 			"gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400",
 		);
+	});
+
+	it("reads the Flash mark through the composed catalog without injecting metadata", () => {
+		const warning = buildSpawnWarning("gemini-3.6-flash", loadModels());
+
+		expect(warning).toContain("observed 2026-08-27 ~16:0xZ");
+		expect(warning).not.toMatch(/\bcopilot -p\b/);
+	});
+
+	it("does not emit a Copilot warning for an OpenRouter model", () => {
+		const openrouter: ModelEntry = {
+			id: "google/gemini-3.6-flash",
+			name: "Gemini 3.6 Flash",
+			provider: "openrouter",
+			verified: true,
+		};
+
+		expect(buildSpawnWarning("google/gemini-3.6-flash", [openrouter])).toBeNull();
 	});
 });
 

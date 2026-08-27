@@ -1100,7 +1100,7 @@ export function buildSpawnWarning(
 	if (instability !== undefined) {
 		const normalized = normalizeModelQuery(model);
 		const bareId = normalized.slice(normalized.lastIndexOf("/") + 1);
-		return `warning: ${bareId} on GitHub Copilot CLI ${instability.cli} is unstable upstream: ${instability.note} observed ${instability.observedFailAt}, while a -p one-shot succeeded ${instability.observedPassAt} — treat as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol. This is a warning only; spawn continues.`;
+		return `warning: ${bareId} on GitHub Copilot CLI ${instability.cli} is unstable upstream: HTTP 400 'invalid request body' on every request path (-p and interactive) observed ${instability.observedFailAt}, while a -p one-shot succeeded ${instability.observedPassAt} — treat as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol. This is a warning only; spawn continues.`;
 	}
 	const result = validateModel(model, known);
 	if (result.ok) return null;

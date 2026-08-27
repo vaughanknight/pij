@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	annotateCopilotInstability,
 	annotateLongContext,
 	copilotSeedFromPi,
 	copilotSnapshot,
@@ -125,24 +126,45 @@ describe("resolveLongContext", () => {
 });
 
 describe("resolveCopilotInstability", () => {
-	it("resolves both measured Flash outcomes without misclassifying a request path", () => {
-		expect(resolveCopilotInstability([], "gemini-3.6-flash")).toEqual({
+	const annotated = annotateCopilotInstability([
+		{
+			id: "gemini-3.6-flash",
+			name: "Gemini 3.6 Flash",
+			provider: "copilot",
+			verified: true,
+		},
+	]);
+
+	it("resolves both measured Flash outcomes from the annotated catalog entry", () => {
+		expect(resolveCopilotInstability(annotated, "gemini-3.6-flash")).toEqual({
 			cli: "1.0.81-14",
-			observedFailAt: "2026-08-28 ~16:0xZ",
-			observedPassAt: "~07:33Z",
-			note: "HTTP 400 'invalid request body' on every request path (-p and interactive)",
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
+			note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
 		});
 	});
 
 	it("normalizes a provider-qualified Flash id", () => {
-		expect(resolveCopilotInstability([], "github-copilot/gemini-3.6-flash")).toMatchObject({
-			observedFailAt: "2026-08-28 ~16:0xZ",
-			observedPassAt: "~07:33Z",
+		expect(resolveCopilotInstability(annotated, "copilot/gemini-3.6-flash")).toMatchObject({
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
 		});
 	});
 
-	it("preserves honest absence for models without an isolated rejection", () => {
+	it("does not synthesize instability without an annotated entry", () => {
+		expect(resolveCopilotInstability([], "gemini-3.6-flash")).toBeUndefined();
 		expect(resolveCopilotInstability([], "gpt-5.6-sol")).toBeUndefined();
+	});
+
+	it("does not apply a Copilot observation to an OpenRouter model", () => {
+		const openrouter: ModelEntry = {
+			id: "google/gemini-3.6-flash",
+			name: "Gemini 3.6 Flash",
+			provider: "openrouter",
+			verified: true,
+		};
+
+		expect(resolveCopilotInstability([openrouter], "google/gemini-3.6-flash")).toBeUndefined();
 	});
 });
 

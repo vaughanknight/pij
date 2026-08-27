@@ -105,8 +105,10 @@ context join may then report the model's smaller tier; that is expected.
 
 gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400
 'invalid request body' on every request path (-p and interactive) observed
-2026-08-28 ~16:0xZ, while a -p one-shot succeeded ~07:33Z — treat as unavailable
-until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol.
+2026-08-27 ~16:0xZ, while a -p one-shot succeeded 2026-08-27 ~07:33Z — treat
+as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol.
+The failure is instrumented by the eight-row isolation matrix; the earlier pass
+was relayed by the o-prime and was not instrumented in that run.
 
 The catalog records both observations in `ModelEntry.copilotInstability`; it does
 not claim an interactive-only limitation. `pij spawn` prints the measured warning

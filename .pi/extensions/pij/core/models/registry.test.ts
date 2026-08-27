@@ -303,11 +303,11 @@ describe("Copilot long-context capability", () => {
 
 describe("Copilot upstream instability", () => {
 	it("records both the earlier Flash pass and later all-path rejection", () => {
-		expect(COPILOT_UNSTABLE_MODELS["gemini-3.6-flash"]).toEqual({
+		expect(COPILOT_UNSTABLE_MODELS.get("gemini-3.6-flash")).toEqual({
 			cli: "1.0.81-14",
-			observedFailAt: "2026-08-28 ~16:0xZ",
-			observedPassAt: "~07:33Z",
-			note: "HTTP 400 'invalid request body' on every request path (-p and interactive)",
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
+			note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
 		});
 	});
 
@@ -323,8 +323,24 @@ describe("Copilot upstream instability", () => {
 
 		expect(merged).toHaveLength(2);
 		for (const entry of merged) {
-			expect(entry.copilotInstability).toEqual(COPILOT_UNSTABLE_MODELS["gemini-3.6-flash"]);
+			expect(entry.copilotInstability).toEqual({
+				cli: "1.0.81-14",
+				observedFailAt: "2026-08-27 ~16:0xZ",
+				observedPassAt: "2026-08-27 ~07:33Z",
+				note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
+			});
 		}
+	});
+
+	it("does not annotate a non-Copilot provider with the same bare model id", () => {
+		const openrouter: ModelEntry = {
+			id: "gemini-3.6-flash",
+			name: "Gemini 3.6 Flash",
+			provider: "openrouter",
+			verified: true,
+		};
+
+		expect(annotateCopilotInstability([openrouter])).toEqual([openrouter]);
 	});
 });
 

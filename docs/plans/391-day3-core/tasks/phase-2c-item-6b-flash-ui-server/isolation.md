@@ -1,10 +1,10 @@
 # Flash interactive HTTP 400 isolation
 
-**Date**: 2026-08-28
+**Date**: 2026-08-27 UTC (2026-08-28 at UTC+10)
 
 **Copilot CLI**: `GitHub Copilot CLI 1.0.81-14`
 
-**Verdict**: upstream instability — gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400 'invalid request body' on every request path (-p and interactive) observed 2026-08-28 ~16:0xZ, while a -p one-shot succeeded ~07:33Z. Both observations are real. The later all-path failure is not caused by `--yolo`, `--ui-server`, `--session-id`, `--effort`, MCP/custom instructions, or `--context long_context`; it is not evidence of a stable path-specific capability.
+**Verdict**: upstream instability — gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400 'invalid request body' on every request path (-p and interactive) observed 2026-08-27 ~16:0xZ, while a -p one-shot succeeded 2026-08-27 ~07:33Z. The failure is instrumented by the eight request IDs below; the earlier pass was relayed by the o-prime and was not instrumented in this run. Both observations are real. The later all-path failure is not caused by `--yolo`, `--ui-server`, `--session-id`, `--effort`, MCP/custom instructions, or `--context long_context`; it is not evidence of a stable path-specific capability.
 
 ## Isolation controls
 

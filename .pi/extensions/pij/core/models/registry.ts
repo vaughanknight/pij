@@ -16,8 +16,11 @@ import { normalizeModelQuery } from "./match.js";
 
 export interface CopilotInstability {
 	readonly cli: string;
+	/** UTC observation from the instrumented isolation matrix. */
 	readonly observedFailAt: string;
+	/** UTC observation relayed by the o-prime, not instrumented in this run. */
 	readonly observedPassAt: string;
+	/** Evidence provenance needed to interpret the two observations honestly. */
 	readonly note: string;
 }
 
@@ -94,14 +97,17 @@ const COPILOT_GPT56_IDS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna
 export const COPILOT_NO_LONG_CONTEXT: ReadonlySet<string> = new Set(["gemini-3.6-flash"]);
 
 /** Normalized bare Copilot ids with time-varying upstream request failures. */
-export const COPILOT_UNSTABLE_MODELS: Readonly<Partial<Record<string, CopilotInstability>>> = {
-	"gemini-3.6-flash": {
-		cli: "1.0.81-14",
-		observedFailAt: "2026-08-28 ~16:0xZ",
-		observedPassAt: "~07:33Z",
-		note: "HTTP 400 'invalid request body' on every request path (-p and interactive)",
-	},
-};
+export const COPILOT_UNSTABLE_MODELS: ReadonlyMap<string, CopilotInstability> = new Map([
+	[
+		"gemini-3.6-flash",
+		{
+			cli: "1.0.81-14",
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
+			note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
+		},
+	],
+]);
 
 /** Apply curated Copilot capability data after all registry sources are merged. */
 export function annotateLongContext(entries: readonly ModelEntry[]): ModelEntry[] {
@@ -122,7 +128,7 @@ export function annotateLongContext(entries: readonly ModelEntry[]): ModelEntry[
 export function annotateCopilotInstability(entries: readonly ModelEntry[]): ModelEntry[] {
 	return entries.map((entry) => {
 		const isCopilot = entry.provider === "github-copilot" || entry.provider === "copilot";
-		const instability = COPILOT_UNSTABLE_MODELS[normalizeModelQuery(entry.id)];
+		const instability = COPILOT_UNSTABLE_MODELS.get(normalizeModelQuery(entry.id));
 		if (isCopilot && entry.copilotInstability === undefined && instability !== undefined) {
 			return { ...entry, copilotInstability: instability };
 		}
