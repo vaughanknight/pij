@@ -318,3 +318,6 @@ The non-blocking tail from item 29 + the LIVE-CONFIRMED owner-notice failure. T0
 
 ## Item 22: watchdog-ratchet hardening (item-18 tail — scope the pin, close the E6 residuals)
 The two ironic E6-residuals the item-18 review found IN the E6-fixing PR, + INFO-7 precision. ADV-1: the ratchet pins "text present SOMEWHERE in pij-watchdog.md", NOT "the example block is correct" — the reviewer PROVED a garbage watchdog-turn example stays green. Scope the assertion to the fenced ```text block. ADV-2: INFO-7's `state.ts:142` citation is itself a NEW UNPINNED code cite (its only repo occurrence is the doc line) — pin it (assert `state.ts:142` still matches /^\s*"waiting",/ in the ratchet test). INFO-7 precision: C9's "blocked/waiting per state.ts:142" over-claims — `blocked` is `state.ts:137` (cannot proceed), `:142` is `waiting` (external); fix to ":137,142" (or cite the symbol). Skill-text PR gate. Table: `tasks/item-22-ratchet-hardening/tasks.md`.
+
+## Item 24m: multi-bubble hang (live-acceptance fix for item 24)
+The live finding — bodies ≥417B (≥2 bubbles) ack only on attempt 2 (~68s = lease expiry). Investigate the stall (429 hypothesis weakened: text sends are raw sendMessage, no autoRetry) + fix so a 2-bubble body acks on attempt 1; mark-on-ack (bubblesHash fold) covers a legitimately-late attempt 2. Table: tasks/item-24-multibubble-hang/tasks.md.
