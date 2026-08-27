@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "command": "observe",
+  "harness": "claude-code",
+  "harness_session_id": "25d614db-43dc-4f9e-aac1-8d23bd4a29cc",
+  "timecode": "2026-08-27T08:07:33.409Z",
+  "window": {
+    "since": "session-start",
+    "from": 0,
+    "to": 165
+  },
+  "branch": "s391/day3-core",
+  "branch_changed": false,
+  "tokens": {
+    "input": 2035,
+    "output": 6947,
+    "cache_create": 58204,
+    "cache_read": 873086,
+    "total": 940272,
+    "subagent_tokens": 0,
+    "grand_total": 940272
+  },
+  "models": {
+    "claude-fable-5": {
+      "turns": 16,
+      "output_tokens": 6947
+    }
+  },
+  "effort": "high",
+  "skills": {
+    "pij": 1
+  },
+  "tools": {
+    "Bash": 21,
+    "Skill": 1
+  },
+  "subagents": [],
+  "files": {
+    "written": [],
+    "edited": []
+  },
+  "plans_touched": [],
+  "events": {
+    "compactions": [],
+    "api_errors": 0,
+    "local_commands": 0
+  },
+  "thinking": {
+    "blocks": 9
+  }
+}
