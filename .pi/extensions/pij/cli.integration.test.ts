@@ -376,6 +376,10 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		const routing = readFileSync(join(REPO_ROOT, "skills/pij/references/00-routing.md"), "utf8");
 		const node = readFileSync(join(REPO_ROOT, "skills/pij/references/routes/node.md"), "utf8");
 		const watchdog = readFileSync(join(REPO_ROOT, "docs/how/pij-watchdog.md"), "utf8");
+		const stateLines = readFileSync(
+			join(REPO_ROOT, ".pi/extensions/pij/core/state.ts"),
+			"utf8",
+		).split("\n");
 
 		expect(skill).toContain("`report` (`now/question/blocked/state/clear/verify`)");
 		expect(node).toContain("Everything under `report` is a first-person claim about yourself.");
@@ -394,12 +398,19 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(emittedTurn.startsWith(header)).toBe(true);
 		const emittedClauses = emittedTurn.slice(header.length).split(/(?<=\.)\s+/);
 		expect(emittedClauses).toHaveLength(2);
+		const exampleSection = watchdog.slice(watchdog.indexOf("## What a watchdog turn means"));
+		const exampleMatch = /```text\s+([\s\S]*?)\s+```/.exec(exampleSection);
+		expect(exampleMatch).not.toBeNull();
+		const normalizedExample = (exampleMatch?.[1] ?? "").replace(/\s+/g, " ").trim();
+		for (const clause of emittedClauses) expect(normalizedExample).toContain(clause);
 		const normalizedWatchdog = watchdog.replace(/\s+/g, " ").trim();
-		for (const clause of emittedClauses) expect(normalizedWatchdog).toContain(clause);
 		const muteStates = SEMANTIC_STATES.filter((state) => mutesWatchdogNudge(state));
 		expect(normalizedWatchdog).toContain(
 			`The mute set is \`${muteStates.join("|")}\`; \`done\` and \`ready\` never mute.`,
 		);
+		expect(stateLines[136]).toMatch(/^\s*"blocked",/);
+		expect(stateLines[141]).toMatch(/^\s*"waiting",/);
+		expect(routing).toContain("`state.ts:137,142`");
 
 		const liveGuidance = `${routing}\n${watchdog}`;
 		expect(liveGuidance).not.toContain("If done, pause me");
