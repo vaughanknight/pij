@@ -334,6 +334,7 @@ check_links() {
     [ -z "$target" ] && continue
     case "$target" in
       /*|http://*|https://*|mailto:*) continue ;;
+      '<'*'>') continue ;; # R5: an angle-bracket <placeholder> in a command example is not a link
     esac
     [ -e "$dir/$target" ] || err "prime pointer: $file → $target is missing"
   done < <(grep -Eo '\]\([^)]*\)' "$file" 2>/dev/null | sed 's/^](//; s/)$//' || true)
