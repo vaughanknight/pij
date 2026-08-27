@@ -170,6 +170,136 @@ describe("FsRegistry", () => {
 		expect(new FsRegistry(home).read("alice")?.id).toBe("alice");
 	});
 
+	it("preserves a CLI card written after a daemon publish sampled disk", () => {
+		const seed: SessionDescriptor = {
+			...descriptor("status-race-daemon"),
+			systemState: "idle",
+			statusPrev: "before",
+			statusNext: "old next",
+			statusAt: "2026-08-27T16:00:00.000Z",
+			statusSeq: 10,
+		};
+		const seedRegistry = new FsRegistry(home);
+		seedRegistry.writeExact(seed);
+		const daemonSnapshot = seedRegistry.read(seed.id);
+		if (!daemonSnapshot) throw new Error("fixture descriptor missing");
+
+		let interleaved = false;
+		const daemonRegistry = new FsRegistry(home, undefined, {
+			beforeWrite: () => {
+				if (interleaved) return;
+				interleaved = true;
+				const cliRegistry = new FsRegistry(home);
+				const latest = cliRegistry.read(seed.id);
+				if (!latest) throw new Error("fixture descriptor missing during CLI interleave");
+				cliRegistry.writeExact({
+					...latest,
+					statusPrev: "after",
+					statusNext: "new next",
+					statusAt: "2026-08-27T16:00:01.000Z",
+					statusSeq: 11,
+					statusWrittenBy: "pij-reporter",
+				});
+			},
+		});
+
+		daemonRegistry.write({ ...daemonSnapshot, systemState: "working" }, "daemon");
+
+		expect(new FsRegistry(home).read(seed.id)).toMatchObject({
+			systemState: "working",
+			statusPrev: "after",
+			statusNext: "new next",
+			statusAt: "2026-08-27T16:00:01.000Z",
+			statusSeq: 11,
+			statusWrittenBy: "pij-reporter",
+		});
+	});
+
+	it("preserves a daemon system-state write after a CLI publish sampled disk", () => {
+		const seed: SessionDescriptor = {
+			...descriptor("status-race-cli"),
+			systemState: "idle",
+			statusPrev: "before",
+			statusNext: "old next",
+			statusAt: "2026-08-27T16:00:00.000Z",
+			statusSeq: 20,
+		};
+		const seedRegistry = new FsRegistry(home);
+		seedRegistry.writeExact(seed);
+		const cliSnapshot = seedRegistry.read(seed.id);
+		if (!cliSnapshot) throw new Error("fixture descriptor missing");
+
+		let interleaved = false;
+		const cliRegistry = new FsRegistry(home, undefined, {
+			beforeWrite: () => {
+				if (interleaved) return;
+				interleaved = true;
+				const daemonRegistry = new FsRegistry(home);
+				const latest = daemonRegistry.read(seed.id);
+				if (!latest) throw new Error("fixture descriptor missing during daemon interleave");
+				daemonRegistry.write({ ...latest, systemState: "working" }, "daemon");
+			},
+		});
+
+		cliRegistry.writeExact({
+			...cliSnapshot,
+			statusPrev: "after",
+			statusNext: "new next",
+			statusAt: "2026-08-27T16:00:01.000Z",
+			statusSeq: 21,
+		});
+
+		expect(new FsRegistry(home).read(seed.id)).toMatchObject({
+			systemState: "working",
+			statusPrev: "after",
+			statusNext: "new next",
+			statusAt: "2026-08-27T16:00:01.000Z",
+			statusSeq: 21,
+		});
+	});
+
+	it("reclaims a descriptor write lock left by a dead process", () => {
+		const id = "stale-descriptor-lock";
+		writeFileSync(
+			join(home, `${id}.json.lock`),
+			JSON.stringify({ pid: 999_999_999, token: "dead-holder" }),
+		);
+
+		new FsRegistry(home).write(descriptor(id));
+
+		expect(new FsRegistry(home).read(id)?.id).toBe(id);
+		expect(existsSync(join(home, `${id}.json.lock`))).toBe(false);
+	});
+
+	it("holds the descriptor lock across the authoritative read and atomic publish", () => {
+		const id = "locked-critical-section";
+		let observed = false;
+		const registry = new FsRegistry(home, undefined, {
+			afterLockRead: () => {
+				observed = true;
+				expect(existsSync(join(home, `${id}.json.lock`))).toBe(true);
+			},
+		});
+
+		registry.write(descriptor(id));
+
+		expect(observed).toBe(true);
+		expect(existsSync(join(home, `${id}.json.lock`))).toBe(false);
+	});
+
+	it("lists terminal descriptors from both the hot and archive tiers", () => {
+		const registry = new FsRegistry(home);
+		registry.writeExact({ ...descriptor("live"), lifecycle: "bound" });
+		registry.writeExact({ ...descriptor("hot-dissolved"), lifecycle: "dissolved" });
+		registry.writeExact({ ...descriptor("hot-failed"), lifecycle: "failed" });
+		registry.writeExact({ ...descriptor("archived"), lifecycle: "dissolved" });
+		expect(registry.archive("archived", Date.parse("2026-08-27T16:00:00.000Z"))).toBe("archived");
+
+		expect(new Set(registry.listTerminal().map((entry) => entry.id))).toEqual(
+			new Set(["hot-dissolved", "hot-failed", "archived"]),
+		);
+	});
+
 	// SKIPPED ON JORDAN'S RULING (2026-07-30): windows-compat flakes were blocking
 	// merges repeatedly, so a failing Windows test gets skipped rather than fought.
 	//

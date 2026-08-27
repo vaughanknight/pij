@@ -165,6 +165,11 @@ export class FakeRegistry implements RegistryPort {
 	list(): SessionDescriptor[] {
 		return [...this.map.values()].filter((d) => d.lifecycle !== "dissolved");
 	}
+	listTerminal(): SessionDescriptor[] {
+		return [...this.map.values()].filter(
+			(descriptor) => descriptor.lifecycle === "dissolved" || descriptor.lifecycle === "failed",
+		);
+	}
 	read(id: SessionId): SessionDescriptor | null {
 		return this.map.get(id) ?? null;
 	}

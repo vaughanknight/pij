@@ -62,6 +62,10 @@ export interface RegistryPort {
 	/** All known session descriptors in the HOT tier. Never reads the archive —
 	 *  that is the whole point of the tier split. */
 	list(): SessionDescriptor[];
+	/** Every terminal descriptor across BOTH storage tiers. Includes hot
+	 *  dissolved/failed records hidden or filtered by `list()`, plus archived
+	 *  descriptors. Storage layout remains an adapter concern. */
+	listTerminal(): SessionDescriptor[];
 	/** One descriptor by id, or null if absent. Falls back to the archive by
 	 *  direct path (filename = id, no glob) so an archived seat stays addressable. */
 	read(id: SessionId): SessionDescriptor | null;
@@ -74,10 +78,11 @@ export interface RegistryPort {
 	 *  `writer` declares which side you are, so the fields you OWN keep the values
 	 *  you just computed. Omitting it is safe — you simply own nothing. */
 	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void;
-	/** Exact last-write-wins, NO merge. The only correct use is deliberately
-	 *  CLEARING a contested field (e.g. stripping a prior incarnation's `terminal`
-	 *  when a seat is re-adopted). Every call site must say why in a comment; the
-	 *  write-law test enumerates them so a new one has to justify itself. */
+	/** Exact for caller changes and CLI-owned denorm fields, atomically rebased
+	 *  onto the latest descriptor so concurrently changed fields survive. This
+	 *  remains the escape hatch for deliberately CLEARING a contested field (e.g.
+	 *  stripping a prior incarnation's `terminal` when a seat is re-adopted).
+	 *  Every call site must say why in a comment. */
 	writeExact(descriptor: SessionDescriptor): void;
 	/** Replace a dissolved tombstone with a new runtime incarnation. */
 	revive(descriptor: SessionDescriptor): Result<void>;

@@ -2,7 +2,8 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { applyWriteLaw, DESCRIPTOR_FIELD_OWNER } from "./registry-write.js";
+import { FakeRegistry } from "../adapters/fakes.js";
+import { applyWriteLaw, DESCRIPTOR_FIELD_OWNER, persistDaemonWrite } from "./registry-write.js";
 import type { SessionDescriptor } from "./types.js";
 
 function descriptor(over: Partial<SessionDescriptor> = {}): SessionDescriptor {
@@ -139,6 +140,36 @@ describe("applyWriteLaw", () => {
 		expect(DESCRIPTOR_FIELD_OWNER.terminal).toBe("close");
 		expect(DESCRIPTOR_FIELD_OWNER.closeIntent).toBe("close");
 		expect(DESCRIPTOR_FIELD_OWNER.currentAssignment).toBe("cli");
+	});
+});
+
+describe("persistDaemonWrite", () => {
+	it("returns registry truth after the adapter restores CLI-owned card fields", () => {
+		const registry = new FakeRegistry([
+			descriptor({
+				systemState: "idle",
+				statusNext: "new card",
+				statusAt: "2026-08-27T16:00:01.000Z",
+				statusSeq: 11,
+			}),
+		]);
+
+		const persisted = persistDaemonWrite(
+			registry,
+			descriptor({
+				systemState: "working",
+				statusNext: "stale card",
+				statusAt: "2026-08-27T16:00:00.000Z",
+				statusSeq: 10,
+			}),
+		);
+
+		expect(persisted).toMatchObject({
+			systemState: "working",
+			statusNext: "new card",
+			statusAt: "2026-08-27T16:00:01.000Z",
+			statusSeq: 11,
+		});
 	});
 });
 

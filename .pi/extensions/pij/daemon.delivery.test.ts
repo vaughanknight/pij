@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { DualWriteChannel } from "./adapters/channel-factory.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
+import { FakeRegistry } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { type DaemonPorts, pointerLine } from "./core/daemon/loop.js";
@@ -298,6 +299,42 @@ describe("closed-recipient queue retirement", () => {
 					line.includes("retire pij-closed: 3 open deliveries retired (recipient closed)"),
 				),
 			).toHaveLength(1);
+		} finally {
+			queue.close();
+		}
+	});
+
+	it("discovers closed recipients through RegistryPort instead of the FsRegistry layout", async () => {
+		const observedAt = new Date(nowMs).toISOString();
+		const registry = new FakeRegistry([
+			seat({
+				id: "pij-fake-closed",
+				lifecycle: "dissolved",
+				closeIntent: {
+					actor: "pij-boss",
+					kind: "cli-close",
+					requestedAt: observedAt,
+				},
+				terminal: {
+					disposition: "requested",
+					observedAt,
+					evidence: "pane-missing",
+				},
+			}),
+		]);
+		const queue = new SqliteQueue(home, { now: () => nowMs });
+		try {
+			const delivered = queue.deliver({
+				from: "pij-a",
+				to: "pij-fake-closed",
+				body: "retire through the port",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			const d = new Daemon(home, ports(), registry, queue, (line) => logs.push(line));
+
+			await d.tick();
+
+			expect(queue.summary({ to: "pij-fake-closed" }).map((row) => row.state)).toEqual(["retired"]);
 		} finally {
 			queue.close();
 		}

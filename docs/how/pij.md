@@ -151,6 +151,10 @@ terminal. On `PIJ_QUEUE_BACKEND=dual`, retire also writes advisory legacy `read-
 markers. The fs-only backend has no state machine and points operators at the
 retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 
+Closed-recipient discovery uses `RegistryPort.listTerminal()`, so the daemon sees
+dissolved records in both the hot and archive tiers without knowing the
+filesystem layout.
+
 ### Dispatch-record retirement
 
 Dispatch records have a separate lifecycle from message deliveries:
@@ -256,6 +260,22 @@ Four independent descriptor axes answer different questions:
 | Close ownership | `spawnedBy` | Which creator may close the peer without `--force`. `pij link` never changes it. |
 | Repository | `gitCommonDir` | Canonical absolute Git common directory. A main checkout and all linked worktrees share one repository key. |
 | State | activity + liveness + lifecycle | Activity is `working\|idle\|done`; liveness is `active\|stale\|dead\|dissolved`; lifecycle is `pending\|ready\|bound\|failed\|dissolved`. |
+
+### Descriptor write serialization
+
+Every `FsRegistry.publish()` serializes one descriptor through
+`<PIJ_HOME>/<id>.json.lock`. A fully written owner token is atomically published
+with no replacement, and the lock spans the authoritative fresh read, ownership
+merge, identity claim, and atomic JSON replacement. A lock left by a dead PID is
+reclaimed; a live holder is retried within a bounded budget. This is
+descriptor-local and does not alter the separate spine lock.
+
+Normal writes still apply `DESCRIPTOR_FIELD_OWNER` exactly as before. Exact
+writes use a three-way merge: fresh disk is the base, fields changed from the
+adapter's sampled record are replayed (including deletions), and CLI-owned denorm
+fields remain exact. This closes both lost-update directions: a daemon
+`systemState` write cannot erase a newly reported card, and a card write cannot
+replay stale daemon state.
 
 ### Tree selectors and filters
 
