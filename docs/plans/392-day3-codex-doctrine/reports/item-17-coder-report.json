@@ -1,0 +1,14 @@
+{
+  "delegationId": "dlg-0018",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 269ef3e5142275522b9b30c4e2354e0b04de55c1 lands all four bind-guard advisories in the required order. Foreign-session and malformed-Copilot conflicts now notify the spawner once per seat/cause, inconclusive probes retry quietly, and the pane-resolution sweep is separator-safe, comment-safe, bidirectional, destructuring-aware, and exactly allowlisted.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/daemon/loop.ts",
+    ".pi/extensions/pij/core/daemon/loop.test.ts",
+    ".pi/extensions/pij/core/daemon/index-state.test.ts"
+  ],
+  "testsRun": 460,
+  "testsPassed": 460,
+  "gatesClean": false,
+  "notes": "Item gates are green: daemon 460/460, typecheck, changed-file Biome, and pij-skill-check. Mutation proofs: MUT-A deleting the refusal emission RED at loop.test.ts:427 (0 vs 1); MUT-B removing dedupe RED at loop.test.ts:427 (2 vs 1); MUT-C removing the malformed Copilot clause RED at loop.test.ts:486 (bound vs waiting); MUT-D restoring slash-only endsWith RED at index-state.test.ts:204; MUT-E restoring the single-order matcher RED at index-state.test.ts:220. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention the changed files."
+}
