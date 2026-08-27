@@ -39,6 +39,7 @@ import {
 	createDaemonRegistry,
 	Daemon,
 	installDaemonShutdownHandlers,
+	notifyBridgeRestartWatchers,
 	touchDaemonHeartbeat,
 } from "./daemon.js";
 
@@ -228,6 +229,54 @@ function markerPath(to: string, messageId: string): string {
 }
 
 describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
+	it("notifies every pij-telegram watcher instead of inferring one prime owner", () => {
+		const registry = new FsRegistry(home);
+		for (const id of ["prime-a", "prime-b", "prime-c"]) {
+			registry.write(desc({ id, prime: true, lifecycle: "bound" }));
+		}
+		registry.write(desc({ id: "watcher", lifecycle: "bound" }));
+		const store = new FsWatchdogStore(home);
+		store.write("pij-telegram", {
+			watchers: [{ watcherId: "watcher", addedAt: "2026-08-28T00:00:00.000Z" }],
+		});
+		const channel = new FsChannel(home);
+		const logs: string[] = [];
+
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel,
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(1);
+		expect(messageBodies("watcher")).toHaveLength(1);
+		expect(messageBodies("watcher")[0]).toContain("telegram bridge restarted");
+		for (const id of ["prime-a", "prime-b", "prime-c"]) expect(messageBodies(id)).toEqual([]);
+		expect(logs).toEqual([]);
+	});
+
+	it("logs an honest skip when pij-telegram has no watchers", () => {
+		const logs: string[] = [];
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store: new FsWatchdogStore(home),
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs.join("\n")).toContain("no watchers");
+	});
+
+	it("wires production restart notices through watchers, never single-prime inference", () => {
+		const source = readFileSync(join(import.meta.dirname, "daemon.ts"), "utf8");
+		expect(source).toContain("notifyBridgeRestartWatchers(message, {");
+		expect(source).not.toContain("expected one live prime");
+	});
+
 	it("invokes bridge supervision once per tick and disposes it with the daemon", async () => {
 		let ticks = 0;
 		let disposed = 0;
