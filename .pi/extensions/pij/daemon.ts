@@ -131,6 +131,60 @@ const ARCHIVE_PRUNE_INTERVAL_MS = 60 * 60_000;
 const TAP_SWEEP_INTERVAL_MS = 5 * 60_000;
 type PushedTransition = "stalled" | "dead" | "provider-failure";
 
+export interface BridgeRestartWatcherNoticeDeps {
+	readonly store: Pick<FsWatchdogStore, "read" | "writeCapture">;
+	readonly channel: DeliveryPort;
+	readonly nowMs: number;
+	readonly captureText: string;
+	readonly log: (message: string) => void;
+}
+
+/** Notify every explicit watcher of the Telegram bridge restart.
+ *
+ * Watchers are the supervision authority; machine-wide primes are unrelated and
+ * may legitimately be plural. Direct delivery deliberately bypasses the bridge's
+ * relay/watchdog exemption. */
+export function notifyBridgeRestartWatchers(
+	message: string,
+	deps: BridgeRestartWatcherNoticeDeps,
+): number {
+	const watcherIds = [
+		...new Set(
+			(deps.store.read(TELEGRAM_PEER_ID)?.watchers ?? []).map((watcher) => watcher.watcherId),
+		),
+	];
+	if (watcherIds.length === 0) {
+		deps.log(`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers`);
+		return 0;
+	}
+	let notified = 0;
+	for (const watcherId of watcherIds) {
+		try {
+			const capture = deps.store.writeCapture(
+				watcherId,
+				TELEGRAM_PEER_ID,
+				deps.nowMs,
+				deps.captureText,
+			);
+			const delivered = deps.channel.deliver({
+				from: TELEGRAM_PEER_ID,
+				to: watcherId,
+				body: `⚠️ ${message}. Capture: ${capture}`,
+			});
+			if (!delivered.ok) {
+				deps.log(`telegram: restart watcher notice failed for ${watcherId} — ${delivered.message}`);
+				continue;
+			}
+			notified += 1;
+		} catch (error) {
+			deps.log(
+				`telegram: restart watcher capture failed for ${watcherId} — ${(error as Error).message}`,
+			);
+		}
+	}
+	return notified;
+}
+
 class DaemonBatonNoticeSink implements BatonNoticeSink {
 	constructor(private readonly channel: DeliveryPort) {}
 
@@ -1662,46 +1716,19 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
 		},
 		notifyOwner: (message) => {
-			const owners = registry
-				.list()
-				.filter(
-					(descriptor) =>
-						descriptor.prime === true &&
-						descriptor.lifecycle !== "dissolved" &&
-						descriptor.lifecycle !== "failed",
-				);
-			if (owners.length !== 1) {
-				log(
-					`telegram: restart owner notice skipped — expected one live prime, found ${owners.length}`,
-				);
-				return;
-			}
-			const owner = owners[0];
-			if (!owner) return;
 			let captureText = message;
 			try {
 				captureText += `\n\n${readFileSync(join(pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
 			} catch (error) {
 				log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
 			}
-			try {
-				const capture = bridgeCaptures.writeCapture(
-					owner.id,
-					TELEGRAM_PEER_ID,
-					Date.now(),
-					captureText,
-				);
-				// Direct delivery is intentional: the bridge is relay/exempt, but an
-				// infrastructure restart must still reach its owner.
-				const delivered = channel.deliver({
-					from: TELEGRAM_PEER_ID,
-					to: owner.id,
-					body: `⚠️ ${message}. Capture: ${capture}`,
-				});
-				if (!delivered.ok) log(`telegram: restart owner notice failed — ${delivered.message}`);
-			} catch (error) {
-				log(`telegram: restart owner capture failed — ${(error as Error).message}`);
-			}
+			notifyBridgeRestartWatchers(message, {
+				store: bridgeCaptures,
+				channel,
+				nowMs: Date.now(),
+				captureText,
+				log,
+			});
 		},
 	});
 	const daemon = new Daemon(
