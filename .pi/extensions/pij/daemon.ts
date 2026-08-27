@@ -44,7 +44,7 @@ import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 
 import { FsWatchStore } from "./adapters/watch-store.js";
-import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
+import { FsWatchdogGlobalStore, FsWatchdogStore, isWatcher } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { resolvePijHome } from "./core/agents/paths.js";
@@ -148,23 +148,6 @@ export interface BridgeRestartWatcherNoticeDeps {
 	readonly log: (message: string) => void;
 }
 
-function isBridgeWatcherEntry(value: unknown): boolean {
-	if (typeof value !== "object" || value === null) return false;
-	const watcher = value as Record<string, unknown>;
-	if (typeof watcher.watcherId !== "string" || typeof watcher.addedAt !== "string") return false;
-	if (watcher.capture === undefined) return true;
-	if (typeof watcher.capture !== "object" || watcher.capture === null) return false;
-	const capture = watcher.capture as Record<string, unknown>;
-	return (
-		(capture.mode === undefined ||
-			capture.mode === "anomaly" ||
-			capture.mode === "always" ||
-			capture.mode === "never") &&
-		(capture.maxLines === undefined || typeof capture.maxLines === "number") &&
-		(capture.maxBytes === undefined || typeof capture.maxBytes === "number")
-	);
-}
-
 /** Notify every explicit watcher of the Telegram bridge restart.
  *
  * Watchers are the supervision authority; machine-wide primes are unrelated and
@@ -181,7 +164,7 @@ export function notifyBridgeRestartWatchers(
 				watchers?: unknown;
 			};
 			const entries = Array.isArray(raw.watchers) ? raw.watchers : [];
-			const malformed = entries.filter((entry) => !isBridgeWatcherEntry(entry)).length;
+			const malformed = entries.filter((entry) => !isWatcher(entry)).length;
 			deps.log(
 				`telegram: restart owner notice skipped — watchers file unreadable/malformed (${entries.length} dropped, ${malformed} malformed)`,
 			);
@@ -189,9 +172,7 @@ export function notifyBridgeRestartWatchers(
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 				deps.log(`telegram: restart owner notice skipped — ${TELEGRAM_PEER_ID} has no watchers`);
 			} else {
-				deps.log(
-					"telegram: restart owner notice skipped — watchers file unreadable/malformed (0 entries rejected)",
-				);
+				deps.log("telegram: restart owner notice skipped — watchers file unreadable/malformed");
 			}
 		}
 		return 0;
@@ -1836,14 +1817,6 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	}
 	const bridgeSpine = new FsSpineLog(pijHome);
 	const bridgeCaptures = new FsWatchdogStore(pijHome);
-	const notifyBridgeOwner = wireBridgeRestartNotifier({
-		pijHome,
-		registry,
-		store: bridgeCaptures,
-		channel,
-		now: () => Date.now(),
-		log,
-	});
 	const bridgeSupervisor = bridgeSupervisorForDaemon(pijHome, {
 		now: () => Date.now(),
 		log,
@@ -1863,7 +1836,14 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 			const appended = bridgeSpine.append(built.value);
 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
 		},
-		notifyOwner: notifyBridgeOwner,
+		notifyOwner: wireBridgeRestartNotifier({
+			pijHome,
+			registry,
+			store: bridgeCaptures,
+			channel,
+			now: () => Date.now(),
+			log,
+		}),
 	});
 	const daemon = new Daemon(
 		pijHome,

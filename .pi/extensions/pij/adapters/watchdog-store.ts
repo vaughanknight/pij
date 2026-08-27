@@ -22,7 +22,7 @@ function isCapturePolicy(value: unknown): value is WatchdogCapturePolicy {
 	);
 }
 
-function isWatcher(value: unknown): value is WatchdogWatcher {
+export function isWatcher(value: unknown): value is WatchdogWatcher {
 	if (typeof value !== "object" || value === null) return false;
 	const watcher = value as Record<string, unknown>;
 	return (
