@@ -3,13 +3,13 @@
   "command": "checks",
   "harness": "copilot-cli",
   "harness_session_id": "75243a2a-fdee-49ee-94af-d2a143482ede",
-  "timecode": "2026-08-27T09:54:46.209Z",
+  "timecode": "2026-08-27T10:36:54.377Z",
   "window": {
     "since": "last-command",
-    "from": 430,
-    "to": 690
+    "from": 690,
+    "to": 1155
   },
-  "branch": "s391/item1a-stdout-flush",
+  "branch": "s391/item1-queue-retire",
   "branch_changed": false,
   "tokens": null,
   "models": {},
