@@ -268,3 +268,12 @@ Routing PRECEDENCE (replaces the plain isAlive-gate):
 **Last-speaker-follow for bare text is RETIRED** (bridge.ts:196 fallback no longer routes bare text to the last speaker — it routes to the prime).
 Dead target at ANY step → gone + guidance, NEVER queued (E30).
 Tests: bare text WITH a live last-speaker still goes to the PRIME; dead reply-target → gone. MUT: prime-resolution → last-speaker RED. Still after item 24 + 29b-T001 fold, same file bridge.ts. (Effective-prime resolution: live + prime:true + watches pij-telegram; tie-break = most-recent-to-bridge.)
+
+## 2026-08-28 — Item-24 ADV-1 fold APPROVE (6641943), proven by differential execution — but 2 UNSENSORED E28 guards on the silent-loss path (recommend fold-the-tests)
+Fold correct: base loses 84 bytes, fold loses 0 (3-worktree differential); MUT-DRIFT RED @bridge.test.ts:1255 (claimed line exact — first in series); write-once/legacy/same-partition/additive all confirmed by execution. BUT:
+- **ADV-1 MUT-PREFIXLEN (unsensored, silent-loss)**: compare partCount ONLY (drop prefixLength) → suite FULLY GREEN, 84 chars silently lost. The shipped drift test moves partCount AND prefixLength together, so a partCount-only impl passes. Need a STABLE-count drift test (7000 chars = 2 parts under both prefixes but boundaries move 3993↔4077).
+- **ADV-2 MUT-NOMARK (unsensored, silent-loss)**: remove the `if (positionalPartsValid)` marking gate → FULLY GREEN, 84 lost. Needs a 3-pass A→B→A probe (partial success in pass 2 writes a mark under B's partition, pass 3 reads it as A's).
+Both guards are CORRECT in shipped code but have NO test → E28 false-green shape (a future edit regresses silently) ON THE HUMAN-CHANNEL SILENT-LOSS PATH — the exact class the o-prime ruled fold-pre-merge for 29b-T001. Reviewer gave runnable probes.
+- **ADV-3 (low-med, one-line close)**: the identity covers body parts, but nextTextPartIndex is shared across ALL sendText (body + attachment notices + caption-too-long fallback); user-authored CAPTION text can drift under a still-matching identity. Fix: scope the skip-set to `index < partCount`.
+- ADV-4 (low): legacy rows never acquire an identity → send-all forever (permanent, not one-shot); consider recording identity after a successful send-all → item 24b.
+- INFO-6 (out of fence): main's item-29 telegram/index.ts touches resolveRepositoryContext (the prefix-drift source) — not checked for prefix-stability impact.
