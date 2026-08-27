@@ -1973,6 +1973,11 @@ function runRevive(argv: readonly string[]): void {
 					),
 				].filter(readableRegularFile)
 			: [];
+	// PoC day-2 item 4: a real (non-print) copilot revive re-opens its embedded
+	// JSON-RPC server on a fresh loopback port; --print mutates nothing so it
+	// gets no port (the printed command is advisory).
+	const reviveRpcPort =
+		descriptor?.harness === "copilot" && !parsed.value.print ? pickFreePortSync() : undefined;
 	const plan = planRevive(
 		descriptor,
 		{
@@ -1991,6 +1996,7 @@ function runRevive(argv: readonly string[]): void {
 				: { attachmentReason: uncertaintyReason(attachmentProbe.probe) }),
 			print: parsed.value.print,
 			assumeDead: parsed.value.assumeDead,
+			...(reviveRpcPort !== undefined ? { rpcPort: reviveRpcPort } : {}),
 		},
 	);
 	if (!plan.ok) {
@@ -2107,7 +2113,9 @@ function runRevive(argv: readonly string[]): void {
 				nowIso: new Date().toISOString(),
 				reviverId,
 			});
-			const persisted = registry.revive(revived);
+			const persisted = registry.revive(
+				reviveRpcPort !== undefined ? { ...revived, rpcPort: reviveRpcPort } : revived,
+			);
 			if (!persisted.ok) {
 				attachExpectations.remove(attachSpawnId);
 				process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
@@ -2211,7 +2219,9 @@ function runRevive(argv: readonly string[]): void {
 			nowIso: new Date().toISOString(),
 			reviverId,
 		});
-		const persisted = registry.revive(revived);
+		const persisted = registry.revive(
+			reviveRpcPort !== undefined ? { ...revived, rpcPort: reviveRpcPort } : revived,
+		);
 		if (!persisted.ok) {
 			tmux.killPane(paneId);
 			expectations.remove(spawnId);

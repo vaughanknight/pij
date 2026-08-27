@@ -119,6 +119,28 @@ describe("planRevive — exact native continuation only", () => {
 		expect(result.value.command.args).not.toContain("--session-id");
 	});
 
+	it("re-opens the embedded JSON-RPC server on a fresh port when rpcPort is given (day-2 item 4)", () => {
+		const result = planRevive(
+			descriptor({ harness: "copilot", boundModel: "gpt-5.6-sol" }),
+			{ ...noArtifacts, copilotPath: "/home/.copilot/session-state/native/events.jsonl" },
+			{ spawnId: "revive-rpc", parentId: "pij-parent", rpcPort: 51234 },
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.value.command.args).toContain("--ui-server");
+		const i = result.value.command.args.indexOf("--port");
+		expect(result.value.command.args[i + 1]).toBe("51234");
+	});
+
+	it("omits --ui-server on a copilot revive without a port (falls to the pointer path)", () => {
+		const result = planRevive(
+			descriptor({ harness: "copilot", boundModel: "gpt-5.6-sol" }),
+			{ ...noArtifacts, copilotPath: "/home/.copilot/session-state/native/events.jsonl" },
+			{ spawnId: "revive-noport", parentId: "pij-parent" },
+		);
+		expect(result.ok && result.value.command.args).not.toContain("--ui-server");
+	});
+
 	it("puts Codex resume after global options and retains the exact rollout", () => {
 		const rollout = "/home/.codex/sessions/2026/07/24/rollout-native.jsonl";
 		const result = planRevive(
@@ -225,6 +247,17 @@ describe("planRevive — exact native continuation only", () => {
 });
 
 describe("buildRevivedDescriptor", () => {
+	it("drops a stale rpcPort so a revived copilot cannot fail-loop on a dead port (day-2 item 4)", () => {
+		const revived = buildRevivedDescriptor(descriptor({ harness: "copilot", rpcPort: 40000 }), {
+			paneId: "%99",
+			pid: 999,
+			spawnId: "revive-9",
+			nowIso: NOW,
+			reviverId: "pij-op",
+		});
+		expect(revived.rpcPort).toBeUndefined();
+	});
+
 	it("preserves durable identity but removes terminal runtime state", () => {
 		const revived = buildRevivedDescriptor(descriptor(), {
 			paneId: "%99",
