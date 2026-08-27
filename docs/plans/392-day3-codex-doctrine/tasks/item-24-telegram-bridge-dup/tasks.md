@@ -64,3 +64,19 @@ State the invariant once; the reviewer checks it as a SET. A 4th finding must be
 | [ ] | T016 | re-run gates; ADV-3 (legacy never converges) is OUT (→ 24b). Report reports/item-24-invariant-fold-report.json | — | recorded | |
 
 Then: cold re-review AS A SET (verify (i)-(v)) + two green full runs on the fresh-main PR worktree → item-24 PR (base current main; carries §14 provenance for #311). Run ONLY bridge.test.ts as the coder's fence; full-suite is on the PR worktree (E35).
+
+## FINAL FOLD (o-prime ruling — bubblesHash; the invariant was wrong, now corrected; ends the loop)
+Base = a6151aa. DROP partCount/prefixLength/prefixHash entirely. Replace with ONE plan hash.
+**INVARIANT (verbatim, from the o-prime — goes in the packet):**
+"Delivering a message means executing an ORDERED PLAN of bubbles (text parts, oversize/fallback notices, media — everything that would be sent); the identity is sha256 of the serialized plan; each bubble is marked by index after its positive Telegram ack; a redelivery whose plan hash matches sends exactly the unmarked bubbles; any other hash sends the whole plan."
+- **W1**: index + mark EVERY planned bubble, MEDIA INCLUDED — no narrowing, no open item (a file twice == a line twice). sendMedia (bridge.ts:752) gets an index + is marked-on-ack + skipped on same-hash redelivery.
+- **W2**: the plan hash captures the per-member DISTRIBUTION (not just a sum), so the same-sum alias case now differs → send-all, no silent omission.
+- **Accepted degradation** (state it): plan non-determinism (e.g. a git subprocess in the prefix) may only ever CHANGE the hash → send-all → a DUPLICATE, never an omission.
+| # | Task | Path(s) | Done When | Notes |
+|---|------|---------|-----------|-------|
+| [ ] | T017 (bubblesHash identity) | replace the telegram_partitions {part_count,prefix_length,prefix_hash} identity with a single `bubbles_hash` (sha256 of the serialized ordered plan of ALL bubbles incl media). Additive schema migration (drop the old cols is fine within this side-table, or add bubbles_hash + ignore the rest); legacy/no-hash → send-all. | `telegram/bridge.ts`, `adapters/sqlite-queue.ts` (+tests) | RED→GREEN | one component |
+| [ ] | T018 (mark-on-ack, all bubbles incl media) | build the ordered plan (text parts + notices + media) BEFORE computing the hash; mark each bubble by index AFTER its positive Telegram ack (NOT on send); same-hash redelivery sends exactly the unmarked bubbles; any-other-hash sends the whole plan. media is marked+skipped like text. | `telegram/bridge.ts` (+test) | RED→GREEN; W1+W2 closed | |
+| [ ] | T019 (the mutant SET — behavioural, greps deleted) | MUT-HASH (ignore identity → the W2 same-sum alias sends the wrong bubble → RED); MUT-NOMARK; MUT-MEDIA-UNMARKED (media resent on same-hash redelivery → RED); MUT-PARTIAL (mark on SEND not on ACK → a failed bubble is skipped → RED); + the partial-failure redelivery test (only unmarked members sent). | `telegram/bridge.test.ts` | each mutant reds a distinct behavioural test | the SET |
+| [ ] | T020 | re-run gates (bridge.test.ts fence only, E35); report reports/item-24-final-fold-report.json | — | recorded | |
+
+Then: cold re-review AS A SET (RE-RUN the W2 differential — the same-sum-distribution case must NOT silently omit; media must NOT dup) + two green full runs on the fresh-main PR worktree → item-24 PR (base current main; §14 provenance for #311).
