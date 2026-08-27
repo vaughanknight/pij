@@ -469,15 +469,50 @@ describe("buildControlSpawnCommand", () => {
 		]);
 	});
 
-	it("copilot: a pinned model always selects the long-context tier", () => {
+	it("copilot: longContext=false suppresses the long-context tier", () => {
 		const r = buildControlSpawnCommand({
 			harness: "copilot",
 			pijId: "pij-cop",
 			cwd: "/repo",
-			model: "claude-opus-5",
+			model: "gemini-3.6-flash",
+			longContext: false,
 		});
-		expect(r.args).toContain("claude-opus-5");
-		expect(r.args).toContain("long_context");
+		expect(r.args).toEqual(["--yolo", "--model", "gemini-3.6-flash"]);
+	});
+
+	it("copilot: longContext=true selects the long-context tier", () => {
+		const r = buildControlSpawnCommand({
+			harness: "copilot",
+			pijId: "pij-cop",
+			cwd: "/repo",
+			model: "gpt-5.6-sol",
+			longContext: true,
+		});
+		expect(r.args).toEqual(["--yolo", "--model", "gpt-5.6-sol", "--context", "long_context"]);
+	});
+
+	it("claude and codex never emit Copilot's long-context flag", () => {
+		const claude = buildControlSpawnCommand({
+			harness: "claude",
+			pijId: "pij-claude",
+			cwd: "/repo",
+			model: "claude-sonnet-5",
+			longContext: true,
+		});
+		expect(claude.args).toEqual(["--dangerously-skip-permissions", "--model", "claude-sonnet-5"]);
+
+		const codex = buildControlSpawnCommand({
+			harness: "codex",
+			pijId: "pij-codex",
+			cwd: "/repo",
+			model: "gpt-5.6-sol",
+			longContext: true,
+		});
+		expect(codex.args).toEqual([
+			"--dangerously-bypass-approvals-and-sandbox",
+			"--model",
+			"gpt-5.6-sol",
+		]);
 	});
 
 	it("claude --branch: --resume <from> --fork-session --session-id <new> after skip-permissions (AC-01)", () => {

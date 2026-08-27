@@ -1,8 +1,19 @@
 // pij-control-plane — validateModel + spawn warn-don't-block tests (T005).
 
 import { describe, expect, it } from "vitest";
-import { type ModelEntry, parseModelsJson } from "./registry.js";
-import { type ValidationResult, validateEffort, validateModel } from "./validate.js";
+import {
+	annotateLongContext,
+	copilotSeedFromPi,
+	copilotSnapshot,
+	type ModelEntry,
+	parseModelsJson,
+} from "./registry.js";
+import {
+	resolveLongContext,
+	type ValidationResult,
+	validateEffort,
+	validateModel,
+} from "./validate.js";
 
 const KNOWN: ModelEntry[] = [
 	{ id: "fugu-ultra", name: "Sakana Fugu Ultra", provider: "sakana", verified: true },
@@ -55,6 +66,60 @@ describe("validateModel", () => {
 	it("returns ok when the known list is empty (cannot validate; never block)", () => {
 		const r = validateModel("anything", []);
 		expect(r.ok).toBe(true);
+	});
+});
+
+describe("resolveLongContext", () => {
+	const raw = {
+		providers: {
+			"github-copilot": {
+				models: [{ id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" }],
+			},
+		},
+	};
+	const merged = annotateLongContext([
+		...parseModelsJson(raw),
+		...copilotSeedFromPi(raw),
+		...copilotSnapshot(),
+	]);
+
+	it("returns false when a raw github-copilot duplicate precedes the Copilot projection", () => {
+		expect(merged[0]).toMatchObject({
+			id: "gemini-3.6-flash",
+			provider: "github-copilot",
+		});
+		expect(resolveLongContext(merged, "gemini-3.6-flash")).toBe(false);
+	});
+
+	it("falls back to the deny-set for offline snapshots and empty registries", () => {
+		expect(resolveLongContext(copilotSnapshot(), "gemini-3.6-flash")).toBe(false);
+		expect(resolveLongContext([], "gemini-3.6-flash")).toBe(false);
+	});
+
+	it("normalizes provider-qualified denied ids", () => {
+		expect(resolveLongContext([], "github-copilot/gemini-3.6-flash")).toBe(false);
+	});
+
+	it("preserves unknown capability as undefined", () => {
+		expect(resolveLongContext(copilotSnapshot(), "gpt-5.6-sol")).toBeUndefined();
+		expect(resolveLongContext([], "future-model")).toBeUndefined();
+	});
+
+	it("prefers an explicit registry capability over the curated deny-set", () => {
+		expect(
+			resolveLongContext(
+				[
+					{
+						id: "gemini-3.6-flash",
+						name: "Gemini 3.6 Flash",
+						provider: "copilot",
+						verified: true,
+						longContext: true,
+					},
+				],
+				"gemini-3.6-flash",
+			),
+		).toBe(true);
 	});
 });
 
