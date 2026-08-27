@@ -85,12 +85,6 @@ export interface QueueReceipt {
 	readonly detail: string | null;
 }
 
-export interface TelegramPartitionIdentity {
-	readonly partCount: number;
-	readonly prefixLength: number;
-	readonly prefixHash: string;
-}
-
 export interface SqliteQueueOpts {
 	readonly dbPath?: string;
 	readonly now?: () => number;
@@ -131,6 +125,7 @@ CREATE TABLE IF NOT EXISTS telegram_partitions (
   part_count    INTEGER NOT NULL CHECK(part_count >= 0),
   prefix_length INTEGER NOT NULL CHECK(prefix_length >= 0),
   prefix_hash   TEXT NOT NULL,
+  bubbles_hash  TEXT NOT NULL,
   recorded_at   INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS receipts (
@@ -209,6 +204,9 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			.all() as unknown as Array<{ name: string }>;
 		if (!partitionColumns.some((column) => column.name === "prefix_hash")) {
 			this.db.exec("ALTER TABLE telegram_partitions ADD COLUMN prefix_hash TEXT");
+		}
+		if (!partitionColumns.some((column) => column.name === "bubbles_hash")) {
+			this.db.exec("ALTER TABLE telegram_partitions ADD COLUMN bubbles_hash TEXT");
 		}
 	}
 
@@ -324,7 +322,7 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 		return row?.seq;
 	}
 
-	/** Text chunks already accepted by Telegram for one queued bridge message.
+	/** Bubbles already accepted by Telegram for one queued bridge message.
 	 *  Legacy rows have no entries and therefore retain the old send-all behavior. */
 	telegramSentParts(messageId: string): ReadonlySet<number> {
 		const rows = this.db
@@ -335,10 +333,10 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 		return new Set(rows.map((row) => row.part_index));
 	}
 
-	/** Persist one successful Telegram text part immediately and idempotently. */
+	/** Persist one positively acknowledged Telegram bubble immediately and idempotently. */
 	markTelegramPartSent(messageId: string, partIndex: number): void {
 		if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
-			throw new Error("Telegram part index must be a non-negative integer");
+			throw new Error("Telegram bubble index must be a non-negative integer");
 		}
 		this.db
 			.prepare(
@@ -347,42 +345,24 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			.run(messageId, partIndex, this.now());
 	}
 
-	/** Partition identity that makes positional sent-part indices meaningful. */
-	telegramPartitionIdentity(messageId: string): TelegramPartitionIdentity | undefined {
+	/** Ordered-bubble plan hash that makes positional bubble indices meaningful. */
+	telegramBubblesHash(messageId: string): string | undefined {
 		const row = this.db
-			.prepare(
-				"SELECT part_count, prefix_length, prefix_hash FROM telegram_partitions WHERE message_id = ?",
-			)
-			.get(messageId) as
-			| { part_count: number; prefix_length: number; prefix_hash: string | null }
-			| undefined;
-		return row === undefined || row.prefix_hash === null
-			? undefined
-			: {
-					partCount: row.part_count,
-					prefixLength: row.prefix_length,
-					prefixHash: row.prefix_hash,
-				};
+			.prepare("SELECT bubbles_hash FROM telegram_partitions WHERE message_id = ?")
+			.get(messageId) as { bubbles_hash: string | null } | undefined;
+		return row?.bubbles_hash ?? undefined;
 	}
 
-	/** Record the first complete partition only. Drift is detected against it, never overwritten. */
-	recordTelegramPartitionIdentity(messageId: string, identity: TelegramPartitionIdentity): void {
-		if (
-			!Number.isSafeInteger(identity.partCount) ||
-			identity.partCount < 0 ||
-			!Number.isSafeInteger(identity.prefixLength) ||
-			identity.prefixLength < 0 ||
-			!/^[0-9a-f]{64}$/.test(identity.prefixHash)
-		) {
-			throw new Error(
-				"Telegram partition identity must use non-negative integers and a SHA-256 hash",
-			);
+	/** Record the first complete ordered-bubble plan only; drift never overwrites it. */
+	recordTelegramBubblesHash(messageId: string, bubblesHash: string): void {
+		if (!/^[0-9a-f]{64}$/.test(bubblesHash)) {
+			throw new Error("Telegram bubbles hash must be a lowercase SHA-256");
 		}
 		this.db
 			.prepare(
-				"INSERT OR IGNORE INTO telegram_partitions(message_id, part_count, prefix_length, prefix_hash, recorded_at) VALUES (?, ?, ?, ?, ?)",
+				"INSERT OR IGNORE INTO telegram_partitions(message_id, part_count, prefix_length, prefix_hash, bubbles_hash, recorded_at) VALUES (?, 0, 0, '', ?, ?)",
 			)
-			.run(messageId, identity.partCount, identity.prefixLength, identity.prefixHash, this.now());
+			.run(messageId, bubblesHash, this.now());
 	}
 
 	/** Ack: the recipient has read the body. Exactly-once by row state. */
