@@ -277,9 +277,30 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(logs.join("\n")).not.toContain("has no watchers");
 	});
 
+	it("reports unparseable watcher JSON without inventing a rejected-entry count", () => {
+		const store = new FsWatchdogStore(home);
+		const path = store.pathFor("pij-telegram");
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, "{");
+		const logs: string[] = [];
+
+		expect(
+			notifyBridgeRestartWatchers("telegram bridge restarted", {
+				store,
+				channel: new FsChannel(home),
+				nowMs: 123,
+				captureText: "restart evidence",
+				log: (message) => logs.push(message),
+			}),
+		).toBe(0);
+		expect(logs).toEqual([
+			"telegram: restart owner notice skipped — watchers file unreadable/malformed",
+		]);
+	});
+
 	it("wires production restart notices through watchers, never single-prime inference", () => {
 		const source = readFileSync(join(import.meta.dirname, "daemon.ts"), "utf8");
-		expect(source).toContain("wireBridgeRestartNotifier({");
+		expect(source).toContain("notifyOwner: wireBridgeRestartNotifier({");
 		expect(source).not.toContain("expected one live prime");
 	});
 
