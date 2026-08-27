@@ -115,8 +115,8 @@ files, not you — you are its current, replaceable operator.
    drops it outright and `--here` drops it for every stream living in a worktree
    (i.e. your default topology, duty 10). Chase the row, do not merely note it: send
    the seat its `pij report now "<did>" "<next>"` (or a parked state:
-   `waiting|hold|blocked|question`) and confirm the card actually moved. A relayed
-   instruction is not a fixed card. A stale card is worse than no card — every
+   `waiting|hold|blocked|question`) and confirm the card moved. `done` is a verifier
+   claim, not a mute; `ready` stays watched. A stale card is worse than no card — every
    consumer, you included, renders it as CURRENT, so a PM that shipped an hour ago
    still reads as waiting. This is duty 1 one layer down: same hazard ("a stale
    roster row misleads every reader"), different writer.
