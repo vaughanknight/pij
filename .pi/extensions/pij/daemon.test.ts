@@ -35,10 +35,10 @@ import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
 import type { SessionDescriptor } from "./core/types.js";
 import {
-	createBridgeRestartNotifier,
 	Daemon,
 	notifyBridgeRestartWatchers,
 	touchDaemonHeartbeat,
+	wireBridgeRestartNotifier,
 } from "./daemon.js";
 
 const READY = "⏵⏵ auto mode on (shift+tab to cycle)";
@@ -217,7 +217,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		const channel = new FsChannel(home);
 		const logs: string[] = [];
 
-		const notifyOwner = createBridgeRestartNotifier({
+		const notifyOwner = wireBridgeRestartNotifier({
 			pijHome: home,
 			registry,
 			store,
@@ -271,13 +271,15 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 				log: (message) => logs.push(message),
 			}),
 		).toBe(0);
-		expect(logs.join("\n")).toContain("watchers file unreadable/malformed (2 entries rejected)");
+		expect(logs.join("\n")).toContain(
+			"watchers file unreadable/malformed (2 dropped, 1 malformed)",
+		);
 		expect(logs.join("\n")).not.toContain("has no watchers");
 	});
 
 	it("wires production restart notices through watchers, never single-prime inference", () => {
 		const source = readFileSync(join(import.meta.dirname, "daemon.ts"), "utf8");
-		expect(source).toContain("createBridgeRestartNotifier({");
+		expect(source).toContain("wireBridgeRestartNotifier({");
 		expect(source).not.toContain("expected one live prime");
 	});
 
