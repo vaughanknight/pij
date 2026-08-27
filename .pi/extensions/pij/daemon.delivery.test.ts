@@ -17,12 +17,12 @@ let home: string;
 let sent: Array<{ pane: string; text: string }>;
 let logs: string[];
 
-beforeEach(() => {
+beforeEach(async () => {
 	home = mkdtempSync(join(tmpdir(), "pij-daemon-del-"));
 	sent = [];
 	logs = [];
 });
-afterEach(() => {
+afterEach(async () => {
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -65,7 +65,7 @@ function daemon(): Daemon {
 }
 
 describe("deliverPass", () => {
-	it("injects pending mail WITHOUT a tick — delivery no longer rides tick duration", () => {
+	it("injects pending mail WITHOUT a tick — delivery no longer rides tick duration", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(seat({ id: "pij-worker", spawnedBy: "pij-boss" }));
 		registry.write(seat({ id: "pij-boss", paneId: "%9", harnessSessionId: "native-boss" }));
@@ -74,92 +74,92 @@ describe("deliverPass", () => {
 		sent.length = 0;
 
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "ship it" });
-		d.deliverPass();
+		await d.deliverPass();
 
 		expect(sent.map((s) => s.text).join("\n")).toContain("ship it");
 		expect(sent[0]?.pane).toBe("%1");
 	});
 
-	it("delivers repeatedly across passes with no tick in between", () => {
+	it("delivers repeatedly across passes with no tick in between", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(seat({ id: "pij-worker" }));
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		sent.length = 0;
 
 		const channel = new FsChannel(home);
 		channel.deliver({ from: "pij-boss", to: "pij-worker", body: "first" });
-		d.deliverPass();
+		await d.deliverPass();
 		channel.deliver({ from: "pij-boss", to: "pij-worker", body: "second" });
-		d.deliverPass();
+		await d.deliverPass();
 
 		const injected = sent.map((s) => s.text).join("\n");
 		expect(injected).toContain("first");
 		expect(injected).toContain("second");
 	});
 
-	it("is idempotent — a pass with nothing pending injects nothing", () => {
+	it("is idempotent — a pass with nothing pending injects nothing", async () => {
 		new FsRegistry(home).write(seat({ id: "pij-worker" }));
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "once" });
-		d.deliverPass();
+		await d.deliverPass();
 		const afterFirst = sent.length;
 
-		d.deliverPass();
-		d.deliverPass();
+		await d.deliverPass();
+		await d.deliverPass();
 
 		expect(sent.length).toBe(afterFirst);
 	});
 
 	// CONTROL for each refusal below: the same seat/message DOES deliver when the
 	// refusing condition is removed (the test above), so these prove the guard.
-	it("refuses an UNBOUND seat — a pending seat has no pane contract yet", () => {
+	it("refuses an UNBOUND seat — a pending seat has no pane contract yet", async () => {
 		new FsRegistry(home).write(seat({ id: "pij-worker", lifecycle: "pending" }));
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		sent.length = 0;
 
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "too early" });
-		d.deliverPass();
+		await d.deliverPass();
 
 		expect(sent.map((s) => s.text).join("\n")).not.toContain("too early");
 	});
 
-	it("refuses a COMPACTING seat — input injected mid-compaction is eaten by the harness", () => {
+	it("refuses a COMPACTING seat — input injected mid-compaction is eaten by the harness", async () => {
 		new FsRegistry(home).write(
 			seat({ id: "pij-worker", compactingAt: new Date(NOW_MS - 1_000).toISOString() }),
 		);
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		sent.length = 0;
 
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "held back" });
-		d.deliverPass();
+		await d.deliverPass();
 
 		expect(sent.map((s) => s.text).join("\n")).not.toContain("held back");
 	});
 
-	it("refuses a pi seat — pi owns its own inbox and the daemon must never touch it", () => {
+	it("refuses a pi seat — pi owns its own inbox and the daemon must never touch it", async () => {
 		new FsRegistry(home).write(seat({ id: "pij-pi-peer", harness: "pi" }));
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		sent.length = 0;
 
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-pi-peer", body: "not yours" });
-		d.deliverPass();
+		await d.deliverPass();
 
 		expect(sent).toEqual([]);
 	});
 
-	it("survives one seat throwing and still serves the others", () => {
+	it("survives one seat throwing and still serves the others", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(
 			seat({ id: "pij-broken", paneId: undefined, harnessSessionId: "native-broken" }),
 		);
 		registry.write(seat({ id: "pij-worker" }));
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		sent.length = 0;
 
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "still lands" });
@@ -167,10 +167,10 @@ describe("deliverPass", () => {
 		expect(sent.map((s) => s.text).join("\n")).toContain("still lands");
 	});
 
-	it("the tick still drains too — the fast pass is an accelerator, not a single point of failure", () => {
+	it("the tick still drains too — the fast pass is an accelerator, not a single point of failure", async () => {
 		new FsRegistry(home).write(seat({ id: "pij-worker" }));
 		const d = daemon();
-		d.tick();
+		await d.tick();
 		sent.length = 0;
 
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "reconciled" });

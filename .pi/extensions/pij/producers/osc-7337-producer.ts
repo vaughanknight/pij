@@ -80,7 +80,12 @@ function stateEvent(state: string, detail: string | undefined): string {
 	return JSON.stringify(o);
 }
 
-function interruptEvent(phase: "raised" | "cleared", id: string, kind?: string, detail?: string): string {
+function interruptEvent(
+	phase: "raised" | "cleared",
+	id: string,
+	kind?: string,
+	detail?: string,
+): string {
 	const o: Record<string, unknown> = { v: 2, cmd: "agent.event", kind: "interrupt", phase, id };
 	if (kind) o.interrupt_kind = kind;
 	if (detail) o.detail = clip(detail, 120);
@@ -89,7 +94,13 @@ function interruptEvent(phase: "raised" | "cleared", id: string, kind?: string, 
 }
 
 function claimEvent(id: string, claim: string, evidence?: EvidenceRefs): string {
-	const o: Record<string, unknown> = { v: 2, cmd: "agent.event", kind: "claim", id, claim: clip(claim, 120) };
+	const o: Record<string, unknown> = {
+		v: 2,
+		cmd: "agent.event",
+		kind: "claim",
+		id,
+		claim: clip(claim, 120),
+	};
 	if (evidence) o.evidence = evidence;
 	o.source = SOURCE;
 	return JSON.stringify(o);

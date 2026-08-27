@@ -74,7 +74,10 @@ export interface DaemonPorts {
 	 *  no resolvable socket (older claude, bind failure, non-claude harness) — the
 	 *  caller falls back to `sendText`. `failed` = nothing landed (retry later).
 	 *  Optional: pure fakes and non-claude daemons need not implement it. */
-	sendSocket?(target: SessionDescriptor, message: DeliveredMessage): SendOutcome | "no-socket";
+	sendSocket?(
+		target: SessionDescriptor,
+		message: DeliveredMessage,
+	): SendOutcome | "no-socket" | Promise<SendOutcome | "no-socket">;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial, or a digit +
 	 *  Enter to answer one — the copilot folder-trust auto-answer, DL-001). */
 	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void;
@@ -586,7 +589,7 @@ export function pointerLine(from: SessionId, count: number): string {
  *  injection outcome. The impure caller owns the post-outcome read marker.
  *  Delivery ownership (AC-08): pi targets route to `observe` and remain for the
  *  in-process receiver. A not-yet-bound tmux target buffers (R-02). */
-export function drainTmuxInbox(
+export async function drainTmuxInbox(
 	target: SessionDescriptor,
 	messages: ReadonlyArray<{
 		readonly messageId: string;
@@ -599,7 +602,7 @@ export function drainTmuxInbox(
 	beforeSelfInjection: ((paneId: string, payload: string, nowMs: number) => void) | undefined,
 	holds: ComposerHoldTracker,
 	opts: { readonly pointer?: boolean } = {},
-): DrainedTmuxMessage[] {
+): Promise<DrainedTmuxMessage[]> {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
 		// Preserve the REAL sender so the injected text is framed `[pij from <from>]`
@@ -618,7 +621,7 @@ export function drainTmuxInbox(
 			!m.command &&
 			ports.sendSocket
 		) {
-			const outcome = ports.sendSocket(target, { ...msg, messageId: m.messageId });
+			const outcome = await ports.sendSocket(target, { ...msg, messageId: m.messageId });
 			if (outcome === "confirmed") {
 				consumed.push({ messageId: m.messageId, from: m.from, outcome, via: "socket" });
 				continue;

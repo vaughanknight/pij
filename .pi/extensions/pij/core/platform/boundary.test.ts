@@ -126,7 +126,7 @@ describe("import boundary — core/platform must not import daemon/telegram/tmux
 
 	it.each(
 		files.map((f) => [labelOf(f), f]),
-	)("%s imports only permitted modules", (_label, file) => {
+	)("%s imports only permitted modules", async (_label, file) => {
 		const production = !file.endsWith(".test.ts");
 		const violations = scanViolations(readFileSync(file, "utf8"), production);
 		expect(violations, `forbidden in ${file}: ${violations.join(", ")}`).toEqual([]);
@@ -154,7 +154,7 @@ describe("production-scope rules reject fs/process (review 001 F4)", () => {
 		['import process from "process";', "process (bare)"],
 		['const fs = require("node:fs");', "require node:fs"],
 		['await import("node:child_process");', "dynamic import child_process"],
-	])("flags %s in a production module", (source) => {
+	])("flags %s in a production module", async (source) => {
 		expect(flags(source).length).toBeGreaterThan(0);
 	});
 
@@ -162,7 +162,7 @@ describe("production-scope rules reject fs/process (review 001 F4)", () => {
 		["const v = process.env.HOME;", "member read"],
 		['const v = process["env"];', "index read"],
 		["exitWith(process.exitCode ?? 0);", "mid-expression"],
-	])("flags global process usage in a production module: %s", (source) => {
+	])("flags global process usage in a production module: %s", async (source) => {
 		expect(flags(source).length).toBeGreaterThan(0);
 	});
 

@@ -247,6 +247,8 @@ export class Daemon {
 	private lastTapSweepMs: number | undefined;
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
 	private deliveringNow = false;
+	private readonly draining = new Set<string>();
+	private tickingNow = false;
 
 	/** Ports with the composer gate WELDED ON — see the constructor. */
 	private readonly ports: DaemonPorts;
@@ -351,7 +353,17 @@ export class Daemon {
 	}
 
 	/** One pass: rebuild the index, drive pending tmux spawns, drain bound inboxes. */
-	tick(): void {
+	async tick(): Promise<void> {
+		if (this.tickingNow) return; // never overlap two ticks
+		this.tickingNow = true;
+		try {
+			await this.tickLocked();
+		} finally {
+			this.tickingNow = false;
+		}
+	}
+
+	private async tickLocked(): Promise<void> {
 		const tickStartedAtMs = Date.now();
 		const tickAt = new Date(this.ports.now()).toISOString();
 		// One process-table capture per tick, taken lazily on the runtime axis's
@@ -738,7 +750,7 @@ export class Daemon {
 				// messages stay durable-unread in the inbox (the queue), nothing is
 				// marked read, and the sender's receipt stays `queued` until the
 				// post-compact injection emits a real `delivered`.
-				if (owns && !isCompacting(current, this.ports.now())) this.drainInbox(current.id);
+				if (owns && !isCompacting(current, this.ports.now())) await this.drainInbox(current.id);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : String(error);
 				this.log(`session ${d.id} tick error: ${detail}`);
@@ -809,24 +821,30 @@ export class Daemon {
 	 *  cadence would re-create the cost this pass exists to escape. A seat bound
 	 *  within the last tick therefore waits one tick for its first delivery — the
 	 *  tick's own drain covers exactly that case. */
-	deliverPass(): void {
+	async deliverPass(): Promise<void> {
 		if (this.deliveringNow) return; // never re-enter
 		this.deliveringNow = true;
 		try {
-			for (const d of this.index.all()) {
-				if (d.lifecycle !== "bound") continue;
-				if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) continue;
-				if (!d.paneId) continue;
+			const seats = this.index.all().filter((d) => {
+				if (d.lifecycle !== "bound") return false;
+				if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) return false;
+				if (!d.paneId) return false;
 				// Same hold the tick honours: input injected mid-compaction is eaten by
 				// the harness's fresh-context reset, so mail stays durable-unread.
-				if (isCompacting(d, this.ports.now())) continue;
-				try {
-					this.drainInbox(d.id);
-				} catch (error) {
-					const detail = error instanceof Error ? error.message : String(error);
-					this.log(`delivery pass ${d.id}: ${detail}`);
-				}
-			}
+				return !isCompacting(d, this.ports.now());
+			});
+			// Seats drain concurrently (a socket await on one seat must not delay
+			// another); within a seat the drain is sequential, so order holds.
+			await Promise.all(
+				seats.map(async (d) => {
+					try {
+						await this.drainInbox(d.id);
+					} catch (error) {
+						const detail = error instanceof Error ? error.message : String(error);
+						this.log(`delivery pass ${d.id}: ${detail}`);
+					}
+				}),
+			);
 		} finally {
 			this.deliveringNow = false;
 		}
@@ -1025,7 +1043,16 @@ export class Daemon {
 	/** Read a bound tmux session's durable unread inbox, inject each user message,
 	 *  then mark it read after the injection outcome. Receipt envelopes are
 	 *  persisted as events before marking and are never injected. */
-	private drainInbox(id: string): void {
+	private drainInbox(id: string): Promise<void> {
+		// One drain per seat at a time: the delivery pass and the tick's reconciliation
+		// drain both call here, and an awaited socket send must not be overtaken by a
+		// second drain re-reading the same queued rows.
+		if (this.draining.has(id)) return Promise.resolve();
+		this.draining.add(id);
+		return this.drainInboxLocked(id).finally(() => this.draining.delete(id));
+	}
+
+	private async drainInboxLocked(id: string): Promise<void> {
 		const target = this.index.get(id);
 		if (!target?.paneId) return;
 
@@ -1100,7 +1127,7 @@ export class Daemon {
 			) {
 				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			}
-			const consumed = drainTmuxInbox(
+			const consumed = await drainTmuxInbox(
 				target,
 				[message],
 				this.ports,
@@ -1507,24 +1534,20 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		log(`inline temp sweep skipped: ${(e as Error).message}`);
 	}
 	const timer = setInterval(() => {
-		try {
-			daemon.tick();
+		daemon
+			.tick()
 			// Heartbeat rider (#40 Defect 2): refresh the lock mtime AFTER a successful
 			// tick — a wedged tick (threw) must not advertise liveness.
-			touchDaemonHeartbeat(lockPath);
-		} catch (e) {
-			log(`tick error: ${(e as Error).message}`);
-		}
+			.then(() => touchDaemonHeartbeat(lockPath))
+			.catch((e: unknown) => log(`tick error: ${(e as Error).message}`));
 	}, opts.tickMs ?? TICK_MS);
 
 	// Delivery on its OWN timer (plan 071 D2), so reconciliation cost and delivery
 	// latency stop being the same number.
 	const deliveryTimer = setInterval(() => {
-		try {
-			daemon.deliverPass();
-		} catch (e) {
+		daemon.deliverPass().catch((e: unknown) => {
 			log(`delivery pass error: ${(e as Error).message}`);
-		}
+		});
 	}, opts.deliveryMs ?? DELIVERY_PASS_MS);
 
 	// Auto-start the Telegram bridge IN-PROCESS when a scoped telegram.env is present

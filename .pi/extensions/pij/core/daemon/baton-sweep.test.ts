@@ -45,7 +45,7 @@ function descriptor(overrides: Partial<SessionDescriptor> = {}): SessionDescript
 }
 
 describe("classifyBatonHolder", () => {
-	it("classifies healthy, unknown, pid-dead, and stalled holders", () => {
+	it("classifies healthy, unknown, pid-dead, and stalled holders", async () => {
 		expect(classifyBatonHolder(descriptor(), () => true, NOW)).toBe("healthy");
 		expect(classifyBatonHolder(null, () => true, NOW)).toBe("unknown");
 		expect(classifyBatonHolder(descriptor(), () => false, NOW)).toBe("dead");
@@ -63,7 +63,7 @@ describe("classifyBatonHolder", () => {
 });
 
 describe("evaluateBatonSweep", () => {
-	it("alerts once per dead/stalled transition and re-arms after recovery", () => {
+	it("alerts once per dead/stalled transition and re-arms after recovery", async () => {
 		const active = lease();
 		expect(evaluateBatonSweep(active, undefined, descriptor(), () => true, NOW)).toMatchObject({
 			kind: "record",
@@ -111,7 +111,7 @@ describe("evaluateBatonSweep", () => {
 		).toMatchObject({ kind: "alert", transition: "stalled" });
 	});
 
-	it("does not alert for healthy or unknown holders", () => {
+	it("does not alert for healthy or unknown holders", async () => {
 		const active = lease();
 		expect(evaluateBatonSweep(active, undefined, descriptor(), () => true, NOW).kind).toBe(
 			"record",
@@ -121,7 +121,7 @@ describe("evaluateBatonSweep", () => {
 });
 
 describe("BatonSweep", () => {
-	it("pushes one alert for a dead holder and never releases the lease", () => {
+	it("pushes one alert for a dead holder and never releases the lease", async () => {
 		const active = lease();
 		const store = new FakeBatonStore([definition()], [["dotnet", active]]);
 		const registry = new FakeRegistry([descriptor()]);
@@ -145,7 +145,7 @@ describe("BatonSweep", () => {
 		expect(store.leases.get("dotnet")).toEqual(active);
 	});
 
-	it("records healthy/unknown status without pushing", () => {
+	it("records healthy/unknown status without pushing", async () => {
 		const active = lease();
 		const store = new FakeBatonStore([definition()], [["dotnet", active]]);
 		const notices = new FakeBatonNoticeSink();

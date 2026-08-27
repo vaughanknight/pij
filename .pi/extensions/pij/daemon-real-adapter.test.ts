@@ -43,11 +43,11 @@ class ScanFreeDaemonTmux extends DaemonTmux {
 let home: string;
 let logs: string[];
 
-beforeEach(() => {
+beforeEach(async () => {
 	home = mkdtempSync(join(tmpdir(), "pij-real-adapter-"));
 	logs = [];
 });
-afterEach(() => {
+afterEach(async () => {
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -66,7 +66,7 @@ const REQUIRED_PORT_METHODS = [
 ] as const satisfies readonly (keyof DaemonPorts)[];
 
 describe("the Daemon over the REAL DaemonTmux class instance", () => {
-	it("PROVES the shape that hid the bug: DaemonTmux's methods are on the prototype, not own properties", () => {
+	it("PROVES the shape that hid the bug: DaemonTmux's methods are on the prototype, not own properties", async () => {
 		const adapter = new ScanFreeDaemonTmux();
 
 		// This is the entire reason plain-object fakes could not catch it.
@@ -80,7 +80,7 @@ describe("the Daemon over the REAL DaemonTmux class instance", () => {
 		expect(spread.now).toBeUndefined();
 	});
 
-	it("keeps every port method callable after the daemon wraps a real adapter", () => {
+	it("keeps every port method callable after the daemon wraps a real adapter", async () => {
 		// Constructing the Daemon applies the wrapper; reaching into it is the only
 		// way to assert on the wrapped object itself.
 		const daemon = new Daemon(
@@ -97,7 +97,7 @@ describe("the Daemon over the REAL DaemonTmux class instance", () => {
 		}
 	});
 
-	it("ticks without throwing — the exact assertion the outage would have failed", () => {
+	it("ticks without throwing — the exact assertion the outage would have failed", async () => {
 		const daemon = new Daemon(
 			home,
 			new ScanFreeDaemonTmux(),
@@ -114,7 +114,7 @@ describe("the Daemon over the REAL DaemonTmux class instance", () => {
 		daemon.dispose();
 	});
 
-	it("the wrapper's own sendText override still delegates to the real adapter's method", () => {
+	it("the wrapper's own sendText override still delegates to the real adapter's method", async () => {
 		const adapter = new ScanFreeDaemonTmux();
 		const daemon = new Daemon(home, adapter, new FsRegistry(home), new FsChannel(home), () => {});
 		const wrapped = (daemon as unknown as { ports: DaemonPorts }).ports;
@@ -127,7 +127,7 @@ describe("the Daemon over the REAL DaemonTmux class instance", () => {
 		expect(wrapped.isAlive(process.pid)).toBe(true);
 	});
 
-	it("degrades honestly with no tmux: a missing pane reads empty, never throws", () => {
+	it("degrades honestly with no tmux: a missing pane reads empty, never throws", async () => {
 		const adapter = new ScanFreeDaemonTmux();
 		expect(() => adapter.capturePane("%99999")).not.toThrow();
 		expect(adapter.capturePane("%99999")).toBe("");

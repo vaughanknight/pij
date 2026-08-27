@@ -1,4 +1,4 @@
-// pij-messaging — deliver to a Claude Code seat over its inbox socket (PoC).
+// pij-messaging — deliver to a Claude Code seat over its inbox socket.
 //
 // Claude Code ≥ 2.1.224 binds `/tmp/cc-socks/<pid>.sock` and registers
 // `~/.claude/sessions/<pid>.json` (fields incl. `pid`, `tmux`, `messagingSocketPath`).
@@ -13,12 +13,11 @@
 // behind a 5-minute approval dialog. `from` is informational (reply routing is
 // pij's job — the body already carries `[pij from <id>]`).
 //
-// Delivery is SYNCHRONOUS from the daemon's point of view (the drain loop is
-// sync). We pay a short-lived `node -e` child per send (~40 ms) rather than
-// re-plumb the loop for the PoC; day-2 makes the drain async and uses `net`.
+// Async (`net` directly): the drain loop awaits it (day-2 item 1 — the PoC
+// paid a `node -e` child per send).
 
-import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createConnection } from "node:net";
 import { join } from "node:path";
 import { frame } from "../core/message.js";
 import type { SessionId } from "../core/types.js";
@@ -116,57 +115,71 @@ export interface SocketSendResult {
 	readonly detail?: string;
 }
 
-// The child: connect, write the frame, then listen `ackWaitMs` for a
-// `peer_message_status` naming our msg_id as dropped. Exit codes:
-// 0 = written (and not reported dropped), 2 = reported dropped, 1 = connect/write error.
-const CHILD = `
-const net = require("node:net");
-const [sock, ackWaitMs] = process.argv.slice(1);
-let frameLine = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d) => { frameLine += d; });
-process.stdin.on("end", () => {
-  let msgId = "";
-  try { msgId = JSON.parse(frameLine).msg_id; } catch {}
-  const c = net.createConnection(sock);
-  let buf = "";
-  const done = (code, detail) => { try { c.destroy(); } catch {} process.stdout.write(detail || ""); process.exit(code); };
-  c.on("error", (e) => done(1, String(e && e.code || e)));
-  c.on("connect", () => {
-    c.write(frameLine + "\\n", () => {
-      setTimeout(() => done(0, ""), Number(ackWaitMs));
-    });
-  });
-  c.on("data", (d) => {
-    buf += d.toString();
-    for (const line of buf.split("\\n")) {
-      if (!line) continue;
-      try {
-        const st = JSON.parse(line);
-        if (st.type === "peer_message_status" && Array.isArray(st.dropped_msg_ids) && st.dropped_msg_ids.includes(msgId)) {
-          done(2, "dropped: " + (st.drop_reason || "unknown"));
-        }
-      } catch {}
-    }
-  });
-});
-`;
-
-/** Write one frame to a Claude inbox socket and wait briefly for a drop report.
- *  `confirmed` = the receiver accepted the bytes and did not report our msg_id
- *  dropped within `ackWaitMs`; `failed` = nothing landed (retry-safe). */
-export function sendClaudeFrameSync(
+/** Write one frame to a Claude inbox socket and listen `ackWaitMs` for a
+ *  `peer_message_status` naming our msg_id as dropped. `confirmed` = the
+ *  receiver accepted the bytes and did not report our msg_id dropped within the
+ *  window; `failed` = nothing landed (retry-safe). Never throws. */
+export function sendClaudeFrame(
 	socketPath: string,
 	frameLine: string,
-	opts: { readonly ackWaitMs?: number } = {},
-): SocketSendResult {
-	if (!existsSync(socketPath)) return { outcome: "failed", detail: `ENOENT ${socketPath}` };
-	const r = spawnSync(process.execPath, ["-e", CHILD, socketPath, String(opts.ackWaitMs ?? 150)], {
-		input: frameLine,
-		encoding: "utf8",
-		timeout: 5_000,
+	opts: { readonly ackWaitMs?: number; readonly connectTimeoutMs?: number } = {},
+): Promise<SocketSendResult> {
+	if (!existsSync(socketPath)) {
+		return Promise.resolve({ outcome: "failed", detail: `ENOENT ${socketPath}` });
+	}
+	let msgId = "";
+	try {
+		msgId = parsePeerFrame(frameLine).msg_id;
+	} catch {
+		/* a frame we cannot parse cannot be matched in a drop report — still send it */
+	}
+	const ackWaitMs = opts.ackWaitMs ?? 150;
+	return new Promise((resolve) => {
+		let settled = false;
+		let buf = "";
+		const c = createConnection(socketPath);
+		const done = (r: SocketSendResult): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(connectTimer);
+			c.destroy();
+			resolve(r);
+		};
+		const connectTimer = setTimeout(
+			() => done({ outcome: "failed", detail: "connect timeout" }),
+			opts.connectTimeoutMs ?? 2_000,
+		);
+		c.on("error", (e) =>
+			done({ outcome: "failed", detail: String((e as NodeJS.ErrnoException).code ?? e) }),
+		);
+		c.on("connect", () => {
+			clearTimeout(connectTimer);
+			c.write(`${frameLine}\n`, (err) => {
+				if (err) return done({ outcome: "failed", detail: String(err) });
+				setTimeout(() => done({ outcome: "confirmed" }), ackWaitMs);
+			});
+		});
+		c.on("data", (d) => {
+			buf += d.toString();
+			for (const line of buf.split("\n")) {
+				if (!line) continue;
+				try {
+					const st = JSON.parse(line) as {
+						type?: string;
+						dropped_msg_ids?: string[];
+						drop_reason?: string;
+					};
+					if (
+						st.type === "peer_message_status" &&
+						Array.isArray(st.dropped_msg_ids) &&
+						st.dropped_msg_ids.includes(msgId)
+					) {
+						done({ outcome: "failed", detail: `dropped: ${st.drop_reason ?? "unknown"}` });
+					}
+				} catch {
+					/* partial line — wait for more */
+				}
+			}
+		});
 	});
-	if (r.error) return { outcome: "failed", detail: String(r.error) };
-	if (r.status === 0) return { outcome: "confirmed" };
-	return { outcome: "failed", detail: r.stdout || r.stderr || `exit ${r.status}` };
 }

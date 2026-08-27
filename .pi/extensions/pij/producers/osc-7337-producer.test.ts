@@ -37,10 +37,22 @@ describe("pij OSC 7337 emitter — Producer B mapping", () => {
 
 	it("entering question → agent.state question + interrupt raised (kind question)", () => {
 		const f = fakeSink();
-		emitStateWrite({ nodeId: "n1", word: "question", prevWord: "ready", note: "which branch?" }, f.sink);
+		emitStateWrite(
+			{ nodeId: "n1", word: "question", prevWord: "ready", note: "which branch?" },
+			f.sink,
+		);
 		expect(f.events()).toEqual([
 			{ v: 2, cmd: "agent.state", state: "question", detail: "which branch?", source: SRC },
-			{ v: 2, cmd: "agent.event", kind: "interrupt", phase: "raised", id: "intr-n1", interrupt_kind: "question", detail: "which branch?", source: SRC },
+			{
+				v: 2,
+				cmd: "agent.event",
+				kind: "interrupt",
+				phase: "raised",
+				id: "intr-n1",
+				interrupt_kind: "question",
+				detail: "which branch?",
+				source: SRC,
+			},
 		]);
 	});
 
@@ -48,7 +60,12 @@ describe("pij OSC 7337 emitter — Producer B mapping", () => {
 		const f = fakeSink();
 		emitStateWrite({ nodeId: "n2", word: "blocked", prevWord: "ready" }, f.sink);
 		const ev = f.events();
-		expect(ev[1]).toMatchObject({ kind: "interrupt", phase: "raised", interrupt_kind: "question", id: "intr-n2" });
+		expect(ev[1]).toMatchObject({
+			kind: "interrupt",
+			phase: "raised",
+			interrupt_kind: "question",
+			id: "intr-n2",
+		});
 	});
 
 	it("leaving question/blocked → interrupt cleared (paired id)", () => {
@@ -70,12 +87,33 @@ describe("pij OSC 7337 emitter — Producer B mapping", () => {
 	it("done + refs → agent.state done + claim with evidence mapped from refs", () => {
 		const f = fakeSink();
 		emitStateWrite(
-			{ nodeId: "n1", word: "done", prevWord: "ready", note: "s080 P4 done", refs: ["state:done", "sha:f66d1a9", "branch:feat/x", "selftest:A/t", "selftest:B/u", "file:x.md"] },
+			{
+				nodeId: "n1",
+				word: "done",
+				prevWord: "ready",
+				note: "s080 P4 done",
+				refs: [
+					"state:done",
+					"sha:f66d1a9",
+					"branch:feat/x",
+					"selftest:A/t",
+					"selftest:B/u",
+					"file:x.md",
+				],
+			},
 			f.sink,
 		);
 		expect(f.events()).toEqual([
 			{ v: 2, cmd: "agent.state", state: "done", detail: "s080 P4 done", source: SRC },
-			{ v: 2, cmd: "agent.event", kind: "claim", id: "claim-n1", claim: "s080 P4 done", evidence: { sha: "f66d1a9", branch: "feat/x", selftests: ["A/t", "B/u"], files: ["x.md"] }, source: SRC },
+			{
+				v: 2,
+				cmd: "agent.event",
+				kind: "claim",
+				id: "claim-n1",
+				claim: "s080 P4 done",
+				evidence: { sha: "f66d1a9", branch: "feat/x", selftests: ["A/t", "B/u"], files: ["x.md"] },
+				source: SRC,
+			},
 		]);
 	});
 
@@ -95,18 +133,33 @@ describe("pij OSC 7337 emitter — Producer B mapping", () => {
 
 	it("HONESTY: emits ONLY interrupt/claim/agent.state — never tool/turn/usage", () => {
 		const f = fakeSink();
-		for (const w of ["blocked", "question", "hold", "waiting", "ready", "failed", "cancelled", "done"] as const) {
+		for (const w of [
+			"blocked",
+			"question",
+			"hold",
+			"waiting",
+			"ready",
+			"failed",
+			"cancelled",
+			"done",
+		] as const) {
 			emitStateWrite({ nodeId: "n", word: w, prevWord: "ready" }, f.sink);
 		}
 		emitLiveness({ nodeId: "n", liveness: "working" }, f.sink);
-		const bad = f.events().filter((e) => e.kind === "tool" || e.kind === "turn" || e.kind === "usage");
+		const bad = f
+			.events()
+			.filter((e) => e.kind === "tool" || e.kind === "turn" || e.kind === "usage");
 		expect(bad).toEqual([]);
 	});
 
 	it("clamps: detail ≤120, sha ≤40, ≤8 selftests, ≤32 files", () => {
 		const long = "x".repeat(300);
 		const many = Array.from({ length: 40 }, (_, i) => `file:f${i}`);
-		const ev = evidenceFromRefs(["sha:" + "a".repeat(60), ...many, ...Array.from({ length: 12 }, (_, i) => `selftest:s${i}`)]);
+		const ev = evidenceFromRefs([
+			"sha:" + "a".repeat(60),
+			...many,
+			...Array.from({ length: 12 }, (_, i) => `selftest:s${i}`),
+		]);
 		expect(ev?.sha?.length).toBe(40);
 		expect(ev?.files?.length).toBe(32);
 		expect(ev?.selftests?.length).toBe(8);

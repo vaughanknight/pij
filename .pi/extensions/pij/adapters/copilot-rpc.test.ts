@@ -4,7 +4,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildCopilotPrompt, sendCopilotRpcSync } from "./copilot-rpc.js";
+import { buildCopilotPrompt, sendCopilotRpc } from "./copilot-rpc.js";
 
 const BIG = `HEAD sha 0001\n${Array.from({ length: 30 }, (_, i) => `L${i}: ${"k".repeat(95)}`).join("\n")}\nTAIL`;
 
@@ -64,10 +64,10 @@ describe("buildCopilotPrompt", () => {
 	});
 });
 
-describe("sendCopilotRpcSync", () => {
+describe("sendCopilotRpc", () => {
 	it("sends session.send with the 3 KB prompt byte-exact and returns the server's messageId", async () => {
 		const { port, log } = await startServer();
-		const out = sendCopilotRpcSync({ port, sessionId: "sess-1", prompt: BIG, mode: "enqueue" });
+		const out = await sendCopilotRpc({ port, sessionId: "sess-1", prompt: BIG, mode: "enqueue" });
 		expect(out).toMatchObject({ outcome: "confirmed" });
 		expect(out.messageId).toMatch(/^mid-pij-/);
 		const reqs = readFileSync(log, "utf8")
@@ -81,13 +81,13 @@ describe("sendCopilotRpcSync", () => {
 
 	it("reports failed when the server answers with a JSON-RPC error", async () => {
 		const { port } = await startServer("error");
-		const out = sendCopilotRpcSync({ port, sessionId: "sess-1", prompt: "hi" });
+		const out = await sendCopilotRpc({ port, sessionId: "sess-1", prompt: "hi" });
 		expect(out.outcome).toBe("failed");
 		expect(out.detail).toContain("no such session");
 	});
 
-	it("reports failed (retryable) when nothing listens on the port", () => {
-		const out = sendCopilotRpcSync({ port: 1, sessionId: "s", prompt: "hi", timeoutMs: 500 });
+	it("reports failed (retryable) when nothing listens on the port", async () => {
+		const out = await sendCopilotRpc({ port: 1, sessionId: "s", prompt: "hi", timeoutMs: 500 });
 		expect(out.outcome).toBe("failed");
 		expect(out.detail).toMatch(/ECONNREFUSED|EACCES|timeout/);
 	});

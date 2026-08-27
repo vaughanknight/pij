@@ -9,7 +9,7 @@ import {
 	buildPeerFrame,
 	parsePeerFrame,
 	resolveClaudeSocket,
-	sendClaudeFrameSync,
+	sendClaudeFrame,
 } from "./claude-socket.js";
 
 const BIG_BODY = `HEAD sha 0001\n${Array.from({ length: 30 }, (_, i) => `L${i}: ${"k".repeat(95)}`).join("\n")}\nTAIL`;
@@ -82,12 +82,12 @@ describe("buildPeerFrame / parsePeerFrame", () => {
 	});
 });
 
-describe("sendClaudeFrameSync", () => {
+describe("sendClaudeFrame", () => {
 	it("delivers a 3 KB multi-line body byte-exact and reports confirmed", async () => {
 		const sock = join(dir, "1.sock");
 		const log = await listen(sock);
 		const line = buildPeerFrame({ from: "pij-a", body: BIG_BODY, msgId: "m-big" });
-		const out = sendClaudeFrameSync(sock, line, { ackWaitMs: 50 });
+		const out = await sendClaudeFrame(sock, line, { ackWaitMs: 50 });
 		expect(out.outcome).toBe("confirmed");
 		const received = receivedLines(log);
 		expect(received.length).toBe(1);
@@ -95,8 +95,8 @@ describe("sendClaudeFrameSync", () => {
 		expect(frame.message.content).toContain(`[pij from pij-a] ${BIG_BODY}`);
 	});
 
-	it("reports failed (retryable) when the socket is absent", () => {
-		const out = sendClaudeFrameSync(
+	it("reports failed (retryable) when the socket is absent", async () => {
+		const out = await sendClaudeFrame(
 			join(dir, "missing.sock"),
 			buildPeerFrame({ from: "a", body: "b", msgId: "m" }),
 			{
@@ -110,7 +110,7 @@ describe("sendClaudeFrameSync", () => {
 	it("reports failed when the receiver reports our msg_id dropped", async () => {
 		const sock = join(dir, "2.sock");
 		await listen(sock, "rate_limited");
-		const out = sendClaudeFrameSync(
+		const out = await sendClaudeFrame(
 			sock,
 			buildPeerFrame({ from: "a", body: "b", msgId: "m-drop" }),
 			{ ackWaitMs: 300 },

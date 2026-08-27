@@ -35,9 +35,9 @@ import {
 	buildPeerFrame,
 	claudeSessionsDir,
 	resolveClaudeSocket,
-	sendClaudeFrameSync,
+	sendClaudeFrame,
 } from "./claude-socket.js";
-import { buildCopilotPrompt, sendCopilotRpcSync } from "./copilot-rpc.js";
+import { buildCopilotPrompt, sendCopilotRpc } from "./copilot-rpc.js";
 import { NodeProcess } from "./process.js";
 import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
@@ -266,23 +266,22 @@ export class DaemonTmux implements DaemonPorts {
 
 	/** PoC (poc/comms-sqlite-socket): Claude inbox-socket delivery. See
 	 *  adapters/claude-socket.ts. `no-socket` lets the loop fall back to typing. */
-	sendSocket(target: SessionDescriptor, message: DeliveredMessage): SendOutcome | "no-socket" {
+	async sendSocket(
+		target: SessionDescriptor,
+		message: DeliveredMessage,
+	): Promise<SendOutcome | "no-socket"> {
 		if (target.harness === "copilot") {
 			if (target.rpcPort === undefined || !target.harnessSessionId) return "no-socket";
-			const r = sendCopilotRpcSync({
+			const r = await sendCopilotRpc({
 				port: target.rpcPort,
 				sessionId: target.harnessSessionId,
 				prompt: buildCopilotPrompt(message.from, message.body),
 				mode: "enqueue",
 			});
 			if (r.outcome === "confirmed") return "confirmed";
-			try {
-				process.stderr.write(
-					`⚠️  copilot RPC FAILED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "unknown"}; message stays queued\n`,
-				);
-			} catch {
-				// diagnostic only
-			}
+			this.warn(
+				`⚠️  copilot RPC FAILED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "unknown"}; message stays queued`,
+			);
 			return "failed";
 		}
 		if (target.harness !== "claude") return "no-socket";
@@ -297,18 +296,22 @@ export class DaemonTmux implements DaemonPorts {
 			body: message.body,
 			msgId: message.messageId,
 		});
-		const result = sendClaudeFrameSync(resolved.socketPath, line, {
+		const result = await sendClaudeFrame(resolved.socketPath, line, {
 			ackWaitMs: this.socketAckWaitMs,
 		});
 		if (result.outcome === "confirmed") return "confirmed";
+		this.warn(
+			`⚠️  claude SOCKET FAILED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "unknown"}; message stays queued`,
+		);
+		return "failed";
+	}
+
+	private warn(line: string): void {
 		try {
-			process.stderr.write(
-				`⚠️  claude SOCKET FAILED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "unknown"}; message stays queued\n`,
-			);
+			process.stderr.write(`${line}\n`);
 		} catch {
 			// diagnostic only
 		}
-		return "failed";
 	}
 
 	capturePane(paneId: string): string {
