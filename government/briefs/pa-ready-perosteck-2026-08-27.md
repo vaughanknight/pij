@@ -46,3 +46,8 @@ Every sweep: instrument `pgrep -f "telegram start"` (and `pij state pij-telegram
 
 ### Chore 5 instrument change (2026-08-27 20:5xZ — item 29 live: the daemon now runs the bridge IN-PROCESS)
 `pgrep -f "telegram start"` is no longer the instrument — a healthy bridge has NO standalone process. Use `pij state pij-telegram` (alive = "active (pid <daemon pid> alive)") and, if alive, no further check. DEAD = `pij state pij-telegram` says dead/pid gone. Remediation on DEAD is now the DAEMON's (it auto-restarts within a tick); if it stays dead across two sweeps, relay to the prime verbatim: "bridge dead across 2 sweeps despite supervision — o-prime: check the daemon pane for 'telegram:' lines".
+
+## Amendment 2026-08-27 23:5xZ — chore 6: human-channel duplicate detector (E39)
+Each sweep, run exactly:
+`sqlite3 ~/.pij/queue/pij.sqlite "select count(*) from deliveries where to_id='pij-telegram' and attempt>1 and updated_at > (strftime('%s','now')-1260)*1000"`
+Report the number in the sweep line as `TG attempt>1: N`. N>0 means a probable duplicate on Vaughan's phone (a body redelivered after the 60 s lease); relay the count and the `seq` values (`select seq from deliveries where … ` same predicate) — sensor only, never retire or resend. Until item 24 is live, N>0 is expected for bodies ≥ ~417 B; the prime tracks the trend.
