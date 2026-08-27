@@ -32,8 +32,8 @@ You sit in a governed hierarchy and these invariants bind you everywhere, in any
    descriptive touch set, not a grant: persist and tell the o-prime about a newly
    needed local path, then continue. Notification never permits writing government,
    CLI-only flow state, another stream's worktree, or any hard ownership boundary.
-2. **Pointer communication.** Write the file, send the path. Never inline a packet
-   body. One instruction per send.
+2. **Persist first; route by transport.** Persist the packet; socket/RPC/in-process seats get the byte-exact body;
+   a socketless tmux seat gets only a short path pointer (composer-idle guard first). Concise sends (C10). Ruling 2026-08-27.
 3. **Canary before brief, every spawn, recursively.** Round-trip nonce → mechanical
    identity check (registry row + pane probe, never a bare self-assertion) → a second
    send to prove input reliability. Canary records go to disk at pass time.
