@@ -122,17 +122,24 @@ Retire SQLite rows with:
 
 ```sh
 pij queue retire --reason <text> [--to <id>] [--from <id>] \
-  [--older-than 30m|2h|1d] [--state queued,parked] [--dry-run] [--json]
+  [--older-than 30m|2h|1d] [--state queued,parked] \
+  [--all-recipients] [--dry-run] [--json]
 ```
+
+At least one selector is required; use `--all-recipients` to confirm an
+intentionally machine-wide operation. `--dry-run --all-recipients` reports the
+matching count for each recipient before the total.
 
 The daemon automatically retires open mail only when the recipient descriptor
 records a complete deliberate close: `lifecycle:"dissolved"`, a `closeIntent`,
-and `terminal.disposition:"requested"`. An accidental pane-gone dissolve stays
-open for revive. A later `pij revive` requeues only rows whose retirement reason
-is `recipient-closed`, recording `requeued` evidence; operator-retired rows stay
-terminal. On `PIJ_QUEUE_BACKEND=dual`, retire also writes advisory legacy
-`read-*` markers. The fs-only backend has no state machine and points operators
-at the retained `~/.pij/<id>/inbox/msg-*.json` files instead.
+`terminal.disposition:"requested"`, and no `revivePendingAt`. The fourth guard is
+persisted before pi/omp mail is requeued, so daemon ticks during the self-adopting
+boot window cannot retire it again. An accidental pane-gone dissolve stays open
+for revive. A later `pij revive` requeues only rows whose retirement reason is
+`recipient-closed`, recording `requeued` evidence; operator-retired rows stay
+terminal. On `PIJ_QUEUE_BACKEND=dual`, retire also writes advisory legacy `read-*`
+markers. The fs-only backend has no state machine and points operators at the
+retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 
 ---
 

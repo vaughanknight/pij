@@ -77,3 +77,50 @@
   retirement; the `closeIntent` and requested-terminal checks are
   one-directional safety interlocks whose removal could only retire more,
   including mail that must remain revivable.
+
+## FX-01 - Cold-review fixes
+
+### RED
+
+- Bare `queue retire --reason too-wide` returned exit 0 instead of the required
+  selector/confirmation error.
+- `pij queue --all --tail 3` and `--all --last 3` returned exit 0 instead of an
+  `E-ARG` choose-one error.
+
+### Sweep-brake mutation proof
+
+- Removed only the `closeIntent` guard: RED with
+  `pij-requested-no-intent must remain queued`, received `retired`.
+- Restored `closeIntent`, then removed only the requested-terminal guard: RED
+  with `pij-close-unrequested must remain queued`, received `retired`.
+- Restored both guards; `git diff --exit-code -- .pi/extensions/pij/daemon.ts`
+  passed, proving no production mutation remained.
+
+### GREEN
+
+- `queue retire` now requires at least one of `--to`, `--from`,
+  `--older-than`, or `--state`, unless the operator explicitly passes
+  `--all-recipients`.
+- `--dry-run --all-recipients` reports matching counts per recipient and keeps
+  the database unchanged.
+- `pij queue --all` now rejects both `--tail` and its `--last` alias with an
+  `E-ARG` choose-one message.
+- The operator guide now names `revivePendingAt === undefined` as the fourth
+  sweep guard and explains its persist-before-mutate pi/omp boot protection.
+
+### Gates
+
+| Gate | Result |
+|------|--------|
+| Focused FX-01 tests | Passed: 3 tests; 114 unrelated tests skipped. |
+| Sweep mutation 1 | Expected RED: `pij-requested-no-intent` became `retired`. |
+| Sweep mutation 2 | Expected RED: `pij-close-unrequested` became `retired`. |
+| `npx tsc --noEmit -p .` | Passed. |
+| Scoped Biome check on the three touched TypeScript files | Passed. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,952 tests passed, 15 skipped. Log: `.harness/temp/s391/vitest-phase2-fx01.log`. |
+| `harness checks --quick` | The same repository baseline remains red outside this fix: unrelated Biome diagnostics, missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`, and the derived Windows-compat lint failure. |
+
+### Follow-up
+
+- An operator-facing un-retire CLI remains intentionally out of scope for
+  FX-01 and should be considered separately before exposing broader undo.

@@ -3259,6 +3259,12 @@ describe("bin-owned output survives the 64 KiB pipe boundary (AC-16)", () => {
 			const tail = run(["queue", "--tail", "3"]);
 			expect((tail.stdout.match(/pij-stdout-target-/g) ?? []).length).toBe(3);
 			expect(tail.stdout).toContain("pij-stdout-target-0811");
+			for (const tailFlag of ["--tail", "--last"]) {
+				const conflict = run(["queue", "--all", tailFlag, "3"]);
+				expect(conflict.status).toBe(2);
+				expect(`${conflict.stdout}${conflict.stderr}`).toContain("E-ARG");
+				expect(`${conflict.stdout}${conflict.stderr}`).toContain("choose one");
+			}
 
 			const json = run(["queue", "--json"]);
 			const parsed = JSON.parse(json.stdout) as {
@@ -3331,6 +3337,7 @@ describe("pij queue retire", () => {
 		try {
 			const queue = new SqliteQueue(home, { now: () => Date.now() - 3 * 60 * 60_000 });
 			queue.deliver({ from: "pij-a", to: "pij-x", body: "old" });
+			queue.deliver({ from: "pij-a", to: "pij-y", body: "other recipient" });
 			queue.close();
 
 			const missing = pij(["queue", "retire", "--to", "pij-x"], {
@@ -3340,6 +3347,25 @@ describe("pij queue retire", () => {
 			expect(missing.code).toBe(2);
 			expect(missing.out).toContain("E-ARG");
 			expect(missing.out).toContain("--reason");
+			const unscoped = pij(["queue", "retire", "--reason", "too-wide"], {
+				PIJ_HOME: home,
+				PIJ_QUEUE_BACKEND: "sqlite",
+			});
+			expect(unscoped.code).toBe(2);
+			expect(unscoped.out).toContain("E-ARG");
+			for (const selector of ["--to", "--from", "--older-than", "--state"]) {
+				expect(unscoped.out).toContain(selector);
+			}
+			expect(unscoped.out).toContain("--all-recipients");
+
+			const allRecipients = pij(
+				["queue", "retire", "--all-recipients", "--reason", "confirmed", "--dry-run"],
+				{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
+			);
+			expect(allRecipients.code).toBe(0);
+			expect(allRecipients.out).toContain("pij-x: 1");
+			expect(allRecipients.out).toContain("pij-y: 1");
+			expect(allRecipients.out).toContain("would retire 2/2");
 
 			for (const age of ["30m", "2h", "1d"]) {
 				const dryRun = pij(
@@ -3390,6 +3416,7 @@ describe("pij queue retire", () => {
 
 			const reopened = new SqliteQueue(home);
 			expect(reopened.summary({ to: "pij-x" }).map((row) => row.state)).toEqual(["queued"]);
+			expect(reopened.summary({ to: "pij-y" }).map((row) => row.state)).toEqual(["queued"]);
 			reopened.close();
 		} finally {
 			rmSync(home, { recursive: true, force: true });

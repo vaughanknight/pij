@@ -536,7 +536,7 @@ const STATE_GLYPH: Record<DeliveryState, string> = {
 };
 
 const QUEUE_RETIRE_USAGE =
-	"pij queue retire --reason <text> [--to <id>] [--from <id>] [--older-than 30m|2h|1d] [--state queued,parked] [--dry-run] [--json]";
+	"pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]";
 
 function failQueueRetire(message: string): never {
 	process.stderr.write(`E-ARG: ${message}\n${QUEUE_RETIRE_USAGE}\n`);
@@ -646,6 +646,7 @@ function runQueueRetire(argv: readonly string[]): void {
 	let olderThanMs: number | undefined;
 	let state: DeliveryState[] | undefined;
 	let reason: string | undefined;
+	let allRecipients = false;
 	let dryRun = false;
 	let json = false;
 	const valueAfter = (index: number, flag: string): string => {
@@ -692,6 +693,9 @@ function runQueueRetire(argv: readonly string[]): void {
 				reason = valueAfter(index, arg);
 				index += 1;
 				break;
+			case "--all-recipients":
+				allRecipients = true;
+				break;
 			case "--dry-run":
 				dryRun = true;
 				break;
@@ -704,6 +708,13 @@ function runQueueRetire(argv: readonly string[]): void {
 	}
 	if (reason === undefined || reason.trim() === "") {
 		failQueueRetire("--reason is required");
+	}
+	const hasSelector =
+		to !== undefined || from !== undefined || olderThanMs !== undefined || state !== undefined;
+	if (!hasSelector && !allRecipients) {
+		failQueueRetire(
+			"choose at least one selector (--to, --from, --older-than, --state) or pass --all-recipients",
+		);
 	}
 
 	const channel = openChannel(pijHome);
@@ -723,16 +734,23 @@ function runQueueRetire(argv: readonly string[]): void {
 						.map((row) => row.id),
 				)
 			: undefined;
-	const result = queue.retire(
-		{
-			...(to === undefined ? {} : { to }),
-			...(from === undefined ? {} : { from }),
-			...(olderThanMs === undefined ? {} : { olderThanMs }),
-			...(state === undefined ? {} : { state }),
-		},
-		reason,
-		{ dryRun },
-	);
+	const retireFilter = {
+		...(to === undefined ? {} : { to }),
+		...(from === undefined ? {} : { from }),
+		...(olderThanMs === undefined ? {} : { olderThanMs }),
+		...(state === undefined ? {} : { state }),
+	};
+	const recipientMatches =
+		dryRun && allRecipients && !hasSelector
+			? queue
+					.openRecipients()
+					.map((recipient) => ({
+						to: recipient,
+						matched: queue.retire({ to: recipient }, reason, { dryRun: true }).matched,
+					}))
+					.filter((entry) => entry.matched > 0)
+			: [];
+	const result = queue.retire(retireFilter, reason, { dryRun });
 	if (channel instanceof DualWriteChannel && beforeRetired !== undefined && !dryRun) {
 		for (const row of queue.summary({ ...(to === undefined ? {} : { to }) })) {
 			if (row.state !== "retired" || beforeRetired.has(row.id)) continue;
@@ -755,6 +773,7 @@ function runQueueRetire(argv: readonly string[]): void {
 				matched: result.matched,
 				reason,
 				...(dryRun ? { dryRun: true } : {}),
+				...(recipientMatches.length > 0 ? { recipients: recipientMatches } : {}),
 			})}\n`,
 		);
 		process.exitCode = 0;
@@ -762,6 +781,9 @@ function runQueueRetire(argv: readonly string[]): void {
 	}
 	const verb = dryRun ? "would retire" : "retired";
 	const count = dryRun ? result.matched : result.retired;
+	for (const recipient of recipientMatches) {
+		process.stdout.write(`${recipient.to}: ${recipient.matched} matching delivery(s)\n`);
+	}
 	process.stdout.write(`${verb} ${count}/${result.matched} delivery(s) — reason: ${reason}\n`);
 	process.exitCode = 0;
 }
@@ -787,6 +809,11 @@ function runQueue(argv: readonly string[]): void {
 	const to = flag("--to") ?? positional;
 	const sinceRaw = flag("--since");
 	const tailRaw = flag("--tail") ?? flag("--last");
+	const all = argv.includes("--all");
+	if (all && tailRaw !== undefined) {
+		process.stderr.write("E-ARG: --all and --tail/--last cannot be combined; choose one\n");
+		process.exit(2);
+	}
 	const sinceSeq = sinceRaw === undefined ? undefined : Number(sinceRaw);
 	const tail = tailRaw === undefined ? undefined : Number(tailRaw);
 	if (
@@ -812,7 +839,7 @@ function runQueue(argv: readonly string[]): void {
 		...(sinceSeq !== undefined ? { sinceSeq } : {}),
 	};
 	const total = queue.count(filter);
-	const limit = tail ?? (argv.includes("--all") ? undefined : 200);
+	const limit = tail ?? (all ? undefined : 200);
 	const rows = queue.summary({
 		...filter,
 		...(limit === undefined ? {} : { limit }),

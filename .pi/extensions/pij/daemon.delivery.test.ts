@@ -297,6 +297,35 @@ describe("closed-recipient queue retirement", () => {
 				}),
 			);
 			registry.write(seat({ id: "pij-live", harness: "pi", harnessSessionId: "native-live" }));
+			registry.write(
+				seat({
+					id: "pij-requested-no-intent",
+					harnessSessionId: "native-requested-no-intent",
+					terminal: {
+						disposition: "requested",
+						observedAt: new Date(nowMs).toISOString(),
+						evidence: "pane-missing",
+					},
+				}),
+			);
+			registry.dissolve("pij-requested-no-intent");
+			registry.write(
+				seat({
+					id: "pij-close-unrequested",
+					harnessSessionId: "native-close-unrequested",
+					closeIntent: {
+						actor: "pij-boss",
+						kind: "cli-close",
+						requestedAt: new Date(nowMs).toISOString(),
+					},
+					terminal: {
+						disposition: "unrequested-by-pij",
+						observedAt: new Date(nowMs).toISOString(),
+						evidence: "pane-missing",
+					},
+				}),
+			);
+			registry.dissolve("pij-close-unrequested");
 			completeClose(registry, "pij-revive-pending", "%109", "native-revive-pending");
 			const revivePending = registry.read("pij-revive-pending");
 			if (!revivePending) throw new Error("missing revive-pending descriptor");
@@ -304,14 +333,31 @@ describe("closed-recipient queue retirement", () => {
 				...revivePending,
 				revivePendingAt: new Date(nowMs).toISOString(),
 			});
-			for (const to of ["pij-pane-gone", "pij-closing", "pij-live", "pij-revive-pending"]) {
+			for (const to of [
+				"pij-pane-gone",
+				"pij-closing",
+				"pij-live",
+				"pij-requested-no-intent",
+				"pij-close-unrequested",
+				"pij-revive-pending",
+			]) {
 				queue.deliver({ from: "pij-a", to, body: to });
 			}
 
 			await d.tick();
 
-			for (const to of ["pij-pane-gone", "pij-closing", "pij-live", "pij-revive-pending"]) {
-				expect(queue.summary({ to }).map((row) => row.state)).toEqual(["queued"]);
+			for (const to of [
+				"pij-pane-gone",
+				"pij-closing",
+				"pij-live",
+				"pij-requested-no-intent",
+				"pij-close-unrequested",
+				"pij-revive-pending",
+			]) {
+				expect(
+					queue.summary({ to }).map((row) => row.state),
+					`${to} must remain queued`,
+				).toEqual(["queued"]);
 			}
 			expect(logs.some((line) => line.startsWith("retire "))).toBe(false);
 		} finally {
