@@ -251,6 +251,11 @@ describe("paRefusal — only a PA is refused, and only for HARMFUL verbs", () =>
 		expect(paRefusal("pa", paCapabilityVerb("queue", "retire"))).not.toBeNull();
 	});
 
+	it("refuses dispatch retirement for a zero-actuator PA", () => {
+		expect(PA_VERB_CLASSIFICATION["dispatch-retire"]?.kind).toBe("refuse");
+		expect(paRefusal("pa", "dispatch-retire")).not.toBeNull();
+	});
+
 	it("never refuses any other role — no existing seat can regress", () => {
 		for (const role of ["prime", "pm", "worker", null]) {
 			for (const verb of Object.keys(PA_VERB_CLASSIFICATION)) {

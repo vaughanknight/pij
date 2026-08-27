@@ -27,6 +27,7 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { DualWriteChannel } from "./adapters/channel-factory.js";
+import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FakePiRuntime } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
@@ -39,6 +40,7 @@ import { reattachIdentity } from "./core/binding.js";
 import { transcriptDir } from "./core/harness/claude.js";
 import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
+import type { Dispatch } from "./core/platform/types.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
 import { DEFAULT_SPAWN_EXPECTATION_TTL_MS } from "./core/spawn-expectation.js";
@@ -126,6 +128,34 @@ function createCopilotState(home: string, sessionId: string, mtimeMs: number): v
 	mkdirSync(dir, { recursive: true });
 	const at = new Date(mtimeMs);
 	utimesSync(dir, at, at);
+}
+
+function retiredDispatch(
+	id: string,
+	to: string,
+	reason: string,
+	priorState: "undelivered" | "delivered-unacked" = "undelivered",
+): Dispatch {
+	return {
+		schema_version: 1,
+		id,
+		packetPath: `/tmp/${id}.md`,
+		packetSha256: "b".repeat(64),
+		from: "pij-A",
+		to,
+		...(priorState === "delivered-unacked"
+			? { messageId: `msg-${id}`, deliveryState: "delivered" as const }
+			: {}),
+		state: "retired",
+		retirement: {
+			reason,
+			actor: "daemon",
+			ts: "2026-08-27T00:00:00.000Z",
+			priorState,
+		},
+		created: { actor: "pij-A", ts: "2026-08-27T00:00:00.000Z" },
+		updated: { actor: "daemon", ts: "2026-08-27T00:00:00.000Z" },
+	};
 }
 
 let A: PijSession;
@@ -1030,6 +1060,13 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		if (!queued.ok) throw new Error(queued.message);
 		queue.retire({ to: id }, "recipient-closed");
 		queue.close();
+		const dispatchStore = new FsDispatchStore(HOME);
+		expect(
+			dispatchStore.write(retiredDispatch("dispatch-revive-close", id, "recipient-closed")).ok,
+		).toBe(true);
+		expect(dispatchStore.write(retiredDispatch("dispatch-revive-operator", id, "stale")).ok).toBe(
+			true,
+		);
 
 		const result = pij(["revive", id, "--json"], {
 			PIJ_SESSION_ID: "pij-A",
@@ -1043,8 +1080,20 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 				.trim()
 				.split("\n")
 				.findLast((line) => line.startsWith("{")) ?? "{}",
-		) as { id: string; state: string; paneId: string; requeued?: number };
-		expect(output).toMatchObject({ id, state: "pending-canary", paneId: "%91", requeued: 1 });
+		) as {
+			id: string;
+			state: string;
+			paneId: string;
+			requeued?: number;
+			requeuedDispatches?: number;
+		};
+		expect(output).toMatchObject({
+			id,
+			state: "pending-canary",
+			paneId: "%91",
+			requeued: 1,
+			requeuedDispatches: 1,
+		});
 		const reopened = new SqliteQueue(HOME);
 		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
 		expect(reopened.receipts(queued.value.messageId).at(-1)).toMatchObject({
@@ -1052,6 +1101,14 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			detail: expect.stringContaining("pane %91"),
 		});
 		reopened.close();
+		expect(dispatchStore.read("dispatch-revive-close")).toMatchObject({
+			state: "undelivered",
+		});
+		expect(dispatchStore.read("dispatch-revive-close")).not.toHaveProperty("retirement");
+		expect(dispatchStore.read("dispatch-revive-operator")).toMatchObject({
+			state: "retired",
+			retirement: { reason: "stale" },
+		});
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			id,
 			lifecycle: "pending",
@@ -1402,6 +1459,12 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		if (!queued.ok) throw new Error(queued.message);
 		queue.retire({ to: id }, "recipient-closed");
 		queue.close();
+		const dispatchStore = new FsDispatchStore(HOME);
+		expect(
+			dispatchStore.write(
+				retiredDispatch("dispatch-revive-attach", id, "recipient-closed", "delivered-unacked"),
+			).ok,
+		).toBe(true);
 
 		const result = pij(
 			["revive", id, "--attach", "%42", "--json"],
@@ -1428,6 +1491,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			attached: true,
 			state: "pending-canary",
 			requeued: 1,
+			requeuedDispatches: 1,
 		});
 		const reopened = new SqliteQueue(HOME);
 		expect(reopened.summary({ to: id }).map((row) => row.state)).toEqual(["queued"]);
@@ -1436,6 +1500,10 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			detail: expect.stringContaining("pane %42"),
 		});
 		reopened.close();
+		expect(dispatchStore.read("dispatch-revive-attach")).toMatchObject({
+			state: "delivered-unacked",
+		});
+		expect(dispatchStore.read("dispatch-revive-attach")).not.toHaveProperty("retirement");
 		expect(new FsRegistry(HOME).read(id)).toMatchObject({
 			id,
 			paneId: "%42",
@@ -1450,6 +1518,33 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(log).not.toContain("split-window");
 		expect(log).not.toContain("claude --dangerously-skip-permissions");
 		expect(log).toContain("display-message -p -t %42 #{pane_dead}");
+	});
+
+	it("human revive reports restored dispatches separately from mail", () => {
+		clearSpawnExpectations();
+		writeFileSync(TMUX_LOG, "");
+		const id = "pij-rebooted-dispatch-count";
+		const nativeId = "89888888-2222-4333-8444-555555555555";
+		seedRebootedClaudeSeat(id, nativeId, false);
+		const dispatchStore = new FsDispatchStore(HOME);
+		expect(
+			dispatchStore.write(retiredDispatch("dispatch-revive-human", id, "recipient-closed")).ok,
+		).toBe(true);
+
+		const result = pij(
+			["revive", id, "--attach", "%43"],
+			{
+				PIJ_SESSION_ID: "pij-A",
+				PIJ_QUEUE_BACKEND: "sqlite",
+				HOME,
+				FAKE_TMUX_LIVE_PANE: "%43",
+			},
+			S072_FOLDER,
+		);
+
+		expect(result.code, result.out).toBe(0);
+		expect(result.out).toContain("requeued 1 dispatch record(s) retired at close");
+		expect(result.out).not.toContain("requeued 1 message(s)");
 	});
 
 	it("resolves an ARCHIVED seat and --print leaves it archived", () => {
@@ -3259,13 +3354,6 @@ describe("bin-owned output survives the 64 KiB pipe boundary (AC-16)", () => {
 			const tail = run(["queue", "--tail", "3"]);
 			expect((tail.stdout.match(/pij-stdout-target-/g) ?? []).length).toBe(3);
 			expect(tail.stdout).toContain("pij-stdout-target-0811");
-			for (const tailFlag of ["--tail", "--last"]) {
-				const conflict = run(["queue", "--all", tailFlag, "3"]);
-				expect(conflict.status).toBe(2);
-				expect(`${conflict.stdout}${conflict.stderr}`).toContain("E-ARG");
-				expect(`${conflict.stdout}${conflict.stderr}`).toContain("choose one");
-			}
-
 			const json = run(["queue", "--json"]);
 			const parsed = JSON.parse(json.stdout) as {
 				rows: Array<{ seq: number }>;
@@ -3275,6 +3363,27 @@ describe("bin-owned output survives the 64 KiB pipe boundary (AC-16)", () => {
 			expect(parsed.rows).toHaveLength(200);
 			expect(parsed.rows.at(-1)?.seq).toBe(812);
 			expect(parsed).toMatchObject({ total: 812, shown: 200 });
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects --all combined with --tail or --last", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-queue-conflict-"));
+		try {
+			const queue = new SqliteQueue(home);
+			queue.deliver({ from: "pij-a", to: "pij-x", body: "one" });
+			queue.close();
+			for (const tailFlag of ["--tail", "--last"]) {
+				const result = spawnSync(TSX, [CLI, "queue", "--all", tailFlag, "1"], {
+					env: { ...process.env, PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite", TMUX_PANE: "" },
+					encoding: "utf8",
+					timeout: 30_000,
+				});
+				expect(result.status).toBe(2);
+				expect(`${result.stdout}${result.stderr}`).toContain("E-ARG");
+				expect(`${result.stdout}${result.stderr}`).toContain("choose one");
+			}
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
@@ -3347,26 +3456,6 @@ describe("pij queue retire", () => {
 			expect(missing.code).toBe(2);
 			expect(missing.out).toContain("E-ARG");
 			expect(missing.out).toContain("--reason");
-			const unscoped = pij(["queue", "retire", "--reason", "too-wide"], {
-				PIJ_HOME: home,
-				PIJ_QUEUE_BACKEND: "sqlite",
-			});
-			expect(unscoped.code).toBe(2);
-			expect(unscoped.out).toContain("E-ARG");
-			for (const selector of ["--to", "--from", "--older-than", "--state"]) {
-				expect(unscoped.out).toContain(selector);
-			}
-			expect(unscoped.out).toContain("--all-recipients");
-
-			const allRecipients = pij(
-				["queue", "retire", "--all-recipients", "--reason", "confirmed", "--dry-run"],
-				{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
-			);
-			expect(allRecipients.code).toBe(0);
-			expect(allRecipients.out).toContain("pij-x: 1");
-			expect(allRecipients.out).toContain("pij-y: 1");
-			expect(allRecipients.out).toContain("would retire 2/2");
-
 			for (const age of ["30m", "2h", "1d"]) {
 				const dryRun = pij(
 					[
@@ -3423,6 +3512,46 @@ describe("pij queue retire", () => {
 		}
 	});
 
+	it("requires a selector or explicit --all-recipients confirmation", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-retire-selector-"));
+		try {
+			const queue = new SqliteQueue(home);
+			queue.deliver({ from: "pij-a", to: "pij-x", body: "one" });
+			queue.deliver({ from: "pij-a", to: "pij-y", body: "two" });
+			queue.close();
+
+			const unscoped = pij(["queue", "retire", "--reason", "too-wide"], {
+				PIJ_HOME: home,
+				PIJ_QUEUE_BACKEND: "sqlite",
+			});
+			expect(unscoped.code).toBe(2);
+			const errorLine = unscoped.out.split("\n")[0] ?? "";
+			expect(errorLine).toContain("E-ARG");
+			for (const selector of ["--to", "--from", "--older-than", "--state"]) {
+				expect(errorLine).toContain(selector);
+			}
+			expect(errorLine).toContain("--all-recipients");
+
+			const conflict = pij(
+				["queue", "retire", "--to", "pij-x", "--all-recipients", "--reason", "conflict"],
+				{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
+			);
+			expect(conflict.code).toBe(2);
+			expect(conflict.out.split("\n")[0]).toContain("choose a selector OR --all-recipients");
+
+			const confirmed = pij(
+				["queue", "retire", "--all-recipients", "--reason", "confirmed", "--dry-run"],
+				{ PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite" },
+			);
+			expect(confirmed.code).toBe(0);
+			expect(confirmed.out).toContain("pij-x: 1");
+			expect(confirmed.out).toContain("pij-y: 1");
+			expect(confirmed.out).toContain("would retire 2/2");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
 	it("mirrors dual retirement into fs read markers", () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-retire-dual-"));
 		try {
@@ -3451,6 +3580,105 @@ describe("pij queue retire", () => {
 		});
 		expect(result.code).toBe(1);
 		expect(result.out).toContain("rm ~/.pij/<id>/inbox/msg-*.json");
+	});
+});
+
+describe("pij dispatch-retire", () => {
+	const dispatch = (
+		id: string,
+		to: string,
+		state: "undelivered" | "delivered-unacked" = "undelivered",
+	): Dispatch => ({
+		schema_version: 1,
+		id,
+		packetPath: `/tmp/${id}.md`,
+		packetSha256: "a".repeat(64),
+		from: "pij-operator",
+		to,
+		...(state === "delivered-unacked"
+			? { messageId: `msg-${id}`, deliveryState: "delivered" as const }
+			: {}),
+		state,
+		created: { actor: "pij-operator", ts: "2026-08-27T00:00:00.000Z" },
+		updated: { actor: "pij-operator", ts: "2026-08-27T00:00:00.000Z" },
+	});
+
+	it("retires by id or recipient, supports JSON/dry-run, and requires a reason", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-dispatch-retire-"));
+		const folder = realpathSync(mkdtempSync(join(tmpdir(), "pij-dispatch-retire-folder-")));
+		try {
+			new FsRegistry(home).write({
+				id: "pij-operator",
+				folder,
+				dataDir: join(home, "pij-operator"),
+				eventsPath: join(home, "pij-operator", "events.ndjson"),
+				pid: process.pid,
+				startedAt: "2026-08-27T00:00:00.000Z",
+				harness: "claude",
+				harnessSessionId: "native-operator",
+				lifecycle: "bound",
+				paneId: "%1",
+			});
+			const store = new FsDispatchStore(home);
+			for (const record of [
+				dispatch("dispatch-one", "pij-x"),
+				dispatch("dispatch-two", "pij-x", "delivered-unacked"),
+				dispatch("dispatch-three", "pij-x"),
+				dispatch("dispatch-json", "pij-y", "delivered-unacked"),
+				dispatch("dispatch-dry", "pij-z"),
+			]) {
+				expect(store.write(record).ok).toBe(true);
+			}
+			const env = {
+				PIJ_HOME: home,
+				PIJ_SESSION_ID: "pij-operator",
+				CLAUDE_CODE_SESSION_ID: "native-operator",
+			};
+
+			const byId = pij(["dispatch-retire", "dispatch-one", "--reason", "stale"], env, folder);
+			expect(byId.code).toBe(0);
+			expect(byId.out).toContain("retired 1/1");
+			expect(store.read("dispatch-one")).toMatchObject({ state: "retired" });
+
+			const byRecipient = pij(
+				["dispatch-retire", "--to", "pij-x", "--reason", "recipient-closed"],
+				env,
+				folder,
+			);
+			expect(byRecipient.code).toBe(0);
+			expect(byRecipient.out).toContain("retired 2/2");
+			expect(store.read("dispatch-two")).toMatchObject({ state: "retired" });
+			expect(store.read("dispatch-three")).toMatchObject({ state: "retired" });
+
+			const json = pij(
+				["dispatch-retire", "dispatch-json", "--reason", "operator", "--json"],
+				env,
+				folder,
+			);
+			expect(json.code).toBe(0);
+			expect(JSON.parse(json.out)).toMatchObject({
+				retired: 1,
+				matched: 1,
+				reason: "operator",
+			});
+
+			const dryRun = pij(
+				["dispatch-retire", "dispatch-dry", "--reason", "preview", "--dry-run"],
+				env,
+				folder,
+			);
+			expect(dryRun.code).toBe(0);
+			expect(dryRun.out).toContain("would retire 1/1");
+			expect(store.read("dispatch-dry")).toMatchObject({ state: "undelivered" });
+
+			const missing = pij(["dispatch-retire", "dispatch-dry"], env, folder);
+			expect(missing.code).not.toBe(0);
+			expect(missing.out).toContain("E-ARG");
+			expect(missing.out).toContain("--reason");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+			rmSync(folder, { recursive: true, force: true });
+		}
 	});
 });
 

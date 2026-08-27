@@ -151,6 +151,31 @@ terminal. On `PIJ_QUEUE_BACKEND=dual`, retire also writes advisory legacy `read-
 markers. The fs-only backend has no state machine and points operators at the
 retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 
+### Dispatch-record retirement
+
+Dispatch records have a separate lifecycle from message deliveries:
+`undelivered → delivered-unacked → acked`, with either open state able to move
+to terminal `retired`. Operators can retire an open dispatch by id or every open
+dispatch addressed to one seat:
+
+```sh
+pij dispatch-retire <dispatch-id> --reason <text> [--dry-run] [--json]
+pij dispatch-retire --to <seat> --reason <text> [--dry-run] [--json]
+```
+
+Retirement stores the reason, actor, timestamp, and prior open state. It is
+idempotent, leaves acknowledged dispatches unchanged, and prevents a later
+brief acknowledgement from rewriting the terminal record. A PA is refused this
+verb: it may report stale dispatches but cannot terminally decide them.
+
+The daemon applies the same complete deliberate-close predicate used for queue
+mail to dispatch records. A later revive restores only records retired for
+`recipient-closed`, returning each to its recorded prior state; operator-retired
+records remain terminal. The anomaly detector considers only the shared open-state predicate and then only
+`delivered-unacked`, so retired records cannot appear as
+`delivered-unacked-stale`. Revive output reports restored mail and dispatch
+counts separately.
+
 ---
 
 ## CLI reference
@@ -177,6 +202,7 @@ retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"] [--plan-id <id>]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. An explicit plan id is exported as `HARNESS_PLAN_ID` + `PIJ_PLAN_ID` and stamped on the seat descriptor. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 | `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane and optionally place it structurally under an existing session. Parent validation happens before reservation or descriptor writes. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. |
 | `attest` | `pij attest <id> --plan-id <id>` | Add or correct an existing seat's explicit opaque plan id. Absent means unattested; pij never derives it from project paths or ambient environment. |
+| `dispatch-retire` | `pij dispatch-retire <dispatch-id> \| --to <seat> --reason <text> [--dry-run] [--json]` | Terminally retire open dispatch records, preserving reason and prior state; PAs are refused. |
 | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
 | `orchestration prime` | `pij orchestration prime set\|retire\|unset [<id>]` | Mark a current prime, retire it into old-prime history, or clear both markers. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
 

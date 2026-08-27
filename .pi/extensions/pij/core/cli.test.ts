@@ -207,6 +207,31 @@ describe("parseArgs", () => {
 		});
 	});
 
+	it("guards dispatch-retire target exclusivity and required reason", () => {
+		expect(parseArgs(["dispatch-retire", "--reason", "stale"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(
+			parseArgs(["dispatch-retire", "dispatch-1", "--to", "pij-x", "--reason", "stale"]),
+		).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["dispatch-retire", "dispatch-1"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["dispatch-retire", "--to", "pij-x", "--reason", "stale"])).toEqual({
+			ok: true,
+			value: {
+				verb: "dispatch-retire",
+				dispatchId: undefined,
+				to: "pij-x",
+				reason: "stale",
+				dryRun: false,
+				json: false,
+			},
+		});
+	});
+
 	it.each([
 		["--prime=false", "--prime"],
 		["--prime=true", "--prime"],

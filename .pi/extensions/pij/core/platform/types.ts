@@ -100,7 +100,7 @@ export interface Fence {
 }
 
 /** Dispatch lifecycle is separate from the shipped delivery receipt vocabulary. */
-export const DISPATCH_STATES = ["undelivered", "delivered-unacked", "acked"] as const;
+export const DISPATCH_STATES = ["undelivered", "delivered-unacked", "acked", "retired"] as const;
 
 export type DispatchState = (typeof DISPATCH_STATES)[number];
 
@@ -121,6 +121,13 @@ export interface DispatchAck {
 	};
 	readonly seat: string;
 	readonly ts: string;
+}
+
+export interface DispatchRetirement {
+	readonly reason: string;
+	readonly actor: string;
+	readonly ts: string;
+	readonly priorState: "undelivered" | "delivered-unacked";
 }
 
 export const CANARY_MODEL_CHECKS = ["matched", "unpinned-default"] as const;
@@ -176,6 +183,7 @@ export interface Dispatch {
 	readonly state: DispatchState;
 	readonly ack?: DispatchAck;
 	readonly canary?: CanaryRecord;
+	readonly retirement?: DispatchRetirement;
 	readonly created: {
 		readonly actor: string;
 		readonly ts: string;
@@ -404,6 +412,20 @@ function isDispatchAck(value: unknown): value is DispatchAck {
 	);
 }
 
+function isDispatchRetirement(value: unknown): value is DispatchRetirement {
+	if (!isRecord(value)) return false;
+	return (
+		ownField(value, "reason", isString) &&
+		ownField(value, "actor", isString) &&
+		ownField(value, "ts", isString) &&
+		ownField(
+			value,
+			"priorState",
+			(state) => state === "undelivered" || state === "delivered-unacked",
+		)
+	);
+}
+
 function isCanaryModelCheck(value: unknown): value is CanaryModelCheck {
 	return typeof value === "string" && (CANARY_MODEL_CHECKS as readonly string[]).includes(value);
 }
@@ -545,6 +567,7 @@ export function isDispatch(value: unknown): value is Dispatch {
 				ownField(value, "state", isDispatchState) &&
 				ownOptional(value, "ack", (v) => v === undefined || isDispatchAck(v)) &&
 				ownOptional(value, "canary", (v) => v === undefined || isCanaryRecord(v)) &&
+				ownOptional(value, "retirement", (v) => v === undefined || isDispatchRetirement(v)) &&
 				ownField(value, "created", isActorStamp) &&
 				ownField(value, "updated", isActorStamp)
 			)
@@ -556,6 +579,21 @@ export function isDispatch(value: unknown): value is Dispatch {
 		const deliveryState = value.deliveryState;
 		const ack = value.ack;
 		const canary = value.canary;
+		const retirement = value.retirement;
+		if (state === "retired") {
+			if (!isDispatchRetirement(retirement) || ack !== undefined || canary !== undefined) {
+				return false;
+			}
+			if (retirement.priorState === "undelivered") {
+				return messageId === undefined && deliveryState === undefined;
+			}
+			return (
+				typeof messageId === "string" &&
+				messageId.length > 0 &&
+				isDispatchDeliveryState(deliveryState)
+			);
+		}
+		if (retirement !== undefined) return false;
 		if (state === "undelivered") {
 			return (
 				messageId === undefined &&
