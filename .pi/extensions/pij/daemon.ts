@@ -249,6 +249,7 @@ export class Daemon {
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
 	private deliveringNow = false;
 	private readonly draining = new Set<string>();
+	private readonly dissolvedDrainLogged = new Set<string>();
 	private tickingNow = false;
 
 	/** Ports with the composer gate WELDED ON — see the constructor. */
@@ -386,6 +387,7 @@ export class Daemon {
 		}
 		this.heartbeat.write(ownedIds, tickAt);
 		this.index.rebuild(this.registry.list());
+		this.retireForClosedRecipients();
 		this.refreshPaneSignals();
 		// Legacy-node windowId backfill (plan 054 P2 T006, AC-09): once per
 		// session per daemon run, resolve the pane's window and persist it via
@@ -800,6 +802,29 @@ export class Daemon {
 		this.log(`tick: ${Date.now() - tickStartedAtMs}ms, ${this.index.all().length} live`);
 	}
 
+	private retireForClosedRecipients(): void {
+		const queue = sqliteOf(this.channel);
+		if (queue === undefined) return;
+		for (const to of queue.openRecipients()) {
+			const descriptor = this.registry.read(to);
+			// Not retention policy: the complete deliberate-close predicate decides
+			// retirement. Its intent/terminal checks are one-directional safety
+			// interlocks — removing either can only retire more, including revivable mail.
+			if (
+				descriptor?.lifecycle !== "dissolved" ||
+				descriptor.revivePendingAt !== undefined ||
+				descriptor.closeIntent === undefined ||
+				descriptor.terminal?.disposition !== "requested"
+			) {
+				continue;
+			}
+			const result = queue.retire({ to }, "recipient-closed");
+			if (result.retired > 0) {
+				this.log(`retire ${to}: ${result.retired} open deliveries retired (recipient closed)`);
+			}
+		}
+	}
+
 	/** Delivery, decoupled from the tick (plan 071 D2).
 	 *
 	 *  Delivery used to ride INSIDE `tick()`, so tick duration WAS delivery
@@ -1054,6 +1079,15 @@ export class Daemon {
 	}
 
 	private async drainInboxLocked(id: string): Promise<void> {
+		const current = this.registry.read(id);
+		if (current?.lifecycle === "dissolved") {
+			if (!this.dissolvedDrainLogged.has(id)) {
+				this.dissolvedDrainLogged.add(id);
+				this.log(`route ${id}: skip dissolved recipient ${id}`);
+			}
+			return;
+		}
+		this.dissolvedDrainLogged.delete(id);
 		const target = this.index.get(id);
 		if (!target?.paneId) return;
 
@@ -1086,7 +1120,7 @@ export class Daemon {
 		// PoC: on the SQLite backend the daemon only acts on `queued` rows (a row
 		// with a pointer out, or a socket send in flight, is `injected`/`claimed`
 		// until acked or its lease expires); the fs backend keeps its unread scan.
-		const sq = this.channel instanceof SqliteQueue ? this.channel : undefined;
+		const sq = sqliteOf(this.channel);
 		if (sq) sq.recoverStaleClaims();
 		const listed = sq ? ok(sq.listQueued(id)) : this.channel.listUnread(id);
 		if (!listed.ok) throw new Error(`${listed.code}: ${listed.message}`);

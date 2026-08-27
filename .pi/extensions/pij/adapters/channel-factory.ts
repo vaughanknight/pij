@@ -59,6 +59,10 @@ export class DualWriteChannel implements MessageChannel {
 		private readonly fs: FsChannel,
 	) {}
 
+	get fsMirror(): FsChannel {
+		return this.fs;
+	}
+
 	deliver(message: PijMessage): Result<{ messageId: string }> {
 		const primary = this.sqlite.deliver(message);
 		if (!primary.ok) return primary;

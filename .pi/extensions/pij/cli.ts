@@ -33,7 +33,12 @@ import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
 import { FsChannel } from "./adapters/channel.js";
-import { type MessageChannel, openChannel } from "./adapters/channel-factory.js";
+import {
+	DualWriteChannel,
+	type MessageChannel,
+	openChannel,
+	sqliteOf,
+} from "./adapters/channel-factory.js";
 import { ShellChoreProbe } from "./adapters/chore-probe.js";
 import { FsChoreStore } from "./adapters/chore-store.js";
 import { FsContextReader } from "./adapters/context-reader.js";
@@ -50,7 +55,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
-import { SqliteQueue } from "./adapters/sqlite-queue.js";
+import { type DeliveryState, SqliteQueue } from "./adapters/sqlite-queue.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { capturePane, execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
@@ -521,12 +526,46 @@ function consumeCurrentInbox(self: SessionId, channel: MessageChannel) {
 	return consumed.value;
 }
 
-/** `pij queue [<id>] [--to <id>] [--since <seq>] [--last N] [--json]` — read-only
- *  view of the SQLite delivery queue (PoC day-2 item 2). Renders one line per
- *  message with its live state (queued/claimed/injected/acked/parked) and the
- *  receipt trail, so an operator can see what the review said `pij tail` could
- *  not. Only meaningful on the SQLite backend; the fs backend has no such table
- *  and says so. Never mutates. */
+const STATE_GLYPH: Record<DeliveryState, string> = {
+	queued: "Q",
+	claimed: "C",
+	injected: "I",
+	acked: "A",
+	parked: "P",
+	retired: "R",
+};
+
+const QUEUE_RETIRE_USAGE =
+	"pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]";
+
+function failQueueRetire(message: string): never {
+	process.stderr.write(`E-ARG: ${message}\n${QUEUE_RETIRE_USAGE}\n`);
+	process.exit(2);
+}
+
+function queueDurationMs(raw: string): number | undefined {
+	const match = /^(\d+)(ms|s|m|h|d)$/.exec(raw);
+	if (match === null) return undefined;
+	const amountRaw = match[1];
+	const unit = match[2];
+	if (amountRaw === undefined || unit === undefined) return undefined;
+	const amount = Number(amountRaw);
+	if (!Number.isSafeInteger(amount) || amount <= 0) return undefined;
+	const factors: Record<string, number> = {
+		ms: 1,
+		s: 1_000,
+		m: 60_000,
+		h: 3_600_000,
+		d: 86_400_000,
+	};
+	const factor = factors[unit];
+	const duration = factor === undefined ? undefined : amount * factor;
+	return duration !== undefined && Number.isSafeInteger(duration) ? duration : undefined;
+}
+
+/** `pij queue [<id>] [--to <id>] [--since <seq>] [--tail N] [--all] [--json]`
+ *  is a read-only view of the SQLite delivery queue. The default is the latest
+ *  200 rows; explicit filters keep large histories operable. */
 /** `--as <id>` anywhere in argv → process.env.PIJ_SENDER for this invocation,
  *  then remove the flag+value from process.argv so downstream parse is clean.
  *  A no-op when absent. (PoC day-2 item 3.) */
@@ -601,53 +640,240 @@ function runQueueMigrate(argv: readonly string[]): void {
 	process.exit(0);
 }
 
+function runQueueRetire(argv: readonly string[]): void {
+	let to: string | undefined;
+	let from: string | undefined;
+	let olderThanMs: number | undefined;
+	let state: DeliveryState[] | undefined;
+	let reason: string | undefined;
+	let allRecipients = false;
+	let dryRun = false;
+	let json = false;
+	const valueAfter = (index: number, flag: string): string => {
+		const value = argv[index + 1];
+		if (value === undefined || value.startsWith("--")) {
+			failQueueRetire(`${flag} requires a value`);
+		}
+		return value;
+	};
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index];
+		switch (arg) {
+			case "--to":
+				to = valueAfter(index, arg);
+				index += 1;
+				break;
+			case "--from":
+				from = valueAfter(index, arg);
+				index += 1;
+				break;
+			case "--older-than": {
+				const raw = valueAfter(index, arg);
+				olderThanMs = queueDurationMs(raw);
+				if (olderThanMs === undefined) {
+					failQueueRetire(`--older-than must be a positive duration such as 30m, 2h, or 1d`);
+				}
+				index += 1;
+				break;
+			}
+			case "--state": {
+				const rawStates = valueAfter(index, arg).split(",");
+				const parsed: DeliveryState[] = [];
+				for (const raw of rawStates) {
+					if (!Object.hasOwn(STATE_GLYPH, raw)) {
+						failQueueRetire(`unknown delivery state '${raw}'`);
+					}
+					parsed.push(raw as DeliveryState);
+				}
+				state = parsed;
+				index += 1;
+				break;
+			}
+			case "--reason":
+				reason = valueAfter(index, arg);
+				index += 1;
+				break;
+			case "--all-recipients":
+				allRecipients = true;
+				break;
+			case "--dry-run":
+				dryRun = true;
+				break;
+			case "--json":
+				json = true;
+				break;
+			default:
+				failQueueRetire(`unknown argument '${arg ?? ""}'`);
+		}
+	}
+	if (reason === undefined || reason.trim() === "") {
+		failQueueRetire("--reason is required");
+	}
+	const hasSelector =
+		to !== undefined || from !== undefined || olderThanMs !== undefined || state !== undefined;
+	if (!hasSelector && !allRecipients) {
+		failQueueRetire(
+			"choose at least one selector (--to, --from, --older-than, --state) or pass --all-recipients",
+		);
+	}
+
+	const channel = openChannel(pijHome);
+	const queue = sqliteOf(channel);
+	if (queue === undefined) {
+		process.stderr.write(
+			"pij queue retire needs SQLite state. With PIJ_QUEUE_BACKEND=fs, inspect then remove legacy files explicitly: rm ~/.pij/<id>/inbox/msg-*.json\n",
+		);
+		process.exit(1);
+	}
+	const beforeRetired =
+		channel instanceof DualWriteChannel
+			? new Set(
+					queue
+						.summary({ ...(to === undefined ? {} : { to }) })
+						.filter((row) => row.state === "retired")
+						.map((row) => row.id),
+				)
+			: undefined;
+	const retireFilter = {
+		...(to === undefined ? {} : { to }),
+		...(from === undefined ? {} : { from }),
+		...(olderThanMs === undefined ? {} : { olderThanMs }),
+		...(state === undefined ? {} : { state }),
+	};
+	const recipientMatches =
+		dryRun && allRecipients && !hasSelector
+			? queue
+					.openRecipients()
+					.map((recipient) => ({
+						to: recipient,
+						matched: queue.retire({ to: recipient }, reason, { dryRun: true }).matched,
+					}))
+					.filter((entry) => entry.matched > 0)
+			: [];
+	const result = queue.retire(retireFilter, reason, { dryRun });
+	if (channel instanceof DualWriteChannel && beforeRetired !== undefined && !dryRun) {
+		for (const row of queue.summary({ ...(to === undefined ? {} : { to }) })) {
+			if (row.state !== "retired" || beforeRetired.has(row.id)) continue;
+			try {
+				channel.fsMirror.markRead(row.to, row.id, {
+					messageId: row.id,
+					readAt: new Date().toISOString(),
+					reader: row.to,
+				});
+			} catch {
+				/* advisory rollback mirror */
+			}
+		}
+	}
+	queue.close();
+	if (json) {
+		process.stdout.write(
+			`${JSON.stringify({
+				retired: result.retired,
+				matched: result.matched,
+				reason,
+				...(dryRun ? { dryRun: true } : {}),
+				...(recipientMatches.length > 0 ? { recipients: recipientMatches } : {}),
+			})}\n`,
+		);
+		process.exitCode = 0;
+		return;
+	}
+	const verb = dryRun ? "would retire" : "retired";
+	const count = dryRun ? result.matched : result.retired;
+	for (const recipient of recipientMatches) {
+		process.stdout.write(`${recipient.to}: ${recipient.matched} matching delivery(s)\n`);
+	}
+	process.stdout.write(`${verb} ${count}/${result.matched} delivery(s) — reason: ${reason}\n`);
+	process.exitCode = 0;
+}
+
 function runQueue(argv: readonly string[]): void {
 	const pad = (v: string, n: number): string => (v.length >= n ? v : v + " ".repeat(n - v.length));
 	const json = argv.includes("--json");
-	const positional = argv.find((a) => !a.startsWith("--"));
 	const flag = (name: string): string | undefined => {
 		const i = argv.indexOf(name);
-		return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+		if (i < 0) return undefined;
+		const value = argv[i + 1];
+		if (value === undefined || value.startsWith("--")) {
+			process.stderr.write(`E-ARG: ${name} requires a value\n`);
+			process.exit(2);
+		}
+		return value;
 	};
+	const valueFlags = new Set(["--to", "--since", "--last", "--tail"]);
+	const positional = argv.find(
+		(arg, index) =>
+			!arg.startsWith("--") && (index === 0 || !valueFlags.has(argv[index - 1] ?? "")),
+	);
 	const to = flag("--to") ?? positional;
 	const sinceRaw = flag("--since");
-	const lastRaw = flag("--last");
+	const tailRaw = flag("--tail") ?? flag("--last");
+	const all = argv.includes("--all");
+	if (all && tailRaw !== undefined) {
+		process.stderr.write("E-ARG: --all and --tail/--last cannot be combined; choose one\n");
+		process.exit(2);
+	}
+	const sinceSeq = sinceRaw === undefined ? undefined : Number(sinceRaw);
+	const tail = tailRaw === undefined ? undefined : Number(tailRaw);
+	if (
+		(sinceSeq !== undefined && (!Number.isSafeInteger(sinceSeq) || sinceSeq < 0)) ||
+		(tail !== undefined && (!Number.isSafeInteger(tail) || tail <= 0))
+	) {
+		process.stderr.write(
+			"E-ARG: --since must be a non-negative integer and --tail must be positive\n",
+		);
+		process.exit(2);
+	}
 	const channel = openChannel(pijHome);
-	if (!(channel instanceof SqliteQueue)) {
+	const queue = sqliteOf(channel);
+	if (queue === undefined) {
 		const msg =
 			"pij queue needs the SQLite backend (PIJ_QUEUE_BACKEND=sqlite). The fs backend keeps per-message JSON inbox files — use `pij tail <id> --type receipt` and `ls ~/.pij/<id>/inbox`.";
 		if (json) process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
 		else process.stdout.write(`${msg}\n`);
 		process.exit(json ? 0 : 1);
 	}
-	const rows = channel.summary({
+	const filter = {
 		...(to ? { to } : {}),
-		...(sinceRaw !== undefined ? { sinceSeq: Number(sinceRaw) } : {}),
-		...(lastRaw !== undefined ? { limit: Number(lastRaw) } : {}),
+		...(sinceSeq !== undefined ? { sinceSeq } : {}),
+	};
+	const total = queue.count(filter);
+	const limit = tail ?? (all ? undefined : 200);
+	const rows = queue.summary({
+		...filter,
+		...(limit === undefined ? {} : { limit }),
 	});
-	channel.close();
+	queue.close();
+	const shown = rows.length;
 	if (json) {
-		process.stdout.write(`${JSON.stringify(rows)}\n`);
-		process.exit(0);
+		process.stdout.write(`${JSON.stringify({ rows, total, shown })}\n`);
+		process.exitCode = 0;
+		return;
 	}
 	if (rows.length === 0) {
 		process.stdout.write(`(queue empty${to ? ` for ${to}` : ""})\n`);
-		process.exit(0);
+		process.exitCode = 0;
+		return;
 	}
 	const now = Date.now();
-	const head = `${pad("seq", 5)} ${pad("state", 9)} ${pad("att", 3)} ${pad("from→to", 34)} ${pad("bytes", 6)} kind · trail`;
+	const head = `${pad("seq", 5)} ${pad("state", 12)} ${pad("att", 3)} ${pad("from→to", 34)} ${pad("bytes", 6)} kind · trail`;
 	const lines = rows.map((r) => {
 		const lease =
-			r.leaseUntil && r.state !== "acked"
+			r.leaseUntil && r.state !== "acked" && r.state !== "retired"
 				? r.leaseUntil > now
 					? ` lease ${Math.round((r.leaseUntil - now) / 1000)}s`
 					: " lease EXPIRED"
 				: "";
 		const trail = r.trail.map((t) => t.state).join("→");
-		return `${pad(String(r.seq), 5)} ${pad(r.state, 9)} ${pad(String(r.attempt), 3)} ${pad(`${r.from}→${r.to}`, 34)} ${pad(String(r.bytes), 6)} ${r.kind} · ${trail}${lease}`;
+		return `${pad(String(r.seq), 5)} ${pad(`${STATE_GLYPH[r.state]} ${r.state}`, 12)} ${pad(String(r.attempt), 3)} ${pad(`${r.from}→${r.to}`, 34)} ${pad(String(r.bytes), 6)} ${r.kind} · ${trail}${lease}`;
 	});
-	process.stdout.write(`${head}\n${lines.join("\n")}\n`);
-	process.exit(0);
+	const footer =
+		shown < total
+			? `\nshowing ${shown} of ${total} (latest) — --all for everything, --since <seq>, --tail N`
+			: "";
+	process.stdout.write(`${head}\n${lines.join("\n")}${footer}\n`);
+	process.exitCode = 0;
 }
 
 function waitForInbox(
@@ -1974,6 +2200,25 @@ function runFocus(argv: readonly string[]): void {
 	process.exit(64);
 }
 
+function requeueClosedRecipientMail(
+	id: string,
+	reviverId: string | undefined,
+	paneId: string,
+	nowIso: string,
+): number {
+	const channel = openChannel(pijHome);
+	const queue = sqliteOf(channel);
+	if (queue === undefined) return 0;
+	try {
+		return queue.unretire(
+			{ to: id, reason: "recipient-closed" },
+			{ detail: `revived by ${reviverId ?? "unknown"} → pane ${paneId} at ${nowIso}` },
+		).requeued;
+	} finally {
+		queue.close();
+	}
+}
+
 function runRevive(argv: readonly string[]): void {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		process.stdout.write(`${REVIVE_USAGE}\n`);
@@ -2185,10 +2430,13 @@ function runRevive(argv: readonly string[]): void {
 		// pi/omp self-register from the env at boot (session.ts), so they get the
 		// same in-flight marker the spawn path uses and nothing more — writing a
 		// descriptor for them here would race their own boot write.
+		let requeued = 0;
 		if (plan.value.runtime === "pi" || plan.value.runtime === "omp") {
 			const current = registry.read(plan.value.descriptor.id);
 			if (current) {
-				registry.writeExact({ ...current, revivePendingAt: new Date().toISOString() });
+				const revivePendingAt = new Date().toISOString();
+				registry.writeExact({ ...current, revivePendingAt });
+				requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, revivePendingAt);
 			}
 		} else {
 			const attachWindowId = tmuxWindowIdForPane(pane);
@@ -2208,6 +2456,12 @@ function runRevive(argv: readonly string[]): void {
 				process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
 				process.exit(exitCodeForCore(persisted.code));
 			}
+			requeued = requeueClosedRecipientMail(
+				plan.value.id,
+				reviverId,
+				pane,
+				new Date().toISOString(),
+			);
 		}
 		const attachOutput = {
 			id: plan.value.id,
@@ -2216,11 +2470,13 @@ function runRevive(argv: readonly string[]): void {
 			runtime: plan.value.runtime,
 			state: "pending-canary" as const,
 			attached: true,
+			...(requeued > 0 ? { requeued } : {}),
 		};
+		const requeuedLine = requeued > 0 ? `requeued ${requeued} message(s) retired at close\n` : "";
 		process.stdout.write(
 			parsed.value.json
 				? `${JSON.stringify(attachOutput)}\n`
-				: `attached ${attachOutput.id} (${attachOutput.runtime}) to pane ${attachOutput.paneId} — now launch the harness in it; PENDING CANARY until golden recall is verified\n`,
+				: `${requeuedLine}attached ${attachOutput.id} (${attachOutput.runtime}) to pane ${attachOutput.paneId} — now launch the harness in it; PENDING CANARY until golden recall is verified\n`,
 		);
 		return;
 	}
@@ -2291,10 +2547,13 @@ function runRevive(argv: readonly string[]): void {
 	// the whole boot and the 60s archive janitor moves its session dir out from
 	// under the booting process. Stamp the in-flight marker on the EXISTING record
 	// so the tier policy can see the revive; the seat's own boot write replaces it.
+	let requeued = 0;
 	if (plan.value.runtime === "pi" || plan.value.runtime === "omp") {
 		const current = registry.read(plan.value.descriptor.id);
 		if (current) {
-			registry.writeExact({ ...current, revivePendingAt: new Date().toISOString() });
+			const revivePendingAt = new Date().toISOString();
+			registry.writeExact({ ...current, revivePendingAt });
+			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, revivePendingAt);
 		}
 	}
 	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
@@ -2315,6 +2574,12 @@ function runRevive(argv: readonly string[]): void {
 			process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
 			process.exit(exitCodeForCore(persisted.code));
 		}
+		requeued = requeueClosedRecipientMail(
+			plan.value.id,
+			reviverId,
+			paneId,
+			new Date().toISOString(),
+		);
 	}
 	const operatorAction =
 		plan.value.runtime === "copilot"
@@ -2326,12 +2591,14 @@ function runRevive(argv: readonly string[]): void {
 		harness: plan.value.descriptor.harness,
 		runtime: plan.value.runtime,
 		state: "pending-canary" as const,
+		...(requeued > 0 ? { requeued } : {}),
 		...(operatorAction ? { operatorAction } : {}),
 	};
+	const requeuedLine = requeued > 0 ? `requeued ${requeued} message(s) retired at close\n` : "";
 	process.stdout.write(
 		parsed.value.json
 			? `${JSON.stringify(output)}\n`
-			: `started revival of ${output.id} (${output.runtime}) in pane ${output.paneId} — PENDING CANARY (not ready); ask a golden-recall question before assigning work${operatorAction ? `; ${operatorAction}` : ""}\n`,
+			: `${requeuedLine}started revival of ${output.id} (${output.runtime}) in pane ${output.paneId} — PENDING CANARY (not ready); ask a golden-recall question before assigning work${operatorAction ? `; ${operatorAction}` : ""}\n`,
 	);
 }
 
@@ -4466,6 +4733,10 @@ function main(): void {
 		process.stdout.write(`pij ${pijVersion()}\n`);
 		process.exit(0);
 	}
+	// `--as <id>` is a one-call PIJ_SENDER override, not a capability escape.
+	// Strip it before subverb classification so `queue --as X retire` is gated
+	// as `queue retire`, then let the handlers consume the exported sender.
+	applyAsOverride();
 	// ── PA capability boundary, seam 2 of 2 (plan 078) ───────────────────────
 	// spawn/adopt/close/orchestration/agent/daemon branch on RAW argv below and
 	// return BEFORE core parse, so the gate inside core dispatch() never sees
@@ -4482,20 +4753,22 @@ function main(): void {
 	}
 	// Inbox registration is the one messaging surface allowed to create PIJ_HOME,
 	// so it must run before the ordinary E-NOREG guard.
-	// `--as <id>` on inbox/send is a one-call PIJ_SENDER (PoC day-2 item 3): strip
-	// it here and export, so the pure resolvers below see a declared sender.
-	applyAsOverride();
 	if (top === "inbox") {
 		runInbox(process.argv.slice(3));
 		return;
 	}
 	if (top === "queue") {
-		if (process.argv[3] === "migrate") {
-			runQueueMigrate(process.argv.slice(4));
-			return;
+		switch (process.argv[3]) {
+			case "migrate":
+				runQueueMigrate(process.argv.slice(4));
+				return;
+			case "retire":
+				runQueueRetire(process.argv.slice(4));
+				return;
+			default:
+				runQueue(process.argv.slice(3));
+				return;
 		}
-		runQueue(process.argv.slice(3));
-		return;
 	}
 	if (top === "adopt" && process.argv[3] === "--current") {
 		runInbox(["register", ...process.argv.slice(4)]);

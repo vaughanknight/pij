@@ -38,6 +38,7 @@ link validation, and current/old-prime projections without changing close owners
 | `.pi/extensions/pij/adapters/fakes.ts` | In-memory implementations of the domain ports (Pattern P8: tests target these). |
 | `.pi/extensions/pij/core/*.test.ts`, `adapters/fakes.test.ts` | Unit coverage for every core module + fakes (50 tests). |
 | `.pi/extensions/pij/adapters/channel.ts` | Immutable `msg-*` publication plus exclusive/idempotent `read-*` markers, unread listing, and pi watcher watermarking. |
+| `.pi/extensions/pij/adapters/sqlite-queue.ts` | SQLite WAL delivery state machine, append-only receipts, terminal retirement, reason-filtered revive requeue, queue counts, and open-recipient discovery. |
 | `.pi/extensions/pij/index.ts` | Pi wiring: durable unread-derived watcher watermark, `PijSession.onInbound`, then post-callback `markRead`. |
 
 ## Concepts
@@ -65,6 +66,7 @@ link validation, and current/old-prime projections without changing close owners
 | Broadcast send | One raw text body is delivered once to each ordered target with independent outcomes. | Two or more unique repeatable `--to` targets; all-target preflight before the first delivery; per-target result/message id; later targets continue after a delivery-port failure. |
 | Multi-message wait | A broadcast sender can wait honestly for every successful recipient. | Ordered `{to,messageId}` tracking; `queued` retains a target, `delivered`/`unverified` removes only that target, and one global timeout names unresolved recipients. |
 | Immutable inbox | Message payload and read state are separate durable facts. | `msg-<id>.json` is retained; `read-<id>.json` existence is authoritative and marker publication is atomic/idempotent. |
+| Delivery state machine | SQLite delivery progress and terminal operator decisions are durable, receipted facts. | `queued→claimed→injected→acked`; lease exhaustion may produce `parked` (open-but-stuck); any open state may become terminal `retired` with a reason receipt; only matching `recipient-closed` retirement reasons are `requeued` on revive. |
 | Delivery ownership | Push and pull consumers share one unread/marker contract without double consumption. | Pi marks after `onInbound`; daemon-owned tmux marks after injection outcome; `deliveryMode:"pull"` is never daemon-owned. |
 | Watchdog configuration | Supervision deviations are durable, additive, and pi-free. | `WatchdogSidecar`: optional enable/interval, `self\|compact\|exempt` pause tier, per-watcher capture policy, and `exemptUntilMs`; absence means default-on 20 minutes. A live exemption has an absolute bounded deadline; malformed legacy timing re-arms rather than extending safety-off. |
 | Watchdog response | Delivered turns are interpreted without letting the observer's own effects fabricate health. | `evaluateResponse` uses typed event/pane/working attribution; paneless peers omit pane evidence; two silent fires ⇒ `stalled`. |
@@ -96,7 +98,7 @@ link validation, and current/old-prime projections without changing close owners
 - Event stream shape (seq+timestamp), filtering, and age/stall semantics.
 - State + liveness verdict taxonomy (vocabulary aligned with `agent-workbench`).
 - Fire-and-forget message framing + delivery-receipt lifecycle.
-- Immutable inbox envelopes, atomic read markers, and push/pull delivery ownership.
+- Immutable inbox envelopes, atomic read markers, SQLite delivery/retirement state, and push/pull delivery ownership.
 - Ordered one-to-many text fan-out, all-target preflight, per-recipient outcomes, and multi-message wait completion.
 - Remote-command allow-list.
 - Whole-life watchdog vocabulary, pure scheduling/response/pause/capture decisions, and self-teaching turn text.
