@@ -1,9 +1,9 @@
 # Ship report — jordan-spec (s393)
 
-**Seat**: pij-dependent-ptarmigan · **Date**: 2026-08-27T15:5xZ · **Branch**: `s393/jordan-spec` → **PR #16** https://github.com/vaughanknight/pij/pull/16 (base `main@ed20a68`) · **Card**: see spine
+**Seat**: pij-dependent-ptarmigan · **Date**: 2026-08-27T15:5xZ · **Branch**: `s393/jordan-spec` → **PR #16** https://github.com/vaughanknight/pij/pull/16 **MERGED** → `main@0e7adee9` · **Issue**: https://github.com/AI-Substrate/pij/issues/311 (filed by the o-prime on GO) · **Card**: see spine
 
 ## claim
-The standalone handoff spec is written, cold-reviewed to APPROVE, and on a PR. Deliverable (1) of the brief is complete pending the o-prime's merge; deliverable (2) (GitHub issue on `AI-Substrate/pij`, spec verbatim) is NOT started — gated on the o-prime's explicit GO after reading the spec.
+Both deliverables complete. (1) The standalone handoff spec is merged to `main@0e7adee9` (PR #16, cold review APPROVE, o-prime checklist PASS). (2) GitHub issue **AI-Substrate/pij#311** carries the spec verbatim — body 62,392 chars (§0–§11) + first comment 33,231 chars (§12–Appendix A), split because the spec (94,476 chars) exceeds GitHub's 65,536-char cap; filed by the o-prime on GO from `docs/plans/393-jordan-spec/issue/` (`5094ef4`), verified OPEN with 1 comment.
 
 ## artifacts[]
 - `docs/specs/claude-copilot-sqlite-sockets-comms.md` — 722 lines, 17 sections + source index; anchors on `main@ed20a68`
@@ -11,7 +11,7 @@ The standalone handoff spec is written, cold-reviewed to APPROVE, and on a PR. D
 - `docs/plans/393-jordan-spec/reviews/{spec-review-packet,spec-review,spec-rereview-packet,spec-rereview,spec-rereview2-packet,spec-rereview2,reviewer-canary}.md`
 
 ## shas[]
-- spec draft `939c08f` → review fixes `223fa64` → diagram fix `d3714eb` → verdict `5a185a5` (PR head)
+- spec draft `939c08f` → review fixes `223fa64` → diagram fix `d3714eb` → verdict `5a185a5` → ship report `d0f0131` (PR #16 head) → merge `0e7adee9` → issue files `5094ef4` (branch, docs-only PR by the o-prime)
 - base `ed20a68` (main at write time; main moved to `d620cdd` during the session — docs-only, no source anchors affected: `git diff --name-only ed20a68 origin/main | grep -E '^\.pi/|^docs/how'` empty at last check)
 - brief sha256 b9e057b3…f027166177 · definition sha256 c38bb2d6…a18b78a8e
 
@@ -33,7 +33,11 @@ The standalone handoff spec is written, cold-reviewed to APPROVE, and on a PR. D
 - OBS-08 / win / anchor verification as a shell loop caught 20+ stale line cites before any reviewer saw them — worth a `harness` check for docs that cite `file:line`
 
 ## open[]
-- o-prime: merge PR #16 (docs-only) — push-main baton is yours
-- o-prime: GO for the `AI-Substrate/pij` issue (spec body verbatim); I will `gh repo view AI-Substrate/pij` to confirm org/default branch immediately before filing
-- OBS-03 / OBS-04 need an owner (daemon/queue code) — not this stream's fence
-- Reviewer seat closed; registry clean
+- Nothing for this stream. OBS-03/OBS-04 routed by the o-prime as day-3 items 19 (s391) and 20 (s392).
+- Docs-only PR landing `docs/plans/393-jordan-spec/issue/` on main: o-prime's.
+- Reviewer seat closed; registry clean; this seat's close is owned by the o-prime.
+
+
+## observations[] (addendum at close)
+- OBS-09 / friction / "spec verbatim as an issue" collides with GitHub's 65,536-char issue-body cap for any spec this size; encode: an issue-filing helper that splits at `## ` boundaries into body + comments and verifies lengths
+- OBS-10 / friction / `gh issue create` has no `--title-file`; the title must be inline (`--title "$(cat …)"`)

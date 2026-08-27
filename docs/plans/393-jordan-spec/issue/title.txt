@@ -1,0 +1,1 @@
+Handoff spec: Claude + Copilot agent messaging over a SQLite queue and per-harness sockets (pij)
