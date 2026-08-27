@@ -1,5 +1,5 @@
 # Cold review brief — Phase 6 (item 15, stale lock reclaim + dispatch spine notes) — dlg-0014
-**Reviewer**: cold cross-model (claude-opus-5 via copilot) · **Repo**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core` (READ-ONLY except the verdict file; no commits; no `npm link`; never touch the live daemon or this machine's `~/.pij` — tests use tmp homes) · **Target**: branch `<BRANCH>` @ `<SHA — filled at dispatch>`; base = `git merge-base origin/main HEAD`; freeze and name the SHA.
+**Reviewer**: cold cross-model (claude-opus-5 via copilot) · **Repo**: `/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core` (READ-ONLY except the verdict file; no commits; no `npm link`; never touch the live daemon or this machine's `~/.pij` — tests use tmp homes) · **Target**: branch `s391/item15-spine-lock-reclaim` @ `38eb4ed19302a52f4418968b61bad6e211486299`; base = `git merge-base origin/main HEAD`; freeze and name the SHA.
 **Rubric**: `skills/flow-pair/references/review-rubrics.md`; Dim-0 mandatory (every -t selector baselined first). **Dossier**: `docs/plans/391-day3-core/tasks/phase-6-item-15-spine-lock-reclaim/tasks.md` (its Executive Briefing + tasks are the contract).
 
 ## Aim — what the gates cannot prove
