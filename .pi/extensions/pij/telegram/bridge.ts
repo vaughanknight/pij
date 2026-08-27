@@ -558,7 +558,6 @@ function normalizeSenderContent(from: SessionId, prefix: string, text: string): 
 export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): () => void {
 	const log = deps.log ?? (() => {});
 	const sizeOf = deps.sizeOf ?? ((path: string) => statSync(path).size);
-	const sqlite = sqliteOf(channel);
 
 	const forwardOne = async (dm: DeliveredMessage): Promise<{ undeliveredText: number }> => {
 		if (dm.kind === "receipt") {
@@ -567,8 +566,6 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		}
 		const attachments = dm.attachments ?? [];
 		const prefix = boundedSenderPrefix(dm.from, deps.senderContext?.(dm.from));
-		const sentPartIndices = new Set(sqlite?.telegramSentParts(dm.messageId) ?? []);
-		let nextTextPartIndex = 0;
 		let spoke = false;
 		let undeliveredText = 0;
 		const noteSpoke = (): void => {
@@ -581,27 +578,9 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 		let replyTo = deps.takeReplyTo?.(dm.from);
 		const sendText = async (text: string, errorLabel: string): Promise<number> => {
 			const bubbles = prefixedTextParts(prefix, text);
-			for (const [index, bubble] of bubbles.entries()) {
-				const persistedIndex = nextTextPartIndex;
-				nextTextPartIndex += 1;
-				if (sentPartIndices.has(persistedIndex)) {
-					log(`skip sent ${dm.messageId} part ${index + 1}/${bubbles.length}`);
-					noteSpoke();
-					replyTo = undefined;
-					continue;
-				}
+			for (const bubble of bubbles) {
 				try {
-					try {
-						await deps.send(bubble, replyTo);
-					} catch (error) {
-						const first = (error as Error).message;
-						if (!isTransientSendError(first)) throw error;
-						log(`text send retry after transient failure (${dm.messageId}): ${first}`);
-						await deps.send(bubble, replyTo);
-					}
-					sqlite?.markTelegramPartSent(dm.messageId, persistedIndex);
-					sentPartIndices.add(persistedIndex);
-					log(`forwarded ${dm.messageId} part ${index + 1}/${bubbles.length}`);
+					await deps.send(bubble, replyTo);
 					noteSpoke();
 					replyTo = undefined;
 				} catch (e) {
@@ -670,12 +649,13 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 			}
 		}
 		log(
-			`forward complete ${dm.messageId} ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
+			`forwarded ${dm.from} → chat (${textPartCount} text part${textPartCount === 1 ? "" : "s"}` +
 				`${attachments.length > 0 ? `, ${attachments.length} media` : ""})`,
 		);
 		return { undeliveredText };
 	};
 
+	const sqlite = sqliteOf(channel);
 	if (sqlite !== undefined) {
 		return startQueueConsumer({
 			queue: sqlite,
