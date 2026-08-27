@@ -9,6 +9,7 @@ import {
 	parseModelsJson,
 } from "./registry.js";
 import {
+	resolveCopilotInstability,
 	resolveLongContext,
 	type ValidationResult,
 	validateEffort,
@@ -120,6 +121,28 @@ describe("resolveLongContext", () => {
 				"gemini-3.6-flash",
 			),
 		).toBe(true);
+	});
+});
+
+describe("resolveCopilotInstability", () => {
+	it("resolves both measured Flash outcomes without misclassifying a request path", () => {
+		expect(resolveCopilotInstability([], "gemini-3.6-flash")).toEqual({
+			cli: "1.0.81-14",
+			observedFailAt: "2026-08-28 ~16:0xZ",
+			observedPassAt: "~07:33Z",
+			note: "HTTP 400 'invalid request body' on every request path (-p and interactive)",
+		});
+	});
+
+	it("normalizes a provider-qualified Flash id", () => {
+		expect(resolveCopilotInstability([], "github-copilot/gemini-3.6-flash")).toMatchObject({
+			observedFailAt: "2026-08-28 ~16:0xZ",
+			observedPassAt: "~07:33Z",
+		});
+	});
+
+	it("preserves honest absence for models without an isolated rejection", () => {
+		expect(resolveCopilotInstability([], "gpt-5.6-sol")).toBeUndefined();
 	});
 });
 

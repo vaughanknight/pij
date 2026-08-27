@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 import { resolveLivePane } from "./discovery.js";
 import { normalizeModelQuery } from "./models/match.js";
 import type { ModelEntry } from "./models/registry.js";
-import { validateEffort, validateModel } from "./models/validate.js";
+import { resolveCopilotInstability, validateEffort, validateModel } from "./models/validate.js";
 import type { RegistryPort } from "./ports.js";
 import { persistDaemonWrite } from "./registry-write.js";
 import type { HarnessKind, Role, SessionDescriptor, SessionId, SessionLifecycle } from "./types.js";
@@ -1086,16 +1086,22 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 // ─── Spawn-time model validation (warn-don't-block, T006) ───────────────────
 
 /**
- * Validate a spawn's --model against the known list. Returns a human-readable
- * warning string if the model is unknown, or null if it is known / not specified
- * / the known list is empty (cannot validate). NEVER blocks spawn — the caller
- * prints the warning and continues. The pij-id is always returned immediately.
+ * Check a spawn's --model for a measured upstream instability, then validate it
+ * against the known list. Returns a human-readable warning for either condition,
+ * or null when no warning is supported by the catalog. NEVER blocks spawn — the
+ * caller prints the warning and continues.
  */
 export function buildSpawnWarning(
 	model: string | undefined,
 	known: readonly ModelEntry[],
 ): string | null {
 	if (!model) return null;
+	const instability = resolveCopilotInstability(known, model);
+	if (instability !== undefined) {
+		const normalized = normalizeModelQuery(model);
+		const bareId = normalized.slice(normalized.lastIndexOf("/") + 1);
+		return `warning: ${bareId} on GitHub Copilot CLI ${instability.cli} is unstable upstream: ${instability.note} observed ${instability.observedFailAt}, while a -p one-shot succeeded ${instability.observedPassAt} — treat as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol. This is a warning only; spawn continues.`;
+	}
 	const result = validateModel(model, known);
 	if (result.ok) return null;
 	// Only warn when the registry can POSITIVELY confirm absence — at least one

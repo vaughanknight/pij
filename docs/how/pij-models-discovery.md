@@ -101,6 +101,23 @@ registry marks the model `longContext:false` through the curated deny-set (for
 example, `gemini-3.6-flash`, which rejects the flag with HTTP 400). The canary
 context join may then report the model's smaller tier; that is expected.
 
+### Gemini 3.6 Flash upstream instability
+
+gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400
+'invalid request body' on every request path (-p and interactive) observed
+2026-08-28 ~16:0xZ, while a -p one-shot succeeded ~07:33Z — treat as unavailable
+until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol.
+
+The catalog records both observations in `ModelEntry.copilotInstability`; it does
+not claim an interactive-only limitation. `pij spawn` prints the measured warning
+but continues, preserving warn-don't-block behavior. The separate item 6
+`longContext:false` argv gate remains in force, because the isolated matrix does
+not invalidate the known `--context long_context` rejection.
+
+The complete eight-row Flash/Sol isolation matrix and verbatim request errors are
+in
+[`isolation.md`](../plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/isolation.md).
+
 ## To make a new model *appear* in `pij models`
 
 - **copilot** → add portable entries to repo `.pi/models.json` under `github-copilot`,

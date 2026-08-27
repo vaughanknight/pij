@@ -45,6 +45,43 @@ describe("buildSpawnWarning", () => {
 	});
 });
 
+describe("Flash upstream-instability warning", () => {
+	const FLASH: ModelEntry = {
+		id: "gemini-3.6-flash",
+		name: "Gemini 3.6 Flash",
+		provider: "copilot",
+		verified: true,
+		copilotInstability: {
+			cli: "1.0.81-14",
+			observedFailAt: "2026-08-28 ~16:0xZ",
+			observedPassAt: "~07:33Z",
+			note: "HTTP 400 'invalid request body' on every request path (-p and interactive)",
+		},
+	};
+
+	it("warns with both observed outcomes and safer alternatives", () => {
+		const warning = buildSpawnWarning("gemini-3.6-flash", [FLASH]);
+
+		expect(warning).toContain(
+			"gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream",
+		);
+		expect(warning).toContain(
+			"HTTP 400 'invalid request body' on every request path (-p and interactive) observed 2026-08-28 ~16:0xZ",
+		);
+		expect(warning).toContain("while a -p one-shot succeeded ~07:33Z");
+		expect(warning).toContain(
+			"treat as unavailable until a fresh probe passes; pick gpt-5.6-terra or gpt-5.6-sol.",
+		);
+		expect(warning).toContain("spawn continues");
+	});
+
+	it("also warns for the provider-qualified model id", () => {
+		expect(buildSpawnWarning("copilot/gemini-3.6-flash", [FLASH])).toContain(
+			"gemini-3.6-flash on GitHub Copilot CLI 1.0.81-14 is unstable upstream: HTTP 400",
+		);
+	});
+});
+
 // ─── FIX-C mutation-proof: best-effort harness → no false "unknown model" ────
 // Mutation: remove the `!known.some((e) => e.verified)` gate → buildSpawnWarning
 // warns for claude/codex alias lists even when no entry is verified → RED.
