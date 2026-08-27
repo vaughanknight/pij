@@ -8,6 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+	appendFileSync,
 	closeSync,
 	fstatSync,
 	mkdirSync,
@@ -240,7 +241,24 @@ export class DaemonTmux implements DaemonPorts {
 	private readonly socketAckWaitMs: number;
 
 	constructor(options: DaemonTmuxOptions = {}) {
-		this.runner = options.runner ?? execFileRunner;
+		const base = options.runner ?? execFileRunner;
+		// Benchmark hook (reports/pij-comms-review-2026-08-27/benchmarks.md): when
+		// PIJ_BENCH_KEYLOG names a file, every keystroke-bearing tmux call
+		// (send-keys / paste-buffer) appends one line, so a scenario can count
+		// exactly what reached a pty. Off unless the env var is set.
+		const keylog = process.env.PIJ_BENCH_KEYLOG;
+		this.runner = keylog
+			? (args) => {
+					if (args[0] === "send-keys" || args[0] === "paste-buffer") {
+						try {
+							appendFileSync(keylog, `${Date.now()}\t${args.join(" ").slice(0, 120)}\n`);
+						} catch {
+							// benchmark telemetry only — never affects delivery
+						}
+					}
+					return base(args);
+				}
+			: base;
 		this.sleep = options.sleep ?? sleepSync;
 		this.claudeSessionsDir = options.claudeSessionsDir ?? claudeSessionsDir(homedir());
 		this.socketAckWaitMs = options.socketAckWaitMs ?? 150;
