@@ -5,26 +5,23 @@ landing; never implement the plan or pre-empt the reviewer's judgment.
 
 ## Required status steps
 
-Everything under `report` is a first-person claim about yourself.
+Everything under `report` is first-person; global invariant 12 owns cadence.
 
-1. **Start-of-work report** — after the human preamble checkpoint and before the
-   first planning or build mutation:
+1. **Start-of-work** — after the preamble checkpoint, before mutation:
 
    ```bash
    pij report now 'Starting **<plan>**' 'Run the next Builder or pair step'
    ```
 
-2. **Stop-of-work report** — after every phase gate/approval and at ship, before
-   sending the pointer report upward:
+2. **Stop-of-work** — after each approval and at ship, before reporting upward:
 
    ```bash
-   pij report now 'Completed **<phase>** after `harness checks`' 'Send the [phase report](<path>) and begin the next approved step'
+   pij report now 'Completed **<phase>** after `harness checks`' 'Send the phase report → <path> and begin the next approved step'
    ```
 
-Use `pij report question "<what I need from you>"` for a human decision and
-`pij report blocked "<what I am waiting on>"` for an external dependency.
-Actively working has no semantic state word; absence is honest by design.
-Completion is `pij report state done`, never a watchdog self-pause.
+Use `report question` for human decisions, `report blocked` for external dependencies,
+and `report state done` for completion; active work has no semantic state, and never
+self-pauses the watchdog.
 
 ## Ordered entry
 
@@ -40,7 +37,7 @@ Run these steps in order. A later step never retroactively satisfies an earlier 
 8. Freeze the plan and run cold `/validate-v2`; route findings back through Builder until the recorded verdict matches that SHA.
 9. Stop at `WAITING_FOR_BUILD_CONFIG`: validation does not authorize implementation.
 10. Verify the stream worktree, branch, approved base, parent SHA, and descriptor cwd.
-11. After the human confirms the fleet, persist the selected profile in the plan roster.
+11. Read the selected profile back verbatim and confirm inline. After the human confirms the fleet, persist it in the plan roster.
 12. Start `/pij pair start "<request>" --coder-model <confirmed> --reviewer-model <confirmed>`.
 13. Delegate each whole phase through that started pair run.
 14. After approved phases and full gates, run `/builder 8 ship` for confirm-gated push, PR, watched CI, and optional confirmed merge.
@@ -50,21 +47,16 @@ stop and escalate one hop; do not improvise a replacement contract.
 
 ## Build configuration
 
-Record any named user choice exactly.
+Record named user choices exactly:
 - Default coder: separate Copilot gpt-5.6-sol @ xhigh coder.
 - Default reviewer: separate Copilot gpt-5.6-sol @ xhigh reviewer.
-Then read it back verbatim and confirm inline before fleet creation — never a
-modal question UI (global invariant 9); persist the pending choice and remain
-reachable.
-
-Workers are default-stack splits in the orchestrator's own window, never the o-prime's window,
-and inherit the verified worktree because peer spawn uses the
-caller's cwd. Canary model, effort, identity, cwd, branch, and placement before use.
-See the [pair route](../routes/pair.md) for lazy acquisition and fleet lifecycle.
-Never silently use pair's built-in defaults. In the current provided-peer path,
-explicitly spawn and canary the selected models and persist the plan roster with
-their ids/models before dispatch. The current flow-pair engine does not persist
-the override flags; the plan roster remains the durable configuration truth.
+Persist the pending choice and remain reachable; read it back verbatim and confirm inline before fleet creation (global invariant 9).
+Workers are default-stack splits in the orchestrator's window, never the o-prime's window, and
+inherit caller cwd. Canary model, effort, identity, cwd, branch, and placement (§ C2/C5).
+The [pair route](../routes/pair.md) owns lifecycle. Never silently use its defaults:
+the current provided-peer path explicitly spawns/canaries models and must persist the plan roster
+with ids/models before dispatch. The current flow-pair engine does not persist override flags;
+the plan roster remains the durable configuration truth.
 
 ## Packaging and review law
 
@@ -88,52 +80,35 @@ the override flags; the plan roster remains the durable configuration truth.
 
 Persist pointer reports using [`rituals/reports.md`](./rituals/reports.md) at
 preamble, plan/validation, each phase, and ship; also report blockers, human
-rulings, and coordination changes immediately. Escalate governance and
-coordination exactly one hop — never as a question proxy: an active Builder or
-other specialist asks its own context-local questions directly and sends you
-the pending-decision pointer (global invariants 9–10).
+rulings, and coordination changes immediately. Escalate exactly one hop, never
+as a question proxy; the context-local specialist asks and sends a pointer
+(global invariants 9–10).
 
-Worktree-local scope changes are the same: tell, do not ask. Record the updated
-touch set and overlap risk, notify the o-prime, and continue on the isolated
-branch; synchronize only at convergence or shared mutable resources (global
-invariant 11; matrix: [`rituals/batons.md`](./rituals/batons.md)). Two isolated
-branches touching the same path is a reconciliation risk, not an edit-time lock.
+For worktree-local scope changes, tell rather than ask: record touch set and overlap risk,
+notify the o-prime, and continue. Synchronize only at convergence/shared mutable resources
+(global invariant 11; [`rituals/batons.md`](./rituals/batons.md)); same-path isolated
+branches are reconciliation risk, not an edit-time lock.
 
-Push-not-poll remains normal. Treat unexplained worker silence outage-first, never
-misconduct-first. After a 15-minute cadence passes with no completion, blocked,
-stalled, or dead push, perform one liveness check. If the worker is idle without
-a report, send one status request requiring `COMPLETE`, `CONTINUING`, or `BLOCKED`;
-any new message is a recovery poke, so poke before redispatch. Redispatch only
-after liveness and recovery pokes fail; repeated short-interval polling stays
-forbidden. A continuing report names current work, files, gates, remaining work,
-and its next reporting point.
+Push-not-poll is § C7. Treat unexplained worker silence outage-first, never misconduct-first:
+after a 15-minute cadence without completion,
+blocked, stalled, or dead push, make one liveness check; an idle worker gets one request
+for `COMPLETE`, `CONTINUING`, or `BLOCKED`. Any new message is a recovery poke; poke before redispatch.
+Redispatch only after liveness and recovery pokes fail; repeated short-interval polling stays forbidden.
+Continuing reports name work, files, gates, remainder, and next report point.
 
-Silence is not the only failure shape, and the liveness protocol above cannot see
-the other one: a worker that is **busy, talking, and still stale** — pushing
-messages while its `pij report` card names work it finished an hour ago. It answers
-every poke, so it never trips a liveness check, and the pokes it answers are not
-reports. Your fleet's card freshness is YOUR accountability, not theirs: workers
-forget, you are answerable that they do it. Run `pij anomalies` **unscoped** and close
-every `status-stale` row for your fleet — each already carries the literal remediation
-line to relay (`pij report now "<did>" "<next>"`, or a parked state
-`waiting|hold|blocked|question`). Do not narrow with `--here` or `--project`:
-`status-stale` is node-keyed with no assignment or allocation ref, so `--project`
-filters it out entirely and `--here` hides every worker whose worktree is a different
-folder from yours. Confirm the card actually moved; a relayed
-instruction is not a fixed card. Until it moves, every consumer — you, the o-prime,
-the human — renders that stale now/next as CURRENT.
+Fleet card freshness is also your accountability (global invariant 12). Run `pij anomalies`
+**unscoped**, relay every `status-stale` remediation, and confirm the card moved. Never use
+`--project` (node-keyed rows have no assignment ref) or `--here` (other-worktree seats
+vanish); a relayed instruction is not a fixed card, and stale now/next renders as current.
 
-Any path outside a packet allowlist triggers an immediate stop and classification
-before review. The known benign class is timestamp-only `.pi/packages.yaml`
-`vetted.date` churn after pi, harness, or package-audit boot: prove the diff is
-date-only, restore the file byte-identical to branch HEAD, record the cause, then
-resume. Never hand-edit package state. Source, package, enablement, install command,
-score, override, or any other content change remains a scope breach.
+Any path outside a packet allowlist triggers stop and classification. The timestamp-only
+`.pi/packages.yaml` `vetted.date` churn after pi/harness/package-audit boot is benign only after proving date-only,
+restoring byte-identical to branch HEAD, and recording cause. Never hand-edit package state; any source,
+package, enablement, install, score, override, or other content change remains a breach.
 
 Worktrees isolate trees and indexes, not false claims or runtime interference.
 Use [`rituals/batons.md`](./rituals/batons.md) for timing/external resources and
 [`protocol.md`](./protocol.md) for the ruled shared-tree fallback.
 
-After compaction, resume, or seat replacement, invoke `/pij prime` again and
-re-derive identity, government, Builder state, git state, and peer claims from
-substrate. Memory is never position truth.
+After compaction/resume/replacement, invoke `/pij prime` and re-derive identity,
+government, Builder/git state, and peer claims. Memory is never position truth.

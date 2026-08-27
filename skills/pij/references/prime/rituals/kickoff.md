@@ -26,14 +26,16 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
    from `process.cwd()`; there is no peer `--cwd`. Keep it out of the o-prime window.
 8. **Wait for the daemon's ready push.** Never poll a booting peer.
 9. **Verify placement.** Inspect `pij list --here --json`, `git branch --show-current`,
-   and the tmux panes; cwd, branch, parent, and window must match the brief.
+   and the tmux panes; cwd, branch, parent, and window must match the brief. Also
+   verify the automatically persisted structural link with `pij tree <id> --json`.
 10. **Canary legs (a) and (b).** Run `pij canary <id> --expect-model <m>`;
     Complete canary leg (a) round-trip and leg (b) identity proof, and record the
     nonce-dispatch plus defensive runtime evidence at pass time. Leave leg (c) pending.
     The governor then places and designates the proved stream in one call:
     `pij link <id> --parent <o-prime-id> --role pm --json`. For a spawned
     stream this idempotently confirms the automatic parent while adding the role;
-    for an adopted stream it writes both facts. Role always arrives from above.
+    for an adopted stream it writes both facts; run `pij link <id> --parent <o-prime-id> --json`
+    for parent-only repair. Role always arrives from above.
     Verify the subtree, then record the linked parent, PM designation, and
     `spawnedBy`/close ownership.
 11. **Deliver the brief by pointer as canary leg (c).** Run `pij dispatch <id>

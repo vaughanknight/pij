@@ -11,8 +11,8 @@ below it, and government as single-writer files.
 Use the first matching deterministic probe. Do not choose by persona or intent.
 Resolve the current id with `pij whoami --json`, then run
 `pij list --prime --here --json` and compare the `id` fields mechanically.
-`--here` is current-prime-only. `oldPrime` is history, never an active-seat
-signal; audit retired seats with `pij tree --global --all --json`.
+`pij list --prime --here --json` is current-prime-only. `oldPrime` is history and
+never an active-seat signal; audit retired seats with `pij tree --global --all --json`.
 
 **An empty `--here` result is NOT evidence that no prime exists.** Widen to
 unscoped `pij list --prime --json` before concluding absence — a repo's prime is
