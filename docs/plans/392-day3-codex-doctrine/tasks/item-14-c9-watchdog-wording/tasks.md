@@ -5,10 +5,10 @@
 **Fence**: `skills/pij/references/00-routing.md` (C9) + `skills/pij/references/prime/orient-oprime.md` (duty 7, if budget). **Gate** (skill-text PR): `just pij-skill-check` 0 ✗ + `npx vitest run .pi/extensions/pij/cli.integration.test.ts .pi/extensions/pij/acceptance-sweep.test.ts` green + cold semantic review. BUDGET-FLAT (00-routing.md ≤250 lines — tighten, don't add net lines).
 
 ## Problem (verified)
-C9's "If a nudge re-invokes you" list offers `pij report state done` as a response, and the nudge text says "If done, run `pij report state done`" — implying `done` quiets the watchdog. It does NOT: `core/watchdog.ts:332 mutesWatchdogNudge` mutes ONLY `blocked|question|hold|waiting`; `done`/`ready` never mute (by design — `done` is a claim a verifier must confirm). A seat that reports `done` and stops still gets nudged; a seat standing by with no open work should park `hold`/`waiting` (which mute), not `done`.
+C9's "If a nudge re-invokes you" list offers `pij report state done` as a response, and the nudge text says "If done, run `pij report state done`" — implying `done` quiets the watchdog. It does NOT: `core/watchdog.ts:332 mutesWatchdogNudge` mutes ONLY `blocked|question|hold|waiting`; `done`/`ready` never mute (by design — `done` is a claim a verifier must confirm). ADV-4 corrected the first proposed remedy: an idle available seat uses `ready`; it must not self-park with `hold`/`waiting`.
 
 ## Fix (o-prime wording, budget-flat)
-Amend C9 (weave into the existing "If a nudge re-invokes you" paragraph — tighten adjacent prose to stay net-flat): add the sense of — "`done` is a claim for a verifier and does not mute; a seat standing by with no open work parks with `hold`/`waiting`; reach for `interval`, never `pause`." Do NOT change the nudge quote itself (it's a faithful render of the daemon's actual injected text — verify against `core/` before touching; if the daemon text really says "If done…", leave the quote, add the clarification below it).
+Amend C9 (weave into the existing "If a nudge re-invokes you" paragraph — tighten adjacent prose to stay net-flat): `done` is a verifier claim and does not mute; `ready` is idle-but-available and remains watched; the four muting states require genuine conditions (`blocked`/`waiting` external, `question` human answer, `hold` issuer-parked); reach for `interval`, never self-`pause`. Do not tell an unblocked idle seat to self-park.
 Mirror ONE line in `orient-oprime.md` duty 7 IF budget allows (state the call in the report).
 
 ## Tasks
@@ -23,3 +23,7 @@ The landed C9 says "Truly parked with no open work → `hold`/`waiting`" — WRO
 - `core/state.ts:139`: `hold` is canonically "parked by an ISSUER" (not self-declared for no-work); `core/anomalies.ts:818` foreign-hold-clear assumes a hold carries an issuer.
 - The four that mute (`mutesWatchdogNudge`, watchdog.ts:332) are for GENUINE conditions: `blocked` (external dep), `question` (human answer), `hold` (issuer parked you), `waiting` (external, per node.md's blocked-vs-waiting split). An idle seat available on a standing assignment uses `ready` (stays watched); tune a legitimate cadence with `interval`, never self-`pause`.
 FIX: reword the C9 sentence so it does NOT tell an idle-no-work seat to park `hold`/`waiting`. Keep budget-flat. Verify against the three code sites above. Re-run: skill-check 0 ✗ + cli.integration + acceptance-sweep green.
+
+**Folded**: C9 now ties every muting state to its genuine condition and explicitly forbids
+self-declaring `hold`/`waiting` merely for idleness. `orient-oprime.md` did not repeat the
+false no-work instruction, so no ADV-4 mirror edit was needed.

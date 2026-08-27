@@ -1,8 +1,8 @@
 # Item 14 execution log — C9 watchdog mute wording
 
-**Delegation**: `dlg-0016`
+**Delegation**: `dlg-0017`
 **Worker**: `pij-remote-falcon`
-**Base**: `bb852a4`
+**Base**: `445f8ee`
 
 ## Runtime verification
 
@@ -23,12 +23,22 @@ integration string pin without restoring the false implication.
 
 - `done` is a verifier claim and does not mute.
 - `ready` is active/available and does not mute.
-- truly parked with no open work uses `hold`/`waiting`;
-- human-gated and externally blocked work uses `question`/`blocked`;
-- those four parked states mute nudges;
+- `blocked`/`waiting` require an external dependency;
+- `question` requires a human answer;
+- `hold` means an issuer parked the seat;
+- only those genuine conditions mute nudges; idleness alone never authorizes them;
 - use `watchdog interval` for a legitimate cadence, never self-`pause`.
 
 Duty 7 in `orient-oprime.md` mirrors the `done`/`ready` non-muting distinction.
+
+## ADV-4 correction
+
+Verified `watchdog.ts:399-405`, `state.ts:139`, and `anomalies.ts:818`. The first item-14
+wording incorrectly told a seat with no open work to self-declare `hold`/`waiting`.
+C9 now directs an idle available seat to `ready`, reserves every muting state for its
+actual condition, and explicitly forbids using `hold`/`waiting` as an idle silencer.
+
+`orient-oprime.md` did not repeat the false no-work rule, so ADV-4 leaves it unchanged.
 
 ## Gates
 

@@ -7,7 +7,7 @@ repository-wide gate remains red outside this item fence.
 
 C9 now distinguishes reporting completion from muting supervision: `done` is a claim for
 a verifier, `ready` is an active standing-assignment state, and neither silences the
-watchdog. Only `blocked`, `question`, `hold`, and `waiting` park a seat and mute nudges.
+watchdog. The four muting states are reserved for genuine conditions, never idle self-parking.
 
 ## Runtime quote decision
 
@@ -21,14 +21,16 @@ calls "not a silencer".
 
 - A finished unit reports `done` and remains watched for verification.
 - An idle but available standing assignment reports `ready` and remains watched.
-- A seat truly parked with no open work uses `hold`/`waiting`.
-- Human/external blockers use `question`/`blocked`.
+- External dependencies use `blocked`/`waiting` according to node doctrine.
+- Human-gated work uses `question`; an issuer parks a seat with `hold`.
+- An idle seat never self-declares `hold`/`waiting` merely to silence nudges.
 - Legitimate slow cadence uses `watchdog interval`; a seat never self-`pause`s.
 
 ## Orient mirror
 
-Duty 7 in `orient-oprime.md` now states in one existing line that `done` is not a mute and
-`ready` stays watched. The mirror was taken because it fits without line growth.
+Duty 7 in `orient-oprime.md` already states that `done` is not a mute, `ready` stays
+watched, and the four genuine parked states are available. It did not repeat the false
+idle-no-work instruction, so ADV-4 required no additional mirror edit.
 
 ## Budget
 
