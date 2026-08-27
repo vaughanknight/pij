@@ -222,3 +222,12 @@ Cold review APPROVE (1858441), 3/3 Dim-0 sha-verified, composition w/ item-17 AD
 - **ADV-C**: the sweep is a TRADE not a tightening — it GAINED aliased-destructure shapes but LOST literal-RHS comparisons (`descriptor.paneId === "%42"`, backtick-%n) and has a latent object-literal FP (paneIdAliases matches object literals, scope-blind). LOW severity (sweep skips .test.ts, 0 real occurrences). Fix: DISCLOSE the traded-away shapes + latent FP in the sweep comment — a safety-brake narrowing must be stated, not silent.
 - (MUT-C line 270 was the it.each decl; real RED 275 — imprecise, noted.)
 ## 2026-08-28 — o-prime: MERGED PR #25 (item 21) → main 90ba189c. Item 29 parallel approved (disjoint fence). Tail order now: 29 → 24 (+spec §14) → 22 → E22 → 23b → 21b (21b after 23b). s391 rebase note (loop.ts) for its 15/16.
+
+## 2026-08-28 — Item 29 APPROVE → PR #26 (urgent bridge supervision); new ITEM 29b (advisories, non-blocking)
+Cold review APPROVE (ebdc984→df0fca8 byte-faithful). 4/4 Dim-0 sha-verified; sync-flush proven with real child-process kills (5 ways), no-double-start proven at 2 layers (supervisor gate + O_EXCL lock), storm-guard proven per-window. No collateral. Extension change → goes live on next daemon restart. → **ITEM 29b** (tail):
+- **ADV-1 (medium, fix first)**: owner-capture bridge-log TAIL is stale/missing for an IN-PROCESS restart — only the standalone path writes ~/.pij/telegram-bridge.log; an in-process death attaches a stale tail (or none) as "the reason". Fix: stamp mtime, or name which mode died.
+- **INFO-3 (should-fix)**: a permanent crash-loop notifies the owner 3× then SILENCE (`capped` notifies nobody) — undercuts "the human knows". Fix: one "giving up / capped" notice.
+- ADV-2 (low-med): `stop()` (a process-EXIT teardown) reused as a RESTART teardown never calls `bot.stop()` (only the signal path does) — the supervisor calls it in a SURVIVING process. Fix: `void bot.stop()` there, or amend the comment.
+- ADV-3 (low): telegram-bridge.log has NO rotation; daemon reads the WHOLE file for the last 4KB (pij#183 = 205MB accumulation).
+- ADV-4 (low): bridgeSupervisorForDaemon + the note/notifyOwner closures have ZERO test coverage (every shipped test injects deps).
+- INFO-1: `autoStartBridgeForDaemon` now has ZERO callers (dead code; stale comment). INFO-2: a malformed telegram.env retries forever (~5.7k log lines/day). INFO-4: owner notice `from: TELEGRAM_PEER_ID` though the daemon authored it (spine event correctly uses actor:pij-daemon).
