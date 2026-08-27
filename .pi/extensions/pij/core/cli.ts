@@ -90,6 +90,7 @@ import {
 	acknowledgeDispatch,
 	canonicalDispatchJson,
 	markDispatchDelivered,
+	retireDispatch,
 } from "./platform/dispatch.js";
 import { canonicalFenceJson, fencesForPath } from "./platform/fence.js";
 import { recoverPendingOps } from "./platform/journal.js";
@@ -480,6 +481,14 @@ export type ParsedCommand =
 			readonly json: boolean;
 	  }
 	| {
+			readonly verb: "dispatch-retire";
+			readonly dispatchId?: string;
+			readonly to?: SessionId;
+			readonly reason: string;
+			readonly dryRun: boolean;
+			readonly json: boolean;
+	  }
+	| {
 			readonly verb: "canary";
 			readonly to: SessionId;
 			readonly expectedModel?: string;
@@ -757,6 +766,7 @@ const BOOLEAN_FLAGS = new Set([
 	"global",
 	"all",
 	"root",
+	"dry-run",
 ]);
 const REPEATABLE_FLAGS = new Set(["to", "activity", "liveness", "lifecycle"]);
 
@@ -858,6 +868,7 @@ const ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
 	models: new Set(["harness", "json"]),
 	send: new Set(["to", "command", "file", "caption", "wait", "json"]),
 	dispatch: new Set(["packet", "wait", "actor", "json"]),
+	"dispatch-retire": new Set(["to", "reason", "dry-run", "json"]),
 	ack: new Set(["packet-sha", "json"]),
 	canary: new Set(["expect-model", "wait", "json"]),
 	tail: new Set(["since", "type", "lines", "follow", "json"]),
@@ -906,6 +917,7 @@ const MAX_POS: Record<string, number> = {
 	models: 1,
 	send: 2,
 	dispatch: 1,
+	"dispatch-retire": 1,
 	ack: 1,
 	canary: 1,
 	tail: 1,
@@ -1155,6 +1167,34 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				wait: flags.wait !== undefined,
 				waitMs,
 				actor: typeof flags.actor === "string" ? flags.actor : undefined,
+				json,
+			});
+		}
+		case "dispatch-retire": {
+			const dispatchId = pos[0];
+			if (flags.to === true || flags.to === "") return err("E-ARG", "--to needs a seat id");
+			const targets = repeated.to ?? [];
+			if (targets.length > 1) return err("E-ARG", "dispatch-retire accepts one --to seat");
+			const to = targets[0];
+			if ((dispatchId === undefined) === (to === undefined)) {
+				return err("E-ARG", "choose one dispatch id OR --to <seat>");
+			}
+			if (flags.reason === true || flags.reason === "") {
+				return err("E-ARG", "--reason needs text");
+			}
+			const reason = typeof flags.reason === "string" ? flags.reason : undefined;
+			if (reason === undefined) {
+				return err(
+					"E-ARG",
+					"usage: pij dispatch-retire <dispatch-id> | --to <seat> --reason <text> [--dry-run]",
+				);
+			}
+			return ok({
+				verb: "dispatch-retire",
+				dispatchId,
+				to,
+				reason,
+				dryRun: flags["dry-run"] !== undefined,
 				json,
 			});
 		}
@@ -3802,6 +3842,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 		case "fence-set":
 		case "fence-show":
 		case "dispatch-packet":
+		case "dispatch-retire":
 		case "ack-dispatch":
 		case "canary":
 		case "spine-append":
@@ -3920,6 +3961,7 @@ type PlatformCommand = Extract<
 			| "fence-set"
 			| "fence-show"
 			| "dispatch-packet"
+			| "dispatch-retire"
 			| "ack-dispatch"
 			| "canary"
 			| "spine-append"
@@ -4615,6 +4657,53 @@ function dispatchPlatform(cmd: PlatformCommand, deps: CliDeps, now: number): Cli
 				exitCode: 0,
 				follow,
 			};
+		}
+		case "dispatch-retire": {
+			const ports = platformWritePorts(deps);
+			if (!ports.ok) return fail(ports.code, ports.message, cmd.json);
+			const attribution = resolveActor(undefined, deps);
+			if (!attribution.ok) return fail(attribution.code, attribution.message, cmd.json);
+			const ts = isoTimestamp(now);
+			if (!ts.ok) return fail(ts.code, ts.message, cmd.json);
+			const records =
+				cmd.dispatchId !== undefined
+					? (() => {
+							const record = ports.value.dispatchStore.read(cmd.dispatchId);
+							return record === null ? null : [record];
+						})()
+					: ports.value.dispatchStore.list().filter((record) => record.to === cmd.to);
+			if (records === null) {
+				return fail("E-NOREG", `no dispatch '${cmd.dispatchId}'`, cmd.json);
+			}
+			const candidates = records.filter(
+				(record) => record.state === "undelivered" || record.state === "delivered-unacked",
+			);
+			let retired = 0;
+			if (!cmd.dryRun) {
+				for (const previous of candidates) {
+					const next = retireDispatch(previous, {
+						reason: cmd.reason,
+						actor: attribution.value.actor,
+						ts: ts.value,
+					});
+					if (!next.ok) return fail(next.code, next.message, cmd.json);
+					const written = ports.value.dispatchStore.write(next.value);
+					if (!written.ok) return fail(written.code, written.message, cmd.json);
+					retired += 1;
+				}
+			}
+			const matched = candidates.length;
+			const count = cmd.dryRun ? matched : retired;
+			return okOut(
+				cmd.json
+					? JSON.stringify({
+							retired,
+							matched,
+							reason: cmd.reason,
+							...(cmd.dryRun ? { dryRun: true } : {}),
+						})
+					: `${cmd.dryRun ? "would retire" : "retired"} ${count}/${matched} dispatch(es) — reason: ${cmd.reason}`,
+			);
 		}
 		case "ack-dispatch": {
 			const ports = platformWritePorts(deps);

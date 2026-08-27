@@ -99,6 +99,7 @@ import {
 	type BatonNoticeSink,
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
+import { retireDispatch } from "./core/platform/dispatch.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
@@ -824,23 +825,54 @@ export class Daemon {
 
 	private retireForClosedRecipients(): void {
 		const queue = sqliteOf(this.channel);
-		if (queue === undefined) return;
-		for (const to of queue.openRecipients()) {
+		const dispatchStore = new FsDispatchStore(this.pijHome);
+		const dispatches = dispatchStore.list();
+		const recipients = new Set(queue?.openRecipients() ?? []);
+		for (const dispatch of dispatches) {
+			if (dispatch.state === "undelivered" || dispatch.state === "delivered-unacked") {
+				recipients.add(dispatch.to);
+			}
+		}
+		for (const to of recipients) {
 			const descriptor = this.registry.read(to);
+			if (descriptor === null) continue;
 			// Not retention policy: the complete deliberate-close predicate decides
 			// retirement. Its intent/terminal checks are one-directional safety
 			// interlocks — removing either can only retire more, including revivable mail.
 			if (
-				descriptor?.lifecycle !== "dissolved" ||
+				descriptor.lifecycle !== "dissolved" ||
 				descriptor.revivePendingAt !== undefined ||
 				descriptor.closeIntent === undefined ||
 				descriptor.terminal?.disposition !== "requested"
 			) {
 				continue;
 			}
-			const result = queue.retire({ to }, "recipient-closed");
-			if (result.retired > 0) {
-				this.log(`retire ${to}: ${result.retired} open deliveries retired (recipient closed)`);
+			if (queue !== undefined) {
+				const result = queue.retire({ to }, "recipient-closed");
+				if (result.retired > 0) {
+					this.log(`retire ${to}: ${result.retired} open deliveries retired (recipient closed)`);
+				}
+			}
+			let retiredDispatches = 0;
+			for (const previous of dispatches) {
+				if (
+					previous.to !== to ||
+					(previous.state !== "undelivered" && previous.state !== "delivered-unacked")
+				) {
+					continue;
+				}
+				const next = retireDispatch(previous, {
+					reason: "recipient-closed",
+					actor: "daemon",
+					ts: new Date(this.ports.now()).toISOString(),
+				});
+				if (!next.ok) throw new Error(`${next.code}: ${next.message}`);
+				const written = dispatchStore.write(next.value);
+				if (!written.ok) throw new Error(`${written.code}: ${written.message}`);
+				retiredDispatches += 1;
+			}
+			if (retiredDispatches > 0) {
+				this.log(`retire ${to}: ${retiredDispatches} open dispatches retired (recipient closed)`);
 			}
 		}
 	}

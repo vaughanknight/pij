@@ -215,6 +215,9 @@ export const PA_VERB_CLASSIFICATION: Readonly<Record<string, PaCapability>> = {
 	// durable observation traded for an ephemeral one.
 	"spine-append": ALLOW,
 	"dispatch-packet": OBLIGATION,
+	"dispatch-retire": refuse(
+		"it terminally retires dispatch records for another seat — a zero-actuator PA reports that condition, never performs it",
+	),
 	// CONDITIONAL, not refused: the refusal reason WAS the argument for allowing
 	// it. "Acknowledging a brief is the assignee's own act" — and when the PA IS
 	// the assignee, that sentence permits rather than forbids (#99). The gate

@@ -191,6 +191,7 @@ import {
 } from "./core/orchestration/pa-capability.js";
 import { PrimeService } from "./core/orchestration/prime.js";
 import { projectOrchestrationRole, RoleService } from "./core/orchestration/role.js";
+import { unretireDispatch } from "./core/platform/dispatch.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
 import { daemonTickStatus } from "./core/receipts.js";
 import {
@@ -313,6 +314,7 @@ Platform (durable projects + the shared spine log):
   pij fence set <stream> --paths <a,b> [--shared <x,y>] [--actor <label>] [--json]   write a descriptive notify-only fence
   pij fence show [--path <repo-path>] [--json]       list fences or answer path ownership (overlap is reported, never blocked)
   pij dispatch <id> --packet <file> [--wait[=MS]] [--actor <label>] [--json]   send a packet with a durable three-state dispatch receipt
+  pij dispatch-retire <dispatch-id> | --to <seat> --reason <text> [--dry-run] [--json]   terminally retire open dispatch records
   pij ack <dispatch-id> --packet-sha <sha256> [--json]   verify packet bytes and emit a brief-ack receipt
   pij canary <id> [--expect-model <model>] [--wait[=MS]] [--json]   dispatch a nonce packet, verify identity/runtime, and attach pass evidence
   pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>] [--bare] [--actor <label>] [--json]   append one spine event
@@ -712,6 +714,9 @@ function runQueueRetire(argv: readonly string[]): void {
 	}
 	const hasSelector =
 		to !== undefined || from !== undefined || olderThanMs !== undefined || state !== undefined;
+	if (hasSelector && allRecipients) {
+		failQueueRetire("choose a selector OR --all-recipients");
+	}
 	if (!hasSelector && !allRecipients) {
 		failQueueRetire(
 			"choose at least one selector (--to, --from, --older-than, --state) or pass --all-recipients",
@@ -2203,6 +2208,28 @@ function requeueClosedRecipientMail(
 	}
 }
 
+function requeueClosedRecipientDispatches(
+	id: string,
+	reviverId: string | undefined,
+	nowIso: string,
+): number {
+	const store = new FsDispatchStore(pijHome);
+	let requeued = 0;
+	for (const previous of store.list()) {
+		if (previous.to !== id) continue;
+		const next = unretireDispatch(previous, {
+			actor: reviverId ?? "unknown",
+			ts: nowIso,
+		});
+		if (!next.ok) throw new Error(`${next.code}: ${next.message}`);
+		if (next.value === previous) continue;
+		const written = store.write(next.value);
+		if (!written.ok) throw new Error(`${written.code}: ${written.message}`);
+		requeued += 1;
+	}
+	return requeued;
+}
+
 function runRevive(argv: readonly string[]): void {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		process.stdout.write(`${REVIVE_USAGE}\n`);
@@ -2421,6 +2448,7 @@ function runRevive(argv: readonly string[]): void {
 				const revivePendingAt = new Date().toISOString();
 				registry.writeExact({ ...current, revivePendingAt });
 				requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, revivePendingAt);
+				requeueClosedRecipientDispatches(plan.value.id, reviverId, revivePendingAt);
 			}
 		} else {
 			const attachWindowId = tmuxWindowIdForPane(pane);
@@ -2440,12 +2468,9 @@ function runRevive(argv: readonly string[]): void {
 				process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
 				process.exit(exitCodeForCore(persisted.code));
 			}
-			requeued = requeueClosedRecipientMail(
-				plan.value.id,
-				reviverId,
-				pane,
-				new Date().toISOString(),
-			);
+			const requeueAt = new Date().toISOString();
+			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, requeueAt);
+			requeueClosedRecipientDispatches(plan.value.id, reviverId, requeueAt);
 		}
 		const attachOutput = {
 			id: plan.value.id,
@@ -2538,6 +2563,7 @@ function runRevive(argv: readonly string[]): void {
 			const revivePendingAt = new Date().toISOString();
 			registry.writeExact({ ...current, revivePendingAt });
 			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, revivePendingAt);
+			requeueClosedRecipientDispatches(plan.value.id, reviverId, revivePendingAt);
 		}
 	}
 	if (plan.value.runtime !== "pi" && plan.value.runtime !== "omp") {
@@ -2558,12 +2584,9 @@ function runRevive(argv: readonly string[]): void {
 			process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
 			process.exit(exitCodeForCore(persisted.code));
 		}
-		requeued = requeueClosedRecipientMail(
-			plan.value.id,
-			reviverId,
-			paneId,
-			new Date().toISOString(),
-		);
+		const requeueAt = new Date().toISOString();
+		requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, requeueAt);
+		requeueClosedRecipientDispatches(plan.value.id, reviverId, requeueAt);
 	}
 	const operatorAction =
 		plan.value.runtime === "copilot"

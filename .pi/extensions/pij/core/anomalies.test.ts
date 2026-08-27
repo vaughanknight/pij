@@ -754,12 +754,22 @@ describe("team-scaffold record anomalies (plan 061 AC-07)", () => {
 			deliveryState: undefined,
 			state: "undelivered",
 		});
+		const retired = dispatchRecord({
+			id: "dispatch-retired",
+			state: "retired",
+			retirement: {
+				reason: "recipient-closed",
+				actor: "daemon",
+				ts: new Date(NOW - RECORD_STALE_MS).toISOString(),
+				priorState: "delivered-unacked",
+			},
+		});
 
 		const found = detectAnomalies({
 			descriptors: [],
 			assignments: [],
 			events: [],
-			dispatches: [stale, fresh, acked, undelivered],
+			dispatches: [stale, fresh, acked, undelivered, retired],
 			allocations: [],
 			nowMs: NOW,
 			dispatchStaleMs: RECORD_STALE_MS,

@@ -693,6 +693,7 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 	}
 
 	for (const dispatch of inputs.dispatches ?? []) {
+		if (dispatch.state === "retired") continue;
 		if (dispatch.state !== "delivered-unacked") continue;
 		const updatedMs = validTimestampMs(dispatch.updated.ts);
 		if (updatedMs === undefined) continue;
