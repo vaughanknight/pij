@@ -19,6 +19,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 import { FsChannel } from "../adapters/channel.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
+import { SqliteQueue } from "../adapters/sqlite-queue.js";
 import type { PijEvent, SessionId } from "../core/types.js";
 import { TELEGRAM_PEER_ID } from "./bridge.js";
 import type { TelegramConfig } from "./config.js";
@@ -28,6 +29,7 @@ import {
 	type DaemonBridgeDeps,
 	handleStartError,
 	maybeStartBridge,
+	runtimeFor,
 	type StartErrorDeps,
 	startBridge,
 	stopBridge,
@@ -135,6 +137,32 @@ describe("buildTelegramDescriptor (T001 / AC-08)", () => {
 	});
 });
 
+describe("runtimeFor queue backend", () => {
+	it("opens the sqlite queue by default", () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		delete process.env.PIJ_QUEUE_BACKEND;
+		try {
+			const rt = runtimeFor(home, () => {});
+			expect(rt.channel).toBeInstanceOf(SqliteQueue);
+			if (rt.channel instanceof SqliteQueue) rt.channel.close();
+		} finally {
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
+	});
+
+	it("honours PIJ_QUEUE_BACKEND=fs as the legacy opt-out", () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		process.env.PIJ_QUEUE_BACKEND = "fs";
+		try {
+			expect(runtimeFor(home, () => {}).channel).toBeInstanceOf(FsChannel);
+		} finally {
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
+	});
+});
+
 describe("startBridge (lock + descriptor lifecycle)", () => {
 	it("registers the descriptor + lock, then stop() clears both", () => {
 		const res = startBridge(config, runtime());
@@ -209,7 +237,7 @@ describe("stopBridge (T005 / AC-09)", () => {
 });
 
 describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
-	it("forwards a long inbox reply to the chat, chunked, via the bot api", async () => {
+	it("keeps the fs opt-out forwarding a long inbox reply, chunked, via the bot api", async () => {
 		const withChat: TelegramConfig = { ...config, chatId: "555000" };
 		const channel = new FsChannel(home, { pollMs: 25 });
 		const res = startBridge(withChat, runtime({ channel }));
@@ -239,6 +267,34 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 			.map((p) => p.replace(/^\[[^\]]+\] /, "").replace(/^\(\d+\/\d+\) /, ""))
 			.join("");
 		expect(reassembled).toBe(body);
+	});
+
+	it("forwards and acks a sqlite-default queued reply via the bot api", async () => {
+		const withChat: TelegramConfig = { ...config, chatId: "555000" };
+		const channel = new SqliteQueue(home);
+		const res = startBridge(withChat, runtime({ channel }));
+		expect(res.kind).toBe("started");
+		if (res.kind !== "started") {
+			channel.close();
+			return;
+		}
+
+		const sent: string[] = [];
+		res.bot.api.config.use((_prev, method, payload) => {
+			if (method === "sendMessage") sent.push(String((payload as { text?: string }).text ?? ""));
+			return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+		});
+		channel.deliver({
+			from: "pij-osn81b",
+			to: TELEGRAM_PEER_ID,
+			body: "sqlite through startBridge",
+		});
+
+		await waitFor(() => channel.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+		res.stop();
+
+		expect(sent).toEqual(["[pij-osn81b] sqlite through startBridge"]);
+		channel.close();
 	});
 
 	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.

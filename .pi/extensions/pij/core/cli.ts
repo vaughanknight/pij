@@ -690,7 +690,7 @@ const EXIT: Record<PijErrorCode, number> = {
 
 function daemonReceiptAuthoritative(target: SessionDescriptor): boolean {
 	return (
-		target.deliveryMode !== "pull" &&
+		effectiveDeliveryMode(target) !== "pull" &&
 		(target.harness === "claude" || target.harness === "copilot" || target.harness === "codex")
 	);
 }
@@ -2222,7 +2222,8 @@ function classifySendReceipt(
 	// 16 minutes.
 	const health = classifyBindHealth(descriptor, now);
 	if (isBindDegraded(health)) return { receipt: "blocked", reason: "never-bound" };
-	if (descriptor.deliveryMode === "pull") return { receipt: "queued", reason: "pull-inbox" };
+	if (effectiveDeliveryMode(descriptor) === "pull")
+		return { receipt: "queued", reason: "pull-inbox" };
 	// Checked BEFORE the transport branches: a seat that has not bound yet cannot
 	// have been delivered to, whatever harness it will turn out to be running.
 	if (health === "pre-bind") return { receipt: "queued", reason: "unbound" };

@@ -529,6 +529,7 @@ describe("dispatch whoami / list", () => {
 		const fresh = desc({
 			id: "w3",
 			lifecycle: "pending",
+			paneId: "%9",
 			startedAt: new Date(T - 5_000).toISOString(),
 		});
 		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), fresh], alive: [100] });
@@ -551,7 +552,7 @@ describe("dispatch whoami / list", () => {
 	});
 
 	it("every queued receipt names WHY — busy is no longer indistinguishable from unbound", () => {
-		const busy = desc({ id: "w3", lifecycle: "bound", state: "working" });
+		const busy = desc({ id: "w3", lifecycle: "bound", state: "working", paneId: "%9" });
 		const d = deps({ self: "a1", descs: [desc({ id: "a1" }), busy], alive: [100] });
 
 		const parsed = JSON.parse(
@@ -1191,7 +1192,10 @@ describe("dispatch send", () => {
 	it("queued vs delivered receipt hint follows the pi peer's state", () => {
 		const busy = deps({
 			self: "a1",
-			descs: [desc({ id: "a1" }), desc({ id: "w3", state: "working" })],
+			descs: [
+				desc({ id: "a1" }),
+				desc({ id: "w3", state: "working", deliveryMode: "push", paneId: "%9" }),
+			],
 		});
 
 		expect(
@@ -1201,13 +1205,66 @@ describe("dispatch send", () => {
 		).toBe("queued");
 		const idle = deps({
 			self: "a1",
-			descs: [desc({ id: "a1" }), desc({ id: "w3", state: "idle" })],
+			descs: [
+				desc({ id: "a1" }),
+				desc({ id: "w3", state: "idle", deliveryMode: "push", paneId: "%9" }),
+			],
 		});
 		expect(
 			JSON.parse(
 				dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: true }, idle).stdout,
 			).receipt,
 		).toBe("delivered");
+	});
+
+	it("infers a pane-less legacy pi descriptor as pull-inbox while claude push stays daemon-owned", () => {
+		const pull = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "pij-telegram",
+					harness: "pi",
+					lifecycle: "bound",
+					paneId: undefined,
+					deliveryMode: undefined,
+				}),
+			],
+		});
+		const json = dispatch(
+			{ verb: "send", to: "pij-telegram", text: "x", wait: false, json: true },
+			pull,
+		);
+		expect(JSON.parse(json.stdout)).toMatchObject({
+			receipt: "queued",
+			reason: "pull-inbox",
+		});
+		const human = dispatch(
+			{ verb: "send", to: "pij-telegram", text: "x", wait: false, json: false },
+			pull,
+		);
+		expect(human.stdout).toContain("queued (pull-inbox)");
+
+		const push = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "claude-push",
+					harness: "claude",
+					lifecycle: "bound",
+					paneId: "%10",
+					deliveryMode: undefined,
+					lastTickAt: new Date(T - 1_000).toISOString(),
+				}),
+			],
+		});
+		expect(
+			JSON.parse(
+				dispatch({ verb: "send", to: "claude-push", text: "x", wait: false, json: true }, push)
+					.stdout,
+			),
+		).toMatchObject({ receipt: "queued", reason: "tick-pending" });
 	});
 
 	it("busy control-plane peers with a fresh tick wait for the daemon's authoritative receipt", () => {
@@ -1219,6 +1276,7 @@ describe("dispatch send", () => {
 					id: "w3",
 					harness: "copilot",
 					state: "working",
+					paneId: "%9",
 					lastTickAt: new Date(T - 1000).toISOString(),
 				}),
 			],
@@ -1241,6 +1299,7 @@ describe("dispatch send", () => {
 					id: "w3",
 					harness: "claude",
 					state: "idle",
+					paneId: "%9",
 					lastTickAt: new Date(T - 40_000).toISOString(),
 				}),
 			],
@@ -1264,6 +1323,7 @@ describe("dispatch send", () => {
 					id: "w3",
 					harness: "claude",
 					state: "idle",
+					paneId: "%9",
 					lastTickAt: new Date(T - 1000).toISOString(),
 					compactingAt: new Date(T - 2000).toISOString(),
 				}),
@@ -1285,6 +1345,7 @@ describe("dispatch send", () => {
 					id: "w3",
 					harness: "claude",
 					state: "idle",
+					paneId: "%9",
 					lastTickAt: new Date(T - 1000).toISOString(),
 					compactingAt: new Date(T - 300_000).toISOString(), // > COMPACT_MAX_MS
 				}),
@@ -1411,11 +1472,12 @@ describe("dispatch send", () => {
 			self: "a1",
 			descs: [
 				desc({ id: "a1" }),
-				desc({ id: "w3" }),
+				desc({ id: "w3", paneId: "%9" }),
 				desc({
 					id: "z9",
 					harness: "copilot",
 					lifecycle: "bound",
+					paneId: "%10",
 					lastTickAt: new Date(T - 1000).toISOString(),
 				}),
 			],
@@ -1498,7 +1560,11 @@ describe("dispatch send", () => {
 	it("prints one human result row per broadcast target", () => {
 		const d = deps({
 			self: "a1",
-			descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9", state: "working" })],
+			descs: [
+				desc({ id: "a1" }),
+				desc({ id: "w3", paneId: "%9" }),
+				desc({ id: "z9", state: "working", paneId: "%10" }),
+			],
 		});
 		const result = dispatch(parsed(["send", "--to", "w3", "--to", "z9", "same message"]), d);
 
@@ -1523,7 +1589,11 @@ describe("dispatch send", () => {
 		};
 		const base = deps({
 			self: "a1",
-			descs: [desc({ id: "a1" }), desc({ id: "w3" }), desc({ id: "z9" })],
+			descs: [
+				desc({ id: "a1" }),
+				desc({ id: "w3", paneId: "%9" }),
+				desc({ id: "z9", paneId: "%10" }),
+			],
 		});
 		const result = dispatch(
 			parsed(["send", "--to", "w3", "--to", "z9", "same message", "--json", "--wait"]),
@@ -6784,6 +6854,7 @@ describe("state clear (State-Model v2)", () => {
 					desc({
 						id: "pij-worker",
 						state: "idle",
+						paneId: "%9",
 						boundModel: "github-copilot/gpt-5.6-sol",
 						effort: "xhigh",
 					}),

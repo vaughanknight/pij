@@ -20,7 +20,8 @@ import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { type FileFlavor, hydrateFiles } from "@grammyjs/files";
 import { type Bot, type Context, InputFile } from "grammy";
-import { FsChannel, pollPrimaryWatchOpts } from "../adapters/channel.js";
+import { pollPrimaryWatchOpts } from "../adapters/channel.js";
+import { type MessageChannel, openChannel, sqliteOf } from "../adapters/channel-factory.js";
 import { FsEventLog } from "../adapters/event-log.js";
 import { FsRegistry } from "../adapters/fs-registry.js";
 import { resolvePijHome } from "../core/agents/paths.js";
@@ -135,7 +136,7 @@ export interface BridgeRuntime {
 	/** Liveness probe for the single-instance lock decision. */
 	readonly isAlive: (pid: number) => boolean;
 	readonly registry: FsRegistry;
-	readonly channel: FsChannel;
+	readonly channel: MessageChannel;
 	/** Read the last `n` events of a session, for `/tail`. */
 	readonly readEvents: (id: SessionId, last: number) => readonly PijEvent[];
 	readonly git: GitRunner;
@@ -219,7 +220,7 @@ export function startBridge(config: TelegramConfig, rt: BridgeRuntime): StartRes
 				? {}
 				: { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } };
 		disposeForwarder = startForwarder(rt.channel, {
-			seen: seenInbox(rt.pijHome),
+			...(sqliteOf(rt.channel) === undefined ? { seen: seenInbox(rt.pijHome) } : {}),
 			log: rt.log,
 			takeReplyTo: (from) => {
 				const mid = pendingReply.get(from);
@@ -302,7 +303,7 @@ function seenInbox(pijHome: string): Set<string> {
 }
 
 /** Production runtime collaborators over the real PIJ_HOME. */
-function runtimeFor(pijHome: string, log: (message: string) => void): BridgeRuntime {
+export function runtimeFor(pijHome: string, log: (message: string) => void): BridgeRuntime {
 	return {
 		pijHome,
 		cwd: process.cwd(),
@@ -310,10 +311,9 @@ function runtimeFor(pijHome: string, log: (message: string) => void): BridgeRunt
 		startedAt: new Date().toISOString(),
 		isAlive: isProcessAlive,
 		registry: new FsRegistry(pijHome),
-		// Poll-primary: the telegram bridge's inbox watcher (bridge.ts) drops
-		// fs.watch and drains via the 500ms poll — same silent-drop immunity as
-		// the pi self-inbox (plan 057 thread-1).
-		channel: new FsChannel(pijHome, pollPrimaryWatchOpts()),
+		// The factory selects sqlite by default. Its fs opt-out receives the
+		// existing poll-primary watcher options for silent-drop immunity.
+		channel: openChannel(pijHome, process.env, { fsWatchOpts: pollPrimaryWatchOpts() }),
 		readEvents: (id, last) => new FsEventLog(pijHome, id).read({ last }),
 		git: (cwd, args, timeoutMs) =>
 			execFileSync("git", ["-C", cwd, ...args], {

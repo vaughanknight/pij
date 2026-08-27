@@ -3,7 +3,7 @@
 The `telegram` bridge relays a Telegram bot ⇄ your running **pi sessions**. From your
 phone you address a session by name, your message is delivered into that session's pij
 inbox, and the session's replies stream back to your chat — chunked to fit Telegram's
-message cap. It is a thin foreground process over the same file-backed pij channel the
+message cap. It is a thin foreground process over the same durable pij channel the
 in-repo peers use; no server, no extra daemon.
 
 The bridge registers itself as a normal pij peer, `pij-telegram`, so a session replies to
@@ -145,6 +145,43 @@ run is prefixed with a short one-time note telling the agent it's now talking to
 on Telegram (on a phone), to keep replies short and conversational rather than dumping walls
 of output, and to reply via `pij send pij-telegram`. Subsequent messages to that session are
 relayed verbatim — the note appears once per session, not on every message.
+
+## Queue backend & restart semantics
+
+SQLite is the default queue backend. The bridge consumes its `pij-telegram` rows in delivery
+sequence: **claim -> forward to Telegram -> ack**. It writes the ack only after every required
+text bubble has sent successfully. A receipt row is handled and acked but is never forwarded
+to the phone.
+
+The contract is **at-least-once**, not exactly-once. Telegram provides no idempotency key, so
+two bounded duplicate windows remain:
+
+- **W1 — ack-after-send failure.** Telegram accepted the send, but the local ack failed. The
+  claimed row can be resent once its lease expires.
+- **W2 — daemon restart during an in-flight send.** Startup `resetClaimsOnStart` re-queues the
+  claimed row, so it can be resent once after the restart.
+
+These windows can duplicate a delivered message, but they cannot create a lost-but-acked
+message. A failed text send stays `claimed`; the daemon lease sweep re-queues it for retry and
+parks it after 6 attempts. Delivery state is the only watermark: startup forwards every
+`queued` backlog row and never replays `acked`, `failed`, or `parked` rows.
+
+Use the legacy filesystem backend only as an explicit opt-out:
+
+```bash
+PIJ_QUEUE_BACKEND=fs pij telegram start
+```
+
+The fs path keeps its previous log-and-continue behavior. To observe the durable sqlite path,
+use the queue as the sensor and the phone as the delivery oracle:
+
+```bash
+pij send pij-telegram "telegram queue probe $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+pij queue --to pij-telegram
+```
+
+The phone proves what Telegram received; `pij queue --to pij-telegram` proves the row state
+and that its `acked` receipt followed the send.
 
 ---
 
