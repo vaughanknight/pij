@@ -100,13 +100,15 @@ import {
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
 import { isOpenDispatch, retireDispatch } from "./core/platform/dispatch.js";
+import { buildSpineEvent } from "./core/platform/spine.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
 import { classifyReadiness } from "./core/readiness.js";
 import { persistDaemonWrite } from "./core/registry-write.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
 import { type HarnessKind, ok, type SessionDescriptor, type SessionId } from "./core/types.js";
-import { autoStartBridgeForDaemon } from "./telegram/index.js";
+import { TELEGRAM_PEER_ID } from "./telegram/bridge.js";
+import { type BridgeSupervisor, bridgeSupervisorForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
 /** Delivery cadence (plan 071 D2). Independent of TICK_MS so a slow
@@ -277,6 +279,7 @@ export class Daemon {
 		 *  default, so the collaborator is injected (P3) without the constructor
 		 *  body growing a line — plan 100 grants only the signature here. */
 		private readonly heartbeat: TickHeartbeatPort = new FsTickHeartbeatStore(pijHome),
+		private readonly bridgeSupervisor?: BridgeSupervisor,
 	) {
 		// THE structural gate. Every pane write in the daemon — inbox delivery,
 		// buffered flush, AND driveSession's init/phone-home injections — goes
@@ -396,6 +399,11 @@ export class Daemon {
 		// tick's live-pane list, both rebuilt by `refreshPaneSignals` below.
 		this.tickPaneCaptures.clear();
 		this.tickLivePanes = undefined;
+		try {
+			this.bridgeSupervisor?.tick();
+		} catch (error) {
+			this.log(`telegram supervision error: ${(error as Error).message}`);
+		}
 		// ONE persist for the whole owned set, not one publish per seat (pij#180
 		// Fix A). The filter is unchanged — only the persistence SHAPE moved.
 		// `daemonOwnsDelivery` is harness/delivery-mode only, so a long-dead seat
@@ -1486,6 +1494,7 @@ export class Daemon {
 
 	dispose(): void {
 		for (const paneId of this.paneSignals.paneIds()) this.ports.detachPaneTap?.(paneId);
+		this.bridgeSupervisor?.dispose();
 		this.watchManager.disposeAll();
 		this.watchdogManager.disposeAll();
 	}
@@ -1630,7 +1639,83 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	} else {
 		log("queue backend: fs (per-message JSON inbox files)");
 	}
-	const daemon = new Daemon(pijHome, new DaemonTmux(), new FsRegistry(pijHome), channel, log);
+	const registry = new FsRegistry(pijHome);
+	const bridgeSpine = new FsSpineLog(pijHome);
+	const bridgeCaptures = new FsWatchdogStore(pijHome);
+	const bridgeSupervisor = bridgeSupervisorForDaemon(pijHome, {
+		now: () => Date.now(),
+		log,
+		note: (message) => {
+			const built = buildSpineEvent({
+				nowMs: Date.now(),
+				actor: "pij-daemon",
+				kind: "telegram-bridge-restarted",
+				peer: TELEGRAM_PEER_ID,
+				refs: ["supervision", "restart"],
+				next: message,
+			});
+			if (!built.ok) {
+				log(`telegram: restart spine note invalid — ${built.message}`);
+				return;
+			}
+			const appended = bridgeSpine.append(built.value);
+			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
+		},
+		notifyOwner: (message) => {
+			const owners = registry
+				.list()
+				.filter(
+					(descriptor) =>
+						descriptor.prime === true &&
+						descriptor.lifecycle !== "dissolved" &&
+						descriptor.lifecycle !== "failed",
+				);
+			if (owners.length !== 1) {
+				log(
+					`telegram: restart owner notice skipped — expected one live prime, found ${owners.length}`,
+				);
+				return;
+			}
+			const owner = owners[0];
+			if (!owner) return;
+			let captureText = message;
+			try {
+				captureText += `\n\n${readFileSync(join(pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
+			} catch (error) {
+				log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
+			}
+			try {
+				const capture = bridgeCaptures.writeCapture(
+					owner.id,
+					TELEGRAM_PEER_ID,
+					Date.now(),
+					captureText,
+				);
+				// Direct delivery is intentional: the bridge is relay/exempt, but an
+				// infrastructure restart must still reach its owner.
+				const delivered = channel.deliver({
+					from: TELEGRAM_PEER_ID,
+					to: owner.id,
+					body: `⚠️ ${message}. Capture: ${capture}`,
+				});
+				if (!delivered.ok) log(`telegram: restart owner notice failed — ${delivered.message}`);
+			} catch (error) {
+				log(`telegram: restart owner capture failed — ${(error as Error).message}`);
+			}
+		},
+	});
+	const daemon = new Daemon(
+		pijHome,
+		new DaemonTmux(),
+		registry,
+		channel,
+		log,
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		bridgeSupervisor,
+	);
 	log(
 		`pij daemon up (pid ${process.pid}, home ${pijHome}) — watching for pending spawns + tmux inboxes`,
 	);
@@ -1661,18 +1746,10 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		});
 	}, opts.deliveryMs ?? DELIVERY_PASS_MS);
 
-	// Auto-start the Telegram bridge IN-PROCESS when a scoped telegram.env is present
-	// (else a no-op, so a bridge-less daemon is unchanged). The bridge stays a harness:"pi"
-	// peer the tick loop OBSERVES, so co-locating it changes only who owns the long-poll.
-	// A bridge failure tears down only the bridge (never the daemon); its teardown folds
-	// into the disposer below.
-	const stopBridge = autoStartBridgeForDaemon(pijHome, log);
-
 	return () => {
 		clearInterval(timer);
 		clearInterval(deliveryTimer);
 		daemon.dispose();
-		stopBridge();
 		try {
 			const held = parseLockFile(readFileSync(lockPath, "utf8"));
 			if (held?.pid === process.pid) rmSync(lockPath);
