@@ -32,9 +32,13 @@ export type MessageChannel = DeliveryPort & InboxPort;
 
 export type QueueBackend = "fs" | "sqlite" | "dual";
 
-/** The backend used when `PIJ_QUEUE_BACKEND` is unset. Flip to `"sqlite"` (or
- *  `"dual"` for a safe rollout) once a fleet has run `pij queue migrate`. */
-export const DEFAULT_BACKEND: QueueBackend = "fs";
+/** The backend used when `PIJ_QUEUE_BACKEND` is unset. Now `sqlite` (Amendment
+ *  4): the durable WAL queue is the default; set `PIJ_QUEUE_BACKEND=fs` to select
+ *  the legacy per-message JSON inboxes, or `dual` to also mirror the fs files
+ *  during a mixed-version rollout. The fs→sqlite migration runs on first daemon
+ *  start (see `migrateFsInboxes`), so an existing `~/.pij` carries its unread
+ *  mail over automatically. */
+export const DEFAULT_BACKEND: QueueBackend = "sqlite";
 
 export function queueBackend(env: NodeJS.ProcessEnv = process.env): QueueBackend {
 	const v = env.PIJ_QUEUE_BACKEND;
@@ -48,7 +52,7 @@ export function queueBackend(env: NodeJS.ProcessEnv = process.env): QueueBackend
  *  fs writes and flip the default to `sqlite`. */
 export class DualWriteChannel implements MessageChannel {
 	constructor(
-		private readonly sqlite: SqliteQueue,
+		readonly sqlite: SqliteQueue,
 		private readonly fs: FsChannel,
 	) {}
 
@@ -88,6 +92,40 @@ export class DualWriteChannel implements MessageChannel {
 		}
 		return r;
 	}
+}
+
+/** The SqliteQueue backing a channel, or undefined for the fs backend. Lets the
+ *  daemon run first-start migration whichever durable backend is selected. */
+export function sqliteOf(channel: MessageChannel): SqliteQueue | undefined {
+	if (channel instanceof SqliteQueue) return channel;
+	if (channel instanceof DualWriteChannel) return channel.sqlite;
+	return undefined;
+}
+
+/** Import every unread fs inbox message (`<pijHome>/<id>/inbox/msg-*.json` with
+ *  no read marker) into the SQLite queue, idempotently. Run on first daemon
+ *  start so an existing `~/.pij` carries its queued mail across the fs→sqlite
+ *  cutover; the fs files are left in place (rollback-safe). Returns per-seat
+ *  and total import counts. Reads a directory list function so tests can drive
+ *  it without a real fs tree; the daemon passes the real one. */
+export function migrateFsInboxes(
+	pijHome: string,
+	sqlite: SqliteQueue,
+	listSeatDirs: () => readonly string[],
+): { readonly imported: number; readonly seats: number } {
+	const fs = new FsChannel(pijHome);
+	let imported = 0;
+	let seats = 0;
+	for (const id of listSeatDirs()) {
+		const listed = fs.listUnread(id);
+		if (!listed.ok || listed.value.length === 0) continue;
+		const r = sqlite.importUnread(listed.value);
+		if (r.imported > 0) {
+			imported += r.imported;
+			seats += 1;
+		}
+	}
+	return { imported, seats };
 }
 
 export function openChannel(pijHome: string, env: NodeJS.ProcessEnv = process.env): MessageChannel {

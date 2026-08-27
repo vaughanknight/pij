@@ -72,6 +72,7 @@ function pij(
 	const env = {
 		...process.env,
 		PIJ_HOME: HOME,
+		PIJ_QUEUE_BACKEND: "fs",
 		PATH: `${BIN}:${process.env.PATH ?? ""}`,
 		TMUX_PANE: "%1",
 		CLAUDE_CODE_SESSION_ID: "",

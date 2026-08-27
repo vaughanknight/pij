@@ -12,6 +12,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
@@ -26,7 +27,7 @@ import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeJsonAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
-import { openChannel } from "./adapters/channel-factory.js";
+import { migrateFsInboxes, openChannel, sqliteOf } from "./adapters/channel-factory.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
@@ -1521,12 +1522,34 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	}
 
 	const channel = openChannel(pijHome);
-	if (channel instanceof SqliteQueue) {
+	const sqlite = sqliteOf(channel);
+	if (sqlite) {
+		// First-start fs→sqlite migration (Amendment 4): carry any unread fs inbox
+		// mail into the queue before delivery begins. Idempotent — a second start
+		// imports nothing. The fs files stay in place (rollback-safe).
+		const migrated = migrateFsInboxes(pijHome, sqlite, () => {
+			const ids = new Set<string>();
+			for (const d of new FsRegistry(pijHome).list()) ids.add(d.id);
+			try {
+				for (const name of readdirSync(pijHome)) {
+					if (existsSync(join(pijHome, name, "inbox"))) ids.add(name);
+				}
+			} catch {
+				/* pijHome unreadable → registry set only */
+			}
+			return [...ids];
+		});
 		// A claim without a live daemon is meaningless: put every in-flight row
 		// back to `queued` so a crash between claim and inject redelivers.
-		const reset = channel.resetClaimsOnStart();
+		const reset =
+			channel instanceof SqliteQueue ? channel.resetClaimsOnStart() : sqlite.resetClaimsOnStart();
+		const backendName = channel instanceof SqliteQueue ? "sqlite" : "dual (sqlite+fs mirror)";
 		log(
-			`queue backend: sqlite (${channel.dbPath})${reset > 0 ? ` — re-queued ${reset} in-flight message(s)` : ""}`,
+			`queue backend: ${backendName} (${sqlite.dbPath})` +
+				(migrated.imported > 0
+					? ` — migrated ${migrated.imported} fs message(s) from ${migrated.seats} seat(s)`
+					: "") +
+				(reset > 0 ? ` — re-queued ${reset} in-flight message(s)` : ""),
 		);
 	} else {
 		log("queue backend: fs (per-message JSON inbox files)");

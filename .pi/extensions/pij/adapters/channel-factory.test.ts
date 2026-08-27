@@ -5,7 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FsChannel } from "./channel.js";
-import { DualWriteChannel, openChannel, queueBackend } from "./channel-factory.js";
+import {
+	DualWriteChannel,
+	migrateFsInboxes,
+	openChannel,
+	queueBackend,
+	sqliteOf,
+} from "./channel-factory.js";
 import { SqliteQueue } from "./sqlite-queue.js";
 
 let home: string;
@@ -17,20 +23,45 @@ afterEach(() => {
 });
 
 describe("queueBackend", () => {
-	it("defaults to fs, honours fs/sqlite/dual, ignores garbage", () => {
-		expect(queueBackend({})).toBe("fs");
+	it("defaults to sqlite (Amendment 4), honours fs/sqlite/dual, ignores garbage", () => {
+		expect(queueBackend({})).toBe("sqlite");
 		expect(queueBackend({ PIJ_QUEUE_BACKEND: "sqlite" })).toBe("sqlite");
+		expect(queueBackend({ PIJ_QUEUE_BACKEND: "fs" })).toBe("fs");
 		expect(queueBackend({ PIJ_QUEUE_BACKEND: "dual" })).toBe("dual");
-		expect(queueBackend({ PIJ_QUEUE_BACKEND: "nonsense" })).toBe("fs");
+		expect(queueBackend({ PIJ_QUEUE_BACKEND: "nonsense" })).toBe("sqlite");
 	});
 
 	it("openChannel returns the matching implementation", () => {
-		expect(openChannel(home, {})).toBeInstanceOf(FsChannel);
+		const dflt = openChannel(home, {});
+		expect(dflt).toBeInstanceOf(SqliteQueue);
+		(dflt as SqliteQueue).close();
+		expect(openChannel(home, { PIJ_QUEUE_BACKEND: "fs" })).toBeInstanceOf(FsChannel);
 		const s = openChannel(home, { PIJ_QUEUE_BACKEND: "sqlite" });
 		expect(s).toBeInstanceOf(SqliteQueue);
 		(s as SqliteQueue).close();
 		const d = openChannel(home, { PIJ_QUEUE_BACKEND: "dual" });
 		expect(d).toBeInstanceOf(DualWriteChannel);
+	});
+});
+
+describe("migrateFsInboxes + sqliteOf", () => {
+	it("imports unread fs inboxes into sqlite idempotently and finds the sqlite behind any backend", () => {
+		const fs = new FsChannel(home);
+		fs.deliver({ from: "pij-a", to: "pij-x", body: "carried one" });
+		fs.deliver({ from: "pij-a", to: "pij-x", body: "carried two" });
+		fs.deliver({ from: "pij-a", to: "pij-y", body: "carried y" });
+		const sqlite = new SqliteQueue(home);
+		const seatDirs = () => ["pij-x", "pij-y", "pij-empty"];
+		const first = migrateFsInboxes(home, sqlite, seatDirs);
+		expect(first).toEqual({ imported: 3, seats: 2 });
+		const again = migrateFsInboxes(home, sqlite, seatDirs);
+		expect(again).toEqual({ imported: 0, seats: 0 });
+		const x = sqlite.listUnread("pij-x");
+		expect(x.ok && x.value.map((m) => m.body)).toEqual(["carried one", "carried two"]);
+		expect(sqliteOf(sqlite)).toBe(sqlite);
+		expect(sqliteOf(new DualWriteChannel(sqlite, fs))).toBe(sqlite);
+		expect(sqliteOf(fs)).toBeUndefined();
+		sqlite.close();
 	});
 });
 

@@ -102,6 +102,7 @@ describe("pij send --body-file (the literal body channel)", () => {
 				HOME: agentHome,
 				USERPROFILE: agentHome,
 				PIJ_HOME: pijHome,
+				PIJ_QUEUE_BACKEND: "fs",
 				PIJ_SESSION_ID: "",
 				TMUX: "",
 				TMUX_PANE: "",

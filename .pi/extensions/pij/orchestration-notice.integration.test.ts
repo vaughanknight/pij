@@ -17,7 +17,7 @@ function run(
 		return {
 			code: 0,
 			stdout: execFileSync(TSX, [CLI, ...args], {
-				env: { ...process.env, PIJ_HOME: home, PIJ_SESSION_ID: actor },
+				env: { ...process.env, PIJ_HOME: home, PIJ_QUEUE_BACKEND: "fs", PIJ_SESSION_ID: actor },
 				encoding: "utf8",
 				timeout: 10_000,
 			}),
