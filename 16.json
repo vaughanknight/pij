@@ -3,11 +3,11 @@
   "command": "checks",
   "harness": "copilot-cli",
   "harness_session_id": "75243a2a-fdee-49ee-94af-d2a143482ede",
-  "timecode": "2026-08-27T16:26:02.663Z",
+  "timecode": "2026-08-27T16:57:40.054Z",
   "window": {
     "since": "last-command",
-    "from": 3725,
-    "to": 4218
+    "from": 4218,
+    "to": 4503
   },
   "branch": "s391/item6b-flash-ui-server",
   "branch_changed": false,
