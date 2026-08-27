@@ -9,18 +9,23 @@
 // abandoned intent cannot strip a live writer of its crash protection.
 //
 // Acquisition is exclusive-create (openSync "wx") with an ownership token and
-// a retry budget — NEVER stolen (review 002 G1 policy: mtime staleness cannot
-// distinguish a crashed holder from a slow live one). A crashed holder wedges
-// platform writes until a human removes the file, exactly as the E-NOREG
-// diagnostic instructs: fail loudly, never steal. Throws from the held
-// operation PROPAGATE after the lock is released — the CLI dispatch
-// containment gate owns them and names the verb.
+// a retry budget. A shared pid/start-time decision reclaims a dead holder or a
+// pid reused by a process born after the lock; a live original holder is NEVER
+// stolen, regardless of mtime. Throws from the held operation PROPAGATE after
+// the lock is released — the CLI dispatch containment gate owns them and names
+// the verb.
 
 import { randomUUID } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PlatformWriteLockPort } from "../core/platform/ports.js";
 import { err, ok, type Result } from "../core/types.js";
+import {
+	type LockReclaimNote,
+	reclaimIfDead,
+	releaseOwnedLock,
+	trackHeldLock,
+} from "./lock-reclaim.js";
 
 /** Total lock-acquisition budget before a write gives up with E-NOREG. Wider
  *  than the spine events.lock budget: this lock nests OUTSIDE it and a held
@@ -34,15 +39,24 @@ function sleepMs(ms: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+interface PlatformWriteLockOptions {
+	readonly lockBudgetMs?: number;
+	readonly isAlive?: (pid: number) => boolean;
+	readonly processStartedAtMs?: (pid: number) => number | undefined;
+	readonly onReclaim?: (note: LockReclaimNote) => void;
+}
+
 export class FsPlatformWriteLock implements PlatformWriteLockPort {
 	private readonly dir: string;
 	private readonly lockFile: string;
 	private readonly lockBudgetMs: number;
+	private readonly options: PlatformWriteLockOptions;
 
-	constructor(pijHome: string, options: { readonly lockBudgetMs?: number } = {}) {
+	constructor(pijHome: string, options: PlatformWriteLockOptions = {}) {
 		this.dir = join(pijHome, "spine");
 		this.lockFile = join(this.dir, "write.lock");
 		this.lockBudgetMs = options.lockBudgetMs ?? LOCK_BUDGET_MS;
+		this.options = options;
 	}
 
 	withPlatformWriteLock<T>(operation: () => T): Result<T> {
@@ -59,16 +73,11 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 	 *  manual unwedge a successor's LIVE lock may sit at this path, and
 	 *  deleting it would cascade another writer into the critical section. */
 	private releaseLock(token: string): void {
-		try {
-			if (readFileSync(this.lockFile, "utf8") === token) {
-				rmSync(this.lockFile, { force: true });
-			}
-		} catch {
-			// Lock already gone or unreadable — nothing that is safely ours.
-		}
+		releaseOwnedLock(this.lockFile, token);
 	}
 
-	/** Exclusive-create acquisition with retry; NEVER steals (G1 policy). */
+	/** Exclusive-create acquisition with retry. Dead/reused owners are reclaimed;
+	 *  live original owners are never stolen. */
 	private acquireLock(): Result<string> {
 		try {
 			mkdirSync(this.dir, { recursive: true });
@@ -86,6 +95,17 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 						"E-NOREG",
 						`cannot create platform write lock ${this.lockFile}: ${String(error)}`,
 					);
+				}
+				const reclaimed = reclaimIfDead(this.lockFile, "write.lock", this.options);
+				if (reclaimed !== null) {
+					this.options.onReclaim?.(reclaimed);
+					if (Date.now() >= deadline) {
+						return err(
+							"E-NOREG",
+							`platform write lock ${this.lockFile} held for over ${this.lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually`,
+						);
+					}
+					continue;
 				}
 			}
 			if (fd !== undefined) {
@@ -115,6 +135,7 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 				} catch {
 					// fd is abandoned either way
 				}
+				trackHeldLock(this.lockFile, token);
 				return ok(token);
 			}
 			if (Date.now() >= deadline) {

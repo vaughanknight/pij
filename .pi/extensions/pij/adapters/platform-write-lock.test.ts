@@ -7,6 +7,7 @@
 
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
@@ -48,6 +49,62 @@ describe("FsPlatformWriteLock", () => {
 		expect(existsSync(lockFile())).toBe(false);
 	});
 
+	it("reclaims a dead write.lock and emits a receipt naming the pid and layer", () => {
+		const deadPid = 999_999_999;
+		const notes: Array<{ layer: string; pid: number; reason: string }> = [];
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${deadPid}:dead-token\n`);
+		const lock = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 60,
+			isAlive: () => false,
+			processStartedAtMs: () => undefined,
+			onReclaim: (note) => notes.push(note),
+		});
+
+		expect(lock.withPlatformWriteLock(() => "recovered")).toMatchObject({
+			ok: true,
+			value: "recovered",
+		});
+		expect(notes).toMatchObject([{ layer: "write.lock", pid: deadPid, reason: "dead-pid" }]);
+		expect(existsSync(lockFile())).toBe(false);
+	});
+
+	it("reclaims a live reused pid only when its process started after write.lock", () => {
+		const reusedPid = 424_242;
+		const notes: Array<{ layer: string; pid: number; reason: string }> = [];
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${reusedPid}:old-process\n`);
+		const lockedAtMs = Date.now() - 10_000;
+		utimesSync(lockFile(), lockedAtMs / 1000, lockedAtMs / 1000);
+		const lock = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => lockedAtMs + 5_000,
+			onReclaim: (note) => notes.push(note),
+		});
+
+		expect(lock.withPlatformWriteLock(() => "reused")).toMatchObject({
+			ok: true,
+			value: "reused",
+		});
+		expect(notes).toMatchObject([{ layer: "write.lock", pid: reusedPid, reason: "pid-reused" }]);
+	});
+
+	it("does not let a successful reclaim bypass an exhausted deadline", () => {
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), "999999999:dead-token\n");
+		let ran = false;
+		const result = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 0,
+			isAlive: () => false,
+		}).withPlatformWriteLock(() => {
+			ran = true;
+		});
+
+		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
+		expect(ran).toBe(false);
+	});
+
 	it("a held lock times out E-NOREG with the manual-removal diagnostic; the operation NEVER runs", () => {
 		const lock = new FsPlatformWriteLock(home, { lockBudgetMs: 60 });
 		const holder = new FsPlatformWriteLock(home);
@@ -65,15 +122,19 @@ describe("FsPlatformWriteLock", () => {
 	});
 
 	it("an AGED lock is never stolen: timeout E-NOREG and the holder's lock survives byte-identical (G1 policy)", () => {
-		const lock = new FsPlatformWriteLock(home, { lockBudgetMs: 60 });
-		// Force the spine dir into existence, then plant an old lock.
-		expect(lock.withPlatformWriteLock(() => 0)).toMatchObject({ ok: true, value: 0 });
-		writeFileSync(lockFile(), "live-holder-token\n");
-		const agedSec = (Date.now() - 60_000) / 1000;
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), `${process.pid}:live-holder-token\n`);
+		const agedAtMs = Date.now() - 60_000;
+		const agedSec = agedAtMs / 1000;
 		utimesSync(lockFile(), agedSec, agedSec);
+		const lock = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 60,
+			isAlive: () => true,
+			processStartedAtMs: () => agedAtMs - 5_000,
+		});
 		const result = lock.withPlatformWriteLock(() => "never");
 		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
-		expect(readFileSync(lockFile(), "utf8")).toBe("live-holder-token\n");
+		expect(readFileSync(lockFile(), "utf8")).toBe(`${process.pid}:live-holder-token\n`);
 		expect(readdirSync(join(home, "spine")).filter((n) => n.includes(".steal."))).toEqual([]);
 	});
 

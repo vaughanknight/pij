@@ -151,6 +151,47 @@ terminal. On `PIJ_QUEUE_BACKEND=dual`, retire also writes advisory legacy `read-
 markers. The fs-only backend has no state machine and points operators at the
 retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 
+Closed-recipient discovery uses `RegistryPort.listTerminal()`, so the daemon sees
+dissolved records in both the hot and archive tiers without knowing the
+filesystem layout.
+
+### Dispatch-record retirement
+
+Dispatch records have a separate lifecycle from message deliveries:
+`undelivered → delivered-unacked → acked`, with either open state able to move
+to terminal `retired`. Operators can retire an open dispatch by id or every open
+dispatch addressed to one seat:
+
+```sh
+pij dispatch-retire <dispatch-id> --reason <text> [--dry-run] [--json]
+pij dispatch-retire --to <seat> --reason <text> [--dry-run] [--json]
+```
+
+Retirement stores the reason, actor, timestamp, and prior open state. It is
+idempotent, leaves acknowledged dispatches unchanged, and prevents a later
+brief acknowledgement from rewriting the terminal record. A PA is refused this
+verb: it may report stale dispatches but cannot terminally decide them.
+Every successful retire appends a `dispatch-retired` spine note naming the
+dispatch, reason, actor, recipient, and prior state. The operator verb journals
+the record and note as one recoverable coupled write. The daemon close sweep
+writes the record first and appends a best-effort note; a note failure is logged
+without aborting later retirements. Repeating a selector whose matches are
+already terminal reports `0 open (N already retired)` instead of an ambiguous
+`0/0`.
+
+The daemon applies the same complete deliberate-close predicate used for queue
+mail to dispatch records. A later revive restores only records retired for
+`recipient-closed`, returning each to its recorded prior state; operator-retired
+records remain terminal. The anomaly detector considers only the shared open-state predicate and then only
+`delivered-unacked`, so retired records cannot appear as
+`delivered-unacked-stale`. Revive output reports restored mail and dispatch
+counts separately, and each restored dispatch appends a best-effort
+`dispatch-requeued` spine note with the same attribution fields. A note failure
+warns but does not undo the restored record. `prior-state:` on a retire note is
+the transition's source open state; on a requeue note it is the saved
+pre-retirement state being restored, because the immediate source is always the
+uninformative `retired`.
+
 ---
 
 ## CLI reference
@@ -177,6 +218,7 @@ retained `~/.pij/<id>/inbox/msg-*.json` files instead.
 | `spawn` | `pij spawn --harness pi\|claude\|copilot\|codex [--model <m>] [--task "<t>"] [--plan-id <id>]` | Spawn a colleague in a tmux pane — one uniform surface for every harness. An explicit plan id is exported as `HARNESS_PLAN_ID` + `PIJ_PLAN_ID` and stamped on the seat descriptor. `pi` self-registers at boot (no daemon); `claude`/`codex` are daemon-bound via transcript discovery, `copilot` via a deterministic `--session-id`. See `pij spawn --help`. |
 | `adopt` | `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--id <existing>] [--session-id <native-id>]` | Register an existing external-client pane and optionally place it structurally under an existing session. Parent validation happens before reservation or descriptor writes. `--id` is reattachment-only: it must name an existing descriptor or retained reservation, otherwise `E-NOID`. |
 | `attest` | `pij attest <id> --plan-id <id>` | Add or correct an existing seat's explicit opaque plan id. Absent means unattested; pij never derives it from project paths or ambient environment. |
+| `dispatch-retire` | `pij dispatch-retire <dispatch-id> \| --to <seat> --reason <text> [--dry-run] [--json]` | Terminally retire open dispatch records, preserving reason and prior state; PAs are refused. |
 | `orchestration baton` | `pij orchestration baton define\|list\|show\|request\|grant\|return\|reclaim` | Coordinate machine-wide exclusive resources with an atomic single-holder lease, discretionary purpose queue, receipt-aware notices, stale-pin acknowledgement, blocked-time measurement, and alert-never-auto-reclaim liveness. |
 | `orchestration prime` | `pij orchestration prime set\|retire\|unset [<id>]` | Mark a current prime, retire it into old-prime history, or clear both markers. Omitted ids require exact self-resolution; see [pij prime](./pij-prime.md#registry-designation). |
 
@@ -199,6 +241,11 @@ Everything under `report` is a first-person claim about yourself.
 closed semantic vocabulary. `pij report question "<text>"` and
 `pij report blocked "<text>"` carry the two human-facing note states. Actively
 working has no semantic state word; absence is the honest expression by design.
+`working` belongs to the mechanical, daemon-owned axis, so both
+`pij report now "<did>" "<next>" --state working` and `pij report state working`
+are rejected. If the seat is parked, declare it with
+`pij report state waiting|hold|blocked|question`. Otherwise refresh the card with
+`pij report now "<did>" "<next>"`.
 
 Inline markdown is supported in report text (`` `code` ``, `**bold**`,
 `[links]`) and survives whitespace collapsing. Block markdown is not: newlines
@@ -225,6 +272,38 @@ Four independent descriptor axes answer different questions:
 | Close ownership | `spawnedBy` | Which creator may close the peer without `--force`. `pij link` never changes it. |
 | Repository | `gitCommonDir` | Canonical absolute Git common directory. A main checkout and all linked worktrees share one repository key. |
 | State | activity + liveness + lifecycle | Activity is `working\|idle\|done`; liveness is `active\|stale\|dead\|dissolved`; lifecycle is `pending\|ready\|bound\|failed\|dissolved`. |
+
+### Descriptor write serialization
+
+The `FsRegistry.write()` and `writeExact()` paths serialize one descriptor
+through `<PIJ_HOME>/<id>.json.lock`. A fully written owner token is atomically
+published with no replacement, and the lock spans the authoritative fresh read,
+ownership merge, identity claim, and atomic JSON replacement. A lock left by a
+dead PID is reclaimed; a holder that remains live (including a recycled PID) through the
+bounded wait fails with the exact manual-removal path. Lock age is not a reclaim policy. This is
+descriptor-local and does not alter the separate spine lock. Pre-existing
+`revive()`, `archive()`, and `unarchive()` writes do not take this lock.
+
+Normal writes still apply `DESCRIPTOR_FIELD_OWNER` exactly as before. Exact
+writes use a three-way merge: fresh disk is the base, fields changed from the
+caller's supplied baseline are replayed (including deletions), and CLI-owned
+denorm fields remain exact. The card path supplies its own read as that baseline,
+which closes this incident class in both directions. Callers that omit a
+baseline fall back to the adapter's sample; their protection is narrowed to the
+publish call's read/write window rather than the earlier object-construction
+window.
+
+The descriptor lock, platform `spine/write.lock`, and event
+`spine/events.lock` share one reclaim decision. A lock whose recorded PID is no
+longer alive is reclaimed. A live PID is reclaimed only when its absolute
+process start time is newer than the lock mtime, proving PID reuse; unavailable
+start-time evidence preserves the lock. Age alone never permits a steal.
+Reclaims name the layer and PID in a platform receipt/log or an `events.lock`
+spine note; descriptor reclaims warn on the CLI and log in the daemon through
+their shared registry factories. SIGINT/SIGTERM shutdown token-check releases
+every lock still owned by the daemon process before exit. The whole-process
+snapshot is cached for five seconds, so recognition of a newly reused PID can
+lag by at most that interval; the conservative refusal self-heals after expiry.
 
 ### Tree selectors and filters
 

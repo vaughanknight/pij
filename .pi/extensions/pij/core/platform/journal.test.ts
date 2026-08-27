@@ -1004,15 +1004,37 @@ describe("recoverPendingOps — assignment ops (plan 054 P2 T005)", () => {
 			updated: { actor: "pij-parent", ts: new Date(T + 1000).toISOString() },
 		};
 
-		function dispatchDraft(prev: Dispatch, next: Dispatch): SpineEventDraft {
+		function dispatchDraft(prev: Dispatch, next: Dispatch, kind = "dispatch"): SpineEventDraft {
 			return draft(1, {
-				kind: "dispatch",
+				kind,
 				peer: next.to,
 				refs: [`dispatch:${next.id}`, `message:${next.messageId ?? "none"}`],
 				prev: canonicalDispatchJson(prev),
 				next: canonicalDispatchJson(next),
 			});
 		}
+
+		it("recovers a dispatch-retired note with dispatch record adjudication", () => {
+			const journal = new TestOpJournal();
+			const log = new TestSpineLog();
+			const transition = dispatchDraft(dispatchUndelivered, dispatchDelivered, "dispatch-retired");
+			journal.seed("op-transition", 1, "intent", transition);
+
+			expect(
+				expectOk(
+					recover(
+						journal,
+						log,
+						new TestProjectStore(),
+						new TestAssignmentStore(),
+						new TestAllocationStore(),
+						new TestFenceStore(),
+						new TestDispatchStore([dispatchDelivered]),
+					),
+				),
+			).toEqual({ replayed: 1, discarded: 0 });
+			expect(log.events[0]?.kind).toBe("dispatch-retired");
+		});
 
 		it("dispatch intent at prev discards; the same intent at next replays", () => {
 			const beforeJournal = new TestOpJournal();
