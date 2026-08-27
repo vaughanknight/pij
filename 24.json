@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "command": "checks",
+  "command": "boot",
   "harness": "copilot-cli",
   "harness_session_id": "75243a2a-fdee-49ee-94af-d2a143482ede",
-  "timecode": "2026-08-27T22:29:54.058Z",
+  "timecode": "2026-08-27T23:03:10.512Z",
   "window": {
     "since": "last-command",
-    "from": 7601,
-    "to": 8011
+    "from": 8011,
+    "to": 8285
   },
   "branch": "s391/item16-watchdog-parent-route",
   "branch_changed": false,
