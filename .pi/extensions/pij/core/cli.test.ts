@@ -4678,6 +4678,17 @@ describe("phase 3 report-family move regression locks", () => {
 });
 
 describe("report family + report now (plan 074 phase 3 RED)", () => {
+	it("rejects --state working with the mechanical/card/parked remedy", () => {
+		const result = parseArgs(["report", "now", "did", "next", "--state", "working"]);
+		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
+		if (result.ok) throw new Error("working unexpectedly accepted as a semantic state");
+		expect(result.message).toContain("working");
+		expect(result.message).toContain("mechanical");
+		expect(result.message).toContain("daemon-owned");
+		expect(result.message).toContain('pij report now "<did>" "<next>"');
+		expect(result.message).toContain("waiting|hold|blocked|question");
+	});
+
 	it("parses the family grammar, keeps verify supervisory, and removes the old write spellings", () => {
 		expect(
 			parseArgs(["report", "state", "ready", "--refs", "pr:14,issue:6", "--json"]),

@@ -489,7 +489,9 @@ describe("composerPending — submit verification (the cause-independent retry g
 				const output = stderr.join("");
 				expect(output).not.toContain("UNVERIFIED");
 				expect(output).not.toContain("⚠️");
+				expect(output).toContain("ℹ️");
 				expect(output).toContain("pointer");
+				expect(output).toContain("after 3 Enter attempt(s)");
 				expect(output).toContain("90s lease");
 				expect(output).toContain("re-announced");
 				expect(output).toContain("pid 4242");

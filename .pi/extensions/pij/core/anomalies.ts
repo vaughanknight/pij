@@ -43,6 +43,9 @@ import { mutesWatchdogNudge } from "./watchdog.js";
  *  flag every coffee break. */
 export const DEFAULT_IDLE_DISAGREEMENT_MS = 4 * 3_600_000;
 
+export const STATUS_WORKING_REMEDY =
+	'working is the mechanical, daemon-owned axis; refresh the card with: pij report now "<did>" "<next>". If the seat is parked, declare --state waiting|hold|blocked|question.';
+
 export type AnomalyKind =
 	| "axis-disagreement"
 	| "unverified-done"
@@ -682,7 +685,8 @@ export function detectAnomalies(inputs: AnomalyInputs): Anomaly[] {
 				` If '${descriptor.id}' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question` +
 				" (parked seats never flag). Otherwise it should update its card:" +
 				` pij report now "<what I just did>" "<what's next>"` +
-				" — note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.",
+				" — note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold. " +
+				STATUS_WORKING_REMEDY,
 			// Evidence carries the drift BUCKET, not an empty array: the sweep's
 			// latch keys on `kind:node:evidence`, so a constant key would alert the
 			// parent exactly once and then stay silent forever no matter how far

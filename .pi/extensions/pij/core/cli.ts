@@ -8,7 +8,7 @@
 // liveness/validateCommand/filterEvents via the ports) — no new logic. Node I/O
 // (fs, argv, exit) and the imperative --follow / --wait loops live in the bin.
 
-import { chainStateOf, detectAnomalies } from "./anomalies.js";
+import { chainStateOf, detectAnomalies, STATUS_WORKING_REMEDY } from "./anomalies.js";
 import {
 	BG_ACTOR,
 	BG_ENV,
@@ -1691,7 +1691,10 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 			}
 			const state = typeof flags.state === "string" ? flags.state : undefined;
 			if (state !== undefined && !isSemanticState(state)) {
-				return err("E-ARG", `invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})`);
+				return err(
+					"E-ARG",
+					`invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})${state === "working" ? ` — ${STATUS_WORKING_REMEDY}` : ""}`,
+				);
 			}
 			if (flags.note === true) return err("E-ARG", "--note takes text");
 			const noteInput = typeof flags.note === "string" ? flags.note : undefined;

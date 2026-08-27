@@ -225,6 +225,10 @@ Everything under `report` is a first-person claim about yourself.
 closed semantic vocabulary. `pij report question "<text>"` and
 `pij report blocked "<text>"` carry the two human-facing note states. Actively
 working has no semantic state word; absence is the honest expression by design.
+`working` belongs to the mechanical, daemon-owned axis, so
+`pij report now "<did>" "<next>" --state working` is rejected. Refresh an active
+card with `pij report now "<did>" "<next>"`; if the seat is waiting with no known
+end, park it with `--state waiting|hold|blocked|question`.
 
 Inline markdown is supported in report text (`` `code` ``, `**bold**`,
 `[links]`) and survives whitespace collapsing. Block markdown is not: newlines

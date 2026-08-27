@@ -21,6 +21,7 @@ import {
 	DEFAULT_SPAWN_LIMBO_MS,
 	DEFAULT_STATUS_STALE_MS,
 	detectAnomalies,
+	STATUS_WORKING_REMEDY,
 } from "./anomalies.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import type { SessionDescriptor, TerminalObservation } from "./types.js";
@@ -920,6 +921,18 @@ describe("status-stale (the card a busy seat forgot to update)", () => {
 		expect(found.map((a) => a.nodeId)).toEqual(["pij-busy"]);
 		expect(found[0]?.detail).toContain("pij report now");
 		expect(found[0]?.ageMs).toBeGreaterThan(DEFAULT_STATUS_STALE_MS);
+	});
+
+	it("still flags a mechanically working PM and carries the shared remedy", () => {
+		const found = detect([
+			busy({
+				id: "pij-mechanical-working",
+				systemState: "working",
+				statusAt: new Date(NOW - 45 * MIN).toISOString(),
+			}),
+		]);
+		expect(found.map((anomaly) => anomaly.nodeId)).toEqual(["pij-mechanical-working"]);
+		expect(found[0]?.detail).toContain(STATUS_WORKING_REMEDY);
 	});
 
 	/** A REMEDIATION THAT WRITES THE DETECTOR'S OWN INPUT IS A SNOOZE; ONE THAT
