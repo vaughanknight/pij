@@ -36,3 +36,11 @@ pij is the **peer fabric itself**: a pi extension + `pij` CLI + machine-wide dae
 ## Current portfolio
 
 - s036-baton: P-07 primitive under the ruled `pij orchestration <primitive>` namespace — the first stream of this government. Prior art trail in `docs/plans/036-pij-orchestration-baton/original-ask.md`.
+
+## Tuning 2026-08-27 (pij-relative-panther)
+
+- **Skill text gets a cold SEMANTIC review, every PR.** `just pij-skill-check` is necessary, not sufficient: on 2026-08-27 a line-budget trim inverted a rule (read-back moved from precondition to afterthought), deleted "plan roster = durable config truth", and added a false `§ C7` cite — all under a green gate. Also diff the gate output before/after: zero new findings is the bar (spine 24598).
+- **Never open an unregistered harness pane in tmux while any pane-less seat may exist** — a dissolved seat's queued mail was typed into one (`government/incidents/2026-08-27-cross-government-pane-misbind.md`); until items 1/10b land, isolate outside tmux.
+- **CI has never run in this repo** (0 Actions runs, workflow active). Merges are ruled on local gates + cold review + live proof, recorded per PR (spine 24514) until Vaughan fixes Actions.
+- **Every `pij send` body goes by `--body-file` from a quoted heredoc** — a double-quoted body with backticks executed two commands from the o-prime's own shell today.
+- **Flash (`gemini-3.6-flash`) is unusable for interactive Copilot seats** even with the item-6 argv fix (item 6b open); use terra/sol.
