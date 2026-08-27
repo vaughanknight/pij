@@ -6,8 +6,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	annotateCopilotInstability,
 	annotateLongContext,
 	COPILOT_NO_LONG_CONTEXT,
+	COPILOT_UNSTABLE_MODELS,
 	claudeAliases,
 	codexConfigModels,
 	codexSnapshot,
@@ -296,6 +298,49 @@ describe("Copilot long-context capability", () => {
 		};
 
 		expect(annotateLongContext([explicit])).toEqual([explicit]);
+	});
+});
+
+describe("Copilot upstream instability", () => {
+	it("records both the earlier Flash pass and later all-path rejection", () => {
+		expect(COPILOT_UNSTABLE_MODELS.get("gemini-3.6-flash")).toEqual({
+			cli: "1.0.81-14",
+			observedFailAt: "2026-08-27 ~16:0xZ",
+			observedPassAt: "2026-08-27 ~07:33Z",
+			note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
+		});
+	});
+
+	it("annotates every Flash Copilot projection without claiming an interactive-only defect", () => {
+		const raw = {
+			providers: {
+				"github-copilot": {
+					models: [{ id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" }],
+				},
+			},
+		};
+		const merged = annotateCopilotInstability([...parseModelsJson(raw), ...copilotSeedFromPi(raw)]);
+
+		expect(merged).toHaveLength(2);
+		for (const entry of merged) {
+			expect(entry.copilotInstability).toEqual({
+				cli: "1.0.81-14",
+				observedFailAt: "2026-08-27 ~16:0xZ",
+				observedPassAt: "2026-08-27 ~07:33Z",
+				note: "Failure instrumented by the dlg-0012 isolation matrix; pass relayed by the o-prime, not instrumented here.",
+			});
+		}
+	});
+
+	it("does not annotate a non-Copilot provider with the same bare model id", () => {
+		const openrouter: ModelEntry = {
+			id: "gemini-3.6-flash",
+			name: "Gemini 3.6 Flash",
+			provider: "openrouter",
+			verified: true,
+		};
+
+		expect(annotateCopilotInstability([openrouter])).toEqual([openrouter]);
 	});
 });
 
