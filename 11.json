@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "command": "observe",
+  "harness": "claude-code",
+  "harness_session_id": "25d614db-43dc-4f9e-aac1-8d23bd4a29cc",
+  "timecode": "2026-08-27T17:48:09.508Z",
+  "window": {
+    "since": "last-command",
+    "from": 3062,
+    "to": 3161
+  },
+  "branch": "s391/item6b-flash-ui-server",
+  "branch_changed": false,
+  "tokens": {
+    "input": 588,
+    "output": 8201,
+    "cache_create": 14418,
+    "cache_read": 8508836,
+    "total": 8532043,
+    "subagent_tokens": 0,
+    "grand_total": 8532043
+  },
+  "models": {
+    "claude-fable-5": {
+      "turns": 11,
+      "output_tokens": 8201
+    }
+  },
+  "effort": "high",
+  "skills": {},
+  "tools": {
+    "Bash": 11
+  },
+  "subagents": [],
+  "files": {
+    "written": [],
+    "edited": []
+  },
+  "plans_touched": [],
+  "events": {
+    "compactions": [],
+    "api_errors": 0,
+    "local_commands": 0
+  },
+  "thinking": {
+    "blocks": 17
+  }
+}
