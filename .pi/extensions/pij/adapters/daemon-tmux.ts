@@ -199,6 +199,9 @@ export interface DaemonTmuxOptions {
 	readonly claudeSessionsDir?: string;
 	/** PoC: ms to wait for a `peer_message_status` drop report after writing. */
 	readonly socketAckWaitMs?: number;
+	readonly sendClaudeFrame?: typeof sendClaudeFrame;
+	readonly probeCopilotReady?: typeof probeCopilotReady;
+	readonly sendCopilotRpc?: typeof sendCopilotRpc;
 }
 
 /** Decide what a THROWN tmux send means: a permanently dead target (`gone`) or a
@@ -239,6 +242,9 @@ export class DaemonTmux implements DaemonPorts {
 	private readonly tapFiles = new Map<string, { path: string; offset: number }>();
 	private readonly claudeSessionsDir: string;
 	private readonly socketAckWaitMs: number;
+	private readonly sendClaudeFrame: typeof sendClaudeFrame;
+	private readonly probeCopilotReady: typeof probeCopilotReady;
+	private readonly sendCopilotRpc: typeof sendCopilotRpc;
 	/** copilot sessions whose embedded server has answered a readiness probe at
 	 *  least once (PoC day-2 item 9) — the probe runs only before the FIRST send. */
 	private readonly copilotReady = new Set<string>();
@@ -265,6 +271,9 @@ export class DaemonTmux implements DaemonPorts {
 		this.sleep = options.sleep ?? sleepSync;
 		this.claudeSessionsDir = options.claudeSessionsDir ?? claudeSessionsDir(homedir());
 		this.socketAckWaitMs = options.socketAckWaitMs ?? 150;
+		this.sendClaudeFrame = options.sendClaudeFrame ?? sendClaudeFrame;
+		this.probeCopilotReady = options.probeCopilotReady ?? probeCopilotReady;
+		this.sendCopilotRpc = options.sendCopilotRpc ?? sendCopilotRpc;
 	}
 
 	/** PoC (poc/comms-sqlite-socket): Claude inbox-socket delivery. See
@@ -280,7 +289,7 @@ export class DaemonTmux implements DaemonPorts {
 			// ready, leave the message queued (retry next tick) rather than post
 			// into a hang. Proven-live sessions skip the probe.
 			if (!this.copilotReady.has(target.harnessSessionId)) {
-				const probe = await probeCopilotReady({
+				const probe = await this.probeCopilotReady({
 					port: target.rpcPort,
 					sessionId: target.harnessSessionId,
 				});
@@ -292,13 +301,20 @@ export class DaemonTmux implements DaemonPorts {
 				}
 				this.copilotReady.add(target.harnessSessionId);
 			}
-			const r = await sendCopilotRpc({
+			const r = await this.sendCopilotRpc({
 				port: target.rpcPort,
 				sessionId: target.harnessSessionId,
 				prompt: buildCopilotPrompt(message.from, message.body),
 				mode: "enqueue",
 			});
-			if (r.outcome === "confirmed") return "confirmed";
+			if (r.outcome !== "failed") {
+				if (r.outcome === "unverified") {
+					this.warn(
+						`⚠️  copilot RPC UNVERIFIED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "response lost after write"}; message will not be blindly retried`,
+					);
+				}
+				return r.outcome;
+			}
 			this.warn(
 				`⚠️  copilot RPC FAILED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "unknown"}; message stays queued`,
 			);
@@ -316,10 +332,17 @@ export class DaemonTmux implements DaemonPorts {
 			body: message.body,
 			msgId: message.messageId,
 		});
-		const result = await sendClaudeFrame(resolved.socketPath, line, {
+		const result = await this.sendClaudeFrame(resolved.socketPath, line, {
 			ackWaitMs: this.socketAckWaitMs,
 		});
-		if (result.outcome === "confirmed") return "confirmed";
+		if (result.outcome !== "failed") {
+			if (result.outcome === "unverified") {
+				this.warn(
+					`⚠️  claude SOCKET UNVERIFIED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "status lost after write"}; message will not be blindly retried`,
+				);
+			}
+			return result.outcome;
+		}
 		this.warn(
 			`⚠️  claude SOCKET FAILED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "unknown"}; message stays queued`,
 		);

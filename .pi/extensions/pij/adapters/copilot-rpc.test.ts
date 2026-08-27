@@ -21,7 +21,9 @@ async function startForegroundServer<T>(
 			for (;;) {
 				const sep = buf.indexOf("\r\n\r\n");
 				if (sep < 0) return;
-				const len = Number(/Content-Length:\s*(\d+)/i.exec(buf.subarray(0, sep).toString())![1]);
+				const header = /Content-Length:\s*(\d+)/i.exec(buf.subarray(0, sep).toString());
+				if (!header) return;
+				const len = Number(header[1]);
 				if (buf.length < sep + 4 + len) return;
 				const msg = JSON.parse(buf.subarray(sep + 4, sep + 4 + len).toString());
 				buf = buf.subarray(sep + 4 + len);
@@ -30,7 +32,7 @@ async function startForegroundServer<T>(
 					id: msg.id,
 					result: { sessionId: fgSessionId },
 				});
-				c.write("Content-Length: " + Buffer.byteLength(resp) + "\r\n\r\n" + resp);
+				c.write(`Content-Length: ${Buffer.byteLength(resp)}\r\n\r\n${resp}`);
 			}
 		});
 	});
@@ -63,6 +65,7 @@ const srv = net.createServer((c) => {
       // a notification BEFORE the response, like the real server does
       const note = JSON.stringify({ jsonrpc: "2.0", method: "host.event", params: { kind: "noise" } });
       c.write("Content-Length: " + Buffer.byteLength(note) + "\\r\\n\\r\\n" + note);
+      if (failMode === "silent") continue;
       const resp = failMode === "error"
         ? { jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "no such session" } }
         : { jsonrpc: "2.0", id: msg.id, result: { messageId: "mid-" + msg.id } };
@@ -121,6 +124,19 @@ describe("sendCopilotRpc", () => {
 		const out = await sendCopilotRpc({ port, sessionId: "sess-1", prompt: "hi" });
 		expect(out.outcome).toBe("failed");
 		expect(out.detail).toContain("no such session");
+	});
+
+	it("reports unverified when the request lands but its response is lost", async () => {
+		const { port, log } = await startServer("silent");
+		const out = await sendCopilotRpc({
+			port,
+			sessionId: "sess-1",
+			prompt: "hi",
+			timeoutMs: 60,
+		});
+
+		expect(readFileSync(log, "utf8").trim().split("\n")).toHaveLength(1);
+		expect(out.outcome).toBe("unverified");
 	});
 
 	it("reports failed (retryable) when nothing listens on the port", async () => {
