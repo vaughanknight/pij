@@ -129,3 +129,6 @@ Recorded the moment they landed (orient-global iron rule: rulings land on disk i
 - Day-3 code SHIPPED: 3b/3c/7/FX001/9/11/9-FX/12/10a/10b + doctrine. Only item 14 (doc) + item 17 (advisories) remain before the Jordan-spec handover.
 
 ## 2026-08-28 — o-prime RULING item 14: FOLD ADV-4 before the PR (a wording item must not land with a known wording error). ITEM 18 = ADV-1/2 (ratchet: pin routing text vs buildWatchdogTurn OUTPUT minus header prefix — stale doc RED, clean GREEN; this is the E6 class = a green gate certifying wrong text) + ADV-3 (docs/how/pij-watchdog.md same stale quote + missing mute set). Order: 14 PR (with ADV-4) → 17 → 18. [ADV-4 = my dossier error; o-prime also fixing its upstream WorkIQ 'park with hold' instruction.]
+
+## 2026-08-28 — o-prime: MERGED PR #14 (s391 item 1b) → main 64f0815d. Restart #2 baton → kingfisher (ff+restart in its next lane). item 14 offered a spot in the restart lane if ready.
+- item 14 is SKILL-TEXT (00-routing.md, symlink-deployed on merge) — does NOT need the daemon restart. Re-confirm still in flight; item 14 rides the ff after, no need to hold the lane.
