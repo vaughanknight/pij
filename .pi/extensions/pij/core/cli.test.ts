@@ -207,6 +207,31 @@ describe("parseArgs", () => {
 		});
 	});
 
+	it("guards dispatch-retire target exclusivity and required reason", () => {
+		expect(parseArgs(["dispatch-retire", "--reason", "stale"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(
+			parseArgs(["dispatch-retire", "dispatch-1", "--to", "pij-x", "--reason", "stale"]),
+		).toMatchObject({ ok: false, code: "E-ARG" });
+		expect(parseArgs(["dispatch-retire", "dispatch-1"])).toMatchObject({
+			ok: false,
+			code: "E-ARG",
+		});
+		expect(parseArgs(["dispatch-retire", "--to", "pij-x", "--reason", "stale"])).toEqual({
+			ok: true,
+			value: {
+				verb: "dispatch-retire",
+				dispatchId: undefined,
+				to: "pij-x",
+				reason: "stale",
+				dryRun: false,
+				json: false,
+			},
+		});
+	});
+
 	it.each([
 		["--prime=false", "--prime"],
 		["--prime=true", "--prime"],
@@ -4653,6 +4678,30 @@ describe("phase 3 report-family move regression locks", () => {
 });
 
 describe("report family + report now (plan 074 phase 3 RED)", () => {
+	function expectWorkingRemedy(argv: string[]): void {
+		const result = parseArgs(argv);
+		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
+		if (result.ok) throw new Error("working unexpectedly accepted as a semantic state");
+		expect(result.message).toContain("working");
+		expect(result.message).toContain("mechanical");
+		expect(result.message).toContain("daemon-owned");
+		const parked = result.message.indexOf("pij report state waiting|hold|blocked|question");
+		const refresh = result.message.indexOf('pij report now "<did>" "<next>"');
+		expect(parked, "the runnable parked-state remedy is missing").toBeGreaterThan(-1);
+		expect(refresh, "the runnable card-refresh remedy is missing").toBeGreaterThan(-1);
+		expect(parked, "the refresh remedy is offered before the parked-state remedy").toBeLessThan(
+			refresh,
+		);
+	}
+
+	it("rejects --state working with the mechanical/card/parked remedy", () => {
+		expectWorkingRemedy(["report", "now", "did", "next", "--state", "working"]);
+	});
+
+	it("rejects report state working with the same mechanical/card/parked remedy", () => {
+		expectWorkingRemedy(["report", "state", "working"]);
+	});
+
 	it("parses the family grammar, keeps verify supervisory, and removes the old write spellings", () => {
 		expect(
 			parseArgs(["report", "state", "ready", "--refs", "pr:14,issue:6", "--json"]),

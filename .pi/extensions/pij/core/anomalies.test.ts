@@ -21,6 +21,7 @@ import {
 	DEFAULT_SPAWN_LIMBO_MS,
 	DEFAULT_STATUS_STALE_MS,
 	detectAnomalies,
+	STATUS_WORKING_REMEDY,
 } from "./anomalies.js";
 import type { Allocation, Assignment, Dispatch, SpineEvent } from "./platform/types.js";
 import type { SessionDescriptor, TerminalObservation } from "./types.js";
@@ -754,12 +755,22 @@ describe("team-scaffold record anomalies (plan 061 AC-07)", () => {
 			deliveryState: undefined,
 			state: "undelivered",
 		});
+		const retired = dispatchRecord({
+			id: "dispatch-retired",
+			state: "retired",
+			retirement: {
+				reason: "recipient-closed",
+				actor: "daemon",
+				ts: new Date(NOW - RECORD_STALE_MS).toISOString(),
+				priorState: "delivered-unacked",
+			},
+		});
 
 		const found = detectAnomalies({
 			descriptors: [],
 			assignments: [],
 			events: [],
-			dispatches: [stale, fresh, acked, undelivered],
+			dispatches: [stale, fresh, acked, undelivered, retired],
 			allocations: [],
 			nowMs: NOW,
 			dispatchStaleMs: RECORD_STALE_MS,
@@ -910,6 +921,25 @@ describe("status-stale (the card a busy seat forgot to update)", () => {
 		expect(found.map((a) => a.nodeId)).toEqual(["pij-busy"]);
 		expect(found[0]?.detail).toContain("pij report now");
 		expect(found[0]?.ageMs).toBeGreaterThan(DEFAULT_STATUS_STALE_MS);
+	});
+
+	it("still flags a mechanically working PM and carries the shared remedy", () => {
+		const found = detect([
+			busy({
+				id: "pij-mechanical-working",
+				systemState: "working",
+				statusAt: new Date(NOW - 45 * MIN).toISOString(),
+			}),
+		]);
+		expect(found.map((anomaly) => anomaly.nodeId)).toEqual(["pij-mechanical-working"]);
+		expect(found[0]?.detail).toContain(STATUS_WORKING_REMEDY);
+		const parked = STATUS_WORKING_REMEDY.indexOf("pij report state waiting|hold|blocked|question");
+		const refresh = STATUS_WORKING_REMEDY.indexOf('pij report now "<did>" "<next>"');
+		expect(parked, "the runnable parked-state remedy is missing").toBeGreaterThan(-1);
+		expect(refresh, "the runnable card-refresh remedy is missing").toBeGreaterThan(-1);
+		expect(parked, "the refresh remedy is offered before the parked-state remedy").toBeLessThan(
+			refresh,
+		);
 	});
 
 	/** A REMEDIATION THAT WRITES THE DETECTOR'S OWN INPUT IS A SNOOZE; ONE THAT

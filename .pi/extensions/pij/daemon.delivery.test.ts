@@ -3,12 +3,15 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { DualWriteChannel } from "./adapters/channel-factory.js";
+import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { type DaemonPorts, pointerLine } from "./core/daemon/loop.js";
+import { retireDispatch, unretireDispatch } from "./core/platform/dispatch.js";
+import type { Dispatch } from "./core/platform/types.js";
 import type { SessionDescriptor } from "./core/types.js";
 import { Daemon } from "./daemon.js";
 
@@ -108,6 +111,27 @@ function completeClose(
 		}),
 	);
 	registry.dissolve(id);
+}
+
+function dispatchRecord(
+	id: string,
+	to: string,
+	state: "undelivered" | "delivered-unacked" = "undelivered",
+): Dispatch {
+	return {
+		schema_version: 1,
+		id,
+		packetPath: `/tmp/${id}.md`,
+		packetSha256: "a".repeat(64),
+		from: "pij-boss",
+		to,
+		...(state === "delivered-unacked"
+			? { messageId: `msg-${id}`, deliveryState: "delivered" as const }
+			: {}),
+		state,
+		created: { actor: "pij-boss", ts: new Date(nowMs - 60_000).toISOString() },
+		updated: { actor: "pij-boss", ts: new Date(nowMs - 60_000).toISOString() },
+	};
 }
 
 describe("deliverPass", () => {
@@ -531,6 +555,126 @@ describe("dual-backend pointer delivery", () => {
 			]);
 		} finally {
 			sqlite.close();
+		}
+	});
+});
+
+describe("closed-recipient dispatch retirement", () => {
+	it("does not list the dispatch store when no complete closed recipient exists", async () => {
+		const list = vi.spyOn(FsDispatchStore.prototype, "list");
+		try {
+			await new Daemon(home, ports(), new FsRegistry(home), new FsChannel(home)).tick();
+			expect(list).not.toHaveBeenCalled();
+		} finally {
+			list.mockRestore();
+		}
+	});
+
+	it("retires open dispatches on close and restores only recipient-closed records on revive", async () => {
+		const registry = new FsRegistry(home);
+		const store = new FsDispatchStore(home);
+		for (const record of [
+			dispatchRecord("dispatch-delivered-a", "pij-closed", "delivered-unacked"),
+			dispatchRecord("dispatch-delivered-b", "pij-closed", "delivered-unacked"),
+			dispatchRecord("dispatch-undelivered", "pij-closed"),
+		]) {
+			expect(store.write(record).ok).toBe(true);
+		}
+		const operatorRetired = retireDispatch(dispatchRecord("dispatch-operator", "pij-closed"), {
+			reason: "stale",
+			actor: "pij-boss",
+			ts: new Date(nowMs).toISOString(),
+		});
+		if (!operatorRetired.ok) throw new Error(operatorRetired.message);
+		expect(store.write(operatorRetired.value).ok).toBe(true);
+		completeClose(registry, "pij-closed");
+		const d = new Daemon(home, ports(), registry, new FsChannel(home), (line) => logs.push(line));
+
+		await d.tick();
+
+		for (const id of ["dispatch-delivered-a", "dispatch-delivered-b", "dispatch-undelivered"]) {
+			expect(store.read(id)).toMatchObject({
+				state: "retired",
+				retirement: { reason: "recipient-closed" },
+			});
+		}
+		expect(store.read("dispatch-operator")).toMatchObject({
+			state: "retired",
+			retirement: { reason: "stale" },
+		});
+
+		const revived = registry.revive(seat({ id: "pij-closed", paneId: "%109", pid: 101 }));
+		expect(revived.ok).toBe(true);
+		for (const record of store.list().filter((item) => item.to === "pij-closed")) {
+			const restored = unretireDispatch(record, {
+				actor: "pij-boss",
+				ts: new Date(nowMs + 1).toISOString(),
+			});
+			if (!restored.ok) throw new Error(restored.message);
+			expect(store.write(restored.value).ok).toBe(true);
+		}
+		for (const id of ["dispatch-delivered-a", "dispatch-delivered-b"]) {
+			const record = store.read(id);
+			expect(record).toMatchObject({ state: "delivered-unacked" });
+			expect(record).not.toHaveProperty("retirement");
+		}
+		const undelivered = store.read("dispatch-undelivered");
+		expect(undelivered).toMatchObject({ state: "undelivered" });
+		expect(undelivered).not.toHaveProperty("retirement");
+		expect(store.read("dispatch-operator")).toMatchObject({
+			state: "retired",
+			retirement: { reason: "stale" },
+		});
+	});
+
+	it("leaves dispatches untouched unless the recipient is fully and deliberately closed", async () => {
+		const registry = new FsRegistry(home);
+		registry.write(seat({ id: "pij-pane-gone", harnessSessionId: "native-pane-gone" }));
+		registry.dissolve("pij-pane-gone");
+		registry.write(
+			seat({
+				id: "pij-closing",
+				harnessSessionId: "native-closing-dispatch",
+				closeIntent: {
+					actor: "pij-boss",
+					kind: "cli-close",
+					requestedAt: new Date(nowMs).toISOString(),
+				},
+			}),
+		);
+		registry.write(
+			seat({
+				id: "pij-live",
+				harnessSessionId: "native-live-dispatch",
+			}),
+		);
+		registry.write(
+			seat({
+				id: "pij-live-requested",
+				harnessSessionId: "native-live-requested",
+				closeIntent: {
+					actor: "pij-boss",
+					kind: "cli-close",
+					requestedAt: new Date(nowMs).toISOString(),
+				},
+				terminal: {
+					disposition: "requested",
+					observedAt: new Date(nowMs).toISOString(),
+					evidence: "pane-missing",
+				},
+			}),
+		);
+		const store = new FsDispatchStore(home);
+		for (const to of ["pij-pane-gone", "pij-closing", "pij-live", "pij-live-requested"]) {
+			expect(store.write(dispatchRecord(`dispatch-${to}`, to)).ok).toBe(true);
+		}
+
+		await new Daemon(home, ports(), registry, new FsChannel(home)).tick();
+
+		for (const to of ["pij-pane-gone", "pij-closing", "pij-live", "pij-live-requested"]) {
+			const record = store.read(`dispatch-${to}`);
+			expect(record, `${to} must remain open`).toMatchObject({ state: "undelivered" });
+			expect(record).not.toHaveProperty("retirement");
 		}
 	});
 });
