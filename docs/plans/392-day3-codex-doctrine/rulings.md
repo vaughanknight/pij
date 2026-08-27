@@ -245,3 +245,6 @@ Cold review APPROVE, 3/3 Dim-0 sha-verified (MUT-IDEMPOTENT REDs the seq-3263 du
 - ADV-3 (low) → 24b: markTelegramPartSent inside the outer try → a DB error makes a delivered part count undelivered → re-sent.
 - ADV-4 (low) → 24b: the "part N/M" log uses the per-sendText index not persistedIndex → not joinable to telegram_sent_parts with attachments.
 - INFO: telegram_sent_parts grows unbounded (no pruning); §14 placement editorial.
+
+## 2026-08-28 — NEW ITEM 30 (Telegram bridge routes to DEAD seats; mine, after 24 lands — same file bridge.ts)
+Live case: Vaughan's 21:01Z bare text (seq 4231) queued to pij-icy-jernau (DEAD since 20:12Z, descriptor still present) → no reply for 25 min until s391 noticed. Root cause: the routing path tests MEMBERSHIP in `listSessions()`, not LIVENESS — the `isAlive` seam (`bridge.ts:94`) is unused on routing. Sites: `:196` last-speaker fallback, `:173` tagged-reply, `resolveTarget` for explicit addresses. SPEC: routing treats a dead seat as "gone" (isAlive), replies guidance naming LIVE seats (prime first), NEVER queues to a dead seat. Test: dead last-speaker → gone; dead explicit address → gone. MUT: replace isAlive with existence → RED. Small PR, fresh-from-main, AFTER item 24 (keep 24's fold first). Order: [24 fold + PR] → 30 → 22 → E22 → 23b → 21b → 24b → 29b-rest (29b-T001 PR rides in parallel).
