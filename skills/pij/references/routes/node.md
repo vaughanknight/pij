@@ -46,12 +46,10 @@ progress is waiting on something external. In compound progress, `--note` is
 valid only with `--state question|blocked`. Actively working has no semantic state
 word: absence is the honest expression by design, so never invent `working`.
 
-**Cadence (invariant 12): report at BOTH edges — once when you start a unit of
-work, once when you finish it.** Do not wait for a watchdog nudge; the nudge is a
-backstop, and being nudged means the card was already stale. Consumers render
-`now`/`next` as CURRENT, so an un-updated card actively misinforms — a seat that
-merged an hour ago still reads as waiting on review. `report clear` drops a
-semantic state that no longer applies (e.g. you declared `waiting`, then resumed).
+**Cadence**: global invariant 12 owns both-edge reporting and stale-card semantics.
+Report when work starts and finishes; never wait for the watchdog backstop. Consumers
+render `now`/`next` as current, so stale text misinforms. Use `report clear` after a
+declared state such as `waiting` no longer applies.
 
 **pij tells you when you have drifted.** Once your card is >10min old, every pij
 command appends one line to **stderr**:
@@ -65,22 +63,17 @@ It never appears on stdout (`--json` stays parseable), never fires on `report`
 itself, and never fires for a seat that has parked itself in
 `waiting|hold|blocked|question` — those are correct declarations, not drift.
 
-**Who reads this.** Status renders for **prime/PM** seats. A worker's `report now`
-is recorded and auditable but surfaces in no card, so write it for the ledger, not
-for an audience. Roles are set with `pij orchestration role set <id> pm|worker`;
-an unstamped seat renders as `ROLE UNKNOWN` and shows no status at all.
+**Who reads this.** Status renders for **prime/PM** seats; worker reports remain
+ledger-only. Roles use `pij orchestration role set <id> pm|worker`; unstamped seats
+render `ROLE UNKNOWN` with no status.
 
-**Limits, enforced at write** (measured in `core/cli.ts`, not aspirational):
-`now`'s did/next cap at **280 characters each**, `--note` at **200** — both after
-whitespace collapsing, and both rejected with `E-ARG` rather than truncated. Size
-your text; do not discover the cap by hitting it. Renderers may *additionally*
-visually truncate, which is a display concern and not a second limit.
+**Limits, enforced at write**: did/next cap at **280 characters each**, `--note` at
+**200**, after whitespace collapse; overflow is `E-ARG`, never truncation. Renderers
+may visually truncate, but that is not a second write limit. Size your text; do not discover the cap by hitting it.
 
-**A declared question does not expire.** `report question` puts your text in the
-consumer's needs-attention strip and it stays until you `report clear` (or declare
-another state). It WILL be seen — do not re-ask, do not self-nudge, and do not
-escalate by repetition; that only fills the spine with duplicates of a question
-already on someone's screen.
+**A declared question does not expire.** It remains in needs-attention until
+`report clear` or another state; do not re-ask, self-nudge, or duplicate it in the
+spine.
 
 Inline markdown is supported in report text (`` `code` ``, `**bold**`,
 `[links]`). Block markdown is not: newlines are refused. Shell-quote markdown

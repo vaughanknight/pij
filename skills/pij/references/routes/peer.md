@@ -5,9 +5,11 @@
 
 **Job**: talk to colleagues — stand up a NEW live session (claude / copilot / codex / pi) in a tmux pane, **or converse with peers that already exist**: identity/list/send/tail/state need no spawn. Nothing here delegates work products — this is the raw colleague seam.
 
-**Preconditions**: detect the delivery owner before giving any self-registration advice (§ C1). Spawning requires tmux. Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`. To place it structurally during registration, use `pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`. A non-tmux external session can converse with existing peers after `pij inbox register` (or its first `pij inbox --wait`) auto-registers pull ownership.
-
-Empty or absent `TMUX_PANE` means external pull mode. In external pull mode, never run `tmux list-panes`, `tmux display-message`, or any other pane-discovery command. Never infer, guess, select, or adopt any pane id. Redirect `/pij adopt` intent to `pij inbox register` (or the first `pij inbox --wait`, which auto-registers).
+**Preconditions**: detect the delivery owner first (§ C1); spawning requires tmux. Tmux
+control-plane mode self-adopts only the current process's exact non-empty `$TMUX_PANE`:
+`pij adopt "$TMUX_PANE" --harness <h> [--parent <id>] [--session-id <native-id>] [--export]`.
+Without it, use external pull; never run `tmux list-panes`, `tmux display-message`, or pane discovery.
+Never infer, guess, select, or adopt a pane; use `pij inbox register`/first wait for `/pij adopt`.
 
 ## Verbs
 
@@ -35,26 +37,22 @@ pij inbox --wait [ms]    # non-tmux receive path; first use auto-registers
 pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]
 ```
 
-Bare `tree` selects the current Git repository across linked worktrees. `--global`
-selects the registry, while `<id>` selects that arbitrary subtree. Dead/dissolved
-history is hidden by default; `--all` or an explicit history filter exposes it.
-Repeated values OR within one axis; activity, liveness, and lifecycle axes AND.
+Bare `tree` selects the current Git repository across linked worktrees; `--global` selects
+the registry and `<id>` an arbitrary subtree. History is hidden unless `--all` or filtered;
+values OR within an axis, while activity, liveness, and lifecycle axes AND.
 
 **Structure**
 
 ```bash
-pij link <child> --parent <parent> [--role <pm|worker>] [--json]
+pij link <child> --parent <parent> [--json]  # add --role <pm|worker> when designating
 pij link <child> --root [--json]
 ```
 
-`parentId` is structural: an id is an explicit parent, `--root` writes explicit
-root `null`, and an absent field keeps the legacy `spawnedBy` fallback.
-`spawnedBy` remains close authorization; `link` never changes it or other
-descriptor fields. Unknown ids, self-parenting, and cycles fail before any write.
-Use adopt `--parent <id>` to establish structure at registration; spawn records
-the caller as both structural parent and close owner automatically. When a
-governor gives the seat work, it also passes `--role pm|worker` on `link`; a seat
-never infers or self-declares its own role.
+`parentId` is structural: an id is a parent, `--root` writes `null`, and absence keeps the
+legacy `spawnedBy` fallback. `spawnedBy` remains close authorization; `link` changes no
+other field and refuses unknown ids, self-parenting, or cycles before writing. Adopt
+`--parent` places at registration; spawn records the caller as parent and close owner.
+Governors add `--role pm|worker` when assigning work; seats never self-declare role.
 
 **Spawn**
 
@@ -78,11 +76,8 @@ File-change notices (self-serve): `pij watch <path>` / `pij unwatch` — use whe
 a peer must react to a file another seat writes; mechanics in
 `docs/how/pij-peer-watch.md`.
 
-**Body safety (live incident: quoted text EXECUTED `pij close` at a peer's
-repo)**: a double-quoted send body substitutes backticks/`$(...)` in YOUR shell
-before pij ever runs. For any body carrying code, backticks, or untrusted text:
-single-quote it, or use the literal channel — `pij send <id> --body-file
-<path>` (`-` = stdin), which bypasses shell interpretation entirely.
+**Body safety (live incident: quoted text EXECUTED `pij close`)**: double-quoted bodies substitute backticks/`$(...)` in YOUR shell before pij runs.
+For code or untrusted text, single-quote it or use literal `--body-file <path>` (`-` = stdin), which bypasses shell interpretation.
 
 - Model names are per-harness — discover with `pij models` (§ C4); an "unknown model" warning is non-blocking, the canary decides (§ C2).
 - Returns the pij id immediately (claude/copilot/codex are daemon-bound: boot → ready → bound happens behind you; pi self-registers).
@@ -101,7 +96,7 @@ pij send <id> --command compact                      # control command (compact/
 pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
 
-Pi/tmux replies arrive as `[pij from <id>]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
+Pi/tmux replies arrive as `[pij from <id>]` injected turns. External peers register (or auto-register on first wait), send normally, then receive with:
 
 ```bash
 pij inbox --wait          # block indefinitely
