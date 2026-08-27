@@ -484,6 +484,31 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
+	it("clears bindRefusalCauses on a successful bind so a later refusal reports again (ADV-A)", () => {
+		const expected = "11111111-1111-4111-8111-111111111111";
+		const foreign = "22222222-2222-4222-8222-222222222222";
+		const w = world({ pane: COPILOT_READY });
+		let session = foreign;
+		w.ports.processSnapshot = () => processSnapshot("copilot", session);
+		const reg = new FakeRegistry();
+		const delivery = new FakeDelivery();
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const descriptor = desc({
+			harness: "copilot",
+			initInjectedAt: "2026-06-27T00:00:05.000Z",
+			plannedHarnessSessionId: expected,
+		});
+		// tick 1: the pane names a foreign session → refuse, cause recorded.
+		driveSession(descriptor, drive, w.ports, reg, delivery);
+		expect(drive.bindRefusalCauses?.has("foreign-session-id")).toBe(true);
+		// tick 2: the lingering foreign process is gone; the pane now names this seat
+		// → bind. The stale refusal cause must be cleared on success.
+		session = expected;
+		const bound = driveSession(descriptor, drive, w.ports, reg, delivery);
+		expect(bound.kind).toBe("bound");
+		expect(drive.bindRefusalCauses).toBeUndefined();
+	});
+
 	it("a stale pending snapshot cannot bind over a durable dissolved descriptor", () => {
 		const planned = "11111111-1111-4111-8111-111111111111";
 		const w = world({ pane: COPILOT_READY });

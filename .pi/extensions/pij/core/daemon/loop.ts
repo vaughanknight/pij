@@ -427,6 +427,10 @@ export function driveSession(
 			const note = buildBoundNotice(bound);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
 		}
+		// ADV-A: a refusal that has now resolved into a real bind must not leave a
+		// stale cause behind — clear it so a genuine LATER foreign event reports
+		// again (dedupe is per seat×cause for the life of the DriveState).
+		drive.bindRefusalCauses = undefined;
 		return { kind: "bound", harnessSessionId: planned };
 	}
 
