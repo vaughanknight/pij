@@ -933,6 +933,13 @@ describe("status-stale (the card a busy seat forgot to update)", () => {
 		]);
 		expect(found.map((anomaly) => anomaly.nodeId)).toEqual(["pij-mechanical-working"]);
 		expect(found[0]?.detail).toContain(STATUS_WORKING_REMEDY);
+		const parked = STATUS_WORKING_REMEDY.indexOf("pij report state waiting|hold|blocked|question");
+		const refresh = STATUS_WORKING_REMEDY.indexOf('pij report now "<did>" "<next>"');
+		expect(parked, "the runnable parked-state remedy is missing").toBeGreaterThan(-1);
+		expect(refresh, "the runnable card-refresh remedy is missing").toBeGreaterThan(-1);
+		expect(parked, "the refresh remedy is offered before the parked-state remedy").toBeLessThan(
+			refresh,
+		);
 	});
 
 	/** A REMEDIATION THAT WRITES THE DETECTOR'S OWN INPUT IS A SNOOZE; ONE THAT

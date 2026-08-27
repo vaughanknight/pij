@@ -500,6 +500,26 @@ describe("composerPending — submit verification (the cause-independent retry g
 			}
 		});
 
+		it("pointer early break reports the honest single Enter attempt", () => {
+			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, ...repeatedCapture(CLAUDE_GHOST_PANE, 30)]);
+			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });
+			const stderr: string[] = [];
+			const write = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+				stderr.push(String(chunk));
+				return true;
+			});
+
+			try {
+				expect(adapter.sendText(PANE_ID, SENT, "claude", 4242, { kind: "pointer" })).toBe(
+					"unverified",
+				);
+				expect(stderr.join("")).toContain("after 1 Enter attempt(s)");
+				expect(indexesOf(tmux.calls, enterArgv())).toHaveLength(1);
+			} finally {
+				write.mockRestore();
+			}
+		});
+
 		it("ghost placeholder is read as payload-gone — stops after one Enter (no hammering)", () => {
 			const tmux = scriptedTmux([CLAUDE_PENDING_PANE, ...repeatedCapture(CLAUDE_GHOST_PANE, 30)]);
 			const adapter = new DaemonTmux({ runner: tmux.runner, sleep: () => undefined });

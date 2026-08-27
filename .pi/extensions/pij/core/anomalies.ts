@@ -44,7 +44,7 @@ import { mutesWatchdogNudge } from "./watchdog.js";
 export const DEFAULT_IDLE_DISAGREEMENT_MS = 4 * 3_600_000;
 
 export const STATUS_WORKING_REMEDY =
-	'working is the mechanical, daemon-owned axis; refresh the card with: pij report now "<did>" "<next>". If the seat is parked, declare --state waiting|hold|blocked|question.';
+	'working is the mechanical, daemon-owned axis and is never a declared state. If the seat is parked, declare it: pij report state waiting|hold|blocked|question. Otherwise refresh the card: pij report now "<did>" "<next>".';
 
 export type AnomalyKind =
 	| "axis-disagreement"

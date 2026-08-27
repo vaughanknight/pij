@@ -1759,7 +1759,10 @@ export function parseArgs(argv: readonly string[]): Result<ParsedCommand> {
 				return err("E-ARG", "usage: pij report state <state> [--assignment <id>] [--refs <r,s>]");
 			}
 			if (!isSemanticState(state)) {
-				return err("E-ARG", `invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})`);
+				return err(
+					"E-ARG",
+					`invalid semantic state '${state}' (${SEMANTIC_STATES.join("|")})${state === "working" ? ` — ${STATUS_WORKING_REMEDY}` : ""}`,
+				);
 			}
 			if (flags.assignment === true) return err("E-ARG", "--assignment takes an assignment id");
 			if (flags.refs === true) return err("E-ARG", "--refs takes a comma-separated list");
