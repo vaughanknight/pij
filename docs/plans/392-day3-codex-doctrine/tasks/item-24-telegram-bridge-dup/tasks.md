@@ -27,3 +27,12 @@
 - The persistence store for (b): additive column on the sqlite message/delivery row vs a receipts-like side-record. Prefer whichever keeps the fs backend and legacy rows unchanged; state the choice.
 - Crash-mid-forward: if the bridge dies AFTER sending part 1 but BEFORE recording it (item 29's die-loud helps observe this), redelivery would still re-send part 1. Bound the exposure honestly — the record must be written as-soon-as each part acks, not batched at the end. Note the residual window.
 - fs backend: the legacy `FsChannel.watch` log-and-continue path (`bridge.ts:676-680`) does not throw ForwardIncomplete — confirm the idempotency fix targets the SQLite claim→ack path (the default) and leaves fs unchanged.
+
+## ADV-1 FOLD (o-prime ruling 2026-08-28 — HOLD merge until done)
+The positional part_index skip-set is only valid under the partition it was recorded against; the partition is recomputed live from `resolveRepositoryContext()` (git subprocs, undefined on any hiccup), so a prefix drift (43ch↔12ch) between original send and lease redelivery changes the part COUNT → the skip-set skips the WRONG parts → silent TAIL LOSS + row acked (reproduced: 652 chars lost on 7000-char body). Worse than main (silent loss vs noisy-but-complete dup).
+| # | Task | Path(s) | Done When | Notes |
+|---|------|---------|-----------|-------|
+| [ ] | T007 (ADV-1) | persist the partition IDENTITY alongside the sent-parts set — the part COUNT and the prefix LENGTH (so a partition recorded under prefix A is detectable when redelivering under prefix B). On ANY mismatch (count or prefix-length differs), IGNORE the skip-set and send ALL parts — degrade to main's noisy-dup, NEVER a silent loss. | `telegram/bridge.ts`, `adapters/sqlite-queue.ts` (+tests) | RED→GREEN | additive schema (extend telegram_sent_parts or a sibling record); legacy rows (no identity) fall through to send-all safely |
+| [ ] | T008 (drift test — the ruling's) | record parts under prefix A, redeliver under prefix B (different part count) ⇒ ALL parts sent, row acked, ZERO tail loss. Mutation-prove MUT-DRIFT (remove the mismatch→send-all guard ⇒ this test RED with a lost tail). | `telegram/bridge.test.ts` | drift → send-all, no loss | the o-prime's acceptance test |
+
+Then: re-review THE FOLD HUNK + two green full runs → the item-24 PR. ADV-2/3/4 → item 24b.
