@@ -46,5 +46,6 @@
 - The verdict artifact must record sha + RED line for each. No APPROVE without all five.
 
 ### Open
+- **STRONG LEAD for ADV-2**: `heldBoot` (`loop.ts:505-`) is the exact precedent — it anchors a clock on drive state and "fail[s] loudly once … never return to an unanchored `waiting`, which left the seat pending indefinitely and unlogged" (its comment literally describes THIS bug). Mirror it: a drive-state one-shot flag (like `heldBootLogged`/`initHeldSinceMs` at `loop.ts:152`) + the same delivery/log path `heldBoot` uses (it takes `delivery: DeliveryPort`). No new port needed — follow how `heldBoot` emits. So allowed-paths likely need only loop.ts + the two test files.
 - ADV-2 log sink: confirm whether `DaemonPorts` already carries a logger (grep `ports.log`/`ports.warn`/`console` usage in loop.ts). If yes, reuse it; if no, add additively and default to console in `daemon.ts` wiring — flag in the report which path was taken.
 - Dedupe lifetime: once-per-seat means keyed on descriptor id for the daemon process lifetime; a seat that legitimately transitions foreign→match (re-bind after revive) should be allowed to log again if it goes foreign a second time — acceptable to keep it simple (log once ever per id+cause) and note the tradeoff.
