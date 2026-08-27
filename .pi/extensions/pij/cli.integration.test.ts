@@ -9,7 +9,7 @@
 // What stays local-only (tmux + pi binary): the in-pi boot/announce proof —
 // `.pi/extensions/pij/smoke.ts` (`/pij` status line via the Driver SDK).
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
@@ -32,6 +32,7 @@ import { FsRegistry } from "./adapters/fs-registry.js";
 import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
 import { transcriptDir } from "./core/harness/claude.js";
@@ -3146,6 +3147,41 @@ describe("large --json output survives the 64KB pipe boundary (s057 dogfood)", (
 		expect((piped.match(/pij-big-/g) ?? []).length).toBeGreaterThanOrEqual(1200);
 		expect(forest.roots.length).toBeGreaterThanOrEqual(1200);
 		rmSync(home, { recursive: true, force: true });
+	});
+});
+
+describe("bin-owned output survives the 64 KiB pipe boundary (AC-16)", () => {
+	it("pij queue emits all 812 rows through a piped stdout", () => {
+		const home = mkdtempSync(join(tmpdir(), "pij-queue-bigout-"));
+		try {
+			const queue = new SqliteQueue(home);
+			try {
+				for (let i = 0; i < 812; i++) {
+					const suffix = String(i).padStart(4, "0");
+					const delivered = queue.deliver({
+						from: `pij-stdout-source-${suffix}`,
+						to: `pij-stdout-target-${suffix}`,
+						body: "x",
+					});
+					expect(delivered.ok).toBe(true);
+				}
+			} finally {
+				queue.close();
+			}
+
+			const result = spawnSync(TSX, [CLI, "queue"], {
+				env: { ...process.env, PIJ_HOME: home, PIJ_QUEUE_BACKEND: "sqlite", TMUX_PANE: "" },
+				encoding: "utf8",
+				maxBuffer: 16 * 1024 * 1024,
+				timeout: 30_000,
+			});
+			expect(result.error).toBeUndefined();
+			expect(result.status).toBe(0);
+			expect(Buffer.byteLength(result.stdout, "utf8")).toBeGreaterThan(65_536);
+			expect(result.stdout.trimEnd().split("\n").at(-1)).toContain("pij-stdout-target-0811");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 });
 
