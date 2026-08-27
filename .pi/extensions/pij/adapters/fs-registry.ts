@@ -36,7 +36,7 @@ import {
 	type TickStamps,
 } from "../core/daemon/tick-heartbeat.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
-import type { ArchiveOutcome, RegistryPort } from "../core/ports.js";
+import type { ArchiveOutcome, RegistryPort, RegistryWriteExactOptions } from "../core/ports.js";
 import {
 	applyWriteLaw,
 	DESCRIPTOR_FIELD_OWNER,
@@ -85,13 +85,15 @@ interface DetailedIdentityClaim {
 	readonly createdPaths: readonly string[];
 }
 
-interface FsRegistryHooks {
+interface FsRegistryOptions {
 	/** Test-only seam for deterministically interleaving another registry writer
 	 * after this publish has sampled disk but before it writes. */
 	readonly beforeWrite?: () => void;
 	/** Test-only observation point inside the descriptor write lock, after the
 	 * authoritative fresh read and before the atomic file replacement. */
 	readonly afterLockRead?: () => void;
+	readonly lockBudgetMs?: number;
+	readonly lockRetryMs?: number;
 }
 
 type DescriptorField = keyof SessionDescriptor;
@@ -105,8 +107,8 @@ const CLI_OWNED_DESCRIPTOR_FIELDS: ReadonlySet<DescriptorField> = new Set(
 	),
 );
 
-function sleepDescriptorLockRetry(): void {
-	Atomics.wait(DESCRIPTOR_LOCK_SLEEP, 0, 0, DESCRIPTOR_LOCK_RETRY_MS);
+function sleepDescriptorLockRetry(retryMs: number): void {
+	Atomics.wait(DESCRIPTOR_LOCK_SLEEP, 0, 0, retryMs);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -218,7 +220,7 @@ export class FsRegistry implements RegistryPort {
 	constructor(
 		private readonly pijHome: string,
 		private readonly ticks: TickStampPort = new FsTickHeartbeatStore(pijHome),
-		private readonly hooks: FsRegistryHooks = {},
+		private readonly options: FsRegistryOptions = {},
 	) {}
 
 	private pathFor(id: SessionId): string {
@@ -232,7 +234,9 @@ export class FsRegistry implements RegistryPort {
 	private withDescriptorWriteLock<T>(id: SessionId, operation: () => T): T {
 		mkdirSync(this.pijHome, { recursive: true });
 		const lockPath = this.descriptorLockPath(id);
-		const deadline = Date.now() + DESCRIPTOR_LOCK_BUDGET_MS;
+		const lockBudgetMs = this.options.lockBudgetMs ?? DESCRIPTOR_LOCK_BUDGET_MS;
+		const lockRetryMs = this.options.lockRetryMs ?? DESCRIPTOR_LOCK_RETRY_MS;
+		const deadline = Date.now() + lockBudgetMs;
 		for (;;) {
 			const lock = { pid: process.pid, token: randomUUID() };
 			const body = JSON.stringify(lock);
@@ -258,10 +262,12 @@ export class FsRegistry implements RegistryPort {
 				}
 				if (Date.now() >= deadline) {
 					throw new Error(
-						`descriptor write lock ${lockPath} held for over ${DESCRIPTOR_LOCK_BUDGET_MS}ms`,
+						`descriptor write lock ${lockPath} held for over ${lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually: ${lockPath}`,
 					);
 				}
-				sleepDescriptorLockRetry();
+				// The retry budget is a brake: it can only stop this writer from
+				// waiting longer. Lock age is deliberately not a reclaim policy.
+				sleepDescriptorLockRetry(lockRetryMs);
 				continue;
 			}
 			try {
@@ -491,19 +497,21 @@ export class FsRegistry implements RegistryPort {
 	 *  already re-reads the latest record. Five lost-updates say the merge has to
 	 *  be the default rather than something each writer must remember. */
 	write(descriptor: SessionDescriptor, writer?: DescriptorWriter): void {
-		this.publish(descriptor, writer, false);
+		this.publish(descriptor, writer, false, undefined);
 	}
 
 	/** Exact for caller changes and CLI-owned denorm fields, rebased onto fresh
-	 *  disk under the descriptor lock — see `RegistryPort.writeExact`. */
-	writeExact(descriptor: SessionDescriptor): void {
-		this.publish(descriptor, undefined, true);
+	 *  disk under the descriptor lock. A supplied baseline also covers the
+	 *  caller's pre-publish object-construction window. */
+	writeExact(descriptor: SessionDescriptor, options?: RegistryWriteExactOptions): void {
+		this.publish(descriptor, undefined, true, options?.baseline);
 	}
 
 	private publish(
 		descriptor: SessionDescriptor,
 		writer: DescriptorWriter | undefined,
 		exact: boolean,
+		callerBaseline: SessionDescriptor | undefined,
 	): void {
 		// THE REHYDRATION DROP's precondition, and it MUST be sampled here — before
 		// `unarchive()` below, and against the HOT tier only. See the drop itself at
@@ -558,10 +566,10 @@ export class FsRegistry implements RegistryPort {
 		) {
 			return;
 		}
-		this.hooks.beforeWrite?.();
+		this.options.beforeWrite?.();
 		const published = this.withDescriptorWriteLock(descriptor.id, () => {
 			const latest = this.read(descriptor.id);
-			this.hooks.afterLockRead?.();
+			this.options.afterLockRead?.();
 			if (
 				latest?.lifecycle === "dissolved" &&
 				descriptor.lifecycle !== undefined &&
@@ -570,7 +578,7 @@ export class FsRegistry implements RegistryPort {
 				return null;
 			}
 			const proposed = exact
-				? mergeExactDescriptor(descriptor, sampled, latest)
+				? mergeExactDescriptor(descriptor, callerBaseline ?? sampled, latest)
 				: applyWriteLaw(descriptor, latest, writer);
 			const identity = this.claimDescriptorIdentity(proposed);
 			if (!identity.ok) throw new Error(identity.message);

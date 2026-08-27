@@ -263,19 +263,23 @@ Four independent descriptor axes answer different questions:
 
 ### Descriptor write serialization
 
-Every `FsRegistry.publish()` serializes one descriptor through
-`<PIJ_HOME>/<id>.json.lock`. A fully written owner token is atomically published
-with no replacement, and the lock spans the authoritative fresh read, ownership
-merge, identity claim, and atomic JSON replacement. A lock left by a dead PID is
-reclaimed; a live holder is retried within a bounded budget. This is
-descriptor-local and does not alter the separate spine lock.
+The `FsRegistry.write()` and `writeExact()` paths serialize one descriptor
+through `<PIJ_HOME>/<id>.json.lock`. A fully written owner token is atomically
+published with no replacement, and the lock spans the authoritative fresh read,
+ownership merge, identity claim, and atomic JSON replacement. A lock left by a
+dead PID is reclaimed; a holder that remains live (including a recycled PID) through the
+bounded wait fails with the exact manual-removal path. Lock age is not a reclaim policy. This is
+descriptor-local and does not alter the separate spine lock. Pre-existing
+`revive()`, `archive()`, and `unarchive()` writes do not take this lock.
 
 Normal writes still apply `DESCRIPTOR_FIELD_OWNER` exactly as before. Exact
 writes use a three-way merge: fresh disk is the base, fields changed from the
-adapter's sampled record are replayed (including deletions), and CLI-owned denorm
-fields remain exact. This closes both lost-update directions: a daemon
-`systemState` write cannot erase a newly reported card, and a card write cannot
-replay stale daemon state.
+caller's supplied baseline are replayed (including deletions), and CLI-owned
+denorm fields remain exact. The card path supplies its own read as that baseline,
+which closes this incident class in both directions. Callers that omit a
+baseline fall back to the adapter's sample; their protection is narrowed to the
+publish call's read/write window rather than the earlier object-construction
+window.
 
 ### Tree selectors and filters
 

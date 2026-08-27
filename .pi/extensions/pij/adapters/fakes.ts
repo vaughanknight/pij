@@ -1,6 +1,7 @@
 // pij-messaging — in-memory fake adapters (Pattern P8: tests target these,
 // not the wiring). Mock-free: real small implementations of every port.
 
+import { isDeepStrictEqual } from "node:util";
 import { filterEvents } from "../core/events.js";
 import {
 	type BatonDefinition,
@@ -42,10 +43,15 @@ import type {
 	PiRuntimePort,
 	ProcessPort,
 	RegistryPort,
+	RegistryWriteExactOptions,
 	SplitWindowOpts,
 	TmuxPort,
 } from "../core/ports.js";
-import { applyWriteLaw, type DescriptorWriter } from "../core/registry-write.js";
+import {
+	applyWriteLaw,
+	DESCRIPTOR_FIELD_OWNER,
+	type DescriptorWriter,
+} from "../core/registry-write.js";
 import {
 	type DeliveredMessage,
 	type EventQuery,
@@ -155,6 +161,44 @@ export class FakeBatonNoticeSink implements BatonNoticeSink {
 	}
 }
 
+type FakeDescriptorField = keyof SessionDescriptor;
+
+const FAKE_CLI_OWNED_DESCRIPTOR_FIELDS: ReadonlySet<FakeDescriptorField> = new Set(
+	(Object.keys(DESCRIPTOR_FIELD_OWNER) as FakeDescriptorField[]).filter(
+		(field) => DESCRIPTOR_FIELD_OWNER[field as keyof typeof DESCRIPTOR_FIELD_OWNER] === "cli",
+	),
+);
+
+function fakeDescriptorFields(descriptor: SessionDescriptor | null): FakeDescriptorField[] {
+	return descriptor === null ? [] : (Object.keys(descriptor) as FakeDescriptorField[]);
+}
+
+function mergeFakeExactDescriptor(
+	proposed: SessionDescriptor,
+	baseline: SessionDescriptor | null,
+	latest: SessionDescriptor | null,
+): SessionDescriptor {
+	if (latest === null) return proposed;
+	const merged = { ...latest };
+	const fields = new Set<FakeDescriptorField>([
+		...fakeDescriptorFields(baseline),
+		...fakeDescriptorFields(proposed),
+		...FAKE_CLI_OWNED_DESCRIPTOR_FIELDS,
+	]);
+	for (const field of fields) {
+		const baselineHas = baseline !== null && Object.hasOwn(baseline, field);
+		const proposedHas = Object.hasOwn(proposed, field);
+		const callerChanged =
+			baseline === null ||
+			baselineHas !== proposedHas ||
+			(baselineHas && proposedHas && !isDeepStrictEqual(baseline[field], proposed[field]));
+		if (!callerChanged && !FAKE_CLI_OWNED_DESCRIPTOR_FIELDS.has(field)) continue;
+		if (proposedHas) Reflect.set(merged, field, proposed[field]);
+		else Reflect.deleteProperty(merged, field);
+	}
+	return merged;
+}
+
 export class FakeRegistry implements RegistryPort {
 	private readonly map = new Map<SessionId, SessionDescriptor>();
 
@@ -192,8 +236,12 @@ export class FakeRegistry implements RegistryPort {
 		// plain-object-fake failure this plan already paid for once.
 		this.map.set(descriptor.id, applyWriteLaw(descriptor, existing ?? null, writer));
 	}
-	writeExact(descriptor: SessionDescriptor): void {
-		this.map.set(descriptor.id, descriptor);
+	writeExact(descriptor: SessionDescriptor, options?: RegistryWriteExactOptions): void {
+		const latest = this.map.get(descriptor.id) ?? null;
+		this.map.set(
+			descriptor.id,
+			mergeFakeExactDescriptor(descriptor, options?.baseline ?? latest, latest),
+		);
 	}
 	remove(id: SessionId): void {
 		this.map.delete(id);

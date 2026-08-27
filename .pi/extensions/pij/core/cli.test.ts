@@ -5096,6 +5096,24 @@ describe("report family + report now (plan 074 phase 3 RED)", () => {
 		});
 	});
 
+	it("passes the reporting descriptor read to writeExact as its caller baseline", () => {
+		const d = reportSelfDeps();
+		expect(run(["task", "set", "pij-self", "baseline work"], d).exitCode).toBe(0);
+		const expectedBaseline = d.registry.read("pij-self");
+		if (!expectedBaseline) throw new Error("reporter descriptor missing");
+		const originalWriteExact = d.registry.writeExact.bind(d.registry);
+		let receivedBaseline: SessionDescriptor | undefined;
+		d.registry.writeExact = (descriptor, options) => {
+			receivedBaseline = options?.baseline;
+			originalWriteExact(descriptor, options);
+		};
+
+		const result = run(["report", "now", "did", "next"], d);
+
+		expect(result.exitCode).toBe(0);
+		expect(receivedBaseline).toEqual(expectedBaseline);
+	});
+
 	it("report state re-reads the reporter under the lock before selecting and denormalizing its assignment", () => {
 		const d = reportSelfDeps();
 		expect(run(["task", "set", "pij-self", "old work"], d).exitCode).toBe(0);

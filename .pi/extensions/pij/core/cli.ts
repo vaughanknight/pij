@@ -4090,9 +4090,10 @@ function denormDescriptor(
 		}
 		// writeExact, deliberately: this both OWNS the node-truth denorms and must be
 		// able to CLEAR stale `semanticState`/`stateNote` on an assignment swap. A
-		// merging write cannot clear a contested field (by design), and `latest` was
-		// re-read one line above, so exact semantics are safe here — the re-read IS the merge.
-		deps.registry.writeExact(nextDescriptor);
+		// merging write cannot clear a contested field (by design). Passing `latest`
+		// as the baseline lets the adapter distinguish this caller's intended changes
+		// from fields another writer stamps before the locked fresh read.
+		deps.registry.writeExact(nextDescriptor, { baseline: latest });
 		return ok(undefined);
 	} catch (error) {
 		return err("E-NOREG", `the node descriptor could not be updated (${String(error)})`);

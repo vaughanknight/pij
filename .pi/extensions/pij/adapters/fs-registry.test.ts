@@ -10,6 +10,7 @@ import { deriveHarnessPijId } from "../core/discovery.js";
 import { memorablePijIdCandidate } from "../core/memorable-id.js";
 import type { SessionDescriptor } from "../core/types.js";
 import { renameReplaceWithRetry } from "./atomic-file.js";
+import { FakeRegistry } from "./fakes.js";
 import { FsRegistry } from "./fs-registry.js";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -258,6 +259,60 @@ describe("FsRegistry", () => {
 		});
 	});
 
+	it("preserves a daemon write that lands after the caller read but before writeExact", () => {
+		const seed: SessionDescriptor = {
+			...descriptor("status-race-before-publish"),
+			systemState: "idle",
+			statusNext: "old next",
+			statusAt: "2026-08-27T16:00:00.000Z",
+			statusSeq: 30,
+		};
+		const registry = new FsRegistry(home);
+		registry.writeExact(seed);
+		const callerBaseline = registry.read(seed.id);
+		if (!callerBaseline) throw new Error("fixture descriptor missing");
+
+		registry.write({ ...callerBaseline, systemState: "working" }, "daemon");
+		registry.writeExact(
+			{
+				...callerBaseline,
+				statusNext: "new card",
+				statusAt: "2026-08-27T16:00:01.000Z",
+				statusSeq: 31,
+			},
+			{ baseline: callerBaseline },
+		);
+
+		expect(registry.read(seed.id)).toMatchObject({
+			systemState: "working",
+			statusNext: "new card",
+			statusAt: "2026-08-27T16:00:01.000Z",
+			statusSeq: 31,
+		});
+	});
+
+	it("mirrors caller-baseline exact merging in FakeRegistry", () => {
+		const seed: SessionDescriptor = {
+			...descriptor("fake-status-race"),
+			systemState: "idle",
+			statusNext: "old next",
+		};
+		const registry = new FakeRegistry([seed]);
+		const callerBaseline = registry.read(seed.id);
+		if (!callerBaseline) throw new Error("fixture descriptor missing");
+
+		registry.write({ ...callerBaseline, systemState: "working" }, "daemon");
+		registry.writeExact(
+			{ ...callerBaseline, statusNext: "new card" },
+			{ baseline: callerBaseline },
+		);
+
+		expect(registry.read(seed.id)).toMatchObject({
+			systemState: "working",
+			statusNext: "new card",
+		});
+	});
+
 	it("reclaims a descriptor write lock left by a dead process", () => {
 		const id = "stale-descriptor-lock";
 		writeFileSync(
@@ -269,6 +324,59 @@ describe("FsRegistry", () => {
 
 		expect(new FsRegistry(home).read(id)?.id).toBe(id);
 		expect(existsSync(join(home, `${id}.json.lock`))).toBe(false);
+	});
+
+	it("fails bounded lock exhaustion with the manual-removal remedy and no age policy", () => {
+		const id = "live-descriptor-lock";
+		const lockPath = join(home, `${id}.json.lock`);
+		writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: "live-holder" }));
+		const startedAt = Date.now();
+		let thrown: Error | undefined;
+
+		try {
+			new FsRegistry(home, undefined, { lockBudgetMs: 60, lockRetryMs: 5 }).write(descriptor(id));
+		} catch (error) {
+			thrown = error instanceof Error ? error : new Error(String(error));
+		}
+
+		expect(Date.now() - startedAt).toBeGreaterThanOrEqual(50);
+		expect(Date.now() - startedAt).toBeLessThan(1_000);
+		expect(thrown?.message).toContain(
+			`locks are never stolen; if its writer is dead, remove the file manually: ${lockPath}`,
+		);
+		expect(thrown?.message).not.toMatch(/\b(age|mtime|older)\b/i);
+		expect(new FsRegistry(home).read(id)).toBeNull();
+		expect(existsSync(lockPath)).toBe(true);
+	});
+
+	it("waits for a contending live holder to release, then publishes", async () => {
+		const id = "contended-descriptor-lock";
+		const lockPath = join(home, `${id}.json.lock`);
+		writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: "live-holder" }));
+		const releaser = spawn(
+			process.execPath,
+			[
+				"-e",
+				'setTimeout(() => require("node:fs").rmSync(process.argv[1], { force: true }), 40)',
+				lockPath,
+			],
+			{ stdio: "ignore" },
+		);
+		const released = new Promise<void>((resolve, reject) => {
+			releaser.once("error", reject);
+			releaser.once("exit", (code) => {
+				if (code === 0) resolve();
+				else reject(new Error(`lock releaser exited ${code}`));
+			});
+		});
+		const startedAt = Date.now();
+
+		new FsRegistry(home, undefined, { lockBudgetMs: 1_000, lockRetryMs: 5 }).write(descriptor(id));
+		await released;
+
+		expect(Date.now() - startedAt).toBeGreaterThanOrEqual(20);
+		expect(new FsRegistry(home).read(id)?.id).toBe(id);
+		expect(existsSync(lockPath)).toBe(false);
 	});
 
 	it("holds the descriptor lock across the authoritative read and atomic publish", () => {
