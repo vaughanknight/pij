@@ -47,3 +47,20 @@ The fold CODE is correct (differential-proven zero loss) but 2 guards have NO te
 | [ ] | T012 | re-run gates; the same item-24 PR ALSO carries the §14 provenance note (for issue #311). Base bab9854. | — | recorded | ADV-4 → 24b |
 
 Then: cold re-review of the fold hunk + two green full runs → item-24 PR fresh from main (base bab9854).
+
+## INVARIANT FOLD (o-prime ruling — fold BOTH ADV-1 + ADV-2 as ONE invariant; ends the fold loop)
+State the invariant once; the reviewer checks it as a SET. A 4th finding must be a WRONG INVARIANT, not a missed sensor. Revert T011's over-broad `index < partCount`.
+**THE INVARIANT (partition-idempotent forwarding):**
+- (i) the skip-set + partition identity cover the FULL sent set — body parts AND attachment fallback notices, everything that consumes a text index (nextTextPartIndex).
+- (ii) identity = EVERY input that determines the partition: partCount, prefixLength, AND the normalized-prefix HASH (or equivalent) — because normalizeSenderContent strips by CONTENT, so EQUAL length ≠ EQUAL partition.
+- (iii) drift (any identity component differs) → send ALL; no drift → skip EXACTLY the marked set.
+- (iv) EVERY identity component has a mirror mutant that REDs a BEHAVIOURAL test: MUT-PARTCOUNT, MUT-PREFIXLEN, MUT-PREFIXHASH (new), MUT-NOMARK — each holding the others fixed.
+- (v) redelivery after a PARTIAL failure sends only the UNMARKED members (attachment-notice idempotence — a succeeded attachment notice is NOT re-sent → closes ADV-1's dup).
+| # | Task | Path(s) | Done When | Notes |
+|---|------|---------|-----------|-------|
+| [ ] | T013 (identity = full determinants) | extend the partition identity to record partCount + prefixLength + a normalized-prefix HASH (additive schema — new column or a hash col). Drift = ANY component differs → send all. | `telegram/bridge.ts`, `adapters/sqlite-queue.ts` (+tests) | RED→GREEN | equal length ≠ equal partition (ADV-2 root) |
+| [ ] | T014 (skip-set covers full sent set) | revert T011's `index < partCount`; the marked set + skip covers ALL text-index parts (body + attachment notices). No-drift redelivery skips exactly the MARKED set (attachment notices included) → no dup. | `telegram/bridge.ts` (+test) | RED→GREEN; ADV-1 closed | attachment-notice idempotence restored |
+| [ ] | T015 (mirror mutants — the SET) | behavioural tests such that MUT-PARTCOUNT, MUT-PREFIXLEN, MUT-PREFIXHASH each RED (each varies ONE identity component, others fixed) + MUT-NOMARK + the attachment-idempotence test (partial-failure redelivery sends only unmarked). | `telegram/bridge.test.ts` | every component-mutant reds a distinct test | (iv)+(v) |
+| [ ] | T016 | re-run gates; ADV-3 (legacy never converges) is OUT (→ 24b). Report reports/item-24-invariant-fold-report.json | — | recorded | |
+
+Then: cold re-review AS A SET (verify (i)-(v)) + two green full runs on the fresh-main PR worktree → item-24 PR (base current main; carries §14 provenance for #311). Run ONLY bridge.test.ts as the coder's fence; full-suite is on the PR worktree (E35).
