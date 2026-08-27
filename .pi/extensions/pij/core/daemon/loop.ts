@@ -47,6 +47,12 @@ import {
 } from "./pane-signals.js";
 import { injectionText, route, type SendBuffer } from "./router.js";
 
+export const POINTER_LEASE_MS = 90_000;
+
+export interface SendTextOptions {
+	readonly kind?: "pointer" | "body";
+}
+
 /** The impure seam the daemon loop drives — fakes in tests, real adapters in
  *  the bin. Keystrokes are argv-level (`tmux-keys.ts`); the rest is fs/clock. */
 export interface DaemonPorts {
@@ -68,7 +74,13 @@ export interface DaemonPorts {
 	 *  typing (focus-IN injection + a secondary SIGWINCH) so its Enter submits instead
 	 *  of stranding the message in the composer. Both optional — absent falls back to
 	 *  the Claude default settle and no wake. */
-	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome;
+	sendText(
+		paneId: string,
+		text: string,
+		harness?: HarnessKind,
+		pid?: number,
+		opts?: SendTextOptions,
+	): SendOutcome;
 	/** PoC (poc/comms-sqlite-socket): deliver a message to a Claude Code seat over
 	 *  its inbox socket instead of typing into its pane. `no-socket` = the seat has
 	 *  no resolvable socket (older claude, bind failure, non-claude harness) — the
@@ -644,7 +656,9 @@ export async function drainTmuxInbox(
 			}
 			const line = pointerLine(m.from, 1);
 			beforeSelfInjection?.(decision.paneId, line, ports.now());
-			const outcome = ports.sendText(decision.paneId, line, target.harness, target.pid);
+			const outcome = ports.sendText(decision.paneId, line, target.harness, target.pid, {
+				kind: "pointer",
+			});
 			if (outcome === "gone") continue;
 			if (outcome === "held" || outcome === "failed") {
 				buffer.enqueue(m.messageId, msg);

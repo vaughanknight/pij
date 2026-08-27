@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { type DaemonPorts, INIT_HELD_TIMEOUT_MS } from "./core/daemon/loop.js";
 import type { PaneListing } from "./core/daemon/pane-signals.js";
@@ -106,13 +107,21 @@ interface FakePortsOptions {
 }
 
 function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
-	sent: Array<{ pane: string; text: string }>;
+	sent: Array<{
+		pane: string;
+		text: string;
+		opts?: { readonly kind?: "pointer" | "body" };
+	}>;
 	killed: string[];
 	attached: string[];
 	detached: string[];
 	captured: string[];
 } {
-	const sent: Array<{ pane: string; text: string }> = [];
+	const sent: Array<{
+		pane: string;
+		text: string;
+		opts?: { readonly kind?: "pointer" | "body" };
+	}> = [];
 	const killed: string[] = [];
 	const attached: string[] = [];
 	const detached: string[] = [];
@@ -137,9 +146,13 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 			? () => options.tapChunks?.shift() ?? new Uint8Array()
 			: undefined,
 		detachPaneTap: options.paneListings ? (pane) => detached.push(pane) : undefined,
-		sendText: (pane, text) => {
+		sendText: (pane, text, _harness, _pid, sendOpts) => {
 			if (pane === options.sendErrorForPane) throw new Error(`can't find pane: ${pane}`);
-			sent.push({ pane, text });
+			sent.push({
+				pane,
+				text,
+				...(sendOpts === undefined ? {} : { opts: sendOpts }),
+			});
 			return options.sendOutcome ?? "confirmed";
 		},
 		sendKey: () => {},
@@ -335,6 +348,45 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(messageBodies("pij-boss")).toContain(
 			`[pij receipt ${delivered.value.messageId}] unverified`,
 		);
+	});
+
+	it("forwards pointer metadata through the real Daemon port wrapper", async () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "codex",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const queue = new SqliteQueue(home);
+		try {
+			const delivered = queue.deliver({
+				from: "pij-boss",
+				to: "pij-c",
+				body: "body stays in sqlite",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			const ports = fakePorts();
+
+			await new Daemon(home, ports, registry, queue).tick();
+
+			expect(ports.sent).toContainEqual({
+				pane: "%4",
+				text: expect.stringContaining("run: pij inbox"),
+				opts: { kind: "pointer" },
+			});
+			expect(
+				messageBodies("pij-boss").some((body) =>
+					body.includes(`[pij receipt ${delivered.value.messageId}]`),
+				),
+			).toBe(false);
+		} finally {
+			queue.close();
+		}
 	});
 
 	it("NEVER reports delivered for a claude send whose submission was unconfirmed", async () => {
