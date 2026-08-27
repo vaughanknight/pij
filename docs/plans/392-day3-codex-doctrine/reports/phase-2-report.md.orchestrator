@@ -1,0 +1,30 @@
+# Phase 2 report — 3c pi in-process receiver adopts the queue consumer (orchestrator)
+
+**Seat**: pij-falling-outside · **Status**: REVIEW IN FLIGHT (dlg-0002 → pij-pale-araminta)
+
+## claim
+<FILL on verdict>
+
+## artifacts[]
+- commits (post-rebase onto origin/main 95de006): `35f9aff` feat(pij): consume pi inbox from sqlite queue (index.ts +84/−28, index.test.ts +150) · `236dec9` docs(pij): record phase 2 receiver report · `aed77b3` docs(plan 392) plan folder
+- reports/phase-2-coder-report.json · reports/phase-2-report.md (coder's) · tasks/phase-2-pi-receiver-queue-consumer/execution.log.md
+- reviews/phase-2-review-packet.md → reviews/phase-2-review.md (<FILL sha>)
+
+## shas[]
+- base 95de006057bb4de2f6981b4051b754101cd5d4f4 (origin/main after PR #1 merge + gov commits) → HEAD aed77b3
+
+## gates[]
+- coder: `npx vitest run .pi/extensions/pij/` 3923 pass / 15 skip; index.test.ts 14/14; receiver integration 27/27; typecheck PASS; changed-file Biome PASS
+- orchestrator cheap look: hunk (openChannel + fsWatchOpts; sqliteOf → startQueueConsumer with onInbound then ack, onScan→noteInboxScan; pij_send closes sqlite); re-ran index.test.ts + queue-consumer.test.ts 19/19
+- cold review Dim-0: <FILL>
+- pre-existing reds unchanged (pwsh, repo lint, skill-check DL-003, smoke)
+
+## observations[]
+- DL-005 / difficulty / orchestration / shared-worktree mutation hazard (Phase 1 review vs Phase 2 coder) — benign, rule recorded
+- DL-006 / difficulty / review contract / reviewer verdict changed AFTER merge (second mutation pass) → report must be terminal; widened fixtures = removed witnesses
+- obs-11 / insight / gates / two PARTIAL outcomes were honest reporting of pre-existing aggregate reds — a fence-scoped gate would let a worker report CLEAN
+
+## open[]
+- FX001 (Phase 1 test hole) in flight at the coder (dlg-0003); ships as its own PR
+- PD-02 Phase 4 gate ruling (o-prime)
+- Live: running pi seats adopt the receiver only on their next boot; no restart needed now
