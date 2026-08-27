@@ -288,3 +288,6 @@ The merge made delivery durable (SQLite) and byte-exact (sockets), but two consu
 
 ## Item 10b: pane-misbind BIND guard + shared resolver (the real incident fix)
 The resolution/bind half of the cross-government pane-misbind incident. Shared lifecycle-filtered resolver for the 6 unguarded pane→id sites + a grep-sweep test (no 7th unfiltered site) + the loop.ts bind guard (refuse dissolved; require the seat's own session-id evidence) + the actual-route daemon replay (pane-less dissolved seat + fresh unregistered same-harness pane → zero deliveries, zero binds). 10a (index guard) lands with it. Full table + re-verified anchors: `tasks/item-10b-bind-guard/tasks.md`.
+
+## Item 14: C9 watchdog-mute wording
+Budget-flat amendment to `00-routing.md` C9: `pij report state done` does NOT silence the watchdog (only `blocked|question|hold|waiting` mute — `core/watchdog.ts:332`); a seat standing by parks `hold`/`waiting`, reach for `interval` not `pause`. Mirror one line in orient-oprime duty 7 if budget. Skill-text PR gate. Table: `tasks/item-14-c9-watchdog-wording/tasks.md`.
