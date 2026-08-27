@@ -44,3 +44,4 @@ pij is the **peer fabric itself**: a pi extension + `pij` CLI + machine-wide dae
 - **CI has never run in this repo** (0 Actions runs, workflow active). Merges are ruled on local gates + cold review + live proof, recorded per PR (spine 24514) until Vaughan fixes Actions.
 - **Every `pij send` body goes by `--body-file` from a quoted heredoc** — a double-quoted body with backticks executed two commands from the o-prime's own shell today.
 - **Flash (`gemini-3.6-flash`) is unusable for interactive Copilot seats** even with the item-6 argv fix (item 6b open); use terra/sol.
+- **Skill-text PRs also run the vitest files that pin skill strings** — `.pi/extensions/pij/cli.integration.test.ts` and `acceptance-sweep.test.ts` — before merge. PR #7 (2026-08-27) went in on gate-green + semantic review and left main red on two of them; the o-prime's merge check lacked this and is corrected here.
