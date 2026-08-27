@@ -65,3 +65,8 @@ pij-nasty-tick: done · dissolved   (last event 11m32s ago, pid 58644 gone)
 ## Related
 - Old spine Seq 71 / 11:56Z "birth-side resurrection outpaces symptom sweeps" — same defect class.
 - Flash lab result is VOID (panes contaminated). Separately verified: a Flash seat spawned on main 5445c85 launches without `--context` and STILL 400s interactively (item 6 fix necessary, not sufficient) → item 6b.
+
+## Resolution state (2026-08-27 12:5xZ)
+- Half 1 — retire mail on complete deliberate close + drain never injects for a dissolved descriptor: **LANDED** (PR #9, item 1; in force since the 12:38Z daemon restart at f4ba6ec0).
+- Half 2 — pane resolution/bind guard requires the seat's own session evidence; six ad-hoc resolvers replaced by one lifecycle-filtered resolver + sweep test: **PENDING** (s392 item 10b, with 10a folded in; after item 12).
+- Interim rule (orient-local): no unregistered harness panes in tmux; pane-less copilot spawns prohibited machine-wide (WorkIQ prime acknowledged).
