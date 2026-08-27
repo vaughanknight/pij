@@ -44,7 +44,8 @@ import type { Dispatch } from "./core/platform/types.js";
 import type { BootInput, PijPorts } from "./core/session.js";
 import { PijSession } from "./core/session.js";
 import { DEFAULT_SPAWN_EXPECTATION_TTL_MS } from "./core/spawn-expectation.js";
-import type { PijMessage, SessionDescriptor } from "./core/types.js";
+import { type PijMessage, SEMANTIC_STATES, type SessionDescriptor } from "./core/types.js";
+import { buildWatchdogTurn, mutesWatchdogNudge } from "./core/watchdog.js";
 
 const CLI = join(import.meta.dirname, "cli.ts");
 const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
@@ -353,8 +354,23 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		expect(node).toContain("Inline markdown is supported");
 		expect(node).toContain("newlines are refused");
 
+		const watchdogId = "pij-doc-ratchet";
+		const header = `[pij watchdog #1 for ${watchdogId}] Keep going if working. `;
+		const emittedTurn = buildWatchdogTurn(watchdogId, 1, {
+			owesCard: true,
+			ownAltitude: false,
+		});
+		expect(emittedTurn.startsWith(header)).toBe(true);
+		const emittedClauses = emittedTurn.slice(header.length).split(/(?<=\.)\s+/);
+		expect(emittedClauses).toHaveLength(2);
+		const normalizedWatchdog = watchdog.replace(/\s+/g, " ").trim();
+		for (const clause of emittedClauses) expect(normalizedWatchdog).toContain(clause);
+		const muteStates = SEMANTIC_STATES.filter((state) => mutesWatchdogNudge(state));
+		expect(normalizedWatchdog).toContain(
+			`The mute set is \`${muteStates.join("|")}\`; \`done\` and \`ready\` never mute.`,
+		);
+
 		const liveGuidance = `${routing}\n${watchdog}`;
-		expect(liveGuidance).toContain("If done, run `pij report state done`");
 		expect(liveGuidance).not.toContain("If done, pause me");
 		expect(liveGuidance).not.toContain("pause the watchdog explicitly");
 		expect(liveGuidance).not.toContain("Genuinely done → `pij watchdog pause");
