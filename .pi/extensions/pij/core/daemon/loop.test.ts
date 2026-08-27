@@ -1326,6 +1326,85 @@ describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-soc
 		expect(consumed).toEqual([]);
 	});
 
+	it("consumes an unverified socket write and never blindly sends it a second time", async () => {
+		const w = world({ pane: READY });
+		let socketSends = 0;
+		w.ports.sendSocket = () => {
+			socketSends += 1;
+			return socketSends === 1 ? "unverified" : "confirmed";
+		};
+		const buffer = new SendBuffer();
+		const target = desc({ harness: "claude", lifecycle: "bound" });
+		const first = await drainTmuxInbox(
+			target,
+			[{ messageId: "m1", from: "pij-boss", body: "at most once" }],
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		const retry = buffer.flush(target.id, w.ports.now(), target.paneId).map((entry) => ({
+			messageId: entry.messageId,
+			from: entry.message.from,
+			body: entry.message.body,
+			...(entry.message.command === undefined ? {} : { command: entry.message.command }),
+		}));
+		const second = await drainTmuxInbox(
+			target,
+			retry,
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+		);
+
+		expect(first).toEqual([
+			{ messageId: "m1", from: "pij-boss", outcome: "unverified", via: "socket" },
+		]);
+		expect(retry).toEqual([]);
+		expect(second).toEqual([]);
+		expect(socketSends).toBe(1);
+	});
+
+	it("retries a failed pre-write socket result exactly once from the buffer", async () => {
+		const w = world({ pane: READY });
+		let socketSends = 0;
+		w.ports.sendSocket = () => {
+			socketSends += 1;
+			return socketSends === 1 ? "failed" : "confirmed";
+		};
+		const buffer = new SendBuffer();
+		const target = desc({ harness: "claude", lifecycle: "bound" });
+		const first = await drainTmuxInbox(
+			target,
+			[{ messageId: "m1", from: "pij-boss", body: "retry once" }],
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		const retry = buffer.flush(target.id, w.ports.now(), target.paneId).map((entry) => ({
+			messageId: entry.messageId,
+			from: entry.message.from,
+			body: entry.message.body,
+			...(entry.message.command === undefined ? {} : { command: entry.message.command }),
+		}));
+		const second = await drainTmuxInbox(
+			target,
+			retry,
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+		);
+
+		expect(first).toEqual([]);
+		expect(second).toEqual([
+			{ messageId: "m1", from: "pij-boss", outcome: "confirmed", via: "socket" },
+		]);
+		expect(socketSends).toBe(2);
+	});
+
 	it("still TYPES a remote command (/compact) even on a socket-capable claude seat", async () => {
 		const w = world({ pane: READY });
 		let typedText = "";

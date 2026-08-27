@@ -111,14 +111,14 @@ export function parsePeerFrame(line: string): PeerFrame {
 }
 
 export interface SocketSendResult {
-	readonly outcome: "confirmed" | "failed";
+	readonly outcome: "confirmed" | "unverified" | "failed";
 	readonly detail?: string;
 }
 
 /** Write one frame to a Claude inbox socket and listen `ackWaitMs` for a
- *  `peer_message_status` naming our msg_id as dropped. `confirmed` = the
- *  receiver accepted the bytes and did not report our msg_id dropped within the
- *  window; `failed` = nothing landed (retry-safe). Never throws. */
+ *  `peer_message_status` naming our msg_id. `confirmed` = a positive status;
+ *  `unverified` = bytes flushed but no status arrived; `failed` = nothing
+ *  landed, or the receiver explicitly dropped the message (retry-safe). */
 export function sendClaudeFrame(
 	socketPath: string,
 	frameLine: string,
@@ -136,27 +136,43 @@ export function sendClaudeFrame(
 	const ackWaitMs = opts.ackWaitMs ?? 150;
 	return new Promise((resolve) => {
 		let settled = false;
+		let wrote = false;
 		let buf = "";
 		const c = createConnection(socketPath);
+		let ackTimer: NodeJS.Timeout | undefined;
 		const done = (r: SocketSendResult): void => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(connectTimer);
+			if (ackTimer !== undefined) clearTimeout(ackTimer);
 			c.destroy();
 			resolve(r);
+		};
+		const ambiguousFailure = (detail: string): void => {
+			done({ outcome: wrote ? "unverified" : "failed", detail });
 		};
 		const connectTimer = setTimeout(
 			() => done({ outcome: "failed", detail: "connect timeout" }),
 			opts.connectTimeoutMs ?? 2_000,
 		);
-		c.on("error", (e) =>
-			done({ outcome: "failed", detail: String((e as NodeJS.ErrnoException).code ?? e) }),
-		);
+		c.on("error", (e) => {
+			const detail = String((e as NodeJS.ErrnoException).code ?? e);
+			ambiguousFailure(detail);
+		});
+		c.on("close", () => {
+			ambiguousFailure(
+				wrote ? "socket closed after write before status" : "socket closed before write",
+			);
+		});
 		c.on("connect", () => {
 			clearTimeout(connectTimer);
 			c.write(`${frameLine}\n`, (err) => {
 				if (err) return done({ outcome: "failed", detail: String(err) });
-				setTimeout(() => done({ outcome: "confirmed" }), ackWaitMs);
+				wrote = true;
+				ackTimer = setTimeout(
+					() => ambiguousFailure("acknowledgement window elapsed after write"),
+					ackWaitMs,
+				);
 			});
 		});
 		c.on("data", (d) => {
@@ -166,15 +182,15 @@ export function sendClaudeFrame(
 				try {
 					const st = JSON.parse(line) as {
 						type?: string;
+						orig_msg_id?: string;
 						dropped_msg_ids?: string[];
 						drop_reason?: string;
 					};
-					if (
-						st.type === "peer_message_status" &&
-						Array.isArray(st.dropped_msg_ids) &&
-						st.dropped_msg_ids.includes(msgId)
-					) {
+					if (st.type !== "peer_message_status") continue;
+					if (Array.isArray(st.dropped_msg_ids) && st.dropped_msg_ids.includes(msgId)) {
 						done({ outcome: "failed", detail: `dropped: ${st.drop_reason ?? "unknown"}` });
+					} else if (st.orig_msg_id === msgId) {
+						done({ outcome: "confirmed" });
 					}
 				} catch {
 					/* partial line — wait for more */

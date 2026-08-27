@@ -19,7 +19,7 @@ import type { SessionId } from "../core/types.js";
 export type CopilotSendMode = "enqueue" | "immediate";
 
 export interface CopilotRpcSendResult {
-	readonly outcome: "confirmed" | "failed";
+	readonly outcome: "confirmed" | "unverified" | "failed";
 	readonly messageId?: string;
 	readonly detail?: string;
 }
@@ -33,9 +33,9 @@ export function buildCopilotPrompt(from: SessionId, body: string): string {
 let rpcSeq = 0;
 
 /** `session.send` to the seat's embedded server. `confirmed` = the server
- *  returned a `messageId` for our prompt (it is now in the seat's own queue —
- *  durable in-process, rendered by the TUI). `failed` = no endpoint / refused /
- *  timeout; nothing landed, safe to retry. Never throws. */
+ *  returned a `messageId`; `unverified` = the request flushed but its response
+ *  was lost; `failed` = no request landed or the server explicitly refused it.
+ *  Never throws. */
 export function sendCopilotRpc(input: {
 	readonly port: number;
 	readonly sessionId: string;
@@ -54,6 +54,7 @@ export function sendCopilotRpc(input: {
 	const body = Buffer.from(JSON.stringify(req), "utf8");
 	return new Promise((resolve) => {
 		let settled = false;
+		let wrote = false;
 		let buf = Buffer.alloc(0);
 		const c = createConnection({ host: "127.0.0.1", port: input.port });
 		const done = (r: CopilotRpcSendResult): void => {
@@ -63,16 +64,23 @@ export function sendCopilotRpc(input: {
 			c.destroy();
 			resolve(r);
 		};
+		const ambiguousFailure = (detail: string): void => {
+			done({ outcome: wrote ? "unverified" : "failed", detail });
+		};
 		const timer = setTimeout(
-			() => done({ outcome: "failed", detail: "timeout waiting for session.send response" }),
+			() => ambiguousFailure("timeout waiting for session.send response"),
 			input.timeoutMs ?? 5_000,
 		);
-		c.on("error", (e) =>
-			done({ outcome: "failed", detail: String((e as NodeJS.ErrnoException).code ?? e) }),
-		);
+		c.on("error", (e) => ambiguousFailure(String((e as NodeJS.ErrnoException).code ?? e)));
 		c.on("connect", () => {
-			c.write(`Content-Length: ${body.length}\r\n\r\n`);
-			c.write(body);
+			const request = Buffer.concat([
+				Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "utf8"),
+				body,
+			]);
+			c.write(request, (err) => {
+				if (err) return done({ outcome: "failed", detail: String(err) });
+				wrote = true;
+			});
 		});
 		c.on("data", (d) => {
 			buf = Buffer.concat([buf, d]);
@@ -80,14 +88,14 @@ export function sendCopilotRpc(input: {
 				const sep = buf.indexOf("\r\n\r\n");
 				if (sep < 0) return;
 				const m = /Content-Length:\s*(\d+)/i.exec(buf.subarray(0, sep).toString());
-				if (!m) return done({ outcome: "failed", detail: "bad frame header" });
+				if (!m) return ambiguousFailure("bad frame header");
 				const len = Number(m[1]);
 				if (buf.length < sep + 4 + len) return;
 				let msg: { id?: unknown; result?: { messageId?: string }; error?: { message?: string } };
 				try {
 					msg = JSON.parse(buf.subarray(sep + 4, sep + 4 + len).toString());
 				} catch {
-					return done({ outcome: "failed", detail: "bad frame body" });
+					return ambiguousFailure("bad frame body");
 				}
 				buf = buf.subarray(sep + 4 + len);
 				if (msg.id !== id) continue; // a server notification — keep reading
@@ -95,7 +103,7 @@ export function sendCopilotRpc(input: {
 				if (msg.result?.messageId) {
 					return done({ outcome: "confirmed", messageId: msg.result.messageId });
 				}
-				return done({ outcome: "failed", detail: "response without messageId" });
+				return ambiguousFailure("response without messageId");
 			}
 		});
 	});
