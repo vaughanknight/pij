@@ -197,38 +197,6 @@ function markerPath(to: string, messageId: string): string {
 }
 
 describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
-	it("invokes bridge supervision once per tick and disposes it with the daemon", async () => {
-		let ticks = 0;
-		let disposed = 0;
-		const supervisor = {
-			tick: () => {
-				ticks += 1;
-				return { kind: "disabled" as const };
-			},
-			dispose: () => {
-				disposed += 1;
-			},
-		};
-		const daemon = new Daemon(
-			home,
-			fakePorts(),
-			new FsRegistry(home),
-			new FsChannel(home),
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			undefined,
-			supervisor,
-		);
-
-		await daemon.tick();
-		await daemon.tick();
-		expect(ticks).toBe(2);
-		daemon.dispose();
-		expect(disposed).toBe(1);
-	});
-
 	it("incident replay: a pane-less dissolved seat never delivers to or binds a fresh unregistered Copilot pane", async () => {
 		const id = "pij-nasty-tick";
 		const planned = "11111111-1111-4111-8111-111111111111";

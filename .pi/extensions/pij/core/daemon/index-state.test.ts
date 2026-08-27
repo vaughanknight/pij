@@ -47,13 +47,42 @@ function stripComments(source: string): string {
 		.replace(/\/\/.*$/gm, "");
 }
 
-function isPaneResolutionComparison(line: string): boolean {
-	if (/\bundefined\s*===|===\s*undefined\b/.test(line)) return false;
-	return (
-		/\b[\w$.[\]]+\.paneId\s*===/.test(line) ||
-		/===\s*[\w$.[\]]+\.paneId\b/.test(line) ||
-		/\(\s*\{\s*paneId(?:\s*:\s*[\w$]+)?\s*\}\s*\)\s*=>.*\bpaneId\s*===/.test(line)
-	);
+function paneIdAliases(source: string): ReadonlySet<string> {
+	const aliases = new Set<string>();
+	for (const match of source.matchAll(/\{\s*paneId\s*:\s*([\w$]+)[^}]*\}/g)) {
+		const alias = match[1];
+		if (alias !== undefined) aliases.add(alias);
+	}
+	return aliases;
+}
+
+/** Textual safety brake, deliberately not an exhaustiveness proof.
+ *
+ * Residual: comparisons whose operands/operator are split across lines, or whose
+ * pane id flows through arbitrary assignments, need an AST/data-flow rule. This
+ * scan narrows cheap bypasses and fails safe on ordinary direct/aliased shapes. */
+function isPaneResolutionComparison(line: string, aliases: ReadonlySet<string>): boolean {
+	for (const match of line.matchAll(/([\w$.[\]]+)\s*===\s*([\w$.[\]]+)/g)) {
+		const left = match[1];
+		const right = match[2];
+		if (
+			left === undefined ||
+			right === undefined ||
+			left === "undefined" ||
+			right === "undefined"
+		) {
+			continue;
+		}
+		if (
+			left.endsWith(".paneId") ||
+			right.endsWith(".paneId") ||
+			aliases.has(left) ||
+			aliases.has(right)
+		) {
+			return true;
+		}
+	}
+	return /\(\s*\{\s*paneId\s*\}\s*\)\s*=>.*\bpaneId\s*===/.test(line);
 }
 
 function paneResolutionViolations(
@@ -62,12 +91,14 @@ function paneResolutionViolations(
 	source: string,
 	pathSemantics: PathSemantics = HOST_PATH,
 ): string[] {
-	const lines = stripComments(source).split("\n");
+	const code = stripComments(source);
+	const aliases = paneIdAliases(code);
+	const lines = code.split("\n");
 	const violations: string[] = [];
 	const relativePath = pathSemantics.relative(root, file).split(pathSemantics.sep).join("/");
 	for (let index = 0; index < lines.length; index++) {
 		const line = lines[index] ?? "";
-		if (!isPaneResolutionComparison(line)) continue;
+		if (!isPaneResolutionComparison(line, aliases)) continue;
 		const trimmed = line.trim();
 		const sharedResolver = relativePath === "core/discovery.ts" && trimmed === SHARED_RESOLVER_LINE;
 		const pendingOccupant =
@@ -210,13 +241,33 @@ describe("IndexState", () => {
 	it.each([
 		{
 			label: "reversed operands",
+			line: 1,
 			source: "const match = descriptors.find((descriptor) => paneId === descriptor.paneId);",
 		},
 		{
 			label: "destructured pane id",
+			line: 1,
 			source: "const match = descriptors.find(({ paneId }) => paneId === targetPaneId);",
 		},
-	])("flags the $label pane-resolution bypass", ({ source }) => {
+		{
+			label: "aliased destructure",
+			line: 2,
+			source:
+				"const { paneId: candidatePane } = descriptor;\nreturn candidatePane === targetPaneId;",
+		},
+		{
+			label: "reversed aliased destructure",
+			line: 2,
+			source:
+				"const { paneId: candidatePane } = descriptor;\nreturn targetPaneId === candidatePane;",
+		},
+		{
+			label: "unrelated undefined comparison on the same line",
+			line: 1,
+			source:
+				"const match = descriptor.paneId === targetPaneId && descriptor.windowId === undefined;",
+		},
+	])("flags the $label pane-resolution bypass", ({ line, source }) => {
 		const violations = paneResolutionViolations(
 			"/repo/.pi/extensions/pij",
 			"/repo/.pi/extensions/pij/core/rogue.ts",
@@ -224,7 +275,7 @@ describe("IndexState", () => {
 		);
 
 		expect(violations).toHaveLength(1);
-		expect(violations[0]).toContain("core/rogue.ts:1");
+		expect(violations[0]).toContain(`core/rogue.ts:${line}:`);
 	});
 
 	it("ignores pane-resolution shapes that appear only in comments", () => {

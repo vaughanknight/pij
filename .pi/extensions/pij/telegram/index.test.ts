@@ -6,14 +6,7 @@
 // `lifecycle:"bound"` → the daemon skips it), single-instance refuse/reclaim, clean
 // teardown, and the `stop` decision (AC-09).
 
-import {
-	appendFileSync,
-	existsSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Bot, InputFile, type Update } from "grammy";
@@ -35,13 +28,11 @@ import {
 	buildTelegramDescriptor,
 	type DaemonBridgeDeps,
 	handleStartError,
-	installStandaloneFailureHandlers,
 	maybeStartBridge,
 	runtimeFor,
 	type StartErrorDeps,
 	startBridge,
 	stopBridge,
-	superviseBridge,
 } from "./index.js";
 import { readLockPid } from "./lockfile.js";
 
@@ -609,64 +600,6 @@ describe("handleStartError (AC-09 — 409 clean-exit vs fatal)", () => {
 	});
 });
 
-describe("standalone bridge fatal process handlers", () => {
-	it.each([
-		"uncaughtException",
-		"unhandledRejection",
-	] as const)("sync-writes %s reason + code before exiting", (event) => {
-		let uncaught: ((error: unknown) => void) | undefined;
-		let rejection: ((reason: unknown) => void) | undefined;
-		const logPath = join(home, "telegram-bridge.log");
-		const exits: number[] = [];
-		let stopped = 0;
-		installStandaloneFailureHandlers({
-			onUncaughtException: (handler) => {
-				uncaught = handler;
-			},
-			onUnhandledRejection: (handler) => {
-				rejection = handler;
-			},
-			onExit: () => {},
-			writeSync: (line) => appendFileSync(logPath, line),
-			stop: () => {
-				stopped += 1;
-			},
-			exit: (code) => exits.push(code),
-		});
-
-		const failure = new Error("long-poll exploded");
-		if (event === "uncaughtException") uncaught?.(failure);
-		else rejection?.(failure);
-
-		const written = readFileSync(logPath, "utf8");
-		expect(written).toContain(event);
-		expect(written).toContain("code=1");
-		expect(written).toContain("long-poll exploded");
-		expect(stopped).toBe(1);
-		expect(exits).toEqual([1]);
-	});
-
-	it("sync-writes a non-signal process exit code", () => {
-		let onExit: ((code: number) => void) | undefined;
-		const logPath = join(home, "telegram-bridge.log");
-		installStandaloneFailureHandlers({
-			onUncaughtException: () => {},
-			onUnhandledRejection: () => {},
-			onExit: (handler) => {
-				onExit = handler;
-			},
-			writeSync: (line) => appendFileSync(logPath, line),
-			stop: () => {},
-			exit: () => {},
-		});
-
-		onExit?.(7);
-		const written = readFileSync(logPath, "utf8");
-		expect(written).toContain("processExit");
-		expect(written).toContain("code=7");
-	});
-});
-
 // ── daemon auto-start (in-process) ────────────────────────────────────────────
 //
 // `maybeStartBridge` is the start/refuse/skip/fail decision the daemon makes each boot. It
@@ -767,87 +700,6 @@ describe("maybeStartBridge (daemon auto-start)", () => {
 		// Non-vacuous: drop the `.catch` and `stopped` stays 0 (and the rejection goes unhandled).
 		expect(stopped).toBe(1); // the bridge was torn down
 		expect(logs.join("\n")).toMatch(/stopped|409/i);
-	});
-});
-
-describe("superviseBridge (daemon per-tick restart)", () => {
-	it("restarts a dead bridge within one tick and emits spine + owner evidence", () => {
-		let holderPid: number | null = 4242;
-		const alive = new Set<number>();
-		const notes: string[] = [];
-		const ownerCaptures: string[] = [];
-		let starts = 0;
-		const supervisor = superviseBridge({
-			envPresent: () => true,
-			readPid: () => holderPid,
-			isAlive: (pid) => alive.has(pid),
-			start: () => {
-				starts += 1;
-				holderPid = 9000 + starts;
-				alive.add(holderPid);
-				return { kind: "started", pid: holderPid, stop: () => {} };
-			},
-			now: () => 1000,
-			note: (message) => notes.push(message),
-			notifyOwner: (message) => ownerCaptures.push(message),
-			log: () => {},
-		});
-
-		expect(supervisor.tick()).toMatchObject({ kind: "restarted", previousPid: 4242 });
-		expect(starts).toBe(1);
-		expect(notes.join("\n")).toContain("dead pid 4242");
-		expect(ownerCaptures.join("\n")).toContain("dead pid 4242");
-		expect(supervisor.tick()).toMatchObject({ kind: "live", pid: 9001 });
-		expect(starts).toBe(1);
-	});
-
-	it("never restarts a live bridge", () => {
-		let starts = 0;
-		const supervisor = superviseBridge({
-			envPresent: () => true,
-			readPid: () => 4242,
-			isAlive: () => true,
-			start: () => {
-				starts += 1;
-				return { kind: "started", pid: 9001, stop: () => {} };
-			},
-			now: () => 1000,
-			note: () => {},
-			notifyOwner: () => {},
-			log: () => {},
-		});
-
-		expect(supervisor.tick()).toEqual({ kind: "live", pid: 4242 });
-		expect(starts).toBe(0);
-	});
-
-	it("backs off and caps repeated restart attempts inside one window", () => {
-		let now = 0;
-		let starts = 0;
-		const supervisor = superviseBridge({
-			envPresent: () => true,
-			readPid: () => null,
-			isAlive: () => false,
-			start: () => {
-				starts += 1;
-				return { kind: "started", pid: 9000 + starts, stop: () => {} };
-			},
-			now: () => now,
-			note: () => {},
-			notifyOwner: () => {},
-			log: () => {},
-			cooldownMs: 10,
-			windowMs: 100,
-			maxRestarts: 2,
-		});
-
-		expect(supervisor.tick().kind).toBe("restarted");
-		expect(supervisor.tick().kind).toBe("backoff");
-		now = 10;
-		expect(supervisor.tick().kind).toBe("restarted");
-		now = 20;
-		expect(supervisor.tick().kind).toBe("capped");
-		expect(starts).toBe(2);
 	});
 });
 

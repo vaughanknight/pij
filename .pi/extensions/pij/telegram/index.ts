@@ -16,7 +16,7 @@
 // `/list`+`/tail` (commands.ts), the lockfile (lockfile.ts) — all exist and are tested.
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { type FileFlavor, hydrateFiles } from "@grammyjs/files";
 import { type Bot, type Context, InputFile } from "grammy";
@@ -348,35 +348,6 @@ export interface DaemonBridgeDeps {
 	readonly log: (message: string) => void;
 }
 
-export type DaemonBridgeStartAttempt =
-	| { readonly kind: "started"; readonly pid: number; readonly stop: () => void }
-	| { readonly kind: "refused"; readonly holderPid: number }
-	| { readonly kind: "skipped" };
-
-function attemptDaemonBridgeStart(deps: DaemonBridgeDeps): DaemonBridgeStartAttempt {
-	let config: TelegramConfig;
-	try {
-		config = deps.loadConfig(deps.envPath);
-	} catch {
-		deps.log("telegram: no usable telegram.env — bridge auto-start skipped");
-		return { kind: "skipped" };
-	}
-	const runtime = deps.buildRuntime();
-	const started = deps.startBridge(config, runtime);
-	if (started.kind === "refused") {
-		deps.log(`telegram: a bridge already runs (pid ${started.holderPid}) — not auto-starting`);
-		return { kind: "refused", holderPid: started.holderPid };
-	}
-	const { bot, stop } = started;
-	// Fire-and-forget the long-poll. On ANY failure tear down ONLY the bridge; the daemon
-	// keeps ticking (no process.exit here — that is the standalone command's job).
-	void deps.runBot(bot).catch((e) => {
-		stop();
-		deps.log(`telegram: bridge stopped — ${(e as Error)?.message ?? String(e)}`);
-	});
-	return { kind: "started", pid: runtime.pid, stop };
-}
-
 /**
  * Daemon auto-start hook (in-process). If the scoped `telegram.env` loads, wire + start the
  * bridge inside the daemon process and return its teardown; otherwise return a no-op so the
@@ -389,99 +360,26 @@ function attemptDaemonBridgeStart(deps: DaemonBridgeDeps): DaemonBridgeStartAtte
  * Returns the bridge teardown so the daemon can fold it into its own stop disposer.
  */
 export function maybeStartBridge(deps: DaemonBridgeDeps): () => void {
-	const attempt = attemptDaemonBridgeStart(deps);
-	return attempt.kind === "started" ? attempt.stop : () => {};
-}
-
-export const BRIDGE_RESTART_COOLDOWN_MS = 5_000;
-export const BRIDGE_RESTART_WINDOW_MS = 60_000;
-export const BRIDGE_RESTART_MAX = 3;
-
-export interface BridgeSupervisorDeps {
-	readonly envPresent: () => boolean;
-	readonly readPid: () => number | null;
-	readonly isAlive: (pid: number) => boolean;
-	readonly start: () => DaemonBridgeStartAttempt;
-	readonly now: () => number;
-	readonly note: (message: string) => void;
-	readonly notifyOwner: (message: string) => void;
-	readonly log: (message: string) => void;
-	readonly initialStop?: () => void;
-	readonly cooldownMs?: number;
-	readonly windowMs?: number;
-	readonly maxRestarts?: number;
-}
-
-export type BridgeSupervisionOutcome =
-	| { readonly kind: "disabled" }
-	| { readonly kind: "live"; readonly pid: number }
-	| { readonly kind: "backoff"; readonly retryAt: number }
-	| { readonly kind: "capped"; readonly attempts: number }
-	| { readonly kind: "restarted"; readonly previousPid: number | null; readonly pid: number }
-	| { readonly kind: "not-started"; readonly reason: "refused" | "skipped" | "error" };
-
-export interface BridgeSupervisor {
-	tick(): BridgeSupervisionOutcome;
-	dispose(): void;
-}
-
-/** Per-tick Telegram bridge supervision with bounded restart pressure. */
-export function superviseBridge(deps: BridgeSupervisorDeps): BridgeSupervisor {
-	const cooldownMs = deps.cooldownMs ?? BRIDGE_RESTART_COOLDOWN_MS;
-	const windowMs = deps.windowMs ?? BRIDGE_RESTART_WINDOW_MS;
-	const maxRestarts = deps.maxRestarts ?? BRIDGE_RESTART_MAX;
-	let restartTimes: number[] = [];
-	let retryAt = Number.NEGATIVE_INFINITY;
-	let activeStop = deps.initialStop;
-	let capLogged = false;
-
-	return {
-		tick: () => {
-			if (!deps.envPresent()) return { kind: "disabled" };
-			const previousPid = deps.readPid();
-			if (previousPid !== null && deps.isAlive(previousPid)) {
-				return { kind: "live", pid: previousPid };
-			}
-			const now = deps.now();
-			restartTimes = restartTimes.filter((attemptedAt) => now - attemptedAt < windowMs);
-			if (now < retryAt) return { kind: "backoff", retryAt };
-			if (restartTimes.length >= maxRestarts) {
-				if (!capLogged) {
-					capLogged = true;
-					deps.log(
-						`telegram: restart cap reached (${restartTimes.length}/${maxRestarts} in ${windowMs}ms)`,
-					);
-				}
-				return { kind: "capped", attempts: restartTimes.length };
-			}
-			capLogged = false;
-			restartTimes.push(now);
-			retryAt = now + cooldownMs;
-			activeStop?.();
-			activeStop = undefined;
-			let attempt: DaemonBridgeStartAttempt;
-			try {
-				attempt = deps.start();
-			} catch (error) {
-				deps.log(`telegram: supervised restart failed — ${failureDetail(error)}`);
-				return { kind: "not-started", reason: "error" };
-			}
-			if (attempt.kind !== "started") {
-				return { kind: "not-started", reason: attempt.kind };
-			}
-			activeStop = attempt.stop;
-			const reason = previousPid === null ? "no recorded bridge holder" : `dead pid ${previousPid}`;
-			const message = `telegram bridge restarted after ${reason} (new pid ${attempt.pid})`;
-			deps.log(`telegram: ${message}`);
-			deps.note(message);
-			deps.notifyOwner(message);
-			return { kind: "restarted", previousPid, pid: attempt.pid };
-		},
-		dispose: () => {
-			activeStop?.();
-			activeStop = undefined;
-		},
-	};
+	let config: TelegramConfig;
+	try {
+		config = deps.loadConfig(deps.envPath);
+	} catch {
+		deps.log("telegram: no usable telegram.env — bridge auto-start skipped");
+		return () => {};
+	}
+	const started = deps.startBridge(config, deps.buildRuntime());
+	if (started.kind === "refused") {
+		deps.log(`telegram: a bridge already runs (pid ${started.holderPid}) — not auto-starting`);
+		return () => {};
+	}
+	const { bot, stop } = started;
+	// Fire-and-forget the long-poll. On ANY failure tear down ONLY the bridge; the daemon
+	// keeps ticking (no process.exit here — that is the standalone command's job).
+	void deps.runBot(bot).catch((e) => {
+		stop();
+		deps.log(`telegram: bridge stopped — ${(e as Error)?.message ?? String(e)}`);
+	});
+	return stop;
 }
 
 /**
@@ -502,47 +400,6 @@ export function autoStartBridgeForDaemon(
 			bot.start({ onStart: (info) => log(`telegram: bridge up as @${info.username}`) }),
 		log,
 	});
-}
-
-export interface DaemonBridgeSupervisorCallbacks {
-	readonly now: () => number;
-	readonly log: (message: string) => void;
-	readonly note: (message: string) => void;
-	readonly notifyOwner: (message: string) => void;
-}
-
-/** Production supervisor: preserve startup auto-start, then re-check every daemon tick. */
-export function bridgeSupervisorForDaemon(
-	pijHome: string,
-	callbacks: DaemonBridgeSupervisorCallbacks,
-): BridgeSupervisor {
-	const startDeps = (): DaemonBridgeDeps => ({
-		envPath: envPathOf(pijHome),
-		loadConfig,
-		buildRuntime: () => runtimeFor(pijHome, callbacks.log),
-		startBridge,
-		runBot: (bot) =>
-			bot.start({
-				onStart: (info) => callbacks.log(`telegram: bridge up as @${info.username}`),
-			}),
-		log: callbacks.log,
-	});
-	const lockPath = join(pijHome, LOCK_NAME);
-	const initialPid = readLockPid(lockPath);
-	const initial = initialPid === null ? attemptDaemonBridgeStart(startDeps()) : undefined;
-	const supervisor = superviseBridge({
-		envPresent: () => existsSync(envPathOf(pijHome)),
-		readPid: () => readLockPid(lockPath),
-		isAlive: isProcessAlive,
-		start: () => attemptDaemonBridgeStart(startDeps()),
-		now: callbacks.now,
-		note: callbacks.note,
-		notifyOwner: callbacks.notifyOwner,
-		log: callbacks.log,
-		...(initial?.kind === "started" ? { initialStop: initial.stop } : {}),
-	});
-	if (initialPid !== null && !isProcessAlive(initialPid)) supervisor.tick();
-	return supervisor;
 }
 
 /** A Telegram 409 (Conflict) — another getUpdates consumer is live — surfaces as a
@@ -592,53 +449,13 @@ export function handleStartError(e: unknown, deps: StartErrorDeps): StartErrorOu
 	return { kind: "fatal", message };
 }
 
-export interface StandaloneFailureHandlerDeps {
-	readonly onUncaughtException: (handler: (error: unknown) => void) => void;
-	readonly onUnhandledRejection: (handler: (reason: unknown) => void) => void;
-	readonly onExit: (handler: (code: number) => void) => void;
-	readonly writeSync: (line: string) => void;
-	readonly stop: () => void;
-	readonly exit: (code: number) => void;
-}
-
-function failureDetail(reason: unknown): string {
-	return reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
-}
-
-/** Install the standalone process's last-chance handlers.
- *
- * `writeSync` is deliberately synchronous: these handlers run at the boundary
- * where an async stream can be abandoned before its buffer reaches disk. */
-export function installStandaloneFailureHandlers(deps: StandaloneFailureHandlerDeps): void {
-	let fatalRecorded = false;
-	const fatal = (event: "uncaughtException" | "unhandledRejection", reason: unknown): void => {
-		if (fatalRecorded) return;
-		fatalRecorded = true;
-		deps.writeSync(`[pij-telegram] ${event} code=1\n${failureDetail(reason)}\n`);
-		try {
-			deps.stop();
-		} finally {
-			deps.exit(1);
-		}
-	};
-	deps.onUncaughtException((error) => fatal("uncaughtException", error));
-	deps.onUnhandledRejection((reason) => fatal("unhandledRejection", reason));
-	deps.onExit((code) => {
-		if (!fatalRecorded) deps.writeSync(`[pij-telegram] processExit code=${code}\n`);
-	});
-}
-
 /** `pij telegram start` — foreground long-poll. Async; `runTelegram` fire-and-forgets
  *  it (the pending `bot.start()` keeps the process alive). */
 async function telegramStart(_argv: readonly string[]): Promise<void> {
-	const pijHome = pijHomeOf();
-	mkdirSync(pijHome, { recursive: true });
-	const logPath = join(pijHome, "telegram-bridge.log");
 	const log = (message: string): void => {
-		const line = `[pij-telegram] ${message}\n`;
-		appendFileSync(logPath, line);
-		process.stdout.write(line);
+		process.stdout.write(`[pij-telegram] ${message}\n`);
 	};
+	const pijHome = pijHomeOf();
 
 	let config: TelegramConfig;
 	try {
@@ -663,14 +480,6 @@ async function telegramStart(_argv: readonly string[]): Promise<void> {
 		return;
 	}
 	const { bot, stop } = started;
-	installStandaloneFailureHandlers({
-		onUncaughtException: (handler) => process.once("uncaughtException", handler),
-		onUnhandledRejection: (handler) => process.once("unhandledRejection", handler),
-		onExit: (handler) => process.once("exit", handler),
-		writeSync: (line) => appendFileSync(logPath, line),
-		stop,
-		exit: (code) => process.exit(code),
-	});
 
 	// Graceful shutdown: stop the bot, then release the lock + remove the descriptor.
 	let shuttingDown = false;
@@ -698,10 +507,7 @@ async function telegramStart(_argv: readonly string[]): Promise<void> {
 		handleStartError(e, {
 			stop,
 			log,
-			fail: (message) => {
-				appendFileSync(logPath, message);
-				process.stderr.write(message);
-			},
+			fail: (message) => process.stderr.write(message),
 			exit: (code) => process.exit(code),
 		});
 	}
