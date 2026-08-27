@@ -88,6 +88,7 @@ export interface QueueReceipt {
 export interface TelegramPartitionIdentity {
 	readonly partCount: number;
 	readonly prefixLength: number;
+	readonly prefixHash: string;
 }
 
 export interface SqliteQueueOpts {
@@ -129,6 +130,7 @@ CREATE TABLE IF NOT EXISTS telegram_partitions (
   message_id    TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
   part_count    INTEGER NOT NULL CHECK(part_count >= 0),
   prefix_length INTEGER NOT NULL CHECK(prefix_length >= 0),
+  prefix_hash   TEXT NOT NULL,
   recorded_at   INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS receipts (
@@ -202,6 +204,12 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 		this.db.exec("PRAGMA foreign_keys=ON");
 		this.db.exec("PRAGMA busy_timeout=5000");
 		this.db.exec(SCHEMA);
+		const partitionColumns = this.db
+			.prepare("PRAGMA table_info(telegram_partitions)")
+			.all() as unknown as Array<{ name: string }>;
+		if (!partitionColumns.some((column) => column.name === "prefix_hash")) {
+			this.db.exec("ALTER TABLE telegram_partitions ADD COLUMN prefix_hash TEXT");
+		}
 	}
 
 	close(): void {
@@ -342,28 +350,39 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 	/** Partition identity that makes positional sent-part indices meaningful. */
 	telegramPartitionIdentity(messageId: string): TelegramPartitionIdentity | undefined {
 		const row = this.db
-			.prepare("SELECT part_count, prefix_length FROM telegram_partitions WHERE message_id = ?")
-			.get(messageId) as { part_count: number; prefix_length: number } | undefined;
-		return row === undefined
+			.prepare(
+				"SELECT part_count, prefix_length, prefix_hash FROM telegram_partitions WHERE message_id = ?",
+			)
+			.get(messageId) as
+			| { part_count: number; prefix_length: number; prefix_hash: string | null }
+			| undefined;
+		return row === undefined || row.prefix_hash === null
 			? undefined
-			: { partCount: row.part_count, prefixLength: row.prefix_length };
+			: {
+					partCount: row.part_count,
+					prefixLength: row.prefix_length,
+					prefixHash: row.prefix_hash,
+				};
 	}
 
-	/** Record the first partition only. Drift is detected against it, never overwritten. */
+	/** Record the first complete partition only. Drift is detected against it, never overwritten. */
 	recordTelegramPartitionIdentity(messageId: string, identity: TelegramPartitionIdentity): void {
 		if (
 			!Number.isSafeInteger(identity.partCount) ||
 			identity.partCount < 0 ||
 			!Number.isSafeInteger(identity.prefixLength) ||
-			identity.prefixLength < 0
+			identity.prefixLength < 0 ||
+			!/^[0-9a-f]{64}$/.test(identity.prefixHash)
 		) {
-			throw new Error("Telegram partition identity must use non-negative integers");
+			throw new Error(
+				"Telegram partition identity must use non-negative integers and a SHA-256 hash",
+			);
 		}
 		this.db
 			.prepare(
-				"INSERT OR IGNORE INTO telegram_partitions(message_id, part_count, prefix_length, recorded_at) VALUES (?, ?, ?, ?)",
+				"INSERT OR IGNORE INTO telegram_partitions(message_id, part_count, prefix_length, prefix_hash, recorded_at) VALUES (?, ?, ?, ?, ?)",
 			)
-			.run(messageId, identity.partCount, identity.prefixLength, this.now());
+			.run(messageId, identity.partCount, identity.prefixLength, identity.prefixHash, this.now());
 	}
 
 	/** Ack: the recipient has read the body. Exactly-once by row state. */

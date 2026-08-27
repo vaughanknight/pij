@@ -15,6 +15,8 @@ const BIG_BODY = [
 	...Array.from({ length: 30 }, (_, i) => `L${String(i + 2).padStart(2, "0")}: ${"k".repeat(95)}`),
 	"TAIL-LINE",
 ].join("\n");
+const PREFIX_HASH_A = "a".repeat(64);
+const PREFIX_HASH_B = "b".repeat(64);
 
 let home: string;
 let q: SqliteQueue;
@@ -132,14 +134,17 @@ describe("SqliteQueue — DeliveryPort/InboxPort contract", () => {
 		q.recordTelegramPartitionIdentity(sent.value.messageId, {
 			partCount: 3,
 			prefixLength: 96,
+			prefixHash: PREFIX_HASH_A,
 		});
 		q.recordTelegramPartitionIdentity(sent.value.messageId, {
 			partCount: 2,
 			prefixLength: 13,
+			prefixHash: PREFIX_HASH_B,
 		});
 		expect(q.telegramPartitionIdentity(sent.value.messageId)).toEqual({
 			partCount: 3,
 			prefixLength: 96,
+			prefixHash: PREFIX_HASH_A,
 		});
 
 		q.close();
@@ -147,7 +152,37 @@ describe("SqliteQueue — DeliveryPort/InboxPort contract", () => {
 		expect(q.telegramPartitionIdentity(sent.value.messageId)).toEqual({
 			partCount: 3,
 			prefixLength: 96,
+			prefixHash: PREFIX_HASH_A,
 		});
+	});
+
+	it("migrates the hash column while leaving a legacy partition untrusted", () => {
+		const sent = q.deliver(
+			{ from: "pij-a", to: "pij-telegram", body: "legacy" },
+			{ messageId: "m-legacy" },
+		);
+		if (!sent.ok) throw new Error(sent.message);
+		q.close();
+
+		const legacy = new DatabaseSync(join(home, "queue", "pij.sqlite"));
+		legacy.exec(`
+			DROP TABLE telegram_partitions;
+			CREATE TABLE telegram_partitions (
+				message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+				part_count INTEGER NOT NULL CHECK(part_count >= 0),
+				prefix_length INTEGER NOT NULL CHECK(prefix_length >= 0),
+				recorded_at INTEGER NOT NULL
+			);
+		`);
+		legacy
+			.prepare(
+				"INSERT INTO telegram_partitions(message_id, part_count, prefix_length, recorded_at) VALUES (?, ?, ?, ?)",
+			)
+			.run(sent.value.messageId, 1, 10, now);
+		legacy.close();
+
+		q = new SqliteQueue(home, { now: () => now });
+		expect(q.telegramPartitionIdentity(sent.value.messageId)).toBeUndefined();
 	});
 });
 
