@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 // A minimal Content-Length JSON-RPC server that answers session.getForeground
 // with a fixed sessionId, runs `fn(port)`, then closes. Out-of-process is
 // unnecessary here — probeCopilotReady is async and yields to the event loop.
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCopilotPrompt, probeCopilotReady, sendCopilotRpc } from "./copilot-rpc.js";
@@ -93,9 +93,40 @@ async function startServer(failMode = ""): Promise<{ port: number; log: string }
 	const log = join(dir, "req.log");
 	const portFile = join(dir, "port");
 	server = spawn(process.execPath, ["-e", SERVER, log, portFile, failMode], { stdio: "ignore" });
-	for (let i = 0; i < 100 && !existsSync(portFile); i++)
+	// The child writes the port ONLY after listen() succeeds; under concurrent
+	// full-suite load its spawn is slow, so poll generously for a NON-EMPTY port
+	// file (existsSync alone can observe the file mid-create → an empty read →
+	// NaN port → a spurious pre-write `failed`).
+	let port = 0;
+	for (let i = 0; i < 500 && !port; i++) {
+		if (existsSync(portFile)) {
+			const raw = readFileSync(portFile, "utf8").trim();
+			if (raw) port = Number(raw);
+		}
+		if (!port) await new Promise((r) => setTimeout(r, 20));
+	}
+	if (!port) throw new Error("fake copilot server did not report a port");
+	// Portfile-written ≠ accepting under load. Actively confirm the server ACCEPTS
+	// a connection before the test sends, so the send never races a not-yet-ready
+	// listener (the load-sensitive `failed`-vs-`confirmed` flake).
+	await waitForAccept(port);
+	return { port, log };
+}
+
+async function waitForAccept(port: number): Promise<void> {
+	for (let i = 0; i < 500; i++) {
+		const ok = await new Promise<boolean>((res) => {
+			const s = connect(port, "127.0.0.1");
+			s.once("connect", () => {
+				s.destroy();
+				res(true);
+			});
+			s.once("error", () => res(false));
+		});
+		if (ok) return;
 		await new Promise((r) => setTimeout(r, 20));
-	return { port: Number(readFileSync(portFile, "utf8")), log };
+	}
+	throw new Error("fake copilot server never accepted a connection");
 }
 
 describe("buildCopilotPrompt", () => {
@@ -126,7 +157,7 @@ describe("sendCopilotRpc", () => {
 		expect(out.detail).toContain("no such session");
 	});
 
-	it("reports unverified when the request lands but its response is lost", async () => {
+	it("reports sent when the request lands but its response is lost", async () => {
 		const { port, log } = await startServer("silent");
 		const out = await sendCopilotRpc({
 			port,
@@ -136,7 +167,7 @@ describe("sendCopilotRpc", () => {
 		});
 
 		expect(readFileSync(log, "utf8").trim().split("\n")).toHaveLength(1);
-		expect(out.outcome).toBe("unverified");
+		expect(out.outcome).toBe("sent");
 	});
 
 	it("reports failed (retryable) when nothing listens on the port", async () => {
