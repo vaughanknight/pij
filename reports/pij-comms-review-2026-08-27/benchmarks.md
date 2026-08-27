@@ -24,3 +24,9 @@ Pre-PoC reference (status quo `send-keys -l` body typing, measured in the review
 | after all items ea9633c | L1 legacy seat pointer | 3177 B | 1555 | 4 | pointer line only (body not in events.jsonl by design) | state=injected (pointer) |
 | after all items ea9633c | LOAD 50 msgs/3 senders → claude | 26000 B | p50 272 / p95 418 | n/a | transcript ×14/50 | acked 50/50, loss 0 |
 | after all items ea9633c | RESTART 5 queued while daemon down | 1505 B | — | n/a | transcript ×[1, 1, 1, 1, 1] | acked 5/5, dup 0, loss 0 |
+| MERGE f14915b (default sqlite) | C1 claude idle 3KB | 3177 B | 177 | 0 | transcript ×1 | state=acked |
+| MERGE f14915b (default sqlite) | C2 claude mid-turn 3KB | 3177 B | 326 | 0 | NOT VERIFIED (×0) | state=acked; sent 61s into a 40s tool call |
+| MERGE f14915b (default sqlite) | P1 copilot idle 3KB (rpc) | 3177 B | 113 | 0 | events.jsonl ×1 | state=acked |
+| MERGE f14915b (default sqlite) | LOAD 50 msgs/3 senders → claude | 26000 B | p50 262 / p95 404 | n/a | transcript ×14/50 | acked 50/50, loss 0 |
+| MERGE f14915b (default sqlite) | RESTART 5 queued while daemon down | 1505 B | — | n/a | transcript ×[1, 1, 1, 1, 1] | acked 5/5, dup 0, loss 0 |
+| MERGE f14915b (default sqlite) | L1 legacy seat pointer | 3177 B | — | 4 | pointer line only (body not in events.jsonl by design) | state=None (pointer) |
