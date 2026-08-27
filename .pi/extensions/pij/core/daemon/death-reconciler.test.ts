@@ -44,6 +44,9 @@ describe("death reconciler", () => {
 			const result = reboot();
 			expect(result.notices).toEqual([]);
 			expect(result.noticesSuppressed).toBe(1);
+			expect(result.withheldNoticeLines).toEqual([
+				"notice dead for pij-child: no live recipient (parent <unset> unset, spawner pij-parent dead)",
+			]);
 		});
 
 		it("still records terminal truth on every descriptor it withheld a notice for", () => {
@@ -93,10 +96,10 @@ describe("death reconciler", () => {
 
 	it("classifies a missing registered process as unrequested-by-pij and emits one live notice", () => {
 		const result = reconcileDeaths({
-			descriptors: [descriptor()],
+			descriptors: [descriptor(), descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined })],
 			expectations: [],
 			nowIso: "2026-07-20T00:00:02.000Z",
-			isAlive: () => false,
+			isAlive: (pid) => pid === 45,
 		});
 		expect(result.descriptorUpdates[0]?.terminal).toMatchObject({
 			disposition: "unrequested-by-pij",
@@ -110,7 +113,7 @@ describe("death reconciler", () => {
 	it.each([
 		["adopted", "pij-original-spawner"],
 		["parent-only", undefined],
-	] as const)("routes a %s seat's terminal death notice to the current parent only", (_case, spawnedBy) => {
+	] as const)("routes the %s seat's terminal death notice to the current parent only", (_case, spawnedBy) => {
 		const result = reconcileDeaths({
 			descriptors: [
 				descriptor({
@@ -132,6 +135,86 @@ describe("death reconciler", () => {
 		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
 			{ from: "pij-child", to: "pij-current-parent" },
 		]);
+	});
+
+	it("withholds once and explains both dead candidates", () => {
+		const terminal = {
+			disposition: "unrequested-by-pij" as const,
+			evidence: "pid-missing" as const,
+			observedAt: "2026-07-20T00:00:01.000Z",
+		};
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: "pij-current-parent",
+					spawnedBy: "pij-original-spawner",
+				}),
+				descriptor({
+					id: "pij-current-parent",
+					pid: 98,
+					spawnedBy: undefined,
+					terminal,
+				}),
+				descriptor({
+					id: "pij-original-spawner",
+					pid: 99,
+					spawnedBy: undefined,
+					terminal,
+				}),
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: () => false,
+		});
+
+		expect(result.notices).toEqual([]);
+		expect(result.noticesSuppressed).toBe(1);
+		expect(result.withheldNoticeLines).toEqual([
+			"notice dead for pij-child: no live recipient (parent pij-current-parent dead, spawner pij-original-spawner dead)",
+		]);
+	});
+
+	it.each([
+		"dead",
+		"dissolved",
+	] as const)("falls back to the live spawner when the current parent is %s", (parentState) => {
+		const parent = descriptor({
+			id: "pij-current-parent",
+			pid: 98,
+			spawnedBy: undefined,
+			...(parentState === "dissolved"
+				? { lifecycle: "dissolved" as const }
+				: {
+						terminal: {
+							disposition: "unrequested-by-pij" as const,
+							evidence: "pid-missing" as const,
+							observedAt: "2026-07-20T00:00:01.000Z",
+						},
+					}),
+		});
+		const spawner = descriptor({
+			id: "pij-original-spawner",
+			pid: 99,
+			spawnedBy: undefined,
+		});
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: parent.id,
+					spawnedBy: spawner.id,
+				}),
+				parent,
+				spawner,
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: (pid) => pid === spawner.pid,
+		});
+
+		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
+			{ from: "pij-child", to: "pij-original-spawner" },
+		]);
+		expect(result.noticesSuppressed).toBe(0);
 	});
 
 	it("resolves recipient and dead-parent suppression from post-write descriptor truth", () => {
@@ -229,10 +312,11 @@ describe("death reconciler", () => {
 						requestedAt: "2026-07-20T00:00:01.000Z",
 					},
 				}),
+				descriptor({ id: "pij-parent", pid: 45, spawnedBy: undefined }),
 			],
 			expectations: [],
 			nowIso: "2026-07-20T00:00:02.000Z",
-			isAlive: () => false,
+			isAlive: (pid) => pid === 45,
 			historical: true,
 		});
 		expect(result.descriptorUpdates[0]?.terminal?.disposition).toBe("requested");

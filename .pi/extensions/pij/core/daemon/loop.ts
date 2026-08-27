@@ -17,7 +17,8 @@ import {
 	evaluateWatchdog,
 	markFailed,
 	markInitInjected,
-	noticeRecipient,
+	noLiveNoticeRecipientLine,
+	resolveNoticeRecipient,
 	shouldInjectInit,
 } from "../binding.js";
 import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js";
@@ -180,6 +181,10 @@ function notify(delivery: DeliveryPort, from: SessionId, to: SessionId, text: st
 	delivery.deliver({ from, to, body: text });
 }
 
+function noticeRegistryView(registry: RegistryPort): SessionDescriptor[] {
+	return [...registry.listTerminal(), ...registry.list()];
+}
+
 /** Drive ONE pending/booting session one tick. Mutates `drive` (in-memory) and
  *  persists descriptor changes through `registry`; returns what it did. */
 /** While `busy`, refresh the activity ts at most this often (keeps liveness
@@ -242,6 +247,7 @@ export function driveSession(
 	registry: RegistryPort,
 	delivery: DeliveryPort,
 	beforeSelfInjection?: (paneId: string, payload: string, nowMs: number) => void,
+	log?: (line: string) => void,
 ): DriveOutcome {
 	const paneId = descriptor.paneId;
 	if (!paneId) return { kind: "waiting" }; // no pane yet (pre-split)
@@ -259,7 +265,7 @@ export function driveSession(
 	if (ports.isPaneDead(paneId)) {
 		const pane0 = ports.capturePane(paneId);
 		const dr = classifyDeathReason(pane0);
-		return fail(descriptor, drive, registry, delivery, "pane exited before binding", dr);
+		return fail(descriptor, drive, registry, delivery, "pane exited before binding", dr, log);
 	}
 
 	// The `before` set for new-path discovery (AC-03). The transcript LAYOUT is
@@ -293,7 +299,7 @@ export function driveSession(
 
 	if (readiness === "dead") {
 		const dr = classifyDeathReason(pane);
-		return fail(descriptor, drive, registry, delivery, "pane reported dead", dr);
+		return fail(descriptor, drive, registry, delivery, "pane reported dead", dr, log);
 	}
 	if (readiness === "interstitial" || actionableHarnessModal) {
 		const verdict = harnessVerdict;
@@ -340,7 +346,7 @@ export function driveSession(
 		// A human can be typing in a freshly spawned pane. `held` means nothing was
 		// typed — retry, but on a clock that ends in a legible failure.
 		if (ports.sendText(paneId, init.body, harness, descriptor.pid) === "held") {
-			return heldBoot(descriptor, drive, registry, delivery, ports.now());
+			return heldBoot(descriptor, drive, registry, delivery, ports.now(), log);
 		}
 		drive.initHeldSinceMs = undefined;
 		const at = new Date(ports.now()).toISOString();
@@ -389,6 +395,7 @@ export function driveSession(
 				delivery,
 				`bad model in pane: ${badModel.reason ?? "model-not-supported"}`,
 				badModel.reason ?? "model-not-supported",
+				log,
 			);
 		}
 		const processSnapshot = ports.processSnapshot?.();
@@ -429,10 +436,17 @@ export function driveSession(
 			...(model ? { boundModel: model } : {}),
 		};
 		const persisted = persistDaemonWrite(registry, bound);
-		if (!drive.settled && noticeRecipient(persisted)) {
-			drive.settled = true;
-			const note = buildBoundNotice(persisted);
-			if (note) notify(delivery, descriptor.id, note.to, note.text);
+		if (!drive.settled) {
+			const resolution = resolveNoticeRecipient(persisted, noticeRegistryView(registry));
+			if (resolution.recipient) {
+				drive.settled = true;
+				const note = buildBoundNotice(persisted, resolution.recipient);
+				if (note) notify(delivery, descriptor.id, note.to, note.text);
+			} else if (resolution.withheld === 1) {
+				drive.settled = true;
+				const line = noLiveNoticeRecipientLine("bound", persisted, resolution);
+				if (line) log?.(line);
+			}
 		}
 		// ADV-A: a refusal that has now resolved into a real bind must not leave a
 		// stale cause behind — clear it so a genuine LATER foreign event reports
@@ -474,10 +488,17 @@ export function driveSession(
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
 		};
 		const persisted = persistDaemonWrite(registry, bound);
-		if (!drive.settled && noticeRecipient(persisted)) {
-			drive.settled = true;
-			const note = buildBoundNotice(persisted);
-			if (note) notify(delivery, descriptor.id, note.to, note.text);
+		if (!drive.settled) {
+			const resolution = resolveNoticeRecipient(persisted, noticeRegistryView(registry));
+			if (resolution.recipient) {
+				drive.settled = true;
+				const note = buildBoundNotice(persisted, resolution.recipient);
+				if (note) notify(delivery, descriptor.id, note.to, note.text);
+			} else if (resolution.withheld === 1) {
+				drive.settled = true;
+				const line = noLiveNoticeRecipientLine("bound", persisted, resolution);
+				if (line) log?.(line);
+			}
 		}
 		return { kind: "bound", harnessSessionId };
 	}
@@ -505,7 +526,7 @@ export function driveSession(
 		const phonehomeLine = buildInitInjection(descriptor.id).phonehomeLine;
 		beforeSelfInjection?.(paneId, phonehomeLine, ports.now());
 		if (ports.sendText(paneId, phonehomeLine, harness, descriptor.pid) === "held") {
-			return heldBoot(descriptor, drive, registry, delivery, ports.now());
+			return heldBoot(descriptor, drive, registry, delivery, ports.now(), log);
 		}
 		drive.initHeldSinceMs = undefined;
 		drive.resentAtMs = ports.now();
@@ -525,6 +546,7 @@ export function driveSession(
 				: `${decision.reason}; transcript discovery stayed ambiguous across ${ambiguousCount} candidate transcripts ` +
 						"(concurrent boots in one folder) — nothing could be bound deterministically",
 			"bind-timeout",
+			log,
 		);
 	}
 	if (ambiguousCount !== undefined) return { kind: "ambiguous", count: ambiguousCount };
@@ -561,6 +583,7 @@ function heldBoot(
 	registry: RegistryPort,
 	delivery: DeliveryPort,
 	nowMs: number,
+	log?: (line: string) => void,
 ): DriveOutcome {
 	const first = drive.initHeldSinceMs === undefined;
 	if (drive.initHeldSinceMs === undefined) drive.initHeldSinceMs = nowMs;
@@ -574,6 +597,7 @@ function heldBoot(
 			`boot injection blocked by active pane input for ${Math.round(heldForMs / 1000)}s — ` +
 				"a human was typing in this pane, so pij never wrote the init line",
 			"pane-input-blocked",
+			log,
 		);
 	}
 	return { kind: "held-by-pane-input", heldForMs, first };
@@ -586,16 +610,24 @@ function fail(
 	delivery: DeliveryPort,
 	reason: string,
 	deathReason?: DeathReason,
+	log?: (line: string) => void,
 ): DriveOutcome {
 	const failed = {
 		...markFailed(descriptor),
 		...(deathReason ? { failureReason: deathReason } : {}),
 	};
 	const persisted = persistDaemonWrite(registry, failed);
-	if (!drive.settled && noticeRecipient(persisted)) {
-		drive.settled = true;
-		const note = buildFailedNotice(persisted, reason);
-		if (note) notify(delivery, descriptor.id, note.to, note.text);
+	if (!drive.settled) {
+		const resolution = resolveNoticeRecipient(persisted, noticeRegistryView(registry));
+		if (resolution.recipient) {
+			drive.settled = true;
+			const note = buildFailedNotice(persisted, reason, resolution.recipient);
+			if (note) notify(delivery, descriptor.id, note.to, note.text);
+		} else if (resolution.withheld === 1) {
+			drive.settled = true;
+			const line = noLiveNoticeRecipientLine("failed", persisted, resolution);
+			if (line) log?.(line);
+		}
 	}
 	return { kind: "failed", reason };
 }

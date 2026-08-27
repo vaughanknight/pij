@@ -9,9 +9,11 @@ import {
 	evaluateWatchdog,
 	markFailed,
 	markInitInjected,
+	noLiveNoticeRecipientLine,
 	reattachIdentity,
 	resolveAdoptSessionId,
 	resolveAdoptSessionIdForHarness,
+	resolveNoticeRecipient,
 	resolvePhonehomeSessionId,
 	resolveStableIdentity,
 	shouldInjectInit,
@@ -407,6 +409,65 @@ describe("creator notices", () => {
 				spawnedBy: undefined,
 			}),
 		).toBeNull();
+	});
+
+	it.each([
+		["absent", undefined],
+		["dissolved", { lifecycle: "dissolved" as const }],
+		["failed", { lifecycle: "failed" as const }],
+		[
+			"dead",
+			{
+				terminal: {
+					disposition: "unrequested-by-pij" as const,
+					evidence: "pid-missing" as const,
+					observedAt: "2026-06-27T00:00:10.000Z",
+				},
+			},
+		],
+	] as const)("falls back from an %s parent to a live spawner", (state, parentState) => {
+		const subject = {
+			...BOUND_DESC,
+			parentId: "pij-parent",
+			spawnedBy: "pij-spawner",
+		};
+		const parent =
+			parentState === undefined
+				? []
+				: [{ ...BOUND_DESC, id: "pij-parent", spawnedBy: undefined, ...parentState }];
+		const resolution = resolveNoticeRecipient(subject, [
+			...parent,
+			{ ...BOUND_DESC, id: "pij-spawner", spawnedBy: undefined },
+		]);
+
+		expect(resolution).toMatchObject({
+			recipient: "pij-spawner",
+			parent: { id: "pij-parent", state },
+			spawner: { id: "pij-spawner", state: "live" },
+			withheld: 0,
+		});
+	});
+
+	it("describes one withheld lifecycle notice when neither candidate is live", () => {
+		const subject = {
+			...BOUND_DESC,
+			parentId: "pij-parent",
+			spawnedBy: "pij-spawner",
+		};
+		const failed = {
+			...BOUND_DESC,
+			lifecycle: "failed" as const,
+			spawnedBy: undefined,
+		};
+		const resolution = resolveNoticeRecipient(subject, [
+			{ ...failed, id: "pij-parent" },
+			{ ...failed, id: "pij-spawner" },
+		]);
+
+		expect(resolution).toMatchObject({ recipient: null, withheld: 1 });
+		expect(noLiveNoticeRecipientLine("stalled", subject, resolution)).toBe(
+			"notice stalled for pij-worker: no live recipient (parent pij-parent failed, spawner pij-spawner failed)",
+		);
 	});
 });
 

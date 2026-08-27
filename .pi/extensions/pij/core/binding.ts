@@ -276,14 +276,81 @@ export interface CreatorNotice {
 	readonly text: string;
 }
 
+export type LifecycleNoticeKind = "bound" | "failed" | "stalled" | "dead";
+export type NoticeRecipientState = "unset" | "absent" | "dissolved" | "failed" | "dead" | "live";
+
+export interface NoticeRecipientCandidate {
+	readonly id: SessionId | null;
+	readonly state: NoticeRecipientState;
+}
+
+export interface NoticeRecipientResolution {
+	readonly recipient: SessionId | null;
+	readonly parent: NoticeRecipientCandidate;
+	readonly spawner: NoticeRecipientCandidate;
+	/** One lifecycle notice existed but neither candidate could receive it. */
+	readonly withheld: 0 | 1;
+}
+
 export function noticeRecipient(descriptor: SessionDescriptor): SessionId | null {
 	return descriptor.parentId ?? descriptor.spawnedBy ?? null;
 }
 
+function recipientCandidate(
+	id: SessionId | null,
+	descriptorById: ReadonlyMap<SessionId, SessionDescriptor>,
+	deadIds: ReadonlySet<SessionId>,
+): NoticeRecipientCandidate {
+	if (id === null) return { id, state: "unset" };
+	const candidate = descriptorById.get(id);
+	if (candidate?.lifecycle === "dissolved") return { id, state: "dissolved" };
+	if (candidate?.lifecycle === "failed") return { id, state: "failed" };
+	if (deadIds.has(id) || candidate?.terminal !== undefined) return { id, state: "dead" };
+	if (candidate === undefined) return { id, state: "absent" };
+	return { id, state: "live" };
+}
+
+/** Resolve the first registered, live lifecycle-notice candidate while keeping
+ *  {@link noticeRecipient} as the pure parent-first candidate order. */
+export function resolveNoticeRecipient(
+	descriptor: SessionDescriptor,
+	registryView: readonly SessionDescriptor[],
+	deadIds: Iterable<SessionId> = [],
+): NoticeRecipientResolution {
+	const descriptorById = new Map(
+		registryView.map((registered) => [registered.id, registered] as const),
+	);
+	const dead = new Set(deadIds);
+	const parent = recipientCandidate(descriptor.parentId ?? null, descriptorById, dead);
+	const spawner = recipientCandidate(descriptor.spawnedBy ?? null, descriptorById, dead);
+	const recipient =
+		parent.state === "live" ? parent.id : spawner.state === "live" ? spawner.id : null;
+	const hasCandidate = parent.id !== null || spawner.id !== null;
+	return {
+		recipient,
+		parent,
+		spawner,
+		withheld: recipient === null && hasCandidate ? 1 : 0,
+	};
+}
+
+export function noLiveNoticeRecipientLine(
+	kind: LifecycleNoticeKind,
+	descriptor: SessionDescriptor,
+	resolution: NoticeRecipientResolution,
+): string | null {
+	if (resolution.withheld === 0) return null;
+	const format = (candidate: NoticeRecipientCandidate): string =>
+		`${candidate.id ?? "<unset>"} ${candidate.state}`;
+	return `notice ${kind} for ${descriptor.id}: no live recipient (parent ${format(resolution.parent)}, spawner ${format(resolution.spawner)})`;
+}
+
 /** Verification notice on a successful bind (AC-05) — `null` if there is no
  *  creator to notify (e.g. an operator-spawned session). */
-export function buildBoundNotice(descriptor: SessionDescriptor): CreatorNotice | null {
-	const recipient = noticeRecipient(descriptor);
+export function buildBoundNotice(
+	descriptor: SessionDescriptor,
+	recipient: SessionId | null = noticeRecipient(descriptor),
+): CreatorNotice | null {
 	if (!recipient) return null;
 	return {
 		to: recipient,
@@ -295,8 +362,8 @@ export function buildBoundNotice(descriptor: SessionDescriptor): CreatorNotice |
 export function buildFailedNotice(
 	descriptor: SessionDescriptor,
 	reason: string,
+	recipient: SessionId | null = noticeRecipient(descriptor),
 ): CreatorNotice | null {
-	const recipient = noticeRecipient(descriptor);
 	if (!recipient) return null;
 	return {
 		to: recipient,
@@ -311,8 +378,10 @@ export interface DeadNoticeOptions {
 /** Stall notice for a bound session that is working but gone silent (whole-life
  *  push, T012). Includes the `boundModel` when available so the creator can see
  *  which model stalled. Returns `null` if there is no creator to notify. */
-export function buildStalledNotice(descriptor: SessionDescriptor): CreatorNotice | null {
-	const recipient = noticeRecipient(descriptor);
+export function buildStalledNotice(
+	descriptor: SessionDescriptor,
+	recipient: SessionId | null = noticeRecipient(descriptor),
+): CreatorNotice | null {
 	if (!recipient) return null;
 	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
 	return {
@@ -327,8 +396,8 @@ export function buildDeadNotice(
 	descriptor: SessionDescriptor,
 	reason: DeathReason,
 	options: DeadNoticeOptions = {},
+	recipient: SessionId | null = noticeRecipient(descriptor),
 ): CreatorNotice | null {
-	const recipient = noticeRecipient(descriptor);
 	if (!recipient) return null;
 	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
 	const authoritativeDeath = options.authoritativeDeath ?? reason === "dead";

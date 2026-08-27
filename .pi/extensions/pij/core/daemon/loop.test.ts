@@ -66,7 +66,45 @@ function registryThatRelinksOnDaemonWrite(descriptor: SessionDescriptor): FakeRe
 			}
 			super.write(next, writer);
 		}
-	})([descriptor]);
+	})([
+		descriptor,
+		recipientDescriptor("pij-old-parent", "live"),
+		recipientDescriptor("pij-new-parent", "live"),
+		recipientDescriptor("pij-spawner", "live"),
+	]);
+}
+
+type RecipientState = "live" | "dead" | "dissolved";
+
+function recipientDescriptor(id: string, state: RecipientState): SessionDescriptor {
+	const base = desc({
+		id,
+		lifecycle: state === "dissolved" ? "dissolved" : "bound",
+		paneId: undefined,
+		parentId: undefined,
+		spawnedBy: undefined,
+	});
+	if (state !== "dead") return base;
+	return {
+		...base,
+		terminal: {
+			disposition: "unrequested-by-pij",
+			evidence: "pid-missing",
+			observedAt: "2026-06-27T00:00:10.000Z",
+		},
+	};
+}
+
+function routingRegistry(
+	descriptor: SessionDescriptor,
+	parentState: RecipientState,
+	spawnerState: RecipientState,
+): FakeRegistry {
+	return new FakeRegistry([
+		descriptor,
+		recipientDescriptor("pij-parent", parentState),
+		recipientDescriptor("pij-spawner", spawnerState),
+	]);
 }
 
 interface FakeWorld {
@@ -321,7 +359,7 @@ This session was last active just now and appears to be in use by another CLI or
 
 	it("ready + a NEW transcript appears → bound, creator notified", async () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const del = new FakeDelivery();
 		// init already injected; before-set captured on the first tick
 		const drive: DriveState = { before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 };
@@ -343,7 +381,7 @@ This session was last active just now and appears to be in use by another CLI or
 
 	it("discovery bind notifies a parent-only descriptor", () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-parent", "live")]);
 		const del = new FakeDelivery();
 		const drive: DriveState = { before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 };
 		w.setTranscripts([`${DIR}/preexisting.jsonl`, `${DIR}/claude-new.jsonl`]);
@@ -387,6 +425,44 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-new-parent"]);
 	});
 
+	it.each([
+		["dead parent", "dead", "live", "pij-spawner"],
+		["dissolved parent", "dissolved", "live", "pij-spawner"],
+		["no live candidate", "dead", "dead", null],
+	] as const)("discovery bind chooses the first live recipient with a %s", (_case, parentState, spawnerState, expectedRecipient) => {
+		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
+		const descriptor = desc({
+			initInjectedAt: "2026-06-27T00:00:05.000Z",
+			parentId: "pij-parent",
+			spawnedBy: "pij-spawner",
+		});
+		const reg = routingRegistry(descriptor, parentState, spawnerState);
+		const del = new FakeDelivery();
+		const logs: string[] = [];
+		w.setTranscripts([`${DIR}/preexisting.jsonl`, `${DIR}/claude-new.jsonl`]);
+
+		driveSession(
+			descriptor,
+			{ before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 },
+			w.ports,
+			reg,
+			del,
+			undefined,
+			(line) => logs.push(line),
+		);
+
+		expect(del.outbox.map((event) => event.message.to)).toEqual(
+			expectedRecipient === null ? [] : [expectedRecipient],
+		);
+		expect(logs).toEqual(
+			expectedRecipient === null
+				? [
+						"notice bound for pij-w: no live recipient (parent pij-parent dead, spawner pij-spawner dead)",
+					]
+				: [],
+		);
+	});
+
 	it("a discovered Claude transcript cannot bind when the pane process names a foreign session", () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/claude-new.jsonl`] });
 		w.ports.processSnapshot = () => processSnapshot("claude", "foreign-session");
@@ -407,7 +483,7 @@ This session was last active just now and appears to be in use by another CLI or
 		// Copilot chose its session id at spawn (`--session-id`), so the daemon binds
 		// to the planned id after the first-inference round-trip — no transcript needed.
 		const w = world({ pane: COPILOT_READY, transcripts: [] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const del = new FakeDelivery();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
 		const planned = "9a8f8be6-0000-4000-8000-000000000001";
@@ -447,7 +523,7 @@ This session was last active just now and appears to be in use by another CLI or
 			}),
 			{ readyAtMs: 1000, firstInferenceSeen: true },
 			w.ports,
-			new FakeRegistry(),
+			new FakeRegistry([recipientDescriptor("pij-parent", "live")]),
 			del,
 		);
 
@@ -473,6 +549,47 @@ This session was last active just now and appears to be in use by another CLI or
 
 		expect(reg.read(descriptor.id)?.parentId).toBe("pij-new-parent");
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-new-parent"]);
+	});
+
+	it.each([
+		["dead parent", "dead", "live", "pij-spawner"],
+		["dissolved parent", "dissolved", "live", "pij-spawner"],
+		["no live candidate", "dead", "dead", null],
+	] as const)("planned-id bind chooses the first live recipient with a %s", (_case, parentState, spawnerState, expectedRecipient) => {
+		const planned = "9a8f8be6-0000-4000-8000-000000000003";
+		const w = world({ pane: COPILOT_READY, transcripts: [] });
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
+		const descriptor = desc({
+			harness: "copilot",
+			initInjectedAt: "2026-06-27T00:00:05.000Z",
+			plannedHarnessSessionId: planned,
+			parentId: "pij-parent",
+			spawnedBy: "pij-spawner",
+		});
+		const reg = routingRegistry(descriptor, parentState, spawnerState);
+		const del = new FakeDelivery();
+		const logs: string[] = [];
+
+		driveSession(
+			descriptor,
+			{ readyAtMs: 1000, firstInferenceSeen: true },
+			w.ports,
+			reg,
+			del,
+			undefined,
+			(line) => logs.push(line),
+		);
+
+		expect(del.outbox.map((event) => event.message.to)).toEqual(
+			expectedRecipient === null ? [] : [expectedRecipient],
+		);
+		expect(logs).toEqual(
+			expectedRecipient === null
+				? [
+						"notice bound for pij-w: no live recipient (parent pij-parent dead, spawner pij-spawner dead)",
+					]
+				: [],
+		);
 	});
 
 	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", async () => {
@@ -638,7 +755,7 @@ This session was last active just now and appears to be in use by another CLI or
 		const w = world({ pane: COPILOT_READY });
 		let session = foreign;
 		w.ports.processSnapshot = () => processSnapshot("copilot", session);
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const delivery = new FakeDelivery();
 		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
 		const descriptor = desc({
@@ -699,7 +816,7 @@ This session was last active just now and appears to be in use by another CLI or
 
 	it("codex: ready + a NEW rollout appears → bound to the rollout's TRAILING UUID + transcriptPath persisted (AC-02, Finding 06)", async () => {
 		const w = world({ pane: READY, transcripts: [CODEX_OLD, CODEX_NEW] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const del = new FakeDelivery();
 		const drive: DriveState = { before: [CODEX_OLD], readyAtMs: 1000 };
 		const out = driveSession(
@@ -771,7 +888,7 @@ This session was last active just now and appears to be in use by another CLI or
 
 	it("watchdog: past one window → resend-phonehome; past the second → failed + notify", async () => {
 		const w = world({ pane: READY, transcripts: [] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const del = new FakeDelivery();
 		const drive: DriveState = { before: [], readyAtMs: 1000 };
 		w.setNow(1000 + WATCHDOG_TIMEOUT_MS);
@@ -810,7 +927,7 @@ This session was last active just now and appears to be in use by another CLI or
 			}),
 			drive,
 			w.ports,
-			new FakeRegistry(),
+			new FakeRegistry([recipientDescriptor("pij-parent", "live")]),
 			del,
 		);
 
@@ -843,6 +960,48 @@ This session was last active just now and appears to be in use by another CLI or
 
 		expect(reg.read(descriptor.id)?.parentId).toBe("pij-new-parent");
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-new-parent"]);
+	});
+
+	it.each([
+		["dead parent", "dead", "live", "pij-spawner"],
+		["dissolved parent", "dissolved", "live", "pij-spawner"],
+		["no live candidate", "dead", "dead", null],
+	] as const)("watchdog failure chooses the first live recipient with a %s", (_case, parentState, spawnerState, expectedRecipient) => {
+		const w = world({ pane: READY, transcripts: [] });
+		const descriptor = desc({
+			initInjectedAt: "x",
+			parentId: "pij-parent",
+			spawnedBy: "pij-spawner",
+		});
+		const reg = routingRegistry(descriptor, parentState, spawnerState);
+		const del = new FakeDelivery();
+		const logs: string[] = [];
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS * 2);
+
+		driveSession(
+			descriptor,
+			{
+				before: [],
+				readyAtMs: 1000,
+				resentAtMs: 1000 + WATCHDOG_TIMEOUT_MS,
+			},
+			w.ports,
+			reg,
+			del,
+			undefined,
+			(line) => logs.push(line),
+		);
+
+		expect(del.outbox.map((event) => event.message.to)).toEqual(
+			expectedRecipient === null ? [] : [expectedRecipient],
+		);
+		expect(logs).toEqual(
+			expectedRecipient === null
+				? [
+						"notice failed for pij-w: no live recipient (parent pij-parent dead, spawner pij-spawner dead)",
+					]
+				: [],
+		);
 	});
 
 	it("review H1: seeds `before` from descriptor.transcriptsAtSpawn (not a live snapshot)", async () => {
@@ -893,7 +1052,7 @@ This session was last active just now and appears to be in use by another CLI or
 	// ambiguous discovery sat `pending` forever with `failureReason: null`.
 	it("s071: a persistently ambiguous discovery re-sends phonehome, then FAILS with bind-timeout", async () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/a.jsonl`, `${DIR}/b.jsonl`] });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor("pij-boss", "live")]);
 		const del = new FakeDelivery();
 		const drive: DriveState = { before: [], readyAtMs: 1000 };
 		const d = desc({ initInjectedAt: "x" });
@@ -978,7 +1137,7 @@ This session was last active just now and appears to be in use by another CLI or
 		parentId,
 	}) => {
 		const w = world({ pane: "[exited]", dead: true });
-		const reg = new FakeRegistry();
+		const reg = new FakeRegistry([recipientDescriptor(expectedRecipient, "live")]);
 		const del = new FakeDelivery();
 		const descriptor = desc({
 			lifecycle: "bound",
@@ -1287,13 +1446,16 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 	it("CONTROL: an absence with no close intent IS still announced as unrequested-by-pij", async () => {
 		// Proves the assertion above is real suppression, not a sweep that was never
 		// going to fire. Same shape, minus the close.
-		const reg = new FakeRegistry([desc({ lifecycle: "bound", state: "working" })]);
+		const reg = new FakeRegistry([
+			desc({ lifecycle: "bound", state: "working" }),
+			{ ...recipientDescriptor("pij-boss", "live"), pid: 101 },
+		]);
 		persistDaemonWrite(reg, desc({ lifecycle: "bound", state: "working" }));
 		const sweep = reconcileDeaths({
 			descriptors: reg.list(),
 			expectations: [],
 			nowIso: "2026-06-27T12:00:02.000Z",
-			isAlive: () => false,
+			isAlive: (pid) => pid !== 100,
 		});
 		expect(sweep.notices).toHaveLength(1);
 		expect(sweep.notices[0]?.text).toContain("unrequested-by-pij");

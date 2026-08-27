@@ -1,7 +1,7 @@
 // Pure cross-harness terminal-absence reconciliation. It does not infer cause:
 // `unrequested-by-pij` means only that an observed absence lacked close intent.
 
-import { noticeRecipient } from "../binding.js";
+import { noLiveNoticeRecipientLine, resolveNoticeRecipient } from "../binding.js";
 import type { AgentLivenessProbe, ProcessSnapshot } from "../platform/types.js";
 import {
 	applyTerminalObservation,
@@ -38,6 +38,7 @@ export type DeathNoticeCandidate =
 export interface DeathNoticeResolution {
 	readonly notices: readonly DeathNotice[];
 	readonly noticesSuppressed: number;
+	readonly withheldNoticeLines: readonly string[];
 }
 
 export interface DeathReconcileInput {
@@ -92,6 +93,7 @@ export function resolveDeathNotices(
 		}
 	}
 	const notices: DeathNotice[] = [];
+	const withheldNoticeLines: string[] = [];
 	let noticesSuppressed = 0;
 	for (const candidate of candidates) {
 		let recipient: string | null;
@@ -99,7 +101,15 @@ export function resolveDeathNotices(
 			recipient = candidate.to;
 		} else {
 			const descriptor = descriptorById.get(candidate.descriptorId);
-			recipient = descriptor ? noticeRecipient(descriptor) : null;
+			if (!descriptor) continue;
+			const resolution = resolveNoticeRecipient(descriptor, descriptors, dead);
+			recipient = resolution.recipient;
+			if (!recipient) {
+				noticesSuppressed += resolution.withheld;
+				const line = noLiveNoticeRecipientLine("dead", descriptor, resolution);
+				if (line) withheldNoticeLines.push(line);
+				continue;
+			}
 		}
 		if (!recipient) continue;
 		if (dead.has(recipient)) {
@@ -113,7 +123,7 @@ export function resolveDeathNotices(
 			historical: candidate.historical,
 		});
 	}
-	return { notices, noticesSuppressed };
+	return { notices, noticesSuppressed, withheldNoticeLines };
 }
 
 function noticeText(

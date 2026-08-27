@@ -11,10 +11,13 @@ This whole-life supervision watchdog is distinct from the short spawn
 phone-home watchdog used while a control-plane peer binds.
 
 Lifecycle notices for `bound`, `failed`, `stalled`, and `dead` seats go to the
-seat's current structural parent when `parentId` names one, falling back to the
-original `spawnedBy` owner. A `pij link` therefore changes where future
-lifecycle notices go without changing close authorization. Explicit
-`pij watchdog watch` subscriptions remain a separate fan-out mechanism.
+first live candidate in `parentId`, then the original `spawnedBy` owner. A
+candidate is live only while it remains registered and is not failed,
+dissolved, or terminal. A `pij link` therefore changes where future lifecycle
+notices go without changing close authorization, while a dead or closed parent
+falls back to the live spawner. If neither candidate is live, the notice is
+withheld and the daemon logs the candidate states. Explicit `pij watchdog
+watch` subscriptions remain a separate fan-out mechanism.
 
 ## Intent — never watch a peer whose silence is deliberate
 

@@ -49,7 +49,13 @@ import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { resolvePijHome } from "./core/agents/paths.js";
 import { ARCHIVE_PRUNE_AFTER_MS } from "./core/archive.js";
-import { buildDeadNotice, buildStalledNotice, noticeRecipient } from "./core/binding.js";
+import {
+	buildDeadNotice,
+	buildStalledNotice,
+	noLiveNoticeRecipientLine,
+	noticeRecipient,
+	resolveNoticeRecipient,
+} from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
 import { reconcileDeaths, resolveDeathNotices } from "./core/daemon/death-reconciler.js";
@@ -575,6 +581,7 @@ export class Daemon {
 					this.registry,
 					this.channel,
 					undefined, // self-injection is marked by the port wrapper, post-send
+					this.log,
 				);
 				if (out.kind === "held-by-pane-input") {
 					// Never silent: say it once when it starts, and the eventual
@@ -826,7 +833,7 @@ export class Daemon {
 		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
 		const deathDelivery = resolveDeathNotices(
 			deathSweep.noticeCandidates,
-			this.registry.list(),
+			this.noticeRegistryView(),
 			deathSweep.deadIds,
 		);
 		for (const notice of deathDelivery.notices) {
@@ -836,9 +843,12 @@ export class Daemon {
 		// in the same event, so the obituaries are all addressed to seats that died
 		// alongside their subject — the operator wants the COUNT, not 200 messages
 		// nobody can read (task #34).
-		if (deathDelivery.noticesSuppressed > 0) {
+		for (const line of deathDelivery.withheldNoticeLines) this.log(line);
+		const suppressedWithoutDetail =
+			deathDelivery.noticesSuppressed - deathDelivery.withheldNoticeLines.length;
+		if (suppressedWithoutDetail > 0) {
 			this.log(
-				`death sweep: ${deathDelivery.noticesSuppressed} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
+				`death sweep: ${suppressedWithoutDetail} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
 			);
 		}
 		this.watchdogManager.reconcile(this.registry.list());
@@ -1062,7 +1072,8 @@ export class Daemon {
 			// Persist failureReason so pij state/list --json surface the machine-stable reason (FIX-4).
 			const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 			if (persisted.lifecycle === "dissolved") return;
-			const note = buildStalledNotice(persisted);
+			const recipient = this.lifecycleNoticeRecipient("stalled", persisted);
+			const note = buildStalledNotice(persisted, recipient);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 			this.log(`push ${d.id}: stalled`);
 		} else if (
@@ -1095,10 +1106,9 @@ export class Daemon {
 		latch.add("stalled");
 		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 		if (persisted.lifecycle === "dissolved") return;
-		if (noticeRecipient(persisted)) {
-			const note = buildStalledNotice(persisted);
-			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
-		}
+		const recipient = this.lifecycleNoticeRecipient("stalled", persisted);
+		const note = buildStalledNotice(persisted, recipient);
+		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: watchdog stalled`);
 	}
 
@@ -1152,9 +1162,24 @@ export class Daemon {
 		latch.add("provider-failure");
 		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: reason });
 		if (persisted.lifecycle === "dissolved") return;
-		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false });
+		const recipient = this.lifecycleNoticeRecipient("dead", persisted);
+		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false }, recipient);
 		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		this.log(`push ${d.id}: provider-failure (${reason})`);
+	}
+
+	private noticeRegistryView(): SessionDescriptor[] {
+		return [...this.registry.listTerminal(), ...this.registry.list()];
+	}
+
+	private lifecycleNoticeRecipient(
+		kind: "stalled" | "dead",
+		descriptor: SessionDescriptor,
+	): SessionId | null {
+		const resolution = resolveNoticeRecipient(descriptor, this.noticeRegistryView());
+		const line = noLiveNoticeRecipientLine(kind, descriptor, resolution);
+		if (line) this.log(line);
+		return resolution.recipient;
 	}
 
 	/** Read a bound tmux session's durable unread inbox, inject each user message,
