@@ -15,3 +15,7 @@
 
 ## 2026-08-27T11:5xZ — fleet torn down (blocked wait)
 Items 9/11 shipped; 10a committed on branch. 10b BLOCKED on s391 item 5 (s391 currently on item 1 — several items away). Closed coder pij-gunboat-diplomat + reviewer pij-joint-nightingale to avoid idle-peer cache cost through a multi-item sibling wait. Re-spawn fresh when s391 item 5 lands (reviewer cold at first 10b review; coder re-canaried).
+
+
+## 2026-08-27T13:4xZ — item 10b (last code item)
+coder pij-remote-falcon → c49806e (12 code files, full ext 3974). Cheap look: resolver + bind guards load-bearing (mutation-proven); incident-replay non-vacuity FLAGGED to reviewer. reviewer pij-wilful-morton (reused, cold on 10b) dispatched.
