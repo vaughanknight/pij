@@ -32,6 +32,7 @@ import { writeTextAtomic } from "./adapters/atomic-file.js";
 import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
+import { FsChannel } from "./adapters/channel.js";
 import { type MessageChannel, openChannel } from "./adapters/channel-factory.js";
 import { ShellChoreProbe } from "./adapters/chore-probe.js";
 import { FsChoreStore } from "./adapters/chore-store.js";
@@ -537,6 +538,66 @@ function applyAsOverride(): void {
 			process.argv.splice(i, 2);
 		}
 	}
+}
+
+/** `pij queue migrate [--dry-run] [--json]` — import every unread fs inbox
+ *  message (`~/.pij/<id>/inbox/msg-*.json` with no read marker) into the SQLite
+ *  queue, idempotently. The safe half of the fs→sqlite cutover (PoC day-2 item
+ *  6): run this, then flip the backend to `sqlite`/`dual`. Reads fs, writes only
+ *  sqlite; never deletes the fs files (a rollback stays possible). */
+function runQueueMigrate(argv: readonly string[]): void {
+	const json = argv.includes("--json");
+	const dryRun = argv.includes("--dry-run");
+	const registry = new FsRegistry(pijHome);
+	const fs = new FsChannel(pijHome);
+	const seatIds = new Set<string>();
+	for (const d of registry.list()) seatIds.add(d.id);
+	// Also any inbox dir on disk whose seat is archived/absent from the hot tier.
+	try {
+		for (const name of readdirSync(pijHome)) {
+			if (existsSync(join(pijHome, name, "inbox"))) seatIds.add(name);
+		}
+	} catch {
+		/* pijHome unreadable → just use the registry set */
+	}
+	const perSeat: Array<{ id: string; unread: number; imported: number; skipped: number }> = [];
+	let totalUnread = 0;
+	let totalImported = 0;
+	const sqlite = dryRun ? undefined : new SqliteQueue(pijHome);
+	for (const id of [...seatIds].sort()) {
+		const listed = fs.listUnread(id);
+		if (!listed.ok || listed.value.length === 0) continue;
+		totalUnread += listed.value.length;
+		if (sqlite) {
+			const r = sqlite.importUnread(listed.value);
+			totalImported += r.imported;
+			perSeat.push({ id, unread: listed.value.length, imported: r.imported, skipped: r.skipped });
+		} else {
+			perSeat.push({ id, unread: listed.value.length, imported: 0, skipped: 0 });
+		}
+	}
+	sqlite?.close();
+	if (json) {
+		process.stdout.write(`${JSON.stringify({ dryRun, totalUnread, totalImported, perSeat })}\n`);
+		process.exit(0);
+	}
+	if (perSeat.length === 0) {
+		process.stdout.write("no unread fs inbox messages to migrate\n");
+		process.exit(0);
+	}
+	for (const s of perSeat) {
+		process.stdout.write(
+			dryRun
+				? `${s.id}: ${s.unread} unread (would import)\n`
+				: `${s.id}: imported ${s.imported}/${s.unread} (skipped ${s.skipped})\n`,
+		);
+	}
+	process.stdout.write(
+		dryRun
+			? `dry-run: ${totalUnread} unread across ${perSeat.length} seat(s) — re-run without --dry-run to import\n`
+			: `migrated ${totalImported} message(s) into ${pijHome}/queue/pij.sqlite; fs files left in place (rollback-safe)\n`,
+	);
+	process.exit(0);
 }
 
 function runQueue(argv: readonly string[]): void {
@@ -4412,6 +4473,10 @@ function main(): void {
 		return;
 	}
 	if (top === "queue") {
+		if (process.argv[3] === "migrate") {
+			runQueueMigrate(process.argv.slice(4));
+			return;
+		}
 		runQueue(process.argv.slice(3));
 		return;
 	}

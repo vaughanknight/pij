@@ -156,11 +156,18 @@ export class FsChannel {
 
 	/** DeliveryPort.deliver — atomic write into the recipient's inbox. */
 	deliver(message: PijMessage): Result<{ messageId: string }> {
-		const dir = this.inboxDir(message.to);
-		mkdirSync(dir, { recursive: true });
 		this.seq += 1;
 		// id sorts time-major then seq-minor so a single sender's burst is ordered.
 		const messageId = `${Date.now()}-${String(this.seq).padStart(6, "0")}-${process.pid}`;
+		return this.deliverWithId(message, messageId);
+	}
+
+	/** Write an inbox file under a CALLER-supplied id — used by the dual-write
+	 *  rollout so the fs mirror and the sqlite row share one id (idempotent: an
+	 *  existing file for the id is left as-is). */
+	deliverWithId(message: PijMessage, messageId: string): Result<{ messageId: string }> {
+		const dir = this.inboxDir(message.to);
+		mkdirSync(dir, { recursive: true });
 		const payload: DeliveredMessage = { ...message, messageId };
 		const finalPath = join(dir, `msg-${messageId}.json`);
 		const tmpPath = join(dir, `.tmp-${messageId}.json`);

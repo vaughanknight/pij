@@ -457,7 +457,34 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			.run(to, seq, this.now());
 	}
 
-	/** Read-only snapshot for `pij queue`: one entry per message with its current
+	/** Import already-delivered fs messages (from `FsChannel.listUnread`) into the
+	 *  queue as `queued`, idempotent on their existing id (a re-run imports
+	 *  nothing new). Returns how many rows were newly inserted. Used by
+	 *  `pij queue migrate` for a safe fs→sqlite cutover. */
+	importUnread(messages: readonly DeliveredMessage[]): { imported: number; skipped: number } {
+		let imported = 0;
+		let skipped = 0;
+		for (const m of messages) {
+			const before = this.seqOfById(m.messageId);
+			if (before !== undefined) {
+				skipped += 1;
+				continue;
+			}
+			const r = this.deliver(m, { messageId: m.messageId });
+			if (r.ok) imported += 1;
+			else skipped += 1;
+		}
+		return { imported, skipped };
+	}
+
+	private seqOfById(messageId: string): number | undefined {
+		const row = this.db.prepare("SELECT seq FROM messages WHERE id = ?").get(messageId) as
+			| { seq: number }
+			| undefined;
+		return row?.seq;
+	}
+
+	/** Read-only snapshot for `pij queue`	/** Read-only snapshot for `pij queue`: one entry per message with its current
 	 *  delivery state and the receipt trail, newest last. Optional recipient
 	 *  filter and a `sinceSeq` low-water mark. */
 	summary(

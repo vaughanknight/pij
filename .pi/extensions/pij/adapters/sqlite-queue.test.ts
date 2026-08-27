@@ -234,3 +234,21 @@ describe("SqliteQueue — summary (pij queue view, day-2 item 2)", () => {
 		expect(row?.leaseUntil).toBe(now + 60_000);
 	});
 });
+
+describe("SqliteQueue — fs→sqlite migration (day-2 item 6)", () => {
+	it("importUnread inserts fs messages idempotently on their id", () => {
+		const fsMsgs = [
+			{ messageId: "1787000000000-000001-42", from: "pij-a", to: "pij-b", body: "one" },
+			{ messageId: "1787000000001-000002-42", from: "pij-a", to: "pij-b", body: "two" },
+		];
+		const first = q.importUnread(fsMsgs);
+		expect(first).toEqual({ imported: 2, skipped: 0 });
+		const again = q.importUnread(fsMsgs);
+		expect(again).toEqual({ imported: 0, skipped: 2 });
+		const unread = q.listUnread("pij-b");
+		expect(unread.ok && unread.value.map((m) => [m.messageId, m.body])).toEqual([
+			["1787000000000-000001-42", "one"],
+			["1787000000001-000002-42", "two"],
+		]);
+	});
+});
