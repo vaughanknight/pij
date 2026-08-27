@@ -201,6 +201,7 @@ If a nudge reaches you, use the visible semantic axis:
 
 - still working: `pij report now "<what I just did>" "<what's next>"`;
 - done: `pij report state done`;
+- idle but available on a standing assignment: `pij report state ready`;
 - awaiting a human answer: `pij report question "<what I need from you>"`;
 - waiting on an external dependency: `pij report blocked "<what I am waiting on>"`.
 
@@ -209,20 +210,25 @@ declarations are visible on the rail, can be corrected or cleared, and `done`
 can be independently verified. Do not encode completion or blockers as a
 watchdog pause.
 
+The mute set is `blocked|question|hold|waiting`; `done` and `ready` never mute.
+This is the exhaustive `mutesWatchdogNudge` split in
+`.pi/extensions/pij/core/watchdog.ts`.
+
 ## What a watchdog turn means
 
 A turn is self-teaching and ordinal, for example:
 
 ```text
 [pij watchdog #2 for pij-example] Keep going if working. Report in one call with
-`pij report now "<what I just did>" "<what's next>"`. If done, run
-`pij report state done`.
+`pij report now "<what I just did>" "<what's next>"`. If this unit of work is
+finished, run `pij report state done`; if you are idle but available on a
+standing assignment, run `pij report state ready`.
 ```
 
 If work is still in progress, continue normally. If the assigned work is done,
-declare `done`. Watchdog-attributable pane, working-state, and
-descriptor movement never counts as peer recovery; only typed real activity
-does.
+declare `done`; if a standing assignment is idle but available, declare `ready`.
+Watchdog-attributable pane, working-state, and descriptor movement never counts
+as peer recovery; only typed real activity does.
 
 ## Suspect, stalled, and recovery
 
