@@ -132,3 +132,5 @@ Recorded the moment they landed (orient-global iron rule: rulings land on disk i
 
 ## 2026-08-28 — o-prime: MERGED PR #14 (s391 item 1b) → main 64f0815d. Restart #2 baton → kingfisher (ff+restart in its next lane). item 14 offered a spot in the restart lane if ready.
 - item 14 is SKILL-TEXT (00-routing.md, symlink-deployed on merge) — does NOT need the daemon restart. Re-confirm still in flight; item 14 rides the ff after, no need to hold the lane.
+
+## 2026-08-28 — SPAWN FREEZE #2 ACTIVE (restart #2 — makes the daemon-side incident fix live). No pij spawn/revive/agent spawn until FREEZE LIFTED. Sends queue+drain. Coder+reviewer already live (no spawn needed for 17/18). PR git-ops (push/gh) are NOT spawns — item-14 PR can still be built if the re-confirm lands. Reviewer's re-confirm may be restart-delayed — not a stall.
