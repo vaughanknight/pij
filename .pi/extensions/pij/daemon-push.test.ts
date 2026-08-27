@@ -65,20 +65,20 @@ function daemon(
 }
 
 describe("daemon tick: stalled-session push (T011/T012)", () => {
-	it("pushes a stalled notice to the creator when a bound session is working+stale", () => {
+	it("pushes a stalled notice to the creator when a bound session is working+stale", async () => {
 		const desc = bound(); // state=working, lastEventAt stale
 		// A booting-classified pane (no idle/busy footer marker) keeps state=working:
 		// an idle-footer pane would flip to `idle` (not stalled). Single tick has no
 		// prior pane signature, so the heartbeat can't refresh → working+stale stalls.
 		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
+		await d.tick();
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
 		expect(toCreator.some((e) => e.message.body.match(/stall|stalled|quiet/i))).toBe(true);
 	});
 
 	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
-	it.skip("pushes only ONCE per stalled transition (latch)", () => {
+	it.skip("pushes only ONCE per stalled transition (latch)", async () => {
 		// Use a booting-classified pane so classifyReadiness → "booting" and
 		// observeActivity returns null (no-op). The registry keeps state="working" +
 		// the original stale lastEventAt, so tick 2 and 3 still see working+stale.
@@ -86,23 +86,23 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		const desc = bound();
 		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
-		d.tick();
-		d.tick();
+		await d.tick();
+		await d.tick();
+		await d.tick();
 		const toCreator = delivery.outbox.filter(
 			(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled|quiet/i),
 		);
 		expect(toCreator).toHaveLength(1);
 	});
 
-	it("does NOT push for a non-stalled session (working with fresh events)", () => {
+	it("does NOT push for a non-stalled session (working with fresh events)", async () => {
 		const desc = bound({
 			state: "working",
 			lastEventAt: new Date(T0 - 5000).toISOString(), // recent
 		});
 		const ports = makePorts({ pane: "↓ 42 tokens  esc to interrupt" });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
+		await d.tick();
 		expect(
 			delivery.outbox.filter(
 				(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled/i),
@@ -111,7 +111,7 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 	});
 
 	// FLAKY (quarantined 2026-07-21, Jordan ruling): passes in isolation, fails under full-suite parallel-load contention. Re-enable when the suite is de-contended.
-	it.skip("does NOT push stalled while the pane keeps CHANGING (deep-think heartbeat, SUGG-002)", () => {
+	it.skip("does NOT push stalled while the pane keeps CHANGING (deep-think heartbeat, SUGG-002)", async () => {
 		// A deep-think / long-tool xhigh peer renders scrolling output that classifies
 		// as `booting` (no footer marker), so observeActivity never refreshes on a busy
 		// marker — but the pane IS changing. The pane-content heartbeat treats each
@@ -129,7 +129,7 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		for (let i = 0; i < 5; i++) {
 			frame++; // pane content changes tick-to-tick
 			clock += STALE_AFTER_MS / 2; // cumulative wall time races well past the stale window
-			d.tick();
+			await d.tick();
 		}
 		expect(
 			delivery.outbox.filter(
@@ -138,7 +138,7 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		).toHaveLength(0);
 	});
 
-	it("DOES push stalled when the pane is byte-STABLE past the window (genuine stall)", () => {
+	it("DOES push stalled when the pane is byte-STABLE past the window (genuine stall)", async () => {
 		// The heartbeat's flip side: a working peer whose pane never changes for the
 		// whole window is genuinely stuck → still pushed exactly once.
 		let clock = T0;
@@ -149,9 +149,9 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 		};
 		const desc = bound({ state: "working", lastEventAt: new Date(T0).toISOString() });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick(); // establishes the pane-signature baseline (fresh, no stall)
+		await d.tick(); // establishes the pane-signature baseline (fresh, no stall)
 		clock += STALE_AFTER_MS + 5000; // wall clock passes the window, pane unchanged
-		d.tick();
+		await d.tick();
 		expect(
 			delivery.outbox.filter(
 				(e) => e.message.to === "pij-boss" && e.message.body.match(/stall|stalled/i),
@@ -161,21 +161,21 @@ describe("daemon tick: stalled-session push (T011/T012)", () => {
 });
 
 describe("daemon tick: dead-session push (T011/T012)", () => {
-	it("pushes a dead notice to the creator when the bound session's pid is gone", () => {
+	it("pushes a dead notice to the creator when the bound session's pid is gone", async () => {
 		const desc = bound({ state: "idle" });
 		const ports = makePorts({ pidAlive: false });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
+		await d.tick();
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
 		expect(toCreator.some((e) => e.message.body.match(/dead|exit|gone/i))).toBe(true);
 	});
 
-	it("pushes only once for a dead session (latch)", () => {
+	it("pushes only once for a dead session (latch)", async () => {
 		const desc = bound({ state: "idle" });
 		const ports = makePorts({ pidAlive: false });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
-		d.tick();
+		await d.tick();
+		await d.tick();
 		const toCreator = delivery.outbox.filter(
 			(e) => e.message.to === "pij-boss" && e.message.body.match(/dead|exit|gone/i),
 		);
@@ -187,7 +187,7 @@ describe("daemon tick: dead-session push (T011/T012)", () => {
 // Mutation: remove registry.write({ ...d, failureReason }) → descriptor missing reason → RED.
 
 describe("failureReason persisted on whole-life push (FIX-4)", () => {
-	it("dead push: registry descriptor carries failureReason after tick", () => {
+	it("dead push: registry descriptor carries failureReason after tick", async () => {
 		const desc = bound({ state: "idle" });
 		// empty pane → classifyDeathReason → "unknown" (no pattern matches)
 		const ports = makePorts({ pidAlive: false, pane: "" });
@@ -197,12 +197,12 @@ describe("failureReason persisted on whole-life push (FIX-4)", () => {
 			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
 			return { registry: r, daemon: dm };
 		})();
-		d.tick();
+		await d.tick();
 		const updated = registry.read("pij-worker");
 		expect(updated?.failureReason).toBeDefined();
 	});
 
-	it("stalled push: registry descriptor carries failureReason='stalled' after tick", () => {
+	it("stalled push: registry descriptor carries failureReason='stalled' after tick", async () => {
 		const desc = bound(); // state=working, lastEventAt stale
 		// booting pane → observeActivity no-op, session stays working+stale
 		const ports = makePorts({ pane: "▝▜█████▛▘ Loading…" });
@@ -212,7 +212,7 @@ describe("failureReason persisted on whole-life push (FIX-4)", () => {
 			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
 			return { registry: r, daemon: dm };
 		})();
-		d.tick();
+		await d.tick();
 		const updated = registry.read("pij-worker");
 		expect(updated?.failureReason).toBe("stalled");
 	});
@@ -245,7 +245,7 @@ describe("bad-model smoke (T014 — mocked pane, no live harness)", () => {
 		};
 	}
 
-	it("daemon driveSession detects bad model → fail with model-not-supported → creator notified", () => {
+	it("daemon driveSession detects bad model → fail with model-not-supported → creator notified", async () => {
 		const ports: DaemonPorts = {
 			capturePane: () => BAD_PANE,
 			isPaneDead: () => false,
@@ -259,7 +259,7 @@ describe("bad-model smoke (T014 — mocked pane, no live harness)", () => {
 		const registry = new FakeRegistry([pendingCopilot()]);
 		const delivery = new FakeDelivery();
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
-		d.tick();
+		await d.tick();
 		// Session must be marked failed with model-not-supported reason
 		const desc = registry.read("pij-copilot-bad");
 		expect(desc?.lifecycle).toBe("failed");
@@ -280,35 +280,35 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 	const CREDIT_PANE =
 		"Error: prepaid credit balance exhausted — add credits at https://console.sakana.ai/billing\n⏵ bypass permissions on";
 
-	it("detects quota error in pane of idle pid-alive bound session → pushes once to creator", () => {
+	it("detects quota error in pane of idle pid-alive bound session → pushes once to creator", async () => {
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
+		await d.tick();
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
 		expect(toCreator.length).toBeGreaterThan(0);
 	});
 
-	it("does NOT push yet for an idle pid-alive bound session with fresh activity", () => {
+	it("does NOT push yet for an idle pid-alive bound session with fresh activity", async () => {
 		const desc = bound({ state: "idle", lastEventAt: FRESH_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
+		await d.tick();
 		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
 	});
 
-	it("pushes only ONCE per provider-failure (latch)", () => {
+	it("pushes only ONCE per provider-failure (latch)", async () => {
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
-		d.tick();
-		d.tick();
+		await d.tick();
+		await d.tick();
+		await d.tick();
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
 		expect(toCreator).toHaveLength(1);
 	});
 
-	it("persists failureReason='quota' on the descriptor after provider-failure push", () => {
+	it("persists failureReason='quota' on the descriptor after provider-failure push", async () => {
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { registry, daemon: d } = (() => {
@@ -317,15 +317,15 @@ describe("daemon tick: provider-failure on idle bound session (FIX-A / DL-003)",
 			const dm = new Daemon(`${HOME}/.pij`, ports, r, del, () => {});
 			return { registry: r, daemon: dm };
 		})();
-		d.tick();
+		await d.tick();
 		expect(registry.read("pij-worker")?.failureReason).toBe("quota");
 	});
 
-	it("does NOT push for an idle session with no recognisable error (transient text)", () => {
+	it("does NOT push for an idle session with no recognisable error (transient text)", async () => {
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pane: "Retrying… (attempt 2/3)", pidAlive: true });
 		const { delivery, daemon: d } = daemon([desc], ports);
-		d.tick();
+		await d.tick();
 		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
 	});
 });
@@ -359,35 +359,35 @@ describe("daemon tick: provider-failure peek covers a pi worker (DL-005)", () =>
 		};
 	}
 
-	it("detects the sakana credit error in a pi worker's pane → pushes once to creator", () => {
+	it("detects the sakana credit error in a pi worker's pane → pushes once to creator", async () => {
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([piWorker()], ports);
-		d.tick();
-		d.tick(); // second tick proves the latch holds (no double-push)
+		await d.tick();
+		await d.tick(); // second tick proves the latch holds (no double-push)
 		const toCreator = delivery.outbox.filter((e) => e.message.to === "pij-boss");
 		expect(toCreator).toHaveLength(1);
 	});
 
-	it("persists failureReason='quota' on the pi worker descriptor", () => {
+	it("persists failureReason='quota' on the pi worker descriptor", async () => {
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const registry = new FakeRegistry([piWorker()]);
 		const del = new FakeDelivery();
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, del, () => {});
-		d.tick();
+		await d.tick();
 		expect(registry.read("pij-pi-worker")?.failureReason).toBe("quota");
 	});
 
-	it("does NOT push for a pi worker whose pane shows only transient text", () => {
+	it("does NOT push for a pi worker whose pane shows only transient text", async () => {
 		const ports = makePorts({ pane: "⠴ Retrying (2/3)…", pidAlive: true });
 		const { delivery, daemon: d } = daemon([piWorker()], ports);
-		d.tick();
+		await d.tick();
 		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
 	});
 
-	it("does NOT peek a pi worker with no creator (spawnedBy absent)", () => {
+	it("does NOT peek a pi worker with no creator (spawnedBy absent)", async () => {
 		const ports = makePorts({ pane: CREDIT_PANE, pidAlive: true });
 		const { delivery, daemon: d } = daemon([piWorker({ spawnedBy: undefined })], ports);
-		d.tick();
+		await d.tick();
 		expect(delivery.outbox).toHaveLength(0);
 	});
 });
@@ -400,24 +400,24 @@ describe("daemon tick: provider-failure peek covers a pi worker (DL-005)", () =>
 const PROSE_PANE = "split billing report\ncredit memo #4471\ninsufficient line items detected";
 
 describe("daemon dead branch: billing prose never reports quota (#5, task 1.2)", () => {
-	it("a dead session whose pane shows only billing-domain prose → failureReason unknown", () => {
+	it("a dead session whose pane shows only billing-domain prose → failureReason unknown", async () => {
 		const desc = bound({ state: "idle" });
 		const ports = makePorts({ pidAlive: false, pane: PROSE_PANE });
 		const registry = new FakeRegistry([desc]);
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, new FakeDelivery(), () => {});
-		d.tick();
+		await d.tick();
 		expect(registry.read("pij-worker")?.failureReason).toBe("unknown");
 	});
 });
 
 describe("daemon peek branch: billing prose never reports quota (#5, task 1.2b)", () => {
-	it("a stale-idle pid-alive session with only billing prose → no provider-failure push", () => {
+	it("a stale-idle pid-alive session with only billing prose → no provider-failure push", async () => {
 		const desc = bound({ state: "idle", lastEventAt: STALE_EVENT_AT });
 		const ports = makePorts({ pidAlive: true, pane: PROSE_PANE });
 		const registry = new FakeRegistry([desc]);
 		const delivery = new FakeDelivery();
 		const d = new Daemon(`${HOME}/.pij`, ports, registry, delivery, () => {});
-		d.tick();
+		await d.tick();
 		expect(delivery.outbox.filter((e) => e.message.to === "pij-boss")).toHaveLength(0);
 		expect(registry.read("pij-worker")?.failureReason).toBeUndefined();
 	});

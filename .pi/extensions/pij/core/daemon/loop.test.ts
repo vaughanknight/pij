@@ -12,6 +12,7 @@ import {
 	driveSession,
 	observeActivity,
 	persistDaemonWrite,
+	pointerLine,
 	WATCHDOG_TIMEOUT_MS,
 } from "./loop.js";
 import { ComposerHoldTracker } from "./pane-signals.js";
@@ -19,6 +20,14 @@ import { SendBuffer } from "./router.js";
 
 // Fixtures lifted from the live prototype (same as readiness/interstitial specs).
 const READY = "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+// A Claude composer with a human's half-typed line in it — the pre-send guard
+// must treat this pane as HELD and never type a pointer (or a body) over it.
+const HUMAN_COMPOSER = [
+	"────────────────────────────────────────────────────────────────",
+	"❯ wait, let me check the migration first",
+	"────────────────────────────────────────────────────────────────",
+	"⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+].join("\n");
 const COPILOT_READY = "/ commands · ? help · tab next tab                  GPT-5.5";
 const BOOTING = "▝▜█████▛▘ Loading…";
 const CHROME = "Claude in Chrome extension detected\n Esc to keep browser tools off";
@@ -94,21 +103,21 @@ function world(opts: { pane?: string; transcripts?: string[]; dead?: boolean } =
 }
 
 describe("driveSession state machine", () => {
-	it("booting pane → boot (nothing injected)", () => {
+	it("booting pane → boot (nothing injected)", async () => {
 		const w = world({ pane: BOOTING });
 		const out = driveSession(desc(), {}, w.ports, new FakeRegistry(), new FakeDelivery());
 		expect(out).toEqual({ kind: "boot" });
 		expect(w.sentText).toHaveLength(0);
 	});
 
-	it("chrome interstitial → dismissed via Escape", () => {
+	it("chrome interstitial → dismissed via Escape", async () => {
 		const w = world({ pane: CHROME });
 		const out = driveSession(desc(), {}, w.ports, new FakeRegistry(), new FakeDelivery());
 		expect(out).toMatchObject({ kind: "dismissed" });
 		expect(w.sentKeys).toEqual([{ pane: "%1", key: "Escape" }]);
 	});
 
-	it("trust interstitial → needs-human, notifies the creator exactly once", () => {
+	it("trust interstitial → needs-human, notifies the creator exactly once", async () => {
 		const w = world({ pane: TRUST });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -121,7 +130,7 @@ describe("driveSession state machine", () => {
 		expect(w.sentKeys).toHaveLength(0); // never auto-answered
 	});
 
-	it("copilot trust interstitial → answered ONCE (1 + Enter); a persisting modal degrades to needs-human, notify exactly once (DL-001)", () => {
+	it("copilot trust interstitial → answered ONCE (1 + Enter); a persisting modal degrades to needs-human, notify exactly once (DL-001)", async () => {
 		const w = world({ pane: TRUST });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -152,7 +161,7 @@ describe("driveSession state machine", () => {
 		).toBe(true);
 	});
 
-	it("answers the exact Copilot session-in-use modal once, then surfaces it", () => {
+	it("answers the exact Copilot session-in-use modal once, then surfaces it", async () => {
 		const pane = `Session in use
 This session was last active just now and appears to be in use by another CLI or application.
 ❯ 1. Resume anyway
@@ -180,7 +189,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(delivery.outbox.at(-1)?.message.body).toContain("session-in-use");
 	});
 
-	it("never answers a quoted resume modal in ready or busy output", () => {
+	it("never answers a quoted resume modal in ready or busy output", async () => {
 		const quoted = `Session in use
 This session was last active just now and appears to be in use by another CLI or application.
 ❯ 1. Resume anyway
@@ -199,7 +208,7 @@ ordinary agent output
 		expect(w.sentKeys).toEqual([]);
 	});
 
-	it("answers folder trust and session resume independently", () => {
+	it("answers folder trust and session resume independently", async () => {
 		const w = world({ pane: TRUST });
 		const drive: DriveState = {};
 		const descriptor = desc({ harness: "copilot" });
@@ -216,7 +225,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(w.sentKeys).toHaveLength(4);
 	});
 
-	it("ready + not-yet-injected → injects init once and marks initInjectedAt", () => {
+	it("ready + not-yet-injected → injects init once and marks initInjectedAt", async () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry([desc()]);
 		const out = driveSession(desc(), {}, w.ports, reg, new FakeDelivery());
@@ -225,7 +234,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(reg.read("pij-w")?.initInjectedAt).toBeTruthy();
 	});
 
-	it("branched descriptor → init injects the fork reframe (T016, Finding 08)", () => {
+	it("branched descriptor → init injects the fork reframe (T016, Finding 08)", async () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry();
 		driveSession(desc({ branchedFrom: "claude-src" }), {}, w.ports, reg, new FakeDelivery());
@@ -233,7 +242,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(w.sentText[0]?.text).toMatch(/do not (continue|spawn)/i);
 	});
 
-	it("revived descriptor wires the non-continuation reframe into init", () => {
+	it("revived descriptor wires the non-continuation reframe into init", async () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry();
 		const outcome = driveSession(
@@ -248,7 +257,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(w.sentText[0]?.text).toMatch(/Do NOT continue the old work/i);
 	});
 
-	it("does NOT re-inject init once initInjectedAt is set (idempotent)", () => {
+	it("does NOT re-inject init once initInjectedAt is set (idempotent)", async () => {
 		const w = world({ pane: READY });
 		const reg = new FakeRegistry();
 		const out = driveSession(
@@ -262,7 +271,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(w.sentText.filter((s) => s.text.includes("You are now a pij peer"))).toHaveLength(0);
 	});
 
-	it("ready + a NEW transcript appears → bound, creator notified", () => {
+	it("ready + a NEW transcript appears → bound, creator notified", async () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -284,7 +293,7 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
-	it("copilot: ready + plannedHarnessSessionId → binds deterministically (no discovery)", () => {
+	it("copilot: ready + plannedHarnessSessionId → binds deterministically (no discovery)", async () => {
 		// Copilot chose its session id at spawn (`--session-id`), so the daemon binds
 		// to the planned id after the first-inference round-trip — no transcript needed.
 		const w = world({ pane: COPILOT_READY, transcripts: [] });
@@ -310,7 +319,7 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
-	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", () => {
+	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", async () => {
 		// A branched claude pinned its forked id (`--session-id`), so it binds on the
 		// planned id like copilot — even with NO new transcript (empty discovery set).
 		// Binding is gated on firstInferenceSeen (FIX-1) — one tick after the busy turn.
@@ -341,7 +350,7 @@ This session was last active just now and appears to be in use by another CLI or
 	const CODEX_NEW = `${CODEX_ROOT}/2026/06/28/rollout-2026-06-28T15-33-30-019f0cb7-f65c-76f1-bb38-c96269590118.jsonl`;
 	const CODEX_UUID = "019f0cb7-f65c-76f1-bb38-c96269590118";
 
-	it("codex: ready + a NEW rollout appears → bound to the rollout's TRAILING UUID + transcriptPath persisted (AC-02, Finding 06)", () => {
+	it("codex: ready + a NEW rollout appears → bound to the rollout's TRAILING UUID + transcriptPath persisted (AC-02, Finding 06)", async () => {
 		const w = world({ pane: READY, transcripts: [CODEX_OLD, CODEX_NEW] });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -366,7 +375,7 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
-	it("codex: a NEW rollout from ANOTHER cwd is ignored via session_meta cwd-confirm (R-2)", () => {
+	it("codex: a NEW rollout from ANOTHER cwd is ignored via session_meta cwd-confirm (R-2)", async () => {
 		const CODEX_OTHER = `${CODEX_ROOT}/2026/06/28/rollout-2026-06-28T15-40-00-cccccccc-0003-7000-8000-000000000003.jsonl`;
 		const w = world({ pane: READY, transcripts: [CODEX_OLD, CODEX_OTHER] });
 		// The fresh rollout belongs to a DIFFERENT cwd → must not bind to it.
@@ -384,7 +393,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(reg.read("pij-w")).toBeNull();
 	});
 
-	it("claude bind sets NO transcriptPath (byte-unchanged — only codex persists the path)", () => {
+	it("claude bind sets NO transcriptPath (byte-unchanged — only codex persists the path)", async () => {
 		const w = world({
 			pane: READY,
 			transcripts: [`${DIR}/preexisting.jsonl`, `${DIR}/claude-new.jsonl`],
@@ -397,7 +406,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(bound?.transcriptPath).toBeUndefined();
 	});
 
-	it("NEVER binds the pre-existing transcript (the load-bearing case)", () => {
+	it("NEVER binds the pre-existing transcript (the load-bearing case)", async () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
 		const reg = new FakeRegistry();
 		const drive: DriveState = { before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 };
@@ -413,7 +422,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(reg.read("pij-w")).toBeNull();
 	});
 
-	it("watchdog: past one window → resend-phonehome; past the second → failed + notify", () => {
+	it("watchdog: past one window → resend-phonehome; past the second → failed + notify", async () => {
 		const w = world({ pane: READY, transcripts: [] });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -436,7 +445,7 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
-	it("review H1: seeds `before` from descriptor.transcriptsAtSpawn (not a live snapshot)", () => {
+	it("review H1: seeds `before` from descriptor.transcriptsAtSpawn (not a live snapshot)", async () => {
 		// The dir ALREADY contains claude's transcript (boot beat the first tick),
 		// but it was NOT present at spawn → it must still be discovered as new.
 		const w = world({ pane: READY, transcripts: [`${DIR}/claude-new.jsonl`] });
@@ -452,7 +461,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(out).toEqual({ kind: "bound", harnessSessionId: "claude-new" });
 	});
 
-	it("review M3: a pane busy BEFORE init does not start the watchdog (waits, no resend)", () => {
+	it("review M3: a pane busy BEFORE init does not start the watchdog (waits, no resend)", async () => {
 		const w = world({ pane: "Searching the codebase (esc to interrupt)" }); // busy
 		const reg = new FakeRegistry();
 		const drive: DriveState = {};
@@ -463,7 +472,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(w.sentText).toHaveLength(0);
 	});
 
-	it("review M4: concurrent boots (two new transcripts) → ambiguous outcome", () => {
+	it("review M4: concurrent boots (two new transcripts) → ambiguous outcome", async () => {
 		const w = world({
 			pane: READY,
 			transcripts: [`${DIR}/a.jsonl`, `${DIR}/b.jsonl`],
@@ -482,7 +491,7 @@ This session was last active just now and appears to be in use by another CLI or
 	// s071 D3 — the never-bind wedge. Before this fix the `ambiguous` branch
 	// RETURNED, so the watchdog block below it never ran and a permanently
 	// ambiguous discovery sat `pending` forever with `failureReason: null`.
-	it("s071: a persistently ambiguous discovery re-sends phonehome, then FAILS with bind-timeout", () => {
+	it("s071: a persistently ambiguous discovery re-sends phonehome, then FAILS with bind-timeout", async () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/a.jsonl`, `${DIR}/b.jsonl`] });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -515,7 +524,7 @@ This session was last active just now and appears to be in use by another CLI or
 	// CONTROL: byte-identical timing, ONE candidate transcript instead of two.
 	// It binds, so the failure above is caused by the ambiguity — not by the
 	// watchdog simply firing on any slow seat.
-	it("s071 control — the same clock with ONE new transcript binds instead of failing", () => {
+	it("s071 control — the same clock with ONE new transcript binds instead of failing", async () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/a.jsonl`] });
 		const reg = new FakeRegistry();
 		const drive: DriveState = { before: [], readyAtMs: 1000 };
@@ -531,7 +540,7 @@ This session was last active just now and appears to be in use by another CLI or
 
 	// CONTROL for the reason field: a plain (non-ambiguous) bind timeout must
 	// ALSO carry bind-timeout, so no fail path leaves failureReason null.
-	it("s071: a plain bind timeout also persists failureReason bind-timeout", () => {
+	it("s071: a plain bind timeout also persists failureReason bind-timeout", async () => {
 		const w = world({ pane: READY, transcripts: [] });
 		const reg = new FakeRegistry();
 		const drive: DriveState = { before: [], readyAtMs: 1000 };
@@ -548,7 +557,7 @@ This session was last active just now and appears to be in use by another CLI or
 		if (out.kind === "failed") expect(out.reason).not.toContain("ambiguous");
 	});
 
-	it("dead pane → failed immediately, creator notified", () => {
+	it("dead pane → failed immediately, creator notified", async () => {
 		const w = world({ pane: READY, dead: true });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -560,7 +569,9 @@ This session was last active just now and appears to be in use by another CLI or
 	it.each([
 		{ label: "structural parent", parentId: "pij-structural-parent" },
 		{ label: "explicit root", parentId: null },
-	])("dead bound descriptor preserves $label metadata when persisted as failed", ({ parentId }) => {
+	])("dead bound descriptor preserves $label metadata when persisted as failed", async ({
+		parentId,
+	}) => {
 		const w = world({ pane: "[exited]", dead: true });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -595,12 +606,12 @@ This session was last active just now and appears to be in use by another CLI or
 
 describe("observeActivity (control-plane working|idle|done persistence)", () => {
 	const NOW = 1_000_000;
-	it("busy footer → working + a fresh lastEventAt", () => {
+	it("busy footer → working + a fresh lastEventAt", async () => {
 		const u = observeActivity(desc({ lifecycle: "bound" }), "busy", NOW);
 		expect(u?.state).toBe("working");
 		expect(u?.lastEventAt).toBe(new Date(NOW).toISOString());
 	});
-	it("ready footer → idle, preserving the last-activity ts (so it reads 'done')", () => {
+	it("ready footer → idle, preserving the last-activity ts (so it reads 'done')", async () => {
 		const prior = new Date(NOW - 5000).toISOString();
 		const u = observeActivity(
 			desc({ lifecycle: "bound", state: "working", lastEventAt: prior }),
@@ -610,7 +621,7 @@ describe("observeActivity (control-plane working|idle|done persistence)", () => 
 		expect(u?.state).toBe("idle");
 		expect(u?.lastEventAt).toBe(prior);
 	});
-	it("no change → null (no needless registry write)", () => {
+	it("no change → null (no needless registry write)", async () => {
 		const at = new Date(NOW).toISOString();
 		const u = observeActivity(
 			desc({ lifecycle: "bound", state: "idle", lastEventAt: at }),
@@ -619,7 +630,7 @@ describe("observeActivity (control-plane working|idle|done persistence)", () => 
 		);
 		expect(u).toBeNull();
 	});
-	it("throttles the busy refresh — a recent lastEventAt is not rewritten every tick", () => {
+	it("throttles the busy refresh — a recent lastEventAt is not rewritten every tick", async () => {
 		const recent = new Date(NOW - 2000).toISOString(); // < ACTIVITY_REFRESH_MS
 		const u = observeActivity(
 			desc({ lifecycle: "bound", state: "working", lastEventAt: recent }),
@@ -628,7 +639,7 @@ describe("observeActivity (control-plane working|idle|done persistence)", () => 
 		);
 		expect(u).toBeNull();
 	});
-	it("refreshes a stale busy ts past the throttle window (liveness stays active mid-turn)", () => {
+	it("refreshes a stale busy ts past the throttle window (liveness stays active mid-turn)", async () => {
 		const old = new Date(NOW - 30_000).toISOString(); // > ACTIVITY_REFRESH_MS
 		const u = observeActivity(
 			desc({ lifecycle: "bound", state: "working", lastEventAt: old }),
@@ -637,7 +648,7 @@ describe("observeActivity (control-plane working|idle|done persistence)", () => 
 		);
 		expect(u?.lastEventAt).toBe(new Date(NOW).toISOString());
 	});
-	it("non-interactive readiness (booting/interstitial/dead) → null (driveSession owns it)", () => {
+	it("non-interactive readiness (booting/interstitial/dead) → null (driveSession owns it)", async () => {
 		expect(observeActivity(desc({ lifecycle: "bound" }), "booting", NOW)).toBeNull();
 		expect(observeActivity(desc({ lifecycle: "bound" }), "dead", NOW)).toBeNull();
 	});
@@ -651,7 +662,7 @@ describe("first-inference gate (T009)", () => {
 		"[exited]";
 
 	// The deterministic-bind path: copilot with plannedHarnessSessionId
-	it("copilot: bad-model pane after init-inject → fail with model-not-supported reason (not bound)", () => {
+	it("copilot: bad-model pane after init-inject → fail with model-not-supported reason (not bound)", async () => {
 		const w = world({ pane: COPILOT_READY });
 		w.setPane(BAD_MODEL_PANE); // pane shows model error after init
 		const reg = new FakeRegistry();
@@ -674,7 +685,7 @@ describe("first-inference gate (T009)", () => {
 		expect(reg.read("pij-w")?.failureReason).toBe("model-not-supported");
 	});
 
-	it("copilot: good model → still binds immediately (gate does not regress fast-bind)", () => {
+	it("copilot: good model → still binds immediately (gate does not regress fast-bind)", async () => {
 		const w = world({ pane: COPILOT_READY });
 		const reg = new FakeRegistry();
 		const del = new FakeDelivery();
@@ -694,7 +705,7 @@ describe("first-inference gate (T009)", () => {
 		expect(reg.read("pij-w")?.lifecycle).toBe("bound");
 	});
 
-	it("claude: dead pane with API Error → fail with model-not-supported reason", () => {
+	it("claude: dead pane with API Error → fail with model-not-supported reason", async () => {
 		// Plain claude bad model → classifyReadiness "dead" → fail()
 		// We just need the failureReason to be machine-stable
 		const w = world({ pane: BAD_MODEL_PANE, dead: true });
@@ -705,7 +716,7 @@ describe("first-inference gate (T009)", () => {
 		expect(reg.read("pij-w")?.failureReason).toBe("model-not-supported");
 	});
 
-	it("firstInferenceSeen is set when pane goes busy after init injection", () => {
+	it("firstInferenceSeen is set when pane goes busy after init injection", async () => {
 		const BUSY = "↓ 42 tokens  esc to interrupt";
 		const w = world({ pane: BUSY });
 		const drive: DriveState = { readyAtMs: 1000, before: [] };
@@ -726,7 +737,7 @@ describe("first-inference gate (T009)", () => {
 	// FIX-1 mutation-proof: gate blocks premature bind on good-model pane
 	// Mutation: remove the `if (!drive.firstInferenceSeen) return { kind: "waiting" }` guard
 	// → session binds on the first ready tick before the model error has time to surface → RED.
-	it("good-model pane before first inference → waiting (gate blocks premature bind)", () => {
+	it("good-model pane before first inference → waiting (gate blocks premature bind)", async () => {
 		const w = world({ pane: COPILOT_READY });
 		const reg = new FakeRegistry();
 		// drive has readyAtMs set (init injected) but firstInferenceSeen NOT yet set
@@ -749,7 +760,7 @@ describe("first-inference gate (T009)", () => {
 
 	// FIX-3 mutation-proof: boundModel captured from pane footer at bind time
 	// Mutation: remove extractBoundModel call → boundModel undefined → RED.
-	it("captures boundModel from copilot pane footer at bind time", () => {
+	it("captures boundModel from copilot pane footer at bind time", async () => {
 		const PANE_WITH_MODEL = "/ commands · ? help · tab next tab  gpt-4o";
 		const w = world({ pane: PANE_WITH_MODEL });
 		const reg = new FakeRegistry();
@@ -771,7 +782,7 @@ describe("first-inference gate (T009)", () => {
 });
 
 describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-16)", () => {
-	it("preserves an externally-stamped reportedAt the daemon's computed value lacks", () => {
+	it("preserves an externally-stamped reportedAt the daemon's computed value lacks", async () => {
 		// On-disk descriptor already carries a reportedAt (stamped by `pij agent report`
 		// after the daemon took its tick-start snapshot). The daemon-computed value —
 		// derived from that stale snapshot — has none.
@@ -782,7 +793,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(reg.read("pij-w")?.reportedAt).toBe("2026-06-27T12:00:00.000Z");
 	});
 
-	it("does NOT re-add a daemon-owned field the write deliberately dropped (failureReason clear)", () => {
+	it("does NOT re-add a daemon-owned field the write deliberately dropped (failureReason clear)", async () => {
 		const reg = new FakeRegistry([desc({ failureReason: "quota" })]);
 		const { failureReason: _dropped, ...recovered } = desc({ failureReason: "quota" });
 		const written = persistDaemonWrite(reg, recovered);
@@ -790,14 +801,14 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(reg.read("pij-w")?.failureReason).toBeUndefined();
 	});
 
-	it("writes through unchanged for a brand-new descriptor (no prior on disk)", () => {
+	it("writes through unchanged for a brand-new descriptor (no prior on disk)", async () => {
 		const reg = new FakeRegistry();
 		const written = persistDaemonWrite(reg, desc({ state: "working" }));
 		expect(written).toEqual(desc({ state: "working" }));
 		expect(reg.read("pij-w")?.state).toBe("working");
 	});
 
-	it("keeps the daemon-computed reportedAt when both sides have one (idempotent)", () => {
+	it("keeps the daemon-computed reportedAt when both sides have one (idempotent)", async () => {
 		const reg = new FakeRegistry([desc({ reportedAt: "2026-06-27T12:00:00.000Z" })]);
 		const written = persistDaemonWrite(reg, desc({ reportedAt: "2026-06-27T13:00:00.000Z" }));
 		expect(written.reportedAt).toBe("2026-06-27T13:00:00.000Z");
@@ -829,7 +840,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		lifecycle: "bound" as const,
 	};
 
-	it("preserves close intent and terminal truth against a stale pre-close daemon write", () => {
+	it("preserves close intent and terminal truth against a stale pre-close daemon write", async () => {
 		const reg = new FakeRegistry([desc({ ...CLOSED_ON_DISK })]);
 		// The daemon's tick-start snapshot: taken BEFORE the close, so it still
 		// believes the peer is a live bound session.
@@ -840,7 +851,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(reg.read("pij-w")?.terminal?.disposition).toBe("requested");
 	});
 
-	it("still lets the daemon compute lifecycle — it is deliberately NOT preserved", () => {
+	it("still lets the daemon compute lifecycle — it is deliberately NOT preserved", async () => {
 		// Guards against "just add lifecycle to the list too". `lifecycle` is
 		// daemon-owned (the spawn→bind machine computes pending→ready→bound), so a
 		// disk-wins rule there would pin a binding session at its stale value.
@@ -851,7 +862,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(written.lifecycle).toBe("bound");
 	});
 
-	it("stops a requested close from being announced as unrequested-by-pij", () => {
+	it("stops a requested close from being announced as unrequested-by-pij", async () => {
 		// The operator-visible symptom, end to end: close → overlapping tick → sweep.
 		const reg = new FakeRegistry([desc({ ...CLOSED_ON_DISK })]);
 		persistDaemonWrite(reg, desc({ lifecycle: "bound", state: "working" }));
@@ -864,7 +875,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(sweep.notices).toEqual([]);
 	});
 
-	it("CONTROL: an absence with no close intent IS still announced as unrequested-by-pij", () => {
+	it("CONTROL: an absence with no close intent IS still announced as unrequested-by-pij", async () => {
 		// Proves the assertion above is real suppression, not a sweep that was never
 		// going to fire. Same shape, minus the close.
 		const reg = new FakeRegistry([desc({ lifecycle: "bound", state: "working" })]);
@@ -879,7 +890,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(sweep.notices[0]?.text).toContain("unrequested-by-pij");
 	});
 
-	it("lets the latest persisted prime=false beat a stale daemon prime=true snapshot", () => {
+	it("lets the latest persisted prime=false beat a stale daemon prime=true snapshot", async () => {
 		const reg = new FakeRegistry([desc({ prime: false })]);
 		const written = persistDaemonWrite(reg, desc({ prime: true, state: "working" }));
 		expect(written.prime).toBe(false);
@@ -889,14 +900,14 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 	it.each([
 		false,
 		undefined,
-	])("lets the latest persisted prime=true beat a stale daemon prime=%s snapshot", (stalePrime) => {
+	])("lets the latest persisted prime=true beat a stale daemon prime=%s snapshot", async (stalePrime) => {
 		const reg = new FakeRegistry([desc({ prime: true })]);
 		const written = persistDaemonWrite(reg, desc({ prime: stalePrime, state: "idle" }));
 		expect(written.prime).toBe(true);
 		expect(written.state).toBe("idle");
 	});
 
-	it("lets the latest persisted oldPrime=false beat a stale daemon oldPrime=true snapshot", () => {
+	it("lets the latest persisted oldPrime=false beat a stale daemon oldPrime=true snapshot", async () => {
 		const reg = new FakeRegistry([desc({ oldPrime: false })]);
 		const written = persistDaemonWrite(reg, desc({ oldPrime: true, state: "working" }));
 		expect(written.oldPrime).toBe(false);
@@ -906,14 +917,14 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 	it.each([
 		false,
 		undefined,
-	])("lets the latest persisted oldPrime=true beat a stale daemon oldPrime=%s snapshot", (staleOldPrime) => {
+	])("lets the latest persisted oldPrime=true beat a stale daemon oldPrime=%s snapshot", async (staleOldPrime) => {
 		const reg = new FakeRegistry([desc({ oldPrime: true })]);
 		const written = persistDaemonWrite(reg, desc({ oldPrime: staleOldPrime, state: "idle" }));
 		expect(written.oldPrime).toBe(true);
 		expect(written.state).toBe("idle");
 	});
 
-	it("lets the latest persisted parentId=null beat a stale daemon parent id", () => {
+	it("lets the latest persisted parentId=null beat a stale daemon parent id", async () => {
 		const reg = new FakeRegistry([desc({ parentId: null })]);
 		const written = persistDaemonWrite(
 			reg,
@@ -923,7 +934,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 		expect(written.state).toBe("working");
 	});
 
-	it("lets the latest persisted repository identity beat a stale daemon value", () => {
+	it("lets the latest persisted repository identity beat a stale daemon value", async () => {
 		const reg = new FakeRegistry([desc({ gitCommonDir: "/new/.git" })]);
 		const written = persistDaemonWrite(reg, desc({ gitCommonDir: "/stale/.git", state: "idle" }));
 		expect(written.gitCommonDir).toBe("/new/.git");
@@ -932,7 +943,7 @@ describe("persistDaemonWrite — concurrent-writer preservation (Finding 1 / AC-
 });
 
 describe("persistDaemonWrite — node-truth ownership (plan 054 P2 T002, Finding 04)", () => {
-	it("CLI-stamped currentAssignment/currentTask/semanticState survive a daemon tick write", () => {
+	it("CLI-stamped currentAssignment/currentTask/semanticState survive a daemon tick write", async () => {
 		// The CLI coupled-write denormed these onto the descriptor AFTER the
 		// daemon took its tick-start snapshot; the daemon's computed descriptor
 		// (derived from that stale snapshot) has none of them. A daemon persist
@@ -951,7 +962,7 @@ describe("persistDaemonWrite — node-truth ownership (plan 054 P2 T002, Finding
 		expect(written.state).toBe("working"); // daemon-owned field still applied
 	});
 
-	it("latest persisted semanticState beats a stale daemon snapshot value", () => {
+	it("latest persisted semanticState beats a stale daemon snapshot value", async () => {
 		// Mutable-external semantics: when BOTH sides carry the field, latest
 		// disk wins — the daemon's copy is by construction a stale snapshot.
 		const reg = new FakeRegistry([desc({ semanticState: "done" })]);
@@ -959,7 +970,7 @@ describe("persistDaemonWrite — node-truth ownership (plan 054 P2 T002, Finding
 		expect(written.semanticState).toBe("done");
 	});
 
-	it("systemState is daemon-owned: the computed verdict beats any on-disk value", () => {
+	it("systemState is daemon-owned: the computed verdict beats any on-disk value", async () => {
 		// systemState stays OUT of MUTABLE_EXTERNALLY_OWNED_FIELDS (WS-5:
 		// mechanical truth has no meaningful external writer) — a value that
 		// somehow landed on disk never overrides the daemon's fresh verdict.
@@ -968,7 +979,7 @@ describe("persistDaemonWrite — node-truth ownership (plan 054 P2 T002, Finding
 		expect(written.systemState).toBe("working");
 	});
 
-	it("a daemon write lacking systemState does not resurrect a stale on-disk one", () => {
+	it("a daemon write lacking systemState does not resurrect a stale on-disk one", async () => {
 		// Deliberate-drop parity with the failureReason case: absence in the
 		// computed descriptor is authoritative for a daemon-owned field.
 		const reg = new FakeRegistry([desc({ systemState: "stalled" })]);
@@ -982,7 +993,7 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 	it.each([
 		"confirmed",
 		"unverified",
-	] as const)("returns the %s injection outcome only after sendText completes", (outcome) => {
+	] as const)("returns the %s injection outcome only after sendText completes", async (outcome) => {
 		const w = world({ pane: READY });
 		let sendCompleted = false;
 		w.ports.sendText = () => {
@@ -990,7 +1001,7 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 			return outcome;
 		};
 
-		const consumed = drainTmuxInbox(
+		const consumed = await drainTmuxInbox(
 			desc({ lifecycle: "bound" }),
 			[{ messageId: "m1", from: "pij-boss", body: "review" }],
 			w.ports,
@@ -1003,8 +1014,8 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 		expect(consumed).toEqual([{ messageId: "m1", from: "pij-boss", outcome }]);
 	});
 
-	it("does not consume a pi-owned message", () => {
-		const consumed = drainTmuxInbox(
+	it("does not consume a pi-owned message", async () => {
+		const consumed = await drainTmuxInbox(
 			desc({ harness: "pi", lifecycle: "bound" }),
 			[{ messageId: "m1", from: "pij-boss", body: "leave for pi" }],
 			world({ pane: READY }).ports,
@@ -1018,7 +1029,7 @@ describe("drainTmuxInbox — post-outcome contract", () => {
 });
 
 describe("backfillWindowId — legacy live nodes gain addressability once (plan 054 P2 T006)", () => {
-	it("resolves and persists the window id for a pane-bearing node without one", () => {
+	it("resolves and persists the window id for a pane-bearing node without one", async () => {
 		const reg = new FakeRegistry([desc({ paneId: "%7" })]);
 		const written = backfillWindowId(desc({ paneId: "%7" }), reg, (paneId) =>
 			paneId === "%7" ? "@2" : null,
@@ -1027,7 +1038,7 @@ describe("backfillWindowId — legacy live nodes gain addressability once (plan 
 		expect(reg.read("pij-w")?.windowId).toBe("@2");
 	});
 
-	it("is a no-op when the node already has a windowId (once-only latch)", () => {
+	it("is a no-op when the node already has a windowId (once-only latch)", async () => {
 		const reg = new FakeRegistry([desc({ paneId: "%7", windowId: "@2" })]);
 		let calls = 0;
 		const out = backfillWindowId(desc({ paneId: "%7", windowId: "@2" }), reg, () => {
@@ -1039,7 +1050,7 @@ describe("backfillWindowId — legacy live nodes gain addressability once (plan 
 		expect(reg.read("pij-w")?.windowId).toBe("@2");
 	});
 
-	it("is a no-op without a pane, on resolver failure, and on a malformed id", () => {
+	it("is a no-op without a pane, on resolver failure, and on a malformed id", async () => {
 		const reg = new FakeRegistry([desc({})]);
 		const { paneId: _p, ...noPane } = desc({});
 		expect(backfillWindowId(noPane, reg, () => "@1")).toBeNull();
@@ -1048,9 +1059,237 @@ describe("backfillWindowId — legacy live nodes gain addressability once (plan 
 		expect(reg.read("pij-w")?.windowId).toBeUndefined();
 	});
 
-	it("a CLI-stamped windowId on disk survives a daemon write lacking it (merge law)", () => {
+	it("a CLI-stamped windowId on disk survives a daemon write lacking it (merge law)", async () => {
 		const reg = new FakeRegistry([desc({ windowId: "@5" })]);
 		const written = persistDaemonWrite(reg, desc({ state: "working" }));
 		expect(written.windowId).toBe("@5");
+	});
+});
+
+describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-socket)", () => {
+	it("delivers over the socket, never types, and consumes with via=socket", async () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		const socketed: string[] = [];
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = (_target, message) => {
+			socketed.push(message.body);
+			return "confirmed";
+		};
+		const body = `HEAD sha 0001\n${"k".repeat(3000)}\nTAIL`;
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(0);
+		expect(socketed).toEqual([body]);
+		expect(consumed).toEqual([
+			{ messageId: "m1", from: "pij-boss", outcome: "confirmed", via: "socket" },
+		]);
+	});
+
+	it("falls back to the pane when the seat has no socket", async () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => "no-socket";
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "short" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(1);
+		expect(consumed).toEqual([{ messageId: "m1", from: "pij-boss", outcome: "confirmed" }]);
+	});
+
+	it("leaves the message unread (buffered, not consumed) when the socket send fails", async () => {
+		const w = world({ pane: READY });
+		w.ports.sendText = () => {
+			throw new Error("must not type after a failed socket send");
+		};
+		w.ports.sendSocket = () => "failed";
+		const buffer = new SendBuffer();
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "retry me" }],
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(consumed).toEqual([]);
+	});
+
+	it("still TYPES a remote command (/compact) even on a socket-capable claude seat", async () => {
+		const w = world({ pane: READY });
+		let typedText = "";
+		w.ports.sendText = (_pane, text) => {
+			typedText = text;
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => {
+			throw new Error("commands must not go over the socket");
+		};
+		await drainTmuxInbox(
+			desc({ harness: "claude", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "", command: "compact" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typedText).toBe("/compact");
+	});
+
+	it("types into a LEGACY copilot seat (no rpcPort)", async () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => {
+			throw new Error("a legacy copilot seat has no endpoint");
+		};
+		await drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "hi" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(1);
+	});
+});
+
+describe("drainTmuxInbox — copilot --ui-server seats use the RPC port", () => {
+	it("delivers via sendSocket when the descriptor carries rpcPort", async () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		const seen: number[] = [];
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = (target) => {
+			seen.push(target.rpcPort ?? -1);
+			return "confirmed";
+		};
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound", rpcPort: 47391 }),
+			[{ messageId: "m1", from: "pij-boss", body: "over rpc" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(0);
+		expect(seen).toEqual([47391]);
+		expect(consumed[0]?.via).toBe("socket");
+	});
+});
+
+describe("drainTmuxInbox — pointer path for seats with no endpoint (poc/comms-sqlite-socket)", () => {
+	it("pointerLine is one short ASCII line with no newline", async () => {
+		for (const n of [1, 3]) {
+			const line = pointerLine("pij-vocal-kingfisher", n);
+			expect(line).not.toContain("\n");
+			expect(Buffer.byteLength(line)).toBeLessThan(200);
+			expect(line.startsWith("[pij from pij-vocal-kingfisher] ")).toBe(true);
+			expect(line).toContain("pij inbox");
+		}
+	});
+
+	it("types the pointer, never the body, and reports via=pointer", async () => {
+		const w = world({ pane: READY });
+		const typed: string[] = [];
+		w.ports.sendText = (_pane, text) => {
+			typed.push(text);
+			return "confirmed";
+		};
+		w.ports.sendSocket = () => "no-socket";
+		const body = `SECRET-HEAD\n${"k".repeat(3000)}\nSECRET-TAIL`;
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		expect(typed).toEqual([pointerLine("pij-boss", 1)]);
+		expect(consumed).toEqual([
+			{ messageId: "m1", from: "pij-boss", outcome: "confirmed", via: "pointer" },
+		]);
+	});
+
+	it("still types a raw /compact command even in pointer mode", async () => {
+		const w = world({ pane: READY });
+		let typedText = "";
+		w.ports.sendText = (_pane, text) => {
+			typedText = text;
+			return "confirmed";
+		};
+		await drainTmuxInbox(
+			desc({ harness: "codex", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "", command: "compact" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		expect(typedText).toBe("/compact");
+	});
+
+	it("respects the composer-idle guard: NEVER types a pointer over live human input (Amendment 4 proof)", async () => {
+		// The pointer path is the only path that still types into a pane; it must
+		// keep the pre-existing composer-idle / non-empty-composer guard
+		// (refreshRenderedComposerHold, loop.ts) BEFORE send-keys.
+		const w = world({ pane: HUMAN_COMPOSER });
+		const buffer = new SendBuffer();
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "please read this" }],
+			w.ports,
+			buffer,
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		// nothing typed, message left durable-unread (buffered) for a later tick
+		expect(w.sentText).toEqual([]);
+		expect(consumed).toEqual([]);
+		expect(buffer.pending("pij-w")).toBe(1); // durably buffered for retry, not lost
+	});
+
+	it("leaves the row for retry when the pointer cannot be typed (held/failed)", async () => {
+		const w = world({ pane: READY });
+		w.ports.sendText = () => "failed";
+		const consumed = await drainTmuxInbox(
+			desc({ harness: "codex", lifecycle: "bound" }),
+			[{ messageId: "m1", from: "pij-boss", body: "x" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+			{ pointer: true },
+		);
+		expect(consumed).toEqual([]);
 	});
 });

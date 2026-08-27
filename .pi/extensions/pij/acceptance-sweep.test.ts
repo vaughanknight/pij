@@ -137,7 +137,7 @@ let legacyLoaded: SessionDescriptor;
 let assignmentA = "";
 let logSnapshotAtStep4: SpineEvent[] = [];
 
-beforeAll(() => {
+beforeAll(async () => {
 	HOME = mkdtempSync(join(tmpdir(), "pij-acceptance-sweep-"));
 	registry = new FsRegistry(HOME);
 	projectStore = new FsProjectStore(HOME);
@@ -200,12 +200,12 @@ beforeAll(() => {
 	registry.write(desc({ id: "pij-stray", pid: 4244 }));
 });
 
-afterAll(() => {
+afterAll(async () => {
 	rmSync(HOME, { recursive: true, force: true });
 });
 
 describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fenced)", () => {
-	it("step 1 · AC-11 — a pre-054 descriptor loads, lists, and round-trips unchanged", () => {
+	it("step 1 · AC-11 — a pre-054 descriptor loads, lists, and round-trips unchanged", async () => {
 		const loaded = registry.read("pij-legacy");
 		expect(loaded).not.toBeNull();
 		legacyLoaded = loaded as SessionDescriptor;
@@ -222,7 +222,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(registry.read("pij-legacy")).toEqual(legacyLoaded);
 	});
 
-	it("step 2 · AC-01 — project create (schema-versioned, attributed, collision-slugged), list, set", () => {
+	it("step 2 · AC-01 — project create (schema-versioned, attributed, collision-slugged), list, set", async () => {
 		const created = runJson<{ slug: string }>(["project", "create", "Fix the CLI", "--json"]);
 		expect(created.slug).toBe("fix-the-cli");
 		const onDisk = JSON.parse(
@@ -261,7 +261,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		for (const e of events) expect(e.actor).toBe(ACTOR);
 	});
 
-	it("step 3 · AC-02 — --peer/--project filters return EXACTLY the matching set", () => {
+	it("step 3 · AC-02 — --peer/--project filters return EXACTLY the matching set", async () => {
 		for (const args of [
 			["spine", "append", "--kind", "probe", "--peer", "pij-worker", "--project", "fix-the-cli"],
 			["spine", "append", "--kind", "probe", "--peer", "pij-workerx"], // near-miss peer
@@ -290,7 +290,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(byProject.every((e) => e.project === "fix-the-cli")).toBe(true); // -2 excluded
 	});
 
-	it("step 4 · AC-03 — duplicate/replayed appends are idempotent; the log only grows", () => {
+	it("step 4 · AC-03 — duplicate/replayed appends are idempotent; the log only grows", async () => {
 		const before = spineLog.read();
 		const draft = {
 			schema_version: 1 as const,
@@ -310,7 +310,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		logSnapshotAtStep4 = after;
 	});
 
-	it("step 5 · AC-05 — implicit general + explicit assignments, denorms, worst-first badge", () => {
+	it("step 5 · AC-05 — implicit general + explicit assignments, denorms, worst-first badge", async () => {
 		// Implicit: a state write on a node with NO assignment materializes
 		// the fixed-id general assignment.
 		expect(run(["report", "state", "waiting"], "pij-stray").exitCode).toBe(0);
@@ -349,7 +349,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(registry.read("pij-worker")?.semanticState).toBe("done");
 	});
 
-	it("step 6 · AC-06 — done renders UNVERIFIED until a verify write flips it", () => {
+	it("step 6 · AC-06 — done renders UNVERIFIED until a verify write flips it", async () => {
 		const card = runJson<{
 			assignments: Array<{
 				id: string;
@@ -371,7 +371,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(unverified?.evidence.length).toBeGreaterThan(0);
 	});
 
-	it("step 7 · AC-07 (+AC-06 flip) — all three anomaly kinds with evidence; parent alert exactly once per transition", () => {
+	it("step 7 · AC-07 (+AC-06 flip) — all three anomaly kinds with evidence; parent alert exactly once per transition", async () => {
 		// foreign-hold-clear: hold by the resolved self, cleared by an ASSERTED
 		// other — on an assignment joined to fix-the-cli (primeId = ACTOR from
 		// step 2), so the unadopted stray exercises the project-prime fallback.
@@ -449,7 +449,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		);
 	});
 
-	it("step 8 · AC-04 — runtime axis: starting-hold, suspended→stopped, missing-telemetry→unknown; V-05 daemon events", () => {
+	it("step 8 · AC-04 — runtime axis: starting-hold, suspended→stopped, missing-telemetry→unknown; V-05 daemon events", async () => {
 		registry.write(desc({ id: "pij-starting", lifecycle: "pending", pid: 4245 }));
 		registry.write(desc({ id: "pij-unknown", lifecycle: "bound", pid: 4245 }));
 		registry.write(
@@ -490,7 +490,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(unknownEvent?.refs).toContain("reason:missing-telemetry");
 	});
 
-	it("step 9 · AC-08 — unadopted projection, evented re-parent, cycle rejection, spawnedBy immutable", () => {
+	it("step 9 · AC-08 — unadopted projection, evented re-parent, cycle rejection, spawnedBy immutable", async () => {
 		type Node = { id: string; unadopted?: true; children: Node[] };
 		const flatten = (nodes: Node[]): Node[] => nodes.flatMap((n) => [n, ...flatten(n.children)]);
 		const forest = runJson<{ roots: Node[] }>(["tree", "--global", "--all", "--json"]);
@@ -528,7 +528,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(cyclic.stderr.toLowerCase()).toContain("cycle");
 	});
 
-	it("step 10 · AC-09 — the full node card, field by field (axes, gauges, addressability)", () => {
+	it("step 10 · AC-09 — the full node card, field by field (axes, gauges, addressability)", async () => {
 		const card = runJson<Record<string, unknown>>(["node", "show", "pij-worker", "--json"]);
 		expect(card).toMatchObject({
 			id: "pij-worker",
@@ -549,7 +549,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		});
 	});
 
-	it("step 11 · AC-10 (+AC-03 immutability) — the real bin renders spine.md byte-identical to the pure render", () => {
+	it("step 11 · AC-10 (+AC-03 immutability) — the real bin renders spine.md byte-identical to the pure render", async () => {
 		const out = execFileSync(TSX, [CLI, "spine", "render", "--json"], {
 			env: { ...process.env, PIJ_HOME: HOME, PIJ_SESSION_ID: "", TMUX_PANE: "" },
 			encoding: "utf8",
@@ -567,7 +567,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		expect(events.slice(0, logSnapshotAtStep4.length)).toEqual(logSnapshotAtStep4);
 	});
 
-	it("step 12 · AC-12 — the public contract is shipped: platform doc, README pointer, skill route", () => {
+	it("step 12 · AC-12 — the public contract is shipped: platform doc, README pointer, skill route", async () => {
 		const platformDoc = readFileSync(join(REPO_DOCS, "docs", "how", "pij-platform.md"), "utf8");
 		expect(platformDoc).toContain("on-disk public contract");
 		expect(platformDoc).toContain("projects/<slug>/project.json");
@@ -584,7 +584,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		);
 	});
 
-	it("plan 074 P9 · PM routes automate start/stop reports and governors designate roles", () => {
+	it("plan 074 P9 · PM routes automate start/stop reports and governors designate roles", async () => {
 		const ready = readFileSync(
 			join(REPO_DOCS, "skills", "pij", "references", "routes", "ready.md"),
 			"utf8",
@@ -627,7 +627,7 @@ describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fence
 		);
 	});
 
-	it("state clear makes a parked assignment undeclared without disturbing its mechanical axis", () => {
+	it("state clear makes a parked assignment undeclared without disturbing its mechanical axis", async () => {
 		registry.write({ ...(registry.read("pij-stray") as SessionDescriptor), systemState: "idle" });
 		expect(run(["report", "state", "hold"], "pij-stray").exitCode).toBe(0);
 		const cleared = runJson<SpineEvent>(["report", "clear", "--json"], "pij-stray");

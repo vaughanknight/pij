@@ -46,6 +46,11 @@ export interface RevivePlanInput {
 	readonly print?: boolean;
 	/** Operator override: treat an uncertain prior attachment as dead. */
 	readonly assumeDead?: boolean;
+	/** PoC day-2 item 4: a FRESH loopback port for a copilot revive. The prior
+	 *  incarnation's `--ui-server` died with it, so a revived copilot needs a new
+	 *  one (and a new `rpcPort` stamp) or it falls to the pointer path. Absent for
+	 *  non-copilot or when a port could not be allocated. */
+	readonly rpcPort?: number;
 }
 
 export interface RevivePlan {
@@ -525,6 +530,10 @@ function buildCommand(
 				`--resume=${nativeId}`,
 				...modelArgs(descriptor.boundModel),
 				...effortArgs(descriptor.effort),
+				// PoC day-2 item 4: re-open the embedded JSON-RPC server on a fresh
+				// port so the daemon keeps delivering bodies over the socket instead
+				// of typing. The matching `rpcPort` stamp is written by the bin.
+				...(input.rpcPort !== undefined ? ["--ui-server", "--port", String(input.rpcPort)] : []),
 			],
 			env: controlEnv(descriptor, input),
 		};
@@ -675,6 +684,11 @@ export function buildRevivedDescriptor(
 		transcriptsAtSpawn: _transcriptsAtSpawn,
 		plannedHarnessSessionId: _plannedHarnessSessionId,
 		windowId: _windowId,
+		// The prior incarnation's embedded server died with it (PoC day-2 item 4):
+		// never carry a stale port forward — a socket send to a dead port would
+		// fail-loop instead of falling to the pointer path. The bin re-stamps a
+		// fresh one when it allocated one for the revive command.
+		rpcPort: _rpcPort,
 		...durable
 	} = existing;
 	return {

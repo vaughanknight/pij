@@ -53,11 +53,11 @@ const NOW_MS = Date.parse("2026-08-08T00:00:00.000Z");
 let home: string;
 let logs: string[];
 
-beforeEach(() => {
+beforeEach(async () => {
 	home = mkdtempSync(join(tmpdir(), "pij-daemon-wiring-"));
 	logs = [];
 });
-afterEach(() => {
+afterEach(async () => {
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -138,7 +138,7 @@ describe("the REAL Daemon's composition root wires the watchdog into its Anomaly
 	// wiring is removed — verified by reverting daemon.ts and by three mutations
 	// — is a watchdog-DERIVED row arriving in a recipient's inbox. That is what
 	// is asserted below, and nothing weaker.
-	it("a real Daemon.tick() delivers a watchdog-derived inert-subscription alert", () => {
+	it("a real Daemon.tick() delivers a watchdog-derived inert-subscription alert", async () => {
 		writeFleet();
 		const daemon = new Daemon(
 			home,
@@ -148,7 +148,7 @@ describe("the REAL Daemon's composition root wires the watchdog into its Anomaly
 			(line) => logs.push(line),
 		);
 
-		daemon.tick();
+		await daemon.tick();
 
 		// The alert exists AND names the paused seat and its watcher — the
 		// projection is per-node and carries the sidecar's contents, so a wiring
@@ -168,7 +168,7 @@ describe("the REAL Daemon's composition root wires the watchdog into its Anomaly
 	// observed through the daemon's own log rather than the channel. Kept because
 	// the two surfaces fail independently — a delivery-path regression breaks the
 	// inbox assertion while this one holds, and vice versa.
-	it("the alert is reported by the daemon's own sweep summary, not just present on disk", () => {
+	it("the alert is reported by the daemon's own sweep summary, not just present on disk", async () => {
 		writeFleet();
 		const daemon = new Daemon(
 			home,
@@ -178,7 +178,7 @@ describe("the REAL Daemon's composition root wires the watchdog into its Anomaly
 			(line) => logs.push(line),
 		);
 
-		daemon.tick();
+		await daemon.tick();
 
 		// The daemon logs pushed alerts. This is the seam's OWN report of itself:
 		// if the sweep were constructed without `watchdog:`, it would tick happily
@@ -188,7 +188,7 @@ describe("the REAL Daemon's composition root wires the watchdog into its Anomaly
 		daemon.dispose();
 	});
 
-	it("no watchdog sidecar on disk ⇒ no inert-subscription alert (the row is not free)", () => {
+	it("no watchdog sidecar on disk ⇒ no inert-subscription alert (the row is not free)", async () => {
 		// Guards the inverse: this test file must be able to tell the wiring from
 		// an unconditional row. Same fleet, same tick, sidecar omitted.
 		const registry = new FsRegistry(home);
@@ -198,7 +198,7 @@ describe("the REAL Daemon's composition root wires the watchdog into its Anomaly
 			logs.push(line),
 		);
 
-		daemon.tick();
+		await daemon.tick();
 
 		expect(inboxBodies("pij-boss").filter((b) => b.includes("anomaly inert-subscription"))).toEqual(
 			[],

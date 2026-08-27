@@ -100,7 +100,7 @@ function project(slug: string, primeId?: string): Project {
 }
 
 describe("AnomalySweep", () => {
-	it("alerts the effectiveParent exactly once per anomaly transition (latch pinned)", () => {
+	it("alerts the effectiveParent exactly once per anomaly transition (latch pinned)", async () => {
 		const { delivery, sweep } = rig(
 			[desc({ id: "pij-n", lifecycle: "bound", parentId: "pij-parent" })],
 			[doneAsg("asg-a", "pij-n", 5)],
@@ -117,7 +117,7 @@ describe("AnomalySweep", () => {
 		expect(toParent[0]?.message.body).toContain("5"); // evidence seq
 	});
 
-	it("falls back to spawnedBy when no parentId is linked (effectiveParent law)", () => {
+	it("falls back to spawnedBy when no parentId is linked (effectiveParent law)", async () => {
 		const { delivery, sweep } = rig(
 			[desc({ id: "pij-n", lifecycle: "bound", spawnedBy: "pij-spawner" })],
 			[doneAsg("asg-a", "pij-n", 5)],
@@ -127,7 +127,7 @@ describe("AnomalySweep", () => {
 		expect(delivery.outbox.some((e) => e.message.to === "pij-spawner")).toBe(true);
 	});
 
-	it("a parentless root just records the anomaly + dropped counts — no delivery, no crash", () => {
+	it("a parentless root just records the anomaly + dropped counts — no delivery, no crash", async () => {
 		const { delivery, sweep } = rig(
 			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
 			[doneAsg("asg-a", "pij-root", 5)],
@@ -139,7 +139,7 @@ describe("AnomalySweep", () => {
 		expect(delivery.outbox).toHaveLength(0);
 	});
 
-	it("FALLBACK: a parentless node's alert goes to its assignment's project prime (s057)", () => {
+	it("FALLBACK: a parentless node's alert goes to its assignment's project prime (s057)", async () => {
 		const { delivery, sweep, logged } = rig(
 			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
 			[{ ...doneAsg("asg-a", "pij-root", 5), projectSlug: "alpha" }],
@@ -160,7 +160,7 @@ describe("AnomalySweep", () => {
 		expect(second.dropped).toBe(0);
 	});
 
-	it("HONEST DROP: no projectSlug on the assignment — counted, logged once, latched", () => {
+	it("HONEST DROP: no projectSlug on the assignment — counted, logged once, latched", async () => {
 		const { delivery, sweep, logged } = rig(
 			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
 			[doneAsg("asg-a", "pij-root", 5)],
@@ -180,7 +180,7 @@ describe("AnomalySweep", () => {
 		expect(logged).toHaveLength(1);
 	});
 
-	it("HONEST DROP: the assignment's project has no primeId on record", () => {
+	it("HONEST DROP: the assignment's project has no primeId on record", async () => {
 		const { delivery, sweep, logged } = rig(
 			[desc({ id: "pij-root", lifecycle: "bound", parentId: null })],
 			[{ ...doneAsg("asg-a", "pij-root", 5), projectSlug: "alpha" }],
@@ -194,7 +194,7 @@ describe("AnomalySweep", () => {
 		expect(logged).toHaveLength(1);
 	});
 
-	it("NEW evidence re-alerts: a fresh done after a verify is a new transition", () => {
+	it("NEW evidence re-alerts: a fresh done after a verify is a new transition", async () => {
 		const registry = new FakeRegistry([
 			desc({ id: "pij-n", lifecycle: "bound", parentId: "pij-parent" }),
 		]);
@@ -289,7 +289,7 @@ describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
 		nodes: [{ nodeId: "pij-node", watchers: ["pij-watcher"] }],
 	};
 
-	it("1 · BEHAVIOURAL — with a projection + credibility fn it emits an inert-subscription alert", () => {
+	it("1 · BEHAVIOURAL — with a projection + credibility fn it emits an inert-subscription alert", async () => {
 		const { delivery, sweep } = rig(fleet(), [], [], {
 			watchdog: allGone,
 			activityCredibility: credibility,
@@ -301,7 +301,7 @@ describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
 		expect(toParent[0]?.message.body).toContain("no LIVE watcher remains");
 	});
 
-	it("2 · PRESERVED-PROPERTY — without them the sweep behaves exactly as today", () => {
+	it("2 · PRESERVED-PROPERTY — without them the sweep behaves exactly as today", async () => {
 		const { delivery, sweep } = rig(fleet(), [], []);
 		const first = sweep.tick();
 		expect(first.alerts).toBe(0);
@@ -309,14 +309,14 @@ describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
 		expect(delivery.outbox).toHaveLength(0);
 	});
 
-	it("2b · a projection WITHOUT the credibility fn cannot fire the recipient row", () => {
+	it("2b · a projection WITHOUT the credibility fn cannot fire the recipient row", async () => {
 		const { sweep } = rig(fleet(), [], [], { watchdog: allGone });
 		// The unwired-call-site property, end to end: half-wired is the same
 		// observable as unwired, never a silent half-detector.
 		expect(sweep.tick().anomalies).toBe(0);
 	});
 
-	it("3 · STORM GUARD — two consecutive ticks on an unchanged condition alert ONCE", () => {
+	it("3 · STORM GUARD — two consecutive ticks on an unchanged condition alert ONCE", async () => {
 		const { delivery, sweep } = rig(fleet(), [], [], {
 			watchdog: allGone,
 			activityCredibility: credibility,
@@ -331,7 +331,7 @@ describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
 		expect(delivery.outbox).toHaveLength(1);
 	});
 
-	it("F-1 · BEHAVIOURAL — the ORIGINAL 42h incident alerts end to end (dissolved watcher)", () => {
+	it("F-1 · BEHAVIOURAL — the ORIGINAL 42h incident alerts end to end (dissolved watcher)", async () => {
 		// The incident as it actually was: `pij-continuing-ermine` watched only by
 		// `pij-respectable-starfish`, which pij had DISSOLVED. `list()` hides a
 		// dissolved record by design, so the detector never saw the watcher at all
@@ -376,7 +376,7 @@ describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
 		expect(body).toContain("0 unresolvable/unknown");
 	});
 
-	it("F-1 · an id NO tier resolves is still unknown, and the sweep stays silent", () => {
+	it("F-1 · an id NO tier resolves is still unknown, and the sweep stays silent", async () => {
 		const { delivery, sweep } = rig(
 			[desc({ id: "pij-node", lifecycle: "bound", parentId: "pij-parent" })],
 			[],
@@ -396,7 +396,7 @@ describe("AnomalySweep — watchdog recipient wiring (#154)", () => {
 		expect(delivery.outbox).toHaveLength(0);
 	});
 
-	it("the recipient row and the paused-trigger row do NOT collide in the latch", () => {
+	it("the recipient row and the paused-trigger row do NOT collide in the latch", async () => {
 		// Both carry `kind: "inert-subscription"` on the SAME node, and the paused
 		// row's evidence is `[watchers.length]` — identical to the recipient row's
 		// gone-count whenever every watcher is gone. A one-element evidence key

@@ -97,9 +97,9 @@ function rig(
 }
 
 describe("runtime axis verdicts (AC-04)", () => {
-	it("a just-spawned unbound node reads starting — persisted + V-05 event with actor daemon", () => {
+	it("a just-spawned unbound node reads starting — persisted + V-05 event with actor daemon", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "pending" })]);
-		r.tick();
+		await r.tick();
 		expect(r.registry.read("pij-n")?.systemState).toBe("starting");
 		const events = r.spineLog.read();
 		expect(events).toHaveLength(1);
@@ -113,32 +113,32 @@ describe("runtime axis verdicts (AC-04)", () => {
 		expect(events[0]?.prev).toBeUndefined();
 	});
 
-	it("a suspended-but-alive pane reads stopped", () => {
+	it("a suspended-but-alive pane reads stopped", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "bound", paneId: "%1", state: "working" })], {
 			suspended: true,
 		});
-		r.tick();
+		await r.tick();
 		expect(r.registry.read("pij-n")?.systemState).toBe("stopped");
 	});
 
-	it("bound with NO state telemetry reads unknown — never inferred idle — with a reason ref", () => {
+	it("bound with NO state telemetry reads unknown — never inferred idle — with a reason ref", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "bound" })]);
-		r.tick();
+		await r.tick();
 		expect(r.registry.read("pij-n")?.systemState).toBe("unknown");
 		const event = r.spineLog.read()[0];
 		expect(event?.next).toBe("unknown");
 		expect(event?.refs).toContain("reason:missing-telemetry");
 	});
 
-	it("a gone pid reads dead", () => {
+	it("a gone pid reads dead", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "bound", state: "idle" })], { alive: false });
-		r.tick();
+		await r.tick();
 		expect(r.registry.read("pij-n")?.systemState).toBe("dead");
 	});
 });
 
 describe("V-05 transition events — latch after successful append", () => {
-	it("no transition, no event: a quiet second tick appends NOTHING (spam impossible)", () => {
+	it("no transition, no event: a quiet second tick appends NOTHING (spam impossible)", async () => {
 		const r = rig([
 			desc({
 				id: "pij-n",
@@ -147,13 +147,13 @@ describe("V-05 transition events — latch after successful append", () => {
 				lastEventAt: new Date(NOW - 1_000).toISOString(),
 			}),
 		]);
-		r.tick();
-		r.tick();
-		r.tick();
+		await r.tick();
+		await r.tick();
+		await r.tick();
 		expect(r.spineLog.read()).toHaveLength(1); // absent→working only
 	});
 
-	it("a transition carries prev→next mechanical words", () => {
+	it("a transition carries prev→next mechanical words", async () => {
 		const r = rig([
 			desc({
 				id: "pij-n",
@@ -172,16 +172,16 @@ describe("V-05 transition events — latch after successful append", () => {
 		expect(events[1]).toMatchObject({ prev: "working", next: "idle", actor: "daemon" });
 	});
 
-	it("a daemon restart does NOT re-append the persisted current state (latch seeds from disk)", () => {
+	it("a daemon restart does NOT re-append the persisted current state (latch seeds from disk)", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "bound", state: "idle", systemState: "idle" })]);
-		r.tick();
+		await r.tick();
 		expect(r.spineLog.read()).toHaveLength(0);
 	});
 
-	it("append failure: verdict persists, latch does NOT flip, next tick retries — exactly one event lands", () => {
+	it("append failure: verdict persists, latch does NOT flip, next tick retries — exactly one event lands", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "pending" })]);
 		r.spineLog.failNext("append");
-		r.tick();
+		await r.tick();
 		expect(r.registry.read("pij-n")?.systemState).toBe("starting"); // truth never waits
 		expect(r.spineLog.read()).toHaveLength(0);
 		r.tick(); // retry lands
@@ -189,10 +189,10 @@ describe("V-05 transition events — latch after successful append", () => {
 		expect(r.spineLog.read()).toHaveLength(1);
 	});
 
-	it("lock-contended tick SKIPS honestly (logged once), never stalls, retries next tick", () => {
+	it("lock-contended tick SKIPS honestly (logged once), never stalls, retries next tick", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "pending" })]);
 		r.platformWriteLock.failNext();
-		r.tick();
+		await r.tick();
 		expect(r.spineLog.read()).toHaveLength(0);
 		expect(r.logs.some((l) => l.includes("pij-n"))).toBe(true);
 		const logged = r.logs.length;
@@ -203,7 +203,7 @@ describe("V-05 transition events — latch after successful append", () => {
 		expect(r.spineLog.read()).toHaveLength(1);
 	});
 
-	it("recovery-blocked tick skips the append honestly and retries once the journal drains", () => {
+	it("recovery-blocked tick skips the append honestly and retries once the journal drains", async () => {
 		const r = rig([desc({ id: "pij-n", lifecycle: "pending" })]);
 		const recorded = r.opJournal.record({
 			schema_version: 1,
@@ -213,11 +213,11 @@ describe("V-05 transition events — latch after successful append", () => {
 			refs: [],
 		});
 		if (!recorded.ok) throw new Error(recorded.message);
-		r.tick();
+		await r.tick();
 		expect(r.spineLog.read()).toHaveLength(0);
 		const cleared = r.opJournal.clear(recorded.value);
 		if (!cleared.ok) throw new Error(cleared.message);
-		r.tick();
+		await r.tick();
 		expect(r.spineLog.read().filter((e) => e.kind === SPINE_KIND_SYSTEM_STATE)).toHaveLength(1);
 	});
 });

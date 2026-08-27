@@ -8,6 +8,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+	appendFileSync,
 	closeSync,
 	fstatSync,
 	mkdirSync,
@@ -29,7 +30,14 @@ export { composerRegion } from "../core/daemon/pane-signals.js";
 import { codexCwdFromMeta, listCodexRollouts } from "../core/harness/codex.js";
 import type { SendOutcome } from "../core/ports.js";
 import { BUSY_RE, paneWentBusy } from "../core/readiness.js";
-import type { HarnessKind } from "../core/types.js";
+import type { DeliveredMessage, HarnessKind, SessionDescriptor } from "../core/types.js";
+import {
+	buildPeerFrame,
+	claudeSessionsDir,
+	resolveClaudeSocket,
+	sendClaudeFrame,
+} from "./claude-socket.js";
+import { buildCopilotPrompt, probeCopilotReady, sendCopilotRpc } from "./copilot-rpc.js";
 import { NodeProcess } from "./process.js";
 import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
@@ -187,6 +195,10 @@ function clearTypedText(paneId: string, text: string, runner: TmuxRunner): void 
 export interface DaemonTmuxOptions {
 	runner?: TmuxRunner;
 	sleep?: (ms: number) => void;
+	/** PoC: where Claude Code registers sessions (default ~/.claude/sessions). */
+	readonly claudeSessionsDir?: string;
+	/** PoC: ms to wait for a `peer_message_status` drop report after writing. */
+	readonly socketAckWaitMs?: number;
 }
 
 /** Decide what a THROWN tmux send means: a permanently dead target (`gone`) or a
@@ -225,10 +237,101 @@ export class DaemonTmux implements DaemonPorts {
 	private readonly runner: TmuxRunner;
 	private readonly sleep: (ms: number) => void;
 	private readonly tapFiles = new Map<string, { path: string; offset: number }>();
+	private readonly claudeSessionsDir: string;
+	private readonly socketAckWaitMs: number;
+	/** copilot sessions whose embedded server has answered a readiness probe at
+	 *  least once (PoC day-2 item 9) — the probe runs only before the FIRST send. */
+	private readonly copilotReady = new Set<string>();
 
 	constructor(options: DaemonTmuxOptions = {}) {
-		this.runner = options.runner ?? execFileRunner;
+		const base = options.runner ?? execFileRunner;
+		// Benchmark hook (reports/pij-comms-review-2026-08-27/benchmarks.md): when
+		// PIJ_BENCH_KEYLOG names a file, every keystroke-bearing tmux call
+		// (send-keys / paste-buffer) appends one line, so a scenario can count
+		// exactly what reached a pty. Off unless the env var is set.
+		const keylog = process.env.PIJ_BENCH_KEYLOG;
+		this.runner = keylog
+			? (args) => {
+					if (args[0] === "send-keys" || args[0] === "paste-buffer") {
+						try {
+							appendFileSync(keylog, `${Date.now()}\t${args.join(" ").slice(0, 120)}\n`);
+						} catch {
+							// benchmark telemetry only — never affects delivery
+						}
+					}
+					return base(args);
+				}
+			: base;
 		this.sleep = options.sleep ?? sleepSync;
+		this.claudeSessionsDir = options.claudeSessionsDir ?? claudeSessionsDir(homedir());
+		this.socketAckWaitMs = options.socketAckWaitMs ?? 150;
+	}
+
+	/** PoC (poc/comms-sqlite-socket): Claude inbox-socket delivery. See
+	 *  adapters/claude-socket.ts. `no-socket` lets the loop fall back to typing. */
+	async sendSocket(
+		target: SessionDescriptor,
+		message: DeliveredMessage,
+	): Promise<SendOutcome | "no-socket"> {
+		if (target.harness === "copilot") {
+			if (target.rpcPort === undefined || !target.harnessSessionId) return "no-socket";
+			// First-delivery readiness gate (item 9): a fresh copilot can ack a
+			// send while its model turn is still hung at boot. Probe once; if not
+			// ready, leave the message queued (retry next tick) rather than post
+			// into a hang. Proven-live sessions skip the probe.
+			if (!this.copilotReady.has(target.harnessSessionId)) {
+				const probe = await probeCopilotReady({
+					port: target.rpcPort,
+					sessionId: target.harnessSessionId,
+				});
+				if (!probe.ready) {
+					this.warn(
+						`copilot NOT READY: ${target.id} on 127.0.0.1:${target.rpcPort} — ${probe.detail ?? "unknown"}; message stays queued`,
+					);
+					return "failed";
+				}
+				this.copilotReady.add(target.harnessSessionId);
+			}
+			const r = await sendCopilotRpc({
+				port: target.rpcPort,
+				sessionId: target.harnessSessionId,
+				prompt: buildCopilotPrompt(message.from, message.body),
+				mode: "enqueue",
+			});
+			if (r.outcome === "confirmed") return "confirmed";
+			this.warn(
+				`⚠️  copilot RPC FAILED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "unknown"}; message stays queued`,
+			);
+			return "failed";
+		}
+		if (target.harness !== "claude") return "no-socket";
+		const resolved = resolveClaudeSocket({
+			pid: target.pid,
+			paneId: target.paneId,
+			sessionsDir: this.claudeSessionsDir,
+		});
+		if (!resolved) return "no-socket";
+		const line = buildPeerFrame({
+			from: message.from,
+			body: message.body,
+			msgId: message.messageId,
+		});
+		const result = await sendClaudeFrame(resolved.socketPath, line, {
+			ackWaitMs: this.socketAckWaitMs,
+		});
+		if (result.outcome === "confirmed") return "confirmed";
+		this.warn(
+			`⚠️  claude SOCKET FAILED: ${target.id} via ${resolved.socketPath} — ${result.detail ?? "unknown"}; message stays queued`,
+		);
+		return "failed";
+	}
+
+	private warn(line: string): void {
+		try {
+			process.stderr.write(`${line}\n`);
+		} catch {
+			// diagnostic only
+		}
 	}
 
 	capturePane(paneId: string): string {

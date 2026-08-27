@@ -81,7 +81,7 @@ async function waitFor(check: () => boolean, timeoutMs: number, everyMs = 2000):
 	return check();
 }
 
-describe.skipIf(!LIVE)("agent pack as peer — live (AC-18)", () => {
+describe.skipIf(!LIVE)("agent pack as peer — live (AC-18)", async () => {
 	const spawned: string[] = [];
 	afterAll(() => {
 		// Always tear down any test-spawned peer (never leave a stray pane).

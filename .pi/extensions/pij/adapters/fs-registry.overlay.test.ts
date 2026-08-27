@@ -33,11 +33,11 @@ const FRESH_TICK = new Date(NOW_MS - 1_000).toISOString();
 
 let home: string;
 
-beforeEach(() => {
+beforeEach(async () => {
 	home = mkdtempSync(join(tmpdir(), "pij-overlay-"));
 });
 
-afterEach(() => {
+afterEach(async () => {
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -99,7 +99,7 @@ function sendReceipt(self: string, to: string): Record<string, unknown> {
 
 describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", () => {
 	// ─── AC-04 · the reader surface survives the removal ──────────────────────
-	it("AC-04: read() attaches lastTickAt from the heartbeat map", () => {
+	it("AC-04: read() attaches lastTickAt from the heartbeat map", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		heartbeat().write(["pij-a"], FRESH_TICK);
@@ -107,7 +107,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBe(FRESH_TICK);
 	});
 
-	it("AC-04b: a descriptor with no map entry reads undefined, not a fabricated stamp", () => {
+	it("AC-04b: a descriptor with no map entry reads undefined, not a fabricated stamp", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		heartbeat().write(["pij-other"], FRESH_TICK);
@@ -115,7 +115,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBeUndefined();
 	});
 
-	it("AC-04c: list() attaches the stamp too, and reads the map once for the whole listing", () => {
+	it("AC-04c: list() attaches the stamp too, and reads the map once for the whole listing", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		registry.write(descriptor({ id: "pij-b", harness: "copilot" }));
@@ -135,7 +135,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(mapReads).toBe(1);
 	});
 
-	it("AC-04d: an ARCHIVED record gets no overlay — a fresh stamp on a corpse is a lie", () => {
+	it("AC-04d: an ARCHIVED record gets no overlay — a fresh stamp on a corpse is a lie", async () => {
 		const registry = newRegistry();
 		registry.write(
 			descriptor({
@@ -160,7 +160,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// exercises the real `pij send` receipt path, which is where `daemonTickStale`
 	// becomes a user-visible `unverified` (`cli.ts` CliBatonNoticeSink) rather
 	// than a `queued`. Through a stub it would prove nothing.
-	it("AC-05: the send receipt for a freshly-ticked claude target is queued and NOT stale", () => {
+	it("AC-05: the send receipt for a freshly-ticked claude target is queued and NOT stale", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
 		registry.write(descriptor({ id: "pij-target", harness: "claude" }));
@@ -174,7 +174,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		});
 	});
 
-	it("AC-05b: a copilot target is covered by the same receipt path", () => {
+	it("AC-05b: a copilot target is covered by the same receipt path", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
 		registry.write(descriptor({ id: "pij-target", harness: "copilot" }));
@@ -189,7 +189,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	//
 	// No pre-fix form of this exists: before the overlay there is nothing to mask
 	// with, so the claim is vacuous rather than false. Mutant M4 is its only proof.
-	it("AC-09: an overlay stamp older than the staleness threshold still reads stale", () => {
+	it("AC-09: an overlay stamp older than the staleness threshold still reads stale", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
 		registry.write(descriptor({ id: "pij-target", harness: "claude" }));
@@ -203,7 +203,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	});
 
 	// ─── AC-06 · the heartbeat file is not a session ─────────────────────────
-	it("AC-06: the heartbeat file in pijHome is invisible to list()", () => {
+	it("AC-06: the heartbeat file in pijHome is invisible to list()", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		const before = registry.list().length;
@@ -212,7 +212,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.list().length).toBe(before);
 	});
 
-	it("AC-06b: the heartbeat record carries no top-level id, which is WHY list() ignores it", () => {
+	it("AC-06b: the heartbeat record carries no top-level id, which is WHY list() ignores it", async () => {
 		heartbeat().write(["pij-a"], FRESH_TICK);
 		const record = rawOnDisk(join(home, TICK_HEARTBEAT_FILE));
 
@@ -225,7 +225,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// divergence is the ruling: archive ageing anchors on the real activity axis,
 	// so a control-plane peer's 600ms tick can no longer hold a 60-hour-dead
 	// record in the hot tier forever.
-	it("AC-08: a dissolved record 60h quiet but freshly ticked is ARCHIVABLE", () => {
+	it("AC-08: a dissolved record 60h quiet but freshly ticked is ARCHIVABLE", async () => {
 		const registry = newRegistry();
 		registry.write(
 			descriptor({
@@ -247,7 +247,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// result straight into a write. Without the scrub the overlaid stamp is
 	// persisted back — in CLI processes, on every send — and this stops being a
 	// performance fix and becomes a performance RELOCATION.
-	it("AC-12: a read-modify-write never persists the overlaid stamp", () => {
+	it("AC-12: a read-modify-write never persists the overlaid stamp", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		heartbeat().write(["pij-a"], FRESH_TICK);
@@ -263,7 +263,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(rawOnDisk(join(home, "pij-a.json")).lastTickAt).toBeUndefined();
 	});
 
-	it("AC-12b: the REAL stampSenderActivity path on a pij send persists no stamp", () => {
+	it("AC-12b: the REAL stampSenderActivity path on a pij send persists no stamp", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-sender", harness: "claude" }));
 		registry.write(descriptor({ id: "pij-target", harness: "claude" }));
@@ -279,7 +279,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(rawOnDisk(join(home, "pij-sender.json")).lastTickAt).toBeUndefined();
 	});
 
-	it("AC-12c: the durable IDENTITY snapshot is scrubbed too, not just the descriptor", () => {
+	it("AC-12c: the durable IDENTITY snapshot is scrubbed too, not just the descriptor", async () => {
 		const registry = newRegistry();
 		registry.write(
 			descriptor({ id: "pij-a", harness: "claude", harnessSessionId: "claude-native-a" }),
@@ -317,7 +317,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// did not lose the property. The P1c criteria ARE evidence — the deleted
 	// protocol actively broke those, and they fail on `848982d5`.
 
-	it("AC-13' (PRESERVED-PROPERTY): a DISSOLVED seat is never shown as live", () => {
+	it("AC-13' (PRESERVED-PROPERTY): a DISSOLVED seat is never shown as live", async () => {
 		// PASSES ON `848982d5` TOO, and that is the point of the label: the deleted
 		// marker protocol also kept a dissolved seat from reading live. This is
 		// evidence the deletion did not LOSE the property, not evidence of the
@@ -331,7 +331,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBeUndefined();
 	});
 
-	it("AC-13': the GATE refuses it, not a prune — the map still holds the stamp", () => {
+	it("AC-13': the GATE refuses it, not a prune — the map still holds the stamp", async () => {
 		// The mechanism substitution, made observable. On `848982d5` this fails at
 		// the FIRST assertion, because `dissolve()` pruned the map there; the second
 		// assertion held at both. So the property is preserved and the mechanism is
@@ -346,7 +346,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBeUndefined();
 	});
 
-	it("AC-13' (PRESERVED-PROPERTY): list() refuses the same seat, which is the parity claim", () => {
+	it("AC-13' (PRESERVED-PROPERTY): list() refuses the same seat, which is the parity claim", async () => {
 		// The gate was written by mirroring `list()`. If the two ever diverge, a
 		// keyed read and a listing disagree about the same seat.
 		const registry = newRegistry();
@@ -359,7 +359,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.list().map((entry) => entry.id)).toEqual(["pij-b"]);
 	});
 
-	it("AC-13' PARITY: a FAILED seat still gets the overlay — the gate must not tighten", () => {
+	it("AC-13' PARITY: a FAILED seat still gets the overlay — the gate must not tighten", async () => {
 		// `list()` does not exclude `failed`, and the pre-change tick stamped failed
 		// seats (`publish()`'s tombstone guard blocked `dissolved` only). Gating on
 		// anything beyond `dissolved` would be a silent behaviour change riding
@@ -385,7 +385,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// criterion would pass while proving nothing — the same trap as a removal
 	// criterion that never observes the replacement.
 
-	it("P1e: a raw LEGACY dissolved descriptor's own persisted stamp is stripped", () => {
+	it("P1e: a raw LEGACY dissolved descriptor's own persisted stamp is stripped", async () => {
 		writeFileSync(
 			join(home, "pij-legacy-dead.json"),
 			JSON.stringify(
@@ -405,7 +405,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-legacy-dead")?.lastTickAt).toBeUndefined();
 	});
 
-	it("P1e: and the ARCHIVE fall-through strips it too", () => {
+	it("P1e: and the ARCHIVE fall-through strips it too", async () => {
 		// `read()` returns an archived record directly, so it needs its own strip:
 		// the hot-branch gate never runs for it.
 		mkdirSync(join(home, "archive"), { recursive: true });
@@ -428,7 +428,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-legacy-archived")?.lastTickAt).toBeUndefined();
 	});
 
-	it("P1e: the LIVE legacy descriptor is NOT stripped — compatibility is deliberate", () => {
+	it("P1e: the LIVE legacy descriptor is NOT stripped — compatibility is deliberate", async () => {
 		// The boundary of the fix, and the reason it is a lifecycle strip rather
 		// than a blanket one. A live pre-migration seat keeps its own stamp until
 		// something rewrites it; that is the migration story the spec asserts at the
@@ -455,7 +455,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	//
 	// Both fail on `848982d5` and pass here.
 
-	it("P1c: revive() no longer suppresses the tick that OBSERVED the new incarnation", () => {
+	it("P1c: revive() no longer suppresses the tick that OBSERVED the new incarnation", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		registry.dissolve("pij-a");
@@ -471,7 +471,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBe(FRESH_TICK);
 	});
 
-	it("P1c: the ARCHIVED → revived path is no longer suppressed either", () => {
+	it("P1c: the ARCHIVED → revived path is no longer suppressed either", async () => {
 		// TWO of the deleted markers were in play here, not one — `unarchive()`'s
 		// and then `revive()`'s. That is deliberate and it is the honest framing:
 		// `unarchive()`'s marker CANNOT be isolated through the public surface,
@@ -511,7 +511,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// could not reach it. `FsRegistry.revive()` — the single funnel from terminal
 	// back to live — now drops the id.
 
-	it("P1f: a revived seat inherits NO stamp, even with a stopped daemon", () => {
+	it("P1f: a revived seat inherits NO stamp, even with a stopped daemon", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		heartbeat().write(["pij-a"], FRESH_TICK);
@@ -528,7 +528,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBeUndefined();
 	});
 
-	it("P1f: and the REAL receipt now reports the daemon it actually has", () => {
+	it("P1f: and the REAL receipt now reports the daemon it actually has", async () => {
 		// The user-visible half, through the real send path — where the reviewer
 		// measured the defect as `daemonTickStale: false` for a never-ticked seat.
 		//
@@ -555,7 +555,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		});
 	});
 
-	it("P1f: the drop takes ONE id — every other seat keeps its stamp", () => {
+	it("P1f: the drop takes ONE id — every other seat keeps its stamp", async () => {
 		// A whole-map wipe would pass both criteria above and break the fleet. The
 		// drop is a read-modify-write, so "removes too much" is a live failure mode
 		// rather than a hypothetical one.
@@ -573,7 +573,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-b")?.lastTickAt).toBe(FRESH_TICK);
 	});
 
-	it("AC-13' BOUND (CONDITIONAL): a later heartbeat write re-stamps the live seat", () => {
+	it("AC-13' BOUND (CONDITIONAL): a later heartbeat write re-stamps the live seat", async () => {
 		// A CONDITIONAL, and the label is the point. It proves the whole-map rebuild
 		// restores a legitimate stamp WHEN a rebuild happens. With the drop in place
 		// the revived seat no longer depends on it for correctness — this now pins
@@ -593,7 +593,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBe(nextTick);
 	});
 
-	it("AC-13' BOUND (CONDITIONAL): and an UNOWNED seat is simply omitted by that write", () => {
+	it("AC-13' BOUND (CONDITIONAL): and an UNOWNED seat is simply omitted by that write", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude" }));
 		heartbeat().write(["pij-a"], FRESH_TICK);
@@ -609,7 +609,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	});
 
 	// ─── P1g · absent → live: the transition `revive()` never sees ───────────
-	it("P1g: a seat REHYDRATED from the durable identity snapshot inherits NO stamp", () => {
+	it("P1g: a seat REHYDRATED from the durable identity snapshot inherits NO stamp", async () => {
 		// THE REGRESSION FOR FIX ROUND 6, and it is deliberately built out of the
 		// PRODUCTION wiring rather than a bare `writeExact()` call.
 		//
@@ -667,7 +667,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBeUndefined();
 	});
 
-	it("P1g: and the rehydrated seat is re-stamped by the very next tick", () => {
+	it("P1g: and the rehydrated seat is re-stamped by the very next tick", async () => {
 		// The companion CONDITIONAL. Proves the drop above did not blind the seat,
 		// and proves the previous criterion's `undefined` was a missing stamp rather
 		// than a descriptor the overlay can no longer reach.
@@ -688,7 +688,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBe(nextTick);
 	});
 
-	it("P1g: an ARCHIVED record is not a present incarnation — archive → live drops too", () => {
+	it("P1g: an ARCHIVED record is not a present incarnation — archive → live drops too", async () => {
 		// THE HOT-ONLY HALF of the precondition, and the reason it is sampled before
 		// `unarchive()`. `read()` falls through to the archive, so a presence test
 		// built on it would see the corpse and skip the drop; sampling AFTER
@@ -717,7 +717,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBeUndefined();
 	});
 
-	it("P1g: a write over a PRESENT hot descriptor keeps its stamp", () => {
+	it("P1g: a write over a PRESENT hot descriptor keeps its stamp", async () => {
 		// THE NEGATIVE, and it is the one that stops this fix becoming the defect it
 		// replaces. The node-truth denorm update in `core/cli.ts` is a `writeExact`
 		// on a healthy live seat; a drop keyed on the METHOD would fire there and
@@ -735,7 +735,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBe(FRESH_TICK);
 	});
 
-	it("P1g: a FIRST-EVER spawn takes the same branch harmlessly", () => {
+	it("P1g: a FIRST-EVER spawn takes the same branch harmlessly", async () => {
 		// The branch fires on every first write of an id, by design — the predicate
 		// is the transition, not a list of lifecycles. This pins that it is a no-op
 		// for a brand-new seat and, more importantly, that it does not disturb the
@@ -771,7 +771,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// enumerate the STATES A WRITER CAN OBSERVE, and the miss was `unarchive()`
 	// changing the precondition of a later `publish()`.
 
-	it("P1h: a hot FAILED record left by a public unarchive is not a live incarnation", () => {
+	it("P1h: a hot FAILED record left by a public unarchive is not a live incarnation", async () => {
 		// THE REGRESSION FOR FIX ROUND 7, driven through the PUBLIC surface in the
 		// reviewer's order — `unarchive()` then a bound `write()`, with the daemon
 		// tick in between where it really lands. Not a bare unit on the predicate:
@@ -801,7 +801,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBeUndefined();
 	});
 
-	it("P1h: a tick written AFTER the new binding is NOT suppressed", () => {
+	it("P1h: a tick written AFTER the new binding is NOT suppressed", async () => {
 		// THE CONDITIONAL the reviewer named explicitly, and the direction this
 		// predicate could break. The drop must remove a stamp the daemon took of the
 		// PREVIOUS incarnation and must not blind the seat afterwards — otherwise
@@ -821,7 +821,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(registry.read("pij-a")?.lastTickAt).toBe(afterBinding);
 	});
 
-	it("P1h: an archived LEGACY record with NO lifecycle still drops — hot-only is load-bearing", () => {
+	it("P1h: an archived LEGACY record with NO lifecycle still drops — hot-only is load-bearing", async () => {
 		// WHY THIS EXISTS: adding the terminal test above made mutant M31
 		// (`readHot()` → `read()`) SURVIVE. The terminal test subsumes the hot-only
 		// test for an archived `failed` record — both answer "not a live
@@ -853,7 +853,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBeUndefined();
 	});
 
-	it("P1h ROW 4: live → FAILED keeps its stamp — the parity is not tightened here", () => {
+	it("P1h ROW 4: live → FAILED keeps its stamp — the parity is not tightened here", async () => {
 		// The fourth row of the predicate's table, ASSERTED rather than believed.
 		// `AC-13' PARITY` above pins that `read()` does not gate `failed`; this pins
 		// that the DROP does not quietly achieve the same tightening from the write
@@ -870,7 +870,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBe(FRESH_TICK);
 	});
 
-	it("P1h ROW 2 sub-case: terminal → terminal ALSO drops — a PRICED over-drop", () => {
+	it("P1h ROW 2 sub-case: terminal → terminal ALSO drops — a PRICED over-drop", async () => {
 		// STATED, NOT HIDDEN. The predicate reads only the PRIOR record's lifecycle,
 		// so a write to a corpse that stays a corpse drops a stamp it was arguably
 		// entitled to keep.
@@ -951,7 +951,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	// native sessions, so the only attachment change that reaches `publish()` is
 	// `undefined → defined`. There is a boundary criterion for that refusal.
 
-	it("P1i: re-adopting a hot LEGACY descriptor to a new native session drops the stamp", () => {
+	it("P1i: re-adopting a hot LEGACY descriptor to a new native session drops the stamp", async () => {
 		// THE REGRESSION FOR FIX ROUND 8. A legacy external descriptor — no
 		// `lifecycle`, no `harnessSessionId` — is hot, the daemon stamps it (it has
 		// no lifecycle filter), and `pij adopt --id` re-attaches it.
@@ -985,7 +985,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBeUndefined();
 	});
 
-	it("P1i KEEP: a legacy → legacy state update keeps its stamp — the warned-about false positive", () => {
+	it("P1i KEEP: a legacy → legacy state update keeps its stamp — the warned-about false positive", async () => {
 		// THE NEGATIVE THE REVIEWER NAMED EXPLICITLY, and the reason the fix is a
 		// session-id comparison rather than "treat lifecycle-absent as terminal".
 		// `undefined === undefined`, so an ordinary update to a legacy descriptor is
@@ -1010,7 +1010,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBe(FRESH_TICK);
 	});
 
-	it("P1i KEEP: an UNCHANGED harnessSessionId keeps its stamp across a bound write", () => {
+	it("P1i KEEP: an UNCHANGED harnessSessionId keeps its stamp across a bound write", async () => {
 		// The steady-state case, and the one that covers the `core/cli.ts` node-truth
 		// denorm update: it re-reads `latest` one line above its `writeExact`, so the
 		// session id is carried unchanged and the seat must not read stale on every
@@ -1029,7 +1029,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBe(FRESH_TICK);
 	});
 
-	it("P1i BOUNDARY: a sid → DIFFERENT sid re-attach is refused upstream, so the drop never sees it", () => {
+	it("P1i BOUNDARY: a sid → DIFFERENT sid re-attach is refused upstream, so the drop never sees it", async () => {
 		// NOT A DROP CRITERION — a boundary one, and it is here because I wrote the
 		// drop criterion first and it FAILED. `claimDescriptorIdentity` refuses to
 		// move an id between two known native sessions (`E-AMBIG`, "already owned
@@ -1058,7 +1058,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 		expect(heartbeat().read()["pij-a"]).toBe(FRESH_TICK);
 	});
 
-	it("P1i DISCLOSED OVER-DROP (CONDITIONAL): a later heartbeat write re-stamps the spawn-bound seat", () => {
+	it("P1i DISCLOSED OVER-DROP (CONDITIONAL): a later heartbeat write re-stamps the spawn-bound seat", async () => {
 		// NOT IN THE PACKET'S FOUR CASES — I found it checking them. The daemon's
 		// spawn-bind (`core/daemon/loop.ts`) calls `applyBinding` on a LIVE `pending`
 		// seat, setting `harnessSessionId` for the first time on what is the SAME
@@ -1107,7 +1107,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	});
 
 	// ─── AC-11 · the write law is unaffected ─────────────────────────────────
-	it("AC-11: an unrelated uncontested field still merges under the write law", () => {
+	it("AC-11: an unrelated uncontested field still merges under the write law", async () => {
 		const registry = newRegistry();
 		registry.write(descriptor({ id: "pij-a", harness: "claude", role: "coder" }));
 		heartbeat().write(["pij-a"], FRESH_TICK);
@@ -1120,7 +1120,7 @@ describe("FsRegistry tick-heartbeat overlay (pij#180 Fix A, plan 100 Phase 2)", 
 	});
 
 	// ─── a legacy descriptor that still carries its own stamp ────────────────
-	it("a pre-migration descriptor's own lastTickAt is honoured until it is rewritten", () => {
+	it("a pre-migration descriptor's own lastTickAt is honoured until it is rewritten", async () => {
 		// Written raw, because `write()` would scrub it — which is exactly the
 		// migration story: legacy stamps are read, then dropped on first rewrite.
 		writeFileSync(

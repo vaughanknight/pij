@@ -11,14 +11,23 @@
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
 import { FsAssignmentStore } from "./adapters/assignment-store.js";
 import { writeJsonAtomic } from "./adapters/atomic-file.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
-import { FsChannel } from "./adapters/channel.js";
+import { migrateFsInboxes, openChannel, sqliteOf } from "./adapters/channel-factory.js";
 import { DaemonTmux } from "./adapters/daemon-tmux.js";
 import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
@@ -31,6 +40,13 @@ import { TickScopedProcessStates } from "./adapters/process-states.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
+
+/** PoC: how long a typed pointer line is trusted before the daemon re-announces
+ *  an unread body (review §7 — long enough for a mid-turn seat to finish its
+ *  tool calls and run `pij inbox`). */
+const POINTER_LEASE_MS = 90_000;
+
 import { FsWatchStore } from "./adapters/watch-store.js";
 import { FsWatchdogGlobalStore, FsWatchdogStore } from "./adapters/watchdog-store.js";
 import { planOnceClose } from "./core/agent-peer.js";
@@ -89,7 +105,7 @@ import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/
 import { classifyReadiness } from "./core/readiness.js";
 import { persistDaemonWrite } from "./core/registry-write.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
-import type { HarnessKind, SessionDescriptor, SessionId } from "./core/types.js";
+import { type HarnessKind, ok, type SessionDescriptor, type SessionId } from "./core/types.js";
 import { autoStartBridgeForDaemon } from "./telegram/index.js";
 
 const TICK_MS = 600;
@@ -232,6 +248,8 @@ export class Daemon {
 	private lastTapSweepMs: number | undefined;
 	/** Re-entrancy guard for the fast delivery pass (plan 071 D2). */
 	private deliveringNow = false;
+	private readonly draining = new Set<string>();
+	private tickingNow = false;
 
 	/** Ports with the composer gate WELDED ON — see the constructor. */
 	private readonly ports: DaemonPorts;
@@ -336,7 +354,17 @@ export class Daemon {
 	}
 
 	/** One pass: rebuild the index, drive pending tmux spawns, drain bound inboxes. */
-	tick(): void {
+	async tick(): Promise<void> {
+		if (this.tickingNow) return; // never overlap two ticks
+		this.tickingNow = true;
+		try {
+			await this.tickLocked();
+		} finally {
+			this.tickingNow = false;
+		}
+	}
+
+	private async tickLocked(): Promise<void> {
 		const tickStartedAtMs = Date.now();
 		const tickAt = new Date(this.ports.now()).toISOString();
 		// One process-table capture per tick, taken lazily on the runtime axis's
@@ -723,7 +751,7 @@ export class Daemon {
 				// messages stay durable-unread in the inbox (the queue), nothing is
 				// marked read, and the sender's receipt stays `queued` until the
 				// post-compact injection emits a real `delivered`.
-				if (owns && !isCompacting(current, this.ports.now())) this.drainInbox(current.id);
+				if (owns && !isCompacting(current, this.ports.now())) await this.drainInbox(current.id);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : String(error);
 				this.log(`session ${d.id} tick error: ${detail}`);
@@ -794,24 +822,30 @@ export class Daemon {
 	 *  cadence would re-create the cost this pass exists to escape. A seat bound
 	 *  within the last tick therefore waits one tick for its first delivery — the
 	 *  tick's own drain covers exactly that case. */
-	deliverPass(): void {
+	async deliverPass(): Promise<void> {
 		if (this.deliveringNow) return; // never re-enter
 		this.deliveringNow = true;
 		try {
-			for (const d of this.index.all()) {
-				if (d.lifecycle !== "bound") continue;
-				if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) continue;
-				if (!d.paneId) continue;
+			const seats = this.index.all().filter((d) => {
+				if (d.lifecycle !== "bound") return false;
+				if (!daemonOwnsDelivery(d.harness ?? "pi", d.deliveryMode)) return false;
+				if (!d.paneId) return false;
 				// Same hold the tick honours: input injected mid-compaction is eaten by
 				// the harness's fresh-context reset, so mail stays durable-unread.
-				if (isCompacting(d, this.ports.now())) continue;
-				try {
-					this.drainInbox(d.id);
-				} catch (error) {
-					const detail = error instanceof Error ? error.message : String(error);
-					this.log(`delivery pass ${d.id}: ${detail}`);
-				}
-			}
+				return !isCompacting(d, this.ports.now());
+			});
+			// Seats drain concurrently (a socket await on one seat must not delay
+			// another); within a seat the drain is sequential, so order holds.
+			await Promise.all(
+				seats.map(async (d) => {
+					try {
+						await this.drainInbox(d.id);
+					} catch (error) {
+						const detail = error instanceof Error ? error.message : String(error);
+						this.log(`delivery pass ${d.id}: ${detail}`);
+					}
+				}),
+			);
 		} finally {
 			this.deliveringNow = false;
 		}
@@ -1010,7 +1044,16 @@ export class Daemon {
 	/** Read a bound tmux session's durable unread inbox, inject each user message,
 	 *  then mark it read after the injection outcome. Receipt envelopes are
 	 *  persisted as events before marking and are never injected. */
-	private drainInbox(id: string): void {
+	private drainInbox(id: string): Promise<void> {
+		// One drain per seat at a time: the delivery pass and the tick's reconciliation
+		// drain both call here, and an awaited socket send must not be overtaken by a
+		// second drain re-reading the same queued rows.
+		if (this.draining.has(id)) return Promise.resolve();
+		this.draining.add(id);
+		return this.drainInboxLocked(id).finally(() => this.draining.delete(id));
+	}
+
+	private async drainInboxLocked(id: string): Promise<void> {
 		const target = this.index.get(id);
 		if (!target?.paneId) return;
 
@@ -1040,7 +1083,12 @@ export class Daemon {
 			}
 		}
 
-		const listed = this.channel.listUnread(id);
+		// PoC: on the SQLite backend the daemon only acts on `queued` rows (a row
+		// with a pointer out, or a socket send in flight, is `injected`/`claimed`
+		// until acked or its lease expires); the fs backend keeps its unread scan.
+		const sq = this.channel instanceof SqliteQueue ? this.channel : undefined;
+		if (sq) sq.recoverStaleClaims();
+		const listed = sq ? ok(sq.listQueued(id)) : this.channel.listUnread(id);
 		if (!listed.ok) throw new Error(`${listed.code}: ${listed.message}`);
 		const messages: Array<{
 			messageId: string;
@@ -1080,13 +1128,14 @@ export class Daemon {
 			) {
 				this.watchdogManager.beforeTmuxInject(target.id, message, nowMs);
 			}
-			const consumed = drainTmuxInbox(
+			const consumed = await drainTmuxInbox(
 				target,
 				[message],
 				this.ports,
 				this.buffer,
 				undefined, // self-injection is marked by the port wrapper, post-send
 				this.composerHolds,
+				{ pointer: sq !== undefined },
 			);
 			// A remote `/compact` just went into the pane: mark the compact window
 			// (DL-004) so drain HOLDS until the pane reads ready again — the trigger
@@ -1104,6 +1153,15 @@ export class Daemon {
 				}
 			}
 			for (const item of consumed) {
+				if (item.via === "pointer" && sq) {
+					// Told, not read: the body waits in the store for `pij inbox`. The
+					// lease re-announces if the seat never pulls (review §7 AckWait).
+					const seq = sq.seqOf(item.messageId);
+					if (seq !== undefined) sq.settle(seq, "injected", { leaseMs: POINTER_LEASE_MS });
+					this.buffer.forget(item.messageId);
+					consumedCount += 1;
+					continue;
+				}
 				const marked = this.channel.markRead(id, item.messageId, {
 					messageId: item.messageId,
 					readAt,
@@ -1262,8 +1320,20 @@ export class Daemon {
 		) {
 			return;
 		}
-		const listings = this.ports.listPanes();
-		this.tickLivePanes = new Set(listings.map((listing) => listing.paneId));
+		const allListings = this.ports.listPanes();
+		// tickLivePanes stays the FULL server set — death detection asks "is this
+		// pane still alive", which is a fact about the server, not about ownership.
+		this.tickLivePanes = new Set(allListings.map((listing) => listing.paneId));
+		// PoC day-2 item 7: only ever `pipe-pane`/tap panes THIS daemon owns (a
+		// registered, non-dissolved seat). The old code tapped EVERY pane in the
+		// tmux server, so a second daemon on a shared server stole the first's
+		// taps — the isolation hazard the review flagged (§11). Filtering here
+		// (rather than in the adapter) keeps the tap surface exactly the fleet.
+		const ownedPaneIds = new Set<string>();
+		for (const d of this.index.all()) {
+			if (d.paneId && d.lifecycle !== "dissolved") ownedPaneIds.add(d.paneId);
+		}
+		const listings = allListings.filter((listing) => ownedPaneIds.has(listing.paneId));
 		const diff = this.paneSignals.reconcile(listings);
 		this.sweepOrphanedTaps(listings);
 		for (const pane of diff.added) {
@@ -1451,13 +1521,40 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		}
 	}
 
-	const daemon = new Daemon(
-		pijHome,
-		new DaemonTmux(),
-		new FsRegistry(pijHome),
-		new FsChannel(pijHome),
-		log,
-	);
+	const channel = openChannel(pijHome);
+	const sqlite = sqliteOf(channel);
+	if (sqlite) {
+		// First-start fs→sqlite migration (Amendment 4): carry any unread fs inbox
+		// mail into the queue before delivery begins. Idempotent — a second start
+		// imports nothing. The fs files stay in place (rollback-safe).
+		const migrated = migrateFsInboxes(pijHome, sqlite, () => {
+			const ids = new Set<string>();
+			for (const d of new FsRegistry(pijHome).list()) ids.add(d.id);
+			try {
+				for (const name of readdirSync(pijHome)) {
+					if (existsSync(join(pijHome, name, "inbox"))) ids.add(name);
+				}
+			} catch {
+				/* pijHome unreadable → registry set only */
+			}
+			return [...ids];
+		});
+		// A claim without a live daemon is meaningless: put every in-flight row
+		// back to `queued` so a crash between claim and inject redelivers.
+		const reset =
+			channel instanceof SqliteQueue ? channel.resetClaimsOnStart() : sqlite.resetClaimsOnStart();
+		const backendName = channel instanceof SqliteQueue ? "sqlite" : "dual (sqlite+fs mirror)";
+		log(
+			`queue backend: ${backendName} (${sqlite.dbPath})` +
+				(migrated.imported > 0
+					? ` — migrated ${migrated.imported} fs message(s) from ${migrated.seats} seat(s)`
+					: "") +
+				(reset > 0 ? ` — re-queued ${reset} in-flight message(s)` : ""),
+		);
+	} else {
+		log("queue backend: fs (per-message JSON inbox files)");
+	}
+	const daemon = new Daemon(pijHome, new DaemonTmux(), new FsRegistry(pijHome), channel, log);
 	log(
 		`pij daemon up (pid ${process.pid}, home ${pijHome}) — watching for pending spawns + tmux inboxes`,
 	);
@@ -1472,24 +1569,20 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		log(`inline temp sweep skipped: ${(e as Error).message}`);
 	}
 	const timer = setInterval(() => {
-		try {
-			daemon.tick();
+		daemon
+			.tick()
 			// Heartbeat rider (#40 Defect 2): refresh the lock mtime AFTER a successful
 			// tick — a wedged tick (threw) must not advertise liveness.
-			touchDaemonHeartbeat(lockPath);
-		} catch (e) {
-			log(`tick error: ${(e as Error).message}`);
-		}
+			.then(() => touchDaemonHeartbeat(lockPath))
+			.catch((e: unknown) => log(`tick error: ${(e as Error).message}`));
 	}, opts.tickMs ?? TICK_MS);
 
 	// Delivery on its OWN timer (plan 071 D2), so reconciliation cost and delivery
 	// latency stop being the same number.
 	const deliveryTimer = setInterval(() => {
-		try {
-			daemon.deliverPass();
-		} catch (e) {
+		daemon.deliverPass().catch((e: unknown) => {
 			log(`delivery pass error: ${(e as Error).message}`);
-		}
+		});
 	}, opts.deliveryMs ?? DELIVERY_PASS_MS);
 
 	// Auto-start the Telegram bridge IN-PROCESS when a scoped telegram.env is present

@@ -177,7 +177,7 @@ describe("PeerWatchManager", () => {
 		expect(mgr.activeCount()).toBe(0);
 	});
 
-	it("mtime-gates sidecar reads while the revision is unchanged", () => {
+	it("mtime-gates sidecar reads while the revision is unchanged", async () => {
 		const store = new MemoryWatchStore([sub()]);
 		const watch = fakeWatchDeps([]);
 		const mgr = new PeerWatchManager({
@@ -413,7 +413,7 @@ describe("PeerWatchManager — .gitignore honoring (WS-002, AC-07)", () => {
 });
 
 describe("Daemon receipt guard for synthetic watch sender", () => {
-	it("does not create a phantom pij-watch inbox after a watch delivery is injected", () => {
+	it("does not create a phantom pij-watch inbox after a watch delivery is injected", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watch-test-"));
 		const registry = new FsRegistry(home);
 		registry.write(
@@ -441,7 +441,7 @@ describe("Daemon receipt guard for synthetic watch sender", () => {
 			isAlive: () => true,
 		};
 		try {
-			new Daemon(home, ports, registry, new FsChannel(home)).tick();
+			await new Daemon(home, ports, registry, new FsChannel(home)).tick();
 			let names: string[] = [];
 			try {
 				names = readdirSync(join(home, "pij-watch", "inbox"));

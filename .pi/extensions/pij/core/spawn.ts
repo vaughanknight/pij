@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 // pij-messaging — pure spawn-command builder + ready-body codec.
 //
 // Pi-free, child_process-free (AC-08). The argv/env surface the rest of
@@ -338,6 +339,13 @@ export interface ControlSpawnInput {
 	 *  emits `--session-id <forkSessionId>` so the daemon binds deterministically
 	 *  (the planned-id path, no transcript discovery). Set with `branchFrom`. */
 	readonly forkSessionId?: string;
+	/** PoC isolation: extra env for the pane (e.g. PIJ_HOME / PIJ_QUEUE_BACKEND /
+	 *  PATH so a seat spawned from an isolated pij home talks to THAT home and
+	 *  THAT CLI). Merged last; never overrides the pij identity keys. */
+	readonly passthroughEnv?: Readonly<Record<string, string>>;
+	/** PoC: copilot only — spawn with `--ui-server --port <rpcPort>` so the daemon
+	 *  can deliver over JSON-RPC instead of typing. */
+	readonly rpcPort?: number;
 }
 
 /** Input to {@link buildPendingDescriptor}. */
@@ -383,6 +391,8 @@ export interface PendingDescriptorInput {
 	readonly effort?: string;
 	/** Explicit opaque plan identifier attested at spawn. */
 	readonly planId?: string;
+	/** PoC: copilot embedded JSON-RPC port (see ControlSpawnInput.rpcPort). */
+	readonly rpcPort?: number;
 }
 
 /** Stable input for the registry-owned pre-bind memorable-id reservation. */
@@ -482,8 +492,25 @@ export function buildControlSpawnCommand(input: ControlSpawnInput): SpawnCommand
 		env.HARNESS_PLAN_ID = input.planId;
 		env.PIJ_PLAN_ID = input.planId;
 	}
+	if (input.harness === "copilot" && input.rpcPort !== undefined) {
+		args.push("--ui-server", "--port", String(input.rpcPort));
+	}
+	for (const [k, v] of Object.entries(input.passthroughEnv ?? {})) {
+		if (!(k in env)) env[k] = v;
+	}
 	const cmd = input.harness === "claude" ? "claude" : input.harness;
 	return { cmd, args, env };
+}
+
+/** The env keys an ISOLATED pij home (PIJ_HOME set) must hand to the seats it
+ *  spawns, so their `pij …` calls land in the same home, the same queue backend
+ *  and the same CLI build. Empty when not isolated — the fleet path is unchanged. */
+export function isolationPassthroughEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+	if (!env.PIJ_HOME) return {};
+	const out: Record<string, string> = { PIJ_HOME: env.PIJ_HOME };
+	if (env.PIJ_QUEUE_BACKEND) out.PIJ_QUEUE_BACKEND = env.PIJ_QUEUE_BACKEND;
+	if (env.PATH) out.PATH = env.PATH;
+	return out;
 }
 
 /**
@@ -513,6 +540,7 @@ export function buildPendingDescriptor(input: PendingDescriptorInput): SessionDe
 				? { boundProvider: "github-copilot" }
 				: {}),
 		...(input.effort !== undefined ? { effort: input.effort } : {}),
+		...(input.rpcPort !== undefined ? { rpcPort: input.rpcPort } : {}),
 		...(input.planId !== undefined ? { planId: input.planId } : {}),
 		...(input.spawnedBy ? { spawnedBy: input.spawnedBy } : {}),
 		...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
@@ -1112,4 +1140,18 @@ export function buildEffortWarning(
 	if (r.ok) return null;
 	const supported = r.levels.length ? ` — ${model} supports: ${r.levels.join(", ")}` : "";
 	return `warning: effort '${effort}' may be unsupported for '${model}'${supported}; spawn continues`;
+}
+
+/** Pick a free loopback TCP port synchronously (a short node child binds :0 and
+ *  reports it). Used at spawn for copilot's `--ui-server --port`. `undefined`
+ *  when it cannot be determined — the seat then spawns without the server. */
+export function pickFreePortSync(
+	run: (script: string) => string = (script) =>
+		spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 5_000 }).stdout,
+): number | undefined {
+	const out = run(
+		'const s=require("node:net").createServer();s.listen(0,"127.0.0.1",()=>{process.stdout.write(String(s.address().port));s.close()})',
+	);
+	const port = Number((out ?? "").trim());
+	return Number.isInteger(port) && port > 0 ? port : undefined;
 }

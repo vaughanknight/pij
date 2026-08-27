@@ -23,12 +23,12 @@ const NOW_MS = Date.parse("2026-07-25T12:00:00.000Z");
 let home: string;
 let sent: Array<{ pane: string; text: string }>;
 
-beforeEach(() => {
+beforeEach(async () => {
 	home = mkdtempSync(join(tmpdir(), "pij-durable-"));
 	sent = [];
 	failNextSends = 0;
 });
-afterEach(() => {
+afterEach(async () => {
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -87,7 +87,7 @@ describe("a send that never landed keeps its durable copy", () => {
 	// (replay would duplicate a turn, so consuming is right) and "threw BEFORE
 	// submission, nothing typed" (consuming destroys the only copy). The caller
 	// consumed both. Plan 071 D7 splits the second out as `failed`.
-	it("a bound seat whose send FAILS keeps the message unread, and a restart delivers it", () => {
+	it("a bound seat whose send FAILS keeps the message unread, and a restart delivers it", async () => {
 		new FsRegistry(home).write(
 			seat({ id: "pij-worker", lifecycle: "bound", harnessSessionId: "native-1" }),
 		);
@@ -95,7 +95,7 @@ describe("a send that never landed keeps its durable copy", () => {
 
 		failNextSends = 1;
 		const first = bootDaemon();
-		first.tick();
+		await first.tick();
 		expect(injected().join("\n")).not.toContain("47 ack"); // the send threw
 
 		// The durable copy MUST still be there — this is the whole fix.
@@ -107,14 +107,14 @@ describe("a send that never landed keeps its durable copy", () => {
 		first.dispose();
 
 		// Restart: a fresh daemon, empty SendBuffer, working tmux.
-		bootDaemon().tick();
+		await bootDaemon().tick();
 		expect(injected().filter((t) => t.includes("47 ack"))).toHaveLength(1);
 	});
 
 	// CONTROL: an `unverified` send (payload WAS typed) still consumes, because
 	// replaying it could duplicate an already-accepted turn. If this ever starts
 	// retrying, the fix has over-corrected loss into duplication.
-	it("control — an UNVERIFIED send still consumes (replay would duplicate a turn)", () => {
+	it("control — an UNVERIFIED send still consumes (replay would duplicate a turn)", async () => {
 		new FsRegistry(home).write(
 			seat({ id: "pij-worker", lifecycle: "bound", harnessSessionId: "native-1" }),
 		);
@@ -133,7 +133,7 @@ describe("a send that never landed keeps its durable copy", () => {
 			new FsChannel(home),
 			() => {},
 		);
-		daemon.tick();
+		await daemon.tick();
 
 		const unread = new FsChannel(home).listUnread("pij-worker");
 		expect(unread.ok).toBe(true);
@@ -141,7 +141,7 @@ describe("a send that never landed keeps its durable copy", () => {
 		expect(unread.value.map((m) => m.body)).not.toContain("typed once");
 	});
 
-	it("a failed send is retried on the very next pass, not only after a restart", () => {
+	it("a failed send is retried on the very next pass, not only after a restart", async () => {
 		new FsRegistry(home).write(
 			seat({ id: "pij-worker", lifecycle: "bound", harnessSessionId: "native-1" }),
 		);
@@ -149,21 +149,21 @@ describe("a send that never landed keeps its durable copy", () => {
 
 		failNextSends = 1;
 		const daemon = bootDaemon();
-		daemon.tick();
+		await daemon.tick();
 		expect(injected().filter((t) => t.includes("retry me"))).toHaveLength(0);
 
-		daemon.tick();
+		await daemon.tick();
 		expect(injected().filter((t) => t.includes("retry me"))).toHaveLength(1);
 
 		// …and exactly once thereafter.
-		daemon.tick();
-		daemon.deliverPass();
+		await daemon.tick();
+		await daemon.deliverPass();
 		expect(injected().filter((t) => t.includes("retry me"))).toHaveLength(1);
 	});
 });
 
 describe("a message queued for an unbound seat survives a daemon restart", () => {
-	it("delivers EXACTLY ONCE after the daemon is killed and restarted", () => {
+	it("delivers EXACTLY ONCE after the daemon is killed and restarted", async () => {
 		const registry = new FsRegistry(home);
 		// Unbound: this is the branch that used to buffer-and-consume.
 		registry.write(seat({ id: "pij-worker", lifecycle: "pending" }));
@@ -171,31 +171,31 @@ describe("a message queued for an unbound seat survives a daemon restart", () =>
 
 		// Daemon #1 sees it while the seat is still unbound, then dies.
 		const first = bootDaemon();
-		first.tick();
+		await first.tick();
 		expect(injected().join("\n")).not.toContain("47 ack"); // correctly not injected yet
 		first.dispose();
 
 		// Restart. The SendBuffer is gone; only the inbox file can carry the message.
 		registry.write(seat({ id: "pij-worker", lifecycle: "bound", harnessSessionId: "native-1" }));
 		const second = bootDaemon();
-		second.tick();
+		await second.tick();
 
 		const delivered = injected().filter((text) => text.includes("47 ack"));
 		expect(delivered).toHaveLength(1);
 
 		// And it stays exactly one — no redelivery on subsequent passes.
-		second.tick();
-		second.deliverPass();
+		await second.tick();
+		await second.deliverPass();
 		expect(injected().filter((text) => text.includes("47 ack"))).toHaveLength(1);
 	});
 
 	// CONTROL: the message must be genuinely UNREAD while buffered. If this ever
 	// passes with the message marked read, the durability above is accidental.
-	it("control — a buffered message is still listed as unread on disk", () => {
+	it("control — a buffered message is still listed as unread on disk", async () => {
 		new FsRegistry(home).write(seat({ id: "pij-worker", lifecycle: "pending" }));
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "47 ack" });
 
-		bootDaemon().tick();
+		await bootDaemon().tick();
 
 		const unread = new FsChannel(home).listUnread("pij-worker");
 		expect(unread.ok).toBe(true);
@@ -205,31 +205,31 @@ describe("a message queued for an unbound seat survives a daemon restart", () =>
 
 	// CONTROL for exactly-once: an ALREADY-injected message must not come back
 	// after a restart, or the fix would have traded loss for duplication.
-	it("control — a delivered message is NOT redelivered after a restart", () => {
+	it("control — a delivered message is NOT redelivered after a restart", async () => {
 		new FsRegistry(home).write(
 			seat({ id: "pij-worker", lifecycle: "bound", harnessSessionId: "native-1" }),
 		);
 		new FsChannel(home).deliver({ from: "pij-boss", to: "pij-worker", body: "already landed" });
 
 		const first = bootDaemon();
-		first.tick();
+		await first.tick();
 		expect(injected().filter((t) => t.includes("already landed"))).toHaveLength(1);
 		first.dispose();
 
-		bootDaemon().tick();
+		await bootDaemon().tick();
 		expect(injected().filter((t) => t.includes("already landed"))).toHaveLength(1);
 	});
 
-	it("preserves arrival order across the restart", () => {
+	it("preserves arrival order across the restart", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(seat({ id: "pij-worker", lifecycle: "pending" }));
 		const channel = new FsChannel(home);
 		channel.deliver({ from: "pij-boss", to: "pij-worker", body: "first message" });
 		channel.deliver({ from: "pij-boss", to: "pij-worker", body: "second message" });
 
-		bootDaemon().tick();
+		await bootDaemon().tick();
 		registry.write(seat({ id: "pij-worker", lifecycle: "bound", harnessSessionId: "native-1" }));
-		bootDaemon().tick();
+		await bootDaemon().tick();
 
 		const order = injected().join("\n");
 		expect(order).toContain("first message");

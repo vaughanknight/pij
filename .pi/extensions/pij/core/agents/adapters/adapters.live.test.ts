@@ -50,7 +50,7 @@ function writeLivePack(): void {
 	);
 }
 
-describe.skipIf(!LIVE)("agent-runtime adapters — live (AC-07)", () => {
+describe.skipIf(!LIVE)("agent-runtime adapters — live (AC-07)", async () => {
 	beforeAll(() => {
 		agentsDir = mkdtempSync(join(tmpdir(), "pij-agent-live-"));
 		writeLivePack();

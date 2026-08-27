@@ -33,6 +33,7 @@ import { NodeBackgroundLauncher } from "./adapters/background-launcher.js";
 import { FsBatonStore } from "./adapters/baton-store.js";
 import { FsBgJobStore } from "./adapters/bg-job-store.js";
 import { FsChannel } from "./adapters/channel.js";
+import { type MessageChannel, openChannel } from "./adapters/channel-factory.js";
 import { ShellChoreProbe } from "./adapters/chore-probe.js";
 import { FsChoreStore } from "./adapters/chore-store.js";
 import { FsContextReader } from "./adapters/context-reader.js";
@@ -49,6 +50,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsProjectStore } from "./adapters/project-store.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
+import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { capturePane, execFileRunner, pressKey, typeLiteral } from "./adapters/tmux-keys.js";
 import { FsWatchStore } from "./adapters/watch-store.js";
@@ -209,11 +211,13 @@ import {
 	buildSpawnOutput,
 	buildSpawnWarning,
 	deriveCallerParent,
+	isolationPassthroughEnv,
 	livePeerPanes,
 	markCompactingSelf,
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseSpawnArgs,
+	pickFreePortSync,
 	planBranch,
 	planPlacement,
 	renderSpawnReceipt,
@@ -506,7 +510,7 @@ function pijVersion(): string {
 	}
 }
 
-function consumeCurrentInbox(self: SessionId, channel: FsChannel) {
+function consumeCurrentInbox(self: SessionId, channel: MessageChannel) {
 	const consumed = consumeInbox({
 		inbox: channel,
 		self,
@@ -516,9 +520,138 @@ function consumeCurrentInbox(self: SessionId, channel: FsChannel) {
 	return consumed.value;
 }
 
+/** `pij queue [<id>] [--to <id>] [--since <seq>] [--last N] [--json]` — read-only
+ *  view of the SQLite delivery queue (PoC day-2 item 2). Renders one line per
+ *  message with its live state (queued/claimed/injected/acked/parked) and the
+ *  receipt trail, so an operator can see what the review said `pij tail` could
+ *  not. Only meaningful on the SQLite backend; the fs backend has no such table
+ *  and says so. Never mutates. */
+/** `--as <id>` anywhere in argv → process.env.PIJ_SENDER for this invocation,
+ *  then remove the flag+value from process.argv so downstream parse is clean.
+ *  A no-op when absent. (PoC day-2 item 3.) */
+function applyAsOverride(): void {
+	const i = process.argv.indexOf("--as");
+	if (i >= 0 && i + 1 < process.argv.length) {
+		const id = process.argv[i + 1];
+		if (id && !id.startsWith("--")) {
+			process.env.PIJ_SENDER = id;
+			process.argv.splice(i, 2);
+		}
+	}
+}
+
+/** `pij queue migrate [--dry-run] [--json]` — import every unread fs inbox
+ *  message (`~/.pij/<id>/inbox/msg-*.json` with no read marker) into the SQLite
+ *  queue, idempotently. The safe half of the fs→sqlite cutover (PoC day-2 item
+ *  6): run this, then flip the backend to `sqlite`/`dual`. Reads fs, writes only
+ *  sqlite; never deletes the fs files (a rollback stays possible). */
+function runQueueMigrate(argv: readonly string[]): void {
+	const json = argv.includes("--json");
+	const dryRun = argv.includes("--dry-run");
+	const registry = new FsRegistry(pijHome);
+	const fs = new FsChannel(pijHome);
+	const seatIds = new Set<string>();
+	for (const d of registry.list()) seatIds.add(d.id);
+	// Also any inbox dir on disk whose seat is archived/absent from the hot tier.
+	try {
+		for (const name of readdirSync(pijHome)) {
+			if (existsSync(join(pijHome, name, "inbox"))) seatIds.add(name);
+		}
+	} catch {
+		/* pijHome unreadable → just use the registry set */
+	}
+	const perSeat: Array<{ id: string; unread: number; imported: number; skipped: number }> = [];
+	let totalUnread = 0;
+	let totalImported = 0;
+	const sqlite = dryRun ? undefined : new SqliteQueue(pijHome);
+	for (const id of [...seatIds].sort()) {
+		const listed = fs.listUnread(id);
+		if (!listed.ok || listed.value.length === 0) continue;
+		totalUnread += listed.value.length;
+		if (sqlite) {
+			const r = sqlite.importUnread(listed.value);
+			totalImported += r.imported;
+			perSeat.push({ id, unread: listed.value.length, imported: r.imported, skipped: r.skipped });
+		} else {
+			perSeat.push({ id, unread: listed.value.length, imported: 0, skipped: 0 });
+		}
+	}
+	sqlite?.close();
+	if (json) {
+		process.stdout.write(`${JSON.stringify({ dryRun, totalUnread, totalImported, perSeat })}\n`);
+		process.exit(0);
+	}
+	if (perSeat.length === 0) {
+		process.stdout.write("no unread fs inbox messages to migrate\n");
+		process.exit(0);
+	}
+	for (const s of perSeat) {
+		process.stdout.write(
+			dryRun
+				? `${s.id}: ${s.unread} unread (would import)\n`
+				: `${s.id}: imported ${s.imported}/${s.unread} (skipped ${s.skipped})\n`,
+		);
+	}
+	process.stdout.write(
+		dryRun
+			? `dry-run: ${totalUnread} unread across ${perSeat.length} seat(s) — re-run without --dry-run to import\n`
+			: `migrated ${totalImported} message(s) into ${pijHome}/queue/pij.sqlite; fs files left in place (rollback-safe)\n`,
+	);
+	process.exit(0);
+}
+
+function runQueue(argv: readonly string[]): void {
+	const pad = (v: string, n: number): string => (v.length >= n ? v : v + " ".repeat(n - v.length));
+	const json = argv.includes("--json");
+	const positional = argv.find((a) => !a.startsWith("--"));
+	const flag = (name: string): string | undefined => {
+		const i = argv.indexOf(name);
+		return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+	};
+	const to = flag("--to") ?? positional;
+	const sinceRaw = flag("--since");
+	const lastRaw = flag("--last");
+	const channel = openChannel(pijHome);
+	if (!(channel instanceof SqliteQueue)) {
+		const msg =
+			"pij queue needs the SQLite backend (PIJ_QUEUE_BACKEND=sqlite). The fs backend keeps per-message JSON inbox files — use `pij tail <id> --type receipt` and `ls ~/.pij/<id>/inbox`.";
+		if (json) process.stdout.write(`${JSON.stringify({ error: msg })}\n`);
+		else process.stdout.write(`${msg}\n`);
+		process.exit(json ? 0 : 1);
+	}
+	const rows = channel.summary({
+		...(to ? { to } : {}),
+		...(sinceRaw !== undefined ? { sinceSeq: Number(sinceRaw) } : {}),
+		...(lastRaw !== undefined ? { limit: Number(lastRaw) } : {}),
+	});
+	channel.close();
+	if (json) {
+		process.stdout.write(`${JSON.stringify(rows)}\n`);
+		process.exit(0);
+	}
+	if (rows.length === 0) {
+		process.stdout.write(`(queue empty${to ? ` for ${to}` : ""})\n`);
+		process.exit(0);
+	}
+	const now = Date.now();
+	const head = `${pad("seq", 5)} ${pad("state", 9)} ${pad("att", 3)} ${pad("from→to", 34)} ${pad("bytes", 6)} kind · trail`;
+	const lines = rows.map((r) => {
+		const lease =
+			r.leaseUntil && r.state !== "acked"
+				? r.leaseUntil > now
+					? ` lease ${Math.round((r.leaseUntil - now) / 1000)}s`
+					: " lease EXPIRED"
+				: "";
+		const trail = r.trail.map((t) => t.state).join("→");
+		return `${pad(String(r.seq), 5)} ${pad(r.state, 9)} ${pad(String(r.attempt), 3)} ${pad(`${r.from}→${r.to}`, 34)} ${pad(String(r.bytes), 6)} ${r.kind} · ${trail}${lease}`;
+	});
+	process.stdout.write(`${head}\n${lines.join("\n")}\n`);
+	process.exit(0);
+}
+
 function waitForInbox(
 	self: SessionId,
-	channel: FsChannel,
+	channel: MessageChannel,
 	waitMs: number | undefined,
 	json: boolean,
 ): void {
@@ -596,7 +729,7 @@ function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
 
 function deps(): CliDeps {
 	const registry = new FsRegistry(pijHome);
-	const channel = new FsChannel(pijHome);
+	const channel = openChannel(pijHome);
 	const cwd = process.cwd();
 	const repository = new GitRepositoryAdapter();
 	const commonDir = repository.gitCommonDir(cwd);
@@ -763,6 +896,25 @@ function isPushedSeat(descriptor: SessionDescriptor): boolean {
 }
 
 function ensureCurrentRegistration(registry: FsRegistry): Result<CurrentRegistration> {
+	// PIJ_SENDER escape hatch (PoC day-2 item 3): read this seat's inbox AS the
+	// declared id, skipping ambient harness detection. Must name a registered
+	// pull peer (a push seat is driven by the daemon and must not self-inbox).
+	const senderOverride = process.env.PIJ_SENDER?.trim();
+	if (senderOverride) {
+		const descriptor = registry.read(senderOverride);
+		if (!descriptor) {
+			return err("E-NOID", `PIJ_SENDER=${senderOverride} is not a registered session`);
+		}
+		return ok({
+			descriptor,
+			identity: {
+				harness: descriptor.harness ?? "pi",
+				harnessSessionId: descriptor.harnessSessionId ?? senderOverride,
+				...(descriptor.transcriptPath ? { transcriptPath: descriptor.transcriptPath } : {}),
+			},
+			existing: true,
+		});
+	}
 	const identity = resolveAmbientIdentity();
 	if (!identity.ok) return identity;
 	const currentPane =
@@ -870,7 +1022,7 @@ function failInbox(code: string, message: string): never {
 function executeInboxActions(
 	self: SessionId,
 	actions: readonly InboxAction[],
-	channel: FsChannel,
+	channel: MessageChannel,
 ): void {
 	const log = new FsEventLog(pijHome, self);
 	for (const action of actions) {
@@ -901,7 +1053,7 @@ function executeInboxActions(
 function settleInboxResult(
 	result: InboxResult,
 	json: boolean,
-	channel: FsChannel,
+	channel: MessageChannel,
 	renderEmpty: boolean,
 ): boolean {
 	const hasMessages = result.messages.length > 0;
@@ -947,8 +1099,33 @@ function runInbox(argv: readonly string[]): void {
 			`this seat is a pushed-delivery peer (${registration.value.descriptor.harness ?? "pi"}, pane ${registration.value.descriptor.paneId ?? "unknown"}); it receives turns pushed by the daemon and must not block on 'pij inbox --wait'. End your turn instead.`,
 		);
 	}
-	const channel = new FsChannel(pijHome);
+	const channel = openChannel(pijHome);
 	const consumed = consumeCurrentInbox(registration.value.descriptor.id, channel);
+	// --inject (PoC day-2 item 5): the shape a SessionStart/UserPromptSubmit hook
+	// runs. Prints pending bodies as an injectable block and acks them; SILENT and
+	// exit 0 when nothing is pending, so a per-prompt hook adds no noise. This is
+	// what lets a keystroke (or the daemon's pointer line) drain the inbox into the
+	// model's context without the model having to run `pij inbox` itself.
+	if (parsed.value.inject) {
+		if (consumed.messages.length > 0) {
+			if (parsed.value.json) {
+				process.stdout.write(`${renderInboxResult(consumed, true)}\n`);
+			} else {
+				const bodies = consumed.messages
+					.map((m) => {
+						const cmd = m.command ? ` (command: /${m.command})` : "";
+						return `[pij from ${m.from}] ${m.body}${cmd}`;
+					})
+					.join("\n");
+				process.stdout.write(
+					`You have ${consumed.messages.length} new pij message(s):\n${bodies}\n`,
+				);
+			}
+		}
+		executeInboxActions(consumed.self, consumed.actions, channel);
+		if (consumed.failure) failInbox(consumed.failure.code, consumed.failure.message);
+		process.exit(0);
+	}
 	if (consumed.messages.length > 0) {
 		settleInboxResult(consumed, parsed.value.json, channel, false);
 		process.exit(0);
@@ -1882,6 +2059,11 @@ function runRevive(argv: readonly string[]): void {
 					),
 				].filter(readableRegularFile)
 			: [];
+	// PoC day-2 item 4: a real (non-print) copilot revive re-opens its embedded
+	// JSON-RPC server on a fresh loopback port; --print mutates nothing so it
+	// gets no port (the printed command is advisory).
+	const reviveRpcPort =
+		descriptor?.harness === "copilot" && !parsed.value.print ? pickFreePortSync() : undefined;
 	const plan = planRevive(
 		descriptor,
 		{
@@ -1900,6 +2082,7 @@ function runRevive(argv: readonly string[]): void {
 				: { attachmentReason: uncertaintyReason(attachmentProbe.probe) }),
 			print: parsed.value.print,
 			assumeDead: parsed.value.assumeDead,
+			...(reviveRpcPort !== undefined ? { rpcPort: reviveRpcPort } : {}),
 		},
 	);
 	if (!plan.ok) {
@@ -2016,7 +2199,9 @@ function runRevive(argv: readonly string[]): void {
 				nowIso: new Date().toISOString(),
 				reviverId,
 			});
-			const persisted = registry.revive(revived);
+			const persisted = registry.revive(
+				reviveRpcPort !== undefined ? { ...revived, rpcPort: reviveRpcPort } : revived,
+			);
 			if (!persisted.ok) {
 				attachExpectations.remove(attachSpawnId);
 				process.stderr.write(`${persisted.code}: ${persisted.message}\n`);
@@ -2120,7 +2305,9 @@ function runRevive(argv: readonly string[]): void {
 			nowIso: new Date().toISOString(),
 			reviverId,
 		});
-		const persisted = registry.revive(revived);
+		const persisted = registry.revive(
+			reviveRpcPort !== undefined ? { ...revived, rpcPort: reviveRpcPort } : revived,
+		);
 		if (!persisted.ok) {
 			tmux.killPane(paneId);
 			expectations.remove(spawnId);
@@ -2412,7 +2599,13 @@ function runSpawn(argv: readonly string[]): void {
 		process.exit(2);
 	}
 	const pijId = reserved.value.id;
+	// PoC (poc/comms-sqlite-socket): a copilot seat gets an embedded JSON-RPC
+	// server on a free loopback port so the daemon can deliver bodies without
+	// typing (see adapters/copilot-rpc.ts). Undefined ⇒ legacy typed delivery.
+	const rpcPort = req.value.harness === "copilot" ? pickFreePortSync() : undefined;
 	const spawnCmd = buildControlSpawnCommand({
+		passthroughEnv: isolationPassthroughEnv(process.env),
+		...(rpcPort !== undefined ? { rpcPort } : {}),
 		harness: req.value.harness,
 		pijId,
 		cwd,
@@ -2499,6 +2692,7 @@ function runSpawn(argv: readonly string[]): void {
 	const pending = buildPendingDescriptor({
 		pijId,
 		paneId,
+		...(rpcPort !== undefined ? { rpcPort } : {}),
 		windowId: split.value.windowId,
 		cwd,
 		harness: req.value.harness,
@@ -2536,7 +2730,7 @@ function runSpawn(argv: readonly string[]): void {
 	// instead — the daemon injects it as the first turn after bind, exactly like
 	// an agent packet pointer (daemon.ts drainInbox). Env stays for the pi path.
 	if (req.value.task !== undefined) {
-		new FsChannel(pijHome).deliver({
+		openChannel(pijHome).deliver({
 			from: parentId && parentId.trim() !== "" ? parentId : pijId,
 			to: pijId,
 			body: req.value.task,
@@ -3512,7 +3706,7 @@ function renderBatonNotice(notice: BatonNotice): string {
 class CliBatonNoticeSink implements BatonNoticeSink {
 	constructor(
 		private readonly registry: FsRegistry,
-		private readonly channel: FsChannel,
+		private readonly channel: MessageChannel,
 		private readonly proc: NodeProcess,
 	) {}
 
@@ -3595,7 +3789,7 @@ function runOrchestrationVerb(args: string[]): void {
 	}
 	const store = new FsBatonStore(pijHome);
 	const registry = new FsRegistry(pijHome);
-	const channel = new FsChannel(pijHome);
+	const channel = openChannel(pijHome);
 	const proc = new NodeProcess();
 	const actor = orchestrationActor(registry);
 	const designationAudit = createOrchestrationDesignationAudit({ ...deps(), registry }, actor);
@@ -3799,6 +3993,7 @@ function spawnAgentPane(
 		}
 	}
 	const base = buildControlSpawnCommand({
+		passthroughEnv: isolationPassthroughEnv(process.env),
 		harness: plan.harness,
 		pijId: plan.id,
 		cwd,
@@ -3986,7 +4181,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	const { packetPath } = finalizeAgentSpawn(plan, paneRes.pane, {
 		pijHome,
 		registry: reg,
-		channel: new FsChannel(pijHome),
+		channel: openChannel(pijHome),
 		cwd,
 	});
 	const spawnedDescriptor = reg.read(id);
@@ -4071,7 +4266,7 @@ function runAgentReport(cmd: ParsedAgentCommand): void {
 	const res = executeAgentReport(selfRes.value, payload, {
 		pijHome,
 		registry: reg,
-		channel: new FsChannel(pijHome),
+		channel: openChannel(pijHome),
 		now: () => Date.now(),
 	});
 	if (!res.ok) {
@@ -4270,8 +4465,19 @@ function main(): void {
 	}
 	// Inbox registration is the one messaging surface allowed to create PIJ_HOME,
 	// so it must run before the ordinary E-NOREG guard.
+	// `--as <id>` on inbox/send is a one-call PIJ_SENDER (PoC day-2 item 3): strip
+	// it here and export, so the pure resolvers below see a declared sender.
+	applyAsOverride();
 	if (top === "inbox") {
 		runInbox(process.argv.slice(3));
+		return;
+	}
+	if (top === "queue") {
+		if (process.argv[3] === "migrate") {
+			runQueueMigrate(process.argv.slice(4));
+			return;
+		}
+		runQueue(process.argv.slice(3));
 		return;
 	}
 	if (top === "adopt" && process.argv[3] === "--current") {

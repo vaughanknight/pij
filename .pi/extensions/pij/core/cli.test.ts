@@ -212,7 +212,7 @@ describe("parseArgs", () => {
 		["--prime=true", "--prime"],
 		["--here=false", "--here"],
 		["--json=true", "--json"],
-	])("rejects valued boolean flag %s", (flag, name) => {
+	])("rejects valued boolean flag %s", async (flag, name) => {
 		const result = parseArgs(["list", flag]);
 		expect(result).toMatchObject({ ok: false, code: "E-ARG" });
 		if (!result.ok) expect(result.message).toContain(`${name} does not take a value`);
@@ -697,6 +697,37 @@ describe("dispatch whoami / list", () => {
 });
 
 describe("dispatch send", () => {
+	describe("PIJ_SENDER escape hatch (poc/comms-sqlite-socket day-2 item 3)", () => {
+		it("overrides ambient identity so a script sends as a declared pull peer", () => {
+			const d = deps({
+				env: { PIJ_SENDER: "pij-script" },
+				descs: [desc({ id: "pij-script", deliveryMode: "pull" }), desc({ id: "w3" })],
+				resolveAmbientSelf: () => ok("pij-someclaude"),
+			});
+			const r = dispatch({ verb: "send", to: "w3", text: "hi", wait: false, json: false }, d);
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox.at(-1)?.message.from).toBe("pij-script");
+		});
+
+		it("beats PIJ_SESSION_ID and ambient both", () => {
+			const d = deps({
+				self: "pij-env",
+				env: { PIJ_SENDER: "pij-script" },
+				descs: [desc({ id: "pij-script" }), desc({ id: "pij-env" }), desc({ id: "w3" })],
+			});
+			const r = dispatch({ verb: "send", to: "w3", text: "hi", wait: false, json: false }, d);
+			expect(r.exitCode).toBe(0);
+			expect(d.delivery.outbox.at(-1)?.message.from).toBe("pij-script");
+		});
+
+		it("refuses an unregistered PIJ_SENDER with E-NOID", () => {
+			const d = deps({ env: { PIJ_SENDER: "pij-ghost" }, descs: [desc({ id: "w3" })] });
+			const r = dispatch({ verb: "send", to: "w3", text: "hi", wait: false, json: false }, d);
+			expect(r.exitCode).not.toBe(0);
+			expect(r.stderr).toContain("PIJ_SENDER=pij-ghost");
+		});
+	});
+
 	it("freezes send --wait terminal handling before dispatch ack semantics are added", () => {
 		const states: readonly ReceiptState[] = ["queued", "delivered", "unverified"];
 		const targets = [{ to: "w3", messageId: "msg-freeze" }];
@@ -3563,7 +3594,7 @@ describe("HIGH-2 — journal-FIRST coupled write + no-throw dispatch", () => {
 			["project-set", ["project", "set", "fix-the-cli", "--plan", "docs/plan.md"]],
 			["spine-append", ["spine", "append", "--kind", "note", "--bare"]],
 			["spine-events", ["spine", "events"]],
-		] as const)("%s: throwing ports contained as E-NOREG naming the verb", (verb, argv) => {
+		] as const)("%s: throwing ports contained as E-NOREG naming the verb", async (verb, argv) => {
 			let r: CliResult | undefined;
 			expect(() => {
 				r = run(argv, throwingDeps());
@@ -4616,7 +4647,7 @@ describe("report family + report now (plan 074 phase 3 RED)", () => {
 	it.each([
 		"standalone",
 		"compound",
-	] as const)("shares the 200-char, one-line, non-empty note validator across %s reports", (form) => {
+	] as const)("shares the 200-char, one-line, non-empty note validator across %s reports", async (form) => {
 		const argv = (text: string | undefined): string[] =>
 			form === "standalone"
 				? ["report", "question", ...(text === undefined ? [] : [text])]
@@ -4703,7 +4734,7 @@ describe("report family + report now (plan 074 phase 3 RED)", () => {
 		["state", ["report", "state", "ready"]],
 		["clear", ["report", "clear"]],
 		["verify", ["report", "verify", "pij-other"]],
-	] as const)("refuses report %s when PIJ_SESSION_ID merely asserts an unregistered seat", (_name, argv) => {
+	] as const)("refuses report %s when PIJ_SESSION_ID merely asserts an unregistered seat", async (_name, argv) => {
 		const d = platformDeps({
 			self: "pij-asserted",
 			descs: [desc({ id: "pij-other" })],
@@ -4951,7 +4982,7 @@ describe("report family + report now (plan 074 phase 3 RED)", () => {
 	it.each([
 		"question",
 		"blocked",
-	] as const)("report %s appends the unchanged state-set record and stamps the note denorm", (state) => {
+	] as const)("report %s appends the unchanged state-set record and stamps the note denorm", async (state) => {
 		const d = reportSelfDeps();
 		const result = reportNote(d, "pij-self", state, "  need   [review](https://example.test)  ", [
 			"--json",
@@ -5177,7 +5208,7 @@ describe("task/state verb parsing (T004)", () => {
 		[["task", "bogus"], "unknown task subcommand"],
 		[["report", "state"], "usage"],
 		[["report", "verify"], "usage"],
-	])("%j is E-ARG exit 64", (argv, needle) => {
+	])("%j is E-ARG exit 64", async (argv, needle) => {
 		const r = run(argv as string[], nodeDeps());
 		expect(r.exitCode).toBe(64);
 		expect(r.stderr.toLowerCase()).toContain(needle);
@@ -6657,7 +6688,7 @@ describe("state clear (State-Model v2)", () => {
 			["fence set unknown flag", ["fence", "set", "x", "--paths", "src/**", "--bogus"]],
 			["fence show bad positional", ["fence", "show", "extra"]],
 			["fence show unknown flag", ["fence", "show", "--bogus"]],
-		] as const)("%s fails E-ARG with no writes", (_label, argv) => {
+		] as const)("%s fails E-ARG with no writes", async (_label, argv) => {
 			const d = platformDeps({
 				self: "pij-prime",
 				projects: [seedProject({ slug: "platform" })],
@@ -7005,7 +7036,7 @@ describe("state clear (State-Model v2)", () => {
 			["ack bare sha flag", ["ack", "dispatch-test-1", "--packet-sha"]],
 			["ack invalid sha", ["ack", "dispatch-test-1", "--packet-sha", "short"]],
 			["ack extra positional", ["ack", "dispatch-test-1", "extra", "--packet-sha", SHA]],
-		] as const)("%s fails E-ARG with zero writes", (_label, argv) => {
+		] as const)("%s fails E-ARG with zero writes", async (_label, argv) => {
 			const d = dispatchDeps();
 			const result = run(argv, d);
 			expect(result.exitCode).toBe(64);
@@ -8268,7 +8299,7 @@ describe("s078 — the PA capability gate at the dispatch seam", () => {
 	it.each([
 		["pa", () => paSeat()],
 		["pm", () => pmSeat()],
-	])("drops refusedVerbs and conditionalVerbs entirely for a %s seat (2.2, AC-11)", (_role, mk) => {
+	])("drops refusedVerbs and conditionalVerbs entirely for a %s seat (2.2, AC-11)", async (_role, mk) => {
 		// REMOVAL, not deprecation. Keeping the lists beside the map would ship a
 		// fix for additive-silence BY BEING ADDITIVE: a stale consumer indexing
 		// `refusedVerbs` would keep parsing and keep being wrong. Only a removal
@@ -8529,7 +8560,7 @@ describe("watchdog — a PA may watch/unwatch ITSELF or its own parent, and noth
 		// reconcile-and-write preamble, so permitting it would hand a PA a write
 		// on a stranger's sidecar. It stays refused deliberately (plan 094 C-4).
 		["status", [PARENT_ID]],
-	] as const)("REFUSES the policy action 'watchdog %s' for a PA, even on its OWN parent", (action, args) => {
+	] as const)("REFUSES the policy action 'watchdog %s' for a PA, even on its OWN parent", async (action, args) => {
 		const { d, watchdogStore } = paDeps();
 		const r = run(["watchdog", action, ...args], d);
 		expect(r.exitCode, `watchdog ${action} must be refused for a PA`).not.toBe(0);
@@ -8540,7 +8571,7 @@ describe("watchdog — a PA may watch/unwatch ITSELF or its own parent, and noth
 	it.each([
 		"disable-all",
 		"enable-all",
-	] as const)("REFUSES the machine-wide action 'watchdog %s', which has no target at all", (action) => {
+	] as const)("REFUSES the machine-wide action 'watchdog %s', which has no target at all", async (action) => {
 		// These branch BEFORE the per-seat id is resolved, so a check placed
 		// after target resolution would silently permit them — the widest hole
 		// of the set.
@@ -8688,7 +8719,7 @@ describe("watchdog unwatch — a PA resigns, and resignation changes nothing els
 	it.each([
 		["an expired EXPLICIT deadline", expiredExplicit([OTHER_WATCHER])],
 		["a LEGACY exemption", legacy([OTHER_WATCHER])],
-	])("fixture liveness — %s IS reconciled away at the injected now", (_label, sidecar) => {
+	])("fixture liveness — %s IS reconciled away at the injected now", async (_label, sidecar) => {
 		const reconciled = reconcileWatchdogExemption(sidecar, T);
 		// A new object, not the input handed back: the preamble writes only when
 		// these differ, so an identical return is an inert fixture.
@@ -8707,7 +8738,7 @@ describe("watchdog unwatch — a PA resigns, and resignation changes nothing els
 	it.each([
 		["an expired EXPLICIT deadline", expiredExplicit([OTHER_WATCHER])],
 		["a LEGACY exemption", legacy([OTHER_WATCHER])],
-	])("fixture guard — %s IS reconciled away for an ordinary caller", (_label, sidecar) => {
+	])("fixture guard — %s IS reconciled away for an ordinary caller", async (_label, sidecar) => {
 		const watchdogStore = memoryWatchdogStore(STRANGER_ID, sidecar);
 		const d = {
 			...deps({ self: PARENT_ID, descs: [desc({ id: PARENT_ID }), desc({ id: STRANGER_ID })] }),
@@ -8734,7 +8765,7 @@ describe("watchdog unwatch — a PA resigns, and resignation changes nothing els
 	it.each([
 		["an expired EXPLICIT deadline", expiredExplicit],
 		["a LEGACY exemption", legacy],
-	])("resigning from a stranger carrying %s writes ONCE and changes ONLY the PA's row", (_label, fixture) => {
+	])("resigning from a stranger carrying %s writes ONCE and changes ONLY the PA's row", async (_label, fixture) => {
 		const before = fixture([PA_ID, OTHER_WATCHER]);
 		const { d, watchdogStore } = paDeps(before);
 		const r = run(["watchdog", "unwatch", STRANGER_ID], d);
@@ -8753,7 +8784,7 @@ describe("watchdog unwatch — a PA resigns, and resignation changes nothing els
 	it.each([
 		["an expired EXPLICIT deadline", expiredExplicit],
 		["a LEGACY exemption", legacy],
-	])("resigning from a stranger it does NOT watch (%s) writes NOTHING at all", (_label, fixture) => {
+	])("resigning from a stranger it does NOT watch (%s) writes NOTHING at all", async (_label, fixture) => {
 		const before = fixture([OTHER_WATCHER]);
 		const snapshot = JSON.stringify(before);
 		const { d, watchdogStore } = paDeps(before);

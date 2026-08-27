@@ -33,6 +33,7 @@ import { classifyReadiness, type ReadinessState } from "../readiness.js";
 import { classifyDeathReason } from "../state.js";
 import type {
 	DeathReason,
+	DeliveredMessage,
 	HarnessKind,
 	PijMessage,
 	SessionDescriptor,
@@ -68,6 +69,15 @@ export interface DaemonPorts {
 	 *  of stranding the message in the composer. Both optional — absent falls back to
 	 *  the Claude default settle and no wake. */
 	sendText(paneId: string, text: string, harness?: HarnessKind, pid?: number): SendOutcome;
+	/** PoC (poc/comms-sqlite-socket): deliver a message to a Claude Code seat over
+	 *  its inbox socket instead of typing into its pane. `no-socket` = the seat has
+	 *  no resolvable socket (older claude, bind failure, non-claude harness) — the
+	 *  caller falls back to `sendText`. `failed` = nothing landed (retry later).
+	 *  Optional: pure fakes and non-claude daemons need not implement it. */
+	sendSocket?(
+		target: SessionDescriptor,
+		message: DeliveredMessage,
+	): SendOutcome | "no-socket" | Promise<SendOutcome | "no-socket">;
 	/** Press a bare key (e.g. Escape to dismiss an interstitial, or a digit +
 	 *  Enter to answer one — the copilot folder-trust auto-answer, DL-001). */
 	sendKey(paneId: string, key: "Escape" | "Enter" | "1" | "2"): void;
@@ -517,6 +527,8 @@ export interface DrainedTmuxMessage {
 	readonly messageId: string;
 	readonly from: SessionId;
 	readonly outcome?: SendOutcome;
+	/** PoC: which transport carried it. Absent = pane (send-keys). */
+	readonly via?: "socket" | "pointer";
 }
 
 /** Decide the hold from the composer's CONTENT, captured immediately before this
@@ -564,11 +576,20 @@ export function refreshRenderedComposerHold(
 	return buffer.isPaneHeld(paneId, nowMs);
 }
 
+/** The ONE line typed into a pane instead of a body (review §7): ASCII, no
+ *  newline, far under one pty chunk, framed so the model knows it is pij. The
+ *  recipient reads the bodies with `pij inbox`; the rows stay unread until then. */
+export function pointerLine(from: SessionId, count: number): string {
+	return count === 1
+		? `[pij from ${from}] 1 new message — run: pij inbox`
+		: `[pij from ${from}] ${count} new messages — run: pij inbox`;
+}
+
 /** Route one bound tmux target's unread messages and return each completed
  *  injection outcome. The impure caller owns the post-outcome read marker.
  *  Delivery ownership (AC-08): pi targets route to `observe` and remain for the
  *  in-process receiver. A not-yet-bound tmux target buffers (R-02). */
-export function drainTmuxInbox(
+export async function drainTmuxInbox(
 	target: SessionDescriptor,
 	messages: ReadonlyArray<{
 		readonly messageId: string;
@@ -580,13 +601,58 @@ export function drainTmuxInbox(
 	buffer: SendBuffer,
 	beforeSelfInjection: ((paneId: string, payload: string, nowMs: number) => void) | undefined,
 	holds: ComposerHoldTracker,
-): DrainedTmuxMessage[] {
+	opts: { readonly pointer?: boolean } = {},
+): Promise<DrainedTmuxMessage[]> {
 	const consumed: DrainedTmuxMessage[] = [];
 	for (const m of messages) {
 		// Preserve the REAL sender so the injected text is framed `[pij from <from>]`
 		// and the receiving agent knows who messaged it (parity with the pi receiver).
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
+		// Socket-first for Claude seats (review §5/§7) and Copilot seats spawned with
+		// `--ui-server` (descriptor.rpcPort): the body never touches the
+		// pty, so the 1022-byte chunk clip cannot happen and a busy recipient reads
+		// it between tool calls. Commands (`/compact`) must still be TYPED — Claude
+		// Code renders a socket-delivered slash command as plain text.
+		if (
+			decision.kind === "inject" &&
+			(target.harness === "claude" ||
+				(target.harness === "copilot" && target.rpcPort !== undefined)) &&
+			!m.command &&
+			ports.sendSocket
+		) {
+			const outcome = await ports.sendSocket(target, { ...msg, messageId: m.messageId });
+			if (outcome === "confirmed") {
+				consumed.push({ messageId: m.messageId, from: m.from, outcome, via: "socket" });
+				continue;
+			}
+			if (outcome === "failed") {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
+			// `no-socket` (or any other outcome) → fall through to the pane path.
+		}
+		// Pointer path (review §7, pij-comms PoC): when the store can hold the row
+		// for a later `pij inbox` (opts.pointer), a seat with no endpoint gets ONE
+		// short line instead of its body — the body never crosses the pty, so it
+		// cannot be clipped. The caller marks the row `injected` (not read).
+		// Commands still type raw.
+		if (decision.kind === "inject" && opts.pointer && !m.command) {
+			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
+			const line = pointerLine(m.from, 1);
+			beforeSelfInjection?.(decision.paneId, line, ports.now());
+			const outcome = ports.sendText(decision.paneId, line, target.harness, target.pid);
+			if (outcome === "gone") continue;
+			if (outcome === "held" || outcome === "failed") {
+				buffer.enqueue(m.messageId, msg);
+				continue;
+			}
+			consumed.push({ messageId: m.messageId, from: m.from, outcome, via: "pointer" });
+			continue;
+		}
 		if (decision.kind === "inject") {
 			if (refreshRenderedComposerHold(decision.paneId, ports, buffer, holds)) {
 				buffer.enqueue(m.messageId, msg);

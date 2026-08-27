@@ -166,7 +166,7 @@ function intervalSidecar(
 }
 
 describe("WatchdogManager — reconciliation and delivery", () => {
-	it("watches the DESIGNATED seats — pm and prime — and nobody else", () => {
+	it("watches the DESIGNATED seats — pm and prime — and nobody else", async () => {
 		// Primes were excluded until 2026-07-30 (the gate read `!== "pm"`, and a
 		// prime projects to "prime"), so the fleet's governing seats were the only
 		// ones no reporting clock touched. Measured cost: a prime went 12 days
@@ -201,7 +201,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.delivery.outbox.map((entry) => entry.message.to)).not.toContain("unknown");
 	});
 
-	it("nudges a never-reported PM from startedAt even while ordinary activity stays fresh", () => {
+	it("nudges a never-reported PM from startedAt even while ordinary activity stays fresh", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-never-reported", intervalSidecar());
 		h.store.revisions.set("pij-never-reported", 1);
@@ -225,7 +225,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.fires).toEqual([{ id: "pij-never-reported", atMs: 100 }]);
 	});
 
-	it("keys the PM schedule on statusAt, so ordinary activity no longer re-anchors it", () => {
+	it("keys the PM schedule on statusAt, so ordinary activity no longer re-anchors it", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-reporting-pm", intervalSidecar());
 		h.store.revisions.set("pij-reporting-pm", 1);
@@ -249,7 +249,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.fires).toEqual([{ id: "pij-reporting-pm", atMs: 110 }]);
 	});
 
-	it("keeps at most one due tmux watchdog turn in the durable channel", () => {
+	it("keeps at most one due tmux watchdog turn in the durable channel", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-tmux", intervalSidecar());
 		h.store.revisions.set("pij-tmux", 1);
@@ -275,7 +275,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.delivery.outbox[1]?.message.body).toContain("[pij watchdog #2 for pij-tmux]");
 	});
 
-	it("fires for a session that has never emitted an event, anchored on startedAt", () => {
+	it("fires for a session that has never emitted an event, anchored on startedAt", async () => {
 		// Found live on activation day: a freshly spawned peer that never emits an
 		// event has no lastEventAt, and lastWatchdogFireAt is null until the first
 		// fire — so both anchors were null and the watchdog never fired at all.
@@ -290,7 +290,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.fires).toEqual([{ id: "pij-newborn", atMs: 100 }]);
 	});
 
-	it("does not fire a never-emitted session before its interval elapses since startedAt", () => {
+	it("does not fire a never-emitted session before its interval elapses since startedAt", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-newborn", intervalSidecar());
 		h.store.revisions.set("pij-newborn", 1);
@@ -300,7 +300,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.fires).toEqual([]);
 	});
 
-	it("never fires at an EXTERNAL pull target — the daemon does not own its delivery", () => {
+	it("never fires at an EXTERNAL pull target — the daemon does not own its delivery", async () => {
 		// The delivery-ownership invariant (daemon.test.ts) says an external pull
 		// target is never tick-owned, driven, buffered, or drained. The watchdog
 		// honoured that only by accident: pull targets never emit events, so the
@@ -324,7 +324,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.fires).toEqual([]);
 	});
 
-	it("delivers pi turns through the inbox channel and never captures a missing pane", () => {
+	it("delivers pi turns through the inbox channel and never captures a missing pane", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("pij-pi", intervalSidecar());
 		h.store.revisions.set("pij-pi", 1);
@@ -343,7 +343,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		);
 	});
 
-	it("skips pre-bind, failed, dead, paused, and exempt sessions", () => {
+	it("skips pre-bind, failed, dead, paused, and exempt sessions", async () => {
 		const h = managerHarness();
 		for (const [id, sidecar] of [
 			["paused", { intervalMs: 1, pausedBy: "self" }],
@@ -374,7 +374,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(deadManager.activeCount()).toBe(2);
 	});
 
-	it("retains the exact persisted deadline across manager restart without extending it", () => {
+	it("retains the exact persisted deadline across manager restart without extending it", async () => {
 		const store = new MemoryWatchdogStore();
 		store.sidecars.set("peer", {
 			intervalMs: 1,
@@ -401,7 +401,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(restarted.store.read("peer")).toEqual({ intervalMs: 1 });
 	});
 
-	it("persists an expired exemption before capture or delivery makes the peer active", () => {
+	it("persists an expired exemption before capture or delivery makes the peer active", async () => {
 		const store = new MemoryWatchdogStore();
 		store.sidecars.set("peer", {
 			intervalMs: 1,
@@ -427,7 +427,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(delivery.outbox).toHaveLength(1);
 	});
 
-	it("fires nothing while off, and RE-ANCHORS on re-enable so the off-window isn't counted (Plan 056)", () => {
+	it("fires nothing while off, and RE-ANCHORS on re-enable so the off-window isn't counted (Plan 056)", async () => {
 		// The machine-wide kill switch: one flag disables every peer's watchdog
 		// regardless of its sidecar, and — being global, not per-descriptor — a
 		// peer spawned while off is covered too. No per-sidecar writes.
@@ -451,7 +451,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.fires).toEqual([{ id: "peer", atMs: 1_001_000 }]);
 	});
 
-	it("never watches a relay/bridge peer — the deliberate-silence class (Plan 056)", () => {
+	it("never watches a relay/bridge peer — the deliberate-silence class (Plan 056)", async () => {
 		// The pij-telegram bridge forwards its inbox to the operator's phone. A
 		// watchdog nudge into it became 20 real messages. A relay's idleness is
 		// correct by design, never a stall — it must never be reconciled or fired,
@@ -467,7 +467,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.manager.activeCount()).toBe(0); // never even tracked
 	});
 
-	it("mtime-gates sidecar reads until the revision changes", () => {
+	it("mtime-gates sidecar reads until the revision changes", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(10_000));
 		h.store.revisions.set("peer", 1);
@@ -479,7 +479,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		expect(h.store.reads).toBe(2);
 	});
 
-	it("drops runtime state when a session closes or disappears", () => {
+	it("drops runtime state when a session closes or disappears", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar());
 		h.store.revisions.set("peer", 1);
@@ -494,7 +494,7 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 });
 
 describe("WatchdogManager — attribution, response, and compact recovery", () => {
-	it("keeps combined watchdog-attributable pane, event, and working changes silent", () => {
+	it("keeps combined watchdog-attributable pane, event, and working changes silent", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar());
 		h.store.revisions.set("peer", 1);
@@ -526,7 +526,7 @@ describe("WatchdogManager — attribution, response, and compact recovery", () =
 		expect(h.responses.at(-1)?.response).toBe("stalled");
 	});
 
-	it("does not credit the idle return edge of a watchdog-caused working transition", () => {
+	it("does not credit the idle return edge of a watchdog-caused working transition", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar());
 		h.store.revisions.set("peer", 1);
@@ -551,7 +551,7 @@ describe("WatchdogManager — attribution, response, and compact recovery", () =
 		expect(h.responses.at(-1)?.response).toBe("suspect");
 	});
 
-	it("recognises later real activity, clears the streak, and auto-resumes compact only on real work", () => {
+	it("recognises later real activity, clears the streak, and auto-resumes compact only on real work", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", { intervalMs: 100, pausedBy: "compact", pausedAtMs: 1 });
 		h.store.revisions.set("peer", 1);
@@ -574,7 +574,7 @@ describe("WatchdogManager — attribution, response, and compact recovery", () =
 		expect(h.store.read("peer")?.pausedBy).toBe("self");
 	});
 
-	it("marks only the first post-fire pane mutation as watchdog-attributable", () => {
+	it("marks only the first post-fire pane mutation as watchdog-attributable", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar());
 		h.store.revisions.set("peer", 1);
@@ -602,7 +602,7 @@ describe("WatchdogManager — watcher captures", () => {
 	// (a first fire is healthy) is precisely the defect; its INTENT (always-mode
 	// delivers a notice AND a capture for every fire) survives intact, so it is
 	// stated separately below and still passes both builds.
-	it("writes an always-mode capture on a first due fire, graded as no-evidence", () => {
+	it("writes an always-mode capture on a first due fire, graded as no-evidence", async () => {
 		const h = managerHarness();
 		const alwaysWatcher: WatchdogWatcher = {
 			...watcher,
@@ -630,7 +630,7 @@ describe("WatchdogManager — watcher captures", () => {
 		expect(notice).toContain("nothing was examined");
 	});
 
-	it("writes an anomaly pointer from the pre-injection pane and includes at most five lines", () => {
+	it("writes an anomaly pointer from the pre-injection pane and includes at most five lines", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcher]));
 		h.store.revisions.set("peer", 1);
@@ -659,7 +659,7 @@ describe("WatchdogManager — watcher captures", () => {
 	// the window are the SAME five lines — so none of them could tell a
 	// head-anchored notice from a tail-anchored one, and the defect survived. This
 	// one uses a window WIDER than the notice, which is the only shape that can.
-	it("takes the NEWEST five lines of the window, so a wider window is not a staler notice", () => {
+	it("takes the NEWEST five lines of the window, so a wider window is not a staler notice", async () => {
 		const h = managerHarness();
 		const wide: WatchdogWatcher = {
 			...watcher,
@@ -684,7 +684,7 @@ describe("WatchdogManager — watcher captures", () => {
 		expect(notice).not.toContain("line13");
 	});
 
-	it("reports capture-n/a for a paneless pi target", () => {
+	it("reports capture-n/a for a paneless pi target", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcher]));
 		h.store.revisions.set("peer", 1);
@@ -699,7 +699,7 @@ describe("WatchdogManager — watcher captures", () => {
 		expect(h.store.captures).toEqual([]);
 	});
 
-	it("notifies an anomaly watcher once per stalled episode and again after recovery", () => {
+	it("notifies an anomaly watcher once per stalled episode and again after recovery", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcher]));
 		h.store.revisions.set("peer", 1);
@@ -738,13 +738,13 @@ function tracked(daemon: Daemon): Daemon {
 	DAEMONS.push(daemon);
 	return daemon;
 }
-afterEach(() => {
+afterEach(async () => {
 	for (const daemon of DAEMONS.splice(0)) daemon.dispose();
 	for (const dir of TEMP_DIRS.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("FsWatchdogStore", () => {
-	it("round-trips a validated sidecar, exposes revision, and writes bounded capture pointers", () => {
+	it("round-trips a validated sidecar, exposes revision, and writes bounded capture pointers", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-store-"));
 		TEMP_DIRS.push(home);
 		const store = new FsWatchdogStore(home);
@@ -773,7 +773,7 @@ describe("FsWatchdogStore", () => {
 });
 
 describe("compact seams", () => {
-	it("router applies compact pause only to compact commands and preserves stronger tiers", () => {
+	it("router applies compact pause only to compact commands and preserves stronger tiers", async () => {
 		const compact: PijMessage = { from: "a", to: "b", body: "", command: "compact" };
 		expect(pauseForCompactMessage(compact, undefined, 10)).toEqual({
 			pausedBy: "compact",
@@ -786,7 +786,7 @@ describe("compact seams", () => {
 		expect(pauseForCompactMessage(compact, exempt, 10)).toBe(exempt);
 	});
 
-	it("daemon tmux delivery persists compact pause before injecting --command compact", () => {
+	it("daemon tmux delivery persists compact pause before injecting --command compact", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-compact-"));
 		TEMP_DIRS.push(home);
 		const registry = new FsRegistry(home);
@@ -838,7 +838,7 @@ describe("compact seams", () => {
 		expect(bare).toMatchObject({ ok: true, value: { command: "compact", text: undefined } });
 	});
 
-	it("pi inbound persists compact pause before calling the runtime and resumes on turn start", () => {
+	it("pi inbound persists compact pause before calling the runtime and resumes on turn start", async () => {
 		const store = new MemoryWatchdogStore();
 		const order = store.order;
 		const pi: PiRuntimePort = {
@@ -903,7 +903,7 @@ describe("watchdog CLI and state surfaces", () => {
 		};
 	}
 
-	it("parses every watchdog verb and capture policy", () => {
+	it("parses every watchdog verb and capture policy", async () => {
 		for (const argv of [
 			["watchdog", "status", "target"],
 			["watchdog", "pause", "target"],
@@ -937,7 +937,7 @@ describe("watchdog CLI and state surfaces", () => {
 		});
 	});
 
-	it("mutates pause tiers and manages the caller's watcher subscription", () => {
+	it("mutates pause tiers and manages the caller's watcher subscription", async () => {
 		const h = cliHarness();
 		for (const action of ["pause", "resume", "exempt"] as const) {
 			const parsed = parseArgs(["watchdog", action, "target"]);
@@ -961,7 +961,7 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(h.watchdog.read("target")?.watchers).toEqual([]);
 	});
 
-	it("disable-all / enable-all flip the machine-wide switch (Plan 056)", () => {
+	it("disable-all / enable-all flip the machine-wide switch (Plan 056)", async () => {
 		const h = cliHarness();
 		const disable = parseArgs(["watchdog", "disable-all"]);
 		if (!disable.ok) throw new Error(disable.message);
@@ -977,7 +977,7 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(h.watchdogGlobal.disabled()).toBe(false);
 	});
 
-	it("interval sets a per-peer timeout from a human duration (Plan 056)", () => {
+	it("interval sets a per-peer timeout from a human duration (Plan 056)", async () => {
 		const h = cliHarness();
 		const parsed = parseArgs(["watchdog", "interval", "target", "20m"]);
 		if (!parsed.ok) throw new Error(parsed.message);
@@ -987,7 +987,7 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(parseArgs(["watchdog", "interval", "target", "nope"]).ok).toBe(false); // bad duration
 	});
 
-	it("reset clears a peer back to default, including un-exempting it (Plan 056)", () => {
+	it("reset clears a peer back to default, including un-exempting it (Plan 056)", async () => {
 		const h = cliHarness();
 		// Exempt it first — resume can't undo exempt, so reset is the only CLI path.
 		h.watchdog.sidecars.set("target", { pausedBy: "exempt", pausedAtMs: 1, intervalMs: 5 });
@@ -997,7 +997,7 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(h.watchdog.read("target")).toEqual({}); // default: on, 20min, unpaused, un-exempt
 	});
 
-	it("status reports globally-disabled after disable-all, not a bare 'enabled' (Plan 056)", () => {
+	it("status reports globally-disabled after disable-all, not a bare 'enabled' (Plan 056)", async () => {
 		const h = cliHarness();
 		const off = parseArgs(["watchdog", "disable-all"]);
 		if (!off.ok) throw new Error(off.message);
@@ -1011,7 +1011,7 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(out.watchdog.enabled).toBe(false); // the switch dominates the sidecar
 	});
 
-	it("status reports a relay peer as never-watched, not 'enabled' (Plan 056 review MEDIUM-1)", () => {
+	it("status reports a relay peer as never-watched, not 'enabled' (Plan 056 review MEDIUM-1)", async () => {
 		const h = cliHarness();
 		h.registry.write(desc({ id: "bridge", relay: true }));
 		const status = parseArgs(["watchdog", "status", "bridge", "--json"]);
@@ -1023,20 +1023,20 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(out.watchdog.enabled).toBe(false); // relay dominates — never watched
 	});
 
-	it("rejects a stray third positional for non-interval verbs (review LOW)", () => {
+	it("rejects a stray third positional for non-interval verbs (review LOW)", async () => {
 		expect(parseArgs(["watchdog", "status", "target", "junk"]).ok).toBe(false);
 		expect(parseArgs(["watchdog", "reset", "target", "junk"]).ok).toBe(false);
 		expect(parseArgs(["watchdog", "pause", "target", "junk"]).ok).toBe(false);
 		expect(parseArgs(["watchdog", "interval", "target", "20m"]).ok).toBe(true); // interval keeps its 3rd
 	});
 
-	it("disable-all / enable-all take no id", () => {
+	it("disable-all / enable-all take no id", async () => {
 		expect(parseArgs(["watchdog", "disable-all", "target"]).ok).toBe(false);
 		expect(parseArgs(["watchdog", "enable-all", "x"]).ok).toBe(false);
 		expect(parseArgs(["watchdog", "disable-all"]).ok).toBe(true);
 	});
 
-	it("rejects pause after exemption without weakening the tier", () => {
+	it("rejects pause after exemption without weakening the tier", async () => {
 		const h = cliHarness();
 		h.watchdog.sidecars.set("target", { pausedBy: "exempt", pausedAtMs: 1 });
 		const parsed = parseArgs(["watchdog", "pause", "target"]);
@@ -1051,7 +1051,7 @@ describe("watchdog CLI and state surfaces", () => {
 		});
 	});
 
-	it("accepts default and custom exemption durations, and reports their live deadline truthfully", () => {
+	it("accepts default and custom exemption durations, and reports their live deadline truthfully", async () => {
 		const h = cliHarness();
 		const custom = parseArgs(["watchdog", "exempt", "target", "30s", "--json"]);
 		if (!custom.ok) throw new Error(custom.message);
@@ -1069,7 +1069,7 @@ describe("watchdog CLI and state surfaces", () => {
 		expect(parseArgs(["watchdog", "exempt", "target", "bad"]).ok).toBe(false);
 	});
 
-	it("adds the watchdog envelope to status, state --json, and list --json", () => {
+	it("adds the watchdog envelope to status, state --json, and list --json", async () => {
 		const h = cliHarness();
 		h.watchdog.sidecars.set("target", {
 			intervalMs: 500,
@@ -1102,7 +1102,7 @@ describe("watchdog CLI and state surfaces", () => {
 });
 
 describe("spawn exemption parsing", () => {
-	it("accepts --no-watchdog and threads the pi child exemption marker", () => {
+	it("accepts --no-watchdog and threads the pi child exemption marker", async () => {
 		expect(parseSpawnArgs(["--harness", "claude", "--no-watchdog"])).toMatchObject({
 			ok: true,
 			value: { harness: "claude", noWatchdog: true },
@@ -1118,7 +1118,7 @@ describe("spawn exemption parsing", () => {
 		).toBe("1");
 	});
 
-	it("pi boot persists an exempt sidecar when the spawn marker is present", () => {
+	it("pi boot persists an exempt sidecar when the spawn marker is present", async () => {
 		const store = new MemoryWatchdogStore();
 		const session = new PijSession({
 			registry: new FakeRegistry(),
@@ -1150,7 +1150,7 @@ describe("spawn exemption parsing", () => {
 });
 
 describe("Daemon watchdog mount and shared stalled latch", () => {
-	it("keeps an idle watchdog stall latched until real recovery and notices once", () => {
+	it("keeps an idle watchdog stall latched until real recovery and notices once", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-idle-stall-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([
@@ -1181,7 +1181,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			isAlive: () => true,
 		};
 		const daemon = new Daemon(home, ports, registry, delivery);
-		for (nowMs of [100, 200, 300]) daemon.tick();
+		for (nowMs of [100, 200, 300]) await daemon.tick();
 		expect(registry.read("peer")?.failureReason).toBe("stalled");
 		const notices = delivery.outbox.filter(
 			(item) => item.message.to === "owner" && item.message.body.includes("stalled"),
@@ -1189,10 +1189,10 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(notices).toHaveLength(1);
 
 		nowMs = 301;
-		daemon.tick();
+		await daemon.tick();
 		expect(registry.read("peer")?.failureReason).toBe("stalled");
 		nowMs = 400;
-		daemon.tick();
+		await daemon.tick();
 		expect(
 			delivery.outbox.filter(
 				(item) => item.message.to === "owner" && item.message.body.includes("stalled"),
@@ -1263,26 +1263,26 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			(item) => item.message.to === "owner" && item.message.body.includes("gone quiet"),
 		).length;
 
-	it("CONTROL: a stalled peer with no exemption does notify its owner", () => {
+	it("CONTROL: a stalled peer with no exemption does notify its owner", async () => {
 		const h = exemptHarness(undefined);
-		h.tick();
+		await h.tick();
 		expect(ownerStallNotices(h.delivery)).toBe(1);
 	});
 
-	it("sends the owner NO stall notice while the peer is watchdog-exempt", () => {
+	it("sends the owner NO stall notice while the peer is watchdog-exempt", async () => {
 		const h = exemptHarness({
 			intervalMs: 100,
 			pausedBy: "exempt",
 			pausedAtMs: 0,
 			exemptUntilMs: 3_600_000, // still live at now = 1_000_000
 		});
-		h.tick();
+		await h.tick();
 		expect(ownerStallNotices(h.delivery)).toBe(0);
 		// Zero traffic in EITHER direction — the peer must not be nudged either.
 		expect(h.delivery.outbox.filter((item) => item.message.to === "peer")).toEqual([]);
 	});
 
-	it("resumes owner stall notices once the exemption has EXPIRED", () => {
+	it("resumes owner stall notices once the exemption has EXPIRED", async () => {
 		// A lapsed safety exemption must never become permanent notification
 		// blindness — the whole reason exemptions carry a TTL.
 		const h = exemptHarness({
@@ -1291,11 +1291,11 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			pausedAtMs: 0,
 			exemptUntilMs: 1_000, // long expired at now = 1_000_000
 		});
-		h.tick();
+		await h.tick();
 		expect(ownerStallNotices(h.delivery)).toBe(1);
 	});
 
-	it("exempt does NOT suppress a genuine provider failure — decided, not accidental", () => {
+	it("exempt does NOT suppress a genuine provider failure — decided, not accidental", async () => {
 		// s070 ruling. `watchdog exempt` silences SILENCE notices (the peer is
 		// intentionally idle). It must never silence a real fault: a quota/auth/400
 		// failure stays actionable while a peer sits on standby, and swallowing one
@@ -1322,7 +1322,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			exemptUntilMs: 3_600_000, // live exemption
 		});
 		const delivery = new FakeDelivery();
-		tracked(
+		await tracked(
 			new Daemon(
 				home,
 				{
@@ -1356,7 +1356,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		).toEqual([]);
 	});
 
-	it("derives NO watchdog response at all while paused — the unstated invariant, pinned", () => {
+	it("derives NO watchdog response at all while paused — the unstated invariant, pinned", async () => {
 		// s070 ruling. The watchdog's own stall notice (daemon.pushWatchdogResponse)
 		// is safe under exemption only BY CONSTRUCTION: isFireDue refuses to fire
 		// while paused, so no response is ever derived to notify from. Nothing stated
@@ -1383,7 +1383,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(h.delivery.outbox).toEqual([]);
 	});
 
-	it("clears a durable stalled flag on a creator-less peer that is demonstrably alive", () => {
+	it("clears a durable stalled flag on a creator-less peer that is demonstrably alive", async () => {
 		// Reported live (s070 #2): `pij state` showed `failure: stalled` while
 		// `last-event` was 2–3 minutes fresh — peer alive, ticking, daemon tick fresh.
 		//
@@ -1430,7 +1430,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		// Non-vacuity: the flag is really set going in, and no fix has run yet.
 		expect(registry.read("root")?.failureReason).toBe("stalled");
 
-		daemon.tick();
+		await daemon.tick();
 
 		// Without the sustained-liveness verdict this stays "stalled" — no edge is
 		// ever produced (lastEventAt never changes) and the creator-less early return
@@ -1442,7 +1442,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(registry.read("root")?.lastWatchdogFireAt).toBe(new Date(nowMs).toISOString());
 	});
 
-	it("does not fabricate recovery for a peer whose newest event is older than the interval", () => {
+	it("does not fabricate recovery for a peer whose newest event is older than the interval", async () => {
 		// Guards the fix above from becoming a blanket amnesty: a genuinely silent
 		// peer keeps its stalled label. Same shape as the test above, only the event
 		// age changes (890 → 110ms old, past the 100ms interval).
@@ -1480,11 +1480,11 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 				new FakeDelivery(),
 			),
 		);
-		daemon.tick();
+		await daemon.tick();
 		expect(registry.read("root")?.failureReason).toBe("stalled");
 	});
 
-	it("does not call a peer alive on the DEFAULT interval when it is stale by the stall threshold", () => {
+	it("does not call a peer alive on the DEFAULT interval when it is stale by the stall threshold", async () => {
 		// Regression, caught by daemon-push.test.ts: the liveness window was first
 		// written as the watchdog interval, which defaults to 20 MINUTES. A peer
 		// 65s into its silence — already stalled by STALE_AFTER_MS (60s) — was
@@ -1506,7 +1506,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 				failureReason: "stalled",
 			}),
 		]);
-		tracked(
+		await tracked(
 			new Daemon(
 				home,
 				{
@@ -1527,7 +1527,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		expect(registry.read("root")?.failureReason).toBe("stalled");
 	});
 
-	it("stamps a watchdog-only stalled verdict on a root session", () => {
+	it("stamps a watchdog-only stalled verdict on a root session", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-root-stall-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([
@@ -1551,11 +1551,11 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			registry,
 			new FakeDelivery(),
 		);
-		for (nowMs of [1, 2, 3]) daemon.tick();
+		for (nowMs of [1, 2, 3]) await daemon.tick();
 		expect(registry.read("root")?.failureReason).toBe("stalled");
 	});
 
-	it("keeps descriptor-only watchdog event movement silent until the persisted stall", () => {
+	it("keeps descriptor-only watchdog event movement silent until the persisted stall", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-event-axis-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([
@@ -1586,18 +1586,18 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			registry,
 			new FakeDelivery(),
 		);
-		daemon.tick();
+		await daemon.tick();
 		const afterFire = registry.read("peer");
 		if (!afterFire) throw new Error("peer descriptor disappeared");
 		registry.write({ ...afterFire, lastEventAt: new Date(2).toISOString() });
 		nowMs = 2;
-		daemon.tick();
+		await daemon.tick();
 		nowMs = 3;
-		daemon.tick();
+		await daemon.tick();
 		expect(registry.read("peer")?.failureReason).toBe("stalled");
 	});
 
-	it("keeps persisted lastEventAt byte-identical across a watchdog-attributable busy pane", () => {
+	it("keeps persisted lastEventAt byte-identical across a watchdog-attributable busy pane", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-pane-axis-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([desc({ id: "peer", state: "idle" })]);
@@ -1620,16 +1620,16 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			registry,
 			new FakeDelivery(),
 		);
-		daemon.tick();
+		await daemon.tick();
 		const before = registry.read("peer")?.lastEventAt;
 		pane = BUSY_PANE;
 		nowMs = 100_001;
-		daemon.tick();
+		await daemon.tick();
 		expect(registry.read("peer")?.state).toBe("working");
 		expect(registry.read("peer")?.lastEventAt).toBe(before);
 	});
 
-	it("stamps fires through persistDaemonWrite and emits one stalled notice across both detectors", () => {
+	it("stamps fires through persistDaemonWrite and emits one stalled notice across both detectors", async () => {
 		const home = mkdtempSync(join(tmpdir(), "pij-watchdog-daemon-"));
 		TEMP_DIRS.push(home);
 		const registry = new FakeRegistry([
@@ -1657,15 +1657,15 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 			isAlive: () => true,
 		};
 		const daemon = new Daemon(home, ports, registry, delivery);
-		daemon.tick();
+		await daemon.tick();
 		expect(registry.read("peer")?.lastWatchdogFireAt).toBe(new Date(nowMs).toISOString());
 		const stalledAfterLegacy = delivery.outbox.filter((item) =>
 			item.message.body.includes("stalled"),
 		).length;
 		nowMs += 2;
-		daemon.tick();
+		await daemon.tick();
 		nowMs += 2;
-		daemon.tick();
+		await daemon.tick();
 		expect(delivery.outbox.filter((item) => item.message.body.includes("stalled"))).toHaveLength(
 			stalledAfterLegacy,
 		);
@@ -1675,7 +1675,7 @@ describe("Daemon watchdog mount and shared stalled latch", () => {
 		registry.write({ ...stalledPeer, state: "idle", failureReason: "stalled" });
 		pane = "idle pane";
 		nowMs += 2;
-		daemon.tick();
+		await daemon.tick();
 		expect(registry.read("peer")?.failureReason).toBeUndefined();
 	});
 });
@@ -1694,7 +1694,7 @@ describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
 		return h;
 	}
 
-	it("sends NO nudge to a seat that declared a parked state", () => {
+	it("sends NO nudge to a seat that declared a parked state", async () => {
 		for (const state of ["waiting", "hold", "blocked", "question"] as const) {
 			const h = parkedHarness(state);
 			expect(h.delivery.outbox).toEqual([]);
@@ -1702,20 +1702,20 @@ describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
 		}
 	});
 
-	it("STILL nudges an undeclared seat under identical conditions", () => {
+	it("STILL nudges an undeclared seat under identical conditions", async () => {
 		// The control. Without it the assertion above would also pass if the
 		// watchdog were simply broken, which is the vacuous-pass shape.
 		const h = parkedHarness(undefined);
 		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
 	});
 
-	it("STILL nudges a seat claiming done — a terminal claim is verified, not trusted", () => {
+	it("STILL nudges a seat claiming done — a terminal claim is verified, not trusted", async () => {
 		// s075's lesson carried forward: muting and discharging are different acts.
 		const h = parkedHarness("done");
 		expect(h.delivery.outbox[0]?.message.body).toContain("[pij watchdog #1 for pij-parked]");
 	});
 
-	it("keeps the seat WATCHED — muting is not unwatching", () => {
+	it("keeps the seat WATCHED — muting is not unwatching", async () => {
 		// The design constraint from the brief: parked-state muting must not weaken
 		// the supervision axes. Muting records NO fire (it is not a nudge), but the
 		// seat must remain under management — proven by it firing normally once it
@@ -1729,7 +1729,7 @@ describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
 		expect(h.fires).toEqual([{ id: "pij-parked", atMs: 200 }]);
 	});
 
-	it("does not fire the instant a seat UN-parks — the clock advanced while muted", () => {
+	it("does not fire the instant a seat UN-parks — the clock advanced while muted", async () => {
 		// If the muted tick left lastFireAt standing, the seat would be permanently
 		// overdue and get nudged the moment it un-parked: punishing the declaration
 		// one tick late rather than on time.
@@ -1753,7 +1753,7 @@ describe("parked seats are muted, not unwatched (plan 076, DL-002)", () => {
  * and left unclassified fails HERE as well as at the compiler.
  */
 describe("roleNeedsSupervision is total over the role vocabulary", () => {
-	it("classifies every member of the union, and null", () => {
+	it("classifies every member of the union, and null", async () => {
 		const roles: readonly (OrchestrationRole | null)[] = [
 			"prime",
 			...STORED_ORCHESTRATION_ROLES,
@@ -1768,23 +1768,23 @@ describe("roleNeedsSupervision is total over the role vocabulary", () => {
 		}
 	});
 
-	it("watches a PA — the seat whose trigger is the condition it detects", () => {
+	it("watches a PA — the seat whose trigger is the condition it detects", async () => {
 		expect(roleNeedsSupervision("pa")).toBe(true);
 	});
 
-	it("keeps watching prime and pm, the two the gate was widened for", () => {
+	it("keeps watching prime and pm, the two the gate was widened for", async () => {
 		expect(roleNeedsSupervision("prime")).toBe(true);
 		expect(roleNeedsSupervision("pm")).toBe(true);
 	});
 
-	it("records the exclusions as DECISIONS — worker and unroled stay out", () => {
+	it("records the exclusions as DECISIONS — worker and unroled stay out", async () => {
 		expect(roleNeedsSupervision("worker")).toBe(false);
 		expect(roleNeedsSupervision(null)).toBe(false);
 	});
 });
 
 describe("a watched PA is nudged without being told to write a card", () => {
-	it("fires for a pa and gives it the card-less copy", () => {
+	it("fires for a pa and gives it the card-less copy", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("aide", intervalSidecar(1));
 		h.store.revisions.set("aide", 1);
@@ -1828,7 +1828,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// `responsive` is the initialiser at watchdog-manager.ts:449; on the first due
 	// fire `awaitingResponse` is false, so the evidence block never runs and the
 	// initialised value is delivered verbatim.
-	it("AC-01 does not certify health on a fire that examined no evidence", () => {
+	it("AC-01 does not certify health on a fire that examined no evidence", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		h.store.revisions.set("peer", 1);
@@ -1851,7 +1851,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// the property already holds. It is a regression guard on this PR's own change,
 	// never evidence of the fix. The always-watcher on the SAME fire proves the
 	// anomaly watcher's silence is SELECTIVE rather than "nothing was delivered".
-	it("AC-04 keeps a no-evidence fire out of anomaly capture, selectively", () => {
+	it("AC-04 keeps a no-evidence fire out of anomaly capture, selectively", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set(
 			"peer",
@@ -1884,7 +1884,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// at all about the capture-write claim below, which is a SEPARATE observable
 	// behaviour: "the notice says unavailable" and "no bytes were written as
 	// content" are two different things that happened to share a test.
-	it("AC-05a reports an unreadable pane as unavailable in the notice", () => {
+	it("AC-05a reports an unreadable pane as unavailable in the notice", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		h.store.revisions.set("peer", 1);
@@ -1904,7 +1904,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// pre-fix red (the notice assertion above threw first), so it carries no
 	// recorded red of its own and is proven by MUTATION instead — a revert-style
 	// mutant restoring `""`-as-content must turn this test red.
-	it("AC-05b writes no capture at all for an unreadable pane", () => {
+	it("AC-05b writes no capture at all for an unreadable pane", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		h.store.revisions.set("peer", 1);
@@ -1925,7 +1925,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// the pane delta and the test passes for the wrong reason (measuring a
 	// neighbour). The legitimate recovery is therefore snapshotted and excluded, so
 	// the assertion is about the pane-death tick ALONE.
-	it("AC-06 does not read a vanishing pane as recovery", () => {
+	it("AC-06 does not read a vanishing pane as recovery", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, []));
 		h.store.revisions.set("peer", 1);
@@ -1963,7 +1963,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// runs a full interval past that answer so the next fire genuinely becomes due.
 	// Holding statusAt equal to `now` every tick instead would re-anchor the
 	// schedule forever and fire ZERO times — passing by absence, proving nothing.
-	it("AC-07 never stalls a seat whose statusAt advances after every fire", () => {
+	it("AC-07 never stalls a seat whose statusAt advances after every fire", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, []));
 		h.store.revisions.set("peer", 1);
@@ -2011,7 +2011,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// PRESERVED-PROPERTY (task 1.2) — Phase 1 changes nothing for a fire that DID
 	// examine something. A silent fire still climbs and real work still recovers.
 	// Passes before and after; declared a regression guard, never evidence.
-	it("still climbs on silent fires and still recovers on real work", () => {
+	it("still climbs on silent fires and still recovers on real work", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, []));
 		h.store.revisions.set("peer", 1);
@@ -2038,7 +2038,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// Merging "I have no pane", "I could not read the pane" and "you asked me not
 	// to look" would be the same absence-renders-as-something defect one level
 	// down, in the notice text.
-	it("tells paneless target, unreadable pane and policy-disabled capture apart", () => {
+	it("tells paneless target, unreadable pane and policy-disabled capture apart", async () => {
 		const paneless = managerHarness();
 		paneless.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		paneless.store.revisions.set("peer", 1);
@@ -2086,7 +2086,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// would have made UNREACHABLE, converting pij#148's false negative into a false
 	// positive. Written as a permanent test so nobody re-derives that design.
 	// Passes before and after the fix; never evidence of it.
-	it("AC-09 still stalls a wedged peer whose only activity is watchdog-caused", () => {
+	it("AC-09 still stalls a wedged peer whose only activity is watchdog-caused", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, []));
 		h.store.revisions.set("peer", 1);
@@ -2117,7 +2117,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 	// bite. An ANSWERED fire must not increment the SILENT counter, or a long
 	// answered run would bank silence and one later genuine silence would jump
 	// straight to `stalled`.
-	it("resumes the climb at suspect after a long answered run, never at stalled", () => {
+	it("resumes the climb at suspect after a long answered run, never at stalled", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, []));
 		h.store.revisions.set("peer", 1);

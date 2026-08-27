@@ -154,6 +154,11 @@ export function buildInitInjection(
 	const body =
 		`${contextReframe}You are now a pij peer (id: ${pijId})${spawnedByClause}. ` +
 		`Message other sessions with \`pij send <id> "<text>"\`${replyHint} and list peers with \`pij list\`. ` +
+		// PoC day-2 item 5: a peer message may arrive as a body OR as a one-line
+		// pointer (\`… run: pij inbox\`) when the daemon delivers by notification;
+		// either way \`pij inbox\` reads and acks anything pending. A SessionStart/
+		// UserPromptSubmit hook running \`pij inbox --inject\` drains it for you.
+		"When you see a pij pointer, or to check for messages, run `pij inbox`. " +
 		// AC-12: pij's own onboarding used to teach ONLY the quoted form, to every
 		// peer on the box — which is how a fleet that relays log lines and source
 		// excerpts all day learned the one form that lets the caller's shell

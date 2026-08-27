@@ -69,6 +69,7 @@ describe("portable pij CLI baseline", () => {
 			HOME: agentHome,
 			USERPROFILE: agentHome,
 			PIJ_HOME: pijHome,
+			PIJ_QUEUE_BACKEND: "fs",
 			PIJ_SESSION_ID: "",
 			TMUX: "",
 			TMUX_PANE: "",
