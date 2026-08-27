@@ -402,20 +402,86 @@ This session was last active just now and appears to be in use by another CLI or
 		const w = world({ pane: COPILOT_READY });
 		w.ports.processSnapshot = () => processSnapshot("copilot", foreign);
 		const reg = new FakeRegistry();
+		const delivery = new FakeDelivery();
+		const drive: DriveState = { readyAtMs: 1000, firstInferenceSeen: true };
+		const descriptor = desc({
+			harness: "copilot",
+			initInjectedAt: "2026-06-27T00:00:05.000Z",
+			plannedHarnessSessionId: expected,
+		});
+		const out = driveSession(descriptor, drive, w.ports, reg, delivery);
+		const repeat = driveSession(descriptor, drive, w.ports, reg, delivery);
+
+		expect(out.kind).toBe("waiting");
+		expect(repeat.kind).toBe("waiting");
+		expect(reg.read("pij-w")?.lifecycle).not.toBe("bound");
+		const refusals = delivery.outbox.filter((event) =>
+			event.message.body.includes("foreign-session-id"),
+		);
+		expect(refusals).toHaveLength(1);
+		expect(refusals[0]?.message.to).toBe("pij-boss");
+	});
+
+	it.each([
+		{
+			cause: "probe-unavailable",
+			snapshot: { ok: false, reason: "ps failed" } satisfies ProcessSnapshot,
+		},
+		{
+			cause: "identity-indeterminate",
+			snapshot: {
+				ok: true,
+				capturedAtMs: 1000,
+				processes: [
+					{ pid: 100, ppid: 1, command: "-zsh" },
+					{ pid: 101, ppid: 100, command: "copilot", truncated: true },
+				],
+			} satisfies ProcessSnapshot,
+		},
+	])("planned binding quietly retries a transient $cause verdict", ({ snapshot }) => {
+		const planned = "11111111-1111-4111-8111-111111111111";
+		const w = world({ pane: COPILOT_READY });
+		w.ports.processSnapshot = () => snapshot;
+		const delivery = new FakeDelivery();
 		const out = driveSession(
 			desc({
 				harness: "copilot",
 				initInjectedAt: "2026-06-27T00:00:05.000Z",
-				plannedHarnessSessionId: expected,
+				plannedHarnessSessionId: planned,
+			}),
+			{ readyAtMs: 1000, firstInferenceSeen: true },
+			w.ports,
+			new FakeRegistry(),
+			delivery,
+		);
+
+		expect(out.kind).toBe("waiting");
+		expect(delivery.outbox).toEqual([]);
+	});
+
+	it("copilot refuses a malformed planned id even when the process argv repeats it", () => {
+		const planned = "not-a-uuid";
+		const w = world({ pane: COPILOT_READY });
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
+		const reg = new FakeRegistry();
+		const delivery = new FakeDelivery();
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: planned,
 			}),
 			{ readyAtMs: 1000, firstInferenceSeen: true },
 			w.ports,
 			reg,
-			new FakeDelivery(),
+			delivery,
 		);
 
 		expect(out.kind).toBe("waiting");
 		expect(reg.read("pij-w")?.lifecycle).not.toBe("bound");
+		expect(
+			delivery.outbox.some((event) => event.message.body.includes("malformed-planned-copilot-id")),
+		).toBe(true);
 	});
 
 	it("a stale pending snapshot cannot bind over a durable dissolved descriptor", () => {

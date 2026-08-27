@@ -151,6 +151,8 @@ export interface DriveState {
 	initHeldSinceMs?: number;
 	/** One-shot: the held-boot condition was already logged for this session. */
 	heldBootLogged?: boolean;
+	/** Planned-bind refusal causes already surfaced for this session. */
+	bindRefusalCauses?: Set<string>;
 	/** Set true the first time the pane goes `busy` after init injection —
 	 *  the first-inference gate uses this to know the agent has started
 	 *  processing and the pane may now show a model error (T009/T010). */
@@ -389,10 +391,23 @@ export function driveSession(
 		const processSnapshot = ports.processSnapshot?.();
 		const identity =
 			processSnapshot === undefined ? undefined : resolveAgentLiveness(descriptor, processSnapshot);
-		if (
-			(harness === "copilot" && !isCopilotSessionId(planned)) ||
-			identity?.cause !== "session-id-match"
-		) {
+		const malformedCopilotId = harness === "copilot" && !isCopilotSessionId(planned);
+		const refusalCause = malformedCopilotId
+			? "malformed-planned-copilot-id"
+			: identity?.cause === "foreign-session-id"
+				? identity.cause
+				: undefined;
+		if (refusalCause !== undefined) {
+			reportBindRefusal(
+				descriptor,
+				drive,
+				delivery,
+				refusalCause,
+				malformedCopilotId ? `planned id '${planned}' is not a UUID` : identity?.detail,
+			);
+			return { kind: "waiting" };
+		}
+		if (identity?.cause !== "session-id-match") {
 			return { kind: "waiting" };
 		}
 		// First-inference gate (FIX-1): do NOT bind until the init-inject turn has
@@ -503,6 +518,26 @@ export function driveSession(
 	}
 	if (ambiguousCount !== undefined) return { kind: "ambiguous", count: ambiguousCount };
 	return { kind: "waiting" };
+}
+
+function reportBindRefusal(
+	descriptor: SessionDescriptor,
+	drive: DriveState,
+	delivery: DeliveryPort,
+	cause: string,
+	detail?: string,
+): void {
+	if (!descriptor.spawnedBy) return;
+	const surfaced = drive.bindRefusalCauses ?? new Set<string>();
+	drive.bindRefusalCauses = surfaced;
+	if (surfaced.has(cause)) return;
+	surfaced.add(cause);
+	notify(
+		delivery,
+		descriptor.id,
+		descriptor.spawnedBy,
+		`⛔ ${descriptor.id} planned bind refused (${cause})${detail ? `: ${detail}` : "."}`,
+	);
 }
 
 /** A boot line was refused by live pane input. Anchor the clock on first refusal
