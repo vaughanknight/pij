@@ -37,3 +37,6 @@ Sweep every 20–30 minutes (your watchdog interval is the trigger — a nudge m
 
 ## Dogfood — say these out loud, first-class deliverable
 Which chores were mechanical vs. secretly judgment; where a rule was ambiguous or impossible; what you wanted to do and could not; **anything you guessed at**.
+
+## Amendment 2026-08-27 16:1xZ — sweep ORDER (after the unsent 16:05Z sweep; cause verified: Copilot per-turn tool-time budget expired after the packet write)
+1. Run the instruments. 2. **SEND the one-line report to the prime FIRST** (numbers + denominators; packet path may read "pending"). 3. Persist the packet. 4. Send the path in a second short message if budget remains. If tool time expires at any step, the **first act of your next turn** is the missing send. A packet on disk without a delivered send is silence (rule 10). Also (from 12:0xZ/15:25Z corrections): "mine" = my whole subtree (`pij tree pij-relative-panther`); chore 4 triggers only on `status-stale` ROWS from `pij anomalies`; parked seats are exempt; report resolution-between-sweeps as an upper bound with both read times; never re-label a past read.
