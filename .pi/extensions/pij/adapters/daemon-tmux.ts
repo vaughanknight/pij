@@ -37,7 +37,7 @@ import {
 	resolveClaudeSocket,
 	sendClaudeFrame,
 } from "./claude-socket.js";
-import { buildCopilotPrompt, sendCopilotRpc } from "./copilot-rpc.js";
+import { buildCopilotPrompt, probeCopilotReady, sendCopilotRpc } from "./copilot-rpc.js";
 import { NodeProcess } from "./process.js";
 import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
@@ -239,6 +239,9 @@ export class DaemonTmux implements DaemonPorts {
 	private readonly tapFiles = new Map<string, { path: string; offset: number }>();
 	private readonly claudeSessionsDir: string;
 	private readonly socketAckWaitMs: number;
+	/** copilot sessions whose embedded server has answered a readiness probe at
+	 *  least once (PoC day-2 item 9) — the probe runs only before the FIRST send. */
+	private readonly copilotReady = new Set<string>();
 
 	constructor(options: DaemonTmuxOptions = {}) {
 		const base = options.runner ?? execFileRunner;
@@ -272,6 +275,23 @@ export class DaemonTmux implements DaemonPorts {
 	): Promise<SendOutcome | "no-socket"> {
 		if (target.harness === "copilot") {
 			if (target.rpcPort === undefined || !target.harnessSessionId) return "no-socket";
+			// First-delivery readiness gate (item 9): a fresh copilot can ack a
+			// send while its model turn is still hung at boot. Probe once; if not
+			// ready, leave the message queued (retry next tick) rather than post
+			// into a hang. Proven-live sessions skip the probe.
+			if (!this.copilotReady.has(target.harnessSessionId)) {
+				const probe = await probeCopilotReady({
+					port: target.rpcPort,
+					sessionId: target.harnessSessionId,
+				});
+				if (!probe.ready) {
+					this.warn(
+						`copilot NOT READY: ${target.id} on 127.0.0.1:${target.rpcPort} — ${probe.detail ?? "unknown"}; message stays queued`,
+					);
+					return "failed";
+				}
+				this.copilotReady.add(target.harnessSessionId);
+			}
 			const r = await sendCopilotRpc({
 				port: target.rpcPort,
 				sessionId: target.harnessSessionId,

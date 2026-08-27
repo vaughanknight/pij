@@ -100,3 +100,74 @@ export function sendCopilotRpc(input: {
 		});
 	});
 }
+
+export interface CopilotReadyResult {
+	readonly ready: boolean;
+	readonly detail?: string;
+}
+
+/** Readiness probe before the FIRST RPC delivery to a copilot seat (PoC day-2
+ *  item 9). A fresh session can return a messageId from `session.send` while its
+ *  model turn is still hung at boot (observed once after an MCP reload: 0 AIC,
+ *  pending). `session.getForeground` only answers with the session once the TUI
+ *  has finished registering it, so a matching foreground id is a positive
+ *  "the composer will actually process input" signal. `ready:false` (no answer,
+ *  or a different/undefined foreground) → the caller leaves the message queued
+ *  and retries next tick instead of sending into a hang. Never throws. */
+export function probeCopilotReady(input: {
+	readonly port: number;
+	readonly sessionId: string;
+	readonly timeoutMs?: number;
+}): Promise<CopilotReadyResult> {
+	rpcSeq += 1;
+	const id = `pij-ready-${process.pid}-${rpcSeq}`;
+	const body = Buffer.from(
+		JSON.stringify({ jsonrpc: "2.0", id, method: "session.getForeground", params: {} }),
+		"utf8",
+	);
+	return new Promise((resolve) => {
+		let settled = false;
+		let buf = Buffer.alloc(0);
+		const c = createConnection({ host: "127.0.0.1", port: input.port });
+		const done = (r: CopilotReadyResult): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			c.destroy();
+			resolve(r);
+		};
+		const timer = setTimeout(
+			() => done({ ready: false, detail: "getForeground timeout" }),
+			input.timeoutMs ?? 3_000,
+		);
+		c.on("error", (e) =>
+			done({ ready: false, detail: String((e as NodeJS.ErrnoException).code ?? e) }),
+		);
+		c.on("connect", () => {
+			c.write(`Content-Length: ${body.length}\r\n\r\n`);
+			c.write(body);
+		});
+		c.on("data", (d) => {
+			buf = Buffer.concat([buf, d]);
+			for (;;) {
+				const sep = buf.indexOf("\r\n\r\n");
+				if (sep < 0) return;
+				const m = /Content-Length:\s*(\d+)/i.exec(buf.subarray(0, sep).toString());
+				if (!m) return done({ ready: false, detail: "bad frame header" });
+				const len = Number(m[1]);
+				if (buf.length < sep + 4 + len) return;
+				let msg: { id?: unknown; result?: { sessionId?: string } };
+				try {
+					msg = JSON.parse(buf.subarray(sep + 4, sep + 4 + len).toString());
+				} catch {
+					return done({ ready: false, detail: "bad frame body" });
+				}
+				buf = buf.subarray(sep + 4 + len);
+				if (msg.id !== id) continue; // a notification — keep reading
+				const fg = msg.result?.sessionId;
+				if (fg === input.sessionId) return done({ ready: true });
+				return done({ ready: false, detail: `foreground=${fg ?? "none"} (booting)` });
+			}
+		});
+	});
+}

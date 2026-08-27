@@ -2,9 +2,46 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+// A minimal Content-Length JSON-RPC server that answers session.getForeground
+// with a fixed sessionId, runs `fn(port)`, then closes. Out-of-process is
+// unnecessary here — probeCopilotReady is async and yields to the event loop.
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildCopilotPrompt, sendCopilotRpc } from "./copilot-rpc.js";
+import { buildCopilotPrompt, probeCopilotReady, sendCopilotRpc } from "./copilot-rpc.js";
+
+async function startForegroundServer<T>(
+	fgSessionId: string,
+	fn: (port: number) => Promise<T>,
+): Promise<T> {
+	const srv = createServer((c) => {
+		let buf = Buffer.alloc(0);
+		c.on("data", (d) => {
+			buf = Buffer.concat([buf, d]);
+			for (;;) {
+				const sep = buf.indexOf("\r\n\r\n");
+				if (sep < 0) return;
+				const len = Number(/Content-Length:\s*(\d+)/i.exec(buf.subarray(0, sep).toString())![1]);
+				if (buf.length < sep + 4 + len) return;
+				const msg = JSON.parse(buf.subarray(sep + 4, sep + 4 + len).toString());
+				buf = buf.subarray(sep + 4 + len);
+				const resp = JSON.stringify({
+					jsonrpc: "2.0",
+					id: msg.id,
+					result: { sessionId: fgSessionId },
+				});
+				c.write("Content-Length: " + Buffer.byteLength(resp) + "\r\n\r\n" + resp);
+			}
+		});
+	});
+	await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+	const port = (srv.address() as { port: number }).port;
+	try {
+		return await fn(port);
+	} finally {
+		await new Promise<void>((r) => srv.close(() => r()));
+	}
+}
 
 const BIG = `HEAD sha 0001\n${Array.from({ length: 30 }, (_, i) => `L${i}: ${"k".repeat(95)}`).join("\n")}\nTAIL`;
 
@@ -90,5 +127,25 @@ describe("sendCopilotRpc", () => {
 		const out = await sendCopilotRpc({ port: 1, sessionId: "s", prompt: "hi", timeoutMs: 500 });
 		expect(out.outcome).toBe("failed");
 		expect(out.detail).toMatch(/ECONNREFUSED|EACCES|timeout/);
+	});
+});
+
+describe("probeCopilotReady (day-2 item 9)", () => {
+	it("ready when getForeground returns our sessionId; not-ready otherwise", async () => {
+		const server = startForegroundServer;
+		const a = await server("sess-live", async (port) =>
+			probeCopilotReady({ port, sessionId: "sess-live", timeoutMs: 1000 }),
+		);
+		expect(a.ready).toBe(true);
+		const b = await server("sess-other", async (port) =>
+			probeCopilotReady({ port, sessionId: "sess-live", timeoutMs: 1000 }),
+		);
+		expect(b.ready).toBe(false);
+		expect(b.detail).toContain("booting");
+	});
+
+	it("not-ready (retryable) when nothing listens", async () => {
+		const r = await probeCopilotReady({ port: 1, sessionId: "s", timeoutMs: 500 });
+		expect(r.ready).toBe(false);
 	});
 });
