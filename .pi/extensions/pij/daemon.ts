@@ -148,6 +148,23 @@ export interface BridgeRestartWatcherNoticeDeps {
 	readonly log: (message: string) => void;
 }
 
+function isBridgeWatcherEntry(value: unknown): boolean {
+	if (typeof value !== "object" || value === null) return false;
+	const watcher = value as Record<string, unknown>;
+	if (typeof watcher.watcherId !== "string" || typeof watcher.addedAt !== "string") return false;
+	if (watcher.capture === undefined) return true;
+	if (typeof watcher.capture !== "object" || watcher.capture === null) return false;
+	const capture = watcher.capture as Record<string, unknown>;
+	return (
+		(capture.mode === undefined ||
+			capture.mode === "anomaly" ||
+			capture.mode === "always" ||
+			capture.mode === "never") &&
+		(capture.maxLines === undefined || typeof capture.maxLines === "number") &&
+		(capture.maxBytes === undefined || typeof capture.maxBytes === "number")
+	);
+}
+
 /** Notify every explicit watcher of the Telegram bridge restart.
  *
  * Watchers are the supervision authority; machine-wide primes are unrelated and
@@ -163,9 +180,10 @@ export function notifyBridgeRestartWatchers(
 			const raw = JSON.parse(readFileSync(deps.store.pathFor(TELEGRAM_PEER_ID), "utf8")) as {
 				watchers?: unknown;
 			};
-			const rejected = Array.isArray(raw.watchers) ? raw.watchers.length : 0;
+			const entries = Array.isArray(raw.watchers) ? raw.watchers : [];
+			const malformed = entries.filter((entry) => !isBridgeWatcherEntry(entry)).length;
 			deps.log(
-				`telegram: restart owner notice skipped — watchers file unreadable/malformed (${rejected} entries rejected)`,
+				`telegram: restart owner notice skipped — watchers file unreadable/malformed (${entries.length} dropped, ${malformed} malformed)`,
 			);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -222,7 +240,7 @@ export interface BridgeRestartNotifierDeps {
 }
 
 /** Build the exact `notifyOwner` closure passed to bridge supervision. */
-export function createBridgeRestartNotifier(
+export function wireBridgeRestartNotifier(
 	deps: BridgeRestartNotifierDeps,
 ): (message: string) => number {
 	return (message) => {
@@ -1818,7 +1836,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	}
 	const bridgeSpine = new FsSpineLog(pijHome);
 	const bridgeCaptures = new FsWatchdogStore(pijHome);
-	const notifyBridgeOwner = createBridgeRestartNotifier({
+	const notifyBridgeOwner = wireBridgeRestartNotifier({
 		pijHome,
 		registry,
 		store: bridgeCaptures,
