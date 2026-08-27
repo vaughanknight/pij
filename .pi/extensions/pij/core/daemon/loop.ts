@@ -17,6 +17,7 @@ import {
 	evaluateWatchdog,
 	markFailed,
 	markInitInjected,
+	noticeRecipient,
 	shouldInjectInit,
 } from "../binding.js";
 import { detectBadModelInPane, extractBoundModel } from "../harness/badmodel.js";
@@ -428,7 +429,7 @@ export function driveSession(
 			...(model ? { boundModel: model } : {}),
 		};
 		persistDaemonWrite(registry, bound);
-		if (!drive.settled && descriptor.spawnedBy) {
+		if (!drive.settled && noticeRecipient(descriptor)) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
@@ -473,7 +474,7 @@ export function driveSession(
 			...(harness === "codex" ? { transcriptPath: discovery.path } : {}),
 		};
 		persistDaemonWrite(registry, bound);
-		if (!drive.settled && descriptor.spawnedBy) {
+		if (!drive.settled && noticeRecipient(descriptor)) {
 			drive.settled = true;
 			const note = buildBoundNotice(bound);
 			if (note) notify(delivery, descriptor.id, note.to, note.text);
@@ -591,7 +592,7 @@ function fail(
 		...(deathReason ? { failureReason: deathReason } : {}),
 	};
 	persistDaemonWrite(registry, failed);
-	if (!drive.settled && descriptor.spawnedBy) {
+	if (!drive.settled && noticeRecipient(descriptor)) {
 		drive.settled = true;
 		const note = buildFailedNotice(failed, reason);
 		if (note) notify(delivery, descriptor.id, note.to, note.text);

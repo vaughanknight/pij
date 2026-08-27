@@ -372,6 +372,42 @@ describe("creator notices", () => {
 		expect(buildBoundNotice(orphan)).toBeNull();
 		expect(buildFailedNotice(orphan, "x")).toBeNull();
 	});
+
+	it.each([
+		["bound", (descriptor: SessionDescriptor) => buildBoundNotice(descriptor)],
+		["failed", (descriptor: SessionDescriptor) => buildFailedNotice(descriptor, "timed out")],
+		["stalled", (descriptor: SessionDescriptor) => buildStalledNotice(descriptor)],
+		["dead", (descriptor: SessionDescriptor) => buildDeadNotice(descriptor, "dead")],
+	] as const)("%s notice routes parentId, then spawnedBy, then nobody", (_kind, build) => {
+		expect(
+			build({
+				...BOUND_DESC,
+				parentId: "pij-parent",
+				spawnedBy: "pij-spawner",
+			})?.to,
+		).toBe("pij-parent");
+		expect(
+			build({
+				...BOUND_DESC,
+				parentId: undefined,
+				spawnedBy: "pij-spawner",
+			})?.to,
+		).toBe("pij-spawner");
+		expect(
+			build({
+				...BOUND_DESC,
+				parentId: "pij-parent",
+				spawnedBy: undefined,
+			})?.to,
+		).toBe("pij-parent");
+		expect(
+			build({
+				...BOUND_DESC,
+				parentId: undefined,
+				spawnedBy: undefined,
+			}),
+		).toBeNull();
+	});
 });
 
 // ─── T011: stalled/dead notices (whole-life push) ────────────────────────────

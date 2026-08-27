@@ -49,7 +49,7 @@ import { planOnceClose } from "./core/agent-peer.js";
 import { sweepStaleTmp } from "./core/agents/inline.js";
 import { resolvePijHome } from "./core/agents/paths.js";
 import { ARCHIVE_PRUNE_AFTER_MS } from "./core/archive.js";
-import { buildDeadNotice, buildStalledNotice } from "./core/binding.js";
+import { buildDeadNotice, buildStalledNotice, noticeRecipient } from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
 import { BatonSweep } from "./core/daemon/baton-sweep.js";
 import { reconcileDeaths } from "./core/daemon/death-reconciler.js";
@@ -791,7 +791,8 @@ export class Daemon {
 				// all (no lifecycle/sendkeys). `capture-pane` is read-only, so pi keeps
 				// owning its inbox, delivery, and self-written state — we only peek.
 				const providerView = current.state === "working" ? current : d;
-				if (providerView.paneId && providerView.spawnedBy) this.pushProviderFailure(providerView);
+				if (providerView.paneId && noticeRecipient(providerView))
+					this.pushProviderFailure(providerView);
 				// Compact hold (DL-004): while the pane is compacting, do NOT drain —
 				// messages stay durable-unread in the inbox (the queue), nothing is
 				// marked read, and the sender's receipt stays `queued` until the
@@ -1029,7 +1030,7 @@ export class Daemon {
 	 *  (pure, returns null for non-busy/ready, has no delivery port). One push per
 	 *  transition, latched by `this.pushed`. */
 	private pushWholeLifeTransition(d: SessionDescriptor): void {
-		if (!d.spawnedBy) return; // no creator to notify
+		if (!noticeRecipient(d)) return; // no current or historical creator to notify
 		// A safety-exempted peer is intentionally idle on standby, so its silence is
 		// expected and must generate NO watchdog traffic in either direction. The
 		// watchdog's own path honours that via `isFireDue`; this detector derives
@@ -1089,7 +1090,7 @@ export class Daemon {
 		latch.add("stalled");
 		const persisted = persistDaemonWrite(this.registry, { ...d, failureReason: "stalled" });
 		if (persisted.lifecycle === "dissolved") return;
-		if (persisted.spawnedBy) {
+		if (noticeRecipient(persisted)) {
 			const note = buildStalledNotice(persisted);
 			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
 		}
@@ -1117,7 +1118,7 @@ export class Daemon {
 		// s070 set out to fix. `staleAge` is only the trigger for LOOKING; the notice
 		// fires on positively-identified provider-error evidence in the pane, never on
 		// silence alone. A test pins this so it cannot be "fixed" by accident.
-		if (!d.spawnedBy || !d.paneId) return; // no creator / no pane to peek
+		if (!noticeRecipient(d) || !d.paneId) return; // no recipient / no pane to peek
 		if (d.lifecycle === "pending") return; // mid-bind → driveSession owns it (its bad-model detect fails it)
 		if (!this.ports.isAlive(d.pid)) return; // dead → handled by the dead branch
 		const latch = this.pushed.get(d.id) ?? new Set<PushedTransition>();

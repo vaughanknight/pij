@@ -1678,6 +1678,74 @@ describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
 });
 
 describe("Daemon.tick provider-failure peek", () => {
+	it.each([
+		["adopted", "pij-spawner"],
+		["parent-only", undefined],
+	] as const)("routes a stalled %s seat to its current parent only", async (_case, spawnedBy) => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-routed-stall",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-stall",
+				parentId: "pij-parent",
+				spawnedBy,
+				state: "working",
+				lastEventAt: STALE_AT,
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({
+				nowMs: NOW_MS,
+				isAlive: () => true,
+				paneText: "still producing output without a footer",
+			}),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(messageBodies("pij-parent").join("\n")).toMatch(/stall|quiet/i);
+		expect(messageBodies("pij-spawner")).toEqual([]);
+	});
+
+	it.each([
+		["adopted", "pij-spawner"],
+		["parent-only", undefined],
+	] as const)("routes a provider-failure %s seat to its current parent only", async (_case, spawnedBy) => {
+		const registry = new FsRegistry(home);
+		registry.write(
+			desc({
+				id: "pij-routed-provider-failure",
+				harness: "pi",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess-provider",
+				parentId: "pij-parent",
+				spawnedBy,
+				state: "idle",
+				lastEventAt: STALE_AT,
+			}),
+		);
+
+		await new Daemon(
+			home,
+			fakePorts({
+				nowMs: NOW_MS,
+				isAlive: () => true,
+				paneText: "billing is disabled; insufficient credit",
+			}),
+			registry,
+			new FsChannel(home),
+		).tick();
+
+		expect(messageBodies("pij-parent").join("\n")).toContain("quota");
+		expect(messageBodies("pij-spawner")).toEqual([]);
+	});
+
 	it("does not push a provider failure while the session is working with fresh activity", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(

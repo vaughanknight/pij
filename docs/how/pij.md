@@ -56,7 +56,9 @@ pij list --here               # bare `pij` on PATH from any cwd
   An explicit-root export emits no parent assignment, so run
   `unset PIJ_PARENT_ID` first when evaluating into a shell that may carry a stale
   value. `spawnedBy` remains separate close-authorization ownership and is never
-  rewritten by structural linking.
+  rewritten by structural linking. Future bound/failed/stalled/dead lifecycle
+  notices follow the descriptor's current structural parent, falling back to
+  `spawnedBy` when no parent id is present.
 
 ### Push and pull delivery
 
@@ -344,6 +346,8 @@ effective-parent cycles fail before any write. The JSON receipt is
 `{"id":"…","parentId":"…"|null,"changed":true|false}`. Automatic spawn records
 the caller as structural parent and close owner; adopted panes need `--parent`
 or an explicit post-identity `link` when they should join an existing hierarchy.
+Changing the link redirects future bound/failed/stalled/dead lifecycle notices
+to the newly named parent; it does not transfer the `spawnedBy` close owner.
 Role is designated by the governor that gives a seat work, never inferred or
 self-declared by the seat; pass `--role pm|worker` on that placement call.
 

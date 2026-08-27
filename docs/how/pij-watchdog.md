@@ -10,6 +10,12 @@ activity appears again.
 This whole-life supervision watchdog is distinct from the short spawn
 phone-home watchdog used while a control-plane peer binds.
 
+Lifecycle notices for `bound`, `failed`, `stalled`, and `dead` seats go to the
+seat's current structural parent when `parentId` names one, falling back to the
+original `spawnedBy` owner. A `pij link` therefore changes where future
+lifecycle notices go without changing close authorization. Explicit
+`pij watchdog watch` subscriptions remain a separate fan-out mechanism.
+
 ## Intent — never watch a peer whose silence is deliberate
 
 The watchdog exists to catch a peer that *should* be making progress but has gone

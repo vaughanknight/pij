@@ -326,6 +326,29 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
+	it("discovery bind notifies a parent-only descriptor", () => {
+		const w = world({ pane: READY, transcripts: [`${DIR}/preexisting.jsonl`] });
+		const reg = new FakeRegistry();
+		const del = new FakeDelivery();
+		const drive: DriveState = { before: [`${DIR}/preexisting.jsonl`], readyAtMs: 1000 };
+		w.setTranscripts([`${DIR}/preexisting.jsonl`, `${DIR}/claude-new.jsonl`]);
+
+		const out = driveSession(
+			desc({
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				parentId: "pij-parent",
+				spawnedBy: undefined,
+			}),
+			drive,
+			w.ports,
+			reg,
+			del,
+		);
+
+		expect(out).toEqual({ kind: "bound", harnessSessionId: "claude-new" });
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
+	});
+
 	it("a discovered Claude transcript cannot bind when the pane process names a foreign session", () => {
 		const w = world({ pane: READY, transcripts: [`${DIR}/claude-new.jsonl`] });
 		w.ports.processSnapshot = () => processSnapshot("claude", "foreign-session");
@@ -368,6 +391,30 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(
 			del.outbox.some((e) => e.message.to === "pij-boss" && e.message.body.includes("ready")),
 		).toBe(true);
+	});
+
+	it("planned-id bind notifies a parent-only descriptor", () => {
+		const planned = "9a8f8be6-0000-4000-8000-000000000002";
+		const w = world({ pane: COPILOT_READY, transcripts: [] });
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
+		const del = new FakeDelivery();
+
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: planned,
+				parentId: "pij-parent",
+				spawnedBy: undefined,
+			}),
+			{ readyAtMs: 1000, firstInferenceSeen: true },
+			w.ports,
+			new FakeRegistry(),
+			del,
+		);
+
+		expect(out).toEqual({ kind: "bound", harnessSessionId: planned });
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
 	});
 
 	it("claude --branch: ready + plannedHarnessSessionId → binds deterministically, no discovery (AC-03)", async () => {
@@ -687,6 +734,32 @@ This session was last active just now and appears to be in use by another CLI or
 		).toBe(true);
 	});
 
+	it("watchdog failure notifies a parent-only descriptor", () => {
+		const w = world({ pane: READY, transcripts: [] });
+		const del = new FakeDelivery();
+		const drive: DriveState = {
+			before: [],
+			readyAtMs: 1000,
+			resentAtMs: 1000 + WATCHDOG_TIMEOUT_MS,
+		};
+		w.setNow(1000 + WATCHDOG_TIMEOUT_MS * 2);
+
+		const out = driveSession(
+			desc({
+				initInjectedAt: "x",
+				parentId: "pij-parent",
+				spawnedBy: undefined,
+			}),
+			drive,
+			w.ports,
+			new FakeRegistry(),
+			del,
+		);
+
+		expect(out.kind).toBe("failed");
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
+	});
+
 	it("review H1: seeds `before` from descriptor.transcriptsAtSpawn (not a live snapshot)", async () => {
 		// The dir ALREADY contains claude's transcript (boot beat the first tick),
 		// but it was NOT present at spawn → it must still be discovered as new.
@@ -809,9 +882,14 @@ This session was last active just now and appears to be in use by another CLI or
 	});
 
 	it.each([
-		{ label: "structural parent", parentId: "pij-structural-parent" },
-		{ label: "explicit root", parentId: null },
+		{
+			expectedRecipient: "pij-structural-parent",
+			label: "structural parent",
+			parentId: "pij-structural-parent",
+		},
+		{ expectedRecipient: "pij-close-owner", label: "explicit root", parentId: null },
 	])("dead bound descriptor preserves $label metadata when persisted as failed", async ({
+		expectedRecipient,
 		parentId,
 	}) => {
 		const w = world({ pane: "[exited]", dead: true });
@@ -839,7 +917,7 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(
 			del.outbox.some(
 				(event) =>
-					event.message.to === "pij-close-owner" &&
+					event.message.to === expectedRecipient &&
 					event.message.body.includes("failed to bind: pane exited before binding"),
 			),
 		).toBe(true);

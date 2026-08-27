@@ -276,12 +276,17 @@ export interface CreatorNotice {
 	readonly text: string;
 }
 
+export function noticeRecipient(descriptor: SessionDescriptor): SessionId | null {
+	return descriptor.parentId ?? descriptor.spawnedBy ?? null;
+}
+
 /** Verification notice on a successful bind (AC-05) — `null` if there is no
  *  creator to notify (e.g. an operator-spawned session). */
 export function buildBoundNotice(descriptor: SessionDescriptor): CreatorNotice | null {
-	if (!descriptor.spawnedBy) return null;
+	const recipient = noticeRecipient(descriptor);
+	if (!recipient) return null;
 	return {
-		to: descriptor.spawnedBy,
+		to: recipient,
 		text: `✅ ${descriptor.id} is ready (bound to ${descriptor.harness ?? "?"} session ${descriptor.harnessSessionId ?? "?"}).`,
 	};
 }
@@ -291,9 +296,10 @@ export function buildFailedNotice(
 	descriptor: SessionDescriptor,
 	reason: string,
 ): CreatorNotice | null {
-	if (!descriptor.spawnedBy) return null;
+	const recipient = noticeRecipient(descriptor);
+	if (!recipient) return null;
 	return {
-		to: descriptor.spawnedBy,
+		to: recipient,
 		text: `⚠️ ${descriptor.id} failed to bind: ${reason}`,
 	};
 }
@@ -306,10 +312,11 @@ export interface DeadNoticeOptions {
  *  push, T012). Includes the `boundModel` when available so the creator can see
  *  which model stalled. Returns `null` if there is no creator to notify. */
 export function buildStalledNotice(descriptor: SessionDescriptor): CreatorNotice | null {
-	if (!descriptor.spawnedBy) return null;
+	const recipient = noticeRecipient(descriptor);
+	if (!recipient) return null;
 	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
 	return {
-		to: descriptor.spawnedBy,
+		to: recipient,
 		text: `⏸ ${descriptor.id}${modelNote} has gone quiet (stalled — no activity past the stale threshold). Pane ${descriptor.paneId ?? "?"} is still alive but silent.`,
 	};
 }
@@ -321,17 +328,18 @@ export function buildDeadNotice(
 	reason: DeathReason,
 	options: DeadNoticeOptions = {},
 ): CreatorNotice | null {
-	if (!descriptor.spawnedBy) return null;
+	const recipient = noticeRecipient(descriptor);
+	if (!recipient) return null;
 	const modelNote = descriptor.boundModel ? ` (model: ${descriptor.boundModel})` : "";
 	const authoritativeDeath = options.authoritativeDeath ?? reason === "dead";
 	if (authoritativeDeath) {
 		return {
-			to: descriptor.spawnedBy,
+			to: recipient,
 			text: `💀 ${descriptor.id}${modelNote} has exited (reason: ${reason}). The session is dead and will not recover.`,
 		};
 	}
 	return {
-		to: descriptor.spawnedBy,
+		to: recipient,
 		text: `⚠️ ${descriptor.id}${modelNote} appears stuck on a provider error (reason: ${reason}). Pane ${descriptor.paneId ?? "?"} is still alive; check the session before treating it as dead.`,
 	};
 }

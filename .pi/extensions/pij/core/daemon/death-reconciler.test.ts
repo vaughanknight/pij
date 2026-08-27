@@ -107,6 +107,33 @@ describe("death reconciler", () => {
 		]);
 	});
 
+	it.each([
+		["adopted", "pij-original-spawner"],
+		["parent-only", undefined],
+	] as const)("routes a %s seat's terminal death notice to the current parent only", (_case, spawnedBy) => {
+		const result = reconcileDeaths({
+			descriptors: [
+				descriptor({
+					parentId: "pij-current-parent",
+					spawnedBy,
+				}),
+				descriptor({
+					id: "pij-current-parent",
+					parentId: undefined,
+					pid: 99,
+					spawnedBy: undefined,
+				}),
+			],
+			expectations: [],
+			nowIso: "2026-07-20T00:00:02.000Z",
+			isAlive: (pid) => pid === 99,
+		});
+
+		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
+			{ from: "pij-child", to: "pij-current-parent" },
+		]);
+	});
+
 	it("does not treat a live provider-stuck PID as terminal", () => {
 		const result = reconcileDeaths({
 			descriptors: [descriptor({ failureReason: "quota" })],

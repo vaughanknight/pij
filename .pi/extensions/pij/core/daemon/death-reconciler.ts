@@ -1,6 +1,7 @@
 // Pure cross-harness terminal-absence reconciliation. It does not infer cause:
 // `unrequested-by-pij` means only that an observed absence lacked close intent.
 
+import { noticeRecipient } from "../binding.js";
 import type { AgentLivenessProbe, ProcessSnapshot } from "../platform/types.js";
 import {
 	applyTerminalObservation,
@@ -237,9 +238,10 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 			deathNoticeLatchedAt: latched.deathNoticeLatchedAt,
 		});
 		dead.add(descriptor.id);
-		if (descriptor.spawnedBy && latched.terminal) {
+		const recipient = noticeRecipient(descriptor);
+		if (recipient && latched.terminal) {
 			notices.push({
-				to: descriptor.spawnedBy,
+				to: recipient,
 				from: descriptor.id,
 				text: noticeText(
 					descriptor.id,
