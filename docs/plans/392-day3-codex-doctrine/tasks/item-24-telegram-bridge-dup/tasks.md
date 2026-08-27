@@ -36,3 +36,14 @@ The positional part_index skip-set is only valid under the partition it was reco
 | [ ] | T008 (drift test — the ruling's) | record parts under prefix A, redeliver under prefix B (different part count) ⇒ ALL parts sent, row acked, ZERO tail loss. Mutation-prove MUT-DRIFT (remove the mismatch→send-all guard ⇒ this test RED with a lost tail). | `telegram/bridge.test.ts` | drift → send-all, no loss | the o-prime's acceptance test |
 
 Then: re-review THE FOLD HUNK + two green full runs → the item-24 PR. ADV-2/3/4 → item 24b.
+
+## ADV-1 FOLD HARDENING (o-prime ruling — pre-merge; E28 unsensored guards never ship on the silent-loss path)
+The fold CODE is correct (differential-proven zero loss) but 2 guards have NO test (both mutations green). Add the tests + one correctness one-liner. Base = the fold candidate 6641943.
+| # | Task | Path(s) | Done When | Notes |
+|---|------|---------|-----------|-------|
+| [ ] | T009 (MUT-PREFIXLEN sensor) | STABLE-COUNT drift test: a body where partCount is EQUAL under both prefixes but prefixLength DIFFERS (7000 chars = 2 parts under prefix 96 AND prefix 12, boundaries 3993 vs 4077) → redelivery must SEND ALL, zero loss. MUT-PREFIXLEN (compare partCount only, drop prefixLength) MUST RED on THIS test. | `telegram/bridge.test.ts` | RED→GREEN; MUT-PREFIXLEN reds | today it's fully green — 84 chars lost |
+| [ ] | T010 (MUT-NOMARK sensor) | 3-pass A→B→A marking probe: pass1 short-prefix fails entirely; pass2 drifts to long-prefix, only 1/3 lands (writes a mark under B's partition); pass3 drifts back to A → the tail must still send (pass3 must not read B's mark as A's part). MUT-NOMARK (remove the `if (positionalPartsValid)` marking gate) MUST RED. | `telegram/bridge.test.ts` | RED→GREEN; MUT-NOMARK reds | measures byte coverage, not part count |
+| [ ] | T011 (ADV-3 one-liner + test) | scope the skip-set to `index < partCount` so caption/attachment sendText (which shares nextTextPartIndex) cannot drift under a matching identity. Add a test: attachment-index drift with a matching body identity → the caption text is NOT wrongly skipped. | `telegram/bridge.ts` (+test) | RED→GREEN | body was already safe; this pins caption text |
+| [ ] | T012 | re-run gates; the same item-24 PR ALSO carries the §14 provenance note (for issue #311). Base bab9854. | — | recorded | ADV-4 → 24b |
+
+Then: cold re-review of the fold hunk + two green full runs → item-24 PR fresh from main (base bab9854).
