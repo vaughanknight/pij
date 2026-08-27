@@ -3,11 +3,11 @@
   "command": "checks",
   "harness": "copilot-cli",
   "harness_session_id": "b8e0213e-a217-45d3-9352-464791847f5a",
-  "timecode": "2026-08-27T09:13:40.080Z",
+  "timecode": "2026-08-27T09:32:28.900Z",
   "window": {
     "since": "last-command",
-    "from": 499,
-    "to": 637
+    "from": 637,
+    "to": 824
   },
   "branch": "s392/day3-codex-doctrine",
   "branch_changed": false,
