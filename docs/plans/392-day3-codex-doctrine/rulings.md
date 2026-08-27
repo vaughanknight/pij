@@ -259,3 +259,12 @@ Cherry-pick byte-faithful (patch-id identical). Reviewer VERIFIED on the machine
 
 ## 2026-08-28 — o-prime RULING: 29b-T001 FOLD PRE-MERGE (item-24 style), dispatch after the item-24 fold (same coder; no time lost — 29b-T001 only goes live at restart #6 which waits on 24)
 Fold = (a) ADV-1: ONE test driving the REAL notifyOwner closure with a REGISTRY, such that a notify-nobody impl goes RED with the source-pin grep DELETED (MUT-OWNER must RED on the BEHAVIOURAL test, not the grep; keep the grep as a 2nd sensor if desired). (b) ADV-2: honest log — "watchers file unreadable/malformed (N entries rejected)" vs "no watchers"; the underlying reject-all drop stays out of fence → 29b-rest. ADV-1b/3/4 + zero-watcher fallback → 29b-rest (o-prime lean: zero watchers → notify all LIVE primes, liveness-filtered). Then re-review the fold hunk + two green full runs → 29b-T001's own small PR fresh from main. Reason: only-a-grep guard = E28 false-green shape; E29 (silent-loss) stays pre-merge.
+
+## 2026-08-28 — ITEM 30 SPEC CHANGE (Vaughan's ruling, verbatim: "is it a reply? if not send to prime")
+Routing PRECEDENCE (replaces the plain isAlive-gate):
+1. **swipe-reply** → the bubble's sender, ALIVE-checked.
+2. **explicit address** → that seat, ALIVE-checked.
+3. **bare non-reply text** → the EFFECTIVE PRIME = a LIVE prime that WATCHES pij-telegram; if several → the one that spoke to the bridge most recently; if none → guidance naming live primes.
+**Last-speaker-follow for bare text is RETIRED** (bridge.ts:196 fallback no longer routes bare text to the last speaker — it routes to the prime).
+Dead target at ANY step → gone + guidance, NEVER queued (E30).
+Tests: bare text WITH a live last-speaker still goes to the PRIME; dead reply-target → gone. MUT: prime-resolution → last-speaker RED. Still after item 24 + 29b-T001 fold, same file bridge.ts. (Effective-prime resolution: live + prime:true + watches pij-telegram; tie-break = most-recent-to-bridge.)
