@@ -40,6 +40,13 @@ class Bench:
         s.env=dict(os.environ); s.env.update({"PIJ_HOME":a.home,"PIJ_QUEUE_BACKEND":"sqlite","PIJ_SESSION_ID":a.sender})
         for k in ("CLAUDE_CODE_SESSION_ID","CLAUDECODE","CLAUDE_CODE_ENTRYPOINT"): s.env.pop(k,None)
         s.rows=[]
+        s._off={}
+        for path in (a.claude_transcript, a.copilot_events):
+            if path and os.path.exists(path): s._off[path]=os.path.getsize(path)
+    def _tail(s,path):
+        if not path or not os.path.exists(path): return ""
+        with open(path) as f:
+            f.seek(s._off.get(path,0)); return f.read()
     def pij(s,*args,sender=None):
         env=dict(s.env)
         if sender: env["PIJ_SESSION_ID"]=sender
@@ -66,7 +73,7 @@ class Bench:
         return sum(1 for _ in open(s.a.keylog))
     def verified_claude(s,text):
         want="[pij from "+s.a.sender+"] "+text; n=0
-        for l in open(s.a.claude_transcript):
+        for l in s._tail(s.a.claude_transcript).splitlines():
             try: d=json.loads(l)
             except: continue
             if d.get("type")!="user": continue
@@ -81,7 +88,7 @@ class Bench:
         return n
     def verified_copilot(s,text):
         want="[pij from "+s.a.sender+"] "+text; n=0
-        for l in open(s.a.copilot_events):
+        for l in s._tail(s.a.copilot_events).splitlines():
             try: e=json.loads(l)
             except: continue
             if e.get("type")=="user.message" and (e.get("data") or {}).get("content","")==want: n+=1
@@ -94,8 +101,13 @@ class Bench:
             time.sleep(0.5)
         return 0
     def row(s,scn,size,lat,keys,verified,note):
-        s.rows.append(f"| {s.a.label} | {scn} | {size} B | {lat if lat is not None else '—'} | {keys if keys is not None else 'n/a'} | {verified} | {note} |")
-        print(s.rows[-1],flush=True)
+        line=f"| {s.a.label} | {scn} | {size} B | {lat if lat is not None else '—'} | {keys if keys is not None else 'n/a'} | {verified} | {note} |"
+        s.rows.append(line); print(line,flush=True)
+        if s.a.out:  # incremental: a crash in a later scenario must not lose earlier rows
+            new=not os.path.exists(s.a.out) or "| label |" not in open(s.a.out).read()
+            with open(s.a.out,"a") as f:
+                if new: f.write("| label | scenario | body | send→acked ms | keystrokes | verified | note |\n|---|---|---|---|---|---|---|\n")
+                f.write(line+"\n")
     # scenarios
     def C1(s):
         t=body("C1"); k0=s.keylog_count(); seq=s.send(s.a.claude,t); st=s.wait_state(seq,("acked",),30)
@@ -129,10 +141,12 @@ class Bench:
         s.row(f"LOAD {N} msgs/{len(senders)} senders → claude",sum(map(len,texts)),f"p50 {int(statistics.median(lats))} / p95 {int(sorted(lats)[int(0.95*len(lats))-1])}" if lats else None,None,f"transcript ×{ver}/{N}",f"acked {acked}/{N}, loss {N-acked}")
     def RESTART(s):
         if not s.a.daemon_cmd: print("RESTART skipped: --daemon-cmd not given"); return
-        pid=int(open(os.path.join(s.a.home,"daemon.lock")).read().split()[0]) if os.path.exists(os.path.join(s.a.home,"daemon.lock")) else None
-        # find pid via pgrep fallback
-        pids=subprocess.run(["pgrep","-f","pij-poc/.pi/extensions/pij/daemon.ts"],capture_output=True,text=True).stdout.split()
-        for p in pids: os.kill(int(p),signal.SIGTERM)
+        lock=os.path.join(s.a.home,"daemon.lock"); pids=[]
+        try: pids=[json.load(open(lock))["pid"]]
+        except Exception: pids=[int(x) for x in subprocess.run(["pgrep","-f","extensions/pij/daemon.ts"],capture_output=True,text=True).stdout.split()]
+        for p in pids:
+            try: os.kill(int(p),signal.SIGTERM)
+            except ProcessLookupError: pass
         time.sleep(2)
         texts=[f"RESTART-{i} "+body(f"RS{i}",n_lines=4) for i in range(s.a.restart_n)]; seqs=[s.send(s.a.claude,t) for t in texts]
         subprocess.Popen(s.a.daemon_cmd,shell=True,env=dict(os.environ,PIJ_HOME=s.a.home,PIJ_QUEUE_BACKEND="sqlite"),stdout=open(os.path.join(s.a.home,"daemon.log"),"a"),stderr=subprocess.STDOUT)
@@ -149,9 +163,5 @@ def main():
     ap.add_argument("scenarios",nargs="+"); a=ap.parse_args()
     b=Bench(a)
     for scn in a.scenarios: getattr(b,scn)()
-    if a.out:
-        new=not os.path.exists(a.out)
-        with open(a.out,"a") as f:
-            if new: f.write("| label | scenario | body | send→acked ms | keystrokes | verified | note |\n|---|---|---|---|---|---|---|\n")
-            f.write("\n".join(b.rows)+"\n")
+    print(f"{len(b.rows)} row(s) written to {a.out}")
 if __name__=="__main__": main()
