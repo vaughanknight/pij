@@ -85,6 +85,11 @@ export interface QueueReceipt {
 	readonly detail: string | null;
 }
 
+export interface TelegramPartitionIdentity {
+	readonly partCount: number;
+	readonly prefixLength: number;
+}
+
 export interface SqliteQueueOpts {
 	readonly dbPath?: string;
 	readonly now?: () => number;
@@ -119,6 +124,12 @@ CREATE TABLE IF NOT EXISTS telegram_sent_parts (
   part_index INTEGER NOT NULL CHECK(part_index >= 0),
   sent_at    INTEGER NOT NULL,
   PRIMARY KEY(message_id, part_index)
+);
+CREATE TABLE IF NOT EXISTS telegram_partitions (
+  message_id    TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  part_count    INTEGER NOT NULL CHECK(part_count >= 0),
+  prefix_length INTEGER NOT NULL CHECK(prefix_length >= 0),
+  recorded_at   INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS receipts (
   id      INTEGER PRIMARY KEY,
@@ -326,6 +337,33 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 				"INSERT OR IGNORE INTO telegram_sent_parts(message_id, part_index, sent_at) VALUES (?, ?, ?)",
 			)
 			.run(messageId, partIndex, this.now());
+	}
+
+	/** Partition identity that makes positional sent-part indices meaningful. */
+	telegramPartitionIdentity(messageId: string): TelegramPartitionIdentity | undefined {
+		const row = this.db
+			.prepare("SELECT part_count, prefix_length FROM telegram_partitions WHERE message_id = ?")
+			.get(messageId) as { part_count: number; prefix_length: number } | undefined;
+		return row === undefined
+			? undefined
+			: { partCount: row.part_count, prefixLength: row.prefix_length };
+	}
+
+	/** Record the first partition only. Drift is detected against it, never overwritten. */
+	recordTelegramPartitionIdentity(messageId: string, identity: TelegramPartitionIdentity): void {
+		if (
+			!Number.isSafeInteger(identity.partCount) ||
+			identity.partCount < 0 ||
+			!Number.isSafeInteger(identity.prefixLength) ||
+			identity.prefixLength < 0
+		) {
+			throw new Error("Telegram partition identity must use non-negative integers");
+		}
+		this.db
+			.prepare(
+				"INSERT OR IGNORE INTO telegram_partitions(message_id, part_count, prefix_length, recorded_at) VALUES (?, ?, ?, ?)",
+			)
+			.run(messageId, identity.partCount, identity.prefixLength, this.now());
 	}
 
 	/** Ack: the recipient has read the body. Exactly-once by row state. */
