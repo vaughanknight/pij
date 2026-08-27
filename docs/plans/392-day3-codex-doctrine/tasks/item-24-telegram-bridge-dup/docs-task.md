@@ -3,3 +3,5 @@ Update `docs/specs/claude-copilot-sqlite-sockets-comms.md` §14 (outstanding) �
 - Measured answer: a real Claude receiver does NOT positively-ack a successful socket delivery (1000ms probe, 2026-08-27, pid-bound); `sent` + the durable reader-ack is the ceiling; `confirmed` is reachable only if a runtime emits a positive `orig_msg_id` status.
 - The receipt taxonomy: sent / confirmed / failed / unverified.
 - The durable-ack-wins rule (a successful markRead ⇒ receipt reads delivered regardless of transport).
+
+## ADD (o-prime 2026-08-28): the §14 line must also state that a Claude-socket "acked (reader=X)" is DAEMON-origin (injected), NOT reader-read — origin must be visible in pij queue/receipts (item 23b). Copilot RPC + Telegram acks are real positive acks.
