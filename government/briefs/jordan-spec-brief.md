@@ -8,7 +8,7 @@ Vaughan
    ├─ PA pij-ready-perosteck · sensor/relay only
    ├─ s391-day3-core · pij-associated-louse (items 1b/4/6b/13/15/16 — unrelated to you)
    ├─ s392-day3-codex-doctrine · pij-falling-outside (built the comms work you are documenting; ask it factual questions by pij send, never for opinions on scope)
-   └─ jordan-spec · <this seat> · window jordan-spec
+   └─ jordan-spec · pij-dependent-ptarmigan · window jordan-spec (%175)
 ```
 
 ## Work item
@@ -30,3 +30,7 @@ Vaughan
 - No coder fleet needed: you write the spec yourself (docs-only); use ONE cold reviewer (`/pij pair` reviewer role, copilot gpt-5.6-sol xhigh) to check the spec for: standalone-ness (no meta leaked), factual anchors (file:line on the merged main), and completeness against the "must cover" list. Report the verdict by pointer.
 - Card at both edges (`pij report now`); reports `claim · artifacts[] · shas[] · gates[] · observations[] · open[]`; C10 wire discipline; every `pij send` body via a quoted heredoc + `--body-file`.
 - Questions to Vaughan: ask in your own pane and send me the pointer.
+
+## Addendum at dispatch (2026-08-27 ~15:1xZ)
+- Your worktree was created at `be31e66c`; main is now `c0d68da` (items 10a+10b, 1b, 14-pending). **First action after ack: `git rebase origin/main`** so every file:line you cite is on the merged tree; note the sha you cite in the spec header.
+- Restart #2 landed 14:5xZ: the daemon runs the incident fixes; "outstanding" in your spec must reflect that (item 10b is DONE; items 17/18 pending; item 13 card race, 15 spine locks, 16 notice routing pending).
