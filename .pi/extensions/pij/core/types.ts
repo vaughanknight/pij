@@ -250,6 +250,10 @@ export interface SessionDescriptor {
 	 *  transcript stem under ~/.claude/projects/<mangled cwd>/<this>.jsonl,
 	 *  discovered deterministically by the daemon (AC-03). Drives `pij tail`. */
 	readonly harnessSessionId?: string;
+	/** PoC (poc/comms-sqlite-socket): loopback JSON-RPC port of a Copilot seat
+	 *  spawned with `--ui-server --port <rpcPort>`. Absent = no endpoint (legacy
+	 *  seat) → the daemon types a pointer line instead. */
+	readonly rpcPort?: number;
 	/** Codex only (Plan 022): the ABSOLUTE path to the discovered rollout `*.jsonl`,
 	 *  persisted at bind. Codex's transcript dir is date-nested + global, so a bare
 	 *  `harnessSessionId` (the trailing UUID) cannot reconstruct the path the way

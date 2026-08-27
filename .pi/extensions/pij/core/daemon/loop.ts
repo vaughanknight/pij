@@ -596,13 +596,15 @@ export function drainTmuxInbox(
 		// and the receiving agent knows who messaged it (parity with the pi receiver).
 		const msg: PijMessage = { from: m.from, to: target.id, body: m.body, command: m.command };
 		const decision = route(target, msg);
-		// Socket-first for Claude seats (review §5/§7): the body never touches the
+		// Socket-first for Claude seats (review §5/§7) and Copilot seats spawned with
+		// `--ui-server` (descriptor.rpcPort): the body never touches the
 		// pty, so the 1022-byte chunk clip cannot happen and a busy recipient reads
 		// it between tool calls. Commands (`/compact`) must still be TYPED — Claude
 		// Code renders a socket-delivered slash command as plain text.
 		if (
 			decision.kind === "inject" &&
-			target.harness === "claude" &&
+			(target.harness === "claude" ||
+				(target.harness === "copilot" && target.rpcPort !== undefined)) &&
 			!m.command &&
 			ports.sendSocket
 		) {

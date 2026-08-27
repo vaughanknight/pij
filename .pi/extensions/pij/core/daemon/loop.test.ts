@@ -1143,7 +1143,7 @@ describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-soc
 		expect(typedText).toBe("/compact");
 	});
 
-	it("never uses the socket for a copilot seat", () => {
+	it("types into a LEGACY copilot seat (no rpcPort)", () => {
 		const w = world({ pane: READY });
 		let typed = 0;
 		w.ports.sendText = () => {
@@ -1151,7 +1151,7 @@ describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-soc
 			return "confirmed";
 		};
 		w.ports.sendSocket = () => {
-			throw new Error("copilot has no socket");
+			throw new Error("a legacy copilot seat has no endpoint");
 		};
 		drainTmuxInbox(
 			desc({ harness: "copilot", lifecycle: "bound" }),
@@ -1162,5 +1162,32 @@ describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-soc
 			new ComposerHoldTracker(),
 		);
 		expect(typed).toBe(1);
+	});
+});
+
+describe("drainTmuxInbox — copilot --ui-server seats use the RPC port", () => {
+	it("delivers via sendSocket when the descriptor carries rpcPort", () => {
+		const w = world({ pane: READY });
+		let typed = 0;
+		const seen: number[] = [];
+		w.ports.sendText = () => {
+			typed += 1;
+			return "confirmed";
+		};
+		w.ports.sendSocket = (target) => {
+			seen.push(target.rpcPort ?? -1);
+			return "confirmed";
+		};
+		const consumed = drainTmuxInbox(
+			desc({ harness: "copilot", lifecycle: "bound", rpcPort: 47391 }),
+			[{ messageId: "m1", from: "pij-boss", body: "over rpc" }],
+			w.ports,
+			new SendBuffer(),
+			undefined,
+			new ComposerHoldTracker(),
+		);
+		expect(typed).toBe(0);
+		expect(seen).toEqual([47391]);
+		expect(consumed[0]?.via).toBe("socket");
 	});
 });

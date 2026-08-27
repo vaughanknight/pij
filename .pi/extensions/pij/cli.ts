@@ -215,6 +215,7 @@ import {
 	parseAdoptArgs,
 	parseCompactSelfArgs,
 	parseSpawnArgs,
+	pickFreePortSync,
 	planBranch,
 	planPlacement,
 	renderSpawnReceipt,
@@ -2413,8 +2414,13 @@ function runSpawn(argv: readonly string[]): void {
 		process.exit(2);
 	}
 	const pijId = reserved.value.id;
+	// PoC (poc/comms-sqlite-socket): a copilot seat gets an embedded JSON-RPC
+	// server on a free loopback port so the daemon can deliver bodies without
+	// typing (see adapters/copilot-rpc.ts). Undefined ⇒ legacy typed delivery.
+	const rpcPort = req.value.harness === "copilot" ? pickFreePortSync() : undefined;
 	const spawnCmd = buildControlSpawnCommand({
 		passthroughEnv: isolationPassthroughEnv(process.env),
+		...(rpcPort !== undefined ? { rpcPort } : {}),
 		harness: req.value.harness,
 		pijId,
 		cwd,
@@ -2501,6 +2507,7 @@ function runSpawn(argv: readonly string[]): void {
 	const pending = buildPendingDescriptor({
 		pijId,
 		paneId,
+		...(rpcPort !== undefined ? { rpcPort } : {}),
 		windowId: split.value.windowId,
 		cwd,
 		harness: req.value.harness,

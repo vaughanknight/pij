@@ -36,6 +36,7 @@ import {
 	resolveClaudeSocket,
 	sendClaudeFrameSync,
 } from "./claude-socket.js";
+import { buildCopilotPrompt, sendCopilotRpcSync } from "./copilot-rpc.js";
 import { NodeProcess } from "./process.js";
 import { NodeProcessSnapshot } from "./process-snapshot.js";
 import {
@@ -248,6 +249,24 @@ export class DaemonTmux implements DaemonPorts {
 	/** PoC (poc/comms-sqlite-socket): Claude inbox-socket delivery. See
 	 *  adapters/claude-socket.ts. `no-socket` lets the loop fall back to typing. */
 	sendSocket(target: SessionDescriptor, message: DeliveredMessage): SendOutcome | "no-socket" {
+		if (target.harness === "copilot") {
+			if (target.rpcPort === undefined || !target.harnessSessionId) return "no-socket";
+			const r = sendCopilotRpcSync({
+				port: target.rpcPort,
+				sessionId: target.harnessSessionId,
+				prompt: buildCopilotPrompt(message.from, message.body),
+				mode: "enqueue",
+			});
+			if (r.outcome === "confirmed") return "confirmed";
+			try {
+				process.stderr.write(
+					`⚠️  copilot RPC FAILED: ${target.id} via 127.0.0.1:${target.rpcPort} — ${r.detail ?? "unknown"}; message stays queued\n`,
+				);
+			} catch {
+				// diagnostic only
+			}
+			return "failed";
+		}
 		if (target.harness !== "claude") return "no-socket";
 		const resolved = resolveClaudeSocket({
 			pid: target.pid,
