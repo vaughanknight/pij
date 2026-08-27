@@ -65,9 +65,7 @@ import {
 } from "./types.js";
 
 function isDispatchJournalKind(kind: string): boolean {
-	return (
-		kind === SPINE_KIND_DISPATCH || kind === "dispatch-retired" || kind === "dispatch-requeued"
-	);
+	return kind === SPINE_KIND_DISPATCH || kind === "dispatch-retired";
 }
 
 // Assignment coupled-write kinds (plan 054 P2 T005). Their state side is the

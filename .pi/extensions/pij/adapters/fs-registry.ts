@@ -246,6 +246,11 @@ export class FsRegistry implements RegistryPort {
 				const reclaimed = reclaimIfDead(lockPath, "descriptor.lock", this.options);
 				if (reclaimed !== null) {
 					this.options.onReclaim?.(reclaimed);
+					if (Date.now() >= deadline) {
+						throw new Error(
+							`descriptor write lock ${lockPath} held for over ${lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually: ${lockPath}`,
+						);
+					}
 					continue;
 				}
 				if (Date.now() >= deadline) {

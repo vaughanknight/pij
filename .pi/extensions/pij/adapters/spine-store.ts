@@ -211,7 +211,6 @@ export class FsSpineLog implements SpineLogPort {
 		try {
 			for (const note of acquired.value.reclaims) {
 				this.appendReclaimNote(note);
-				this.options.onReclaim?.(note);
 			}
 			return operation();
 		} catch (error) {
@@ -274,6 +273,13 @@ export class FsSpineLog implements SpineLogPort {
 				const reclaimed = reclaimIfDead(this.lockFile, "events.lock", this.options);
 				if (reclaimed !== null) {
 					reclaims.push(reclaimed);
+					this.options.onReclaim?.(reclaimed);
+					if (Date.now() >= deadline) {
+						return err(
+							"E-NOREG",
+							`spine lock ${this.lockFile} held for over ${this.lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually`,
+						);
+					}
 					continue;
 				}
 			}

@@ -56,3 +56,22 @@
 - `just lint` remains red only in unrelated pre-existing files; no Phase 6 file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and derived Windows compatibility failure; smoke is skipped in quick mode.
 - Completion is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.
+
+## 2026-08-28 — dlg-0019 FX-01
+
+- Replaced the T004c source-count pin with behavioural pi/omp revive tests. A caller-level test seam writes `systemState:"working"` after the revive read and before `writeExact`; removing the real attach baseline lost it and failed at `cli.integration.test.ts:1969`.
+- Added a real child-process daemon test in a temporary `PIJ_HOME`. It waits until the run-if-main path holds both spine locks, sends SIGTERM, and asserts clean exit plus removal of `write.lock` and `events.lock`. Reverting the real main block failed at `daemon.test.ts:2129`.
+- Added an uninjected PID-reuse test using the real cached `NodeProcessSnapshot`. Disabling the production start-time source failed at `lock-reclaim.test.ts:73`.
+- Centralized all CLI-bin `FsRegistry` construction in one warning factory and all daemon-owned registry construction in one logging factory. Descriptor-lock reclaims are now observable on both production seams.
+- Hoisted the daemon sweep's `FsSpineLog` to one injected instance. Sweep note failures log and continue retiring later records; revive note failures warn and keep the restored dispatch. The operator verb remains journal-coupled, while sweep/revive notes are deliberately best-effort.
+- Removed the unreachable `dispatch-requeued` journal-recovery arm. `prior-state:` means transition source for retire notes and saved restoration destination for requeue notes.
+- Added deadline checks on the successful-reclaim branch in all three acquirers. Before the fix, zero-budget reclaims bypassed exhaustion at `platform-write-lock.test.ts:104`, `spine-store.test.ts:202`, and `fs-registry.test.ts:422`.
+- The five-second whole-table snapshot cache can delay recognition of a newly reused PID by at most five seconds. The delay preserves the lock and self-heals after cache expiry.
+- Focused FX-01 suites passed: 235 adapter/daemon tests with 3 skipped, plus 7 behavioural CLI flows.
+- Typecheck and scoped Biome passed.
+- The first full run exposed 19 `daemon-push.test.ts` failures because the injected sweep spine logger was eagerly constructed for fake, intentionally unwritable homes. The logger is now lazy once per actual closed-recipient sweep, still never per dispatch; the failing file passes 19 tests with 2 skipped.
+- Final authoritative extension suite: 172 files passed, 2 skipped; 4,053 tests passed, 15 skipped; 0 failed.
+- Authoritative log: `.harness/temp/s391/vitest-phase6-fx01.log`.
+- `just lint` remains red only in unrelated pre-existing files; no FX-01 file is listed.
+- `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and derived Windows compatibility failure; smoke is skipped in quick mode.
+- Completion is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.

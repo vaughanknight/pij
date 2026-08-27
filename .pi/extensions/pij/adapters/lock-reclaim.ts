@@ -18,6 +18,9 @@ export interface LockReclaimOptions {
 }
 
 const heldLocks = new Map<string, string>();
+/** A warm whole-table snapshot can delay recognition of a newly reused pid by
+ * at most this TTL. That delay fails conservative (the lock is preserved) and
+ * self-heals on the next acquisition after cache expiry. */
 const PROCESS_SNAPSHOT_CACHE_MS = 5_000;
 let processSnapshotCache:
 	| {

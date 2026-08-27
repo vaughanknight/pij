@@ -1014,13 +1014,10 @@ describe("recoverPendingOps — assignment ops (plan 054 P2 T005)", () => {
 			});
 		}
 
-		it.each([
-			"dispatch-retired",
-			"dispatch-requeued",
-		])("recovers the %s transition note with dispatch record adjudication", (kind) => {
+		it("recovers a dispatch-retired note with dispatch record adjudication", () => {
 			const journal = new TestOpJournal();
 			const log = new TestSpineLog();
-			const transition = dispatchDraft(dispatchUndelivered, dispatchDelivered, kind);
+			const transition = dispatchDraft(dispatchUndelivered, dispatchDelivered, "dispatch-retired");
 			journal.seed("op-transition", 1, "intent", transition);
 
 			expect(
@@ -1036,7 +1033,7 @@ describe("recoverPendingOps — assignment ops (plan 054 P2 T005)", () => {
 					),
 				),
 			).toEqual({ replayed: 1, discarded: 0 });
-			expect(log.events[0]?.kind).toBe(kind);
+			expect(log.events[0]?.kind).toBe("dispatch-retired");
 		});
 
 		it("dispatch intent at prev discards; the same intent at next replays", () => {

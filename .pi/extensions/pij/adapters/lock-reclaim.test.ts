@@ -65,6 +65,17 @@ describe("lock reclaim", () => {
 		expect(existsSync(lockFile)).toBe(false);
 	});
 
+	it("detects real current-process PID reuse from the uninjected whole-table snapshot", () => {
+		writeFileSync(lockFile, `${process.pid}:old-process\n`);
+		const anHourAgo = (Date.now() - 60 * 60_000) / 1000;
+		utimesSync(lockFile, anHourAgo, anHourAgo);
+
+		expect(reclaimIfDead(lockFile, "events.lock")).toMatchObject({
+			pid: process.pid,
+			reason: "pid-reused",
+		});
+	});
+
 	it("graceful release removes only the still-owned token", () => {
 		writeFileSync(lockFile, "ours");
 		trackHeldLock(lockFile, "ours");

@@ -409,6 +409,20 @@ describe("FsRegistry", () => {
 		]);
 	});
 
+	it("does not let a successful descriptor reclaim bypass an exhausted deadline", () => {
+		const id = "reclaim-deadline";
+		const lockPath = join(home, `${id}.json.lock`);
+		writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "dead-holder" }));
+
+		expect(() =>
+			new FsRegistry(home, undefined, {
+				lockBudgetMs: 0,
+				isAlive: () => false,
+			}).write(descriptor(id)),
+		).toThrow(/held for over 0ms/);
+		expect(new FsRegistry(home).read(id)).toBeNull();
+	});
+
 	it("holds the descriptor lock across the authoritative read and atomic publish", () => {
 		const id = "locked-critical-section";
 		let observed = false;

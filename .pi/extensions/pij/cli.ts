@@ -260,6 +260,21 @@ const pijHome = resolvePijHome();
 const FOLLOW_MS = 200;
 const WAIT_TIMEOUT_MS = 15_000;
 
+function createRegistry(home = pijHome): FsRegistry {
+	return new FsRegistry(home, undefined, {
+		onReclaim: (note) => process.stderr.write(`warning: ${note.message}\n`),
+	});
+}
+
+/** Test-only caller-level interleave for the two pi/omp revive marker writes.
+ *  It lands a daemon-owned field after the caller's read but before writeExact. */
+function interleaveReviveMarkerForTest(registry: FsRegistry, current: SessionDescriptor): void {
+	if (process.env.PIJ_TEST_REVIVE_FOREIGN_WRITE !== current.id) return;
+	const latest = registry.read(current.id);
+	if (!latest) throw new Error(`test interleave lost descriptor ${current.id}`);
+	registry.write({ ...latest, systemState: "working" }, "daemon");
+}
+
 /** Test-only ordered trace seam for the subprocess CLI close contract. */
 function traceP3(event: string): void {
 	const path = process.env.PIJ_TEST_P3_TRACE;
@@ -591,7 +606,7 @@ function applyAsOverride(): void {
 function runQueueMigrate(argv: readonly string[]): void {
 	const json = argv.includes("--json");
 	const dryRun = argv.includes("--dry-run");
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	const fs = new FsChannel(pijHome);
 	const seatIds = new Set<string>();
 	for (const d of registry.list()) seatIds.add(d.id);
@@ -932,7 +947,7 @@ function paBinRefusal(verb: string): string | null {
 	try {
 		const home = resolvePijHome();
 		if (!existsSync(home)) return null;
-		const registry = new FsRegistry(home);
+		const registry = createRegistry(home);
 		const self = resolveAmbientSelf(registry);
 		if (!self.ok || self.value === undefined) return null;
 		const descriptor = registry.read(self.value);
@@ -961,7 +976,7 @@ function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
 }
 
 function deps(): CliDeps {
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	const channel = openChannel(pijHome);
 	const cwd = process.cwd();
 	const repository = new GitRepositoryAdapter();
@@ -1295,7 +1310,7 @@ function settleInboxResult(
 function runInbox(argv: readonly string[]): void {
 	const parsed = parseInboxArgs(argv);
 	if (!parsed.ok) failInbox(parsed.code, parsed.message);
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	const registration = ensureCurrentRegistration(registry);
 	if (!registration.ok) failInbox(registration.code, registration.message);
 	const output = {
@@ -2058,7 +2073,7 @@ function runFocus(argv: readonly string[]): void {
 	const subcommand = argv[0];
 	const rest = argv.slice(1);
 	const store = new FsFocusStore(pijHome);
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	const repository = new GitRepositoryAdapter();
 
 	if (subcommand === "save") {
@@ -2240,7 +2255,11 @@ function requeueClosedRecipientDispatches(
 			prev: canonicalDispatchJson(previous),
 			next: canonicalDispatchJson(next.value),
 		});
-		if (!noted.ok) throw new Error(`${noted.code}: ${noted.message}`);
+		if (!noted.ok) {
+			process.stderr.write(
+				`warning: dispatch ${previous.id} was requeued but its spine note failed (${noted.code}: ${noted.message})\n`,
+			);
+		}
 		requeued += 1;
 	}
 	return requeued;
@@ -2256,7 +2275,7 @@ function runRevive(argv: readonly string[]): void {
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(exitCodeForCore(parsed.code));
 	}
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	// s072 D1 — no id means "the seat that was driving THIS folder". Resolved
 	// against realpath'd folders across both tiers, prime first.
 	let seatId = parsed.value.id;
@@ -2463,6 +2482,7 @@ function runRevive(argv: readonly string[]): void {
 			const current = registry.read(plan.value.descriptor.id);
 			if (current) {
 				const revivePendingAt = new Date().toISOString();
+				interleaveReviveMarkerForTest(registry, current);
 				registry.writeExact({ ...current, revivePendingAt }, { baseline: current });
 				requeued = requeueClosedRecipientMail(plan.value.id, reviverId, pane, revivePendingAt);
 				requeuedDispatches = requeueClosedRecipientDispatches(
@@ -2588,6 +2608,7 @@ function runRevive(argv: readonly string[]): void {
 		const current = registry.read(plan.value.descriptor.id);
 		if (current) {
 			const revivePendingAt = new Date().toISOString();
+			interleaveReviveMarkerForTest(registry, current);
 			registry.writeExact({ ...current, revivePendingAt }, { baseline: current });
 			requeued = requeueClosedRecipientMail(plan.value.id, reviverId, paneId, revivePendingAt);
 			requeuedDispatches = requeueClosedRecipientDispatches(
@@ -2711,7 +2732,7 @@ function runSpawn(argv: readonly string[]): void {
 			process.exit(64);
 		}
 		const cwdPi = spawnCwd;
-		const regPi = new FsRegistry(pijHome);
+		const regPi = createRegistry();
 		// announce-to = the child's parent (it self-registers spawnedBy from it),
 		// so it follows AC-08 caller truth: identity only (env id → pane-exact
 		// across the FULL registry), never cwd cohabitation (issue #20).
@@ -2823,7 +2844,7 @@ function runSpawn(argv: readonly string[]): void {
 	// Parent = the CALLING session, from identity ONLY (AC-08 / issue #20):
 	// PIJ_SESSION_ID, else a unique pane-exact match across the FULL registry.
 	// cwd cohabitation never makes a parent — unresolved caller → no parent.
-	const reg0 = new FsRegistry(pijHome);
+	const reg0 = createRegistry();
 	const parentId = deriveCallerParent(
 		process.env.PIJ_SESSION_ID,
 		reg0.list(),
@@ -2942,11 +2963,7 @@ function runSpawn(argv: readonly string[]): void {
 	// pane right (a ~1/3 column); every later peer appends to the stack (vertical,
 	// evened out — uncapped). The shared helper derives the live peer panes
 	// (registry ∩ this window) — harness-agnostic, one stack for the mixed fleet.
-	const peerPanes = livePeerPanes(
-		new FsRegistry(pijHome).list(),
-		tmux.currentWindowPanes(),
-		ownPane,
-	);
+	const peerPanes = livePeerPanes(createRegistry().list(), tmux.currentWindowPanes(), ownPane);
 	const plan = planPlacement(req.value.layout, ownPane, peerPanes);
 	if (!plan.ok) {
 		reg0.releaseReservation(pijId, reservationOwnerToken);
@@ -3089,7 +3106,7 @@ function runCompactSelf(argv: readonly string[]): void {
 	// the compact window is eaten by the harness's fresh-context reset). An
 	// unregistered/unresolvable pane gets no mark — send-keys behavior unchanged.
 	try {
-		const reg = new FsRegistry(pijHome);
+		const reg = createRegistry();
 		const self = resolveSelf(
 			process.env.PIJ_SESSION_ID,
 			filterByFolder(reg.list(), process.cwd()),
@@ -3122,7 +3139,7 @@ function runCompactSelf(argv: readonly string[]): void {
 }
 
 function resolveWatchSelf(): { id: string; harness: HarnessKind | undefined } {
-	const reg = new FsRegistry(pijHome);
+	const reg = createRegistry();
 	const self = resolveSelf(
 		process.env.PIJ_SESSION_ID,
 		filterByFolder(reg.list(), process.cwd()),
@@ -3413,7 +3430,7 @@ function runAdopt(argv: readonly string[]): void {
 	// Harness artifact discovery remains an initial-adopt fallback only.
 	const harnessSessionId = req.value.sessionId ?? resolution.harnessSessionId ?? undefined;
 	const bindingIssue = req.value.sessionId ? undefined : copilotBindingIssue;
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	let durablePijId: string | undefined;
 	let durableDescriptor: SessionDescriptor | undefined;
 	if (harnessSessionId) {
@@ -3789,7 +3806,7 @@ function runIdentity(argv: readonly string[]): void {
 		process.stderr.write("usage: pij identity release <id> [--json]\n");
 		process.exit(64);
 	}
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	if (!registry.read(id)) {
 		process.stderr.write(`E-NOID: no session '${id}' in registry\n`);
 		process.exit(2);
@@ -3827,7 +3844,7 @@ function runClose(argv: readonly string[]): void {
 		process.stderr.write(`${parsed.code}: ${parsed.message}\n`);
 		process.exit(64);
 	}
-	const reg = new FsRegistry(pijHome);
+	const reg = createRegistry();
 	const descriptor = reg.read(parsed.value.id);
 	// Resolve who's asking (PIJ_SESSION_ID → lone-local → $TMUX_PANE) for the
 	// ownership check. Unresolved self is fine — a non-owner without --force is
@@ -3911,7 +3928,7 @@ function runClose(argv: readonly string[]): void {
  *  `⚙ name`); `--follow` polls for new lines. Returns false when the target is not
  *  a bound claude/copilot/codex (caller falls back to the normal event tail). */
 function tailTranscript(id: string, follow: boolean, linesArg: number | undefined): boolean {
-	const d = new FsRegistry(pijHome).read(id);
+	const d = createRegistry().read(id);
 	if (!d?.harnessSessionId) return false;
 	let path: string;
 	let summarize: (raw: string) => { role: "user" | "assistant"; text: string } | null;
@@ -4102,7 +4119,7 @@ function runOrchestrationVerb(args: string[]): void {
 		process.exit(64);
 	}
 	const store = new FsBatonStore(pijHome);
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	const channel = openChannel(pijHome);
 	const proc = new NodeProcess();
 	const actor = orchestrationActor(registry);
@@ -4326,11 +4343,7 @@ function spawnAgentPane(
 		peerId: plan.id,
 		model: plan.model,
 	});
-	const peerPanes = livePeerPanes(
-		new FsRegistry(pijHome).list(),
-		tmux.currentWindowPanes(),
-		ownPane,
-	);
+	const peerPanes = livePeerPanes(createRegistry().list(), tmux.currentWindowPanes(), ownPane);
 	const splitPlan = planPlacement(plan.layout, ownPane, peerPanes);
 	if (!splitPlan.ok)
 		return { ok: false, message: `${splitPlan.code}: ${splitPlan.message}`, exitCode: 2 };
@@ -4396,7 +4409,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	const models = loadModels();
 	const token = `s${Date.now()}-${process.pid}`;
 	const reservationOwnerToken = `agent-spawn:${token}:${randomUUID()}`;
-	const reservationRegistry = new FsRegistry(pijHome);
+	const reservationRegistry = createRegistry();
 	const reserved = reservationRegistry.reserveMemorableId(
 		spawnIdentitySeed(token, process.pid),
 		reservationOwnerToken,
@@ -4413,7 +4426,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
 	// starved the pane match on cross-repo spawns (cd other-repo && pij agent spawn),
 	// silently losing spawnedBy — the report then died E-NOREPORTTARGET and a
 	// --once peer never auto-closed.
-	const reg = new FsRegistry(pijHome);
+	const reg = createRegistry();
 	const ownPaneEnv = process.env.TMUX_PANE;
 	const paneOwner = ownPaneEnv ? resolveLivePane(ownPaneEnv, reg.list()) : ok(undefined);
 	const callerRes = (() => {
@@ -4564,7 +4577,7 @@ function runAgentSpawn(cmd: ParsedAgentCommand): void {
  *  the pack's output schema, and on success push it to the spawner + stamp
  *  reportedAt. An invalid report exits 1 with the AJV lines and delivers nothing. */
 function runAgentReport(cmd: ParsedAgentCommand): void {
-	const reg = new FsRegistry(pijHome);
+	const reg = createRegistry();
 	const selfRes = resolveSelf(
 		process.env.PIJ_SESSION_ID,
 		filterByFolder(reg.list(), process.cwd()),
@@ -4694,7 +4707,7 @@ function runChoreVerb(args: string[]): void {
 	}
 	const cwd = process.cwd();
 	const worktreeRoot = currentWorktreeRoot(cwd);
-	const registry = new FsRegistry(pijHome);
+	const registry = createRegistry();
 	const seat = resolveChoreSeatId(registry, cwd);
 	if (seat.error) {
 		process.stderr.write(`${seat.error}\n`);
@@ -5159,7 +5172,7 @@ function bgDataDir(): string | undefined {
  *  has no job store rather than a guessed one. */
 function ambientDataDir(): string | undefined {
 	try {
-		const registry = new FsRegistry(pijHome);
+		const registry = createRegistry();
 		const self = resolveAmbientSelf(registry);
 		if (!self.ok || self.value === undefined) return undefined;
 		return registry.read(self.value)?.dataDir;

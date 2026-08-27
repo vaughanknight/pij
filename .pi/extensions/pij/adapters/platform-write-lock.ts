@@ -99,6 +99,12 @@ export class FsPlatformWriteLock implements PlatformWriteLockPort {
 				const reclaimed = reclaimIfDead(this.lockFile, "write.lock", this.options);
 				if (reclaimed !== null) {
 					this.options.onReclaim?.(reclaimed);
+					if (Date.now() >= deadline) {
+						return err(
+							"E-NOREG",
+							`platform write lock ${this.lockFile} held for over ${this.lockBudgetMs}ms — locks are never stolen; if its writer is dead, remove the file manually`,
+						);
+					}
 					continue;
 				}
 			}

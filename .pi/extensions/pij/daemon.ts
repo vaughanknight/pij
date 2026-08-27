@@ -33,7 +33,7 @@ import { FsDispatchStore } from "./adapters/dispatch-store.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsFenceStore } from "./adapters/fence-store.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
-import { releaseHeldLocks } from "./adapters/lock-reclaim.js";
+import { releaseHeldLocks, trackHeldLock } from "./adapters/lock-reclaim.js";
 import { FsOpJournal } from "./adapters/op-journal.js";
 import { FsPlatformWriteLock } from "./adapters/platform-write-lock.js";
 import { NodeProcess } from "./adapters/process.js";
@@ -101,6 +101,7 @@ import {
 	renderBatonNotice,
 } from "./core/orchestration/baton.js";
 import { canonicalDispatchJson, isOpenDispatch, retireDispatch } from "./core/platform/dispatch.js";
+import type { SpineLogPort } from "./core/platform/ports.js";
 import { buildSpineEvent } from "./core/platform/spine.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
 import type { DeliveryPort, InboxPort, RegistryPort, SendOutcome } from "./core/ports.js";
@@ -145,6 +146,15 @@ class DaemonBatonNoticeSink implements BatonNoticeSink {
 			? { state: "queued", messageId: delivered.value.messageId }
 			: { state: "unverified" };
 	}
+}
+
+export function createDaemonRegistry(
+	pijHome: string,
+	log: (line: string) => void = () => {},
+): FsRegistry {
+	return new FsRegistry(pijHome, undefined, {
+		onReclaim: (note) => log(`warning: ${note.message}`),
+	});
 }
 
 /** One daemon, holding the cross-tick drive state. Pure-ish: `tick()` is
@@ -281,6 +291,7 @@ export class Daemon {
 		 *  body growing a line — plan 100 grants only the signature here. */
 		private readonly heartbeat: TickHeartbeatPort = new FsTickHeartbeatStore(pijHome),
 		private readonly bridgeSupervisor?: BridgeSupervisor,
+		private readonly dispatchSpineLog?: SpineLogPort,
 	) {
 		// THE structural gate. Every pane write in the daemon — inbox delivery,
 		// buffered flush, AND driveSession's init/phone-home injections — goes
@@ -851,6 +862,7 @@ export class Daemon {
 
 		const queue = sqliteOf(this.channel);
 		const dispatchStore = new FsDispatchStore(this.pijHome);
+		const spineLog = this.dispatchSpineLog ?? new FsSpineLog(this.pijHome);
 		const dispatches = dispatchStore.list();
 		for (const to of closedRecipients) {
 			if (queue !== undefined) {
@@ -871,7 +883,7 @@ export class Daemon {
 				if (!next.ok) throw new Error(`${next.code}: ${next.message}`);
 				const written = dispatchStore.write(next.value);
 				if (!written.ok) throw new Error(`${written.code}: ${written.message}`);
-				const noted = new FsSpineLog(this.pijHome).append({
+				const noted = spineLog.append({
 					schema_version: 1,
 					ts: transitionAt,
 					actor: "daemon",
@@ -885,7 +897,11 @@ export class Daemon {
 					prev: canonicalDispatchJson(previous),
 					next: canonicalDispatchJson(next.value),
 				});
-				if (!noted.ok) throw new Error(`${noted.code}: ${noted.message}`);
+				if (!noted.ok) {
+					this.log(
+						`retire ${previous.id}: dispatch retired but spine note failed (${noted.code}: ${noted.message})`,
+					);
+				}
 				retiredDispatches += 1;
 			}
 			if (retiredDispatches > 0) {
@@ -1626,6 +1642,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	}
 
 	const channel = openChannel(pijHome);
+	const registry = createDaemonRegistry(pijHome, log);
 	const sqlite = sqliteOf(channel);
 	if (sqlite) {
 		// First-start fs→sqlite migration (Amendment 4): carry any unread fs inbox
@@ -1633,7 +1650,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		// imports nothing. The fs files stay in place (rollback-safe).
 		const migrated = migrateFsInboxes(pijHome, sqlite, () => {
 			const ids = new Set<string>();
-			for (const d of new FsRegistry(pijHome).list()) ids.add(d.id);
+			for (const d of registry.list()) ids.add(d.id);
 			try {
 				for (const name of readdirSync(pijHome)) {
 					if (existsSync(join(pijHome, name, "inbox"))) ids.add(name);
@@ -1658,7 +1675,6 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 	} else {
 		log("queue backend: fs (per-message JSON inbox files)");
 	}
-	const registry = new FsRegistry(pijHome);
 	const bridgeSpine = new FsSpineLog(pijHome);
 	const bridgeCaptures = new FsWatchdogStore(pijHome);
 	const bridgeSupervisor = bridgeSupervisorForDaemon(pijHome, {
@@ -1734,6 +1750,7 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
 		undefined,
 		undefined,
 		bridgeSupervisor,
+		bridgeSpine,
 	);
 	log(
 		`pij daemon up (pid ${process.pid}, home ${pijHome}) — watching for pending spawns + tmux inboxes`,
@@ -1805,6 +1822,19 @@ export function installDaemonShutdownHandlers(
 	onSignal("SIGTERM", shutdown);
 }
 
+function holdSignalTestLocks(pijHome: string): void {
+	if (process.env.PIJ_TEST_HOLD_LOCKS_ON_START !== "1") return;
+	const dir = join(pijHome, "spine");
+	mkdirSync(dir, { recursive: true });
+	for (const name of ["write.lock", "events.lock"]) {
+		const path = join(dir, name);
+		const token = `${process.pid}:signal-test-${name}\n`;
+		writeFileSync(path, token, { flag: "wx" });
+		trackHeldLock(path, token);
+	}
+	process.stdout.write("PIJ_TEST_LOCKS_HELD\n");
+}
+
 // Run-if-main (tsx/ESM): start the loop and keep the process alive until SIGINT.
 if (import.meta.url === `file://${process.argv[1]}`) {
 	let stop: (() => void) | undefined;
@@ -1815,4 +1845,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		process.exit(1);
 	}
 	installDaemonShutdownHandlers(stop);
+	holdSignalTestLocks(resolvePijHome());
 }

@@ -191,6 +191,18 @@ describe("FsSpineLog", () => {
 		});
 	});
 
+	it("does not let a successful reclaim bypass an exhausted events.lock deadline", () => {
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), "999999999:dead-token\n");
+		const result = new FsSpineLog(home, {
+			lockBudgetMs: 0,
+			isAlive: () => false,
+		}).append(draft(1));
+
+		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
+		expect(new FsSpineLog(home).read()).toEqual([]);
+	});
+
 	it("lastSeq is 0 when empty and allocation resumes above any planted on-disk seq", () => {
 		const log = new FsSpineLog(home);
 		expect(log.lastSeq()).toBe(0);

@@ -90,6 +90,21 @@ describe("FsPlatformWriteLock", () => {
 		expect(notes).toMatchObject([{ layer: "write.lock", pid: reusedPid, reason: "pid-reused" }]);
 	});
 
+	it("does not let a successful reclaim bypass an exhausted deadline", () => {
+		mkdirSync(join(home, "spine"), { recursive: true });
+		writeFileSync(lockFile(), "999999999:dead-token\n");
+		let ran = false;
+		const result = new FsPlatformWriteLock(home, {
+			lockBudgetMs: 0,
+			isAlive: () => false,
+		}).withPlatformWriteLock(() => {
+			ran = true;
+		});
+
+		expect(result).toMatchObject({ ok: false, code: "E-NOREG" });
+		expect(ran).toBe(false);
+	});
+
 	it("a held lock times out E-NOREG with the manual-removal diagnostic; the operation NEVER runs", () => {
 		const lock = new FsPlatformWriteLock(home, { lockBudgetMs: 60 });
 		const holder = new FsPlatformWriteLock(home);
