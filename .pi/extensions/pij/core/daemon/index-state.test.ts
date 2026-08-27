@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { SessionDescriptor } from "../types.js";
@@ -28,6 +28,58 @@ const SNAPSHOT: SessionDescriptor[] = [
 	}),
 	desc({ id: "claude-c", harness: "claude", paneId: "%3", lifecycle: "pending" }),
 ];
+
+interface PathSemantics {
+	relative(from: string, to: string): string;
+	readonly sep: string;
+}
+
+const HOST_PATH: PathSemantics = { relative, sep };
+const SHARED_RESOLVER_LINE =
+	"(descriptor) => descriptor.paneId === paneId && isPaneDeliveryTarget(descriptor),";
+const PENDING_OCCUPANT_LINE = "descriptor.paneId === pane &&";
+const PENDING_OCCUPANT_LIFECYCLE_LINE =
+	'(descriptor.lifecycle === "pending" || descriptor.lifecycle === "ready"),';
+
+function stripComments(source: string): string {
+	return source
+		.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "))
+		.replace(/\/\/.*$/gm, "");
+}
+
+function isPaneResolutionComparison(line: string): boolean {
+	if (/\bundefined\s*===|===\s*undefined\b/.test(line)) return false;
+	return (
+		/\b[\w$.[\]]+\.paneId\s*===/.test(line) ||
+		/===\s*[\w$.[\]]+\.paneId\b/.test(line) ||
+		/\(\s*\{\s*paneId(?:\s*:\s*[\w$]+)?\s*\}\s*\)\s*=>.*\bpaneId\s*===/.test(line)
+	);
+}
+
+function paneResolutionViolations(
+	root: string,
+	file: string,
+	source: string,
+	pathSemantics: PathSemantics = HOST_PATH,
+): string[] {
+	const lines = stripComments(source).split("\n");
+	const violations: string[] = [];
+	const relativePath = pathSemantics.relative(root, file).split(pathSemantics.sep).join("/");
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		if (!isPaneResolutionComparison(line)) continue;
+		const trimmed = line.trim();
+		const sharedResolver = relativePath === "core/discovery.ts" && trimmed === SHARED_RESOLVER_LINE;
+		const pendingOccupant =
+			relativePath === "core/current-session.ts" &&
+			trimmed === PENDING_OCCUPANT_LINE &&
+			(lines[index + 1] ?? "").trim() === PENDING_OCCUPANT_LIFECYCLE_LINE;
+		if (!sharedResolver && !pendingOccupant) {
+			violations.push(`${relativePath}:${index + 1}: ${trimmed}`);
+		}
+	}
+	return violations;
+}
 
 describe("IndexState", () => {
 	it("indexes by id, harness session, and pane", () => {
@@ -139,6 +191,60 @@ describe("IndexState", () => {
 		expect(ix.resolvePane("%1")).toMatchObject({ ok: false, code: "E-AMBIG" });
 	});
 
+	it("keeps the shared discovery resolver allowlisted with Windows path separators", () => {
+		const root = win32.join("C:\\", "repo", ".pi", "extensions", "pij");
+		const file = win32.join(root, "core", "discovery.ts");
+		const source =
+			"const matches = descriptors.filter(\n" +
+			"\t(descriptor) => descriptor.paneId === paneId && isPaneDeliveryTarget(descriptor),\n" +
+			");";
+
+		expect(
+			paneResolutionViolations(root, file, source, {
+				relative: win32.relative,
+				sep: win32.sep,
+			}),
+		).toEqual([]);
+	});
+
+	it.each([
+		{
+			label: "reversed operands",
+			source: "const match = descriptors.find((descriptor) => paneId === descriptor.paneId);",
+		},
+		{
+			label: "destructured pane id",
+			source: "const match = descriptors.find(({ paneId }) => paneId === targetPaneId);",
+		},
+	])("flags the $label pane-resolution bypass", ({ source }) => {
+		const violations = paneResolutionViolations(
+			"/repo/.pi/extensions/pij",
+			"/repo/.pi/extensions/pij/core/rogue.ts",
+			source,
+		);
+
+		expect(violations).toHaveLength(1);
+		expect(violations[0]).toContain("core/rogue.ts:1");
+	});
+
+	it("ignores pane-resolution shapes that appear only in comments", () => {
+		const source = [
+			"// descriptor.paneId === paneId",
+			"const value = 1;",
+			"/*",
+			"descriptor.paneId === paneId",
+			"*/",
+		].join("\n");
+
+		expect(
+			paneResolutionViolations(
+				"/repo/.pi/extensions/pij",
+				"/repo/.pi/extensions/pij/core/rogue.ts",
+				source,
+			),
+		).toEqual([]);
+	});
+
 	it("keeps runtime pane resolution behind the shared lifecycle-filtered resolver", () => {
 		const root = resolve(import.meta.dirname, "..", "..");
 		const files: string[] = [];
@@ -153,24 +259,7 @@ describe("IndexState", () => {
 
 		const violations: string[] = [];
 		for (const file of files) {
-			const lines = readFileSync(file, "utf8").split("\n");
-			for (let index = 0; index < lines.length; index++) {
-				const line = lines[index] ?? "";
-				if (!line.includes(".paneId ===") || line.includes("=== undefined")) continue;
-				const context = lines
-					.slice(Math.max(0, index - 4), Math.min(lines.length, index + 5))
-					.join("\n");
-				const sharedResolver =
-					file.endsWith("/core/discovery.ts") &&
-					context.includes("isPaneDeliveryTarget(descriptor)");
-				const pendingOccupant =
-					file.endsWith("/core/current-session.ts") &&
-					context.includes('descriptor.lifecycle === "pending"') &&
-					context.includes('descriptor.lifecycle === "ready"');
-				if (!sharedResolver && !pendingOccupant) {
-					violations.push(`${relative(root, file)}:${index + 1}: ${line.trim()}`);
-				}
-			}
+			violations.push(...paneResolutionViolations(root, file, readFileSync(file, "utf8")));
 		}
 
 		expect(violations).toEqual([]);
