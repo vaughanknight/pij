@@ -301,3 +301,4 @@ Both hardening guards genuinely sensored (MUT-PREFIXLEN RED @1335, MUT-NOMARK RE
 - ADV-3 (carried): legacy rows never acquire an identity → permanent send-all (pinned by MUT-LEGACY but never converges) → 24b.
 - (Reviewer noted, OUT OF FENCE, no claim: a failed MEDIA attachment is not retried on redelivery — pre-existing, recorded only.)
 ## 2026-08-28 — item 22 PARKED (dlg-0030 abandoned) for the item-24 invariant fold (o-prime: 24 gates restart #6, outranks 22). Re-dispatch item 22 after the item-24 fold lands. Invariant fold = dlg-0031 (T013-T016).
+## 2026-08-28 — CORRECTION: item 22 was NOT parked mid-work — it was already COMPLETE+GREEN when my park arrived (mistimed). Coder commits the item-22 candidate (3 fence files, pathspec); no re-dispatch. Item 22 DONE → cold-review + PR AFTER item 24 (24 gates restart #6). Coder then does the item-24 invariant fold (dlg-0031).
