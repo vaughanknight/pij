@@ -19,7 +19,7 @@ import type { SessionId } from "../core/types.js";
 export type CopilotSendMode = "enqueue" | "immediate";
 
 export interface CopilotRpcSendResult {
-	readonly outcome: "confirmed" | "unverified" | "failed";
+	readonly outcome: "confirmed" | "sent" | "failed";
 	readonly messageId?: string;
 	readonly detail?: string;
 }
@@ -33,8 +33,8 @@ export function buildCopilotPrompt(from: SessionId, body: string): string {
 let rpcSeq = 0;
 
 /** `session.send` to the seat's embedded server. `confirmed` = the server
- *  returned a `messageId`; `unverified` = the request flushed but its response
- *  was lost; `failed` = no request landed or the server explicitly refused it.
+ *  returned a `messageId`; `sent` = the request flushed but its response was
+ *  lost; `failed` = no request landed or the server explicitly refused it.
  *  Never throws. */
 export function sendCopilotRpc(input: {
 	readonly port: number;
@@ -65,7 +65,7 @@ export function sendCopilotRpc(input: {
 			resolve(r);
 		};
 		const ambiguousFailure = (detail: string): void => {
-			done({ outcome: wrote ? "unverified" : "failed", detail });
+			done({ outcome: wrote ? "sent" : "failed", detail });
 		};
 		const timer = setTimeout(
 			() => ambiguousFailure("timeout waiting for session.send response"),

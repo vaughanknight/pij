@@ -3445,7 +3445,7 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			);
 			const tail = cmd.wait
 				? ""
-				: `\nreceipt → ${initial}   (also in: pij tail ${self} --type receipt)`;
+				: `\nreceipt → ${initial}   (durable queue: pij queue --to ${self})`;
 			return {
 				stdout: `sent → ${cmd.to}  ${kindNote}${warn}  (${recvHint})${tail}`,
 				stderr: attachmentWarning ? `warning: ${attachmentWarning}` : "",

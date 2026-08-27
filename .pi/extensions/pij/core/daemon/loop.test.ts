@@ -1326,12 +1326,15 @@ describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-soc
 		expect(consumed).toEqual([]);
 	});
 
-	it("consumes an unverified socket write and never blindly sends it a second time", async () => {
+	it.each([
+		"sent",
+		"unverified",
+	] as const)("consumes a %s socket write and never blindly sends it a second time", async (outcome) => {
 		const w = world({ pane: READY });
 		let socketSends = 0;
 		w.ports.sendSocket = () => {
 			socketSends += 1;
-			return socketSends === 1 ? "unverified" : "confirmed";
+			return socketSends === 1 ? outcome : "confirmed";
 		};
 		const buffer = new SendBuffer();
 		const target = desc({ harness: "claude", lifecycle: "bound" });
@@ -1358,9 +1361,7 @@ describe("drainTmuxInbox — socket-first for claude seats (poc/comms-sqlite-soc
 			new ComposerHoldTracker(),
 		);
 
-		expect(first).toEqual([
-			{ messageId: "m1", from: "pij-boss", outcome: "unverified", via: "socket" },
-		]);
+		expect(first).toEqual([{ messageId: "m1", from: "pij-boss", outcome, via: "socket" }]);
 		expect(retry).toEqual([]);
 		expect(second).toEqual([]);
 		expect(socketSends).toBe(1);

@@ -111,14 +111,14 @@ export function parsePeerFrame(line: string): PeerFrame {
 }
 
 export interface SocketSendResult {
-	readonly outcome: "confirmed" | "unverified" | "failed";
+	readonly outcome: "confirmed" | "sent" | "failed";
 	readonly detail?: string;
 }
 
 /** Write one frame to a Claude inbox socket and listen `ackWaitMs` for a
  *  `peer_message_status` naming our msg_id. `confirmed` = a positive status;
- *  `unverified` = bytes flushed but no status arrived; `failed` = nothing
- *  landed, or the receiver explicitly dropped the message (retry-safe). */
+ *  `sent` = bytes flushed but no status arrived; `failed` = nothing landed, or
+ *  the receiver explicitly dropped the message (retry-safe). */
 export function sendClaudeFrame(
 	socketPath: string,
 	frameLine: string,
@@ -149,7 +149,7 @@ export function sendClaudeFrame(
 			resolve(r);
 		};
 		const ambiguousFailure = (detail: string): void => {
-			done({ outcome: wrote ? "unverified" : "failed", detail });
+			done({ outcome: wrote ? "sent" : "failed", detail });
 		};
 		const connectTimer = setTimeout(
 			() => done({ outcome: "failed", detail: "connect timeout" }),

@@ -1417,6 +1417,26 @@ describe("dispatch send", () => {
 		expect(human.stdout).toContain("queued (tick-pending): awaiting daemon delivery confirmation");
 	});
 
+	it("points receipt follow-up at the durable queue instead of the ignored tail type filter", () => {
+		const d = deps({
+			self: "a1",
+			descs: [
+				desc({ id: "a1" }),
+				desc({
+					id: "w3",
+					harness: "claude",
+					state: "idle",
+					paneId: "%9",
+					lastTickAt: new Date(T - 1000).toISOString(),
+				}),
+			],
+		});
+		const human = dispatch({ verb: "send", to: "w3", text: "x", wait: false, json: false }, d);
+
+		expect(human.stdout).toContain("pij queue --to a1");
+		expect(human.stdout).not.toContain("pij tail a1 --type receipt");
+	});
+
 	it("codes: E-SELF, E-NOID, E-CMD, E-DEAD; stale warns + sends", () => {
 		const base = [desc({ id: "a1" })];
 		expect(

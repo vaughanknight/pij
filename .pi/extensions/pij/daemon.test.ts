@@ -28,7 +28,7 @@ import {
 } from "./core/daemon/tick-heartbeat.js";
 import { receiptBody } from "./core/message.js";
 import type { ProcessSnapshot } from "./core/platform/types.js";
-import type { RegistryPort } from "./core/ports.js";
+import type { RegistryPort, SendOutcome } from "./core/ports.js";
 import { DAEMON_TICK_STALE_AFTER_MS, daemonTickStatus } from "./core/receipts.js";
 import type { DescriptorWriter } from "./core/registry-write.js";
 import { STALE_AFTER_MS } from "./core/state.js";
@@ -101,6 +101,7 @@ interface FakePortsOptions {
 	readonly nowMs?: number;
 	readonly paneText?: string | (() => string);
 	readonly sendOutcome?: "confirmed" | "unverified" | "gone";
+	readonly socketOutcome?: SendOutcome | "no-socket";
 	readonly sendErrorForPane?: string;
 	readonly paneListings?: () => readonly PaneListing[];
 	readonly tapChunks?: Uint8Array[];
@@ -131,6 +132,7 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 	 *  pij#229, which is a claim about WHICH panes are read and how often. */
 	const captured: string[] = [];
 	const paneText = options.paneText;
+	const socketOutcome = options.socketOutcome;
 	return {
 		sent,
 		killed,
@@ -157,6 +159,7 @@ function fakePorts(options: FakePortsOptions = {}): DaemonPorts & {
 			});
 			return options.sendOutcome ?? "confirmed";
 		},
+		...(socketOutcome === undefined ? {} : { sendSocket: () => socketOutcome }),
 		sendKey: () => {},
 		killPane: (pane) => killed.push(pane),
 		listTranscripts: () => [],
@@ -388,7 +391,7 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(unreadBodies("pij-c")).toEqual(["second message"]);
 	});
 
-	it("emits an unverified receipt when daemon injection cannot confirm delivery", async () => {
+	it("reports delivered after durable reader ack even when pane submission was unverified", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -411,8 +414,35 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
 		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
 		expect(messageBodies("pij-boss")).toContain(
-			`[pij receipt ${delivered.value.messageId}] unverified`,
+			`[pij receipt ${delivered.value.messageId}] delivered`,
 		);
+	});
+
+	it("reports delivered when a sent socket write receives a durable reader acknowledgement", async () => {
+		const registry = new FsRegistry(home);
+		registry.write(desc({ id: "pij-boss" }));
+		registry.write(
+			desc({
+				id: "pij-c",
+				harness: "claude",
+				lifecycle: "bound",
+				paneId: "%4",
+				harnessSessionId: "sess",
+			}),
+		);
+		const delivered = new FsChannel(home).deliver({
+			from: "pij-boss",
+			to: "pij-c",
+			body: "receipt follows durable truth",
+		});
+		if (!delivered.ok) throw new Error(delivered.message);
+		const ports = fakePorts({ socketOutcome: "sent" });
+		await new Daemon(home, ports, registry, new FsChannel(home)).tick();
+
+		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
+		const bodies = messageBodies("pij-boss");
+		expect(bodies).toContain(receiptBody(delivered.value.messageId, "delivered"));
+		expect(bodies).not.toContain(receiptBody(delivered.value.messageId, "unverified"));
 	});
 
 	it("forwards pointer metadata through the real Daemon port wrapper", async () => {
@@ -454,11 +484,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		}
 	});
 
-	it("NEVER reports delivered for a claude send whose submission was unconfirmed", async () => {
-		// The honesty invariant from plan 127, kept after `injected-unverified` was
-		// retired into `unverified` (s179): the wedge is reachable for EVERY harness,
-		// not just copilot — claude used to short-circuit to `confirmed` without
-		// verifying, so a swallowed Enter stranded the text and still said delivered.
+	it("lets a durable reader ack outrank an unverified Claude pane submission", async () => {
+		// Transport remains honest (`unverified`) until the target durably marks the
+		// queue row read. That reader acknowledgement is stronger evidence and the
+		// sender receipt must then advance to delivered.
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-boss" }));
 		registry.write(
@@ -483,8 +512,8 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(existsSync(messagePath("pij-c", delivered.value.messageId))).toBe(true);
 		expect(existsSync(markerPath("pij-c", delivered.value.messageId))).toBe(true);
 		const bodies = messageBodies("pij-boss");
-		expect(bodies).toContain(`[pij receipt ${delivered.value.messageId}] unverified`);
-		expect(bodies).not.toContain(`[pij receipt ${delivered.value.messageId}] delivered`);
+		expect(bodies).toContain(`[pij receipt ${delivered.value.messageId}] delivered`);
+		expect(bodies).not.toContain(`[pij receipt ${delivered.value.messageId}] unverified`);
 	});
 
 	it("unbinds the seat when its pane is GONE, and leaves the message unconsumed", async () => {

@@ -32,6 +32,9 @@ afterEach(() => {
 // The sender is synchronous (spawnSync blocks this event loop), so the fake
 // receiver must live OUT of process: a tiny node listener that appends each
 // received line to a log and then confirms, drops, closes, or stays silent.
+// `confirm` models the positive status shape from d-prior-art.md:36; it is a
+// protocol assumption, not measured ground truth (item 23 observed no success
+// status from a live Claude receiver within 1000ms).
 const LISTENER = `
 const net = require("node:net"), fs = require("node:fs");
 const [sock, log, mode] = process.argv.slice(1);
@@ -98,7 +101,7 @@ describe("sendClaudeFrame", () => {
 	it.each([
 		{ label: "the socket closes", mode: "close" },
 		{ label: "the acknowledgement window elapses", mode: "silent" },
-	])("reports unverified after bytes flush but $label", async ({ mode }) => {
+	])("reports sent after bytes flush but $label", async ({ mode }) => {
 		const sock = join(dir, `${mode}.sock`);
 		const log = await listen(sock, mode);
 		const out = await sendClaudeFrame(
@@ -108,7 +111,7 @@ describe("sendClaudeFrame", () => {
 		);
 
 		expect(receivedLines(log)).toHaveLength(1);
-		expect(out.outcome).toBe("unverified");
+		expect(out.outcome).toBe("sent");
 	});
 
 	it("reports failed (retryable) when the socket is absent", async () => {

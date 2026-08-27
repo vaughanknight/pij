@@ -126,7 +126,7 @@ describe("sendCopilotRpc", () => {
 		expect(out.detail).toContain("no such session");
 	});
 
-	it("reports unverified when the request lands but its response is lost", async () => {
+	it("reports sent when the request lands but its response is lost", async () => {
 		const { port, log } = await startServer("silent");
 		const out = await sendCopilotRpc({
 			port,
@@ -136,7 +136,7 @@ describe("sendCopilotRpc", () => {
 		});
 
 		expect(readFileSync(log, "utf8").trim().split("\n")).toHaveLength(1);
-		expect(out.outcome).toBe("unverified");
+		expect(out.outcome).toBe("sent");
 	});
 
 	it("reports failed (retryable) when nothing listens on the port", async () => {

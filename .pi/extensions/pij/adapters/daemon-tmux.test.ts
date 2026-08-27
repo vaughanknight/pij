@@ -202,7 +202,7 @@ describe("needsInputWake — per-harness focus-IN input-wake before send (the we
 });
 
 describe("DaemonTmux.sendSocket — transport outcome passthrough", () => {
-	it("passes Claude unverified through without collapsing it to failed", async () => {
+	it("passes Claude sent through without collapsing it to failed", async () => {
 		const sessionsDir = mkdtempSync(join(tmpdir(), "pij-claude-sessions-"));
 		tempDirs.push(sessionsDir);
 		writeFileSync(
@@ -211,18 +211,18 @@ describe("DaemonTmux.sendSocket — transport outcome passthrough", () => {
 		);
 		const adapter = new DaemonTmux({
 			claudeSessionsDir: sessionsDir,
-			sendClaudeFrame: async () => ({ outcome: "unverified" }),
+			sendClaudeFrame: async () => ({ outcome: "sent" }),
 		});
 
 		expect(await adapter.sendSocket(socketTarget({ harness: "claude" }), SOCKET_MESSAGE)).toBe(
-			"unverified",
+			"sent",
 		);
 	});
 
-	it("passes Copilot unverified through without collapsing it to failed", async () => {
+	it("passes Copilot sent through without collapsing it to failed", async () => {
 		const adapter = new DaemonTmux({
 			probeCopilotReady: async () => ({ ready: true }),
-			sendCopilotRpc: async () => ({ outcome: "unverified" }),
+			sendCopilotRpc: async () => ({ outcome: "sent" }),
 		});
 
 		expect(
@@ -234,7 +234,7 @@ describe("DaemonTmux.sendSocket — transport outcome passthrough", () => {
 				}),
 				SOCKET_MESSAGE,
 			),
-		).toBe("unverified");
+		).toBe("sent");
 	});
 });
 
