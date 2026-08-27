@@ -300,3 +300,4 @@ Both hardening guards genuinely sensored (MUT-PREFIXLEN RED @1335, MUT-NOMARK RE
 - **ADV-2 (E28 mirror, silent-loss)**: partCount is the UNSENSORED half — MUT-PARTCOUNT (compare prefixLength only) GREEN across 108, lets back an 81-char SILENT tail loss (normalizeSenderContent strips by CONTENT not length, so 2 equal-length prefixes strip different amounts → partCount differs, prefixLength equal, no drift log). Need a test: partCount differs, prefixLength EQUAL → MUT-PARTCOUNT reds.
 - ADV-3 (carried): legacy rows never acquire an identity → permanent send-all (pinned by MUT-LEGACY but never converges) → 24b.
 - (Reviewer noted, OUT OF FENCE, no claim: a failed MEDIA attachment is not retried on redelivery — pre-existing, recorded only.)
+## 2026-08-28 — item 22 PARKED (dlg-0030 abandoned) for the item-24 invariant fold (o-prime: 24 gates restart #6, outranks 22). Re-dispatch item 22 after the item-24 fold lands. Invariant fold = dlg-0031 (T013-T016).
