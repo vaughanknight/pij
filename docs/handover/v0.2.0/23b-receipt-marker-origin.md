@@ -17,7 +17,7 @@ On the Claude-socket path, a durable `acked (reader=X)` receipt row is written B
 - A test pins a NON-delivered receipt so the constant-fold mutant MUST die (else the dead-arm regression recurs, E26).
 
 ## 3. Where the code is (at tag `d120c53`)
-- `.pi/extensions/pij/daemon.ts:847-850` — `markRead(..., { reader })` at injection: add an origin flag ("injected" here vs "reader" for a real read).
+- `.pi/extensions/pij/daemon.ts` — there are THREE daemon-origin `markRead(..., { reader: id })` sites: `:847` (socket injection), `:1386`, `:1447`. Add the origin flag ("injected" vs "reader") at ALL THREE — fixing only `:847` leaves `:1386`/`:1447` still rendering reader-confirmed, the exact bug 23b kills. These paths are harness-GENERIC (`id`'s harness is a parameter), so the flag is stamped regardless of harness; the Claude-socket case is where no reader ack ever follows (§ below).
 - `.pi/extensions/pij/adapters/sqlite-queue.ts` — `DeliveryState` `:39` (`queued|claimed|injected|acked|parked|retired`), `receipts` table `:131`, receipt kind `:171-175`. The render must surface origin.
 - `core/message.ts` `receiptBody` (imported `daemon.ts:102`) — the string a reader/pane sees; add origin so `pij tail`/`pij queue` show injected vs confirmed.
 - The Copilot RPC path (grep `rpcPort` / server messageId in `core/daemon/loop.ts`) — map a real server messageId to `confirmed`.
