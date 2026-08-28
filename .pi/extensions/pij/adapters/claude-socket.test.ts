@@ -37,8 +37,8 @@ afterEach(() => {
 // status from a live Claude receiver within 1000ms).
 const LISTENER = `
 const net = require("node:net"), fs = require("node:fs");
-const [sock, log, mode] = process.argv.slice(1);
-net.createServer((c) => {
+const [sock, log, mode, ready] = process.argv.slice(1);
+const server = net.createServer((c) => {
   let buf = "";
   c.on("data", (d) => {
     buf += d.toString();
@@ -49,19 +49,23 @@ net.createServer((c) => {
       const f = JSON.parse(line);
       if (mode === "drop") c.write(JSON.stringify({ type: "peer_message_status", orig_msg_id: f.msg_id, dropped_msg_ids: [f.msg_id], drop_reason: "rate_limited" }) + "\\n");
       else if (mode === "confirm") c.write(JSON.stringify({ type: "peer_message_status", orig_msg_id: f.msg_id, dropped_msg_ids: [] }) + "\\n");
-      else if (mode === "close") setTimeout(() => c.destroy(), 10);
+      else if (mode === "close") c.write("\\n", () => c.end());
     }
   });
-}).listen(sock);
+});
+server.listen(sock, () => fs.writeFileSync(ready, "ready\\n"));
 `;
 
 async function listen(sockPath: string, mode = "confirm"): Promise<string> {
 	const log = `${sockPath}.log`;
-	listener = spawn(process.execPath, ["-e", LISTENER, sockPath, log, mode], {
+	const ready = `${sockPath}.ready`;
+	listener = spawn(process.execPath, ["-e", LISTENER, sockPath, log, mode, ready], {
 		stdio: "ignore",
 	});
-	for (let i = 0; i < 100 && !existsSync(sockPath); i++)
-		await new Promise((r) => setTimeout(r, 20));
+	// A socket pathname can exist before the child is accept-ready. The explicit
+	// listen callback closes that race for every fake mode under parallel load.
+	for (let i = 0; i < 100 && !existsSync(ready); i++) await new Promise((r) => setTimeout(r, 20));
+	if (!existsSync(ready)) throw new Error(`fake Claude socket did not become ready: ${sockPath}`);
 	return log;
 }
 
@@ -107,9 +111,11 @@ describe("sendClaudeFrame", () => {
 		const out = await sendClaudeFrame(
 			sock,
 			buildPeerFrame({ from: "a", body: "b", msgId: `m-${mode}` }),
-			{ ackWaitMs: 60 },
+			{ ackWaitMs: mode === "close" ? 2_000 : 60 },
 		);
 
+		// `close` is emitted only after the fake's post-log write callback, so a
+		// returned `sent` outcome cannot race this immediate observation.
 		expect(receivedLines(log)).toHaveLength(1);
 		expect(out.outcome).toBe("sent");
 	});
