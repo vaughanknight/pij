@@ -19,44 +19,52 @@ use pij_core::ports::{Queue, Registry, SeatFilter};
 pub async fn registry_contract(registry: &dyn Registry) {
     let id = SeatId::from("pij-contract-seat");
 
-    // 1. ABSENT is a distinct answer from "present with empty fields". The TS
-    //    CLI collapsed these into one error code and could not tell a seat it
-    //    had never heard of from one whose artifacts were gone.
+    // 1. An absent ROW is distinct from every value inside a present row.
     assert_eq!(
         registry.get(&id).await.expect("get must not fail"),
         None,
         "a seat that was never written must read back as absent, not as a default row"
     );
 
-    // 2. A write is readable, in full.
-    let descriptor = SeatDescriptor::new(id.clone(), Harness::Pi, "/tmp/contract");
-    registry
-        .put(descriptor.clone())
+    // 2. SQL NULL and the empty string remain distinct values on a present row.
+    let null_descriptor = SeatDescriptor::new(id.clone(), Harness::Pi, "/tmp/contract");
+    let first = registry
+        .put(null_descriptor.clone())
         .await
         .expect("put must not fail");
     assert_eq!(
         registry.get(&id).await.expect("get must not fail"),
-        Some(descriptor.clone()),
-        "what was written must read back byte-identical"
+        Some(null_descriptor.clone()),
+        "a descriptor containing nullable fields must round-trip in full"
     );
 
-    // 3. Sequence numbers advance. A store that reuses one cannot express
-    //    "happened after", which every tail and every anomaly detector needs.
-    let first = registry
-        .put(descriptor.clone())
+    let mut empty_descriptor =
+        SeatDescriptor::new("pij-contract-empty", Harness::Pi, "/tmp/empty");
+    empty_descriptor.pane = Some(String::new());
+    let second = registry
+        .put(empty_descriptor.clone())
         .await
         .expect("put must not fail");
-    let second = registry
-        .put(descriptor.clone())
+    assert_eq!(
+        registry
+            .get(&empty_descriptor.id)
+            .await
+            .expect("get must not fail"),
+        Some(empty_descriptor.clone()),
+        "an empty string is a value, not SQL NULL or an absent row"
+    );
+
+    // 3. Sequence numbers advance across writes.
+    let third = registry
+        .put(null_descriptor.clone())
         .await
         .expect("put must not fail");
     assert!(
-        second > first,
-        "sequence numbers must advance: got {second:?} after {first:?}"
+        first < second && second < third,
+        "sequence numbers must advance: got {first:?}, {second:?}, {third:?}"
     );
 
-    // 4. Filters narrow, and an absent filter field means "do not filter" rather
-    //    than "match empty".
+    // 4. Filters narrow, while an absent filter field means "do not filter".
     let others = registry
         .list(SeatFilter {
             harness: Some(Harness::Claude),
@@ -68,29 +76,67 @@ pub async fn registry_contract(registry: &dyn Registry) {
         others.is_empty(),
         "a filter must exclude non-matching seats; got {others:?}"
     );
+    let empty_folder = registry
+        .list(SeatFilter {
+            folder: Some(String::new()),
+            ..SeatFilter::default()
+        })
+        .await
+        .expect("list must not fail");
+    assert!(
+        empty_folder.is_empty(),
+        "an empty filter value is an exact value, not an absent filter"
+    );
     let all = registry
         .list(SeatFilter::default())
         .await
         .expect("list must not fail");
-    assert_eq!(all.len(), 1, "the default filter matches everything");
+    assert_eq!(all.len(), 2, "the default filter matches every row");
 
-    // 5. A tombstone keeps the row and its reason. A seat that vanishes takes
-    //    its own post-mortem with it, so deletion is not an option.
-    registry
+    // 5. A tombstone keeps the row, its marker and its reason observable through
+    // both read operations. A seat that vanishes takes its post-mortem with it.
+    let tombstone_seq = registry
         .tombstone(&id, "contract test")
         .await
         .expect("tombstone must not fail");
+    assert!(tombstone_seq > third, "a tombstone is an ordered write");
+    let tombstoned = registry
+        .get(&id)
+        .await
+        .expect("get must not fail")
+        .expect("a tombstoned seat remains readable");
     assert!(
-        registry
-            .get(&id)
-            .await
-            .expect("get must not fail")
-            .is_some(),
-        "a tombstoned seat must still be readable — the row is the post-mortem"
+        tombstoned.tombstoned_at.is_some(),
+        "the post-mortem must expose when the tombstone was recorded"
+    );
+    assert_eq!(
+        tombstoned.tombstone_reason.as_deref(),
+        Some("contract test"),
+        "the post-mortem must expose why the seat was tombstoned"
+    );
+    let listed = registry
+        .list(SeatFilter::default())
+        .await
+        .expect("list must not fail");
+    assert_eq!(
+        listed.iter().find(|seat| seat.id == id),
+        Some(&tombstoned),
+        "get and list must expose identical tombstone facts"
     );
 
-    // 6. Tombstoning a seat that was never there is an error, not a silent
-    //    success. Pretending is how a caller learns nothing.
+    // 6. Re-registering a live descriptor clears its old tombstone; otherwise a
+    // live seat remains dead according to the same row.
+    registry
+        .put(null_descriptor.clone())
+        .await
+        .expect("put must revive the row");
+    assert_eq!(
+        registry.get(&id).await.expect("get must not fail"),
+        Some(null_descriptor),
+        "putting a live descriptor must clear the prior tombstone"
+    );
+
+    // 7. Tombstoning a seat that was never there is an error, not pretend work.
     let missing = SeatId::from("pij-never-existed");
     assert!(
         registry.tombstone(&missing, "nope").await.is_err(),

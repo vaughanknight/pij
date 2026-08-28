@@ -142,8 +142,15 @@ impl Registry for FakeRegistry {
             return Err(PijError::NoRegistryEntry { seat: seat.clone() });
         }
         state.seq += 1;
+        let seq = state.seq;
+        let descriptor = state
+            .seats
+            .get_mut(seat.as_str())
+            .expect("presence checked above");
+        descriptor.tombstoned_at = Some(seq);
+        descriptor.tombstone_reason = Some(reason.to_string());
         state.tombstones.insert(seat.0.clone(), reason.to_string());
-        Ok(Seq(state.seq))
+        Ok(Seq(seq))
     }
 }
 

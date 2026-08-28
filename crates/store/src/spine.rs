@@ -12,7 +12,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::Spine;
 
-use crate::migrate::require_current_schema;
+use crate::migrate::{begin_write, require_current_schema};
 
 /// A [`Spine`] backed by the SQLite store.
 pub struct SqliteSpine {
@@ -37,6 +37,7 @@ fn adapter_error(error: sqlx::Error) -> PijError {
 impl Spine for SqliteSpine {
     async fn append(&self, event: Event) -> Result<Seq> {
         require_current_schema(&self.pool).await?;
+        let mut tx = begin_write(&self.pool).await?;
         let seq: i64 = sqlx::query_scalar(
             "INSERT INTO spine_events (v, at, kind, seat, payload) \
              VALUES (?1, ?2, ?3, ?4, ?5) RETURNING seq",
@@ -46,9 +47,10 @@ impl Spine for SqliteSpine {
         .bind(&event.kind)
         .bind(event.seat.as_ref().map(SeatId::as_str))
         .bind(&event.payload)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(adapter_error)?;
+        tx.commit().await.map_err(adapter_error)?;
         Ok(Seq(seq as u64))
     }
 
