@@ -574,7 +574,7 @@ describe("createBot (inbound bridge)", () => {
 		expect(deliver).not.toHaveBeenCalled();
 		expect(replies()).toHaveLength(1);
 		expect(replies()[0]).toMatch(/\/list/);
-		expect(replies()[0]).toContain("pij watch pij-telegram");
+		expect(replies()[0]).toContain("pij watchdog watch pij-telegram");
 	});
 
 	it("replies gone and never queues an explicitly addressed dead seat", async () => {
@@ -609,6 +609,25 @@ describe("createBot (inbound bridge)", () => {
 		expect(isAlive).toHaveBeenCalledTimes(2);
 		expect(deliver).not.toHaveBeenCalled();
 		expect(replies()).toEqual([expect.stringContaining("pij-target")]);
+	});
+
+	it("does not acknowledge an address when the target dies before selection", async () => {
+		const target = desc({ id: "pij-target", pid: 2222 });
+		const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+		const { bot, deliver, replies } = makeBridge(
+			[target],
+			[ALLOWED],
+			undefined,
+			undefined,
+			isAlive,
+		);
+
+		await bot.handleUpdate(textUpdate({ fromId: ALLOWED, text: "target" }));
+
+		expect(isAlive).toHaveBeenCalledTimes(2);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()).toEqual([expect.stringContaining("pij-target")]);
+		expect(replies()[0]).not.toContain("Now addressing");
 	});
 
 	it("answers /list with the live sessions and never relays it", async () => {
@@ -2137,6 +2156,23 @@ describe("createBot inbound media", () => {
 		expect(deliver).not.toHaveBeenCalled();
 		expect(replies().at(-1)).toContain(dead.id);
 		expect(replies().at(-1)).toContain("isn't live");
+	});
+
+	it("rechecks liveness before media download so a newly dead seat is never queued", async () => {
+		const download = vi.fn(async (_ctx: unknown, _dest: string) => {});
+		const target = desc({ id: "pij-target", pid: 2222 });
+		const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+		const { bot, deliver, replies } = makeBridge([target], [ALLOWED], undefined, download, isAlive);
+
+		await bot.handleUpdate(
+			mediaUpdate({ kind: "photo", fromId: ALLOWED, caption: "target inspect this" }),
+		);
+
+		expect(isAlive).toHaveBeenCalledTimes(2);
+		expect(download).not.toHaveBeenCalled();
+		expect(deliver).not.toHaveBeenCalled();
+		expect(replies()).toEqual([expect.stringContaining("pij-target")]);
+		expect(replies()[0]).toContain("isn't live");
 	});
 
 	it("refuses an over-cap file: a 'too big' reply and NO download (AC-12 pre-check)", async () => {

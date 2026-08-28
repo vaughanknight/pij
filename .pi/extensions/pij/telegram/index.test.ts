@@ -443,7 +443,7 @@ describe("startBridge forwarder wiring (AC-05 end-to-end)", () => {
 
 		await second.bot.handleUpdate(textUpdate(555000, "bare after restart"));
 		expect(replies.at(-1)).toMatch(/\/list/);
-		expect(replies.at(-1)).toContain("pij watch pij-telegram");
+		expect(replies.at(-1)).toContain("pij watchdog watch pij-telegram");
 		second.stop();
 	});
 });
