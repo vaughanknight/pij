@@ -1,0 +1,13 @@
+{
+  "delegationId": "dlg-0028",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 588dd0ee957f71c0f57bc2cf6d12d1a52d12b55c adds the missing partition hardening sensors and scopes positional skips to body indices below partCount. Equal-count prefix drift and A-B-A mismatch contamination now have byte-coverage tests, while attachment fallback text cannot be suppressed by out-of-body marks.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts"
+  ],
+  "testsRun": 4075,
+  "testsPassed": 4052,
+  "gatesClean": false,
+  "notes": "T009 proves 7000-byte stable-count drift (2 parts under both prefixes, different prefix lengths) sends all and preserves every byte; MUT-PREFIXLEN went RED at bridge.test.ts:1335. T010 proves a short→long→short three-pass cycle never records mismatched long-part positions into the original partition; MUT-NOMARK went RED at :1397. T011 filters the active skip set to indices below currentPartition.partCount; the pre-fix attachment fallback test was RED at :1432 and is now green. Existing partition-drift, idempotent, retry, and log-ID tests remain green. The hardening file passed 87 tests with 1 skipped; typecheck and changed-file Biome are clean. Two complete suite attempts failed only in unrelated cli.integration.test.ts cases (7 failures/4053 passes, then 8 failures/4052 passes; 15 skipped each). harness checks remains red in repository-wide lint, test, windows-compat, and smoke; none mention the hardening files."
+}
