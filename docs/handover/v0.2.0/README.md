@@ -23,7 +23,7 @@
 **Owner's status report (narrative input):** https://peri-dev.ngrok.app/reports/pij-status-2026-08-28-release/ (source in the separate `perimenocause` repository — `perimenocause:government/reports/pij-status-2026-08-28-release.html` — not in this repo). Convention in these files: a pointer into another repository is written `<repo>:<path>`.
 
 ## Evidence folders (merged to main for this handover)
-- `docs/plans/391-day3-core/` — s391's plans, tasks, reviews, fixes, reports, ship reports, rulings, and kept logs under `logs/` (PR #36).
+- `docs/plans/391-day3-core/` — s391's plans, tasks, reviews, fixes, reports, ship reports, rulings (PR #36), and kept logs under `kept-logs/*.log.txt` (PR #40 — `.gitignore` had silently dropped a `logs/` folder from #36; evidence folders must avoid ignored path classes).
 - `docs/plans/392-day3-codex-doctrine/` — s392's plans, tasks, reviews, reports, rulings, kept evidence incl. reviewer verdicts and coder report JSONs (PR #37).
 
 ## Index of outstanding items
