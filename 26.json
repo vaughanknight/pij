@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "command": "checks",
+  "harness": "copilot-cli",
+  "harness_session_id": "75243a2a-fdee-49ee-94af-d2a143482ede",
+  "timecode": "2026-08-28T01:36:26.503Z",
+  "window": {
+    "since": "last-command",
+    "from": 8874,
+    "to": 9983
+  },
+  "branch": "s391/item31-watchdog-projection",
+  "branch_changed": false,
+  "tokens": null,
+  "models": {},
+  "effort": "xhigh",
+  "skills": {},
+  "tools": {},
+  "subagents": [],
+  "files": {
+    "written": [],
+    "edited": []
+  },
+  "plans_touched": [],
+  "events": {
+    "compactions": [],
+    "api_errors": 0,
+    "local_commands": 0
+  },
+  "thinking": null
+}
