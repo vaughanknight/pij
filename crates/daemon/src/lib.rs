@@ -7,6 +7,7 @@
 
 #![deny(missing_docs)]
 
+pub mod admission;
 pub mod auth;
 pub mod http;
 
