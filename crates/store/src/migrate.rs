@@ -18,7 +18,7 @@ use sqlx::{Pool, Sqlite};
 use pij_core::error::{PijError, Result};
 
 /// The schema version this binary speaks.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The embedded migration set. Compiled in, so a binary always carries the
 /// schema it expects rather than trusting a directory to be present.

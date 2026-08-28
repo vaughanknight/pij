@@ -7,9 +7,11 @@
 #![deny(missing_docs)]
 
 pub mod migrate;
+pub mod queue;
 pub mod registry;
 pub mod spine;
 
 pub use migrate::{SCHEMA_VERSION, open, require_current_schema, schema_version};
+pub use queue::SqliteQueue;
 pub use registry::SqliteRegistry;
 pub use spine::SqliteSpine;

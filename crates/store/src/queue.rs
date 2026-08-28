@@ -1,0 +1,202 @@
+//! The job queue primitive (workshop 001 R4).
+//!
+//! The daemon is queue-first: a handler does exactly one cheap statement and
+//! everything else becomes a job. So this is the primitive delivery, sidecars,
+//! watchdog fan-out and chores all ride on, and it is built before any of them.
+//!
+//! Two semantics, both enforced in SQL rather than in this file's control flow —
+//! a rule a process enforces stops being true the moment a second process exists:
+//!
+//! * **Dedupe** — a partial unique index over LIVE rows. N rapid submits collapse
+//!   to one row, and the id every caller gets back is that row's, so nobody waits
+//!   on a job that was never created.
+//! * **Serialization** — at most one RUNNING job per `serial_key`. Two workers
+//!   never act on one entity at once, which is what SQLite's single-writer plus a
+//!   claim transaction buys us in place of PostgreSQL advisory locks.
+
+use async_trait::async_trait;
+use sqlx::{Pool, Row, Sqlite};
+
+use pij_core::error::{PijError, Result};
+use pij_core::model::{Job, JobId, Outcome};
+use pij_core::ports::Queue;
+
+/// A [`Queue`] backed by the SQLite store.
+pub struct SqliteQueue {
+    pool: Pool<Sqlite>,
+}
+
+impl SqliteQueue {
+    /// Wrap an open pool.
+    pub fn new(pool: Pool<Sqlite>) -> Self {
+        SqliteQueue { pool }
+    }
+
+    /// Begin a transaction that intends to WRITE.
+    ///
+    /// `BEGIN IMMEDIATE`, never the default `BEGIN DEFERRED`, and this is not a
+    /// tuning preference — it is a correctness fix measured here. A deferred
+    /// transaction takes a READ lock first and upgrades on its first write; when
+    /// two of them try to upgrade at once, SQLite returns SQLITE_BUSY
+    /// **immediately and does not invoke the busy handler**, because waiting can
+    /// never resolve a deadlock in which both parties already hold read locks.
+    /// So `busy_timeout` — 5s by default in sqlx — buys nothing at all, and the
+    /// contention test failed with "database is locked" while every retry knob
+    /// looked correctly set.
+    ///
+    /// `BEGIN IMMEDIATE` takes the write lock up front, so the second writer
+    /// WAITS (and the busy timeout finally means something) instead of failing.
+    async fn begin_write(&self) -> Result<sqlx::Transaction<'_, Sqlite>> {
+        self.pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(adapter_error)
+    }
+
+    /// How many rows are live (pending or running) — the dedupe assertion
+    /// surface, and the number an operator actually wants when asking "is the
+    /// queue backed up?".
+    ///
+    /// # Errors
+    /// [`PijError::Adapter`] when the count cannot be read.
+    pub async fn live_len(&self) -> Result<u64> {
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE state IN ('pending', 'running')")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(adapter_error)?;
+        Ok(count as u64)
+    }
+}
+
+fn adapter_error(error: sqlx::Error) -> PijError {
+    PijError::Adapter {
+        adapter: "store/queue".to_string(),
+        message: error.to_string(),
+    }
+}
+
+#[async_trait]
+impl Queue for SqliteQueue {
+    async fn enqueue(&self, job: Job) -> Result<JobId> {
+        // `ON CONFLICT ... DO NOTHING` against the partial index, then read the
+        // live row back. Both statements run in ONE transaction so a concurrent
+        // enqueue cannot slip between them and leave this caller with no id.
+        let mut tx = self.begin_write().await?;
+
+        sqlx::query(
+            "INSERT INTO jobs (kind, serial_key, payload, dedupe_key) VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(&job.kind)
+        .bind(&job.serial_key)
+        .bind(&job.payload)
+        .bind(&job.dedupe_key)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        let id: i64 = sqlx::query_scalar(
+            "SELECT id FROM jobs WHERE dedupe_key = ?1 AND state IN ('pending', 'running') \
+             ORDER BY id LIMIT 1",
+        )
+        .bind(&job.dedupe_key)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(JobId(id as u64))
+    }
+
+    async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
+        if kinds.is_empty() {
+            return Ok(None);
+        }
+        // The kind list is data, not SQL: `json_each` expands it, so a caller can
+        // never widen the query by choosing a clever kind name.
+        let kinds_json = serde_json::to_string(kinds).map_err(|error| PijError::Adapter {
+            adapter: "store/queue".to_string(),
+            message: format!("could not encode the claim filter: {error}"),
+        })?;
+
+        let mut tx = self.begin_write().await?;
+
+        let row = sqlx::query(
+            "SELECT id, kind, serial_key, payload, dedupe_key FROM jobs \
+             WHERE state = 'pending' \
+               AND kind IN (SELECT value FROM json_each(?1)) \
+               AND serial_key NOT IN (SELECT serial_key FROM jobs WHERE state = 'running') \
+             ORDER BY id LIMIT 1",
+        )
+        .bind(&kinds_json)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(adapter_error)?;
+
+        let Some(row) = row else {
+            tx.commit().await.map_err(adapter_error)?;
+            return Ok(None);
+        };
+
+        let id: i64 = row.try_get("id").map_err(adapter_error)?;
+        let job = Job {
+            kind: row.try_get("kind").map_err(adapter_error)?,
+            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+            payload: row.try_get("payload").map_err(adapter_error)?,
+            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+        };
+
+        // The UPDATE re-checks `state = 'pending'`, so two claimers racing on the
+        // same row produce one winner and one `None` — never two workers holding
+        // the same job.
+        let claimed = sqlx::query(
+            "UPDATE jobs SET state = 'running', worker = ?2 WHERE id = ?1 AND state = 'pending'",
+        )
+        .bind(id)
+        .bind(worker)
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?
+        .rows_affected();
+
+        tx.commit().await.map_err(adapter_error)?;
+
+        if claimed == 0 {
+            return Ok(None);
+        }
+        Ok(Some((JobId(id as u64), job)))
+    }
+
+    async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
+        let (state, detail) = match &outcome {
+            Outcome::Done => ("done", None),
+            Outcome::Failed { reason } => ("failed", Some(reason.clone())),
+        };
+
+        let affected = sqlx::query(
+            "UPDATE jobs SET state = ?2, outcome = ?3 WHERE id = ?1 AND state = 'running'",
+        )
+        .bind(job.0 as i64)
+        .bind(state)
+        .bind(detail)
+        .execute(&self.pool)
+        .await
+        .map_err(adapter_error)?
+        .rows_affected();
+
+        if affected == 0 {
+            // Acking a job nobody claimed is a fact worth reporting: it means a
+            // worker believes it holds work the queue does not think is running,
+            // which is exactly the state a lost claim leaves behind.
+            return Err(PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: format!(
+                    "job {} is not running — it was already acked, or never claimed",
+                    job.0
+                ),
+            });
+        }
+        Ok(())
+    }
+}
