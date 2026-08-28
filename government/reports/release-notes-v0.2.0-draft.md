@@ -1,4 +1,4 @@
-# pij v0.2.0 — release notes (TAGGED 2026-08-28 05:2xZ at `d120c53` on Vaughan's ruling "merge it all, make it 0.2.0"; outstanding items handed over in docs/handover/v0.2.0/)
+# pij v0.2.0 — release notes (TAGGED 2026-08-28 05:2xZ at `d120c53` on Vaughan's ruling "merge it all, make it 0.2.0"; outstanding items handed over in docs/handover/v0.2.0/ — index on AI-Substrate/pij#311: https://github.com/AI-Substrate/pij/issues/311#issuecomment-5449183484)
 Source sha: **d120c53** = tag `v0.2.0` (main head at 05:2xZ 2026-08-28; live on the daemon since restart #7 at 05:13Z, pid 69943; includes item 32). Bridge measurement in the first post-fix hour: 0 of 8 sends needed a second attempt. Gates on that sha: full vitest, `just typecheck`, `just pij-skill-check`, cold review per PR, live proofs per harness kind + Telegram. **GitHub Actions has never run in this repo; these gates are local.**
 
 ## Headline

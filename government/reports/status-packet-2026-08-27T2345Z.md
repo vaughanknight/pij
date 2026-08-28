@@ -121,3 +121,6 @@ Vaughan (verbatim): "Merge it all make it 0.2.0 and ensure Jordan's agent has al
 
 ## Amendment 05:1xZ — restart #7 LIVE
 Restart #7 done 05:12:35–05:13:04Z (29 s) on kingfisher's ack: daemon pid 69943 on d120c53 (source 5ef1220 at the time; d120c53 = main head incl. government). Item 32 proven: daemon.lock pid == status pid; the daemon's parent is the tmux server — no tsx/npx wrapper. All restart-6 proofs repeated green (locks, 29b notice to both watchers, 385-char body attempt 1 in 2 s with the bridge log advancing, watchdog next-due). Everything merged is live; v0.2.0 tagged at d120c53 minutes later.
+
+## Amendment — HANDOVER COMPLETE
+All outstanding items handed to Jordan's agent: docs/handover/v0.2.0/ on main a916d87 (README with the complete index, TEMPLATE, 00-live-system, 01-shipped-map, 22 item files; evidence folders + kept logs via PRs #36/#37/#40/#44; section PRs #35/#38/#39/#41/#42/#43). Final index posted on AI-Substrate/pij#311: https://github.com/AI-Substrate/pij/issues/311#issuecomment-5449183484. v0.2.0 = d120c53, live (daemon 69943). Streams closing; PA stays on standing watch; pij o-prime idle on the standing assignment.
