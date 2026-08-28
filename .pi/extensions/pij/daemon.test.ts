@@ -229,6 +229,9 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 		expect(notifyOwner("telegram bridge restarted")).toBe(1);
 		expect(messageBodies("watcher")).toHaveLength(1);
 		expect(messageBodies("watcher")[0]).toContain("telegram bridge restarted");
+		const capturePath = messageBodies("watcher")[0]?.split("Capture: ")[1];
+		expect(capturePath).toBeDefined();
+		expect(readFileSync(capturePath ?? "", "utf8")).toContain("bridge tail");
 		for (const id of ["prime-a", "prime-b", "prime-c"]) expect(messageBodies(id)).toEqual([]);
 		expect(logs).toEqual([]);
 	});

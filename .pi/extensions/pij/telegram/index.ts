@@ -330,9 +330,18 @@ function bridgeFileLog(
 	baseLog: (message: string) => void,
 ): (message: string) => void {
 	const logPath = join(pijHome, "telegram-bridge.log");
+	let teeFailureReported = false;
 	return (message) => {
-		appendFileSync(logPath, `[pij-telegram] ${message}\n`);
 		baseLog(message);
+		try {
+			appendFileSync(logPath, `[pij-telegram] ${message}\n`);
+		} catch (error) {
+			if (teeFailureReported) return;
+			teeFailureReported = true;
+			baseLog(
+				`telegram-bridge.log tee failed (${(error as Error).message}); durable log degraded, continuing`,
+			);
+		}
 	};
 }
 
@@ -544,9 +553,10 @@ export interface DaemonBridgeSupervisorCallbacks {
 export function bridgeSupervisorForDaemon(
 	pijHome: string,
 	callbacks: DaemonBridgeSupervisorCallbacks,
+	overrides: DaemonBridgeOverrides = {},
 ): BridgeSupervisor {
 	const bridgeLog = bridgeFileLog(pijHome, callbacks.log);
-	const startDeps = (): DaemonBridgeDeps => daemonBridgeDepsFor(pijHome, bridgeLog);
+	const startDeps = (): DaemonBridgeDeps => daemonBridgeDepsFor(pijHome, bridgeLog, overrides);
 	const lockPath = join(pijHome, LOCK_NAME);
 	const initialPid = readLockPid(lockPath);
 	const initial = initialPid === null ? attemptDaemonBridgeStart(startDeps()) : undefined;
