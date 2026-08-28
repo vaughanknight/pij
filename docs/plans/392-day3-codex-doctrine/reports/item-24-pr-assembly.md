@@ -22,3 +22,10 @@ Live-acceptance baseline (pre-fix): `reports/item-24-live-acceptance-baseline.md
 
 ## Base pin (updated 2026-08-28)
 Base the item-24 PR on **main @ ae7356b** (post-PR#30 merge; o-prime ruling). Restart #6 is gated on item 24 alone.
+
+## Build intel (pre-staged 2026-08-28, ancestry checked)
+66d0acd's git ancestry is NOT a clean item-24 chain — it interleaves docs commits AND the 29b deps fold (5b77c99, already on main via PR #30). Do NOT cherry-pick a range. Cherry-pick ONLY the 8 item-24 CODE commits individually, in order:
+  a27ab58, 6641943, 588dd0e, a6151aa, b1f0e0a, d42fc5b, 65560901 (log-sink), 66d0acd (hardening)
+Expect conflicts in daemon.ts / daemon.test.ts: 29b (now on main, post-W1+W2 + my union-resolution) and item-24 both touch them. In particular W3 (66d0acd, daemon.test.ts +3) augments the SAME test main already has post-29b ("notifies every pij-telegram watcher instead of inferring one prime owner", ~daemon.test.ts:234). Resolve union/incoming as with the 29b PR; final tsc must be 0.
+telegram/index.ts + index.test.ts changes are item-24-local (less conflict risk vs main).
+All 8 commits confirmed reachable. Base: fresh origin/main (>= ae7356b; 1342384 adds only a gov doc).
