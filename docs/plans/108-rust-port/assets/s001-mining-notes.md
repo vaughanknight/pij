@@ -31,3 +31,18 @@ retro, 10 frictions), TENETS.md item 10, gibbon data dir (~/.pij/pij-bitter-gibb
 - ac-0009 candidate: toolchain pinned (rust-toolchain.toml) + done-receipts carry
   observed rustc/cargo versions. testkit-first already in goals; wire.rs + shared-
   merge-file list ride the workshop.
+
+## Addendum — revive attempted (lynx, per Jordan), precise failure anatomy
+`pij revive pij-bitter-gibbon` → E-NOREG "pi native session artifact is missing"
+(normal AND --print). The pij data dir SURVIVES; the NATIVE omp session file
+revive replays is GONE (died in fs3's 2026-08-26 disk-full era; likely purged).
+Port contract consequences (owning units: u-orchestration + u-store):
+- E-NOREG conflates "registry entry missing" with "native session artifact
+  missing" — same code, DIFFERENT recoveries. Rust port: distinct error variants
+  (instrument-must-separate-the-states class).
+- pij survives its own artifact while depending on a foreign one it never
+  snapshots/checksums. Rust port: revive's dependency on the native artifact is
+  either owned (snapshot), tracked (checksum + early warning), or honestly
+  declared unrecoverable at death-record time — never discovered at revive time.
+- events.ndjson stands as the interview substitute: the seat's complete wire
+  history in its own words at the time.
