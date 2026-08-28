@@ -38,3 +38,8 @@ _(filled as sections land; one line per file: number · title · stream · statu
 - 22 · Watchdog ratchet hardening (was parked behind 24) — s392 · designed, not started
 - E22 · cli.integration subprocess flake (kept-log rule + fixture) — s392 · designed, not started
 - Codex 2/8 · app-server `--remote` delivery — s392 · DEFERRED by the owner; frame builders unit-proven, routing/topology/lifecycle unproven; needs `codex login`
+- 33 · Plan-055 watchdog smoke proof resurrected against the current delivery model — s391 · in flight (branch + partial patch + three red logs on main)
+- 35 · GitHub Actions has never run in this repo (investigated: events delivered, zero check suites, permissions correct) — s391 · designed, needs a GitHub-side fix
+- E3 · `pij canary` aborts before the nonce on Claude-pinned seats — s391 · designed, not started
+- E5 · `pij state --json` / `pij list --json` lossy surfaces — s391 · designed, not started
+- 99 · Carried lows (15 G-3/AC-20, 16 H-1/H-3/H-6, 32 lows) — s391 · list with pointers
