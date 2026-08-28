@@ -195,3 +195,10 @@ vite.config.ts.timestamp-*
 # python bytecode caches (harness scripts)
 __pycache__/
 *.pyc
+
+# Rust port (plan 108): build artifacts. `/target` is the workspace's; `pocs/*/target`
+# and `pocs/*/out/` belong to the spike lane, whose captured output is committed
+# deliberately per spike, never wholesale.
+/target/
+pocs/*/target/
+pocs/*/out/

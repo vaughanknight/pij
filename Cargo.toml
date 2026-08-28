@@ -1,0 +1,31 @@
+# pij Rust port — workspace root (plan 108, wave 0 "the mold").
+#
+# The TS pij CLI/daemon continues to live at its own paths in this repo; the two
+# coexist. Everything Rust hangs off this manifest.
+#
+# Crate membership is added by tk-5f1d (the 8 ratified crates of workshop 001 R2);
+# this first commit carries only the toolchain pin, this manifest and .gitignore.
+#
+# `exclude = ["pocs"]` keeps the spike lane (R6c) out of the workspace on purpose:
+# a POC has its own bare `[workspace]`, is not built by `cargo build --workspace`,
+# and sits outside the gate — its evidence is captured output, never a green gate.
+[workspace]
+resolver = "3"
+members = []
+exclude = ["pocs"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+# Warnings are errors in the gate (`clippy -D warnings`); this keeps a plain
+# `cargo build` honest about the same lints rather than deferring them to CI.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.dev]
+# The mold is built and rebuilt by agents on a shared machine: incremental
+# artifacts are pure cost here (CARGO_INCREMENTAL=0 is the fleet rule) and the
+# debug-info default dominates target/ size.
+debug = "line-tables-only"
