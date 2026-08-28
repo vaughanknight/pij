@@ -55,9 +55,9 @@ export function daemonStartOutcome(status: DaemonStatus): DaemonStartOutcome {
 /** How long {@link reportDaemonStart} waits for proof that the daemon it just
  *  launched is actually up, and how often it re-checks.
  *
- *  MEASURED, not guessed: three cold starts put the lock write at 584/572/576ms.
- *  Almost all of that is `npx` + the `tsx` transform of the daemon's import graph
- *  — the daemon writes its lock before it does anything else. A sub-second budget
+ *  MEASURED, not guessed: direct Node starts put the lock write at 446/442/515ms.
+ *  Almost all of that is the `tsx` transform of the daemon's import graph — the
+ *  daemon writes its lock before it does anything else. A sub-second budget
  *  would therefore report EVERY healthy auto-start as unverified, which is just
  *  the old lie inverted. The budget is the ceiling on the failure case only; the
  *  poll returns as soon as the lock goes live. */

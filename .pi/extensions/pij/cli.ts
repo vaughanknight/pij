@@ -23,7 +23,7 @@ import {
 import { createRequire } from "node:module";
 import { homedir, uptime } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { FakeAgentAdapter } from "minih";
 import { validateInput } from "minih/runner";
 import { FsAllocationStore } from "./adapters/allocation-store.js";
@@ -1528,6 +1528,22 @@ function waitCanary(
 const DAEMON_WINDOW_NAME = "pij-daemon";
 const daemonLockPath = join(pijHome, "daemon.lock");
 
+export interface DaemonLaunchArgv {
+	readonly cmd: string;
+	readonly args: readonly string[];
+}
+
+function resolveTsxLoaderUrl(): string {
+	return pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
+}
+
+export function daemonLaunchArgv(daemonPath: string): DaemonLaunchArgv {
+	return {
+		cmd: process.execPath,
+		args: ["--import", resolveTsxLoaderUrl(), daemonPath],
+	};
+}
+
 /** The raw lock, for facts `daemonStatus()` does not project (s101: the boot
  *  head). Returns null when absent or corrupt — readers render UNKNOWN. */
 function readDaemonLock(): ReturnType<typeof parseLockFile> {
@@ -1589,13 +1605,14 @@ function ensureDaemonRunning(): string | null {
 	}
 	if (daemonWindows().length > 0) return null; // a pij-daemon window already exists (booting)
 	const daemonPath = fileURLToPath(new URL("./daemon.ts", import.meta.url));
+	const launch = daemonLaunchArgv(daemonPath);
 	const res = tmux.newWindow({
 		name: DAEMON_WINDOW_NAME,
 		title: "pij daemon",
 		cwd: process.cwd(),
 		env: { PIJ_DAEMON_OWNED: "1" },
-		cmd: "npx",
-		args: ["tsx", daemonPath],
+		cmd: launch.cmd,
+		args: [...launch.args],
 		detached: true, // background — never steal the operator's focus
 	});
 	if (!res.ok) return `⚠️ could not auto-start pij daemon: ${res.message}`;

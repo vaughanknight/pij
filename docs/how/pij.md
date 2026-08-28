@@ -306,10 +306,16 @@ process start time is newer than the lock mtime, proving PID reuse; unavailable
 start-time evidence preserves the lock. Age alone never permits a steal.
 Reclaims name the layer and PID in a platform receipt/log or an `events.lock`
 spine note; descriptor reclaims warn on the CLI and log in the daemon through
-their shared registry factories. SIGINT/SIGTERM shutdown token-check releases
-every lock still owned by the daemon process before exit. The whole-process
-snapshot is cached for five seconds, so recognition of a newly reused PID can
-lag by at most that interval; the conservative refusal self-heals after expiry.
+their shared registry factories. A pij-managed daemon window runs the current
+CLI's `process.execPath` directly with `--import` and an absolute file URL for
+the `tsx` loader resolved from the CLI installation, followed by `daemon.ts`.
+There is no `npx` or `tsx` CLI relay between tmux and the daemon, so the pane
+process and the pid recorded in `daemon.lock` are the same process.
+SIGHUP/SIGINT/SIGTERM shutdown token-check releases every lock still owned by
+that daemon process before exit. `pij daemon stop` and `pij daemon status`
+continue to use the pid from `daemon.lock`. The whole-process snapshot is
+cached for five seconds, so recognition of a newly reused PID can lag by at
+most that interval; the conservative refusal self-heals after expiry.
 
 ### Tree selectors and filters
 

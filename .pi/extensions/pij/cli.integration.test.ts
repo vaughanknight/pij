@@ -22,8 +22,10 @@ import {
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir, uptime } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FsChannel } from "./adapters/channel.js";
 import { DualWriteChannel } from "./adapters/channel-factory.js";
@@ -35,7 +37,7 @@ import { NodeProcess } from "./adapters/process.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
-import { verifyPersistedAdoptDescriptor } from "./cli.js";
+import { daemonLaunchArgv, verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
 import { transcriptDir } from "./core/harness/claude.js";
 import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
@@ -50,6 +52,8 @@ import { buildWatchdogTurn, mutesWatchdogNudge } from "./core/watchdog.js";
 const CLI = join(import.meta.dirname, "cli.ts");
 const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
+const DAEMON = join(import.meta.dirname, "daemon.ts");
+const TSX_LOADER_URL = pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
 
 let HOME: string;
 let FOLDER: string;
@@ -272,6 +276,30 @@ afterAll(() => {
 });
 
 describe("pij two-peer integration (real coordinators + real CLI over sandbox PIJ_HOME)", () => {
+	it("composes the daemon window from the direct production Node argv", () => {
+		rmSync(join(HOME, "daemon.lock"), { force: true });
+		writeFileSync(TMUX_LOG, "");
+
+		const result = pij(["daemon", "start"]);
+		expect(result.code, result.out).toBe(0);
+
+		const launch = daemonLaunchArgv(DAEMON);
+		expect(launch).toEqual({
+			cmd: process.execPath,
+			args: ["--import", TSX_LOADER_URL, DAEMON],
+		});
+		expect(TSX_LOADER_URL).toMatch(/^file:/);
+		expect(fileURLToPath(TSX_LOADER_URL)).toMatch(/[/\\]tsx[/\\]dist[/\\]loader\.mjs$/);
+		expect(existsSync(fileURLToPath(TSX_LOADER_URL))).toBe(true);
+
+		const newWindow = readFileSync(TMUX_LOG, "utf8")
+			.split("\n")
+			.find((line) => line.startsWith("new-window "));
+		expect(newWindow).toBeDefined();
+		expect(newWindow).toContain([launch.cmd, ...launch.args].join(" "));
+		expect(newWindow).not.toMatch(/\bnpx\b/);
+	});
+
 	it("top-level help advertises the prime list filter", () => {
 		const result = pij(["--help"]);
 		expect(result.code).toBe(0);
