@@ -109,3 +109,6 @@ Restart #6 done 04:10:36–04:11:06Z (30 s) in kingfisher's lane: daemon pid 635
 
 ## Amendment 04:2xZ — item 31 boundary proof
 The 04:25:54Z PA sweep arrived without the "watchdog unknown — not a health claim" / "gone quiet (stalled)" pair for the first time since 21:25Z — item 31 proven live at a real boundary. Post-restart bridge reading 1/4: attempt>1 = 0.
+
+## Amendment 04:4xZ — §2/§3 item 32
+PR #33 item 32 (direct-child daemon launch; SIGHUP handled; locks released on every signal) merged → main after 32-FX (relay probe via resolved tsx CLI, 15 s cold ceiling); verified at the merge product 4160/0. Not live until restart #7, asked after the 05:15Z bridge measurement. Item 32 leaves §3's open list once live.
