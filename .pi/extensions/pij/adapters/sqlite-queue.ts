@@ -114,6 +114,20 @@ CREATE TABLE IF NOT EXISTS deliveries (
   last_error  TEXT
 );
 CREATE INDEX IF NOT EXISTS deliveries_ready ON deliveries(to_id, state, seq);
+CREATE TABLE IF NOT EXISTS telegram_sent_parts (
+  message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  part_index INTEGER NOT NULL CHECK(part_index >= 0),
+  sent_at    INTEGER NOT NULL,
+  PRIMARY KEY(message_id, part_index)
+);
+CREATE TABLE IF NOT EXISTS telegram_partitions (
+  message_id    TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+  part_count    INTEGER NOT NULL CHECK(part_count >= 0),
+  prefix_length INTEGER NOT NULL CHECK(prefix_length >= 0),
+  prefix_hash   TEXT NOT NULL,
+  bubbles_hash  TEXT NOT NULL,
+  recorded_at   INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS receipts (
   id      INTEGER PRIMARY KEY,
   seq     INTEGER NOT NULL REFERENCES messages(seq),
@@ -185,6 +199,15 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 		this.db.exec("PRAGMA foreign_keys=ON");
 		this.db.exec("PRAGMA busy_timeout=5000");
 		this.db.exec(SCHEMA);
+		const partitionColumns = this.db
+			.prepare("PRAGMA table_info(telegram_partitions)")
+			.all() as unknown as Array<{ name: string }>;
+		if (!partitionColumns.some((column) => column.name === "prefix_hash")) {
+			this.db.exec("ALTER TABLE telegram_partitions ADD COLUMN prefix_hash TEXT");
+		}
+		if (!partitionColumns.some((column) => column.name === "bubbles_hash")) {
+			this.db.exec("ALTER TABLE telegram_partitions ADD COLUMN bubbles_hash TEXT");
+		}
 	}
 
 	close(): void {
@@ -297,6 +320,49 @@ export class SqliteQueue implements DeliveryPort, InboxPort {
 			| { seq: number }
 			| undefined;
 		return row?.seq;
+	}
+
+	/** Bubbles already accepted by Telegram for one queued bridge message.
+	 *  Legacy rows have no entries and therefore retain the old send-all behavior. */
+	telegramSentParts(messageId: string): ReadonlySet<number> {
+		const rows = this.db
+			.prepare(
+				"SELECT part_index FROM telegram_sent_parts WHERE message_id = ? ORDER BY part_index",
+			)
+			.all(messageId) as unknown as Array<{ part_index: number }>;
+		return new Set(rows.map((row) => row.part_index));
+	}
+
+	/** Persist one positively acknowledged Telegram bubble immediately and idempotently. */
+	markTelegramPartSent(messageId: string, partIndex: number): void {
+		if (!Number.isSafeInteger(partIndex) || partIndex < 0) {
+			throw new Error("Telegram bubble index must be a non-negative integer");
+		}
+		this.db
+			.prepare(
+				"INSERT OR IGNORE INTO telegram_sent_parts(message_id, part_index, sent_at) VALUES (?, ?, ?)",
+			)
+			.run(messageId, partIndex, this.now());
+	}
+
+	/** Ordered-bubble plan hash that makes positional bubble indices meaningful. */
+	telegramBubblesHash(messageId: string): string | undefined {
+		const row = this.db
+			.prepare("SELECT bubbles_hash FROM telegram_partitions WHERE message_id = ?")
+			.get(messageId) as { bubbles_hash: string | null } | undefined;
+		return row?.bubbles_hash ?? undefined;
+	}
+
+	/** Record the first complete ordered-bubble plan only; drift never overwrites it. */
+	recordTelegramBubblesHash(messageId: string, bubblesHash: string): void {
+		if (!/^[0-9a-f]{64}$/.test(bubblesHash)) {
+			throw new Error("Telegram bubbles hash must be a lowercase SHA-256");
+		}
+		this.db
+			.prepare(
+				"INSERT OR IGNORE INTO telegram_partitions(message_id, part_count, prefix_length, prefix_hash, bubbles_hash, recorded_at) VALUES (?, 0, 0, '', ?, ?)",
+			)
+			.run(messageId, bubblesHash, this.now());
 	}
 
 	/** Ack: the recipient has read the body. Exactly-once by row state. */

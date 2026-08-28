@@ -1,0 +1,13 @@
+diff --git a/.pi/extensions/pij/telegram/index.ts b/.pi/extensions/pij/telegram/index.ts
+--- a/.pi/extensions/pij/telegram/index.ts
++++ b/.pi/extensions/pij/telegram/index.ts
+@@ -558,7 +558,8 @@ export function bridgeSupervisorForDaemon(
+ 	overrides: DaemonBridgeOverrides = {},
+ ): BridgeSupervisor {
+ 	const bridgeLog = bridgeFileLog(pijHome, callbacks.log);
+-	const startDeps = (): DaemonBridgeDeps => daemonBridgeDepsFor(pijHome, bridgeLog, overrides);
++	const startDeps = (): DaemonBridgeDeps =>
++		daemonBridgeDepsFor(pijHome, callbacks.log, overrides);
+ 	const lockPath = join(pijHome, LOCK_NAME);
+ 	const initialPid = readLockPid(lockPath);
+ 	const initial = initialPid === null ? attemptDaemonBridgeStart(startDeps()) : undefined;

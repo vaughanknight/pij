@@ -15,6 +15,8 @@ const BIG_BODY = [
 	...Array.from({ length: 30 }, (_, i) => `L${String(i + 2).padStart(2, "0")}: ${"k".repeat(95)}`),
 	"TAIL-LINE",
 ].join("\n");
+const BUBBLES_HASH_A = "a".repeat(64);
+const BUBBLES_HASH_B = "b".repeat(64);
 
 let home: string;
 let q: SqliteQueue;
@@ -103,6 +105,68 @@ describe("SqliteQueue — DeliveryPort/InboxPort contract", () => {
 		expect(b.ok && b.value.messageId).toBe("m-fixed");
 		const unread = q.listUnread("pij-b");
 		expect(unread.ok && unread.value.length).toBe(1);
+	});
+
+	it("persists Telegram sent-part indices idempotently across queue reopen", () => {
+		const sent = q.deliver(
+			{ from: "pij-a", to: "pij-telegram", body: "chunked" },
+			{ messageId: "m-parts" },
+		);
+		if (!sent.ok) throw new Error(sent.message);
+		expect([...q.telegramSentParts(sent.value.messageId)]).toEqual([]);
+		q.markTelegramPartSent(sent.value.messageId, 0);
+		q.markTelegramPartSent(sent.value.messageId, 2);
+		q.markTelegramPartSent(sent.value.messageId, 0);
+		expect([...q.telegramSentParts(sent.value.messageId)]).toEqual([0, 2]);
+
+		q.close();
+		q = new SqliteQueue(home, { now: () => now });
+		expect([...q.telegramSentParts(sent.value.messageId)]).toEqual([0, 2]);
+	});
+
+	it("persists the first Telegram bubbles hash without overwriting it", () => {
+		const sent = q.deliver(
+			{ from: "pij-a", to: "pij-telegram", body: "chunked" },
+			{ messageId: "m-partition" },
+		);
+		if (!sent.ok) throw new Error(sent.message);
+		expect(q.telegramBubblesHash(sent.value.messageId)).toBeUndefined();
+		q.recordTelegramBubblesHash(sent.value.messageId, BUBBLES_HASH_A);
+		q.recordTelegramBubblesHash(sent.value.messageId, BUBBLES_HASH_B);
+		expect(q.telegramBubblesHash(sent.value.messageId)).toBe(BUBBLES_HASH_A);
+
+		q.close();
+		q = new SqliteQueue(home, { now: () => now });
+		expect(q.telegramBubblesHash(sent.value.messageId)).toBe(BUBBLES_HASH_A);
+	});
+
+	it("migrates the bubbles-hash column while leaving a legacy partition untrusted", () => {
+		const sent = q.deliver(
+			{ from: "pij-a", to: "pij-telegram", body: "legacy" },
+			{ messageId: "m-legacy" },
+		);
+		if (!sent.ok) throw new Error(sent.message);
+		q.close();
+
+		const legacy = new DatabaseSync(join(home, "queue", "pij.sqlite"));
+		legacy.exec(`
+			DROP TABLE telegram_partitions;
+			CREATE TABLE telegram_partitions (
+				message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+				part_count INTEGER NOT NULL CHECK(part_count >= 0),
+				prefix_length INTEGER NOT NULL CHECK(prefix_length >= 0),
+				recorded_at INTEGER NOT NULL
+			);
+		`);
+		legacy
+			.prepare(
+				"INSERT INTO telegram_partitions(message_id, part_count, prefix_length, recorded_at) VALUES (?, ?, ?, ?)",
+			)
+			.run(sent.value.messageId, 1, 10, now);
+		legacy.close();
+
+		q = new SqliteQueue(home, { now: () => now });
+		expect(q.telegramBubblesHash(sent.value.messageId)).toBeUndefined();
 	});
 });
 

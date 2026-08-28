@@ -1,0 +1,12 @@
+diff --git a/.pi/extensions/pij/daemon.ts b/.pi/extensions/pij/daemon.ts
+--- a/.pi/extensions/pij/daemon.ts
++++ b/.pi/extensions/pij/daemon.ts
+@@ -249,7 +249,7 @@ export function wireBridgeRestartNotifier(
+ 			).length;
+ 		let captureText = `${message}\n\nregistered primes at restart: ${primeCount}`;
+ 		try {
+-			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
++			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(0, 0)}`;
+ 		} catch (error) {
+ 			deps.log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
+ 		}

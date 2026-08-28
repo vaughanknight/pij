@@ -1,0 +1,25 @@
+diff --git a/.pi/extensions/pij/telegram/index.ts b/.pi/extensions/pij/telegram/index.ts
+--- a/.pi/extensions/pij/telegram/index.ts
++++ b/.pi/extensions/pij/telegram/index.ts
+@@ -329,19 +329,6 @@ function bridgeFileLog(
+ 	pijHome: string,
+ 	baseLog: (message: string) => void,
+ ): (message: string) => void {
+-	const logPath = join(pijHome, "telegram-bridge.log");
+-	let teeFailureReported = false;
+-	return (message) => {
+-		baseLog(message);
+-		try {
+-			appendFileSync(logPath, `[pij-telegram] ${message}\n`);
+-			teeFailureReported = false;
+-		} catch (error) {
+-			if (teeFailureReported) return;
+-			teeFailureReported = true;
+-			baseLog(
+-				`telegram-bridge.log tee failed (${(error as Error).message}); durable log degraded, continuing`,
+-			);
+-		}
+-	};
++	void pijHome;
++	return baseLog;
+ }

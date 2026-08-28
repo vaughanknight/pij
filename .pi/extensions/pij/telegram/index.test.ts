@@ -9,9 +9,12 @@
 import {
 	appendFileSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +34,9 @@ import type { PijEvent, SessionId } from "../core/types.js";
 import { TELEGRAM_PEER_ID } from "./bridge.js";
 import type { TelegramConfig } from "./config.js";
 import {
+	autoStartBridgeForDaemon,
 	type BridgeRuntime,
+	bridgeSupervisorForDaemon,
 	buildTelegramDescriptor,
 	type DaemonBridgeDeps,
 	handleStartError,
@@ -675,6 +680,160 @@ describe("standalone bridge fatal process handlers", () => {
 // with no real `.env`, registry, or Telegram long-poll.
 
 describe("maybeStartBridge (daemon auto-start)", () => {
+	// autoStart has no production caller, but these B1 tests drive the shared bridgeFileLog guard.
+	it("keeps delivery alive and pane-visible when the durable tee cannot append", async () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		delete process.env.PIJ_QUEUE_BACKEND;
+		const logPath = join(home, "telegram-bridge.log");
+		mkdirSync(logPath);
+		const daemonLogs: string[] = [];
+		let stop: (() => void) | undefined;
+		const queue = new SqliteQueue(home);
+		try {
+			stop = autoStartBridgeForDaemon(home, (message) => daemonLogs.push(message), {
+				loadConfig: () => ({ ...config, chatId: 555 }),
+				runBot: async (bot) => {
+					bot.api.config.use(() =>
+						Promise.resolve({ ok: true, result: { message_id: 1 } } as never),
+					);
+				},
+			});
+			const delivered = queue.deliver({
+				from: "pij-success",
+				to: TELEGRAM_PEER_ID,
+				body: "delivery survives tee failure",
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(daemonLogs).toContainEqual(
+				expect.stringContaining(`forwarded ${delivered.value.messageId} part 1/1`),
+			);
+			expect(daemonLogs.filter((line) => line.includes("tee failed"))).toHaveLength(1);
+		} finally {
+			stop?.();
+			queue.close();
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
+	});
+
+	it("reports each distinct durable tee outage once", async () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		delete process.env.PIJ_QUEUE_BACKEND;
+		const logPath = join(home, "telegram-bridge.log");
+		mkdirSync(logPath);
+		const daemonLogs: string[] = [];
+		let stop: (() => void) | undefined;
+		const queue = new SqliteQueue(home);
+		try {
+			stop = autoStartBridgeForDaemon(home, (message) => daemonLogs.push(message), {
+				loadConfig: () => ({ ...config, chatId: 555 }),
+				runBot: async (bot) => {
+					bot.api.config.use(() =>
+						Promise.resolve({ ok: true, result: { message_id: 1 } } as never),
+					);
+				},
+			});
+			queue.deliver({ from: "pij-one", to: TELEGRAM_PEER_ID, body: "one" });
+			queue.deliver({ from: "pij-two", to: TELEGRAM_PEER_ID, body: "two" });
+
+			await waitFor(
+				() =>
+					queue.summary({ to: TELEGRAM_PEER_ID }).length === 2 &&
+					queue.summary({ to: TELEGRAM_PEER_ID }).every((row) => row.state === "acked"),
+			);
+			expect(daemonLogs.filter((line) => line.includes("tee failed"))).toHaveLength(1);
+
+			rmSync(logPath, { recursive: true, force: true });
+			writeFileSync(logPath, "recovered\n");
+			queue.deliver({ from: "pij-three", to: TELEGRAM_PEER_ID, body: "three" });
+			await waitFor(
+				() =>
+					queue.summary({ to: TELEGRAM_PEER_ID }).length === 3 &&
+					queue.summary({ to: TELEGRAM_PEER_ID })[2]?.state === "acked",
+			);
+
+			rmSync(logPath, { force: true });
+			mkdirSync(logPath);
+			queue.deliver({ from: "pij-four", to: TELEGRAM_PEER_ID, body: "four" });
+			await waitFor(
+				() =>
+					queue.summary({ to: TELEGRAM_PEER_ID }).length === 4 &&
+					queue.summary({ to: TELEGRAM_PEER_ID })[3]?.state === "acked",
+			);
+
+			expect(daemonLogs.filter((line) => line.includes("tee failed"))).toHaveLength(2);
+			expect(daemonLogs.filter((line) => line.includes("forwarded"))).toHaveLength(4);
+		} finally {
+			stop?.();
+			queue.close();
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
+	});
+
+	it("persists in-process forward success and failure logs to telegram-bridge.log", async () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		delete process.env.PIJ_QUEUE_BACKEND;
+		const logPath = join(home, "telegram-bridge.log");
+		writeFileSync(logPath, "seed\n");
+		utimesSync(logPath, new Date(1_000), new Date(1_000));
+		const daemonLogs: string[] = [];
+		let stop: (() => void) | undefined;
+		const queue = new SqliteQueue(home);
+		try {
+			stop = autoStartBridgeForDaemon(home, (message) => daemonLogs.push(message), {
+				loadConfig: () => ({ ...config, chatId: 555 }),
+				runBot: async (bot) => {
+					bot.api.config.use((_prev, method, payload) => {
+						if (
+							method === "sendMessage" &&
+							String((payload as { text?: string }).text).includes("persistent failure")
+						) {
+							return Promise.reject(new Error("Call to 'sendMessage' failed! (400: Bad Request)"));
+						}
+						return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+					});
+				},
+			});
+			const beforeMtime = statSync(logPath).mtimeMs;
+
+			const succeeded = queue.deliver({
+				from: "pij-success",
+				to: TELEGRAM_PEER_ID,
+				body: "forward succeeds",
+			});
+			const failed = queue.deliver({
+				from: "pij-failure",
+				to: TELEGRAM_PEER_ID,
+				body: "persistent failure",
+			});
+			if (!succeeded.ok || !failed.ok) throw new Error("deliver failed");
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[1]?.state === "claimed");
+			await waitFor(() => readFileSync(logPath, "utf8").includes("ForwardIncomplete"));
+
+			const written = readFileSync(logPath, "utf8");
+			expect(written).toContain(`[pij-telegram] forwarded ${succeeded.value.messageId} part 1/1`);
+			expect(written).toContain(`[pij-telegram] forward error (${failed.value.messageId})`);
+			expect(written).toContain(
+				`[pij-telegram] queue consumer error (${failed.value.messageId}, attempt 1): ForwardIncomplete`,
+			);
+			expect(statSync(logPath).mtimeMs).toBeGreaterThan(beforeMtime);
+			expect(daemonLogs).toContainEqual(
+				expect.stringContaining(`forwarded ${succeeded.value.messageId} part 1/1`),
+			);
+		} finally {
+			stop?.();
+			queue.close();
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
+	});
+
 	it("skips (no-op) when telegram.env does not load — startBridge never reached", () => {
 		let startBridgeCalls = 0;
 		let runBotCalls = 0;
@@ -767,6 +926,86 @@ describe("maybeStartBridge (daemon auto-start)", () => {
 		// Non-vacuous: drop the `.catch` and `stopped` stays 0 (and the rejection goes unhandled).
 		expect(stopped).toBe(1); // the bridge was torn down
 		expect(logs.join("\n")).toMatch(/stopped|409/i);
+	});
+});
+
+describe("bridgeSupervisorForDaemon production logging", () => {
+	it("persists supervisor-owned forward success and failure logs", async () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		delete process.env.PIJ_QUEUE_BACKEND;
+		const logPath = join(home, "telegram-bridge.log");
+		const deadPid = 999_999_999;
+		writeFileSync(logPath, "seed\n");
+		writeFileSync(join(home, "telegram.env"), "configured\n");
+		utimesSync(logPath, new Date(1_000), new Date(1_000));
+		const daemonLogs: string[] = [];
+		const queue = new SqliteQueue(home);
+		const supervisor = bridgeSupervisorForDaemon(
+			home,
+			{
+				now: () => 1_000,
+				log: (message) => daemonLogs.push(message),
+				note: () => {},
+				notifyOwner: () => {},
+			},
+			{
+				loadConfig: () => ({ ...config, chatId: 555 }),
+				runBot: async (bot) => {
+					bot.api.config.use((_prev, method, payload) => {
+						if (
+							method === "sendMessage" &&
+							String((payload as { text?: string }).text).includes("supervisor failure")
+						) {
+							return Promise.reject(new Error("Call to 'sendMessage' failed! (400: Bad Request)"));
+						}
+						return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+					});
+				},
+			},
+		);
+		try {
+			const beforeMtime = statSync(logPath).mtimeMs;
+			const succeeded = queue.deliver({
+				from: "pij-supervisor-success",
+				to: TELEGRAM_PEER_ID,
+				body: "supervisor success",
+			});
+			const failed = queue.deliver({
+				from: "pij-supervisor-failure",
+				to: TELEGRAM_PEER_ID,
+				body: "supervisor failure",
+			});
+			if (!succeeded.ok || !failed.ok) throw new Error("deliver failed");
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[1]?.state === "claimed");
+			await waitFor(() => readFileSync(logPath, "utf8").includes("ForwardIncomplete"));
+
+			writeFileSync(
+				join(home, LOCK),
+				JSON.stringify({ pid: deadPid, startedAt: "2026-08-28T00:00:00.000Z" }),
+			);
+			expect(supervisor.tick()).toMatchObject({ kind: "restarted", previousPid: deadPid });
+
+			const written = readFileSync(logPath, "utf8");
+			expect(written).toContain(`[pij-telegram] forwarded ${succeeded.value.messageId} part 1/1`);
+			expect(written).toContain(`[pij-telegram] forward error (${failed.value.messageId})`);
+			expect(written).toContain(
+				`[pij-telegram] queue consumer error (${failed.value.messageId}, attempt 1): ForwardIncomplete`,
+			);
+			expect(written).toContain(
+				`[pij-telegram] telegram: telegram bridge restarted after dead pid ${deadPid}`,
+			);
+			expect(statSync(logPath).mtimeMs).toBeGreaterThan(beforeMtime);
+			expect(daemonLogs).toContainEqual(
+				expect.stringContaining(`forwarded ${succeeded.value.messageId} part 1/1`),
+			);
+		} finally {
+			supervisor.dispose();
+			queue.close();
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
 	});
 });
 
