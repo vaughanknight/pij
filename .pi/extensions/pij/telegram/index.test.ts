@@ -680,6 +680,7 @@ describe("standalone bridge fatal process handlers", () => {
 // with no real `.env`, registry, or Telegram long-poll.
 
 describe("maybeStartBridge (daemon auto-start)", () => {
+	// autoStart has no production caller, but these B1 tests drive the shared bridgeFileLog guard.
 	it("keeps delivery alive and pane-visible when the durable tee cannot append", async () => {
 		const previous = process.env.PIJ_QUEUE_BACKEND;
 		delete process.env.PIJ_QUEUE_BACKEND;
@@ -718,10 +719,11 @@ describe("maybeStartBridge (daemon auto-start)", () => {
 		}
 	});
 
-	it("reports a failed durable tee only once across repeated forwards", async () => {
+	it("reports each distinct durable tee outage once", async () => {
 		const previous = process.env.PIJ_QUEUE_BACKEND;
 		delete process.env.PIJ_QUEUE_BACKEND;
-		mkdirSync(join(home, "telegram-bridge.log"));
+		const logPath = join(home, "telegram-bridge.log");
+		mkdirSync(logPath);
 		const daemonLogs: string[] = [];
 		let stop: (() => void) | undefined;
 		const queue = new SqliteQueue(home);
@@ -737,12 +739,33 @@ describe("maybeStartBridge (daemon auto-start)", () => {
 			queue.deliver({ from: "pij-one", to: TELEGRAM_PEER_ID, body: "one" });
 			queue.deliver({ from: "pij-two", to: TELEGRAM_PEER_ID, body: "two" });
 
-			await waitFor(() =>
-				queue.summary({ to: TELEGRAM_PEER_ID }).every((row) => row.state === "acked"),
+			await waitFor(
+				() =>
+					queue.summary({ to: TELEGRAM_PEER_ID }).length === 2 &&
+					queue.summary({ to: TELEGRAM_PEER_ID }).every((row) => row.state === "acked"),
+			);
+			expect(daemonLogs.filter((line) => line.includes("tee failed"))).toHaveLength(1);
+
+			rmSync(logPath, { recursive: true, force: true });
+			writeFileSync(logPath, "recovered\n");
+			queue.deliver({ from: "pij-three", to: TELEGRAM_PEER_ID, body: "three" });
+			await waitFor(
+				() =>
+					queue.summary({ to: TELEGRAM_PEER_ID }).length === 3 &&
+					queue.summary({ to: TELEGRAM_PEER_ID })[2]?.state === "acked",
 			);
 
-			expect(daemonLogs.filter((line) => line.includes("tee failed"))).toHaveLength(1);
-			expect(daemonLogs.filter((line) => line.includes("forwarded"))).toHaveLength(2);
+			rmSync(logPath, { force: true });
+			mkdirSync(logPath);
+			queue.deliver({ from: "pij-four", to: TELEGRAM_PEER_ID, body: "four" });
+			await waitFor(
+				() =>
+					queue.summary({ to: TELEGRAM_PEER_ID }).length === 4 &&
+					queue.summary({ to: TELEGRAM_PEER_ID })[3]?.state === "acked",
+			);
+
+			expect(daemonLogs.filter((line) => line.includes("tee failed"))).toHaveLength(2);
+			expect(daemonLogs.filter((line) => line.includes("forwarded"))).toHaveLength(4);
 		} finally {
 			stop?.();
 			queue.close();
@@ -911,7 +934,9 @@ describe("bridgeSupervisorForDaemon production logging", () => {
 		const previous = process.env.PIJ_QUEUE_BACKEND;
 		delete process.env.PIJ_QUEUE_BACKEND;
 		const logPath = join(home, "telegram-bridge.log");
+		const deadPid = 999_999_999;
 		writeFileSync(logPath, "seed\n");
+		writeFileSync(join(home, "telegram.env"), "configured\n");
 		utimesSync(logPath, new Date(1_000), new Date(1_000));
 		const daemonLogs: string[] = [];
 		const queue = new SqliteQueue(home);
@@ -956,11 +981,20 @@ describe("bridgeSupervisorForDaemon production logging", () => {
 			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[1]?.state === "claimed");
 			await waitFor(() => readFileSync(logPath, "utf8").includes("ForwardIncomplete"));
 
+			writeFileSync(
+				join(home, LOCK),
+				JSON.stringify({ pid: deadPid, startedAt: "2026-08-28T00:00:00.000Z" }),
+			);
+			expect(supervisor.tick()).toMatchObject({ kind: "restarted", previousPid: deadPid });
+
 			const written = readFileSync(logPath, "utf8");
 			expect(written).toContain(`[pij-telegram] forwarded ${succeeded.value.messageId} part 1/1`);
 			expect(written).toContain(`[pij-telegram] forward error (${failed.value.messageId})`);
 			expect(written).toContain(
 				`[pij-telegram] queue consumer error (${failed.value.messageId}, attempt 1): ForwardIncomplete`,
+			);
+			expect(written).toContain(
+				`[pij-telegram] telegram: telegram bridge restarted after dead pid ${deadPid}`,
 			);
 			expect(statSync(logPath).mtimeMs).toBeGreaterThan(beforeMtime);
 			expect(daemonLogs).toContainEqual(
