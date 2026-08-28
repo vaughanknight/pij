@@ -119,6 +119,15 @@ Each of these is a comment in the code, and each cost a debugging session:
 * **`toml::from_str`, not `value.parse()`.** In toml 0.9 the `FromStr` impl parses
   a *value*, so a whole document fails at line 1 column 1 with "unexpected
   content" — which reads like the file is corrupt.
+* **`cargo metadata --locked --no-deps` cannot detect a stale lock.** Without
+  resolving the graph there is nothing to disagree with, so it returns 0 against a
+  lock missing a dependency — and the first version of the gate's lock stage used
+  exactly that flag, passing the incident it was written to catch.
+* **A `Drop` guard must not be `Clone`.** Two owners of one staging path meant
+  dropping a copy deleted the original attempt's key, and `publish` then failed
+  with "No such file or directory".
+* **`env!("CARGO_MANIFEST_DIR")` bakes the COMPILE directory.** A gate binary
+  built inside a temporary export judged that tree from any working directory.
 * **The TS wire is not the v1 wire.** TS emits `{seq,timestamp,type,data}`; v1 is
   `{v,at,kind,seat,payload}`. Ruled R7: v1 keeps its own shape, and the TS→v1
   mapping lives in exactly two readers. The corpus carries both families.

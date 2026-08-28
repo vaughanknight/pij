@@ -27,10 +27,15 @@ CARGO_INCREMENTAL=0 cargo test  --workspace
 
 # The one command. Runs every stage even after one fails, then prints a
 # per-stage verdict — one invocation surfaces every problem.
-CARGO_INCREMENTAL=0 cargo run -p pij-testkit --bin pij-gate
+#
+# `--locked` is part of the command, not a flourish: without it the `cargo run`
+# that builds the gate can quietly repair a stale Cargo.lock before the gate
+# starts, and the lock stage then inspects a tree the gate itself just fixed.
+CARGO_INCREMENTAL=0 cargo run --locked -p pij-testkit --bin pij-gate
 ```
 
-`pij-gate` is: **toolchain** (running rustc == the pin) → **fmt** (`--check`) →
+`pij-gate` is: **toolchain** (running rustc == the pin) → **lock** (`Cargo.lock`
+already matches the manifests) → **fmt** (`--check`) →
 **clippy** (`-D warnings`) → **test** (whole workspace) → **arch** (crate graph vs
 the committed allow-list). Non-zero exit means the task is not done.
 

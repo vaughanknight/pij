@@ -1,8 +1,13 @@
 //! `pij-gate` — the one command (ac-0007).
 //!
 //! ```text
-//! ~/.cargo/bin/cargo run -p pij-testkit --bin pij-gate
+//! ~/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate
 //! ```
+//!
+//! `--locked` on the OUTER invocation matters as much as the `lock` stage below:
+//! without it, the `cargo run` that builds the gate can quietly repair a stale
+//! lock before the gate ever starts, and the stage then inspects a tree the gate
+//! itself just fixed.
 //!
 //! Five stages, in the order that fails cheapest first:
 //!
@@ -29,7 +34,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use pij_testkit::{arch, toolchain};
+use pij_testkit::{arch, lockfile, toolchain};
 
 struct Stage {
     name: &'static str,
@@ -58,18 +63,18 @@ fn main() -> ExitCode {
         }
     }
 
+    // Stage 2 — the lockfile, in-process so the check cannot be weakened by an
+    // argument list drifting (its first version used `--no-deps`, which returns 0
+    // against a stale lock; review caught it).
+    match lockfile::check(&root, &cargo) {
+        Ok(()) => verdicts.push(("lock", true, "Cargo.lock matches the manifests".to_string())),
+        Err(message) => {
+            verdicts.push(("lock", false, message));
+            failures.push("lock");
+        }
+    }
+
     let stages = [
-        Stage {
-            name: "lock",
-            args: vec![
-                "metadata",
-                "--locked",
-                "--no-deps",
-                "--format-version",
-                "1",
-                "--offline",
-            ],
-        },
         Stage {
             name: "fmt",
             args: vec!["fmt", "--all", "--check"],
@@ -92,36 +97,15 @@ fn main() -> ExitCode {
     ];
 
     for stage in &stages {
-        let status = if stage.name == "lock" {
-            // Its stdout is the whole metadata document; only the exit code matters.
-            Command::new(&cargo)
-                .args(&stage.args)
-                .current_dir(&root)
-                .env("CARGO_INCREMENTAL", "0")
-                .stdout(std::process::Stdio::null())
-                .status()
-        } else {
-            Command::new(&cargo)
-                .args(&stage.args)
-                .current_dir(&root)
-                .env("CARGO_INCREMENTAL", "0")
-                .status()
-        };
+        let status = Command::new(&cargo)
+            .args(&stage.args)
+            .current_dir(&root)
+            .env("CARGO_INCREMENTAL", "0")
+            .status();
 
         match status {
             Ok(status) if status.success() => {
                 verdicts.push((stage.name, true, format!("cargo {}", stage.args[0])));
-            }
-            Ok(status) if stage.name == "lock" => {
-                verdicts.push((
-                    stage.name,
-                    false,
-                    format!(
-                        "exit {status} — Cargo.lock does not match the manifests; run \
-                         `cargo metadata --no-deps >/dev/null` and COMMIT the lock"
-                    ),
-                ));
-                failures.push(stage.name);
             }
             Ok(status) => {
                 verdicts.push((stage.name, false, format!("exit {status}")));

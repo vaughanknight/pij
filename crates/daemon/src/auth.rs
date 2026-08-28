@@ -40,7 +40,13 @@ static ATTEMPT: AtomicU64 = AtomicU64::new(0);
 /// Deliberately a distinct type from [`BootKey`]: publication is a step that can
 /// be forgotten, and a type that cannot be used as a published key until it has
 /// been published makes forgetting it a compile error rather than a review note.
-#[derive(Clone, Debug)]
+///
+/// **Not `Clone`, and that is load-bearing.** It is a unique owning guard whose
+/// `Drop` deletes the staged file, so a clone would be a second owner of one
+/// path: dropping the copy deletes the original attempt's key, and `publish`
+/// then fails with "No such file or directory". Review proved exactly that with
+/// a probe. A guard that can be duplicated is not a guard.
+#[derive(Debug)]
 pub struct StagedKey {
     token: String,
     staged_at: PathBuf,

@@ -434,3 +434,35 @@ async fn every_public_store_operation_rejects_a_stale_schema() {
         }
     }
 }
+
+/// ROUND 3, FINDING 2 — `StagedKey` was `Clone`, so two values owned one staging
+/// path and either one's `Drop` deleted it. Dropping a clone made the original's
+/// `publish` fail with "No such file or directory". A guard that can be
+/// duplicated is not a guard, and the compiler is the right place to say so.
+///
+/// This test cannot construct the bug any more — that is the point. It asserts
+/// the property the missing `Clone` protects: a staged key survives until ITS
+/// owner publishes or drops it, and unrelated staging activity cannot remove it.
+#[test]
+fn a_staged_key_survives_other_attempts_coming_and_going() {
+    let dir = state_dir();
+
+    let mine = pij_daemon::auth::stage_key(&dir).expect("stage mine");
+    let expected = mine.token().to_string();
+
+    // Several other attempts start and die while mine is still staged.
+    for _ in 0..3 {
+        let other = pij_daemon::auth::stage_key(&dir).expect("stage other");
+        assert_ne!(other.token(), mine.token());
+        drop(other);
+    }
+
+    let published = mine.publish().expect("my staged key must still be there");
+    assert_eq!(
+        std::fs::read_to_string(&published.path).expect("read"),
+        expected,
+        "another attempt's lifecycle must not touch my bytes"
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}

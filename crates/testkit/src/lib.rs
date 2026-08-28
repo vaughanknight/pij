@@ -14,6 +14,7 @@
 //! * [`exec`] — a ten-line executor, so core's tests await without a runtime.
 //! * [`arch`] — the architecture drift gate.
 //! * [`toolchain`] — the pin assert, stage 1 of `pij-gate`.
+//! * [`lockfile`] — the reproducibility assert, stage 2.
 //!
 //! Never a dependency of production code: every consumer declares it `@dev`, and
 //! the arch gate enforces the suffix.
@@ -27,6 +28,7 @@ pub mod fakes;
 pub mod fixtures;
 pub mod fresh_store;
 pub mod golden;
+pub mod lockfile;
 pub mod toolchain;
 
 pub use exec::block_on;
