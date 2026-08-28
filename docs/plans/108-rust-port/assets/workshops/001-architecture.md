@@ -114,3 +114,11 @@ prime rulings recorded in this file.
   'SQLite cannot do concurrency' and invites serialization or useless retry loops).
   Proven: contention test failed on deferred, green on immediate; mutation transcript
   assets/reports/queue-mutation.md (BEGIN IMMEDIATE reverted -> deadlock reproduced).
+- R7 — EVENT SCHEMA (D-ruling, tk-d162, 2026-08-28): v1 KEEPS ITS OWN SHAPE
+  {v,at,kind,seat,payload}. The TS spine line {seq,timestamp,type,data} is a MIGRATION
+  INPUT, never a wire contract: pij-rs never emits TS field names. TS->v1 mapping lives in
+  exactly two readers — the cutover importer (phase 2) and the wave-3 parity/migration
+  reader — and nowhere else. Rationale: req-0002 parity binds CLI computed payloads, not
+  internal line formats; continuity-by-field-names would freeze the TS shape into the new
+  system permanently for one cutover's convenience. Corpus split (malformed/rs/** vs
+  malformed/ts/**, MANIFEST-tagged) is the ruled fixture layout.
