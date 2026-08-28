@@ -36,4 +36,4 @@
 ## 7. Open questions for the human
 - `codex login` on this machine (blocks all live proof).
 - Is `SessionDescriptor.harnessSessionId` the Codex thread id, or add a dedicated field? (Finding 3.)
-- Confirm the scope of "item 8" — this section documents the codex app-server `--remote` delivery (item 2) and its validator phase; if "item 8" is a distinct codex task beyond `deferred-codex-phase.md`, point to its spec (#311) so it can be split into its own section.
+- Resolved (o-prime, 2026-08-28): "item 8" is the comms-review (day-2) numbering for THIS codex app-server `--remote` delivery; day-3 "item 2" was "fix the local Codex install and live-prove item 8" (seating brief `government/briefs/pij-prime-seating-2026-08-27.md`). Same subject, no split — this IS the single Codex handover section.

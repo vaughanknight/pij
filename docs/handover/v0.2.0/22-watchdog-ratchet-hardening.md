@@ -35,4 +35,4 @@ CLI/doc only — no daemon restart. Run the ratchet test against a hand-corrupte
 - Skill/doc text is LIVE-deployed by symlink — treat as a production push; the `pij-skill-check` diff must show zero NEW findings.
 
 ## 7. Open questions for the human
-- The o-prime's handover list annotated this "22 (unpark)". This section follows the plan's definition (watchdog-ratchet hardening, `docs/plans/392-day3-codex-doctrine/day3-codex-doctrine-plan.md:319`). Confirm that is item 22 and not a separate queue-unpark task; if the latter, this section needs rescoping.
+- Resolved (o-prime, 2026-08-28): the "(unpark)" annotation was a STATE note — item 22 had been parked behind item 24 — NOT a rescope. This IS the watchdog-ratchet item (`docs/plans/392-day3-codex-doctrine/day3-codex-doctrine-plan.md:319`). No open questions.
