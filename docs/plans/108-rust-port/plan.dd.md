@@ -56,14 +56,14 @@ Plan 108 does not port pij features — it builds the mold the port is poured in
 
 | id | claim | state | note | receipt | pressure | proven_by |
 | --- | --- | --- | --- | --- | --- | --- |
-| ac-0001 | From a clean checkout, documented steps yield green cargo build --workspace and cargo test --workspace. | [ ] unchecked | — | — | — | — |
-| ac-0002 | Crate graph matches the ratified workshop layout; core compiles with no tokio/sqlite/HTTP dependencies. | [ ] unchecked | — | — | — | — |
-| ac-0003 | Drift check FAILS when a forbidden dependency is added (negative test: add tokio to core, gate goes red, revert). | [ ] unchecked | — | — | — | — |
-| ac-0004 | State-store ruling (SQLite vs files vs PG) and handler/job split are recorded as workshop decisions before any service unit is dispatched. | [ ] unchecked | — | — | — | — |
-| ac-0005 | Daemon boots with fake adapters selected via config, serves /health on localhost with per-boot 0600 bearer key; pij-rs ping reports healthy. | [ ] unchecked | — | — | — | — |
-| ac-0006 | Exemplar tests pass at all tiers: core unit with zero doubles, port contract over a deterministic fake, store integration, one CLI golden diffed against the TS binary output. | [ ] unchecked | — | — | — | — |
-| ac-0007 | Gate runs fmt --check, clippy -D warnings, full tests and the drift check, all green, from one command. | [ ] unchecked | — | — | — | — |
-| ac-0008 | README quick-start + architecture doc exist; a fresh agent can implement a later unit by copying shapes already present. | [ ] unchecked | — | — | — | — |
+| ac-0001 | From a clean checkout, documented steps yield green cargo build --workspace and cargo test --workspace. | [x] checked | prime re-ran pij-gate independently 2026-08-28: all 5 stages green via rustup shim | — | — | — |
+| ac-0002 | Crate graph matches the ratified workshop layout; core compiles with no tokio/sqlite/HTTP dependencies. | [x] checked | arch-check 8 crates/33 edges/0 violations; core allowlist = async-trait+serde+serde_json+thiserror | — | — | — |
+| ac-0003 | Drift check FAILS when a forbidden dependency is added (negative test: add tokio to core, gate goes red, revert). | [x] checked | assets/reports/drift-negative.md — live proof + permanent fixture re-proof | — | — | — |
+| ac-0004 | State-store ruling (SQLite vs files vs PG) and handler/job split are recorded as workshop decisions before any service unit is dispatched. | [x] checked | workshop R1/R4 predate code; assets/reports/queue-mutation.md 4/4 mutants killed | — | — | — |
+| ac-0005 | Daemon boots with fake adapters selected via config, serves /health on localhost with per-boot 0600 bearer key; pij-rs ping reports healthy. | [x] checked | assets/reports/first-light.md — 8 claims incl rotation + second-bind refusal | — | — | — |
+| ac-0006 | Exemplar tests pass at all tiers: core unit with zero doubles, port contract over a deterministic fake, store integration, one CLI golden diffed against the TS binary output. | [x] checked | exemplars: core 6, contract 9, store 12, queue 8, golden 4 (negative both ways) | — | — | — |
+| ac-0007 | Gate runs fmt --check, clippy -D warnings, full tests and the drift check, all green, from one command. | [x] checked | assets/reports/gate.md; PRIME'S OWN RUN first FAILED stage-1 on the Homebrew cargo then passed via ~/.cargo/bin — the assert defends exactly as ruled | — | — | — |
+| ac-0008 | README quick-start + architecture doc exist; a fresh agent can implement a later unit by copying shapes already present. | [x] checked | crates/README.md + assets/architecture.md (Q3); promotion follow-up owned by prime | — | — | — |
 
 <a id="phases"></a>
 
