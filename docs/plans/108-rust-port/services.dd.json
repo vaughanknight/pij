@@ -63,8 +63,8 @@
           "id": "u-events",
           "name": "event bus",
           "paths": "crates/core/src/events.rs + crates/daemon/src/events/**",
-          "responsibility": "Reusable pub/sub: typed Event enum (MessageArrived, FileChanged, BgDone, SeatStateChanged, WatchdogNudge, Unknown) over a broadcast channel; durable leg appends to Spine (replayable tail), live leg feeds the NDJSON stream. Every push consumer subscribes here \u2014 delivery router, watchdog, sidecars, UI stream. No consumer polls.",
-          "interface": "EventBus{publish(Event); subscribe(filter)->Stream<Event>}; Event carries v+at+kind, additive kinds never break subscribers (Unknown variant); durable replay = Spine::tail(since).",
+          "responsibility": "Reusable pub/sub: Event struct with string `kind` (open vocabulary + Unknown-tolerant by construction; ratified code wins over the earlier enum prose) over a broadcast channel; durable leg appends to Spine (replayable tail), live leg feeds the NDJSON stream. Every push consumer subscribes here \u2014 delivery router, watchdog, sidecars, UI stream. No consumer polls.",
+          "interface": "EventBus{publish(Event); subscribe(filter)->Stream<Event>}; Event carries v+at+kind, additive kinds never break subscribers (Unknown variant); durable replay = Spine::tail(since). Event.seq: Option<Seq> #[serde(skip)] \u2014 durable cursor for replay/live join, NEVER on the R7 wire (dual-coder structural find, wave 1).",
           "test_strategy": "fan-out test (N subscribers set-equality); slow-subscriber policy test (lag -> drop-with-count, never block publisher); replay-vs-live seam test; mutation-check the filter.",
           "depends_on": "u-store",
           "wave": 1,
@@ -79,7 +79,7 @@
           "test_strategy": "core logic vs FakeTransport script (busy, pre-bind, dead); receipt-honesty decision-table test.",
           "depends_on": "u-queue",
           "wave": 2,
-          "note": ""
+          "note": "WAVE-2 NAMED OBLIGATION (from u-tmux, wave 1): the stateful typing-gate monitor \u2014 tmux exposes no user_typing syscall; TmuxPort's user_typing derives from pane_in_mode and FALSE means 'no tmux-observable interaction', NEVER 'safe to inject'. The real politeness gate is a stateful monitor owned here (or u-uds), and its packet must say so."
         },
         {
           "id": "u-tmux",
@@ -119,7 +119,7 @@
           "name": "process liveness",
           "paths": "crates/core/src/liveness.rs + one tiny adapter",
           "responsibility": "alive/dead verdicts from (pid, proc start time); the ONLY authority on recycled pids (revive-refusal class).",
-          "interface": "trait LivenessPort{proc_start(pid)->Option<Instant>}; core fn alive(desc,&dyn LivenessPort)->Liveness{Active,Dead{evidence},Recycled}",
+          "interface": "trait LivenessPort{proc_start(pid)->Option<u64> (epoch units; ratified code wins over the earlier Instant prose)}; core fn alive(desc,&dyn LivenessPort)->Liveness{Active,Dead{evidence},Recycled}",
           "test_strategy": "unit table: alive/dead/recycled/boot-reset; mutation-check the recycled branch.",
           "depends_on": "u-core",
           "wave": 1,
