@@ -37,3 +37,10 @@ Dispatch sequencing for this stream:
 
 ## 2026-08-28 05:15Z — 24b NOT triggered
 Residual = 0 of 8 real sends needed attempt 2 in the post-restart hour (one transient recovered IN-LEASE, acked attempt 1). Item-24's single bounded retry is sufficient. **24b stays HELD (post-tag)** unless chore 6 later shows a real attempt>1. Proceed: 12-FX → 23-FX → 22.
+
+## 2026-08-28 — HUMAN RULING (Vaughan): v0.2.0 tagged; pivot to HANDOVER
+"Merge it all make it 0.2.0 and ensure Jordan's agent has all the outstanding items. Plenty of deep detail on each piece so it can rebuild it commit and push, look at our repo for the code also as the spec." v0.2.0 TAGGED at d120c53.
+- **Assignment replaces implementation**: write handover sections for MY outstanding items into `docs/handover/v0.2.0/` (frame+TEMPLATE.md on main at 852c593; copy TEMPLATE, fill every section; pointers at d120c53).
+- **My items** (each NN-slug.md): 23b (receipt marker origin), 24b (bounded in-lease backoff + within-pass ambiguous-retry dup; measured window pre-fix 9/24, post-fix 0/8 with 3 transients recovered), 12-FX (in flight — push branch, state done), 23-FX (claude-socket close-race), 22, E22, 21b, 29b-rest (runDaemon-booted behavioural assertion + ADV-2/4/5), E7 (CLI guard refusing unescaped backticks), Codex 2/8 (app-server --remote; what exists, what is unproven).
+- **Depth**: a competent stranger with the repo + #311 rebuilds/commits/pushes; every claim carries a pointer (PR, spine seq, log path, queue seq, line ref).
+- **Process**: reviewer cold-reads each section for that question; docs-only PRs fresh from main, one PR per few sections, first within ~2h; o-prime merges+indexes. Stop dispatching new code; coder only for the pushed in-flight branch notes.
