@@ -6,23 +6,91 @@
     {
       "name": "meta",
       "value": {
-        "title": "Phase 1: Foundations — workspace, ports, drift enforcement, exemplars",
+        "title": "Phase 1: Foundations \u2014 workspace, ports, drift enforcement, exemplars",
         "slug": "phase-1",
         "status": "draft",
-        "summary": ""
+        "summary": "The mold, decomposed into ordered tasks; each cites its ruling (workshop 001) and AC."
       }
     },
     {
       "name": "summary",
-      "value": ""
+      "value": "Execute in order; each task's gate must be green before the next starts. Rulings R1-R6 (assets/workshops/001-architecture.md) bind every task; ACs are the contract (plan.dd.md)."
     },
     {
       "name": "tasks",
-      "value": []
+      "value": [
+        {
+          "id": "t-001",
+          "title": "Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it.",
+          "state": "unchecked",
+          "note": "R6a,R6c"
+        },
+        {
+          "id": "t-002",
+          "title": "Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli->one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green.",
+          "state": "unchecked",
+          "note": "R2 / ac-0001,ac-0002"
+        },
+        {
+          "id": "t-003",
+          "title": "Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/).",
+          "state": "unchecked",
+          "note": "R2 / ac-0003"
+        },
+        {
+          "id": "t-004",
+          "title": "Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test.",
+          "state": "unchecked",
+          "note": "R3 / ac-0006"
+        },
+        {
+          "id": "t-005",
+          "title": "Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar.",
+          "state": "unchecked",
+          "note": "R1 / ac-0004-analog,ac-0006"
+        },
+        {
+          "id": "t-006",
+          "title": "Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe.",
+          "state": "unchecked",
+          "note": "R4"
+        },
+        {
+          "id": "t-007",
+          "title": "Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured.",
+          "state": "unchecked",
+          "note": "R1,R4 / ac-0005"
+        },
+        {
+          "id": "t-008",
+          "title": "Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary.",
+          "state": "unchecked",
+          "note": "R6b / ac-0006"
+        },
+        {
+          "id": "t-009",
+          "title": "Spike lane + shared components: pocs/<name> template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table.",
+          "state": "unchecked",
+          "note": "R6c,R6d,R6f"
+        },
+        {
+          "id": "t-010",
+          "title": "Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist \u2014 all green; README quick-start + architecture doc; fences doc naming shared-merge files.",
+          "state": "unchecked",
+          "note": "R6e / ac-0007,ac-0008"
+        }
+      ]
     },
     {
       "name": "done_when",
-      "value": {}
+      "value": {
+        "statement": [
+          "All 8 plan ACs checked with receipts",
+          "Negative drift proof + first-light transcript in assets/reports/",
+          "Done report carries observed rustc/cargo versions + Avail disk",
+          "Cross-model review APPROVE on the composed tree"
+        ]
+      }
     }
   ],
   "references": []
