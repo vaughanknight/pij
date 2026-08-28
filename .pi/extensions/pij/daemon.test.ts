@@ -356,8 +356,10 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 
 	it("wires production restart notices through watchers, never single-prime inference", () => {
 		const source = readFileSync(join(import.meta.dirname, "daemon.ts"), "utf8");
-		// Source pin: wrapping form only. The pathFor test above senses argument regressions.
+		// Call-site pin: the daemon must delegate deps construction to the factory. The pathFor
+		// test above senses args inside the factory only; this pins the binding it cannot see.
 		expect(source).toContain("notifyOwner: wireBridgeRestartNotifier(");
+		expect(source).toContain("bridgeNotifierDepsForDaemon(pijHome, registry, channel, log)");
 		expect(source).not.toContain("expected one live prime");
 	});
 
