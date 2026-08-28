@@ -6,7 +6,7 @@
 
 ## 1. Why this exists (the observed failure, with evidence)
 `harness/scripts/pij-skill-check.test.ts` failed ~1 of 5 FULL-SUITE runs, passed in isolation. Root cause (pinned): the test copies the real `skills/pij` tree in beforeEach and then spawns a synchronous shell checker that re-discovers and reads the SHARED git worktree; under full-suite parallel I/O + process contention, the first canonical-order case exceeds Vitest's 30 s timeout. It is a timeout under contention, not a data race.
-- Repro kept: `docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/pre-fix-full-suite-run-6.log` (on branch `3f0849e`): 1 failed at `pij-skill-check.test.ts`, 4769 passed.
+- Repro kept (on branch `3f0849e`, at `tasks/item-12-FX/pre-fix-full-suite-run-6.log` — a `*.log`, gitignored, NOT on main; quoted inline per E48/E49): `1 failed` at `pij-skill-check.test.ts`, `4769 passed`.
 
 ## 2. What was ruled / done
 TRUE isolation (not a timeout bump): the checker honors `PIJ_REPO_ROOT`, and the test builds ONE isolated repo snapshot per file, restoring only mutated fixtures between cases — removing the shared-worktree dependency.
@@ -18,7 +18,7 @@ Branch `s392/item12-fx-falcon`, commit `3f0849e`:
 Pattern also recorded on main: `docs/plans/392-day3-codex-doctrine/tasks/item-12-skillcheck-hardening/tasks.md`; investigation `docs/plans/392-day3-codex-doctrine/tasks/item-12-FX-DRAFT-HOLD.md`.
 
 ## 4. Acceptance (mechanical) — MET
-Flake fix, no mutant; the gate is determinism under full-suite parallelism, repro + logs kept (E22). On branch `3f0849e`: pre-fix repro (above) + THREE consecutive post-fix parallel full-suite runs each **4771 passed | 19 skipped, 0 failed** (`post-fix-full-suite-run-{1,2,3}.log`; proof runs excluded `release-age-policy.test.ts` pwsh-ENOENT, separately skip-with-reason'd in commit `8237e78`). Orchestrator ran an independent full-suite confirmation.
+Flake fix, no mutant; the gate is determinism under full-suite parallelism, repro + logs kept (E22). On branch `3f0849e` (logs at `tasks/item-12-FX/*.log`, gitignored *.log not on main; tallies quoted inline): pre-fix repro (above) + THREE consecutive post-fix parallel full-suite runs each **4771 passed | 19 skipped, 0 failed** (`post-fix-full-suite-run-{1,2,3}.log`; proof runs excluded `release-age-policy.test.ts` pwsh-ENOENT, separately skip-with-reason'd in commit `8237e78`). Orchestrator ran an independent full-suite confirmation.
 
 ## 5. Live verification
 CI/test-infra only — no daemon restart. Run the full suite under concurrent load N times; `pij-skill-check.test.ts` must not flake.
