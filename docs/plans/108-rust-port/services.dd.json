@@ -1,0 +1,268 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide \u2014 rust-port services",
+        "plan": "docs/plans/108-rust-port/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-08-28"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Doctrine: .agents-skills-port/pij-team/TENETS.md (tenets 1-6). Binding architecture: flowspace3 crate-enforced hexagonal, functional core (fs3-architecture.md in the rust-port-handover packet) applied to pij, LAYOUT INCLUDED \u2014 Jordan likes fs3's file organization, so we mirror it: crates/ at repo root (one crate per responsibility), Cargo workspace at root, docs/rules-idioms-architecture/ for the promoted architecture doc. Boundaries are crates gated by a committed dependency allowlist with per-row rationale (negative-tested); core has no tokio/no IO; ports are minimal object-safe traits; adapters own wire quirks; daemon+cli are the only composition roots, in ONE binary; testkit ships fakes for every port, fake-as-default config, offline-first. Tier rule: pure logic->core, tmux IO->tmux, harness quirks->harnesses, persistence->store, wiring->daemon/cli. Queue-first daemon: a handler does one cheap statement, everything else is a job (enqueue+dedupe+serialized claims). INTERFACES BELOW ARE DRAFT until the plan-108 workshop ratifies them and the state-store ruling lands; then they are settled and changes are a prime ruling."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "coders",
+        "rationale": "Wave 0 (the mold, plan 108) is one team solo per fs3 plan 001. Waves 1-4 fan out: units are SRP behind frozen port traits, each testable offline via testkit fakes; collision surfaces are crate-disjoint except the named seams (u-uds vs the s105 TS stream; u-models vs s106 semantics). Units cheaper than their own dispatch were folded (telegram/bg/chore -> u-sidecars)."
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u-core",
+          "name": "core domain model",
+          "paths": "crates/core/src/{model,config,error}.rs",
+          "responsibility": "Domain types + config + error taxonomy; pure logic only, no IO/tokio.",
+          "interface": "pub struct SeatId(String); pub struct SeatDescriptor{id,harness,pane,pid,proc_start,folder,state,semantic_state,role,parent,..}; pub enum Harness{Claude,Copilot,Codex,Pi,Omp}; pub enum SystemState{Idle,Working} + SemanticState{Ready,Waiting,Hold,Blocked,Question,Done}; pub struct Envelope<T>{ok,command,v,data,meta}; PijError enum. Liveness identity = (pid, proc_start_time) NEVER pid alone (recycled-identifiers doctrine).",
+          "test_strategy": "cargo test -p pij-core; zero doubles; serde round-trip + state-transition table tests.",
+          "depends_on": "none",
+          "wave": 0,
+          "note": ""
+        },
+        {
+          "id": "u-store",
+          "name": "registry + spine store",
+          "paths": "crates/store/**",
+          "responsibility": "Persistence behind ports: seat registry (single-writer rows), append-only spine (reports/events/receipts), baselines. Implements the plan-108 state-store ruling.",
+          "interface": "trait Registry{get(&SeatId)->Option<SeatDescriptor>; put(desc)->Seq; list(filter)->Vec; tombstone(id,reason)}; trait Spine{append(Event)->Seq; tail(filter,since)->Vec<Event>}; single-writer enforced at store level, absent!=null distinguished in every read.",
+          "test_strategy": "cargo test -p pij-store; FreshStore-per-test (entropy-named, destroyed after); crash-mid-write test.",
+          "depends_on": "u-core",
+          "wave": 1,
+          "note": ""
+        },
+        {
+          "id": "u-queue",
+          "name": "job queue primitive",
+          "paths": "crates/store/src/queue.rs",
+          "responsibility": "Enqueue/claim/ack with dedupe (partial-unique over live jobs) and per-entity serialization. THE primitive delivery rides on \u2014 built before any consumer (lynx decision #3).",
+          "interface": "trait Queue{enqueue(Job)->JobId /*upsert-dedupe*/; claim(kinds,worker)->Option<Job>; ack(JobId,Outcome)}; serial_key(entity) claimed one-at-a-time; N rapid submits collapse to one row.",
+          "test_strategy": "cargo test -p pij-store queue; contention test (parallel claimers, set-equality); mutation-check the dedupe.",
+          "depends_on": "u-store",
+          "wave": 1,
+          "note": ""
+        },
+        {
+          "id": "u-delivery",
+          "name": "delivery service",
+          "paths": "crates/core/src/delivery.rs + crates/daemon/src/delivery/**",
+          "responsibility": "send/inbox/receipts: route a message to a seat via the best transport, queue when busy/pre-bind (FIXES the vanishing pre-bind message), honest receipts (queued=reliable doctrine).",
+          "interface": "trait Transport{can_deliver(&Seat)->bool; deliver(&Seat,Msg)->DeliveryOutcome}; DeliveryService{send(from,to,body)->Receipt{queued|delivered|held}; inbox(seat,wait)->Vec<Msg>}; every route logs msg-id+outcome (ermine handover gap #8).",
+          "test_strategy": "core logic vs FakeTransport script (busy, pre-bind, dead); receipt-honesty decision-table test.",
+          "depends_on": "u-queue",
+          "wave": 2,
+          "note": ""
+        },
+        {
+          "id": "u-tmux",
+          "name": "tmux adapter",
+          "paths": "crates/tmux/**",
+          "responsibility": "All tmux IO: panes, windows, send-keys, capture, typing-gate signal. Nothing else shells out to tmux.",
+          "interface": "trait TmuxPort{list_panes()->Vec<Pane>; send_keys(PaneId,&str); capture(PaneId,lines)->String; kill(PaneId); new_window(Session,name,cwd)->Pane; user_typing(PaneId)->bool}",
+          "test_strategy": "contract test over FakeTmux; real-adapter test subclassed to kill list_panes (never taps the live fleet \u2014 standing rule).",
+          "depends_on": "u-core",
+          "wave": 1,
+          "note": ""
+        },
+        {
+          "id": "u-uds",
+          "name": "socket transport",
+          "paths": "crates/transport/src/uds.rs",
+          "responsibility": "Claude UDS /tmp/cc-socks delivery + future named-pipe; implements Transport. FENCE WARNING: s105 stream owns the TS version \u2014 coordinate, never fork semantics.",
+          "interface": "impl Transport for UdsTransport; attestation = sender's verified pid is a Claude session (never a wire field); keep tmux typing gate when tmux present (Jordan 2026-08-27).",
+          "test_strategy": "contract test vs recorded socket fixture; held-for-approval decision-table.",
+          "depends_on": "u-delivery",
+          "wave": 3,
+          "note": ""
+        },
+        {
+          "id": "u-harness",
+          "name": "harness adapters",
+          "paths": "crates/harnesses/**",
+          "responsibility": "Per-harness detect/bind/readiness/canary/model-catalog quirks (claude, copilot, codex, pi/omp). Owns BUSY_RE-class drift in ONE place.",
+          "interface": "trait HarnessPort{kind()->Harness; discover_session(pane)->Option<NativeId>; bind(desc)->BindHealth; readiness(pane)->Readiness; busy(pane)->bool; models()->Vec<ModelRow>}",
+          "test_strategy": "contract tests over recorded pane fixtures per harness; readiness-anchor regression fixtures (footer not rotating placeholder \u2014 the codex never-bind class).",
+          "depends_on": "u-tmux",
+          "wave": 2,
+          "note": ""
+        },
+        {
+          "id": "u-liveness",
+          "name": "process liveness",
+          "paths": "crates/core/src/liveness.rs + one tiny adapter",
+          "responsibility": "alive/dead verdicts from (pid, proc start time); the ONLY authority on recycled pids (revive-refusal class).",
+          "interface": "trait LivenessPort{proc_start(pid)->Option<Instant>}; core fn alive(desc,&dyn LivenessPort)->Liveness{Active,Dead{evidence},Recycled}",
+          "test_strategy": "unit table: alive/dead/recycled/boot-reset; mutation-check the recycled branch.",
+          "depends_on": "u-core",
+          "wave": 1,
+          "note": ""
+        },
+        {
+          "id": "u-watchdog",
+          "name": "watchdog service",
+          "paths": "crates/core/src/watchdog.rs",
+          "responsibility": "Supervision engine: eligibility (consults semanticState \u2014 fixes parked-state blindness), nudge scheduling, watcher fan-out. Pure logic over injected clock+store.",
+          "interface": "WatchdogService{tick(now)->Vec<Nudge>}; eligible(seat) excludes waiting|hold|blocked|question; stale threshold configurable, never a hardcoded 60s (healthy-long-tool-call false-stall class).",
+          "test_strategy": "decision-table over fake clock/store; injection proof: synthesize the exact false-stall regression.",
+          "depends_on": "u-store",
+          "wave": 2,
+          "note": ""
+        },
+        {
+          "id": "u-anomalies",
+          "name": "anomaly detectors",
+          "paths": "crates/core/src/anomalies.rs",
+          "responsibility": "status-stale, delivered-unacked, unverified-done, inert-subscription\u2026 each detector names its observable, every computed signal has a consumer (computed-but-unconsulted doctrine).",
+          "interface": "trait Detector{scan(&dyn Store)->Vec<Anomaly{kind,seat,remediation_line}>}; rows clearable/ackable (fixes forever-accumulating dead-dispatch rows).",
+          "test_strategy": "per-detector fixture stores; control test proving a cleared row stays cleared.",
+          "depends_on": "u-store",
+          "wave": 2,
+          "note": ""
+        },
+        {
+          "id": "u-orchestration",
+          "name": "orchestration service",
+          "paths": "crates/core/src/orchestration/**",
+          "responsibility": "Batons, projects/streams/ordinals, roles+prime designation, dispatch/ack, capability gate (PA read-only at ONE chokepoint).",
+          "interface": "OrchestrationService over Registry+Spine; ordinal mint scans clone+worktrees+branch-heads (team-new race); stream create must NOT require a clean source tree (E-NOREG defect, ruled fix-in-port).",
+          "test_strategy": "lease single-holder property test; ordinal-race test across fixture worktrees.",
+          "depends_on": "u-store",
+          "wave": 2,
+          "note": ""
+        },
+        {
+          "id": "u-report",
+          "name": "report + cards",
+          "paths": "crates/core/src/report.rs",
+          "responsibility": "report now/state, card freshness, the 280-char limit as a documented error-early contract; stale-card stderr warning.",
+          "interface": "ReportService{now(did,next)->Seq; state(kind,note); card(seat)->Card{age,..}}; limits in one const, the error names the limit.",
+          "test_strategy": "boundary tests at 279/280/281 post-collapse; staleness clock tests.",
+          "depends_on": "u-store",
+          "wave": 2,
+          "note": ""
+        },
+        {
+          "id": "u-models",
+          "name": "model catalog",
+          "paths": "crates/harnesses/src/models/**",
+          "responsibility": "Catalog assembly from harness adapters; runtime/provider/selector separation exactly per s106 semantics (landed f53a9fde) \u2014 behavior-preserving port.",
+          "interface": "ModelCatalog{list(filter)->Vec<ModelRow{runtime,provider,selector,request_model_id,thinking:Option<Vec<Effort>>}>}; whole-inventory fail on malformed rows; null thinking = valid no-levels.",
+          "test_strategy": "golden against TS `pij models --json` (parity tripwire); malformed-row rejection set-equality.",
+          "depends_on": "u-harness",
+          "wave": 3,
+          "note": ""
+        },
+        {
+          "id": "u-daemon-http",
+          "name": "daemon HTTP + events",
+          "paths": "crates/daemon/src/http/**",
+          "responsibility": "Server: routes do one cheap statement or enqueue; auth middleware over the whole router; NDJSON event stream with Hello line + Unknown variant.",
+          "interface": "POST /v1/send, GET /v1/seats, GET /v1/events (NDJSON), GET /health; per-boot bearer key 0600 before bind; envelope{ok,command,v:1,data,meta}.",
+          "test_strategy": "route tests over fake services; 401+next_action test; Unknown-variant forward-compat test.",
+          "depends_on": "u-delivery",
+          "wave": 3,
+          "note": ""
+        },
+        {
+          "id": "u-daemon-lifecycle",
+          "name": "daemon lifecycle",
+          "paths": "crates/daemon/src/lifecycle.rs",
+          "responsibility": "Single-instance guard, tick loop, graceful restart/upgrade (BETTER than fs3's tmux-pane admission), C6 restart-rule affordance.",
+          "interface": "port-bind failure = second-daemon guard day 1; the supervise/upgrade DESIGN DOC is a deliverable even where impl phases.",
+          "test_strategy": "boot/shutdown integration test; two-daemon refusal test.",
+          "depends_on": "u-daemon-http",
+          "wave": 3,
+          "note": ""
+        },
+        {
+          "id": "u-cli",
+          "name": "CLI verb surface",
+          "paths": "crates/cli/**",
+          "responsibility": "clap verbs -> DaemonClient -> rendering; human + --json faces; stale-CLI/new-daemon guarded by envelope v (one binary, versions together).",
+          "interface": "each verb = thin fn(client,args)->Envelope + render; goldens frozen for COMPUTED payloads only (editorial content gets shape assertions).",
+          "test_strategy": "byte-goldens vs TS binary; clap surface snapshot; exit-code contract table.",
+          "depends_on": "u-daemon-http",
+          "wave": 3,
+          "note": ""
+        },
+        {
+          "id": "u-sidecars",
+          "name": "telegram + bg + chore",
+          "paths": "crates/daemon/src/sidecars/**",
+          "responsibility": "Telegram bridge, pij bg runner, chore probes/baselines \u2014 job consumers over existing ports; identity DERIVED via whoami, never asserted from env (seat-asserted-not-derived doctrine).",
+          "interface": "each sidecar = a queue consumer + a port; chore run NEVER advances a baseline, only ack does.",
+          "test_strategy": "fixture-driven consumer tests; chore run/ack asymmetry decision-table.",
+          "depends_on": "u-delivery",
+          "wave": 4,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "worktree-per-coder",
+        "note": "Worktree+branch per coder off the PM plan branch; PM merges, coders never merge. Rust-specific: CARGO_INCREMENTAL=0 fleet-wide, per-seat CARGO_TARGET_DIR, Avail disk in every done report ('rustc-LLVM ERROR: IO failure' = full disk wearing a compiler costume). Absolute paths in every packet."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "PM composes per wave in dependency order (0 mold -> 1 store/tmux/liveness -> 2 services -> 3 surfaces -> 4 sidecars); composition is wiring not building; assumptions section demanded in every done report; unit rework at compose = a phase-1 contract defect, recorded not patched; when main moves under a fan-out, merge main IMMEDIATELY; first light = one real end-to-end transcript (spawn a real seat, send, receive).",
+        "integration_proof": "First light per wave: one real end-to-end transcript on the composed tree \u2014 wave 1: registry round-trip through a real store file/db; wave 2: a message enqueued, claimed, delivered to a FakeTmux pane with an honest receipt; wave 3: pij-rs spawn/send/tail against a REAL tmux session + one byte-golden parity diff vs the TS CLI on the same store; wave 4: a chore run/ack cycle through the queue. Recorded as a transcript artifact in the plan assets, not an exit code."
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after each wave composition, before the PR into the plan branch/main",
+        "inputs": "plan.dd.md + this impl-guide + full branch diff; priority = plan promises, composition seams, interface drift, correctness, contract-test gaps. Done gate: fmt --check, clippy -D warnings, full tests, drift allowlist, prove-in-tree evidence, mutation-check on fix-tests. Parity: byte-goldens vs the TS CLI for computed payloads.",
+        "model_override": ""
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "Interfaces are pre-workshop drafts \u2014 settling them IS plan 108's job; never dispatch waves 1+ against unratified traits. Check: workshop ratification recorded before any wave-1 packet."
+        },
+        {
+          "id": "r2",
+          "text": "State-store ruling unmade; u-store/u-queue signatures shift with it. Check: ruling recorded in plan 108 workshop before wave 1."
+        },
+        {
+          "id": "r3",
+          "text": "TS defect list (lynx's 8 + ermine's handover) needs per-item fix-vs-bug-compatible rulings BEFORE the owning unit dispatches. Check: ruling table in the owning unit's packet."
+        },
+        {
+          "id": "r4",
+          "text": "Live TS daemon keeps evolving (s105 socket, daemon perf). Check: byte-goldens as drift tripwire + PM merges main immediately when it moves."
+        },
+        {
+          "id": "r5",
+          "text": "Cutover risk deferred to its own plan behind the parity harness. Check: no TS retirement step exists in any wave."
+        }
+      ]
+    }
+  ],
+  "references": []
+}
