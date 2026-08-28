@@ -162,6 +162,71 @@ line, so the PM had to infer it from `pij models` output. **Suggested template
 change**: `packet-*.dd.json` gains a `spawn` field carrying the verbatim command
 for the role, so the form is delivered rather than derived.
 
+## E-015 — the packet's fence was wrong four times, and every coder stopped
+
+Four coders raised six fence defects between them before writing code: Cargo.lock
+omitted from every fence while three units had to add dependencies; the arch
+metadata fixtures omitted while any graph change makes them stale; u-tmux's done
+bar requiring testkit paths its scope excluded; u-liveness's parser fixtures
+having nowhere legal to live.
+
+Every one was my error, and every one was caught at the ack rather than in a diff.
+**Encoded**: COMMON.md § Derived artifacts now carries the regenerate-never-merge
+rule, so the fifth coder inherits what the first four had to ask for.
+
+The general shape: **a fence written from the code's structure will always omit
+the DERIVED files, because they are not where the work is.** They are where the
+merge is.
+
+## E-016 — two coders found the same defect independently
+
+u-store (D5) and u-events (D1) both reported that `Spine::tail` returns
+`Vec<Event>` with no sequence, from opposite ends: one writing the tail, one
+consuming it for replay.
+
+Independent discovery from different units is the strongest signal a defect is
+structural rather than a matter of taste — and it arrived because both were made
+to ack before coding. Neither could have seen the other's message.
+
+## E-017 — a coder caught the PM shipping a receipt that did not match its code
+
+My seam commit's doc comment said `#[serde(skip)]`; the attribute said
+`skip_serializing_if = "Option::is_none"`. The cursor would have serialised the
+moment it was `Some`, violating R7 in practice while the commit message claimed
+compliance.
+
+`pij-rapid-gurgeh` read the MERGED code against my ruling instead of trusting my
+receipt, and refused to edit my seam — it reported instead. That is exactly the
+wave-0 review lesson arriving unprompted in a coder, and it is worth more than the
+fix.
+
+**Encoded**: the absence is now asserted
+(`a_sequenced_event_never_carries_its_cursor_onto_the_wire`), so the next
+contradiction between a comment and an attribute fails a test rather than a review.
+
+## E-018 — first light found what 122 green tests could not
+
+Every unit test passed, the gate was six-for-six, and the first end-to-end run
+still surfaced that `subscribe(since: None)` replays the entire spine — unbounded
+work at attach time for a UI joining a long-lived fleet.
+
+Not a bug (it matches its documentation) and not caught by any suite, because no
+suite asks "what would a real consumer do first". **A composed-tree transcript is
+a different instrument from a test, and this is the second wave running where it
+paid for itself.**
+
+## E-019 — the seam belonged to the PM, and moving it there was the right call
+
+`Event.seq` was needed by two units in two worktrees. Assigning it to either
+coder would have made three seats wait on one; landing it centrally, with every
+struct-literal callsite migrated in the same commit, cost one commit and unblocked
+all four.
+
+**Suggested tenet edit**: tenet 4 says workers ship the recipe and the PM
+integrates. The corollary this wave proves is narrower and worth stating —
+**a type that two units both consume is not a unit's work at all; it is the
+PM's, and it should land before either unit needs it.**
+
 ## What I would change in the pij-team templates
 
 1. **State the tree-sharing posture and write-set split in the packet** (E-005/6).
@@ -176,7 +241,13 @@ for the role, so the form is delivered rather than derived.
    ruling gets lost.
 5. **A regression is done when its mutation has been observed to fail** (E-013),
    not when it exists and is green.
-6. **A done_when row can outlive its task** (dw-a803: the assert it named could not
+6. **The fence must enumerate DERIVED files explicitly** (E-015) — Cargo.lock,
+   generated fixtures, anything a build regenerates — with a
+   regenerate-never-hand-merge rule attached. Four coders asked; the packet
+   should have answered.
+7. **Shared types get landed by the PM before dispatch** (E-019), not assigned to
+   whichever unit notices first.
+8. **A done_when row can outlive its task** (dw-a803: the assert it named could not
    exist until a later task). That was fine because it was recorded as OUTSTANDING
    rather than quietly checked — but the template should have a place for
    "satisfied at task N+k", instead of relying on a PM to volunteer it.
