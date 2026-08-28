@@ -17,6 +17,9 @@ Wave-0 evidence favors sol: findings were real, none refuted, no convergence obs
 but wave 0's coder was opus (cross-family by construction); wave 1's coders are sol-fast,
 so the same-family risk APPLIES for the first time. Recommendation: kimi-k3 via openrouter
 for wave 1, measure noise; fall back to sol if kimi under-performs.
+## Spawn form (Jordan 2026-08-28, correcting an observed copilot-CLI reviewer spawn)
+Every coder/reviewer seat: OMP harness — `pij spawn --harness pi --bin omp --model github-copilot/gpt-5.6-sol-fast-1m --effort high` (400K units use selector `github-copilot/gpt-5.6-sol-fast`). NEVER the copilot CLI harness. Packets carry this line verbatim.
+
 ## Cadence
 PM (lungfish, retained) dispatches all four with numbered-ack gate; composes in dependency
 order (liveness -> tmux -> store -> queue/events); merges main immediately if it moves;
