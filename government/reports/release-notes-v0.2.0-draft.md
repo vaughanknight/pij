@@ -13,7 +13,7 @@ Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with *
 - Harness/docs: skill-check debt and hardening (9, 11, 12); report vocabulary remedies (4); C9 watchdog doc (14, 18); pointer doctrine (7).
 
 ## Known gaps (honest)
-- Telegram bridge: a retry inside one delivery pass after an ambiguous send failure (network error after Telegram may have accepted) can duplicate one bubble; it never omits. Cross-pass redelivery is idempotent (plan-hash marks). Bounded backoff and this case: item 24b. Measured on 188c877 (23:15–01:05Z): ~29% of bridge sends failed their first attempt (transient; not length-related) and landed ~65 s later on the retry.
+- Telegram bridge: a retry inside one delivery pass after an ambiguous send failure (network error after Telegram may have accepted) can duplicate one bubble; it never omits. Cross-pass redelivery is idempotent (plan-hash marks). Bounded backoff and this case: item 24b. Measured on 188c877 (23:15–02:25Z): 7 of 22 bridge sends (≈32%) failed their first attempt (transient; not length-related — a 692-char body succeeded first try while a 315-char one did not) and landed ~65–80 s later on the retry.
 - Claude-socket receipts: `acked (reader=X)` proves injected-to-socket, not read (item 23b pending).
 - Watchdog projection/verdict noise: stale `next due`, "unknown" and boundary-stall notices delivered (item 31 pending).
 - Codex `app-server --remote` path deferred; Codex seats use the pointer line.
