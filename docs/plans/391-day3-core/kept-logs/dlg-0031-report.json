@@ -1,0 +1,18 @@
+COMPLETE dlg-0031
+{
+  "delegationId": "dlg-0031",
+  "outcome": "COMPLETE",
+  "summary": "Resurrected the plan-055 watchdog proof against the current async, SQLite-backed, pointer-delivery model. The proof now passes all nine AC rows, fails when the fire path is disabled, and the smoke runner emits an unmaskable watchdog verdict with pwsh and OSC baselines on separate labelled lines.",
+  "filesChanged": [
+    "docs/plans/055-pij-watchdog/proofs/run-proofs.ts",
+    "harness/scripts/smoke.ts",
+    "harness/scripts/smoke.test.ts",
+    "docs/plans/391-day3-core/tasks/phase-16-item-33-watchdog-smoke-proof/execution.log.md",
+    "docs/plans/391-day3-core/tasks/phase-16-item-33-watchdog-smoke-proof/logs/"
+  ],
+  "testsRun": 4175,
+  "testsPassed": 4160,
+  "gatesClean": true,
+  "notes": "Root cause: the proof still assumed synchronous daemon ticks, a private FsChannel backend, body-through-pane delivery, absent notice recipients, pre-Item-31 unknown delivery, and oldest-five inline capture text. WIP commit after final rebase: cf80e80e17b17949021f4ecf2cfa973dc27f8530; final commit: 785550b2d44e222ed0ec332253dd496c026cda51; base: bf1827c93158a6028b313ca668f26e8a1f00d357. Fire-path mutation RED: smoke first fire was not queued; log docs/plans/391-day3-core/tasks/phase-16-item-33-watchdog-smoke-proof/logs/sensor-mutation-red-final.log. Restored smoke and full proof are green; logs smoke-final.log, full-final-rebased-2.log. Full extension suite: 172 files passed, 2 skipped; 4,160 tests passed, 15 skipped; log .harness/temp/s391/vitest-phase16.log (pij bg bg-mtchf0ih-vsh0ou). Typecheck and scoped Biome passed. Full harness remains nonzero only because of the existing OSC lint, unavailable local pwsh, mirrored Windows lint, and an unrelated TUI startup smoke assertion; its retained smoke failure output now ends with watchdog-smoke: green plus separate baseline-red[pwsh] and baseline-red[OSC] lines. Fence expansion for harness/scripts/smoke.ts and smoke.test.ts was explicitly requested and granted. No .pi/extensions source, live daemon, push, or PR was touched."
+}
+785550b2d44e222ed0ec332253dd496c026cda51

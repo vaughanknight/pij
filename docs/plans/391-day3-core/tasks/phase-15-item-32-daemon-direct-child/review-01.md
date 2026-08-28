@@ -80,7 +80,7 @@ anything, so no mutation could overlap the baseline):
 | `npx vitest run harness/scripts/cli-invocation.test.ts` | 3 passed |
 
 The suite result is an **exact match** to the coder's claim (172 / 4152 / 0) and
-to `docs/plans/391-day3-core/logs/vitest-phase15.log`.
+to `docs/plans/391-day3-core/kept-logs/vitest-phase15.log.txt`.
 
 **Anti-vacuity.** Diffing the test files for removed declarations
 (`^-` lines matching `\b(it|test|describe)(\.[a-z]+)?\(`) returns **empty**.
@@ -584,7 +584,7 @@ launch never went through the shebang, and my cold-pass direct launch emitted
 
 ### (5) Is the ×10 log what it claims (30 real runs)? — **YES**
 
-`docs/plans/391-day3-core/logs/item32-spawn-x10.log`, 150 lines:
+`docs/plans/391-day3-core/kept-logs/item32-spawn-x10.log.txt`, 150 lines:
 
 - **10** `=== run NN ===` markers, each followed by an independent
   `RUN v4.1.10` banner and its own `Test Files 1 passed (1)` /
@@ -940,7 +940,7 @@ and FX-01 (with P-1/P-2/P-3 subsections and an evidence block) — but **no
 `## FX-02` section**; the file is not in the FX-02 diff at all. The reasoning
 that a reviewer or a future maintainer would need — why `tsx/cli` rather than
 `npx`, why 15 s, why no serialisation — exists only in
-`docs/plans/391-day3-core/logs/dlg-0030-fx02-report.json` and the two proof logs. All of
+`docs/plans/391-day3-core/kept-logs/dlg-0030-fx02-report.json` and the two proof logs. All of
 `.harness/temp/` is gitignored (`.gitignore:81`), nothing under it is tracked,
 and `git grep item32-fx02-full` over the branch returns **nothing**. So the sole
 surviving artefact of this round will be a one-line commit subject and a changed

@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-jolly-moose] dlg-0028 note: main moved to fecf633 (item 16 merged — it edits daemon.test.ts in another region). Finish the probe on your current base, then `git rebase origin/main` (after `git fetch origin main`) BEFORE the final 20× proof and full suite; report the rebased SHA. No other change.

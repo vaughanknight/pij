@@ -52,7 +52,7 @@
 - The first full-suite wrapper incorrectly returned success because a trailing `tail` masked Vitest's exit. The log exposed two `liveness-cost.test.ts` failures caused by a new per-PID `ps` probe.
 - Replaced that probe with the existing `NodeProcessSnapshot` whole-table reader and a five-second shared cache. Both liveness-cost invariants are green.
 - Final authoritative extension suite: 172 files passed, 2 skipped; 4,047 tests passed, 15 skipped; 0 failed.
-- Authoritative log: `docs/plans/391-day3-core/logs/vitest-phase6.log`; the final wrapper preserves Vitest's exit status.
+- Authoritative log: `docs/plans/391-day3-core/kept-logs/vitest-phase6.log.txt`; the final wrapper preserves Vitest's exit status.
 - `just lint` remains red only in unrelated pre-existing files; no Phase 6 file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and derived Windows compatibility failure; smoke is skipped in quick mode.
 - Completion is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.
@@ -71,7 +71,7 @@
 - Typecheck and scoped Biome passed.
 - The first full run exposed 19 `daemon-push.test.ts` failures because the injected sweep spine logger was eagerly constructed for fake, intentionally unwritable homes. The logger is now lazy once per actual closed-recipient sweep, still never per dispatch; the failing file passes 19 tests with 2 skipped.
 - Final authoritative extension suite: 172 files passed, 2 skipped; 4,053 tests passed, 15 skipped; 0 failed.
-- Authoritative log: `docs/plans/391-day3-core/logs/vitest-phase6-fx01.log`.
+- Authoritative log: `docs/plans/391-day3-core/kept-logs/vitest-phase6-fx01.log.txt`.
 - `just lint` remains red only in unrelated pre-existing files; no FX-01 file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and derived Windows compatibility failure; smoke is skipped in quick mode.
 - Completion is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.

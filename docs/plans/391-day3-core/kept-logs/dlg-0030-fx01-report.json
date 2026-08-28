@@ -1,0 +1,17 @@
+COMPLETE dlg-0030 FX-01
+{
+  "delegationId": "dlg-0030",
+  "outcome": "COMPLETE",
+  "summary": "Closed all three approved review lows: the Phase 14 SIGTERM proof now uses daemonLaunchArgv, the production real-launch matrix covers SIGINT as well as SIGTERM/SIGHUP, and stale relay-era source comments were corrected. The inert non-executable daemon shebang was removed rather than replaced with a parser-hostile Node-option shebang.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/core/daemon/lifecycle.ts",
+    "docs/plans/391-day3-core/tasks/phase-15-item-32-daemon-direct-child/execution.log.md"
+  ],
+  "testsRun": 4168,
+  "testsPassed": 4153,
+  "gatesClean": true,
+  "notes": "Commit: 225f443864dee772b625855ee7f2e5192fc43931. SIGINT mutation: removing onSignal(\"SIGINT\", shutdown) made the real SIGINT child exit as {code:null, signal:\"SIGINT\"}; log .harness/temp/s391/dlg-0030-fx01-sigint-red.log. The SIGTERM/SIGHUP/SIGINT direct-child cases passed 10 consecutive runs each (30/30); log .harness/temp/s391/item32-spawn-x10.log. Full suite: 172 files passed, 2 skipped; 4,153 tests passed, 15 skipped; log .harness/temp/s391/vitest-phase15-fx01.log (pij bg bg-mtcdye0y-xg9t7u). Typecheck and scoped Biome passed. harness checks --quick retains only the same baseline failures: existing osc-7337-producer.ts Biome findings, unavailable local pwsh in release-age-policy.test.ts, and windows-compat repeating that producer lint. No live daemon action, push, PR, or history rewrite was performed."
+}
+225f443864dee772b625855ee7f2e5192fc43931

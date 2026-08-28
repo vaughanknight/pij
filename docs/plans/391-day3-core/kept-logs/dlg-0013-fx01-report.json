@@ -1,0 +1,17 @@
+{"delegationId":"dlg-0013-fx01","outcome":"PARTIAL",
+  "summary": "Completed FX-01: writeExact now accepts the caller's descriptor baseline, the report-card path supplies it, and FakeRegistry mirrors the contract, closing the residual stale-caller race. Lock budgets are injectable with pinned contention/exhaustion behavior and precise no-age-policy documentation.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/ports.ts",
+    ".pi/extensions/pij/adapters/fs-registry.ts",
+    ".pi/extensions/pij/adapters/fs-registry.test.ts",
+    ".pi/extensions/pij/adapters/fakes.ts",
+    ".pi/extensions/pij/core/cli.ts",
+    ".pi/extensions/pij/core/cli.test.ts",
+    "docs/how/pij.md",
+    "docs/plans/391-day3-core/tasks/phase-5-item-13-status-lost-update/execution.log.md"
+  ],
+  "testsRun": 4035,
+  "testsPassed": 4020,
+  "gatesClean": false,
+  "notes": "Commit 8d67b7a1bfdbeb852458172eae6d10924a5ce1bd. F-1 sequential counter-example was RED before the fix at fs-registry.test.ts:285 (expected systemState working, received idle). Final suite: 171 files passed, 2 skipped; 4,020 tests passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase5-fx01.log. Focused registry/CLI suites: 535 passed, 1 skipped; tsc and scoped Biome passed. Lock exhaustion is tested at 60ms with the manual-removal remedy and no age/mtime policy; contention waits then succeeds. DESCRIPTOR_FIELD_OWNER, SessionDescriptor, and spine locks are unchanged. harness checks --quick remains baseline-red only for unrelated OSC lint, missing pwsh, and derived windows-compat; therefore PARTIAL/gatesClean:false. No push or PR."
+}

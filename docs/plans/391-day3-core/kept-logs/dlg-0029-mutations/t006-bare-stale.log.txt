@@ -1,0 +1,128 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [31m❯[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m94 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m93 skipped[39m[2m)[22m[32m 65[2mms[22m[39m
+     [2m[90m↓[39m[22m invokes bridge supervision once per tick and disposes it with the daemon
+     [2m[90m↓[39m[22m incident replay: a pane-less dissolved seat never delivers to or binds a fresh unregistered Copilot pane
+     [2m[90m↓[39m[22m persists lastTickAt so an unticked/wedged daemon becomes mechanically stale
+     [2m[90m↓[39m[22m drives a pending claude session: ready pane → init injected + marker persisted
+     [2m[90m↓[39m[22m retains a BOUND tmux message, marks it after injection outcome, and skips replay
+     [2m[90m↓[39m[22m preserves same-target progress when a later tmux injection fails
+     [2m[90m↓[39m[22m emits an unverified receipt when daemon injection cannot confirm delivery
+     [2m[90m↓[39m[22m forwards pointer metadata through the real Daemon port wrapper
+     [2m[90m↓[39m[22m NEVER reports delivered for a claude send whose submission was unconfirmed
+     [2m[90m↓[39m[22m unbinds the seat when its pane is GONE, and leaves the message unconsumed
+     [2m[90m↓[39m[22m isolates one target's send failure so unrelated live inboxes still drain
+     [2m[90m↓[39m[22m does not drain or repeatedly buffer a bound tmux inbox until the target has a pane
+     [2m[90m↓[39m[22m persists a receipt event before marking its retained envelope and never injects it
+     [2m[90m↓[39m[22m does not resurrect or notify for a descriptor dissolved during a queued activity drain
+     [2m[90m↓[39m[22m does not notify when an already-idle descriptor is dissolved during activity capture
+     [2m[90m↓[39m[22m delivery ownership: a PI target's inbox is NEVER drained (left for its in-process receiver)
+     [2m[90m↓[39m[22m delivery ownership: an external pull target is never tick-owned, driven, buffered, or drained
+     [2m[90m↓[39m[22m does not drive a pending external pull descriptor
+     [2m[90m↓[39m[22m routes real idle pane capture pane_%157.txt through delivery without a hold
+     [2m[90m↓[39m[22m routes real idle pane capture pane_%624.txt through delivery without a hold
+     [2m[90m↓[39m[22m routes real idle pane capture pane_%4.txt through delivery without a hold
+     [2m[90m↓[39m[22m routes real idle pane capture claude_idle_%29.txt through delivery without a hold
+     [2m[90m↓[39m[22m buffers delivery when authoritative composer content changes at equal stripped length
+     [2m[90m↓[39m[22m does not treat its own injection as typing that blocks the next delivery
+     [2m[90m↓[39m[22m holds a human edit that arrives before the daemon injection echo
+     [2m[90m↓[39m[22m holds real relative-redraw Claude input, then flushes FIFO when the composer empties
+     [2m[90m↓[39m[22m idle-releases at 60 seconds even while rendered composer text remains
+     [2m[90m↓[39m[22m flushes an unattended orchestrator hold after undefined-layout timeout
+     [2m[90m↓[39m[22m holds when the pre-send capture shows text the last tick did not
+     [2m[90m↓[39m[22m delivers over a parked draft that was present from the first observation
+     [2m[90m↓[39m[22m holds when the human types between the outer check and the pre-send capture
+     [2m[90m↓[39m[22m holds the init injection when a human is typing in the pending pane
+     [2m[90m↓[39m[22m fails the spawn with a pane-input reason when boot stays blocked
+     [2m[90m↓[39m[22m holds when a human-only frame's text is a fragment of the pending payload
+     [2m[90m↓[39m[22m holds on a PARTIAL echo frame rather than certifying it as our own output
+     [2m[90m↓[39m[22m acquires a hold from real caret input on an alternate-marker pane
+     [2m[90m↓[39m[22m does not let its own echo excuse human input in the same raw frame
+     [2m[90m↓[39m[22m degrades to the caret tracker for an alternate composer marker
+     [2m[90m↓[39m[22m coalesces repeated watchdog intervals while the composer hold is active
+     [2m[90m↓[39m[22m delivers immediately while busy when the composer is empty
+     [2m[90m↓[39m[22m attaches a pane it OWNS and detaches pane_dead entries (day-2 item 7)
+     [2m[90m↓[39m[22m never taps a pane no registered seat owns (day-2 item 7 isolation)
+     [2m[90m↓[39m[22m adds no archive scan for lifecycle notice routing on the 600ms tick
+     [2m[90m↓[39m[22m summarizes 1000 withheld death notices in one line with only three subject ids
+     [2m[90m↓[39m[22m labels the first durable death sweep historical, persists it, and restart does not duplicate
+     [2m[90m↓[39m[22m uses live-observation wording after the daemon's first sweep
+     [2m[90m↓[39m[22m routes terminal death to a parent re-linked during the close write
+     [2m[90m↓[39m[22m routes terminal death to the live spawner when the current parent is dead
+     [2m[90m↓[39m[22m routes terminal death to the live spawner when the current parent is dissolved
+     [2m[90m↓[39m[22m contains an unavailable PID probe and records NOTHING from it
+[31m       [31m×[31m waits for a 20-minute seat interval before reporting legacy stalled[39m[32m 64[2mms[22m[39m
+       [2m[90m↓[39m[22m keeps the 60-second threshold for a seat with no sidecar
+       [2m[90m↓[39m[22m still suppresses legacy stall detection for an exempt seat
+     [2m[90m↓[39m[22m routes a stalled adopted seat to its current parent only
+     [2m[90m↓[39m[22m routes a stalled parent-only seat to its current parent only
+     [2m[90m↓[39m[22m routes a stalled seat through a dead parent and live spawner
+     [2m[90m↓[39m[22m routes a stalled seat through a dissolved parent and live spawner
+     [2m[90m↓[39m[22m routes a stalled seat through a dead parent and dead spawner
+     [2m[90m↓[39m[22m routes a watchdog-derived stalled seat through a live parent and unset spawner
+     [2m[90m↓[39m[22m routes a watchdog-derived stalled seat through a dead parent and live spawner
+     [2m[90m↓[39m[22m routes a watchdog-derived stalled seat through a dead parent and dead spawner
+     [2m[90m↓[39m[22m routes a provider-failure adopted seat to its current parent only
+     [2m[90m↓[39m[22m routes a provider-failure parent-only seat to its current parent only
+     [2m[90m↓[39m[22m routes a provider-failure seat through a dead parent and live spawner
+     [2m[90m↓[39m[22m routes a provider-failure seat through a dissolved parent and live spawner
+     [2m[90m↓[39m[22m routes a provider-failure seat through a dead parent and dead spawner
+     [2m[90m↓[39m[22m does not push a provider failure while the session is working with fresh activity
+     [2m[90m↓[39m[22m does not push a provider failure for transient rate-limit scrollback
+     [2m[90m↓[39m[22m pushes Case-3 terminal provider failures only when not working and stale
+     [2m[90m↓[39m[22m clears stale failureReason and provider-failure latch when the session recovers
+     [2m[90m↓[39m[22m orders once close intent → kill → requested terminal → dissolve exactly
+     [2m[90m↓[39m[22m does NOT close a once-mode peer that has not reported yet (the load-bearing latch)
+     [2m[90m↓[39m[22m leaves a RESIDENT peer that reported untouched (agentOnce false)
+     [2m[90m↓[39m[22m never touches a non-agent colleague (no agentOnce/reportedAt)
+     [2m[90m↓[39m[22m preserves a reportedAt stamped concurrently mid-tick, then auto-closes next tick
+     [2m[90m↓[39m[22m holds drain while compactingAt is fresh — message stays durable-unread, NO receipt
+     [2m[90m↓[39m[22m pane ready past the grace → mark clears and the held message drains with an honest receipt
+     [2m[90m↓[39m[22m drops a delivery receipt addressed back to an unregistered sensor id
+     [2m[90m↓[39m[22m a mark stale past COMPACT_MAX_MS clears even on a busy pane — drain resumes (no wedged queue)
+     [2m[90m↓[39m[22m remote /compact injection marks the window and holds the REST of the batch behind it
+     [2m[90m↓[39m[22m advances the lock mtime past its stale startup value
+     [2m[90m↓[39m[22m is best-effort: a missing lock (racing teardown) never throws
+     [2m[90m↓[39m[22m logs a descriptor-lock reclaim through the production daemon registry factory
+     [2m[90m↓[39m[22m releases held write locks before SIGTERM exits
+     [2m[90m↓[39m[22m the real daemon SIGTERM path releases write.lock and events.lock in a temp home
+     [2m[90m↓[39m[22m AC-02: performs zero registry writes for the tick heartbeat
+     [2m[90m↓[39m[22m AC-01: performs exactly one heartbeat persist per tick
+     [2m[90m↓[39m[22m AC-03: still exactly one persist with 50 owned descriptors
+     [2m[90m↓[39m[22m AC-03b: the one persist carries every owned id, and only owned ids
+     [2m[90m↓[39m[22m AC-07: the RAW on-disk descriptor no longer accrues lastTickAt
+     [2m[90m↓[39m[22m AC-07b: the heartbeat file is invisible to registry.list()
+     [2m[90m↓[39m[22m does not re-capture a pane the signals pass already captured this tick
+     [2m[90m↓[39m[22m NEVER captures a pane tmux did not list — the gone-pane skip
+     [2m[90m↓[39m[22m falls back to a direct capture when there is NO live-pane list
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/daemon.test.ts[2m > [22mDaemon.tick provider-failure peek[2m > [22mlegacy stall threshold follows the effective watchdog interval[2m > [22mwaits for a 20-minute seat interval before reporting legacy stalled
+[31m[1mAssertionError[22m: expected [ Array(1) ] to deeply equal [][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "⏸ pij-interval-seat has gone quiet (stalled — no activity past the stale threshold). Pane %4 is still alive but silent.",[39m
+[31m+ ][39m
+
+[36m [2m❯[22m .pi/extensions/pij/daemon.test.ts:[2m1859:38[22m[39m
+    [90m1857|[39m
+    [90m1858|[39m    await daemon.tick();
+    [90m1859|[39m    expect(messageBodies("pij-boss")).toEqual([]);
+    [90m   |[39m                                      [31m^[39m
+    [90m1860|[39m    expect(registry.read("pij-interval-seat")?.failureReason).toBeUndef…
+    [90m1861|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m93 skipped[39m[90m (94)[39m
+[2m   Start at [22m 11:30:05
+[2m   Duration [22m 685ms[2m (transform 366ms, setup 0ms, import 531ms, tests 65ms, environment 0ms)[22m
+

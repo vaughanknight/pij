@@ -1,0 +1,2 @@
+[pij-associated-louse → pij-jolly-moose] dlg-0019-rebase (C10)
+Item 15 re-review: APPROVE-WITH-FINDINGS (no major/high). Rebase onto origin/main 45f3e89 conflicts in daemon.ts (constructor param + runDaemon wiring vs item 29's bridge supervisor). Packet: docs/plans/391-day3-core/tasks/phase-6-item-15-spine-lock-reclaim/rebase-01.md. Resolve, full gates, report head SHA + resolution summary. No push.

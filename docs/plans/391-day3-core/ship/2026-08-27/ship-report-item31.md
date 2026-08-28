@@ -3,14 +3,14 @@
 **claim**: PR #31 open (`s391/item31-watchdog-projection` @ `307b845`, base `f9e9b1f`); cold review FIX_REQUIRED (M-1: sustained-liveness window widened out of scope, unsensored) → FX-02 (revert + sensor + lows) → re-review APPROVE (7 mutations; 60 s clear window pinned above and below; info P-1..P-3 bookkeeping); full extension suite green. Rides daemon restart #6 (o-prime baton; corrected from #7) — live proof: `pij watchdog status pij-ready-perosteck` "next due" in the future and advancing; no "watchdog unknown" bubbles to the prime; no "gone quiet" on a 20-min standby seat inside its interval; notices `from_id` = `pij-daemon`/`pij-watchdog`.
 
 **artifacts**
-- PR: https://github.com/vaughanknight/pij/pull/31 (body `docs/plans/391-day3-core/logs/pr-item31-body.md`)
+- PR: https://github.com/vaughanknight/pij/pull/31 (body `docs/plans/391-day3-core/kept-logs/pr-item31-body.md`)
 - plan: `docs/plans/391-day3-core/391-day3-core-plan.md` Phase 13 (AC-27, AC-28, AC-29, AC-30; two o-prime amendments folded)
 - packets: `docs/plans/391-day3-core/tasks/phase-13-item-31-watchdog-projection/{tasks.md,packet-addendum.md,review-brief.md,execution.log.md}` (dlg-0029)
 - verdict: `…/phase-13-item-31-watchdog-projection/review-01.md`
 
 **shas**: `16d02db` implementation · `98cce88` evidence record · `30ab8d6` FX-02 (liveness clear-window restored + long-interval sensor; subjectId pinned; s097 comment/anchor restored; pij#161 reversal recorded)
 
-**gates**: `npx vitest run .pi/extensions/pij/` 172 files / 4129 passed / 15 skipped / 0 failed after rebase (`docs/plans/391-day3-core/logs/vitest-item31-rebased.log`; 4123 at 30ab8d6 in `vitest-phase13-fx02.log`); tsc clean; biome clean; four packet mutants RED (coder) — reviewer's Dim-0 in the verdict. `harness checks` red only on baseline (OSC lint, pwsh, windows-compat, plan-055 smoke proof — reproduced on clean main, DL-018).
+**gates**: `npx vitest run .pi/extensions/pij/` 172 files / 4129 passed / 15 skipped / 0 failed after rebase (`docs/plans/391-day3-core/kept-logs/vitest-item31-rebased.log.txt`; 4123 at 30ab8d6 in `vitest-phase13-fx02.log`); tsc clean; biome clean; four packet mutants RED (coder) — reviewer's Dim-0 in the verdict. `harness checks` red only on baseline (OSC lint, pwsh, windows-compat, plan-055 smoke proof — reproduced on clean main, DL-018).
 
 **observations**
 - DL-018: the watchdog smoke sensor (`run-proofs.ts --smoke`) was red on clean main (unawaited `daemon.tick()`), masked by the pwsh/OSC baseline reds; o-prime folded a fix into this item; the fold was STOPPED at the third distinct pre-existing drift (unawaited ticks → FsChannel-vs-sqlite → first-turn body vs pointer path) and escalated as candidate item 33; partial patch + three red logs kept. Encode candidate: a "sensor red since <sha>" report so baseline reds cannot hide a newly dead sensor.

@@ -1,0 +1,14 @@
+COMPLETE dlg-0030 FX-02
+{
+  "delegationId": "dlg-0030",
+  "outcome": "COMPLETE",
+  "summary": "Stabilized the relay-control test by launching the resolved tsx CLI with process.execPath instead of invoking npx, and raised the shared marker wait to a 15-second cold-start ceiling. No test serialization or Vitest configuration change was needed.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.test.ts"
+  ],
+  "testsRun": 8336,
+  "testsPassed": 8306,
+  "gatesClean": true,
+  "notes": "Commit: af84d06c9920235b26e930cdc0cedd3de769764e on rebased base 9742d37d4f3f2f90cd56043e854c128268cfe4fc. Resolved relay binary: /Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/cli.mjs. Isolated relay control passed in 541 ms (2.15 s complete Vitest invocation), preserving outer pid != daemon.lock pid, shell-equivalent SIGHUP exit 129, and both leaked-lock assertions; log .harness/temp/s391/item32-fx02-relay-target.log. Fresh-worktree full run 1: 172 files passed, 2 skipped; 4,153 tests passed, 15 skipped; log .harness/temp/s391/item32-fx02-full-1.log. Fresh-worktree full run 2: identical 172/2 and 4,153/15; log .harness/temp/s391/item32-fx02-full-2.log. Both logs explicitly show appendOnce hard-link race and invalid Codex UUID green. Typecheck and scoped Biome passed. harness checks --quick retained only the known baseline OSC lint, missing-pwsh test, and mirrored windows-compat lint failures. No live daemon action, push, PR, or Vitest serialization was performed."
+}
+af84d06c9920235b26e930cdc0cedd3de769764e

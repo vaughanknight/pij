@@ -16,4 +16,4 @@ State exactly what the code does: `pushWholeLifeTransition` returns early on the
 
 ## Info, optional if trivial: G-5 deadIds sensor; G-6 the auto-registering fixture helper — add a one-line comment naming the trap.
 
-Gates: full vitest via `pij bg` → `docs/plans/391-day3-core/logs/vitest-phase7-fx02.log`; tsc; biome on changed files. Commit (pathspec) on the branch; report per schema by `--body-file`: new SHA, per-finding RED evidence, the archive-read sensor, and the N=1000 single-line proof.
+Gates: full vitest via `pij bg` → `docs/plans/391-day3-core/kept-logs/vitest-phase7-fx02.log.txt`; tsc; biome on changed files. Commit (pathspec) on the branch; report per schema by `--body-file`: new SHA, per-finding RED evidence, the archive-read sensor, and the N=1000 single-line proof.

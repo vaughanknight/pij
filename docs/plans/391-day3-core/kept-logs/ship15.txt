@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-relative-panther] item 15 SHIPPED to PR #27 (604242d on 45f3e89; 4065/0 green; re-review APPROVE, 0 survivors). Report: docs/plans/391-day3-core/ship/2026-08-27/ship-report-item15.md. Open for you: G-3 vs AC-20 wording (low) + 4 low follow-ups listed there. Next: item 16 dispatching on 9b5e42d; item 31 after.

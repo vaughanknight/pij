@@ -1,0 +1,81 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [31m❯[39m .pi/extensions/pij/core/daemon/death-reconciler.test.ts [2m([22m[2m43 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m42 skipped[39m[2m)[22m[32m 6[2mms[22m[39m
+       [2m[90m↓[39m[22m withholds the obituary when the recipient died in the same sweep
+       [2m[90m↓[39m[22m still records terminal truth on every descriptor it withheld a notice for
+       [2m[90m↓[39m[22m DELIVERS the obituary when the recipient is alive
+       [2m[90m↓[39m[22m withholds it even when the recipient is buried after the subject
+     [2m[90m↓[39m[22m classifies a missing registered process as unrequested-by-pij and emits one live notice
+     [2m[90m↓[39m[22m routes the adopted seat's terminal death notice to the current parent only
+     [2m[90m↓[39m[22m routes the parent-only seat's terminal death notice to the current parent only
+     [2m[90m↓[39m[22m withholds once and explains both dead candidates
+[31m     [31m×[31m keeps fixed-notice subject ids distinct from the daemon sensor sender[39m[32m 6[2mms[22m[39m
+     [2m[90m↓[39m[22m falls back to the live spawner when the current parent is dead
+     [2m[90m↓[39m[22m falls back to the live spawner when the current parent is dissolved
+     [2m[90m↓[39m[22m resolves recipient and dead-parent suppression from post-write descriptor truth
+     [2m[90m↓[39m[22m does not treat a live provider-stuck PID as terminal
+     [2m[90m↓[39m[22m reconciles a vanished pre-register expectation once and labels later recreation historical
+     [2m[90m↓[39m[22m records a requested terminal observation and says boot reconciliation when requested
+     [2m[90m↓[39m[22m makes no mutation at all rather than guessing when the probe throws
+     [2m[90m↓[39m[22m expires an unregistered expectation by parsed epoch without inventing pane evidence
+     [2m[90m↓[39m[22m terminalizes malformed persisted requestedAt as unavailable
+     [2m[90m↓[39m[22m terminalizes malformed persisted deadlineAt as unavailable
+     [2m[90m↓[39m[22m keeps pane disappearance distinct from deadline expiry
+     [2m[90m↓[39m[22m contains a failure-reason capture throw after PID absence without erasing absence
+     [2m[90m↓[39m[22m suppresses an expectation no-show when any descriptor shares its spawn id
+     [2m[90m↓[39m[22m AC-8a removes the terminal field from a seat whose agent is observed alive
+     [2m[90m↓[39m[22m AC-8b removes the death-notice latch from that same seat
+     [2m[90m↓[39m[22m row 5 keeps the terminal field on a pij-REQUESTED close while the process runs
+     [2m[90m↓[39m[22m AC-6a leaves no terminal field when the liveness observation is unavailable
+     [2m[90m↓[39m[22m AC-10a writes exactly the two seats of the 15 whose agent is alive
+     [2m[90m↓[39m[22m AC-10b does not write the still-dead butterfly at all
+     [2m[90m↓[39m[22m AC-10c removes the terminal field from the named seat that came back
+     [2m[90m↓[39m[22m AC-17a writes nothing on tick 2 when both seats are still dead
+     [2m[90m↓[39m[22m AC-17b notifies nobody on tick 2 when both seats are still dead
+     [2m[90m↓[39m[22m AC-17c writes the returned seat on tick 2
+     [2m[90m↓[39m[22m AC-17f does not write the still-dead seat on that same tick
+     [2m[90m↓[39m[22m AC-17d removes the terminal field from the returned seat on tick 2
+     [2m[90m↓[39m[22m AC-17e notifies nobody about a seat that came back
+     [2m[90m↓[39m[22m AC-18a hands the production death sweep exactly one process capture
+     [2m[90m↓[39m[22m AC-18b asks the port for a process capture exactly once in the whole daemon
+     [2m[90m↓[39m[22m AC-19a re-enables the spawn-limbo detector that a terminal record suppresses
+     [2m[90m↓[39m[22m AC-19a control: the detector is silent while the terminal record stands
+     [2m[90m↓[39m[22m AC-19b makes revive refuse a seat whose agent came back, for the right reason
+     [2m[90m↓[39m[22m AC-19b control: revive ACCEPTS the same seat while its terminal record stands
+     [2m[90m↓[39m[22m AC-19c re-permits re-bind on a seat whose agent came back
+     [2m[90m↓[39m[22m AC-19c control: re-bind stays refused while the terminal record stands
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/core/daemon/death-reconciler.test.ts[2m > [22mdeath reconciler[2m > [22mkeeps fixed-notice subject ids distinct from the daemon sensor sender
+[31m[1mAssertionError[22m: expected [ 'pij-daemon', 'pij-daemon', …(1) ] to deeply equal [ 's-dead-0', 's-dead-1', 's-dead-2' ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   "s-dead-0",[39m
+[32m-   "s-dead-1",[39m
+[32m-   "s-dead-2",[39m
+[31m+   "pij-daemon",[39m
+[31m+   "pij-daemon",[39m
+[31m+   "pij-daemon",[39m
+[2m  ][22m
+
+[36m [2m❯[22m .pi/extensions/pij/core/daemon/death-reconciler.test.ts:[2m203:41[22m[39m
+    [90m201|[39m   [34mexpect[39m(result[33m.[39mnotices)[33m.[39m[34mtoEqual[39m([])[33m;[39m
+    [90m202|[39m   [34mexpect[39m(result[33m.[39mnoticesSuppressed)[33m.[39m[34mtoBe[39m([34m4[39m)[33m;[39m
+    [90m203|[39m   expect(result.withheldNoticeSubjects).toEqual(["s-dead-0", "s-dead-1…
+    [90m   |[39m                                         [31m^[39m
+    [90m204|[39m  })[33m;[39m
+    [90m205|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m42 skipped[39m[90m (43)[39m
+[2m   Start at [22m 12:17:05
+[2m   Duration [22m 266ms[2m (transform 124ms, setup 0ms, import 154ms, tests 6ms, environment 0ms)[22m
+

@@ -1,0 +1,324 @@
+
+ RUN  v4.1.10 /private/tmp/claude-501/-Users-vaughanknight-GitHub-pij-worktrees-s391-day3-core/25d614db-43dc-4f9e-aac1-8d23bd4a29cc/scratchpad/main-flake-probe
+
+E-NOID: current claude session is not push-attached to the current process pane %9; run pij adopt "$TMUX_PANE" --harness claude from this exact pane
+{"error":"E-NOID","message":"current claude session is not registered as a paneless pull peer; run pij inbox register"}
+{"error":"E-NOID","message":"current claude session is not registered as a paneless pull peer; run pij inbox register"}
+{"error":"E-AMBIG","message":"COPILOT_AGENT_SESSION_ID is not a UUID: not-a-uuid"}
+{"error":"E-NOID","message":"COPILOT_AGENT_SESSION_ID 11111111-2222-4333-8444-555555555555 has no matching session-state directory"}
+{"error":"E-AMBIG","message":"CODEX_THREAD_ID is not a UUID: not-a-uuid"}
+{"error":"E-NOID","message":"CODEX_THREAD_ID aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb has no matching readable rollout"}
+E-NOID: no session 'missing' in registry
+E-AMBIG: cannot resolve self among 3 local sessions: pij-A, pij-B, pij-C2. Set who you are — `export PIJ_SESSION_ID=pij-A` — or run `pij adopt "$TMUX_PANE" --harness <h>` so this pane resolves itself.
+E-ARG: --prime does not take a value
+ ✓ .pi/extensions/pij/cli.inbox.integration.test.ts (12 tests) 15730ms
+     ✓ runs whoami through process.execPath and the tsx entrypoint without tmux  511ms
+     ✓ delivers a raw message through the real CLI into an isolated PIJ_HOME  525ms
+     ✓ 'Claude' ambient registration is idempotent and finite wait returns JSON  1693ms
+     ✓ 'Copilot' ambient registration is idempotent and finite wait returns JSON  1684ms
+     ✓ 'Codex' ambient registration is idempotent and finite wait returns JSON  1731ms
+     ✓ refuses inbox --wait immediately for a pushed-delivery seat  983ms
+     ✓ keeps finite inbox waits available to pull-delivery seats  1262ms
+     ✓ registers an already-bound pushed seat from TMUX_PANE without ambient identity  1012ms
+     ✓ registers a self-registered OMP seat from TMUX_PANE without ambient identity  481ms
+     ✓ keeps register fail-loud when ambient identity and TMUX_PANE are both absent  483ms
+     ✓ round-trips wait → dead-pid send → read → delivered receipt without tmux or daemon  5040ms
+     ✓ appendOnce hard-link race publishes one atomic event across two processes  324ms
+E-NOID: no session 'pij-MISSING' in registry
+E-NOID: no session 'pij-MISSING' in registry
+notice: model 'gpt-5.6-sol' is available from github-copilot, copilot, codex; defaulting pi-family spawn to github-copilot (qualify --model to override)
+E-AMBIGUOUS: model 'shared-model' exists under multiple providers: openrouter/shared-model, sakana/shared-model; qualify --model with the intended provider
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-ARG: session 'pij-rebooted-reused-pane': a pane with the recorded id exists but is running a different process — tmux re-issues pane ids from %0 in every new server, so after a reboot that id is almost certainly somebody else's. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-ARG: session 'pij-rebooted-young-pane-process': the pane's pid matches, but that pane's process did not start before this seat's last recorded activity (ps lstart, whole-second resolution), so it cannot be shown to be the process that produced that activity — the kernel recycled the pid, and a matching pid cannot corroborate a matching pane id, both are reissued from the bottom after a reboot. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-ARG: session 'pij-unavailable-obs': the recorded pane is gone but the recorded pid still answers — the OS may have recycled it. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+E-NOID: no pij seat is registered for folder '/private/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-nofolder-D4mvFB'
+⚠️ could not auto-start pij daemon: tmux new-window failed: Command failed: tmux new-window -P -F #{pane_id} #{window_id} -n pij-daemon -d -c /private/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-folder-U27XPf -e PIJ_DAEMON_OWNED=1 npx tsx /private/tmp/claude-501/-Users-vaughanknight-GitHub-pij-worktrees-s391-day3-core/25d614db-43dc-4f9e-aac1-8d23bd4a29cc/scratchpad/main-flake-probe/.pi/extensions/pij/daemon.ts
+E-ARG: tmux split-window failed: Command failed: tmux split-window -P -F #{pane_id} #{window_id} -t %1 -h -d -p 33 -c /private/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-folder-U27XPf -e PIJ_SESSION_ID=pij-revive-spawn-failure -e PIJ_HARNESS=claude -e PIJ_SPAWN_ID=revive-1787889681006-93939 -e PIJ_PARENT_ID=pij-A claude --dangerously-skip-permissions --resume 21111111-2222-4333-8444-555555555555
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-NOID: no terminal session 'pij-revive-registry-race' to revive
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-NOREG: copilot native session artifact is missing
+E-ARG: session 'pij-still-live': the recorded pane is gone but the recorded pid still answers — the OS may have recycled it. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+E-ARG: session 'pij-still-live' still has a live prior attachment; close it before reviving
+warning: unknown model 'gemini-3.6-flash' — spawn continues; confirm the id is correct
+warning: unknown model 'gemini-3.6-flash' — spawn continues; confirm the id is correct
+E-NOID: current claude session descriptor is dissolved; run pij revive pij-whoami-dissolved-remediation --attach "$TMUX_PANE" from this exact pane
+E-AMBIG: pij id pij-existing-opaque is already bound to claude:native-existing
+E-NOID: pij id pij-caller-chosen does not exist
+E-ARG: link 'pij-root' → 'pij-grandchild' would create a cycle
+{"error":"E-AMBIG","message":"cannot resolve self: no local session and PIJ_SESSION_ID unset (pass --actor <label> to assert attribution)"}
+E-NOID: no parent session 'missing' in registry
+E-ARG: link 'pij-root' → 'pij-grandchild' would create a cycle
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-NOID: no such session 'missing'
+E-ARG: watch requires at least one glob
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: pij watch is for non-pi peers only; use the file-watch-notify extension inside pi sessions
+E-ARG: assignment 'asg-general-pij-B' is already undeclared — nothing to clear
+E-ARG: --project takes a kebab project slug (got '../escape')
+E-ARG: --reason is required
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: --older-than must be a positive duration such as 30m, 2h, or 1d
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: unknown delivery state 'forgotten'
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: choose at least one selector (--to, --from, --older-than, --state) or pass --all-recipients
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: choose a selector OR --all-recipients
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+pij queue retire needs SQLite state. With PIJ_QUEUE_BACKEND=fs, inspect then remove legacy files explicitly: rm ~/.pij/<id>/inbox/msg-*.json
+E-ARG: usage: pij dispatch-retire <dispatch-id> | --to <seat> --reason <text> [--dry-run]
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field: orchestrationRole): 'pij-stranger' is neither you nor your parent — a PA may act only on ITSELF ('pij-pa') or its own parent ('pij-parent'), so ask 'pij-parent' to do it or relay the request. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'watchdog pause' is not available to a PA — refused by role 'pa' (field: orchestrationRole): a PA may 'list' the watchdog roster for any target, 'unwatch' any target — which removes only its OWN subscription and changes nothing else about that seat — and 'watch' only ITSELF or its own parent; every other watchdog action changes supervision policy for a seat and stays refused. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'queue retire' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it retires another seat's mail — a state change a zero-actuator PA reports, never performs (ruled 2026-08-27). Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+E-OWN: 'queue retire' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it retires another seat's mail — a state change a zero-actuator PA reports, never performs (ruled 2026-08-27). Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+E-OWN: 'close' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it changes seat lineage or existence — a PA never creates, adopts, or ends a seat. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field: orchestrationRole): '--for' binds a subscription on ANOTHER seat's behalf, which is a prime's repair path — a PA acts only for itself, so run it without '--for'. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33363m old, never reported — pij report now "<did>" "<next>"
+ ✓ .pi/extensions/pij/cli.integration.test.ts (110 tests | 1 skipped) 193767ms
+     ✓ top-level help advertises the prime list filter  504ms
+     ✓ report help prints only the report family block  508ms
+     ✓ top-level help and skill guidance distinguish pull from push delivery  491ms
+     ✓ auto-registers an ambient session before E-NOREG and aliases adopt --current  2016ms
+     ✓ rejects and repairs a contaminated external ambient identity in place  4642ms
+     ✓ 'invalid Copilot UUID' prevents pane/cwd fallback  541ms
+     ✓ 'Copilot UUID without matching session…' prevents pane/cwd fallback  529ms
+     ✓ 'invalid Codex UUID' prevents pane/cwd fallback  516ms
+     ✓ 'Codex UUID without matching rollout' prevents pane/cwd fallback  510ms
+     ✓ sets, filters, unsets, and durably reattaches prime designations through the real CLI  3565ms
+     ✓ rejects valued --prime=false instead of silently disabling the filter  486ms
+     ✓ AC-1 discovery: list --here sees both peers in this folder  535ms
+     ✓ AC-5/whoami: PIJ_SESSION_ID resolves self unambiguously  523ms
+     ✓ AC-3 send: message reaches the peer's inbox on disk (raw body)  517ms
+     ✓ broadcast send writes the same raw body once to each target inbox  503ms
+     ✓ broadcast --wait timeout names every unresolved target  698ms
+     ✓ single-target --wait timeout output remains byte-identical  703ms
+     ✓ broadcast preflights the full target set before writing any inbox  501ms
+     ✓ AC-7/8 tail: --since filters to seq>N, events are ordered + timestamped  1002ms
+     ✓ AC-9/10 state: reports state + liveness without a stream parse  499ms
+     ✓ AC-11 path: prints the readable events.ndjson path  496ms
+     ✓ AC-6 errors: invalid target exit codes are honored (E-NOID exit 2)  511ms
+     ✓ standalone pi spawn persists a pane-correlated five-minute expectation before launch without a descriptor  731ms
+     ✓ pins an ambiguous OMP model to github-copilot before tmux launch  564ms
+     ✓ refuses other provider ambiguity before expectation or tmux mutation  484ms
+     ✓ control-plane spawn correlates one prelaunch expectation with descriptor and pane  3391ms
+     ✓ real pi and daemon-bound spawns carry unresolved and not-probeable plan warnings into JSON and human receipts  19212ms
+     ✓ revives a dissolved Claude session under the same pij id with fail-loud resume argv  3455ms
+     ✓ resolves the prime seat from the CURRENT FOLDER and prints a paste-able line  513ms
+     ✓ a REUSED pane id reads uncertain, not live, and says which id was recycled  4457ms
+     ✓ a matching pane pid does NOT rescue a descriptor that predates this host's boot  4009ms
+     ✓ a matching pane pid is uncertain when ps says that process started after our last event  4411ms
+     ✓ a pane process born FOUR SECONDS after our last activity is uncertain, not live  3950ms
+     ✓ --print survives tmux being unreachable, degrading to an unprobed pane  1032ms
+     ✓ --attach binds the operator's OWN pane to the seat without spawning one  3322ms
+     ✓ human revive reports restored dispatches separately from mail  3333ms
+     ✓ resolves an ARCHIVED seat and --print leaves it archived  1037ms
+     ✓ prints the human-readable form with the self-adopt truth spelled out  538ms
+     ✓ states the REAL reason a pi seat needs no attach step  511ms
+     ✓ an UNAVAILABLE terminal observation is not evidence of death  493ms
+     ✓ refuses to print for a folder that has no seat, naming the folder  511ms
+     ✓ cleans the expectation when revival pane launch fails  575ms
+     ✓ kills the spawned pane and removes its expectation when tombstone replacement fails  3381ms
+     ✓ launches pi revival asynchronously with an unconditional reframe  585ms
+     ✓ launches omp revival asynchronously with an unconditional reframe  617ms
+     ✓ requeues close-retired mail when attaching a revived pi session  542ms
+     ✓ requeues close-retired mail when attaching a revived omp session  531ms
+     ✓ warns when the CLI registry factory reclaims a dead descriptor lock  516ms
+     ✓ reports the interim Copilot session-in-use action instead of waiting silently  3401ms
+     ✓ refuses a missing Copilot native artifact before tmux mutation  549ms
+     ✓ refuses revival while the prior process incarnation is still alive  1030ms
+     ✓ daemon-bound Copilot descriptor records github-copilot provider  3433ms
+     ✓ 'peer denied' Copilot spawn composes the model-specific long-context argv  3411ms
+     ✓ 'peer allowed' Copilot spawn composes the model-specific long-context argv  3498ms
+     ✓ 'agent denied' Copilot spawn composes the model-specific long-context argv  4605ms
+     ✓ 'agent allowed' Copilot spawn composes the model-specific long-context argv  5884ms
+     ✓ agent spawn correlates its prelaunch expectation, pane, descriptor, and harness  3783ms
+     ✓ CLI close traces intent → kill → requested terminal → dissolve and retains history  607ms
+     ✓ Copilot adopt uses only the validated current env uuid, never the global newest session  1188ms
+     ✓ Copilot adopt ignores global newest when env is absent, then phonehome binds the pending id  1169ms
+     ✓ adopt --id renders the stored final binding when no native artifact is discoverable  1161ms
+     ✓ T001 regression-locks live and pending adopt outcomes before dissolved recovery  2398ms
+     ✓ T002 refuses to report a dissolved adopt binding that was not persisted  580ms
+     ✓ T005 whoami directs a dissolved ambient identity to revive  530ms
+     ✓ adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation  2075ms
+     ✓ first adopt without --id allocates a memorable primary id  530ms
+     ✓ no-native adopt reserves then publishes one memorable pending descriptor  535ms
+     ✓ tree/link/adopt/spawn compose over a real repository, linked worktree, and scratch registry  14142ms
+     ✓ AC-6 command: send --command compact is accepted + the peer executes it  528ms
+     ✓ AC-13 receipt loop: B records inbound + emits a receipt; A records it; tail shows it  519ms
+     ✓ peer watch CLI mutates the caller sidecar via PIJ_SESSION_ID  1017ms
+     ✓ peer watch CLI parses and upserts --debounce values  1491ms
+     ✓ peer watch CLI rejects invalid debounce values before writing a sidecar  1950ms
+     ✓ peer watch CLI errors for unresolved self, missing args, and pi sessions  1460ms
+     ✓ state clear round-trips through the real CLI without materializing a second assignment  2042ms
+     ✓ report now round-trips state-set → status and projects the durable denorm  1022ms
+     ✓ issue-#20 kill: env unset + no pane match ⇒ NO parent, even with a lone cwd cohabitant  3489ms
+     ✓ env unset + pane-exact match resolves the caller across the FULL registry (cross-cwd)  3548ms
+     ✓ PIJ_SESSION_ID wins over both cwd cohabitants and pane matches  3493ms
+     ✓ pi spawn announce target follows the same rule: pane identity yes, cwd cohabitant no  1295ms
+     ✓ adopt honors --parent end-to-end and stays parentless without it  1026ms
+     ✓ writes spine/spine.md byte-identical to the pure render; --json reports path/bytes/events  1523ms
+     ✓ re-render of an unchanged log is byte-stable; human mode names the path  486ms
+     ✓ renders an EMPTY spine as the header-only document (fresh temp home)  483ms
+     ✓ --project publishes a FILTERED view to spine/<slug>.spine.md — spine.md untouched (s057)  992ms
+     ✓ --project rejects a non-slug shape with E-ARG (the slug becomes a filename)  511ms
+     ✓ tree --global --liveness dead --json over 1200 descriptors parses complete THROUGH A REAL PIPE  1454ms
+     ✓ pij queue emits all 812 rows through a piped stdout  2526ms
+     ✓ rejects --all combined with --tail or --last  1028ms
+     ✓ retires matching sqlite rows in human and JSON modes  995ms
+     ✓ requires a reason, validates age syntax, and keeps dry-run read-only  3468ms
+     ✓ requires a selector or explicit --all-recipients confirmation  1547ms
+     ✓ mirrors dual retirement into fs read markers  520ms
+     ✓ points fs-only operators at the legacy inbox files  507ms
+     ✓ retires by id or recipient, supports JSON/dry-run, and requires a reason  3222ms
+     ✓ lets a PA watch and unwatch its own parent THROUGH THE REAL BIN  2106ms
+     ✓ refuses a PA watching a stranger THROUGH THE REAL BIN, naming role and field  531ms
+     ✓ refuses a policy-changing watchdog action through the bin, even on its own parent  517ms
+     ✓ refuses queue retire at the raw-argv bin seam  1034ms
+     ✓ still refuses a FLATLY refused verb at the bin seam — the gate is not disarmed  546ms
+     ✓ whoami through the bin reports watchdog as CONDITIONAL, not flatly refused  576ms
+     ✓ lets a PA `chore add` THROUGH THE REAL BIN — the raw-argv subverb mapping  1019ms
+     ✓ registers the NAMED seat, re-binds without duplicating, and unwatches it again  3118ms
+     ✓ preserves addedAt across a re-bind THROUGH THE BIN, and stamps a new one  1075ms
+     ✓ refuses --for to a PA through the bin, while the plain form still works  1563ms
+     ✓ names --for on BOTH the watch and the unwatch usage lines  506ms
+     ✓ explains what --for DOES, not merely that it exists  498ms
+     ✓ the help path is REACHABLE — guards this whole pin against being vacuous  487ms
+
+ Test Files  2 passed (2)
+      Tests  121 passed | 1 skipped (122)
+   Start at  14:00:02
+   Duration  194.62s (transform 634ms, setup 0ms, import 895ms, tests 209.50s, environment 0ms)
+

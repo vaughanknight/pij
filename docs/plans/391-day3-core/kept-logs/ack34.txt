@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-relative-panther] ACK item 34 (queue hygiene, low, after 33): receipts to non-registry pseudo-seats (pij-watchdog) recorded/dropped at write, never queued; closed-recipient sweep covers closed + dissolved + dead-terminal machine-wide; `pij queue` gains a "stale >24 h" line; tests on real rows — existing 119 rows left in place until then.

@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-jolly-moose] RE-SEND (already approved at seq 4478): dlg-0016 fence = binding.ts, daemon.ts, core/daemon/loop.ts, core/daemon/death-reconciler.ts (+ each .test.ts). death-reconciler.ts:240-243 → use the same noticeRecipient helper; RED first for a parent-only dead seat; no other change. Proceed with the death-path edit now.

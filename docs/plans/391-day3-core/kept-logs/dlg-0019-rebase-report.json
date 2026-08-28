@@ -1,0 +1,26 @@
+{"delegationId":"dlg-0019-rebase","outcome":"COMPLETE",
+  "summary": "Rebased Item 15 onto origin/main 45f3e89 and resolved the daemon conflict while preserving both Item 29 bridge supervision and Item 15 lock/dispatch-note behavior. validate-v2 found no material issues.",
+  "headSha": "604242df19ad5febe0fa73bc626bf53464c35362",
+  "conflictResolution": [
+    "daemon.ts imports: retained Item 29 buildSpineEvent and Item 15 canonicalDispatchJson/SpineLogPort.",
+    "Daemon constructor: retained bridgeSupervisor as parameter 10 for all main call-site compatibility; placed dispatchSpineLog after it as parameter 11; adjusted only Item 15's injected test call.",
+    "runDaemon: created one createDaemonRegistry(pijHome, log) used by inbox migration, bridge owner lookup, and the Daemon; retained Item 29 bridgeSupervisorForDaemon; shared bridgeSpine with Item 15 dispatch sweep notes."
+  ],
+  "tests": {
+    "typecheck": "passed",
+    "biome": "16 changed TypeScript files clean",
+    "targetedDaemon": "109 passed, 4 skipped",
+    "telegramSupervisor": "28 passed, 1 skipped",
+    "fullExtension": "4,065 passed, 15 skipped, 0 failed",
+    "fullLog": ".harness/temp/s391/vitest-item15-rebased.log",
+    "harnessInventory": "baseline-red only: unrelated OSC lint, missing pwsh, and one transient claude-socket timing case; direct claude-socket rerun passed 7/7"
+  },
+  "diffStat": "21 files changed, 1,156 insertions(+), 133 deletions(-)",
+  "validation": {
+    "verdict": "VALIDATED",
+    "thesis": "Item 15's integration guarantees remain supported after composing with Item 29's bridge lifecycle.",
+    "consumers": "Item 29 bridgeSupervisor tick/dispose, owner lookup, restart spine notes, and Item 15 dispatch spine logging all satisfied.",
+    "critic": "no_material_findings"
+  },
+  "notes": "Range-diff preserved all four Item 15 commits; semantic resolution was limited to daemon wiring and one positional test adjustment. No push."
+}

@@ -373,7 +373,7 @@ Stated before any finding, so a gate I did not examine and a gate I found clean 
 
 **Limits — things I did NOT verify:**
 1. `just lint` repo-wide and `harness checks --quick`. I ran `biome check` on the 15 changed `.ts` files (exit 0) and `tsc --noEmit -p .` (exit 0). The coder's claim that `just lint` is red only in unrelated pre-existing files is **not independently confirmed by me**.
-2. `docs/plans/391-day3-core/logs/vitest-phase6-fx01.log` — I did not read the coder's log. I ran my own full gate and matched its numbers exactly.
+2. `docs/plans/391-day3-core/kept-logs/vitest-phase6-fx01.log.txt` — I did not read the coder's log. I ran my own full gate and matched its numbers exactly.
 3. Anything Windows/`pwsh`. `pwsh` is absent on this host; a run including `harness/` still fails `release-age-policy.test.ts:196` with `spawnSync pwsh ENOENT` (pre-existing, unrelated to FX-01, present in my round-1 baseline too).
 4. A **real kernel PID recycle**. Every PID-reuse proof uses either an injected start time or the *shape* (a lock whose mtime predates the live holder's start).
 5. `b9a9e43` / `38eb4ed` as separate steps — out of scope this round.

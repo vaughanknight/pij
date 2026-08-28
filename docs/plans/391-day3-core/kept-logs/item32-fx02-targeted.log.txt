@@ -1,0 +1,15 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m97 skipped[39m[2m)[22m[33m 2233[2mms[22m[39m
+     [33m[2m✓[22m[39m the real daemon SIGTERM path releases write.lock and events.lock in a temp home [33m 446[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 435[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 448[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 409[2mms[22m[39m
+     [33m[2m✓[22m[39m the resolved tsx CLI relay leaves the daemon locks behind when its outer pid is signalled [33m 487[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m7 passed[39m[22m[2m | [22m[33m97 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:57:42
+[2m   Duration [22m 3.36s[2m (transform 769ms, setup 0ms, import 1.01s, tests 2.23s, environment 0ms)[22m
+

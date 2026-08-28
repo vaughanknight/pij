@@ -1,0 +1,19 @@
+dlg-0029 HARNESS BLOCKER
+
+Required packet gates are green after rebase onto 58c9cf1:
+- full extension suite: 4,121 passed / 15 skipped
+- root typecheck: pass
+- scoped Biome on all changed TypeScript: pass
+- all four required mutants: RED
+
+The broader `harness checks` done gate is non-zero for four out-of-fence conditions:
+1. lint: unchanged `.pi/extensions/pij/producers/osc-7337-producer.ts`
+2. test: missing local `pwsh` (`spawnSync pwsh ENOENT`)
+3. windows-compat: the same unchanged producer-file Biome finding
+4. smoke: unchanged `docs/plans/055-pij-watchdog/proofs/run-proofs.ts` calls async `daemon.tick()` without awaiting, then immediately reports `smoke first fire was not queued`
+
+Exact fence excludes all four failing files/surfaces. Please rule whether to:
+- accept the packet-required green gates and let dlg-0029 report COMPLETE with this harness caveat; or
+- widen the fence for a separate harness fix.
+
+Current rebased implementation SHA: 16d02db0b0b2e44fee4a7dd37f4326e876e6541c

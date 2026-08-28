@@ -1,0 +1,106 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [31m❯[39m .pi/extensions/pij/core/daemon/watchdog-manager.test.ts [2m([22m[2m77 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m76 skipped[39m[2m)[22m[32m 7[2mms[22m[39m
+     [2m[90m↓[39m[22m watches the DESIGNATED seats — pm and prime — and nobody else
+     [2m[90m↓[39m[22m nudges a never-reported PM from startedAt even while ordinary activity stays fresh
+     [2m[90m↓[39m[22m keys the PM schedule on statusAt, so ordinary activity no longer re-anchors it
+[31m     [31m×[31m projects the live fire clock and keeps statusAt re-anchoring[39m[32m 6[2mms[22m[39m
+     [2m[90m↓[39m[22m keeps at most one due tmux watchdog turn in the durable channel
+     [2m[90m↓[39m[22m fires for a session that has never emitted an event, anchored on startedAt
+     [2m[90m↓[39m[22m does not fire a never-emitted session before its interval elapses since startedAt
+     [2m[90m↓[39m[22m never fires at an EXTERNAL pull target — the daemon does not own its delivery
+     [2m[90m↓[39m[22m delivers pi turns through the inbox channel and never captures a missing pane
+     [2m[90m↓[39m[22m skips pre-bind, failed, dead, paused, and exempt sessions
+     [2m[90m↓[39m[22m retains the exact persisted deadline across manager restart without extending it
+     [2m[90m↓[39m[22m persists an expired exemption before capture or delivery makes the peer active
+     [2m[90m↓[39m[22m fires nothing while off, and RE-ANCHORS on re-enable so the off-window isn't counted (Plan 056)
+     [2m[90m↓[39m[22m never watches a relay/bridge peer — the deliberate-silence class (Plan 056)
+     [2m[90m↓[39m[22m mtime-gates sidecar reads until the revision changes
+     [2m[90m↓[39m[22m drops runtime state when a session closes or disappears
+     [2m[90m↓[39m[22m keeps combined watchdog-attributable pane, event, and working changes silent
+     [2m[90m↓[39m[22m does not credit the idle return edge of a watchdog-caused working transition
+     [2m[90m↓[39m[22m recognises later real activity, clears the streak, and auto-resumes compact only on real work
+     [2m[90m↓[39m[22m marks only the first post-fire pane mutation as watchdog-attributable
+     [2m[90m↓[39m[22m logs a first-fire unknown without delivering it to watchers
+     [2m[90m↓[39m[22m keeps always-mode capture and notice for a real verdict
+     [2m[90m↓[39m[22m writes an anomaly pointer from the pre-injection pane and includes at most five lines
+     [2m[90m↓[39m[22m takes the NEWEST five lines of the window, so a wider window is not a staler notice
+     [2m[90m↓[39m[22m reports capture-n/a for a paneless pi target
+     [2m[90m↓[39m[22m notifies an anomaly watcher once per stalled episode and again after recovery
+     [2m[90m↓[39m[22m round-trips a validated sidecar, exposes revision, and writes bounded capture pointers
+     [2m[90m↓[39m[22m router applies compact pause only to compact commands and preserves stronger tiers
+     [2m[90m↓[39m[22m daemon tmux delivery persists compact pause before injecting --command compact
+     [2m[90m↓[39m[22m pi inbound persists compact pause before calling the runtime and resumes on turn start
+     [2m[90m↓[39m[22m parses every watchdog verb and capture policy
+     [2m[90m↓[39m[22m mutates pause tiers and manages the caller's watcher subscription
+     [2m[90m↓[39m[22m disable-all / enable-all flip the machine-wide switch (Plan 056)
+     [2m[90m↓[39m[22m interval sets a per-peer timeout from a human duration (Plan 056)
+     [2m[90m↓[39m[22m reset clears a peer back to default, including un-exempting it (Plan 056)
+     [2m[90m↓[39m[22m status reports globally-disabled after disable-all, not a bare 'enabled' (Plan 056)
+     [2m[90m↓[39m[22m status reports a relay peer as never-watched, not 'enabled' (Plan 056 review MEDIUM-1)
+     [2m[90m↓[39m[22m rejects a stray third positional for non-interval verbs (review LOW)
+     [2m[90m↓[39m[22m disable-all / enable-all take no id
+     [2m[90m↓[39m[22m rejects pause after exemption without weakening the tier
+     [2m[90m↓[39m[22m accepts default and custom exemption durations, and reports their live deadline truthfully
+     [2m[90m↓[39m[22m adds the watchdog envelope to status, state --json, and list --json
+     [2m[90m↓[39m[22m accepts --no-watchdog and threads the pi child exemption marker
+     [2m[90m↓[39m[22m pi boot persists an exempt sidecar when the spawn marker is present
+     [2m[90m↓[39m[22m keeps an idle watchdog stall latched until real recovery and notices once
+     [2m[90m↓[39m[22m CONTROL: a stalled peer with no exemption does notify its owner
+     [2m[90m↓[39m[22m sends the owner NO stall notice while the peer is watchdog-exempt
+     [2m[90m↓[39m[22m resumes owner stall notices once the exemption has EXPIRED
+     [2m[90m↓[39m[22m exempt does NOT suppress a genuine provider failure — decided, not accidental
+     [2m[90m↓[39m[22m derives NO watchdog response at all while paused — the unstated invariant, pinned
+     [2m[90m↓[39m[22m clears a durable stalled flag on a creator-less peer that is demonstrably alive
+     [2m[90m↓[39m[22m does not fabricate recovery for a peer whose newest event is older than the interval
+     [2m[90m↓[39m[22m does not call a peer alive on the DEFAULT interval when it is stale by the stall threshold
+     [2m[90m↓[39m[22m stamps a watchdog-only stalled verdict on a root session
+     [2m[90m↓[39m[22m keeps descriptor-only watchdog event movement silent until the persisted stall
+     [2m[90m↓[39m[22m keeps persisted lastEventAt byte-identical across a watchdog-attributable busy pane
+     [2m[90m↓[39m[22m stamps fires through persistDaemonWrite and emits one stalled notice across both detectors
+     [2m[90m↓[39m[22m sends NO nudge to a seat that declared a parked state
+     [2m[90m↓[39m[22m STILL nudges an undeclared seat under identical conditions
+     [2m[90m↓[39m[22m STILL nudges a seat claiming done — a terminal claim is verified, not trusted
+     [2m[90m↓[39m[22m keeps the seat WATCHED — muting is not unwatching
+     [2m[90m↓[39m[22m does not fire the instant a seat UN-parks — the clock advanced while muted
+     [2m[90m↓[39m[22m classifies every member of the union, and null
+     [2m[90m↓[39m[22m watches a PA — the seat whose trigger is the condition it detects
+     [2m[90m↓[39m[22m keeps watching prime and pm, the two the gate was widened for
+     [2m[90m↓[39m[22m records the exclusions as DECISIONS — worker and unroled stay out
+     [2m[90m↓[39m[22m fires for a pa and gives it the card-less copy
+     [2m[90m↓[39m[22m AC-01 logs rather than publishes a fire that examined no evidence
+     [2m[90m↓[39m[22m AC-04 keeps a no-evidence fire out of every watcher and capture policy
+     [2m[90m↓[39m[22m AC-05a reports an unreadable pane as unavailable in the notice
+     [2m[90m↓[39m[22m AC-05b writes no capture at all for an unreadable pane
+     [2m[90m↓[39m[22m AC-06 does not read a vanishing pane as recovery
+     [2m[90m↓[39m[22m AC-07 never stalls a seat whose statusAt advances after every fire
+     [2m[90m↓[39m[22m still climbs on silent fires and still recovers on real work
+     [2m[90m↓[39m[22m tells paneless target, unreadable pane and policy-disabled capture apart
+     [2m[90m↓[39m[22m AC-09 still stalls a wedged peer whose only activity is watchdog-caused
+     [2m[90m↓[39m[22m resumes the climb at suspect after a long answered run, never at stalled
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/core/daemon/watchdog-manager.test.ts[2m > [22mWatchdogManager — reconciliation and delivery[2m > [22mprojects the live fire clock and keeps statusAt re-anchoring
+[31m[1mAssertionError[22m: expected '1970-01-01T00:00:00.100Z' to be '1970-01-01T00:00:00.200Z' // Object.is equality[39m
+
+Expected: [32m"1970-01-01T00:00:00.[7m2[27m00Z"[39m
+Received: [31m"1970-01-01T00:00:00.[7m1[27m00Z"[39m
+
+[36m [2m❯[22m .pi/extensions/pij/core/daemon/watchdog-manager.test.ts:[2m264:59[22m[39m
+    [90m262|[39m   h[33m.[39m[34msetNow[39m([34m100[39m)[33m;[39m
+    [90m263|[39m   h[33m.[39mmanager[33m.[39m[34mreconcile[39m([[34mdesc[39m({ id[33m:[39m [32m"peer"[39m[33m,[39m statusAt[33m:[39m undefined })])[33m;[39m
+    [90m264|[39m   expect(h.manager.schedulerProjection().peer?.nextDueAt).toBe(new Dat…
+    [90m   |[39m                                                           [31m^[39m
+    [90m265|[39m   [34mexpect[39m([34misFireDue[39m(cfg[33m,[39m [34m100[39m[33m,[39m [34m0[39m[33m,[39m [34m199[39m))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m266|[39m   [34mexpect[39m([34misFireDue[39m(cfg[33m,[39m [34m100[39m[33m,[39m [34m0[39m[33m,[39m [34m200[39m))[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m76 skipped[39m[90m (77)[39m
+[2m   Start at [22m 11:29:16
+[2m   Duration [22m 693ms[2m (transform 412ms, setup 0ms, import 588ms, tests 7ms, environment 0ms)[22m
+

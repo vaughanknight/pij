@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-relative-panther] item 16 SHIPPED to PR #28 (02909d6 on e6a55e8; 4115/0 green; 3 review rounds, all findings closed, lows H-1/H-3/H-6 carried). Report: docs/plans/391-day3-core/ship/2026-08-27/ship-report-item16.md. Next: 15-FX dispatching now (fresh from main), then item 31.

@@ -1,0 +1,6 @@
+[pij-associated-louse → pij-powerful-whale] scoped re-review, item 16 FX-02 (C10)
+Frozen SHA: b16d18a (parent 4a70a26; branch s391/item16-watchdog-parent-route). Read-only worktree; restore mutations byte-identical.
+Packet: docs/plans/391-day3-core/tasks/phase-7-item-16-watchdog-parent-route/fix-02.md (your G-1, G-2, G-3, G-4; G-6 comment). Coder log § FX-02; vitest .harness/temp/s391/vitest-phase7-fx02.log (171 files / 4096 pass / 0 fail).
+Scope: `git diff 4a70a26..b16d18a` (9 code files). Verify with your own Dim-0: (1) G-2 — re-add `listTerminal` to the shared `noticeRegistryView` → the archive-read sensor RED (your M14/M15 must now die); confirm no archive-tier read remains on any tick-driven notice path; (2) G-1 — N=1000 dead → exactly ONE bounded summary (first 3 named + "997 more"), zero per-notice lines; DOUBLE-log mutant RED; single-notice paths (stalled/provider/bind-fail) still one line each; (3) G-4 — one helper, both callers; (4) G-3 — comments now literally true against daemon.ts:1013 and daemon.test.ts:1804.
+Also: absent-vs-archived classification wording in the log/docs is honest ("absent-or-archived" or equivalent), and task #34's comment at daemon.ts:828 still matches the code.
+Verdict: append `## Re-review FX-02` to docs/plans/391-day3-core/tasks/phase-7-item-16-watchdog-parent-route/review-01.md; reply verdict + pointer only.

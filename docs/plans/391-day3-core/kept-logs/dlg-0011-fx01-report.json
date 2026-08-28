@@ -1,0 +1,17 @@
+{
+  "delegationId": "dlg-0011-fx01",
+  "outcome": "PARTIAL",
+  "summary": "Completed FX-01: both working-state rejection spellings reuse the park-first runnable remedy, the pointer diagnostic has a load-bearing one-Enter count scenario, and docs cover both spellings.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/daemon-tmux.test.ts",
+    ".pi/extensions/pij/core/anomalies.test.ts",
+    ".pi/extensions/pij/core/anomalies.ts",
+    ".pi/extensions/pij/core/cli.test.ts",
+    ".pi/extensions/pij/core/cli.ts",
+    "docs/how/pij.md"
+  ],
+  "testsRun": 3993,
+  "testsPassed": 3978,
+  "gatesClean": false,
+  "notes": "Commit 2a3942c4c633fdce67b93c83d095f1a736fe3faf. Required extension suite: 171 files passed, 2 skipped; 3978 tests passed, 15 skipped; log .harness/temp/s391/vitest-phase4-fx01.log. Focused suite: 588/588. FX-01.3 mutant ${enterAttempts}->${SUBMIT_ATTEMPTS} went RED only on the new scenario: expected the pointer diagnostic to contain 'after 1 Enter attempt(s)' but received 'after 3 Enter attempt(s)'; daemon-tmux.ts restored to hash 48feadceff0747a9be2775c3ab9048d2a958173b. Typecheck and scoped Biome passed. core/types.ts, core/orchestration/role.ts, status-stale predicates, rail, and production daemon-tmux.ts are untouched. harness checks --quick remains baseline-red only for existing OSC lint diagnostics, missing pwsh, and derived windows-compat. No push."
+}

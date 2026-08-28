@@ -18,4 +18,4 @@ Keep `noticeRecipient` as the PURE candidate order (it is used by the builders);
 
 ## Out of scope (recorded, not fixed): F-4 bind-refusal / needs-human diagnostics still go to the spawner (declared boundary; carried to the ship report). F-5 provenance → item 31 AC-30.
 
-## Gates: full `npx vitest run .pi/extensions/pij/` via `pij bg` → `docs/plans/391-day3-core/logs/vitest-phase7-fx01.log`; tsc; biome on changed files. Commit (pathspec) on the same branch; report per schema by `--body-file` with: new SHA, per-finding RED evidence (file:line), the F-2 revert-RED proof, and confirmation watchdog-manager.ts differs from cc96eca only at the comment lines.
+## Gates: full `npx vitest run .pi/extensions/pij/` via `pij bg` → `docs/plans/391-day3-core/kept-logs/vitest-phase7-fx01.log.txt`; tsc; biome on changed files. Commit (pathspec) on the same branch; report per schema by `--body-file` with: new SHA, per-finding RED evidence (file:line), the F-2 revert-RED proof, and confirmation watchdog-manager.ts differs from cc96eca only at the comment lines.

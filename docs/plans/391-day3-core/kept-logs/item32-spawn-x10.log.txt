@@ -1,0 +1,150 @@
+
+=== run 01 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1257[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 407[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 392[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 458[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:37
+[2m   Duration [22m 2.14s[2m (transform 564ms, setup 0ms, import 784ms, tests 1.26s, environment 0ms)[22m
+
+
+=== run 02 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1274[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 429[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 438[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 407[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:40
+[2m   Duration [22m 2.17s[2m (transform 574ms, setup 0ms, import 798ms, tests 1.27s, environment 0ms)[22m
+
+
+=== run 03 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1216[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 400[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 406[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 409[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:42
+[2m   Duration [22m 2.05s[2m (transform 528ms, setup 0ms, import 742ms, tests 1.22s, environment 0ms)[22m
+
+
+=== run 04 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1289[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 465[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 420[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 403[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:45
+[2m   Duration [22m 2.14s[2m (transform 546ms, setup 0ms, import 750ms, tests 1.29s, environment 0ms)[22m
+
+
+=== run 05 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1214[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 391[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 408[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 413[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:48
+[2m   Duration [22m 2.08s[2m (transform 564ms, setup 0ms, import 773ms, tests 1.21s, environment 0ms)[22m
+
+
+=== run 06 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1145[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 404[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 361[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 379[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:50
+[2m   Duration [22m 2.00s[2m (transform 561ms, setup 0ms, import 763ms, tests 1.14s, environment 0ms)[22m
+
+
+=== run 07 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1084[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 360[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 361[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 362[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:53
+[2m   Duration [22m 1.87s[2m (transform 483ms, setup 0ms, import 691ms, tests 1.08s, environment 0ms)[22m
+
+
+=== run 08 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1190[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 379[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 428[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 382[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:55
+[2m   Duration [22m 2.06s[2m (transform 584ms, setup 0ms, import 781ms, tests 1.19s, environment 0ms)[22m
+
+
+=== run 09 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1190[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 404[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 403[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 382[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:21:57
+[2m   Duration [22m 2.16s[2m (transform 639ms, setup 0ms, import 870ms, tests 1.19s, environment 0ms)[22m
+
+
+=== run 10 ===
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m104 tests[22m[2m | [22m[33m101 skipped[39m[2m)[22m[33m 1150[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGTERM gracefully [33m 371[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGHUP gracefully [33m 385[2mms[22m[39m
+     [33m[2m✓[22m[39m the production launch makes the daemon the outer child and handles SIGINT gracefully [33m 393[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[2m | [22m[33m101 skipped[39m[90m (104)[39m
+[2m   Start at [22m 13:22:00
+[2m   Duration [22m 1.94s[2m (transform 505ms, setup 0ms, import 700ms, tests 1.15s, environment 0ms)[22m
+

@@ -17,6 +17,6 @@
 |--------|-----|------|--------|---------|-----------|-------|
 | [ ] | T001 | TEST (RED): parent `working` (event 3 min old, interval 60 s) + child `parentId`=parent `working` (event 10 s old) → no notice, no `failureReason`, one log line naming the child; child `idle` → notice once; child `working` but 5 min old (past ITS threshold) → notice; child via `spawnedBy` only → suppressed like parentId; a working child of a DIFFERENT parent → no effect; fixtures on both sides of the child's threshold (DL-019) | pij-watchdog | `daemon.test.ts` | RED on base | AC-35 |
 | [ ] | T002 | IMPL: `hasActiveChild(parent, hotList, nowMs)` beside the detector; clause in the `stalled` expression; log line; hot list reused from the tick | daemon | `daemon.ts` | T001 GREEN; AC-29 tests green | no archive read |
-| [ ] | T003 | DOCS + GATE (full vitest via `pij bg` → `docs/plans/391-day3-core/logs/vitest-phase18.log`, tsc, biome) + PR-ready (no push) | — | | 0 fail | AC-10 |
+| [ ] | T003 | DOCS + GATE (full vitest via `pij bg` → `docs/plans/391-day3-core/kept-logs/vitest-phase18.log.txt`, tsc, biome) + PR-ready (no push) | — | | 0 fail | AC-10 |
 ### Mutation evidence required in your report
 - T002: drop the clause → the working-child case RED; drop the child's freshness guard → the stale-child case RED; restore → GREEN.

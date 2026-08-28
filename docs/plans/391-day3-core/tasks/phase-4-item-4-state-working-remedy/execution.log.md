@@ -46,7 +46,7 @@
 | Freshness mutation | Expected RED: mechanically-working PM anomaly disappeared. |
 | `npx tsc --noEmit -p .` | Passed. |
 | Scoped Biome check on the five touched TypeScript files | Passed. |
-| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,976 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase4.log`. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,976 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/kept-logs/vitest-phase4.log.txt`. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. The unchanged repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |
 
 ## Scope proof

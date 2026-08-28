@@ -1,0 +1,28 @@
+{"delegationId":"dlg-0019","outcome":"PARTIAL",
+  "summary": "Completed Phase 6: all three lock layers share dead-PID/PID-reuse reclaim without stealing live original holders, daemon shutdown releases owned tokens, and dispatch retire/requeue transitions emit recoverable spine notes with unambiguous already-retired output. Carried descriptor contention and pi/omp revive baseline guards are mutation-pinned.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/lock-reclaim.ts",
+    ".pi/extensions/pij/adapters/lock-reclaim.test.ts",
+    ".pi/extensions/pij/adapters/platform-write-lock.ts",
+    ".pi/extensions/pij/adapters/platform-write-lock.test.ts",
+    ".pi/extensions/pij/adapters/spine-store.ts",
+    ".pi/extensions/pij/adapters/spine-store.test.ts",
+    ".pi/extensions/pij/adapters/fs-registry.ts",
+    ".pi/extensions/pij/adapters/fs-registry.test.ts",
+    ".pi/extensions/pij/core/platform/journal.ts",
+    ".pi/extensions/pij/core/platform/journal.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/daemon.delivery.test.ts",
+    ".pi/extensions/pij/core/cli.ts",
+    ".pi/extensions/pij/cli.ts",
+    ".pi/extensions/pij/cli.integration.test.ts",
+    "docs/how/pij.md",
+    "docs/plans/391-day3-core/tasks/phase-6-item-15-spine-lock-reclaim/execution.log.md",
+    "docs/plans/391-day3-core/tasks/phase-6-item-15-spine-lock-reclaim/tasks.md"
+  ],
+  "testsRun": 4062,
+  "testsPassed": 4047,
+  "gatesClean": false,
+  "notes": "Rebased onto origin/main e46eec8a after required WIP checkpoint b9a9e43; final commit 38eb4ed19302a52f4418968b61bad6e211486299. Final suite: 172 files passed, 2 skipped; 4,047 tests passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase6.log. Initial REDs: write.lock platform-write-lock.test.ts:64/:88; events.lock spine-store.test.ts:116; shutdown daemon.test.ts:2061; dispatch notes daemon.delivery.test.ts:642, cli.integration.test.ts:1132/:3755. T004b steal-live mutation RED at fs-registry.test.ts:386; T004c baseline removal RED at cli.integration.test.ts:1948. The first full wrapper masked two liveness-cost failures; start-time checks were moved to cached NodeProcessSnapshot and the final wrapper preserved Vitest exit. Typecheck/scoped Biome passed. All tests used tmp homes; ~/.pij/spine and the live daemon were untouched. harness checks --quick remains baseline-red only for unrelated OSC lint, missing pwsh, and derived windows-compat; therefore PARTIAL/gatesClean:false. No push or PR."
+}

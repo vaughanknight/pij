@@ -1,0 +1,24 @@
+COMPLETE dlg-0029
+{
+  "delegationId": "dlg-0029",
+  "outcome": "COMPLETE",
+  "summary": "Implemented the live watchdog fire-clock projection, suppressed unknown watcher verdicts while retaining local diagnostics, made legacy stall detection interval-aware, and signed lifecycle notices with their daemon/watchdog sensor. Rebased cleanly onto origin/main and completed all packet-required gates and mutation proofs.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/watchdog.ts",
+    ".pi/extensions/pij/core/daemon/watchdog-manager.ts",
+    ".pi/extensions/pij/core/daemon/watchdog-manager.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/core/daemon/loop.ts",
+    ".pi/extensions/pij/core/daemon/loop.test.ts",
+    ".pi/extensions/pij/core/daemon/death-reconciler.ts",
+    ".pi/extensions/pij/core/daemon/death-reconciler.test.ts",
+    "docs/how/pij-watchdog.md",
+    "docs/plans/391-day3-core/tasks/phase-13-item-31-watchdog-projection/execution.log.md"
+  ],
+  "testsRun": 4136,
+  "testsPassed": 4121,
+  "gatesClean": true,
+  "notes": "Implementation commit: 16d02db0b0b2e44fee4a7dd37f4326e876e6541c. Evidence commit: 98cce88119db6c2357a379fcff52e3a44d06e710. Full extension log: .harness/temp/s391/vitest-phase13.log (172 files passed, 2 skipped; 4,121 tests passed, 15 skipped). Typecheck and scoped Biome passed. Four repository-wide harness caveats were accepted after clean-origin/main reproduction: (1) lint — .pi/extensions/pij/producers/osc-7337-producer.ts has existing Biome lint/suspicious/noAssignInExpressions findings; (2) test — harness/scripts/release-age-policy.test.ts cannot spawn missing local pwsh (spawnSync pwsh ENOENT); (3) windows-compat — .pi/extensions/pij/producers/osc-7337-producer.ts has the existing Biome lint/suspicious/noControlCharactersInRegex finding; (4) smoke — docs/plans/055-pij-watchdog/proofs/run-proofs.ts calls async daemon.tick() without awaiting it and reports 'smoke first fire was not queued'. No fence widening, push, PR, or shared-daemon restart."
+}
+16d02db0b0b2e44fee4a7dd37f4326e876e6541c

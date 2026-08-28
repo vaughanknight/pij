@@ -6,7 +6,7 @@
 **Do**
 1. `git rebase origin/main` on the branch (worktree here; no other branch moves; no stash — WIP-commit if you must).
 2. Resolve `daemon.ts`: keep BOTH params. Positional order is the only question — pick the order that keeps every existing `new Daemon(...)` call site on main (`daemon.test.ts`, `daemon.delivery.test.ts`, `daemon-push.test.ts`, `runDaemon`) compiling WITHOUT touching main's tests; adjust only the call sites this branch added. Prefer: main's `bridgeSupervisor` first (it merged), yours after. In `runDaemon`, main's `registry` becomes `createDaemonRegistry(pijHome, log)` (one registry, your reclaim logging + main's owner lookup share it).
-3. Gates: `npx tsc --noEmit -p .`, `npx biome check` on changed .ts, then FULL `npx vitest run .pi/extensions/pij/` → `docs/plans/391-day3-core/logs/vitest-item15-rebased.log`. Expect 0 failed except the known pwsh row if it appears.
+3. Gates: `npx tsc --noEmit -p .`, `npx biome check` on changed .ts, then FULL `npx vitest run .pi/extensions/pij/` → `docs/plans/391-day3-core/kept-logs/vitest-item15-rebased.log.txt`. Expect 0 failed except the known pwsh row if it appears.
 4. Do NOT push. Report by completion JSON: new head SHA, `git range-diff origin/main..0ea687f`-style summary of what the resolution changed beyond mechanical (files+lines), counts from the log, and `git diff 45f3e89..HEAD --stat` line count.
 
 Forbidden: `.the-flow-state.json`, `the-flow.json`, `the-flow.md`, `government/**`, other worktrees, `.flow-pair/**`, review-01.md.

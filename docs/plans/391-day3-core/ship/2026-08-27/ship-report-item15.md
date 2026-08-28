@@ -3,7 +3,7 @@
 **claim**: PR #27 open (`s391/item15-spine-lock-reclaim` @ `604242d`, base `45f3e89`); cold review round 1 → FX-01 → re-review APPROVE-WITH-FINDINGS (0 mutation survivors); full extension suite green after rebase. Ready for o-prime merge (rides daemon restart #6).
 
 **artifacts**
-- PR: https://github.com/vaughanknight/pij/pull/27 (body `docs/plans/391-day3-core/logs/pr-item15-body.md`)
+- PR: https://github.com/vaughanknight/pij/pull/27 (body `docs/plans/391-day3-core/kept-logs/pr-item15-body.md`)
 - plan: `docs/plans/391-day3-core/391-day3-core-plan.md` Phase 6 (AC-20, AC-20b)
 - tasks/fix/rebase packets: `docs/plans/391-day3-core/tasks/phase-6-item-15-spine-lock-reclaim/{tasks.md,fix-01.md,rebase-01.md,review-brief.md,execution.log.md}`
 - verdicts: `…/phase-6-item-15-spine-lock-reclaim/review-01.md` (round 1 + `## Re-review FX-01`)
@@ -12,7 +12,7 @@
 **shas**: `f4dbf49` wip · `36a6403` reclaim + dispatch notes · `7572370` FX-01 sensors · `604242d` docs (pre-rebase: b9a9e43 / 38eb4ed / 49893fb reviewed)
 
 **gates**
-- `npx vitest run .pi/extensions/pij/` (rebased): 172 files / 4065 passed / 15 skipped / 0 failed — `docs/plans/391-day3-core/logs/vitest-item15-rebased.log`
+- `npx vitest run .pi/extensions/pij/` (rebased): 172 files / 4065 passed / 15 skipped / 0 failed — `docs/plans/391-day3-core/kept-logs/vitest-item15-rebased.log.txt`
 - tsc: clean · biome: clean on 16 changed .ts
 - Dim-0: 9 mutations RED→restore→GREEN, 0 survivors (reviewer, sha-pinned 49893fb); resolution-only delta 49893fb→604242d is daemon wiring + one positional test arg (coder range-diff)
 - known-red unchanged: `harness/scripts/release-age-policy.test.ts` (pwsh absent), OSC lint baseline
