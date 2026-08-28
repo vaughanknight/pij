@@ -6,7 +6,7 @@
     {
       "name": "meta",
       "value": {
-        "title": "Phase 1: Foundations \u2014 workspace, ports, drift enforcement, exemplars",
+        "title": "Phase 1: Foundations — workspace, ports, drift enforcement, exemplars",
         "slug": "phase-1",
         "status": "draft",
         "summary": "The mold, decomposed into ordered tasks; each cites its ruling (workshop 001) and AC."
@@ -22,7 +22,7 @@
         {
           "id": "tk-48f2",
           "title": "Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R6a,R6c",
           "done": "#done_when/tk-48f2"
         },
@@ -84,7 +84,7 @@
         },
         {
           "id": "tk-81b3",
-          "title": "Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist \u2014 all green; README quick-start + architecture doc; fences doc naming shared-merge files.",
+          "title": "Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files.",
           "state": "unchecked",
           "note": "R6e / ac-0007,ac-0008",
           "done": "#done_when/tk-81b3"
@@ -176,6 +176,5 @@
         ]
       }
     }
-  ],
-  "references": []
+  ]
 }
