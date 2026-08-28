@@ -1,0 +1,22 @@
+diff --git a/.pi/extensions/pij/daemon.ts b/.pi/extensions/pij/daemon.ts
+--- a/.pi/extensions/pij/daemon.ts
++++ b/.pi/extensions/pij/daemon.ts
+@@ -226,10 +226,10 @@
+ ): BridgeRestartNotifierDeps {
+-	return {
+-		pijHome,
+-		registry,
+-		store: new FsWatchdogStore(pijHome),
+-		channel,
+-		now: () => Date.now(),
+-		log,
+-	};
++	return {
++		pijHome,
++		registry,
++		store: new FsWatchdogStore(join(pijHome, "nope")),
++		channel,
++		now: () => Date.now(),
++		log,
++	};
+ }
