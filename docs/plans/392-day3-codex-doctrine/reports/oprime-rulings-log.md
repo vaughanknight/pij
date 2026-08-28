@@ -9,3 +9,8 @@ Durable record of rulings as they land (iron rule 1). No acks owed unless stated
 4. **pwsh ENOENT is environmental** — `harness/scripts/release-age-policy.test.ts` (spawnSync pwsh). **Mark it skipped-with-reason** (it currently FAILS when pwsh absent, not skipped). Small harness-hygiene task; not blocking; sequence with the tail.
 
 Also affirmed: holding the 29b-T001 PR for the W1+W2 hardening + oracle re-run is correct.
+
+## 2026-08-28 — PR #30 merged + item-24 base
+- **PR #30 (item 29b-T001) MERGED → main ae7356b** (o-prime verified at merge product: 4121/0, tsc 0, skill-check 0, +6 tests). Item 29b-T001 DONE.
+- **Restart #6 now gated on item 24 alone.**
+- **Item-24 PR bases on ae7356b.** B1/B2/W3 fold affirmed (report-once + production-path sensor + W3), then re-review, then PR.

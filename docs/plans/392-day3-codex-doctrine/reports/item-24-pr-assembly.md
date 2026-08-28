@@ -19,3 +19,6 @@
 
 ## Pre/post yardstick
 Live-acceptance baseline (pre-fix): `reports/item-24-live-acceptance-baseline.md` — attempt-2 rate ~29%, NOT length-correlated; post-restart-#6 comparison over ≥1 h.
+
+## Base pin (updated 2026-08-28)
+Base the item-24 PR on **main @ ae7356b** (post-PR#30 merge; o-prime ruling). Restart #6 is gated on item 24 alone.
