@@ -22,6 +22,10 @@
 
 **Owner's status report (narrative input):** https://peri-dev.ngrok.app/reports/pij-status-2026-08-28-release/ (source in the separate `perimenocause` repository — `perimenocause:government/reports/pij-status-2026-08-28-release.html` — not in this repo). Convention in these files: a pointer into another repository is written `<repo>:<path>`.
 
+## Evidence folders (merged to main for this handover)
+- `docs/plans/391-day3-core/` — s391's plans, tasks, reviews, fixes, reports, ship reports, rulings, and kept logs under `logs/` (PR #36).
+- `docs/plans/392-day3-codex-doctrine/` — s392's equivalent (PR pending at the time of writing; the index below says when it landed).
+
 ## Index of outstanding items
 _(filled as sections land; one line per file: number · title · stream · status)_
 - 00 · The live system at v0.2.0 — o-prime · written
