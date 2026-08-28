@@ -1,0 +1,19 @@
+diff --git a/.pi/extensions/pij/telegram/bridge.ts b/.pi/extensions/pij/telegram/bridge.ts
+--- a/.pi/extensions/pij/telegram/bridge.ts
++++ b/.pi/extensions/pij/telegram/bridge.ts
+@@ -382,11 +382,14 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
+ 		const chatId = ctx.chat.id;
+ 		const sessions = deps.listSessions();
+ 		const isAlive = deps.isAlive ?? (() => true);
++		const lastSpeaker = deps.getLastSpeaker?.(String(chatId));
+ 		const decision = routeMessage(
+ 			ctx.message.text,
+ 			sessions,
+ 			quotedOf(ctx.message),
+-			deps.listBridgeWatchers?.() ?? persistedBridgeWatchers(sessions),
++			lastSpeaker === undefined
++				? (deps.listBridgeWatchers?.() ?? persistedBridgeWatchers(sessions))
++				: [{ watcherId: lastSpeaker, addedAt: "9999-12-31T23:59:59.999Z" }],
+ 			isAlive,
+ 		);
+ 		switch (decision.kind) {
