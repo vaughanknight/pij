@@ -34,7 +34,7 @@
 
 ## 4. Acceptance (behavioural, mechanical)
 
-- Add `daemon.delivery.test.ts` case `parks an unread pointer after POINTER_MAX_ANNOUNCES`: use a real SQLite-backed channel, let a socketless bound seat ignore every pointer, advance beyond each lease, and assert attempts 1..N, final `parked` state, `pointer-unread` receipt, and no next-tick injection (`docs/plans/391-day3-core/tasks/phase-8-item-19-pointer-park/tasks.md:22`).
+- Add `daemon.delivery.test.ts` case `parks an unread pointer after the ruled announcement budget` (the constant's name — `POINTER_MAX_ANNOUNCES` vs the shared `maxAttempts` — is § 7's open question; the test name must not presume it): use a real SQLite-backed channel, let a socketless bound seat ignore every pointer, advance beyond each lease, and assert attempts 1..N, final `parked` state, `pointer-unread` receipt, and no next-tick injection (`docs/plans/391-day3-core/tasks/phase-8-item-19-pointer-park/tasks.md:22`).
 - Add the paired case `acks normally after the second pointer announcement`: after attempt 2, consume with the production inbox method and assert `acked`, no later pointer, and no park receipt (`docs/plans/391-day3-core/tasks/phase-8-item-19-pointer-park/tasks.md:22`).
 - Add `sqlite-queue.test.ts` coverage for the selected API: pointer settlement increments exactly once per announcement, its injected receipt carries the incremented attempt, and expiry at N parks with detail `pointer-unread` (`docs/plans/391-day3-core/tasks/phase-8-item-19-pointer-park/tasks.md:23`).
 - `MUT-POINTER-NO-COUNT`: restore the no-increment SQL/update behavior at `d120c53:.pi/extensions/pij/adapters/sqlite-queue.ts:451-469`; both pointer-attempt tests must go RED.
