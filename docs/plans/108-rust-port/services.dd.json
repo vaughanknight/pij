@@ -60,6 +60,17 @@
           "note": ""
         },
         {
+          "id": "u-events",
+          "name": "event bus",
+          "paths": "crates/core/src/events.rs + crates/daemon/src/events/**",
+          "responsibility": "Reusable pub/sub: typed Event enum (MessageArrived, FileChanged, BgDone, SeatStateChanged, WatchdogNudge, Unknown) over a broadcast channel; durable leg appends to Spine (replayable tail), live leg feeds the NDJSON stream. Every push consumer subscribes here \u2014 delivery router, watchdog, sidecars, UI stream. No consumer polls.",
+          "interface": "EventBus{publish(Event); subscribe(filter)->Stream<Event>}; Event carries v+at+kind, additive kinds never break subscribers (Unknown variant); durable replay = Spine::tail(since).",
+          "test_strategy": "fan-out test (N subscribers set-equality); slow-subscriber policy test (lag -> drop-with-count, never block publisher); replay-vs-live seam test; mutation-check the filter.",
+          "depends_on": "u-store",
+          "wave": 1,
+          "note": "Jordan 2026-08-28 requirement (PRD req-0015). Sits BESIDE u-queue: queue = work that must happen exactly-once with claims; events = notifications that fan out. The delivery service consumes BOTH (enqueue the job, publish the event)."
+        },
+        {
           "id": "u-delivery",
           "name": "delivery service",
           "paths": "crates/core/src/delivery.rs + crates/daemon/src/delivery/**",

@@ -141,6 +141,15 @@
           "state": "unchecked",
           "completed_evidence": "",
           "note": "plan 108 non-goal; later plan"
+        },
+        {
+          "id": "req-0015",
+          "num": 15,
+          "title": "Reusable eventing system",
+          "requirement": "One in-process pub/sub event primitive serves every near-real-time consumer \u2014 inbound message routing, file-watch notices, bg command completion, watchdog nudges, seat state changes \u2014 typed Event enum with an Unknown variant, durable tail via the spine (replayable), live tail via the NDJSON stream. New event kinds are additive, never a version bump; no consumer polls.",
+          "state": "unchecked",
+          "completed_evidence": "",
+          "note": "Jordan 2026-08-28: 'reusable eventing, not just message routing \u2014 file watches, backgrounds, etc.'"
         }
       ]
     }
