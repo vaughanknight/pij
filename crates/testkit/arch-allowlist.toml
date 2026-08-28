@@ -77,9 +77,12 @@ external = ["async-trait", "serde_json", "sqlx", "tokio"]
 why = "Persistence behind Registry/Spine/Queue: SQLite via sqlx with embedded migrations, boot self-migration and directional skew refusal. The only crate permitted to speak SQL."
 
 [crates.pij-tmux]
-internal = []
-external = []
-why = "Every tmux syscall in the workspace lives here, so pane/window quirks have exactly one home to fix."
+# `pij-testkit@dev` supplies the identical contract suite used by the fake and
+# real adapter without shipping test support. `async-trait` implements the
+# frozen async port; `pij-core` is the port and pane model.
+internal = ["pij-core", "pij-testkit@dev"]
+external = ["async-trait"]
+why = "Every tmux syscall in the workspace lives here, so pane/window quirks have exactly one home to fix; testkit is dev-only shared contract proof."
 
 [crates.pij-harnesses]
 internal = []

@@ -147,3 +147,17 @@ sha256 = "8a9f13a929cf0e4d98630c0b9af528f7638d454f1c97de6cc6607a3b089e27e2"
 bytes = 670
 note = "The byte-golden of the derived catalog summary (runtime, provider, selector, requestModelId, thinking-encoding) computed from cli/models.json. Recorded with UPDATE_GOLDENS=1 and reviewed line by line."
 answer = "Must match `summarise(cli/models.json)` exactly. A change here means either the fixture moved or the derivation did \u2014 both are review events, never a silent re-record. Note two claude rows carry a selector with NO provider prefix and no `levels` key: u-models must handle both without inventing a default."
+
+[[fixture]]
+path = "tmux/list-panes-empty-title.txt"
+sha256 = "133ee2c107822a841285093589f7c61b9e238a389f0cda5d9d3a91c8c80a1fbd"
+bytes = 34
+note = "Captured from entropy-named detached session pij-w1-fixture-c84a1 with allow-rename disabled; pipe-delimited list-panes fields and an explicitly empty pane title."
+answer = "Exactly one Pane: id %320, session pij-w1-fixture-c84a1, window normal, and title present as the empty string. Empty is not absent."
+
+[[fixture]]
+path = "tmux/list-panes-hostile-title.txt"
+sha256 = "113f30efcc4dec510c968509f3ca6ac9e06765f38916693d1aa394f69278b723"
+bytes = 57
+note = "Same isolated capture after setting the user-controlled pane title to `human · title | nested`, including the list-panes field separator."
+answer = "Exactly one Pane whose complete title is `human · title | nested`; splitting stops after the three structural separators so the title's pipe is data, not a fifth field."

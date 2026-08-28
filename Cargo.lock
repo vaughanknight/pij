@@ -1166,6 +1166,11 @@ dependencies = [
 [[package]]
 name = "pij-tmux"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pij-core",
+ "pij-testkit",
+]
 
 [[package]]
 name = "pij-transport"
