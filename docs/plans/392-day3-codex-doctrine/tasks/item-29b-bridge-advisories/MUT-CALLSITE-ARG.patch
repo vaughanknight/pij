@@ -1,0 +1,11 @@
+diff --git a/.pi/extensions/pij/daemon.ts b/.pi/extensions/pij/daemon.ts
+--- a/.pi/extensions/pij/daemon.ts
++++ b/.pi/extensions/pij/daemon.ts
+@@ -1793,6 +1793,6 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
+ 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
+ 		},
+ 		notifyOwner: wireBridgeRestartNotifier(
+-			bridgeNotifierDepsForDaemon(pijHome, registry, channel, log),
++			bridgeNotifierDepsForDaemon(join(pijHome, "nope"), registry, channel, log),
+ 		),
+ 	});

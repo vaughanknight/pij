@@ -1,0 +1,20 @@
+diff --git a/.pi/extensions/pij/daemon.ts b/.pi/extensions/pij/daemon.ts
+--- a/.pi/extensions/pij/daemon.ts
++++ b/.pi/extensions/pij/daemon.ts
+@@ -1792,7 +1792,12 @@ export function runDaemon(opts: DaemonOptions = {}): () => void {
+ 			const appended = bridgeSpine.append(built.value);
+ 			if (!appended.ok) log(`telegram: restart spine note failed — ${appended.message}`);
+ 		},
+-		notifyOwner: wireBridgeRestartNotifier(
+-			bridgeNotifierDepsForDaemon(pijHome, registry, channel, log),
+-		),
++		notifyOwner: wireBridgeRestartNotifier({
++			pijHome,
++			registry,
++			store: new FsWatchdogStore(join(pijHome, "nope")),
++			channel,
++			now: () => Date.now(),
++			log,
++		}),
+ 	});
+ 	const daemon = new Daemon(
