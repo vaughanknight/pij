@@ -93,3 +93,10 @@ prime rulings recorded in this file.
   R5 item 3: registration requires BIND EVIDENCE and subagent scoping, and the store
   needs descriptor-only reconciliation (merge/tombstone aliases by (pid,proc_start,
   spawnId) equivalence) — TS has none; no alias cleanup is safe there.
+- CORPUS FINDINGS (tk-ddf1, 2026-08-28): (1) u-models corrected — TS output encodes
+  no-levels as [] OR key-absent, NEVER null (null is OMP-upstream only); corpus pins both
+  encodings + fails on a third. (2) `pij models --json` is TIME-VARYING (599 rows at 05:05
+  -> 125 at 05:15; openrouter 479 -> 5, same machine/cwd/config) — confirms Q4 (goldens run
+  against COMMITTED bytes only) and raises CANDIDATE defect row 12: catalog can shrink
+  drastically without an error surface — partial upstream fetch may be reporting as success.
+  UNVERIFIED as a defect; needs a TS-side look before it enters R5 proper.

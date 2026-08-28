@@ -174,11 +174,11 @@
           "name": "model catalog",
           "paths": "crates/harnesses/src/models/**",
           "responsibility": "Catalog assembly from harness adapters; runtime/provider/selector separation exactly per s106 semantics (landed f53a9fde) \u2014 behavior-preserving port.",
-          "interface": "ModelCatalog{list(filter)->Vec<ModelRow{runtime,provider,selector,request_model_id,thinking:Option<Vec<Effort>>}>}; whole-inventory fail on malformed rows; null thinking = valid no-levels.",
+          "interface": "ModelCatalog{list(filter)->Vec<ModelRow{runtime,provider,selector,request_model_id,thinking_levels:Vec<Effort> (may be empty)}>}; whole-inventory fail on malformed rows; null thinking = valid no-levels.",
           "test_strategy": "golden against TS `pij models --json` (parity tripwire); malformed-row rejection set-equality.",
           "depends_on": "u-harness",
           "wave": 3,
-          "note": ""
+          "note": "CORRECTED 2026-08-28 (PM corpus finding): the TS pij CLI OUTPUT never emits null thinking \u2014 measured encodings are 'levels': [] AND key-absent (claude family); OMP's raw null exists only upstream and pij maps it. u-models must fold BOTH output encodings to one fact; corpus carries both + a test that fails on a third encoding. Instrument lesson: .get() conflates absent with null (the PM's own first probe mis-reported 9 nulls)."
         },
         {
           "id": "u-daemon-http",
