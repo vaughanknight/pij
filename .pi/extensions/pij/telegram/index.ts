@@ -325,6 +325,17 @@ export function runtimeFor(pijHome: string, log: (message: string) => void): Bri
 	};
 }
 
+function bridgeFileLog(
+	pijHome: string,
+	baseLog: (message: string) => void,
+): (message: string) => void {
+	const logPath = join(pijHome, "telegram-bridge.log");
+	return (message) => {
+		appendFileSync(logPath, `[pij-telegram] ${message}\n`);
+		baseLog(message);
+	};
+}
+
 // ── daemon auto-start (in-process) ────────────────────────────────────────────
 //
 // Lets the daemon run the bridge in its OWN process when a scoped `telegram.env` is
@@ -352,6 +363,30 @@ export type DaemonBridgeStartAttempt =
 	| { readonly kind: "started"; readonly pid: number; readonly stop: () => void }
 	| { readonly kind: "refused"; readonly holderPid: number }
 	| { readonly kind: "skipped" };
+
+type DaemonBridgeOverrides = Partial<
+	Pick<DaemonBridgeDeps, "loadConfig" | "startBridge" | "runBot">
+>;
+
+function daemonBridgeDepsFor(
+	pijHome: string,
+	log: (message: string) => void,
+	overrides: DaemonBridgeOverrides = {},
+): DaemonBridgeDeps {
+	return {
+		envPath: envPathOf(pijHome),
+		loadConfig: overrides.loadConfig ?? loadConfig,
+		buildRuntime: () => runtimeFor(pijHome, log),
+		startBridge: overrides.startBridge ?? startBridge,
+		runBot:
+			overrides.runBot ??
+			((bot) =>
+				bot.start({
+					onStart: (info) => log(`telegram: bridge up as @${info.username}`),
+				})),
+		log,
+	};
+}
 
 function attemptDaemonBridgeStart(deps: DaemonBridgeDeps): DaemonBridgeStartAttempt {
 	let config: TelegramConfig;
@@ -492,16 +527,10 @@ export function superviseBridge(deps: BridgeSupervisorDeps): BridgeSupervisor {
 export function autoStartBridgeForDaemon(
 	pijHome: string,
 	log: (message: string) => void,
+	overrides: DaemonBridgeOverrides = {},
 ): () => void {
-	return maybeStartBridge({
-		envPath: envPathOf(pijHome),
-		loadConfig,
-		buildRuntime: () => runtimeFor(pijHome, log),
-		startBridge,
-		runBot: (bot) =>
-			bot.start({ onStart: (info) => log(`telegram: bridge up as @${info.username}`) }),
-		log,
-	});
+	const bridgeLog = bridgeFileLog(pijHome, log);
+	return maybeStartBridge(daemonBridgeDepsFor(pijHome, bridgeLog, overrides));
 }
 
 export interface DaemonBridgeSupervisorCallbacks {
@@ -516,17 +545,8 @@ export function bridgeSupervisorForDaemon(
 	pijHome: string,
 	callbacks: DaemonBridgeSupervisorCallbacks,
 ): BridgeSupervisor {
-	const startDeps = (): DaemonBridgeDeps => ({
-		envPath: envPathOf(pijHome),
-		loadConfig,
-		buildRuntime: () => runtimeFor(pijHome, callbacks.log),
-		startBridge,
-		runBot: (bot) =>
-			bot.start({
-				onStart: (info) => callbacks.log(`telegram: bridge up as @${info.username}`),
-			}),
-		log: callbacks.log,
-	});
+	const bridgeLog = bridgeFileLog(pijHome, callbacks.log);
+	const startDeps = (): DaemonBridgeDeps => daemonBridgeDepsFor(pijHome, bridgeLog);
 	const lockPath = join(pijHome, LOCK_NAME);
 	const initialPid = readLockPid(lockPath);
 	const initial = initialPid === null ? attemptDaemonBridgeStart(startDeps()) : undefined;
@@ -538,7 +558,7 @@ export function bridgeSupervisorForDaemon(
 		now: callbacks.now,
 		note: callbacks.note,
 		notifyOwner: callbacks.notifyOwner,
-		log: callbacks.log,
+		log: bridgeLog,
 		...(initial?.kind === "started" ? { initialStop: initial.stop } : {}),
 	});
 	if (initialPid !== null && !isProcessAlive(initialPid)) supervisor.tick();
@@ -634,11 +654,9 @@ async function telegramStart(_argv: readonly string[]): Promise<void> {
 	const pijHome = pijHomeOf();
 	mkdirSync(pijHome, { recursive: true });
 	const logPath = join(pijHome, "telegram-bridge.log");
-	const log = (message: string): void => {
-		const line = `[pij-telegram] ${message}\n`;
-		appendFileSync(logPath, line);
-		process.stdout.write(line);
-	};
+	const log = bridgeFileLog(pijHome, (message) =>
+		process.stdout.write(`[pij-telegram] ${message}\n`),
+	);
 
 	let config: TelegramConfig;
 	try {

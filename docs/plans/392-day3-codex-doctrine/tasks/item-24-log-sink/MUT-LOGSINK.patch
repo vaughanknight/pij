@@ -1,0 +1,16 @@
+diff --git a/.pi/extensions/pij/telegram/index.ts b/.pi/extensions/pij/telegram/index.ts
+--- a/.pi/extensions/pij/telegram/index.ts
++++ b/.pi/extensions/pij/telegram/index.ts
+@@ -331,7 +331,7 @@
+ ): (message: string) => void {
+-	const logPath = join(pijHome, "telegram-bridge.log");
+-	return (message) => {
+-		appendFileSync(logPath, `[pij-telegram] ${message}\n`);
+-		baseLog(message);
+-	};
++	const logPath = join(pijHome, "telegram-bridge.log");
++	return (message) => {
++		void logPath;
++		baseLog(message);
++	};
+ }
