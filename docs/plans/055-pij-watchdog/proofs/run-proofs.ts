@@ -12,7 +12,10 @@ import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { FsChannel } from "../../../../.pi/extensions/pij/adapters/channel.js";
+import {
+	type MessageChannel,
+	openChannel,
+} from "../../../../.pi/extensions/pij/adapters/channel-factory.js";
 import { FsRegistry } from "../../../../.pi/extensions/pij/adapters/fs-registry.js";
 import { FsWatchdogStore } from "../../../../.pi/extensions/pij/adapters/watchdog-store.js";
 import type { DaemonPorts } from "../../../../.pi/extensions/pij/core/daemon/loop.js";
@@ -49,6 +52,7 @@ const TSX_CLI = nodeRequire.resolve("tsx/cli");
 const LIVE_HOME = resolve(join(homedir(), ".pij"));
 const HOME_PATTERN = join(tmpdir(), "pij-watchdog-proof-<scenario>-<run>");
 const EPOCH = new Date(0).toISOString();
+const WATCHDOG_POINTER_LINE = "[pij from pij-watchdog] 1 new message — run: pij inbox";
 const TMUX_AVAILABLE = spawnSync("tmux", ["-V"], { encoding: "utf8" }).status === 0;
 
 const AC_IDS = [
@@ -77,7 +81,9 @@ interface ScenarioDefinition {
 	readonly name: string;
 	readonly acs: readonly ProvedAc[];
 	readonly requiresTmux: boolean;
-	readonly run: () => Readonly<Record<string, unknown>>;
+	readonly run: () =>
+		| Readonly<Record<string, unknown>>
+		| Promise<Readonly<Record<string, unknown>>>;
 }
 
 interface CliRun {
@@ -113,13 +119,16 @@ function descriptor(
 	};
 }
 
-function withIsolatedHome<T>(label: string, run: (home: string) => T): T {
+async function withIsolatedHome<T>(
+	label: string,
+	run: (home: string) => T | Promise<T>,
+): Promise<T> {
 	const home = mkdtempSync(join(tmpdir(), `pij-watchdog-proof-${label}-`));
 	assertThat(resolve(home) !== LIVE_HOME, "refusing to use the live PIJ home");
 	const previousHome = process.env.PIJ_HOME;
 	process.env.PIJ_HOME = home;
 	try {
-		return run(home);
+		return await run(home);
 	} finally {
 		if (previousHome === undefined) delete process.env.PIJ_HOME;
 		else process.env.PIJ_HOME = previousHome;
@@ -189,14 +198,14 @@ class ScratchPane {
 	}
 }
 
-function withScratchPane<T>(
+async function withScratchPane<T>(
 	label: string,
-	run: (pane: ScratchPane) => T,
+	run: (pane: ScratchPane) => T | Promise<T>,
 	initialFile?: string,
-): T {
+): Promise<T> {
 	const pane = new ScratchPane(label, initialFile);
 	try {
-		return run(pane);
+		return await run(pane);
 	} finally {
 		pane.dispose();
 	}
@@ -275,13 +284,13 @@ function parseJsonRows(text: string): readonly Record<string, unknown>[] {
 	});
 }
 
-function unreadBodies(channel: FsChannel, id: string): readonly string[] {
+function unreadBodies(channel: MessageChannel, id: string): readonly string[] {
 	const unread = channel.listUnread(id);
 	if (!unread.ok) throw new Error(unread.message);
 	return unread.value.map((message) => message.body);
 }
 
-function markUnreadWatchdogTurnsRead(channel: FsChannel, id: string): number {
+function markUnreadWatchdogTurnsRead(channel: MessageChannel, id: string): number {
 	const unread = channel.listUnread(id);
 	if (!unread.ok) throw new Error(unread.message);
 	const watchdogTurns = unread.value.filter((message) => message.body.startsWith("[pij watchdog"));
@@ -292,11 +301,21 @@ function markUnreadWatchdogTurnsRead(channel: FsChannel, id: string): number {
 	return watchdogTurns.length;
 }
 
-function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("default", (home) =>
-		withScratchPane("default", (pane) => {
+function markFirstUnreadWatchdogTurnRead(channel: MessageChannel, id: string): boolean {
+	const unread = channel.listUnread(id);
+	if (!unread.ok) throw new Error(unread.message);
+	const watchdogTurn = unread.value.find((message) => message.body.startsWith("[pij watchdog"));
+	if (watchdogTurn === undefined) return false;
+	const marked = channel.markRead(id, watchdogTurn.messageId);
+	if (!marked.ok) throw new Error(marked.message);
+	return true;
+}
+
+async function runUniversalAndTeaching(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("default", async (home) =>
+		withScratchPane("default", async (pane) => {
 			const registry = new FsRegistry(home);
-			const channel = new FsChannel(home);
+			const channel = openChannel(home);
 			const store = new FsWatchdogStore(home);
 			registry.write(
 				descriptor(home, "tmux-default", {
@@ -319,7 +338,7 @@ function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 				registry,
 				channel,
 			);
-			daemon.tick();
+			await daemon.tick();
 			const queuedTurns = unreadBodies(channel, "tmux-default").filter((body) =>
 				body.startsWith("[pij watchdog"),
 			);
@@ -327,10 +346,11 @@ function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 			assertThat(sent.length === 0, "default fire bypassed the durable channel");
 			assertThat(queuedTurns.length === 1, `expected one queued default fire, got ${queuedTurns.length}`);
 			assertThat(firedAt === new Date(nowMs).toISOString(), "default fire was not descriptor-stamped");
-			daemon.tick();
+			await daemon.tick();
 			daemon.dispose();
 			sleepSync(25);
-			const body = sent[0] ?? "";
+			const body = queuedTurns[0] ?? "";
+			const pointerLine = sent[0] ?? "";
 			const paneText = pane.capture();
 			assertThat(sent.length === 1, `expected one delivered default fire, got ${sent.length}`);
 			assertThat(body.includes("[pij watchdog #1 for tmux-default]"), "turn ordinal/id missing");
@@ -338,7 +358,9 @@ function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 			assertThat(!body.includes("pij watchdog pause"), "retired pause direction returned");
 			assertThat(!body.includes("pij watchdog resume"), "retired resume direction returned");
 			assertThat(!body.includes("If done, pause me"), "retired pause etiquette returned");
-			assertThat(paneText.includes("pij report state done"), "done report did not reach scratch pane");
+			assertThat(pointerLine === WATCHDOG_POINTER_LINE, "watchdog pointer line shape changed");
+			assertThat(paneText.includes(WATCHDOG_POINTER_LINE), "watchdog pointer did not reach scratch pane");
+			assertThat(!paneText.includes("pij report state done"), "watchdog body crossed the pane");
 			assertThat(!paneText.includes("pij watchdog pause"), "retired pause direction reached scratch pane");
 			return {
 				isolatedHome: HOME_PATTERN,
@@ -353,10 +375,10 @@ function runUniversalAndTeaching(): Readonly<Record<string, unknown>> {
 	);
 }
 
-function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("pause", (home) => {
+async function runPauseResumeAndState(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("pause", async (home) => {
 		const registry = new FsRegistry(home);
-		const channel = new FsChannel(home);
+		const channel = openChannel(home);
 		const target = descriptor(home, "pause-target", { orchestrationRole: "pm" });
 		registry.write(target);
 		let nowMs = DEFAULT_WATCHDOG_INTERVAL_MS;
@@ -366,13 +388,13 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 			registry,
 			channel,
 		);
-		daemon.tick();
+		await daemon.tick();
 		const firstCount = markUnreadWatchdogTurnsRead(channel, target.id);
 		assertThat(firstCount === 1, "initial paneless fire missing");
 
 		requireCli(home, ["watchdog", "pause", target.id, "--json"], target.id);
 		nowMs += DEFAULT_WATCHDOG_INTERVAL_MS;
-		daemon.tick();
+		await daemon.tick();
 		const pausedCount = unreadBodies(channel, target.id).filter((body) => body.startsWith("[pij watchdog")).length;
 		assertThat(pausedCount === 0, "self pause allowed another fire");
 
@@ -408,7 +430,7 @@ function runPauseResumeAndState(): Readonly<Record<string, unknown>> {
 		);
 
 		requireCli(home, ["watchdog", "resume", target.id, "--json"], target.id);
-		daemon.tick();
+		await daemon.tick();
 		const resumedCount = unreadBodies(channel, target.id).filter((body) => body.startsWith("[pij watchdog")).length;
 		assertThat(resumedCount === 1, "resume did not restart firing");
 		const resumedState = parseJsonObject(requireCli(home, ["state", target.id, "--json"], target.id).stdout);
@@ -516,11 +538,11 @@ function proofSession(
 	return session;
 }
 
-function runCompactBothPaths(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("compact", (home) =>
-		withScratchPane("compact", (pane) => {
+async function runCompactBothPaths(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("compact", async (home) =>
+		withScratchPane("compact", async (pane) => {
 			const registry = new FsRegistry(home);
-			const channel = new FsChannel(home);
+			const channel = openChannel(home);
 			const store = new FsWatchdogStore(home);
 			registry.write(descriptor(home, "compact-owner"));
 			registry.write(
@@ -549,7 +571,7 @@ function runCompactBothPaths(): Readonly<Record<string, unknown>> {
 				["send", "compact-tmux", "--command", "compact", "--json"],
 				"compact-owner",
 			);
-			daemon.tick();
+			await daemon.tick();
 			assertThat(store.read("compact-tmux")?.pausedBy === "compact", "tmux compact was not paused");
 			assertThat(tmuxInjected.includes("compact:/compact"), "tmux compact was not persisted before inject");
 			const tmuxBeforeWork = registry.read("compact-tmux");
@@ -557,7 +579,7 @@ function runCompactBothPaths(): Readonly<Record<string, unknown>> {
 			registry.write({ ...tmuxBeforeWork, state: "working" });
 			pane.write("REAL WORK AFTER COMPACT");
 			nowMs = 11;
-			daemon.tick();
+			await daemon.tick();
 			assertThat(store.read("compact-tmux")?.pausedBy === undefined, "tmux compact did not auto-resume");
 
 			let compactCalls = 0;
@@ -612,13 +634,15 @@ function runCompactBothPaths(): Readonly<Record<string, unknown>> {
 	);
 }
 
-function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("frozen", (home) =>
-		withScratchPane("frozen", (pane) => {
+async function frozenPaneEvidence(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("frozen", async (home) =>
+		withScratchPane("frozen", async (pane) => {
 			pane.write("FROZEN PEER OUTPUT");
 			const registry = new FsRegistry(home);
-			const channel = new FsChannel(home);
+			const channel = openChannel(home);
 			const store = new FsWatchdogStore(home);
+			registry.write(descriptor(home, "owner", { orchestrationRole: "worker" }));
+			registry.write(descriptor(home, "watcher", { orchestrationRole: "worker" }));
 			registry.write(
 				descriptor(home, "frozen-peer", {
 					harness: "claude",
@@ -644,7 +668,18 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 				registry,
 				channel,
 			);
-			for (nowMs of [100, 200, 300, 400]) daemon.tick();
+			let consumedFires = 0;
+			for (nowMs of [100, 200, 300, 400]) {
+				await daemon.tick();
+				await daemon.deliverPass();
+				assertThat(fires.length === consumedFires + 1, "frozen fire was not delivered");
+				assertThat(fires.at(-1) === WATCHDOG_POINTER_LINE, "frozen fire was not a pointer");
+				assertThat(
+					markFirstUnreadWatchdogTurnRead(channel, "frozen-peer"),
+					"delivered frozen fire was not consumable",
+				);
+				consumedFires += 1;
+			}
 			const stallNoticeCounts = (): { readonly owner: number; readonly watcher: number } => ({
 				owner: unreadBodies(channel, "owner").filter((body) => body.includes("stalled")).length,
 				watcher: unreadBodies(channel, "watcher").filter((body) =>
@@ -661,11 +696,11 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			assertThat(firstEpisodeNotices.owner === 1, `owner stalled notices=${firstEpisodeNotices.owner}`);
 			assertThat(firstEpisodeNotices.watcher === 1, `watcher stalled notices=${firstEpisodeNotices.watcher}`);
 
-			// The fourth fire is queued on the fourth scheduler tick. Deliver it
-			// before driving the watchdog-attributed lifecycle pair.
+			// Confirm no extra fire at the next millisecond before driving the
+			// watchdog-attributed lifecycle pair.
 			nowMs = 401;
-			daemon.tick();
-			assertThat(fires.length === 4, `fourth queued fire was not delivered: ${fires.length}`);
+			await daemon.tick();
+			assertThat(fires.length === 4, `unexpected fire count after first episode: ${fires.length}`);
 
 			// A real harness briefly goes busy for the injected watchdog turn, then
 			// returns idle. Drive that typed, watchdog-attributed pair explicitly;
@@ -677,7 +712,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			assertThat(activityAnchor === EPOCH, "watchdog fires moved descriptor activity");
 			registry.write({ ...afterFinalFire, state: "working" });
 			nowMs = 402;
-			daemon.tick();
+			await daemon.tick();
 			const afterAttributedWork = registry.read("frozen-peer");
 			assertThat(afterAttributedWork !== null, "frozen peer disappeared during attribution");
 			const workEdgeNotices = stallNoticeCounts();
@@ -687,7 +722,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			assertThat(workEdgeNotices.watcher === 1, `attributed working edge watcher notices=${workEdgeNotices.watcher}`);
 			registry.write({ ...afterAttributedWork, state: "idle" });
 			nowMs = 403;
-			daemon.tick();
+			await daemon.tick();
 			const afterAttributedIdle = registry.read("frozen-peer");
 			assertThat(afterAttributedIdle !== null, "frozen peer disappeared on attributed idle return");
 			const idleEdgeNotices = stallNoticeCounts();
@@ -699,7 +734,7 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			registry.write({ ...afterAttributedIdle, state: "working" });
 			pane.write("REAL RECOVERY OUTPUT");
 			nowMs = 404;
-			daemon.tick();
+			await daemon.tick();
 			const recovered = registry.read("frozen-peer");
 			assertThat(recovered !== null, "frozen peer disappeared after recovery");
 			assertThat(recovered.failureReason === undefined, "typed real output did not clear stalled");
@@ -710,7 +745,17 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 			const recoveredFailureReason = recovered.failureReason ?? null;
 			const recoveredLastEventAt = recovered.lastEventAt ?? null;
 
-			for (nowMs of [504, 604, 704, 804]) daemon.tick();
+			for (nowMs of [504, 604, 704, 804]) {
+				await daemon.tick();
+				await daemon.deliverPass();
+				assertThat(fires.length === consumedFires + 1, "recovery fire was not delivered");
+				assertThat(fires.at(-1) === WATCHDOG_POINTER_LINE, "recovery fire was not a pointer");
+				assertThat(
+					markFirstUnreadWatchdogTurnRead(channel, "frozen-peer"),
+					"delivered recovery fire was not consumable",
+				);
+				consumedFires += 1;
+			}
 			const secondEpisodeNotices = stallNoticeCounts();
 			const secondEpisodeFires = fires.length + queuedFireCount();
 			assertThat(
@@ -756,10 +801,10 @@ function frozenPaneEvidence(): Readonly<Record<string, unknown>> {
 	);
 }
 
-function rootStallEvidence(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("root", (home) => {
+async function rootStallEvidence(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("root", async (home) => {
 		const registry = new FsRegistry(home);
-		const channel = new FsChannel(home);
+		const channel = openChannel(home);
 		new FsWatchdogStore(home).write("root", { intervalMs: 1 });
 		registry.write(descriptor(home, "root", { orchestrationRole: "pm" }));
 		let nowMs = 1;
@@ -770,7 +815,7 @@ function rootStallEvidence(): Readonly<Record<string, unknown>> {
 			channel,
 		);
 		for (nowMs of [1, 2, 3]) {
-			daemon.tick();
+			await daemon.tick();
 			markUnreadWatchdogTurnsRead(channel, "root");
 		}
 		const failureReason = registry.read("root")?.failureReason ?? null;
@@ -780,11 +825,11 @@ function rootStallEvidence(): Readonly<Record<string, unknown>> {
 	});
 }
 
-function runFrozenStallAndRecovery(): Readonly<Record<string, unknown>> {
+async function runFrozenStallAndRecovery(): Promise<Readonly<Record<string, unknown>>> {
 	return {
 		isolatedHome: HOME_PATTERN,
-		frozenPane: frozenPaneEvidence(),
-		rootSession: rootStallEvidence(),
+		frozenPane: await frozenPaneEvidence(),
+		rootSession: await rootStallEvidence(),
 	};
 }
 
@@ -865,15 +910,15 @@ function assertCaptureContent(
 	);
 }
 
-function runBoundedCapture(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("capture", (home) => {
+async function runBoundedCapture(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("capture", async (home) => {
 		const fixtureLines = Array.from({ length: 260 }, (_, index) => {
 			const ordinal = String(index).padStart(3, "0");
 			return `WD-CAP-${ordinal}|xxx${"€".repeat(48)}|TAIL-${ordinal}`;
 		});
 		const fixturePath = join(home, "capture-fixture.txt");
 		writeFileSync(fixturePath, fixtureLines.join("\n"), "utf8");
-		return withScratchPane("capture", (pane) => {
+		return withScratchPane("capture", async (pane) => {
 			const orderedTailMarkers = ["WD-CAP-258", "WD-CAP-259"];
 			sleepSync(25);
 			const healthySource = pane.capture();
@@ -882,7 +927,7 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 				"scratch pane omitted deterministic capture markers",
 			);
 			const registry = new FsRegistry(home);
-			const channel = new FsChannel(home);
+			const channel = openChannel(home);
 			const store = new FsWatchdogStore(home);
 			registry.write(
 				descriptor(home, "capture-peer", {
@@ -916,46 +961,16 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 				registry,
 				channel,
 			);
-			daemon.tick();
+			await daemon.tick();
 			assertThat(unreadBodies(channel, "anomaly-watcher").length === 0, "anomaly watcher captured healthy fire");
-			const alwaysFirst = unreadBodies(channel, "always-watcher")[0];
-			// s096 task 2.5 — SPLIT, not flipped (prime's ruling, plan 096 OQ-1).
-			// (a) The surviving intent: always-mode delivers a notice for every fire.
-			//     Passes before and after the fix.
 			assertThat(
-				alwaysFirst !== undefined && alwaysFirst.startsWith("watchdog "),
-				"always mode missed the fire notice",
-			);
-			// (b) The distinction this proof could not previously make. The FIRST
-			//     daemon tick has no response outstanding, so it examined nothing —
-			//     and it asserted `watchdog responsive:`, i.e. it certified health on
-			//     the exact no-evidence fire pij#161 is about. Fails against the
-			//     pre-fix build for the opposite reason.
-			assertThat(
-				alwaysFirst !== undefined && alwaysFirst.startsWith("watchdog unknown:"),
-				"always mode graded a no-evidence fire as healthy",
-			);
-			const alwaysPath = pointerFromNotice(alwaysFirst);
-			assertThat(
-				alwaysPath.startsWith(join(home, "always-watcher", "watchdog-captures")),
-				"always pointer escaped watcher capture directory",
-			);
-			assertThat(existsSync(alwaysPath), "always capture pointer file missing");
-			const alwaysCapture = readFileSync(alwaysPath, "utf8");
-			const alwaysInline = inlineCaptureFromNotice(alwaysFirst);
-			assertCaptureContent(
-				"healthy always-mode",
-				alwaysCapture,
-				healthySource,
-				alwaysInline,
-				MAX_CAPTURE_LINES,
-				MAX_CAPTURE_BYTES,
-				orderedTailMarkers,
+				unreadBodies(channel, "always-watcher").length === 0,
+				"always watcher received an unknown/no-evidence verdict",
 			);
 
 			sleepSync(25);
 			nowMs = 200;
-			daemon.tick();
+			await daemon.tick();
 			const anomalySource = pane.capture();
 			assertThat(
 				orderedTailMarkers.every((marker) => anomalySource.includes(marker)),
@@ -963,6 +978,11 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 			);
 			const anomalyNotice = unreadBodies(channel, "anomaly-watcher")[0];
 			assertThat(anomalyNotice !== undefined && anomalyNotice.startsWith("watchdog suspect:"), "anomaly capture missing");
+			const alwaysNotice = unreadBodies(channel, "always-watcher")[0];
+			assertThat(
+				alwaysNotice !== undefined && alwaysNotice.startsWith("watchdog suspect:"),
+				"always mode missed the evidence-backed fire notice",
+			);
 			const anomalyPath = pointerFromNotice(anomalyNotice);
 			const anomalyCapture = readFileSync(anomalyPath, "utf8");
 			const anomalyInline = inlineCaptureFromNotice(anomalyNotice);
@@ -977,6 +997,23 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 				DEFAULT_CAPTURE_BYTES,
 				orderedTailMarkers,
 			);
+			const alwaysPath = pointerFromNotice(alwaysNotice);
+			assertThat(
+				alwaysPath.startsWith(join(home, "always-watcher", "watchdog-captures")),
+				"always pointer escaped watcher capture directory",
+			);
+			assertThat(existsSync(alwaysPath), "always capture pointer file missing");
+			const alwaysCapture = readFileSync(alwaysPath, "utf8");
+			const alwaysInline = inlineCaptureFromNotice(alwaysNotice);
+			assertCaptureContent(
+				"evidence-backed always-mode",
+				alwaysCapture,
+				anomalySource,
+				alwaysInline,
+				MAX_CAPTURE_LINES,
+				MAX_CAPTURE_BYTES,
+				orderedTailMarkers,
+			);
 			daemon.dispose();
 			return {
 				isolatedHome: HOME_PATTERN,
@@ -986,7 +1023,8 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 				anomalyBytes: Buffer.byteLength(anomalyCapture, "utf8"),
 				anomalyInlineHead: anomalyInline,
 				defaultCaps: { lines: DEFAULT_CAPTURE_LINES, bytes: DEFAULT_CAPTURE_BYTES },
-				alwaysHealthyNotice: true,
+				alwaysUnknownNotices: 0,
+				alwaysEvidenceBackedNotice: true,
 				alwaysPointer: alwaysPath.replace(home, "<PIJ_HOME>"),
 				hardCapLines: lineCount(alwaysCapture),
 				hardCapBytes: Buffer.byteLength(alwaysCapture, "utf8"),
@@ -999,8 +1037,8 @@ function runBoundedCapture(): Readonly<Record<string, unknown>> {
 	});
 }
 
-function runSpawnExemption(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("exempt", (home) => {
+async function runSpawnExemption(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("exempt", async (home) => {
 		const parsed = parseSpawnArgs(["--harness", "pi", "--no-watchdog"]);
 		assertThat(parsed.ok && parsed.value.noWatchdog === true, "spawn flag did not parse");
 		const command = buildSpawnCommand({
@@ -1012,7 +1050,7 @@ function runSpawnExemption(): Readonly<Record<string, unknown>> {
 		});
 		assertThat(command.env.PIJ_NO_WATCHDOG === "1", "spawn flag did not reach child environment");
 		const registry = new FsRegistry(home);
-		const channel = new FsChannel(home);
+		const channel = openChannel(home);
 		const store = new FsWatchdogStore(home);
 		let nowMs = Date.now();
 		proofSession(
@@ -1036,7 +1074,7 @@ function runSpawnExemption(): Readonly<Record<string, unknown>> {
 			registry,
 			channel,
 		);
-		daemon.tick();
+		await daemon.tick();
 		const watchdogTurns = unreadBodies(channel, "exempt-child").filter((body) =>
 			body.startsWith("[pij watchdog"),
 		);
@@ -1064,11 +1102,11 @@ function runSpawnExemption(): Readonly<Record<string, unknown>> {
 	});
 }
 
-function runDeliverySplit(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("delivery", (home) =>
-		withScratchPane("delivery", (pane) => {
+async function runDeliverySplit(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("delivery", async (home) =>
+		withScratchPane("delivery", async (pane) => {
 			const registry = new FsRegistry(home);
-			const channel = new FsChannel(home);
+			const channel = openChannel(home);
 			const store = new FsWatchdogStore(home);
 			registry.write(
 				descriptor(home, "tmux-peer", {
@@ -1105,7 +1143,7 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 				registry,
 				channel,
 			);
-			daemon.tick();
+			await daemon.tick();
 			const queuedTmuxTurns = unreadBodies(channel, "tmux-peer").filter((body) =>
 				body.startsWith("[pij watchdog"),
 			);
@@ -1123,11 +1161,11 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 				consumedPiTurns === 1,
 				"pi peer first watchdog turn was not consumable",
 			);
-			daemon.tick();
+			await daemon.tick();
 			assertThat(tmuxTurns.length === 1, `tmux queued delivery count=${tmuxTurns.length}`);
 
 			for (nowMs of [2, 3]) {
-				daemon.tick();
+				await daemon.tick();
 				if (nowMs === 2) {
 					consumedPiTurns += markUnreadWatchdogTurnsRead(channel, "pi-peer");
 					assertThat(
@@ -1165,11 +1203,11 @@ function runDeliverySplit(): Readonly<Record<string, unknown>> {
 	);
 }
 
-function runSmokeComposite(): Readonly<Record<string, unknown>> {
-	return withIsolatedHome("smoke", (home) =>
-		withScratchPane("smoke", (pane) => {
+async function runSmokeComposite(): Promise<Readonly<Record<string, unknown>>> {
+	return withIsolatedHome("smoke", async (home) =>
+		withScratchPane("smoke", async (pane) => {
 			const registry = new FsRegistry(home);
-			const channel = new FsChannel(home);
+			const channel = openChannel(home);
 			const store = new FsWatchdogStore(home);
 			registry.write(descriptor(home, "smoke-owner"));
 			registry.write(
@@ -1197,27 +1235,41 @@ function runSmokeComposite(): Readonly<Record<string, unknown>> {
 				registry,
 				channel,
 			);
-			daemon.tick();
+			await daemon.tick();
 			assertThat(turns.length === 0, "smoke watchdog bypassed the durable channel");
-			assertThat(
-				unreadBodies(channel, "smoke-peer").some((body) => body.startsWith("[pij watchdog #1")),
-				"smoke first fire was not queued",
+			const firstBody = unreadBodies(channel, "smoke-peer").find((body) =>
+				body.startsWith("[pij watchdog #1"),
 			);
-			daemon.tick();
+			assertThat(firstBody !== undefined, "smoke first fire was not queued");
+			assertThat(firstBody.includes("pij report state done"), "smoke durable body lost done guidance");
+			assertThat(!firstBody.includes("pij watchdog pause"), "smoke retired pause command returned");
+			assertThat(!firstBody.includes("If done, pause me"), "smoke retired pause etiquette returned");
+			await daemon.tick();
 			assertThat(turns.length === 1, "smoke queued first fire missing");
-			const firstTurn = turns[0] ?? "";
-			assertThat(firstTurn.includes("pij report state done"), "smoke done report command missing");
-			assertThat(!firstTurn.includes("pij watchdog pause"), "smoke retired pause command returned");
-			assertThat(!firstTurn.includes("If done, pause me"), "smoke retired pause etiquette returned");
+			assertThat(turns[0] === WATCHDOG_POINTER_LINE, "smoke first delivery was not the pointer line");
+			assertThat(
+				markUnreadWatchdogTurnsRead(channel, "smoke-peer") === 1,
+				"smoke first watchdog turn was not consumable",
+			);
 			requireCli(home, ["watchdog", "pause", "smoke-peer", "--json"], "smoke-owner");
 			nowMs = 200;
-			daemon.tick();
+			await daemon.tick();
 			assertThat(turns.length === 1, "smoke pause failed");
 			requireCli(home, ["watchdog", "resume", "smoke-peer", "--json"], "smoke-owner");
-			daemon.tick();
+			await daemon.tick();
 			assertThat(turns.length === 1, "smoke resumed fire bypassed the durable channel");
-			daemon.tick();
+			const resumedBody = unreadBodies(channel, "smoke-peer").find((body) =>
+				body.startsWith("[pij watchdog #2"),
+			);
+			assertThat(resumedBody !== undefined, "smoke resumed fire was not queued");
+			assertThat(resumedBody.includes("pij report state done"), "smoke resumed body lost done guidance");
+			await daemon.tick();
 			assertThat(turns.length === 2, "smoke queued resume missing");
+			assertThat(turns[1] === WATCHDOG_POINTER_LINE, "smoke resumed delivery was not the pointer line");
+			assertThat(
+				markUnreadWatchdogTurnsRead(channel, "smoke-peer") === 1,
+				"smoke resumed watchdog turn was not consumable",
+			);
 
 			// Complete the resumed watchdog turn's attributed working→idle pair
 			// before compact; the scratch `cat` pane has no harness footer that can
@@ -1226,23 +1278,23 @@ function runSmokeComposite(): Readonly<Record<string, unknown>> {
 			assertThat(afterResume !== null, "smoke peer disappeared after resume");
 			registry.write({ ...afterResume, state: "working" });
 			nowMs = 201;
-			daemon.tick();
+			await daemon.tick();
 			const afterAttributedWork = registry.read("smoke-peer");
 			assertThat(afterAttributedWork !== null, "smoke peer disappeared during attribution");
 			registry.write({ ...afterAttributedWork, state: "idle" });
 			nowMs = 202;
-			daemon.tick();
+			await daemon.tick();
 
 			requireCli(home, ["send", "smoke-peer", "--command", "compact", "--json"], "smoke-owner");
 			nowMs = 203;
-			daemon.tick();
+			await daemon.tick();
 			assertThat(store.read("smoke-peer")?.pausedBy === "compact", "smoke compact pause failed");
 			const target = registry.read("smoke-peer");
 			assertThat(target !== null, "smoke peer disappeared");
 			registry.write({ ...target, state: "working" });
 			pane.write("SMOKE REAL WORK");
 			nowMs = 204;
-			daemon.tick();
+			await daemon.tick();
 			assertThat(store.read("smoke-peer")?.pausedBy === undefined, "smoke compact resume failed");
 			const notice = unreadBodies(channel, "smoke-owner").find((body) => body.includes("capture: "));
 			assertThat(notice !== undefined, "smoke capture notice missing");
@@ -1310,7 +1362,7 @@ const SCENARIOS: readonly ScenarioDefinition[] = [
 	},
 ];
 
-function executeScenario(definition: ScenarioDefinition): ScenarioResult {
+async function executeScenario(definition: ScenarioDefinition): Promise<ScenarioResult> {
 	if (definition.requiresTmux && !TMUX_AVAILABLE) {
 		return {
 			name: definition.name,
@@ -1325,7 +1377,7 @@ function executeScenario(definition: ScenarioDefinition): ScenarioResult {
 			name: definition.name,
 			acs: definition.acs,
 			verdict: "PASS",
-			evidence: definition.run(),
+			evidence: await definition.run(),
 		};
 	} catch (error) {
 		return {
@@ -1338,7 +1390,7 @@ function executeScenario(definition: ScenarioDefinition): ScenarioResult {
 	}
 }
 
-function main(): void {
+async function main(): Promise<void> {
 	if (process.argv.includes("--list")) {
 		for (const scenario of SCENARIOS) {
 			process.stdout.write(`${scenario.acs.join(",")} ${scenario.name}\n`);
@@ -1354,7 +1406,7 @@ function main(): void {
 			);
 			return;
 		}
-		const smoke = executeScenario({
+		const smoke = await executeScenario({
 			name: "watchdog smoke",
 			acs: [],
 			requiresTmux: true,
@@ -1367,7 +1419,7 @@ function main(): void {
 
 	const results: ScenarioResult[] = [];
 	for (const scenario of SCENARIOS) {
-		const result = executeScenario(scenario);
+		const result = await executeScenario(scenario);
 		results.push(result);
 		if (result.verdict === "FAIL") break;
 	}
@@ -1411,4 +1463,4 @@ function main(): void {
 	if (anyFail) process.exitCode = 1;
 }
 
-main();
+await main();
