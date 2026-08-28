@@ -82,3 +82,6 @@ The in-process Telegram bridge (item 29, live since restart #5 at 20:53Z) writes
 
 ## Amendment 00:5xZ — §2
 PR #28 item 16 (creator notices route to the current parent, liveness-aware) merged → main fecf633, checkout ff'd; not live until restart #6 (which now carries 15 + 16 + 24 + 29b-T001).
+
+## Amendment 01:2xZ — §2/§3
+PR #29 (15-FX, test-only) merged → main a23fcd7. New known gap (item 32, s391 after 31): the production daemon runs under the `npx tsx` relay; a signal to the wrapper SIGKILLs the daemon and leaks the spine locks (mitigated by item 15's reclaim; `pij daemon stop` is safe). Harness flake `pij-skill-check.test.ts` 1/5 under parallelism → 12-FX (s392).
