@@ -1,4 +1,4 @@
-# pij v0.2.0 — release notes (DRAFT, pending Vaughan's §7 decisions; not tagged)
+# pij v0.2.0 — release notes (DRAFT; Vaughan ruled 02:2xZ Aug 28: item 30 is pre-tag; §7 decisions 2–6 open; not tagged)
 Source sha: TBD (the sha restart #6 runs). Gates on that sha: full vitest, `just typecheck`, `just pij-skill-check`, cold review per PR, live proofs per harness kind + Telegram. **GitHub Actions has never run in this repo; these gates are local.**
 
 ## Headline

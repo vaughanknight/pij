@@ -88,3 +88,6 @@ PR #29 (15-FX, test-only) merged → main a23fcd7. New known gap (item 32, s391 
 
 ## Amendment 01:5xZ — §2/§6
 PR #30 item 29b-T001 (bridge-restart notice via pij-telegram watchers; deps extracted with the store path pinned; call-site sensors) merged → main ae7356b, checkout ff'd. Restart #6 now gated on item 24 alone (log-sink fold: B1 daemon-crash guard, B2 production-path sensor, W3). Kingfisher will watch pij-telegram after restart #6.
+
+## Amendment 02:2xZ — §7 decision 1 answered
+Vaughan (Telegram, verbatim "Yes"): item 30 must land before the tag. Sequence: item-24 PR → item 30 dispatched immediately → one restart carrying both if 30 is within ~1 h, else two → RC tag after the restart that carries 30. Decisions 2–6 open.
