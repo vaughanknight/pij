@@ -4,7 +4,8 @@
 # line budgets · CLI-verb coverage · duplicated-prose scope · prime payload integrity
 # and portability · stream-orchestrator journey and worktree lifecycle.
 set -u
-cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REPO_ROOT=${PIJ_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
+cd "$REPO_ROOT" || exit 1
 SKILL=${PIJ_SKILL_ROOT:-skills/pij}
 FAIL=0
 err() { echo "✗ $1"; FAIL=1; }

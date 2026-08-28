@@ -1,28 +1,52 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { dirname, join, resolve } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const SCRIPT = join(ROOT, "harness", "scripts", "pij-skill-check.sh");
 const SOURCE_SKILL = join(ROOT, "skills", "pij");
+const REPO_FIXTURE_PATHS = [
+	".pi/packages.yaml",
+	"docs/how/pij-prime.md",
+	"docs/how/pij-team-scaffold.md",
+	"docs/domains/pij-skill/domain.md",
+	"docs/plans/035-o-prime-routing-skill/vendored",
+] as const;
 
 let fixtureRoot: string;
+let fixtureRepo: string;
 let fixtureSkill: string;
 let orchestratorPath: string;
+let primeGuidePath: string;
+let canonicalOrchestrator: string;
+let canonicalPrimeGuide: string;
 
-beforeEach(() => {
+beforeAll(() => {
 	fixtureRoot = mkdtempSync(join(tmpdir(), "pij-skill-check-"));
-	fixtureSkill = join(fixtureRoot, "nested", "skills", "pij");
+	fixtureRepo = join(fixtureRoot, "repo");
+	fixtureSkill = join(fixtureRepo, "skills", "pij");
 	cpSync(SOURCE_SKILL, fixtureSkill, { recursive: true });
-	const linkedGuide = join(fixtureRoot, "nested", "docs", "how", "pij-team-scaffold.md");
-	mkdirSync(resolve(linkedGuide, ".."), { recursive: true });
-	cpSync(join(ROOT, "docs", "how", "pij-team-scaffold.md"), linkedGuide);
+	for (const relativePath of REPO_FIXTURE_PATHS) {
+		const destination = join(fixtureRepo, relativePath);
+		mkdirSync(dirname(destination), { recursive: true });
+		cpSync(join(ROOT, relativePath), destination, { recursive: true });
+	}
 	orchestratorPath = join(fixtureSkill, "references", "prime", "orchestrator.md");
+	primeGuidePath = join(fixtureRepo, "docs", "how", "pij-prime.md");
+	canonicalOrchestrator = readFileSync(orchestratorPath, "utf8");
+	canonicalPrimeGuide = readFileSync(primeGuidePath, "utf8");
 });
 
-afterEach(() => {
+beforeEach(() => {
+	// One isolated snapshot per file avoids ten recursive reads of the shared skill tree
+	// under full-suite parallelism; restore only the fixtures these tests mutate.
+	writeFileSync(orchestratorPath, canonicalOrchestrator);
+	writeFileSync(primeGuidePath, canonicalPrimeGuide);
+});
+
+afterAll(() => {
 	rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
@@ -34,8 +58,12 @@ function editOrchestrator(from: string, to: string): void {
 
 function runCheck(): { status: number | null; output: string } {
 	const result = spawnSync("bash", [SCRIPT], {
-		cwd: ROOT,
-		env: { ...process.env, PIJ_SKILL_ROOT: fixtureSkill },
+		cwd: fixtureRepo,
+		env: {
+			...process.env,
+			PIJ_REPO_ROOT: fixtureRepo,
+			PIJ_SKILL_ROOT: fixtureSkill,
+		},
 		encoding: "utf8",
 	});
 	return {
@@ -45,6 +73,18 @@ function runCheck(): { status: number | null; output: string } {
 }
 
 describe("pij-skill-check order assertions", () => {
+	it("reads repository-level evidence only from the isolated snapshot", () => {
+		writeFileSync(
+			primeGuidePath,
+			canonicalPrimeGuide.replaceAll("prime/orchestrator.md", "prime/missing.md"),
+		);
+
+		const result = runCheck();
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain("prime guide: links orchestrator landing");
+	});
+
 	it("passes correct canonical order despite a backward human-preamble cross-reference", () => {
 		expect(readFileSync(orchestratorPath, "utf8")).toContain(
 			"after the human preamble checkpoint, before mutation",
