@@ -71,7 +71,7 @@
         {
           "id": "tk-717f",
           "title": "Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R6b / ac-0006",
           "done": "#done_when/tk-717f"
         },
@@ -154,7 +154,7 @@
           {
             "id": "dw-70b8",
             "assertion": "fixture corpus addressable by name, includes malformed cases; golden MECHANISM proven against captured TS `pij models --json` fixture (Q4 ruling)",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
