@@ -191,6 +191,22 @@ esac
 `,
 	);
 	chmodSync(tmux, 0o755);
+	const omp = join(BIN, "omp");
+	writeFileSync(
+		omp,
+		`#!/bin/sh
+if [ "$1" = "models" ]; then
+	if [ "\${FAKE_OMP_FAIL:-0}" = "1" ]; then
+		echo 'OMP inventory unavailable' >&2
+		exit 1
+	fi
+	printf '%s\n' '{"models":[{"provider":"github-copilot","id":"gpt-5.6-sol","selector":"github-copilot/gpt-5.6-sol","name":"GPT-5.6 Sol","contextWindow":400000},{"provider":"openrouter","id":"shared-model","selector":"openrouter/shared-model","name":"Shared","contextWindow":128000},{"provider":"sakana","id":"shared-model","selector":"sakana/shared-model","name":"Shared","contextWindow":128000}]}'
+	exit 0
+fi
+exit 0
+`,
+	);
+	chmodSync(omp, 0o755);
 	A = boot("pij-A", "parent");
 	B = boot("pij-B", "worker");
 	boot("pij-C2", "worker");

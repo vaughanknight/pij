@@ -80,6 +80,19 @@ describe("portable models source", () => {
 			expect.arrayContaining([
 				expect.objectContaining({ id: "claude-opus-5", contextWindow: 1_000_000 }),
 				expect.objectContaining({ id: "gemini-3.6-flash", contextWindow: 1_000_000 }),
+				expect.objectContaining({
+					id: "gpt-5.6-sol-fast",
+					contextWindow: 1_050_000,
+					maxTokens: 128_000,
+					thinkingLevelMap: {
+						none: "none",
+						low: "low",
+						medium: "medium",
+						high: "high",
+						xhigh: "xhigh",
+						max: "max",
+					},
+				}),
 			]),
 		);
 		assertJsonObject(sakana);

@@ -11,7 +11,10 @@ import {
 	codexSnapshot,
 	copilotSeedFromPi,
 	copilotSnapshot,
+	loadOmpModels,
+	modelsForRuntime,
 	parseModelsJson,
+	parseOmpModelsJson,
 } from "./registry.js";
 
 // Minimal pi JSON fixture covering all structural variations.
@@ -40,7 +43,7 @@ const PI_JSON = {
 };
 
 const GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
-const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
+const GPT56_IDS = ["gpt-5.6-sol", "gpt-5.6-sol-fast", "gpt-5.6-terra", "gpt-5.6-luna"];
 const PI_GPT56_JSON = {
 	providers: {
 		"github-copilot": {
@@ -51,6 +54,11 @@ const PI_GPT56_JSON = {
 					thinkingLevelMap: { xhigh: "xhigh", max: "max" },
 				},
 				{ id: "gpt-5.6-terra", reasoning: true, thinkingLevelMap: { high: "high" } },
+				{
+					id: "gpt-5.6-sol-fast",
+					reasoning: true,
+					thinkingLevelMap: { high: "high" },
+				},
 				{
 					id: "gpt-5.6-preview",
 					reasoning: true,
@@ -161,10 +169,12 @@ describe("copilotSeedFromPi", () => {
 		expect(ids).toContain("mai-code-1-flash-internal");
 		expect(ids).toContain("gpt-5.5"); // from modelOverrides
 	});
-
-	it("labels them as copilot provider", () => {
+	it("separates the Copilot runtime from its upstream provider", () => {
 		const entries = copilotSeedFromPi(PI_JSON);
-		for (const e of entries) expect(e.provider).toBe("copilot");
+		for (const entry of entries) {
+			expect(entry.provider).toBe("github-copilot");
+			expect(entry.runtime).toBe("copilot");
+		}
 	});
 
 	it("returns empty array when github-copilot section is absent", () => {
@@ -177,7 +187,8 @@ describe("copilotSeedFromPi", () => {
 		for (const id of GPT56_IDS) {
 			expect(entries.find((entry) => entry.id === id)).toMatchObject({
 				id,
-				provider: "copilot",
+				provider: "github-copilot",
+				runtime: "copilot",
 				verified: true,
 				reasoning: true,
 				levels: GPT56_LEVELS,
@@ -241,18 +252,130 @@ describe("codexSnapshot", () => {
 });
 
 describe("copilotSnapshot", () => {
-	it("advertises the gpt-5.6 trio as unverified copilot aliases", () => {
+	it("advertises the measured gpt-5.6 family as Copilot CLI ids", () => {
 		const snap = copilotSnapshot();
-		const ids = snap.map((e) => e.id);
-		for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
-			expect(ids).toContain(id);
+		const ids = snap.map((entry) => entry.id);
+		for (const id of GPT56_IDS) expect(ids).toContain(id);
+		expect(ids.some((id) => id.endsWith("-1m"))).toBe(false);
+		for (const entry of snap) {
+			expect(entry).toMatchObject({
+				provider: "github-copilot",
+				runtime: "copilot",
+				selector: entry.id,
+				contextWindow: 1_050_000,
+				reasoning: true,
+				levels: GPT56_LEVELS,
+			});
 		}
-		for (const e of snap) {
-			expect(e.provider).toBe("copilot");
-			expect(e.verified).toBe(false); // best-effort until canaried
-			expect(e.reasoning).toBe(true);
-			expect(e.levels).toEqual(GPT56_LEVELS);
+	});
+});
+
+const OMP_BASE_CONTEXTS = {
+	luna: 328_000,
+	sol: 400_000,
+	"sol-fast": 400_000,
+	terra: 400_000,
+} as const;
+
+const OMP_GPT56_JSON = {
+	models: Object.entries(OMP_BASE_CONTEXTS).flatMap(([family, contextWindow]) => {
+		const id = `gpt-5.6-${family}`;
+		return [
+			{
+				provider: "github-copilot",
+				id,
+				selector: `github-copilot/${id}`,
+				name: id,
+				contextWindow,
+				maxTokens: 128_000,
+				reasoning: false,
+			},
+			{
+				provider: "github-copilot",
+				id: `${id}-1m`,
+				selector: `github-copilot/${id}-1m`,
+				name: `${id} (1M)`,
+				contextWindow: 1_050_000,
+				maxTokens: 128_000,
+				reasoning: false,
+			},
+		];
+	}),
+};
+
+describe("parseOmpModelsJson", () => {
+	it("preserves all base and -1m selectors with distinct measured contexts", () => {
+		const entries = parseOmpModelsJson(OMP_GPT56_JSON);
+		expect(entries).toHaveLength(8);
+		for (const [family, baseContext] of Object.entries(OMP_BASE_CONTEXTS)) {
+			const id = `gpt-5.6-${family}`;
+			expect(entries.find((entry) => entry.id === id)).toMatchObject({
+				selector: `github-copilot/${id}`,
+				requestModelId: id,
+				provider: "github-copilot",
+				runtime: "omp",
+				contextWindow: baseContext,
+				levels: GPT56_LEVELS,
+			});
+			expect(entries.find((entry) => entry.id === `${id}-1m`)).toMatchObject({
+				selector: `github-copilot/${id}-1m`,
+				requestModelId: id,
+				contextWindow: 1_050_000,
+				levels: GPT56_LEVELS,
+			});
 		}
+	});
+
+	it("does not let stale overrides collapse base rows onto their -1m contexts", () => {
+		const collapsed = {
+			models: OMP_GPT56_JSON.models.map((model) => ({ ...model, contextWindow: 1_050_000 })),
+		};
+		const entries = parseOmpModelsJson(collapsed);
+		for (const [family, baseContext] of Object.entries(OMP_BASE_CONTEXTS)) {
+			expect(entries.find((entry) => entry.id === `gpt-5.6-${family}`)?.contextWindow).toBe(
+				baseContext,
+			);
+			expect(entries.find((entry) => entry.id === `gpt-5.6-${family}-1m`)?.contextWindow).toBe(
+				1_050_000,
+			);
+		}
+	});
+
+	it("rejects success-shaped empty and malformed inventories", () => {
+		expect(parseOmpModelsJson({ models: [] })).toEqual([]);
+		expect(parseOmpModelsJson({ models: "not-an-array" })).toEqual([]);
+	});
+});
+
+describe("loadOmpModels", () => {
+	it("uses the supported no-refresh command and returns parsed entries", () => {
+		const calls: Array<{ command: string; args: readonly string[] }> = [];
+		const result = loadOmpModels((command, args) => {
+			calls.push({ command, args });
+			return { status: 0, stdout: JSON.stringify(OMP_GPT56_JSON), stderr: "" };
+		});
+		expect(calls).toEqual([{ command: "omp", args: ["models", "--json", "--no-extensions"] }]);
+		expect(result).toMatchObject({ ok: true, models: expect.any(Array) });
+	});
+
+	it.each([
+		{ status: 127, stdout: "", stderr: "not found" },
+		{ status: 0, stdout: "not-json", stderr: "" },
+		{ status: 0, stdout: '{"models":[]}', stderr: "" },
+	])("fails honestly for an unavailable or incomplete inventory", (commandResult) => {
+		const result = loadOmpModels(() => commandResult);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toMatch(/OMP model inventory/i);
+	});
+});
+
+describe("modelsForRuntime", () => {
+	it("selects runtime rows without conflating their shared provider", () => {
+		const all = [...copilotSnapshot(), ...parseOmpModelsJson(OMP_GPT56_JSON)];
+		expect(modelsForRuntime(all, "copilot").every((entry) => entry.runtime === "copilot")).toBe(
+			true,
+		);
+		expect(modelsForRuntime(all, "omp").every((entry) => entry.runtime === "omp")).toBe(true);
 	});
 });
 

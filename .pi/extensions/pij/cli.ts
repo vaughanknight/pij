@@ -160,8 +160,8 @@ import {
 } from "./core/inbox.js";
 import { parseReceiptBody, receiptBody } from "./core/message.js";
 import { normalizeModelQuery } from "./core/models/match.js";
-import type { ModelEntry } from "./core/models/registry.js";
-import { loadModels } from "./core/models/registry.js";
+import type { ModelEntry, ModelRuntime } from "./core/models/registry.js";
+import { loadModelCatalog, loadModels, modelsForRuntime } from "./core/models/registry.js";
 import {
 	type BatonNotice,
 	type BatonNoticeReceipt,
@@ -419,20 +419,19 @@ FLAGS
                     and self-registers as harness:pi — so it needs NO new bind machinery.
                     omp gets --auto-approve (headless permission bypass); --branch is
                     rejected for omp (no --session-id to pin a fork). Also: PIJ_PI_BIN env.
-  --model <m>     model id for that harness:
-                    pi      -> a pi model/preset (e.g. @preset/glm-1m; pair with the
-                               session's configured provider)
+  --model <m>     selector for the target runtime:
+                    pi      -> a pi provider-qualified model/preset (e.g. @preset/glm-1m)
+                    pi+omp  -> an OMP selector (e.g. github-copilot/gpt-5.6-sol-fast-1m)
                     claude  -> sonnet | opus | haiku | claude-opus-5 | claude-fable-5 | claude-sonnet-5
-                    copilot -> gpt-5.5 | claude-sonnet-4.6 | …
+                    copilot -> gpt-5.6-sol-fast | gpt-5.6-sol | … (never OMP-only -1m aliases)
                     codex   -> gpt-5.5 | o3 | … (codex -m model id)
-                  NOTE: an unknown model is currently passed through to the harness,
-                  which may silently fall back to its default — verify with the pane
-                  footer / pij tail until spawn-time validation lands.
+                  Unknown selectors remain warn-don't-block and pass through to the runtime.
+                  Verify the effective model with the pane footer / pij tail.
   --effort <lvl>  thinking/reasoning effort: off|minimal|low|medium|high|xhigh|max
-                  (per-model — see the 'thinking' column in \`pij models\`). Translated
-                  per harness: claude/copilot \`--effort\`, codex \`-c model_reasoning_effort=\`,
-                  pi a \`:<lvl>\` suffix on the model id. Unset ⇒ the colleague's own default.
-                  Validated warn-don't-block (an unsupported level warns, never blocks).
+                  (per-model — see the 'thinking' column in [0m[1mpij models[0m). Translated
+                  per harness: claude/copilot [0m[1m--effort[0m, codex [0m[1m-c model_reasoning_effort=[0m,
+                  Pi a [0m[1m:<lvl>[0m suffix, and OMP [0m[1m--thinking <lvl>[0m. Unset keeps the runtime default.
+                  Validated warn-don't-block against the target runtime's catalog.
   --task "<t>"    first task. pi: rides PIJ_SPAWN_TASK env (finding 01). claude/copilot/
                   codex: queued to the peer's INBOX — the daemon injects it as the first
                   turn after bind (FX001-2; env alone was never read by these harnesses).
@@ -594,13 +593,14 @@ function listAllDescriptors(registry: FsRegistry): SessionDescriptor[] {
 	return descriptors;
 }
 
-function deps(): CliDeps {
+function deps(includeOmp = false): CliDeps {
 	const registry = new FsRegistry(pijHome);
 	const channel = new FsChannel(pijHome);
 	const cwd = process.cwd();
 	const repository = new GitRepositoryAdapter();
 	const commonDir = repository.gitCommonDir(cwd);
 	const repositoryRoot = commonDir === null ? undefined : dirname(commonDir);
+	const catalog = loadModelCatalog(includeOmp);
 	return {
 		registry,
 		eventLogFor: (id) => new FsEventLog(pijHome, id),
@@ -609,7 +609,8 @@ function deps(): CliDeps {
 		process: new NodeProcess(),
 		cwd,
 		pijHome,
-		models: loadModels(),
+		models: catalog.models,
+		unavailableModelRuntimes: catalog.unavailableRuntimes,
 		backgroundLauncher: new NodeBackgroundLauncher(),
 		bgJobStore: bgDataDir() === undefined ? undefined : new FsBgJobStore(bgDataDir() as string),
 		killProcessGroup: (pgid, signal) => {
@@ -2162,9 +2163,17 @@ function runSpawn(argv: readonly string[]): void {
 		process.stderr.write(`${req.code}: ${req.message}\n`);
 		process.exit(64);
 	}
-	// T006 / #3: warn (never block) on an unknown model OR an effort the chosen model
-	// doesn't support, so the caller knows before the pane opens. Both continue.
-	const known = loadModels();
+	// Validate against the runtime that will actually receive the selector.
+	const piBin =
+		req.value.harness === "pi" ? resolvePiBin(req.value.bin, process.env.PIJ_PI_BIN) : undefined;
+	const targetRuntime: ModelRuntime = piBin === "omp" ? "omp" : req.value.harness;
+	const catalog = loadModelCatalog(targetRuntime === "omp");
+	const known = modelsForRuntime(catalog.models, targetRuntime);
+	if (catalog.unavailableRuntimes.includes(targetRuntime)) {
+		process.stderr.write(
+			`warning: model inventory for runtime '${targetRuntime}' is unavailable; spawn continues without model validation\n`,
+		);
+	}
 	const spawnWarn = buildSpawnWarning(req.value.model, known);
 	if (spawnWarn) process.stderr.write(`${spawnWarn}\n`);
 	const effortWarn = buildEffortWarning(req.value.effort, req.value.model, known);
@@ -2228,10 +2237,7 @@ function runSpawn(argv: readonly string[]): void {
 			requestedAt,
 			deadlineAt: spawnExpectationDeadline(requestedAt),
 		});
-		// Which pi-family binary to exec: explicit --bin wins, else PIJ_PI_BIN env,
-		// else "pi" (default byte-unchanged). omp = oh-my-pi, which self-registers as
-		// harness:"pi" exactly like pi — only the binary + its --auto-approve differ.
-		const piBin = resolvePiBin(req.value.bin, process.env.PIJ_PI_BIN);
+		// `piBin` was resolved before validation so catalog choice and launched binary cannot drift.
 		const spawnCmdPi = buildSpawnCommand({
 			spawnId,
 			announceTo,
@@ -3642,15 +3648,20 @@ function onPath(cmd: string): boolean {
 	}
 }
 
-/** Model id → harness via the pi models registry provider + PROVIDER_HARNESS_MAP. */
+/** Model id → agent harness, preferring a non-Pi runtime row for shared providers. */
 function harnessForModel(
 	models: readonly ModelEntry[],
 	model: string | undefined,
 ): string | undefined {
 	if (!model) return undefined;
 	const norm = normalizeModelQuery(model);
-	const entry = models.find((e) => normalizeModelQuery(e.id) === norm);
-	return entry ? PROVIDER_HARNESS_MAP[entry.provider] : undefined;
+	const matching = models.filter((entry) =>
+		[entry.id, entry.selector]
+			.filter((candidate): candidate is string => candidate !== undefined)
+			.some((candidate) => normalizeModelQuery(candidate) === norm),
+	);
+	const entry = matching.find((candidate) => candidate.runtime !== "pi") ?? matching[0];
+	return entry?.runtime ?? (entry ? PROVIDER_HARNESS_MAP[entry.provider] : undefined);
 }
 
 /** Build a harness adapter, or a structured harness error. `PIJ_AGENT_FAKE=1` is a
@@ -4516,7 +4527,10 @@ function main(): void {
 			return; // tailTranscript owns output (and the follow loop)
 		}
 	}
-	const d = deps();
+	const includeOmp =
+		parsed.value.verb === "models" &&
+		(parsed.value.harnessFilter === undefined || parsed.value.harnessFilter === "omp");
+	const d = deps(includeOmp);
 	const res = dispatch(parsed.value, d);
 	write(res);
 	emitStatusNudge(parsed.value.verb, parsed.value.json === true, d);

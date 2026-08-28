@@ -12,11 +12,12 @@ export type ValidationResult =
 
 function findKnownModel(model: string, known: readonly ModelEntry[]): ModelEntry | undefined {
 	const norm = normalizeModelQuery(model);
-	return known.find(
-		(entry) =>
-			normalizeModelQuery(entry.id) === norm ||
-			normalizeModelQuery(`${entry.provider}/${entry.id}`) === norm,
-	);
+	return known.find((entry) => {
+		const candidates = entry.selector
+			? [entry.id, entry.selector]
+			: [entry.id, `${entry.provider}/${entry.id}`];
+		return candidates.some((candidate) => normalizeModelQuery(candidate) === norm);
+	});
 }
 
 /**

@@ -225,6 +225,8 @@ export interface CliDeps {
 	readonly killProcessGroup?: (pgid: number, signal: string) => boolean;
 	/** Model entries loaded by the bin (for pij models verb). Empty when absent. */
 	readonly models?: readonly ModelEntry[];
+	/** Runtime inventories that could not be loaded; prevents success-shaped empty output. */
+	readonly unavailableModelRuntimes?: readonly string[];
 	/** Exact ambient native-identity reverse lookup, supplied by the bin. */
 	readonly resolveAmbientSelf?: () => Result<SessionId | undefined>;
 	/** Repository identity is needed only by bare `tree`; optional for legacy callers. */
@@ -2115,9 +2117,7 @@ export function createOrchestrationDesignationAudit(
 }
 
 // ─── models helpers (pure) ──────────────────────────────────────────────────
-/** Map a pi provider key (or harness name) to a pij harness. Exported so the
- *  `pij agent` CLI surface can derive a pack's HARNESS column from its model's
- *  provider without re-deriving the mapping (plan 029 T002 / KF-03). */
+/** Legacy provider→harness mapping, retained for agent packs and injected fixtures. */
 export const PROVIDER_HARNESS_MAP: Record<string, string> = {
 	"github-copilot": "copilot",
 	copilot: "copilot",
@@ -2126,9 +2126,15 @@ export const PROVIDER_HARNESS_MAP: Record<string, string> = {
 	pi: "pi",
 };
 
-function providerMatchesHarness(provider: string, harness: string): boolean {
-	const mapped = PROVIDER_HARNESS_MAP[provider];
-	return mapped === harness || provider === harness;
+function modelMatchesRuntime(entry: ModelEntry, runtime: string): boolean {
+	if (entry.runtime !== undefined) return entry.runtime === runtime;
+	if (runtime === "pi") {
+		return (
+			entry.provider !== "copilot" && entry.provider !== "claude" && entry.provider !== "codex"
+		);
+	}
+	const mapped = PROVIDER_HARNESS_MAP[entry.provider];
+	return mapped === runtime || entry.provider === runtime;
 }
 
 type SendLiveness = "active" | "stale" | "dead" | "dissolved";
@@ -2658,19 +2664,25 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 			);
 		}
 		case "models": {
-			let entries = deps.models ?? [];
-			// pi proxies ALL providers — applying a provider filter would return nothing
-			// because real provider keys are github-copilot, sakana, openrouter, etc.
 			const harnessFilter = cmd.harnessFilter;
-			if (harnessFilter && harnessFilter !== "pi") {
-				entries = entries.filter((e) => providerMatchesHarness(e.provider, harnessFilter));
+			if (harnessFilter && deps.unavailableModelRuntimes?.includes(harnessFilter)) {
+				return fail(
+					"E-NOREG",
+					`model inventory for runtime '${harnessFilter}' is unavailable`,
+					cmd.json,
+				);
+			}
+			let entries = deps.models ?? [];
+			if (harnessFilter) {
+				entries = entries.filter((entry) => modelMatchesRuntime(entry, harnessFilter));
 			}
 			if (cmd.filter) {
-				// Fuzzy filter: keep entries whose normalised id or name contains the query,
-				// or match via closestModel.
 				const q = cmd.filter.toLowerCase();
 				const filtered = entries.filter(
-					(e) => e.id.toLowerCase().includes(q) || e.name.toLowerCase().includes(q),
+					(entry) =>
+						entry.id.toLowerCase().includes(q) ||
+						entry.name.toLowerCase().includes(q) ||
+						entry.selector?.toLowerCase().includes(q),
 				);
 				if (filtered.length > 0) {
 					entries = filtered;
@@ -2685,15 +2697,17 @@ export function dispatch(cmd: ParsedCommand, deps: CliDeps): CliResult {
 				);
 			}
 			if (cmd.json) return okOut(JSON.stringify(entries));
-			const lines = entries.map((e) => {
-				const tag = e.verified ? "" : " *";
-				// `thinking` column (#1): the canonical effort levels the model honors,
-				// or `yes`/`—` when only the reasoning flag (not the level set) is known.
-				const thinking = e.levels?.length ? e.levels.join("/") : e.reasoning ? "yes" : "—";
-				return `${pad(e.id, 36)} ${pad(e.name, 40)} ${pad(e.provider, 10)} ${thinking}${tag}`;
+			const lines = entries.map((entry) => {
+				const tag = entry.verified ? "" : " *";
+				const thinking = entry.levels?.length
+					? entry.levels.join("/")
+					: entry.reasoning
+						? "yes"
+						: "—";
+				return `${pad(entry.selector ?? entry.id, 48)} ${pad(entry.name, 38)} ${pad(entry.runtime ?? "—", 8)} ${pad(entry.provider, 16)} ${thinking}${tag}`;
 			});
-			const header = `${pad("id", 36)} ${pad("name", 40)} ${pad("provider", 10)} thinking`;
-			const unverNote = entries.some((e) => !e.verified)
+			const header = `${pad("selector", 48)} ${pad("name", 38)} ${pad("runtime", 8)} ${pad("provider", 16)} thinking`;
+			const unverNote = entries.some((entry) => !entry.verified)
 				? "\n* unverified (best-effort alias list — not confirmed by a live registry)"
 				: "";
 			return okOut([header, ...lines, `\n${entries.length} model(s)${unverNote}`].join("\n"));

@@ -9,29 +9,32 @@
 // `pij agent` CLI surface can reuse the exact same registry without importing the
 // bin). All parsing stays pure and separately testable.
 
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+export type ModelRuntime = "pi" | "omp" | "copilot" | "claude" | "codex";
+
 export interface ModelEntry {
+	/** Runtime-local model id. OMP `-1m` aliases intentionally remain distinct ids. */
 	readonly id: string;
 	readonly name: string;
-	/** Source provider key or harness name. */
+	/** Upstream provider, separate from the runtime that accepts the selector. */
 	readonly provider: string;
+	/** Target runtime/harness for this row. Optional only for legacy injected test fixtures. */
+	readonly runtime?: ModelRuntime;
+	/** Exact selector a caller should pass to the target runtime. */
+	readonly selector?: string;
+	/** Upstream request id when a runtime selector is an alias (for example OMP `-1m`). */
+	readonly requestModelId?: string;
 	/** false = best-effort alias list (claude/codex) — not confirmed by a live registry. */
 	readonly verified: boolean;
-	/** Does the model support a thinking/reasoning effort level? (#1 — from pi's
-	 *  per-model `reasoning` flag, or a curated codex table). Optional so existing
-	 *  ModelEntry literals stay valid; readers default to `false`. */
+	/** Does the model support a thinking/reasoning effort level? */
 	readonly reasoning?: boolean;
-	/** The canonical effort levels this model honors — a subset of
-	 *  `off · minimal · low · medium · high · xhigh · max` (#1). Derived from the
-	 *  NON-NULL keys of pi's `thinkingLevelMap` (null = unsupported), or a curated
-	 *  codex table. Empty / absent = no level data (cannot validate `--effort`). */
+	/** Canonical effort levels honored by this runtime selector. */
 	readonly levels?: readonly string[];
-	/** Context-window capacity in tokens (plan 054 P2 T007, AC-09) — read off
-	 *  pi's per-model `contextWindow`. Absent when the source has none: the
-	 *  contextMax join reports honest absence, never a guess. */
+	/** Context-window capacity in tokens; absent when the source has none. */
 	readonly contextWindow?: number;
 }
 
@@ -73,10 +76,34 @@ function levelsFromThinkingMap(map: unknown): string[] {
 }
 
 const COPILOT_GPT56_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"];
-const COPILOT_GPT56_IDS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+const COPILOT_GPT56_IDS = new Set([
+	"gpt-5.6-sol",
+	"gpt-5.6-sol-fast",
+	"gpt-5.6-terra",
+	"gpt-5.6-luna",
+]);
 
 function isCopilotGpt56(id: string): boolean {
-	return COPILOT_GPT56_IDS.has(id);
+	return COPILOT_GPT56_IDS.has(id.replace(/-1m$/, ""));
+}
+
+const OMP_GPT56_CONTEXTS: Readonly<Record<string, number>> = {
+	"gpt-5.6-luna": 328_000,
+	"gpt-5.6-sol": 400_000,
+	"gpt-5.6-sol-fast": 400_000,
+	"gpt-5.6-terra": 400_000,
+	"gpt-5.6-luna-1m": 1_050_000,
+	"gpt-5.6-sol-1m": 1_050_000,
+	"gpt-5.6-sol-fast-1m": 1_050_000,
+	"gpt-5.6-terra-1m": 1_050_000,
+};
+
+function ompContextWindow(provider: string, id: string, reported: unknown): number | undefined {
+	if (provider === "github-copilot") {
+		const measured = OMP_GPT56_CONTEXTS[id];
+		if (measured !== undefined) return measured;
+	}
+	return usableContextWindow(reported);
 }
 
 function piModelLevels(provider: string, id: string, thinkingLevelMap: unknown): string[] {
@@ -112,6 +139,9 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 					id,
 					name: typeof m.name === "string" ? m.name : id,
 					provider,
+					runtime: "pi",
+					selector: `${provider}/${id}`,
+					requestModelId: id,
 					verified: true,
 					reasoning:
 						isCopilotGpt56(id) && provider === "github-copilot" ? true : m.reasoning === true,
@@ -130,6 +160,9 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 					id,
 					name,
 					provider,
+					runtime: "pi",
+					selector: `${provider}/${id}`,
+					requestModelId: id,
 					verified: true,
 					reasoning:
 						isCopilotGpt56(id) && provider === "github-copilot" ? true : ov.reasoning === true,
@@ -142,11 +175,7 @@ export function parseModelsJson(raw: unknown): ModelEntry[] {
 	return entries;
 }
 
-/**
- * Seed copilot models from pi's `github-copilot` provider section. Returns the
- * same structural entries but with `provider: "copilot"` so callers can filter
- * by harness name cleanly.
- */
+/** Seed Copilot CLI models from pi's `github-copilot` provider section. */
 export function copilotSeedFromPi(raw: unknown): ModelEntry[] {
 	if (!isObj(raw)) return [];
 	const json = raw as PiModelsJson;
@@ -154,32 +183,38 @@ export function copilotSeedFromPi(raw: unknown): ModelEntry[] {
 	const section = (json.providers as Record<string, unknown>)["github-copilot"];
 	if (!isObj(section)) return [];
 	const parsed = parseModelsJson({ providers: { "github-copilot": section } });
-	return parsed.map((e) => ({ ...e, provider: "copilot" }));
+	return parsed.map((entry) => ({
+		...entry,
+		provider: "github-copilot",
+		runtime: "copilot",
+		selector: entry.id,
+		requestModelId: entry.id,
+		...(isCopilotGpt56(entry.id) ? { contextWindow: 1_050_000 } : {}),
+	}));
 }
 
 /** Known Claude CLI model aliases (best-effort, unverified — not from a live API). */
 export function claudeAliases(): ModelEntry[] {
-	return [
-		{ id: "claude-opus-5", name: "Claude Opus 5", provider: "claude", verified: false },
-		{ id: "claude-fable-5", name: "Claude Fable 5", provider: "claude", verified: false },
-		{ id: "claude-sonnet-5", name: "Claude Sonnet 5", provider: "claude", verified: false },
-		{ id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: "claude", verified: false },
-		{ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "claude", verified: false },
-		{
-			id: "claude-haiku-4-5-20251001",
-			name: "Claude Haiku 4.5",
-			provider: "claude",
-			verified: false,
-		},
-		{ id: "claude-opus-4-5", name: "Claude Opus 4.5", provider: "claude", verified: false },
-		{ id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", provider: "claude", verified: false },
-		{
-			id: "claude-haiku-4-5",
-			name: "Claude Haiku 4.5 (legacy)",
-			provider: "claude",
-			verified: false,
-		},
-	];
+	const aliases = [
+		["claude-opus-5", "Claude Opus 5"],
+		["claude-fable-5", "Claude Fable 5"],
+		["claude-sonnet-5", "Claude Sonnet 5"],
+		["claude-opus-4-8", "Claude Opus 4.8"],
+		["claude-sonnet-4-6", "Claude Sonnet 4.6"],
+		["claude-haiku-4-5-20251001", "Claude Haiku 4.5"],
+		["claude-opus-4-5", "Claude Opus 4.5"],
+		["claude-sonnet-4-5", "Claude Sonnet 4.5"],
+		["claude-haiku-4-5", "Claude Haiku 4.5 (legacy)"],
+	] as const;
+	return aliases.map(([id, name]) => ({
+		id,
+		name,
+		provider: "claude",
+		runtime: "claude",
+		selector: id,
+		requestModelId: id,
+		verified: false,
+	}));
 }
 
 // ── codex thinking levels (#2 — curated; not CLI-discoverable) ────────────────
@@ -203,6 +238,9 @@ function codexEntry(id: string, name?: string): ModelEntry {
 		id,
 		name: name ?? id,
 		provider: "codex",
+		runtime: "codex",
+		selector: id,
+		requestModelId: id,
 		verified: false,
 		reasoning: levels.length > 0,
 		levels,
@@ -226,27 +264,156 @@ export function codexSnapshot(): ModelEntry[] {
 	];
 }
 
-/** Build a copilot ModelEntry (best-effort/unverified alias). Copilot's CLI takes a
- *  freeform `--model` and does NOT enumerate, so newer ids won't be in pi's models.json
- *  seed yet. The GPT-5.6 trio carries curated capability data independently of whether
- *  the alias has been verified through a live registry. */
+/** Build a measured Copilot CLI fallback row. `-1m` aliases are deliberately absent. */
 function copilotEntry(id: string, name?: string): ModelEntry {
 	const levels = isCopilotGpt56(id) ? [...COPILOT_GPT56_LEVELS] : [];
 	return {
 		id,
 		name: name ?? id,
-		provider: "copilot",
+		provider: "github-copilot",
+		runtime: "copilot",
+		selector: id,
+		requestModelId: id,
 		verified: false,
 		reasoning: levels.length > 0,
 		levels,
+		...(isCopilotGpt56(id) ? { contextWindow: 1_050_000 } : {}),
 	};
 }
 
-/** Thin fallback of newer copilot model ids not yet in pi's `models.json` seed
- *  (best-effort, unverified — e.g. the gpt-5.6 trio). Deduped against the pi seed in
- *  {@link loadModels}, so a later VERIFIED pi entry always wins over these aliases. */
+/** Actual Copilot CLI ids measured from entitlement/API; never OMP client aliases. */
 export function copilotSnapshot(): ModelEntry[] {
-	return [copilotEntry("gpt-5.6-sol"), copilotEntry("gpt-5.6-terra"), copilotEntry("gpt-5.6-luna")];
+	return [
+		copilotEntry("gpt-5.6-sol"),
+		copilotEntry("gpt-5.6-sol-fast"),
+		copilotEntry("gpt-5.6-terra"),
+		copilotEntry("gpt-5.6-luna"),
+	];
+}
+
+interface OmpModel {
+	readonly id?: unknown;
+	readonly name?: unknown;
+	readonly provider?: unknown;
+	readonly selector?: unknown;
+	readonly contextWindow?: unknown;
+	readonly reasoning?: unknown;
+	readonly thinking?: unknown;
+}
+
+interface OmpModelsJson {
+	readonly models?: ReadonlyArray<OmpModel>;
+}
+
+/** Parse the supported `omp models --json --no-extensions` inventory shape. */
+export function parseOmpModelsJson(raw: unknown): ModelEntry[] {
+	if (!isObj(raw)) return [];
+	const json = raw as OmpModelsJson;
+	if (!Array.isArray(json.models)) return [];
+	const entries: ModelEntry[] = [];
+	for (const model of json.models) {
+		if (!isObj(model) || typeof model.id !== "string" || typeof model.provider !== "string") {
+			continue;
+		}
+		const id = model.id;
+		const provider = model.provider;
+		const selector =
+			typeof model.selector === "string" && model.selector !== ""
+				? model.selector
+				: `${provider}/${id}`;
+		const requestModelId = provider === "github-copilot" ? id.replace(/-1m$/, "") : id;
+		const levels =
+			provider === "github-copilot" && isCopilotGpt56(requestModelId)
+				? [...COPILOT_GPT56_LEVELS]
+				: levelsFromThinkingMap(model.thinking);
+		const window = ompContextWindow(provider, id, model.contextWindow);
+		entries.push({
+			id,
+			name: typeof model.name === "string" ? model.name : id,
+			provider,
+			runtime: "omp",
+			selector,
+			requestModelId,
+			verified: true,
+			reasoning: levels.length > 0 || model.reasoning === true,
+			levels,
+			...(window === undefined ? {} : { contextWindow: window }),
+		});
+	}
+	return entries;
+}
+
+export interface OmpCommandResult {
+	readonly status: number | null;
+	readonly stdout: string;
+	readonly stderr: string;
+}
+
+export type OmpCommandRunner = (command: string, args: readonly string[]) => OmpCommandResult;
+
+export type OmpModelsResult =
+	| { readonly ok: true; readonly models: readonly ModelEntry[] }
+	| { readonly ok: false; readonly error: string };
+
+function runOmpCommand(command: string, args: readonly string[]): OmpCommandResult {
+	const result = spawnSync(command, [...args], { encoding: "utf8", stdio: "pipe" });
+	return {
+		status: result.status,
+		stdout: result.stdout ?? "",
+		stderr: result.error?.message ?? result.stderr ?? "",
+	};
+}
+
+/** Load OMP's effective local inventory without refreshing or reading its cache internals. */
+export function loadOmpModels(run: OmpCommandRunner = runOmpCommand): OmpModelsResult {
+	const result = run("omp", ["models", "--json", "--no-extensions"]);
+	if (result.status !== 0) {
+		return {
+			ok: false,
+			error: `OMP model inventory unavailable (${result.stderr.trim() || `exit ${String(result.status)}`})`,
+		};
+	}
+	let raw: unknown;
+	try {
+		raw = JSON.parse(result.stdout);
+	} catch (error: unknown) {
+		const detail = error instanceof Error ? error.message : String(error);
+		return { ok: false, error: `OMP model inventory is not valid JSON (${detail})` };
+	}
+	const models = parseOmpModelsJson(raw);
+	if (models.length === 0) {
+		return { ok: false, error: "OMP model inventory contained no usable models" };
+	}
+	return { ok: true, models };
+}
+
+function legacyRuntime(entry: ModelEntry): ModelRuntime | undefined {
+	if (entry.provider === "copilot" || entry.provider === "github-copilot") return "copilot";
+	if (entry.provider === "claude" || entry.provider === "codex") return entry.provider;
+	return undefined;
+}
+
+/** Select rows for the target runtime, falling back only for legacy injected fixtures. */
+export function modelsForRuntime(
+	models: readonly ModelEntry[],
+	runtime: ModelRuntime,
+): ModelEntry[] {
+	return models.filter((entry) => (entry.runtime ?? legacyRuntime(entry)) === runtime);
+}
+
+export interface LoadedModelCatalog {
+	readonly models: readonly ModelEntry[];
+	readonly unavailableRuntimes: readonly ModelRuntime[];
+}
+
+/** Compose the normal registry and optionally the effective OMP inventory. */
+export function loadModelCatalog(includeOmp = false): LoadedModelCatalog {
+	const models = loadModels();
+	if (!includeOmp) return { models, unavailableRuntimes: [] };
+	const omp = loadOmpModels();
+	return omp.ok
+		? { models: [...models, ...omp.models], unavailableRuntimes: [] }
+		: { models, unavailableRuntimes: ["omp"] };
 }
 
 /**

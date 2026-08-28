@@ -1,0 +1,125 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Truthful Copilot and OMP Model Catalogs",
+        "slug": "model-catalog-parity",
+        "ordinal": 106,
+        "status": "in-progress",
+        "complexity": "CS-3",
+        "summary": "Make pij report and validate the model catalogs of the target runtime rather than conflating upstream providers with harnesses.",
+        "mode": "Simple",
+        "plan_version": "1.0.0",
+        "created": "2026-08-28",
+        "confidence": "0.92",
+        "complexity_breakdown": "S=2 I=2 D=0 N=1 F=1 T=2"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Copilot CLI accepts actual entitled API IDs, while OMP accepts provider-qualified client selectors including base and -1m variants. The registry will model runtime and upstream provider separately, load OMP's effective no-refresh catalog without binding to its SQLite cache, select the matching catalog for CLI output and spawn validation, and fail honestly when OMP inventory is unavailable."
+    },
+    {
+      "name": "goals",
+      "value": [
+        "Expose truthful Copilot CLI and OMP runtime catalogs without confusing API IDs with client selectors.",
+        "Select the target runtime catalog for model and effort validation while preserving warn-don't-block spawning.",
+        "Keep Pi proxy-provider, Claude, and Codex behavior intact.",
+        "Remove committed OMP overrides that collapse base and -1m context variants."
+      ]
+    },
+    {
+      "name": "non_goals",
+      "value": [
+        "Refreshing OMP models over the network or binding to its SQLite cache schema.",
+        "Changing installed OMP/Copilot binaries or global user configuration.",
+        "Merging the branch or reconstructing the canonical checkout's local llama-server provider."
+      ]
+    },
+    {
+      "name": "acceptance_criteria",
+      "value": [
+        {
+          "id": "ac-0601",
+          "claim": "pij models --harness copilot includes gpt-5.6-sol-fast with 1,050,000 context and none/low/medium/high/xhigh/max efforts.",
+          "state": "checked",
+          "receipt": "targeted tests + live Copilot projection"
+        },
+        {
+          "id": "ac-0602",
+          "claim": "Copilot output and validation reject OMP-only *-1m selectors as known Copilot CLI IDs.",
+          "state": "checked",
+          "receipt": "runtime-specific validation tests"
+        },
+        {
+          "id": "ac-0603",
+          "claim": "pij models --harness omp lists base and -1m Luna, Sol, Sol Fast, and Terra selectors with distinct contexts and exact provider-qualified selectors.",
+          "state": "checked",
+          "receipt": "eight-row live OMP projection + parser tests"
+        },
+        {
+          "id": "ac-0604",
+          "claim": "JSON identifies target runtime separately from upstream provider and retains the exact selector callers pass.",
+          "state": "checked",
+          "receipt": "CLI JSON tests + live projection"
+        },
+        {
+          "id": "ac-0605",
+          "claim": "Unavailable or malformed OMP inventory produces a non-success result rather than an authoritative empty catalog.",
+          "state": "checked",
+          "receipt": "three failure-mode loader tests + CLI failure test"
+        },
+        {
+          "id": "ac-0606",
+          "claim": "Spawn and effort validation use Copilot for --harness copilot, OMP for --harness pi --bin omp, and Pi otherwise.",
+          "state": "checked",
+          "receipt": "runtime selection unit tests + OMP spawn integration"
+        },
+        {
+          "id": "ac-0607",
+          "claim": "Pi proxy-provider behavior and existing Claude/Codex rows remain available.",
+          "state": "checked",
+          "receipt": "registry and CLI regression tests + full suite"
+        },
+        {
+          "id": "ac-0608",
+          "claim": "Committed OMP overrides no longer collapse GPT-5.6 base and -1m contexts.",
+          "state": "checked",
+          "receipt": "override rows removed + collapsed-input mutation test"
+        },
+        {
+          "id": "ac-0609",
+          "claim": "Targeted mutation-resistant tests, typecheck, lint, full checks, and live selector probes pass.",
+          "state": "checked",
+          "receipt": "RED 17; GREEN 82; harness boot and checks passed"
+        }
+      ]
+    },
+    {
+      "name": "phases",
+      "value": [
+        {
+          "id": "ph-1061",
+          "title": "Implement runtime-specific model catalogs",
+          "brief": "RED tests first, then extend the registry and CLI composition so runtime is a first-class catalog dimension.",
+          "state": "checked",
+          "tasks": "assets/tasks/phase-1/tasks.dd.json#tasks",
+          "objective": "Make catalog reporting and validation truthful for Copilot CLI, OMP, and Pi.",
+          "delivers": [
+            "Runtime/provider/selector model entries",
+            "OMP effective-catalog loader with explicit failure",
+            "Runtime-specific spawn validation",
+            "Corrected repository OMP overrides",
+            "Targeted and full proof"
+          ],
+          "key_risks": "OMP command output can be unavailable or locally overridden; fail loudly and parse structurally without refreshing.",
+          "receipt": "Phase complete: targeted 82 assertions; integration 2/2; harness checks 8/8"
+        }
+      ]
+    }
+  ]
+}
