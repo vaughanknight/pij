@@ -159,3 +159,15 @@ prime rulings recorded in this file.
   minted alias pij-fragile-magpie on the probe's pid within seconds, no new OS process.
   Worker-process hypothesis formally withdrawn by its author. Report:
   assets/reports/19-falsifier-run.md.
+- PROCESS RULE, waves 1-4 (review round 1, 2026-08-28): A RULING NEEDS A LANDING CHECK —
+  twice a same-day ruling was recorded but the code/test kept asserting the opposite
+  (watchdog eligibility vs services.dd; thinking Option<Vec> vs the absent==empty ruling).
+  From wave 1: every ruling names the artifact it must change; the ruler (or PA) verifies
+  the diff landed before the ruling is cited as in-force. A recorded-but-unlanded ruling
+  is a green that lies at the doctrine layer.
+- R1/AUTH CORRECTION (review round 1, highest severity): publish-BEFORE-bind is WRONG —
+  it let a doomed second daemon overwrite a healthy daemon's credential, and
+  OpenOptions::mode() applies only on CREATE so restart-into-existing-0644 republished
+  world-readable. Ruled shape: stage key -> BIND -> atomic rename (ordering property
+  survives; bind only opens the socket). NOTE: fs3's auth.rs publishes before bind and
+  likely carries the same second-daemon clobber — relayed upstream to lynx.
