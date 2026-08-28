@@ -31,6 +31,9 @@
 
   This was read-only against the live queue; the historical 119-row snapshot and the later operator retirement are recorded at `docs/plans/391-day3-core/rulings.md:148-150`.
 
+
+- **Correction (orchestrator's cheap look, 2026-08-28 ~06:5xZ)**: the 80 `pij-watchdog` receipt rows are NOT written by the daemon's `emitSendReceipt()` (which already returns when `registry.read(sender)` is absent, `daemon.ts:1669-1690`). They are written by the RECEIVING SEAT when it reads a watchdog nudge — three seat-side writers, none of which consult the registry: `core/session.ts:~697-703` (pi extension: `ports.delivery.deliver({ from: self, to: r.to, kind: "receipt" })` on injection), `cli.ts:~1285-1292` (`pij inbox` read receipt for claude/copilot/codex seats: `channel.deliver({ from: self, to: action.to, kind: "receipt" })`), and `core/cli.ts:~4858`. Live proof: the newest rows are `seq 6831 from pij-static-giraffe`, `6705 from pij-ordinary-raccoon`, `6493 from pij-gravitas-shortfall` — ordinary seats replying to `pij-watchdog` (and, since item 31, to `pij-daemon`). So the fix must sit in the ONE shared enqueue seam every writer goes through, not at the daemon writer.
+
 ## 2. What is ruled (design / spec)
 
 - A daemon-authored row is enqueued to its destination only when that destination has a registry record in the hot or archive view; missing pseudo-seats are recorded-and-dropped, while receipts to registered senders remain delivery evidence (`docs/plans/391-day3-core/391-day3-core-plan.md:688-708`; `docs/plans/391-day3-core/tasks/phase-17-item-34-queue-hygiene/tasks.md:20-23`).
@@ -46,6 +49,7 @@
 | Surface | Current behavior at `d120c53` | Required change |
 |---|---|---|
 | `.pi/extensions/pij/daemon.ts:1669-1690` | `emitSendReceipt()` already returns when `registry.read(sender)` is absent, then enqueues registered-sender receipts. | Preserve the guard; strengthen it through both sensor ids, real SQLite, and one diagnostic naming sender + sequence. |
+| `.pi/extensions/pij/core/session.ts:~697-703`, `.pi/extensions/pij/cli.ts:~1285-1292`, `.pi/extensions/pij/core/cli.ts:~4858` | Seat-side receipt writers (pi extension on injection; `pij inbox` read receipt; CLI ack path) enqueue `kind: "receipt"` to `message.from` with no registry check — the source of the `pij-watchdog` rows. | Do NOT patch each writer. Put `canEnqueueTo(to)` (registry row exists, hot or archive) in the shared `MessageChannel.deliver` / `sqlite-queue.ts enqueue` path for `kind: "receipt"` (record-and-drop with one log line naming sender + seq); each writer then gets ONE sensor proving its receipt to a pseudo-seat is dropped and its receipt to a registered seat survives (E34). |
 | `.pi/extensions/pij/daemon.ts:1000-1045` | `retireForClosedRecipients()` builds only the complete-close set and retires queue plus open dispatch rows with `recipient-closed`. | Replace the closed-only predicate with the single terminal classifier and carry its class reason through both queue and dispatch retirement. |
 | `.pi/extensions/pij/adapters/fs-registry.ts:402-415` | `listTerminal()` begins a combined hot/archive terminal view. | Reuse this existing sweep input; do not add another archive traversal. |
 | `.pi/extensions/pij/adapters/channel-factory.ts:104-110,138-150` | `sqliteOf()` exposes the SQLite adapter and `openChannel()` selects `sqlite`, `dual`, or `fs`. | Keep daemon and CLI tests on these production seams rather than constructing a substitute path. |
@@ -65,6 +69,7 @@
 - `MUT-QUEUE-CLOSED-ONLY`: restore the predicate at `d120c53:.pi/extensions/pij/daemon.ts:1003-1009`; the dissolved, failed, and dead-terminal cases must each go RED.
 - `MUT-QUEUE-REVIVE-UNBOUNDED`: treat any `revivePendingAt` as exempt at the future terminal predicate replacing `d120c53:.pi/extensions/pij/daemon.ts:1003-1009`; the termite-shaped stale-marker case must go RED.
 - `MUT-QUEUE-WATCHER-SWEEP`: skip terminal watcher removal at `d120c53:.pi/extensions/pij/core/daemon/watchdog-manager.ts:258-285`; the sidecar-removal test must go RED.
+- `MUT-RECEIPT-SEAT-WRITERS`: revert the shared-seam predicate to the daemon-writer guard only → the pi-extension (`session.ts`) and `pij inbox` (`cli.ts`) receipt-to-`pij-watchdog` tests RED (rows appear); a receipt to a registered seat via each writer stays GREEN.
 - `MUT-QUEUE-STALE-QUERY`: remove the stale aggregate added beside `d120c53:.pi/extensions/pij/adapters/sqlite-queue.ts:683-739`; the `pij queue` text and JSON tests must go RED.
 - Gates are the merge-product full extension suite in a fresh worktree, `just typecheck`, `just pij-skill-check`, two consecutive green full runs, and retained logs before teardown (`docs/handover/v0.2.0/README.md:7-11`; `docs/handover/v0.2.0/TEMPLATE.md:16-19`).
 
