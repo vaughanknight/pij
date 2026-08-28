@@ -1,0 +1,65 @@
+{
+  "outcome": "COMPLETE",
+  "candidateSha": "c0a879877704aef6baf93bc5961d937dfdd53426",
+  "baseSha": "71171648d275baffda7b8e62f8c935133a7d9666",
+  "summary": "Retired last-speaker inbound routing. Swipe replies and explicit addresses now require a registered live target; bare non-replies resolve to the newest live prime watching pij-telegram; no effective prime yields address/watch guidance; and every resolved target is rechecked immediately before queue delivery.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts",
+    ".pi/extensions/pij/telegram/index.test.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-30-dead-routing/MUT-PRIME-RESOLUTION-LASTSPEAKER.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-30-dead-routing/MUT-ALIVE-CHECK.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-30-dead-routing/MUT-DEAD-NEVER-QUEUED.patch"
+  ],
+  "testsRun": 230,
+  "testsPassed": 228,
+  "testsSkipped": 2,
+  "gatesClean": true,
+  "gates": {
+    "typecheck": "PASS",
+    "changedFileBiome": "PASS",
+    "telegramFence": "PASS: 228 passed, 2 skipped"
+  },
+  "mutants": [
+    {
+      "name": "MUT-PRIME-RESOLUTION-LASTSPEAKER",
+      "mutatedBlob": "3ccebe2e130d142a086e423be47f01d2e2c0c447",
+      "result": "RED",
+      "sensors": [
+        ".pi/extensions/pij/telegram/bridge.test.ts:515",
+        ".pi/extensions/pij/telegram/index.test.ts:411"
+      ],
+      "restoredBlob": "3a429a8e7f9197f83f58b60dc524b652105d5425",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-ALIVE-CHECK",
+      "mutatedBlob": "bfd3eb2152d0bdcc6b3e0a7d4a77d55181e8a7e3",
+      "result": "RED",
+      "sensors": [
+        ".pi/extensions/pij/telegram/bridge.test.ts:141",
+        ".pi/extensions/pij/telegram/bridge.test.ts:287",
+        ".pi/extensions/pij/telegram/bridge.test.ts:715"
+      ],
+      "restoredBlob": "3a429a8e7f9197f83f58b60dc524b652105d5425",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-DEAD-NEVER-QUEUED",
+      "mutatedBlob": "b1b6d4a296b237fb36f1cdb0e7c818dd36790885",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/bridge.test.ts:609",
+      "restoredBlob": "3a429a8e7f9197f83f58b60dc524b652105d5425",
+      "restoredResult": "GREEN"
+    }
+  ],
+  "e40": {
+    ".pi/extensions/pij/telegram/bridge.ts:159-179": "explicit/reply dead-target tests, watcher-prime tie test, and dead/non-prime watcher exclusion test",
+    ".pi/extensions/pij/telegram/bridge.ts:182-188": "persisted watcher integration tests in bridge.test.ts:477 and index.test.ts:373",
+    ".pi/extensions/pij/telegram/bridge.ts:218-245": "reply precedence, explicit @ address, dead explicit/reply, bare prime, tie, and guidance tests",
+    ".pi/extensions/pij/telegram/bridge.ts:395-405": "newly dead pre-delivery race test at bridge.test.ts:596",
+    ".pi/extensions/pij/telegram/bridge.ts:440-475": "captionless watching-prime and dead addressed-media tests",
+    "uncoveredTouchedProductionLines": []
+  },
+  "notes": "Rebased from item-24 PR head 9af79ae onto current origin/main 71171648 (newer than the requested f3016b3). The broader repository harness remains red outside this item on lint, full-test, windows-compat, and smoke sensors; the packet-required gates are green."
+}

@@ -1,0 +1,48 @@
+{
+  "outcome": "COMPLETE",
+  "candidateSha": "cf1f04c758513191435ddefdc109718f1a04b5a7",
+  "baseSha": "bf1827c93158a6028b313ca668f26e8a1f00d357",
+  "summary": "Removed pij-skill-check's shared-worktree test dependency. The shell checker now accepts PIJ_REPO_ROOT, and the test suite creates one complete isolated repository snapshot per file, restores only mutated fixtures between cases, and behaviorally proves repository-level reads use that snapshot.",
+  "rootCause": "The flaky test repeatedly copied the real skills/pij tree in beforeEach and then spawned a synchronous shell checker that rediscovered and read the shared Git worktree. Under full-suite parallel I/O/process contention, the first canonical-order case exceeded Vitest's 30-second timeout. The exact shared resource was the live repository root, including the recursive skills/pij source copy and un-fixtured repository documentation/evidence reads.",
+  "filesChanged": [
+    "harness/scripts/pij-skill-check.sh",
+    "harness/scripts/pij-skill-check.test.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/pre-fix-full-suite-run-6.log",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/post-fix-full-suite-run-1.log",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/post-fix-full-suite-run-2.log",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/post-fix-full-suite-run-3.log"
+  ],
+  "gatesClean": true,
+  "gates": {
+    "typecheck": "PASS",
+    "changedFileBiome": "PASS",
+    "pijSkillCheck": "PASS",
+    "isolatedTest": "PASS: 11 passed",
+    "parallelFullSuiteProof": "PASS: 3 consecutive runs, each 4771 passed and 19 skipped"
+  },
+  "evidence": {
+    "preFix": {
+      "log": "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/pre-fix-full-suite-run-6.log",
+      "result": "RED: pij-skill-check.test.ts canonical-order case timed out at 30000ms",
+      "suite": "1 failed, 4769 passed, 19 skipped"
+    },
+    "postFix": [
+      {
+        "log": "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/post-fix-full-suite-run-1.log",
+        "result": "GREEN: 4771 passed, 19 skipped",
+        "durationSeconds": 201.99
+      },
+      {
+        "log": "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/post-fix-full-suite-run-2.log",
+        "result": "GREEN: 4771 passed, 19 skipped",
+        "durationSeconds": 197.1
+      },
+      {
+        "log": "docs/plans/392-day3-codex-doctrine/tasks/item-12-FX/post-fix-full-suite-run-3.log",
+        "result": "GREEN: 4771 passed, 19 skipped",
+        "durationSeconds": 221.97
+      }
+    ]
+  },
+  "notes": "The three parallel proof runs excluded harness/scripts/release-age-policy.test.ts because this macOS host has no pwsh; that unrelated platform test otherwise makes every full-suite invocation red. Final repository-wide harness checks remains red on existing lint, full-test, windows-compat, and smoke baselines."
+}
