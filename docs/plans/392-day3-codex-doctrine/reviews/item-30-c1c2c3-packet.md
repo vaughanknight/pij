@@ -21,3 +21,7 @@ bridge.ts:409 (recheck before the "Now addressing X" reply) unsensored — a mut
 
 ## Gates + deliverable
 tsc 0, biome clean, telegram fence GREEN. RUN every mutant (E37: apply→RED@line→revert→GREEN). E40: covering test per touched line (C2/C3 close the mutation-coverage gap the reviewer found at :409/:468). Commit on c0a8798 in YOUR worktree (COORD-010, pathspec). Report new sha + all mutant results. This is the LAST PR before the restart-6 baton — priority.
+
+## O-prime rulings (2026-08-28) — C1 command + tie-break
+- **C1 command CONFIRMED**: guidance string = `pij watchdog watch pij-telegram` (verified on CLI; writes ~/.pij/pij-telegram/watchdog.json watchers[]). `pij watch` is the file-glob subscription, never populates the roster. Orient-local's `pij watch pij-telegram` line was wrong — o-prime corrected it (and told kingfisher).
+- **Tie-break ACCEPTED**: on exact-equal addedAt, resolution falls to roster order (not "most recent"). Record as the implemented rule; do not assert "most recent" for exact ties.
