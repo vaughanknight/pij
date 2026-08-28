@@ -26,3 +26,6 @@ Restart #6 asked at main 3411794 / live checkout 916e915 (carries 24 + 30 + 15/1
 - **Item-30 routing LIVE ✓**: watchdog roster (~/.pij/pij-telegram/watchdog.json) = pij-relative-panther (o-prime) + pij-vocal-kingfisher (prime, newest 04:13). Bare text → newest live watching prime (kingfisher) — primes are the watchers, as designed. (Memory line 43 "I am pij-telegram's single watcher" is STALE — correctly I'm not a watcher; I'm a stream orchestrator, not the prime.)
 - **Residual early-read**: post-restart (updated_at>14:06) pij-telegram deliveries = attempt-1 ×6, attempt-2 ×0. 0 retries in the first ~7 min (small n). FULL residual = chore-6 over ≥1 h; 24b trigger (residual>0) NOT yet met → HOLD 24b, await the hour.
 - **Spine locks clean** (item 15 lock-release held across restart). **Fleet survived** (coder + reviewer done/active).
+
+## Item-24 root cause EVIDENCED live (o-prime relay, ~04:4xZ)
+Bridge log captured: `text deps.send retry after transient failure (1787891374462-000001-28652 part 1/1): Network request for 'sendMessage' failed!` → row acked on attempt 1. The in-lease retry recovered a real transient; the transient-network root cause is now evidenced on the live bridge (was a hypothesis). Residual 0/6; 24b decision 05:15Z.

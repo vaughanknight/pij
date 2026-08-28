@@ -39,3 +39,9 @@ SENSOR GAP (o-prime finding 2): the in-process bridge (post-item-29) does NOT pe
 ## RULING (o-prime, 2026-08-28 00:2xZ) — log-sink fold accepted, exact acceptance test
 Fold into ITEM 24's PR. Test: the in-process bridge APPENDS forward-error/ForwardIncomplete + forwarded lines to ~/.pij/telegram-bridge.log (behavioural, not a grep of the sink call).
 LIVE PROOF after restart #6: (1) the file's mtime advances on the first forwarded message; (2) the first attempt-2 row after that has its attempt-1 error line IN the file. This makes root cause PROVABLE next time instead of inferred. "No further reply needed." Dossier already says HYPOTHESIS.
+
+## LIVE EVIDENCE (post-restart #6, 2026-08-28 ~04:4xZ) — root cause EVIDENCED, no longer hypothesis
+The restored durable bridge log (item-24 log-sink, live) captured an in-lease retry recovering a REAL transient:
+`text deps.send retry after transient failure (1787891374462-000001-28652 part 1/1): Network request for 'sendMessage' failed!`
+— and the row **acked on attempt 1**. This closes acceptance (b): the item-24 bounded in-lease retry catches a real transient `sendMessage` network failure and the delivery acks at attempt 1 (no >lease stall, no attempt-2 escalation). The transient-network root cause (line 30-32) is now EVIDENCED ON THE LIVE BRIDGE, not inferred — the log-sink made it provable, which was item 24's purpose. (o-prime relay, no ack.)
+Residual so far: 0 of 6 attempt-2; 24b decision at 05:15Z (chore-6 ≥1 h).
