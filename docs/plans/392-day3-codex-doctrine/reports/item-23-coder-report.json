@@ -1,0 +1,25 @@
+{
+  "delegationId": "dlg-0021",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 5a986e3c9d93f3df8f5c1cf9c004f8a8498da6b3 adds the transport-only sent outcome for flushed socket/RPC writes, consumes it without retry, and defers sender receipt truth to the durable reader marker. It also replaces the lying tail --type receipt send hint with the authoritative pij queue --to <sender> surface.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/ports.ts",
+    ".pi/extensions/pij/adapters/claude-socket.ts",
+    ".pi/extensions/pij/adapters/claude-socket.test.ts",
+    ".pi/extensions/pij/adapters/copilot-rpc.ts",
+    ".pi/extensions/pij/adapters/copilot-rpc.test.ts",
+    ".pi/extensions/pij/adapters/daemon-tmux.ts",
+    ".pi/extensions/pij/adapters/daemon-tmux.test.ts",
+    ".pi/extensions/pij/core/daemon/loop.ts",
+    ".pi/extensions/pij/core/daemon/loop.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/core/cli.ts",
+    ".pi/extensions/pij/core/cli.test.ts",
+    "docs/plans/392-day3-codex-doctrine/reports/item-23-ack-measurement.md"
+  ],
+  "testsRun": 4024,
+  "testsPassed": 4009,
+  "gatesClean": false,
+  "notes": "Full pij suite: 4009 passed, 15 skipped; affected surface: 682 passed, 2 skipped; typecheck and changed-file Biome clean. Taxonomy: socket/RPC flushed without positive app ack = sent; positive orig_msg_id/messageId response = confirmed; explicit NAK or pre-write failure = failed; unverified remains for pane submission uncertainty. Successful markRead is durable reader acknowledgement and now emits delivered regardless of transport. Live Claude probe item23-ack-measure-1787854601045 at 1000ms returned sent with no positive orig_msg_id status; shipped defaults remain 150ms. E21 used the authorized repoint because the actual transcript bypass is outside the fence. Mutations: MUT-SENT RED at claude-socket.test.ts:114 and copilot-rpc.test.ts:139; MUT-NAK RED at claude-socket.test.ts:137; MUT-DEFER RED at daemon.test.ts:444. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention item-23 paths."
+}

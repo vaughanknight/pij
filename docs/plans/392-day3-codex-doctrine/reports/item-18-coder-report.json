@@ -1,0 +1,15 @@
+{
+  "delegationId": "dlg-0019",
+  "outcome": "PARTIAL",
+  "summary": "Item 18 is complete in the shared tree: the integration ratchet now derives watchdog clauses and the mute set from runtime code, the watchdog doc includes ready plus the exhaustive mute split, o-prime duty 7 relays only now/ready/issuer-hold, and C9 cites the current state.ts:142 definition. Shared commits captured the substantive delta in 4882dbdcfb1c553823b0fafd1d1160599ebb57a8 and final corrections in 5e34e0a60d2faf9cb8b5c29bb7f5c80e09157a6f.",
+  "filesChanged": [
+    ".pi/extensions/pij/cli.integration.test.ts",
+    "docs/how/pij-watchdog.md",
+    "skills/pij/references/prime/orient-oprime.md",
+    "skills/pij/references/00-routing.md"
+  ],
+  "testsRun": 117,
+  "testsPassed": 116,
+  "gatesClean": false,
+  "notes": "Skill-text gates are green: cli.integration + acceptance-sweep 116 passed/1 skipped, typecheck, changed-file Biome, and pij-skill-check before/after with zero new findings. orient-oprime remains 193 lines and 00-routing remains 205. Initial stale-doc RED and MUT-E6 both failed at cli.integration.test.ts:337 when the emitted ready clause was absent; optional MUT-MUTE failed at :339 when hold was removed. INFO-8/INFO-9 remain note-only as directed. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention item-18 paths."
+}

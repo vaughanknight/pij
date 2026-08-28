@@ -1,0 +1,19 @@
+{
+  "delegationId": "dlg-0020",
+  "outcome": "PARTIAL",
+  "summary": "Candidate a29a9fe5828a69d6b0495fd9c74479d65942b78b closes OBS-04: Claude socket and Copilot RPC sends now distinguish pre-write failure from post-write acknowledgement loss, DaemonTmux preserves unverified, and drainTmuxInbox consumes delivered-unconfirmed socket writes instead of blindly retrying them. Explicit Claude dropped NAKs and other pre-write failures remain retryable failed outcomes.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/claude-socket.ts",
+    ".pi/extensions/pij/adapters/claude-socket.test.ts",
+    ".pi/extensions/pij/adapters/copilot-rpc.ts",
+    ".pi/extensions/pij/adapters/copilot-rpc.test.ts",
+    ".pi/extensions/pij/adapters/daemon-tmux.ts",
+    ".pi/extensions/pij/adapters/daemon-tmux.test.ts",
+    ".pi/extensions/pij/core/daemon/loop.ts",
+    ".pi/extensions/pij/core/daemon/loop.test.ts"
+  ],
+  "testsRun": 4004,
+  "testsPassed": 3989,
+  "gatesClean": false,
+  "notes": "Full pij suite: 3989 passed, 15 skipped; targeted transport suite: 146/146; typecheck and changed-file Biome clean. Receipt verification required no code change: daemon.ts maps consumed unverified outcomes to an unverified receipt and cli.test.ts proves that receipt terminates the correlated sender wait rather than remaining queued. Mutations: MUT-T2-claude RED at claude-socket.test.ts:111; MUT-T2-copilot RED at copilot-rpc.test.ts:137; MUT-DRAIN RED at loop.test.ts:1361; MUT-NAK RED at claude-socket.test.ts:134. The deterministic fakes prove the write boundary; the exact real socket event after a flushed write remains environment-dependent. Plain consume mirrors the pane path's at-most-once tradeoff; no blind re-send or extra re-verification loop was added. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention item-20 paths."
+}

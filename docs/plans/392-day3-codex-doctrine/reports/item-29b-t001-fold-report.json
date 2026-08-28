@@ -1,0 +1,13 @@
+{
+  "delegationId": "dlg-0027",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 87a0c135d09d12a958dd14c4daaeff7bf47805a1 extracts and tests the real bridge restart notifyOwner closure with a registry containing three primes and one watcher. The closure records plural-prime context but routes exclusively to the explicit pij-telegram watcher list.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts"
+  ],
+  "testsRun": 4071,
+  "testsPassed": 4056,
+  "gatesClean": false,
+  "notes": "The behavioral test invokes createBridgeRestartNotifier, not the lower-level helper or source grep: a notify-nobody closure goes RED at daemon.test.ts:230 even if the grep sensor remains. Production uses that exact factory. Watcher sidecar read failure now distinguishes absent file (valid no-watchers skip) from an existing unreadable/malformed file; a sidecar with two entries rejected as a whole logs 'watchers file unreadable/malformed (2 entries rejected)' and never claims there were no watchers. Reverting that honesty branch goes RED at daemon.test.ts:276. The prior source pin remains as a second independent sensor. Full pij suite: 4056 passed, 15 skipped; daemon surface: 71 passed, 2 skipped; typecheck and changed-file Biome clean. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention these files."
+}

@@ -1,0 +1,14 @@
+{
+  "delegationId": "dlg-0035",
+  "outcome": "COMPLETE",
+  "summary": "Candidate 5b77c99f4d35330044ab3ed1637492d9accda836 extracts the complete daemon bridge-notifier dependency bundle, pins its watcher store to the supplied pijHome, and logs the resolved watchdog sidecar path on every skipped notification. runDaemon now passes only the named dependency helper into the tested notifier factory.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-29b-bridge-advisories/MUT-CALLSITE-HOME.patch"
+  ],
+  "testsRun": 75,
+  "testsPassed": 73,
+  "gatesClean": true,
+  "notes": "bridgeNotifierDepsForDaemon(pijHome, registry, channel, log) owns pijHome, registry, new FsWatchdogStore(pijHome), channel, clock, and logger construction. The behavioral test asserts store.pathFor('pij-telegram') equals <pijHome>/pij-telegram/watchdog.json. The committed MUT-CALLSITE-HOME.patch changes only that store construction to join(pijHome,'nope'); plain git apply REDs the path test at daemon.test.ts:312 with the resolved wrong path, and git apply -R restores GREEN. E40 coverage ledger: before this fold, no test drove the dependency-construction/store-root line because the helper did not exist; notifier delivery tests covered the downstream factory, and the source pin covered only the runDaemon wrapping form. After this fold, the new pathFor test covers the mutated argument line; the retained toContain assertion is explicitly commented as a secondary wrapping-form pin. Missing, empty, malformed, and unparseable watcher-sidecar skip logs now include the resolved path, preventing a wrong home from impersonating a correct no-watchers result. runDaemon itself remains unbooted on this reconciled stream seam as previously documented; the extracted dependency behavior closes the measured argument mutation. Final daemon.test.ts fence: 73 passed, 2 skipped; just typecheck and changed-file Biome are clean."
+}

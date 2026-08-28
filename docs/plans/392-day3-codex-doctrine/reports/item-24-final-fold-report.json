@@ -1,0 +1,15 @@
+{
+  "delegationId": "dlg-0033",
+  "outcome": "COMPLETE",
+  "summary": "Candidate b1f0e0a8e9d1626d64552ee08c3566b0b658d192 replaces the aggregate text partition identity with a SHA-256 hash of the exact ordered text-and-media bubble plan. Every bubble now shares one index, is marked only after its Telegram send resolves positively, and is skipped on redelivery only when the complete plan hash matches.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/sqlite-queue.ts",
+    ".pi/extensions/pij/adapters/sqlite-queue.test.ts",
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts"
+  ],
+  "testsRun": 114,
+  "testsPassed": 113,
+  "gatesClean": true,
+  "notes": "The additive SQLite migration adds bubbles_hash to the existing telegram_partitions side table; the old physical columns are ignored compatibility placeholders, and legacy/null-hash rows safely send all. The serialized plan hashes ordered exact text payloads plus media kind/path/caption, so body chunks, oversize notices, fallback notices, overflow-caption text, and media all participate. SQLite media failures now leave the claim incomplete for lease redelivery; the fs watcher still logs/echoes and continues because it does not consume the incomplete result. MUT-HASH ignored hash mismatch and RED the same-count distribution-alias test at bridge.test.ts:1261 by silently skipping the current media bubble. MUT-NOMARK RED at :1204 with duplicate text parts. MUT-MEDIA-UNMARKED RED at :1309 by resending the first media bubble. MUT-PARTIAL marked before acknowledgment and RED at :1346 because the failed bubble was already persisted. Existing drift, idempotent retry, and message-ID log coverage remain green. Final scoped run: 113 passed, 1 skipped; just typecheck and changed-file Biome are clean. Accepted degradation: any plan nondeterminism changes the hash and sends the whole plan, permitting a duplicate but never an omission. The residual crash window remains Telegram acceptance followed by process death before the immediate SQLite mark commits."
+}
