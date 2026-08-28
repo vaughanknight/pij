@@ -1138,6 +1138,11 @@ dependencies = [
 [[package]]
 name = "pij-harnesses"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pij-core",
+ "pij-testkit",
+]
 
 [[package]]
 name = "pij-store"
