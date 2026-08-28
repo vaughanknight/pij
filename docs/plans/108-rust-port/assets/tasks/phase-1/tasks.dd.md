@@ -35,7 +35,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-48f2 | Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it. | — | — | [x] checked | R6a,R6c | — | [ ] 0/1 [tk-48f2](#tk-48f2) | — | — | — |
+| tk-48f2 | Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it. | — | — | [x] checked | R6a,R6c | — | [x] 1/1 [tk-48f2](#tk-48f2) | — | — | — |
 | tk-5f1d | Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli-&gt;one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green. | — | — | [x] checked | R2 / ac-0001,ac-0002 | — | [x] 1/1 [tk-5f1d](#tk-5f1d) | — | — | — |
 | tk-3a93 | Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/). | — | — | [x] checked | R2 / ac-0003 | — | [x] 1/1 [tk-3a93](#tk-3a93) | — | — | — |
 | tk-ddf1 | Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test. | — | — | [x] checked | R3 / ac-0006 | — | [x] 1/1 [tk-ddf1](#tk-ddf1) | — | — | — |
@@ -44,7 +44,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 | tk-d162 | Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured. | — | — | [x] checked | R1,R4 / ac-0005 | — | [x] 1/1 [tk-d162](#tk-d162) | — | — | — |
 | tk-717f | Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary. | — | — | [x] checked | R6b / ac-0006 | — | [x] 1/1 [tk-717f](#tk-717f) | — | — | — |
 | tk-388a | Spike lane + shared components: pocs/&lt;name&gt; template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table. | — | — | [x] checked | R6c,R6d,R6f | — | [x] 1/1 [tk-388a](#tk-388a) | — | — | — |
-| tk-81b3 | Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files. | — | — | [ ] unchecked | R6e / ac-0007,ac-0008 | — | [ ] 0/1 [tk-81b3](#tk-81b3) | — | — | — |
+| tk-81b3 | Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files. | — | — | [x] checked | R6e / ac-0007,ac-0008 | — | [x] 1/1 [tk-81b3](#tk-81b3) | — | — | — |
 
 <a id="done-when"></a>
 
@@ -54,7 +54,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-a803 | rustc --version == pinned channel exactly (gate stage-1 assert, fail loud); pocs/ excluded in root manifest | [ ] unchecked | not-applicable |
+| dw-a803 | rustc --version == pinned channel exactly (gate stage-1 assert, fail loud); pocs/ excluded in root manifest | [x] checked | not-applicable |
 
 ### tk-5f1d
 
@@ -108,4 +108,4 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-7b12 | one-command gate all green; quick-start at crates/README.md; arch doc at assets/architecture.md (Q3 relocation); fences doc names shared-merge files | [ ] unchecked | not-applicable |
+| dw-7b12 | one-command gate all green; quick-start at crates/README.md; arch doc at assets/architecture.md (Q3 relocation); fences doc names shared-merge files | [x] checked | not-applicable |

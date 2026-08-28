@@ -85,7 +85,7 @@
         {
           "id": "tk-81b3",
           "title": "Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R6e / ac-0007,ac-0008",
           "done": "#done_when/tk-81b3"
         }
@@ -98,7 +98,7 @@
           {
             "id": "dw-a803",
             "assertion": "rustc --version == pinned channel exactly (gate stage-1 assert, fail loud); pocs/ excluded in root manifest",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
@@ -170,7 +170,7 @@
           {
             "id": "dw-7b12",
             "assertion": "one-command gate all green; quick-start at crates/README.md; arch doc at assets/architecture.md (Q3 relocation); fences doc names shared-merge files",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ]
