@@ -14,3 +14,10 @@ Also affirmed: holding the 29b-T001 PR for the W1+W2 hardening + oracle re-run i
 - **PR #30 (item 29b-T001) MERGED → main ae7356b** (o-prime verified at merge product: 4121/0, tsc 0, skill-check 0, +6 tests). Item 29b-T001 DONE.
 - **Restart #6 now gated on item 24 alone.**
 - **Item-24 PR bases on ae7356b.** B1/B2/W3 fold affirmed (report-once + production-path sensor + W3), then re-review, then PR.
+
+## 2026-08-28 — HUMAN RULING (Vaughan, verbatim "Yes"), relayed by o-prime
+**Item 30 must land BEFORE the release tag.** Now a pre-tag item (was tail).
+Dispatch sequencing for this stream:
+- Dispatch item 30 to the coder **the MOMENT the item-24 PR is OPEN** — do NOT wait for item-24's merge.
+- Base item-30's branch on **item-24's PR head**; rebase onto main after item 24 merges.
+- If item-30's PR opens within ~1 h of item-24's merge, ONE restart (#6) carries both.
