@@ -66,3 +66,38 @@
   - `test`: local `pwsh` is absent for `release-age-policy.test.ts`; that test is byte-unchanged from `origin/main`.
   - `windows-compat`: repeats the same existing producer lint.
 - Harness output: `.harness/temp/s391/harness-checks-phase15.log`.
+
+## FX-01 — review lows
+
+### P-1 — one launch-argv source
+
+- Replaced the Phase 14 real-SIGTERM test's hand-built `process.execPath --import tsx daemon.ts` command with `daemonLaunchArgv(DAEMON_BIN)`.
+- The production launcher, fake-tmux composition test, legacy SIGTERM test, and SIGTERM/SIGHUP/SIGINT real-launch matrix now consume the same builder.
+
+### P-2 — real SIGINT sensor
+
+- Extended the production real-launch matrix to SIGINT.
+- Mutation: removed only `onSignal("SIGINT", shutdown)`.
+- RED result: the SIGINT case exited as `{ code: null, signal: "SIGINT" }` instead of `{ code: 0, signal: null }`.
+- Preserved output: `.harness/temp/s391/dlg-0030-fx01-sigint-red.log`.
+- Restored the handler before the GREEN runs.
+
+### P-3 — stale relay comments
+
+- Removed the inert `daemon.ts` shebang: the file mode is `100644`, and the managed launcher passes it to Node rather than executing it.
+- Replaced the source comment advertising `npx tsx` with the direct manual form `node --import tsx`.
+- Updated the daemon verification-budget comment with the reviewer's direct-launch measurements (446/442/515 ms) and removed the stale `npx` attribution; the 2,500 ms brake is unchanged.
+
+### FX-01 evidence and gates
+
+- Three direct-child spawning cases (SIGTERM, SIGHUP, SIGINT) ran 10 consecutive times: **30/30 passed**.
+- Repetition log: `.harness/temp/s391/item32-spawn-x10.log`.
+- Complete daemon signal block: 7 passed, 97 skipped.
+- Targeted log: `.harness/temp/s391/dlg-0030-fx01-targeted.log`.
+- Root TypeScript check passed.
+- Scoped Biome passed for `daemon.ts`, `daemon.test.ts`, and `core/daemon/lifecycle.ts`.
+- Full extension suite: 172 files passed, 2 skipped; 4,153 tests passed, 15 skipped.
+- Full-suite output: `.harness/temp/s391/vitest-phase15-fx01.log`.
+- Detached job output: `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtcdye0y-xg9t7u.log`.
+- `harness checks --quick` again passed local paths, typecheck, package audit, and snapshots, with the same three unchanged baseline failures: existing `osc-7337-producer.ts` Biome findings, unavailable local `pwsh` in `release-age-policy.test.ts`, and the Windows check repeating the producer lint.
+- Harness output: `.harness/temp/s391/harness-checks-phase15-fx01.log`.

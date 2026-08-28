@@ -2840,7 +2840,8 @@ describe("daemon signal shutdown", () => {
 		timeout: 10_000,
 	}, async () => {
 		const childHome = mkdtempSync(join(tmpdir(), "pij-daemon-signal-"));
-		const child = spawn(process.execPath, ["--import", "tsx", DAEMON_BIN], {
+		const launch = daemonLaunchArgv(DAEMON_BIN);
+		const child = spawn(launch.cmd, [...launch.args], {
 			env: {
 				...process.env,
 				PIJ_HOME: childHome,
@@ -2890,6 +2891,7 @@ describe("daemon signal shutdown", () => {
 	it.each([
 		"SIGTERM",
 		"SIGHUP",
+		"SIGINT",
 	] as const)("the production launch makes the daemon the outer child and handles %s gracefully", {
 		timeout: 10_000,
 	}, async (signal) => {

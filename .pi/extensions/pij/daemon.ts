@@ -1,11 +1,10 @@
-#!/usr/bin/env -S NODE_NO_WARNINGS=1 npx tsx
 // pij-control-plane — the daemon bin (impure orchestrator, Plan 019, T016).
 //
 // THIN glue: it owns the single-instance lock, the tick timer, and inbox-file
 // I/O, and delegates EVERY decision to the TDD'd pure core — `driveSession`
 // (the spawn→bind state machine), `drainTmuxInbox` + `route` (delivery
 // ownership), `IndexState` (rebuild from ~/.pij/), `evaluateLock`
-// (single-instance). Run it in a tmux window: `npx tsx .pi/extensions/pij/daemon.ts`.
+// (single-instance). For a manual foreground run: `node --import tsx .pi/extensions/pij/daemon.ts`.
 //
 // Delivery ownership (AC-08): the daemon drives + drains ONLY tmux harnesses
 // (`daemonOwnsDelivery`); pi sessions keep their in-process receiver untouched.
