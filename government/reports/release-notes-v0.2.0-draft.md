@@ -7,7 +7,7 @@ Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with *
 ## Included (day-3 items, PRs #1–#27 + 24 / 29b-T001 / 30 when merged)
 - Queue: `pij queue retire`, closed-recipient sweep, revive un-retire (item 1); dispatch records retired for closed seats (1b); stdio flush before exit (1a).
 - Delivery: Telegram bridge and pi receiver consume the queue at-least-once (3b, 3c); no duplicate after transport ack-loss (20); honest transport receipts — `sent` vs durable ack (23); honest pointer-path "unverified" line (5).
-- Telegram bridge: supervised in-process, dies loud, auto-restarts (29); [24] no duplicate after an internal retry — plan-hash idempotence, media included; [29b] restart notice reaches the bridge's watchers; [30] routing: reply → that seat, bare text → the prime, dead seat → told, never queued.
+- Telegram bridge: supervised in-process, dies loud, auto-restarts (29); [24] no duplicate after an internal retry — plan-hash idempotence, media included; restart notice reaches the bridge's watchers (29b-T001; primes run `pij watch pij-telegram`); [30] routing: reply → that seat, bare text → the prime, dead seat → told, never queued.
 - Safety: pane-misbind guard (10a/10b, 17, 21); registry publishes serialized (13); stale spine/platform write-locks released and reclaimed (15); creator notices route to the current parent, liveness-aware (16).
 - Spawn/models: `--context long_context` gated per model (6); gemini-3.6-flash marked upstream-unstable, warn-don't-block (6b).
 - Harness/docs: skill-check debt and hardening (9, 11, 12); report vocabulary remedies (4); C9 watchdog doc (14, 18); pointer doctrine (7).

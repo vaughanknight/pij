@@ -85,3 +85,6 @@ PR #28 item 16 (creator notices route to the current parent, liveness-aware) mer
 
 ## Amendment 01:2xZ — §2/§3
 PR #29 (15-FX, test-only) merged → main a23fcd7. New known gap (item 32, s391 after 31): the production daemon runs under the `npx tsx` relay; a signal to the wrapper SIGKILLs the daemon and leaks the spine locks (mitigated by item 15's reclaim; `pij daemon stop` is safe). Harness flake `pij-skill-check.test.ts` 1/5 under parallelism → 12-FX (s392).
+
+## Amendment 01:5xZ — §2/§6
+PR #30 item 29b-T001 (bridge-restart notice via pij-telegram watchers; deps extracted with the store path pinned; call-site sensors) merged → main ae7356b, checkout ff'd. Restart #6 now gated on item 24 alone (log-sink fold: B1 daemon-crash guard, B2 production-path sensor, W3). Kingfisher will watch pij-telegram after restart #6.
