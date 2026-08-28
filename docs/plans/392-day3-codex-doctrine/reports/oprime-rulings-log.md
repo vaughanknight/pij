@@ -21,3 +21,8 @@ Dispatch sequencing for this stream:
 - Dispatch item 30 to the coder **the MOMENT the item-24 PR is OPEN** — do NOT wait for item-24's merge.
 - Base item-30's branch on **item-24's PR head**; rebase onto main after item 24 merges.
 - If item-30's PR opens within ~1 h of item-24's merge, ONE restart (#6) carries both.
+
+## 2026-08-28 — PR #32 merged; restart-6 sequencing
+- **PR #32 (item 24) MERGED → main f3016b3** (o-prime verified at merge product 716c244: 4148/0, tsc 0, skill-check 0, +20 tests). Item 24 DONE.
+- **Rebase item 30 onto f3016b3 now**; item-30's PR is the LAST thing before the restart-6 baton (o-prime holds the ≤1 h ask for it).
+- **Order after item 30**: 12-FX (skill-check flake isolation, mine), then HOLD 24b for the post-restart measurement (residual>0 trigger).
