@@ -16,8 +16,11 @@ candidate is live only while it remains registered and is not failed,
 dissolved, or terminal. A `pij link` therefore changes where future lifecycle
 notices go without changing close authorization, while a dead or closed parent
 falls back to the live spawner. If neither candidate is live, the notice is
-withheld and the daemon logs the candidate states. Explicit `pij watchdog
-watch` subscriptions remain a separate fan-out mechanism.
+withheld. Single-seat notice paths log that seat's candidate states; a terminal
+death sweep emits one count summary with at most three subject ids, even after a
+fleet-wide reboot. Notice routing reads only the hot registry because archived
+seats cannot be live recipients. Explicit `pij watchdog watch` subscriptions
+remain a separate fan-out mechanism.
 
 ## Intent — never watch a peer whose silence is deliberate
 

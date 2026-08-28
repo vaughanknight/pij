@@ -18,6 +18,7 @@ import {
 	markFailed,
 	markInitInjected,
 	noLiveNoticeRecipientLine,
+	noticeRegistryView,
 	resolveNoticeRecipient,
 	shouldInjectInit,
 } from "../binding.js";
@@ -179,10 +180,6 @@ export type DriveOutcome =
 
 function notify(delivery: DeliveryPort, from: SessionId, to: SessionId, text: string): void {
 	delivery.deliver({ from, to, body: text });
-}
-
-function noticeRegistryView(registry: RegistryPort): SessionDescriptor[] {
-	return [...registry.listTerminal(), ...registry.list()];
 }
 
 /** Drive ONE pending/booting session one tick. Mutates `drive` (in-memory) and

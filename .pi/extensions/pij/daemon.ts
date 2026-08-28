@@ -54,6 +54,7 @@ import {
 	buildStalledNotice,
 	noLiveNoticeRecipientLine,
 	noticeRecipient,
+	noticeRegistryView,
 	resolveNoticeRecipient,
 } from "./core/binding.js";
 import { AnomalySweep } from "./core/daemon/anomaly-sweep.js";
@@ -833,22 +834,25 @@ export class Daemon {
 		for (const update of deathSweep.expectationUpdates) this.expectations.write(update);
 		const deathDelivery = resolveDeathNotices(
 			deathSweep.noticeCandidates,
-			this.noticeRegistryView(),
+			noticeRegistryView(this.registry),
 			deathSweep.deadIds,
 		);
 		for (const notice of deathDelivery.notices) {
 			this.channel.deliver({ from: notice.from, to: notice.to, body: notice.text });
 		}
 		// One line instead of N undeliverable pushes. A host reboot kills every seat
-		// in the same event, so the obituaries are all addressed to seats that died
-		// alongside their subject — the operator wants the COUNT, not 200 messages
-		// nobody can read (task #34).
-		for (const line of deathDelivery.withheldNoticeLines) this.log(line);
-		const suppressedWithoutDetail =
-			deathDelivery.noticesSuppressed - deathDelivery.withheldNoticeLines.length;
-		if (suppressedWithoutDetail > 0) {
+		// in the same event, so the operator wants the COUNT and only a bounded sample
+		// of subjects, not one line per corpse (task #34).
+		if (deathDelivery.noticesSuppressed > 0) {
+			const subjects = deathDelivery.withheldNoticeSubjects.join(", ");
+			const remainder =
+				deathDelivery.noticesSuppressed - deathDelivery.withheldNoticeSubjects.length;
+			const subjectSummary =
+				subjects.length === 0
+					? ""
+					: `; subjects: ${subjects}${remainder > 0 ? ` (+${remainder} more)` : ""}`;
 			this.log(
-				`death sweep: ${suppressedWithoutDetail} notice(s) withheld — recipient is dead too (terminal truth still recorded on each descriptor)`,
+				`death sweep: ${deathDelivery.noticesSuppressed} notice(s) withheld: no live recipient${subjectSummary}; terminal truth still recorded on each descriptor`,
 			);
 		}
 		this.watchdogManager.reconcile(this.registry.list());
@@ -1168,15 +1172,11 @@ export class Daemon {
 		this.log(`push ${d.id}: provider-failure (${reason})`);
 	}
 
-	private noticeRegistryView(): SessionDescriptor[] {
-		return [...this.registry.listTerminal(), ...this.registry.list()];
-	}
-
 	private lifecycleNoticeRecipient(
 		kind: "stalled" | "dead",
 		descriptor: SessionDescriptor,
 	): SessionId | null {
-		const resolution = resolveNoticeRecipient(descriptor, this.noticeRegistryView());
+		const resolution = resolveNoticeRecipient(descriptor, noticeRegistryView(this.registry));
 		const line = noLiveNoticeRecipientLine(kind, descriptor, resolution);
 		if (line) this.log(line);
 		return resolution.recipient;

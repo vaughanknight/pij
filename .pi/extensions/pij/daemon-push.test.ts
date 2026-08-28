@@ -55,6 +55,8 @@ function makePorts(opts: {
 }
 
 function withLiveNoticeCandidates(descs: readonly SessionDescriptor[]): SessionDescriptor[] {
+	// Positive legacy fixtures named creators without registering them; materialize
+	// those candidates so text metadata is never mistaken for registry liveness.
 	const existingIds = new Set(descs.map(({ id }) => id));
 	const candidateIds = [
 		...new Set(

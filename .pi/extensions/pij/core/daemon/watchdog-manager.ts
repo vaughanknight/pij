@@ -215,10 +215,9 @@ function eligible(session: SessionDescriptor): boolean {
 	// the example it leaned on had been overturned.)
 	// The justification for watching a prime is not its card: it is that a prime
 	// is the only seat with NO SUPERVISOR. A wedged PM is caught by its prime; a
-	// wedged prime is caught by nobody — the owner-facing "stalled" notice cannot
-	// reach anyone for it either, since `pushWholeLifeTransition` returns early
-	// when no live notice recipient exists. This ping is its
-	// only external heartbeat.
+	// wedged prime is caught by nobody — `pushWholeLifeTransition` returns early
+	// only when both pure notice candidates are absent; unavailable candidates
+	// continue to withholding and logging. This ping is its only external heartbeat.
 	if (!roleNeedsSupervision(projectOrchestrationRole(session))) return false;
 	// An EXTERNAL pull target is never tick-owned, driven, buffered, or drained —
 	// the daemon does not own its delivery, so it must not buffer a watchdog turn
@@ -633,8 +632,9 @@ export class WatchdogManager {
 	 *  live peer can therefore never report recovery again.
 	 *
 	 *  That turns durable on a creator-less peer: the daemon's OTHER stalled-flag
-	 *  clear path (`pushWholeLifeTransition`) returns early when no live notice
-	 *  recipient exists, while the watchdog detector happily SETS the flag.
+	 *  clear path (`pushWholeLifeTransition`) returns early only when both pure
+	 *  notice candidates are absent; unavailable candidates continue to withholding
+	 *  and logging, while the watchdog detector happily SETS the flag.
 	 *  Set-without-clear leaves `failure: stalled` pinned on a peer that is
 	 *  provably ticking — reported live: `failure: stalled` alongside a
 	 *  `last-event` 2–3 minutes fresh.

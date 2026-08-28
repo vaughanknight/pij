@@ -44,9 +44,7 @@ describe("death reconciler", () => {
 			const result = reboot();
 			expect(result.notices).toEqual([]);
 			expect(result.noticesSuppressed).toBe(1);
-			expect(result.withheldNoticeLines).toEqual([
-				"notice dead for pij-child: no live recipient (parent <unset> unset, spawner pij-parent dead)",
-			]);
+			expect(result.withheldNoticeSubjects).toEqual(["pij-child"]);
 		});
 
 		it("still records terminal truth on every descriptor it withheld a notice for", () => {
@@ -169,9 +167,7 @@ describe("death reconciler", () => {
 
 		expect(result.notices).toEqual([]);
 		expect(result.noticesSuppressed).toBe(1);
-		expect(result.withheldNoticeLines).toEqual([
-			"notice dead for pij-child: no live recipient (parent pij-current-parent dead, spawner pij-original-spawner dead)",
-		]);
+		expect(result.withheldNoticeSubjects).toEqual(["pij-child"]);
 	});
 
 	it.each([

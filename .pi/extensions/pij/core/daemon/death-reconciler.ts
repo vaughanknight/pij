@@ -1,7 +1,7 @@
 // Pure cross-harness terminal-absence reconciliation. It does not infer cause:
 // `unrequested-by-pij` means only that an observed absence lacked close intent.
 
-import { noLiveNoticeRecipientLine, resolveNoticeRecipient } from "../binding.js";
+import { resolveNoticeRecipient } from "../binding.js";
 import type { AgentLivenessProbe, ProcessSnapshot } from "../platform/types.js";
 import {
 	applyTerminalObservation,
@@ -38,7 +38,8 @@ export type DeathNoticeCandidate =
 export interface DeathNoticeResolution {
 	readonly notices: readonly DeathNotice[];
 	readonly noticesSuppressed: number;
-	readonly withheldNoticeLines: readonly string[];
+	/** At most three subject ids for the daemon's one aggregate summary line. */
+	readonly withheldNoticeSubjects: readonly string[];
 }
 
 export interface DeathReconcileInput {
@@ -78,6 +79,8 @@ export interface DeathReconcileResult {
 	 *  a host reboot kills every seat in one event, so each corpse would otherwise
 	 *  address an obituary to another corpse. The caller logs one summary line. */
 	readonly noticesSuppressed: number;
+	/** At most three subject ids for that aggregate summary. */
+	readonly withheldNoticeSubjects: readonly string[];
 }
 
 export function resolveDeathNotices(
@@ -93,8 +96,14 @@ export function resolveDeathNotices(
 		}
 	}
 	const notices: DeathNotice[] = [];
-	const withheldNoticeLines: string[] = [];
+	const withheldNoticeSubjects: string[] = [];
 	let noticesSuppressed = 0;
+	const withhold = (subjectId: string, count = 1): void => {
+		noticesSuppressed += count;
+		if (count > 0 && withheldNoticeSubjects.length < 3) {
+			withheldNoticeSubjects.push(subjectId);
+		}
+	};
 	for (const candidate of candidates) {
 		let recipient: string | null;
 		if (candidate.kind === "fixed") {
@@ -105,15 +114,13 @@ export function resolveDeathNotices(
 			const resolution = resolveNoticeRecipient(descriptor, descriptors, dead);
 			recipient = resolution.recipient;
 			if (!recipient) {
-				noticesSuppressed += resolution.withheld;
-				const line = noLiveNoticeRecipientLine("dead", descriptor, resolution);
-				if (line) withheldNoticeLines.push(line);
+				withhold(candidate.descriptorId, resolution.withheld);
 				continue;
 			}
 		}
 		if (!recipient) continue;
 		if (dead.has(recipient)) {
-			noticesSuppressed += 1;
+			withhold(candidate.from);
 			continue;
 		}
 		notices.push({
@@ -123,7 +130,7 @@ export function resolveDeathNotices(
 			historical: candidate.historical,
 		});
 	}
-	return { notices, noticesSuppressed, withheldNoticeLines };
+	return { notices, noticesSuppressed, withheldNoticeSubjects };
 }
 
 function noticeText(

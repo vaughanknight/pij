@@ -198,3 +198,52 @@ Final gates:
 - Watchdog-manager differs from `cc96eca` only at the two approved comment
   sites. The `daemon-push.test.ts` assertion diff contains only the two
   assertions added by the new inverse case; no existing assertion changed.
+
+### FX-02 — hot-only routing view and bounded death-sweep logs
+
+Re-review at `4a70a26` found two medium regressions:
+
+1. Lifecycle notice resolution added `listTerminal()` archive scans to the
+   600 ms daemon tick and bind loop even though terminal seats cannot receive a
+   notice.
+2. Terminal-death withholding emitted one operator line per notice, reversing
+   task #34's count-not-N rule during fleet-wide death.
+
+RED:
+
+- A daemon tick archive-read counter expected only the pre-existing
+  closed-recipient retirement read and received 2.
+- A planned-id bind registry that throws from `listTerminal()` failed inside
+  loop notice resolution.
+- A 1,000-seat death sweep produced zero aggregate summaries and 1,000 detailed
+  `notice dead` lines.
+
+GREEN:
+
+- Exported one `noticeRegistryView` from `core/binding.ts`; it reads only the hot
+  `RegistryPort.list()` view. `loop.ts` and `daemon.ts` share it.
+- Archived candidates classify as absent, while the caller's dead set continues
+  to classify same-sweep deaths without an archive lookup.
+- Death reconciliation retains the total suppressed count and only the first
+  three subject ids. The daemon emits one summary line with the remaining count.
+- Single-seat stalled/provider/bind/fail paths keep their exact candidate-state
+  diagnostic because they can emit only once per seat.
+- Focused five-file suite: 303 passed, 4 skipped.
+- `npx tsc --noEmit -p .`: passed.
+- Scoped Biome over the nine changed TypeScript files: passed.
+
+Mutation evidence:
+
+- Restoring the archive-backed view makes both the daemon read-count sensor and
+  the planned-bind no-archive sensor fail.
+- Adding detailed `notice dead` lines beside the aggregate makes the 1,000-seat
+  test fail on the explicit zero-detail assertion; restoring aggregate-only
+  logging returns it to green.
+
+Final gates:
+
+- Exact-final full extension suite `bg-mtc7d2cs-3toa01`: 171 files passed, 2
+  skipped; 4,096 tests passed, 15 skipped, zero failed. Log:
+  `.harness/temp/s391/vitest-phase7-fx02.log`.
+- `npx tsc --noEmit -p .`: passed.
+- Scoped Biome over all nine changed TypeScript files: passed.

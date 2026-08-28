@@ -531,6 +531,35 @@ This session was last active just now and appears to be in use by another CLI or
 		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
 	});
 
+	it("planned-id bind resolves notices from the hot registry without scanning the archive", () => {
+		const planned = "9a8f8be6-0000-4000-8000-000000000004";
+		const w = world({ pane: COPILOT_READY, transcripts: [] });
+		w.ports.processSnapshot = () => processSnapshot("copilot", planned);
+		const reg = new (class extends FakeRegistry {
+			override listTerminal(): SessionDescriptor[] {
+				throw new Error("notice routing must not scan the archive");
+			}
+		})([recipientDescriptor("pij-parent", "live")]);
+		const del = new FakeDelivery();
+
+		const out = driveSession(
+			desc({
+				harness: "copilot",
+				initInjectedAt: "2026-06-27T00:00:05.000Z",
+				plannedHarnessSessionId: planned,
+				parentId: "pij-parent",
+				spawnedBy: undefined,
+			}),
+			{ readyAtMs: 1000, firstInferenceSeen: true },
+			w.ports,
+			reg,
+			del,
+		);
+
+		expect(out).toEqual({ kind: "bound", harnessSessionId: planned });
+		expect(del.outbox.map((event) => event.message.to)).toEqual(["pij-parent"]);
+	});
+
 	it("planned-id bind follows a parent re-link preserved by the daemon write", () => {
 		const planned = "9a8f8be6-0000-4000-8000-000000000002";
 		const w = world({ pane: COPILOT_READY, transcripts: [] });

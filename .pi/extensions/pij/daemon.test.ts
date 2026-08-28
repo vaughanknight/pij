@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FsChannel } from "./adapters/channel.js";
 import { FsEventLog } from "./adapters/event-log.js";
-import { FakeDelivery } from "./adapters/fakes.js";
+import { FakeDelivery, FakeRegistry } from "./adapters/fakes.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { SqliteQueue } from "./adapters/sqlite-queue.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
@@ -1604,6 +1604,48 @@ describe("Daemon.tick (bin wiring vs a real tmp ~/.pij)", () => {
 });
 
 describe("Daemon.tick Phase 3 terminal reconciliation wiring", () => {
+	it("adds no archive scan for lifecycle notice routing on the 600ms tick", async () => {
+		let terminalReads = 0;
+		const registry = new (class extends FsRegistry {
+			override listTerminal(): SessionDescriptor[] {
+				terminalReads += 1;
+				return super.listTerminal();
+			}
+		})(home);
+
+		await new Daemon(home, fakePorts(), registry, new FsChannel(home)).tick();
+
+		// One pre-existing read remains for closed-recipient retirement. Notice
+		// routing must reuse the hot list instead of adding another archive walk.
+		expect(terminalReads).toBe(1);
+	});
+
+	it("summarizes 1000 withheld death notices in one line with only three subject ids", async () => {
+		const descriptors = Array.from({ length: 1000 }, (_, index) =>
+			desc({
+				id: `pij-dead-${String(index).padStart(4, "0")}`,
+				harness: "pi",
+				lifecycle: "bound",
+				pid: 1000 + index,
+				spawnedBy: "pij-missing-parent",
+			}),
+		);
+		const logs: string[] = [];
+
+		await new Daemon(
+			home,
+			fakePorts({ alive: false, nowMs: NOW_MS }),
+			new FakeRegistry(descriptors),
+			new FakeDelivery(),
+			(line) => logs.push(line),
+		).tick();
+
+		expect(logs.filter((line) => line.startsWith("death sweep:"))).toEqual([
+			"death sweep: 1000 notice(s) withheld: no live recipient; subjects: pij-dead-0000, pij-dead-0001, pij-dead-0002 (+997 more); terminal truth still recorded on each descriptor",
+		]);
+		expect(logs.filter((line) => line.startsWith("notice dead for"))).toEqual([]);
+	});
+
 	it("labels the first durable death sweep historical, persists it, and restart does not duplicate", async () => {
 		const registry = new FsRegistry(home);
 		registry.write(desc({ id: "pij-parent", pid: 101 }));

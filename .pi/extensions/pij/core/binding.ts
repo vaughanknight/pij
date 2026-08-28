@@ -7,6 +7,7 @@
 
 import { isCopilotSessionId } from "./harness/copilot.js";
 import { transcriptLayout } from "./harness/transcript.js";
+import type { RegistryPort } from "./ports.js";
 import {
 	type DeathReason,
 	type DeliveryMode,
@@ -294,6 +295,12 @@ export interface NoticeRecipientResolution {
 
 export function noticeRecipient(descriptor: SessionDescriptor): SessionId | null {
 	return descriptor.parentId ?? descriptor.spawnedBy ?? null;
+}
+
+/** The hot registry is the complete notice-routing view: terminal candidates
+ *  cannot receive a notice, and an archived candidate is therefore absent. */
+export function noticeRegistryView(registry: Pick<RegistryPort, "list">): SessionDescriptor[] {
+	return registry.list();
 }
 
 function recipientCandidate(
