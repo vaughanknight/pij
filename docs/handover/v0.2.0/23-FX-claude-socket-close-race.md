@@ -5,7 +5,7 @@
 **Size estimate:** DONE (~S) · **Order / dependencies:** none.
 
 ## 1. Why this exists (the observed failure, with evidence)
-`adapters/claude-socket.test.ts` "sendClaudeFrame > reports sent after bytes flush but 'the socket closes'" (`:113`) intermittently observed 0 received lines instead of 1 — the FAKE socket's close raced the byte-flush/received-line emit. Origin: red once at main `5ef1220` (o-prime dx, `docs/plans/392-day3-codex-doctrine/rulings.md` / `docs/plans/392-day3-codex-doctrine/tasks/item-23-FX-spec.md`).
+`adapters/claude-socket.test.ts` "sendClaudeFrame > reports sent after bytes flush but 'the socket closes'" (`:113` at main = the `expect(receivedLines(log)).toHaveLength(1)` site; the assertion sits lower on branch `7540a9c`) intermittently observed 0 received lines instead of 1 — the FAKE socket's close raced the byte-flush/received-line emit. Origin: red once at main `5ef1220`; the test name, `:113`, and `5ef1220` are recorded in `docs/plans/392-day3-codex-doctrine/tasks/item-23-FX-spec.md:3` (NOT in rulings.md — that file has nothing on this flake).
 
 ## 2. What was ruled / done
 Make the FAKE deterministic on two fronts:
@@ -13,11 +13,11 @@ Make the FAKE deterministic on two fronts:
 - **Accept-readiness handshake:** the fake writes a "ready" marker in its `server.listen(sock, () => …)` callback, and the client waits for it — closing a SECOND race the investigation surfaced: a socket pathname can exist before the child is accept-ready (ECONNREFUSED before accept under parallel load).
 
 ## 3. Where the code is
-Branch `s392/item12-fx-falcon`, commit `7540a9c`, file `.pi/extensions/pij/adapters/claude-socket.test.ts` (+22/-8): the `close` mode's `c.write("\n", () => c.end())`; `server.listen(sock, () => fs.writeFileSync(ready, …))` + the client-side readiness wait; a per-mode `ackWaitMs` (2 s for `close`).
+Branch `s392/item12-fx-falcon`, commit `7540a9c`, file `.pi/extensions/pij/adapters/claude-socket.test.ts` (+14/-8; `22` is the --stat total, not the added count): the `close` mode's `c.write("\n", () => c.end())`; `server.listen(sock, () => fs.writeFileSync(ready, …))` + the client-side readiness wait; a per-mode `ackWaitMs` (2 s for `close`).
 
 ## 4. Acceptance (mechanical) — implementation MET, exact-repro PARTIAL
 Flake fix, no mutant; gate = determinism over N runs, logs kept (E22). On branch `7540a9c`: targeted tests green; THREE consecutive post-fix parallel full-suite runs green; a pre-fix run captured the RELATED fake-listener ECONNREFUSED-before-accept race — on branch `7540a9c` at `tasks/item-23-FX/pre-fix-full-suite-run-4.log` (a `*.log`, gitignored, NOT on main; quoted inline per E48/E49): `FAIL claude-socket.test.ts > sendClaudeFrame > reports failed when the receiver reports our msg_id dropped` / `AssertionError: expected 'ECONNREFUSED' to contain 'rate_limited'` / `Tests 4 failed | 4772 passed | 19 skipped`.
-**HONEST CAVEAT:** the EXACT historical zero-line close symptom did NOT reproduce locally in 100 targeted stress attempts — so the fix is proven to CLOSE THE MECHANISM (close-ordering + accept-readiness) and to fix the related race that did reproduce, but the original exact symptom was not reproduced-then-fixed under observation.
+**HONEST CAVEAT:** the EXACT historical zero-line close symptom did NOT reproduce locally in 100 targeted stress attempts (per the coder's completion report — this non-repro is an UNCAPTURED claim: no kept log, nothing on main or quoted inline; treat it as the coder's attestation, not audited evidence). So the fix is proven to CLOSE THE MECHANISM (close-ordering + accept-readiness) and to fix the related race that DID reproduce (the ECONNREFUSED run above), but the original exact symptom was not reproduced-then-fixed under observation.
 
 ## 5. Live verification
 Test-infra only. Run `adapters/claude-socket.test.ts` under concurrent full-suite load N times; no zero-line close, no ECONNREFUSED-before-accept.

@@ -1,7 +1,7 @@
 # 12-FX — pij-skill-check.test.ts full-suite parallelism flake (DONE, pending merge)
 
 **Item id / stream at handover:** 12-FX · s392-day3-codex-doctrine
-**Status at v0.2.0 (tag `d120c53`):** IN FLIGHT — implementation **DONE** on branch `s392/item12-fx-falcon` (pushed, HEAD `8237e78`; 12-FX commit `3f0849e`). Not yet merged to main; land as a small harness-hygiene code PR. Orchestrator-verified (verdict `docs/plans/392-day3-codex-doctrine/reviews/item-12-fx-verdict.md`, on main).
+**Status at v0.2.0 (tag `d120c53`):** IN FLIGHT — implementation **DONE** on branch `s392/item12-fx-falcon` (pushed, HEAD `8237e78`; 12-FX commit `3f0849e`). Not yet merged to main; land as a small harness-hygiene code PR. Orchestrator-verified (verdict `docs/plans/392-day3-codex-doctrine/reviews/item-12-fx-verdict.md`, on main — NB its `Candidate: cf1f04c` is the PRE-REBASE form, identical patch-id `6b5b274`, now landed as `3f0849e`; `cf1f04c` itself is unreachable on a fresh clone).
 **Size estimate:** DONE (~S) · **Order / dependencies:** none.
 
 ## 1. Why this exists (the observed failure, with evidence)
@@ -18,7 +18,7 @@ Branch `s392/item12-fx-falcon`, commit `3f0849e`:
 Pattern also recorded on main: `docs/plans/392-day3-codex-doctrine/tasks/item-12-skillcheck-hardening/tasks.md`; investigation `docs/plans/392-day3-codex-doctrine/tasks/item-12-FX-DRAFT-HOLD.md`.
 
 ## 4. Acceptance (mechanical) — MET
-Flake fix, no mutant; the gate is determinism under full-suite parallelism, repro + logs kept (E22). On branch `3f0849e` (logs at `tasks/item-12-FX/*.log`, gitignored *.log not on main; tallies quoted inline): pre-fix repro (above) + THREE consecutive post-fix parallel full-suite runs each **4771 passed | 19 skipped, 0 failed** (`post-fix-full-suite-run-{1,2,3}.log`; proof runs excluded `release-age-policy.test.ts` pwsh-ENOENT, separately skip-with-reason'd in commit `8237e78`). Orchestrator ran an independent full-suite confirmation.
+Flake fix, no mutant; the gate is determinism under full-suite parallelism, repro + logs kept (E22). On branch `3f0849e` (logs at `tasks/item-12-FX/*.log`, gitignored *.log not on main; tallies quoted inline): pre-fix repro (above) + THREE consecutive post-fix parallel full-suite runs each **4771 passed | 19 skipped, 0 failed** (`post-fix-full-suite-run-{1,2,3}.log`; proof runs excluded `release-age-policy.test.ts` pwsh-ENOENT, separately skip-with-reason'd in commit `8237e78`). Orchestrator ran an independent full-suite confirmation. HONEST NOTE (B1): a LATER saturated run — `RUN: 4 (concurrent batch)` in the sibling's kept log `tasks/item-23-FX/pre-fix-full-suite-run-4.log` (branch `7540a9c`, a gitignored *.log) — shows 12-FX's OWN new test `pij-skill-check.test.ts:76` ("reads repository-level evidence only from the isolated snapshot") hit `Test timed out in 30000ms`. This reads as machine SATURATION, not a regression: two unrelated flow-pair suites ALSO hook-timed-out in that run, and the original target case (`:48`) did NOT re-red. The isolation holds; the parallelism gate is met in the 3 dedicated runs, with this one saturated-run timeout on a different case disclosed rather than buried.
 
 ## 5. Live verification
 CI/test-infra only — no daemon restart. Run the full suite under concurrent load N times; `pij-skill-check.test.ts` must not flake.
