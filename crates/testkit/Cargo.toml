@@ -23,3 +23,8 @@ toml = { workspace = true }
 [[bin]]
 name = "pij-arch-check"
 path = "src/bin/arch_check.rs"
+
+# The one command (ac-0007): toolchain -> fmt -> clippy -> test -> arch.
+[[bin]]
+name = "pij-gate"
+path = "src/bin/gate.rs"
