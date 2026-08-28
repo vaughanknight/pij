@@ -18,6 +18,7 @@ Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with *
 - Watchdog projection/verdict noise: stale `next due`, "unknown" and boundary-stall notices delivered (item 31 pending).
 - Codex `app-server --remote` path deferred; Codex seats use the pointer line.
 - `pij list --json` / `pij state --json` omit harness/pane/statusAt.
+- The plan-055 watchdog smoke proof (`docs/plans/055-pij-watchdog/proofs/run-proofs.ts`) is stale since item 5 (asserts the pre-pointer delivery model; unawaited ticks; FsChannel while the CLI writes sqlite) and reads red on the harness smoke line for those reasons — item 33.
 - The in-process Telegram bridge (item 29) writes no persistent log; `~/.pij/telegram-bridge.log` is the retired standalone bridge's file (ends 20:53Z 2026-08-27). Restored under item 24 / 29b-rest — must be in before the tag.
 - The daemon is launched under an `npx tsx` relay (cli.ts:1598): a signal that reaches the wrapper pid (tmux kill-window, OS shutdown) SIGKILLs the daemon in ~60 ms and leaks the spine write locks; `pij daemon stop` is safe (signals the inner pid) and item 15's reclaim recovers on next start. Direct-child launch = item 32 (pre-tag preferred).
 - Daemon restart is machine-wide (every fleet); baton protocol in `government/`.
