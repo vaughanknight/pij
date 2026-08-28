@@ -34,3 +34,7 @@ _(filled as sections land; one line per file: number · title · stream · statu
 - 24b · Bounded in-lease send backoff + within-pass ambiguous-retry duplicate — s392 · designed, held (measured residual 0)
 - 29b-rest · runDaemon wiring assertion + sidecar advisories (ADV-2/4/5) — s392 · designed, not started
 - E7 · CLI guard refusing `pij send` bodies with unescaped backticks — s392 · designed, not started
+- 21b · Item-21 reviewer advisories (bind-refusal notice tail) — s392 · designed, not started
+- 22 · Watchdog ratchet hardening (was parked behind 24) — s392 · designed, not started
+- E22 · cli.integration subprocess flake (kept-log rule + fixture) — s392 · designed, not started
+- Codex 2/8 · app-server `--remote` delivery — s392 · DEFERRED by the owner; frame builders unit-proven, routing/topology/lifecycle unproven; needs `codex login`
