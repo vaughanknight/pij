@@ -41,7 +41,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 | tk-ddf1 | Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test. | — | — | [x] checked | R3 / ac-0006 | — | [x] 1/1 [tk-ddf1](#tk-ddf1) | — | — | — |
 | tk-d4c3 | Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar. | — | — | [x] checked | R1 / ac-0004-analog,ac-0006 | — | [x] 1/1 [tk-d4c3](#tk-d4c3) | — | — | — |
 | tk-f8ff | Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe. | — | — | [x] checked | R4 | — | [x] 1/1 [tk-f8ff](#tk-f8ff) | — | — | — |
-| tk-d162 | Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured. | — | — | [ ] unchecked | R1,R4 / ac-0005 | — | [ ] 0/1 [tk-d162](#tk-d162) | — | — | — |
+| tk-d162 | Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured. | — | — | [x] checked | R1,R4 / ac-0005 | — | [x] 1/1 [tk-d162](#tk-d162) | — | — | — |
 | tk-717f | Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary. | — | — | [ ] unchecked | R6b / ac-0006 | — | [ ] 0/1 [tk-717f](#tk-717f) | — | — | — |
 | tk-388a | Spike lane + shared components: pocs/&lt;name&gt; template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table. | — | — | [ ] unchecked | R6c,R6d,R6f | — | [ ] 0/1 [tk-388a](#tk-388a) | — | — | — |
 | tk-81b3 | Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files. | — | — | [ ] unchecked | R6e / ac-0007,ac-0008 | — | [ ] 0/1 [tk-81b3](#tk-81b3) | — | — | — |
@@ -90,7 +90,7 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-bba7 | pij-rs ping healthy over localhost HTTP + bearer key; NDJSON stream carries Hello + survives an unknown event kind; first-light transcript captured | [ ] unchecked | not-applicable |
+| dw-bba7 | pij-rs ping healthy over localhost HTTP + bearer key; NDJSON stream carries Hello + survives an unknown event kind; first-light transcript captured | [x] checked | not-applicable |
 
 ### tk-717f
 

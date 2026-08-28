@@ -64,7 +64,7 @@
         {
           "id": "tk-d162",
           "title": "Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R1,R4 / ac-0005",
           "done": "#done_when/tk-d162"
         },
@@ -146,7 +146,7 @@
           {
             "id": "dw-bba7",
             "assertion": "pij-rs ping healthy over localhost HTTP + bearer key; NDJSON stream carries Hello + survives an unknown event kind; first-light transcript captured",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
