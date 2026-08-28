@@ -88,10 +88,10 @@ My suite numbers match the coder's claim (`172 / 4115 / 0`) **exactly**.
 
 | Directory | Claimed | Present |
 |---|---|---|
-| `docs/plans/391-day3-core/logs/sigterm-probe/` | 60 runs, `failed_run=0` | 60 logs + summary ✓ |
-| `docs/plans/391-day3-core/logs/sigterm-direct-proof/` | 20 runs, `failed_run=0` | 20 logs + summary ✓ |
-| `docs/plans/391-day3-core/logs/sigterm-direct-proof-rebased/` | 20 runs, `failed_run=0` | 20 logs + summary ✓ |
-| `docs/plans/391-day3-core/logs/sigterm-run-if-main-probe.log` | `guardMatches:true` | present ✓ |
+| `docs/plans/391-day3-core/kept-logs/sigterm-probe/` | 60 runs, `failed_run=0` | 60 logs + summary ✓ |
+| `docs/plans/391-day3-core/kept-logs/sigterm-direct-proof/` | 20 runs, `failed_run=0` | 20 logs + summary ✓ |
+| `docs/plans/391-day3-core/kept-logs/sigterm-direct-proof-rebased/` | 20 runs, `failed_run=0` | 20 logs + summary ✓ |
+| `docs/plans/391-day3-core/kept-logs/sigterm-run-if-main-probe.log.txt` | `guardMatches:true` | present ✓ |
 
 ---
 

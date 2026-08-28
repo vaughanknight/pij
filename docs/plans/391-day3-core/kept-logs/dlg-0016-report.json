@@ -1,0 +1,25 @@
+COMPLETE dlg-0016 FX-02 — candidate b16d18a75fc004063396009f6d947de1580fcf75
+{
+  "delegationId": "dlg-0016",
+  "outcome": "COMPLETE",
+  "summary": "Removed archive-tier reads from lifecycle notice routing and restored task #34's count-not-N behavior by emitting one bounded death-sweep summary. Both daemon and bind-loop paths now share one hot-only registry view helper.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/binding.ts",
+    ".pi/extensions/pij/core/daemon/death-reconciler.test.ts",
+    ".pi/extensions/pij/core/daemon/death-reconciler.ts",
+    ".pi/extensions/pij/core/daemon/loop.test.ts",
+    ".pi/extensions/pij/core/daemon/loop.ts",
+    ".pi/extensions/pij/core/daemon/watchdog-manager.ts",
+    ".pi/extensions/pij/daemon-push.test.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    "docs/how/pij-watchdog.md",
+    "docs/plans/391-day3-core/tasks/phase-7-item-16-watchdog-parent-route/execution.log.md",
+    "docs/plans/391-day3-core/tasks/phase-7-item-16-watchdog-parent-route/tasks.md"
+  ],
+  "testsRun": 4111,
+  "testsPassed": 4096,
+  "gatesClean": true,
+  "notes": "Commit: b16d18a75fc004063396009f6d947de1580fcf75. G-2 RED: the daemon archive-read sensor expected the one pre-existing closed-recipient retirement read and observed 2; the planned-bind test threw from listTerminal inside loop notice routing. GREEN: exported noticeRegistryView uses RegistryPort.list only and is shared by daemon.ts and loop.ts; archived candidates therefore classify absent while caller deadIds still classify same-sweep deaths. G-1 RED: 1000 dead seats produced zero aggregate summaries and 1000 notice-dead detail lines. GREEN: exactly one summary names pij-dead-0000, pij-dead-0001, and pij-dead-0002 plus 997 more; zero per-notice death lines. DOUBLE-log mutation was RED on the explicit zero-detail assertion, then restored GREEN. G-3 comments now distinguish the pure no-candidate early return from candidate-present withholding. G-4 duplicate view helpers removed. Optional G-6 fixture-trap comment added. Focused five-file suite: 303 passed, 4 skipped. Full extension suite bg-mtc7d2cs-3toa01: 171 passed, 2 skipped; 4096 passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase7-fx02.log. Typecheck and scoped Biome over all nine changed TypeScript files passed. No push performed."
+}
+b16d18a75fc004063396009f6d947de1580fcf75

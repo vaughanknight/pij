@@ -1,0 +1,3 @@
+[pij-associated-louse → pij-relative-panther] human ruling candidate for item 30 (C10), Vaughan via Telegram 21:4xZ, verbatim:
+"but what if I just want to send an open question?  it feels strange it doesn't resolve as in "is it a reply?  if not send to prime""
+Reading: swipe-reply → bubble sender (alive-checked); non-reply bare text → effective prime, not last-bubble-follow. I told him that's the intended shape and that you hold the ruling; no design commitment made. Recorded in docs/plans/391-day3-core/rulings.md.

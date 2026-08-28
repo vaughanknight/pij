@@ -1,0 +1,19 @@
+COMPLETE dlg-0030
+{
+  "delegationId": "dlg-0030",
+  "outcome": "COMPLETE",
+  "summary": "The production daemon window now launches daemon.ts as Node's direct child through the absolute tsx loader, and the daemon handles SIGHUP through the same graceful lock-releasing path as SIGINT/SIGTERM. Real temp-home tests prove outer-pid identity, clean SIGTERM/SIGHUP exits, lock release, fake-tmux composition, cwd-independent loader resolution, and relay/SIGHUP failure behavior.",
+  "filesChanged": [
+    ".pi/extensions/pij/cli.ts",
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/cli.integration.test.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    "docs/how/pij.md",
+    "docs/plans/391-day3-core/tasks/phase-15-item-32-daemon-direct-child/execution.log.md"
+  ],
+  "testsRun": 4167,
+  "testsPassed": 4152,
+  "gatesClean": true,
+  "notes": "Root cause: startDaemonWindow placed npx and tsx's CLI relay above daemon.ts, so the pane's outer pid was not the daemon pid and outer-process signals could bypass or interrupt the daemon's graceful lock-release path. Rebased before the first commit onto 71171648d275baffda7b8e62f8c935133a7d9666. Commit: 61d68f1b0352aa4a2c7801e62fb6c08c51e69b08. Production argv: /opt/homebrew/Cellar/node/26.3.1/bin/node --import file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/loader.mjs <absolute daemon.ts>. Authoritative suite: 172 files passed, 2 skipped; 4,152 tests passed, 15 skipped; log .harness/temp/s391/vitest-phase15.log (pij bg bg-mtcd6dg0-24lt4r). Typecheck and scoped Biome passed. Mutation logs: .harness/temp/s391/dlg-0030-relay-mutation-red.log and .harness/temp/s391/dlg-0030-sighup-mutation-red.log. harness checks --quick still reports three unchanged baseline conditions: .pi/extensions/pij/producers/osc-7337-producer.ts existing Biome findings; harness/scripts/release-age-policy.test.ts cannot spawn unavailable local pwsh; windows-compat repeats the same producer lint. No live daemon was stopped, restarted, or signalled; no push or PR was performed."
+}
+61d68f1b0352aa4a2c7801e62fb6c08c51e69b08

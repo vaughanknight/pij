@@ -25,7 +25,7 @@ re-anchors when `statusAt` moves.
 
 Mutation: projecting `scheduleAnchorAtMs + intervalMs` made the T001 test RED
 with the same `100Z` versus `200Z` mismatch. Evidence:
-`docs/plans/391-day3-core/logs/dlg-0029-mutations/t002-anchor-only.log`.
+`docs/plans/391-day3-core/kept-logs/dlg-0029-mutations/t002-anchor-only.log.txt`.
 
 ## T003–T004 — unknown is local diagnostic evidence
 
@@ -45,7 +45,7 @@ real `suspect` verdict.
 
 Mutation: re-enabling `notifyWatchers` in the `unknown` branch made the inverted
 test RED and recreated the watcher notice/capture. Evidence:
-`docs/plans/391-day3-core/logs/dlg-0029-mutations/t004-unknown-delivery.log`.
+`docs/plans/391-day3-core/kept-logs/dlg-0029-mutations/t004-unknown-delivery.log.txt`.
 
 ## T005–T006 — interval-aware legacy stall threshold
 
@@ -64,7 +64,7 @@ detector consumes that seam. Tests cover five versus twenty-one minutes on a
 
 Mutation: restoring the detector's bare `STALE_AFTER_MS` comparison made the
 five-minute case RED. Evidence:
-`docs/plans/391-day3-core/logs/dlg-0029-mutations/t006-bare-stale.log`.
+`docs/plans/391-day3-core/kept-logs/dlg-0029-mutations/t006-bare-stale.log.txt`.
 
 ## T007 — sensor provenance
 
@@ -85,7 +85,7 @@ is consumed without attempting a receipt back to that sensor.
 Mutation: changing the provider-failure sender back to the observed descriptor
 made its provenance assertion RED (`pij-routed-provider-failure` versus
 `pij-daemon`). Evidence:
-`docs/plans/391-day3-core/logs/dlg-0029-mutations/t007-provider-sender.log`.
+`docs/plans/391-day3-core/kept-logs/dlg-0029-mutations/t007-provider-sender.log.txt`.
 
 ## Pre-rebase proof
 
@@ -94,7 +94,7 @@ Test Files  5 passed (5)
 Tests       375 passed | 2 skipped (377)
 ```
 
-Affected-suite log: `docs/plans/391-day3-core/logs/dlg-0029-targeted.log`.
+Affected-suite log: `docs/plans/391-day3-core/kept-logs/dlg-0029-targeted.log.txt`.
 Root TypeScript typecheck passed. Scoped Biome found two formatting-only
 differences, which were applied before the rebase boundary.
 
@@ -117,7 +117,7 @@ Duration    198.90s
 
 Logs:
 
-- `docs/plans/391-day3-core/logs/vitest-phase13.log`
+- `docs/plans/391-day3-core/kept-logs/vitest-phase13.log.txt`
 - `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtca1ah4-bvzzze.log`
 
 Post-rebase root TypeScript typecheck passed. Scoped Biome passed on all nine
@@ -139,7 +139,7 @@ was non-zero with four failures, all outside this phase's fence:
 
 The packet-required gates remain green: full `.pi/extensions/pij/` Vitest,
 root typecheck, and scoped Biome. Harness log:
-`docs/plans/391-day3-core/logs/harness-checks-phase13.log`; wrapper log:
+`docs/plans/391-day3-core/kept-logs/harness-checks-phase13.log.txt`; wrapper log:
 `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtca6dps-qio58o.log`.
 
 ## FX-02 — sustained-liveness near-miss and review guards
@@ -161,7 +161,7 @@ The production line was restored byte-for-byte to
 `Math.min(cfg.intervalMs, STALE_AFTER_MS)`. The new test uses a 20-minute
 interval and an event five minutes old, proving sustained liveness does not
 clear the pinned stall. Mutating the window back to `staleAfterMsFor` reproduces
-the RED above. Evidence: `docs/plans/391-day3-core/logs/fx02-m1-red.log`.
+the RED above. Evidence: `docs/plans/391-day3-core/kept-logs/fx02-m1-red.log.txt`.
 
 The death reconciler now has an explicit fixed-candidate guard proving bounded
 withheld summaries retain observed `subjectId` values (`s-dead-0..2`) rather
@@ -174,7 +174,7 @@ bounded log line as compensating evidence.
 F-2 mutation: changing the fixed death candidate's `subjectId` to
 `pij-daemon` made the guard RED with three received `pij-daemon` subjects
 instead of `s-dead-0`, `s-dead-1`, and `s-dead-2`. Evidence:
-`docs/plans/391-day3-core/logs/fx02-subject-id-red.log`.
+`docs/plans/391-day3-core/kept-logs/fx02-subject-id-red.log.txt`.
 
 The restored production line was compared directly with the merge-base copy
 and is byte-identical:
@@ -191,6 +191,6 @@ Tests       4123 passed | 15 skipped (4138)
 Duration    186.45s
 ```
 
-Full-suite log: `docs/plans/391-day3-core/logs/vitest-phase13-fx02.log`.
+Full-suite log: `docs/plans/391-day3-core/kept-logs/vitest-phase13-fx02.log.txt`.
 Root TypeScript typecheck passed. Scoped Biome passed on all changed
 TypeScript files.

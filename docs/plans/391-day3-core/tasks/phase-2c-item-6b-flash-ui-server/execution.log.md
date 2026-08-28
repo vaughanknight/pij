@@ -35,7 +35,7 @@ The implementation therefore does not recommend `-p`, does not add an interactiv
 - Typecheck: `npx tsc --noEmit -p .` passed.
 - Scoped Biome check for all changed TypeScript files passed.
 - Authoritative extension suite: 171 files passed, 2 skipped; 3,994 tests passed, 15 skipped; 0 failed.
-- Authoritative log: `docs/plans/391-day3-core/logs/vitest-phase2c.log`.
+- Authoritative log: `docs/plans/391-day3-core/kept-logs/vitest-phase2c.log.txt`.
 - `just lint` remains red only in unrelated pre-existing files, including OSC producer/control-character and assignment-expression diagnostics; no changed file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces the same unrelated lint failure, the existing `spawnSync pwsh ENOENT` test baseline, and the derived Windows compatibility failure; smoke is intentionally skipped in quick mode.
 - Completion is reported as `PARTIAL` with `gatesClean:false` solely because those repository-wide baselines remain outside this delegation's file fence.
@@ -54,7 +54,7 @@ The implementation therefore does not recommend `-p`, does not add an interactiv
 - M6b proof: appending a `copilot -p` remedy failed the literal warning at `spawn-validation.test.ts:94` and the explicit negative at `spawn-validation.test.ts:110`.
 - Typecheck and scoped Biome passed.
 - Authoritative extension suite: 171 files passed, 2 skipped; 3,999 tests passed, 15 skipped; 0 failed.
-- Authoritative log: `docs/plans/391-day3-core/logs/vitest-phase2c-fx01.log`.
+- Authoritative log: `docs/plans/391-day3-core/kept-logs/vitest-phase2c-fx01.log.txt`.
 - `just lint` remains red only in unrelated pre-existing files; no FX-01 file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and the derived Windows compatibility failure; smoke is skipped in quick mode.
 - FX-01 is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.

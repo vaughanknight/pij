@@ -34,7 +34,7 @@ Path correction vs implementer notes: `daemon.ts` is `.pi/extensions/pij/daemon.
 ## artifacts[]
 - `docs/plans/391-day3-core/reports/preamble-checkpoint.md` (this file)
 - `/Users/vaughanknight/.pij/pij-primitive-toucan/day3-implementer-notes.md` (read; sha256 `7fe92b57dd4adb3e829e0e039dc6140bdeaeb60a728a5d0483c7570cf61e9a60` — matches brief)
-- `docs/plans/391-day3-core/logs/baseline-vitest.log` (baseline cheap gate on untouched tree — running at write time; result appended to the pointer message)
+- `docs/plans/391-day3-core/kept-logs/baseline-vitest.log.txt` (baseline cheap gate on untouched tree — running at write time; result appended to the pointer message)
 - `.harness/temp/agent/session-buffer.md` (observations DL-001, CONF-001)
 
 ## shas[]
@@ -44,7 +44,7 @@ Path correction vs implementer notes: `daemon.ts` is `.pi/extensions/pij/daemon.
 ## gates[]
 - `command -v pij` → `/opt/homebrew/bin/pij` → resolves to `/Users/vaughanknight/GitHub/pij/harness/scripts/pij-cli.cjs` (**MAIN checkout**, as the local orient warns). All worktree live proofs will bind explicitly via `npx tsx .pi/extensions/pij/cli.ts …` from this worktree.
 - `node_modules` present in worktree (pre-spawn gate satisfied without `npm ci`).
-- `npx vitest run .pi/extensions/pij/` on `2953d75` → see `docs/plans/391-day3-core/logs/baseline-vitest.log` (pending at file write; verdict in pointer message).
+- `npx vitest run .pi/extensions/pij/` on `2953d75` → see `docs/plans/391-day3-core/kept-logs/baseline-vitest.log.txt` (pending at file write; verdict in pointer message).
 - Not run yet: `just pij-skill-check` (no skill edits planned), `harness checks` (full gate at ship; KNOWN-RED `release-age-policy.test.ts` needs `pwsh`).
 
 ## observations[]
@@ -64,4 +64,4 @@ Path correction vs implementer notes: `daemon.ts` is `.pi/extensions/pij/daemon.
 - **O-5**: confirm `the-flow` ≡ `/builder` for steps 7/14 in this claude-harness seat.
 
 ## addendum 08:22Z — baseline gate verdict
-- `npx vitest run .pi/extensions/pij/` on `2953d75` → **PASS**: Test Files 170 passed | 2 skipped (172); Tests 3904 passed | 15 skipped (3919); 143s; exit 0. Evidence: `docs/plans/391-day3-core/logs/baseline-vitest.log`.
+- `npx vitest run .pi/extensions/pij/` on `2953d75` → **PASS**: Test Files 170 passed | 2 skipped (172); Tests 3904 passed | 15 skipped (3919); 143s; exit 0. Evidence: `docs/plans/391-day3-core/kept-logs/baseline-vitest.log.txt`.

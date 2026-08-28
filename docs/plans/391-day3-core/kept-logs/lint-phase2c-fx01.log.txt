@@ -1,0 +1,347 @@
+npm run lint
+
+> pij@0.1.0 lint
+> biome check .
+
+.pi/extensions/pij/adapters/copilot-rpc.test.ts:33:13 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    31 │ 					result: { sessionId: fgSessionId },
+    32 │ 				});
+  > 33 │ 				c.write("Content-Length: " + Buffer.byteLength(resp) + "\r\n\r\n" + resp);
+       │ 				        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    34 │ 			}
+    35 │ 		});
+  
+  i Unsafe fix: Use a template literal.
+  
+     31  31 │             result: { sessionId: fgSessionId },
+     32  32 │           });
+     33     │ - → → → → c.write("Content-Length:·"·+·Buffer.byteLength(resp)·+·"\r\n\r\n"·+·resp);
+         33 │ + → → → → c.write(`Content-Length:·${Buffer.byteLength(resp)}\r\n\r\n${resp}`);
+     34  34 │         }
+     35  35 │       });
+  
+
+.pi/extensions/pij/producers/conformance.ts:148:25 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    146 │ 	);
+    147 │ 	emitLiveness({ nodeId: "worker1", liveness: "idle" }, g.sink);
+  > 148 │ 	writeFileSync(outPath, "pij emitter output\n" + g.bytes() + "\ndone\n");
+        │ 	                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    149 │ 	console.log(`PIJ_OSC_CONFORMANCE wrote ${g.bytes().length} bytes → ${outPath}`);
+    150 │ }
+  
+  i Unsafe fix: Use a template literal.
+  
+    146 146 │     );
+    147 147 │     emitLiveness({ nodeId: "worker1", liveness: "idle" }, g.sink);
+    148     │ - → writeFileSync(outPath,·"pij·emitter·output\n"·+·g.bytes()·+·"\ndone\n");
+        148 │ + → writeFileSync(outPath,·`pij·emitter·output\n${g.bytes()}\ndone\n`);
+    149 149 │     console.log(`PIJ_OSC_CONFORMANCE wrote ${g.bytes().length} bytes → ${outPath}`);
+    150 150 │   }
+  
+
+.pi/extensions/pij/producers/osc-7337-producer.test.ts:159:4 lint/style/useTemplate  FIXABLE  ━━━━━━━━━━
+
+  i Template literals are preferred over string concatenation.
+  
+    157 │ 		const many = Array.from({ length: 40 }, (_, i) => `file:f${i}`);
+    158 │ 		const ev = evidenceFromRefs([
+  > 159 │ 			"sha:" + "a".repeat(60),
+        │ 			^^^^^^^^^^^^^^^^^^^^^^^
+    160 │ 			...many,
+    161 │ 			...Array.from({ length: 12 }, (_, i) => `selftest:s${i}`),
+  
+  i Unsafe fix: Use a template literal.
+  
+    157 157 │       const many = Array.from({ length: 40 }, (_, i) => `file:f${i}`);
+    158 158 │       const ev = evidenceFromRefs([
+    159     │ - → → → "sha:"·+·"a".repeat(60),
+        159 │ + → → → `sha:${"a".repeat(60)}`,
+    160 160 │         ...many,
+    161 161 │         ...Array.from({ length: 12 }, (_, i) => `selftest:s${i}`),
+  
+
+biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The configuration schema version does not match the CLI version 2.4.14
+  
+    1 │ {
+  > 2 │ 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+      │ 	           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ 	"files": {
+    4 │ 		"includes": [
+  
+  i   Expected:                     2.4.14
+      Found:                        2.0.0
+  
+  
+  i Run the command biome migrate to migrate the configuration file.
+  
+
+.pi/extensions/pij/adapters/copilot-rpc.test.ts:24:24 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    22 │ 				const sep = buf.indexOf("\r\n\r\n");
+    23 │ 				if (sep < 0) return;
+  > 24 │ 				const len = Number(/Content-Length:\s*(\d+)/i.exec(buf.subarray(0, sep).toString())![1]);
+       │ 				                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    25 │ 				if (buf.length < sep + 4 + len) return;
+    26 │ 				const msg = JSON.parse(buf.subarray(sep + 4, sep + 4 + len).toString());
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+     22  22 │           const sep = buf.indexOf("\r\n\r\n");
+     23  23 │           if (sep < 0) return;
+     24     │ - → → → → const·len·=·Number(/Content-Length:\s*(\d+)/i.exec(buf.subarray(0,·sep).toString())![1]);
+         24 │ + → → → → const·len·=·Number(/Content-Length:\s*(\d+)/i.exec(buf.subarray(0,·sep).toString())?.[1]);
+     25  25 │           if (buf.length < sep + 4 + len) return;
+     26  26 │           const msg = JSON.parse(buf.subarray(sep + 4, sep + 4 + len).toString());
+  
+
+.pi/extensions/pij/core/agents/cli-verbs.test.ts:317:27 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    315 │ 		);
+    316 │ 		expect(e).toEqual({ code: "E-PERMISSION", kind: "shell", preset: "read-only" });
+  > 317 │ 		expect(renderAgentError(e!)).toContain(
+        │ 		                        ^^
+    318 │ 			"E-PERMISSION: run denied (shell blocked by preset 'read-only')",
+    319 │ 		);
+  
+
+.pi/extensions/pij/core/harness/badmodel.test.ts:9:10 lint/correctness/noUnusedImports  FIXABLE  ━━━━━━━━━━
+
+  ! Several of these imports are unused.
+  
+     7 │ import { describe, expect, it } from "vitest";
+     8 │ import type { HarnessKind } from "../types.js";
+   > 9 │ import { type BadModelDetection, detectBadModelInPane, extractBoundModel } from "./badmodel.js";
+       │          ^^^^^^^^^^^^^^^^^^^^^^
+    10 │ 
+    11 │ // ─── claude ──────────────────────────────────────────────────────────────────
+  
+  i Unused imports might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: Remove the unused imports.
+  
+    9 │ import·{·type·BadModelDetection,·detectBadModelInPane,·extractBoundModel·}·from·"./badmodel.js";
+      │          ------------------------                                                               
+
+.pi/extensions/pij/core/models/match.ts:31:35 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    29 │ 		for (let j = 1; j <= lb; j++) {
+    30 │ 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+  > 31 │ 			const cur = Math.min(prev + 1, row[j]! + 1, row[j - 1]! + cost);
+       │ 			                               ^^^^^^^
+    32 │ 			row[j - 1] = prev;
+    33 │ 			prev = cur;
+  
+
+.pi/extensions/pij/core/models/match.ts:31:48 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    29 │ 		for (let j = 1; j <= lb; j++) {
+    30 │ 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+  > 31 │ 			const cur = Math.min(prev + 1, row[j]! + 1, row[j - 1]! + cost);
+       │ 			                                            ^^^^^^^^^^^
+    32 │ 			row[j - 1] = prev;
+    33 │ 			prev = cur;
+  
+
+.pi/extensions/pij/core/models/match.ts:37:9 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    35 │ 		row[lb] = prev;
+    36 │ 	}
+  > 37 │ 	return row[lb]!;
+       │ 	       ^^^^^^^^
+    38 │ }
+    39 │ 
+  
+
+.pi/extensions/pij/core/models/match.ts:58:36 lint/style/noNonNullAssertion ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    56 │ 	// 2. Prefix match (query is a prefix of the normalised model id)
+    57 │ 	const prefixed = models.filter((m) => normalizeModelQuery(m.id).startsWith(norm));
+  > 58 │ 	if (prefixed.length === 1) return prefixed[0]!;
+       │ 	                                  ^^^^^^^^^^^^
+    59 │ 	if (prefixed.length > 1) {
+    60 │ 		// Shortest prefix match wins (most specific without being too broad)
+  
+
+skills/flow-pair/test/cli-dispatch.test.ts:144:17 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    142 │ 		const runResult = writer.createRun("cli-test-repo-xyz");
+    143 │ 		expect(runResult.ok).toBe(true);
+  > 144 │ 		const runId = runResult.run!.runId;
+        │ 		              ^^^^^^^^^^^^^^
+    145 │ 
+    146 │ 		// Step 2: create plan + tasks fixture files the CLI can read
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    142 142 │       const runResult = writer.createRun("cli-test-repo-xyz");
+    143 143 │       expect(runResult.ok).toBe(true);
+    144     │ - → → const·runId·=·runResult.run!.runId;
+        144 │ + → → const·runId·=·runResult.run?.runId;
+    145 145 │   
+    146 146 │       // Step 2: create plan + tasks fixture files the CLI can read
+  
+
+skills/flow-pair/test/learning.test.ts:367:22 lint/style/noNonNullAssertion  FIXABLE  ━━━━━━━━━━━━━━
+
+  ! Forbidden non-null assertion.
+  
+    365 │ 		expect(section).toBeDefined();
+    366 │ 		const clusters: string[] = [];
+  > 367 │ 		for (const line of section!.split("\n")) {
+        │ 		                   ^^^^^^^^
+    368 │ 			const m = line.match(/^\|\s*`([a-z-]+)`/);
+    369 │ 			if (m) clusters.push(m[1]);
+  
+  i Unsafe fix: Replace with optional chain operator ?. This operator includes runtime checks, so it is safer than the compile-only non-null assertion operator
+  
+    365 365 │       expect(section).toBeDefined();
+    366 366 │       const clusters: string[] = [];
+    367     │ - → → for·(const·line·of·section!.split("\n"))·{
+        367 │ + → → for·(const·line·of·section?.split("\n"))·{
+    368 368 │         const m = line.match(/^\|\s*`([a-z-]+)`/);
+    369 369 │         if (m) clusters.push(m[1]);
+  
+
+skills/flow-pair/test/review.test.ts:46:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━
+
+  ! This variable REVIEW_SCHEMA_PATH is unused.
+  
+    44 │ const MINIMAL_TEMPLATE =
+    45 │ 	"# Fix {{FIX_PACKET_ID}}\nDelegation: {{DELEGATION_ID}}\nReview: {{REVIEW_ID}}\nRun: {{RUN_ID}}\nAllowed:\n{{ALLOWED_FILES_LIST}}\nFindings:\n{{FINDINGS_SUMMARY}}\n";
+  > 46 │ const REVIEW_SCHEMA_PATH = join(import.meta.dirname, "..", "schemas", "review.schema.json");
+       │       ^^^^^^^^^^^^^^^^^^
+    47 │ 
+    48 │ // ─── TrackingDeps: records callLog for ordering assertions ────────────────────
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend REVIEW_SCHEMA_PATH with an underscore.
+  
+     44  44 │   const MINIMAL_TEMPLATE =
+     45  45 │   	"# Fix {{FIX_PACKET_ID}}\nDelegation: {{DELEGATION_ID}}\nReview: {{REVIEW_ID}}\nRun: {{RUN_ID}}\nAllowed:\n{{ALLOWED_FILES_LIST}}\nFindings:\n{{FINDINGS_SUMMARY}}\n";
+     46     │ - const·REVIEW_SCHEMA_PATH·=·join(import.meta.dirname,·"..",·"schemas",·"review.schema.json");
+         46 │ + const·_REVIEW_SCHEMA_PATH·=·join(import.meta.dirname,·"..",·"schemas",·"review.schema.json");
+     47  47 │   
+     48  48 │   // ─── TrackingDeps: records callLog for ordering assertions ────────────────────
+  
+
+.pi/extensions/pij/producers/conformance.ts:22:17 lint/suspicious/noControlCharactersInRegex ━━━━━━━━━━
+
+  × Unexpected control character in a regular expression.
+  
+    20 │ 			chunks.flatMap((c) => {
+    21 │ 				const out: Record<string, unknown>[] = [];
+  > 22 │ 				const re = /\x1b\]7337;([\s\S]*?)\x07/g;
+       │ 				            ^^^^
+    23 │ 				let m: RegExpExecArray | null;
+    24 │ 				// Out-of-fence fix (s113, prime-ratified): m[1] is string|undefined under
+  
+  i Control characters are unusual and potentially incorrect inputs, so they are disallowed.
+  
+
+.pi/extensions/pij/producers/conformance.ts:22:38 lint/suspicious/noControlCharactersInRegex ━━━━━━━━━━
+
+  × Unexpected control character in a regular expression.
+  
+    20 │ 			chunks.flatMap((c) => {
+    21 │ 				const out: Record<string, unknown>[] = [];
+  > 22 │ 				const re = /\x1b\]7337;([\s\S]*?)\x07/g;
+       │ 				                                 ^^^^
+    23 │ 				let m: RegExpExecArray | null;
+    24 │ 				// Out-of-fence fix (s113, prime-ratified): m[1] is string|undefined under
+  
+  i Control characters are unusual and potentially incorrect inputs, so they are disallowed.
+  
+
+.pi/extensions/pij/producers/conformance.ts:26:13 lint/suspicious/noAssignInExpressions ━━━━━━━━━━━━
+
+  × The assignment should not be in an expression.
+  
+    24 │ 				// Out-of-fence fix (s113, prime-ratified): m[1] is string|undefined under
+    25 │ 				// noUncheckedIndexedAccess; a frame the regex matched always has group 1.
+  > 26 │ 				while ((m = re.exec(c))) {
+       │ 				        ^^^^^^^^^^^^^^
+    27 │ 					const payload = m[1];
+    28 │ 					if (payload !== undefined) out.push(JSON.parse(payload));
+  
+  i The use of assignments in expressions is confusing.
+    Expressions are often considered as side-effect free.
+  
+
+.pi/extensions/pij/producers/osc-7337-producer.test.ts:21:16 lint/suspicious/noControlCharactersInRegex ━━━━━━━━━━
+
+  × Unexpected control character in a regular expression.
+  
+    19 │ 		chunks.flatMap((c) => {
+    20 │ 			const out: Record<string, unknown>[] = [];
+  > 21 │ 			const re = /\x1b\]7337;([\s\S]*?)\x07/g;
+       │ 			            ^^^^
+    22 │ 			let m: RegExpExecArray | null;
+    23 │ 			while ((m = re.exec(c))) out.push(JSON.parse(m[1]));
+  
+  i Control characters are unusual and potentially incorrect inputs, so they are disallowed.
+  
+
+.pi/extensions/pij/producers/osc-7337-producer.test.ts:21:37 lint/suspicious/noControlCharactersInRegex ━━━━━━━━━━
+
+  × Unexpected control character in a regular expression.
+  
+    19 │ 		chunks.flatMap((c) => {
+    20 │ 			const out: Record<string, unknown>[] = [];
+  > 21 │ 			const re = /\x1b\]7337;([\s\S]*?)\x07/g;
+       │ 			                                 ^^^^
+    22 │ 			let m: RegExpExecArray | null;
+    23 │ 			while ((m = re.exec(c))) out.push(JSON.parse(m[1]));
+  
+  i Control characters are unusual and potentially incorrect inputs, so they are disallowed.
+  
+
+.pi/extensions/pij/producers/osc-7337-producer.test.ts:23:12 lint/suspicious/noAssignInExpressions ━━━━━━━━━━
+
+  × The assignment should not be in an expression.
+  
+    21 │ 			const re = /\x1b\]7337;([\s\S]*?)\x07/g;
+    22 │ 			let m: RegExpExecArray | null;
+  > 23 │ 			while ((m = re.exec(c))) out.push(JSON.parse(m[1]));
+       │ 			        ^^^^^^^^^^^^^^
+    24 │ 			return out;
+    25 │ 		});
+  
+  i The use of assignments in expressions is confusing.
+    Expressions are often considered as side-effect free.
+  
+
+The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
+Diagnostics not shown: 4.
+Checked 505 files in 4s. No fixes applied.
+Found 9 errors.
+Found 11 warnings.
+Found 4 infos.
+check ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Some errors were emitted while running checks.
+  
+
+error: Recipe `lint` failed on line 78 with exit code 1

@@ -1,0 +1,6 @@
+[pij-associated-louse → pij-powerful-whale] scoped re-review, item 32 FX-01 (C10)
+Frozen SHA: 225f443 (parent 61d68f1; branch s391/item32-daemon-direct-child). Tree clean — confirm before mutating.
+Packet: docs/plans/391-day3-core/tasks/phase-15-item-32-daemon-direct-child/fix-01.md (your P-1, P-2, P-3). Coder log § FX-01; logs .harness/temp/s391/dlg-0030-fx01-sigint-red.log, item32-spawn-x10.log (30/30), vitest-phase15-fx01.log (172 / 4153 / 0).
+Scope: `git diff 61d68f1..225f443` — daemon.ts (comments + shebang REMOVED), daemon.test.ts (15-FX test via daemonLaunchArgv; SIGINT in the it.each), core/daemon/lifecycle.ts (comment-only — verify), execution.log.md.
+Verify: (1) your M5 (drop SIGINT) now RED; (2) no hand-composed `--import` tsx spawn remains in any test (grep); (3) lifecycle.ts comment-only, constant unchanged; (4) shebang removal: daemon.ts is never executed directly anywhere (justfile, package.json, installers, docs) — if it is, that is a finding; (5) the ×10 log is what it claims (30 real runs).
+Verdict: append `## Re-review FX-01` to docs/plans/391-day3-core/tasks/phase-15-item-32-daemon-direct-child/review-01.md; reply verdict + pointer only.

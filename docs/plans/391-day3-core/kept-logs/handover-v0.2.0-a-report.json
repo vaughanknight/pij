@@ -1,0 +1,16 @@
+COMPLETE handover-v0.2.0-a
+{
+  "delegationId": "handover-v0.2.0-a",
+  "outcome": "COMPLETE",
+  "summary": "Created the three requested v0.2.0 handover documents from TEMPLATE.md. Each file covers every section with implementation seams at tag d120c53, behavioral tests, named mutants, live-verification procedures, E-rule incidents, dependencies, risks, and explicit open questions.",
+  "filesChanged": [
+    "docs/handover/v0.2.0/34-queue-hygiene.md",
+    "docs/handover/v0.2.0/31b-subtree-stall.md",
+    "docs/handover/v0.2.0/19-pointer-park.md"
+  ],
+  "testsRun": 0,
+  "testsPassed": 0,
+  "gatesClean": true,
+  "notes": "Commits: c41856fe127de5affa261e5aaad80132c237432e (34), 6e288de7fd9c1504f3ff8390fa28920f3b64469c (31b), ef6d4379d6564ee96dc098db656c8945ea1807c3 (19). Verified all seven TEMPLATE.md sections in every file, all 29 cited repository paths with git cat-file -e s391/plan-folder-v0.2.0:<path>, and every d120c53 code path against the tag. Item 34 includes read-only live queue evidence: 80 queued receipt rows to pij-watchdog at seq 166-6705; 39 termite rows retired at seq 160-6251; the named watcher sidecar still contains dissolved termite plus live kingfisher. Important correction captured: d120c53 already has the narrow registry-presence receipt guard and FsChannel test, but real-SQLite/two-sensor/log coverage and the remaining sweep/status work are outstanding. No code, live queue, sidecar, daemon, push, or PR was modified. origin/main advanced after branch creation; a rebase was not performed because newly tracked plan-folder files would overwrite existing shared untracked copies, while the three committed handover paths are unique."
+}
+ef6d4379d6564ee96dc098db656c8945ea1807c3

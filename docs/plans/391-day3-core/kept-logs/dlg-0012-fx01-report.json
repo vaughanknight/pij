@@ -1,0 +1,18 @@
+{"delegationId":"dlg-0012-fx01","outcome":"PARTIAL",
+  "summary": "Completed all FX-01 cold-review repairs: corrected UTC/provenance, made the instability catalog own-key safe, made annotation and its provider guard load-bearing, preserved unknown-model validation, and pinned the literal warning with no copilot -p remedy. Assigned tests, typecheck, scoped Biome, and the full extension suite are green.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/models/registry.ts",
+    ".pi/extensions/pij/core/models/registry.test.ts",
+    ".pi/extensions/pij/core/models/validate.ts",
+    ".pi/extensions/pij/core/models/validate.test.ts",
+    ".pi/extensions/pij/core/spawn.ts",
+    ".pi/extensions/pij/core/models/spawn-validation.test.ts",
+    "docs/how/pij-models-discovery.md",
+    "docs/plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/isolation.md",
+    "docs/plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/execution.log.md"
+  ],
+  "testsRun": 4014,
+  "testsPassed": 3999,
+  "gatesClean": false,
+  "notes": "Commit 9726601b331f76cdbb440f547ee36da18852da21. Full suite: 171 files passed, 2 skipped; 3,999 tests passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase2c-fx01.log. Focused: 102/102; tsc and scoped Biome passed. M2 RED: registry.test.ts:343. M4 RED: spawn-validation.test.ts:109. M6b RED: spawn-validation.test.ts:94 literal equality and :110 explicit no-copilot-p regex. harness checks --quick remains baseline-red only for unrelated OSC lint, missing pwsh, and derived windows-compat; therefore PARTIAL/gatesClean:false. Item 6 argv gate is unchanged. No push or PR."
+}

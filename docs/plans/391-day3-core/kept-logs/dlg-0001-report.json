@@ -1,0 +1,21 @@
+{"outcome":"PARTIAL","delegationId":"dlg-0001",
+  "summary": "Implemented all T001-T008 code, tests, docs, dossier updates, and the explicit-path commit. The assigned pij suite, typecheck, and scoped Biome gates pass; the global harness inventory remains red only on pre-existing out-of-scope baseline failures.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/spawn.ts",
+    ".pi/extensions/pij/core/spawn.test.ts",
+    ".pi/extensions/pij/core/models/registry.ts",
+    ".pi/extensions/pij/core/models/registry.test.ts",
+    ".pi/extensions/pij/core/models/validate.ts",
+    ".pi/extensions/pij/core/models/validate.test.ts",
+    ".pi/extensions/pij/cli.ts",
+    ".pi/extensions/pij/cli.integration.test.ts",
+    "docs/how/pij-models-discovery.md",
+    "docs/domains/pij-control-plane/domain.md",
+    "docs/plans/391-day3-core/tasks/phase-1-item-6-long-context-gate/execution.log.md",
+    "docs/plans/391-day3-core/tasks/phase-1-item-6-long-context-gate/tasks.md"
+  ],
+  "testsRun": 3933,
+  "testsPassed": 3918,
+  "gatesClean": false,
+  "notes": "Commit 7ba1831da222eb7461ec58a041a5d848e66bac20. Final full suite log: .harness/temp/s391/vitest-phase1.log (170 files passed, 2 skipped; 3918 tests passed, 15 skipped). Targeted composition/unit run: 339 passed, 1 skipped. harness checks --quick passed local-paths, typecheck, pkg-audit, and snapshots, but pre-existing out-of-scope lint/windows-compat diagnostics remain under .pi/extensions/pij/producers/osc-7337-producer.ts and its test, and the broad test gate cannot spawn unavailable pwsh in harness/scripts/release-age-policy.test.ts:196."
+}

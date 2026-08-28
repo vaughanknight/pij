@@ -66,7 +66,7 @@
 | Complete pure CLI/platform/anomaly/daemon test files | Passed: 757 tests. |
 | Focused Phase 2b contracts | Passed: 10 tests; 238 unrelated tests skipped. |
 | Lifecycle mutation | Expected RED: `pij-live-requested` became `retired`; restored afterward. |
-| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,970 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase2b.log`. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,970 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/kept-logs/vitest-phase2b.log.txt`. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. The repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |
 
 ## Decisions
@@ -128,7 +128,7 @@
 | Idle dispatch-store test | Passed: zero `list()` calls without a complete closed recipient. |
 | `npx tsc --noEmit -p .` | Passed. |
 | Scoped Biome check on the ten touched TypeScript files | Passed. |
-| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,975 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase2b-fx01.log`. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,975 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/kept-logs/vitest-phase2b-fx01.log.txt`. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. The unchanged repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |
 
 ## FX-02 - Re-review G-1 precise revert
@@ -155,5 +155,5 @@
 | Dispatch + platform type tests | Passed: 159 tests before the full gate. |
 | `npx tsc --noEmit -p .` | Passed. |
 | Scoped Biome check on the three touched TypeScript files | Passed. |
-| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,974 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase2b-fx02.log`. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,974 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/kept-logs/vitest-phase2b-fx02.log.txt`. |
 | `harness checks --quick` | The unchanged repository baseline remains red on unrelated Biome/Windows diagnostics and missing `pwsh` in `harness/scripts/release-age-policy.test.ts:196`. |

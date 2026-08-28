@@ -18,4 +18,4 @@ The pij#161 docblock documented "deliver unknown to the watcher" as a rejected a
 
 ## Not required (info, measured by the reviewer): F-5/F-6 the extra `statSync` at `daemon.ts:1073` is ≤ 0.75 % of a tick — leave it.
 
-Gates: full vitest via `pij bg` → `docs/plans/391-day3-core/logs/vitest-phase13-fx02.log`; tsc; biome on changed files. One commit on the branch (do not rewrite 98cce88); report per schema via `--body-file` with: SHA, the M-1 sensor RED evidence at the mutated window, the F-2 RED evidence, and confirmation that `:662` is byte-identical to base.
+Gates: full vitest via `pij bg` → `docs/plans/391-day3-core/kept-logs/vitest-phase13-fx02.log.txt`; tsc; biome on changed files. One commit on the branch (do not rewrite 98cce88); report per schema via `--body-file` with: SHA, the M-1 sensor RED evidence at the mutated window, the F-2 RED evidence, and confirmation that `:662` is byte-identical to base.

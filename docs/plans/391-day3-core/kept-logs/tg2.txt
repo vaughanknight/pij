@@ -1,0 +1,5 @@
+Your 21:01Z Telegram message ("suspect things stalled a lot overnight…") never reached anyone — the bridge routed it to pij-icy-jernau (an s392 seat that died at 20:12Z); it is still sitting queued to a dead seat. Only your 20:59Z message reached me. I've reported the routing defect to the o-prime.
+
+To reach me reliably: swipe-reply to this bubble, or start the text with pij-associated-louse. Bare text follows whoever bubbled last, so it can wander.
+
+Short answer on "stalled overnight" (s391 only): yes, real stalls — reviewer wedged >80 min (replaced), 5 daemon restarts, red main from another stream, ~6 fix rounds. Net: 8/15 items merged (6,1a,1,5,1b,4,6b,13); item 15 in re-review now, then 16/19/25/26/27/28. Fleet-wide answer belongs to pij-relative-panther — I've forwarded your question there.

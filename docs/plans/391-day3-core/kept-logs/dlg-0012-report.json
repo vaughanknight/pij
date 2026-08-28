@@ -1,0 +1,19 @@
+{"delegationId":"dlg-0012","outcome":"PARTIAL",
+  "summary": "Completed Phase 2c item 6b: isolated Flash outside tmux, proved same-version upstream instability, added structured catalog metadata and a warn-don't-block spawn message, and documented both observations. The assigned extension suite, targeted tests, typecheck, and scoped Biome checks are green.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/spawn.ts",
+    ".pi/extensions/pij/core/models/registry.ts",
+    ".pi/extensions/pij/core/models/registry.test.ts",
+    ".pi/extensions/pij/core/models/validate.ts",
+    ".pi/extensions/pij/core/models/validate.test.ts",
+    ".pi/extensions/pij/core/models/spawn-validation.test.ts",
+    "docs/how/pij-models-discovery.md",
+    "docs/plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/isolation.md",
+    "docs/plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/execution.log.md",
+    "docs/plans/391-day3-core/tasks/phase-2c-item-6b-flash-ui-server/tasks.md"
+  ],
+  "testsRun": 4009,
+  "testsPassed": 3994,
+  "gatesClean": false,
+  "notes": "Commit 8dd8f1eb8e25ec2c30c033d9cee9bfd92bb788d7. Final authoritative suite: 171 files passed, 2 skipped; 3,994 tests passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase2c.log. Focused tests: 97/97; typecheck and scoped Biome passed. Isolation used standalone Terminal.app with TMUX/TMUX_PANE unset, scratch cwd, isolated PIJ_HOME, no pij seat/pane, and no daemon contact. harness checks --quick remains baseline-red only for unrelated OSC lint, missing pwsh, and derived windows-compat; therefore PARTIAL/gatesClean:false. No push or PR."
+}

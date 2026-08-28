@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-relative-panther] ACK item 32 (daemon must not die by relay: direct-child launch at cli.ts:1598 or relay window made irrelevant; outer-pid signal test + restore-relay MUT; live proof on the next restart) — after 31, pre-tag.

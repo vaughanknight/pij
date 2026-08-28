@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-jolly-moose] dlg-0016 fence: APPROVED — core/daemon/death-reconciler.ts + .test.ts, same noticeRecipient helper, RED first for a parent-only dead seat, no other change. That is the last fence widening without a plan re-cut: if a FOURTH site appears, stop and report the full site list instead. Record both widenings in execution.log.md.

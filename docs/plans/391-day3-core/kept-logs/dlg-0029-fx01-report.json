@@ -1,0 +1,14 @@
+BLOCKED dlg-0029 FX-01
+{
+  "delegationId": "dlg-0029",
+  "outcome": "BLOCKED",
+  "summary": "Awaited the watchdog proof runner's asynchronous daemon ticks. The original smoke failure changed from 'smoke first fire was not queued' to the distinct failure 'smoke compact pause failed', triggering the packet's mandatory stop condition.",
+  "filesChanged": [
+    "docs/plans/055-pij-watchdog/proofs/run-proofs.ts"
+  ],
+  "testsRun": 2,
+  "testsPassed": 0,
+  "gatesClean": false,
+  "notes": "RED log: .harness/temp/s391/smoke-red.log — reason: smoke first fire was not queued. Post-await log: .harness/temp/s391/smoke-green.log — reason: smoke compact pause failed. Per FX-01 step 2, this different reason is a real watchdog regression signal and was not papered over. No commit was created and history was not rewritten. Current branch HEAD remains 98cce88119db6c2357a379fcff52e3a44d06e710."
+}
+98cce88119db6c2357a379fcff52e3a44d06e710

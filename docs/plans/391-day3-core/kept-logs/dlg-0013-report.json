@@ -1,0 +1,20 @@
+{"delegationId":"dlg-0013","outcome":"PARTIAL",
+  "summary": "Completed Phase 5 item 13 end-to-end: reproduced both descriptor lost-update directions, serialized FsRegistry.publish with a descriptor-local lock and three-way exact merge, added archive-inclusive RegistryPort.listTerminal, and covered both pi/omp revive requeue branches. Assigned tests, typecheck, scoped Biome, and the full extension suite are green.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/fs-registry.ts",
+    ".pi/extensions/pij/adapters/fs-registry.test.ts",
+    ".pi/extensions/pij/adapters/fakes.ts",
+    ".pi/extensions/pij/core/registry-write.test.ts",
+    ".pi/extensions/pij/core/ports.ts",
+    ".pi/extensions/pij/cli.integration.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.delivery.test.ts",
+    "docs/how/pij.md",
+    "docs/plans/391-day3-core/tasks/phase-5-item-13-status-lost-update/execution.log.md",
+    "docs/plans/391-day3-core/tasks/phase-5-item-13-status-lost-update/tasks.md"
+  ],
+  "testsRun": 4030,
+  "testsPassed": 4015,
+  "gatesClean": false,
+  "notes": "Commit 553b57513f219be9c148de87cea55d588f8b5c18. Final suite: 171 files passed, 2 skipped; 4,015 tests passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase5.log. T001 reproduced card loss at fs-registry.test.ts:208 and daemon systemState loss at :252 before the fix. T004 mutations failed attach coverage at cli.integration.test.ts:1908 and launch coverage at :1841. Focused Phase 5 tests passed; tsc and scoped Biome passed. DESCRIPTOR_FIELD_OWNER, SessionDescriptor, core/cli.ts, cli.ts, and spine locks are unchanged. harness checks --quick remains baseline-red only for unrelated OSC lint, missing pwsh, and derived windows-compat; therefore PARTIAL/gatesClean:false. No push or PR."
+}

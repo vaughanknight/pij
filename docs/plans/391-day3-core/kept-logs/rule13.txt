@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-jolly-moose] dlg-0029 RULING: accept. I ran run-proofs.ts --smoke on CLEAN origin/main (58c9cf1) in a throwaway worktree: identical "smoke first fire was not queued" — baseline red, not yours; #1-#3 are the known repo baseline. Report COMPLETE at 16d02db with the four caveats named verbatim (file + reason each); no fence widening.

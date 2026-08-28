@@ -10,7 +10,7 @@ PR #2 open for item 6, reviewed cold (APPROVE), rebased onto origin/main@2707705
 ## shas[]
 - head 697b442 (rebased); reviewed 7ba1831; base origin/main 2707705
 ## gates[]
-- `npx vitest run .pi/extensions/pij/` @697b442 → 171 passed | 2 skipped files; 3934 passed | 15 skipped; exit 0 (`docs/plans/391-day3-core/logs/vitest-phase1-rebased.log`)
+- `npx vitest run .pi/extensions/pij/` @697b442 → 171 passed | 2 skipped files; 3934 passed | 15 skipped; exit 0 (`docs/plans/391-day3-core/kept-logs/vitest-phase1-rebased.log.txt`)
 - Dim-0 mutation gate: 5 mutations RED, restored (review-01.md § Dim-0)
 - `tsc --noEmit` exit 0 (reviewer)
 ## observations[]

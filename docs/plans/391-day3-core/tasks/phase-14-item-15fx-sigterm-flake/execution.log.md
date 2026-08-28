@@ -6,17 +6,17 @@
 - Base and probe HEAD: `e6a55e81163a8f95e7302f536f8423035ad7e99b`
 - Command: `npx vitest run .pi/extensions/pij/daemon.test.ts -t "releases write.lock and events.lock"`
 - Result: **0 failures in 60 runs — not reproduced locally**.
-- Per-run output is preserved under `docs/plans/391-day3-core/logs/sigterm-probe/run-001.log` through `run-060.log`; `docs/plans/391-day3-core/logs/sigterm-probe/summary.txt` records `failed_run=0`.
+- Per-run output is preserved under `docs/plans/391-day3-core/kept-logs/sigterm-probe/run-001.log.txt` through `run-060.log`; `docs/plans/391-day3-core/kept-logs/sigterm-probe/summary.txt` records `failed_run=0`.
 - Historical failure retained by the packet: the tsx CLI relay sometimes exits with code 143 after forwarding SIGTERM, racing the inner daemon's handled exit code 0.
 
 ## Run-if-main guard probe
 
-- Command: `node --import tsx docs/plans/391-day3-core/logs/sigterm-run-if-main-probe.ts`
-- Preserved output: `docs/plans/391-day3-core/logs/sigterm-run-if-main-probe.log`
+- Command: `node --import tsx docs/plans/391-day3-core/kept-logs/sigterm-run-if-main-probe.ts`
+- Preserved output: `docs/plans/391-day3-core/kept-logs/sigterm-run-if-main-probe.log.txt`
 - Result:
 
 ```json
-{"importMetaUrl":"file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/docs/plans/391-day3-core/logs/sigterm-run-if-main-probe.ts","argv1":"/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/docs/plans/391-day3-core/logs/sigterm-run-if-main-probe.ts","guardMatches":true}
+{"importMetaUrl":"file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/docs/plans/391-day3-core/kept-logs/sigterm-run-if-main-probe.ts","argv1":"/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/docs/plans/391-day3-core/kept-logs/sigterm-run-if-main-probe.ts","guardMatches":true}
 ```
 
 The `--import tsx <script>` form keeps `process.argv[1]` equal to the executed script, so the daemon's run-if-main guard remains valid.
@@ -29,7 +29,7 @@ The `--import tsx <script>` form keeps `process.argv[1]` equal to the executed s
 - Root cause: the old test signalled tsx's CLI relay, whose default SIGTERM exit could race the inner daemon's handled exit 0; the new test signals the daemon process directly.
 - Proof command: 20 fail-fast runs of `npx vitest run .pi/extensions/pij/daemon.test.ts -t "releases write.lock and events.lock"`.
 - Result: **20/20 passed**.
-- Per-run output is preserved under `docs/plans/391-day3-core/logs/sigterm-direct-proof/run-001.log` through `run-020.log`; `docs/plans/391-day3-core/logs/sigterm-direct-proof/summary.txt` records `failed_run=0`.
+- Per-run output is preserved under `docs/plans/391-day3-core/kept-logs/sigterm-direct-proof/run-001.log.txt` through `run-020.log`; `docs/plans/391-day3-core/kept-logs/sigterm-direct-proof/summary.txt` records `failed_run=0`.
 
 ## Post-rebase proof
 
@@ -37,11 +37,11 @@ The `--import tsx <script>` form keeps `process.argv[1]` equal to the executed s
 - Rebased implementation commit: `52454fe`.
 - Repeated the fail-fast 20-run direct-child proof after the rebase.
 - Result: **20/20 passed**.
-- Per-run output is preserved under `docs/plans/391-day3-core/logs/sigterm-direct-proof-rebased/run-001.log` through `run-020.log`; `docs/plans/391-day3-core/logs/sigterm-direct-proof-rebased/summary.txt` records `failed_run=0`.
+- Per-run output is preserved under `docs/plans/391-day3-core/kept-logs/sigterm-direct-proof-rebased/run-001.log.txt` through `run-020.log`; `docs/plans/391-day3-core/kept-logs/sigterm-direct-proof-rebased/summary.txt` records `failed_run=0`.
 
 ## T003 — final gates
 
 - Full extension suite via `pij bg`: **172 files passed, 2 skipped; 4,115 tests passed, 15 skipped**.
-- Full-suite output: `docs/plans/391-day3-core/logs/vitest-phase14.log`.
+- Full-suite output: `docs/plans/391-day3-core/kept-logs/vitest-phase14.log.txt`.
 - Root TypeScript check: `npx tsc --noEmit -p .` passed.
 - Scoped Biome: `npx biome check .pi/extensions/pij/daemon.test.ts` passed.

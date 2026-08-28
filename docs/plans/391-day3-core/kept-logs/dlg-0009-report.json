@@ -1,0 +1,28 @@
+APPROVE dlg-0009 @ 989aa1d7ae7a7b3a3935b745b54a541896d28423 — highest: low, 6 findings, 0 blocking.
+
+{"verdict":"APPROVE","reviewId":"review-01","path":"docs/plans/391-day3-core/tasks/phase-3-item-5-pointer-unverified/review-01.md","findings":6,"highest":"low"}
+
+FREEZE: HEAD=989aa1d, parent=9133733 (= declared base), tracked tree clean at open and close, untracked delta = the verdict file only.
+
+FIVE AIMS — all hold.
+1. Semantics frozen. Outcome vocabulary guard byte-identical to base (displaced :511-527 -> :548-569 by the +37-line insertion above it, not edited) and green in every run. via=pointer consumption, injected-under-lease settle, no-receipt rule, composer-idle guard all untouched.
+2. Wording per path — pinned BIDIRECTIONALLY. Forcing the body branch reds the pointer test; forcing the pointer branch reds the byte-exact body control. Outcome independence demonstrated: under the first mutant the failing assertion is not.toContain("UNVERIFIED"), with .toBe("unverified") already passed.
+3. Composition — load-bearing and provably the only guard. Reverting the wrapper to the base 4-arg lambda reds exactly the new real-Daemon test, and under that mutant tsc --noEmit exits 0 with ZERO diagnostics. Validator F2's premise is empirically true: the type system cannot catch the drop.
+4. Finding C — sqliteOf reverted to instanceof reds the dual test alone. Deleting recoverStaleClaims kills the post-expiry re-announcement, so AC-18's recovery arm is genuinely exercised, not narrated.
+5. Scope — diff = exactly the 10 packet paths. No skills/**, no government/**, no core/types.ts, no receipts change.
+
+DIM-0: 10 mutations, 8 RED, 2 SURVIVORS (brief mandated 3; I ran 7 more).
+Survivor 1: deleting the enterAttempts increment survives the FULL suite (identical counts to the clean gate). It is the only new computed value in the production diff and exists precisely to report the honest count; no test reads it.
+Survivor 2: dropping the info prefix survives. Absence of the warning glyph is asserted; presence of the info glyph is not.
+All 10 restored; cmp + git diff --exit-code clean; targets re-run 195 passed / 2 skipped; tsc 0; biome 0.
+
+GATE (my own run, not relayed): 2 failed | 169 passed | 2 skipped files; 2 failed | 3945 passed | 15 skipped tests — identical to the coder's numbers. Both failures are the declared baseline pair: skill-text assertions, in two files this diff does not touch, against skills/** content this diff does not touch. Log: /Users/vaughanknight/.pij/pij-mobile-reptile/bg-mtbhg111-fn3szj.log
+
+FINDINGS (none blocking): F-1 low, pointer line's positive content unpinned (both survivors above; body control is byte-exact, pointer test is negatives + fragments). F-2 low, dual fs-copy window-open pinned but window-close not (traced by reading, not executed). F-3 low, operational — the pointer line no longer matches a grep-UNVERIFIED scrollback census, which is exactly how the 2026-08-27 comms review measured this problem; no automated in-repo consumer, humans only. F-4 low, packet-addendum names base d2dbab0 which is NOT an ancestor of HEAD (dispatch, tasks.md and git all say 9133733) — stale instruction, work itself is correct. F-5 info, brief/packet line refs drifted +37. F-6 info, delivery test hardcodes 90_000 rather than importing the constant.
+
+LIMITS DECLARED IN THE VERDICT: no live-daemon proof (packet forbids); the enterAttempts==1 case is unexercised by anyone including me; the dual close-out is read not executed; baseline failures not re-run on base (worktree is read-only); no concurrency/crash/rollback testing; harness checks / smoke / lint NOT run by me — the coder's baseline-red claim is relayed, not confirmed.
+
+Verdict file: docs/plans/391-day3-core/tasks/phase-3-item-5-pointer-unverified/review-01.md
+TERMINAL REPORT — pass CLOSED, no mutations after reporting.
+
+989aa1d7ae7a7b3a3935b745b54a541896d28423

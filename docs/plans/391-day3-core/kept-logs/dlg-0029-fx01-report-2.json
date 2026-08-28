@@ -1,0 +1,14 @@
+BLOCKED dlg-0029 FX-01
+{
+  "delegationId": "dlg-0029",
+  "outcome": "BLOCKED",
+  "summary": "Awaiting daemon ticks removed the first-fire race, and switching the proof daemon to the production openChannel seam removed the compact-pause queue mismatch. The next smoke run failed for a third distinct reason, so Step 5's mandatory stop condition applies.",
+  "filesChanged": [
+    "docs/plans/055-pij-watchdog/proofs/run-proofs.ts"
+  ],
+  "testsRun": 3,
+  "testsPassed": 0,
+  "gatesClean": false,
+  "notes": "First RED: .harness/temp/s391/smoke-red.log — 'smoke first fire was not queued'. Second classified baseline: 'smoke compact pause failed'. Third distinct failure after openChannel: .harness/temp/s391/smoke-green.log — 'smoke done report command missing'. No commit was created and history was not rewritten. Current branch HEAD remains 98cce88119db6c2357a379fcff52e3a44d06e710."
+}
+98cce88119db6c2357a379fcff52e3a44d06e710

@@ -1,0 +1,26 @@
+{"delegationId":"dlg-0019-fx01","outcome":"PARTIAL",
+  "summary": "Completed all FX-01 repairs: T004c is now behaviourally interleaved, the real daemon SIGTERM path is child-process tested, real snapshot PID reuse is covered, descriptor reclaim diagnostics use central CLI/daemon factories, sweep/revive note failures are non-fatal, and all reclaim branches enforce deadlines.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/fs-registry.test.ts",
+    ".pi/extensions/pij/adapters/fs-registry.ts",
+    ".pi/extensions/pij/adapters/lock-reclaim.test.ts",
+    ".pi/extensions/pij/adapters/lock-reclaim.ts",
+    ".pi/extensions/pij/adapters/platform-write-lock.test.ts",
+    ".pi/extensions/pij/adapters/platform-write-lock.ts",
+    ".pi/extensions/pij/adapters/spine-store.test.ts",
+    ".pi/extensions/pij/adapters/spine-store.ts",
+    ".pi/extensions/pij/cli.integration.test.ts",
+    ".pi/extensions/pij/cli.ts",
+    ".pi/extensions/pij/core/platform/journal.test.ts",
+    ".pi/extensions/pij/core/platform/journal.ts",
+    ".pi/extensions/pij/daemon.delivery.test.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    "docs/how/pij.md",
+    "docs/plans/391-day3-core/tasks/phase-6-item-15-spine-lock-reclaim/execution.log.md"
+  ],
+  "testsRun": 4068,
+  "testsPassed": 4053,
+  "gatesClean": false,
+  "notes": "Commit 49893fb072b73120a6df907a3a59cef7792cdfc7. Required behavioural mutation REDs: baseline removal lost foreign systemState at cli.integration.test.ts:1969; reverting the real run-if-main shutdown left write.lock at daemon.test.ts:2129; disabling production processStartedAtMs returned null at lock-reclaim.test.ts:73. Reclaim-deadline REDs were platform-write-lock.test.ts:104, spine-store.test.ts:202, fs-registry.test.ts:422. Final suite: 172 files passed, 2 skipped; 4,053 tests passed, 15 skipped, 0 failed; log .harness/temp/s391/vitest-phase6-fx01.log. Focused adapter/daemon suites: 235 passed, 3 skipped; behavioural CLI flows: 7 passed; tsc/scoped Biome passed. The first full run exposed 19 eager FsSpineLog construction failures; lazy once-per-sweep construction fixed them and daemon-push.test.ts passed 19/19 with 2 skipped. Orchestrator-owned review-brief.md modification was excluded. harness checks --quick remains baseline-red only for unrelated OSC lint, missing pwsh, and derived windows-compat; therefore PARTIAL/gatesClean:false. No push or PR."
+}

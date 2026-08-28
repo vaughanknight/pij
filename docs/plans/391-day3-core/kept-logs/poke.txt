@@ -1,0 +1,1 @@
+STATUS REQUEST (liveness): dlg-0019 was delivered 20 min ago but your pane shows the /compact still queued and no active turn. Reply ONE line: COMPLETE | CONTINUING (what step) | BLOCKED (on what). If the compact is stuck in your queue, run it yourself (/compact) and then start dlg-0019.

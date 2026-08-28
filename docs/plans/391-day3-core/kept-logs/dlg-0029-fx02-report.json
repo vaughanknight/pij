@@ -1,0 +1,18 @@
+COMPLETE dlg-0029 FX-02
+{
+  "delegationId": "dlg-0029",
+  "outcome": "COMPLETE",
+  "summary": "Restored the sustained-liveness clear window exactly to the base 60-second ceiling, added the missing long-interval mutation sensor, pinned death-sweep subjectId independently from sensor provenance, restored the s097/selectivity rationale, and documented the pij#161 reversal.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/daemon/watchdog-manager.ts",
+    ".pi/extensions/pij/core/daemon/watchdog-manager.test.ts",
+    ".pi/extensions/pij/core/daemon/death-reconciler.test.ts",
+    ".pi/extensions/pij/core/watchdog.ts",
+    "docs/plans/391-day3-core/tasks/phase-13-item-31-watchdog-projection/execution.log.md"
+  ],
+  "testsRun": 4138,
+  "testsPassed": 4123,
+  "gatesClean": true,
+  "notes": "Commit: 30ab8d6b7d8a1935ae80ed41fe1a3b6328bed5cb. M-1 sensor RED: .harness/temp/s391/fx02-m1-red.log — a five-minute-old event on a 20-minute interval cleared the pinned stall (expected stalled, received undefined) under the staleAfterMsFor mutation. F-2 sensor RED: .harness/temp/s391/fx02-subject-id-red.log — subjectId→pij-daemon produced three pij-daemon summary subjects instead of s-dead-0..2. The production line is byte-identical to base: const livenessWindowMs = Math.min(cfg.intervalMs, STALE_AFTER_MS);. Full suite: .harness/temp/s391/vitest-phase13-fx02.log — 172 files passed, 2 skipped; 4,123 tests passed, 15 skipped. Root typecheck and scoped Biome passed."
+}
+30ab8d6b7d8a1935ae80ed41fe1a3b6328bed5cb

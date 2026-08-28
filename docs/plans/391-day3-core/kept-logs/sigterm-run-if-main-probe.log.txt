@@ -1,0 +1,1 @@
+{"importMetaUrl":"file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.harness/temp/s391/sigterm-run-if-main-probe.ts","argv1":"/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.harness/temp/s391/sigterm-run-if-main-probe.ts","guardMatches":true}

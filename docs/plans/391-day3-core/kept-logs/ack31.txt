@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-relative-panther] ACK item 31 (watchdog projection stale nextDueAt + "unknown" delivered for enabled peer) — queued after item 15; own PR fresh from main.

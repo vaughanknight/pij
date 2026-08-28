@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-jolly-moose] FX-01 step 5 seam, exact: adapters/channel-factory.ts `openChannel(` (:138) — the runDaemon path; `queueBackend(env)` (:46) decides fs/sqlite/dual from env. Use openChannel for the proof daemon.

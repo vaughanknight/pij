@@ -1,0 +1,616 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [32m✓[39m .pi/extensions/pij/core/daemon/death-reconciler.test.ts [2m([22m[2m43 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/bridge.test.ts [2m([22m[2m81 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 2130[2mms[22m[39m
+     [33m[2m✓[22m[39m drains queued backlog, skips failed and acked rows, and sends nothing after restart [33m 629[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves failed text claimed and redelivers it after lease recovery [33m 522[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon.durability.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1812[2mms[22m[39m
+     [33m[2m✓[22m[39m a bound seat whose send FAILS keeps the message unread, and a restart delivers it [33m 352[2mms[22m[39m
+     [33m[2m✓[22m[39m delivers EXACTLY ONCE after the daemon is killed and restarted [33m 311[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves arrival order across the restart [33m 350[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/spine-store.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 3180[2mms[22m[39m
+     [33m[2m✓[22m[39m multi-process atomicity: 4 concurrent writers x 25 appends allocate seqs exactly 1..100 [33m 855[2mms[22m[39m
+     [33m[2m✓[22m[39m a held (fresh) events.lock makes append err E-NOREG after the acquisition budget [33m 2005[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/cli-verbs.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 3169[2mms[22m[39m
+     [33m[2m✓[22m[39m runs a project pack and prints the report summary [33m 644[2mms[22m[39m
+     [33m[2m✓[22m[39m --json emits the {run, report} envelope on stdout only [33m 458[2mms[22m[39m
+     [33m[2m✓[22m[39m records a named run (runDir present, non-null) by default [33m 427[2mms[22m[39m
+     [33m[2m✓[22m[39m runs an inline prompt and leaves nothing under ~/.pij/tmp [33m 337[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/inline.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1374[2mms[22m[39m
+     [33m[2m✓[22m[39m writes an optional output schema into the synthesized pack [33m 430[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/worktree.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 4085[2mms[22m[39m
+     [33m[2m✓[22m[39m creates from a base SHA resolved at create-time and verifies branch/SHA/common-dir [33m 543[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a dirty source checkout [33m 846[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a bad base ref with a named E-ARG and creates nothing [33m 339[2mms[22m[39m
+     [33m[2m✓[22m[39m verify refuses a branch or SHA mismatch [33m 553[2mms[22m[39m
+     [33m[2m✓[22m[39m safeRemove refuses WIP and removes a clean linked worktree [33m 1562[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon.delivery.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 3489[2mms[22m[39m
+     [33m[2m✓[22m[39m leaves accidental dissolves, incomplete closes, live seats, and fs mail untouched [33m 518[2mms[22m[39m
+     [33m[2m✓[22m[39m replays the recycled-pane incident without sending closed-seat mail [33m 636[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/index.test.ts [2m([22m[2m29 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 1030[2mms[22m[39m
+     [33m[2m✓[22m[39m forwards and acks a sqlite-default queued reply via the bot api [33m 508[2mms[22m[39m
+     [33m[2m✓[22m[39m shares successful outbound speech with numeric inbound chat ids and isolates other chats [33m 314[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/git-repository.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 1698[2mms[22m[39m
+     [33m[2m✓[22m[39m resolves one canonical common directory for a main checkout and linked worktree [33m 875[2mms[22m[39m
+     [33m[2m✓[22m[39m distinguishes unrelated repositories and returns null outside git [33m 822[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/fs-registry.test.ts [2m([22m[2m52 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 4590[2mms[22m[39m
+     [33m[2m✓[22m[39m overlapping processes claiming one free native identity all converge on attempt zero [33m 2019[2mms[22m[39m
+     [33m[2m✓[22m[39m overlapping processes skip an unowned legacy attempt zero without changing its bytes [33m 2085[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/index.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 1088[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/tmux.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 908[2mms[22m[39m
+     [33m[2m✓[22m[39m kills a newly created pane when title assignment fails [33m 522[2mms[22m[39m
+     [33m[2m✓[22m[39m kills a newly split pane when title assignment fails [33m 380[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/runner.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 800[2mms[22m[39m
+     [33m[2m✓[22m[39m passes the resolved model/effort through to the adapter [33m 340[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/registry-write-law.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 525[2mms[22m[39m
+     [33m[2m✓[22m[39m no write sets a contested field without naming the authority that owns it [33m 509[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/claude-socket.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 433[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/memorable-id.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 880[2mms[22m[39m
+       [33m[2m✓[22m[39m walks the full space from a SHIP start too, not only a pair start [33m 421[2mms[22m[39m
+     [33m[2m✓[22m[39m walks the full space without repeating (pairs + ships) [33m 448[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/contract.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 648[2mms[22m[39m
+     [33m[2m✓[22m[39m is idempotent — the repo fixture tree stays clean after runs [33m 500[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/builtin-flowspace.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 326[2mms[22m[39m
+     [33m[2m✓[22m[39m runs always-ephemeral: zero writes under builtin-agents/ and runDir null [33m 318[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/channel.test.ts [2m([22m[2m14 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 417[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/copilot-rpc.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 319[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/acceptance-sweep.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1094[2mms[22m[39m
+     [33m[2m✓[22m[39m step 11 · AC-10 (+AC-03 immutability) — the real bin renders spine.md byte-identical to the pure render [33m 854[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/fs-registry.overlay.test.ts [2m([22m[2m44 tests[22m[2m)[22m[32m 217[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/platform-stores.contract.test.ts [2m([22m[2m103 tests[22m[2m)[22m[33m 322[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon.bootstrap.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 280[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/platform-write-lock.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 230[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/process.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 203[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/queue-consumer.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 144[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon-real-adapter.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 281[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/focus.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/death-reconciler.snapshot.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 109[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/lock-reclaim.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 101[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/op-journal.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 66[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/index-state.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/spawn.test.ts [2m([22m[2m165 tests[22m[2m)[22m[32m 97[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/fs-registry.archive.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 170[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon.archive.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 92[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agent-peer.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 117[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/project-store.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/identity-selfheal.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 75[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/inbox.sqlite.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/sqlite-queue.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 73[2mms[22m[39m
+⚠️  claude SOCKET SENT: pij-target via /tmp/fake-claude.sock — status lost after write; awaiting durable reader acknowledgement
+⚠️  copilot RPC SENT: pij-target via 127.0.0.1:47391 — response lost after write; awaiting durable reader acknowledgement
+⚠️  tmux GONE: pane %42 does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — can't find pane: %42
+⚠️  tmux FAILED: send to pane %42 threw before submission — nothing reliably landed; the message stays queued — error connecting to /private/tmp/tmux-501/default (No such file or directory)
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) typed the payload but never confirmed submission across 3 Enter attempts — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) typed the payload but never confirmed submission across 3 Enter attempts — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) typed the payload but never confirmed submission across 3 Enter attempts — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  claude UNVERIFIED: send to pane %42 (pid ?) typed the payload but never confirmed submission across 3 Enter attempts — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  claude UNVERIFIED: send to pane %42 (pid ?) typed the payload but never confirmed submission across 3 Enter attempts — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+ [32m✓[39m .pi/extensions/pij/core/agents/report.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 54[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/watch.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 207[2mms[22m[39m
+⚠️  tmux GONE: pane %99999999 does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — Command failed: tmux send-keys -t %99999999 -l x
+can't find pane: %99999999
+
+ [32m✓[39m .pi/extensions/pij/adapters/daemon-tmux.test.ts [2m([22m[2m42 tests[22m[2m)[22m[32m 94[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/tree.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/liveness-cost.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/assignment-store.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/dispatch-store.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/channel-factory.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/tick-heartbeat.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/loop.test.ts [2m([22m[2m110 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/role.integration.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/event-log.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon.wiring.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/watchdog.test.ts [2m([22m[2m54 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/assignment.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/fence-store.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/anomaly-sweep.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/cli.test.ts [2m([22m[2m55 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/models/cli-models.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/state.test.ts [2m([22m[2m74 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/codex-rpc.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/baton-store.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/types.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/chores/resolve.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/anomalies.test.ts [2m([22m[2m83 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/pack.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/session.test.ts [2m([22m[2m52 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/media.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/allocation-store.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/pa-capability.test.ts [2m([22m[2m38 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/journal.test.ts [2m([22m[2m47 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/process-states.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/lockfile.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/revive.test.ts [2m([22m[2m63 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/baton.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/chores/reduce.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/transcript.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/pane-signals.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/chores/boundary.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/config.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/peer-packet.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/role.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/body-file.integration.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 7810[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-08/09: a hostile body from a file arrives byte-for-byte and is never lexed as argv [33m 1016[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-09: --wait BEFORE --body-file cannot swallow the file's contents [33m 1109[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-10: --body-file - reads stdin, so a heredoc is a single literal command [33m 827[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-08: --body-file combined with --command is an explicit error [33m 856[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-11: `pij send --help` shows the safety guidance it documents [33m 702[2mms[22m[39m
+     [33m[2m✓[22m[39m F1: a whitespace-only --body-file is refused, and nothing lands in the inbox [33m 805[2mms[22m[39m
+     [33m[2m✓[22m[39m F1 preserved: a padded but non-empty --body-file keeps every pad byte [33m 976[2mms[22m[39m
+     [33m[2m✓[22m[39m F2: a two-target broadcast --body-file delivers the hostile body byte-for-byte to BOTH [33m 795[2mms[22m[39m
+     [33m[2m✓[22m[39m F2: a whitespace-only broadcast --body-file is refused for EVERY target [33m 723[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/types.test.ts [2m([22m[2m152 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/stream.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/chore-store.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/commands.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/models/match.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/models/registry.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/session-join.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/boundary.test.ts [2m([22m[2m46 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/router.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/project.test.ts [2m([22m[2m43 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/models/spawn-validation.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/watchdog-global-store.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/context-reader.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/inbox.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/spine.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/focus-store.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/runtime-axis.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/boundary.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/bg.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/init.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/adapters/codex.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/fakes.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/discovery.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/watch-subscription.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/binding.test.ts [2m([22m[2m46 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/producers/osc-7337-producer.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/atomic-file.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/usage-flags.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/time.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/archive.test.ts [2m([22m[2m38 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/adapters/copilot.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/current-session.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/models/validate.test.ts [2m([22m[2m47 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/source-staleness.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/baton-sweep.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/spawn-expectation-store.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/index.send-schema.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/registry-write.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/copilot.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/interstitial.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/canary.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/cli-args.test.ts [2m([22m[2m42 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/adapters/claude.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/lifecycle.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/tap-retention.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/types.test.ts [2m([22m[2m49 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/claude.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/status-nudge.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/receipts.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/bind-health.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/events.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/close.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/death-reason.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/render-spine-md.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/dispatch.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/readiness.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/spawn-expectation.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/codex.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+E-NOID: current claude session is not push-attached to the current process pane %9; run pij adopt "$TMUX_PANE" --harness claude from this exact pane
+ [32m✓[39m .pi/extensions/pij/core/message.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/badmodel.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/agents/paths.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/adapters/tmux-keys.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/prime.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/chunk.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/telegram/match.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/context/gauge.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/allocation.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/invariant-guard.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/context/window.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/watchdog-scheduler-projection.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/watchdog-manager.test.ts [2m([22m[2m78 tests[22m[2m)[22m[33m 1639[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps an idle watchdog stall latched until real recovery and notices once [33m 331[2mms[22m[39m
+     [33m[2m✓[22m[39m stamps fires through persistDaemonWrite and emits one stalled notice across both detectors [33m 339[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/orchestration/pa-target.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/commands.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/platform/fence.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/seat-label.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/lock.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/seq.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/daemon/process-staleness.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/core/harness/pi.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [2m[90m↓[39m[22m .pi/extensions/pij/core/agents/peer.live.test.ts [2m([22m[2m3 tests[22m[2m | [22m[33m3 skipped[39m[2m)[22m
+ [2m[90m↓[39m[22m .pi/extensions/pij/core/agents/adapters/adapters.live.test.ts [2m([22m[2m3 tests[22m[2m | [22m[33m3 skipped[39m[2m)[22m
+{"error":"E-NOID","message":"current claude session is not registered as a paneless pull peer; run pij inbox register"}
+{"error":"E-NOID","message":"current claude session is not registered as a paneless pull peer; run pij inbox register"}
+ [32m✓[39m .pi/extensions/pij/core/cli.test.ts [2m([22m[2m468 tests[22m[2m)[22m[33m 10938[2mms[22m[39m
+       [33m[2m✓[22m[39m runs create → fence show → close end-to-end and serves generic family help [33m 6199[2mms[22m[39m
+       [33m[2m✓[22m[39m real bin timeout persists delivered-unacked, then a matching ack transitions to acked [33m 2029[2mms[22m[39m
+       [33m[2m✓[22m[39m real bin timeout leaves delivered-unacked, no CanaryRecord, and a named terminal refusal [33m 1051[2mms[22m[39m
+       [33m[2m✓[22m[39m real bin PASSES with an unverified tier when the effective context tier is unobservable [33m 1402[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/orchestration-notice.integration.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 13441[2mms[22m[39m
+     [33m[2m✓[22m[39m 'delivered for an idle live pi target' [33m 2218[2mms[22m[39m
+     [33m[2m✓[22m[39m 'queued for a working live pi target' [33m 1744[2mms[22m[39m
+     [33m[2m✓[22m[39m 'queued for a live control-plane targe…' [33m 1796[2mms[22m[39m
+     [33m[2m✓[22m[39m 'unverified for a live control-plane t…' [33m 1981[2mms[22m[39m
+     [33m[2m✓[22m[39m 'unverified for a dead target' [33m 2126[2mms[22m[39m
+     [33m[2m✓[22m[39m 'unverified without persisting for a m…' [33m 1280[2mms[22m[39m
+     [33m[2m✓[22m[39m 'unverified without persisting for a d…' [33m 1176[2mms[22m[39m
+     [33m[2m✓[22m[39m 'queued with one persisted notice for …' [33m 1119[2mms[22m[39m
+{"error":"E-AMBIG","message":"COPILOT_AGENT_SESSION_ID is not a UUID: not-a-uuid"}
+{"error":"E-NOID","message":"COPILOT_AGENT_SESSION_ID 11111111-2222-4333-8444-555555555555 has no matching session-state directory"}
+{"error":"E-AMBIG","message":"CODEX_THREAD_ID is not a UUID: not-a-uuid"}
+{"error":"E-NOID","message":"CODEX_THREAD_ID aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb has no matching readable rollout"}
+ [32m✓[39m .pi/extensions/pij/daemon.test.ts [2m([22m[2m94 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[33m 14385[2mms[22m[39m
+     [33m[2m✓[22m[39m persists a receipt event before marking its retained envelope and never injects it [33m 322[2mms[22m[39m
+     [33m[2m✓[22m[39m buffers delivery when authoritative composer content changes at equal stripped length [33m 471[2mms[22m[39m
+     [33m[2m✓[22m[39m idle-releases at 60 seconds even while rendered composer text remains [33m 361[2mms[22m[39m
+     [33m[2m✓[22m[39m flushes an unattended orchestrator hold after undefined-layout timeout [33m 393[2mms[22m[39m
+     [33m[2m✓[22m[39m coalesces repeated watchdog intervals while the composer hold is active [33m 879[2mms[22m[39m
+     [33m[2m✓[22m[39m never taps a pane no registered seat owns (day-2 item 7 isolation) [33m 346[2mms[22m[39m
+     [33m[2m✓[22m[39m summarizes 1000 withheld death notices in one line with only three subject ids [33m 1103[2mms[22m[39m
+     [33m[2m✓[22m[39m the real daemon SIGTERM path releases write.lock and events.lock in a temp home [33m 469[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-03: still exactly one persist with 50 owned descriptors [33m 989[2mms[22m[39m
+ [32m✓[39m .pi/extensions/pij/daemon-push.test.ts [2m([22m[2m22 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[33m 14454[2mms[22m[39m
+     [33m[2m✓[22m[39m pushes a stalled notice to the creator when a bound session is working+stale [33m 1673[2mms[22m[39m
+     [33m[2m✓[22m[39m withholds one stalled notice and logs once when the recipient is unregistered [33m 1705[2mms[22m[39m
+     [33m[2m✓[22m[39m does NOT push for a non-stalled session (working with fresh events) [33m 1202[2mms[22m[39m
+     [33m[2m✓[22m[39m DOES push stalled when the pane is byte-STABLE past the window (genuine stall) [33m 3033[2mms[22m[39m
+     [33m[2m✓[22m[39m pushes a dead notice to the creator when the bound session's pid is gone [33m 1509[2mms[22m[39m
+     [33m[2m✓[22m[39m pushes only once for a dead session (latch) [33m 781[2mms[22m[39m
+     [33m[2m✓[22m[39m stalled push: registry descriptor carries failureReason='stalled' after tick [33m 308[2mms[22m[39m
+     [33m[2m✓[22m[39m daemon driveSession detects bad model → fail with model-not-supported → creator notified [33m 350[2mms[22m[39m
+     [33m[2m✓[22m[39m detects quota error in pane of idle pid-alive bound session → pushes once to creator [33m 327[2mms[22m[39m
+     [33m[2m✓[22m[39m does NOT push yet for an idle pid-alive bound session with fresh activity [33m 316[2mms[22m[39m
+     [33m[2m✓[22m[39m pushes only ONCE per provider-failure (latch) [33m 632[2mms[22m[39m
+     [33m[2m✓[22m[39m persists failureReason='quota' on the descriptor after provider-failure push [33m 390[2mms[22m[39m
+     [33m[2m✓[22m[39m detects the sakana credit error in a pi worker's pane → pushes once to creator [33m 352[2mms[22m[39m
+E-NOID: no session 'missing' in registry
+E-AMBIG: cannot resolve self among 3 local sessions: pij-A, pij-B, pij-C2. Set who you are — `export PIJ_SESSION_ID=pij-A` — or run `pij adopt "$TMUX_PANE" --harness <h>` so this pane resolves itself.
+E-ARG: --prime does not take a value
+ [32m✓[39m .pi/extensions/pij/cli.inbox.integration.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 19289[2mms[22m[39m
+     [33m[2m✓[22m[39m runs whoami through process.execPath and the tsx entrypoint without tmux [33m 1074[2mms[22m[39m
+     [33m[2m✓[22m[39m delivers a raw message through the real CLI into an isolated PIJ_HOME [33m 935[2mms[22m[39m
+     [33m[2m✓[22m[39m 'Claude' ambient registration is idempotent and finite wait returns JSON [33m 2530[2mms[22m[39m
+     [33m[2m✓[22m[39m 'Copilot' ambient registration is idempotent and finite wait returns JSON [33m 2263[2mms[22m[39m
+     [33m[2m✓[22m[39m 'Codex' ambient registration is idempotent and finite wait returns JSON [33m 2441[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses inbox --wait immediately for a pushed-delivery seat [33m 1311[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps finite inbox waits available to pull-delivery seats [33m 1281[2mms[22m[39m
+     [33m[2m✓[22m[39m registers an already-bound pushed seat from TMUX_PANE without ambient identity [33m 1040[2mms[22m[39m
+     [33m[2m✓[22m[39m registers a self-registered OMP seat from TMUX_PANE without ambient identity [33m 532[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps register fail-loud when ambient identity and TMUX_PANE are both absent [33m 497[2mms[22m[39m
+     [33m[2m✓[22m[39m round-trips wait → dead-pid send → read → delivered receipt without tmux or daemon [33m 5099[2mms[22m[39m
+E-NOID: no session 'pij-MISSING' in registry
+E-NOID: no session 'pij-MISSING' in registry
+notice: model 'gpt-5.6-sol' is available from github-copilot, copilot, codex; defaulting pi-family spawn to github-copilot (qualify --model to override)
+E-AMBIGUOUS: model 'shared-model' exists under multiple providers: openrouter/shared-model, sakana/shared-model; qualify --model with the intended provider
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-ARG: session 'pij-rebooted-reused-pane': a pane with the recorded id exists but is running a different process — tmux re-issues pane ids from %0 in every new server, so after a reboot that id is almost certainly somebody else's. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-ARG: session 'pij-rebooted-young-pane-process': the pane's pid matches, but that pane's process did not start before this seat's last recorded activity (ps lstart, whole-second resolution), so it cannot be shown to be the process that produced that activity — the kernel recycled the pid, and a matching pid cannot corroborate a matching pane id, both are reissued from the bottom after a reboot. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-ARG: session 'pij-unavailable-obs': the recorded pane is gone but the recorded pid still answers — the OS may have recycled it. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+E-NOID: no pij seat is registered for folder '/private/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-nofolder-YaEEKz'
+⚠️ could not auto-start pij daemon: tmux new-window failed: Command failed: tmux new-window -P -F #{pane_id} #{window_id} -n pij-daemon -d -c /private/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-folder-M1TjPw -e PIJ_DAEMON_OWNED=1 npx tsx /Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/.pi/extensions/pij/daemon.ts
+E-ARG: tmux split-window failed: Command failed: tmux split-window -P -F #{pane_id} #{window_id} -t %1 -h -d -p 33 -c /private/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-folder-M1TjPw -e PIJ_SESSION_ID=pij-revive-spawn-failure -e PIJ_HARNESS=claude -e PIJ_SPAWN_ID=revive-1787883532697-15053 -e PIJ_PARENT_ID=pij-A claude --dangerously-skip-permissions --resume 21111111-2222-4333-8444-555555555555
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-NOID: no terminal session 'pij-revive-registry-race' to revive
+ [32m✓[39m .pi/extensions/pij/core/chores/drive.test.ts [2m([22m[2m36 tests[22m[2m)[22m[33m 85435[2mms[22m[39m
+     [33m[2m✓[22m[39m prints family help through the pre-registry intercept [33m 834[2mms[22m[39m
+     [33m[2m✓[22m[39m frames record-looking full stdout and probe stderr so they cannot forge records [33m 4027[2mms[22m[39m
+     [33m[2m✓[22m[39m reports the exact sampled values, re-reports them, then becomes quiet only after ack [33m 6260[2mms[22m[39m
+     [33m[2m✓[22m[39m bounds sampled stdout visibly without changing the comparison fingerprint [33m 1075[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps a returned delta visible as a flap until ack [33m 4109[2mms[22m[39m
+     [33m[2m✓[22m[39m resolves an adopted seat from its pane and rejects an unknown explicit seat id [33m 2466[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps repo and fleet roster authoring available without a resolved seat [33m 1942[2mms[22m[39m
+     [33m[2m✓[22m[39m normalizes repo-local absolute paths, runs repo probes from another worktree and a subdirectory, and writes formatted JSON [33m 2114[2mms[22m[39m
+     [33m[2m✓[22m[39m validates add/update probe/full paths by resolved worktree containment [33m 6323[2mms[22m[39m
+     [33m[2m✓[22m[39m accepts static multi-argument commands and refuses unknown executables by default [33m 1984[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'quoted variable' across add/update and probe/full without roster mutation [33m 2415[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'braced variable' across add/update and probe/full without roster mutation [33m 2395[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'tilde expansion' across add/update and probe/full without roster mutation [33m 2423[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'later variable expansion' across add/update and probe/full without roster mutation [33m 2442[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'inline interpreter payload' across add/update and probe/full without roster mutation [33m 2437[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'command substitution' across add/update and probe/full without roster mutation [33m 2409[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'backtick substitution' across add/update and probe/full without roster mutation [33m 2399[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses 'unterminated quote' across add/update and probe/full without roster mutation [33m 2478[2mms[22m[39m
+     [33m[2m✓[22m[39m allows only exact safe runner flags before the repo script path [33m 7199[2mms[22m[39m
+     [33m[2m✓[22m[39m still warns fleet-roster authors about absolute paths [33m 487[2mms[22m[39m
+     [33m[2m✓[22m[39m warns when a shared chore invokes a pij verb refused to PA seats [33m 501[2mms[22m[39m
+     [33m[2m✓[22m[39m updates a chore in place and preserves its creator attribution [33m 2050[2mms[22m[39m
+     [33m[2m✓[22m[39m ignores unknown roster and state fields while list, run, and ack keep working [33m 2936[2mms[22m[39m
+     [33m[2m✓[22m[39m reports direct roster probe edits as re-instrumentation, not world movement [33m 3485[2mms[22m[39m
+     [33m[2m✓[22m[39m reports path-referenced script edits as probe changes, not value changes [33m 3978[2mms[22m[39m
+     [33m[2m✓[22m[39m accepts free-text values that begin with dashes [33m 986[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps a repo chore baseline independent for two seats [33m 2445[2mms[22m[39m
+     [33m[2m✓[22m[39m runs the full command on the third and sixth separate invocations only [33m 4388[2mms[22m[39m
+     [33m[2m✓[22m[39m runs a configured full command on every delta even without a periodic cadence [33m 2542[2mms[22m[39m
+     [33m[2m✓[22m[39m remove then re-add starts from a clean first observation [33m 3451[2mms[22m[39m
+⚠️ started a pij daemon in tmux window 'pij-daemon' (pane %90) but could NOT verify it running within 2500ms — it may still be coming up, or it may have failed to boot. Check with `pij daemon status`.
+E-NOREG: copilot native session artifact is missing
+E-ARG: session 'pij-still-live': the recorded pane is gone but the recorded pid still answers — the OS may have recycled it. Re-run with --print (safe, mutates nothing) or --assume-dead to override
+E-ARG: session 'pij-still-live' still has a live prior attachment; close it before reviving
+warning: unknown model 'gemini-3.6-flash' — spawn continues; confirm the id is correct
+warning: unknown model 'gemini-3.6-flash' — spawn continues; confirm the id is correct
+E-NOID: current claude session descriptor is dissolved; run pij revive pij-whoami-dissolved-remediation --attach "$TMUX_PANE" from this exact pane
+E-AMBIG: pij id pij-existing-opaque is already bound to claude:native-existing
+E-NOID: pij id pij-caller-chosen does not exist
+E-ARG: link 'pij-root' → 'pij-grandchild' would create a cycle
+{"error":"E-AMBIG","message":"cannot resolve self: no local session and PIJ_SESSION_ID unset (pass --actor <label> to assert attribution)"}
+E-NOID: no parent session 'missing' in registry
+E-ARG: link 'pij-root' → 'pij-grandchild' would create a cycle
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: --debounce must be a positive duration in ms or s (for example 750ms or 2s)
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-NOID: no such session 'missing'
+E-ARG: watch requires at least one glob
+pij watch — subscribe this non-pi peer to file changes
+
+USAGE
+  pij watch [--diff | --mode notify|diff] [--debounce n[ms|s]] <glob...>
+  pij unwatch [<glob...>]
+
+MODES
+  notify  (default)  changed-line ranges per file, e.g. "modified (+12/-3) lines 40-42"
+  diff    (--diff)   a pointer to ~/.pij/<id>/watch-diffs/<path>.diff
+
+FLAGS
+  --debounce <n>     collate window per subscription: integer ms, Nms, or Ns
+                     (default: 750ms)
+
+NOTES
+  Inside a git repo, .gitignore'd paths never notify.
+
+EXAMPLES
+  pij watch "src/**/*.ts"
+  pij watch --debounce 2s "src/**/*.ts"
+  pij watch --diff "src/**/*.ts"
+  pij unwatch "src/**/*.ts"
+  pij unwatch
+E-ARG: pij watch is for non-pi peers only; use the file-watch-notify extension inside pi sessions
+E-ARG: assignment 'asg-general-pij-B' is already undeclared — nothing to clear
+E-ARG: --project takes a kebab project slug (got '../escape')
+E-ARG: --reason is required
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: --older-than must be a positive duration such as 30m, 2h, or 1d
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: unknown delivery state 'forgotten'
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: choose at least one selector (--to, --from, --older-than, --state) or pass --all-recipients
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+E-ARG: choose a selector OR --all-recipients
+pij queue retire --reason <text> (--to <id> | --from <id> | --older-than 30m|2h|1d | --state queued,parked | --all-recipients) [--dry-run] [--json]
+pij queue retire needs SQLite state. With PIJ_QUEUE_BACKEND=fs, inspect then remove legacy files explicitly: rm ~/.pij/<id>/inbox/msg-*.json
+E-ARG: usage: pij dispatch-retire <dispatch-id> | --to <seat> --reason <text> [--dry-run]
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field: orchestrationRole): 'pij-stranger' is neither you nor your parent — a PA may act only on ITSELF ('pij-pa') or its own parent ('pij-parent'), so ask 'pij-parent' to do it or relay the request. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'watchdog pause' is not available to a PA — refused by role 'pa' (field: orchestrationRole): a PA may 'list' the watchdog roster for any target, 'unwatch' any target — which removes only its OWN subscription and changes nothing else about that seat — and 'watch' only ITSELF or its own parent; every other watchdog action changes supervision policy for a seat and stays refused. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'queue retire' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it retires another seat's mail — a state change a zero-actuator PA reports, never performs (ruled 2026-08-27). Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+E-OWN: 'queue retire' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it retires another seat's mail — a state change a zero-actuator PA reports, never performs (ruled 2026-08-27). Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+E-OWN: 'close' is not available to a PA — refused by role 'pa' (field: orchestrationRole): it changes seat lineage or existence — a PA never creates, adopts, or ends a seat. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+E-OWN: 'watchdog watch' is not available to a PA — refused by role 'pa' (field: orchestrationRole): '--for' binds a subscription on ANOTHER seat's behalf, which is a prime's repair path — a PA acts only for itself, so run it without '--for'. Run 'pij whoami --json' to see your role and capabilities, or 'pij state <id> --json' to read orchestrationRole and parent on any seat.
+⚠ pij: your now/next card is 33260m old, never reported — pij report now "<did>" "<next>"
+ [32m✓[39m .pi/extensions/pij/cli.integration.test.ts [2m([22m[2m110 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 184898[2mms[22m[39m
+     [33m[2m✓[22m[39m top-level help advertises the prime list filter [33m 848[2mms[22m[39m
+     [33m[2m✓[22m[39m report help prints only the report family block [33m 804[2mms[22m[39m
+     [33m[2m✓[22m[39m top-level help and skill guidance distinguish pull from push delivery [33m 749[2mms[22m[39m
+     [33m[2m✓[22m[39m auto-registers an ambient session before E-NOREG and aliases adopt --current [33m 3288[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects and repairs a contaminated external ambient identity in place [33m 6467[2mms[22m[39m
+     [33m[2m✓[22m[39m 'invalid Copilot UUID' prevents pane/cwd fallback [33m 548[2mms[22m[39m
+     [33m[2m✓[22m[39m 'Copilot UUID without matching session…' prevents pane/cwd fallback [33m 530[2mms[22m[39m
+     [33m[2m✓[22m[39m 'invalid Codex UUID' prevents pane/cwd fallback [33m 538[2mms[22m[39m
+     [33m[2m✓[22m[39m 'Codex UUID without matching rollout' prevents pane/cwd fallback [33m 521[2mms[22m[39m
+     [33m[2m✓[22m[39m sets, filters, unsets, and durably reattaches prime designations through the real CLI [33m 3414[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects valued --prime=false instead of silently disabling the filter [33m 487[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-1 discovery: list --here sees both peers in this folder [33m 511[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-5/whoami: PIJ_SESSION_ID resolves self unambiguously [33m 513[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-3 send: message reaches the peer's inbox on disk (raw body) [33m 487[2mms[22m[39m
+     [33m[2m✓[22m[39m broadcast send writes the same raw body once to each target inbox [33m 501[2mms[22m[39m
+     [33m[2m✓[22m[39m broadcast --wait timeout names every unresolved target [33m 694[2mms[22m[39m
+     [33m[2m✓[22m[39m single-target --wait timeout output remains byte-identical [33m 692[2mms[22m[39m
+     [33m[2m✓[22m[39m broadcast preflights the full target set before writing any inbox [33m 474[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-7/8 tail: --since filters to seq>N, events are ordered + timestamped [33m 982[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-9/10 state: reports state + liveness without a stream parse [33m 487[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-11 path: prints the readable events.ndjson path [33m 482[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-6 errors: invalid target exit codes are honored (E-NOID exit 2) [33m 479[2mms[22m[39m
+     [33m[2m✓[22m[39m standalone pi spawn persists a pane-correlated five-minute expectation before launch without a descriptor [33m 887[2mms[22m[39m
+     [33m[2m✓[22m[39m pins an ambiguous OMP model to github-copilot before tmux launch [33m 561[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses other provider ambiguity before expectation or tmux mutation [33m 497[2mms[22m[39m
+     [33m[2m✓[22m[39m control-plane spawn correlates one prelaunch expectation with descriptor and pane [33m 3405[2mms[22m[39m
+     [33m[2m✓[22m[39m real pi and daemon-bound spawns carry unresolved and not-probeable plan warnings into JSON and human receipts [33m 15584[2mms[22m[39m
+     [33m[2m✓[22m[39m revives a dissolved Claude session under the same pij id with fail-loud resume argv [33m 3420[2mms[22m[39m
+     [33m[2m✓[22m[39m resolves the prime seat from the CURRENT FOLDER and prints a paste-able line [33m 509[2mms[22m[39m
+     [33m[2m✓[22m[39m a REUSED pane id reads uncertain, not live, and says which id was recycled [33m 4318[2mms[22m[39m
+     [33m[2m✓[22m[39m a matching pane pid does NOT rescue a descriptor that predates this host's boot [33m 3863[2mms[22m[39m
+     [33m[2m✓[22m[39m a matching pane pid is uncertain when ps says that process started after our last event [33m 4370[2mms[22m[39m
+     [33m[2m✓[22m[39m a pane process born FOUR SECONDS after our last activity is uncertain, not live [33m 3868[2mms[22m[39m
+     [33m[2m✓[22m[39m --print survives tmux being unreachable, degrading to an unprobed pane [33m 1015[2mms[22m[39m
+     [33m[2m✓[22m[39m --attach binds the operator's OWN pane to the seat without spawning one [33m 3343[2mms[22m[39m
+     [33m[2m✓[22m[39m human revive reports restored dispatches separately from mail [33m 3411[2mms[22m[39m
+     [33m[2m✓[22m[39m resolves an ARCHIVED seat and --print leaves it archived [33m 952[2mms[22m[39m
+     [33m[2m✓[22m[39m prints the human-readable form with the self-adopt truth spelled out [33m 484[2mms[22m[39m
+     [33m[2m✓[22m[39m states the REAL reason a pi seat needs no attach step [33m 485[2mms[22m[39m
+     [33m[2m✓[22m[39m an UNAVAILABLE terminal observation is not evidence of death [33m 469[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses to print for a folder that has no seat, naming the folder [33m 471[2mms[22m[39m
+     [33m[2m✓[22m[39m cleans the expectation when revival pane launch fails [33m 550[2mms[22m[39m
+     [33m[2m✓[22m[39m kills the spawned pane and removes its expectation when tombstone replacement fails [33m 3420[2mms[22m[39m
+     [33m[2m✓[22m[39m launches pi revival asynchronously with an unconditional reframe [33m 606[2mms[22m[39m
+     [33m[2m✓[22m[39m launches omp revival asynchronously with an unconditional reframe [33m 551[2mms[22m[39m
+     [33m[2m✓[22m[39m requeues close-retired mail when attaching a revived pi session [33m 595[2mms[22m[39m
+     [33m[2m✓[22m[39m requeues close-retired mail when attaching a revived omp session [33m 509[2mms[22m[39m
+     [33m[2m✓[22m[39m warns when the CLI registry factory reclaims a dead descriptor lock [33m 496[2mms[22m[39m
+     [33m[2m✓[22m[39m reports the interim Copilot session-in-use action instead of waiting silently [33m 3425[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a missing Copilot native artifact before tmux mutation [33m 537[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses revival while the prior process incarnation is still alive [33m 982[2mms[22m[39m
+     [33m[2m✓[22m[39m daemon-bound Copilot descriptor records github-copilot provider [33m 3392[2mms[22m[39m
+     [33m[2m✓[22m[39m 'peer denied' Copilot spawn composes the model-specific long-context argv [33m 3487[2mms[22m[39m
+     [33m[2m✓[22m[39m 'peer allowed' Copilot spawn composes the model-specific long-context argv [33m 3394[2mms[22m[39m
+     [33m[2m✓[22m[39m 'agent denied' Copilot spawn composes the model-specific long-context argv [33m 3413[2mms[22m[39m
+     [33m[2m✓[22m[39m 'agent allowed' Copilot spawn composes the model-specific long-context argv [33m 3386[2mms[22m[39m
+     [33m[2m✓[22m[39m agent spawn correlates its prelaunch expectation, pane, descriptor, and harness [33m 3409[2mms[22m[39m
+     [33m[2m✓[22m[39m CLI close traces intent → kill → requested terminal → dissolve and retains history [33m 495[2mms[22m[39m
+     [33m[2m✓[22m[39m Copilot adopt uses only the validated current env uuid, never the global newest session [33m 983[2mms[22m[39m
+     [33m[2m✓[22m[39m Copilot adopt ignores global newest when env is absent, then phonehome binds the pending id [33m 982[2mms[22m[39m
+     [33m[2m✓[22m[39m adopt --id renders the stored final binding when no native artifact is discoverable [33m 980[2mms[22m[39m
+     [33m[2m✓[22m[39m T001 regression-locks live and pending adopt outcomes before dissolved recovery [33m 1989[2mms[22m[39m
+     [33m[2m✓[22m[39m T002 refuses to report a dissolved adopt binding that was not persisted [33m 483[2mms[22m[39m
+     [33m[2m✓[22m[39m T005 whoami directs a dissolved ambient identity to revive [33m 494[2mms[22m[39m
+     [33m[2m✓[22m[39m adopt --id is reattachment-only, preserves prime, and can explicitly recover a reservation [33m 1938[2mms[22m[39m
+     [33m[2m✓[22m[39m first adopt without --id allocates a memorable primary id [33m 482[2mms[22m[39m
+     [33m[2m✓[22m[39m no-native adopt reserves then publishes one memorable pending descriptor [33m 492[2mms[22m[39m
+     [33m[2m✓[22m[39m tree/link/adopt/spawn compose over a real repository, linked worktree, and scratch registry [33m 13461[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-6 command: send --command compact is accepted + the peer executes it [33m 492[2mms[22m[39m
+     [33m[2m✓[22m[39m AC-13 receipt loop: B records inbound + emits a receipt; A records it; tail shows it [33m 489[2mms[22m[39m
+     [33m[2m✓[22m[39m peer watch CLI mutates the caller sidecar via PIJ_SESSION_ID [33m 947[2mms[22m[39m
+     [33m[2m✓[22m[39m peer watch CLI parses and upserts --debounce values [33m 1443[2mms[22m[39m
+     [33m[2m✓[22m[39m peer watch CLI rejects invalid debounce values before writing a sidecar [33m 1833[2mms[22m[39m
+     [33m[2m✓[22m[39m peer watch CLI errors for unresolved self, missing args, and pi sessions [33m 1385[2mms[22m[39m
+     [33m[2m✓[22m[39m state clear round-trips through the real CLI without materializing a second assignment [33m 1975[2mms[22m[39m
+     [33m[2m✓[22m[39m report now round-trips state-set → status and projects the durable denorm [33m 983[2mms[22m[39m
+     [33m[2m✓[22m[39m issue-#20 kill: env unset + no pane match ⇒ NO parent, even with a lone cwd cohabitant [33m 3451[2mms[22m[39m
+     [33m[2m✓[22m[39m env unset + pane-exact match resolves the caller across the FULL registry (cross-cwd) [33m 3494[2mms[22m[39m
+     [33m[2m✓[22m[39m PIJ_SESSION_ID wins over both cwd cohabitants and pane matches [33m 3515[2mms[22m[39m
+     [33m[2m✓[22m[39m pi spawn announce target follows the same rule: pane identity yes, cwd cohabitant no [33m 1236[2mms[22m[39m
+     [33m[2m✓[22m[39m adopt honors --parent end-to-end and stays parentless without it [33m 995[2mms[22m[39m
+     [33m[2m✓[22m[39m writes spine/spine.md byte-identical to the pure render; --json reports path/bytes/events [33m 1488[2mms[22m[39m
+     [33m[2m✓[22m[39m re-render of an unchanged log is byte-stable; human mode names the path [33m 468[2mms[22m[39m
+     [33m[2m✓[22m[39m renders an EMPTY spine as the header-only document (fresh temp home) [33m 474[2mms[22m[39m
+     [33m[2m✓[22m[39m --project publishes a FILTERED view to spine/<slug>.spine.md — spine.md untouched (s057) [33m 957[2mms[22m[39m
+     [33m[2m✓[22m[39m --project rejects a non-slug shape with E-ARG (the slug becomes a filename) [33m 467[2mms[22m[39m
+     [33m[2m✓[22m[39m tree --global --liveness dead --json over 1200 descriptors parses complete THROUGH A REAL PIPE [33m 1416[2mms[22m[39m
+     [33m[2m✓[22m[39m pij queue emits all 812 rows through a piped stdout [33m 2474[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects --all combined with --tail or --last [33m 959[2mms[22m[39m
+     [33m[2m✓[22m[39m retires matching sqlite rows in human and JSON modes [33m 963[2mms[22m[39m
+     [33m[2m✓[22m[39m requires a reason, validates age syntax, and keeps dry-run read-only [33m 3382[2mms[22m[39m
+     [33m[2m✓[22m[39m requires a selector or explicit --all-recipients confirmation [33m 1466[2mms[22m[39m
+     [33m[2m✓[22m[39m mirrors dual retirement into fs read markers [33m 496[2mms[22m[39m
+     [33m[2m✓[22m[39m points fs-only operators at the legacy inbox files [33m 490[2mms[22m[39m
+     [33m[2m✓[22m[39m retires by id or recipient, supports JSON/dry-run, and requires a reason [33m 2917[2mms[22m[39m
+     [33m[2m✓[22m[39m lets a PA watch and unwatch its own parent THROUGH THE REAL BIN [33m 1934[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a PA watching a stranger THROUGH THE REAL BIN, naming role and field [33m 500[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses a policy-changing watchdog action through the bin, even on its own parent [33m 489[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses queue retire at the raw-argv bin seam [33m 944[2mms[22m[39m
+     [33m[2m✓[22m[39m still refuses a FLATLY refused verb at the bin seam — the gate is not disarmed [33m 473[2mms[22m[39m
+     [33m[2m✓[22m[39m whoami through the bin reports watchdog as CONDITIONAL, not flatly refused [33m 511[2mms[22m[39m
+     [33m[2m✓[22m[39m lets a PA `chore add` THROUGH THE REAL BIN — the raw-argv subverb mapping [33m 992[2mms[22m[39m
+     [33m[2m✓[22m[39m registers the NAMED seat, re-binds without duplicating, and unwatches it again [33m 3078[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves addedAt across a re-bind THROUGH THE BIN, and stamps a new one [33m 1003[2mms[22m[39m
+     [33m[2m✓[22m[39m refuses --for to a PA through the bin, while the plain form still works [33m 1484[2mms[22m[39m
+     [33m[2m✓[22m[39m names --for on BOTH the watch and the unwatch usage lines [33m 478[2mms[22m[39m
+     [33m[2m✓[22m[39m explains what --for DOES, not merely that it exists [33m 486[2mms[22m[39m
+     [33m[2m✓[22m[39m the help path is REACHABLE — guards this whole pin against being vacuous [33m 479[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m172 passed[39m[22m[2m | [22m[33m2 skipped[39m[90m (174)[39m
+[2m      Tests [22m [1m[32m4123 passed[39m[22m[2m | [22m[33m15 skipped[39m[90m (4138)[39m
+[2m   Start at [22m 12:17:34
+[2m   Duration [22m 186.45s[2m (transform 9.80s, setup 0ms, import 20.82s, tests 390.34s, environment 9ms)[22m
+

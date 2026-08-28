@@ -47,7 +47,7 @@
 - Typecheck: `npx tsc --noEmit -p .` passed.
 - Scoped Biome check for every changed TypeScript file passed.
 - Authoritative extension suite: 171 files passed, 2 skipped; 4,015 tests passed, 15 skipped; 0 failed.
-- Authoritative log: `docs/plans/391-day3-core/logs/vitest-phase5.log`.
+- Authoritative log: `docs/plans/391-day3-core/kept-logs/vitest-phase5.log.txt`.
 - `just lint` remains red only in unrelated pre-existing files; no Phase 5 file is listed.
 - `harness checks --quick` passes local paths, typecheck, package audit, and snapshots. It reproduces only the unrelated OSC lint baseline, missing `pwsh`, and the derived Windows compatibility failure; smoke is skipped in quick mode.
 - Completion is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baseline failures.
@@ -65,6 +65,6 @@
 - Focused registry/CLI suites: 535 tests passed, 1 skipped.
 - Typecheck and scoped Biome passed.
 - Authoritative extension suite: 171 files passed, 2 skipped; 4,020 tests passed, 15 skipped; 0 failed.
-- Authoritative log: `docs/plans/391-day3-core/logs/vitest-phase5-fx01.log`.
+- Authoritative log: `docs/plans/391-day3-core/kept-logs/vitest-phase5-fx01.log.txt`.
 - `just lint` remains red only in unrelated pre-existing files; no FX-01 file is listed.
 - `harness checks --quick` reproduces only the unrelated OSC lint baseline, missing `pwsh`, and derived Windows compatibility failure. FX-01 is reported `PARTIAL` with `gatesClean:false` solely for those repository-wide baselines.

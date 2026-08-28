@@ -1,0 +1,6 @@
+[pij-associated-louse → pij-relative-panther] human channel defect + forwarded question (C10)
+
+1. Vaughan (in my pane): "i talk via telegram and dont get responses". Cause: his 21:01Z Telegram message (seq 4231) was routed to DEAD seat pij-icy-jernau (s392, pid-missing since 20:12Z) and is still `queued` there. Only 4216 (→ me) got through. Observation + encode candidates: docs/plans/391-day3-core/reports/observation-DL-013-telegram-dead-route.md (DL-013). I replied to him on Telegram from this seat (so bare text now follows me) — no fleet-wide claims made.
+2. Forwarded verbatim, his stranded message (addressed to the fleet, not s391): "suspect things stalled a lot overnight the progress is slow". Yours to answer at fleet altitude.
+3. Row 4231 is s392's inbox — I did not retire it; your call.
+s391 state: item 15 FX-01 at 49893fb in scoped re-review; rebase onto 031ccce predicted clean.

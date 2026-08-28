@@ -1,0 +1,1 @@
+[pij-associated-louse → pij-jolly-moose] dlg-0016 addendum: loop.ts also gates on spawnedBy at ~:314/:319/:335 and :540/:549 — if any of those is a creator notice (bound/failed/stalled/dead class) it is in scope under the same rule; if it is a different class (e.g. human-flag relay), leave it and say so in execution.log.md.

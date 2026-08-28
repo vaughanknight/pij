@@ -28,7 +28,7 @@ The empty-diff abort exists because a previous pass in this stream produced a **
 **What I did NOT verify** (each of these is a gap, not a pass):
 
 1. `just lint` repo-wide and `harness checks --quick` — I ran Biome only over the 8 changed TypeScript files. The coder reports pre-existing OSC-7337 diagnostics outside this fence; I did not reproduce or audit them.
-2. The coder's own log `docs/plans/391-day3-core/logs/vitest-phase7-fx.log` — I ran my own full suite instead and compared totals.
+2. The coder's own log `docs/plans/391-day3-core/kept-logs/vitest-phase7-fx.log.txt` — I ran my own full suite instead and compared totals.
 3. Anything Windows / `pwsh` — `pwsh` is not installed on this host, so `harness/scripts/release-age-policy.test.ts` cannot run here at all. I therefore scoped the gate to `.pi/extensions/pij/` (the dossier's own command form); a run including `harness/**` fails on that unrelated pre-existing `spawnSync pwsh ENOENT`.
 4. **No live-daemon proof.** Per the packet addendum I never started, stopped or touched the daemon, and never wrote to this machine's `~/.pij`. Everything is unit/integration-level. A real `pij link` against a real running daemon was not exercised by me.
 5. A real tmux fleet: no adopted seat was actually re-linked mid-flight on real panes.
@@ -323,7 +323,7 @@ Stated first, so a gate I did not examine never looks like a gate I found clean.
 - Mutation selector = the 5 touched test files (`binding`, `loop`, `death-reconciler`, `daemon`, `daemon-push`): **300 passed / 4 skipped / 7.8 s** unmutated. The three survivors were then re-confirmed against the **full** extension suite, not the selector.
 - Cost probes ran against `mkdtemp` homes only. **This machine's `~/.pij` was never read or written and the live daemon was never touched.**
 
-**What I did NOT verify**: `just lint` repo-wide; `harness checks`; the coder's own `docs/plans/391-day3-core/logs/vitest-phase7-fx01.log` (I ran my own); anything Windows/`pwsh`; any live-daemon, real-tmux or real-`pij link` behaviour; the two docs files beyond reading them against the code. My cost numbers are single-machine, warm-cache, synthetic — treat them as *shape and scaling*, not as an SLA.
+**What I did NOT verify**: `just lint` repo-wide; `harness checks`; the coder's own `docs/plans/391-day3-core/kept-logs/vitest-phase7-fx01.log.txt` (I ran my own); anything Windows/`pwsh`; any live-daemon, real-tmux or real-`pij link` behaviour; the two docs files beyond reading them against the code. My cost numbers are single-machine, warm-cache, synthetic — treat them as *shape and scaling*, not as an SLA.
 
 ## R1 — Freeze, gates, anti-vacuity, fence
 
@@ -521,7 +521,7 @@ Scaffolding stated before findings, because it changes how much weight each row 
 
 **What I did NOT verify** — a gate I did not examine must not look like a gate I found clean:
 
-- `just lint` repo-wide, `harness checks`, and the coder's own `docs/plans/391-day3-core/logs/vitest-phase7-fx02.log` (I ran my own full suite instead).
+- `just lint` repo-wide, `harness checks`, and the coder's own `docs/plans/391-day3-core/kept-logs/vitest-phase7-fx02.log.txt` (I ran my own full suite instead).
 - Anything Windows/`pwsh` (`pwsh` is not installed here; a repo-wide vitest fails `harness/scripts/release-age-policy.test.ts:196` for that reason alone, so I scope to `.pi/extensions/pij/` — the dossier form).
 - Any live-daemon, real-tmux, or real `pij link` behaviour.
 - Cost figures are single-machine, warm-cache, synthetic: **shape and scaling, not an SLA**.

@@ -1,0 +1,15 @@
+COMPLETE dlg-0028 — candidate c7199ea26b88e0b2e6c30797eac812421828883d
+{
+  "delegationId": "dlg-0028",
+  "outcome": "COMPLETE",
+  "summary": "Made the real-SIGTERM test launch the daemon as Node's direct child through --import tsx, eliminating the tsx CLI relay race while preserving the exit and lock-removal assertions. Rebased onto current origin/main and proved the direct-child path 20/20.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.test.ts",
+    "docs/plans/391-day3-core/tasks/phase-14-item-15fx-sigterm-flake/execution.log.md"
+  ],
+  "testsRun": 4130,
+  "testsPassed": 4115,
+  "gatesClean": true,
+  "notes": "Root cause: the old test sent SIGTERM to tsx's CLI relay, whose default signal exit could race the inner daemon's handled exit 0; --import tsx makes the daemon the signalled process. Base probe at e6a55e81163a8f95e7302f536f8423035ad7e99b: 0/60 failures locally, with every run preserved under .harness/temp/s391/sigterm-probe/. Run-if-main guard probe passed. Rebased implementation commit: 52454fe. Final post-rebase direct-child proof: 20/20, logs under .harness/temp/s391/sigterm-direct-proof-rebased/. Final candidate: c7199ea26b88e0b2e6c30797eac812421828883d. Full extension suite bg-mtc8mra1-wujnm3: 172 files passed, 2 skipped; 4115 tests passed, 15 skipped; log .harness/temp/s391/vitest-phase14.log. Typecheck and scoped Biome passed. No push performed."
+}
+c7199ea26b88e0b2e6c30797eac812421828883d
