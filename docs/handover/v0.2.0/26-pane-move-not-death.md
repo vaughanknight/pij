@@ -5,8 +5,8 @@
 **Size estimate:** S–M (3–4 h) · **Order / dependencies:** after item 16 (merged — notices route via `resolveNoticeRecipient`/`resolveDeathNotices` and the death sweep summary) and 31 (merged — sensor signing); reuse item 15's pid + start-time liveness helper (`adapters/lock-reclaim.ts isProcessAlive` / `processStartedAtMs`)
 
 ## 1. Why this exists (the observed failure, with evidence)
-- 2026-08-28 12:07Z (fleet record `docs/plans/391-day3-core/fleet.md` row "pij-powerful-whale"; DL-009 in `rulings.md`): during `tmux join-pane` (moving the reviewer's pane under the coder's window), the daemon pushed "⚠️ pij-powerful-whale has exited; terminal absence … unrequested-by-pij" to the orchestrator; the seat bound normally seconds later. The process never died — its pane id changed.
-- Mechanism at `d120c53`: `core/daemon/pane-signals.ts reconcile(listings)` (`:709`) diffs the pane set (`PaneSetDiff` `:16`, `diffPaneSets`); a pane id that vanishes is reported `gone`; `daemon.ts` `if (outcome === "gone") this.unbindGonePane(paneId)` (`:~470`) dissolves the binding ("unread mail left for a revive") and `core/daemon/death-reconciler.ts reconcileDeaths` (`:214`) turns a gone pane into a terminal absence + dead notice (`noticeText` `:139`; recipients via `resolveDeathNotices`, item 16) — without re-probing the PID.
+- 2026-08-28 12:07Z (fleet record `docs/plans/391-day3-core/fleet.md` row "pij-powerful-whale"; DL-009 recorded in `docs/plans/391-day3-core/391-day3-core-plan.md:559`, not in rulings.md): during `tmux join-pane` (moving the reviewer's pane under the coder's window), the daemon pushed "⚠️ pij-powerful-whale has exited; terminal absence … unrequested-by-pij" to the orchestrator; the seat bound normally seconds later. The process never died — its pane id changed.
+- Mechanism at `d120c53`: `core/daemon/pane-signals.ts reconcile(listings)` (`:709`) diffs the pane set (`PaneSetDiff` `:16`, `diffPaneListings` `:46`); a pane id that vanishes is reported `gone`; `daemon.ts` `if (outcome === "gone") this.unbindGonePane(paneId)` (`:~470`) dissolves the binding ("unread mail left for a revive") and `core/daemon/death-reconciler.ts reconcileDeaths` (`:214`) turns a gone pane into a terminal absence + dead notice (`noticeText` `:139`; recipients via `resolveDeathNotices`, item 16) — without re-probing the PID.
 
 ## 2. What is ruled (design / spec)
 - AC-24 (plan): moving a live seat's pane never yields an `exited`/terminal-absence notice; the seat's `paneId`/`windowId` follow it and a `moved` notice is emitted (routed like every creator notice — `resolveNoticeRecipient`, signed `pij-daemon`); a dead pid still yields the terminal absence.
@@ -14,7 +14,7 @@
 - Re-attach: if `tmux list-panes -a -F '#{pane_id} #{window_id} #{pane_pid}'` shows a pane whose pid (or child pid chain) is the seat's pid, adopt that pane/window id.
 
 ## 3. Where the code is (at tag `d120c53`)
-- `.pi/extensions/pij/core/daemon/pane-signals.ts` — `PaneSetDiff` `:16`, `diffPaneSets` (`:~45-54`), `reconcile` `:709`.
+- `.pi/extensions/pij/core/daemon/pane-signals.ts` — `PaneSetDiff` `:16`, `diffPaneListings` `:46-54`, `reconcile` `:709`.
 - `.pi/extensions/pij/core/daemon/death-reconciler.ts` — `reconcileDeaths` `:214` and its decision table below it; `noticeText` `:139`; `resolveDeathNotices` (item 16) and the bounded death-sweep summary (task #34) — a `moved` notice is NOT a death and must not enter that summary.
 - `.pi/extensions/pij/daemon.ts` — `unbindGonePane(paneId)` (call `:~470`; definition — grep) and `refreshPaneSignals` `:~1597`; the tmux port (`core/ports.ts` `listPanes`/`newWindow`) and `adapters/tmux.ts` for the `-a` listing.
 - `.pi/extensions/pij/core/binding.ts` — add `buildMovedNotice(descriptor, from, to)` beside `buildDeadNotice`, using `noticeRecipient` candidates + `resolveNoticeRecipient` at the call site.
@@ -30,10 +30,10 @@
 Spawn a seat in its own window; `tmux join-pane -s <its pane> -t <another window>`; within ~2 s: `pij state <id>` shows the NEW pane id, the parent receives `↔ <id> moved to pane %N (window @M)` signed `pij-daemon`, and NO "has exited" line. Then `kill -9 <pid>` → the terminal-absence notice arrives as before.
 
 ## 6. Risks / gotchas that already bit us
-- DL-009: the false "exited" notice reached the orchestrator mid-review and cost a re-check of the seat.
+- DL-009 (`391-day3-core-plan.md:559`): the false "exited" notice reached the orchestrator mid-review and cost a re-check of the seat.
 - Item 15 / DL-020 class: pid liveness must be pid + start time (recycled pids) — the helper exists; use it.
 - Task #34 (count-not-N) and item 16's summary: a `moved` notice is per-seat, one-shot; never batch it into the death summary, never per-tick.
-- E34: the sensor must drive the daemon composition (pane listing → reconcile → notice), not only `diffPaneSets`.
+- E34: the sensor must drive the daemon composition (pane listing → reconcile → notice), not only `diffPaneListings`.
 
 ## 7. Open questions for the human
 None.
