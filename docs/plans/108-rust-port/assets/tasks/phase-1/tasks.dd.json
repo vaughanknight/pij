@@ -43,7 +43,7 @@
         {
           "id": "tk-ddf1",
           "title": "Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R3 / ac-0006",
           "done": "#done_when/tk-ddf1"
         },
@@ -122,7 +122,7 @@
           {
             "id": "dw-34f8",
             "assertion": "SEVEN frozen port traits in ports.rs (R3 as amended) each with a shipped deterministic fake; port contract exemplar green",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
