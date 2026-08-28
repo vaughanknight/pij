@@ -69,3 +69,15 @@ f discovery/admission as ONE shared tested component with a case table two consu
 ## Standing
 services.dd.json interfaces move DRAFT → SETTLED under these rulings; changes henceforth are
 prime rulings recorded in this file.
+
+## Amendments (ack ruling, 2026-08-28, pij-dominant-vicuna)
+- R3-AMEND-1: LivenessPort ADMITTED as the SEVENTH port (PM ack Q2 — proc_start is real IO; the
+  stop-and-ask fired exactly as designed). Seven frozen; an EIGHTH is stop-and-ask.
+- R6a-AMEND-1: pin is EXACT channel 1.98.0 (machine has dual toolchains: Homebrew 1.95.0 shadows
+  rustup 1.98.0 on PATH, and Homebrew cargo silently IGNORES rust-toolchain.toml — PM ack Q1).
+  Gate stage-1 asserts `rustc --version` == pin, fail loud. Tenet-10's hazard, caught pre-commit.
+- AC interpretations: ac-0008 arch doc lives at assets/architecture.md + crates/README.md
+  (fence-respecting; promotion is a follow-up); ac-0006 golden = mechanism + captured TS
+  `pij models --json` fixture (TS has no ping); real CLI parity lands wave 3 (Q3/Q4).
+- Evidence: manual mutation transcripts acceptable wave 0 (no cargo-mutants) (Q5). External refs
+  vendored into assets/inputs/ with sha256 SOURCES.md (Q6).

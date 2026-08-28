@@ -35,24 +35,77 @@ Execute in order; each task's gate must be green before the next starts. Rulings
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| t-001 | Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it. | — | — | [ ] unchecked | R6a,R6c | — | — | — | — | — |
-| t-002 | Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli-&gt;one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green. | — | — | [ ] unchecked | R2 / ac-0001,ac-0002 | — | — | — | — | — |
-| t-003 | Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/). | — | — | [ ] unchecked | R2 / ac-0003 | — | — | — | — | — |
-| t-004 | Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test. | — | — | [ ] unchecked | R3 / ac-0006 | — | — | — | — | — |
-| t-005 | Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar. | — | — | [ ] unchecked | R1 / ac-0004-analog,ac-0006 | — | — | — | — | — |
-| t-006 | Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe. | — | — | [ ] unchecked | R4 | — | — | — | — | — |
-| t-007 | Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured. | — | — | [ ] unchecked | R1,R4 / ac-0005 | — | — | — | — | — |
-| t-008 | Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary. | — | — | [ ] unchecked | R6b / ac-0006 | — | — | — | — | — |
-| t-009 | Spike lane + shared components: pocs/&lt;name&gt; template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table. | — | — | [ ] unchecked | R6c,R6d,R6f | — | — | — | — | — |
-| t-010 | Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files. | — | — | [ ] unchecked | R6e / ac-0007,ac-0008 | — | — | — | — | — |
+| tk-48f2 | Toolchain pin + repo hygiene: rust-toolchain.toml (stable, rustfmt+clippy), root Cargo.toml workspace with pocs/ exclude, .gitignore for target/. First commit, nothing else in it. | — | — | [ ] unchecked | R6a,R6c | — | [ ] 0/1 [tk-48f2](#tk-48f2) | — | — | — |
+| tk-5f1d | Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli-&gt;one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green. | — | — | [ ] unchecked | R2 / ac-0001,ac-0002 | — | [ ] 0/1 [tk-5f1d](#tk-5f1d) | — | — | — |
+| tk-3a93 | Drift gate: arch-allowlist committed with per-row rationale + the test that walks the dep graph; NEGATIVE PROOF recorded (add tokio to core, red, revert; transcript to assets/reports/). | — | — | [ ] unchecked | R2 / ac-0003 | — | [ ] 0/1 [tk-3a93](#tk-3a93) | — | — | — |
+| tk-ddf1 | Ports + fakes: the six frozen traits in core/src/ports.rs ('a seventh port is stop-and-ask' comment) + a shipped, deterministic, scriptable fake per port in testkit; fake-as-default config; port contract exemplar test. | — | — | [ ] unchecked | R3 / ac-0006 | — | [ ] 0/1 [tk-ddf1](#tk-ddf1) | — | — | — |
+| tk-d4c3 | Store skeleton: SQLite via sqlx, migration 0001 (WAL+user_version), boot self-migration, stale-schema refusal (skew rule both directions), FreshStore-per-test primitive; store integration exemplar. | — | — | [ ] unchecked | R1 / ac-0004-analog,ac-0006 | — | [ ] 0/1 [tk-d4c3](#tk-d4c3) | — | — | — |
+| tk-f8ff | Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe. | — | — | [ ] unchecked | R4 | — | [ ] 0/1 [tk-f8ff](#tk-f8ff) | — | — | — |
+| tk-d162 | Hello-depth binary: pij-rs with two composition roots; daemon serves /health + NDJSON events (Hello line, Unknown variant) on localhost with per-boot 0600 bearer key written before bind; pij-rs ping healthy; first-light transcript captured. | — | — | [ ] unchecked | R1,R4 / ac-0005 | — | [ ] 0/1 [tk-d162](#tk-d162) | — | — | — |
+| tk-717f | Fixture corpus + exemplars: capture real pij CLI invocations + daemon wire traffic INCLUDING malformed cases into testkit-addressable paths; core unit exemplar (zero doubles); one CLI golden diffed against the TS binary. | — | — | [ ] unchecked | R6b / ac-0006 | — | [ ] 0/1 [tk-717f](#tk-717f) | — | — | — |
+| tk-388a | Spike lane + shared components: pocs/&lt;name&gt; template ([workspace]+.gitignore+out/), spike gate-posture sentence in README; wire.rs stub; discovery/admission component with shared case table. | — | — | [ ] unchecked | R6c,R6d,R6f | — | [ ] 0/1 [tk-388a](#tk-388a) | — | — | — |
+| tk-81b3 | Gate + docs: one command running fmt --check, clippy -D warnings, cargo test --workspace, allowlist — all green; README quick-start + architecture doc; fences doc naming shared-merge files. | — | — | [ ] unchecked | R6e / ac-0007,ac-0008 | — | [ ] 0/1 [tk-81b3](#tk-81b3) | — | — | — |
 
 <a id="done-when"></a>
 
 ## Done when
 
-### statement
+### tk-48f2
 
-- All 8 plan ACs checked with receipts
-- Negative drift proof + first-light transcript in assets/reports/
-- Done report carries observed rustc/cargo versions + Avail disk
-- Cross-model review APPROVE on the composed tree
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-a803 | rustc --version == pinned channel exactly (gate stage-1 assert, fail loud); pocs/ excluded in root manifest | [ ] unchecked | not-applicable |
+
+### tk-5f1d
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-c43d | cargo build --workspace green; 8 member crates present; core has no tokio/sqlx/HTTP deps | [ ] unchecked | not-applicable |
+
+### tk-3a93
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-1be7 | allowlist test green AND negative proof recorded (forbidden dep -&gt; red -&gt; revert, transcript in assets/reports/) | [ ] unchecked | not-applicable |
+
+### tk-ddf1
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-34f8 | SEVEN frozen port traits in ports.rs (R3 as amended) each with a shipped deterministic fake; port contract exemplar green | [ ] unchecked | not-applicable |
+
+### tk-d4c3
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-feee | boot self-migration proven; stale-schema refusal proven BOTH skew directions; FreshStore-per-test primitive used by the store exemplar | [ ] unchecked | not-applicable |
+
+### tk-f8ff
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-1ddd | dedupe collapses N rapid submits to one row (set-equality contention test); manual mutation evidence on the dedupe predicate | [ ] unchecked | not-applicable |
+
+### tk-d162
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-bba7 | pij-rs ping healthy over localhost HTTP + bearer key; NDJSON stream carries Hello + survives an unknown event kind; first-light transcript captured | [ ] unchecked | not-applicable |
+
+### tk-717f
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-70b8 | fixture corpus addressable by name, includes malformed cases; golden MECHANISM proven against captured TS `pij models --json` fixture (Q4 ruling) | [ ] unchecked | not-applicable |
+
+### tk-388a
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-8f8d | pocs/ template builds standalone; spike gate-posture sentence present; wire.rs stub + admission component with shared case table in gate | [ ] unchecked | not-applicable |
+
+### tk-81b3
+
+| id | assertion | state | pressure |
+| --- | --- | --- | --- |
+| dw-7b12 | one-command gate all green; quick-start at crates/README.md; arch doc at assets/architecture.md (Q3 relocation); fences doc names shared-merge files | [ ] unchecked | not-applicable |
