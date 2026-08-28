@@ -1,0 +1,96 @@
+# The pij crate graph of workshop 001 (R2), as data.
+#
+# This is an ALLOW-LIST, not a deny-list: any direct dependency edge not named
+# here is architecture drift and fails the check. Adding a dependency therefore
+# costs one deliberate, reviewed line — which is the point (tenet 7: structure
+# over trust, enforcement over documentation).
+#
+# Entries are KIND-AWARE, because the shipped/test distinction IS architecture:
+#
+#   "serde"      may be declared in [dependencies] — and, being the more
+#                privileged table, in [dev-dependencies] too.
+#   "tokio@dev"  may be declared ONLY in [dev-dependencies]. Promoting it to
+#                [dependencies] ships it, and the check says so by name.
+#   "cc@build"   may be declared ONLY in [build-dependencies].
+#
+# Every crate entry carries a REQUIRED `why`: an allow-list without rationale
+# decays into a list of whatever happened to get added.
+#
+# Run it: `cargo run -p pij-testkit --bin pij-arch-check`
+# Negative proof: `crates/testkit/tests/arch_drift.rs` judges a committed
+# drifted-metadata fixture and asserts RED — re-runnable, not a ritual.
+#
+#   crates/core/       domain types, config, errors, ports, pure logic.  -> nothing
+#   crates/store/      sqlx/SQLite: registry, spine, queue.              -> core
+#   crates/tmux/       every tmux syscall in the workspace.              -> core
+#   crates/harnesses/  per-harness detect/bind/readiness/models quirks.  -> core, tmux
+#   crates/transport/  UDS and friends behind the Transport port.        -> core
+#   crates/daemon/     HTTP, tick loop, workers. COMPOSITION ROOT.       -> all adapters
+#   crates/cli/        the `pij-rs` binary. COMPOSITION ROOT.            -> core, daemon
+#   crates/testkit/    fakes, fixtures, gate binaries. Never a prod dep. -> core, store
+
+# Refused workspace-wide (tenet 5: fakes over mocks). Reported with a distinct
+# message so a review can cite the rule by name rather than argue taste.
+banned_everywhere = [
+  "mockall",
+  "mockito",
+  "wiremock",
+  "faux",
+  "double",
+  "mock_derive",
+  "mock-it",
+  "simulacrum",
+]
+
+# ---------------------------------------------------------------------------
+# The functional core (R2). The forbidden set here IS the architecture's spine:
+# no tokio, no sqlx, no HTTP client, no web framework, no tmux. Core decides;
+# it never reaches. That is what lets every core test run with zero doubles.
+#
+# Empty at tk-3a93 by construction — core has no code yet. Each addition is a
+# reviewed row: serde/thiserror arrive with the domain model at tk-ddf1, and the
+# review question for each is "is this a codec, or is this IO wearing a codec's
+# clothes?".
+[crates.pij-core]
+internal = []
+external = []
+why = "Pure domain: types, config, errors, ports, and the logic over them. No IO, no tokio, no SQL, no HTTP — enforced here rather than asserted in a doc comment."
+
+[crates.pij-store]
+internal = []
+external = []
+why = "Persistence behind Registry/Spine/Queue. sqlx + SQLite land at tk-d4c3; it is the only crate permitted to speak SQL."
+
+[crates.pij-tmux]
+internal = []
+external = []
+why = "Every tmux syscall in the workspace lives here, so pane/window quirks have exactly one home to fix."
+
+[crates.pij-harnesses]
+internal = []
+external = []
+why = "Per-harness detect/bind/readiness/canary/model-catalog quirks; owns readiness-anchor drift in ONE place."
+
+[crates.pij-transport]
+internal = []
+external = []
+why = "Message transports (UDS today, named pipes later) behind the Transport port. Wire quirks here; routing policy stays in core."
+
+[crates.pij-daemon]
+internal = []
+external = []
+why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs the tick loop and job workers. Wiring, never business logic."
+
+[crates.pij-cli]
+internal = []
+external = []
+why = "Composition root #2 and the workspace's only binary (pij-rs). Ships the daemon in the same artifact, so CLI and daemon versions cannot skew."
+
+# testkit depends on core and store so its fakes implement the real ports and
+# its FreshStore drives the real schema. It is a DEV dependency everywhere it is
+# used — a fake that ships inside a production crate is how doubles leak into a
+# release, and the `@dev` suffix on the consuming side is what stops it.
+[crates.pij-testkit]
+internal = []
+external = ["serde", "serde_json", "thiserror", "toml"]
+why = "Test substrate shipped as a crate, not copied per unit: fakes for every port, the addressable fixture corpus, FreshStore, and the gate binaries. serde/serde_json read `cargo metadata`; toml reads this file; thiserror types the check's own failure modes."

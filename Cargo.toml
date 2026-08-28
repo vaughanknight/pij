@@ -41,6 +41,14 @@ pij-daemon = { path = "crates/daemon" }
 pij-cli = { path = "crates/cli" }
 pij-testkit = { path = "crates/testkit" }
 
+# External versions are pinned in ONE place so two crates can never resolve
+# different majors of the same dependency. Membership here is not permission:
+# the arch allow-list decides which crate may use which.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.9"
+
 # Warnings are errors in the gate (`clippy -D warnings`); this keeps a plain
 # `cargo build` honest about the same lints rather than deferring them to CI.
 [workspace.lints.rust]

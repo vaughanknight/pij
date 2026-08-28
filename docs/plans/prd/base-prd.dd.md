@@ -13,6 +13,7 @@
 | status | LIVING — iterating with Jordan |
 | updated | 2026-08-28 |
 | source | Started 2026-08-28 per Jordan ('start a PRD spine, much like flowspace3'); fs3 docs/plans/prd/base-prd.dd.json is the pattern; CI rows pinched from fs3 workflows per Jordan (native agents, no Intel Mac). |
+| register_discipline | Lynx's earned rules (fs3 register in practice, 2026-08-28): (1) one row per PROVABLE CAPABILITY, never per feature-noun — rows that can carry a receipt get closed, vague ones accrete annotations forever. (2) completed_evidence is prose unless a consumer RE-EXECUTES it — at least one reviewer/gate must re-run the evidence (AC receipts + probe-flip done bars are the working form); reviewers are told to disbelieve the field. (3) SPLIT a row the moment two different seats need to own the halves (ownership is the boundary); ANNOTATE when evidence changes but the owner doesn't. (4) A row's wording never claims more than its evidence — when they diverge, fix the CODE to match the promise, never the promise to match the code. |
 
 <a id="requirements"></a>
 
