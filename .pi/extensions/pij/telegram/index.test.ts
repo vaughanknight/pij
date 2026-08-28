@@ -12,6 +12,8 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,6 +33,7 @@ import type { PijEvent, SessionId } from "../core/types.js";
 import { TELEGRAM_PEER_ID } from "./bridge.js";
 import type { TelegramConfig } from "./config.js";
 import {
+	autoStartBridgeForDaemon,
 	type BridgeRuntime,
 	buildTelegramDescriptor,
 	type DaemonBridgeDeps,
@@ -675,6 +678,66 @@ describe("standalone bridge fatal process handlers", () => {
 // with no real `.env`, registry, or Telegram long-poll.
 
 describe("maybeStartBridge (daemon auto-start)", () => {
+	it("persists in-process forward success and failure logs to telegram-bridge.log", async () => {
+		const previous = process.env.PIJ_QUEUE_BACKEND;
+		delete process.env.PIJ_QUEUE_BACKEND;
+		const logPath = join(home, "telegram-bridge.log");
+		writeFileSync(logPath, "seed\n");
+		utimesSync(logPath, new Date(1_000), new Date(1_000));
+		const daemonLogs: string[] = [];
+		let stop: (() => void) | undefined;
+		const queue = new SqliteQueue(home);
+		try {
+			stop = autoStartBridgeForDaemon(home, (message) => daemonLogs.push(message), {
+				loadConfig: () => ({ ...config, chatId: 555 }),
+				runBot: async (bot) => {
+					bot.api.config.use((_prev, method, payload) => {
+						if (
+							method === "sendMessage" &&
+							String((payload as { text?: string }).text).includes("persistent failure")
+						) {
+							return Promise.reject(new Error("Call to 'sendMessage' failed! (400: Bad Request)"));
+						}
+						return Promise.resolve({ ok: true, result: { message_id: 1 } } as never);
+					});
+				},
+			});
+			const beforeMtime = statSync(logPath).mtimeMs;
+
+			const succeeded = queue.deliver({
+				from: "pij-success",
+				to: TELEGRAM_PEER_ID,
+				body: "forward succeeds",
+			});
+			const failed = queue.deliver({
+				from: "pij-failure",
+				to: TELEGRAM_PEER_ID,
+				body: "persistent failure",
+			});
+			if (!succeeded.ok || !failed.ok) throw new Error("deliver failed");
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[1]?.state === "claimed");
+			await waitFor(() => readFileSync(logPath, "utf8").includes("ForwardIncomplete"));
+
+			const written = readFileSync(logPath, "utf8");
+			expect(written).toContain(`[pij-telegram] forwarded ${succeeded.value.messageId} part 1/1`);
+			expect(written).toContain(`[pij-telegram] forward error (${failed.value.messageId})`);
+			expect(written).toContain(
+				`[pij-telegram] queue consumer error (${failed.value.messageId}, attempt 1): ForwardIncomplete`,
+			);
+			expect(statSync(logPath).mtimeMs).toBeGreaterThan(beforeMtime);
+			expect(daemonLogs).toContainEqual(
+				expect.stringContaining(`forwarded ${succeeded.value.messageId} part 1/1`),
+			);
+		} finally {
+			stop?.();
+			queue.close();
+			if (previous === undefined) delete process.env.PIJ_QUEUE_BACKEND;
+			else process.env.PIJ_QUEUE_BACKEND = previous;
+		}
+	});
+
 	it("skips (no-op) when telegram.env does not load — startBridge never reached", () => {
 		let startBridgeCalls = 0;
 		let runBotCalls = 0;
