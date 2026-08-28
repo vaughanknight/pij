@@ -20,3 +20,9 @@ Restart #6 asked at main 3411794 / live checkout 916e915 (carries 24 + 30 + 15/1
 ## Then
 - [ ] 12-FX (dispatch coder — `tasks/item-12-FX-DRAFT-HOLD.md`).
 - [ ] Tail: 22 (unpark), E22, 23b, 21b, 29b-rest.
+
+## RESULTS (observed 2026-08-28 ~14:13, restart #6 / pid 63524 / checkout 916e915)
+- **Item-24 log-sink LIVE ✓**: ~/.pij/telegram-bridge.log mtime advanced to 14:13 (was stale since 20:53Z pre-item-24). Tail shows real item-24-format writes: `[pij-telegram] forwarded <id> part 1/1` + `forward complete <id> <sender> → chat`, plus `skip receipt`. Daemon up (pid 63524) — no crash from the tee (B1 holds). The human-channel diagnostic is now real/provable.
+- **Item-30 routing LIVE ✓**: watchdog roster (~/.pij/pij-telegram/watchdog.json) = pij-relative-panther (o-prime) + pij-vocal-kingfisher (prime, newest 04:13). Bare text → newest live watching prime (kingfisher) — primes are the watchers, as designed. (Memory line 43 "I am pij-telegram's single watcher" is STALE — correctly I'm not a watcher; I'm a stream orchestrator, not the prime.)
+- **Residual early-read**: post-restart (updated_at>14:06) pij-telegram deliveries = attempt-1 ×6, attempt-2 ×0. 0 retries in the first ~7 min (small n). FULL residual = chore-6 over ≥1 h; 24b trigger (residual>0) NOT yet met → HOLD 24b, await the hour.
+- **Spine locks clean** (item 15 lock-release held across restart). **Fleet survived** (coder + reviewer done/active).
