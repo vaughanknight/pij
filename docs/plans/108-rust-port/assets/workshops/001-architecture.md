@@ -81,3 +81,7 @@ prime rulings recorded in this file.
   `pij models --json` fixture (TS has no ping); real CLI parity lands wave 3 (Q3/Q4).
 - Evidence: manual mutation transcripts acceptable wave 0 (no cargo-mutants) (Q5). External refs
   vendored into assets/inputs/ with sha256 SOURCES.md (Q6).
+- R3-AMEND-2 (D9, 2026-08-28): port traits are ASYNC via async-trait (proc-macro, no runtime) —
+  forced by R1 (sqlx has no sync API; sync traits would block_on inside adapters and deadlock on
+  tokio workers). Core remains tokio-free; core tests use a hand-rolled executor. async-trait is
+  one allowlist row citing this amendment. Alternative (sync + rusqlite) rejected: reverses R1.
