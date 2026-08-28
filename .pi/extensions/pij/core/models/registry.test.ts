@@ -344,6 +344,60 @@ describe("parseOmpModelsJson", () => {
 		expect(entries[0]?.reasoning).toBe(true);
 	});
 
+	it("accepts live thinking:null rows alongside reasoning rows", () => {
+		const entries = parseOmpModelsJson({
+			models: [
+				{
+					provider: "openrouter",
+					id: "non-reasoning-model",
+					selector: "openrouter/non-reasoning-model",
+					name: "Non-reasoning Model",
+					reasoning: false,
+					thinking: null,
+				},
+				{
+					provider: "openrouter",
+					id: "reasoning-model",
+					selector: "openrouter/reasoning-model",
+					name: "Reasoning Model",
+					reasoning: true,
+					thinking: ["low", "high"],
+				},
+			],
+		});
+		expect(entries).toHaveLength(2);
+		expect(entries[0]).toMatchObject({
+			id: "non-reasoning-model",
+			reasoning: false,
+			levels: [],
+		});
+		expect(entries[1]).toMatchObject({
+			id: "reasoning-model",
+			reasoning: true,
+			levels: ["low", "high"],
+		});
+	});
+
+	it.each([
+		["low", 1],
+		["low", ""],
+		[" low"],
+	])("rejects the whole inventory for malformed thinking arrays %#", (thinking) => {
+		expect(
+			parseOmpModelsJson({
+				models: [
+					OMP_GPT56_JSON.models[0],
+					{
+						provider: "openrouter",
+						id: "malformed-thinking",
+						selector: "openrouter/malformed-thinking",
+						thinking,
+					},
+				],
+			}),
+		).toEqual([]);
+	});
+
 	it("does not let stale overrides collapse base rows onto their -1m contexts", () => {
 		const collapsed = {
 			models: OMP_GPT56_JSON.models.map((model) => ({ ...model, contextWindow: 1_050_000 })),

@@ -31,6 +31,16 @@
 - `just typecheck` passed; `just lint` passed with nine pre-existing warnings; final `harness checks` passed local paths, typecheck, lint, tests, Windows compatibility, smoke, package audit, and snapshots.
 - Updated the existing `pij-control-plane` domain contract and map with runtime/provider/selector/request-model semantics and the bounded external OMP CLI dependency; no new domain.
 
+### F007 review re-entry
+
+- Live OMP emits `thinking: null` for valid non-reasoning rows. The parser now maps that explicit shape to `levels: []` while preserving whole-inventory rejection for malformed arrays, non-string or non-canonical level values, and malformed selectors.
+- RED: the exact null-thinking fixture invalidated a mixed catalog and returned zero rows. GREEN: the registry suite passed 49 assertions, including coexistence with a reasoning row and malformed-thinking rejection.
+- Live branch `pij models --harness omp --json` exited successfully against the complete OMP inventory.
+- The known effort-proof gap is unchanged: OMP runtime evidence proves the selected model and context, not that a requested effort was honored, because no active-effort field is exposed.
+- Focused model/CLI suites passed 184 assertions with one unrelated skip; the post-format registry rerun passed 49 assertions.
+- `just typecheck` passed. `just lint` passed with nine pre-existing warnings. `harness checks` passed all eight sensors: local paths, typecheck, lint, tests, Windows compatibility, smoke, package audit, and snapshots.
+- Pre-work `harness boot` typechecked successfully but its `just test` stage hit the existing PA-role watchdog ownership path; the later direct focused suites and full `harness checks` passed.
+
 ### Harness observations
 
 - The allocated worktree lacked `node_modules`; targeted tests initially could not start. Reused the canonical checkout's existing dependency tree through the ignored worktree symlink.

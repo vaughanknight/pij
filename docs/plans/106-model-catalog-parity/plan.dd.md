@@ -60,7 +60,7 @@ Copilot CLI accepts actual entitled API IDs, while OMP accepts provider-qualifie
 | ac-0606 | Spawn and effort validation use Copilot for --harness copilot, OMP for --harness pi --bin omp, and Pi otherwise. | [x] checked | — | runtime selection unit tests + OMP spawn integration | — | — |
 | ac-0607 | Pi proxy-provider behavior and existing Claude/Codex rows remain available. | [x] checked | — | registry and CLI regression tests + full suite | — | — |
 | ac-0608 | Committed OMP overrides no longer collapse GPT-5.6 base and -1m contexts. | [x] checked | — | override rows removed + collapsed-input mutation test | — | — |
-| ac-0609 | Targeted mutation-resistant tests, typecheck, lint, full checks, and live selector probes pass. | [x] checked | — | RED 17; GREEN 82; harness boot and checks passed | — | — |
+| ac-0609 | Targeted mutation-resistant tests, typecheck, lint, full checks, and live selector probes pass. | [x] checked | — | F007 RED/GREEN; focused 184 pass, live OMP catalog pass; typecheck, lint, harness checks 8/8 pass | — | — |
 
 <a id="phases"></a>
 
@@ -68,4 +68,4 @@ Copilot CLI accepts actual entitled API IDs, while OMP accepts provider-qualifie
 
 | id | title | brief | state | note | receipt | depends_on | tasks | objective | delivers | key_risks |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ph-1061 | Implement runtime-specific model catalogs | RED tests first, then extend the registry and CLI composition so runtime is a first-class catalog dimension. | [x] checked | — | Review re-entry complete: F001-F006 fixed; focused, mutation, domain, and harness checks proof pass | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | Make catalog reporting and validation truthful for Copilot CLI, OMP, and Pi. | Runtime/provider/selector model entries, OMP effective-catalog loader with explicit failure, Runtime-specific spawn validation, Corrected repository OMP overrides, Targeted and full proof | OMP command output can be unavailable or locally overridden; fail loudly and parse structurally without refreshing. |
+| ph-1061 | Implement runtime-specific model catalogs | RED tests first, then extend the registry and CLI composition so runtime is a first-class catalog dimension. | [x] checked | — | Review re-entry complete through F007; null-thinking, live, focused, static, and harness checks proof pass | — | [tasks](assets/tasks/phase-1/tasks.dd.md#tasks) | Make catalog reporting and validation truthful for Copilot CLI, OMP, and Pi. | Runtime/provider/selector model entries, OMP effective-catalog loader with explicit failure, Runtime-specific spawn validation, Corrected repository OMP overrides, Targeted and full proof | OMP command output can be unavailable or locally overridden; fail loudly and parse structurally without refreshing. |

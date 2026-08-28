@@ -79,9 +79,9 @@ function nonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim().length > 0;
 }
 
-/** OMP reports canonical effort names as an array, unlike Pi's canonical→native map. */
+/** OMP reports canonical effort names as an array; null explicitly means no levels. */
 function levelsFromOmpThinking(thinking: unknown): string[] | undefined {
-	if (thinking === undefined) return [];
+	if (thinking === undefined || thinking === null) return [];
 	if (
 		!Array.isArray(thinking) ||
 		!thinking.every((level) => nonEmptyString(level) && level.trim() === level)

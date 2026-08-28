@@ -95,7 +95,7 @@
           "id": "ac-0609",
           "claim": "Targeted mutation-resistant tests, typecheck, lint, full checks, and live selector probes pass.",
           "state": "checked",
-          "receipt": "RED 17; GREEN 82; harness boot and checks passed"
+          "receipt": "F007 RED/GREEN; focused 184 pass, live OMP catalog pass; typecheck, lint, harness checks 8/8 pass"
         }
       ]
     },
@@ -117,7 +117,7 @@
             "Targeted and full proof"
           ],
           "key_risks": "OMP command output can be unavailable or locally overridden; fail loudly and parse structurally without refreshing.",
-          "receipt": "Review re-entry complete: F001-F006 fixed; focused, mutation, domain, and harness checks proof pass"
+          "receipt": "Review re-entry complete through F007; null-thinking, live, focused, static, and harness checks proof pass"
         }
       ]
     }

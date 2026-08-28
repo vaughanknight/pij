@@ -107,6 +107,23 @@
             "../../../plan.dd.json#acceptance_criteria/ac-0609"
           ],
           "receipt": "83 pure assertions and 49 filtered integration assertions pass; Dim-0 RED/GREEN; typecheck, lint, and harness checks 8/8 pass"
+        },
+        {
+          "id": "tk-1066",
+          "title": "Accept live OMP null thinking metadata",
+          "domain": "pij-control-plane",
+          "phase": "ph-1061",
+          "state": "checked",
+          "done": "tasks.dd.json#done_when/tk-1066",
+          "success": "OMP null thinking rows coexist with reasoning rows while every other malformed inventory still fails whole; focused, live, static, and full gates pass.",
+          "notes": "Review re-entry for F007; preserve the disclosed inability to prove active OMP effort from current runtime evidence.",
+          "satisfies": [
+            "../../../plan.dd.json#acceptance_criteria/ac-0603",
+            "../../../plan.dd.json#acceptance_criteria/ac-0605",
+            "../../../plan.dd.json#acceptance_criteria/ac-0606",
+            "../../../plan.dd.json#acceptance_criteria/ac-0609"
+          ],
+          "receipt": "F007 RED/GREEN; 184 focused pass, 1 skip; live OMP pass; typecheck, lint, harness checks 8/8 pass"
         }
       ]
     },
@@ -149,6 +166,14 @@
           {
             "id": "as-1065",
             "assertion": "All six independent-review findings are fixed with focused, mutation, static, full-harness, and updated domain-contract proof.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-1066": [
+          {
+            "id": "as-1066",
+            "assertion": "Live OMP thinking:null is an explicit non-reasoning shape without weakening whole-inventory validation or overstating effort proof.",
             "state": "checked",
             "pressure": "not-applicable"
           }
