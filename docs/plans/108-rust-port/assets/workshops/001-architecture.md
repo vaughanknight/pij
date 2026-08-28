@@ -145,3 +145,12 @@ prime rulings recorded in this file.
   registration dedup runs on every registration event, never only at spawn; (2) descriptor
   equivalence-merge keys on (pid, proc_start, spawnId) but must tolerate divergent
   secondary fields (window) — the freshest live-verified value wins, the rest is history.
+- R5 item 3, TRIGGER EVIDENCE (ermine, n=2 contrast, causality open): aliased seat carries
+  __omp_worker_daemon_broker/__omp_worker_lsp_mux/rust-analyzer descendants (alias minted
+  16:22:27, broker started 16:07:00); clean control same PM/folder cohort has NO
+  __omp_worker_* descendants and one identity. Infrastructure-worker creation now the
+  stronger trigger candidate over user-visible subagent delegation. Falsifier protocol
+  (ermine's, banked verbatim in assets/reports/19-falsifier-protocol.md): disposable seat,
+  snapshot attachment group, trigger LSP diagnostics, concurrent process+registry capture,
+  PASS only if new identity appears post-worker-creation on same pid/pane/spawnId;
+  negative control without the worker feature. Never on a live coder; close no alias.
