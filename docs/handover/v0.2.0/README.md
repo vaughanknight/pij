@@ -24,9 +24,13 @@
 
 ## Evidence folders (merged to main for this handover)
 - `docs/plans/391-day3-core/` — s391's plans, tasks, reviews, fixes, reports, ship reports, rulings, and kept logs under `logs/` (PR #36).
-- `docs/plans/392-day3-codex-doctrine/` — s392's equivalent (PR pending at the time of writing; the index below says when it landed).
+- `docs/plans/392-day3-codex-doctrine/` — s392's plans, tasks, reviews, reports, rulings, kept evidence incl. reviewer verdicts and coder report JSONs (PR #37).
 
 ## Index of outstanding items
 _(filled as sections land; one line per file: number · title · stream · status)_
 - 00 · The live system at v0.2.0 — o-prime · written
 - 01 · What is already shipped (item → PR → sha) — o-prime · generated
+- 23b · Honest transport receipt: record marker origin (injected vs reader-read) — s392 · designed, not started
+- 24b · Bounded in-lease send backoff + within-pass ambiguous-retry duplicate — s392 · designed, held (measured residual 0)
+- 29b-rest · runDaemon wiring assertion + sidecar advisories (ADV-2/4/5) — s392 · designed, not started
+- E7 · CLI guard refusing `pij send` bodies with unescaped backticks — s392 · designed, not started
