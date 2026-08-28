@@ -16,7 +16,7 @@
 //! "dev-only" carried in a TOML comment is not enforcement.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde::Deserialize;
@@ -498,19 +498,41 @@ pub fn check(graph: &Graph, allowlist: &Allowlist) -> Vec<Violation> {
     violations
 }
 
-/// Absolute path to the workspace root manifest, found by walking up from this
-/// crate rather than trusting the caller's working directory.
+/// Absolute path to the workspace root manifest.
+///
+/// Resolved at RUNTIME, and that is the whole point. The first version used
+/// `env!("CARGO_MANIFEST_DIR")`, which bakes the directory the binary was
+/// COMPILED in: a `pij-gate` built once inside a temporary export tree then
+/// judged that tree for ever, from any working directory. It surfaced as six
+/// "No such file or directory" stages pointing at a `/private/tmp/...` path that
+/// no longer existed — but the dangerous shape is the other one, where the stale
+/// tree still exists and the gate reports GREEN for a checkout nobody is looking
+/// at. Found by the reviewer's own probe run, 2026-08-28.
+///
+/// Order: `$CARGO_MANIFEST_DIR` when cargo set it for THIS run, then the current
+/// directory, then the compile-time path — and each candidate must actually
+/// exist and declare `[workspace]` before it is used.
 pub fn workspace_manifest_path() -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for ancestor in dir.ancestors().skip(1) {
-        let candidate = ancestor.join("Cargo.toml");
-        if let Ok(text) = std::fs::read_to_string(&candidate)
-            && text.contains("[workspace]")
-        {
-            return candidate;
+    let candidates = [
+        std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from),
+        std::env::current_dir().ok(),
+        Some(PathBuf::from(env!("CARGO_MANIFEST_DIR"))),
+    ];
+
+    for start in candidates.into_iter().flatten() {
+        for ancestor in start.ancestors() {
+            let candidate = ancestor.join("Cargo.toml");
+            if let Ok(text) = std::fs::read_to_string(&candidate)
+                && text.contains("[workspace]")
+            {
+                return candidate;
+            }
         }
     }
-    dir.join("..").join("..").join("Cargo.toml")
+
+    // Nothing resolvable: return a path that fails loudly and names itself,
+    // rather than a plausible-looking guess.
+    PathBuf::from("Cargo.toml")
 }
 
 /// Read the live workspace graph by shelling out to `cargo metadata`.

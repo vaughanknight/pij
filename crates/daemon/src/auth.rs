@@ -22,8 +22,18 @@
 //! until `axum::serve` runs, which happens after publication.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use pij_core::error::{PijError, Result};
+
+/// Distinguishes staging attempts made by ONE process.
+///
+/// The pid is not enough, and review proved it: two boots inside a single
+/// process (a test doing exactly what a supervisor does) shared
+/// `daemon.key.staging.<pid>`, and the second attempt's pre-delete plus recreate
+/// meant one attempt could publish the OTHER's bytes and then start with a
+/// credential nobody holds.
+static ATTEMPT: AtomicU64 = AtomicU64::new(0);
 
 /// A generated bearer key, staged on disk but not yet published.
 ///
@@ -115,16 +125,48 @@ pub fn stage_key(dir: &Path) -> Result<StagedKey> {
         message: format!("could not create {}: {error}", dir.display()),
     })?;
 
-    // Unique per attempt, so two racing boots stage into different files and
-    // neither can observe the other's half-written key.
-    let staged_at = dir.join(format!("daemon.key.staging.{}", std::process::id()));
-    let _ = std::fs::remove_file(&staged_at);
-    write_private_new(&staged_at, &token)?;
+    // Unique per ATTEMPT — pid, a process-local counter, and the clock — so two
+    // boots in one process stage into different files and neither can observe,
+    // delete, or publish the other's bytes. Nothing is pre-deleted: removing a
+    // path you did not create is how one attempt destroys another's staging file.
+    let staged_at = stage_path(dir, &token)?;
 
     Ok(StagedKey {
         token,
         staged_at,
         publish_to: dir.join("daemon.key"),
+    })
+}
+
+/// Create the staging file, retrying on the (vanishingly unlikely) name
+/// collision rather than adopting whatever is already there.
+fn stage_path(dir: &Path, token: &str) -> Result<PathBuf> {
+    for _ in 0..8 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default();
+        let attempt = ATTEMPT.fetch_add(1, Ordering::Relaxed);
+        let candidate = dir.join(format!(
+            "daemon.key.staging.{}.{nanos}.{attempt}",
+            std::process::id()
+        ));
+
+        match write_private_new(&candidate, token) {
+            Ok(()) => return Ok(candidate),
+            // `create_new` refusing means somebody else owns that name. Take a
+            // new one; never delete theirs.
+            Err(PijError::Adapter { .. }) if candidate.exists() => continue,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(PijError::Adapter {
+        adapter: "daemon/auth".to_string(),
+        message: format!(
+            "could not stage a boot key in {} after 8 attempts — every candidate name was taken",
+            dir.display()
+        ),
     })
 }
 

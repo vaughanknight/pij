@@ -59,6 +59,11 @@ impl SqliteQueue {
     /// # Errors
     /// [`PijError::Adapter`] when the count cannot be read.
     pub async fn live_len(&self) -> Result<u64> {
+        // A public read of the database is a public database operation. Review
+        // found this one outside the guard while every other op had it, which is
+        // how "every operation checks" quietly becomes "every operation I
+        // remembered to check".
+        require_current_schema(&self.pool).await?;
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE state IN ('pending', 'running')")
                 .fetch_one(&self.pool)

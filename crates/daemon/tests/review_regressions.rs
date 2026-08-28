@@ -294,3 +294,143 @@ async fn a_successful_put_writes_its_event_and_its_row_together() {
     );
     assert!(seq > Seq(0));
 }
+
+/// ROUND 2, FINDING 1 — staging was unique per PROCESS, not per ATTEMPT. Two boots
+/// inside one process shared `daemon.key.staging.<pid>`, and the second one's
+/// pre-delete-then-recreate meant an attempt could publish the OTHER attempt's
+/// bytes — then start holding a credential nobody has.
+#[test]
+fn two_staged_keys_in_one_process_never_share_a_file() {
+    let dir = state_dir();
+
+    let first = pij_daemon::auth::stage_key(&dir).expect("stage first");
+    let second = pij_daemon::auth::stage_key(&dir).expect("stage second");
+    assert_ne!(
+        first.token(),
+        second.token(),
+        "two attempts must generate different secrets"
+    );
+
+    // Publish the SECOND while the first is still staged: the bytes on disk must
+    // be the ones its own `BootKey` reports.
+    let expected = second.token().to_string();
+    let published = second.publish().expect("publish");
+    assert_eq!(published.token, expected);
+    assert_eq!(
+        std::fs::read_to_string(&published.path).expect("read"),
+        expected,
+        "an attempt must publish ITS OWN bytes, never another attempt's"
+    );
+
+    // Then the first, which must overwrite cleanly with its own.
+    let expected_first = first.token().to_string();
+    let published_first = first.publish().expect("publish");
+    assert_eq!(
+        std::fs::read_to_string(&published_first.path).expect("read"),
+        expected_first
+    );
+
+    // No staging litter survives either attempt.
+    let strays: Vec<String> = std::fs::read_dir(&dir)
+        .expect("read dir")
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name.contains("staging"))
+        .collect();
+    assert!(strays.is_empty(), "staging files left behind: {strays:?}");
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// ROUND 2, FINDING 1b — a staged key that is never published leaves nothing
+/// behind, so a failed boot cannot litter the state dir with something that looks
+/// like a credential.
+#[test]
+fn an_unpublished_staged_key_removes_itself() {
+    let dir = state_dir();
+    {
+        let _staged = pij_daemon::auth::stage_key(&dir).expect("stage");
+        assert_eq!(
+            std::fs::read_dir(&dir).expect("read dir").count(),
+            1,
+            "the staging file exists while the attempt is alive"
+        );
+    }
+    assert_eq!(
+        std::fs::read_dir(&dir).expect("read dir").count(),
+        0,
+        "dropping an unpublished attempt must remove its staging file"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// ROUND 2, FINDING 2 — the schema guard covered Registry and Spine but not
+/// `SqliteQueue::live_len`, so "every public database operation checks" was true
+/// of every operation I remembered. This test enumerates EVERY public database
+/// operation across all three ports, so the next one added is covered or this
+/// fails.
+#[tokio::test]
+async fn every_public_store_operation_rejects_a_stale_schema() {
+    use pij_core::model::{Job, JobId, Outcome};
+    use pij_core::ports::{Queue, SeatFilter};
+
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    let registry = SqliteRegistry::new(pool.clone());
+    let spine = SqliteSpine::new(pool.clone());
+    let queue = pij_store::SqliteQueue::new(pool.clone());
+
+    sqlx::query("PRAGMA user_version = 99")
+        .execute(&pool)
+        .await
+        .expect("another binary migrated the same file");
+
+    let job = Job {
+        kind: "deliver".to_string(),
+        serial_key: "seat".to_string(),
+        payload: "{}".to_string(),
+        dedupe_key: "d".to_string(),
+    };
+    let event = pij_core::model::Event {
+        v: 1,
+        at: 0,
+        kind: "report".to_string(),
+        seat: None,
+        payload: "{}".to_string(),
+    };
+
+    let outcomes: Vec<(&str, Option<PijError>)> = vec![
+        ("registry.get", registry.get(&SeatId::from("x")).await.err()),
+        (
+            "registry.put",
+            registry
+                .put(SeatDescriptor::new("x", Harness::Pi, "/abs"))
+                .await
+                .err(),
+        ),
+        (
+            "registry.list",
+            registry.list(SeatFilter::default()).await.err(),
+        ),
+        (
+            "registry.tombstone",
+            registry.tombstone(&SeatId::from("x"), "r").await.err(),
+        ),
+        ("spine.append", spine.append(event).await.err()),
+        ("spine.tail", spine.tail(None, Seq(0)).await.err()),
+        ("queue.enqueue", queue.enqueue(job).await.err()),
+        (
+            "queue.claim",
+            queue.claim(&["deliver".to_string()], "w").await.err(),
+        ),
+        ("queue.ack", queue.ack(JobId(1), Outcome::Done).await.err()),
+        ("queue.live_len", queue.live_len().await.err()),
+    ];
+
+    for (name, error) in outcomes {
+        match error {
+            Some(PijError::StoreSchemaStale { found, .. }) => assert_eq!(found, 99, "{name}"),
+            other => panic!("{name} must refuse a stale schema, got {other:?}"),
+        }
+    }
+}

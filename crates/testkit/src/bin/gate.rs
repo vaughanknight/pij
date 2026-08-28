@@ -8,10 +8,15 @@
 //!
 //! 1. **toolchain** — the running rustc equals the pin, or nothing below means
 //!    anything (workshop 001 R6a as amended).
-//! 2. **fmt** — `cargo fmt --check`.
-//! 3. **clippy** — `-D warnings`, all targets.
-//! 4. **test** — `cargo test --workspace`.
-//! 5. **arch** — the crate graph against the committed allow-list.
+//! 2. **lock** — `cargo metadata --locked` proves `Cargo.lock` matches the
+//!    manifests. Review caught a commit whose lock predated a new dependency:
+//!    every local build passed because cargo silently UPDATED the lock, while a
+//!    fresh `--locked` checkout could not build at all. A gate that mutates the
+//!    tree it is judging can report green on something nobody else can compile.
+//! 3. **fmt** — `cargo fmt --check`.
+//! 4. **clippy** — `-D warnings`, all targets.
+//! 5. **test** — `cargo test --workspace`.
+//! 6. **arch** — the crate graph against the committed allow-list.
 //!
 //! It runs EVERY stage even after one fails, and prints a per-stage verdict at
 //! the end: an agent that has to re-run a gate five times to find five problems
@@ -55,6 +60,17 @@ fn main() -> ExitCode {
 
     let stages = [
         Stage {
+            name: "lock",
+            args: vec![
+                "metadata",
+                "--locked",
+                "--no-deps",
+                "--format-version",
+                "1",
+                "--offline",
+            ],
+        },
+        Stage {
             name: "fmt",
             args: vec!["fmt", "--all", "--check"],
         },
@@ -76,15 +92,36 @@ fn main() -> ExitCode {
     ];
 
     for stage in &stages {
-        let status = Command::new(&cargo)
-            .args(&stage.args)
-            .current_dir(&root)
-            .env("CARGO_INCREMENTAL", "0")
-            .status();
+        let status = if stage.name == "lock" {
+            // Its stdout is the whole metadata document; only the exit code matters.
+            Command::new(&cargo)
+                .args(&stage.args)
+                .current_dir(&root)
+                .env("CARGO_INCREMENTAL", "0")
+                .stdout(std::process::Stdio::null())
+                .status()
+        } else {
+            Command::new(&cargo)
+                .args(&stage.args)
+                .current_dir(&root)
+                .env("CARGO_INCREMENTAL", "0")
+                .status()
+        };
 
         match status {
             Ok(status) if status.success() => {
                 verdicts.push((stage.name, true, format!("cargo {}", stage.args[0])));
+            }
+            Ok(status) if stage.name == "lock" => {
+                verdicts.push((
+                    stage.name,
+                    false,
+                    format!(
+                        "exit {status} — Cargo.lock does not match the manifests; run \
+                         `cargo metadata --no-deps >/dev/null` and COMMIT the lock"
+                    ),
+                ));
+                failures.push(stage.name);
             }
             Ok(status) => {
                 verdicts.push((stage.name, false, format!("exit {status}")));
