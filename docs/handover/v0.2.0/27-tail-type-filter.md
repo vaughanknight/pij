@@ -11,7 +11,7 @@
 
 ## 2. What is ruled (design / spec)
 - AC-25 (plan), rescoped to the unbuilt clause: an unknown `--type` is `E-ARG` naming the valid kinds (text and `--json`); the existing filter and the unfiltered default are unchanged (pin them with a test so the rescope cannot regress them).
-- Valid kinds = the `type` values the event log records (`core/events.ts` — the event `type` union; enumerate from the type definition, not from memory); the error message lists them; help text (`:1296` usage string) shows `--type <kind>`.
+- Valid kinds: there is NO union to read — `core/types.ts:518` declares the event field as `readonly type: string`, and `core/events.ts` does not define it. The closed set must be DECIDED from the emit sites at `d120c53`: `index.ts:432` `tool_call`, `:435` `tool_result`, `:436` `message`, `core/session.ts` (×8) `receipt` — four kinds. Declare them once (`EVENT_TYPES` beside the type, or narrow `type` to the union — additive either way), validate `--type` against that list, and print it in the error and in the help text (`:1296` usage string → `--type <tool_call|tool_result|message|receipt>`). Note: a live survey of every seat log on 2026-08-28 showed only `message` (890 events) — enumerate from the code, never from live data.
 
 ## 3. Where the code is (at tag `d120c53`)
 - `.pi/extensions/pij/core/cli.ts` — parse `:1290-1310` (`case "tail"`; `:1301` already rejects a bare `--type`): add the kind validation HERE (parse-time `E-ARG`, like `:1301`), so both text and `--json` refuse before the executor runs; executor `:3650-3656` (`eventLogFor(id).read({ since, type, last })`) and `core/events.ts:27-30` are the existing filter — do not duplicate it.
@@ -21,14 +21,14 @@
 
 ## 4. Acceptance (behavioural, mechanical)
 - Test (sandbox home, fixture event log with ≥1 event of each kind): `--type bogus` → exit ≠ 0, `E-ARG: --type must be one of: …` naming every kind (text and `--json`); regression pins: `--type receipt` → only receipt events (already true — pin it), no `--type` → all events unchanged.
-- **MUT-27a**: remove the parse-time validation → the `bogus` test RED (back to `(no events)` exit 0). **MUT-27b**: list the kinds from a hard-coded array missing one → a test that asserts the message names EVERY member of the event-type union RED. **MUT-27c** (regression guard): drop `type` from the `.read({...})` call at `:3653` → the receipt-only pin RED.
+- **MUT-27a**: remove the parse-time validation → the `bogus` test RED (back to `(no events)` exit 0). **MUT-27b**: add a fifth emit site (`type: "probe"`) in a test double without updating the declared list → a test that walks every emit site's literal against the list RED (proves the list is maintained, not decorative). **MUT-27c** (regression guard): drop `type` from the `.read({...})` call at `:3653` → the receipt-only pin RED.
 - Gates: `npx vitest run .pi/extensions/pij/` at the merge product; `just typecheck`; `just pij-skill-check`.
 
 ## 5. Live verification (after a daemon restart carrying it)
 CLI-only: `pij tail $(pij whoami) --type bogus` → `E-ARG: --type must be one of: …`, exit ≠ 0 (today: `(no events)`, exit 0); `--type receipt --lines 5` → only receipt events (unchanged).
 
 ## 6. Risks / gotchas that already bit us
-- E21 (encode row) and this section's own history: the plan carried a premise ("accepted and ignored") for a day without anyone re-running the command at the tag; the cold-read did — verify a premise by running it before writing acceptance for it (DL-023).
+- E21 (encode row) and this section's own history: the plan carried a premise ("accepted and ignored") for a day without anyone re-running the command at the tag; the cold-read did — verify a premise by running it before writing acceptance for it (DL-023, `docs/plans/391-day3-core/rulings.md` — row dated 2026-08-28 ~07:0xZ, in the plan-folder refresh PR that accompanies this one).
 - `just pij-skill-check` is load-bearing when skill text quotes CLI flags.
 
 ## 7. Open questions for the human
