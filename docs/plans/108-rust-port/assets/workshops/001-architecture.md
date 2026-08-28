@@ -128,3 +128,12 @@ prime rulings recorded in this file.
   while spawn argv AND the pane footer both know the model. One class: the registry row
   lacks facts another surface already holds — pij-rs registration/bind contract must
   carry pane + model as first-class bind evidence (u-store/u-harness).
+- R5 item 15 (ermine recurrence + lynx DL-044, fleet 008, 2026-08-28): OMP relative `edit`
+  resolves against the FIXED SESSION ROOT after a shell cd, while absolute `write` lands in
+  the intended worktree — the cross-tree silent-write class, now seen from the OTHER tool
+  face. Three-way split holds: (a) upstream OMP fix (refuse/retarget relative edit when
+  task root != session root) — NOT ours to ship (no-foreign-PRs rule; report only);
+  (b) pij-rs: spawn gains explicit --cwd + PLACEMENT VERIFICATION (u-harness bind evidence
+  carries the resolved cwd; canary asserts it); (c) doctrine already held: absolute paths
+  in every packet. Instrument note: capture the actual spawn-invocation cwd before calling
+  a misroute a spawn defect — pij spawn inherits process cwd BY DESIGN today.
