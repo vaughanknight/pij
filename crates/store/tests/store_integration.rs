@@ -266,6 +266,7 @@ async fn the_spine_is_append_only_and_its_sequence_never_goes_backwards() {
     let spine = SqliteSpine::new(pool);
 
     let event = |kind: &str, seat: Option<&str>| Event {
+        seq: None,
         v: 1,
         at: 1_724_800_000_000,
         kind: kind.to_string(),

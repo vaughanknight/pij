@@ -122,6 +122,7 @@ async fn events(State(state): State<AppState>) -> Response {
     // build does not know, emitted deliberately at hello depth so wave 3's
     // consumer is written against a stream that already contains one.
     let unknown = Event {
+        seq: None,
         v: wire::EVENT_VERSION,
         at: 0,
         kind: "daemon.forward-compat-probe".to_string(),

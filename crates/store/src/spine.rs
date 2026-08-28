@@ -57,7 +57,7 @@ impl Spine for SqliteSpine {
     async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>> {
         require_current_schema(&self.pool).await?;
         let rows = sqlx::query(
-            "SELECT v, at, kind, seat, payload FROM spine_events \
+            "SELECT seq, v, at, kind, seat, payload FROM spine_events \
              WHERE seq > ?1 AND (?2 IS NULL OR seat = ?2) ORDER BY seq",
         )
         .bind(since.0 as i64)
@@ -69,6 +69,11 @@ impl Spine for SqliteSpine {
         rows.iter()
             .map(|row| {
                 Ok(Event {
+                    // The read path assigns the cursor the write path could not
+                    // know (model::Event::seq).
+                    seq: Some(Seq(
+                        row.try_get::<i64, _>("seq").map_err(adapter_error)? as u64
+                    )),
                     v: row.try_get::<i64, _>("v").map_err(adapter_error)? as u32,
                     at: row.try_get::<i64, _>("at").map_err(adapter_error)? as u64,
                     kind: row.try_get("kind").map_err(adapter_error)?,
