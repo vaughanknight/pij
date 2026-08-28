@@ -1,0 +1,15 @@
+diff --git a/.pi/extensions/pij/telegram/bridge.ts b/.pi/extensions/pij/telegram/bridge.ts
+--- a/.pi/extensions/pij/telegram/bridge.ts
++++ b/.pi/extensions/pij/telegram/bridge.ts
+@@ -392,11 +392,6 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
+ 		switch (decision.kind) {
+ 			case "deliver":
+ 			case "prime": {
+-				if (liveSessionById(decision.to, deps.listSessions(), isAlive) === undefined) {
+-					log(`target ${decision.to} gone before delivery`);
+-					await ctx.reply(goneNotice(decision.to));
+-					return;
+-				}
+ 				const body = framedBody(decision.body, !greeted.has(decision.to));
+ 				greeted.add(decision.to);
+ 				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });

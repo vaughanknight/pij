@@ -5,12 +5,12 @@
 // grammY bot whose FIRST middleware is the allowlist (Finding 02: it is the ONLY access
 // control — a non-allowlisted update must never reach routing, or any Telegram user
 // could drive a session). Allowlisted text is routed by `routeMessage` (pure): an
-// addressed `<tok> <text>` delivers the remainder to the matched session and selects it
-// for `/tail`; unaddressed text goes to the chat's last successful speaker; with no
-// speaker we reply guidance. A SWIPE-REPLY on a forwarded bubble outranks both: the quoted bubble's
-// leading `[pij-…]` sender tag names the target, and the WHOLE text is delivered there
-// (the leading word is prose, never re-parsed as an address). `/list` + `/tail` are
-// registered before the relay so commands aren't relayed.
+// addressed `<tok> <text>` delivers the remainder to the matched live session and selects
+// it for `/tail`; unaddressed text goes to the newest live prime watching this bridge. A
+// SWIPE-REPLY on a forwarded bubble outranks both: the quoted bubble's leading `[pij-…]`
+// sender tag names the live target, and the WHOLE text is delivered there (the leading
+// word is prose, never re-parsed as an address). `/list` + `/tail` are registered before
+// the relay so commands aren't relayed.
 //
 // OUTBOUND (Phase 3): `startForwarder(channel, deps)` drains the bridge's OWN inbox
 // (`pij-telegram`). SQLite uses claim → send → ack-only-on-success (at-least-once);
@@ -26,17 +26,19 @@
 
 import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Bot, type Context } from "grammy";
 import { FsChannel } from "../adapters/channel.js";
 import { type MessageChannel, sqliteOf } from "../adapters/channel-factory.js";
 import { startQueueConsumer } from "../adapters/queue-consumer.js";
+import { FsWatchdogStore } from "../adapters/watchdog-store.js";
 import type {
 	DeliveredMessage,
 	PijEvent,
 	PijMessage,
 	SessionDescriptor,
 	SessionId,
+	WatchdogWatcher,
 } from "../core/types.js";
 import { chunk } from "./chunk.js";
 import { registerListCommand, registerTailCommand } from "./commands.js";
@@ -57,9 +59,9 @@ import {
  *  descriptor id, and the inbox the forwarder drains. One constant, three uses. */
 export const TELEGRAM_PEER_ID: SessionId = "pij-telegram";
 
-/** Reply shown when text arrives with no address and no last speaker yet. */
+/** Reply shown when text arrives with no address and no live watching prime. */
 const GUIDANCE =
-	"Address a session to start, e.g. `osn hello` — or send /list to see who's around.";
+	"Address a live session, e.g. `osn hello`, or have the prime run `pij watch pij-telegram`; /list shows who's around.";
 const TELEGRAM_TEXT_LIMIT = 4096;
 const TELEGRAM_CAPTION_LIMIT = 1024;
 
@@ -89,11 +91,11 @@ export function framedBody(text: string, firstContact: boolean): string {
 
 /** I/O the bridge needs, injected so tests use mocks (no disk / network). */
 export interface BridgeDeps {
-	/** Live session snapshot — `FsRegistry.list` in production. */
+	/** Registry session snapshot — `FsRegistry.list` in production. */
 	listSessions: () => readonly SessionDescriptor[];
-	/** pid liveness probe for `/list`'s active filter — `OsPort.isAlive` in production
-	 *  (same seam the CLI's `liveOf` uses). Defaults to "always alive" so callers that
-	 *  only care about routing (not `/list`) don't need to wire a probe. */
+	/** pid liveness probe for inbound routing and `/list` — `OsPort.isAlive` in
+	 *  production (same seam the CLI's `liveOf` uses). Defaults to "always alive"
+	 *  so older test-only callers remain source-compatible. */
 	isAlive?: (pid: number) => boolean;
 	/** Clock for `/list`'s active filter. Defaults to `Date.now`. */
 	now?: () => number;
@@ -112,10 +114,12 @@ export interface BridgeDeps {
 	 *  Telegram message id, so the forwarder can quote it on that session's NEXT
 	 *  outbound bubble (`startBridge` wires both ends to one shared map). */
 	onDelivered?: (to: SessionId, telegramMessageId: number) => void;
-	/** Per-chat fallback source: the most recent session whose non-receipt message
-	 *  produced a successful Telegram send. Chat ids are normalized strings so the
-	 *  configured outbound id and grammY's numeric inbound id share one key. */
+	/** Legacy last-speaker source retained by the bridge.ts-only migration seam.
+	 *  Routing deliberately ignores it; the item-30 mutation oracle reintroduces it. */
 	getLastSpeaker?: (chatId: string) => SessionId | undefined;
+	/** Watchers registered on `pij-telegram`. Production reads the bridge's persisted
+	 *  watchdog sidecar; tests may inject a deterministic snapshot. */
+	listBridgeWatchers?: () => readonly WatchdogWatcher[];
 	/** Debug logger for resolution/fallback/drop traces. Defaults to a no-op. */
 	log?: (message: string) => void;
 }
@@ -126,12 +130,11 @@ export type Routing =
 	| { readonly kind: "deliver"; readonly to: SessionId; readonly body: string }
 	/** Addressed a matched session with no text → just select it for `/tail`. */
 	| { readonly kind: "address"; readonly to: SessionId }
-	/** No address but a current last speaker exists → deliver the whole text there. */
-	| { readonly kind: "last-speaker"; readonly to: SessionId; readonly body: string }
-	/** No address and no last speaker → nothing to deliver, reply guidance. */
+	/** No address/reply → deliver the whole text to the effective watching prime. */
+	| { readonly kind: "prime"; readonly to: SessionId; readonly body: string }
+	/** No address and no live watching prime → nothing to deliver, reply guidance. */
 	| { readonly kind: "guidance" }
-	/** Swipe-reply on a forwarded bubble whose tagged sender is no longer live →
-	 *  tell the operator honestly; also used when the recorded last speaker vanished. */
+	/** A resolved reply/address target is absent or no longer alive. */
 	| { readonly kind: "gone"; readonly id: SessionId };
 
 /**
@@ -146,32 +149,75 @@ export function parseSenderTag(quoted: string): SessionId | null {
 	return m ? (m[1] as SessionId) : null;
 }
 
+function sessionById(
+	id: SessionId,
+	sessions: readonly SessionDescriptor[],
+): SessionDescriptor | undefined {
+	return sessions.find((session) => session.id === id);
+}
+
+function liveSessionById(
+	id: SessionId,
+	sessions: readonly SessionDescriptor[],
+	isAlive: (pid: number) => boolean,
+): SessionDescriptor | undefined {
+	const session = sessionById(id, sessions);
+	return session !== undefined && isAlive(session.pid) ? session : undefined;
+}
+
+function effectivePrime(
+	sessions: readonly SessionDescriptor[],
+	watchers: readonly WatchdogWatcher[],
+	isAlive: (pid: number) => boolean,
+): SessionDescriptor | undefined {
+	// `addedAt` is the watcher roster's bridge-specific recency signal.
+	const newestFirst = [...watchers].sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+	for (const watcher of newestFirst) {
+		const session = sessionById(watcher.watcherId, sessions);
+		if (session?.prime === true && isAlive(session.pid)) return session;
+	}
+	return undefined;
+}
+
+function persistedBridgeWatchers(
+	sessions: readonly SessionDescriptor[],
+): readonly WatchdogWatcher[] {
+	const bridge = sessionById(TELEGRAM_PEER_ID, sessions);
+	if (bridge === undefined) return [];
+	return new FsWatchdogStore(dirname(bridge.dataDir)).read(TELEGRAM_PEER_ID)?.watchers ?? [];
+}
+
 /**
  * Decide where an inbound text goes. Pure — no I/O, no state mutation — so the
  * routing rules (Findings 05/06) are exhaustively unit-testable in isolation.
  *
- * Precedence: swipe-reply tag → address token → last speaker → guidance. The reply gesture
- * is the operator's most explicit targeting act, so when `quoted` carries a sender
- * tag the WHOLE text goes to that session — the leading word is prose there, never
- * re-parsed as an address (`"5l is the answer"` in a reply to `[pij-abc]` must not
- * route to `pij-5l…`).
+ * Precedence: swipe-reply tag → address token → live prime watching the bridge → guidance.
+ * The reply gesture is the operator's most explicit targeting act, so when `quoted`
+ * carries a sender tag the WHOLE text goes to that session — the leading word is prose
+ * there, never re-parsed as an address (`"5l is the answer"` in a reply to `[pij-abc]`
+ * must not route to `pij-5l…`). Reply and explicit targets are alive-checked and never
+ * fall through to a prime when dead.
  *
  * @param text     the raw inbound message text
- * @param lastSpeaker the chat's current successful speaker, if any
- * @param sessions the live session snapshot to resolve an address against
+ * @param sessions the registry snapshot to resolve targets against
  * @param quoted   the swipe-replied bubble's visible text/caption, when this is a reply
+ * @param watchers current `pij-telegram` watcher registrations
+ * @param isAlive  process liveness probe
  */
 export function routeMessage(
 	text: string,
-	lastSpeaker: SessionId | undefined,
 	sessions: readonly SessionDescriptor[],
 	quoted?: string,
+	watchers: readonly WatchdogWatcher[] = [],
+	isAlive: (pid: number) => boolean = () => true,
 ): Routing {
 	const trimmed = text.trim();
 	if (quoted !== undefined) {
 		const tagged = parseSenderTag(quoted);
 		if (tagged !== null) {
-			if (!sessions.some((s) => s.id === tagged)) return { kind: "gone", id: tagged };
+			if (liveSessionById(tagged, sessions, isAlive) === undefined) {
+				return { kind: "gone", id: tagged };
+			}
 			// An empty reply body (a media reply with no caption) just retargets, like a
 			// bare address; the media handler still delivers the file to the target.
 			return trimmed === ""
@@ -185,20 +231,17 @@ export function routeMessage(
 	const token = gap === -1 ? trimmed : trimmed.slice(0, gap);
 	const rest = gap === -1 ? "" : trimmed.slice(gap + 1).replace(/^\s+/, "");
 
-	const match = resolveTarget(token, sessions);
+	const match = resolveTarget(token.startsWith("@") ? token.slice(1) : token, sessions);
 	if (match) {
+		if (liveSessionById(match.id, sessions, isAlive) === undefined) {
+			return { kind: "gone", id: match.id };
+		}
 		return rest === ""
 			? { kind: "address", to: match.id }
 			: { kind: "deliver", to: match.id, body: rest };
 	}
-	// Unaddressed: fall back only to the last successful speaker with the WHOLE text.
-	// A selected-but-silent target never enters this decision.
-	if (lastSpeaker !== undefined) {
-		if (!sessions.some((session) => session.id === lastSpeaker)) {
-			return { kind: "gone", id: lastSpeaker };
-		}
-		return { kind: "last-speaker", to: lastSpeaker, body: trimmed };
-	}
+	const prime = effectivePrime(sessions, watchers, isAlive);
+	if (prime !== undefined) return { kind: "prime", to: prime.id, body: trimmed };
 	return { kind: "guidance" };
 }
 
@@ -206,7 +249,7 @@ export function routeMessage(
  * Resolve the inbound media's target session + the caption-after-address from a routing
  * decision. A media message is addressed by its caption exactly like text: `osn look` →
  * deliver to osn with rest "look"; a bare address → that session, no caption; no
- * caption → the last speaker with the whole caption; no target at all → `undefined`
+ *  caption → the effective prime with the whole caption; no target at all → `undefined`
  * (the caller replies guidance and downloads NOTHING). Pure — no I/O.
  */
 function mediaTarget(
@@ -215,7 +258,7 @@ function mediaTarget(
 	switch (decision.kind) {
 		case "deliver":
 			return { to: decision.to, caption: decision.body };
-		case "last-speaker":
+		case "prime":
 			return { to: decision.to, caption: decision.body };
 		case "address":
 			return { to: decision.to, caption: "" };
@@ -303,8 +346,8 @@ function extractInboundMedia(ctx: Context): InboundMedia | undefined {
 export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 	const bot = new Bot(config.token);
 	const allow = new Set(config.allowedUserIds);
-	// Selected target is intentionally separate from last-speaker state: it powers `/tail`
-	// and follows successful inbound routing, but never decides a bare-message fallback.
+	// Selected target powers `/tail` and follows successful inbound routing, but never
+	// decides a bare-message fallback.
 	const selectedTarget = new Map<number, SessionId>();
 	// Sessions already handed a first-contact note this run — so each gets the Telegram
 	// orientation exactly once, on the first message we relay to it (not on every message).
@@ -334,45 +377,50 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 		guidance: GUIDANCE,
 	});
 
-	// (3) Text relay — swipe-reply tag → address token → last-speaker fallback.
+	// (3) Text relay — swipe-reply tag → address token → effective watching prime.
 	bot.on("message:text", async (ctx) => {
 		const chatId = ctx.chat.id;
+		const sessions = deps.listSessions();
+		const isAlive = deps.isAlive ?? (() => true);
 		const decision = routeMessage(
 			ctx.message.text,
-			deps.getLastSpeaker?.(String(chatId)),
-			deps.listSessions(),
+			sessions,
 			quotedOf(ctx.message),
+			deps.listBridgeWatchers?.() ?? persistedBridgeWatchers(sessions),
+			isAlive,
 		);
 		switch (decision.kind) {
-			case "deliver": {
+			case "deliver":
+			case "prime": {
+				if (liveSessionById(decision.to, deps.listSessions(), isAlive) === undefined) {
+					log(`target ${decision.to} gone before delivery`);
+					await ctx.reply(goneNotice(decision.to));
+					return;
+				}
 				const body = framedBody(decision.body, !greeted.has(decision.to));
 				greeted.add(decision.to);
 				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });
 				selectedTarget.set(chatId, decision.to);
 				deps.onDelivered?.(decision.to, ctx.message.message_id);
-				log(`→ ${decision.to}`);
+				log(decision.kind === "prime" ? `prime ${decision.to}` : `→ ${decision.to}`);
 				return;
 			}
 			case "address":
+				if (liveSessionById(decision.to, deps.listSessions(), isAlive) === undefined) {
+					log(`target ${decision.to} gone before selection`);
+					await ctx.reply(goneNotice(decision.to));
+					return;
+				}
 				selectedTarget.set(chatId, decision.to);
 				log(`address ${decision.to}`);
 				await ctx.reply(`Now addressing ${decision.to}. Send a message and I'll relay it.`);
 				return;
-			case "last-speaker": {
-				const body = framedBody(decision.body, !greeted.has(decision.to));
-				greeted.add(decision.to);
-				deps.deliver({ from: TELEGRAM_PEER_ID, to: decision.to, body });
-				selectedTarget.set(chatId, decision.to);
-				deps.onDelivered?.(decision.to, ctx.message.message_id);
-				log(`last speaker ${decision.to}`);
-				return;
-			}
 			case "guidance":
 				log("no target");
 				await ctx.reply(GUIDANCE);
 				return;
 			case "gone":
-				log(`reply target ${decision.id} gone`);
+				log(`target ${decision.id} gone`);
 				await ctx.reply(goneNotice(decision.id));
 				return;
 		}
@@ -391,14 +439,17 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 		if (media === undefined) return;
 
 		const caption = ctx.message?.caption ?? "";
+		const sessions = deps.listSessions();
+		const isAlive = deps.isAlive ?? (() => true);
 		const decision = routeMessage(
 			caption,
-			deps.getLastSpeaker?.(String(chatId)),
-			deps.listSessions(),
+			sessions,
 			quotedOf(ctx.message),
+			deps.listBridgeWatchers?.() ?? persistedBridgeWatchers(sessions),
+			isAlive,
 		);
 		if (decision.kind === "gone") {
-			log(`media: reply target ${decision.id} gone`);
+			log(`media: target ${decision.id} gone`);
 			await ctx.reply(goneNotice(decision.id));
 			return;
 		}
@@ -414,9 +465,10 @@ export function createBot(config: TelegramConfig, deps: BridgeDeps): Bot {
 			await ctx.reply("That file is too big to download (limit 20 MB) — nothing was fetched.");
 			return;
 		}
-		const descriptor = deps.listSessions().find((d) => d.id === target.to);
+		const descriptor = liveSessionById(target.to, deps.listSessions(), isAlive);
 		if (descriptor === undefined) {
 			log(`media: target ${target.to} vanished before download`);
+			await ctx.reply(goneNotice(target.to));
 			return;
 		}
 		if (deps.downloadMedia === undefined) {
