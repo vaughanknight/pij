@@ -57,7 +57,7 @@
         {
           "id": "tk-f8ff",
           "title": "Queue primitive: enqueue/claim/ack, dedupe partial-unique over live jobs, per-entity serial keys; contention test with set-equality; mutation-check the dedupe.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R4",
           "done": "#done_when/tk-f8ff"
         },
@@ -138,7 +138,7 @@
           {
             "id": "dw-1ddd",
             "assertion": "dedupe collapses N rapid submits to one row (set-equality contention test); manual mutation evidence on the dedupe predicate",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
