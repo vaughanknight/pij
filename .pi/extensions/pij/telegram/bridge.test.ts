@@ -1169,6 +1169,59 @@ describe("startForwarder over SqliteQueue (sqlite default)", () => {
 		}
 	});
 
+	it("acks a two-bubble message on attempt 1 when the first deps.send fails before sending", async () => {
+		const home = tmpHome();
+		let now = 1_000;
+		const queue = new SqliteQueue(home, { now: () => now });
+		let dispose: (() => void) | undefined;
+		try {
+			const delivered = queue.deliver({
+				from: "pij-osn81b",
+				to: TELEGRAM_PEER_ID,
+				body: "x".repeat(5_000),
+			});
+			if (!delivered.ok) throw new Error(delivered.message);
+			const attempts: string[] = [];
+			const sent: string[] = [];
+			const logs: string[] = [];
+			dispose = startForwarder(queue, {
+				send: async (text) => {
+					attempts.push(text);
+					now += 25;
+					if (attempts.length === 1) {
+						throw new Error("Network request for 'sendMessage' failed!");
+					}
+					sent.push(text);
+				},
+				log: (message) => logs.push(message),
+			});
+
+			await waitFor(() => queue.summary({ to: TELEGRAM_PEER_ID })[0]?.state === "acked");
+
+			expect(attempts.filter((text) => text.includes("(1/2)"))).toHaveLength(2);
+			expect(attempts.filter((text) => text.includes("(2/2)"))).toHaveLength(1);
+			expect(sent.filter((text) => text.includes("(1/2)"))).toHaveLength(1);
+			expect(sent.filter((text) => text.includes("(2/2)"))).toHaveLength(1);
+			expect(queue.summary({ to: TELEGRAM_PEER_ID })[0]?.attempt).toBe(1);
+			const receipts = queue.receipts(delivered.value.messageId);
+			const claimedAt = receipts.find((receipt) => receipt.state === "claimed")?.at;
+			const ackedAt = receipts.find((receipt) => receipt.state === "acked")?.at;
+			expect(claimedAt).toBeDefined();
+			expect(ackedAt).toBeDefined();
+			expect((ackedAt ?? 0) - (claimedAt ?? 0)).toBe(75);
+			expect(receipts.some((receipt) => receipt.state === "redelivered")).toBe(false);
+			expect(logs).toContainEqual(
+				expect.stringContaining(
+					`text deps.send retry after transient failure (${delivered.value.messageId} part 1/2)`,
+				),
+			);
+		} finally {
+			dispose?.();
+			queue.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
 	it("redelivery sends only text parts not already persisted as successful", async () => {
 		const home = tmpHome();
 		let now = 1_000;

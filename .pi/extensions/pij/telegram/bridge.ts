@@ -717,7 +717,9 @@ export function startForwarder(channel: MessageChannel, deps: ForwarderDeps): ()
 					} catch (error) {
 						const first = (error as Error).message;
 						if (!isTransientSendError(first)) throw error;
-						log(`text send retry after transient failure (${dm.messageId}): ${first}`);
+						log(
+							`text deps.send retry after transient failure (${dm.messageId} part ${bubbleIndex + 1}/${plannedBubbles.length}): ${first}`,
+						);
 						await deps.send(operation.text, replyTo);
 					}
 				} else {
