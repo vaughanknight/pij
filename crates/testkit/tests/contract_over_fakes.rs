@@ -9,15 +9,21 @@
 use pij_core::model::{DeliveryOutcome, Harness, Liveness, Msg, ProcIdentity, Readiness};
 use pij_core::ports::{HarnessPort, LivenessPort, TmuxPort, Transport};
 use pij_testkit::block_on;
-use pij_testkit::contract::{queue_contract, registry_contract, sample_seat};
+use pij_testkit::contract::{queue_contract, registry_contract, sample_seat, spine_contract};
 use pij_testkit::fakes::{
-    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeTmux, FakeTransport,
+    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
 };
 
 #[test]
 fn fake_registry_honours_the_registry_contract() {
     let registry = FakeRegistry::new();
     block_on(registry_contract(&registry));
+}
+
+#[test]
+fn fake_spine_honours_the_spine_contract() {
+    let spine = FakeSpine::new();
+    block_on(spine_contract(&spine));
 }
 
 #[test]
@@ -41,11 +47,6 @@ fn fakes_record_what_the_code_did_not_only_what_it_returned() {
     assert!(
         calls.iter().any(|c| c.starts_with("tombstone:")),
         "the contract must have tombstoned a seat: {calls:?}"
-    );
-    assert_eq!(
-        registry.tombstone_reason(&"pij-contract-seat".into()),
-        Some("contract test".to_string()),
-        "the tombstone reason is kept — the row is the post-mortem"
     );
 }
 

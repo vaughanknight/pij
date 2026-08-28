@@ -103,7 +103,10 @@ async fn concurrent_registry_writers_serialize_and_both_succeed() {
                 Harness::Pi,
                 "/tmp/writer-a",
             );
-            registry_a.put(descriptor.clone()).await.expect("writer a put");
+            registry_a
+                .put(descriptor.clone())
+                .await
+                .expect("writer a put");
             assert_eq!(
                 registry_a.get(&descriptor.id).await.expect("writer a get"),
                 Some(descriptor),
@@ -119,7 +122,10 @@ async fn concurrent_registry_writers_serialize_and_both_succeed() {
                 Harness::Omp,
                 "/tmp/writer-b",
             );
-            registry_b.put(descriptor.clone()).await.expect("writer b put");
+            registry_b
+                .put(descriptor.clone())
+                .await
+                .expect("writer b put");
             assert_eq!(
                 registry_b.get(&descriptor.id).await.expect("writer b get"),
                 Some(descriptor),

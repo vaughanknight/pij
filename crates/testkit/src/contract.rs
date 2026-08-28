@@ -9,8 +9,10 @@
 //! Each suite is `async` and takes `&dyn Port`, so it composes with any runtime:
 //! core's tests drive it with [`crate::block_on`], adapters with tokio.
 
-use pij_core::model::{Harness, Job, JobId, Outcome, SeatDescriptor, SeatId, SystemState};
-use pij_core::ports::{Queue, Registry, SeatFilter};
+use pij_core::model::{
+    Event, Harness, Job, JobId, Outcome, SeatDescriptor, SeatId, Seq, SystemState,
+};
+use pij_core::ports::{Queue, Registry, SeatFilter, Spine};
 
 /// Every promise the [`Registry`] port makes, in one place.
 ///
@@ -38,8 +40,7 @@ pub async fn registry_contract(registry: &dyn Registry) {
         "a descriptor containing nullable fields must round-trip in full"
     );
 
-    let mut empty_descriptor =
-        SeatDescriptor::new("pij-contract-empty", Harness::Pi, "/tmp/empty");
+    let mut empty_descriptor = SeatDescriptor::new("pij-contract-empty", Harness::Pi, "/tmp/empty");
     empty_descriptor.pane = Some(String::new());
     let second = registry
         .put(empty_descriptor.clone())
@@ -141,6 +142,99 @@ pub async fn registry_contract(registry: &dyn Registry) {
     assert!(
         registry.tombstone(&missing, "nope").await.is_err(),
         "tombstoning an absent seat must fail loudly"
+    );
+}
+
+/// Every promise the [`Spine`] port makes, in one place.
+///
+/// # Panics
+/// On the first broken promise, naming which one.
+pub async fn spine_contract(spine: &dyn Spine) {
+    let seat_a = SeatId::from("pij-spine-a");
+    let seat_b = SeatId::from("pij-spine-b");
+    assert!(
+        spine
+            .tail(None, Seq(0))
+            .await
+            .expect("initial tail")
+            .is_empty(),
+        "an empty spine tails as an empty list, not an error"
+    );
+
+    let event = |kind: &str, seat: Option<SeatId>, payload: &str| Event {
+        seq: None,
+        v: 1,
+        at: 1_724_800_000_000,
+        kind: kind.to_string(),
+        seat,
+        payload: payload.to_string(),
+    };
+    let first_event = event("report", Some(seat_a.clone()), "{\"n\":1}");
+    let second_event = event("receipt", Some(seat_b.clone()), "");
+    let third_event = event("future-kind", Some(seat_a.clone()), "opaque");
+    let fourth_event = event("message", None, "fleet-wide");
+
+    let first = spine
+        .append(first_event.clone())
+        .await
+        .expect("first append");
+    let second = spine
+        .append(second_event.clone())
+        .await
+        .expect("second append");
+    let third = spine
+        .append(third_event.clone())
+        .await
+        .expect("third append");
+    let fourth = spine
+        .append(fourth_event.clone())
+        .await
+        .expect("fourth append");
+    assert!(
+        first < second && second < third && third < fourth,
+        "append must allocate a strictly increasing total order"
+    );
+
+    let after_first = spine.tail(None, first).await.expect("tail after first");
+    let mut expected_second = second_event;
+    expected_second.seq = Some(second);
+    let mut expected_third = third_event;
+    expected_third.seq = Some(third);
+    let mut expected_fourth = fourth_event;
+    expected_fourth.seq = Some(fourth);
+    assert_eq!(
+        after_first,
+        vec![
+            expected_second.clone(),
+            expected_third.clone(),
+            expected_fourth.clone(),
+        ],
+        "tail is exclusive, oldest-first, assigns each durable cursor, and preserves opaque facts"
+    );
+
+    let just_a = spine
+        .tail(Some(&seat_a), Seq(0))
+        .await
+        .expect("seat-filtered tail");
+    let mut expected_first = first_event;
+    expected_first.seq = Some(first);
+    assert_eq!(
+        just_a,
+        vec![expected_first, expected_third],
+        "a seat filter narrows without losing each returned event's durable cursor"
+    );
+    assert_eq!(
+        spine.tail(None, third).await.expect("tail after third"),
+        vec![expected_fourth],
+        "an event with no seat remains visible in an unfiltered tail"
+    );
+    assert!(
+        spine
+            .tail(None, fourth)
+            .await
+            .expect("tail newest")
+            .is_empty(),
+        "tail since the newest cursor is empty"
     );
 }
 
