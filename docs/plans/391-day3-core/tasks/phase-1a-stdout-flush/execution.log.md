@@ -28,7 +28,7 @@
 | `npx tsc --noEmit -p .` | Passed. |
 | Scoped Biome check on `cli.ts` and `cli.integration.test.ts` | Passed. |
 | `npx vitest run .pi/extensions/pij/cli.integration.test.ts` | Passed: 97 tests passed, 1 skipped. |
-| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,935 tests passed, 15 skipped. Log: `.harness/temp/s391/vitest-phase1a.log`. |
+| `npx vitest run .pi/extensions/pij/` | Passed: 171 files passed, 2 skipped; 3,935 tests passed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase1a.log`. |
 | `just lint` | Repository baseline remains red on unrelated files outside this dispatch; both touched TypeScript files are clean. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. Lint and Windows compatibility remain red on unrelated baseline diagnostics; the broad test remains red because `pwsh` is unavailable for `harness/scripts/release-age-policy.test.ts:196`. |
 

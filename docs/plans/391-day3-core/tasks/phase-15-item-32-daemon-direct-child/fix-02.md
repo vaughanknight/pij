@@ -1,0 +1,10 @@
+# FX-02 — item 32 (PR #33) — o-prime merge check RED under full-suite load
+
+**Finding (o-prime, merge product cd8c61d + main = c0c4390)**: full suite 3/4168 RED, all subprocess tests dying on their own budgets; isolation run of the same three files GREEN (224/0). The trigger is OUR new relay control test `daemon.test.ts:~2906` "the former npx tsx relay leaves the daemon locks behind": it spawns `npx tsx …` (`:2909`/`:2856`) — a COLD `npx` lookup under vitest parallelism (npx resolves from its cache, may even consult the network — the reviewer showed it can fetch a different tsx) with a 5 s marker budget sized for a warm launch. It times out itself and pushes two main-owned subprocess tests (`cli.inbox.integration` "appendOnce hard-link race" 5028 ms; `cli.integration` "'invalid Codex UUID'…" exit 143 at 10050 ms) past theirs.
+
+**Do** (fence: `daemon.test.ts` only; `vitest` config only if serialisation is needed — ask first):
+1. The relay control must prove "a relay process between the signal and the daemon leaks the locks" WITHOUT `npx`: spawn `process.execPath [<resolved tsx cli path>, DAEMON_BIN]` where the cli path is `createRequire(import.meta.url).resolve("tsx/cli")` (the same relay binary, no npm lookup, no network). Keep the assertion (outer pid ≠ lock pid; SIGTERM/SIGHUP to the outer pid leaves both locks; exit 143/129).
+2. Budget the marker wait for a COLD launch (≥ 15 s) — a budget is a ceiling on the failure case only.
+3. If the three subprocess tests still contend, mark the daemon spawn tests serial (`describe.sequential` / `it.sequential` or a `pool` option) — ask before touching vitest config.
+4. Proof: TWO consecutive full runs (`npx vitest run .pi/extensions/pij/`) in a FRESH worktree at (this branch rebased onto origin/main), each 0 failed; in each log name the two main-owned tests as green. If either of them reds on a run WITHOUT this branch (probe main in a throwaway worktree), report it as a separate main flake with its log — do not fold it.
+5. One commit on `s391/item32-daemon-direct-child`; report per schema (`--body-file`): SHA, the two full-run logs, and the relay control's cold-launch timing.

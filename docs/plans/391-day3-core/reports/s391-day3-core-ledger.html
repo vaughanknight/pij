@@ -1,0 +1,230 @@
+<title>s391 Day-3 Core Ledger</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#F5F7FA; --paper-2:#EBEFF4; --ink:#182230; --ink-2:#4A5666; --ink-3:#7A8797; --rule:#D5DCE5;
+  --accent:#2F8F83; --accent-ink:#1F6C63; --accent-wash:#E3F2EF;
+  --ok:#2E7D4F; --ok-wash:#E4F3EA; --warn:#A8721A; --warn-wash:#FBF0DC; --bad:#B3412C; --bad-wash:#F9E4DF; --info:#3C5FA8; --info-wash:#E4EAF7;
+  --code-bg:#EEF2F6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1418; --paper-2:#161C22; --ink:#E6EAEF; --ink-2:#AEB8C4; --ink-3:#7F8B98; --rule:#2A333D;
+    --accent:#5FC3B4; --accent-ink:#8ADCCF; --accent-wash:#12302C;
+    --ok:#6CC594; --ok-wash:#13291C; --warn:#E0B25A; --warn-wash:#33260F; --bad:#E48A78; --bad-wash:#3A1B15; --info:#8FA9E6; --info-wash:#182238;
+    --code-bg:#1A2129;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1418; --paper-2:#161C22; --ink:#E6EAEF; --ink-2:#AEB8C4; --ink-3:#7F8B98; --rule:#2A333D;
+  --accent:#5FC3B4; --accent-ink:#8ADCCF; --accent-wash:#12302C;
+  --ok:#6CC594; --ok-wash:#13291C; --warn:#E0B25A; --warn-wash:#33260F; --bad:#E48A78; --bad-wash:#3A1B15; --info:#8FA9E6; --info-wash:#182238;
+  --code-bg:#1A2129;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+main{max-width:1080px;margin:0 auto;padding:40px 28px 96px}
+h1,h2,h3{font-family:"Fraunces","Iowan Old Style",Georgia,serif;font-weight:600;letter-spacing:-.01em;text-wrap:balance;margin:0}
+h1{font-size:2.35rem;line-height:1.1;font-variation-settings:"opsz" 96}
+h2{font-size:1.45rem;margin-top:56px;padding-top:18px;border-top:1px solid var(--rule)}
+h3{font-size:1.1rem;margin-top:26px;font-family:"IBM Plex Sans",sans-serif;font-weight:600}
+p{max-width:68ch;margin:10px 0}
+.lede{color:var(--ink-2);font-size:1.05rem;max-width:72ch}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.74rem;letter-spacing:.09em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:3px;color:var(--ink)}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 28px;margin:26px 0 8px;padding:18px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);font-size:.92rem}
+.meta dt{color:var(--ink-3);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;font-family:"IBM Plex Mono",monospace}
+.meta dd{margin:2px 0 0}
+.score{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:22px 0 6px}
+.tile{background:var(--paper-2);border:1px solid var(--rule);border-radius:6px;padding:14px 16px}
+.tile .n{font-family:"Fraunces",Georgia,serif;font-size:2rem;font-weight:500;line-height:1;font-variant-numeric:tabular-nums}
+.tile .l{color:var(--ink-3);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;font-family:"IBM Plex Mono",monospace;margin-top:6px}
+.tile.ok .n{color:var(--ok)} .tile.warn .n{color:var(--warn)} .tile.bad .n{color:var(--bad)} .tile.acc .n{color:var(--accent-ink)}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:500;padding:10px 12px;background:var(--paper-2);border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.04em;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.pill.ok{background:var(--ok-wash);color:var(--ok)} .pill.warn{background:var(--warn-wash);color:var(--warn)} .pill.bad{background:var(--bad-wash);color:var(--bad)} .pill.info{background:var(--info-wash);color:var(--info)} .pill.acc{background:var(--accent-wash);color:var(--accent-ink)} .pill.mute{background:var(--paper-2);color:var(--ink-3);border-color:var(--rule)}
+.timeline{list-style:none;padding:0;margin:14px 0 0;border-left:2px solid var(--rule)}
+.timeline li{position:relative;padding:0 0 18px 22px}
+.timeline li::before{content:"";position:absolute;left:-7px;top:.45em;width:12px;height:12px;border-radius:50%;background:var(--paper);border:2px solid var(--accent)}
+.timeline li.bad::before{border-color:var(--bad)} .timeline li.warn::before{border-color:var(--warn)} .timeline li.ok::before{border-color:var(--ok)}
+.timeline .t{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-3);letter-spacing:.03em}
+.timeline b{font-weight:600}
+.timeline p{margin:4px 0 0;max-width:80ch}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px}
+.card{background:var(--paper-2);border:1px solid var(--rule);border-radius:6px;padding:14px 16px}
+.card h4{margin:0 0 6px;font-size:.98rem;font-weight:600}
+.card p{margin:6px 0;font-size:.92rem;max-width:none}
+.stripe{border-left:4px solid var(--accent)} .stripe.bad{border-left-color:var(--bad)} .stripe.warn{border-left-color:var(--warn)} .stripe.ok{border-left-color:var(--ok)}
+details{margin-top:12px;border:1px solid var(--rule);border-radius:6px;background:var(--paper-2)}
+summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸ ";color:var(--accent)}
+details[open] summary::before{content:"▾ "}
+details .inner{padding:0 14px 14px}
+ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:4px 0;max-width:80ch}
+.small{font-size:.86rem;color:var(--ink-2)}
+a{color:var(--accent-ink);text-decoration-thickness:1px;text-underline-offset:2px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.foot{margin-top:60px;padding-top:16px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:.82rem}
+@media (prefers-reduced-motion:no-preference){details .inner{animation:fade .18s ease-out}}
+@keyframes fade{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
+</style>
+
+<main>
+<div class="eyebrow">pij · government pij-relative-panther · stream s391 · orchestrator pij-associated-louse</div>
+<h1>s391 Day-3 Core Ledger</h1>
+<p class="lede">Everything this stream planned, built, reviewed and shipped on 27–28 August 2026: eight pij fixes merged and live on the shared daemon, one in a fix loop, six more fully prepared — every PR landed through a sha-verified cold cross-model review with mutation evidence, and every ruling, incident and friction was written to disk the moment it happened.</p>
+
+<dl class="meta">
+  <div><dt>Human ask</dt><dd>“Do the day 3 list … do it all.” (Vaughan, 2026-08-27 07:49Z)</dd></div>
+  <div><dt>Worktree · branch base</dt><dd class="mono">pij-worktrees/s391-day3-core · per-item branches off main</dd></div>
+  <div><dt>Plan</dt><dd class="mono">docs/plans/391-day3-core/ · v1.16.0 · 12 phases</dd></div>
+  <div><dt>Fleet</dt><dd>coder copilot gpt-5.6-sol xhigh · reviewer copilot claude-opus-5 xhigh (cold, cross-model)</dd></div>
+  <div><dt>Live daemon</dt><dd class="mono">pid 54975 @ e46eec8 (restart #4) — items 6·1a·1·5·1b·4·6b·13 live</dd></div>
+  <div><dt>Report time</dt><dd class="mono">2026-08-28 ~21:00Z</dd></div>
+</dl>
+
+<section>
+<h2>Scorecard</h2>
+<div class="score">
+  <div class="tile ok"><div class="n">8</div><div class="l">items merged</div></div>
+  <div class="tile warn"><div class="n">1</div><div class="l">in fix loop (item 15)</div></div>
+  <div class="tile acc"><div class="n">6</div><div class="l">prepared, queued</div></div>
+  <div class="tile"><div class="n">8</div><div class="l">PRs merged (#2 → #24)</div></div>
+  <div class="tile"><div class="n">17</div><div class="l">cold review passes</div></div>
+  <div class="tile"><div class="n">100+</div><div class="l">mutations run (RED → restore)</div></div>
+  <div class="tile bad"><div class="n">4</div><div class="l">daemon restarts survived</div></div>
+  <div class="tile"><div class="n">15</div><div class="l">observations for the encode brief</div></div>
+</div>
+<p class="small">Every “green” above was treated as a claim: the orchestrator re-read the load-bearing hunk of each commit, re-ran at least one gate, and checked the verdict artifact existed before recording approval. Full vitest runs post-rebase on each shipped head: 3,904 → 4,047 tests, 0 failures except two pre-existing skill-text tests that main itself carried between PRs #7 and #10.</p>
+</section>
+
+<section>
+<h2>Items shipped</h2>
+<p>Order was ruled by the o-prime and re-ruled twice as dependencies surfaced (item 5 pulled ahead of 1b to unblock s392; items 1a, 1b, 6b were added mid-stream from findings). Each row is one branch, one PR, one cold review chain.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Item</th><th>PR</th><th>Head</th><th>What landed</th><th>Review chain</th><th>Highest finding</th></tr></thead>
+<tbody>
+<tr><td><b>6</b> <span class="pill mute">phase 1</span></td><td class="mono">#2</td><td class="mono">697b442</td><td><code>--context long_context</code> gated per Copilot model: tri-state <code>longContext</code> on the pure builder, curated deny-set consulted by the resolver (not the losing duplicate registry entry), both bin spawn paths pinned by a fake-tmux composition test.</td><td>APPROVE · 5 mutations RED</td><td><span class="pill ok">low</span></td></tr>
+<tr><td><b>1a</b> <span class="pill mute">phase 1a</span></td><td class="mono">#3</td><td class="mono">79ab3eb</td><td>64 KiB piped-stdout truncation class fix: blocking stdio at the bin's <code>main()</code> seam (137 <code>process.exit</code> sites untouched); one &gt;64 KiB pipe test through the real bin. Found via <code>pij queue</code> showing 709 of 812 rows.</td><td>APPROVE · 2 mutations RED (incl. the last-row pin)</td><td><span class="pill ok">low</span></td></tr>
+<tr><td><b>1</b> <span class="pill mute">phase 2</span></td><td class="mono">#9</td><td class="mono">0237212</td><td><code>pij queue retire</code> (terminal, receipted, idempotent; <code>parked</code> retireable), closed-recipient sweep on <em>complete deliberate close</em>, revive un-retire under the R-5 guard, incident replay (recycled pane id → zero sends), drain guard, PA subverb totality, listing ergonomics.</td><td>APPROVE (2 medium) → FX-01 → re-APPROVE · 20 mutations, 17 RED</td><td><span class="pill warn">medium → fixed</span></td></tr>
+<tr><td><b>5</b>+C <span class="pill mute">phase 3</span></td><td class="mono">#11</td><td class="mono">bedd658</td><td>Honest pointer-path log line via an optional <code>opts.kind</code> through loop → Daemon wrapper → DaemonTmux (a real-Daemon composition test is the only guard — <code>tsc</code> is silent on the dropped arg); dual backend now takes the pointer path (s392 finding C).</td><td>APPROVE · 10 mutations, 8 RED</td><td><span class="pill ok">low</span></td></tr>
+<tr><td><b>1b</b> <span class="pill mute">phase 2b</span></td><td class="mono">#14</td><td class="mono">cf2a950</td><td>Dispatch records gain an additive <code>retired</code> state, <code>pij dispatch-retire</code> (PA refuse), close-sweep arm, revive restore, detector skip. O-prime's live acceptance met: the five board rows retired by the sweep on the first tick after restart #2.</td><td>APPROVE-2-majors → FX-01 → re-APPROVE → FX-02 revert → rebase review · 30 mutations</td><td><span class="pill bad">major → fixed</span></td></tr>
+<tr><td><b>4</b> <span class="pill mute">phase 4</span></td><td class="mono">#18</td><td class="mono">d5713a6</td><td><code>--state working</code> rejection and the status-stale detail carry the remedy (park-first, one shared constant, both rejection sites). Ruled <em>(c-remedy)</em> after the stream showed the briefed exemption would have deleted the detector.</td><td>APPROVE (2 medium) → FX-01 → re-APPROVE · 12 mutations</td><td><span class="pill warn">medium → fixed</span></td></tr>
+<tr><td><b>6b</b> <span class="pill mute">phase 2c</span></td><td class="mono">#22</td><td class="mono">b060fad</td><td>Flash isolation outside tmux (8-row matrix, copilot 1.0.81-14: 400 on every path incl. <code>-p</code>; Sol OK) + honest <code>copilotInstability</code> catalog mark naming both observations, warn-don't-block. First reviewer wedged mid-pass and was replaced.</td><td>APPROVE-W-F → FX-01 → fresh-reviewer re-APPROVE · 17 mutations</td><td><span class="pill warn">medium → fixed</span></td></tr>
+<tr><td><b>13</b> <span class="pill mute">phase 5</span></td><td class="mono">#24</td><td class="mono">194ee7c</td><td>Descriptor lost-update race reproduced in both directions on base, then closed: per-descriptor lock (pid+token, dead-pid reclaim) and <code>writeExact(descriptor, {baseline})</code> so the caller's read is the three-way base; <code>listTerminal()</code> port; pi/omp revive branches covered.</td><td>APPROVE-W-F (medium F-1 narrowed-not-closed) → FIX_REQUIRED → re-APPROVE · 14 mutations</td><td><span class="pill warn">medium → fixed</span></td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2>In flight and queued</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Item</th><th>Phase</th><th>Status</th><th>Scope</th><th>Prepared</th></tr></thead>
+<tbody>
+<tr><td><b>15</b></td><td>6</td><td><span class="pill warn">FX-01 in build</span></td><td>One shared pid+start-time reclaim rule across <code>write.lock</code>, <code>events.lock</code> and the descriptor lock; daemon shutdown releases owned tokens; dispatch spine notes; “0 open (N already retired)”. Review found two medium <em>sensor</em> gaps (T004c guarded by a source-text count; the real SIGTERM path untested) → behavioural tests, a real child-daemon SIGTERM test, pid-reuse coverage, descriptor-reclaim logging, reclaim-branch deadline.</td><td>head 38eb4ed · PR #27 after re-review (rides restart #6)</td></tr>
+<tr><td><b>16</b></td><td>7</td><td><span class="pill acc">ready</span></td><td>Creator notices (bound/failed/stalled/dead) route to <code>parentId</code>, falling back to <code>spawnedBy</code>; one <code>noticeRecipient</code> helper; daemon gates updated.</td><td>dossier · dlg-0016 · brief · dispatch msg · PR body · ref</td></tr>
+<tr><td><b>19</b></td><td>8</td><td><span class="pill acc">ready</span></td><td>Pointer-path rows count re-announcements as attempts and park after N with a <code>pointer-unread</code> receipt (today: re-announced every 90 s forever).</td><td>dlg-0015</td></tr>
+<tr><td><b>25</b></td><td>9</td><td><span class="pill acc">ready</span></td><td>Busy-but-wedged stall detection (static buffer + composer <code>Queued (k&gt;0)</code>) and its inverse (pane-buffer growth = activity); queued <code>/compact</code> never reads “paused (compact)”; <code>pij state</code> shows the queue count.</td><td>dlg-0020</td></tr>
+<tr><td><b>26</b></td><td>10</td><td><span class="pill acc">ready</span></td><td>Death reconciler: a pane move (<code>join-pane</code>) re-probes after a grace and reports <code>moved</code>, never a terminal absence.</td><td>dlg-0021</td></tr>
+<tr><td><b>27</b></td><td>11</td><td><span class="pill acc">ready</span></td><td><code>pij tail --type</code> actually filters; unknown type errors naming the valid kinds.</td><td>dlg-0022</td></tr>
+<tr><td><b>28</b></td><td>12</td><td><span class="pill acc">ready</span></td><td>Sender preflight: a dead <code>relay:true</code> seat queues with a <code>recipient-dead</code> note instead of E-DEAD; dissolved ordinary seats still refuse.</td><td>dlg-0023</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2>How each PR was proven</h2>
+<div class="grid2">
+  <div class="card stripe"><h4>Plan before build</h4><p>Unified plan (business spec + implementation plan) in one atomic pass, validated three times by cold peers before dispatch: NEEDS ATTENTION → 5 findings folded (a vacuous AC, a dropped wrapper arg, duplicate-registry ordering, dual backend, <code>parked</code> semantics) → NEEDS ATTENTION → 1 HIGH folded (agent-spawn plumbing unreachable) → path nits fixed. Two of those findings only a validator could see.</p></div>
+  <div class="card stripe"><h4>TDD with fakes, one packet per phase</h4><p>The coder implements a whole phase per delegation packet, RED tests first, pathspec-mandatory commits, never pushes. Packets carry worktree, branch, base, allowed/forbidden paths, gate commands, and the wire discipline citation.</p></div>
+  <div class="card stripe"><h4>Cold cross-model review with Dim-0</h4><p>A separate claude-opus-5 seat reviews at a frozen SHA it re-derives itself, runs every mutation named in the brief plus its own, restores byte-identical (cmp + git hash-object), and files a verdict. Two reviewers self-corrected earlier findings; one found its own harness had produced a false green and said so.</p></div>
+  <div class="card stripe"><h4>Orchestrator sanity pass</h4><p>Before any approval: re-read the load-bearing hunk, confirm the verdict artifact exists, re-run a gate, check scope against the packet. Three phases were held back despite an APPROVE because the findings were real (items 1, 1b, 13, 15).</p></div>
+</div>
+</section>
+
+<section>
+<h2>Rulings that shaped the work</h2>
+<p>All recorded in <code>rulings.md</code> as they landed. The stream challenged the brief three times with evidence and was upheld each time.</p>
+<ul class="timeline">
+  <li class="ok"><span class="t">27 Aug 08:13Z</span> <b>Preamble verified.</b><p>Thesis via the on-disk <code>/thesis</code> contract accepted; per-item branches off main, no stack; build config pre-confirmed (no stop at WAITING_FOR_BUILD_CONFIG).</p></li>
+  <li class="warn"><span class="t">08:47Z</span> <b>R-4 — item 4 ruled (c-remedy).</b><p>The briefed option (b) would have deleted <code>status-stale</code>: the detector already fires only for seats with a fresh <code>lastEventAt</code>. “My brief was wrong on this one.”</p></li>
+  <li class="warn"><span class="t">09:18Z</span> <b>R-5 — item 1 auto-retire vs close→revive ruled (a).</b><p>Retire on complete deliberate close; revive un-retires only <code>recipient-closed</code> rows, receipted, deliver-once end-to-end.</p></li>
+  <li><span class="t">09:40Z / 09:48Z</span> <b>Re-scope (i) — item 1b.</b><p>Dispatch records are a separate platform entity the deliveries retire cannot reach; own PR. Both retire verbs = REFUSE for a PA (zero-actuator).</p></li>
+  <li><span class="t">11:40Z</span> <b>Class fix, not instance — item 1a.</b><p>Fix exit-after-write at the shared bin seam, pinned by one &gt;64 KiB pipe test; own tiny PR first.</p></li>
+  <li class="bad"><span class="t">12:05Z</span> <b>Incident → acceptance case #2.</b><p>A closed seat's queued preamble was typed into an unrelated pane whose id had been recycled. Item 1 gained an incident-replay test (≥4 ticks, recycled pane id, zero sends) and an independent drain guard.</p></li>
+  <li><span class="t">15:55Z</span> <b>Order re-ruled 1 → 5 → 1b → 4 → 6b.</b><p>Item 5's <code>loop.ts</code> change unblocked s392's item 10b.</p></li>
+  <li class="warn"><span class="t">28 Aug 08:20Z</span> <b>6b — upstream instability, both observations.</b><p>The stream's 8-row matrix (400 on every path incl. <code>-p</code>) and the o-prime's earlier <code>-p</code> success are both real; the catalog mark names both and says “unavailable until a fresh probe passes”.</p></li>
+  <li class="warn"><span class="t">15:45Z</span> <b>Item 13 F-1 confirmed FIX_REQUIRED.</b><p>“Narrowed would have been a counter-example waiting for load.” PID-reuse carried into item 15 as a named case: reclaim checks pid <em>and</em> start time.</p></li>
+  <li><span class="t">12:30Z–15:05Z</span> <b>Items 25, 26, 27, 28 added.</b><p>Three came from this stream's own incidents (wedged reviewer, false death on pane move) and its findings; one from a Telegram outage.</p></li>
+</ul>
+</section>
+
+<section>
+<h2>Incidents and recoveries</h2>
+<div class="grid2">
+  <div class="card stripe bad"><h4>Reviewer wedged for 80+ minutes</h4><p>The first reviewer's copilot turn hung after filing its verdict; four inputs (bg result, <code>/compact</code>, the re-review pointer, a status request) queued behind it. The daemon read <code>working</code>; the watchdog read “paused (compact)” for a compact that was only queued. Esc and Ctrl-C had no effect. Closed it, spawned a fresh cold reviewer after the freeze lifted, re-dispatched. → items 25.</p></div>
+  <div class="card stripe bad"><h4>False death on pane move</h4><p>Moving the new reviewer into the team window with <code>join-pane</code> produced “has exited; terminal absence (unrequested-by-pij)” while it was alive and bound seconds later. → item 26.</p></div>
+  <div class="card stripe bad"><h4>Stale spine lock after restart #1</h4><p><code>write.lock</code> still named the dead daemon's pid; every seat's spine write failed until the o-prime removed it by hand, then <code>events.lock</code> blocked replay the same way. Reported with evidence from this seat within minutes. → item 15 (both layers).</p></div>
+  <div class="card stripe warn"><h4>Main went red under a sibling PR</h4><p>Two skill-text tests failed on <code>origin/main</code> after PRs #7/#8; reproduced on a detached checkout, reported with the exact test names, routed to s392 as 9-FX; PR #9's body stated the pre-existing failures honestly rather than claiming green.</p></div>
+  <div class="card stripe warn"><h4>Dry run said clean, rebase conflicted</h4><p><code>merge-tree</code> on the branch tip predicts a squash merge, not a commit-by-commit rebase. Two rebases hit conflicts the dry run missed; one test-file merge was rebuilt deterministically from both parents when a hand merge left an unbalanced brace.</p></div>
+  <div class="card stripe warn"><h4>Future-dated “measured” stamp</h4><p>Local calendar date concatenated with the UTC clock (both the coder and the orchestrator made the same slip independently). Corrected to the request-ID-decoded instant; encode: timestamps only from a clock call.</p></div>
+  <div class="card stripe"><h4>Duplicate delivery across restart #4</h4><p>The same message appeared twice in a coder's transcript with a single sqlite row — an RPC-side replay, not a queue re-announce. Captured; idempotent this time.</p></div>
+  <div class="card stripe ok"><h4>Base move mid-build</h4><p>Item 15's coder was building on a base without item 13's descriptor lock, which its task retrofits. Caught at merge time from the overlap check; the coder committed a WIP checkpoint (pathspec, never a bare stash) and rebased before continuing.</p></div>
+</div>
+</section>
+
+<section>
+<h2>Observations for the encode brief</h2>
+<p>Captured with <code>harness observe</code> the moment they bit; carried into the final ship report's <code>observations[]</code> for the o-prime to fold into encodings.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Id</th><th>Kind</th><th>What bit</th><th>Suggested encoding</th></tr></thead>
+<tbody>
+<tr><td class="mono">DL-001</td><td>difficulty</td><td><code>/thesis</code>, <code>/validate-v2</code> live only under <code>~/.agents/skills</code>; not in Claude Code's Skill registry.</td><td>Symlink into <code>~/.claude/skills</code> (as <code>pij</code> is).</td></tr>
+<tr><td class="mono">CONF-001</td><td>confusion</td><td>Implementer notes cited <code>core/daemon/daemon.ts</code>; the file is <code>daemon.ts</code>.</td><td>Generate citations from <code>git ls-files</code>.</td></tr>
+<tr><td class="mono">DL-002</td><td>difficulty</td><td>Inline <code>pij send</code> body with backticks shell-expanded on the sender's side.</td><td>Warn on inline bodies with backticks/<code>$( )</code>; mandate <code>--body-file</code> (now in orient-local).</td></tr>
+<tr><td class="mono">DL-003</td><td>difficulty</td><td><code>flow-pair observe</code> diffs the working tree, not the committed delegation.</td><td>Diff base..HEAD when the tree is clean.</td></tr>
+<tr><td class="mono">DL-004</td><td>difficulty</td><td>First <code>pij canary</code> on a fresh copilot seat times out awaiting ack (5/5 seats); second passes.</td><td>Wait for idle before the nonce / longer ack budget when bound &lt;60 s.</td></tr>
+<tr><td class="mono">DL-005</td><td>difficulty</td><td><code>flow-pair review</code> cannot ingest a cold reviewer's findings.</td><td><code>--findings &lt;json&gt;</code>.</td></tr>
+<tr><td class="mono">DL-006</td><td>difficulty</td><td>Stale <code>write.lock</code> after a daemon restart blocked every spine write machine-wide.</td><td>Item 15.</td></tr>
+<tr><td class="mono">DL-007</td><td>difficulty</td><td>Hand-composed timestamp (local date + UTC clock) shipped future-dated.</td><td>Clock-derived stamps only; lint future “Z” stamps.</td></tr>
+<tr><td class="mono">DL-008</td><td>difficulty</td><td>Busy-but-wedged copilot seat read <code>working</code>; queued <code>/compact</code> read “paused (compact)”.</td><td>Item 25.</td></tr>
+<tr><td class="mono">DL-009</td><td>difficulty</td><td><code>join-pane</code> read as terminal absence.</td><td>Item 26.</td></tr>
+<tr><td class="mono">DL-010</td><td>difficulty</td><td>RPC-driven copilot work invisible to the runtime axis (idle while mid-turn).</td><td>Item 25 inverse case (buffer growth = activity).</td></tr>
+<tr><td class="mono">DL-011</td><td>difficulty</td><td>One message delivered twice across restart #4 with a single sqlite row.</td><td>Dedupe on messageId in the RPC adapter / verify RPC ack before acked.</td></tr>
+<tr><td class="mono">DL-012</td><td>difficulty</td><td>A reviewer's mutation harness produced a false green (<code>git diff --exit-code</code> short-circuited on a dirty tracked orchestration file).</td><td>Harness asserts the mutation applied; keep orchestration files untracked or stamp before commits.</td></tr>
+<tr><td class="mono">INS-001</td><td>insight</td><td>Tip-vs-main <code>merge-tree</code> predicts a squash merge, not a rebase.</td><td>Predict per commit or rebase in a throwaway worktree.</td></tr>
+<tr><td class="mono">INS-002</td><td>insight</td><td>The pane bottom line is not a liveness signal when the composer queue renders.</td><td>Read <code>pij tail</code> (tool calls) before pane heuristics.</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2>Deferred, named, and where it went</h2>
+<ul class="tight">
+  <li><b>Item 6:</b> revive's copilot <code>buildCommand</code> never emitted <code>--context</code> (follow-up F-1).</li>
+  <li><b>Item 1 review:</b> lifecycle-guard fixture, <code>--all-recipients</code>+selector E-ARG, test naming → landed in item 1b. Operator un-retire CLI verb → follow-up.</li>
+  <li><b>Item 1b review:</b> dispatch-store prune / guard efficacy on busy homes, pi/omp revive branches, <code>FsRegistry</code> layout in the sweep → landed in item 13 (T004/T005).</li>
+  <li><b>Item 5 review:</b> pointer line positive content unpinned → landed in item 4 (T004b). Dual fs-copy window-close unpinned; grep-UNVERIFIED census note.</li>
+  <li><b>Item 4 review:</b> unconditional append / CLI targeting unpinned; remedy duplicates the detail body (consequence of the confirmed wording).</li>
+  <li><b>Item 6b review:</b> <code>CopilotInstability.note</code> became write-only in FX-01 (fix named: re-interpolate, carry provenance separately).</li>
+  <li><b>Item 13 review:</b> contention sensor blind; two revive callers baseline-less → landed in item 15 (T004b/T004c). Pre-existing: revive/archive/unarchive write the descriptor path unlocked (documented).</li>
+</ul>
+</section>
+
+<section>
+<h2>Artifacts</h2>
+<div class="grid2">
+  <div class="card"><h4>Plan folder <span class="mono small">docs/plans/391-day3-core/</span></h4><p><code>391-day3-core-plan.md</code> (v1.16.0; every re-entry session logged) · <code>rulings.md</code> (time-stamped) · <code>fleet.md</code> (roster, canaries, incidents) · <code>reports/</code> (preamble, validate-v2 ×3, ruling requests R-4/R-5, scope check, mid-stream checkpoint) · <code>ship/2026-08-27/ship-report-item*.md</code> ×8 · <code>tasks/phase-*/</code> ×12 (tasks, addendum, review brief, fix packets, review-01 verdicts, execution logs).</p></div>
+  <div class="card"><h4>Evidence logs</h4><p>Full-suite runs: <code>~/.pij/pij-associated-louse/bg-*.log</code> and <code>.harness/temp/s391/vitest-*.log</code> (28+ runs). Reviewer gate logs under <code>~/.pij/pij-mobile-reptile/</code> and <code>~/.pij/pij-powerful-whale/</code>. Observation buffer: <code>.harness/temp/agent/session-buffer.md</code>.</p></div>
+  <div class="card"><h4>Pull requests</h4><p><a href="https://github.com/vaughanknight/pij/pull/2">#2</a> · <a href="https://github.com/vaughanknight/pij/pull/3">#3</a> · <a href="https://github.com/vaughanknight/pij/pull/9">#9</a> · <a href="https://github.com/vaughanknight/pij/pull/11">#11</a> · <a href="https://github.com/vaughanknight/pij/pull/14">#14</a> · <a href="https://github.com/vaughanknight/pij/pull/18">#18</a> · <a href="https://github.com/vaughanknight/pij/pull/22">#22</a> · <a href="https://github.com/vaughanknight/pij/pull/24">#24</a> — all merged by the o-prime on local gates + cold review (the repo has no CI runs yet; a known-red <code>release-age-policy.test.ts</code> needs <code>pwsh</code> and was never touched).</p></div>
+  <div class="card"><h4>Fleet roster</h4><p><b>coder</b> pij-jolly-moose — copilot gpt-5.6-sol xhigh, canaried from process args + nonce, linked worker, compacted between phases, 9 delegations + 5 fix packets. <b>reviewer</b> pij-powerful-whale — copilot claude-opus-5 xhigh, replaced pij-mobile-reptile after the wedge; canary PASS, linked worker. Validators: pij-systematic-shrimp, pij-golden-tick, pij-tender-fish (once-mode).</p></div>
+</div>
+<details><summary>Rulings log excerpt — how a contradiction was carried, not reconciled</summary><div class="inner"><p class="small">On item 6b the o-prime's own <code>copilot -p … --model gemini-3.6-flash</code> succeeded at ~07:33Z while the stream's isolated matrix returned HTTP 400 on all eight rows at ~16:0xZ, same CLI version. Neither observation was discarded: the ruling names both, the catalog mark carries both with provenance (instrumented vs relayed), and the warning says “treat as unavailable until a fresh probe passes”. The first shipped stamp was future-dated by a local-date/UTC-clock slip that the cold reviewer caught by decoding the request IDs.</p></div></details>
+</section>
+
+<p class="foot">Generated by the stream orchestrator (pij-associated-louse, claude) from on-disk artifacts at 2026-08-28 ~21:00Z. Every number, SHA and quote traces to a file under <code>docs/plans/391-day3-core/</code> or a message on the pij spine.</p>
+</main>

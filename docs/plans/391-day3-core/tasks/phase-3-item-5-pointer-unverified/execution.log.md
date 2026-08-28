@@ -50,7 +50,7 @@
 | `npx tsc --noEmit -p .` | Passed. |
 | Scoped Biome check on the seven touched TypeScript files | Passed. |
 | Complete touched test files | Passed: 195 tests, 2 skipped. |
-| `npx vitest run .pi/extensions/pij/` | Baseline-red only: 169 files passed, 2 failed, 2 skipped; 3,945 tests passed, 2 failed, 15 skipped. Log: `.harness/temp/s391/vitest-phase3.log`. |
+| `npx vitest run .pi/extensions/pij/` | Baseline-red only: 169 files passed, 2 failed, 2 skipped; 3,945 tests passed, 2 failed, 15 skipped. Log: `docs/plans/391-day3-core/logs/vitest-phase3.log`. |
 | Declared baseline reproduction | Both pre-existing skill-text failures reproduced independently: `cli.integration.test.ts` “top-level help and skill guidance distinguish pull from push delivery” and `acceptance-sweep.test.ts` “plan 074 P9”. |
 | `harness checks --quick` | Local paths, typecheck, package audit, and snapshots passed. The test sensor includes the two declared skill-text failures plus the existing missing-`pwsh` release-policy failure; lint and Windows compatibility remain red on unrelated baseline diagnostics. |
 

@@ -1,0 +1,6 @@
+# Ship report — Phase 4 / item 4 — PR #18
+- **PR**: https://github.com/vaughanknight/pij/pull/18 · head `s391/item4-card-working` @ `d5713a6` (7db96d2 + d5713a6, rebased onto `origin/main@73f4a90`; reviewed 91ded2a + 2a3942c on 42b7268f; hunks byte-identical) · base `main`
+- **Gates**: vitest full post-rebase 171 files / 3991 tests, 0 fail (`~/.pij/pij-associated-louse/bg-mtboz89f-381z8l.log`); targeted 589/589; reviewer: tsc 0, biome clean.
+- **Review**: review-01 APPROVE (6 mutations / 5 RED; frozen surfaces proven byte-identical by reconstruction; M4 = the R-4-rejected exemption kills exactly the new fixture) → FX-01 (remedy at both rejection sites; park-first constant with runnable forms — o-prime confirmed; honest-count scenario; docs) → re-review APPROVE (6 mutations / 4 RED; the F-4 mutant now dies).
+- **Deferred & Noteworthy**: G-1 unconditional append / CLI targeting unpinned (surviving mutants M9/M10); G-2 remedy duplicates the detail body (consequence of confirmed wording) — both to any later touch of `anomalies.ts` (item 13); G-5 ergonomic trade at the report-now site (recorded).
+- **Merge**: o-prime's. Item 4 is CLI/core-only: live on the next checkout ff (no daemon restart needed for the CLI path; the anomaly detail text rides the daemon sweep after its next restart).

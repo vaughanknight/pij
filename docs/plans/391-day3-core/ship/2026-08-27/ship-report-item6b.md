@@ -1,0 +1,7 @@
+# Ship report — Phase 2c / item 6b — PR #22
+- **PR**: https://github.com/vaughanknight/pij/pull/22 · head `s391/item6b-flash-ui-server` @ `b060fad` (93d0a4a + b060fad rebased onto `origin/main@35272ae`; reviewed 8dd8f1e + FX-01 9726601 on 73f4a90; hunks byte-identical) · base `main`
+- **Gates**: vitest full post-rebase 171 files / 4018 tests, 0 fail (`~/.pij/pij-associated-louse/bg-mtbtvh4j-mhe135.log`); targeted models+spawn 295/295; reviewer: tsc 0, biome clean.
+- **Isolation**: standalone Terminal, TMUX unset, isolated PIJ_HOME, no seat/pane/daemon — corroborated by the first reviewer from ~/.pij + ~/.copilot timestamps. Copilot CLI 1.0.81-14: Flash 400 on all 8 rows (incl. `-p`) at 2026-08-27 ~16:0xZ; o-prime's `-p` one-shot passed 2026-08-27 ~07:33Z (relayed) → ruled: upstream instability.
+- **Review chain**: review-01 APPROVE-WITH-FINDINGS (medium F-1 future-dated stamp; F-3..F-8) → FX-01 → the first reviewer's seat WEDGED (>80 min, DL-008) → closed; fresh cold reviewer pij-powerful-whale (false 'exited' notice during join-pane, DL-009) → re-review APPROVE-WITH-FINDINGS (low): all FX-01 items confirmed by execution, previously surviving mutants now RED.
+- **Deferred & Noteworthy**: R-1 `CopilotInstability.note` write-only (fix named in PR); R-2 docs sentence unpinned; R-3 test fs mock brittleness; items 25/26 (stall detection; pane-move≠death) already queued from this phase's incidents.
+- **Merge**: o-prime's (rides the next ff; CLI-side only).
