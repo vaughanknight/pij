@@ -1,0 +1,20 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: Transform failed with 1 error:
+/private/tmp/pij-item33-sensor-mutation/docs/plans/055-pij-watchdog/proofs/run-proofs.ts:1500:0: ERROR: Top-level await is currently not supported with the "cjs" output format
+    at failureErrorWithLog (/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/esbuild/lib/main.js:1748:15)
+    at /Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/esbuild/lib/main.js:1017:50
+    at responseCallbacks.<computed> (/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/esbuild/lib/main.js:884:9)
+    at handleIncomingPacket (/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/esbuild/lib/main.js:939:12)
+    at Socket.readFromStdout (/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/esbuild/lib/main.js:862:7)
+    at Socket.emit (node:events:509:20)
+    at addChunk (node:internal/streams/readable:568:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+    at Readable.push (node:internal/streams/readable:399:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+  name: 'TransformError'
+}
+
+Node.js v26.3.1

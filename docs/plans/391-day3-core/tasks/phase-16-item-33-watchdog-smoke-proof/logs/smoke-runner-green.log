@@ -1,0 +1,3 @@
+watchdog-smoke: green
+baseline-red[pwsh]: harness/scripts/release-age-policy.test.ts requires pwsh
+baseline-red[OSC]: .pi/extensions/pij/producers/osc-7337-producer.ts has existing Biome findings

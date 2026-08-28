@@ -1,0 +1,294 @@
+{
+  "environment": {
+    "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+    "realHome": "/Users/vaughanknight/.pij (rejected by runner)",
+    "tmuxAvailable": true,
+    "eventsNdjsonUsedAsActivityEvidence": false
+  },
+  "scenarios": [
+    {
+      "name": "AC-01/02 default-on tmux fire and self-teaching turn",
+      "acs": [
+        "AC-01",
+        "AC-02"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "intervalMs": 1200000,
+        "sidecarAbsent": true,
+        "queuedFires": 1,
+        "deliveredFires": 1,
+        "lastWatchdogFireAt": "1970-01-01T00:20:00.000Z",
+        "paneEvidence": "progress and done report commands visible in scratch pane; self-pause absent"
+      }
+    },
+    {
+      "name": "AC-03 pause/resume CLI and JSON surfaces",
+      "acs": [
+        "AC-03"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "firstCount": 1,
+        "pausedCount": 0,
+        "resumedCount": 1,
+        "statePausedBy": "self",
+        "listPausedBy": "self",
+        "watchdogListPausedProjection": {
+          "enabled": true,
+          "globallyDisabled": false,
+          "relay": false,
+          "intervalMs": 1200000,
+          "pausedBy": "self",
+          "exempt": false,
+          "exemptUntilMs": null,
+          "exemptRemainingMs": null,
+          "lastFireAt": "1970-01-01T00:20:00.000Z",
+          "watchers": []
+        },
+        "watchdogListResumedProjection": {
+          "enabled": true,
+          "globallyDisabled": false,
+          "relay": false,
+          "intervalMs": 1200000,
+          "pausedBy": null,
+          "exempt": false,
+          "exemptUntilMs": null,
+          "exemptRemainingMs": null,
+          "lastFireAt": "1970-01-01T00:40:00.000Z",
+          "watchers": []
+        }
+      }
+    },
+    {
+      "name": "AC-04 compact auto-pause on tmux and pi paths",
+      "acs": [
+        "AC-04"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "tmuxCommand": "pij send compact-tmux --command compact",
+        "tmuxPersistBeforeInject": true,
+        "tmuxResumedOnWorking": true,
+        "piCommand": "pij send compact-pi /compact",
+        "piPersistedBeforeCompact": true,
+        "piCompactCalls": 1,
+        "piResumedOnTurnStart": true
+      }
+    },
+    {
+      "name": "AC-05/06 blind frozen-pane fire, shared latch, recovery, and root stamp",
+      "acs": [
+        "AC-05",
+        "AC-06"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "frozenPane": {
+          "fires": {
+            "scheduled": 8,
+            "delivered": 8,
+            "queued": 0
+          },
+          "firstEpisodeNotices": {
+            "owner": 1,
+            "watcher": 1
+          },
+          "attributedWorking": {
+            "failureReason": "stalled",
+            "lastEventAt": "1970-01-01T00:00:00.000Z",
+            "notices": {
+              "owner": 1,
+              "watcher": 1
+            }
+          },
+          "attributedIdle": {
+            "failureReason": "stalled",
+            "lastEventAt": "1970-01-01T00:00:00.000Z",
+            "notices": {
+              "owner": 1,
+              "watcher": 1
+            }
+          },
+          "recoveredFailureReason": null,
+          "lastEventAtAfterRecovery": "1970-01-01T00:00:00.404Z",
+          "secondEpisodeNotices": {
+            "owner": 2,
+            "watcher": 2
+          },
+          "secondEpisodeFailureReason": "stalled"
+        },
+        "rootSession": {
+          "failureReason": "stalled",
+          "spawnedBy": null
+        }
+      }
+    },
+    {
+      "name": "AC-07 anomaly/always capture pointers and caps",
+      "acs": [
+        "AC-07"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "anomalyHealthyNotices": 0,
+        "anomalyPointer": "<PIJ_HOME>/anomaly-watcher/watchdog-captures/300-capture-peer.txt",
+        "anomalyLines": 14,
+        "anomalyBytes": 4096,
+        "anomalyInlineTail": [
+          "WD-CAP-256|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-256",
+          "WD-CAP-257|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-257",
+          "WD-CAP-258|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-258",
+          "WD-CAP-259|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-259[pij from pij-watchdog] 1 new message — run: pij inbox.€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€",
+          "[pij from pij-watchdog] 1 new message — run: pij inbox.€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€"
+        ],
+        "defaultCaps": {
+          "lines": 40,
+          "bytes": 4096
+        },
+        "alwaysUnknownNotices": 0,
+        "alwaysEvidenceBackedNotice": true,
+        "alwaysPointer": "<PIJ_HOME>/always-watcher/watchdog-captures/300-capture-peer.txt",
+        "hardCapLines": 88,
+        "hardCapBytes": 16384,
+        "alwaysInlineTail": [
+          "WD-CAP-256|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-256",
+          "WD-CAP-257|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-257",
+          "WD-CAP-258|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-258",
+          "WD-CAP-259|xxx€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€|TAIL-259[pij from pij-watchdog] 1 new message — run: pij inbox.€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€",
+          "[pij from pij-watchdog] 1 new message — run: pij inbox.€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€"
+        ],
+        "tailMarkersInOrder": [
+          "WD-CAP-258",
+          "WD-CAP-259"
+        ],
+        "utf8RoundTrip": true,
+        "hardCeilings": {
+          "lines": 200,
+          "bytes": 16384
+        }
+      }
+    },
+    {
+      "name": "AC-08 spawn --no-watchdog exemption and visibility",
+      "acs": [
+        "AC-08"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "spawnFlagParsed": true,
+        "childEnvironmentMarker": "1",
+        "pausedBy": "exempt",
+        "watchdogTurns": 0,
+        "failureReason": null,
+        "stateVisible": {
+          "enabled": true,
+          "globallyDisabled": false,
+          "relay": false,
+          "intervalMs": 1200000,
+          "pausedBy": "exempt",
+          "exempt": true,
+          "exemptUntilMs": 1787894466367,
+          "exemptRemainingMs": 3599413,
+          "lastFireAt": null,
+          "watchers": []
+        },
+        "listVisible": {
+          "enabled": true,
+          "globallyDisabled": false,
+          "relay": false,
+          "intervalMs": 1200000,
+          "pausedBy": "exempt",
+          "exempt": true,
+          "exemptUntilMs": 1787894466367,
+          "exemptRemainingMs": 3598900,
+          "lastFireAt": null,
+          "watchers": []
+        }
+      }
+    },
+    {
+      "name": "AC-10 tmux/inbox delivery split, paneless degradation, and pre-bind skip",
+      "acs": [
+        "AC-10"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "tmuxSendTextTurns": 1,
+        "piInboxTurns": 3,
+        "piConsumedTurns": 2,
+        "piUnreadTurns": 1,
+        "piEventOnlyFailureReason": "stalled",
+        "panelessNotice": "watchdog stalled: pi-peer\ncapture unavailable (paneless target)",
+        "panelessCaptureDirectoryExists": false,
+        "prebindLastFireAt": null
+      }
+    }
+  ],
+  "acceptance": [
+    {
+      "ac": "AC-01",
+      "verdict": "PASS",
+      "scenario": "AC-01/02 default-on tmux fire and self-teaching turn"
+    },
+    {
+      "ac": "AC-02",
+      "verdict": "PASS",
+      "scenario": "AC-01/02 default-on tmux fire and self-teaching turn"
+    },
+    {
+      "ac": "AC-03",
+      "verdict": "PASS",
+      "scenario": "AC-03 pause/resume CLI and JSON surfaces"
+    },
+    {
+      "ac": "AC-04",
+      "verdict": "PASS",
+      "scenario": "AC-04 compact auto-pause on tmux and pi paths"
+    },
+    {
+      "ac": "AC-05",
+      "verdict": "PASS",
+      "scenario": "AC-05/06 blind frozen-pane fire, shared latch, recovery, and root stamp"
+    },
+    {
+      "ac": "AC-06",
+      "verdict": "PASS",
+      "scenario": "AC-05/06 blind frozen-pane fire, shared latch, recovery, and root stamp"
+    },
+    {
+      "ac": "AC-07",
+      "verdict": "PASS",
+      "scenario": "AC-07 anomaly/always capture pointers and caps"
+    },
+    {
+      "ac": "AC-08",
+      "verdict": "PASS",
+      "scenario": "AC-08 spawn --no-watchdog exemption and visibility"
+    },
+    {
+      "ac": "AC-10",
+      "verdict": "PASS",
+      "scenario": "AC-10 tmux/inbox delivery split, paneless degradation, and pre-bind skip"
+    },
+    {
+      "ac": "AC-09",
+      "verdict": "PASS",
+      "scenario": "aggregate isolated proof",
+      "reason": "AC-01..08 and AC-10 all passed in disposable homes"
+    }
+  ],
+  "summary": {
+    "verdict": "PASS",
+    "passed": 9,
+    "skipped": 0,
+    "failed": 0
+  }
+}

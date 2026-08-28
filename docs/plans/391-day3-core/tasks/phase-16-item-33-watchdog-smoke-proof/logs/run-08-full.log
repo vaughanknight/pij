@@ -1,0 +1,205 @@
+{
+  "environment": {
+    "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+    "realHome": "/Users/vaughanknight/.pij (rejected by runner)",
+    "tmuxAvailable": true,
+    "eventsNdjsonUsedAsActivityEvidence": false
+  },
+  "scenarios": [
+    {
+      "name": "AC-01/02 default-on tmux fire and self-teaching turn",
+      "acs": [
+        "AC-01",
+        "AC-02"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "intervalMs": 1200000,
+        "sidecarAbsent": true,
+        "queuedFires": 1,
+        "deliveredFires": 1,
+        "lastWatchdogFireAt": "1970-01-01T00:20:00.000Z",
+        "paneEvidence": "progress and done report commands visible in scratch pane; self-pause absent"
+      }
+    },
+    {
+      "name": "AC-03 pause/resume CLI and JSON surfaces",
+      "acs": [
+        "AC-03"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "firstCount": 1,
+        "pausedCount": 0,
+        "resumedCount": 1,
+        "statePausedBy": "self",
+        "listPausedBy": "self",
+        "watchdogListPausedProjection": {
+          "enabled": true,
+          "globallyDisabled": false,
+          "relay": false,
+          "intervalMs": 1200000,
+          "pausedBy": "self",
+          "exempt": false,
+          "exemptUntilMs": null,
+          "exemptRemainingMs": null,
+          "lastFireAt": "1970-01-01T00:20:00.000Z",
+          "watchers": []
+        },
+        "watchdogListResumedProjection": {
+          "enabled": true,
+          "globallyDisabled": false,
+          "relay": false,
+          "intervalMs": 1200000,
+          "pausedBy": null,
+          "exempt": false,
+          "exemptUntilMs": null,
+          "exemptRemainingMs": null,
+          "lastFireAt": "1970-01-01T00:40:00.000Z",
+          "watchers": []
+        }
+      }
+    },
+    {
+      "name": "AC-04 compact auto-pause on tmux and pi paths",
+      "acs": [
+        "AC-04"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "tmuxCommand": "pij send compact-tmux --command compact",
+        "tmuxPersistBeforeInject": true,
+        "tmuxResumedOnWorking": true,
+        "piCommand": "pij send compact-pi /compact",
+        "piPersistedBeforeCompact": true,
+        "piCompactCalls": 1,
+        "piResumedOnTurnStart": true
+      }
+    },
+    {
+      "name": "AC-05/06 blind frozen-pane fire, shared latch, recovery, and root stamp",
+      "acs": [
+        "AC-05",
+        "AC-06"
+      ],
+      "verdict": "PASS",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+        "frozenPane": {
+          "fires": {
+            "scheduled": 8,
+            "delivered": 8,
+            "queued": 0
+          },
+          "firstEpisodeNotices": {
+            "owner": 1,
+            "watcher": 1
+          },
+          "attributedWorking": {
+            "failureReason": "stalled",
+            "lastEventAt": "1970-01-01T00:00:00.000Z",
+            "notices": {
+              "owner": 1,
+              "watcher": 1
+            }
+          },
+          "attributedIdle": {
+            "failureReason": "stalled",
+            "lastEventAt": "1970-01-01T00:00:00.000Z",
+            "notices": {
+              "owner": 1,
+              "watcher": 1
+            }
+          },
+          "recoveredFailureReason": null,
+          "lastEventAtAfterRecovery": "1970-01-01T00:00:00.404Z",
+          "secondEpisodeNotices": {
+            "owner": 2,
+            "watcher": 2
+          },
+          "secondEpisodeFailureReason": "stalled"
+        },
+        "rootSession": {
+          "failureReason": "stalled",
+          "spawnedBy": null
+        }
+      }
+    },
+    {
+      "name": "AC-07 anomaly/always capture pointers and caps",
+      "acs": [
+        "AC-07"
+      ],
+      "verdict": "FAIL",
+      "evidence": {
+        "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>"
+      },
+      "reason": "default anomaly byte limit did not bisect a multibyte fixture code point (bytes=68,45,67, context=\"��€€|TAIL-246\\nWD-CAP-247|xxx€€�\")"
+    }
+  ],
+  "acceptance": [
+    {
+      "ac": "AC-01",
+      "verdict": "PASS",
+      "scenario": "AC-01/02 default-on tmux fire and self-teaching turn"
+    },
+    {
+      "ac": "AC-02",
+      "verdict": "PASS",
+      "scenario": "AC-01/02 default-on tmux fire and self-teaching turn"
+    },
+    {
+      "ac": "AC-03",
+      "verdict": "PASS",
+      "scenario": "AC-03 pause/resume CLI and JSON surfaces"
+    },
+    {
+      "ac": "AC-04",
+      "verdict": "PASS",
+      "scenario": "AC-04 compact auto-pause on tmux and pi paths"
+    },
+    {
+      "ac": "AC-05",
+      "verdict": "PASS",
+      "scenario": "AC-05/06 blind frozen-pane fire, shared latch, recovery, and root stamp"
+    },
+    {
+      "ac": "AC-06",
+      "verdict": "PASS",
+      "scenario": "AC-05/06 blind frozen-pane fire, shared latch, recovery, and root stamp"
+    },
+    {
+      "ac": "AC-07",
+      "verdict": "FAIL",
+      "scenario": "AC-07 anomaly/always capture pointers and caps",
+      "reason": "default anomaly byte limit did not bisect a multibyte fixture code point (bytes=68,45,67, context=\"��€€|TAIL-246\\nWD-CAP-247|xxx€€�\")"
+    },
+    {
+      "ac": "AC-08",
+      "verdict": "SKIP",
+      "scenario": null,
+      "reason": "not run after earlier failure"
+    },
+    {
+      "ac": "AC-10",
+      "verdict": "SKIP",
+      "scenario": null,
+      "reason": "not run after earlier failure"
+    },
+    {
+      "ac": "AC-09",
+      "verdict": "FAIL",
+      "scenario": "aggregate isolated proof",
+      "reason": "the complete acceptance set did not pass"
+    }
+  ],
+  "summary": {
+    "verdict": "FAIL",
+    "passed": 6,
+    "skipped": 2,
+    "failed": 1
+  }
+}

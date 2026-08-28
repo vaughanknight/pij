@@ -1,0 +1,17 @@
+{
+  "name": "watchdog smoke",
+  "acs": [],
+  "verdict": "PASS",
+  "evidence": {
+    "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>",
+    "spawnedScratchPane": true,
+    "firstFire": true,
+    "doneReportGuidance": true,
+    "retiredPauseGuidanceAbsent": true,
+    "pauseSuppressedFire": true,
+    "resumeFired": true,
+    "compactPausedBeforeInjection": true,
+    "compactResumedOnWorking": true,
+    "capturePointer": "<PIJ_HOME>/smoke-owner/watchdog-captures/200-smoke-peer.txt"
+  }
+}

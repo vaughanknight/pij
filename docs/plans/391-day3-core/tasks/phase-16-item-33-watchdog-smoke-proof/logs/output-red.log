@@ -1,0 +1,30 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core[39m
+
+ [31m❯[39m harness/scripts/smoke.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m | [22m[33m4 skipped[39m[2m)[22m[32m 3[2mms[22m[39m
+     [2m[90m↓[39m[22m sorts and safely quotes every supplied project-local extension
+     [2m[90m↓[39m[22m preserves an explicit scenario command byte-for-byte
+     [2m[90m↓[39m[22m returns the complete sorted top-level index inventory without a machine-specific root
+[31m     [31m×[31m keeps the watchdog verdict separate from the known pwsh and OSC baseline reds[39m[32m 2[2mms[22m[39m
+     [2m[90m↓[39m[22m does not execute scenarios when the resolver is imported
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m harness/scripts/smoke.test.ts[2m > [22mrenderWatchdogSmokeLines[2m > [22mkeeps the watchdog verdict separate from the known pwsh and OSC baseline reds
+[31m[1mTypeError[22m: renderWatchdogSmokeLines is not a function[39m
+[36m [2m❯[22m harness/scripts/smoke.test.ts:[2m74:10[22m[39m
+    [90m 72|[39m [34mdescribe[39m([32m"renderWatchdogSmokeLines"[39m[33m,[39m () [33m=>[39m {
+    [90m 73|[39m  it("keeps the watchdog verdict separate from the known pwsh and OSC b…
+    [90m 74|[39m   [34mexpect[39m([34mrenderWatchdogSmokeLines[39m({ verdict[33m:[39m [32m"PASS"[39m }))[33m.[39m[34mtoEqual[39m([
+    [90m   |[39m          [31m^[39m
+    [90m 75|[39m    [32m"watchdog-smoke: green"[39m[33m,[39m
+    [90m 76|[39m    "baseline-red[pwsh]: harness/scripts/release-age-policy.test.ts req…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[33m4 skipped[39m[90m (5)[39m
+[2m   Start at [22m 14:18:16
+[2m   Duration [22m 197ms[2m (transform 67ms, setup 0ms, import 89ms, tests 3ms, environment 0ms)[22m
+

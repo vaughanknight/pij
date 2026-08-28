@@ -79,9 +79,21 @@ export function resolveSmokeCommand(
 	return `pi --approve --no-extensions${extensions}`;
 }
 
-interface WatchdogSmokeResult {
+export interface WatchdogSmokeResult {
 	readonly verdict: "PASS" | "SKIP" | "FAIL";
 	readonly reason?: string;
+}
+
+const WATCHDOG_BASELINE_RED_LINES = [
+	"baseline-red[pwsh]: harness/scripts/release-age-policy.test.ts requires pwsh",
+	"baseline-red[OSC]: .pi/extensions/pij/producers/osc-7337-producer.ts has existing Biome findings",
+] as const;
+
+export function renderWatchdogSmokeLines(result: WatchdogSmokeResult): readonly string[] {
+	const reason = (result.reason ?? result.verdict.toLowerCase()).replace(/\s+/g, " ").trim();
+	const verdict =
+		result.verdict === "PASS" ? "watchdog-smoke: green" : `watchdog-smoke: red — ${reason}`;
+	return [verdict, ...WATCHDOG_BASELINE_RED_LINES];
 }
 
 interface TeamScaffoldSmokeResult {
@@ -366,17 +378,6 @@ async function main(): Promise<void> {
 			console.error(teamScaffold.reason ?? "team-scaffold smoke failed");
 		}
 	}
-	if (includeWatchdog) {
-		process.stdout.write("smoke: pij-watchdog ... ");
-		const watchdog = runWatchdogSmoke();
-		if (watchdog.verdict === "PASS") console.log("✓");
-		else if (watchdog.verdict === "SKIP") console.log(`↷ (${watchdog.reason ?? "skipped"})`);
-		else {
-			failed++;
-			console.log("✗");
-			console.error(watchdog.reason ?? "watchdog smoke failed");
-		}
-	}
 	for (const file of files) {
 		const scenario = await loadScenario(file);
 		process.stdout.write(`smoke: ${scenario.name} ... `);
@@ -390,6 +391,12 @@ async function main(): Promise<void> {
 			console.log("✗");
 			console.error(JSON.stringify(report.failure, null, 2));
 		}
+	}
+	if (includeWatchdog) {
+		const watchdog = runWatchdogSmoke();
+		if (watchdog.verdict === "FAIL") failed++;
+		const output = failed > 0 ? process.stderr : process.stdout;
+		for (const line of renderWatchdogSmokeLines(watchdog)) output.write(`${line}\n`);
 	}
 	process.exit(failed > 0 ? 1 : 0);
 }

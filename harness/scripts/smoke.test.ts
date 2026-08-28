@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { loadScenario, runScenario } from "../driver/index.js";
-import { findProjectExtensionEntries, resolveSmokeCommand } from "./smoke.js";
+import {
+	findProjectExtensionEntries,
+	renderWatchdogSmokeLines,
+	resolveSmokeCommand,
+} from "./smoke.js";
 
 vi.mock("../driver/index.js", () => ({
 	loadScenario: vi.fn(),
@@ -62,6 +66,19 @@ describe("findProjectExtensionEntries", () => {
 		);
 
 		expect(findProjectExtensionEntries(extensionsRoot)).toEqual(expected);
+	});
+});
+
+describe("renderWatchdogSmokeLines", () => {
+	it("keeps the watchdog verdict separate from the known pwsh and OSC baseline reds", () => {
+		expect(renderWatchdogSmokeLines({ verdict: "PASS" })).toEqual([
+			"watchdog-smoke: green",
+			"baseline-red[pwsh]: harness/scripts/release-age-policy.test.ts requires pwsh",
+			"baseline-red[OSC]: .pi/extensions/pij/producers/osc-7337-producer.ts has existing Biome findings",
+		]);
+		expect(renderWatchdogSmokeLines({ verdict: "FAIL", reason: "fire\npath  silent" })[0]).toBe(
+			"watchdog-smoke: red — fire path silent",
+		);
 	});
 });
 

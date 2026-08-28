@@ -1,0 +1,20 @@
+node:internal/modules/esm/resolve:271
+    throw new ERR_MODULE_NOT_FOUND(
+          ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/private/tmp/pij-item33-sensor-mutation/.pi/extensions/file-watch-notify/store.js' imported from /private/tmp/pij-item33-sensor-mutation/.pi/extensions/pij/core/daemon/watch.ts
+    at finalizeResolution (node:internal/modules/esm/resolve:271:11)
+    at moduleResolve (node:internal/modules/esm/resolve:865:10)
+    at defaultResolve (node:internal/modules/esm/resolve:992:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:704:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:724:38)
+    at nextStep (node:internal/modules/customization_hooks:189:26)
+    at resolveBaseSync (file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:9115)
+    at resolveDirectorySync (file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:10328)
+    at resolveTsPathsSync (file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:11560)
+    at resolve (file:///Users/vaughanknight/GitHub/pij-worktrees/s391-day3-core/node_modules/tsx/dist/register-D5KIhaFJ.mjs:2:13343) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///private/tmp/pij-item33-sensor-mutation/.pi/extensions/file-watch-notify/store.js'
+}
+
+Node.js v26.3.1

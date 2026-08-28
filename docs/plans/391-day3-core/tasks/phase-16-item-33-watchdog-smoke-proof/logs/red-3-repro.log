@@ -1,0 +1,9 @@
+{
+  "name": "watchdog smoke",
+  "acs": [],
+  "verdict": "FAIL",
+  "evidence": {
+    "isolatedHome": "/var/folders/1d/4jyz3y9929bg1fjdbtlxtpjc0000gn/T/pij-watchdog-proof-<scenario>-<run>"
+  },
+  "reason": "smoke done report command missing"
+}

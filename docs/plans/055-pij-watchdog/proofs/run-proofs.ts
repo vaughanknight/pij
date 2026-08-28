@@ -42,6 +42,7 @@ import {
 	DEFAULT_WATCHDOG_INTERVAL_MS,
 	MAX_CAPTURE_BYTES,
 	MAX_CAPTURE_LINES,
+	captureSlice,
 } from "../../../../.pi/extensions/pij/core/watchdog.js";
 import { Daemon } from "../../../../.pi/extensions/pij/daemon.js";
 
@@ -209,6 +210,22 @@ async function withScratchPane<T>(
 	} finally {
 		pane.dispose();
 	}
+}
+
+function waitForPaneText(
+	pane: ScratchPane,
+	accept: (text: string) => boolean,
+	failure: string,
+	timeoutMs = 2_000,
+): string {
+	const deadline = Date.now() + timeoutMs;
+	let text = "";
+	do {
+		text = pane.capture();
+		if (accept(text)) return text;
+		sleepSync(25);
+	} while (Date.now() < deadline);
+	throw new Error(failure);
 }
 
 function daemonPorts(
@@ -837,6 +854,19 @@ function lineCount(text: string): number {
 	return text === "" ? 0 : text.split("\n").length;
 }
 
+function assertUtf8Boundary(label: string, maxBytes: number): void {
+	const source = "€".repeat(Math.ceil(maxBytes / 3) + 1);
+	const bytes = Buffer.from(source, "utf8");
+	const naiveStart = bytes.byteLength - maxBytes;
+	assertThat(
+		((bytes[naiveStart] ?? 0) >> 6) === 2,
+		`${label} fixture did not place the naive byte limit inside a multibyte code point`,
+	);
+	const captured = captureSlice(source, { maxLines: 1, maxBytes });
+	assertThat(Buffer.byteLength(captured, "utf8") <= maxBytes, `${label} byte cap exceeded`);
+	assertThat(!captured.includes("\uFFFD"), `${label} split a UTF-8 code point`);
+}
+
 function pointerFromNotice(body: string): string {
 	const line = body.split("\n").find((value) => value.startsWith("capture: "));
 	assertThat(line !== undefined, `capture pointer missing from notice: ${body}`);
@@ -872,21 +902,11 @@ function assertCaptureContent(
 	const expected = expectedCaptureTail(source, maxLines, maxBytes);
 	const lineTail = source.split("\n").slice(-maxLines).join("\n");
 	const tailBytes = Buffer.from(lineTail, "utf8");
-	const naiveStart = tailBytes.byteLength - maxBytes;
 	assertThat(!lineTail.includes("\uFFFD"), `${label} source tail was not valid UTF-8 pane text`);
 	assertThat(!expected.includes("\uFFFD"), `${label} expected tail split a UTF-8 code point`);
 	assertThat(captured.length > 0, `${label} capture was empty`);
 	assertThat(tailBytes.byteLength > maxBytes, `${label} did not exercise byte truncation`);
-	assertThat(
-		((tailBytes[naiveStart] ?? 0) >> 6) === 2,
-		`${label} byte limit did not bisect a multibyte fixture code point (bytes=${[
-			tailBytes[naiveStart - 1],
-			tailBytes[naiveStart],
-			tailBytes[naiveStart + 1],
-		].join(",")}, context=${JSON.stringify(
-			tailBytes.subarray(Math.max(0, naiveStart - 20), naiveStart + 20).toString("utf8"),
-		)})`,
-	);
+	assertUtf8Boundary(label, maxBytes);
 	assertThat(captured === expected, `${label} was not the exact bounded pane tail`);
 	assertThat(lineCount(captured) <= maxLines, `${label} line cap exceeded`);
 	assertThat(Buffer.byteLength(captured, "utf8") <= maxBytes, `${label} byte cap exceeded`);
@@ -902,11 +922,11 @@ function assertCaptureContent(
 		assertThat(markerIndex > previousMarker, `${label} reordered deterministic tail marker ${marker}`);
 		previousMarker = markerIndex;
 	}
-	const expectedInline = captured.split("\n").slice(0, 5);
-	assertThat(inlineLines.length <= 5, `${label} inline head exceeded five lines`);
+	const expectedInline = captured.split("\n").slice(-5);
+	assertThat(inlineLines.length <= 5, `${label} inline tail exceeded five lines`);
 	assertThat(
 		JSON.stringify(inlineLines) === JSON.stringify(expectedInline),
-		`${label} inline head did not equal the stored slice head`,
+		`${label} inline tail did not equal the stored slice tail: actual=${JSON.stringify(inlineLines)} expected=${JSON.stringify(expectedInline)}`,
 	);
 }
 
@@ -920,10 +940,9 @@ async function runBoundedCapture(): Promise<Readonly<Record<string, unknown>>> {
 		writeFileSync(fixturePath, fixtureLines.join("\n"), "utf8");
 		return withScratchPane("capture", async (pane) => {
 			const orderedTailMarkers = ["WD-CAP-258", "WD-CAP-259"];
-			sleepSync(25);
-			const healthySource = pane.capture();
-			assertThat(
-				orderedTailMarkers.every((marker) => healthySource.includes(marker)),
+			const healthySource = waitForPaneText(
+				pane,
+				(text) => orderedTailMarkers.every((marker) => text.includes(marker)),
 				"scratch pane omitted deterministic capture markers",
 			);
 			const registry = new FsRegistry(home);
@@ -953,10 +972,17 @@ async function runBoundedCapture(): Promise<Readonly<Record<string, unknown>>> {
 			// Keep the post-delivery tail's byte boundary inside a multibyte run,
 			// independent of ordinary watchdog copy changes.
 			const utf8BoundaryTail = "€".repeat(300);
+			const delivered: string[] = [];
 			const daemon = new Daemon(
 				home,
-				daemonPorts(home, () => nowMs, (id) => (id === pane.paneId ? pane : undefined), (_id, text) =>
-					pane.write(`${text}.${utf8BoundaryTail}`),
+				daemonPorts(
+					home,
+					() => nowMs,
+					(id) => (id === pane.paneId ? pane : undefined),
+					(_id, text) => {
+						delivered.push(text);
+						pane.write(`${text}.${utf8BoundaryTail}`);
+					},
 				),
 				registry,
 				channel,
@@ -968,14 +994,22 @@ async function runBoundedCapture(): Promise<Readonly<Record<string, unknown>>> {
 				"always watcher received an unknown/no-evidence verdict",
 			);
 
-			sleepSync(25);
 			nowMs = 200;
 			await daemon.tick();
-			const anomalySource = pane.capture();
+			assertThat(delivered[0] === WATCHDOG_POINTER_LINE, "capture fire was not a pointer");
 			assertThat(
-				orderedTailMarkers.every((marker) => anomalySource.includes(marker)),
+				markFirstUnreadWatchdogTurnRead(channel, "capture-peer"),
+				"capture watchdog turn was not consumable",
+			);
+			const anomalySource = waitForPaneText(
+				pane,
+				(text) =>
+					text.includes(WATCHDOG_POINTER_LINE) &&
+					orderedTailMarkers.every((marker) => text.includes(marker)),
 				"watchdog turn displaced deterministic anomaly markers",
 			);
+			nowMs = 300;
+			await daemon.tick();
 			const anomalyNotice = unreadBodies(channel, "anomaly-watcher")[0];
 			assertThat(anomalyNotice !== undefined && anomalyNotice.startsWith("watchdog suspect:"), "anomaly capture missing");
 			const alwaysNotice = unreadBodies(channel, "always-watcher")[0];
@@ -1021,14 +1055,14 @@ async function runBoundedCapture(): Promise<Readonly<Record<string, unknown>>> {
 				anomalyPointer: anomalyPath.replace(home, "<PIJ_HOME>"),
 				anomalyLines: lineCount(anomalyCapture),
 				anomalyBytes: Buffer.byteLength(anomalyCapture, "utf8"),
-				anomalyInlineHead: anomalyInline,
+				anomalyInlineTail: anomalyInline,
 				defaultCaps: { lines: DEFAULT_CAPTURE_LINES, bytes: DEFAULT_CAPTURE_BYTES },
 				alwaysUnknownNotices: 0,
 				alwaysEvidenceBackedNotice: true,
 				alwaysPointer: alwaysPath.replace(home, "<PIJ_HOME>"),
 				hardCapLines: lineCount(alwaysCapture),
 				hardCapBytes: Buffer.byteLength(alwaysCapture, "utf8"),
-				alwaysInlineHead: alwaysInline,
+				alwaysInlineTail: alwaysInline,
 				tailMarkersInOrder: orderedTailMarkers,
 				utf8RoundTrip: true,
 				hardCeilings: { lines: MAX_CAPTURE_LINES, bytes: MAX_CAPTURE_BYTES },
