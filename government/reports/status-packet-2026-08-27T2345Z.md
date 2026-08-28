@@ -79,3 +79,6 @@ Item 24's set-review found the dedup invariant itself wrong (count-based identit
 
 ## Amendment 00:3xZ — §3/§6: bridge log sink
 The in-process Telegram bridge (item 29, live since restart #5 at 20:53Z) writes no persistent log; `~/.pij/telegram-bridge.log` is the retired standalone bridge's file and ends at 20:53Z. The transient-network cause given for the three late rows (4951/5014/5087) is therefore a hypothesis; proven: single-bubble bodies, attempt 1 failed, attempt 2 delivered ~65 s later, phone shows once. Pre-tag requirement added: the sink is restored (item 24 or 29b-rest) and restart #6's live proof checks the file's mtime advances.
+
+## Amendment 00:5xZ — §2
+PR #28 item 16 (creator notices route to the current parent, liveness-aware) merged → main fecf633, checkout ff'd; not live until restart #6 (which now carries 15 + 16 + 24 + 29b-T001).
