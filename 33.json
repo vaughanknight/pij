@@ -3,11 +3,11 @@
   "command": "checks",
   "harness": "copilot-cli",
   "harness_session_id": "75243a2a-fdee-49ee-94af-d2a143482ede",
-  "timecode": "2026-08-28T04:42:59.108Z",
+  "timecode": "2026-08-28T04:52:46.105Z",
   "window": {
     "since": "last-command",
-    "from": 11899,
-    "to": 11931
+    "from": 11931,
+    "to": 11977
   },
   "branch": "s391/item33-watchdog-smoke-proof",
   "branch_changed": false,
