@@ -13,6 +13,9 @@ The decision as recorded (spine seq, ruling text verbatim where it exists). Inva
 ## 3. Where the code is (at tag `d120c53`)
 Files, functions, line references. For each: what it does now, what must change. Note the production call site as well as the factory/adapter (E34/E40: a sensor proves only the layer it drives).
 
+### 3b. In-flight variant (only when Status says in flight)
+Branch name and head sha (pushed); what is done vs not; the diff stat; every log cited is either quoted inline or committed as `kept-logs/*.log.txt` on main — a `*.log` on a branch is not a pointer a reader of main can follow.
+
 ## 4. Acceptance (behavioural, mechanical)
 - Tests to add (file, describe/it name, what they drive — real closure/call site, not a stub).
 - Mutants that MUST go red, each named (`MUT-…`), with the exact line/hunk the mutant patches and the test that reds. Source-pin greps are second sensors only.

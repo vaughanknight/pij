@@ -20,6 +20,8 @@
 - `pij send`: quoted heredoc → `--body-file`, always (backticks in double quotes execute). `pij spine append` takes its body on stdin. `pij report now` rejects a 'did' over 280 chars.
 - Receipts: on the Claude-socket path a durable `acked (reader=X)` row is written by the daemon at injection — injected, not read (item 23b below).
 
+**Pointer convention:** every repository path in these files resolves on **`main`** (the evidence folders landed after the tag in PRs #36/#37/#40); code line references are stated at tag `d120c53` unless a section says otherwise; an in-flight item's branch pointers name the branch and sha and carry the log lines inline.
+
 **Owner's status report (narrative input):** https://peri-dev.ngrok.app/reports/pij-status-2026-08-28-release/ (source in the separate `perimenocause` repository — `perimenocause:government/reports/pij-status-2026-08-28-release.html` — not in this repo). Convention in these files: a pointer into another repository is written `<repo>:<path>`.
 
 ## Evidence folders (merged to main for this handover)
@@ -43,3 +45,5 @@ _(filled as sections land; one line per file: number · title · stream · statu
 - E3 · `pij canary` aborts before the nonce on Claude-pinned seats — s391 · designed, not started
 - E5 · `pij state --json` / `pij list --json` lossy surfaces — s391 · designed, not started
 - 99 · Carried lows (15 G-3/AC-20, 16 H-1/H-3/H-6, 32 lows) — s391 · list with pointers
+- 12-FX · `pij-skill-check.test.ts` flaky under full-suite parallelism — s392 · implemented on branch `s392/item12-fx-falcon` (3 green runs), not merged
+- 23-FX · `adapters/claude-socket.test.ts` close-race flake — s392 · implemented on the same branch; exact symptom did not recur in 100 attempts (partial repro stated), related ECONNREFUSED race fixed; not merged
