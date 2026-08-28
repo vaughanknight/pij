@@ -6,7 +6,7 @@ diff --git a/.pi/extensions/pij/daemon.ts b/.pi/extensions/pij/daemon.ts
  		let captureText = `${message}\n\nregistered primes at restart: ${primeCount}`;
  		try {
 -			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(-4096)}`;
-+			captureText += `\n\n${readFileSync(join(deps.pijHome, "nope", "telegram-bridge.log"), "utf8").slice(-4096)}`;
++			captureText += `\n\n${readFileSync(join(deps.pijHome, "telegram-bridge.log"), "utf8").slice(0, 0)}`;
  		} catch (error) {
  			deps.log(`telegram: restart capture has no bridge log tail — ${(error as Error).message}`);
  		}

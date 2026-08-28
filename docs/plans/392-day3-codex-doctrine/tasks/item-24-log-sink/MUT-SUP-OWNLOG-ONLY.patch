@@ -1,0 +1,12 @@
+diff --git a/.pi/extensions/pij/telegram/index.ts b/.pi/extensions/pij/telegram/index.ts
+--- a/.pi/extensions/pij/telegram/index.ts
++++ b/.pi/extensions/pij/telegram/index.ts
+@@ -568,7 +568,7 @@ export function bridgeSupervisorForDaemon(
+ 		now: callbacks.now,
+ 		note: callbacks.note,
+ 		notifyOwner: callbacks.notifyOwner,
+-		log: bridgeLog,
++		log: callbacks.log,
+ 		...(initial?.kind === "started" ? { initialStop: initial.stop } : {}),
+ 	});
+ 	if (initialPid !== null && !isProcessAlive(initialPid)) supervisor.tick();

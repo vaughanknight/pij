@@ -1,0 +1,11 @@
+diff --git a/.pi/extensions/pij/telegram/index.ts b/.pi/extensions/pij/telegram/index.ts
+--- a/.pi/extensions/pij/telegram/index.ts
++++ b/.pi/extensions/pij/telegram/index.ts
+@@ -334,7 +334,6 @@ function bridgeFileLog(
+ 		baseLog(message);
+ 		try {
+ 			appendFileSync(logPath, `[pij-telegram] ${message}\n`);
+-			teeFailureReported = false;
+ 		} catch (error) {
+ 			if (teeFailureReported) return;
+ 			teeFailureReported = true;

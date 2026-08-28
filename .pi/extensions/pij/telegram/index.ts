@@ -335,6 +335,7 @@ function bridgeFileLog(
 		baseLog(message);
 		try {
 			appendFileSync(logPath, `[pij-telegram] ${message}\n`);
+			teeFailureReported = false;
 		} catch (error) {
 			if (teeFailureReported) return;
 			teeFailureReported = true;
