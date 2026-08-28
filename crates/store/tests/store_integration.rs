@@ -14,7 +14,7 @@ use pij_core::model::{Event, Harness, SeatDescriptor, SeatId, SemanticState, Seq
 use pij_core::ports::{Registry, SeatFilter, Spine};
 use pij_store::{SqliteRegistry, SqliteSpine};
 use pij_testkit::FreshStore;
-use pij_testkit::contract::registry_contract;
+use pij_testkit::contract::{registry_contract, spine_contract};
 
 #[tokio::test]
 async fn the_daemon_self_migrates_a_brand_new_store_at_boot() {
@@ -154,6 +154,13 @@ async fn the_sqlite_registry_honours_the_same_contract_the_fake_does() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     registry_contract(&SqliteRegistry::new(pool)).await;
+}
+
+#[tokio::test]
+async fn the_sqlite_spine_honours_the_same_contract_the_fake_does() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.expect("open");
+    spine_contract(&SqliteSpine::new(pool)).await;
 }
 
 #[tokio::test]

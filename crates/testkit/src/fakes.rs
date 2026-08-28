@@ -53,7 +53,6 @@ pub struct FakeRegistry {
 #[derive(Default)]
 struct RegistryState {
     seats: BTreeMap<String, SeatDescriptor>,
-    tombstones: BTreeMap<String, String>,
     seq: u64,
     recorder: Recorder,
 }
@@ -82,16 +81,6 @@ impl FakeRegistry {
             .recorder
             .calls
             .clone()
-    }
-
-    /// Why a seat was tombstoned, if it was.
-    pub fn tombstone_reason(&self, seat: &SeatId) -> Option<String> {
-        self.state
-            .lock()
-            .expect("fake registry mutex")
-            .tombstones
-            .get(seat.as_str())
-            .cloned()
     }
 }
 
@@ -142,8 +131,14 @@ impl Registry for FakeRegistry {
             return Err(PijError::NoRegistryEntry { seat: seat.clone() });
         }
         state.seq += 1;
-        state.tombstones.insert(seat.0.clone(), reason.to_string());
-        Ok(Seq(state.seq))
+        let seq = state.seq;
+        let descriptor = state
+            .seats
+            .get_mut(seat.as_str())
+            .expect("presence checked above");
+        descriptor.tombstoned_at = Some(seq);
+        descriptor.tombstone_reason = Some(reason.to_string());
+        Ok(Seq(seq))
     }
 }
 
@@ -178,10 +173,11 @@ impl FakeSpine {
 
 #[async_trait]
 impl Spine for FakeSpine {
-    async fn append(&self, event: Event) -> Result<Seq> {
+    async fn append(&self, mut event: Event) -> Result<Seq> {
         let mut state = self.state.lock().expect("fake spine mutex");
         state.seq += 1;
         let seq = Seq(state.seq);
+        event.seq = None;
         state.events.push((seq, event));
         Ok(seq)
     }
@@ -193,7 +189,11 @@ impl Spine for FakeSpine {
             .iter()
             .filter(|(seq, _)| *seq > since)
             .filter(|(_, event)| seat.is_none_or(|s| event.seat.as_ref() == Some(s)))
-            .map(|(_, event)| event.clone())
+            .map(|(seq, event)| {
+                let mut event = event.clone();
+                event.seq = Some(*seq);
+                event
+            })
             .collect())
     }
 }

@@ -165,13 +165,15 @@ impl Registry for SqliteRegistry {
 
         sqlx::query(
             "INSERT INTO seats (id, harness, pane, pid, proc_start, folder, state, \
-             semantic_state, role, parent, relay, seq) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
+             semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
              ON CONFLICT(id) DO UPDATE SET \
              harness=excluded.harness, pane=excluded.pane, pid=excluded.pid, \
              proc_start=excluded.proc_start, folder=excluded.folder, state=excluded.state, \
              semantic_state=excluded.semantic_state, role=excluded.role, \
-             parent=excluded.parent, relay=excluded.relay, seq=excluded.seq",
+             parent=excluded.parent, relay=excluded.relay, \
+             tombstoned_at=excluded.tombstoned_at, \
+             tombstone_reason=excluded.tombstone_reason, seq=excluded.seq",
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
@@ -184,6 +186,8 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.role.as_deref())
         .bind(descriptor.parent.as_ref().map(SeatId::as_str))
         .bind(i64::from(descriptor.relay))
+        .bind(descriptor.tombstoned_at.map(|value| value as i64))
+        .bind(descriptor.tombstone_reason.as_deref())
         .bind(seq)
         .execute(&mut *tx)
         .await
