@@ -23,6 +23,7 @@ use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
     FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
 };
+use pij_tmux::TmuxAdapter;
 
 pub use auth::BootKey;
 
@@ -118,9 +119,10 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         AdapterChoice::Fake => Arc::new(FakeTransport::reachable()),
         AdapterChoice::Real => return Err(not_yet("transport", "u-uds, wave 3")),
     };
+    // WIRED, wave 1 (u-tmux).
     let tmux: Arc<dyn TmuxPort> = match config.adapters.tmux {
         AdapterChoice::Fake => Arc::new(FakeTmux::new()),
-        AdapterChoice::Real => return Err(not_yet("tmux", "u-tmux, wave 1")),
+        AdapterChoice::Real => Arc::new(TmuxAdapter::new()),
     };
     let harness: Arc<dyn HarnessPort> = match config.adapters.harness {
         AdapterChoice::Fake => Arc::new(FakeHarness::new(pij_core::model::Harness::Pi)),

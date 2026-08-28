@@ -1126,8 +1126,10 @@ dependencies = [
  "axum",
  "getrandom 0.3.4",
  "pij-core",
+ "pij-harnesses",
  "pij-store",
  "pij-testkit",
+ "pij-tmux",
  "reqwest",
  "serde",
  "serde_json",
@@ -1171,6 +1173,11 @@ dependencies = [
 [[package]]
 name = "pij-tmux"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pij-core",
+ "pij-testkit",
+]
 
 [[package]]
 name = "pij-transport"

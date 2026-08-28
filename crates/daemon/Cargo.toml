@@ -18,6 +18,8 @@ pij-core = { workspace = true }
 # Wired at wave-1 composition: the real LivenessPort adapter (u-liveness).
 pij-harnesses = { workspace = true }
 pij-store = { workspace = true }
+# Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
+pij-tmux = { workspace = true }
 pij-testkit = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -29,5 +31,7 @@ tokio = { workspace = true }
 # The review regressions drive a real store and a real socket: the findings they
 # lock in were all invisible to unit-level doubles.
 pij-store = { workspace = true }
+# Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
+pij-tmux = { workspace = true }
 reqwest = { workspace = true }
 sqlx = { workspace = true }

@@ -97,7 +97,20 @@
     {
       "name": "pij-tmux",
       "id": "path+file:///Users/jordanknight/pi-hacking/pij-worktrees/s108-rust-port/crates/tmux#pij-tmux@0.1.0",
-      "dependencies": []
+      "dependencies": [
+        {
+          "name": "async-trait",
+          "kind": null
+        },
+        {
+          "name": "pij-core",
+          "kind": null
+        },
+        {
+          "name": "pij-testkit",
+          "kind": "dev"
+        }
+      ]
     },
     {
       "name": "pij-harnesses",
@@ -151,6 +164,10 @@
           "kind": null
         },
         {
+          "name": "pij-tmux",
+          "kind": null
+        },
+        {
           "name": "serde",
           "kind": null
         },
@@ -164,6 +181,10 @@
         },
         {
           "name": "pij-store",
+          "kind": "dev"
+        },
+        {
+          "name": "pij-tmux",
           "kind": "dev"
         },
         {

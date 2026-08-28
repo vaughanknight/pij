@@ -146,14 +146,6 @@ async fn selecting_an_unbuilt_real_adapter_refuses_and_names_the_wave() {
             "u-uds",
         ),
         (
-            "tmux",
-            Adapters {
-                tmux: AdapterChoice::Real,
-                ..Adapters::default()
-            },
-            "u-tmux",
-        ),
-        (
             "harness",
             Adapters {
                 harness: AdapterChoice::Real,

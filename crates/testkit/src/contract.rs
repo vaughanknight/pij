@@ -9,8 +9,8 @@
 //! Each suite is `async` and takes `&dyn Port`, so it composes with any runtime:
 //! core's tests drive it with [`crate::block_on`], adapters with tokio.
 
-use pij_core::model::{Harness, Job, JobId, Outcome, SeatDescriptor, SeatId, SystemState};
-use pij_core::ports::{Queue, Registry, SeatFilter};
+use pij_core::model::{Harness, Job, JobId, Outcome, Pane, SeatDescriptor, SeatId, SystemState};
+use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort};
 
 /// Every promise the [`Registry`] port makes, in one place.
 ///
@@ -157,4 +157,96 @@ pub fn sample_seat(id: &str) -> SeatDescriptor {
         state: SystemState::Idle,
         ..SeatDescriptor::new(id, Harness::Pi, "/tmp/pij-contract")
     }
+}
+
+/// Implementation-owned data required to run the destructive tmux contract.
+///
+/// The fixture, not the suite, creates and owns the isolated session. Real
+/// fixtures must tear that session down from `Drop`, including unwind paths.
+pub trait TmuxContractFixture {
+    /// A pane owned exclusively by this contract run.
+    fn pane(&self) -> &Pane;
+
+    /// Exact initial capture prepared in the owned pane.
+    fn initial_capture(&self) -> &str;
+
+    /// Literal text the suite may type into the owned pane.
+    fn sent_keys(&self) -> &str;
+
+    /// Fragment that must be visible after [`TmuxPort::send_keys`].
+    fn sent_keys_capture(&self) -> &str;
+
+    /// Name for the disposable window the suite creates and kills.
+    fn new_window_name(&self) -> &str;
+}
+
+/// Every portable promise of [`TmuxPort`], over an implementation-owned fixture.
+///
+/// Adapter-specific safety properties (fresh-resolution kill brake, exact argv,
+/// capture boundaries, and `pane_in_mode`) remain adapter tests because the
+/// frozen fake intentionally records rather than implements those mechanisms.
+///
+/// # Panics
+/// On the first broken promise, naming which operation disagreed.
+pub async fn tmux_contract(tmux: &dyn TmuxPort, fixture: &dyn TmuxContractFixture) {
+    let pane = fixture.pane();
+    let listed = tmux.list_panes().await.expect("list_panes must not fail");
+    assert!(
+        listed.contains(pane),
+        "the fixture pane must appear byte-identical in list_panes: {listed:?}"
+    );
+
+    assert_eq!(
+        tmux.capture(&pane.id, 100)
+            .await
+            .expect("capture must not fail"),
+        fixture.initial_capture(),
+        "capture must return the fixture's visible text"
+    );
+    assert!(
+        !tmux
+            .user_typing(&pane.id)
+            .await
+            .expect("user_typing must not fail"),
+        "the fixture starts outside a tmux interaction mode"
+    );
+
+    tmux.send_keys(&pane.id, fixture.sent_keys())
+        .await
+        .expect("send_keys must not fail");
+    let after_send = tmux
+        .capture(&pane.id, 100)
+        .await
+        .expect("capture after send_keys must not fail");
+    assert!(
+        after_send.contains(fixture.sent_keys_capture()),
+        "literal sent keys must become visible; expected {:?} in {after_send:?}",
+        fixture.sent_keys_capture()
+    );
+
+    let created = tmux
+        .new_window(&pane.session, fixture.new_window_name(), "/tmp")
+        .await
+        .expect("new_window must not fail");
+    assert_eq!(
+        created.session, pane.session,
+        "new window stays in the fixture session"
+    );
+    assert_eq!(
+        created.window,
+        fixture.new_window_name(),
+        "new window keeps its requested name"
+    );
+
+    tmux.kill(&created.id).await.expect("kill must not fail");
+    let after_kill = tmux
+        .list_panes()
+        .await
+        .expect("list after kill must not fail");
+    assert!(
+        after_kill
+            .iter()
+            .all(|candidate| candidate.id != created.id),
+        "a killed pane must disappear from list_panes: {after_kill:?}"
+    );
 }
