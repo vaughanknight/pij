@@ -18,6 +18,7 @@ use std::sync::Arc;
 use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
 use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
+use pij_harnesses::proc::ProcLiveness;
 use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
     FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
@@ -125,9 +126,12 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         AdapterChoice::Fake => Arc::new(FakeHarness::new(pij_core::model::Harness::Pi)),
         AdapterChoice::Real => return Err(not_yet("harness", "u-harness, wave 2")),
     };
+    // WIRED, wave 1 (u-liveness). The refusal this replaces is gone; the recipe
+    // came from the unit's public doc comment, and the PM pastes it — one mind at
+    // convergence, four worktrees at edit time.
     let liveness: Arc<dyn LivenessPort> = match config.adapters.liveness {
         AdapterChoice::Fake => Arc::new(FakeLiveness::new()),
-        AdapterChoice::Real => return Err(not_yet("liveness", "u-liveness, wave 1")),
+        AdapterChoice::Real => Arc::new(ProcLiveness::new()),
     };
 
     Ok(Services {

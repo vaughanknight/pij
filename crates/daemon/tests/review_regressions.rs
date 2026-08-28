@@ -161,14 +161,6 @@ async fn selecting_an_unbuilt_real_adapter_refuses_and_names_the_wave() {
             },
             "u-harness",
         ),
-        (
-            "liveness",
-            Adapters {
-                liveness: AdapterChoice::Real,
-                ..Adapters::default()
-            },
-            "u-liveness",
-        ),
     ] {
         let config = Config {
             adapters,
@@ -185,6 +177,52 @@ async fn selecting_an_unbuilt_real_adapter_refuses_and_names_the_wave() {
             "the {label} refusal must name the unit that will ship it: {message}"
         );
     }
+}
+
+/// WAVE 1 — the refusal for `liveness` is GONE because the adapter now exists,
+/// and the assertion flips rather than being deleted: selecting `Real` must hand
+/// back something that actually reaches the process table.
+///
+/// Distinguished behaviourally, not by type name: `FakeLiveness` knows only the
+/// processes a test arranged, so it reports this very process as absent, while
+/// the real adapter reports a start time for it. A test that checked the type
+/// would pass on a fake wearing the right name.
+#[tokio::test]
+async fn selecting_the_real_liveness_adapter_reaches_the_process_table() {
+    let config = Config {
+        adapters: Adapters {
+            liveness: AdapterChoice::Real,
+            ..Adapters::default()
+        },
+        ..Config::default()
+    };
+
+    let services = match pij_daemon::build_services(&config).await {
+        Ok(services) => services,
+        Err(error) => panic!("the real liveness adapter must build: {error}"),
+    };
+
+    let mine = std::process::id();
+    assert!(
+        services
+            .liveness
+            .proc_start(mine)
+            .await
+            .expect("the real adapter must not error on our own pid")
+            .is_some(),
+        "a real LivenessPort must see this test's own process"
+    );
+    assert_eq!(
+        pij_daemon::build_services(&Config::default())
+            .await
+            .expect("all-fake")
+            .liveness
+            .proc_start(mine)
+            .await
+            .expect("fake"),
+        None,
+        "...and the fake must NOT — which is what proves the wiring changed"
+    );
 }
 
 /// FINDING 5 — `require_current_schema` existed but nothing called it, so the

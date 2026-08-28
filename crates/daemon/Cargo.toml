@@ -15,6 +15,8 @@ workspace = true
 axum = { workspace = true }
 getrandom = { workspace = true }
 pij-core = { workspace = true }
+# Wired at wave-1 composition: the real LivenessPort adapter (u-liveness).
+pij-harnesses = { workspace = true }
 pij-store = { workspace = true }
 pij-testkit = { workspace = true }
 serde = { workspace = true }
