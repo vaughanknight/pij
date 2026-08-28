@@ -100,3 +100,6 @@ PR #32 item 24 merged → main (plan-hash idempotence, media marked on ack, one 
 
 ## Amendment 03:5xZ — §3 item 32
 PR #33 (item 32, daemon launched as Node's direct child, SIGHUP handled) was NOT merged: the full suite at the merge product went red on three subprocess tests' own 5–10 s budgets under full-suite load (green in isolation) — the PR's new `npx tsx` relay probe is load-fragile. Back to s391 as 32-FX (both logs kept); item 32 rides restart #7, not #6. Restart #6 hold extended once to 04:15Z for item 30 (review in flight).
+
+## Amendment 04:1xZ — §2/§6
+PR #34 item 30 (Telegram routing per Vaughan's ruling) merged → main 3411794 inside the extended hold. Restart #6 baton ASKED of kingfisher at 3411794: carries 15, 15-FX, 16, 29b-T001, 31, 24, 30. After its live proofs the v0.2.0 candidate criteria are met except §7 decisions 2–6 (23b pre-tag?, version name, Codex, Actions) and the bridge log/attempt-1 measurement window (≥1 h).

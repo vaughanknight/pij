@@ -4,10 +4,10 @@ Source sha: TBD (the sha restart #6 runs). Gates on that sha: full vitest, `just
 ## Headline
 Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with **socket/RPC delivery**: Claude seats read an inbox socket; Copilot seats spawned with `--ui-server` receive RPC; socketless seats get a typed pointer line. `queue backend: sqlite` is the default; fs inboxes migrate on first daemon start. Standalone design spec: `docs/specs/claude-copilot-sqlite-sockets-comms.md` (AI-Substrate/pij#311).
 
-## Included (day-3 items, PRs #1–#27 + 24 / 29b-T001 / 30 when merged)
+## Included (day-3 items, PRs #1–#34; items 24, 29b-T001, 30, 31 merged 2026-08-28)
 - Queue: `pij queue retire`, closed-recipient sweep, revive un-retire (item 1); dispatch records retired for closed seats (1b); stdio flush before exit (1a).
 - Delivery: Telegram bridge and pi receiver consume the queue at-least-once (3b, 3c); no duplicate after transport ack-loss (20); honest transport receipts — `sent` vs durable ack (23); honest pointer-path "unverified" line (5).
-- Telegram bridge: supervised in-process, dies loud, auto-restarts (29); no duplicate after an internal retry — plan-hash idempotence, media included, one in-lease retry for transient send failures, durable in-process bridge log (24); restart notice reaches the bridge's watchers (29b-T001; primes run `pij watchdog watch pij-telegram`); [30] routing: reply → that seat, bare text → the prime, dead seat → told, never queued.
+- Telegram bridge: supervised in-process, dies loud, auto-restarts (29); no duplicate after an internal retry — plan-hash idempotence, media included, one in-lease retry for transient send failures, durable in-process bridge log (24); restart notice reaches the bridge's watchers (29b-T001; primes run `pij watchdog watch pij-telegram`); routing: swipe-reply → that seat, explicit address → that seat, bare text → the prime (from the `pij-telegram` watcher roster), dead seat → told with guidance, never queued; last-speaker-follow retired (30).
 - Safety: pane-misbind guard (10a/10b, 17, 21); registry publishes serialized (13); stale spine/platform write-locks released and reclaimed (15); creator notices route to the current parent, liveness-aware (16).
 - Spawn/models: `--context long_context` gated per model (6); gemini-3.6-flash marked upstream-unstable, warn-don't-block (6b).
 - Harness/docs: skill-check debt and hardening (9, 11, 12); report vocabulary remedies (4); C9 watchdog doc (14, 18); pointer doctrine (7).
