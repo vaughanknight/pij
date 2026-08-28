@@ -120,6 +120,48 @@ fine. `toml::from_str` is correct.
 Logged as a class: **an error that misattributes blame costs more than one that
 says nothing**, because it sends the reader somewhere.
 
+## E-012 — the registry row knows less than `whoami` does
+
+My own descriptor read `pane: null, folder: null` while `pij whoami` reported
+both, and `pij adopt` refuses `--harness pi` (`E-ARG: must be
+claude|copilot|codex`) — so a pi seat has no route to attach its pane. The
+reviewer's descriptor read `model: null` while the spawn argv and the pane footer
+both knew it.
+
+One class: **the registry row lacks facts another surface already holds.** Banked
+by the prime as R5 items 13–14, wave-1 contract inputs for `u-store`/`u-harness`.
+
+## E-013 — four review rounds, one repeated mistake shape
+
+Eleven findings, none refuted. Rounds 2–4 were all the same class: **a regression
+that exercises the path without exercising the property.**
+
+* the two-boot key test passed because the second boot died at the bind, before
+  staging mattered;
+* the schema regression covered four operations out of ten;
+* the `Clone` removal shipped with a test that still passed when `Clone` came back.
+
+Each looked like coverage. The fix that generalises is not "write more tests" but
+**enumerate the surface** (the schema regression now lists all ten public
+operations) and **assert the property, not the path** (the `Clone` check is a
+compile-time assertion carrying its own sanity check, because a probe that always
+answers false is a test that always passes).
+
+**Suggested tenet edit** for `pij-team/TENETS.md` tenet 5 ("make done mechanical"):
+a regression is only done when the mutation it exists to catch has been run and
+observed to fail. Not "a test exists" — "the test fails for the right reason".
+
+## E-014 — the spawn form was wrong and nobody could have known from the packet
+
+I spawned the reviewer with `--harness copilot`; Jordan's standing form for
+coders and reviewers is `--harness pi --bin omp --model
+github-copilot/gpt-5.6-sol-fast-1m`. The correction arrived mid-review.
+
+Nothing in the packet template, the skill, or the settings ddoc carried the spawn
+line, so the PM had to infer it from `pij models` output. **Suggested template
+change**: `packet-*.dd.json` gains a `spawn` field carrying the verbatim command
+for the role, so the form is delivered rather than derived.
+
 ## What I would change in the pij-team templates
 
 1. **State the tree-sharing posture and write-set split in the packet** (E-005/6).
@@ -129,7 +171,12 @@ says nothing**, because it sends the reader somewhere.
 3. **The packet's `refs` must resolve in the seat's worktree** — mine pointed into
    another repo's `scratch/`. The skill already says this; the template does not
    enforce it. A `refs` entry outside the worktree should be a scaffold-time error.
-4. **A done_when row can outlive its task** (dw-a803: the assert it named could not
+4. **The packet should carry the verbatim spawn line for every role it names**
+   (E-014) — the PM currently derives it, and derivation is where a standing
+   ruling gets lost.
+5. **A regression is done when its mutation has been observed to fail** (E-013),
+   not when it exists and is green.
+6. **A done_when row can outlive its task** (dw-a803: the assert it named could not
    exist until a later task). That was fine because it was recorded as OUTSTANDING
    rather than quietly checked — but the template should have a place for
    "satisfied at task N+k", instead of relying on a PM to volunteer it.
