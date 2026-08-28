@@ -100,3 +100,9 @@ prime rulings recorded in this file.
   against COMMITTED bytes only) and raises CANDIDATE defect row 12: catalog can shrink
   drastically without an error surface — partial upstream fetch may be reporting as success.
   UNVERIFIED as a defect; needs a TS-side look before it enters R5 proper.
+- R1-CORRECTION (tk-d4c3, 2026-08-28): "migration 0001 sets WAL" is UNIMPLEMENTABLE as
+  written — PRAGMA journal_mode is a no-op inside the transaction sqlx wraps every
+  migration in. Ruled form: WAL is set ON THE CONNECTION at open; a test reads
+  journal_mode back OFF DISK and asserts 'wal'. Also: user_version is a CACHE of the
+  authoritative _sqlx_migrations ledger, reconciled at boot — never a second truth
+  (second-boot no-op left the cache stale and refused a healthy store; caught by test).
