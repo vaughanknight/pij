@@ -1,0 +1,14 @@
+{
+  "delegationId": "dlg-0037",
+  "outcome": "COMPLETE",
+  "summary": "Candidate 65560901e78a652dec593c38c6a7f6d9d58ac122 gives daemon-owned and standalone Telegram bridges one shared durable log tee. Forward success, send failure, and ForwardIncomplete lines from the real in-process auto-start runtime now reach <PIJ_HOME>/telegram-bridge.log with the existing prefix/newline format.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/index.ts",
+    ".pi/extensions/pij/telegram/index.test.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-LOGSINK.patch"
+  ],
+  "testsRun": 30,
+  "testsPassed": 29,
+  "gatesClean": true,
+  "notes": "bridgeFileLog appends `[pij-telegram] <message>\\n` synchronously and then calls the original logger. autoStartBridgeForDaemon wraps the daemon logger before building runtime/start dependencies; bridgeSupervisorForDaemon creates one wrapped logger reused by runtime, onStart, restart, and failure paths; telegramStart now uses the same helper for format parity. T-LOG1 drives autoStartBridgeForDaemon itself with real runtimeFor, startBridge, SQLite forwarding, and only offline config/long-poll overrides. It sends one successful and one deterministic-failure message, asserts durable forwarded/error/ForwardIncomplete lines, verifies the daemon callback still receives logs, and proves mtime advances from a post-start baseline. MUT-LOGSINK.patch removes only the file append while preserving baseLog; the mutated code passes typecheck but T-LOG1 REDs at index.test.ts:721 because the durable file never receives ForwardIncomplete, then git apply -R restores GREEN. E40 ledger: no prior test covered the append tee line; the existing runtimeFor queue-backend tests covered channel selection only. Final index.test.ts fence: 29 passed, 1 skipped; just typecheck and changed-file Biome are clean. Post-restart mtime/error-line live proof remains with the orchestrator."
+}
