@@ -101,8 +101,11 @@ why = "Message transports (UDS today, named pipes later) behind the Transport po
 # binary must contain them.
 internal = ["pij-core", "pij-harnesses", "pij-store", "pij-testkit", "pij-tmux"]
 # `axum` is the server; `getrandom` is the per-boot bearer key (OS entropy, no
-# PRNG state to seed or leak); `tokio` is the reactor.
-external = ["axum", "getrandom", "reqwest@dev", "serde", "serde_json", "sqlx@dev", "tokio"]
+# PRNG state to seed or leak); `tokio` is the reactor; `tokio-stream` adapts the
+# bounded broadcast receiver to the public Stream contract (u-events).
+# `async-trait@dev` exists only for deterministic port fakes in daemon
+# integration tests.
+external = ["async-trait@dev", "axum", "getrandom", "reqwest@dev", "serde", "serde_json", "sqlx@dev", "tokio", "tokio-stream"]
 why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs the tick loop and job workers. Wiring, never business logic."
 
 [crates.pij-cli]

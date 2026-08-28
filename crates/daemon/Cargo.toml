@@ -24,12 +24,14 @@ pij-testkit = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 
 # The end-to-end tests speak HTTP to the daemon over loopback, and use FreshStore
 # when they make the store real.
 [dev-dependencies]
 # The review regressions drive a real store and a real socket: the findings they
 # lock in were all invisible to unit-level doubles.
+async-trait = { workspace = true }
 pij-store = { workspace = true }
 # Wired at wave-1 composition: the real TmuxPort adapter (u-tmux).
 pij-tmux = { workspace = true }

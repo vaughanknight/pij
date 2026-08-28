@@ -180,6 +180,14 @@
           "kind": null
         },
         {
+          "name": "tokio-stream",
+          "kind": null
+        },
+        {
+          "name": "async-trait",
+          "kind": "dev"
+        },
+        {
           "name": "pij-store",
           "kind": "dev"
         },

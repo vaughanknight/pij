@@ -9,6 +9,7 @@
 
 pub mod admission;
 pub mod auth;
+pub mod events;
 pub mod http;
 
 use std::net::SocketAddr;
@@ -52,6 +53,13 @@ pub struct Services {
     pub harness: Arc<dyn HarnessPort>,
     /// Process liveness.
     pub liveness: Arc<dyn LivenessPort>,
+    /// The event bus: publish once, fan out to every subscriber, with a durable
+    /// leg on the spine so a subscriber can replay what it missed (u-events).
+    ///
+    /// Not behind an `AdapterChoice`: it is not one of the seven ports, it is a
+    /// service composed FROM one (the spine). There was no `not_yet` refusal to
+    /// delete here — its coder said so rather than inventing one.
+    pub event_bus: Arc<events::EventBus>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -105,9 +113,10 @@ pub async fn build_services(config: &Config) -> Result<Services> {
     };
     let queue: Arc<dyn Queue> = match config.adapters.queue {
         AdapterChoice::Fake => Arc::new(FakeQueue::new()),
-        AdapterChoice::Real => {
-            Arc::new(SqliteQueue::new(pij_store::open(&config.store_path).await?))
-        }
+        AdapterChoice::Real => Arc::new(SqliteQueue::new(
+            pij_store::open(&config.store_path).await?,
+            config.claim_lease_secs,
+        )?),
     };
 
     // The four seams whose real adapters land in waves 1-3. They wire to fakes
@@ -136,9 +145,17 @@ pub async fn build_services(config: &Config) -> Result<Services> {
         AdapterChoice::Real => Arc::new(ProcLiveness::new()),
     };
 
+    // The bus is composed from the spine, so it is built after it and shares the
+    // same Arc — a publish is durable through exactly the store this daemon reads.
+    let event_bus = Arc::new(events::EventBus::new(
+        Arc::clone(&spine),
+        config.event_buffer_capacity,
+    )?);
+
     Ok(Services {
         registry,
         spine,
+        event_bus,
         queue,
         transport,
         tmux,

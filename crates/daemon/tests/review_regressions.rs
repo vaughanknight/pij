@@ -409,7 +409,8 @@ async fn every_public_store_operation_rejects_a_stale_schema() {
     let pool = pij_store::open(&fresh.path()).await.expect("open");
     let registry = SqliteRegistry::new(pool.clone());
     let spine = SqliteSpine::new(pool.clone());
-    let queue = pij_store::SqliteQueue::new(pool.clone());
+    let queue = pij_store::SqliteQueue::new(pool.clone(), Config::default().claim_lease_secs)
+        .expect("valid default claim lease");
 
     sqlx::query("PRAGMA user_version = 99")
         .execute(&pool)
