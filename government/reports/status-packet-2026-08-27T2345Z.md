@@ -97,3 +97,6 @@ PR #31 item 31 (watchdog projection = live fire clock; unknown never delivered; 
 
 ## Amendment 02:5xZ — §2/§3/§6
 PR #32 item 24 merged → main (plan-hash idempotence, media marked on ack, one in-lease retry, in-process bridge log restored). Restart #6 gate cleared; holding ≤1 h for item 30 (pre-tag per Vaughan) so one baton carries both. Open in §3 now: 30 (in progress), 23b, 32 (relay launch), 24b (backoff if residual), Codex, Actions.
+
+## Amendment 03:5xZ — §3 item 32
+PR #33 (item 32, daemon launched as Node's direct child, SIGHUP handled) was NOT merged: the full suite at the merge product went red on three subprocess tests' own 5–10 s budgets under full-suite load (green in isolation) — the PR's new `npx tsx` relay probe is load-fragile. Back to s391 as 32-FX (both logs kept); item 32 rides restart #7, not #6. Restart #6 hold extended once to 04:15Z for item 30 (review in flight).
