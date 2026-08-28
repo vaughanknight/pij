@@ -122,3 +122,9 @@ prime rulings recorded in this file.
   internal line formats; continuity-by-field-names would freeze the TS shape into the new
   system permanently for one cutover's convenience. Corpus split (malformed/rs/** vs
   malformed/ts/**, MANIFEST-tagged) is the ruled fixture layout.
+- R5 items 13-14 (lungfish registry findings, 2026-08-28, 2 observations each): (13) a pi
+  seat has NO route to attach its pane — `pij adopt` refuses --harness pi, so pi/omp
+  descriptor rows carry pane:null while whoami knows the pane; (14) descriptor model:null
+  while spawn argv AND the pane footer both know the model. One class: the registry row
+  lacks facts another surface already holds — pij-rs registration/bind contract must
+  carry pane + model as first-class bind evidence (u-store/u-harness).
