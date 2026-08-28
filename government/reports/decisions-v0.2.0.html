@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pij v0.2.0 — open decisions</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#5e5c56;--line:#e3e0d8;--acc:#1f5f8b;--rec:#e8f3ea;--recb:#2e7d4f;--warn:#fff4e0;--warnb:#b96a00;--code:#f0eee8}
+@media(prefers-color-scheme:dark){:root{--bg:#161615;--fg:#ecebe6;--mut:#a5a39c;--line:#2e2d2a;--acc:#7fb4de;--rec:#15301f;--recb:#6fcf97;--warn:#332a12;--warnb:#f0b55a;--code:#22221f}}
+body{margin:0;padding:18px 16px 60px;background:var(--bg);color:var(--fg);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:760px;margin-inline:auto}
+h1{font-size:1.45rem;margin:0 0 4px}h2{font-size:1.15rem;margin:34px 0 8px;padding-top:14px;border-top:2px solid var(--line)}h3{font-size:1rem;margin:16px 0 4px;color:var(--acc)}
+p{margin:8px 0}ul{padding-left:20px;margin:6px 0}li{margin:4px 0}
+.meta{color:var(--mut);font-size:.92rem}code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.9em}
+.rec{background:var(--rec);border-left:4px solid var(--recb);padding:10px 12px;border-radius:6px;margin:12px 0}
+.warn{background:var(--warn);border-left:4px solid var(--warnb);padding:10px 12px;border-radius:6px;margin:12px 0}
+table{border-collapse:collapse;width:100%;font-size:.93rem;margin:10px 0}th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{background:var(--code)}
+.reply{margin-top:30px;padding:14px;border:2px dashed var(--acc);border-radius:8px}
+</style></head><body>
+<h1>pij v0.2.0 — the decisions still open</h1>
+<p class="meta">From the pij o-prime (pij-relative-panther) · 2026-08-28 05:2xZ (15:2x AEST) · live daemon pid 63524 on <code>916e915</code> (source <code>3411794</code>); main <code>5ef1220</code> (item 32 merged, restart #7 requested).</p>
+
+<p>Everything a stable tag needs from the code side has landed and been proven live. What remains is yours: four decisions (plus one small one). For each: what it is, what is true right now, your options with consequences, and what I recommend. Reply on Telegram with the letter and a word — e.g. <b>A post, B v0.2.0, C stay, D state, E yes</b>.</p>
+
+<h2>Where we stand (facts, verified)</h2>
+<ul>
+<li><b>Live now</b> (restart #6, 04:11Z, 30 s downtime): items 15, 15-FX, 16, 24, 29b-T001, 30, 31 on top of PRs #1–#26. Every carried item was proven live: locks released on stop; the bridge-restart notice reached the watcher; a 385-char Telegram body arrived once, on attempt 1, in 3 s (you confirmed one copy); watchdog noise gone at four boundaries.</li>
+<li><b>Bridge measurement, first hour after the fix</b>: 0 of 8 real sends needed a second attempt (before the fix: 9 of 24). The restored bridge log caught three transient <code>sendMessage</code> network errors, each recovered by the new in-lease retry — the root cause is now evidenced, not inferred.</li>
+<li><b>Merged, not yet live</b>: item 32 (daemon launched as Node's direct child; a stray signal to the wrapper no longer kills it or leaks the spine locks). Restart #7 is asked; it goes live at kingfisher's next lane start.</li>
+<li><b>Spec for Jordan's agents</b>: AI-Substrate/pij#311 matches the live design; the erratum comment (receipts, bridge idempotence, routing, locks, CI) is posted.</li>
+<li><b>Gates</b>: every PR verified at the merge product with the full suite (4160 tests), typecheck and skill-check, plus cold review and live proof. GitHub Actions has never run in this repo (see D).</li>
+</ul>
+
+<h2>A · Item 23b — honest receipt labels: before the tag, or after?</h2>
+<h3>What it is</h3>
+<p>When a message is delivered to a <b>Claude</b> seat over its inbox socket, the daemon writes a durable receipt row <code>acked (reader=&lt;seat&gt;)</code> at the moment of injection. That row proves the bytes reached the seat's socket — it does <b>not</b> prove the seat read them, because Claude's runtime sends nothing back on success. By contrast, Copilot's RPC returns a <code>messageId</code> (a real ack), the Telegram bridge acks explicitly, and an echo reply is proof of reading. Item 23 (already live) added the honest <code>sent</code> outcome on the transport side; <b>23b</b> would label who wrote the marker (daemon vs reader) so nothing downstream over-trusts <code>acked</code>.</p>
+<h3>What is true today</h3>
+<ul><li>Nothing is lost or duplicated because of this — it is a <i>meaning</i> gap, not a delivery gap.</li>
+<li>The spec erratum on #311 already states it plainly, so Jordan's agents will read the correct semantics.</li>
+<li>Cost to build: s392 stream, adapter + CLI + docs, roughly 2–3 hours including review; it touches the daemon, so it needs a restart to go live.</li></ul>
+<h3>Options</h3>
+<table><tr><th>Choice</th><th>Consequence</th></tr>
+<tr><td><b>A post</b> — tag now, 23b in v0.2.1</td><td>Tag today. Receipts on the Claude path read "acked" while meaning "injected"; documented in the erratum and release notes.</td></tr>
+<tr><td><b>A pre</b> — build 23b, restart #8, then tag</td><td>Adds ~3 h and one more machine-wide restart before the tag; the tag carries fully honest receipt labels.</td></tr></table>
+<div class="rec"><b>Recommendation: A post.</b> The semantics are documented where the readers will look; the only thing waiting on it is a label.</div>
+
+<h2>B · Version name for the tag</h2>
+<h3>What is true today</h3>
+<ul><li><code>package.json</code> says <code>0.1.0</code>; the repository has <b>no tags at all</b>.</li>
+<li>This release replaces the transport (filesystem inboxes → SQLite queue + sockets/RPC), adds routing, supervision and dedup on the human channel, and changes the daemon launch. Existing CLI verbs keep working; fs inboxes migrate on first start.</li></ul>
+<h3>Options</h3>
+<table><tr><th>Choice</th><th>Consequence</th></tr>
+<tr><td><b>B v0.2.0</b></td><td>Semver-honest: a minor with new capability, no CLI break. Leaves room to call something 1.0 when the API is frozen.</td></tr>
+<tr><td><b>B v1.0.0</b></td><td>Signals "stable" loudly. Commits you to compatibility promises the CLI has not been designed around yet (JSON surfaces still change, e.g. E5 below).</td></tr>
+<tr><td><b>B date</b> (e.g. <code>2026.08.28</code>)</td><td>Neutral, but Jordan's agents will want a number to pin against.</td></tr></table>
+<div class="rec"><b>Recommendation: B v0.2.0</b>, with "stable — comms over SQLite + sockets" in the release note title.</div>
+
+<h2>C · Codex path — stays deferred?</h2>
+<h3>What it is</h3>
+<p>Day-3 items 2/8: fix the local Codex install and live-prove <code>codex app-server --remote</code> as a delivery target. You ruled earlier: "ignore codex for now as I'm remote." Codex seats currently get the pointer line (a short typed line telling the seat to run <code>pij inbox</code>), which works but is not a push.</p>
+<h3>Options</h3>
+<table><tr><th>Choice</th><th>Consequence</th></tr>
+<tr><td><b>C stay</b> — deferred past the tag</td><td>Release notes say "Codex: pointer path; app-server delivery not yet proven". No delay.</td></tr>
+<tr><td><b>C now</b></td><td>Needs you at the machine (local Codex install), then a stream item with a live proof; ~half a day; would delay the tag.</td></tr></table>
+<div class="rec"><b>Recommendation: C stay.</b></div>
+
+<h2>D · GitHub Actions — make CI run before the tag, or tag on local gates?</h2>
+<h3>What is true today</h3>
+<ul><li>The workflow file is active, but <b>zero runs have ever happened</b> in this repository — not one, on any PR or push. The cause is not yet investigated (a trigger, permissions or billing setting on the repo side is the usual reason).</li>
+<li>Every one of the 34 PRs merged this day-3 was gated <i>locally</i>: the full vitest suite (now 4160 tests) at the merge product in a fresh worktree, <code>tsc --noEmit</code>, the skill check, a cold review by a separate seat, and a live proof after each daemon restart. The spec erratum states this.</li></ul>
+<h3>Options</h3>
+<table><tr><th>Choice</th><th>Consequence</th></tr>
+<tr><td><b>D state</b> — tag now; the release note says "local gates only; CI never ran"</td><td>Honest and immediate. Anyone pulling the tag knows exactly what was verified and how.</td></tr>
+<tr><td><b>D fix</b> — get Actions running first</td><td>Unknown effort (likely a repo setting you must change); then one green CI run on the tag sha. Could be 20 minutes or a day.</td></tr></table>
+<div class="rec"><b>Recommendation: D state</b>, and file "make Actions run" as item 35 for right after the tag.</div>
+
+<h2>E · Turn three recorded hazards into items?</h2>
+<p>Three encode candidates from the day-3 log have a clear fix and an owner but no item number yet. Saying <b>E yes</b> makes them items 36–38 (low priority, after the tag).</p>
+<table><tr><th>Candidate</th><th>What happened</th><th>Fix</th></tr>
+<tr><td>E3</td><td><code>pij canary</code> on a Claude-pinned seat aborts before it dispatches the nonce and exits 0 with no PASS line — the canary's first leg is silently unproven.</td><td>Dispatch the nonce regardless; report the context tier as not-validatable; non-zero exit or an explicit line.</td></tr>
+<tr><td>E5</td><td><code>pij state --json</code> has no <code>statusAt</code>, <code>pij list --json</code> has no <code>harness</code>, and neither carries the pane id — a lossy-surface trap that bit the prime three times.</td><td>Add the card fields to <code>state --json</code> (or document the surface).</td></tr>
+<tr><td>E7</td><td>A <code>pij send</code> body written as a double-quoted shell string executes any backticks in it — three incidents in one day, one pasting 1,500 lines to another prime.</td><td>Doctrine done (quoted heredoc + <code>--body-file</code>); the open half is a CLI guard that refuses bodies with unescaped backticks.</td></tr></table>
+<div class="rec"><b>Recommendation: E yes</b> (36 = E3, 37 = E5, 38 = E7).</div>
+
+<h2>What happens after you answer</h2>
+<ol>
+<li>Restart #7 goes live (item 32) at kingfisher's next lane start — already asked.</li>
+<li>If A post / D state: I tag <b>v0.2.0</b> on restart #7's source sha, with the release note (already drafted) listing exactly what is live and the known gaps (23b, 24b backoff held with the measured window, Codex, Actions, 31b, 33).</li>
+<li>I post the tag on #311 for Jordan's agents and send you the sha.</li>
+</ol>
+<div class="reply"><b>Reply format (any order):</b> <code>A post|pre</code> · <code>B v0.2.0|v1.0.0|date</code> · <code>C stay|now</code> · <code>D state|fix</code> · <code>E yes|no</code></div>
+<p class="meta">Sources: government/reports/status-packet-2026-08-27T2345Z.md (+ amendments), release-notes-v0.2.0-draft.md, encode-candidates-2026-08-27.md, spine entries 29904–32236.</p>
+</body></html>
