@@ -16,7 +16,9 @@ import {
 	isAnomalyVerdict,
 	isFireDue,
 	mutesWatchdogNudge,
+	nextFireDueAtMs,
 	reconcileWatchdogExemption,
+	SENSOR_WATCHDOG,
 	shouldCapture,
 	verdictNoticeLines,
 	type WatchdogResponse,
@@ -248,10 +250,6 @@ export class WatchdogManager {
 	private readonly states = new Map<SessionId, RuntimeState>();
 	private readonly revisions = new Map<SessionId, number | null>();
 	private readonly sidecars = new Map<SessionId, WatchdogSidecar | undefined>();
-	/** Next-due stamp per scheduled seat, for the projection (s101). Derived, never
-	 *  authoritative: PRESENCE in `states` is what "in the scheduler" means, and
-	 *  this map only decorates it. */
-	private readonly nextDueAt = new Map<SessionId, string>();
 
 	private wasGloballyDisabled = false;
 
@@ -300,23 +298,25 @@ export class WatchdogManager {
 	 *  observable from inside the daemon and nowhere else. */
 	schedulerProjection(): Record<SessionId, { readonly nextDueAt?: string }> {
 		const out: Record<SessionId, { readonly nextDueAt?: string }> = {};
-		for (const id of this.states.keys()) {
-			const due = this.nextDueAt.get(id);
-			out[id] = due === undefined ? {} : { nextDueAt: due };
+		for (const [id, state] of this.states) {
+			const dueAtMs = nextFireDueAtMs(
+				effectiveWatchdog(this.readSidecar(id)),
+				state.lastFireAtMs,
+				state.scheduleAnchorAtMs,
+			);
+			out[id] = dueAtMs === null ? {} : { nextDueAt: new Date(dueAtMs).toISOString() };
 		}
 		return out;
 	}
 
 	disposeSession(id: SessionId): void {
 		this.states.delete(id);
-		this.nextDueAt.delete(id);
 		this.revisions.delete(id);
 		this.sidecars.delete(id);
 	}
 
 	disposeAll(): void {
 		this.states.clear();
-		this.nextDueAt.clear();
 		this.revisions.clear();
 		this.sidecars.clear();
 	}
@@ -362,6 +362,15 @@ export class WatchdogManager {
 		const sidecar = this.readSidecar(id);
 		if (sidecar === undefined) return false;
 		return reconcileWatchdogExemption(sidecar, this.deps.now()).effectivePause === "exempt";
+	}
+
+	/** The descriptor-level stall detector must not outrun this seat's configured
+	 * watchdog cadence. Seats without a sidecar retain the global 60-second floor. */
+	staleAfterMsFor(id: SessionId): number {
+		const sidecar = this.readSidecar(id);
+		return sidecar === undefined
+			? STALE_AFTER_MS
+			: Math.max(STALE_AFTER_MS, effectiveWatchdog(sidecar).intervalMs);
 	}
 
 	/** Persist the tmux compact pause before the router injects `/compact`. */
@@ -465,14 +474,6 @@ export class WatchdogManager {
 		state.lastState = session.state;
 
 		const cfg = effectiveWatchdog(sidecar);
-		// Projected for `pij watchdog status` (s101). Cheap: the anchor and interval
-		// are both already in hand here, so this costs an addition and a map set.
-		const anchorMs = state.scheduleAnchorAtMs;
-		if (anchorMs !== null && Number.isFinite(anchorMs)) {
-			this.nextDueAt.set(session.id, new Date(anchorMs + cfg.intervalMs).toISOString());
-		} else {
-			this.nextDueAt.delete(session.id);
-		}
 		const descriptorFire = timestampMs(session.lastWatchdogFireAt);
 		if (
 			descriptorFire !== null &&
@@ -576,16 +577,18 @@ export class WatchdogManager {
 				response,
 				consecutiveSilentFires: state.consecutiveSilentFires,
 			});
+			this.notifyWatchers(
+				session,
+				state,
+				sidecar?.watchers ?? [],
+				response,
+				paneEvidence,
+				nowMs,
+				isAnomalyVerdict(response),
+			);
+		} else {
+			this.deps.log?.(`watchdog unknown: ${session.id} (not delivered)`);
 		}
-		this.notifyWatchers(
-			session,
-			state,
-			sidecar?.watchers ?? [],
-			response,
-			paneEvidence,
-			nowMs,
-			isAnomalyVerdict(response),
-		);
 
 		const ordinal = state.ordinal + 1;
 		const body = buildWatchdogTurn(session.id, ordinal, {
@@ -595,7 +598,7 @@ export class WatchdogManager {
 			ownAltitude: projectOrchestrationRole(session) === "prime",
 		});
 		const outcome = this.deps.channel.deliver({
-			from: "pij-watchdog",
+			from: SENSOR_WATCHDOG,
 			to: session.id,
 			body,
 		});
@@ -652,12 +655,11 @@ export class WatchdogManager {
 		if (state.awaitingResponse) return;
 		const anchorMs = state.activityAnchorAtMs;
 		if (anchorMs === null || !Number.isFinite(anchorMs)) return;
-		// Freshness must satisfy BOTH detectors' notion of "not stale", so the window
-		// is the tighter of the two. STALE_AFTER_MS is what the descriptor-based
-		// detector calls stalled; the watchdog interval (20 min by default) is far
-		// looser, and using it alone would declare a peer alive that the other
-		// detector had just correctly flagged 65s into its silence.
-		const livenessWindowMs = Math.min(cfg.intervalMs, STALE_AFTER_MS);
+		// Freshness must satisfy BOTH detectors' notion of "not stale", so the
+		// window is the tighter of the watchdog cadence and the descriptor-level
+		// threshold. A configured sidecar raises the latter to its interval; a seat
+		// without one retains the legacy 60-second floor.
+		const livenessWindowMs = Math.min(cfg.intervalMs, this.staleAfterMsFor(session.id));
 		if (nowMs - anchorMs >= livenessWindowMs) return;
 		if (state.livenessReportedForAnchorMs === anchorMs) return;
 		state.livenessReportedForAnchorMs = anchorMs;
@@ -722,7 +724,7 @@ export class WatchdogManager {
 				lines.push("capture disabled by watcher policy");
 			}
 			const delivered = this.deps.channel.deliver({
-				from: "pij-watchdog",
+				from: SENSOR_WATCHDOG,
 				to: watcher.watcherId,
 				body: lines.join("\n"),
 			});

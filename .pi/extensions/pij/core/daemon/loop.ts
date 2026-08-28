@@ -43,6 +43,7 @@ import type {
 	SessionDescriptor,
 	SessionId,
 } from "../types.js";
+import { SENSOR_DAEMON } from "../watchdog.js";
 import {
 	type ComposerHoldTracker,
 	isBlankComposer,
@@ -438,7 +439,7 @@ export function driveSession(
 			if (resolution.recipient) {
 				drive.settled = true;
 				const note = buildBoundNotice(persisted, resolution.recipient);
-				if (note) notify(delivery, descriptor.id, note.to, note.text);
+				if (note) notify(delivery, SENSOR_DAEMON, note.to, note.text);
 			} else if (resolution.withheld === 1) {
 				drive.settled = true;
 				const line = noLiveNoticeRecipientLine("bound", persisted, resolution);
@@ -490,7 +491,7 @@ export function driveSession(
 			if (resolution.recipient) {
 				drive.settled = true;
 				const note = buildBoundNotice(persisted, resolution.recipient);
-				if (note) notify(delivery, descriptor.id, note.to, note.text);
+				if (note) notify(delivery, SENSOR_DAEMON, note.to, note.text);
 			} else if (resolution.withheld === 1) {
 				drive.settled = true;
 				const line = noLiveNoticeRecipientLine("bound", persisted, resolution);
@@ -565,7 +566,7 @@ function reportBindRefusal(
 	drive.settled = false;
 	notify(
 		delivery,
-		descriptor.id,
+		SENSOR_DAEMON,
 		descriptor.spawnedBy,
 		`⛔ ${descriptor.id} planned bind refused (${cause})${detail ? `: ${detail}` : "."}`,
 	);
@@ -619,7 +620,7 @@ function fail(
 		if (resolution.recipient) {
 			drive.settled = true;
 			const note = buildFailedNotice(persisted, reason, resolution.recipient);
-			if (note) notify(delivery, descriptor.id, note.to, note.text);
+			if (note) notify(delivery, SENSOR_DAEMON, note.to, note.text);
 		} else if (resolution.withheld === 1) {
 			drive.settled = true;
 			const line = noLiveNoticeRecipientLine("failed", persisted, resolution);

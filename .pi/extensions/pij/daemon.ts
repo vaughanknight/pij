@@ -116,6 +116,7 @@ import { classifyReadiness } from "./core/readiness.js";
 import { persistDaemonWrite } from "./core/registry-write.js";
 import { classifyDeathReason, STALE_AFTER_MS } from "./core/state.js";
 import { type HarnessKind, ok, type SessionDescriptor, type SessionId } from "./core/types.js";
+import { SENSOR_DAEMON, SENSOR_WATCHDOG } from "./core/watchdog.js";
 import { TELEGRAM_PEER_ID } from "./telegram/bridge.js";
 import { type BridgeSupervisor, bridgeSupervisorForDaemon } from "./telegram/index.js";
 
@@ -1201,7 +1202,7 @@ export class Daemon {
 		// from the daemon's descriptor state ("working"|"idle") — compare directly.
 		const ageMs = d.lastEventAt ? this.ports.now() - Date.parse(d.lastEventAt) : null;
 		const isWorking = d.state === "working";
-		const staleAge = ageMs === null || ageMs > STALE_AFTER_MS;
+		const staleAge = ageMs === null || ageMs > this.watchdogManager.staleAfterMsFor(d.id);
 		const stalled = isWorking && staleAge;
 		if (stalled && !latch.has("stalled")) {
 			latch.add("stalled");
@@ -1210,7 +1211,7 @@ export class Daemon {
 			if (persisted.lifecycle === "dissolved") return;
 			const recipient = this.lifecycleNoticeRecipient("stalled", persisted);
 			const note = buildStalledNotice(persisted, recipient);
-			if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+			if (note) this.channel.deliver({ from: SENSOR_DAEMON, to: note.to, body: note.text });
 			this.log(`push ${d.id}: stalled`);
 		} else if (
 			!stalled &&
@@ -1244,7 +1245,7 @@ export class Daemon {
 		if (persisted.lifecycle === "dissolved") return;
 		const recipient = this.lifecycleNoticeRecipient("stalled", persisted);
 		const note = buildStalledNotice(persisted, recipient);
-		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+		if (note) this.channel.deliver({ from: SENSOR_WATCHDOG, to: note.to, body: note.text });
 		this.log(`push ${d.id}: watchdog stalled`);
 	}
 
@@ -1300,7 +1301,7 @@ export class Daemon {
 		if (persisted.lifecycle === "dissolved") return;
 		const recipient = this.lifecycleNoticeRecipient("dead", persisted);
 		const note = buildDeadNotice(persisted, reason, { authoritativeDeath: false }, recipient);
-		if (note) this.channel.deliver({ from: d.id, to: note.to, body: note.text });
+		if (note) this.channel.deliver({ from: SENSOR_DAEMON, to: note.to, body: note.text });
 		this.log(`push ${d.id}: provider-failure (${reason})`);
 	}
 

@@ -10,6 +10,7 @@ import {
 } from "../spawn-expectation.js";
 import { resolveAgentLiveness } from "../state.js";
 import type { DeathReason, SessionDescriptor, SpawnExpectation } from "../types.js";
+import { SENSOR_DAEMON } from "../watchdog.js";
 
 export interface DeathNotice {
 	readonly to: string;
@@ -23,6 +24,7 @@ export type DeathNoticeCandidate =
 	| {
 			readonly kind: "descriptor";
 			readonly descriptorId: string;
+			readonly subjectId: string;
 			readonly from: string;
 			readonly text: string;
 			readonly historical: boolean;
@@ -30,6 +32,7 @@ export type DeathNoticeCandidate =
 	| {
 			readonly kind: "fixed";
 			readonly to: string;
+			readonly subjectId: string;
 			readonly from: string;
 			readonly text: string;
 			readonly historical: boolean;
@@ -120,7 +123,7 @@ export function resolveDeathNotices(
 		}
 		if (!recipient) continue;
 		if (dead.has(recipient)) {
-			withhold(candidate.from);
+			withhold(candidate.subjectId);
 			continue;
 		}
 		notices.push({
@@ -319,7 +322,8 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 			noticeCandidates.push({
 				kind: "descriptor",
 				descriptorId: descriptor.id,
-				from: descriptor.id,
+				subjectId: descriptor.id,
+				from: SENSOR_DAEMON,
 				text: noticeText(
 					descriptor.id,
 					latched.terminal.disposition,
@@ -378,7 +382,8 @@ export function reconcileDeaths(input: DeathReconcileInput): DeathReconcileResul
 			noticeCandidates.push({
 				kind: "fixed",
 				to: next.creatorId,
-				from: next.sessionId ?? next.spawnId,
+				subjectId: next.sessionId ?? next.spawnId,
+				from: SENSOR_DAEMON,
 				text: noticeText(
 					next.sessionId ?? next.spawnId,
 					next.terminal.disposition,

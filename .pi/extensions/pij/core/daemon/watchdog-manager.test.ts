@@ -105,6 +105,7 @@ interface ManagerHarness {
 	readonly events: string[];
 	readonly fires: Array<{ id: string; atMs: number }>;
 	readonly responses: WatchdogResponseEvent[];
+	readonly logs: string[];
 	setNow(value: number): void;
 	setPane(id: string, value: string): void;
 	setPendingWatchdog(id: string, pending: boolean): void;
@@ -118,6 +119,7 @@ function managerHarness(): ManagerHarness {
 	const events: string[] = [];
 	const fires: Array<{ id: string; atMs: number }> = [];
 	const responses: WatchdogResponseEvent[] = [];
+	const logs: string[] = [];
 	const panes = new Map<string, string>();
 	const pendingWatchdogs = new Set<string>();
 	let nowMs = 0;
@@ -135,6 +137,7 @@ function managerHarness(): ManagerHarness {
 		hasPendingWatchdog: (id) => pendingWatchdogs.has(id),
 		onFire: (session, atMs) => fires.push({ id: session.id, atMs }),
 		onResponse: (event) => responses.push(event),
+		log: (line) => logs.push(line),
 	});
 	return {
 		manager,
@@ -144,6 +147,7 @@ function managerHarness(): ManagerHarness {
 		events,
 		fires,
 		responses,
+		logs,
 		setNow: (value) => {
 			nowMs = value;
 		},
@@ -247,6 +251,27 @@ describe("WatchdogManager — reconciliation and delivery", () => {
 		]);
 
 		expect(h.fires).toEqual([{ id: "pij-reporting-pm", atMs: 110 }]);
+	});
+
+	it("projects the live fire clock and keeps statusAt re-anchoring", async () => {
+		const h = managerHarness();
+		const cfg = { enabled: true, intervalMs: 100, pausedBy: undefined };
+		h.store.sidecars.set("peer", intervalSidecar(cfg.intervalMs));
+		h.store.revisions.set("peer", 1);
+
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer", statusAt: undefined })]);
+		expect(h.manager.schedulerProjection().peer?.nextDueAt).toBe(new Date(200).toISOString());
+		expect(isFireDue(cfg, 100, 0, 199)).toBe(false);
+		expect(isFireDue(cfg, 100, 0, 200)).toBe(true);
+
+		h.setNow(200);
+		h.manager.reconcile([desc({ id: "peer", statusAt: undefined })]);
+		expect(h.manager.schedulerProjection().peer?.nextDueAt).toBe(new Date(300).toISOString());
+
+		h.setNow(250);
+		h.manager.reconcile([desc({ id: "peer", statusAt: new Date(250).toISOString() })]);
+		expect(h.manager.schedulerProjection().peer?.nextDueAt).toBe(new Date(350).toISOString());
 	});
 
 	it("keeps at most one due tmux watchdog turn in the durable channel", async () => {
@@ -596,13 +621,10 @@ describe("WatchdogManager — watcher captures", () => {
 		capture: { mode: "anomaly", maxLines: 2, maxBytes: 64 },
 	};
 
-	// s096 / pij#161, task 1.1b — SPLIT, not flipped. This asserted
-	// `watchdog responsive: peer` on a FIRST due fire, i.e. a fire on which
-	// `awaitingResponse` is false and no evidence is examined at all. Its PREMISE
-	// (a first fire is healthy) is precisely the defect; its INTENT (always-mode
-	// delivers a notice AND a capture for every fire) survives intact, so it is
-	// stated separately below and still passes both builds.
-	it("writes an always-mode capture on a first due fire, graded as no-evidence", async () => {
+	// s096 / pij#161, inverted by item 31 rather than deleted: a no-evidence fire
+	// is still delivered to the seat and arms response tracking, but is not a
+	// watcher verdict and therefore creates neither a notice nor a capture.
+	it("logs a first-fire unknown without delivering it to watchers", async () => {
 		const h = managerHarness();
 		const alwaysWatcher: WatchdogWatcher = {
 			...watcher,
@@ -614,20 +636,36 @@ describe("WatchdogManager — watcher captures", () => {
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
 
-		// (a) The surviving intent — the capture AND the notice are still delivered
-		//     on every fire. Passes before and after the fix.
+		expect(h.delivery.outbox.filter((item) => item.message.to === "owner")).toEqual([]);
+		expect(h.store.captures).toEqual([]);
+		expect(h.logs.filter((line) => line.startsWith("watchdog unknown: peer"))).toEqual([
+			"watchdog unknown: peer (not delivered)",
+		]);
+		expect(h.delivery.outbox.filter((item) => item.message.to === "peer")).toHaveLength(1);
+		expect(h.manager.isPaneChangeWatchdogAttributed("peer", "watchdog turn")).toBe(true);
+	});
+
+	it("keeps always-mode capture and notice for a real verdict", async () => {
+		const h = managerHarness();
+		const alwaysWatcher: WatchdogWatcher = {
+			...watcher,
+			capture: { mode: "always", maxLines: 2, maxBytes: 64 },
+		};
+		h.store.sidecars.set("peer", intervalSidecar(100, [alwaysWatcher]));
+		h.store.revisions.set("peer", 1);
+		h.setPane("peer", "healthy\nidle");
+		h.setNow(100);
+		h.manager.reconcile([desc({ id: "peer" })]);
+
+		h.setNow(200);
+		h.manager.reconcile([desc({ id: "peer", lastWatchdogFireAt: new Date(100).toISOString() })]);
+
 		expect(h.store.captures).toEqual([
 			expect.objectContaining({ watcherId: "owner", targetId: "peer", content: "healthy\nidle" }),
 		]);
 		const notices = h.delivery.outbox.filter((item) => item.message.to === "owner");
 		expect(notices).toHaveLength(1);
-		// (b) The distinction the proof could not previously make: WHICH verdict was
-		//     delivered. A fire that examined nothing must positively identify the
-		//     no-evidence verdict rather than certify health. Fails pre-fix, where
-		//     this line read `watchdog responsive: peer`.
-		const notice = notices[0]?.message.body ?? "";
-		expect(notice).toContain("watchdog unknown: peer");
-		expect(notice).toContain("nothing was examined");
+		expect(notices[0]?.message.body).toContain("watchdog suspect: peer");
 	});
 
 	it("writes an anomaly pointer from the pre-injection pane and includes at most five lines", async () => {
@@ -671,6 +709,8 @@ describe("WatchdogManager — watcher captures", () => {
 		h.setPane("peer", Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join("\n"));
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
+		h.setNow(200);
+		h.manager.reconcile([desc({ id: "peer", lastWatchdogFireAt: new Date(100).toISOString() })]);
 
 		expect(h.store.captures[0]?.content).toBe(
 			Array.from({ length: 12 }, (_, i) => `line${i + 9}`).join("\n"),
@@ -1801,16 +1841,9 @@ describe("a watched PA is nudged without being told to write a card", () => {
 
 // ─── s096 / pij#161 + pij#148 — the verdict has three values and four meanings ──
 //
-// PRE-FIX GATE. Every test in this block is a BEHAVIOURAL criterion and every one
-// of them must FAIL against unmodified source. They are written before the fix and
-// their failure output is recorded in the plan's execution log as evidence.
-//
-// Assertion discipline (fleet relay, s097): adding a member to an existing enum
-// makes SET-LEVEL assertions uninformative by construction. So no test here
-// asserts merely "a notice was emitted", and none rests on a bare negative — a
-// bare negative is satisfied by ABSENCE (no notice at all, a delivery failure, an
-// unrelated early return) and would pass for reasons unrelated to the fix. Each
-// case positively identifies the verdict AND separately asserts delivery happened.
+// These cases preserve the distinctions introduced by pij#161 while item 31
+// changes the delivery policy: unknown is still an explicit internal verdict,
+// but it is logged rather than published to watchers.
 describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires", () => {
 	const watcherOf = (id: string, mode: "always" | "anomaly"): WatchdogWatcher => ({
 		watcherId: id,
@@ -1824,11 +1857,7 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 			.map((item) => item.message.body)
 			.filter((body) => body.startsWith("watchdog "));
 
-	// AC-01 — a fire that examined NOTHING must not emit a health verdict.
-	// `responsive` is the initialiser at watchdog-manager.ts:449; on the first due
-	// fire `awaitingResponse` is false, so the evidence block never runs and the
-	// initialised value is delivered verbatim.
-	it("AC-01 does not certify health on a fire that examined no evidence", async () => {
+	it("AC-01 logs rather than publishes a fire that examined no evidence", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		h.store.revisions.set("peer", 1);
@@ -1836,22 +1865,14 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
 
-		const notices = noticesTo(h, "owner");
-		// Delivery happened at all — so the verdict assertion below cannot be
-		// satisfied by absence.
-		expect(notices).toHaveLength(1);
-		// Positive identification of the no-evidence verdict, not "is not responsive".
-		expect(notices[0]).toContain("watchdog unknown: peer");
+		expect(noticesTo(h, "owner")).toEqual([]);
+		expect(h.delivery.outbox.filter((item) => item.message.to === "peer")).toHaveLength(1);
+		expect(h.logs.filter((line) => line.startsWith("watchdog unknown: peer"))).toEqual([
+			"watchdog unknown: peer (not delivered)",
+		]);
 	});
 
-	// AC-04 — PRESERVED-PROPERTY, not behavioural. The fix must not CREATE watcher
-	// noise: `anomaly` is derived as `response !== "responsive"` (a set-level
-	// predicate), so adding a member would silently make every no-evidence fire an
-	// anomaly. This CANNOT fail pre-fix — pre-fix the verdict IS `responsive`, so
-	// the property already holds. It is a regression guard on this PR's own change,
-	// never evidence of the fix. The always-watcher on the SAME fire proves the
-	// anomaly watcher's silence is SELECTIVE rather than "nothing was delivered".
-	it("AC-04 keeps a no-evidence fire out of anomaly capture, selectively", async () => {
+	it("AC-04 keeps a no-evidence fire out of every watcher and capture policy", async () => {
 		const h = managerHarness();
 		h.store.sidecars.set(
 			"peer",
@@ -1865,11 +1886,10 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
 
-		// The paired positive: the same fire DID reach a watcher.
-		expect(noticesTo(h, "always-watcher")).toHaveLength(1);
-		// The absence is therefore selective, not "nothing was delivered".
+		expect(noticesTo(h, "always-watcher")).toEqual([]);
 		expect(noticesTo(h, "anomaly-watcher")).toEqual([]);
-		expect(h.store.captures.filter((c) => c.watcherId === "anomaly-watcher")).toEqual([]);
+		expect(h.store.captures).toEqual([]);
+		expect(h.logs).toContain("watchdog unknown: peer (not delivered)");
 	});
 
 	// AC-05 — pij#161's live instance: a 0-byte capture from a pane that no longer
@@ -1888,9 +1908,12 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		h.store.revisions.set("peer", 1);
-		h.setPane("peer", ""); // paneId is set, but the pane cannot be read
+		h.setPane("peer", "baseline");
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
+		h.setPane("peer", ""); // paneId is set, but the pane cannot be read
+		h.setNow(200);
+		h.manager.reconcile([desc({ id: "peer", lastWatchdogFireAt: new Date(100).toISOString() })]);
 
 		const notices = noticesTo(h, "owner");
 		// The delivery pin lives HERE only: it exists so the content assertion that
@@ -1908,9 +1931,12 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 		const h = managerHarness();
 		h.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		h.store.revisions.set("peer", 1);
-		h.setPane("peer", "");
+		h.setPane("peer", "baseline");
 		h.setNow(100);
 		h.manager.reconcile([desc({ id: "peer" })]);
+		h.setPane("peer", "");
+		h.setNow(200);
+		h.manager.reconcile([desc({ id: "peer", lastWatchdogFireAt: new Date(100).toISOString() })]);
 
 		expect(h.store.captures).toEqual([]);
 	});
@@ -2046,13 +2072,20 @@ describe("s096 watchdog verdicts: no-evidence, unreadable panes, answered fires"
 		paneless.manager.reconcile([
 			desc({ id: "peer", harness: "pi", lifecycle: undefined, paneId: undefined }),
 		]);
+		paneless.setNow(200);
+		paneless.manager.reconcile([
+			desc({ id: "peer", harness: "pi", lifecycle: undefined, paneId: undefined }),
+		]);
 		expect(noticesTo(paneless, "owner")[0]).toContain("capture unavailable (paneless target)");
 
 		const unreadable = managerHarness();
 		unreadable.store.sidecars.set("peer", intervalSidecar(100, [watcherOf("owner", "always")]));
 		unreadable.store.revisions.set("peer", 1);
-		unreadable.setPane("peer", "");
+		unreadable.setPane("peer", "baseline");
 		unreadable.setNow(100);
+		unreadable.manager.reconcile([desc({ id: "peer" })]);
+		unreadable.setPane("peer", "");
+		unreadable.setNow(200);
 		unreadable.manager.reconcile([desc({ id: "peer" })]);
 		expect(noticesTo(unreadable, "owner")[0]).toContain(
 			"capture unavailable (pane could not be read)",

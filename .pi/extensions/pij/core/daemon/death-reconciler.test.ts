@@ -104,7 +104,7 @@ describe("death reconciler", () => {
 			evidence: "pid-missing",
 		});
 		expect(result.notices).toEqual([
-			expect.objectContaining({ to: "pij-parent", historical: false }),
+			expect.objectContaining({ from: "pij-daemon", to: "pij-parent", historical: false }),
 		]);
 	});
 
@@ -131,7 +131,7 @@ describe("death reconciler", () => {
 		});
 
 		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
-			{ from: "pij-child", to: "pij-current-parent" },
+			{ from: "pij-daemon", to: "pij-current-parent" },
 		]);
 	});
 
@@ -208,7 +208,7 @@ describe("death reconciler", () => {
 		});
 
 		expect(result.notices.map(({ from, to }) => ({ from, to }))).toEqual([
-			{ from: "pij-child", to: "pij-original-spawner" },
+			{ from: "pij-daemon", to: "pij-original-spawner" },
 		]);
 		expect(result.noticesSuppressed).toBe(0);
 	});
@@ -287,7 +287,7 @@ describe("death reconciler", () => {
 			paneExists: () => false,
 		});
 		expect(first.expectationUpdates[0]?.terminal?.disposition).toBe("unrequested-by-pij");
-		expect(first.notices[0]).toMatchObject({ historical: false });
+		expect(first.notices[0]).toMatchObject({ from: "pij-daemon", historical: false });
 		const restarted = reconcileDeaths({
 			descriptors: [],
 			expectations: first.expectationUpdates,
