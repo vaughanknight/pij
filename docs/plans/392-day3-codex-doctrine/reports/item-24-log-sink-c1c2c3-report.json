@@ -1,0 +1,99 @@
+{
+  "outcome": "COMPLETE",
+  "candidateSha": "140807685a1ed93d0654604deb148eb779b58710",
+  "baseSha": "66d0acd3fc7db4e80d2a98e99661bde69c004e01",
+  "summary": "Closed the durable Telegram log C1/C2/C3 advisories: the production supervisor test now proves restart evidence reaches telegram-bridge.log, tee warning suppression resets after a successful append so each distinct outage is reported, and the capture-tail oracle now discriminates candidate coverage from the pre-fix tree.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/index.ts",
+    ".pi/extensions/pij/telegram/index.test.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-CAPTURE-EMPTY-TAIL.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-LATCH-NO-CLEAR.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-LOGSINK.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-REPORT-ONCE.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-SUP-DEPS-ONLY.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-SUP-OWNLOG-ONLY.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-TEE-UNGUARDED.patch"
+  ],
+  "removedFiles": [
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-CAPTURE-TAIL-PATH.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-24-log-sink/MUT-SUPERVISOR-UNWIRE.patch"
+  ],
+  "testsRun": 300,
+  "testsPassed": 296,
+  "testsSkipped": 4,
+  "gatesClean": true,
+  "gates": {
+    "typecheck": "PASS",
+    "changedFileBiome": "PASS",
+    "telegramAndDaemonFence": "PASS: 296 passed, 4 skipped"
+  },
+  "mutants": [
+    {
+      "name": "MUT-LOGSINK",
+      "mutatedBlob": "e6445bd97f7fdf1dd58167d1c8e31bf70e53499e",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:816",
+      "restoredBlob": "dc4d758d3f7eb085260efce5ad9bdab8436df377",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-TEE-UNGUARDED",
+      "mutatedBlob": "e7c99def2b7bec2a24a38c48a11cd04b527afd28",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:708 (delivery never acked; uncaught EISDIR)",
+      "restoredBlob": "dc4d758d3f7eb085260efce5ad9bdab8436df377",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-REPORT-ONCE",
+      "mutatedBlob": "fbd859166c6a03b64a4e6db0c2c46a98db8377c5",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:746 (4 warnings instead of 1)",
+      "restoredBlob": "dc4d758d3f7eb085260efce5ad9bdab8436df377",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-LATCH-NO-CLEAR",
+      "mutatedBlob": "1bc29d0a9037e8aa82d464e94bed27d3fc94c541",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:766 (1 warning instead of 2)",
+      "restoredBlob": "dc4d758d3f7eb085260efce5ad9bdab8436df377",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-SUP-DEPS-ONLY",
+      "mutatedBlob": "a0630986f24417a4df44974037c02bf7f1d6a9f0",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:981",
+      "restoredBlob": "dc4d758d3f7eb085260efce5ad9bdab8436df377",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-SUP-OWNLOG-ONLY",
+      "mutatedBlob": "08de91617a368223e5e34d9a066544c9ec66b9ab",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:995",
+      "restoredBlob": "dc4d758d3f7eb085260efce5ad9bdab8436df377",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-CAPTURE-EMPTY-TAIL",
+      "mutatedBlob": "03be5847a687fd22d094bda4263d4c64965a92e7",
+      "candidateResult": "RED at .pi/extensions/pij/daemon.test.ts:234",
+      "candidateRestoredBlob": "93aa6b9ec7aa05a9e861ce6d61c4000aa1e00263",
+      "candidateRestoredResult": "GREEN",
+      "preFixBase": "65560901e78a652dec593c38c6a7f6d9d58ac122",
+      "preFixMutatedResult": "GREEN",
+      "preFixRestoredResult": "GREEN"
+    }
+  ],
+  "e40": {
+    ".pi/extensions/pij/telegram/index.ts:337": "keeps delivery alive and pane-visible when the durable tee cannot append; persists in-process forward success and failure logs to telegram-bridge.log",
+    ".pi/extensions/pij/telegram/index.ts:338": "reports each distinct durable tee outage once",
+    ".pi/extensions/pij/telegram/index.ts:560": "persists supervisor-owned forward success and failure logs",
+    ".pi/extensions/pij/telegram/index.ts:572": "persists supervisor-owned forward success and failure logs (dead-pid restart assertion)",
+    ".pi/extensions/pij/daemon.ts:252": "notifies every pij-telegram watcher instead of inferring one prime owner",
+    "uncoveredTouchedProductionLines": []
+  },
+  "notes": "The full repository harness check remains red only on out-of-fence baseline surfaces: existing Biome diagnostics, three unrelated full-suite failures (missing pwsh plus two daemon.delivery tests), windows-compat failing through the same lint baseline, and existing pij-watchdog/pi-peacock smoke failures. Deferred unchanged: A4 rotation and standalone/in-process concurrency."
+}

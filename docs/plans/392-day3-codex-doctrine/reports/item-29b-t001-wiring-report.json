@@ -1,0 +1,13 @@
+{
+  "delegationId": "dlg-0029",
+  "outcome": "COMPLETE",
+  "summary": "Candidate ad32ecb6e0bc1bf5de847ed9bc4b473566b674dc promotes the runDaemon bridge restart call-site into the named wireBridgeRestartNotifier function and tests that exact function with three primes plus one watcher. Production and the behavioral test now share the same wiring surface.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts"
+  ],
+  "testsRun": 73,
+  "testsPassed": 71,
+  "gatesClean": true,
+  "notes": "MUT-WIRING inserted the old single-prime gate inside wireBridgeRestartNotifier and the behavioral test went RED at daemon.test.ts:228 without relying on the source grep. The grep remains as a second wiring sensor. Malformed watcher-sidecar reporting now distinguishes all entries dropped from the malformed subset: the two-entry/one-malformed fixture logs '2 dropped, 1 malformed'; reverting to 'entries rejected' went RED at daemon.test.ts:274. daemon.test.ts passed 71 with 2 skipped; typecheck and changed-file Biome passed. Per packet instruction, the known-frankenstein stream full suite and harness inventory were intentionally not run; fresh-main PR validation owns those gates."
+}

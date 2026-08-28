@@ -1,0 +1,15 @@
+{
+  "delegationId": "dlg-0023",
+  "outcome": "PARTIAL",
+  "summary": "Candidate ebdc9846bf78c6616df72fe2bc49c2f360dc89ac makes the standalone Telegram bridge synchronously log fatal/exit reasons to its own file and adds daemon per-tick supervision. Dead or absent holders restart through the existing lock-reclaim/start path, while live holders are never double-started.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/index.ts",
+    ".pi/extensions/pij/telegram/index.test.ts",
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts"
+  ],
+  "testsRun": 4056,
+  "testsPassed": 4041,
+  "gatesClean": false,
+  "notes": "Standalone mode now appends ordinary logs and synchronous uncaughtException/unhandledRejection/processExit records to ~/.pij/telegram-bridge.log; caught bot.start fatals also append before exit. Supervision preserves initial auto-start, detects a dead standalone lock holder or an in-process bridge whose stop removed the lock, and restarts within the next tick through startBridge/acquireLock stale reclaim. Restart pressure is bounded at 5s cooldown and 3 attempts per 60s. Each successful restart appends a telegram-bridge-restarted spine event and directly notifies the unique live prime with a watchdog-capture file containing the reason plus available bridge-log tail; this direct channel deliberately bypasses relay/watchdog exemption. The interim bridge-liveness chore remains complementary detection. Full pij suite: 4041 passed, 15 skipped; targeted bridge/daemon surface: 187 passed, 4 skipped; typecheck and changed-file Biome clean. Mutations: MUT-LOUD RED at index.test.ts:641 and :664; MUT-SUPERVISE RED at index.test.ts:796; MUT-LIVE RED at index.test.ts:820. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention item-29 paths."
+}

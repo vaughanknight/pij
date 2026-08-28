@@ -1,0 +1,15 @@
+{
+  "delegationId": "dlg-0032",
+  "outcome": "COMPLETE",
+  "summary": "Candidate 277377142864cb57c9cb6e772b1f328517865908 makes the tested watcher notifier factory the direct runDaemon notifyOwner call, removing the untested intermediate that allowed a single-prime gate to return. It also uses the shared exported watcher predicate and gives unparseable watcher JSON an honest, mutation-sensored log.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts",
+    ".pi/extensions/pij/adapters/watchdog-store.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-29b-bridge-advisories/MUT-WIRING.patch"
+  ],
+  "testsRun": 74,
+  "testsPassed": 72,
+  "gatesClean": true,
+  "notes": "The extraction fallback was required because daemon.bootstrap.test.ts is a frankenstein seam on this stream worktree: daemon.ts was restored from the ad32ecb base while daemon.bootstrap.test.ts remains at current main, so booting that composition would test mismatched generations. runDaemon now invokes wireBridgeRestartNotifier directly in the notifyOwner property, and daemon.test.ts behaviorally drives that same factory with 3 live primes plus one pij-telegram watcher; the source-use assertion is only a secondary pin. The committed MUT-WIRING.patch is executable with plain git apply: applying it reintroduces the single-prime gate and REDs the behavioral test at daemon.test.ts:228 (0 notices instead of 1), while git apply -R restores GREEN. Reverting the unparseable-JSON catch to '(0 entries rejected)' REDs the new exact-log test at daemon.test.ts:296. daemon.ts now imports the exported watchdog-store isWatcher predicate, preserving the existing 'N dropped, M malformed' accounting without a copied schema. Final daemon.test.ts fence: 72 passed, 2 skipped; just typecheck and changed-file Biome are clean. ADV-4 remains out of this packet."
+}

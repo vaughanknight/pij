@@ -1,0 +1,13 @@
+{
+  "delegationId": "dlg-0025",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 816a7269aed3b0430ef05334732fd0e68cd233ba replaces the Telegram bridge restart callback's single-prime inference with the explicit pij-telegram watcher list. Every unique watcher receives its own capture and direct notice; machine-wide prime count no longer participates.",
+  "filesChanged": [
+    ".pi/extensions/pij/daemon.ts",
+    ".pi/extensions/pij/daemon.test.ts"
+  ],
+  "testsRun": 4064,
+  "testsPassed": 4049,
+  "gatesClean": false,
+  "notes": "The notifier reads FsWatchdogStore.read('pij-telegram').watchers, deduplicates watcherId values, attempts every watcher independently, and bypasses relay/watchdog exemption through direct channel delivery. Three registered primes plus one watcher notifies exactly the watcher; zero watchers returns 0 and logs an honest skip. A source pin prevents production wiring from drifting back to 'expected one live prime'. Full pij suite: 4049 passed, 15 skipped; daemon surface: 70 passed, 2 skipped; typecheck and changed-file Biome clean. MUT-OWNER restored the old single-prime callback and went RED at daemon.test.ts:244. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention these files."
+}

@@ -1,0 +1,13 @@
+{
+  "delegationId": "dlg-0034",
+  "outcome": "COMPLETE",
+  "summary": "Candidate d42fc5b97d4acef96d431d62661c8d327260f752 localizes the incident to a fast transient deps.send rejection, not a 60-second await, and pins immediate bounded retry on a two-bubble message. The retry log now names deps.send and the exact bubble index.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts"
+  ],
+  "testsRun": 93,
+  "testsPassed": 92,
+  "gatesClean": true,
+  "notes": "H001 evidence: affected queue rows 4951/5014/5087 were attachment-free bodies of 629/417/524 characters, all below the deployed 4096-character text budget, so the live size-to-multiple-bubbles premise was false. SQLite receipts show attempt-1 claims followed by lease-expired redelivery at 60.0 seconds, then attempt-2 acknowledgment 3.7-6.8 seconds later. The live daemon pane supplies the missing causal evidence for rows 5014 and 5087: `forward error (...): Network request for 'sendMessage' failed!` immediately followed by `queue consumer error (..., attempt 1): ForwardIncomplete`; therefore the 60 seconds was the claimed-row recovery lease, not time spent awaiting deps.send, takeReplyTo, noteSpoke, or a SQLite mark. The active daemon ran 188c877, which predates the bounded text retry already present in base b1f0e0a. H002 regression uses a true two-bubble body: first deps.send fails before delivery at simulated +25 ms, the bounded retry succeeds, bubble 2 sends, and the row acks attempt 1 at +75 ms with no redelivery. Removing the retry REDs this test at bridge.test.ts:1199. telegram/index.ts was unchanged because raw sendMessage wiring was not the fault. Final bridge fence: 92 passed, 1 skipped; just typecheck and changed-file Biome are clean. Live acceptance after restart remains with the orchestrator."
+}

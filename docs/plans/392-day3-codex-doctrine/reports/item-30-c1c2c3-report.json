@@ -1,0 +1,79 @@
+{
+  "outcome": "COMPLETE",
+  "candidateSha": "06fdd3f843f7b79baaa6d54a37b3e6e7118b10ad",
+  "baseSha": "e935c88f323a82fa87124c4cfd561db68a12f01d",
+  "summary": "Closed item-30 C1/C2/C3: guidance now names the verified watchdog registration command, and independent race tests cover the address pre-selection and media pre-download liveness rechecks.",
+  "filesChanged": [
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts",
+    ".pi/extensions/pij/telegram/index.test.ts",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-30-dead-routing/MUT-ADDRESS-RECHECK.patch",
+    "docs/plans/392-day3-codex-doctrine/tasks/item-30-dead-routing/MUT-MEDIA-RECHECK.patch"
+  ],
+  "testsRun": 232,
+  "testsPassed": 230,
+  "testsSkipped": 2,
+  "gatesClean": true,
+  "gates": {
+    "typecheck": "PASS",
+    "changedFileBiome": "PASS",
+    "telegramFence": "PASS: 230 passed, 2 skipped"
+  },
+  "mutants": [
+    {
+      "name": "MUT-PRIME-RESOLUTION-LASTSPEAKER",
+      "mutatedBlob": "48b60f3a6203163cc2eac2b54988106fd939ad7c",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/index.test.ts:411",
+      "restoredBlob": "4675a76045214095932025c1628c2a47be971eda",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-ALIVE-CHECK",
+      "mutatedBlob": "130a464125e59d351cc1493cc65c42c9793cc092",
+      "result": "RED",
+      "sensors": [
+        ".pi/extensions/pij/telegram/bridge.test.ts:141",
+        ".pi/extensions/pij/telegram/bridge.test.ts:287",
+        ".pi/extensions/pij/telegram/bridge.test.ts:734"
+      ],
+      "restoredBlob": "4675a76045214095932025c1628c2a47be971eda",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-DEAD-NEVER-QUEUED",
+      "mutatedBlob": "dae692b1ac7c8c14e4789b494d51115d68feaad1",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/bridge.test.ts:609",
+      "restoredBlob": "4675a76045214095932025c1628c2a47be971eda",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-ADDRESS-RECHECK",
+      "mutatedBlob": "1109933b853e3f504b3bd06a6ad79dbba67a273f",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/bridge.test.ts:627",
+      "restoredBlob": "4675a76045214095932025c1628c2a47be971eda",
+      "restoredResult": "GREEN"
+    },
+    {
+      "name": "MUT-MEDIA-RECHECK",
+      "mutatedBlob": "ae21d359ea95a631412b7f293b776f594f7c2c3e",
+      "result": "RED",
+      "sensor": ".pi/extensions/pij/telegram/bridge.test.ts:2171",
+      "restoredBlob": "4675a76045214095932025c1628c2a47be971eda",
+      "restoredResult": "GREEN"
+    }
+  ],
+  "e40": {
+    ".pi/extensions/pij/telegram/bridge.ts:63-64": "guidance assertions at bridge.test.ts:577 and index.test.ts:446",
+    ".pi/extensions/pij/telegram/bridge.ts:409-416": "address death-race test at bridge.test.ts:614",
+    ".pi/extensions/pij/telegram/bridge.ts:468-475": "media death-race test at bridge.test.ts:2161",
+    "uncoveredTouchedProductionLines": []
+  },
+  "advisories": {
+    "exactAddedAtTie": "Accepted by o-prime as stable roster order; no extra tie rule or assertion added.",
+    "inertLastSpeakerMap": "Deferred: removal is not trivial because the mandated last-speaker regression mutant intentionally reuses that compatibility seam."
+  },
+  "notes": "The broader repository harness remains red outside this item on lint, full-test, windows-compat, and smoke sensors; the packet-required gates are green."
+}

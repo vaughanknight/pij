@@ -1,0 +1,14 @@
+{
+  "delegationId": "dlg-0022",
+  "outcome": "PARTIAL",
+  "summary": "Candidate 18584414547a5f84371a651832b0d0e5b08565d2 closes the bind-guard advisory tail: a fresh refusal resets the bound-notice latch, no-harness-process and harness-process-present notify once, and the textual pane-resolution sweep catches aliased destructures plus same-line undefined decoys. The sweep remains explicitly documented as a narrowing heuristic, not an exhaustiveness proof.",
+  "filesChanged": [
+    ".pi/extensions/pij/core/daemon/loop.ts",
+    ".pi/extensions/pij/core/daemon/loop.test.ts",
+    ".pi/extensions/pij/core/daemon/index-state.test.ts"
+  ],
+  "testsRun": 4040,
+  "testsPassed": 4025,
+  "gatesClean": false,
+  "notes": "ADV-B uses notify-only: it adds no timeout or lifecycle-failure policy. foreign-session-id, malformed planned Copilot IDs, no-harness-process, and harness-process-present notify once; probe-unavailable and identity-indeterminate remain quiet retries. The textual sweep now catches direct/reversed comparisons, inline and aliased destructures in both orders, and valid pane comparisons sharing a line with an unrelated undefined check. Residual: split-line comparisons and arbitrary alias/data flow require an AST rule. Full pij suite: 4025 passed, 15 skipped; targeted fence: 112/112; typecheck and changed-file Biome clean. Mutations: MUT-A2 RED at loop.test.ts:562; MUT-B RED at loop.test.ts:501; MUT-C RED at index-state.test.ts:270. harness checks remains red only in repository-wide lint, test, windows-compat, and smoke; none mention item-21 paths."
+}

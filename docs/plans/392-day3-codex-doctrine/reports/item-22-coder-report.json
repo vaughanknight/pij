@@ -1,0 +1,13 @@
+{
+  "delegationId": "dlg-0030",
+  "outcome": "COMPLETE",
+  "summary": "Candidate d5853c9a4db9697a22d1615725887ec39782fccd hardens the watchdog doctrine ratchet by checking the fenced runtime example instead of unconstrained prose and pinning the cited blocked/waiting source lines. The routing guide now cites both state.ts:137 and state.ts:142.",
+  "filesChanged": [
+    ".pi/extensions/pij/cli.integration.test.ts",
+    "skills/pij/references/00-routing.md"
+  ],
+  "testsRun": 124,
+  "testsPassed": 123,
+  "gatesClean": true,
+  "notes": "The commit used the exact three-path fence requested: .pi/extensions/pij/cli.integration.test.ts, docs/how/pij-watchdog.md, and skills/pij/references/00-routing.md. docs/how/pij-watchdog.md was already canonical and therefore produced no committed delta. The production skill-text run passed cli.integration.test.ts plus acceptance-sweep.test.ts with 123 passed and 1 skipped; just pij-skill-check, just typecheck, and changed-fence Biome are clean. MUT-EXAMPLE replaced the fenced watchdog turn with garbage and RED at cli.integration.test.ts:405. MUT-CITE reverted the routing citation to state.ts:142 only and RED at cli.integration.test.ts:413. The source pins independently assert blocked at state.ts:137 and waiting at state.ts:142."
+}

@@ -1,0 +1,15 @@
+{
+  "delegationId": "dlg-0031",
+  "outcome": "COMPLETE",
+  "summary": "Candidate a6151aa977cbb008e1abb3ab5797e3b0083d1e31 implements one partition-idempotent forwarding invariant across body text and attachment-generated text. The stored identity now includes full text-part count, prefix length, and SHA-256 prefix hash; exact matches skip exactly marked positions, while any drift sends all without recording mismatched marks.",
+  "filesChanged": [
+    ".pi/extensions/pij/adapters/sqlite-queue.ts",
+    ".pi/extensions/pij/adapters/sqlite-queue.test.ts",
+    ".pi/extensions/pij/telegram/bridge.ts",
+    ".pi/extensions/pij/telegram/bridge.test.ts"
+  ],
+  "testsRun": 114,
+  "testsPassed": 113,
+  "gatesClean": true,
+  "notes": "The SQLite store remains an additive side-record design: telegram_partitions gains prefix_hash, existing tables are migrated with a nullable column, and hashless legacy identities remain untrusted/send-all as ADV-3 is deferred. Text-producing attachment decisions and exact bubble arrays are planned once before sending, so partCount covers body chunks, oversize notices, no-media fallbacks, and overflowing captions. A partial failure across body plus two attachment notices redelivers only the unmarked final notice; MUT-IDEMPOTENT duplicated the two marked bubbles and RED. Mirror mutations each RED their distinct behavioral test: MUT-PARTCOUNT, MUT-PREFIXLEN, and MUT-PREFIXHASH failed the corresponding single-component drift probes at bridge.test.ts:118; MUT-NOMARK failed the A-B-A byte-coverage assertion at bridge.test.ts:1512. Existing MUT-DRIFT/IDEMPOTENT/RETRY/LOGID coverage remains green in the full bridge fence. Final scoped run: 113 passed, 1 skipped; just typecheck and changed-file Biome are clean. The fs backend is unchanged. Residual exposure remains a crash after Telegram accepts a bubble but before its immediate SQLite mark commits; that bubble can still duplicate after lease recovery."
+}
