@@ -103,3 +103,6 @@ PR #33 (item 32, daemon launched as Node's direct child, SIGHUP handled) was NOT
 
 ## Amendment 04:1xZ — §2/§6
 PR #34 item 30 (Telegram routing per Vaughan's ruling) merged → main 3411794 inside the extended hold. Restart #6 baton ASKED of kingfisher at 3411794: carries 15, 15-FX, 16, 29b-T001, 31, 24, 30. After its live proofs the v0.2.0 candidate criteria are met except §7 decisions 2–6 (23b pre-tag?, version name, Codex, Actions) and the bridge log/attempt-1 measurement window (≥1 h).
+
+## Amendment 04:1xZ — §1 LIVE
+Restart #6 done 04:10:36–04:11:06Z (30 s) in kingfisher's lane: daemon pid 63524 on 916e915 (source 3411794). Live now: PRs #1–#34 — items 15, 15-FX, 16, 29b-T001, 31, 24, 30 added. All proofs passed (locks absent after stop; bridge-restart notice reached the watcher; 385-char Telegram body attempt 1 in 3 s with the bridge log advancing; watchdog next-due live). Not live: item 32 (PR #33, 32-FX) → restart #7. Tag v0.2.0 waits on §7 decisions 2–6 and the 1-h chore-6 measurement (24b trigger).

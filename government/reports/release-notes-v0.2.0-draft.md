@@ -1,5 +1,5 @@
 # pij v0.2.0 — release notes (DRAFT; Vaughan ruled 02:2xZ Aug 28: item 30 is pre-tag; §7 decisions 2–6 open; not tagged)
-Source sha: TBD (the sha restart #6 runs). Gates on that sha: full vitest, `just typecheck`, `just pij-skill-check`, cold review per PR, live proofs per harness kind + Telegram. **GitHub Actions has never run in this repo; these gates are local.**
+Source sha: **3411794** (main; live on the daemon since restart #6, 2026-08-28 04:11Z, checkout 916e915 = 3411794 + government). Tag pending Vaughan's decisions 2–6 and the 1-h bridge measurement. Gates on that sha: full vitest, `just typecheck`, `just pij-skill-check`, cold review per PR, live proofs per harness kind + Telegram. **GitHub Actions has never run in this repo; these gates are local.**
 
 ## Headline
 Peer comms move from filesystem inboxes to a **SQLite WAL durable queue** with **socket/RPC delivery**: Claude seats read an inbox socket; Copilot seats spawned with `--ui-server` receive RPC; socketless seats get a typed pointer line. `queue backend: sqlite` is the default; fs inboxes migrate on first daemon start. Standalone design spec: `docs/specs/claude-copilot-sqlite-sockets-comms.md` (AI-Substrate/pij#311).
