@@ -9,9 +9,9 @@ On the Claude-socket path, a durable `acked (reader=X)` receipt row is written B
 - Code proof: `daemon.ts:824-850` is the injection path; it flushes text to the socket and immediately calls `this.channel.markRead(current.id, message.messageId, { reader: current.id })` (`:847-850`). The `reader` is the injecting seat, stamped at inject time.
 - Incident: `docs/plans/392-day3-codex-doctrine/rulings.md:207` — the o-prime ruling #2 ("defer to the durable reader-ack") was circular because the daemon writes that ack; a constant-fold mutant proved every receipt would read "delivered" (E26). Every `acked (reader=X)` cited for Claude-socket sends is daemon-origin ("injected"), NOT reader-read. Copilot RPC (server messageId) and the Telegram bridge acks ARE real positive acks and stand.
 
-## 2. What is ruled (design / spec) — `rulings.md:204-207`
+## 2. What is ruled (design / spec) — `docs/plans/392-day3-codex-doctrine/rulings.md:204-207`
 - Record marker ORIGIN: daemon-inject vs reader. The receipt defers ONLY to a reader-ORIGIN ack.
-- A later REAL reader ack UPGRADES the receipt (injected to confirmed).
+- A later REAL reader ack UPGRADES the receipt (injected to confirmed) — written by the reader's own read path; see §3 for who that is on each path.
 - Make origin VISIBLE in `pij queue` / receipts so no one reads an injected mark as reader confirmation again.
 - Copilot RPC: the server messageId IS a real positive ack, may map to `confirmed`.
 - A test pins a NON-delivered receipt so the constant-fold mutant MUST die (else the dead-arm regression recurs, E26).
@@ -21,6 +21,7 @@ On the Claude-socket path, a durable `acked (reader=X)` receipt row is written B
 - `.pi/extensions/pij/adapters/sqlite-queue.ts` — `DeliveryState` `:39` (`queued|claimed|injected|acked|parked|retired`), `receipts` table `:131`, receipt kind `:171-175`. The render must surface origin.
 - `core/message.ts` `receiptBody` (imported `daemon.ts:102`) — the string a reader/pane sees; add origin so `pij tail`/`pij queue` show injected vs confirmed.
 - The Copilot RPC path (grep `rpcPort` / server messageId in `core/daemon/loop.ts`) — map a real server messageId to `confirmed`.
+- **Who writes the reader-origin ack, per path:** pi in-process receiver marks read on consume; Copilot RPC returns a server messageId (a real positive ack → `confirmed`); the Telegram bridge acks on forward. **On the CLAUDE-SOCKET path there is NO reader ack today** — the Claude runtime emits no positive read signal (item 23 measurement), so a Claude-socket row honestly stays `injected` (never auto-upgrades). That is the correct end state, not a bug: 23b's job is to STOP rendering it as `confirmed` / `acked (reader=X)`. The `injected → confirmed` upgrade fires ONLY where a reader-origin ack exists; if a Claude read-ack is ever added (an in-process receiver hook or an echo reply), that becomes its upgrade source.
 
 ## 4. Acceptance (behavioural, mechanical)
 - Test: an injected-only send shows `injected` (not `confirmed`); a subsequent reader-origin ack UPGRADES it to `confirmed`; a Copilot RPC send with a server messageId shows `confirmed`.
@@ -32,7 +33,7 @@ On the Claude-socket path, a durable `acked (reader=X)` receipt row is written B
 
 ## 6. Risks / gotchas that already bit us
 - E26 — a receipt that always reads "delivered" is the dead-arm the constant-fold mutant must kill.
-- "State your instrument" (spine rule 2, `rulings.md:207`) — a ruling that names an instrument (the ack) must state WHO WRITES it; the whole bug was not asking.
+- "State your instrument" (spine rule 2, `docs/plans/392-day3-codex-doctrine/rulings.md:207`) — a ruling that names an instrument (the ack) must state WHO WRITES it; the whole bug was not asking.
 - Additive schema only — an origin column must be migration-safe (legacy receipts load as injected/unknown, never crash).
 
 ## 7. Open questions for the human

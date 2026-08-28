@@ -9,7 +9,7 @@ The Telegram bridge's first `sendMessage` attempt fails transiently (network) at
 - **Pre-fix rate (main `188c877`, pre item 24):** 9 of 24 real sends (≈38%, receipts excluded, 23:15–02:45Z) failed attempt 1 and delivered on attempt 2 after the 60 s lease. Full baseline: `docs/plans/392-day3-codex-doctrine/reports/item-24-live-acceptance-baseline.md` (s392 branch). NOT length-related (attempt-1 successes 51–463 ch overlap attempt-2 failures 351–629 ch).
 - **Post-fix window (restart #6, `916e915`, the post-restart hour):** 0 of 8 real sends needed attempt 2; **3 transients were recovered IN-LEASE at attempt 1**. One is captured verbatim in `~/.pij/telegram-bridge.log`:
   `text deps.send retry after transient failure (1787891374462-000001-28652 part 1/1): Network request for 'sendMessage' failed!` → row acked on attempt 1.
-- Conclusion the residual measurement drew (o-prime, 05:15Z): the single retry is enough for the transients seen; **24b is post-tag** unless chore 6 later reports a real `attempt>1`.
+- Conclusion the residual measurement drew (o-prime, 05:08:52Z — 57.8 min post-restart-#6; spine 32247): the single retry is enough for the transients seen; **24b is post-tag** unless chore 6 later reports a real `attempt>1`.
 
 ## 2. What is ruled (design / spec)
 - **Bounded backoff INSIDE the 60 s lease** instead of one immediate retry: schedule ≈ **0.5 s / 2 s / 5 s** (bounded; worst case must stay well under the lease so the row never escapes to a late attempt-2 redelivery).
