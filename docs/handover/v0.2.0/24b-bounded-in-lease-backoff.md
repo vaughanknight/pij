@@ -6,9 +6,9 @@
 
 ## 1. Why this exists (the observed failure, with evidence)
 The Telegram bridge's first `sendMessage` attempt fails transiently (network) at a real rate. Item 24 added ONE immediate in-lease retry, which recovers a BRIEF transient but not a longer one.
-- **Pre-fix rate (main `188c877`, pre item 24):** 9 of 24 real sends (≈38%, receipts excluded, 23:15–02:45Z) failed attempt 1 and delivered on attempt 2 after the 60 s lease. Full baseline: `docs/plans/392-day3-codex-doctrine/reports/item-24-live-acceptance-baseline.md` (s392 branch). NOT length-related (attempt-1 successes 51–463 ch overlap attempt-2 failures 351–629 ch).
+- **Pre-fix rate (main `188c877`, pre item 24):** 9 of 24 real sends (≈38%, receipts excluded, 23:15–02:45Z) failed attempt 1 and delivered on attempt 2 after the 60 s lease. Full baseline: `docs/plans/392-day3-codex-doctrine/reports/item-24-live-acceptance-baseline.md` (on main, plan folder). NOT length-related (attempt-1 successes 51–463 ch overlap attempt-2 failures 351–629 ch).
 - **Post-fix window (restart #6, `916e915`, the post-restart hour):** 0 of 8 real sends needed attempt 2; **3 transients were recovered IN-LEASE at attempt 1**. One is captured verbatim in `~/.pij/telegram-bridge.log`:
-  `text deps.send retry after transient failure (1787891374462-000001-28652 part 1/1): Network request for 'sendMessage' failed!` → row acked on attempt 1.
+  `text deps.send retry after transient failure (1787891374462-000001-28652 part 1/1): Network request for 'sendMessage' failed!` → row acked on attempt 1. (The bridge log is MACHINE-LOCAL, not reproducible by a stranger; the stranger-checkable record is the residual measurement — 0 of 8 attempt-2 in the post-restart hour, spine 32247 — and the pre-fix baseline in the plan folder on main.)
 - Conclusion the residual measurement drew (o-prime, 05:08:52Z — 57.8 min post-restart-#6; spine 32247): the single retry is enough for the transients seen; **24b is post-tag** unless chore 6 later reports a real `attempt>1`.
 
 ## 2. What is ruled (design / spec)
@@ -21,8 +21,8 @@ The Telegram bridge's first `sendMessage` attempt fails transiently (network) at
 `.pi/extensions/pij/telegram/bridge.ts`:
 - **Single retry to replace** — text: `:766-776` (`try { await deps.send(operation.text, replyTo) } catch { if (!isTransientSendError) throw; log("text deps.send retry after transient failure…"); await deps.send(...) }`); media: `:777-796` (same shape, `operation.sendMedia`). Replace each single retry with the bounded-backoff loop; keep `isTransientSendError` as the gate (a non-transient still throws immediately).
 - **Idempotency marks (keep intact)** — `:711-729`: `bubblesHash = createHash("sha256")…`; `sqlite.recordTelegramBubblesHash(dm.messageId, bubblesHash)`; drift branch logs `bubble plan drift …; sending all`; sent-parts skip at `:759-763` (`sentPartIndices.has(bubbleIndex)`). The backoff must not change which bubbles are considered sent.
-- **The lease** — `.pi/extensions/pij/adapters/sqlite-queue.ts` (state machine comment `:9-11`: `claimed ─… lease expiry …→ redelivered (attempt+1) → parked (attempt ≥ maxAttempts)`; `leaseUntil`, `attempt` fields). The backoff total must fit inside `leaseUntil - now`.
-- `isTransientSendError` — grep it in `bridge.ts`; it defines which errors are retryable (network `sendMessage failed`). Do NOT widen it without a ruling.
+- **The lease** — the 60 s default is `.pi/extensions/pij/adapters/queue-consumer.ts:24` (`leaseMs = deps.leaseMs ?? 60_000`); the row's `leaseUntil`/`attempt` and the state machine live in `.pi/extensions/pij/adapters/sqlite-queue.ts` (`:9-11`: `claimed ─… lease expiry …→ redelivered (attempt+1) → parked`). The backoff total must fit inside `leaseUntil - now`.
+- `isTransientSendError` — defined in `.pi/extensions/pij/telegram/media.ts:128` (NOT bridge.ts); it defines which errors are retryable (network `sendMessage failed`). Do NOT widen it without a ruling.
 
 ## 4. Acceptance (behavioural, mechanical)
 - **Tests** (`bridge.test.ts`): a text send that fails transiently twice then succeeds → delivered on the 3rd attempt, ONE row, no late attempt-2 redelivery (drive the real `deps.send` with a fake that fails N times then resolves; assert timing stays < lease). Mirror for media. Idempotency: plan drift + retry → only the unsent bubble is resent (assert against `sentPartIndices`). Ambiguous ack (sent-but-unacked) → duplicate, asserted (never loss).

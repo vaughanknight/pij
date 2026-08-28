@@ -5,7 +5,7 @@
 **Size estimate:** S, ~2–4 h · **Order / dependencies:** none.
 
 ## 1. Why this exists (the observed failure, with evidence)
-A double-quoted `pij send <id> "..."` body containing backticks or command substitution is expanded BY THE SHELL before pij runs — the message delivers mangled AND the substituted command has already executed. This bit the o-prime's own shell: the local orient and `docs/plans/392-day3-codex-doctrine/reports/oprime-rulings-log.md` record "a double-quoted body with backticks executed two commands"; the standing mitigation is "every `pij send` body goes by `--body-file` from a quoted heredoc". The v0.2.0 handover README restates it under § rules.
+A double-quoted `pij send <id> "..."` body containing backticks or command substitution is expanded BY THE SHELL before pij runs — the message delivers mangled AND the substituted command has already executed. This bit the o-prime's own shell: the repo's local orient (`government/orient-local.md`) and `docs/plans/392-day3-codex-doctrine/reports/oprime-rulings-log.md` record "a double-quoted body with backticks executed two commands"; the standing mitigation is "every `pij send` body goes by `--body-file` from a quoted heredoc". The v0.2.0 handover README restates it under § rules.
 
 ## 2. What is ruled (design / spec)
 - Add a CLI guard so a `pij send` positional-text body that still CONTAINS backticks or command-substitution markers (i.e. they survived to argv as literals) is REFUSED with a pointer to `--body-file` — making the safe path the only path for risky bodies.
@@ -13,7 +13,7 @@ A double-quoted `pij send <id> "..."` body containing backticks or command subst
 
 ## 3. Where the code is (at tag `d120c53`)
 - `.pi/extensions/pij/cli.ts:365-371` — the `pij send` help already warns: unsafe for text you did not author; backticks and command substitution expand in YOUR shell before pij runs; the message delivers mangled and the command has already executed; pij cannot prevent this; use `--body-file` instead.
-- `.pi/extensions/pij/cli.ts:4971-4979` — the send-body handling and its internal body-file placeholder (a NUL-delimited sentinel) that already special-cases `--body-file`. The positional-body branch of the `send` verb is where a guard inspects the received arg.
+- **Change site** — `.pi/extensions/pij/cli.ts:5036` (`sendPositionalIndices(rest)`, the positional body), `:5037-5041` (the existing `E-ARG` positional-refusal model to MIRROR), `:5059` (`parseArgs(argvForParse)`, where the positional falls through). The guard inspects the positional body arg here, BEFORE `parseArgs`. Do NOT touch `:5055-5057` (the `--body-file` `BODY_FILE_PLACEHOLDER` branch — byte-exact, safe). Context only: the help/warning `:365-371`, the placeholder mechanism `:4971-4979`.
 
 ## 4. Acceptance (behavioural, mechanical)
 - Test: a positional body that reached argv still containing a literal backtick (e.g. single-quoted or escaped upstream) is REFUSED with an actionable message naming `--body-file`; the same content via `--body-file` is accepted byte-exact; a plain body with no backticks/substitution markers is accepted.
