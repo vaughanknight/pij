@@ -25,3 +25,4 @@
 ## Index of outstanding items
 _(filled as sections land; one line per file: number · title · stream · status)_
 - 00 · The live system at v0.2.0 — o-prime · written
+- 01 · What is already shipped (item → PR → sha) — o-prime · generated
