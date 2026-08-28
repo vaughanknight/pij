@@ -29,7 +29,7 @@
         {
           "id": "tk-5f1d",
           "title": "Workspace skeleton: 8 member crates (core,store,tmux,harnesses,transport,daemon,cli->one binary,testkit) compiling empty at hello-world depth; cargo build --workspace green.",
-          "state": "unchecked",
+          "state": "checked",
           "note": "R2 / ac-0001,ac-0002",
           "done": "#done_when/tk-5f1d"
         },
@@ -106,7 +106,7 @@
           {
             "id": "dw-c43d",
             "assertion": "cargo build --workspace green; 8 member crates present; core has no tokio/sqlx/HTTP deps",
-            "state": "unchecked",
+            "state": "checked",
             "pressure": "not-applicable"
           }
         ],
