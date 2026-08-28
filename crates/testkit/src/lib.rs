@@ -7,6 +7,8 @@
 //!   "it works" cannot drift apart silently.
 //! * [`fixtures`] — the addressable corpus of real captured pij traffic,
 //!   malformed cases included, so every packet can cite a fixture by name.
+//! * [`fresh_store`] — a real database per test, entropy-named and destroyed
+//!   with the value, so no suite ever shares state by accident.
 //! * [`exec`] — a ten-line executor, so core's tests await without a runtime.
 //! * [`arch`] — the architecture drift gate.
 //!
@@ -20,5 +22,7 @@ pub mod contract;
 pub mod exec;
 pub mod fakes;
 pub mod fixtures;
+pub mod fresh_store;
 
 pub use exec::block_on;
+pub use fresh_store::FreshStore;

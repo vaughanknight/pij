@@ -50,6 +50,18 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 toml = "0.9"
+# The store, per workshop 001 R1: SQLite through sqlx, with embedded migrations
+# and the `_sqlx_migrations` checksum table. rustls rather than native-tls so the
+# build stays `cargo build` on every platform.
+sqlx = { version = "0.8", default-features = false, features = [
+  "runtime-tokio-rustls",
+  "sqlite",
+  "macros",
+  "migrate",
+] }
+# The daemon's reactor. Named here so every crate that needs one resolves the
+# same version; the allow-list decides WHICH crates may.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "net", "signal"] }
 
 # Warnings are errors in the gate (`clippy -D warnings`); this keeps a plain
 # `cargo build` honest about the same lints rather than deferring them to CI.

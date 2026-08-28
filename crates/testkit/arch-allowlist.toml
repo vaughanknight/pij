@@ -67,9 +67,14 @@ external = ["async-trait", "serde", "thiserror", "serde_json@dev"]
 why = "Pure domain: types, config, errors, the seven frozen ports, and the logic over them. No IO, no tokio, no SQL, no HTTP — enforced here rather than asserted in a doc comment."
 
 [crates.pij-store]
-internal = []
-external = []
-why = "Persistence behind Registry/Spine/Queue. sqlx + SQLite land at tk-d4c3; it is the only crate permitted to speak SQL."
+# `pij-testkit@dev`: the store runs the SHARED contract suites and FreshStore, and
+# the `@dev` suffix keeps that substrate out of the shipped crate.
+internal = ["pij-core", "pij-testkit@dev"]
+# `sqlx` is the store (R1) and `tokio` is the reactor its pool needs — shipped
+# here, and ONLY here among the leaf crates, so "core has no tokio" stays a line
+# the gate defends rather than a habit. `serde_json` types opaque payload columns.
+external = ["async-trait", "serde_json", "sqlx", "tokio"]
+why = "Persistence behind Registry/Spine/Queue: SQLite via sqlx with embedded migrations, boot self-migration and directional skew refusal. The only crate permitted to speak SQL."
 
 [crates.pij-tmux]
 internal = []
