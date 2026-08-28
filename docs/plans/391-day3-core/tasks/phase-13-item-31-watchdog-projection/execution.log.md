@@ -100,5 +100,44 @@ differences, which were applied before the rebase boundary.
 
 ## Rebase and final gates
 
-Pending the required fetch/rebase onto the current `origin/main`, followed by
-the authoritative full extension suite, root typecheck, and scoped Biome.
+Fetched `origin/main` and rebased cleanly after Item 15-FX merged.
+
+- Rebased implementation commit: `16d02db0b0b2e44fee4a7dd37f4326e876e6541c`
+- Re-derived merge-base / `origin/main`:
+  `58c9cf100bea4a4b1348ae12ffa3e9763f0a6c3a`
+- The branch differs from that merge-base in exactly the eleven fenced files.
+
+Authoritative full extension suite:
+
+```text
+Test Files  172 passed | 2 skipped (174)
+Tests       4121 passed | 15 skipped (4136)
+Duration    198.90s
+```
+
+Logs:
+
+- `.harness/temp/s391/vitest-phase13.log`
+- `/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtca1ah4-bvzzze.log`
+
+Post-rebase root TypeScript typecheck passed. Scoped Biome passed on all nine
+changed TypeScript files.
+
+## Engineering-harness result
+
+`harness checks` was also run as the repository-wide done gate. Its JSON result
+was non-zero with four failures, all outside this phase's fence:
+
+1. `lint`: pre-existing Biome findings in unchanged
+   `.pi/extensions/pij/producers/osc-7337-producer.ts`.
+2. `test`: `harness/scripts/release-age-policy.test.ts` requires `pwsh`, which
+   is not installed on this machine (`spawnSync pwsh ENOENT`).
+3. `windows-compat`: the same unchanged producer-file Biome finding.
+4. `smoke`: the unchanged watchdog proof calls async `daemon.tick()` without
+   awaiting it, then immediately checks the post-await scheduler result
+   (`smoke first fire was not queued`).
+
+The packet-required gates remain green: full `.pi/extensions/pij/` Vitest,
+root typecheck, and scoped Biome. Harness log:
+`.harness/temp/s391/harness-checks-phase13.log`; wrapper log:
+`/Users/vaughanknight/.pij/pij-jolly-moose/bg-mtca6dps-qio58o.log`.
