@@ -94,3 +94,6 @@ Vaughan (Telegram, verbatim "Yes"): item 30 must land before the tag. Sequence: 
 
 ## Amendment 02:5xZ — §2/§3
 PR #31 item 31 (watchdog projection = live fire clock; unknown never delivered; standby-aware stall threshold; sensor-signed notices) merged → main 16a7c42; not live until restart #6, which now carries 15, 15-FX, 16, 29b-T001, 31 (+24, +30 if close). Item 31 leaves §3's open list.
+
+## Amendment 02:5xZ — §2/§3/§6
+PR #32 item 24 merged → main (plan-hash idempotence, media marked on ack, one in-lease retry, in-process bridge log restored). Restart #6 gate cleared; holding ≤1 h for item 30 (pre-tag per Vaughan) so one baton carries both. Open in §3 now: 30 (in progress), 23b, 32 (relay launch), 24b (backoff if residual), Codex, Actions.
